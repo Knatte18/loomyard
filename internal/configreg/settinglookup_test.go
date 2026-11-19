@@ -111,6 +111,23 @@ func TestSettingLookup(t *testing.T) {
 			want: "sonnet[low]",
 		},
 		{
+			name: "the hardener recipe's settings answer from the board's hardener.yaml",
+			arrange: func(t *testing.T, dirs configengine.Dirs) {
+				m, _ := Lookup("hardener")
+				content := withTemplateValue(t, m.Template(), "auto_accept", "true")
+				writeConfigFile(t, configengine.ConfigFile(dirs.Board, "hardener"), withTemplateValue(t, content, "reviewer_fan", "standard"))
+			},
+			act: func(t *testing.T, dirs configengine.Dirs) (any, error) {
+				lookup := SettingLookup(dirs)
+				accept, err := lookup("hardener", "auto_accept")
+				if err != nil || accept != true {
+					t.Fatalf("lookup(hardener, auto_accept) = %v, %v; want true", accept, err)
+				}
+				return lookup("hardener", "reviewer_fan")
+			},
+			want: "standard",
+		},
+		{
 			name:      "an unregistered module is refused",
 			arrange:   writeLoomDefault(""),
 			act:       lookupOnce("lom", "review_max_bounces"),

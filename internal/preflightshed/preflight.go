@@ -75,6 +75,9 @@ type Checks struct {
 	// Drift loads drift.yaml and refuses a command a run would be refused at a Drift row.
 	// A failure makes the row stuck, with the drift reason and the way forward its error carries.
 	Drift func() error
+	// Harden checks a hardener campaign: its packages, the hub's live gate keys and its reviewer list.
+	// A failure makes the row stuck, with the campaign reason and the way forward its error carries.
+	Harden func() error
 }
 
 // preflightProducer is the general Preflight producer.
@@ -107,6 +110,10 @@ const stencilsReasonPrefix = "seat stencils check failed: "
 // driftReasonPrefix leads the stuck reason of a failed drift check;
 // the error text, which carries its own way forward, follows.
 const driftReasonPrefix = "drift config check failed: "
+
+// hardenReasonPrefix leads the stuck reason of a failed hardener check;
+// the error text, which carries its own way forward, follows.
+const hardenReasonPrefix = "hardener campaign check failed: "
 
 // NewPreflightWithChecks returns a shedengine.ShedProducer that validates cwd via preflight.Check.
 // It also runs the optional checks.
@@ -157,6 +164,13 @@ func (p *preflightProducer) stencilsFailure(ctx context.Context) (string, error)
 // A cancelled context wins over the failure and comes back as the error.
 func (p *preflightProducer) driftFailure(ctx context.Context) (string, error) {
 	return p.prefixedFailure(ctx, p.checks.Drift, driftReasonPrefix)
+}
+
+// hardenFailure runs the told hardener check and returns the stuck reason for its failure.
+// It returns "" when the check passed or none is told.
+// A cancelled context wins over the failure and comes back as the error.
+func (p *preflightProducer) hardenFailure(ctx context.Context) (string, error) {
+	return p.prefixedFailure(ctx, p.checks.Harden, hardenReasonPrefix)
 }
 
 // prefixedFailure runs check, when told, and logs its failure.
@@ -212,7 +226,7 @@ func (p *preflightProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		return "", shedengine.OutputPointer{}, cerr
 	}
 
-	for _, check := range []func(context.Context) (string, error){p.batcherFailure, p.stencilsFailure, p.driftFailure} {
+	for _, check := range []func(context.Context) (string, error){p.batcherFailure, p.stencilsFailure, p.driftFailure, p.hardenFailure} {
 		reason, err := check(ctx)
 		if err != nil {
 			return "", shedengine.OutputPointer{}, err

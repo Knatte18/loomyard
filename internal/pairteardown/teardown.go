@@ -1,10 +1,12 @@
 package pairteardown
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -18,9 +20,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
@@ -108,6 +112,8 @@ type Teardown struct {
 	interval time.Duration
 	// goos is the operating system the way forward of a held driver lock is worded for.
 	goos string
+	// lymBinary returns the path of the lym binary the sandbox clear runs.
+	lymBinary func() (string, error)
 
 	gone    func(slug string) (bool, error)
 	quiet   func(slug string) (quietState, error)
@@ -140,6 +146,10 @@ type Teardown struct {
 	snapshot func(rec *fabricengine.Mutations, slug string) (tag string, paths []string, err error)
 	// archive copies the pair's trace and verify logs into the hub's log archive; it never fails the teardown.
 	archive func(slug string)
+	// clearSandbox empties the slug's worktree of the throwaway sandbox hubs a hardener run left there, before the removal.
+	// It reports whether the worktree held a sandbox root and the clear ran.
+	// A worktree with no root answers false and starts nothing.
+	clearSandbox func(slug string) (cleared bool, err error)
 	// closePR closes the run's open pull request, since an unlanded teardown would leave it pending; it never fails.
 	closePR func(slug string)
 	// dropRunMail drops the hub's unread creel mail tagged with the removed pair's run; it never fails.
@@ -188,7 +198,7 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 	if prime == nil {
 		return nil, errors.New("pairteardown: New needs the hub's prime location")
 	}
-	t := &Teardown{prime: prime, interval: quietPollInterval, goos: runtime.GOOS, sleep: sleepCtx, writeLockWait: runLockWait}
+	t := &Teardown{prime: prime, interval: quietPollInterval, goos: runtime.GOOS, sleep: sleepCtx, writeLockWait: runLockWait, lymBinary: selfexec.LymBinary}
 	t.holdWriteLocks = t.holdRecordsWriteLocks
 	t.stopStrands = t.stopPairStrands
 	t.gone = t.taskWorktreeGone
@@ -214,6 +224,7 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 	}
 	t.endSession = t.endReedSession
 	t.archive = t.archivePairLogs
+	t.clearSandbox = t.clearWorktreeSandbox
 	t.closePR = t.closePairPullRequest
 	t.dropRunMail = t.dropPairRunMail
 	t.killCapture = t.killPairCapture
@@ -413,6 +424,9 @@ func (t *Teardown) driverLockBusyError(slug, retry string) error {
 // so the record under the run's scratch directory is still there,
 // and a failure to close it never stops the teardown.
 // The archive copies and never fails the teardown, so the removal follows it whatever it did.
+// A worktree that holds a hardener sandbox root has it cleared after the archive and before the removal,
+// so no process or server of a sandbox hub outlives the worktree it ran in.
+// A failed clear keeps the worktree and returns the failure with the way forward.
 //
 // Whether the pair's work landed is req.Landed, or else read before the removal from the task worktree's status file;
 // the file goes with the worktree, so a task worktree already gone is not landed,
@@ -470,6 +484,12 @@ func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
 	}
 
 	t.archive(req.Slug)
+	if _, err := t.clearSandbox(req.Slug); err != nil {
+		worktree := fabricengine.WorktreePath(t.prime, req.Slug)
+		return snap.applyTo(fabricengine.RemoveResult{}), fmt.Errorf(
+			"clear the sandbox root of pair %q: %w; way forward: run `lym harden sandbox clear` in %s, then run the removal again: `lym fabric remove %s`, or `lym loom resume` for a batten run's Worktree-Teardown",
+			req.Slug, err, worktree, req.Slug)
+	}
 	res, err := t.remove(req)
 	res = snap.applyTo(res)
 	if req.ClearStray {
@@ -483,6 +503,35 @@ func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
 		t.settleBoardClaim(req.Slug, landed)
 	}
 	return res, nil
+}
+
+// clearWorktreeSandbox runs `lym harden sandbox clear` in the slug's task worktree when it holds a sandbox root,
+// and it waits for the verb to end.
+// A worktree with no root, or none at all, answers false and starts nothing.
+func (t *Teardown) clearWorktreeSandbox(slug string) (bool, error) {
+	worktree := fabricengine.WorktreePath(t.prime, slug)
+	if !fileExists(filepath.Join(worktree, lymdirs.DotLymDirName, lymdirs.HardenSandboxDirName)) {
+		return false, nil
+	}
+	exe, err := t.lymBinary()
+	if err != nil {
+		return false, err
+	}
+	args := []string{"harden", "sandbox", "clear"}
+	cmd := exec.Command(exe, args...)
+	cmd.Dir = worktree
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	if err := cmd.Start(); err != nil {
+		logger.Warn("pairteardown: spawn sandbox clear failed", "slug", slug, "exe", exe, "args", args, "error", err)
+		return false, err
+	}
+	logger.Info("pairteardown: spawned sandbox clear", "slug", slug, "exe", exe, "args", args, "dir", worktree, "pid", cmd.Process.Pid)
+	if err := cmd.Wait(); err != nil {
+		return false, fmt.Errorf("%w: %s", err, strings.TrimSpace(output.String()))
+	}
+	return true, nil
 }
 
 // clearStray deletes a directory at the task worktree's path that is no worktree, after a removal left the pair gone.

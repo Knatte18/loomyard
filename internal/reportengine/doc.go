@@ -34,7 +34,7 @@
 // A tag committed before Options.Since is left out entirely; a tag whose slug does not parse is a Finding.
 // At the tag's commit the engine reads the seed and status of the tapestry run directory through their tolerant parses.
 // The run is full when both hold:
-// the seed names the tapestry or the darn recipe, each of which writes that directory;
+// the seed names the tapestry, the darn or the hardener recipe, each of which writes that directory;
 // and the status history holds a Finalize entry.
 // Any other tag is a PartialRun that enters no per-run figure.
 // RunRow.Recipe is the recipe the seed names.
@@ -175,7 +175,7 @@
 // A branch whose tip is the commit of one of its slug's archive tags is landed and skipped;
 // one whose slug TimingOptions.Live names is in flight;
 // any other is abandoned and left out with a finding.
-// A pair not seeded yet, or seeded to a recipe other than tapestry or darn, is left out silently.
+// A pair not seeded yet, or seeded to a recipe other than tapestry, darn or hardener, is left out silently.
 // TimingRun.Recipe is the recipe the run's seed names.
 // A run in flight takes the batten snapshots committed after its slug's newest archive tag,
 // so a reused slug never reads an earlier run's.
@@ -216,6 +216,10 @@
 // review also the Darn-Bouncer, Darn-Burler-Review and Darn-Burler-Fix rows a past run's history holds;
 // merge the Merge-In row a past run's history holds;
 // publish-finalize PR-Review, Finalize and Friction-Reflect, and the Publish, PR-Align and PR-Gate rows of a past run.
+// A hardener run's setup holds Preflight and Record-Write;
+// review every Harden row (Harden-Bouncer, Harden-Burler-Review, Harden-Burler-Fix);
+// write Describe;
+// publish-finalize PR-Review, Finalize and Friction-Reflect.
 // Any other Run-Shed entry records a change of the child's state.
 // It counts under the phase the run's recipe table gives the producer its change names;
 // failing that, under the latest child row before it, else under setup.

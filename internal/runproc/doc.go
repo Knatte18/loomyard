@@ -61,7 +61,8 @@
 // It leaves every teardown child alone.
 // In the subject's own pass it also leaves alone what serves the whole hub:
 // the board syncs, the detached pushes and the Slack relay.
-// EndProcess runs the same sequence on one unregistered pid, for the orphans `lym tender reap` ends.
+// EndProcess runs the same sequence on one unregistered pid.
+// It serves the orphans `lym tender reap` ends and those the Hardener sandbox reaper ends under a sandbox root.
 //
 // On Windows no start time can be read and no group can be signalled.
 // End, EndSparing, EndRole, EndSubject and EndProcess therefore signal nothing.

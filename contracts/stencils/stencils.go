@@ -228,6 +228,11 @@ var LoomRubricRaddleReview []byte
 //go:embed loom/loom-rubric-code-review.md
 var LoomRubricCodeReview []byte
 
+// HardenRubricReview is the Hardener rubric, read by the Harden-Bouncer judge and the Harden-Burler-Review row alike.
+//
+//go:embed harden/harden-rubric-review.md
+var HardenRubricReview []byte
+
 // LoomTemplatePriorPlan is the prior-plan block appended to the end of the Plan prompt on a respawn.
 //
 //go:embed loom/loom-template-prior-plan.md
@@ -360,21 +365,6 @@ var BouncerFragmentParentReview []byte
 //
 //go:embed bouncer/bouncer-template-parent-notice.md
 var BouncerTemplateParentNotice []byte
-
-// TreadleTemplateJudgeCircling is treadle's shipped-default per-round circling-check judge prompt.
-//
-//go:embed treadle/treadle-template-judge-circling.md
-var TreadleTemplateJudgeCircling []byte
-
-// TreadleTemplateJudgeMilestone is treadle's shipped-default milestone continuation-gate judge prompt.
-//
-//go:embed treadle/treadle-template-judge-milestone.md
-var TreadleTemplateJudgeMilestone []byte
-
-// TreadleTemplateTargeting is treadle's shipped-default pre-round targeting judge prompt.
-//
-//go:embed treadle/treadle-template-targeting.md
-var TreadleTemplateTargeting []byte
 
 // WebsterTemplateMaster is webster's shipped-default Master-session prompt template.
 //
@@ -940,6 +930,7 @@ var entries = []registryEntry{
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
 	{"loom-rubric-raddle-review", &LoomRubricRaddleReview},
 	{"loom-rubric-code-review", &LoomRubricCodeReview},
+	{"harden-rubric-review", &HardenRubricReview},
 	{"loom-template-prior-plan", &LoomTemplatePriorPlan},
 	{"burler-step-1-explore", &BurlerStep1Explore},
 	{"burler-template-reviewer", &BurlerTemplateReviewer},
@@ -968,9 +959,6 @@ var entries = []registryEntry{
 	{"bouncer-fragment-decision", &BouncerFragmentDecision},
 	{"bouncer-fragment-parent-review", &BouncerFragmentParentReview},
 	{"bouncer-template-parent-notice", &BouncerTemplateParentNotice},
-	{"treadle-template-judge-circling", &TreadleTemplateJudgeCircling},
-	{"treadle-template-judge-milestone", &TreadleTemplateJudgeMilestone},
-	{"treadle-template-targeting", &TreadleTemplateTargeting},
 	{"webster-template-master", &WebsterTemplateMaster},
 	{"webster-body-verify-fix", &WebsterBodyVerifyFix},
 	{"webster-prefix-verify-fix-fork", &WebsterPrefixVerifyFixFork},
@@ -1082,8 +1070,6 @@ var roleOpeningStencils = map[string][]string{
 	"pr-reviewer":          {"landing-template-pr-review"},
 	"bouncer-judge":        {"bouncer-template-judge"},
 	"bouncer-seed":         {"bouncer-template-seed"},
-	"treadle-targeting":    {"treadle-template-targeting"},
-	"treadle-judge":        {"treadle-template-judge-circling", "treadle-template-judge-milestone"},
 	"friction":             {"friction-template-reflection"},
 	"describe":             {"landing-template-describe"},
 	"darn":                 {"darn-template-write"},

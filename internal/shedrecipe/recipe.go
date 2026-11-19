@@ -11,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/driftengine"
+	"github.com/Knatte18/loomyard/internal/hardenshed"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -83,6 +84,8 @@ type Env struct {
 	PreflightStencils func() error
 	// PreflightDrift is the drift config check Preflight runs, set for a recipe with a Drift-Baseline row; nil otherwise.
 	PreflightDrift func() error
+	// PreflightHarden is the hardener campaign check Preflight runs, set for a recipe with a HardenFix row; nil otherwise.
+	PreflightHarden func() error
 	// AnchorPath is the told anchor path, read by Webster, Bouncer and the gate resolver's "plan" gate.
 	AnchorPath string
 	// ConfigDirs is the told geometry of a layered config load, read by Webster, which loads batcher through it.
@@ -414,4 +417,9 @@ type Env struct {
 	// The entries fill its Seats and Now from Env.Seats and Env.Now.
 	// DriftVerify fills its GateFindingsFile from Env.GateFindingsFile, so a caller leaves those fields unset.
 	Drift driftengine.Deps
+
+	// Harden is the run's hardener campaign: its config and the seams the Harden rows act through.
+	// The HardenFix row and the harden_round key of the Bouncer and BurlerReview rows read it, and each refuses it nil.
+	// Nil is legal for every recipe but hardener.
+	Harden *hardenshed.Campaign
 }

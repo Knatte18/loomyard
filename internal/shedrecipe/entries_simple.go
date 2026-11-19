@@ -15,7 +15,7 @@ import (
 
 // preflightEntry is the Constructor for the "Preflight" registry row.
 // It validates Env.Cwd and returns preflightshed.NewPreflightWithChecks(name, env.Cwd, checks);
-// its checks are env.PreflightBatcher, env.PreflightStencils and env.PreflightDrift.
+// its checks are env.PreflightBatcher, env.PreflightStencils, env.PreflightDrift and env.PreflightHarden.
 func preflightEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
@@ -23,7 +23,7 @@ func preflightEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	if err := requireAbsRoot("Preflight", "Cwd", env.Cwd); err != nil {
 		return nil, err
 	}
-	return preflightshed.NewPreflightWithChecks(row.Name, env.Cwd, preflightshed.Checks{Batcher: env.PreflightBatcher, Stencils: env.PreflightStencils, Drift: env.PreflightDrift}), nil
+	return preflightshed.NewPreflightWithChecks(row.Name, env.Cwd, preflightshed.Checks{Batcher: env.PreflightBatcher, Stencils: env.PreflightStencils, Drift: env.PreflightDrift, Harden: env.PreflightHarden}), nil
 }
 
 // landingRowDeps returns a copy of env.Landing whose GateKey is the key the row's optional "gate_key" string names.

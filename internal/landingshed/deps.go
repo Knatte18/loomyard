@@ -112,6 +112,13 @@ type Deps struct {
 	//
 	// Nil means no status file to commit.
 	CommitStatus func() error
+	// Reap ends the processes and removes the files a hardener campaign's sandbox hubs left in the task worktree.
+	// Finalize calls it once, after the change description parses and before it takes the parent lock,
+	// so the worktree's teardown meets no sandbox hub.
+	// A returned error halts Finalize Stuck, naming the verb that clears the sandbox.
+	//
+	// Nil means the run leaves no sandbox.
+	Reap func() error
 
 	// Reconcile runs the origin reconcile over the run's own scope and returns its report.
 	// The producers read the report before they act on the parent.

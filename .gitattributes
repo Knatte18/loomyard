@@ -7,9 +7,7 @@
 contracts/stencils/loom/loom-template-discussion.md text eol=lf
 contracts/stencils/loom/loom-template-plan.md text eol=lf
 contracts/stencils/burler/burler-step-1-explore.md text eol=lf
-contracts/stencils/treadle/treadle-template-judge-circling.md text eol=lf
-contracts/stencils/treadle/treadle-template-judge-milestone.md text eol=lf
-contracts/stencils/treadle/treadle-template-targeting.md text eol=lf
+contracts/stencils/harden/harden-rubric-review.md text eol=lf
 contracts/stencils/webster/webster-template-master.md text eol=lf
 contracts/stencils/webster/webster-template-integration.md text eol=lf
 contracts/stencils/webster/webster-prefix-fork.md text eol=lf

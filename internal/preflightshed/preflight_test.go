@@ -163,6 +163,49 @@ func TestPreflight_BatcherCheck(t *testing.T) {
 	}
 }
 
+// TestPreflight_HardenCheck covers the optional hardener check of NewPreflightWithChecks.
+// A failing check is Stuck with its reason followed by the error's own text.
+// A nil or passing check yields no such reason.
+// The test does not call t.Parallel: logcapture.Capture redirects the process-global logger output.
+func TestPreflight_HardenCheck(t *testing.T) {
+	tiergate.Require(t, 0)
+	hardenErr := errors.New("hardener campaign: the hub's gate.yaml sets no gates.harden-live key")
+
+	tests := []struct {
+		name       string
+		harden     func() error
+		wantReason string
+	}{
+		{name: "FailingCheckIsStuckWithTheHardenReason", harden: func() error { return hardenErr }, wantReason: hardenReasonPrefix + hardenErr.Error()},
+		{name: "NilCheckIsSkipped"},
+		{name: "PassingCheckYieldsNoHardenReason", harden: func() error { return nil }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := logcapture.Capture(t)
+			p := NewPreflightWithChecks("Pre-Row", t.TempDir(), Checks{Harden: tt.harden})
+
+			outcome, pointer, err := p.Call(context.Background())
+
+			if tt.wantReason == "" {
+				if strings.Contains(pointer.Reason, hardenReasonPrefix) {
+					t.Errorf("Call() reason = %q; want no hardener reason", pointer.Reason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Call() error = %v; want nil", err)
+			}
+			if outcome != shedengine.Stuck || pointer.Reason != tt.wantReason {
+				t.Errorf("Call() = (%q, %q); want (%q, %q)", outcome, pointer.Reason, shedengine.Stuck, tt.wantReason)
+			}
+			if logged := buf.String(); !strings.Contains(logged, "Pre-Row") || !strings.Contains(logged, hardenErr.Error()) {
+				t.Errorf("log = %q; want it to hold the row name and the error", logged)
+			}
+		})
+	}
+}
+
 // TestPreflight_StencilsCheck covers the optional stencils and drift checks of NewPreflightWithChecks.
 // It runs over a temporary cwd that is not a repository.
 // A failing check is Stuck with its reason followed by the error's own text.

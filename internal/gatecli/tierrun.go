@@ -59,6 +59,8 @@ type tierResult struct {
 	failures []runFailure
 	causes   []string
 	unparsed []string
+	// copies holds the result of each copy when the tier ran as --copies copies; empty for a tier run that ran once.
+	copies []tierResult
 }
 
 // runTier runs the tier of run in ctx with its slots held.
@@ -73,7 +75,11 @@ type tierResult struct {
 // Every command's GOFLAGS then opens with gateslot.TestCacheOffFlag, so `go test` keeps no test result cache.
 // A passing `vstest` invocation that reported no test prints the line naming it to stderr and the log.
 // A run with no invocation passes at once with nothing discovered.
+// A request with copiesRun above 0 runs that many copies of the tier side by side instead, each under these same bounds.
 func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, request testRequest) tierResult {
+	if request.copiesRun > 0 {
+		return runTierCopies(ctx, run, env, request)
+	}
 	started := time.Now()
 	timeout := time.Duration(run.tier.TimeoutMin) * request.timeoutUnit
 	record := gateslot.RunRecord{Tier: run.number, ScopeForm: run.scopeForm, Slots: run.tier.Slots, GuardStep: run.guardStep, Start: started}

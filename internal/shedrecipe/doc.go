@@ -18,6 +18,8 @@
 // LoomRecordEngines, LoomBuildEngines and LoomFinalizeEngine name the engines of a loom recipe's rows:
 // the record row, the build row and the landing row respectively.
 // shedbuild reads them to check a recipe declaring `contract: loom`, so a new loom recipe needs no change to the check.
+// A build row that carries a segment lies in that segment's review ring.
+// The check reads the ring through the segment's `Bouncer` row.
 //
 // # The MultiLLM row
 //
@@ -150,6 +152,20 @@
 // The rubric reads it only when it carries the marker.
 // They hand Env.ReachReport to the rubric's reach_report marker the same way.
 // They hand Env.MutationReport to its mutation_report marker.
+//
+// # The HardenFix row and the harden_round key
+//
+// The HardenFix entry builds the fix row of a hardener campaign's review ring over Env.Harden.
+// It is a BurlerFix row bar the gates, which are fixed to `clean`, `verify` and `live`.
+// `verify` runs the hub key `harden-burler-fix` with the campaign's verify attempts.
+// `live` is the campaign's live gate with its live attempts and PassOnCap,
+// so a spent live budget ends the row instead of halting the run.
+// The row refuses a `gates` or `gate_key` key, a profile whose fix-scope is not source, and a nil Env.Harden.
+// The Bouncer and BurlerReview rows take the optional bool key "harden_round".
+// Set, it refuses a nil Env.Harden.
+// BurlerReview then wraps its producer in the campaign's review round row.
+// The Bouncer fills its round facts, live-red and halt seams from the campaign.
+// The Bouncer's commit_seam value `harden` requires Env.Harden too, and commits the campaign's final ledger.
 //
 // # The Drift rows
 //

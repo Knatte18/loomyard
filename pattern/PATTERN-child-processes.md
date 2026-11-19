@@ -48,7 +48,8 @@ and a run's processes are ended only through `runproc`'s `End`, `EndSparing`, `E
   `EndSparing` leaves named roles alone,
   and `EndRole` ends one role's records under an owner with `End`'s sequence, so the rest of the owner's processes go on.
   `EndSubject` ends every process this machine runs for a subject another machine owns, its runs first and, when the caller asks, its dobby last.
-- `EndProcess` serves only the orphans `lym tender reap` ends, which no record names.
+- `EndProcess` serves the orphans `lym tender reap` ends, which no record names,
+  and the Hardener sandbox reaper's, bounded to processes under a `hardener` run's sandbox root that no record names.
 - No process removes its own record; the read of a record prunes the ones whose process is gone.
 - A site that signals a run's process by any other route is a review finding.
 

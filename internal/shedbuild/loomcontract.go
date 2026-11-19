@@ -21,6 +21,11 @@ const loomContract = "loom"
 // it writes and reviews the record and lands nothing, so the record row is its whole contract.
 // It reads row engines, edges and the recipe's keys only;
 // the engine sets it checks are declared in shedrecipe, so a new loom recipe needs no change here.
+// A build row that carries a segment sits in that segment's review ring.
+// It then needs a Bouncer row in the segment,
+// and an on_done or on_stuck walk from that Bouncer through the segment's rows to it.
+// The order clause then reads the build row's place as the Bouncer's.
+// The Bouncer is where the ring lies on the path.
 // Each refusal names the broken clause and its way forward.
 // The first broken clause in that order is the one returned.
 func checkLoomContract(r Recipe) error {
@@ -31,14 +36,20 @@ func checkLoomContract(r Recipe) error {
 	if recordOnly(r) {
 		return nil
 	}
-	buildRow, err := onlyRowOf(r, shedrecipe.LoomBuildEngines, "build", "Implementer, DarnWrite, BeamAwait or SamplerSession")
+	buildRow, err := onlyRowOf(r, shedrecipe.LoomBuildEngines, "build", "Implementer, DarnWrite, BeamAwait, SamplerSession or HardenFix")
 	if err != nil {
 		return err
+	}
+	pathRow := buildRow
+	if buildRow.Segment != "" {
+		if pathRow, err = segmentBouncerReaching(r, buildRow); err != nil {
+			return err
+		}
 	}
 
 	path := onDonePath(r, r.Entry)
 	recordAt := slices.Index(path, recordRow.Name)
-	buildAt := slices.Index(path, buildRow.Name)
+	buildAt := slices.Index(path, pathRow.Name)
 	if recordAt < 0 || buildAt < 0 || buildAt < recordAt {
 		return fmt.Errorf("the build row %q does not lie after the record row %q on the on_done path from the entry; way forward: place the build row after the record row on the on_done path from the entry", buildRow.Name, recordRow.Name)
 	}
@@ -51,6 +62,53 @@ func checkLoomContract(r Recipe) error {
 		return errors.New("the recipe sets no verify_source; way forward: set verify_source to plan or tree_scope")
 	}
 	return nil
+}
+
+// segmentBouncerEngine is the engine of the row that gates a segment's review ring.
+const segmentBouncerEngine = "Bouncer"
+
+// segmentBouncerReaching returns the Bouncer row of build's segment from which an on_done or on_stuck walk reaches build.
+// The walk passes only through rows of that segment.
+// It refuses a segment with no Bouncer row, and one whose Bouncer rows reach build by no edge.
+func segmentBouncerReaching(r Recipe, build Row) (Row, error) {
+	var bouncers []Row
+	for _, row := range r.Producers {
+		if row.Segment == build.Segment && row.Engine == segmentBouncerEngine {
+			bouncers = append(bouncers, row)
+		}
+	}
+	if len(bouncers) == 0 {
+		return Row{}, fmt.Errorf("the build row %q sits in segment %q, which holds no Bouncer row; way forward: add the segment's Bouncer row", build.Name, build.Segment)
+	}
+	for _, bouncer := range bouncers {
+		if ringReaches(r, bouncer, build) {
+			return bouncer, nil
+		}
+	}
+	return Row{}, fmt.Errorf("the build row %q is reached by no on_done or on_stuck edge from its segment's Bouncer %q; way forward: add the edge from a row of the ring to the build row", build.Name, bouncers[0].Name)
+}
+
+// ringReaches reports whether an on_done or on_stuck walk from start, through the rows of start's segment, meets target.
+func ringReaches(r Recipe, start, target Row) bool {
+	inSegment := make(map[string]Row, len(r.Producers))
+	for _, row := range r.Producers {
+		if row.Segment == start.Segment {
+			inSegment[row.Name] = row
+		}
+	}
+	seen := map[string]bool{start.Name: true}
+	for queue := []Row{start}; len(queue) > 0; queue = queue[1:] {
+		for _, next := range []string{queue[0].OnDone, queue[0].OnStuck} {
+			if next == target.Name {
+				return true
+			}
+			if row, ok := inSegment[next]; ok && !seen[next] {
+				seen[next] = true
+				queue = append(queue, row)
+			}
+		}
+	}
+	return false
 }
 
 // recordOnly reports whether r holds neither a build row nor a Finalize row, the loom contract's record-only form.

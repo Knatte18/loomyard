@@ -29,7 +29,7 @@ var owners = map[string]bool{
 }
 
 // docRoots are the roots whose .md, .yaml and .go files the bare-token scan covers.
-var docRoots = map[string]bool{"contracts": true, "docs": true, "plugins": true, "crucible": true, "cmd": true}
+var docRoots = map[string]bool{"contracts": true, "docs": true, "plugins": true, "cmd": true}
 
 // hostGeometryIdentifiers are the fabric-geometry identifiers that compound the host noun with a repo or geometry noun.
 // They are matched case-insensitively against an identifier's name.

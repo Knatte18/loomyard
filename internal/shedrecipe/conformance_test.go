@@ -69,6 +69,10 @@ func minimalEntries() map[string]minimalEntry {
 			env: newTestEnv,
 			cfg: func(*testing.T, Env) Config { return minimalFixConfig() },
 		},
+		"HardenFix": {
+			env: hardenTestEnv,
+			cfg: func(*testing.T, Env) Config { return minimalFixConfig() },
+		},
 		"MultiLLM": {
 			env: func(t *testing.T) Env {
 				env := newTestEnv(t)

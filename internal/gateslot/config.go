@@ -216,6 +216,25 @@ func ConfigFiles(dirs configengine.Dirs) []string {
 	return files
 }
 
+// HubSetsGate reports whether the hub's own gate.yaml sets gates.<key>.
+// It reads only the hub base layer, through the layer stack under the board dir alone:
+// a template default, a worktree layer and a machine layer never count.
+// It returns an error when the hub file is unreadable or does not parse.
+func HubSetsGate(dirs configengine.Dirs, key string) (bool, error) {
+	stack, err := configengine.StackLayers(configengine.Dirs{Board: dirs.Board}, ConfigSpec())
+	if err != nil {
+		return false, err
+	}
+	var document struct {
+		Gates map[string]yaml.Node `yaml:"gates"`
+	}
+	if err := yaml.Unmarshal(stack.Doc, &document); err != nil {
+		return false, fmt.Errorf("unmarshal the hub gate config: %w", err)
+	}
+	_, set := document.Gates[key]
+	return set, nil
+}
+
 // LoadConfig loads the gate config strictly through the hub-wide layer stack under dirs, machine override included:
 // an absent hub file is ErrConfigAbsent, and a value out of range fails naming its key.
 // Outside every hub, where dirs name no board, the file is the worktree's own.

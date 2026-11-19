@@ -23,6 +23,40 @@ func writeReport(t *testing.T, dir string, round int) {
 	}
 }
 
+func TestReviewRound(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name      string
+		reviews   []int
+		fixed     []int
+		wantRound int
+		wantFixed int
+	}{
+		{"no files", nil, nil, 0, 0},
+		{"one review, no fixer report", []int{1}, nil, 1, 0},
+		{"three reviews, two fixer reports", []int{1, 2, 3}, []int{1, 2}, 3, 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			for _, round := range tt.reviews {
+				writeRoundFile(t, roundReviewPath(dir, round))
+			}
+			for _, round := range tt.fixed {
+				writeRoundFile(t, roundFixerReportPath(dir, round))
+			}
+			if got, err := ReviewRound(dir); err != nil || got != tt.wantRound {
+				t.Errorf("ReviewRound(%q) = %d, %v; want %d, nil", dir, got, err, tt.wantRound)
+			}
+			if got, err := FixedRound(dir); err != nil || got != tt.wantFixed {
+				t.Errorf("FixedRound(%q) = %d, %v; want %d, nil", dir, got, err, tt.wantFixed)
+			}
+		})
+	}
+}
+
 //testtiming:keep pins the round scan: the highest present round, zero for an empty run dir, and that a gap stops the scan
 func TestResolveRound(t *testing.T) {
 	tiergate.Require(t, 0)

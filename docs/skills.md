@@ -124,7 +124,7 @@ The asymmetry mirrors burler: rich read-input, narrow validatable write.
 
 The review-interpretation discipline (mill's `mill-receiving-review`) lives in the shared **review→fix prompt template**, not a skill.
 Both consumers of that two-step pattern use it:
-`burler` interprets its own A-review in B, and `hardener` (roadmap #23) shares the burler round discipline.
+`burler` interprets its own A-review in B, and `hardener` shares the burler round discipline.
 
 ## Fate of every mill skill
 

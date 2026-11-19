@@ -129,7 +129,9 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	// FixerSeats is filled by wireLanding, from the seat engine wire it builds.
 	// GateKey is filled by each landing row's registry entry, on its own copy of Deps.
 	// LandBlockers and ParentWorktree are a pawl run's, which a tapestry run leaves unset.
+	// Reap is a hardener run's, which reaps its sandbox before Finalize lands.
 	unfilled := map[string]bool{
+		"Reap":           true,
 		"FixerSeats":     true,
 		"GateKey":        true,
 		"LandBlockers":   true,
@@ -170,6 +172,11 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	}
 	if pawl := build(shedrun.RecipePawl).PullRequest; pawl.BeamRecord == nil || pawl.DropBeamRecord == nil {
 		t.Error("landingDeps(...).PullRequest beam seams are unset for the pawl recipe; want both populated")
+	}
+
+	// Only a hardener run leaves a sandbox, so only its landing reaps one.
+	if deps.Reap != nil || build(shedrun.RecipeHardener).Reap == nil {
+		t.Errorf("landingDeps(...).Reap nil for tapestry = %v, nil for hardener = %v; want nil only for the tapestry recipe", deps.Reap == nil, build(shedrun.RecipeHardener).Reap == nil)
 	}
 }
 

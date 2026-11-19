@@ -20,6 +20,7 @@ var treeSitterAllowedLinks = []scankit.Entry{
 	{Key: "internal/webstercli", Why: "wires planglyph.NewIndex into webster's geometry"},
 	{Key: "internal/loomcli", Why: "wires planglyph.NewIndex into the plan gates and webster's geometry"},
 	{Key: "internal/shedcli", Why: "mounts the loom CLI, which links planglyph"},
+	{Key: "internal/hardencli", Why: "builds the reap's production seams through loomcli, which links planglyph"},
 	{Key: "cmd/lym", Why: "mounts every CLI, including the ones that link planglyph"},
 	{Key: "internal/websterengine", Why: "its tests drive the real index through the seam"},
 	{Key: "internal/loomshed", Why: "its gate tests assert resolve-backed findings through planglyph.NewIndex"},

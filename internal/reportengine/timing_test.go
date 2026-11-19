@@ -342,6 +342,19 @@ var darnRowPhases = []struct{ row, phase string }{
 	{loomshed.NameFrictionReflect, PhasePublishFinalize},
 }
 
+// hardenerRowPhases lists every hardener row with the phase it counts under, in the order the rows run.
+var hardenerRowPhases = []struct{ row, phase string }{
+	{loomshed.NamePreflight, PhaseSetup},
+	{loomshed.NameRecordWrite, PhaseSetup},
+	{loomshed.NameHardenBouncer, PhaseReview},
+	{loomshed.NameHardenBurlerReview, PhaseReview},
+	{loomshed.NameHardenBurlerFix, PhaseReview},
+	{loomshed.NameDescribe, PhaseWrite},
+	{loomshed.NamePRReview, PhasePublishFinalize},
+	{loomshed.NameFinalize, PhasePublishFinalize},
+	{loomshed.NameFrictionReflect, PhasePublishFinalize},
+}
+
 func TestComputeTiming(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -674,6 +687,26 @@ func TestComputeTiming(t *testing.T) {
 				if _, held := loomMedians[PhaseWrite]; held {
 					t.Errorf("loom medians = %+v; want no write phase", loomMedians)
 				}
+				if len(got.Findings) != 0 {
+					t.Errorf("findings = %+v; want none, since every row names a phase", got.Findings)
+				}
+			},
+		},
+		{
+			name: "a hardener run counts the Harden ring under review and Describe under write",
+			setup: func(w *world) {
+				hardener := make([]shedengine.HistoryEntry, len(hardenerRowPhases))
+				for k, row := range hardenerRowPhases {
+					hardener[k] = entryAt(row.row, secondsAfter(run, 600+60*k))
+				}
+				landedRun(w, "hardened", "t3", 21, fmt.Sprintf(`{"recipe":"hardener","driver":"go","started_at":%q}`, run.Format(time.RFC3339)), hardener)
+			},
+			check: func(t *testing.T, got TimingReport) {
+				hardened := runOf(t, got, "hardened")
+				if hardened.Recipe != shedrun.RecipeHardener {
+					t.Errorf("recipe = %s; want %s", hardened.Recipe, shedrun.RecipeHardener)
+				}
+				wantPhases(t, hardened, map[string]int64{PhaseSetup: 660, PhaseReview: 180, PhaseWrite: 60, PhasePublishFinalize: 180})
 				if len(got.Findings) != 0 {
 					t.Errorf("findings = %+v; want none, since every row names a phase", got.Findings)
 				}

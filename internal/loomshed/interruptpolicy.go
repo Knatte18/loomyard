@@ -51,6 +51,11 @@ var InterruptPolicies = map[string]string{
 	NameCodeBurlerReview:       shedverbs.InterruptPolicyReinvoke,
 	NameCodeBurlerFix:          shedverbs.InterruptPolicyReinvoke,
 
+	// The Harden ring's rows probe for a live session and resume it, as every review segment's rows do.
+	NameHardenBouncer:      shedverbs.InterruptPolicyReinvoke,
+	NameHardenBurlerReview: shedverbs.InterruptPolicyReinvoke,
+	NameHardenBurlerFix:    shedverbs.InterruptPolicyReinvoke,
+
 	// Record-Write writes its files only when missing and commits the pair; a re-invocation completes what a crash left.
 	NameRecordWrite: shedverbs.InterruptPolicyReinvoke,
 

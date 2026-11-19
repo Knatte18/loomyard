@@ -12,7 +12,7 @@
 //
 // # Verb
 //
-// The form is `lym gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--main-packages] [--base <rev>] [--all] [--guards] [--stop-on-fail] [--map] [--wait] [<targets>...] [-- <args>]`.
+// The form is `lym gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--main-packages] [--base <rev>] [--all] [--guards] [--stop-on-fail] [--copies N] [--map] [--wait] [<targets>...] [-- <args>]`.
 // It runs the tiers the hub declares in gate.yaml in ascending tier number.
 // It then runs the vet step and the guard step below when they are planned.
 // A run that fails does not stop the call: every later tier, vet and guard run still runs.
@@ -22,6 +22,21 @@
 // A run that crashed its test runner in its run and its rerun judged no code, so it stops nothing.
 // The key's lint and report steps still run, and the failure report and closing line follow as for any failed call.
 // Darn-Write's verify gate adds the flag, so its fixer hears of a failed tier before a slower tier runs.
+// `--copies N` runs N copies of one tier side by side, each the tier's own command over the same explicit targets.
+// It needs `--gate` and explicit targets, and the key must name one tier below `gateslot.BilledTier`.
+// Each is refused before any slot, naming its way forward, as is a call inside a slot an enclosing gate run holds.
+// The call takes one lease of N times the tier's slots, and releases it when the call ends.
+// A tier with `slots: all` asks every slot and runs one copy.
+// A count above the pool's slots runs one copy per whole share held.
+// A line names the asked and the run copy count whenever they differ.
+// Each copy runs under the tier's own counter, timeout, CPU watchdog and memory guard.
+// The call is red when any copy is.
+// A failed copy is labelled `copy <i>` in the failure report.
+// Bound: a copy is a tier run of its own, never a raw compiled test binary, and the green record carries none.
+// A call with `--copies 0` or no flag runs as it always did.
+// Every tier run prints one started line, built by `gateslot.FormatStartedLine`.
+// It names the run and the packages whose test binary started.
+// A copy prints its own, labelled `copy <i>`, and `gateslot.ParseStartedLines` is the line's sole parser.
 // When a run failed, the verb closes with one stderr line naming each failed run.
 // The line follows the failure report the Failure report section describes.
 // It names a vet run as `vet tierN`, a guard run as `guard tierN` and a lint step as `lint <name>`.

@@ -85,13 +85,17 @@ const (
 	// RecipeArras names the arras recipe, the run that discusses a task and splits its decision record into board entries.
 	// Its split perch approves the split in place of the operator, and it lands no code.
 	RecipeArras = "arras"
+	// RecipeHardener names the hardener recipe.
+	// It is the run that drives a lym module against throwaway sandbox hubs round after round.
+	// It lands the fixes its rounds make.
+	RecipeHardener = "hardener"
 )
 
 // RecipeNames returns the closed recipe-name vocabulary as a freshly allocated, sorted slice.
 // Callers must not rely on a fixed order beyond "sorted" and must not mutate the vocabulary through
 // the returned slice affecting any other caller, since each call allocates its own.
 func RecipeNames() []string {
-	return []string{RecipeArras, RecipeBatten, RecipeDarn, RecipeMotif, RecipePawl, RecipeRaddle, RecipeSampler, RecipeTapestry}
+	return []string{RecipeArras, RecipeBatten, RecipeDarn, RecipeHardener, RecipeMotif, RecipePawl, RecipeRaddle, RecipeSampler, RecipeTapestry}
 }
 
 // ValidateRecipe reports whether name is a legal Seed.Recipe value.

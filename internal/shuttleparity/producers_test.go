@@ -33,15 +33,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
-	"github.com/Knatte18/loomyard/internal/treadleengine"
 	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // The strand roles that production launch literals spell as unexported constants of their own packages.
 const (
-	judgeStrandRole     = "judge"
-	targetingStrandRole = "targeting"
 	planFixerStrandRole = "plan-fixer"
 )
 
@@ -98,8 +95,6 @@ func producers(t *testing.T, fx parityFixture) []producer {
 		build    producerBuild
 	}{
 		{"internal/sheddriver#tacklerSpec", buildTackler},
-		{"internal/treadleengine#runJudgeCall", buildTreadleJudge},
-		{"internal/treadleengine#runTargeting", buildTreadleTargeting},
 		{"internal/websterengine#FixPlanSpawnOrAttach", buildPlanFixer},
 		{"internal/websterengine#recoverSpawn", buildRecovery},
 		{"internal/websterengine#Run", buildMerriam},
@@ -176,43 +171,6 @@ func buildTackler(fx parityFixture, engine string) (shuttleengine.Spec, error) {
 	return promptSpec(engine, prompt, shuttleengine.Spec{
 		ConfigRole: agentconfig.RoleTackler,
 		Role:       sheddriver.TacklerRole,
-	}), nil
-}
-
-// treadleJudgeInputs returns the inputs the treadle judge prompt renders from.
-func treadleJudgeInputs(env SeatEnv, engine string) treadleengine.JudgePromptInputs {
-	return treadleengine.JudgePromptInputs{
-		Engine:       engine,
-		StencilsDir:  env.StencilsDir,
-		ParentName:   env.ParentName,
-		Round:        1,
-		HardCap:      3,
-		PriorReviews: []string{standInPath(env, "prior-review.md")},
-		VerdictPath:  standInPath(env, "verdict.md"),
-		HandoffPath:  standInPath(env, "handoff.md"),
-	}
-}
-
-func buildTreadleJudge(fx parityFixture, engine string) (shuttleengine.Spec, error) {
-	prompt, err := treadleengine.RenderCirclingJudgePrompt(treadleJudgeInputs(fx.env, engine))
-	if err != nil {
-		return shuttleengine.Spec{}, err
-	}
-	return promptSpec(engine, prompt, shuttleengine.Spec{
-		ConfigRole: agentconfig.RoleTreadleJudge,
-		Role:       judgeStrandRole,
-	}), nil
-}
-
-func buildTreadleTargeting(fx parityFixture, engine string) (shuttleengine.Spec, error) {
-	env := fx.env
-	prompt, err := treadleengine.RenderTargetingPrompt(env.StencilsDir, env.ParentName, engine, 1, standInPath(env, "handoff.md"), standInPath(env, "seed.md"))
-	if err != nil {
-		return shuttleengine.Spec{}, err
-	}
-	return promptSpec(engine, prompt, shuttleengine.Spec{
-		ConfigRole: agentconfig.RoleTreadleTargeting,
-		Role:       targetingStrandRole,
 	}), nil
 }
 

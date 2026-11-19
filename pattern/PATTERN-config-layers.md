@@ -92,7 +92,7 @@ and the newer binary's next walk adds the key back, since the older one wrote it
 a caller adopts exactly one, except `runprofile`.
 
 - Degrading callers: `{shuttleengine, claudeengine, reedengine, websterengine, weaverengine, batcher, orchengine, loggerconfig, battenshed, languageconfig, agentconfig, lenses, desktophook, heddleengine, hibernateconfig, ideconfig, envconfig, reportconfig, creelconfig, slackengine}`.
-- Strict callers: `{fabricengine, boardengine, loomengine, landingshed, gateslot, configcli, configreg}`.
+- Strict callers: `{fabricengine, boardengine, loomengine, landingshed, gateslot, hardenshed, configcli, configreg}`.
   `configcli` loads strictly only to validate a hub-wide module's file before committing it.
   `configreg` loads strictly only to answer a recipe row's setting.
 - `runprofile` is a third stance.

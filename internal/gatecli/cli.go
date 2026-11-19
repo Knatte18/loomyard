@@ -61,7 +61,7 @@ func newCommand(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, reru
 
 	var dir, tags, base, gate string
 	var tiers []int
-	var upto int
+	var upto, copies int
 	var cards []string
 	var all, guards, wait, mainPackages, stopOnFail, mapMode bool
 	testCmd := &cobra.Command{
@@ -73,17 +73,17 @@ func newCommand(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, reru
 A key of scope card needs --card <id> per card, scope all runs every tier whole, or no tier when every changed file is inert, and scope diff runs the diff from the merge base with the pair's parent branch.
 Explicit <targets> beside --gate replace the key's scope.
 --tier N names a tier and may repeat; the default is tier0 without --upto or --gate.
---upto N adds every declared tier numbered 0 through N but a manual one, which runs only when --tier names it.
-Each tier takes the gate slots it asks for and runs its command through the platform shell, bounded by its timeout_min.
+--upto N adds every declared tier from 0 through N, bar a manual one, which --tier alone runs.
+Each tier takes the gate slots it asks for, bounded by its timeout_min.
 Without --wait, an agent strand's call runs in a detached runner it starts or joins and answers done false with exit 75, no failure, once its keep-warm cap passes:
 run the same command again in a turn that does nothing else, so the prompt cache stays warm; it prints the result once the run ended.
 With --wait, and with no strand, the tiers run in this process.
-Inside a slot an enclosing gate run holds it acquires no other.
 The exit code is the first failing run's own, or 0.
 Without --gate the scope is the explicit <targets>, --all, --card <id>, --base <rev>, or the diff from the merge base with the pair's parent branch.
 Arguments after "--" fill each tier's {args}.
 --guards, and a narrower scope under the go scoper, also run the //lym:guard tests outside the scope.
 --map builds the tier0 and tier1 coverage maps, and refuses the flags that pick tiers or steps.
+--copies N, with --gate and explicit targets, runs N copies of the key's one tier side by side inside one lease of N times its slots.
 
 Examples:
 
@@ -101,7 +101,7 @@ Examples:
 			request := testRequest{
 				goBinary: goBinary, samplePeriod: samplePeriod, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit, secondUnit: time.Second, rerunDelay: rerunDelay, pipeWaitDelay: pipeWaitDelay,
 				stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, gate: gate, tiers: tiers, cards: cards, mainPackages: mainPackages, base: base, all: all, guards: guards, targets: args,
-				upto: upto, uptoGiven: cmd.Flags().Changed("upto"), stopOnFail: stopOnFail, mapMode: mapMode,
+				upto: upto, uptoGiven: cmd.Flags().Changed("upto"), stopOnFail: stopOnFail, mapMode: mapMode, copies: copies,
 				phase: phaseFrom(cmd.Context()),
 			}
 			if dash := cmd.ArgsLenAtDash(); dash >= 0 {
@@ -127,6 +127,7 @@ Examples:
 	testCmd.Flags().BoolVar(&guards, "guards", false, "after the listed tiers, run every //lym:guard test of the module under the tier its file belongs to")
 	testCmd.Flags().BoolVar(&stopOnFail, gateslot.StopOnFailFlag, false, "end the call at its first failed run, so no later tier, vet or guard run starts")
 	testCmd.Flags().BoolVar(&mapMode, mapFlag, false, "build the per-package coverage maps of tier0 and tier1 over the scope's packages instead of running the tiers")
+	testCmd.Flags().IntVar(&copies, "copies", 0, "with --gate and explicit targets, run this many copies of the key's one tier side by side inside one slot lease; 0 is off")
 	testCmd.Flags().BoolVar(&wait, "wait", false, "run the tiers in this process and block until they end, instead of in the detached runner an agent call starts or joins")
 	cmd.AddCommand(testCmd)
 	cmd.AddCommand(statusCmd())
@@ -185,6 +186,11 @@ type testRequest struct {
 	stopOnFail bool
 	// mapMode is the --map flag: the call builds the coverage maps over its scope instead of running the tiers.
 	mapMode bool
+	// copies is the --copies value: how many copies of the gate key's one tier run side by side; 0 is off.
+	copies int
+	// copiesRun is how many copies the tier run in progress runs; 0 runs the tier once.
+	// runWithSlots sets it once the lease is held.
+	copiesRun int
 	// targets are the arguments before `--`.
 	targets []string
 	// args are the arguments after `--`, which fill each tier's {args}.

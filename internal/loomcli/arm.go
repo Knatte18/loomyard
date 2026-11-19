@@ -369,7 +369,7 @@ func recipeIsLoom(recipe string) bool {
 func (c *loomCLI) verifySource() verifySource {
 	source, err := loomrecipe.VerifySource(c.recipe)
 	if err == nil && source == treeScopeVerifySource {
-		return darnVerifySource(c.location)
+		return darnVerifySource(c.location, recipeTrees(c.location, c.recipe))
 	}
 
 	return planVerifySource(c.location)
@@ -381,7 +381,17 @@ func (c *loomCLI) verifySource() verifySource {
 // The lightweight wiring loads no config, so this method reads both files itself.
 // An unreadable loom.yaml or tapestry.yaml degrades to the templates' defaults with a warning;
 // the lightweight verbs (status, pause) must not refuse over a config they otherwise never read.
+// A hardener run's map also holds the Harden-Review budget, hardener.yaml's max_bounces.
 func (c *loomCLI) reviewBudget() (map[string]int, error) {
+	budgets, err := c.loomReviewBudget()
+	if err != nil || !recipeHasEngine(c.recipe, hardenFixEngine) {
+		return budgets, err
+	}
+	return withHardenBudget(budgets, c.recipe, fabricengine.ConfigDirs(c.location))
+}
+
+// loomReviewBudget returns the loom review segments' bounce budgets, read as reviewBudget describes.
+func (c *loomCLI) loomReviewBudget() (map[string]int, error) {
 	if c.cfg.ReviewHardMaxBounces > 0 {
 		return loomSegmentBudgets(c.cfg), nil
 	}

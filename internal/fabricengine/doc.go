@@ -2630,6 +2630,10 @@
 // The anchor change's integration carries only the records-only commits, each moved to the new anchor.
 // It stops the same way.
 //
+// **Local bares.** `SeedLocalBares` creates under a directory a bare warp and an empty bare weft, through `gitexec`.
+// The warp holds one commit with a root README on `main`, and its HEAD names `main`; the weft holds no ref.
+// It is the shape `CloneHub` clones a hub from, so a caller building a throwaway hub needs no remote and no work tree.
+//
 // **Test layout.**
 // A test builds its hub through `internal/hubforge` only, never a package-local fixture type.
 // Test git plumbing goes through `internal/gitkit` only, never a private helper.

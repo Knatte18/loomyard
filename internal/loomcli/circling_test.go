@@ -284,6 +284,15 @@ func TestPerchHardCap(t *testing.T) {
 			wantRaise: []string{"lym config loom --layer local --set review_hard_max_bounces=<n>", "lym board upsert"},
 		},
 		{
+			name: "a harden cap in hardener.yaml, raised through the hardener module",
+			row:  loomshed.NameHardenBouncer,
+			seed: func(t *testing.T, loc *lymcwd.Location) {
+				seedHardenerConfig(t, loc.HubPath, "hard_max_bounces: 6\n")
+			},
+			wantHard:  6,
+			wantRaise: []string{"lym config hardener", "hard_max_bounces=<n>"},
+		},
+		{
 			name: "a code cap, the darn recipe's perch's too",
 			row:  loomshed.NameCodeBouncer,
 			seed: func(t *testing.T, loc *lymcwd.Location) {

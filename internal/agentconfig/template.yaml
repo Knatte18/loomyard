@@ -25,6 +25,4 @@ skills:  # the skills each role lym starts loads in its first turn, in order, ke
   raddle: [scribe:prose, scribe:conversation]
   sampler: [scribe:prose, scribe:conversation, scribe:code-quality, scribe:testing]
   tackler: []
-  treadle-judge: [scribe:prose]
-  treadle-targeting: [scribe:prose]
   webster: [scribe:prose, scribe:code-quality, scribe:testing]

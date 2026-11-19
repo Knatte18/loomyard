@@ -184,6 +184,29 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 		lacks    []string
 		lacksErr error
 	}
+	for _, tt := range []struct {
+		name  string
+		reaps bool
+	}{{"a set Reap runs before the merge", true}, {"a nil Reap is skipped", false}} {
+		t.Run(tt.name, func(t *testing.T) {
+			var order []string
+			deps := newTestDeps(t)
+			if tt.reaps {
+				deps.Reap = func() error { order = append(order, "reap"); return nil }
+			}
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}, headSHA: "squash111", order: &order}
+			fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+			shedfake.RequireOutcome(t, fz, shedengine.Done)
+			reapAt, mergeAt := slices.Index(order, "reap"), slices.Index(order, "merge")
+			if tt.reaps && (reapAt < 0 || reapAt > mergeAt) {
+				t.Errorf("call order = %v; want the reap before the merge", order)
+			}
+			if !tt.reaps && reapAt >= 0 {
+				t.Errorf("call order = %v; want no reap", order)
+			}
+		})
+	}
 	squash := "squash111"
 	tests := []struct {
 		name        string
@@ -704,6 +727,8 @@ func TestFinalize_StuckReasons(t *testing.T) {
 		// followUp is what Deps.RemoveFollowUp returns, empty wiring none; parentHolds makes Deps.ParentHoldsTaskWork read true.
 		followUp    string
 		parentHolds bool
+		// reapErr is what Deps.Reap returns, nil wiring none.
+		reapErr error
 	}{
 		{
 			name:     "run origin ended after its landing halts naming the landing and the cleanup from the prime",
@@ -862,6 +887,15 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			resolved:     mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: "conflict could not be resolved"},
 			wantInReason: func(Deps) string { return "conflict could not be resolved" },
 		},
+		{
+			name:     "a failing sandbox reap halts naming the reap's error and the clear verb, and merges nothing",
+			resolved: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
+			reapErr:  errors.New("a reed server would not stop"),
+			wantHalt: true,
+			wantInReason: func(Deps) string {
+				return "a reed server would not stop; way forward: run `lym harden sandbox clear` in the task worktree, then `lym loom resume`"
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -869,6 +903,9 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			markCalled := false
 			deps.MarkTaskDone = func() error { markCalled = true; return nil }
 			deps.RecordLanding = func(string, bool) error { markCalled = true; return nil }
+			if tt.reapErr != nil {
+				deps.Reap = func() error { return tt.reapErr }
+			}
 			if tt.recordsErr != nil {
 				deps.CommitParentRecords = func() error { return tt.recordsErr }
 			}

@@ -646,6 +646,28 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 		}
 	})
 
+	t.Run("HardenResolvesToTheCampaignsFinalLedgerArchive", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.Shuttle = judgeSeamShuttle()
+		var recorder *campaignRecorder
+		env.Harden, recorder = newTestCampaign(t, env)
+		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
+		cfg := minimalBouncerConfig(t, env)
+		cfg["commit_seam"] = "harden"
+		layoutBouncerRound1Report(t, env)
+
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+		if _, _, err := producer.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		if want := [][]string{{"_lym/harden/round-1-bouncer-ledger.md"}}; !reflect.DeepEqual(recorder.commits, want) {
+			t.Errorf("campaign commits = %v; want %v", recorder.commits, want)
+		}
+	})
+
 	t.Run("DiscussionResolvesToCommitDiscussion", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.Shuttle = judgeSeamShuttle()
@@ -706,6 +728,7 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 
 		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "commit_seam")
+		assertErrContains(t, err, `"plan", "discussion" or "harden"`)
 	})
 
 	t.Run("PresentButMissingEnvClosureIsConstructionError", func(t *testing.T) {
@@ -727,6 +750,15 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 
 			_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 			assertErrContains(t, err, "CommitDiscussion")
+		})
+
+		t.Run("Harden", func(t *testing.T) {
+			env := newTestEnv(t)
+			cfg := minimalBouncerConfig(t, env)
+			cfg["commit_seam"] = "harden"
+
+			_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
+			assertErrContains(t, err, "Env.Harden")
 		})
 	})
 

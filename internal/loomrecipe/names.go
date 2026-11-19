@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// RecipeEngines returns the sorted engine set of the tapestry, darn, pawl, sampler, motif, raddle and arras recipes.
+// RecipeEngines returns the sorted engine set of the loom module's recipes.
 // It parses each recipe, expands its blocks, and collects each row's engine name, without duplicates.
 // The recipes are the loom module's, so the set is their union.
 // It holds the Block engine of the tapestry recipe's Motif block row.
@@ -27,7 +27,7 @@ import (
 func RecipeEngines() []string {
 	seen := map[string]bool{}
 	var engines []string
-	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeMotif, shedrun.RecipeRaddle, shedrun.RecipeArras} {
+	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeMotif, shedrun.RecipeRaddle, shedrun.RecipeArras, shedrun.RecipeHardener} {
 		recipe, err := parseEmbeddedRecipe(name)
 		if err != nil {
 			panic(fmt.Sprintf("loomrecipe: RecipeEngines: %v", err))
@@ -141,6 +141,7 @@ var embeddedRecipes = map[string][]byte{
 	shedrun.RecipeMotif:    recipes.MotifRecipe,
 	shedrun.RecipeRaddle:   recipes.RaddleRecipe,
 	shedrun.RecipeArras:    recipes.ArrasRecipe,
+	shedrun.RecipeHardener: recipes.HardenerRecipe,
 }
 
 // embeddedRecipeSource returns the source of the embedded recipe the name selects, refusing a name that selects none.

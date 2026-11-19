@@ -154,7 +154,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		logger.Info("gate test: no hub bound applies; running unslotted", "dir", dir)
 	}
 
-	exe.green = green
+	exe.green = greenForCall(green, request)
 
 	env := gateEnv(os.Environ(), hubEnv)
 	watching, reason := watchdogApplies(request.busyQuit, request.args, os.Getenv(enclosingGateEnv), proc.IsAncestor)
@@ -390,6 +390,15 @@ func flagShapeRefusal(request testRequest) string {
 			}
 		}
 	}
+	if request.copies < 0 {
+		return fmt.Sprintf("gate test: --copies %d names no count; way forward: pass 1 or more copies, or drop --copies, then re-run the same command", request.copies)
+	}
+	if request.copies > 0 && request.gate == "" {
+		return "gate test: --copies runs the copies of one gate key's tier; way forward: name the gate key with --gate, then re-run the same command"
+	}
+	if request.copies > 0 && len(request.targets) == 0 {
+		return "gate test: --copies runs the same explicit targets in every copy; way forward: name the packages to run as targets, then re-run the same command"
+	}
 	if request.tags != "" {
 		return fmt.Sprintf("gate test: --tags %q is refused, since a tier's own command sets its build tags; way forward: name the tier that compiles them with --tier, for example --tier 1, and re-run the same command", request.tags)
 	}
@@ -437,6 +446,9 @@ func gateKeyRefusal(cfg gateslot.Config, request testRequest) string {
 	}
 	if key.Scope == scopeCard && len(request.cards) == 0 && len(request.targets) == 0 {
 		return fmt.Sprintf("gate test: --gate %q has scope card, which runs the packages of the cards named; way forward: pass --card <id> once per card, then re-run the same command", request.gate)
+	}
+	if request.copies > 0 && (len(key.Tiers) > 1 || slices.Contains(key.Tiers, gateslot.BilledTier)) {
+		return fmt.Sprintf("gate test: --copies runs one tier below tier%d, and --gate %q names tiers %v; way forward: set the key to one tier below tier3 with lym config gate --set from the prime%s", gateslot.BilledTier, request.gate, key.Tiers, roleClause)
 	}
 	return ""
 }
@@ -638,17 +650,41 @@ func (e *execution) reportCarried(run tierRun) runEnd {
 // It runs body inside them with the environment the slots give and the time the wait for them started.
 // It releases the slots and reports the tier's outcome.
 // A wait that does not end with the slots held halts the call.
+// A --copies call takes one lease of the copies' slots together and runs the copies the pool holds inside it.
+// A vet-step or guard-step run of a copies call runs once, in the slots of its own tier.
+// It refuses to run inside a slot an enclosing gate run holds, since it needs a lease of its own.
 func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string, waitStart time.Time) tierResult) runEnd {
 	waitStart := time.Now()
 	env := e.env
+	copying := e.request.copies > 0 && !empty && !run.vetStep && !run.guardStep
+	if copying && e.inherited {
+		return runEnd{code: output.Err(e.out, "gate test: --copies needs a lease of its own, and this call runs inside a slot an enclosing gate run holds; way forward: run the call outside a held gate slot, then re-run the same command"), halt: true}
+	}
+	copiesRun := 0
+	if copying {
+		copiesRun = e.request.copies
+	}
 	if e.pool != nil && !e.inherited && !empty {
-		lease, code := acquireSlot(e.ctx, e.out, e.pool, e.location, e.request, tierName(run.number), run.tier.Slots)
+		count := run.tier.Slots
+		if copying {
+			limits, err := e.pool.Limits()
+			if err != nil {
+				return runEnd{code: output.Err(e.out, fmt.Sprintf("gate test: cannot read the gate slot limits: %v; way forward: re-run the same command", err)), halt: true}
+			}
+			count, copiesRun = copyLease(e.request.copies, run.tier.Slots, limits.Slots)
+		}
+		lease, code := acquireSlot(e.ctx, e.out, e.pool, e.location, e.request, tierName(run.number), count)
 		if lease == nil {
 			return runEnd{code: code, halt: true}
 		}
 		defer releaseSlot(lease, e.request.root)
 		env = lease.InheritEnv(env)
 	}
+	if copying && copiesRun < e.request.copies {
+		printLine(e.request.stderr, copiesClampLine(e.request.copies, copiesRun, tierName(run.number)))
+	}
+	e.request.copiesRun = copiesRun
+	defer func() { e.request.copiesRun = 0 }()
 	if e.request.phase != nil {
 		e.request.phase(runPhase{State: phaseRunning, Tier: tierName(run.number)})
 	}
@@ -659,7 +695,8 @@ func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string
 }
 
 // report writes the tier's run record and log, and prints its summary line to stderr.
-// It also prints the tier's `-trimpath` line when it has one, and it returns the tier's exit code.
+// It also prints the tier's `-trimpath` line when it has one, and a started line for the tier run, or for each copy.
+// It returns the tier's exit code.
 // A refusal is answered instead, so its stdout stays one JSON envelope, and it halts the call.
 // A run that a terminating signal cancelled halts the call as well.
 // A record that cannot be written is logged and decides nothing.
@@ -681,8 +718,9 @@ func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) 
 		printLine(e.request.stderr, result.trimpathNote)
 	}
 	printLine(e.request.stderr, gateslot.TierSummaryLine(record, logPath))
+	e.printStartedLines(run, result)
 	if record.ExitCode != 0 {
-		e.failed = append(e.failed, tierFailedRun(run, result, logPath, e.request.root))
+		e.addFailedRuns(run, result, logPath)
 	}
 	if e.request.observer.Ended != nil {
 		e.request.observer.Ended(record)

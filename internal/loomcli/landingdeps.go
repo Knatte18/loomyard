@@ -26,11 +26,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/failuretrace"
 	"github.com/Knatte18/loomyard/internal/fswatch"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/hardenshed"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
@@ -98,6 +100,18 @@ func landingDeps(
 				return nil, err
 			}
 			return pawlLandBlockers(prime, seedSlug(l.WorktreeName))()
+		}
+	}
+	// Only a hardener run leaves a sandbox, so only its Finalize reaps one before it lands.
+	var reap func() error
+	if recipeHasEngine(recipe, hardenFixEngine) {
+		reap = func() error {
+			reapDeps, err := HardenReapDeps(l, loomshed.NameFinalize, hardenshed.ReapClear)
+			if err != nil {
+				return err
+			}
+			_, err = hardenshed.Reap(reapDeps)
+			return err
 		}
 	}
 	return landingshed.Deps{
@@ -329,6 +343,7 @@ func landingDeps(
 		},
 		CodeReviewOff: codeBudgetZero(l, recipe),
 		LandBlockers:  landBlockers,
+		Reap:          reap,
 		PullRequest:   pullRequest,
 		// The task branch's remote-tracking ref is read without a fetch, so an absent one is no tip.
 		TaskRemoteTip: func() (string, error) {

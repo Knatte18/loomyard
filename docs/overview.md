@@ -323,7 +323,7 @@ github.com/Knatte18/loomyard/
 ├── internal/selfreportengine/    the selfreport domain kernel, filing LoomYard bugs to LoomYard's own repository only
 ├── internal/shuttleengines/      the engine registry: the named engines a shuttle config builds into a set, and the only production importer of a concrete engine
 ├── internal/shuttleparity/       the per-seat comparison of the engines' launch manifests: the seat catalog, the manifest report behind `lym shuttle manifest`, and the parity tests over every seat and launch-spec producer
-├── internal/treadleengine/       generalized round-loop engine (judge/gate/round-spawn/cap/pause/lock)
+├── internal/hardenshed/          the Hardener campaign's engine: live gate, sandbox hubs, sandbox reaper and round rows
 ├── internal/shedengine/          generic outer phase-FSM: walks one flat producer list, honoring resume, crash-recovery, and pause at producer granularity
 ├── internal/shedtransient/       the one translation from lower-level failure classifications into the shed engine's transient mark
 ├── internal/seatengine/          the seat runner: starts, joins, probes, resumes and stops a chair and its advisors over shuttle, each seat in its own strand
@@ -335,7 +335,7 @@ github.com/Knatte18/loomyard/
 ├── internal/shedbuild/           the recipe file format's loader and builder — decodes a recipe document and assembles the producer-definition list the shed engine already consumes
 ├── internal/shedverbs/           the generic run/step/status/pause/goto cobra verb bodies shared by every module that arms a `*shedengine.Shed` onto a CLI subtree
 ├── internal/sheddriver/          the shed layer's Go driver: its settle loop, rule table and hand-back, the tackler agent call, and the `shed` config module, told its paths and seams by the arming module
-├── internal/shedcli/             the `lym shed` subtree: a named-recipe arming table for the tapestry, motif, raddle, arras, darn, pawl, sampler and batten recipes plus the three CLI seams that register it under the lym root
+├── internal/shedcli/             the `lym shed` subtree: a named-recipe arming table for the tapestry, motif, raddle, arras, darn, pawl, sampler, hardener and batten recipes plus the three CLI seams that register it under the lym root
 ├── internal/statuscommit/        the shared per-transition status commit core (wait while a git operation blocks the commit, then commit; commit hard-errors, push spawn warns) that `loomcli` and `battencli` wrap
 ├── internal/statuspane/          the pane mechanics the runs overview and the gate checklist share: a redraw-in-place pane loop and a lock-free status-file reader
 ├── internal/landingshed/         landing's general ShedProducers, Parent-Align, the PR-Review row and Finalize, shared by reference across producer lists
@@ -1585,7 +1585,7 @@ User-facing modules each get one `lym <module>` namespace:
   Neither row carries `on_stuck`.
   Each reads the flag when the run enters it, so the flag is meant to be set before a run starts.
   See the `internal/loomengine` and `internal/loomcli` package documentation.
-- **shed** — the generic outer phase-FSM under `loom` and the eventual `Hardener` (`internal/shedengine`).
+- **shed** — the generic outer phase-FSM under `loom` and its `hardener` recipe (`internal/shedengine`).
   It is a Go engine that walks one flat, ordered producer list with no predefined slots.
   It honors resume, crash-recovery and pause uniformly at producer granularity.
   The shipped engine adapters live in one package, `internal/shedadapters`.
@@ -1672,10 +1672,10 @@ User-facing modules each get one `lym <module>` namespace:
   `lym burler run` is the debug CLI.
   `lym burler validate-review <review-file>` is the read-only review-gate self-check. ✅ Implemented.
   See the `internal/burlerengine` package documentation.
-- **hardener** — **DRAFT / concept.**
-  Behavior-based reviewer that *runs* a live-substrate module (needs a sandbox repo) to harden it before merge;
-  on-demand, post-loom, **off the spine**, shares only the `burler` round discipline.
-  See the board's `hardener` note.
+- **hardener** — the `hardener` loom recipe, an autonomous behaviour-review campaign.
+  It *runs* a live-substrate module against throwaway sandbox hubs round after round,
+  through the Bouncer, the `burler` review row and a fix row gated by a Go-run live gate, and lands the fixes through Finalize.
+  See the `internal/hardenshed` package documentation, which also holds the campaign's method.
 - **batten** — drives one task worktree's whole lifecycle as a single Shed run from the hub's prime worktree.
   The lifecycle is to create the worktree, seed the child's own inner run from the Board task's own `recipe`,
   run it to a terminal state, land it into the prime, and tear down.
@@ -1950,7 +1950,7 @@ and the baseline capture is a detached registered process, not a gate tier.
 See [internal/driftengine](../internal/driftengine/doc.go).
 
 The batten Shed nests loom's, as its own recipe.
-Its `Run-Shed` row seeds a task's run, tapestry, motif, raddle, arras, darn or sampler and drives it as a child process,
+Its `Run-Shed` row seeds a task's run, tapestry, motif, raddle, arras, darn, sampler or hardener and drives it as a child process,
 and it polls that run's own persisted status for the verdict.
 There are two status files by design:
 the task's, committed on the task branch, and batten's own, durable under prime's own `_lym/shed/<slug>/`.
@@ -2046,7 +2046,7 @@ loom wants a plan-reviewer for worktree `feature-x`:
 - About **running an LLM and getting its answer**? → `shuttle`.
 - About **one review+fix round**? → `burler`.
 - About **whether an artifact passes (loop rounds until clean/stuck)**? → a `Bouncer` review segment.
-- About **hardening a live-substrate module by running it** (post-loom, off-spine)? → `hardener` (DRAFT).
+- About **hardening a live-substrate module by running it**? → the `hardener` recipe and `internal/hardenshed`.
 - About **what to run next**? → `loom`.
 
 ## Tests
@@ -2105,9 +2105,8 @@ See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook and [sandb
 - `internal/reedengine` package documentation — the window to the world: tmux overlay + strand bookkeeping + render.
 - `internal/shuttleengine` package documentation — run one LLM agent via a swappable engine over the file contract.
 - `internal/burlerengine` package documentation — one review+fix round: reviewer then fixer, no self-grading.
-- `internal/treadleengine` package documentation — the generalized round-loop engine,
-  with a pluggable `RoundRunner` seam a future consumer (Tenter) can drive.
-- The board's `hardener` note — **DRAFT/concept**: behavior-based hardening of a live-substrate module (post-loom, off-spine).
+- `internal/hardenshed` package documentation — the Hardener campaign's engine and its method:
+  behaviour-based hardening of a live-substrate module by running it, driven by the `hardener` recipe.
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
 - [shared-libs/](shared-libs/README.md) — the shared infrastructure plumbing.
 - [research/](research/README.md) — measurement studies of LoomYard's own runs and tools, grouped by topic, with an index.
@@ -2117,7 +2116,3 @@ See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook and [sandb
 - The board — tasks and notes, the single home for unscheduled ideas too (no separate long-term-ideas file).
 - [sandbox-howto.md](sandbox-howto.md) — operator runbook: deploy `lym`, build the Hub, run the suite agent (procedure).
 - [sandbox-hub.md](sandbox-hub.md) — the sandbox Hub: a dedicated bench for manual (dogfooding) testing.
-- [crucible/README.md](../crucible/README.md) — **`crucible`**, the **serial review+fix loop**: a reusable method for hardening a live-substrate module before merge (orchestrator-driven, model-rotating, clean-room self-fixing rounds + independent verification).
-  The hand-executed prototype of the review-gate + `burler` (see the `internal/burlerengine` package documentation) round loop (and the origin of the board's `hardener` concept, named separately to avoid colliding with it);
-  ships two paste-ready prompts — an [orchestrator prompt](../crucible/orchestrator-prompt.md) (drives the loop + verifies) and a [round-agent prompt template](../crucible/review-prompt-template.md) (the reviewer-fixer), to instantiate per module.
-  Lives at the repo root, not under `docs/`, since it's a working method/prompt set, not documentation of shipped code.

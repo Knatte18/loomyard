@@ -113,3 +113,11 @@ const WeaverDirName = "weaver"
 
 // LocksDirName is the directory under a checkout's `.lym` that holds the lock files for the checkout's tracked files.
 const LocksDirName = "locks"
+
+// HardenSandboxDirName is the directory under a worktree's `.lym` that holds a run's throwaway sandbox hubs.
+// It is a never-tracked cache that goes with the worktree, and an absent one reads as empty.
+const HardenSandboxDirName = "harden-sandbox"
+
+// HardenDirName is the directory under a worktree's `_lym` that holds a Hardener campaign's archived rounds.
+// It also holds the campaign's final bouncer ledger.
+const HardenDirName = "harden"

@@ -237,6 +237,19 @@ type BouncerConfig struct {
 	// An error is returned by the call that reads it, before the run directory is archived.
 	// Nil is the absent value: no input is recorded and an unchanged subject always re-settles.
 	ReviewInputs func() ([]ReviewInput, error)
+	// RoundFacts returns a section the facts file renders under its own heading, after the reviews and ledgers.
+	// An error fails the judge prompt with it.
+	// Nil is the absent value and renders no section.
+	RoundFacts func(round int) (string, error)
+	// LiveRed reports whether round's live gate is red.
+	// For a round it answers true for, or errors on, a spent budget never settles as an accept:
+	// the auto-accept and the soft-cap rule's accept escalate with cause budget instead, the detail naming the cause.
+	// Nil is the absent value and gates nothing.
+	LiveRed func(round int) (bool, error)
+	// OnHalt is called before a new escalation record with cause circling, budget or hard-cap is written.
+	// An error warns and the escalation goes on, its detail naming the way forward.
+	// Nil is the absent value and calls nothing.
+	OnHalt func() error
 }
 
 // Bouncer is the generic review-gate producer.
@@ -1413,6 +1426,8 @@ func (b *Bouncer) acceptRound(round int, ptr shedengine.OutputPointer) (shedengi
 // Fourth, an open window runs softCapRule.
 // Fifth, a CIRCLING verdict escalates with cause circling,
 // and a CONTINUE calls ensureFocus(round + 1) and returns Stuck.
+// A round whose live gate is red, or whose live state cannot be read, skips the automatic accept at the first step.
+// It escalates with cause budget instead.
 //
 // Bound: the rule accepts fixes no reviewer saw only when no open BLOCKING or MEDIUM entry is tagged design-wrong.
 // It buys rounds past the soft cap one at a time and never at or past the hard cap.
@@ -1422,6 +1437,9 @@ func (b *Bouncer) settleUndecided(round int, verdict bouncerVerdict, spawned boo
 	_, _, escalated, readErr := readEscalation(b.cfg.RunDir, round)
 
 	if softCapReached && b.cfg.AutoAccept && spawned && readErr == nil && !escalated && !b.blockingSendsToRule(round) {
+		if detail := b.liveRedDetail(round); detail != "" {
+			return b.escalateWith(round, EscalationBudget, detail, ptr)
+		}
 		if err := recordAutoAccept(b.cfg.RunDir, round); err != nil {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): record automatic accept: %w", b.cfg.Name, bouncerEngineLabel, err)
 		}
@@ -1453,6 +1471,7 @@ func (b *Bouncer) settleUndecided(round int, verdict bouncerVerdict, spawned boo
 // second, a ledger with no design-wrong entry records an automatic accept and passes through acceptRound;
 // acceptRound carries the open findings into `## Open risks`, where the recipe sets carry_over.
 // It writes no escalation record or parent notice.
+// a round whose live gate is red, or whose live state cannot be read, escalates with cause budget instead of accepting;
 // third, a round at or past the hard cap escalates with cause hard-cap;
 // fourth, a CIRCLING verdict escalates with cause circling, as does a design-wrong key open in both ledgers:
 // this round's and the previous round's, when that round's decision is a recorded continue;
@@ -1477,6 +1496,9 @@ func (b *Bouncer) softCapRule(round int, verdict bouncerVerdict, ptr shedengine.
 	}
 	current := designWrongKeys(ledger)
 	if len(current) == 0 {
+		if detail := b.liveRedDetail(round); detail != "" {
+			return b.escalateWith(round, EscalationBudget, detail, ptr)
+		}
 		if err := recordAutoAccept(b.cfg.RunDir, round); err != nil {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): record automatic accept: %w", b.cfg.Name, bouncerEngineLabel, err)
 		}
@@ -1544,6 +1566,22 @@ func (b *Bouncer) openBlocking(round int) (bool, error) {
 	return false, nil
 }
 
+// liveRedDetail returns the escalation detail of a round whose live gate is red or whose live state cannot be read.
+// It returns "" when LiveRed is unset or answers false, the one case a spent budget may settle as an accept.
+func (b *Bouncer) liveRedDetail(round int) string {
+	if b.cfg.LiveRed == nil {
+		return ""
+	}
+	red, err := b.cfg.LiveRed(round)
+	if err != nil {
+		return fmt.Sprintf("the round's live report could not be read, so the spent budget cannot settle as an accept: %v", err)
+	}
+	if red {
+		return "the round's live report is red, so the spent budget cannot settle as an accept"
+	}
+	return ""
+}
+
 // budgetReached reports whether the segment's bounce budget is spent.
 // The comparison is count >= budget, the same one Shed applies to the history it read before appending.
 // In an amendment the budget is AmendAllowance, clamped to the seam's own budget.
@@ -1574,6 +1612,8 @@ func (b *Bouncer) escalate(round int, cause EscalationCause, ptr shedengine.Outp
 // it returns the same Awaiting, built from the record's cause and notice.
 // Otherwise it renders the brief and the one-line notice, and writes the record through writeEscalation.
 // The brief carries the detail in its cause_detail marker.
+// A new record with cause circling, budget or hard-cap first calls the OnHalt seam, so a campaign reaps as it halts.
+// A failing OnHalt warns and adds its way forward to the detail, and the escalation goes on.
 // A failed render warns and degrades to the plain Reason with no notice, while the record frontmatter is still written.
 // It calls ensureFocus(round + 1) so a continue resumes into a prepared round.
 func (b *Bouncer) escalateWith(round int, cause EscalationCause, detail string, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
@@ -1587,6 +1627,13 @@ func (b *Bouncer) escalateWith(round int, cause EscalationCause, detail string, 
 		cause = recordedCause
 		briefPath = escalationPath(b.cfg.RunDir, round)
 	} else {
+		if b.cfg.OnHalt != nil && (cause == EscalationCircling || cause == EscalationBudget || cause == EscalationHardCap) {
+			if err := b.cfg.OnHalt(); err != nil {
+				logger.Warn("shedadapters: bouncer halt seam failed; escalating anyway", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
+				haltNote := fmt.Sprintf("the sandbox reap at the halt failed: %v; way forward: run `lym harden sandbox clear` in the task worktree", err)
+				detail = strings.TrimSpace(detail + " " + haltNote)
+			}
+		}
 		brief, renderedNotice, rerr := b.renderEscalation(round, cause, detail)
 		if rerr != nil {
 			logger.Warn("shedadapters: bouncer escalation render failed; escalating with the plain Reason", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", rerr)
@@ -1960,7 +2007,7 @@ func (b *Bouncer) RenderJudgePrompt(engine string, round int) (string, error) {
 	// The render is deterministic, so regenerating it on an attached call is harmless.
 	// A write failure fails like an unreadable template, because the prompt would name a file that does not exist.
 	excludesLenses, usageNote := b.excludesLenses(round)
-	if err := writeRoundFacts(b.cfg.Name, b.cfg.RunDir, round, b.cfg.ReportName, excludesLenses, usageNote); err != nil {
+	if err := writeRoundFacts(b.cfg.Name, b.cfg.RunDir, round, b.cfg.ReportName, excludesLenses, usageNote, b.cfg.RoundFacts); err != nil {
 		return "", &promptRenderError{"shedadapters: bouncer facts file unwritable", err}
 	}
 

@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/envconfig"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/hardenshed"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/hibernateconfig"
 	"github.com/Knatte18/loomyard/internal/hubregistry"
@@ -181,7 +182,7 @@ func checkLoadNamed[T any](load func(configengine.Dirs, string) (T, error), modu
 // Keep new entries in sort order.
 func Modules() []Module {
 	modules := []Module{
-		{Name: agentconfig.ModuleName, Template: agentconfig.ConfigTemplate, OpenMaps: agentconfig.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoad(agentconfig.Load), Spec: agentconfig.ConfigSpec},
+		{Name: agentconfig.ModuleName, Template: agentconfig.ConfigTemplate, OpenMaps: agentconfig.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoad(agentconfig.Load), Reinterpretations: []Reinterpretation{{ID: agentconfig.RetiredRolesReinterpretation, Rewrite: agentconfig.DropRetiredRoles}}, Spec: agentconfig.ConfigSpec},
 		{Name: "batcher", Template: batcher.ConfigTemplate, PerNameMaps: batcher.ConfigPerNameMaps(), Migrate: batcher.MigrateConfig, CheckLoad: checkLoad(batcher.Active), Spec: batcher.ConfigSpec},
 		{Name: "batten", Template: battenshed.ConfigTemplate, CheckValues: battenshed.ValidateLocalValues, CheckLoad: checkLoad(battenshed.LoadConfig), Spec: battenshed.ConfigSpec},
 		{Name: "beam", Template: dobbyengine.ConfigTemplate, CheckLoad: checkLoad(dobbyengine.LoadConfig), Spec: dobbyengine.ConfigSpec},
@@ -193,6 +194,7 @@ func Modules() []Module {
 		{Name: "env", Template: envconfig.ConfigTemplate, PerNameMaps: envconfig.ConfigPerNameMaps(), HubWide: true, CheckLoad: checkLoad(envconfig.LoadConfig), Spec: envconfig.ConfigSpec},
 		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(fabricengine.LoadConfig), Reinterpretations: []Reinterpretation{{ID: heddleengine.SettingsExcludeReinterpretation, Rewrite: fabricengine.AppendExcludePaths(heddleengine.ClaudeSettingsFile)}}, Spec: fabricengine.ConfigSpec},
 		{Name: "gate", Template: gateslot.ConfigTemplate, OpenMaps: gateslot.ConfigOpenMaps(), PerNameMaps: gateslot.ConfigPerNameMaps(), HubWide: true, Migrate: gateslot.MigrateConfig, MigrateHubBase: gateslot.SeedAdoptGate, CheckLoad: checkLoad(gateslot.LoadConfig), CheckDirs: gateslot.CheckDirs, Spec: gateslot.ConfigSpec},
+		{Name: hardenshed.ConfigModule, Template: hardenshed.ConfigTemplate, OpenMaps: hardenshed.ConfigOpenMaps(), HubWide: true, CheckValues: hardenshed.CheckValues, CheckLoad: checkLoadNamed(hardenshed.LoadConfig, hardenshed.ConfigModule), Spec: hardenshed.ConfigSpec},
 		{Name: "heddle", Template: heddleengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(heddleengine.LoadConfig), Spec: heddleengine.ConfigSpec},
 		{Name: "hibernate", Template: hibernateconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(hibernateconfig.LoadConfig), Spec: hibernateconfig.ConfigSpec},
 		{Name: "ide", Template: ideconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(ideconfig.LoadConfig), Spec: ideconfig.ConfigSpec},

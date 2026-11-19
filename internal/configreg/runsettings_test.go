@@ -62,6 +62,25 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantDocs: map[string]string{"loom": "step_idle_timeout_min: 1\n"},
 		},
 		{
+			name:     "hardener packages and llm_driving pass",
+			settings: map[string]any{"hardener": map[string]any{"packages": []any{"internal/foo"}, "llm_driving": true}},
+			wantDocs: map[string]string{"hardener": "llm_driving: true\npackages:\n    - internal/foo\n"},
+		},
+		{
+			name:        "hardener auto_accept is refused naming the hub file write",
+			settings:    map[string]any{"hardener": map[string]any{"auto_accept": true}},
+			wantRefusal: `lym config hardener --set auto_accept=<value>`,
+			wantModule:  "hardener",
+			wantInvalid: true,
+		},
+		{
+			name:        "hardener concurrency below one is refused naming the key",
+			settings:    map[string]any{"hardener": map[string]any{"concurrency": float64(0)}},
+			wantRefusal: `"concurrency"`,
+			wantModule:  "hardener",
+			wantInvalid: true,
+		},
+		{
 			name:     "models alias the template lacks passes",
 			settings: map[string]any{"models": map[string]any{"zephyr": map[string]any{"engine": "claude", "model": "claude-zephyr-1"}}},
 			wantDocs: map[string]string{"models": "zephyr:\n    engine: claude\n    model: claude-zephyr-1\n"},

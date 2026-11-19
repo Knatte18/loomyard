@@ -778,6 +778,25 @@ func TestGateTest_Scenario(t *testing.T) {
 		_ = secondLease.Release()
 	})
 
+	t.Run("a --copies run over a clean tree records no green pass", func(t *testing.T) {
+		clean(t)
+		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+			cfg["gates"] = map[string]any{"copied": map[string]any{"tiers": []int{0}, "scope": "all"}}
+		}))
+		defer writeConfig(t, gateConfig)
+
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "copied", "--copies", "2", "./pkg"}})
+		if code := g.wait(t); code != 0 {
+			t.Fatalf("copies run = exit %d, stdout %q, stderr %q; want exit 0", code, g.stdout.String(), g.stderr.String())
+		}
+		if _, err := os.Stat(greenPath); !os.IsNotExist(err) {
+			t.Errorf("green record after a copies run: stat error = %v; want it unwritten, the copies running live", err)
+		}
+	})
+
 	// withSharedBuild declares the hub's build step over the stand-in, run in dir.
 	// It also sets shared_build on tier0 and tier6.
 	withSharedBuild := func(dir string) func(cfg map[string]any) {

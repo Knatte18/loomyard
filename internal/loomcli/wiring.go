@@ -1219,7 +1219,11 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// Slug and SegmentBounces tell each Bouncer row the verbs' slug and the live bounce budget its CIRCLING Reason names.
 		Slug: seedSlug(location.WorktreeName),
 		SegmentBounces: segmentBounces(statusPath, statusLockPath, func() (shedengine.Routing, error) {
-			return loomrecipe.Routing(c.recipe, loomSegmentBudgets(loomCfg))
+			budgets, err := withHardenBudget(loomSegmentBudgets(loomCfg), c.recipe, fabricengine.ConfigDirs(location))
+			if err != nil {
+				return shedengine.Routing{}, err
+			}
+			return loomrecipe.Routing(c.recipe, budgets)
 		}),
 
 		// The Discussion-Review and Code-Review parent seats read their key, history and routing on a call, never at wire time.
@@ -1262,6 +1266,11 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// Landing is left unfilled here: wireLanding fills Env.Landing separately.
 		// NewPublish and NewFinalize open their fabric pair eagerly at construction.
 		// wire() runs for every verb, status and pause included, so that open must not happen here.
+	}
+
+	// A hardener run's Harden-Review segment, campaign and Preflight check come from hardener.yaml.
+	if err := c.wireHarden(location, loomCfg, registry); err != nil {
+		return err
 	}
 
 	// Every loom run's Drift rows read the task from the decision record.

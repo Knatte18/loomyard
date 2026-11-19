@@ -111,7 +111,9 @@
 // The verify gate (NewVerifyGate) is told its verify command by the recipe's wiring and reads it at each arrival.
 // It never parses the plan itself.
 // The command is the row's own `lym gate test --wait --gate <key>` call:
-// the `code-burler-fix` key at Code-Burler-Fix and the `darn-write` key at Darn-Write.
+// the `code-burler-fix` key at Code-Burler-Fix.
+// The `harden-burler-fix` key runs at Harden-Burler-Fix.
+// The `darn-write` key runs at Darn-Write.
 // So each fix row and writer runs its own key and shares no pass with Webster's end gate.
 // Told a tree scope reader, it takes the darn form; otherwise it takes the round form.
 // The form is a told reader, never inferred from the merge base reader's presence.

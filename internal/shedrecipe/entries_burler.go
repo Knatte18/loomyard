@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/hardenshed"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // hasFanName reports whether any entry of the fan list names a fan; a nil list and a list of "" entries name none.
@@ -70,6 +72,8 @@ func reviewTargetSnapshot(env Env, runSubdir string) shedadapters.TargetSnapshot
 // A setting's list that names a fan beside the profile's own fan is a construction error.
 // A row that names a setting or sets a profile fan records its round's fans;
 // a row with neither runs solo and records nothing.
+// The optional bool key "harden_round", set true, refuses a nil Env.Harden.
+// It then wraps the producer in the campaign's round row.
 func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -95,8 +99,17 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 	if err != nil {
 		return nil, err
 	}
-	if err := configRejectUnknown(cfg, "run_subdir", "profile", "timeout_s", "color_segment", "role_prefix", "reviewer_fan_setting", "fixer_fan_setting", "stage_diff"); err != nil {
+	hardenRound, err := configBool(cfg, "harden_round", false)
+	if err != nil {
 		return nil, err
+	}
+	if err := configRejectUnknown(cfg, "run_subdir", "profile", "timeout_s", "color_segment", "role_prefix", "reviewer_fan_setting", "fixer_fan_setting", "stage_diff", "harden_round"); err != nil {
+		return nil, err
+	}
+	if hardenRound {
+		if err := requireHarden("BurlerReview", `config key "harden_round"`, env); err != nil {
+			return nil, err
+		}
 	}
 	var diff func() (string, error)
 	if stageDiff {
@@ -170,6 +183,9 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerReview: %w", err)
 	}
+	if hardenRound {
+		return env.Harden.WrapRow(producer, row.Name, hardenshed.RowReview, runDir), nil
+	}
 	return producer, nil
 }
 
@@ -212,6 +228,17 @@ func reviewRubricNotes(row RowIdentity, env Env, runDir string) (shedadapters.Ru
 // A fixer fan reaches it through the review row's recorded round;
 // its fixer_fan_setting key, when it names a setting, is cited as the fan's source and requires that recorded round.
 func burlerFixEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
+	return newBurlerFixProducer(row, cfg, env, func() (shuttleengine.GateSpec, error) {
+		return resolveRowGateSpec("BurlerFix", row.Name, cfg, env)
+	}, burlerFixKeys)
+}
+
+// burlerFixKeys are the keys a BurlerFix row's config may carry.
+var burlerFixKeys = []string{"run_subdir", "review_row", "profile", "timeout_s", "gates", "gate_key", "color_segment", "role_prefix", "fixer_fan_setting", "decisions_escalated"}
+
+// newBurlerFixProducer builds a fix row from cfg: the producer of a BurlerFix row, whose gates resolveGate returns.
+// resolveGate is read once the row's own keys are, and keys are the only keys cfg may carry.
+func newBurlerFixProducer(row RowIdentity, cfg Config, env Env, resolveGate func() (shuttleengine.GateSpec, error), keys []string) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
 		return nil, err
@@ -228,7 +255,7 @@ func burlerFixEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	if err != nil {
 		return nil, err
 	}
-	gate, err := resolveRowGateSpec("BurlerFix", row.Name, cfg, env)
+	gate, err := resolveGate()
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +271,7 @@ func burlerFixEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	if err != nil {
 		return nil, err
 	}
-	if err := configRejectUnknown(cfg, "run_subdir", "review_row", "profile", "timeout_s", "gates", "gate_key", "color_segment", "role_prefix", "fixer_fan_setting", "decisions_escalated"); err != nil {
+	if err := configRejectUnknown(cfg, keys...); err != nil {
 		return nil, err
 	}
 	segment, err := rowSegment("BurlerFix", row, env)

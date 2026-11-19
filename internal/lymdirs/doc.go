@@ -7,6 +7,8 @@
 // BoltDirName names the Bolt checkout inside a hub.
 // The other constants name the directories modules keep under a worktree's or the hub's never-tracked directory.
 // HandOverDirName sits beside the other hub-level names and holds a machine's hand-over marks.
-// UsageDirName, RaddleDirName and WeaverDirName are the exceptions: they sit under a worktree's tracked LymDirName.
+// HardenSandboxDirName names the directory under a worktree's `.lym` that holds a run's throwaway sandbox hubs.
+// UsageDirName, RaddleDirName, WeaverDirName and HardenDirName are the exceptions:
+// they sit under a worktree's tracked LymDirName.
 // Each constant's doc comment says where its directory sits and what it holds.
 package lymdirs

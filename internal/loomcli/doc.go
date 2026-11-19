@@ -866,6 +866,18 @@
 // It goes through `fabricengine.FindTrailerCommit`.
 // `FileAt` reads an anchored file at a records commit through `fabricengine.AnchoredFileAt`.
 //
+// A recipe with a HardenFix row is a hardener run.
+// `wire` loads the hub's `hardener.yaml` strictly through `hardenshed.LoadConfig`.
+// A malformed file is therefore refused up front.
+// It fills `Env.Segments["Harden-Review"]` from it:
+// the reviewer and fixer lists expanded cyclically to `hard_max_bounces`, the Bouncer pair, the budget and the hard cap.
+// It also fills `Env.Harden`, the campaign, and `Env.PreflightHarden`, the campaign check.
+// `HardenReapDeps` is the one builder of the reap's production seams.
+// The Harden rows, Finalize's reap and `lym harden sandbox clear` all take it.
+// A hardener run reads `hardener.yaml` in place of `darn.yaml` for its tree scope and verify attempts.
+// It also reads the hard cap `perchHardCap` answers its Bouncer row from there.
+// The Harden-Review budget joins the routing projection.
+//
 // # The recorded driver's one reading site
 //
 // A recorded seed driver value is read only in a recipe's bootstrap verbs:

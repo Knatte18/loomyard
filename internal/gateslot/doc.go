@@ -27,6 +27,9 @@
 // the drain admits one at a time, and every single-slot holder finishes.
 // A cancelled context releases every slot and the drain lock already taken.
 // The Holder record names the tier run that holds a slot, so a status reader can show it.
+// A `lym gate test --copies` call takes one lease of its copies' slots together through AcquireSlots.
+// It never runs BilledTier, the tier that drives a billed LLM session.
+// Every tier run prints a started line built by FormatStartedLine, which ParseStartedLines alone reads back.
 //
 // An OS lock is released by process death, so a crashed holder never leaks a slot;
 // its holder record stays on disk, but Holders trusts a record only while its lock is held.
@@ -106,7 +109,10 @@
 // A key no tier or build step holds is refused.
 // `gates` is a per-name map from a gate key to a GateKey written `{tiers: [<n>...], scope: card|diff|all}`,
 // so a hub file that sets one key keeps the template's value for every other.
-// The template gives `webster-fix`, `darn-write`, `code-burler-fix` and `pr-review` the `diff` scope.
+// The template gives `webster-fix`, `darn-write`, `code-burler-fix` and `harden-burler-fix` the `diff` scope.
+// It gives `harden-live`, `harden-live-copies` and `pr-review` the same scope.
+// HubSetsGate reports whether the hub's own gate.yaml, its base layer alone, sets `gates.<key>`.
+// A template default, a worktree layer and a machine layer never count.
 // The scope `coverage` is retired, since the gate always runs whole packages and selects no test from a coverage map.
 // MigrateConfig rewrites it to `diff`, and the load refuses it with that way forward.
 // `tier_parallel` is an open map from a tier name to this machine's parallel for it.
@@ -114,9 +120,12 @@
 // The template's `card` key lists both.
 // A GateKey may also hold `reports`, the advisory steps its call runs after its lints.
 // Each is ReportReach, ReportRedundancy or ReportMutation.
-// The template lists `reach` first on `batch`, `webster`, `parent-align`, `darn-write` and `code-burler-fix`.
+// The template lists `reach` first on `batch`, `webster` and `parent-align`.
+// It lists `reach` first on `darn-write`, `code-burler-fix` and `harden-burler-fix` too.
 // It lists `redundancy` after it on every one of those but `batch`.
-// It lists `mutation` last on every key of scope `diff`: `webster-fix`, `darn-write`, `code-burler-fix` and `pr-review`.
+// It lists `mutation` last on every key of scope `diff` but the two live keys.
+// Those are `webster-fix`, `darn-write`, `code-burler-fix`, `harden-burler-fix` and `pr-review`.
+// The two live keys carry no reports.
 // Config load fills a template key a tuned `gates` entry lacks into that entry,
 // so a hub base file that tunes one of those keys without `reports` still runs the step, and `reports: []` turns it off.
 // `tiers` and `build` are executable keys, since a tier or build command runs any shell command in a task worktree.
@@ -264,6 +273,8 @@
 //	tapestry                       Weaver, end gate                            webster          all
 //	loom                           Parent-Align                                parent-align     all
 //	tapestry, darn, sampler        Code-Burler-Fix                             code-burler-fix  diff
+//	hardener                       Harden-Burler-Fix, verify gate              harden-burler-fix  diff
+//	hardener                       Harden-Burler-Fix, live gate                harden-live, harden-live-copies  diff
 //	tapestry, darn, pawl, sampler  PR-Review                                   pr-review        diff
 //	tapestry, darn, sampler        Finalize                                    finalize         all
 //	adopt                          lym adopt check <subject>, in its worktree  adopt            all

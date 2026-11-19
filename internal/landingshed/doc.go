@@ -678,6 +678,10 @@
 // OriginMissing names the first fact an origin lacks for a pull request, in the order ResolvePullRequest judges them,
 // so `lym beam pr open` refuses an origin the resolver would refuse.
 //
+// Finalize calls `Deps.Reap` once, after the change description parses and before it takes the parent lock.
+// The seam is set only for a hardener run, which reaps its sandbox so the worktree's teardown meets no sandbox hub.
+// A failing reap halts Finalize Stuck, naming `lym harden sandbox clear` as the way forward.
+//
 // It takes told absolute paths and has no direct production import of internal/lymcwd, per the Told-Geometry Invariant:
 // every path this package operates on is handed to it by its caller, and it derives none of its own.
 //

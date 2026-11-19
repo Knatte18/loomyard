@@ -2,7 +2,7 @@
 // It stages, commits and pushes the webster artifacts just written: state.json, a batch report and outcome.yaml.
 // It does so through the fabric repo, using fabricengine.Fabric.Commit.
 // Machine-local runtime artifacts never reach the pathspec this helper stages against.
-// They live under .lym: run.lock, mutate.lock, treadle's round-loop pause flag and webster's rendered fork prompts.
+// They live under .lym: run.lock, mutate.lock and webster's rendered fork prompts.
 // The pathspec is positive only, with no ":(exclude)" magic of its own.
 // fabricSync takes its fabric handle from a lazy opener, and its scope from a separate anchor-relative path.
 // The scope is passed separately because fabricengine.Fabric exposes no anchor-relative path of its own.

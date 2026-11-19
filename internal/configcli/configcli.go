@@ -465,7 +465,7 @@ func buildConfigLong() string {
 		"success. A hub-wide module (" + strings.Join(hubWide, ", ") + ") is edited instead at the\n" +
 		"hub's board dir and committed in " + fabricengine.BoltDirName + ". With no argument it lists the known\n" +
 		"modules and verbs; with a module\n" +
-		"name it edits that module directly; `lym config menu` is the interactive\n" +
+		"name it edits that module; `lym config menu` is the interactive\n" +
 		"picker. The editor is $VISUAL, then $EDITOR, then `code --wait` when code is\n" +
 		"on PATH, then notepad on Windows or nano and vi elsewhere.\n\n" +
 		"--print prints the on-disk YAML, with no editor.\n\n" +

@@ -62,6 +62,7 @@ Deviations:
 - `adoptcli` calls the functions of `fabricengine`, `pairteardown`, `boardengine`, `tenderengine`, `tendercli`, `battencli`, `battenshed`, `buildvcs` and `landingshed`, with no engine package of its own.
 - `beamcli` calls the functions of `fabricengine`, `boardengine`, `hubgeom` and `battencli`, with no engine package of its own.
 - `machinecli` calls the functions of `machinename`, `beamcli`, `boardengine`, `fabricengine`, `hubregistry`, `hubgeom` and `pairteardown`, with no engine package of its own.
+- `hardencli` calls the functions of `hardenshed`, `loomcli`, `fabriccli`, `fabricengine`, `configengine`, `shedrun`, `buildvcs` and `selfexec`, with no engine package of its own.
 
 ## Sole wiring
 

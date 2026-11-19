@@ -93,7 +93,7 @@ the `landing` gate's at Parent-Align, Finalize, Code-Burler-Fix and Darn-Write.
   a skip requires an entry of the same command naming HEAD's tree.
 - The record is written only by `Verify`, and only after a pass; no prompt names its path.
 - The sites are the webster gate, the Webster-Burler-Fix gate and `lym webster verify`.
-  They also include the Code-Burler-Fix, Darn-Write and Drift-Verify gates, Parent-Align and Finalize.
+  They also include the Code-Burler-Fix, Darn-Write, Harden-Burler-Fix and Drift-Verify gates, Parent-Align and Finalize.
 - Weaver's plan-level verify, `runVerify`, is a site too: it runs the hub's `webster` call through `verifytree.Verify` under the geometry's pause hold.
 - Weaver's batch strand gates are sites too:
   the `card` and `batch` entries of `batchGateSpec` each run their call through `verifytree.Verify` under the geometry's pause hold.
@@ -101,8 +101,8 @@ the `landing` gate's at Parent-Align, Finalize, Code-Burler-Fix and Darn-Write.
   the fixer fork and the cold fixer `lym webster fix-verify` spawns.
   They share one prompt body.
   Each runs the hub's `round` call, rendered into the prompt's `fix_gate` marker, before it reports.
-- Code-Burler-Fix and Darn-Write each run their own gate key's call through `Verify`:
-  the `code-burler-fix` and `darn-write` keys.
+- Code-Burler-Fix, Darn-Write and Harden-Burler-Fix each run their own gate key's call through `Verify`:
+  the `code-burler-fix`, `darn-write` and `harden-burler-fix` keys.
   They share no pass with Webster's end gate.
   Each lints from its own latest recorded pass or the merge base.
   Darn-Write, and Code-Burler-Fix in a darn run, lint from the merge base on every attempt.

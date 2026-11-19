@@ -19,6 +19,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
+// CloneAndWireFromLocalBares clones a hub named shortname under container from two local bare repositories and wires it.
+// It returns the hub's path and its prime's cwd; the clone is left intact on error, as CloneAndWire leaves it.
+func CloneAndWireFromLocalBares(container, codeBare, recordsBare, shortname string) (hubPath, primeCwd string, err error) {
+	res, err := CloneAndWire(container, fabricengine.CloneOptions{
+		WarpURL:   codeBare,
+		WeftURL:   recordsBare,
+		Shortname: shortname,
+	})
+	return res.HubPath, res.PrimeCwd, err
+}
+
 // CloneAndWire clones a hub and wires it, so that a successful clone needs no reconcile.
 // It materializes the hub-wide config, then commits it on weft:main and pushes it.
 // It then wires the warp junctions and reconciles the per-worktree configs.

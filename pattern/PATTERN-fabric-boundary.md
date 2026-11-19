@@ -17,7 +17,7 @@ Rule: Naming the wired composite: "fabric". (test)
 - Scope of the bare weft and warp rule outside the owner set:
   - every `*_test.go` file anywhere in the module;
   - every non-test `.go` file under `internal/` and the doc roots;
-  - every `.md` and `.yaml` file under `contracts/`, `docs/`, `plugins/`, `crucible/` and `cmd/`;
+  - every `.md` and `.yaml` file under `contracts/`, `docs/`, `plugins/` and `cmd/`;
   - every `.md` file under `internal/`;
   - `README.md`:
     it may spell the public records repository's proper name `loomyard-weft` (`fabricvocab.BareTokenInRootDoc`);

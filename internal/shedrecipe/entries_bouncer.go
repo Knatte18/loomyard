@@ -32,6 +32,9 @@ func rolePrefixKey(entry string, cfg Config) (string, error) {
 // It validates cfg and env, and it creates the run directory the segment's rows share.
 // It resolves each seam key to the Env closure it names, and an absent key leaves that closure unset.
 // It returns shedadapters.NewBouncer(cfg).
+// The optional bool key "harden_round", set true, refuses a nil Env.Harden.
+// It then fills the Bouncer's round facts, live-red and halt seams from the campaign.
+// Its commit_seam value "harden" requires Env.Harden and commits through the campaign's final ledger archive.
 func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -81,6 +84,10 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 	if err != nil {
 		return nil, err
 	}
+	hardenRound, err := configBool(cfg, "harden_round", false)
+	if err != nil {
+		return nil, err
+	}
 	colorSegment, err := colorSegmentKey("Bouncer", cfg)
 	if err != nil {
 		return nil, err
@@ -93,8 +100,13 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 	if err != nil {
 		return nil, err
 	}
-	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "commit_seam", "approve_seam", "skip_seam", "carry_over", "subject", "cluster_excludes", "blocking_escalates", "escalate_decisions", "zero_rounds", "color_segment", "role_prefix", "reviewer_fan_setting", "auto_accept_setting"); err != nil {
+	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "commit_seam", "approve_seam", "skip_seam", "carry_over", "subject", "cluster_excludes", "blocking_escalates", "escalate_decisions", "zero_rounds", "color_segment", "role_prefix", "reviewer_fan_setting", "auto_accept_setting", "harden_round"); err != nil {
 		return nil, err
+	}
+	if hardenRound {
+		if err := requireHarden("Bouncer", `config key "harden_round"`, env); err != nil {
+			return nil, err
+		}
 	}
 	segment, err := rowSegment("Bouncer", row, env)
 	if err != nil {
@@ -122,6 +134,7 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 	// A present key is guarded by requireSeam rather than assigned directly.
 	// Without that guard, a nil Env closure would silently leave the closure nil with no error.
 	var commit func() error
+	commitsHardenLedger := false
 	switch commitSeam {
 	case "":
 		// No seam configured; commit stays nil.
@@ -135,8 +148,14 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 			return nil, err
 		}
 		commit = env.CommitDiscussion
+	case "harden":
+		// The commit closure names the run directory, so it is built once that directory is resolved below.
+		if err := requireHarden("Bouncer", `commit_seam "harden"`, env); err != nil {
+			return nil, err
+		}
+		commitsHardenLedger = true
 	default:
-		return nil, fmt.Errorf("shedrecipe: Bouncer: config key %q must be %q or %q, got %q", "commit_seam", "plan", "discussion", commitSeam)
+		return nil, fmt.Errorf("shedrecipe: Bouncer: config key %q must be %q, %q or %q, got %q", "commit_seam", "plan", "discussion", "harden", commitSeam)
 	}
 
 	// approve_seam accepts only the two approval closures on Env, env.ApprovePlan and env.ApproveDiscussion.
@@ -220,6 +239,10 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 	// Their idempotent os.MkdirAll would otherwise be what creates the directory.
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		return nil, fmt.Errorf("shedrecipe: Bouncer: create run dir %q: %w", runDir, err)
+	}
+
+	if commitsHardenLedger {
+		commit = func() error { return env.Harden.ArchiveFinal(runDir) }
 	}
 
 	resolvedArtifactPaths := make([]string, len(artifactPaths))
@@ -333,6 +356,12 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 		CirclingCheckpoint: env.ReviewCirclingCheckpoint,
 		StalemateRounds:    env.ReviewStalemateRounds,
 		Snapshot:           &snapshot,
+	}
+
+	if hardenRound {
+		bouncerCfg.RoundFacts = func(round int) (string, error) { return env.Harden.RoundFacts(runDir, round) }
+		bouncerCfg.LiveRed = func(round int) (bool, error) { return env.Harden.LiveRed(runDir, round) }
+		bouncerCfg.OnHalt = func() error { return env.Harden.Halt(row.Name) }
 	}
 
 	// NewBouncer probes the rubric stencil eagerly, at construction.

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelconfig"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -53,6 +54,9 @@ func TestNames(t *testing.T) {
 // so the hub-wide reconcile rewrites a hub's file with no hand step.
 // creel carries the change of trusted_hubs from shortnames to repository names.
 // shuttle carries the change of edit_loop_edits from every edit to the edits that return a file to earlier content.
+// agents carries the retirement of the treadle-judge and treadle-targeting roles.
+//
+//testtiming:keep pins the module-to-reinterpretation table, which TestPrepareRunSettings never asserts
 func TestModules_RegisterTheirReinterpretation(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -60,6 +64,7 @@ func TestModules_RegisterTheirReinterpretation(t *testing.T) {
 		module string
 		wantID string
 	}{
+		{module: "agents", wantID: agentconfig.RetiredRolesReinterpretation},
 		{module: "creel", wantID: creelconfig.TrustedHubsRepositoryReinterpretation},
 		{module: "shuttle", wantID: shuttleengine.EditLoopRepeatsReinterpretation},
 	}
@@ -123,7 +128,7 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 		if m.SeedOnly != wantSeedOnly {
 			t.Errorf("Modules(): module %q SeedOnly = %v; want %v", m.Name, m.SeedOnly, wantSeedOnly)
 		}
-		wantHubWide := m.Name == "agents" || m.Name == "fabric" || m.Name == "board" || m.Name == "creel" || m.Name == "gate" || m.Name == "heddle" || m.Name == "hibernate" || m.Name == "ide" || m.Name == "landing" || m.Name == "darn" || m.Name == "desktop" || m.Name == "drift" || m.Name == "env" || m.Name == "language" || m.Name == "profiles" || m.Name == "report" || m.Name == "sampler" || m.Name == "slack"
+		wantHubWide := m.Name == "agents" || m.Name == "fabric" || m.Name == "board" || m.Name == "creel" || m.Name == "gate" || m.Name == "heddle" || m.Name == "hibernate" || m.Name == "ide" || m.Name == "landing" || m.Name == "darn" || m.Name == "desktop" || m.Name == "drift" || m.Name == "env" || m.Name == "hardener" || m.Name == "language" || m.Name == "profiles" || m.Name == "report" || m.Name == "sampler" || m.Name == "slack"
 		if m.HubWide != wantHubWide {
 			t.Errorf("Modules(): module %q HubWide = %v; want %v", m.Name, m.HubWide, wantHubWide)
 		}
@@ -143,17 +148,20 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 // The derived LocalKeys, LocalDenied and MachineKeys must match the record.
 // It is the one test that pins each module's whole key set, so a key nobody classified fails here,
 // and each failure names the key and the list or function it goes in.
+//
+//testtiming:keep pins the classification of every module's whole key set, which TestPrepareRunSettings never asserts
 func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	wantLocalKeys := map[string][]string{
-		"agents":  {"efforts"},
-		"darn":    {"gate_fixer", "report_dir", "verify_attempts", "verify_budget_min", "writer", "writer_timeout_min"},
-		"drift":   {"enabled", "expect_model", "judge_ask_parent", "judge_interactive", "judge_model", "judge_parent_timeout_min", "scope"},
-		"ide":     {"open_files", "render_markdown"},
-		"landing": {"conflict", "conflict_timeout_min", "describe", "describe_timeout_min", "fixer", "fixer_timeout_min", "pr_reviewer"},
-		"sampler": {"agent", "code_review"},
-		"slack":   {"remind_after_min"},
+		"agents":   {"efforts"},
+		"darn":     {"gate_fixer", "report_dir", "verify_attempts", "verify_budget_min", "writer", "writer_timeout_min"},
+		"drift":    {"enabled", "expect_model", "judge_ask_parent", "judge_interactive", "judge_model", "judge_parent_timeout_min", "scope"},
+		"hardener": {"concurrency", "fixer", "hard_max_bounces", "judge", "live_attempts", "llm_driving", "max_bounces", "packages", "reviewer", "seed", "verify_attempts"},
+		"ide":      {"open_files", "render_markdown"},
+		"landing":  {"conflict", "conflict_timeout_min", "describe", "describe_timeout_min", "fixer", "fixer_timeout_min", "pr_reviewer"},
+		"sampler":  {"agent", "code_review"},
+		"slack":    {"remind_after_min"},
 	}
 	wantLocalDenied := map[string][]string{
 		"batten":   {"open_ide_command", "open_window_command", "seed_ide_command"},

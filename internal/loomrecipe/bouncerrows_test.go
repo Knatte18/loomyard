@@ -187,6 +187,7 @@ func TestIsFinalizeRow(t *testing.T) {
 		{loomshed.NameFinalize, true},
 		{loomshed.NameParentAlign, false},
 		{loomshed.NamePRReview, false},
+		{loomshed.NameHardenBouncer, false},
 		{"No-Such-Row", false},
 	}
 	for _, tt := range tests {
@@ -204,6 +205,7 @@ func TestBouncerRunSubdir(t *testing.T) {
 		loomshed.NamePlanBouncer:       "plan",
 		loomshed.NameCodeBouncer:       "code",
 		loomshed.NameRaddleBouncer:     "split",
+		loomshed.NameHardenBouncer:     "harden",
 	}
 	for row, want := range bouncers {
 		got, ok, err := BouncerRunSubdir(row)
@@ -212,7 +214,7 @@ func TestBouncerRunSubdir(t *testing.T) {
 		}
 	}
 
-	for _, row := range []string{loomshed.NameDiscussionBurlerReview, loomshed.NameDiscussionBurlerFix, loomshed.NamePRReview, "No-Such-Row"} {
+	for _, row := range []string{loomshed.NameDiscussionBurlerReview, loomshed.NameDiscussionBurlerFix, loomshed.NameHardenBurlerReview, loomshed.NamePRReview, "No-Such-Row"} {
 		got, ok, err := BouncerRunSubdir(row)
 		if err != nil || ok || got != "" {
 			t.Errorf("BouncerRunSubdir(%q) = %q, %v, %v; want empty, false, nil", row, got, ok, err)

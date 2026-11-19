@@ -1171,4 +1171,8 @@
 //
 // requiredSubcommands (probe.go) needs nothing more for the option pins or the window-resized unpin:
 // display-message, set-option and list-panes are already required.
+//
+// StopServer stops a hub's whole tmux server from the hub's path alone, whether or not the hub's directory still exists.
+// It derives the `-L` key with ServerName, kills the server there and removes its socket file.
+// It reports false when no live server answered on the key.
 package reedengine

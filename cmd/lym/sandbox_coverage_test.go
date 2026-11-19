@@ -76,6 +76,10 @@ var excludedModules = []scankit.Entry{
 		Why: "its verbs run only from a worktree of a hub and write that worktree's entry in the account file under the machine's config directories, which no sandbox scenario may touch; exercised by internal/claudecli's and claudeengine's own tests instead",
 	},
 	{
+		Key: "harden",
+		Why: "makes, lists and clears sandbox hubs under a hardener run's worktree, and refuses elsewhere; exercised by internal/hardencli's own tests instead",
+	},
+	{
 		Key: "slack",
 		Why: "its relay calls the live Slack Web API with the machine's bot token, which no sandbox scenario may reach; exercised by internal/slackcli's and internal/slackengine's own tests instead",
 	},

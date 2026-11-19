@@ -186,6 +186,13 @@ func normalizeTreeScope(cfg Config) (map[string]string, error) {
 	return trees, nil
 }
 
+// NormalizeTrees returns trees keyed by trimmed tree path, or the refusal of a malformed key or a repeated tree.
+// Every error wraps ErrTreeScopeKey.
+// Another config module's tree map takes the same key rule through it.
+func NormalizeTrees(trees map[string]string) (map[string]string, error) {
+	return normalizeTreeScope(Config{TreeScope: trees})
+}
+
 // MigrateConfig carries a darn.yaml document off the retired tree_scope_verify key, for lym config reconcile.
 // It fires only while the document still holds the key.
 // A key held empty empties tree_scope and is pruned, so an off hub stays off; a key held set is pruned and tree_scope kept.

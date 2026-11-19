@@ -41,8 +41,6 @@ const (
 	RoleRaddle            Role = "raddle"
 	RoleSampler           Role = "sampler"
 	RoleTackler           Role = "tackler"
-	RoleTreadleJudge      Role = "treadle-judge"
-	RoleTreadleTargeting  Role = "treadle-targeting"
 	RoleWebster           Role = "webster"
 )
 
@@ -51,7 +49,7 @@ var roles = []Role{
 	RoleArbiter, RoleBoardTidy, RoleBouncerJudge, RoleBouncerSeed, RoleBurler, RoleConflictResolver,
 	RoleDarn, RoleDescriber, RoleDiscussion, RoleDiscussionAdvisor, RoleDriftExpect, RoleDriftJudge,
 	RoleDriver, RoleFixReview, RoleFriction, RoleGateFixer, RoleMergeFixer, RoleOrch, RolePlan,
-	RolePRReviewer, RoleRaddle, RoleSampler, RoleTackler, RoleTreadleJudge, RoleTreadleTargeting, RoleWebster,
+	RolePRReviewer, RoleRaddle, RoleSampler, RoleTackler, RoleWebster,
 }
 
 // ModuleName is the agents module's configreg name, the Name of the spec ConfigSpec returns.
@@ -75,6 +73,10 @@ const SubagentEffortEnv = "CLAUDE_CODE_SUBAGENT_EFFORT"
 
 // wayForward is the clause every content failure ends with.
 const wayForward = `; way forward: fix it with "lym config agents" from the prime`
+
+// layerWayForward is the clause a key naming no role lym starts ends with.
+// Such a key sits in a layer the hub's own reinterpretations never rewrite, so its owner removes it there.
+const layerWayForward = `; way forward: remove the key from that layer's agents.yaml with lym config agents`
 
 // effortVocabulary is every effort value Claude Code accepts, lowest first.
 var effortVocabulary = []string{"low", "medium", "high", "xhigh", "max"}
@@ -132,6 +134,7 @@ func ConfigSpec() configengine.Spec {
 // It refuses a role whose value is not a list of non-empty strings without surrounding whitespace.
 // It refuses an efforts map without a default entry, an empty effort and an effort outside Efforts.
 // It refuses a `<role>/<model>` key whose role is outside the roles lym starts.
+// A key naming a role lym does not start ends its error with the way forward of removing it from the layer that holds it.
 // A content failure returns an error marked configengine.ErrInvalid that wraps ErrUnusable and names the key.
 // Any other failure, such as an unreadable file, is returned unwrapped.
 func Load(dirs configengine.Dirs) (Config, error) {
@@ -161,7 +164,7 @@ func Load(dirs configengine.Dirs) (Config, error) {
 func skillLists(nodes map[string]yaml.Node) (map[Role][]string, error) {
 	for key := range nodes {
 		if !slices.Contains(roles, Role(key)) {
-			return nil, unusable(skillsKey, fmt.Sprintf("names %q, which is no role lym starts", key))
+			return nil, unusableWithWayForward(skillsKey, fmt.Sprintf("names %q, which is no role lym starts", key), layerWayForward)
 		}
 	}
 	lists := make(map[Role][]string, len(roles))
@@ -215,8 +218,11 @@ func checkEfforts(efforts map[string]string) error {
 			return unusable(effortsKey+"."+key, fmt.Sprintf("holds %q, which is none of %s", effort, strings.Join(effortVocabulary, ", ")))
 		}
 		role, model, paired := strings.Cut(key, roleModelSeparator)
-		if paired && (model == "" || !slices.Contains(roles, Role(role))) {
-			return unusable(effortsKey+"."+key, fmt.Sprintf("must name a role lym starts and a model around %q", roleModelSeparator))
+		if paired && !slices.Contains(roles, Role(role)) {
+			return unusableWithWayForward(effortsKey+"."+key, fmt.Sprintf("names role %q, which is no role lym starts", role), layerWayForward)
+		}
+		if paired && model == "" {
+			return unusable(effortsKey+"."+key, fmt.Sprintf("must name a model after %q", roleModelSeparator))
 		}
 	}
 	return nil
@@ -224,10 +230,16 @@ func checkEfforts(efforts map[string]string) error {
 
 // unusable returns the marked content-failure error with detail and the way forward, naming key when it is not empty.
 func unusable(key, detail string) error {
+	return unusableWithWayForward(key, detail, wayForward)
+}
+
+// unusableWithWayForward returns the marked content-failure error with detail and the given way-forward clause.
+// It names key when it is not empty.
+func unusableWithWayForward(key, detail, clause string) error {
 	if key == "" {
-		return configengine.MarkInvalid(fmt.Errorf("agents config: %s (%w)%s", detail, ErrUnusable, wayForward))
+		return configengine.MarkInvalid(fmt.Errorf("agents config: %s (%w)%s", detail, ErrUnusable, clause))
 	}
-	return configengine.MarkInvalid(fmt.Errorf("agents config: %s: %s (%w)%s", key, detail, ErrUnusable, wayForward))
+	return configengine.MarkInvalid(fmt.Errorf("agents config: %s: %s (%w)%s", key, detail, ErrUnusable, clause))
 }
 
 // Skills returns role's skill list followed by each entry of extra not already present, in order, as a fresh slice.

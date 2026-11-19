@@ -678,6 +678,7 @@ func TestBurlerHalfEntries_StrictUnknownKeys(t *testing.T) {
 		{"ReviewRowKeyColorSegmentTypo", "BurlerReview", func() Config { cfg := minimalReviewConfig(); cfg["colour_segment"] = "merge"; return cfg }, "colour_segment"},
 		{"FixRowKeyColorSegmentTypo", "BurlerFix", func() Config { cfg := minimalFixConfig(); cfg["colour_segment"] = "merge"; return cfg }, "colour_segment"},
 		{"FixRowKeyModel", "BurlerFix", func() Config { cfg := minimalFixConfig(); cfg["model"] = "value"; return cfg }, "model"},
+		{"FixRowKeyHardenRound", "BurlerFix", func() Config { cfg := minimalFixConfig(); cfg["harden_round"] = true; return cfg }, "harden_round"},
 		{"FixTargetInnerKey", "BurlerFix", func() Config {
 			cfg := minimalFixConfig()
 			cfg["profile"].(map[string]any)["target"] = map[string]any{"paths": []string{"t.md"}, "unexpected": "value"}
@@ -716,6 +717,14 @@ func TestBurlerHalfEntries_StrictUnknownKeys(t *testing.T) {
 			assertErrContains(t, err, tt.want)
 		})
 	}
+
+	t.Run("ReviewRowAdmitsHardenRound", func(t *testing.T) {
+		cfg := minimalReviewConfig()
+		cfg["harden_round"] = true
+		if _, err := lookupEntry(t, "BurlerReview")(reviewRow("a-row"), cfg, hardenTestEnv(t)); err != nil {
+			t.Errorf("BurlerReview with harden_round and a campaign error = %v; want nil", err)
+		}
+	})
 
 	t.Run("ReviewProfileAcceptsFixFan", func(t *testing.T) {
 		cfg := minimalReviewConfig()

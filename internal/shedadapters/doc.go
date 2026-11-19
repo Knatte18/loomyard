@@ -257,6 +257,14 @@
 //     The flag is false by default.
 //     A CIRCLING verdict below the budget behaves as with the flag false.
 //     So do an already escalated round, a recorded decision and an unknown or errored Bounces seam.
+//     Harden seams: a Bouncer told BouncerConfig.RoundFacts renders the text it returns under `## Campaign facts`.
+//     The section comes last in the facts file, and an error from the seam fails the judge prompt.
+//     A Bouncer told BouncerConfig.LiveRed never turns a spent budget into an accept for a round the seam answers true for.
+//     It does the same for a round the seam errors on.
+//     The auto-accept and the soft-cap rule's accept then escalate with cause budget, the detail naming the cause.
+//     A Bouncer told BouncerConfig.OnHalt calls it before a new escalation record with cause circling, budget or hard-cap.
+//     A decision or stalemate escalation, and a re-step over a recorded escalation, never call it.
+//     An error from the seam warns, and the escalation's detail names `lym harden sandbox clear` in the task worktree.
 //     Carry-over: a Bouncer told a CarryOver seam calls it on every Done that settles a judged round.
 //     The Bouncer also tells it the Segment its entry is filed under and the AnchorPath its paths are relative to.
 //     On a CONVERGED settle the seam is called with discussionparser.CarryOverConverged before Approve.
@@ -388,6 +396,9 @@
 // A process killed between the review row and the fix row leaves the run's current_producer naming one of them.
 // That row re-resolves the same round and archives the orphan before the Bouncer is routed to at all.
 // The Bouncer must never be entered over an orphaned review: it would judge a review that no fixer round stands behind.
+// ReviewRound returns the highest round whose review file exists in a run directory.
+// FixedRound returns the highest round whose fixer report exists there.
+// Each returns 0 for none, so a caller that decorates a round row reads the row's round from them.
 // The next-round directive is round-<N>-focus.md beside the other round files.
 // It is YAML frontmatter carrying round, exclude_lenses and focus, over optional prose.
 // Its token names the round the directives are for, not the round that produced them:

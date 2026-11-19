@@ -23,7 +23,8 @@ import (
 // conflict prompt off disk), the stencil filler (rendering it), and the logger.
 // The segment vocabulary names the conflict session's segment.
 // The agent config package is admitted for its Role constants alone, which read no file and carry no geometry.
-// internal/logger carries no geometry and opens no seam, so admitting it leaves the Told-Geometry Invariant's actual property intact -- the same call treadleengine's seam allowlist already makes.
+// internal/logger carries no geometry and opens no seam.
+// Admitting it leaves the Told-Geometry Invariant's actual property intact.
 var mergeresolveAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/fabricengine",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",

@@ -11,6 +11,10 @@
 // Build checks a recipe declaring `contract: loom` against the loom contract before any registry lookup:
 // exactly one record row; exactly one build row after it on the on_done path from the entry;
 // a Finalize row followed only by terminals; and a set verify_source.
+// A build row that carries a segment sits in that segment's review ring, and the order clause reads its Bouncer's place.
+// Such a recipe is refused when no row of the segment runs `Bouncer`.
+// It is also refused when no on_done or on_stuck walk from the Bouncer reaches the build row.
+// The order refusal then fires when the Bouncer lies before the record row on the on_done path.
 // A recipe holding neither a build row nor a Finalize row is the contract's record-only form.
 // It lands nothing and needs the record row alone.
 // The engine sets come from shedrecipe, so a new loom recipe needs no change to the check.

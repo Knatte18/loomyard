@@ -76,6 +76,7 @@ var retiredRowNames = map[string]string{
 var recipePhaseTables = map[string]phaseTable{
 	shedrun.RecipeTapestry: tapestryPhaseTable(),
 	shedrun.RecipeDarn:     {exact: darnPhases()},
+	shedrun.RecipeHardener: {exact: hardenerPhases()},
 }
 
 // tapestryPhaseTable returns the phase table of a tapestry run.
@@ -147,6 +148,21 @@ func darnPhases() map[string]string {
 		phases[retired] = phases[successor]
 	}
 	return phases
+}
+
+// hardenerPhases maps every row of a hardener run to its phase.
+func hardenerPhases() map[string]string {
+	return map[string]string{
+		loomshed.NamePreflight:          PhaseSetup,
+		loomshed.NameRecordWrite:        PhaseSetup,
+		loomshed.NameHardenBouncer:      PhaseReview,
+		loomshed.NameHardenBurlerReview: PhaseReview,
+		loomshed.NameHardenBurlerFix:    PhaseReview,
+		loomshed.NameDescribe:           PhaseWrite,
+		loomshed.NamePRReview:           PhasePublishFinalize,
+		loomshed.NameFinalize:           PhasePublishFinalize,
+		loomshed.NameFrictionReflect:    PhasePublishFinalize,
+	}
 }
 
 // recipePhases returns, in report order, the phases a run of recipe can hold:

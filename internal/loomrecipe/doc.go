@@ -69,6 +69,12 @@
 // Its Bouncer holds no subject seam, so a fresh entry over its settled verdict reviews the new proposal from round 1.
 // The perch's rows read loom.yaml's `split_*` keys, and its approval files the proposal in place of the operator's.
 //
+// The hardener recipe drives a lym module against throwaway sandbox hubs round after round and lands the fixes.
+// It has no Parent-Align and no Drift rows, and reads:
+// `Preflight → Record-Write → Harden-Review → Describe → PR-Review → Finalize → Friction-Reflect`.
+// Harden-Review is a Bouncer ring whose fix row, the HardenFix engine, is the recipe's one build row.
+// The ring's rows read `hardener.yaml`'s keys, and its budget is the one Env.Segments["Harden-Review"] carries.
+//
 // One table, embeddedRecipes, maps each recipe name to its embedded bytes.
 // It is the resolver every expansion is told.
 // Every accessor reads the expanded recipe:

@@ -21,7 +21,8 @@ mutation_budget_min: 20  # minutes lym gate mutate or the mutation report step m
 tiers: {}
 
 # Gate key to the tiers that site runs and the scope it runs them over, written {tiers: [<n>...], scope: card|diff|all}.
-# The keys lym reads: card and batch (scope card, the card's own packages), webster, parent-align, finalize and adopt (scope all, the whole tree, or no tier once inert_paths is set and every changed file matches it), and webster-fix, darn-write, code-burler-fix and pr-review (scope diff, the diff from the merge base).
+# The keys lym reads: card and batch (scope card, the card's own packages), webster, parent-align, finalize and adopt (scope all, the whole tree, or no tier once inert_paths is set and every changed file matches it), and webster-fix, darn-write, code-burler-fix, harden-burler-fix, harden-live, harden-live-copies and pr-review (scope diff, the diff from the merge base).
+# The two harden live keys name tier 0, the tier a key may name before the hub declares more; a hub that runs the hardener recipe sets both to its live tier.
 # The scope card is only for the card and batch keys.
 # A key may also hold lints, the lint steps its call runs after the tiers against HEAD: comments (fixed-column-wrapped breaks and over-long lines in // comments) and pattern (PATTERN.md grown past its headroom line).
 # A key may also hold reports, the advisory steps its call runs after the lints, which never change its result; reach runs before every other report step and mutation after them: reach (refreshes the worktree's coverage maps of the packages the diff changes and writes the changed functions no test reaches into the worktree's gate directory), redundancy (judges the diff's new and changed Go tests against the coverage maps and writes the verdicts into the worktree's gate directory), mutation (mutates the lines the diff changes in blocks a test covers, runs the tests covering each mutant, writes every survivor, unjudged mutant, uncovered changed block and package not judged into the worktree's gate directory and prints one summary line); reports: [] turns them off.
@@ -38,6 +39,9 @@ gates:
   webster-fix: {tiers: [0], scope: diff, reports: [mutation]}
   darn-write: {tiers: [0], scope: diff, reports: [reach, redundancy, mutation]}
   code-burler-fix: {tiers: [0], scope: diff, reports: [reach, redundancy, mutation]}
+  harden-live: {tiers: [0], scope: diff}
+  harden-live-copies: {tiers: [0], scope: diff}
+  harden-burler-fix: {tiers: [0], scope: diff, reports: [reach, redundancy, mutation]}
   pr-review: {tiers: [0], scope: diff, reports: [mutation]}
 
 # How a computed, base or card scope maps to {targets}: go derives the impacted Go packages per module, dotnet derives the impacted C# test projects and classes from the type-name closure over test classes, none runs every tier whole.

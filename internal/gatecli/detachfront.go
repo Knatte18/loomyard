@@ -373,6 +373,9 @@ func (r testRequest) words() []string {
 	if r.mapMode {
 		words = append(words, "--"+mapFlag)
 	}
+	if r.copies > 0 {
+		add("copies", strconv.Itoa(r.copies))
+	}
 	words = append(words, r.targets...)
 	if len(r.args) > 0 {
 		words = append(words, "--")

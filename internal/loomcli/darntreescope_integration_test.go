@@ -57,7 +57,8 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	}
 	locate := func(t *testing.T, slug string) func(gateKey string) (string, bool, error) {
 		t.Helper()
-		return darnTreeScope(resolve(t, slug))
+		location := resolve(t, slug)
+		return darnTreeScope(location, recipeTrees(location, shedrun.RecipeDarn))
 	}
 	// landing builds the pair's landing seams over the darn verify source.
 	// The values the seams under test do not read are left minimal.
@@ -78,7 +79,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 			nil,
 			func(string, time.Time) error { return nil },
 			func() (string, error) { return "", nil },
-			darnVerifySource(location),
+			darnVerifySource(location, recipeTrees(location, shedrun.RecipeDarn)),
 			parentLockDeps(location, shedrun.SelfRunID, "", ""),
 		)
 	}

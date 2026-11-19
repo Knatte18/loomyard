@@ -267,7 +267,7 @@ func Scan(root string, hidden bool, excludes []string) ([]FileStats, error) {
 }
 
 // matchesAny reports whether any pattern matches rel, its base name, or a directory prefix of rel.
-// rel is the path relative to the scan root, so -exclude takes 'docs/generated', '*.pb.go', and 'crucible' alike.
+// rel is the path relative to the scan root, so -exclude takes 'docs/generated', '*.pb.go', and 'docs/research' alike.
 func matchesAny(patterns []string, rel, name string) bool {
 	for _, pattern := range patterns {
 		if ok, _ := filepath.Match(pattern, rel); ok {

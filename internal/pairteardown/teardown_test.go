@@ -107,6 +107,11 @@ type fakeSubstrates struct {
 	droppedRunMail []string
 	// removeCancelledErr fails the deletion of a cancelled run record, which only a cancelled runRecord reaches.
 	removeCancelledErr error
+	// sandboxRoot is whether the worktree holds a sandbox root, so the clear runs; clearErr fails that clear.
+	// A clear that runs is recorded in calls, and clearAsked counts every ask, root or not.
+	sandboxRoot bool
+	clearErr    error
+	clearAsked  int
 }
 
 // awaitCall is one call of the pre-end run-lock wait.
@@ -182,6 +187,14 @@ func (f *fakeSubstrates) teardown() *Teardown {
 			return f.endErr == nil, "", f.endErr
 		},
 		archive: func(string) { f.calls = append(f.calls, "archive") },
+		clearSandbox: func(string) (bool, error) {
+			f.clearAsked++
+			if !f.sandboxRoot {
+				return false, nil
+			}
+			f.calls = append(f.calls, "clearSandbox")
+			return f.clearErr == nil, f.clearErr
+		},
 		closePR: func(string) { f.closePRs = append(f.closePRs, strings.Join(f.calls, ",")) },
 		remove: func(req Request) (fabricengine.RemoveResult, error) {
 			if req.Local {
@@ -376,6 +389,9 @@ func TestTeardown_CallSequence(t *testing.T) {
 		killCaptureErr error
 		// removeErr fails the removal.
 		removeErr error
+		// sandboxRoot makes the worktree hold a sandbox root, and clearErr fails its clear.
+		sandboxRoot bool
+		clearErr    error
 		// snapshotErr fails the snapshot step; afterSnapshotErr fails the request's AfterSnapshot, which is set whenever either is wanted.
 		snapshotErr       error
 		afterSnapshotErr  error
@@ -488,6 +504,25 @@ func TestTeardown_CallSequence(t *testing.T) {
 			claimFound:  true,
 			battenAlive: true,
 			wantCalls:   "readClaim," + skippedEnd + ",landed,archive,remove,dropRunMail,readClaim",
+		},
+		{
+			name:        "SandboxRootIsClearedBetweenTheArchiveAndTheRemoval",
+			run:         true,
+			quiets:      []quietState{{quiet: true}},
+			request:     Request{Slug: "slug"},
+			sandboxRoot: true,
+			wantCalls:   sessionEnd + ",landed,archive,clearSandbox,remove,dropRunMail,readClaim",
+		},
+		{
+			name:            "FailedSandboxClearKeepsTheWorktreeAndNamesTheWayForward",
+			run:             true,
+			quiets:          []quietState{{quiet: true}},
+			request:         Request{Slug: "slug"},
+			sandboxRoot:     true,
+			clearErr:        errors.New("reed server would not stop"),
+			wantAnyError:    true,
+			wantErrContains: []string{"reed server would not stop", "way forward: run `lym harden sandbox clear` in /hub/slug", "`lym fabric remove slug`", "`lym loom resume`"},
+			wantCalls:       sessionEnd + ",landed,archive,clearSandbox",
 		},
 		{
 			name:       "EntryWithoutTheRunFormIsKept",
@@ -966,7 +1001,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 
 			f := &fakeSubstrates{
 				quiets: tt.quiets, refusalErr: tt.refusalErr, endErr: tt.endErr, seizeErr: tt.seizeErr, awaitErr: tt.awaitErr, killCaptureErr: tt.killCaptureErr,
-				removeErr: tt.removeErr, childLanded: tt.childLanded, battenSeeded: tt.battenSeeded, battenState: tt.battenState,
+				removeErr: tt.removeErr, sandboxRoot: tt.sandboxRoot, clearErr: tt.clearErr, childLanded: tt.childLanded, battenSeeded: tt.battenSeeded, battenState: tt.battenState,
 				claim: tt.claim, claimFound: tt.claimFound, claimReadErr: tt.claimReadErr, snapshotErr: tt.snapshotErr,
 				endedProcs: tt.endedProcs, endOwnedErr: tt.endOwnedErr, driverLockHeld: tt.driverLockHeld,
 				driverPID: tt.driverPID, driverFound: tt.driverFound, battenAlive: tt.battenAlive,
@@ -1054,6 +1089,10 @@ func TestTeardown_CallSequence(t *testing.T) {
 			}
 			if sawGone != tt.wantSawGone {
 				t.Errorf("session end told the task worktree is gone = %v, want %v", sawGone, tt.wantSawGone)
+			}
+			// A run that reached the removal asked the sandbox clear exactly once, whether or not the worktree held a root.
+			if wantAsked := strings.Count(tt.wantCalls, "archive"); f.clearAsked != wantAsked {
+				t.Errorf("sandbox clear asked %d times, want %d", f.clearAsked, wantAsked)
 			}
 			// A run that reached the removal closed the pull request once, before the archive and the removal, a local removal included; any other run closed none.
 			reachedRemoval := strings.Contains(tt.wantCalls, "archive")

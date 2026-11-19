@@ -41,7 +41,7 @@ Files beside this one hold what a rarer event needs; read the one that fits befo
    so you never start, stop or clean up a batten run on your own.
    The run opens the operator's terminal window on its worktree, so never open one yourself.
    The batten run creates the task pair and drives the run inside it.
-   That inner run is a tapestry, arras, motif, darn or sampler, as the entry's `recipe` says.
+   That inner run is a tapestry, arras, motif, darn, sampler or hardener, as the entry's `recipe` says.
    An arras run is the recipe for a tapestry-sized note; `motif` alone serves a design decided now and split later.
    A project's release is one release of its draft members.
    The batten run tears the pair down after the inner run ends.

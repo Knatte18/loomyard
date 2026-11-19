@@ -257,6 +257,13 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", finalizeName, err)
 	}
 
+	// Step 1a2: reap the sandbox a hardener run left, before the lock and the merge, so the worktree's teardown meets none.
+	if fz.deps.Reap != nil {
+		if err := fz.deps.Reap(); err != nil {
+			return halt(ctx, finalizeName, fmt.Sprintf("the sandbox reap failed: %v; way forward: run `lym harden sandbox clear` in the task worktree, then `lym loom resume`", err)).result()
+		}
+	}
+
 	// Step 1b: commit the product's own status file,
 	// so the pair carries no tracked modification when the merge guard below runs.
 	// This must happen inside Call rather than once at bootstrap: Shed rewrites that file on every transition.

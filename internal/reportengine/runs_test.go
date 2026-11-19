@@ -114,6 +114,13 @@ func TestCompute_SelectsRuns(t *testing.T) {
 			},
 		},
 		{
+			name: "a finalized hardener run is a full run carrying its recipe",
+			setup: func(w *world) expectation {
+				w.tag("hardened", "t1", at(1), seedText("hardener"), statusText(w.t, "Harden-Bouncer", "Finalize"))
+				return expectation{runs: []wantRun{{tag: tagName("hardened", "t1"), week: "2026-W02", recipe: "hardener"}}}
+			},
+		},
+		{
 			name: "a seed or a status that does not decode is a finding and the tag is partial",
 			setup: func(w *world) expectation {
 				w.tag("broken", "t1", at(1), seedText("tapestry"), "{not json")

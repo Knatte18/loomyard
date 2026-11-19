@@ -42,6 +42,11 @@ func engineMinimalConfig(advisorStencilName, leadStencilName, rubricStencilName 
 		"Command": {
 			"command": "batten.open_window_command",
 		},
+		"HardenFix": {
+			"run_subdir": "review-segment",
+			"review_row": "Row-Burler-Review",
+			"profile":    map[string]any{"fix-scope": "source"},
+		},
 		"DriftBaseline": {
 			"subject": "decision-record",
 		},
@@ -95,8 +100,8 @@ func TestBuild_EveryRegisteredEngineBuilds(t *testing.T) {
 
 	configByEngine := engineMinimalConfig(advisorStencil, multiLLMLeadStencil, bouncerRubricStencil)
 
-	// The three review engines read their segment's settings, which FullEnv wires for Plan-Review.
-	reviewSegments := map[string]string{"Bouncer": "Plan-Review", "BurlerReview": "Plan-Review", "BurlerFix": "Plan-Review"}
+	// The review engines read their segment's settings, which FullEnv wires for Plan-Review and Harden-Review.
+	reviewSegments := map[string]string{"Bouncer": "Plan-Review", "BurlerReview": "Plan-Review", "BurlerFix": "Plan-Review", "HardenFix": "Harden-Review"}
 
 	for _, name := range shedrecipe.Names() {
 		name := name

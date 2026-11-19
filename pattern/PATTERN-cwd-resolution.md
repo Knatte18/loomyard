@@ -37,7 +37,7 @@ so it never imports `internal/lymcwd` directly.
 
 ### Bound packages
 
-`internal/pattern`, `buildinfo`, `standalonestate`, `shedengine`, `sheddriver`, `shedarbiter`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `shuttleengines`, `reedengine`, `burlerengine`, `websterengine`, `weaverengine`, `verifytree`, `cliwire`, `battenshed`, `battenrecipe`, `orchengine`, `parentlock`, `hubreconcile`, `reportengine`, `creelengine`, `dobbyengine`, `slackengine`.
+`internal/pattern`, `buildinfo`, `standalonestate`, `shedengine`, `sheddriver`, `shedarbiter`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `shuttleengines`, `reedengine`, `burlerengine`, `websterengine`, `weaverengine`, `verifytree`, `cliwire`, `battenshed`, `battenrecipe`, `orchengine`, `parentlock`, `hubreconcile`, `reportengine`, `creelengine`, `dobbyengine`, `slackengine`.
 
 ### Detached runners
 

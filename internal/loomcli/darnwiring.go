@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/hardenshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -37,9 +38,10 @@ import (
 // A gate config refusal and a malformed tree key are errors naming the way forward.
 // baseCommand is the call of the `code-burler-fix` gate key, the fix rows' base command.
 // A tree-scoped site keeps this base command.
-func darnVerifySource(l *lymcwd.Location) verifySource {
+// The tree map comes from trees, read at each call.
+func darnVerifySource(l *lymcwd.Location, trees func() (map[string]string, error)) verifySource {
 	dirs := fabricengine.ConfigDirs(l)
-	treeScope := darnTreeScope(l)
+	treeScope := darnTreeScope(l, trees)
 	call := gateCallSource(dirs)
 	return verifySource{
 		command: func(gateKey string) (string, error) {
@@ -74,28 +76,24 @@ func pairMergeBase(l *lymcwd.Location) func() (string, error) {
 	}
 }
 
-// darnTreeScope returns the darn recipe's tree scope reader.
-// The reader returns the tree-scoped command and true for a task diff wholly under the hub's configured trees;
+// darnTreeScope returns the tree scope reader of a recipe whose verify scope follows a tree map.
+// The reader returns the tree-scoped command and true for a task diff wholly under the trees trees reads;
 // otherwise it returns ("", false, nil).
 // The command is the call of the row's gate key followed by the touched trees' targets,
 // so a tree-scoped site runs its own key's tiers over those targets in place of the key's scope.
-// Each call reads the hub-wide darn.yaml afresh, so an edit between steps is seen.
+// Each call reads the tree map afresh, so an edit between steps is seen.
 // It reads the diff from the pair's merge base to HEAD, counting a rename at both its paths.
-// A load error carries its way forward: the editor's for a malformed tree key, the hub reconcile's otherwise.
+// A read error of trees is returned as it is, carrying its own way forward.
 // A scoped diff whose trees contribute no target answers an empty command, which runs nothing.
-func darnTreeScope(l *lymcwd.Location) func(gateKey string) (string, bool, error) {
+func darnTreeScope(l *lymcwd.Location, trees func() (map[string]string, error)) func(gateKey string) (string, bool, error) {
 	mergeBase := taskMergeBase(l)
 	call := gateCallSource(fabricengine.ConfigDirs(l))
 	return func(gateKey string) (string, bool, error) {
-		dirs := fabricengine.ConfigDirs(l)
-		cfg, err := darnengine.LoadConfig(dirs, "darn")
+		treeScope, err := trees()
 		if err != nil {
-			if errors.Is(err, darnengine.ErrTreeScopeKey) {
-				return "", false, darnengine.WithEditorWayForward(err)
-			}
-			return "", false, fmt.Errorf("%w; %s", err, hubConfigWayForward)
+			return "", false, err
 		}
-		if len(cfg.TreeScope) == 0 {
+		if len(treeScope) == 0 {
 			return "", false, nil
 		}
 		base, err := mergeBase()
@@ -110,7 +108,7 @@ func darnTreeScope(l *lymcwd.Location) func(gateKey string) (string, bool, error
 		if err != nil {
 			return "", false, err
 		}
-		targets, scoped := darnengine.TreeScopedTargets(cfg, paths)
+		targets, scoped := darnengine.TreeScopedTargets(darnengine.Config{TreeScope: treeScope}, paths)
 		if !scoped || len(targets) == 0 {
 			return "", scoped, nil
 		}
@@ -223,14 +221,14 @@ func (c *loomCLI) renameRetiredRows(renames map[string]string) error {
 // Its verify therefore stops at its first failed tier.
 // Every other key keeps its whole call, the landing call included.
 // The verify budget is darn.yaml's verify_budget_min, and its notice goes to the run's parent orch.
+// A hardener run loads hardener.yaml in place of darn.yaml.
+// It takes hardener.yaml's verify_attempts and sets no verify budget.
+// Changing darn.yaml therefore leaves a hardener run's verify scope and attempts unchanged.
 func (c *loomCLI) wireTreeScope(location *lymcwd.Location) error {
 	dirs := fabricengine.ConfigDirs(location)
-	cfg, err := darnengine.LoadConfig(dirs, "darn")
+	verifyAttempts, budget, err := c.treeScopeSettings(location)
 	if err != nil {
-		if errors.Is(err, darnengine.ErrTreeScopeKey) {
-			return darnengine.WithEditorWayForward(err)
-		}
-		return fmt.Errorf("%w; %s", err, hubConfigWayForward)
+		return err
 	}
 
 	// Each gate row's told command is the call of its own gate key;
@@ -247,7 +245,7 @@ func (c *loomCLI) wireTreeScope(location *lymcwd.Location) error {
 		return gateslot.StopOnFailCall(command), nil
 	}
 	c.env.VerifyMergeBase = taskMergeBase(location)
-	scope := darnTreeScope(location)
+	scope := darnTreeScope(location, recipeTrees(location, c.recipe))
 	c.env.VerifyTreeScope = func(key string) (string, bool, error) {
 		command, scoped, err := scope(key)
 		if err != nil || command == "" || key != darnWriteGateKey {
@@ -255,16 +253,37 @@ func (c *loomCLI) wireTreeScope(location *lymcwd.Location) error {
 		}
 		return gateslot.StopOnFailCall(command), scoped, nil
 	}
-	c.env.DarnVerifyAttempts = cfg.VerifyAttempts
-	c.env.VerifyBudget = loomshed.VerifyBudget{
+	c.env.DarnVerifyAttempts = verifyAttempts
+	c.env.VerifyBudget = budget
+
+	return nil
+}
+
+// treeScopeSettings returns the verify attempts and verify budget of a run whose verify source is tree_scope.
+// A hardener run reads hardener.yaml's verify_attempts and has no verify budget.
+// Any other run reads darn.yaml's verify_attempts and verify_budget_min, its notice going to the run's parent orch.
+// A load error carries its way forward.
+// That is the editor's for a malformed tree key, and the hub reconcile's for darn.yaml otherwise.
+func (c *loomCLI) treeScopeSettings(location *lymcwd.Location) (int, loomshed.VerifyBudget, error) {
+	dirs := fabricengine.ConfigDirs(location)
+	if recipeHasEngine(c.recipe, hardenFixEngine) {
+		cfg, err := hardenshed.LoadConfig(dirs, hardenshed.ConfigModule)
+		return cfg.VerifyAttempts, loomshed.VerifyBudget{}, err
+	}
+	cfg, err := darnengine.LoadConfig(dirs, "darn")
+	if err != nil {
+		if errors.Is(err, darnengine.ErrTreeScopeKey) {
+			return 0, loomshed.VerifyBudget{}, darnengine.WithEditorWayForward(err)
+		}
+		return 0, loomshed.VerifyBudget{}, fmt.Errorf("%w; %s", err, hubConfigWayForward)
+	}
+	return cfg.VerifyAttempts, loomshed.VerifyBudget{
 		Limit: time.Duration(cfg.VerifyBudgetMin) * time.Minute,
 		Notify: func(line string) error {
 			_, err := orchcli.NotifyParent(location, loomProgram, line)
 			return err
 		},
-	}
-
-	return nil
+	}, nil
 }
 
 // wireDarn fills the Env fields that a recipe with a Darn-Write row reads:

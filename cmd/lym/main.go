@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gatecli"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/hardencli"
 	"github.com/Knatte18/loomyard/internal/heddlecli"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/helpcli"
@@ -145,7 +146,7 @@ envelope: what it did, each error and warning, and each way forward, with long
 lists collapsed to a count. --envelope prints the full envelope instead; any
 output that is no terminal, as an agent's or a script's, gets the envelope.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, weaver, stencil, loom, quarry, batten, shed, orch, cleanup, adopt, beam, report, retro, tender, hibernate, drift, gate, creel, slack, heddle, machine, claude, help.
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, weaver, stencil, loom, quarry, batten, shed, orch, cleanup, adopt, beam, report, retro, tender, hibernate, drift, gate, creel, slack, heddle, machine, claude, harden, help.
 Shortcuts, declared in internal/shortcutcli's embedded file, are listed under their own heading in lym --help.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -223,6 +224,7 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 		heddlecli.Command(),
 		machinecli.Command(),
 		claudecli.Command(),
+		hardencli.Command(),
 	)
 
 	// SetHelpCommand replaces cobra's built-in help command;

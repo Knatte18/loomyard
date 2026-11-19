@@ -135,6 +135,19 @@
 // It removes every entry older than 30 days and each slug directory that leaves empty;
 // a path that does not parse as an archive entry is left alone.
 //
+// # Sandbox clear
+//
+// A hardener run builds throwaway sandbox hubs under the worktree's `.lym` directory.
+// The folder that holds them is the one `lymdirs.HardenSandboxDirName` names.
+// Their processes and tmux servers would outlive a removed worktree.
+// RemovePair therefore runs `lym harden sandbox clear` in a worktree that holds that folder.
+// The clear runs after the archive and before the removal, and RemovePair waits for it.
+// Every route through RemovePair clears:
+// `lym fabric remove`, batten's Worktree-Teardown row and the rest.
+// A worktree with no sandbox root starts nothing.
+// A failed clear keeps the worktree.
+// It returns an error whose way forward is to run the verb in the worktree, then the removal again.
+//
 // # Board claim
 //
 // After a successful removal, RemovePair settles the board entry of the removed pair's slug,

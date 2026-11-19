@@ -43,6 +43,16 @@ func ResolveRound(runDir string, reportName func(round int) string) (int, error)
 	}
 }
 
+// ReviewRound returns the highest round whose review file exists in runDir, or 0 when none does.
+func ReviewRound(runDir string) (int, error) {
+	return ResolveRound(runDir, func(n int) string { return filepath.Base(roundReviewPath(runDir, n)) })
+}
+
+// FixedRound returns the highest round whose fixer report exists in runDir, or 0 when none does.
+func FixedRound(runDir string) (int, error) {
+	return ResolveRound(runDir, func(n int) string { return filepath.Base(roundFixerReportPath(runDir, n)) })
+}
+
 // verdictPath returns the path of the bouncer verdict file for round inside runDir.
 func verdictPath(runDir string, round int) string {
 	return filepath.Join(runDir, fmt.Sprintf("round-%d-bouncer-verdict.md", round))

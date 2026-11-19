@@ -34,7 +34,6 @@ It also gives the kind of lym thing the term would fit and whether lym already h
   Its handle letters and the labels from `lym board labels` count too.
 - Names that board entries and Go comments reserve:
   - `cartoon`, kept for a later Plan block beside the `motif` recipe (the shed-sub-run-block task).
-  - `hardener` and `tenter` (the hardener note).
   - `weaver` (the weaver note).
 
 ## Tools and loom parts
@@ -49,7 +48,7 @@ It also gives the kind of lym thing the term would fit and whether lym already h
 | reed | vevskje | sv vävsked; da vevskje †; fr peigne, ros; de Webblatt, Riet | the comb that spaces the warp and beats the weft in | module | Taken: `reed`, the module (`lym reed`) that drives a per-hub tmux server with one strand per pane. It adds, removes, resumes and attaches strands and renders their layout. |
 | heddle | hovel | sv solv; da solv; fr lisse; de Litze | the eye on a shaft that lifts one warp thread | module | Taken: `heddle`, the module (`lym heddle`) that delivers the instruction text agents get from two layers: the entries lym ships in its binary and the repository's own `heddle.json` in the Bolt checkout. |
 | shaft, harness | skaft | sv skaft; da skaft; fr lame, cadre; de Schaft | a frame of heddles raised or lowered together | module, state | – |
-| treadle | tre (pl. trøer) | sv trampa; da trin; fr marche; de Tritt | the foot pedal that moves the shafts on a hand loom | module | Taken: `treadleengine`, the generalized round-loop engine: it spawns a round through a caller-supplied runner, gates convergence and runs a progress judge. It has no consumer today and is kept for the future Tenter module. |
+| treadle | tre (pl. trøer) | sv trampa; da trin; fr marche; de Tritt | the foot pedal that moves the shafts on a hand loom | module | – |
 | dobby | skaftmaskin, dobby | sv skaftmaskin; fr ratière; de Schaftmaschine | the machine that drives the shafts from a pattern | agent role, module | Taken: `dobby`, the daemon that drives the batten runs of one beam worktree, one process per beam on its owning machine. |
 | jacquard | jacquard | sv jacquard; fr jacquard; de Jacquard | the machine that controls warp threads singly | module, agent role | – |
 | cam, eccentric | eksentermaskin | fr came; de Exzenter | the mechanism that moves the shafts of a mechanical loom | module | – |
@@ -63,7 +62,6 @@ It also gives the kind of lym thing the term would fit and whether lym already h
 | distaff | rokk | sv rock; da rok; fr quenouille; de Spinnrocken | holds the fibre while spinning | module | – |
 | spinning wheel | rokk, spinnerokk † | sv spinnrock; fr rouet; de Spinnrad | turns fibre into yarn | module | – |
 | warping board, warping mill | renneramme †, rennebom | sv varpställning; fr ourdissoir; de Schärrahmen | the frame the warp is measured and wound on | module | – |
-| tenter, tenter frame | – † | fr rame; de Spannrahmen | the frame that stretches finished cloth to dry | module, agent role | Taken: `Tenter`, a planned module named in the `treadleengine` doc and in the final-summary spec as a future last-content-producing step. The board's `hardener` note describes it with Hardener as an autonomous behavior-review campaign. |
 | cloth, fabric | tøy, vevnad | sv tyg; da stof; fr tissu; de Gewebe | the woven result | module, artifact | Taken: `fabric`, the module (`lym fabric`) that keeps a hub's code (warp) and records (weft) git repositories paired. It creates, switches, syncs, merges and tears down both sides of a worktree pair together. |
 | bolt of cloth | tøyrull †, nøste (yarn) | fr rouleau; de Ballen | a rolled length of finished cloth | module | Taken: Bolt (`_bolt`), the hub's second records worktree, checked out on the code repository's default branch. It holds the board, the stencils and the specs. |
 | selvedge, selvage | jare, jarekant | sv list; da kant; fr lisière; de Webkante | the firm edge that stops the cloth fraying | module, state | Taken: `Selvage`, the always-present console pane of the reed session. It sits outside the strands and carries no strand name or color. |
@@ -93,7 +91,6 @@ It also gives the kind of lym thing the term would fit and whether lym already h
 | burling | – † | fr époutissage; de Noppen | picking knots and slubs from cloth before finishing | recipe | Taken: `burler`, the module (`lym burler`) that drives one review-and-fix round over an artifact with two sessions run one after the other. Its package doc says it is named for burling and mending. |
 | mending | å lappe †, å reparere | fr remaillage | repairing defects in woven cloth | recipe, verb | Taken: the fix half of a `burler` round, which repairs the findings of the review half. |
 | darning | stopping, å stoppe | sv stoppning; da stoppe; fr reprisage; de Stopfen | weaving new thread across a hole | recipe | Taken: `darn`, the recipe that makes the change a board entry asks for in one writer session, then verifies, reviews and lands it. Its hub-wide configuration is `darn.yaml`. |
-| tenterhooking | – † | fr ramage | stretching cloth on tenter hooks | verb | Close: `Tenter`, the planned module described above. |
 | tying a knot | å knyte | fr nouer | joining two thread ends | verb | – |
 | unweaving, raveling | å rekke opp | fr défaire | taking a woven piece apart thread by thread | verb | – |
 
@@ -115,7 +112,6 @@ Agent nouns name the one who does the work.
 | burler | – † | fr épinceteuse | inspects cloth for defects and picks them out | agent role | Taken: `burler`, the review-and-fix round module described above. Its reviewer role is `burler-review`. |
 | mender, darner | stopper † | fr stoppeuse, repriseuse | repairs holes and defects | agent role | Close: `darn`, the recipe described above. |
 | sampler (maker of samples) | – † | – | weaves a sample to test a design | agent role | Taken: `sampler`, a recipe and an agent role. Its hub-wide config `sampler.yaml` holds the model-spec of the sampler agent's interactive session and whether the Code-Review perch runs on a sampler run. |
-| tenter | – † | fr rameur | stretches cloth on the tenter frame | agent role | Taken: `Tenter`, the planned module described above. |
 | finisher | etterbehandler † | fr apprêteur; de Appreteur | applies the finishing steps | agent role | – |
 | tackler | – † | – | the overseer of looms in a mill; also the one who rigs a loom | agent role | Taken: `tackler`, the cold agent the shed driver asks about a stop that no rule in its closed rule table settles. It is the second stage of a shed run's stop chain. |
 | loom fixer, tuner | – † | – | keeps mill looms running | agent role | Close: `fixer`, the seat that repairs the findings of a burler or landing review. |

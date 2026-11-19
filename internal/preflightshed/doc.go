@@ -32,6 +32,8 @@
 // A recipe that holds a Drift-Baseline row gets a drift check.
 // It loads `drift.yaml` and refuses a command a Drift row would refuse.
 // The reason carries that refusal's way forward.
+// A recipe that holds a HardenFix row gets a hardener check, which refuses a campaign that cannot start.
+// It runs last, and its reason carries its own way forward and the resume that follows.
 //
 // The package declares its own unexported entryErr and cancelErr helpers (ctx.go).
 // They are duplicated by design, as in internal/loomshed/doc.go and internal/landingshed/ctx.go.

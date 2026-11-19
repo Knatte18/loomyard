@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hardenshed"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -69,10 +70,12 @@ var nilLegal = map[string]bool{
 	"PreflightBatcher":                 true,
 	"PreflightStencils":                true,
 	"PreflightDrift":                   true,
+	"PreflightHarden":                  true,
 	"Pawl.Watch":                       true,
 	"Sampler.Watch":                    true,
 	"NotifyParent":                     true,
 	"Landing.CommitStatus":             true,
+	"Landing.Reap":                     true,
 	"Landing.CommitParentRecords":      true,
 	"Landing.MergeState":               true,
 	"Landing.AbortMerge":               true,
@@ -148,6 +151,7 @@ var nilLegal = map[string]bool{
 	"MergeInOnly":                      true,
 	"RecordHead":                       true,
 	"ReviewInputs":                     true,
+	"Harden":                           true,
 }
 
 // noopSamplerSessions is a loomshed.SamplerSessions that starts and stops nothing.
@@ -202,6 +206,7 @@ func (noopSessions) EngineName(choice shuttleengine.ModelChoice) string { return
 func LandingDeps(dir string) landingshed.Deps {
 	return landingshed.Deps{
 		GateKey:          "parent-align",
+		Reap:             func() error { return nil },
 		WorktreeRoot:     dir,
 		TaskBranch:       "task-branch",
 		ParentBranch:     "fixture-parent",
@@ -416,6 +421,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		VerifyHold:         verifytree.NewPauseHold(pauserecord.Geometry{}, nil),
 		StatusPath:         filepath.Join(dir, "status.json"),
 		StatusLockPath:     filepath.Join(dir, "status.json.lock"),
+		PreflightHarden:    func() error { return nil },
 		StencilsDir:        mustMkdir(t, filepath.Join(dir, "stencils")),
 		SpecsDir:           mustMkdir(t, filepath.Join(dir, "specs")),
 		RunRoot:            mustMkdir(t, filepath.Join(dir, "run-root")),
@@ -440,6 +446,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			"Plan-Review":       fullEnvSegment(3, "loom.yaml"),
 			"Code-Review":       fullEnvSegment(3, "loom.yaml"),
 			"Raddle-Review":     fullEnvSegment(3, "loom.yaml"),
+			"Harden-Review":     fullEnvSegment(3, "hardener.yaml"),
 		},
 		WebsterRun: func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
 			return websterengine.RunResult{}, nil
@@ -612,6 +619,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		},
 		RaddleWrite: raddleWriteEnv(dir),
 		RaddleFile:  raddleFileDeps(dir),
+		Harden:      hardenCampaign(dir),
 
 		Drift:     driftDeps(mustMkdir(t, filepath.Join(dir, "drift"))),
 		PlanIndex: noFindingsIndex{},
@@ -705,6 +713,27 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			},
 			Rerun: "lym batten run fullenv-slug",
 		},
+	}
+}
+
+// hardenCampaign returns a hardener campaign over dir whose seams are no-ops.
+// Its live runs pass and its reaps find nothing.
+func hardenCampaign(dir string) *hardenshed.Campaign {
+	return &hardenshed.Campaign{
+		Config: hardenshed.Config{
+			Packages: []string{"pkg"}, Reviewer: []string{"opus"}, Fixer: []string{"opus"},
+			Concurrency: 1, LiveAttempts: 3, VerifyAttempts: 3,
+		},
+		WorktreeRoot: filepath.Join(dir, "worktree"),
+		AnchorPath:   filepath.Join(dir, "worktree"),
+		RunDir:       filepath.Join(dir, "run-root", "harden"),
+		RunLive: func(string, int, []string) (hardenshed.LiveRun, error) {
+			return hardenshed.LiveRun{Passed: true}, nil
+		},
+		Reap:    func(string, hardenshed.ReapPoint) ([]hardenshed.StrayEntry, error) { return nil, nil },
+		Head:    func() (string, error) { return "head", nil },
+		Commits: func(string) ([]string, error) { return nil, nil },
+		Commit:  func([]string, string) error { return nil },
 	}
 }
 
