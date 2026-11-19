@@ -127,9 +127,9 @@ func TestSandboxVerbs(t *testing.T) {
 		var orphan *exec.Cmd
 		exited := make(chan struct{})
 		if runtime.GOOS == "linux" {
-			// The root is the script's $0, so the process names it on its command line.
-			// Its working directory need not, since /proc reports the target of a link along the path.
-			orphan = exec.Command("sh", "-c", "while :; do sleep 1; done", root)
+			// The process names the root only by its working directory, which /proc reports through the worktree's `.lym` link.
+			orphan = exec.Command("sh", "-c", "while :; do sleep 1; done")
+			orphan.Dir = root
 			if err := orphan.Start(); err != nil {
 				t.Fatalf("start the orphan under %q: %v", root, err)
 			}

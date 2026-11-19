@@ -179,7 +179,7 @@ func (deps ReapDeps) strayEntry(kind string, recorded bool) StrayEntry {
 	return StrayEntry{Row: deps.Row, Point: deps.Point, Kind: kind, Recorded: recorded, Interrupted: deps.Point == ReapStart}
 }
 
-// rootProcesses lists the processes that name the root, bar the caller and its ancestors.
+// rootProcesses lists the processes that name the root, or the root with its links resolved, bar the caller and its ancestors.
 // It lists none when deps.ListProcesses is nil.
 func (deps ReapDeps) rootProcesses(recorded map[int]bool) ([]rootProcess, error) {
 	if deps.ListProcesses == nil {
@@ -193,9 +193,14 @@ func (deps ReapDeps) rootProcesses(recorded map[int]bool) ([]rootProcess, error)
 	if err != nil {
 		return nil, err
 	}
+	roots := []string{deps.Root}
+	// The kernel reports a working directory with its links resolved, and the root sits under a worktree's `.lym` link.
+	if resolved, err := filepath.EvalSymlinks(deps.Root); err == nil && resolved != deps.Root {
+		roots = append(roots, resolved)
+	}
 	var found []rootProcess
 	for _, process := range listed {
-		if protected[process.PID] || !namesRoot(process, deps.Root) {
+		if protected[process.PID] || !slices.ContainsFunc(roots, func(root string) bool { return namesRoot(process, root) }) {
 			continue
 		}
 		entry := deps.strayEntry(StrayProcess, recorded[process.PID])
