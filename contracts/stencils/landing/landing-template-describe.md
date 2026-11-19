@@ -52,7 +52,8 @@ Write exactly one file, `{{.description_path}}`, in the format of the final-summ
    - what changes for the user or the code, and why;
    - one `Closes #N` line per issue the task resolves;
    - the design decisions a reviewer needs to know;
-   - anything to check or run by hand that was not run.
+   - anything to check or run by hand that was not run;
+   - last, the `## Merge danger` section the spec defines, its door and blast radius called from the diff as it stands now.
 
 Never describe the pipeline's process: no batches, cards, forks, the Master, verify gates, glyph deviations or review rounds.
 Naming a module is fine when the change touches it.

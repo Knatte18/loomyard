@@ -29,6 +29,7 @@ func TestDraftBeamDescription(t *testing.T) {
 		wantPullRequestEntry = "- #266 Tool-joint pressure loss, merged 2026-10-30 13:05 UTC\n  Adds the tool-joint loss to the hydraulics."
 		wantParentMergeEntry = "- 222222222222 Merge branch 'main' into my-beam, committed 2026-10-30 14:05 UTC"
 		wantDirectEntry      = "- 333333333333 Fix a typo, committed 2026-10-30 15:05 UTC"
+		wantMergeDanger      = "## Merge danger\n\n**Door:** one-way or two-way\n**Blast radius:** one word\n"
 	)
 	tests := []struct {
 		name    string
@@ -49,20 +50,20 @@ func TestDraftBeamDescription(t *testing.T) {
 	}{
 		{
 			name: "PullRequestsAndDirectCommitsAreListedOldestFirst", title: "Ship the beam", brief: "Groups the work.", commits: []BeamCommit{pullRequest, parentMerge, direct},
-			wantFile: "# Ship the beam\n\nGroups the work.\n\n## Changes\n\n" + wantPullRequestEntry + "\n" + wantParentMergeEntry + "\n" + wantDirectEntry + "\n",
+			wantFile: "# Ship the beam\n\nGroups the work.\n\n## Changes\n\n" + wantPullRequestEntry + "\n" + wantParentMergeEntry + "\n" + wantDirectEntry + "\n\n" + wantMergeDanger,
 		},
 		{
 			name: "ALongSummaryIsCutWithAnEllipsis", title: "Ship the beam",
 			commits:  []BeamCommit{{SHA: "4444", Message: "Long change\n\n" + strings.Repeat("word ", 50), Committed: at(12)}},
-			wantFile: "# Ship the beam\n\n## Changes\n\n- 4444 Long change, committed 2026-10-30 11:05 UTC\n  " + strings.TrimSpace(strings.Repeat("word ", 40)) + "…\n",
+			wantFile: "# Ship the beam\n\n## Changes\n\n- 4444 Long change, committed 2026-10-30 11:05 UTC\n  " + strings.TrimSpace(strings.Repeat("word ", 40)) + "…\n\n" + wantMergeDanger,
 		},
 		{
 			name: "OverLongTitleIsCut", title: strings.Repeat("a", 80), brief: "Groups the work.",
-			wantFile: "# " + strings.Repeat("a", 72) + "\n\nGroups the work.\n",
+			wantFile: "# " + strings.Repeat("a", 72) + "\n\nGroups the work.\n\n" + wantMergeDanger,
 		},
 		{
-			name: "EmptyBriefAndNoCommitsWriteTheTitleAlone", title: "Ship the beam",
-			wantFile: "# Ship the beam\n",
+			name: "EmptyBriefAndNoCommitsWriteTheTitleAndMergeDangerAlone", title: "Ship the beam",
+			wantFile: "# Ship the beam\n\n" + wantMergeDanger,
 		},
 		{
 			name: "AnExistingDescriptionIsRefusedAndLeftIntact", title: "Ship the beam", brief: "Groups the work.", existing: "# Old text\n\nThe orch's words.\n",
@@ -141,7 +142,8 @@ func TestRecordBeamDescription(t *testing.T) {
 
 	const (
 		slug  = "my-beam"
-		valid = "# Ship the beam\n\nThe beam adds the hydraulics model.\n\n## Member pull requests\n\n- #266 Tool-joint pressure loss\n"
+		valid = "# Ship the beam\n\nThe beam adds the hydraulics model.\n\n## Member pull requests\n\n- #266 Tool-joint pressure loss\n\n" +
+			"## Merge danger\n\n**Door:** two-way\n**Blast radius:** hydraulics\n"
 	)
 	commitErr := errors.New("index locked")
 	tests := []struct {
@@ -155,6 +157,11 @@ func TestRecordBeamDescription(t *testing.T) {
 		wantCommits int
 	}{
 		{name: "ValidDescriptionIsCommitted", content: valid, wantCommits: 1},
+		{
+			name:    "UneditedDraftIsRefusedNamingTheMergeDangerFindings",
+			content: beamDraft("Ship the beam", "The beam adds the hydraulics model.", nil),
+			wantErr: []string{"merge-danger-door", "merge-danger-blast-radius"},
+		},
 		{
 			name:    "MissingDescriptionIsRefusedNamingTheDraft",
 			wantErr: []string{"no description is written at", `"lym beam describe my-beam --draft"`, `"lym beam describe my-beam" again`},

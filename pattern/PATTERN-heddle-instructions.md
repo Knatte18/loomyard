@@ -10,6 +10,7 @@ Heddle's instruction text is stored once per layer and rendered from those store
 
 - The shipped layer is `shipped.json`, embedded in `internal/heddleengine`.
   It holds lym's own entries and changes only with a lym release.
+  Its glossary entry, `lym-glossary`, is embedded from `glossary.md` beside it, the one copy of lym's glossary.
 - The repository layer is `heddle.json` at the Bolt checkout's root.
 - A hub's lym overrides sit in `heddle-lym-override.json` beside it.
   A render reads them only while the hub's `heddle.yaml` sets `lym_override`.

@@ -139,6 +139,8 @@
 // It refuses when `summary.md` already stands, so an edited or recorded description is never overwritten.
 // The draft holds the entry's title and brief.
 // It then lists the beam's line from `fabricengine.BeamLineCommits`, without its records-only commits.
+// The draft ends with a Merge danger section whose door and blast radius are placeholders for the orch to call;
+// recording refuses the description until it does.
 // The project record's added decisions are never drawn on: the description states the end result, not the way there.
 //
 // # pr

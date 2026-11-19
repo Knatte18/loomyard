@@ -330,7 +330,7 @@ func TestNewDescriptionGate(t *testing.T) {
 		wantPassed bool
 		wantInFind string
 	}{
-		{"valid", write("ok.md", "# A title\n\nA body.\n"), true, ""},
+		{"valid", write("ok.md", "# A title\n\nA body.\n\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** landing\n"), true, ""},
 		{"co-author trailer", write("trailer.md", "# A title\n\nBody.\n\nCo-Authored-By: X <x@y.z>\n"), false, "co-authored-by-trailer"},
 		{"missing file", filepath.Join(dir, "absent.md"), false, "missing-file"},
 	}

@@ -767,7 +767,7 @@ func TestGateParity_DescriptionGate(t *testing.T) {
 		{
 			name: "Clean",
 			build: func(t *testing.T, dir string) *loomCLI {
-				return descriptionFixture(t, dir, "# Title\n\nbody\n")
+				return descriptionFixture(t, dir, "# Title\n\nbody\n\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** loom\n")
 			},
 			want: verdictDone,
 		},

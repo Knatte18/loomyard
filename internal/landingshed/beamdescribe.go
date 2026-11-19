@@ -27,6 +27,11 @@ const (
 	beamCommitSummaryMax = 200
 	// beamCommitTimeLayout formats the time an entry shows, in UTC.
 	beamCommitTimeLayout = "2006-01-02 15:04 UTC"
+	// beamMergeDangerDraft is the draft's Merge danger section, its two values left for the orch to call.
+	// The description's validation refuses both placeholders, so a draft recorded unedited is refused.
+	beamMergeDangerDraft = summaryparser.MergeDangerHeading + "\n\n" +
+		summaryparser.MergeDangerDoorLabel + " " + summaryparser.DoorOneWay + " or " + summaryparser.DoorTwoWay + "\n" +
+		summaryparser.MergeDangerRadiusLabel + " one word"
 )
 
 // pullRequestSubject matches the subject of a commit a pull request landed, `<title> (#<number>)`.
@@ -87,6 +92,7 @@ func requireBeamDraftDeps(deps BeamDraftDeps) error {
 // Any other commit, a merge from the parent included, is listed by its object name, subject and commit time.
 // Either entry carries the first sentence of the commit's body as its summary, when the body has one.
 // GitHub links the number and the object name in a pull request's body.
+// A Merge danger section closes the draft with its door and blast radius left as placeholders for the orch to call.
 // The draft is neither validated nor committed: the orch edits it, and RecordBeamDescription records it.
 // It refuses deps with an unset field, naming that field.
 // A read or write failure is an error naming the step.
@@ -152,7 +158,7 @@ func RecordBeamDescription(slug, path string, commit func() error) error {
 }
 
 // beamDraft renders the draft: the title cut to beamDescriptionTitleMax characters as a heading.
-// Then come the brief and the list of commits, each set off by a blank line.
+// Then come the brief, the list of commits and the Merge danger placeholders, each set off by a blank line.
 func beamDraft(title, brief string, commits []BeamCommit) string {
 	title = strings.TrimSpace(title)
 	if runes := []rune(title); len(runes) > beamDescriptionTitleMax {
@@ -169,11 +175,8 @@ func beamDraft(title, brief string, commits []BeamCommit) string {
 		}
 		sections = append(sections, beamChangesHeading+"\n\n"+strings.Join(entries, "\n"))
 	}
-	description := "# " + title
-	if len(sections) > 0 {
-		description += "\n\n" + strings.Join(sections, "\n\n")
-	}
-	return description + "\n"
+	sections = append(sections, beamMergeDangerDraft)
+	return "# " + title + "\n\n" + strings.Join(sections, "\n\n") + "\n"
 }
 
 // beamCommitEntry renders one commit as a list item.

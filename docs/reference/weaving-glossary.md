@@ -2,6 +2,7 @@
 
 A glossary of weaving and textile terms that can serve as names in lym.
 It lists and marks; it recommends no name for any open question.
+What lym's own terms mean, and the words never to use for them, is in `internal/heddleengine/glossary.md`.
 
 ## How to read it
 

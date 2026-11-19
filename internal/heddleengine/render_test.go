@@ -822,7 +822,8 @@ func TestRender(t *testing.T) {
 			t.Errorf("Passages(claude) = %v, %v", claude, err)
 		}
 		claudeOrch, err := r.Passages(f.bolt, "claude", "orch")
-		if err != nil || !slices.Equal(passageTexts(claudeOrch), []string{"prompt one", "prompt two", "shared text", "shared and orch text"}) {
+		glossary := strings.TrimRight(Glossary(), "\n")
+		if err != nil || !slices.Equal(passageTexts(claudeOrch), []string{glossary, "prompt one", "prompt two", "shared text", "shared and orch text"}) {
 			t.Errorf("Passages(claude, orch) = %v, %v; want each text once", claudeOrch, err)
 		}
 		codex, err := r.Passages(f.bolt, "codex", "")
@@ -842,15 +843,16 @@ func TestRender(t *testing.T) {
 			entryFor("house", "house rule", 1, "claude-prompt"),
 		}})
 		r := Renderer{}
+		glossary := strings.TrimRight(Glossary(), "\n")
 		tests := []struct {
 			name   string
 			engine string
 			role   string
 			want   []string
 		}{
-			{"ClaudeOrch", "claude", "orch", []string{"house rule", "orch rule", "shared rule"}},
-			{"ClaudeNumberedOrch", "claude", "orch-2", []string{"house rule", "orch rule", "shared rule"}},
-			{"CodexOrch", "codex", "orch", []string{"orch rule", "shared rule"}},
+			{"ClaudeOrch", "claude", "orch", []string{glossary, "house rule", "orch rule", "shared rule"}},
+			{"ClaudeNumberedOrch", "claude", "orch-2", []string{glossary, "house rule", "orch rule", "shared rule"}},
+			{"CodexOrch", "codex", "orch", []string{glossary, "orch rule", "shared rule"}},
 			{"ClaudeWriter", "claude", "writer", []string{"house rule", "shared rule"}},
 			{"ClaudeOrchLookalike", "claude", "orchard", []string{"house rule", "shared rule"}},
 			{"CodexWriter", "codex", "writer", nil},
@@ -862,8 +864,8 @@ func TestRender(t *testing.T) {
 			}
 		}
 		shown, err := r.Show(f.bolt, "orch-prompt", f.anchor)
-		if err != nil || shown != "orch rule\n\nshared rule" {
-			t.Errorf("Show(orch-prompt) = %q, %v; want the two orch passages", shown, err)
+		if err != nil || shown != glossary+"\n\norch rule\n\nshared rule" {
+			t.Errorf("Show(orch-prompt) = %q, %v; want the glossary then the two orch passages", shown, err)
 		}
 	})
 }

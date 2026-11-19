@@ -17,6 +17,7 @@
      twill_directive is an optional marker rendered by internal/twilldirective through internal/loomengine;
      it sits on the line that would otherwise be blank, so an empty value leaves the prompt's bytes unchanged.
      edit_directive is a required marker, rendered unconditionally by internal/editdirective.
+     glossary is a required marker: lym's glossary, which internal/heddleengine holds and the orch's prompt carries too.
      self_check is a required marker: the body of Step 6 up to its closing two lines.
      DiscussionTable fills it with the fragment that has the writer run the validator or,
      when the gate has a cold fixer, the one that has it run none.
@@ -118,6 +119,15 @@ In interactive mode put it to the operator in the pane like any other question.
 
 {{.mode_rules}}
 {{.twill_directive}}
+## lym's words
+
+Hold the entry's words against the glossary below.
+A term the entry uses against its line is a question for the interview, asked through Step 4's channel:
+name the term and the line, and write the three files in the glossary's words.
+When the design settles what a lym term means, or adds one, record it as a decision that gives its glossary line,
+so the change adds the line to the glossary.
+
+{{.glossary}}
 ## Step 5 — Write the three output files
 
 Once the design is settled, write ALL THREE of the following files.

@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lensreport"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -207,7 +208,7 @@ func TestDiscussionTable(t *testing.T) {
 					t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)
 				}
 
-				chairWants := []string{"`ly:orch`", discussionTableSlug, DiscussionDecisionRecord(layout), DiscussionSupportLog(layout), discussionTableSpecsDir, modeRules(!interactive), `model: "haiku"`}
+				chairWants := []string{strings.TrimSpace(heddleengine.Glossary()), "`ly:orch`", discussionTableSlug, DiscussionDecisionRecord(layout), DiscussionSupportLog(layout), discussionTableSpecsDir, modeRules(!interactive), `model: "haiku"`}
 				for n, notes := range wantNotes {
 					chairWants = append(chairWants, "ly:"+discussionTableSlug+":discussion-"+discussionTableAdvisors[n].Name, notes)
 				}

@@ -1,6 +1,9 @@
 // Package heddleengine holds heddle's instruction layers and renders them.
 // Two layers hold entries of instruction text, each aimed at targets of a table that is this package's code.
 // The shipped layer is lym's own: shipped.json, embedded in the binary, read-only and changed only by a lym release.
+// One shipped entry, `lym-glossary`, comes from glossary.md instead, so its terms are edited as markdown:
+// lym's glossary, aimed at the orch-prompt target.
+// Glossary returns the same text for a prompt that carries it otherwise.
 // The repository layer is heddle.json at the Bolt checkout's root, which the `lym heddle` verbs write.
 // The file targets are the one place a per-worktree file lym seeds is declared, so a new such file is a new target.
 // A file target is rendered into a git-excluded file at a worktree's anchor.

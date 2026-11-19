@@ -44,7 +44,7 @@ func describe(ctx context.Context, deps landDeps, slug string, draft bool) (map[
 			"slug":        slug,
 			"description": path,
 			"drafted":     true,
-			"way_forward": fmt.Sprintf("edit the draft into the beam's end result and its member pull requests, then run `%s %s` to record it", verb, slug),
+			"way_forward": fmt.Sprintf("edit the draft into the beam's end result and its member pull requests, call the Merge danger door and blast radius, then run `%s %s` to record it", verb, slug),
 		}, nil
 	}
 

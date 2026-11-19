@@ -15,6 +15,7 @@ import (
 func TestValidateDescription_Table(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
+	const mergeDanger = "\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** docs\n"
 	tests := []struct {
 		name    string
 		content *string
@@ -24,11 +25,50 @@ func TestValidateDescription_Table(t *testing.T) {
 		{"empty", ptr(""), []string{summaryparser.CheckEmpty}},
 		{"no heading", ptr("plain text\n"), []string{summaryparser.CheckNoHeading}},
 		{"blank title", ptr("# \nbody\n"), []string{summaryparser.CheckNoHeading}},
-		{"long title", ptr("# " + strings.Repeat("a", 73) + "\n\nbody\n"), []string{summaryparser.CheckTitleTooLong}},
+		{"long title", ptr("# " + strings.Repeat("a", 73) + "\n\nbody\n" + mergeDanger), []string{summaryparser.CheckTitleTooLong}},
 		{"empty body", ptr("# Title\n\n  \n"), []string{summaryparser.CheckEmptyBody}},
-		{"trailer", ptr("# Title\n\nbody\n\nCo-Authored-By: X <x@y>\n"), []string{summaryparser.CheckCoAuthorTrail}},
-		{"trailer lower", ptr("# Title\n\nbody\n  co-authored-by: X\n"), []string{summaryparser.CheckCoAuthorTrail}},
-		{"ok", ptr("# Title\n\nbody\n"), nil},
+		{"trailer", ptr("# Title\n\nbody\n" + mergeDanger + "\nCo-Authored-By: X <x@y>\n"), []string{summaryparser.CheckCoAuthorTrail}},
+		{"trailer lower", ptr("# Title\n\nbody\n" + mergeDanger + "  co-authored-by: X\n"), []string{summaryparser.CheckCoAuthorTrail}},
+		{"ok", ptr("# Title\n\nbody\n" + mergeDanger), nil},
+		{"no merge danger", ptr("# Title\n\nbody\n"), []string{summaryparser.CheckNoMergeDanger}},
+		{"merge danger as list items in backticks", ptr("# Title\n\nbody\n\n## merge danger\n\n- **Door:** `One-way`.\n- **Blast radius:** `board`.\n"), nil},
+		{"labels directly under the heading", ptr("# Title\n\nbody\n\n## Merge danger\n**Door:** two-way\n**Blast radius:** docs\n"), nil},
+		{
+			"a level-one heading ends the section",
+			ptr("# Title\n\nbody\n\n## Merge danger\n\n# Other\n\n**Door:** two-way\n**Blast radius:** docs\n"),
+			[]string{summaryparser.CheckMergeDangerDoor, summaryparser.CheckMergeDangerBlastRadius},
+		},
+		{
+			"a section only inside a fence is no section",
+			ptr("# Title\n\nbody\n\n```\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** docs\n```\n"),
+			[]string{summaryparser.CheckNoMergeDanger},
+		},
+		{
+			"a fenced example does not stand in for the real section",
+			ptr("# Title\n\nbody\n\n```\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** docs\n```\n\n## Merge danger\n\n**Door:** revolving\n**Blast radius:** docs\n"),
+			[]string{summaryparser.CheckMergeDangerDoor},
+		},
+		{
+			"a shorter fence line inside a fence does not close it",
+			ptr("# Title\n\nbody\n\n````\n```\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** docs\n```\n````\n"),
+			[]string{summaryparser.CheckNoMergeDanger},
+		},
+		{
+			"a comment line in a fenced block does not end the section",
+			ptr("# Title\n\nbody\n\n## Merge danger\n\n~~~sh\n# revert it\ngit revert HEAD\n~~~\n\n**Door:** two-way\n**Blast radius:** docs\n"),
+			nil,
+		},
+		{"door missing", ptr("# Title\n\nbody\n\n## Merge danger\n\n**Blast radius:** docs\n"), []string{summaryparser.CheckMergeDangerDoor}},
+		{"door neither way", ptr("# Title\n\nbody\n\n## Merge danger\n\n**Door:** revolving\n**Blast radius:** docs\n"), []string{summaryparser.CheckMergeDangerDoor}},
+		{"blast radius missing", ptr("# Title\n\nbody\n\n## Merge danger\n\n**Door:** one-way\n"), []string{summaryparser.CheckMergeDangerBlastRadius}},
+		{"blast radius two words", ptr("# Title\n\nbody\n\n## Merge danger\n\n**Door:** one-way\n**Blast radius:** the board\n"), []string{summaryparser.CheckMergeDangerBlastRadius}},
+		{"blast radius empty", ptr("# Title\n\nbody\n\n## Merge danger\n\n**Door:** one-way\n**Blast radius:**\n"), []string{summaryparser.CheckMergeDangerBlastRadius}},
+		{
+			"labels under the next heading are outside the section",
+			ptr("# Title\n\nbody\n\n## Merge danger\n\n## Notes\n\n**Door:** two-way\n**Blast radius:** docs\n"),
+			[]string{summaryparser.CheckMergeDangerDoor, summaryparser.CheckMergeDangerBlastRadius},
+		},
+		{"a level-three heading stays inside the section", ptr("# Title\n\nbody\n\n## Merge danger\n\n### Call\n\n**Door:** two-way\n**Blast radius:** docs\n"), nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

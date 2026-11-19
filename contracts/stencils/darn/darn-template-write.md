@@ -70,6 +70,7 @@ Check whether landed work, another board entry or another run overtook or contra
 Write the change description to `{{.description_path}}`, in the format the final-summary spec defines at `{{.specs_dir}}/loom/loom-final-summary-spec.md`.
 Read that spec for the format; it is authoritative and this prompt does not restate it.
 Write the description for a reviewer who knows the codebase but has not seen this session, and never describe the session's own process.
+Close it with the `## Merge danger` section the spec defines, its door and blast radius called from your diff.
 A claim that a result agrees with a reference, or that the change improves one, carries before and after figures from the current code, taken from your commits or the drift verdict.
 Leave out a claim that has none.
 

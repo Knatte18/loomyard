@@ -96,6 +96,12 @@ Do not flag any of the following as a finding:
   Raise nothing when every declared entry lands, or when your directive declares none.
 - **The change description.**
   A claim in `_lym/landing/summary.md` that the diff does not bear out is a finding.
+- **Merge danger.**
+  Check the door the change description's `## Merge danger` section calls against the diff;
+  a `two-way` call earns the most suspicion.
+  A `two-way` call is a finding when the diff changes a record or board format another binary reads,
+  changes what a config setting means, deletes data, or pushes anything outward; the finding names that change.
+  A blast radius that names less than the diff can break is a finding too.
 - **An unrecorded parent correction, with a decision record alone.**
   A deviation from the amended board entry that the change description names as an unrecorded parent correction is never fixed by revert.
   File it as class `decision` at severity MEDIUM.
@@ -119,6 +125,9 @@ Do not flag any of the following as a finding:
   - a per-helper test the public surface's test already covers, naming that public-surface test;
   - a review-fix test added for a finding that was not a coverage gap, naming that finding;
   - a new assertion on the static prose of a stencil, spec, doc or other text, naming the assertion;
+  - a tautological test, whose expected value is computed the way the code computes it,
+    by calling the code under test, a helper it shares or the same formula,
+    naming the test and the independent value it should assert, from a literal, a worked example or the spec;
   - a behavior the diff adds with no coverage, naming the uncovered behavior; the static prose of a stencil, spec, doc or other text is exempt.
 
   A redundancy finding is raised only by naming the existing test that covers the behavior, so it cannot block on a vague suspicion.
@@ -156,6 +165,7 @@ Each survivor is a changed line whose mutant every test covering it passed: a ca
 Read each survivor's line and the tests that cover it.
 When a test could assert what the mutant changes, and that is the diff's own behavior or a contract its doc comment states, file a finding naming the line and the check the tests lack.
 A survivor no test can reasonably kill, such as a log field, a pure cache, a platform-only branch or a channel capacity, is no finding.
+A survivor whose covering test recomputes the expected value the way its line does is evidence for a tautological test.
 When the note is `none`, or says no current report exists, raise no finding about its absence.
 
 ## Amendment

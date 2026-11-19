@@ -669,6 +669,8 @@
 // It names each pull request a member landed through by the ` (#<number>)` Finalize writes into the merge's subject.
 // Each such entry gives the title, merge time and first sentence of the body.
 // It names each other commit, a merge from the parent included, by its object name, subject and time.
+// It ends the draft with a Merge danger section whose door and blast radius are placeholders the orch calls,
+// so a draft recorded unedited is refused.
 // It takes its told seams as BeamDraftDeps, which `lym beam describe --draft` fills.
 // RecordBeamDescription validates the orch's text with the check the Describe gate runs, and it commits it.
 // A finding is an error naming the finding and the way out:

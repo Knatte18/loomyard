@@ -307,13 +307,13 @@ func writeLoomOutputs(planDir string, writeOutputs bool, role string, outputs []
 		return nil
 
 	case "describe":
-		// A valid change description has a "# title" heading and a non-empty body, and no trailer line.
+		// A valid change description has a "# title" heading, a body with a Merge danger section, and no trailer line.
 		// The description gate accepts it.
 		for _, path := range outputs {
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 				return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
 			}
-			if err := os.WriteFile(path, []byte("# Fixture change\n\nFixture description body.\n"), 0o644); err != nil {
+			if err := os.WriteFile(path, []byte("# Fixture change\n\nFixture description body.\n\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** fixture\n"), 0o644); err != nil {
 				return fmt.Errorf("write description %s: %w", path, err)
 			}
 		}

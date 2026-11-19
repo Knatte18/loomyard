@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -78,6 +79,7 @@ func resolveModelChoice(raw string, reg modelspec.Registry) (shuttleengine.Model
 // cfg.SubagentModel names the model of the fresh subagents the lead's prompt tells it to hand lookups to.
 // The table carries no gate; the producer entry sets it.
 // A lead with no advisors decides each question itself, as its prompt says.
+// The lead's prompt carries lym's glossary, so the interview and the record keep lym's words.
 // The PATTERN directive renders the PATTERN changes the decision record declares;
 // a malformed section fails the table, naming the way forward.
 // A PATTERN directive or Tier 2 friction directive that cannot be rendered is left empty;
@@ -179,6 +181,7 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 			"mode_rules":           discussionModeRules(!cfg.DiscussionInteractive, len(cfg.DiscussionAdvisors) > 0),
 			"pattern_directive":    patternDirective,
 			friction.MarkerName:    frictionDirective,
+			"glossary":             heddleengine.Glossary(),
 		},
 		Optional: []string{"pattern_directive", ProjectDirectiveMarker, friction.MarkerName, twilldirective.MarkerName},
 		Seats:    append([]seatengine.Seat{lead}, seats...),

@@ -231,8 +231,9 @@ and running the verb again; nothing at or after landing rewrites it.
 
 With --draft it writes a starting point to summary.md instead and records
 nothing: the entry's title and brief, then every commit the beam adds, each member
-pull request by its number, title and merge time. Edit the draft before recording.
-It refuses when summary.md already stands; delete the file to get a fresh draft.
+pull request by its number, title and merge time. The draft ends with a Merge danger
+section whose door and blast radius are placeholders; call both before recording.
+Edit the draft before recording. It refuses when summary.md already stands; delete the file to get a fresh draft.
 
 The description states what the beam ended up with, never the way there, and lists
 every member pull request so a reader can follow each step to that result. It

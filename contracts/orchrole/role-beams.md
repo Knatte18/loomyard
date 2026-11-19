@@ -46,6 +46,8 @@ Write the description for a reader of the pull request:
 - State the end result, what the beam ended up with, never the way there.
 - List every member pull request, so a reader can follow each step to the result on its own.
 - Never list the decisions made along the way, from the project record or elsewhere.
+- Close it with the `## Merge danger` section the final-summary spec, `loom-final-summary-spec.md`, defines,
+  its door and blast radius called for the beam's whole landing; the draft leaves both as placeholders.
 
 Change any part of it whenever you or the operator want, then run `lym beam describe <slug>` again.
 

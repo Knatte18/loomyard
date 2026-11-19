@@ -114,7 +114,7 @@ func TestHubLandDeps_ReadyReads(t *testing.T) {
 	if err != nil || len(findings) != 1 || !strings.Contains(findings[0], summaryparser.CheckEmptyBody) {
 		t.Errorf("DescriptionFindings(b) = %v, %v for an empty body; want the one %s finding", findings, err, summaryparser.CheckEmptyBody)
 	}
-	if err := os.WriteFile(descriptionPath, []byte("# Ship the beam\n\nGroups the work.\n"), 0o644); err != nil {
+	if err := os.WriteFile(descriptionPath, []byte("# Ship the beam\n\nGroups the work.\n\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** beam\n"), 0o644); err != nil {
 		t.Fatalf("write the description: %v", err)
 	}
 	if findings, err := deps.DescriptionFindings("b"); len(findings) != 0 || err != nil {
@@ -232,6 +232,15 @@ func TestHubLandDeps_DraftThenRecordStampsAndCommits(t *testing.T) {
 	path, err := deps.DraftDescription("b")
 	if err != nil {
 		t.Fatalf("DraftDescription() error = %v; want nil", err)
+	}
+	// The draft's Merge danger placeholders are refused on purpose; the orch replaces them with a call before recording.
+	draft, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read the draft: %v", err)
+	}
+	called := strings.NewReplacer("one-way or two-way", "two-way", "one word", "widgets").Replace(string(draft))
+	if err := os.WriteFile(path, []byte(called), 0o644); err != nil {
+		t.Fatalf("write the orch's merge danger call: %v", err)
 	}
 	if recorded, err := deps.RecordDescription("b", at); err != nil || recorded != path {
 		t.Fatalf("RecordDescription() = %q, %v; want %q, nil", recorded, err, path)

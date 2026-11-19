@@ -724,7 +724,7 @@ func descriptionFixture(t *testing.T, dir, content string) *loomCLI {
 func TestValidateDescriptionCmd(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("Clean", func(t *testing.T) {
-		c := descriptionFixture(t, t.TempDir(), "# Title\n\nbody\n")
+		c := descriptionFixture(t, t.TempDir(), "# Title\n\nbody\n\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** loom\n")
 
 		var out bytes.Buffer
 		exitCode := clihelp.Execute(c.validateDescriptionCmd(), &out, nil)

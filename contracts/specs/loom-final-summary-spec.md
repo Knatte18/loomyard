@@ -23,6 +23,31 @@ Each of the following is checked, and each violation is its own distinct error:
 
 Everything after the heading line is the body, carried verbatim.
 
+## Merge danger
+
+A change description's body holds a `## Merge danger` section.
+It tells the reviewer, before the merge, what a mistake would cost:
+
+```markdown
+## Merge danger
+
+**Door:** two-way
+**Blast radius:** stencils
+```
+
+- **Door** is `one-way` when a revert of the landing commit does not undo the change's effect, and `two-way` otherwise.
+  The door is one-way for a record or board format another binary reads,
+  a config reinterpretation `hubreconcile` applies, data the change deletes,
+  and anything pushed outward, such as a release, a message or a remote branch.
+- **Blast radius** is one word naming what breaks if the change is wrong, such as a module, a role or `board`.
+
+The section runs to the next heading of level one or two.
+Either line may stand as a list item, and its value may be in backticks.
+Lines inside a fenced code block are not read: a fenced example is neither the section nor a heading that ends it.
+`lym loom validate-description` and every gate that checks a change description refuse one without the section,
+a door other than those two words, and a blast radius other than one word.
+`Publish` and `Finalize` do not check it: they carry the body as it stands.
+
 ## Sole declarer, sole parser
 
 `internal/summaryparser` is the sole declarer of the artifact's filename and the sole parser of its format.
