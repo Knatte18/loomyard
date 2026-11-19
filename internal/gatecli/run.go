@@ -101,6 +101,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	request.busyQuit = cfg.Limits().BusyQuit
 	request.memoryQuit = cfg.MemoryQuit()
 	request.hubEnv = hubEnv
+	request.sessionEnv = os.Environ()
 
 	green := openGreen(gateslot.WaitDir(location.AnchorPath()), request.root, request.goBinary, cfg)
 	sc, err := computeScope(preCtx, cfg, location, request.root, request, green)

@@ -201,6 +201,8 @@ type testRequest struct {
 
 	// hubEnv is the hub's env.yaml variables, which the call's children run with.
 	hubEnv envconfig.Config
+	// sessionEnv is the environment of the session that started the call, against which each tier's env is compared.
+	sessionEnv []string
 	// root is the worktree root the tiers' dirs and a prebuild are relative to.
 	root string
 	// prebuiltStore is the hub's store of prebuilt `lym` binaries; empty outside a hub.

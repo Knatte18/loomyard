@@ -549,6 +549,57 @@ The test running when the crash occurred: Ns.Tests.Kept</Text></RunInfo>`
 	}
 }
 
+// TestRunTierNamesEnvThatDiffersFromTheSession pins the line a tier run prints for its env values the session sets otherwise.
+func TestRunTierNamesEnvThatDiffersFromTheSession(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the tier command is a POSIX shell builtin")
+	}
+
+	session := []string{"COMMONLIB_REPO=/session/CommonLib", "SAME=x"}
+	tests := []struct {
+		name string
+		env  map[string]string
+		// wantLine is the line stderr and the log hold, or "" when stderr stays empty.
+		wantLine string
+	}{
+		{
+			name: "AValueTheSessionSetsOtherwiseIsNamed",
+			env:  map[string]string{"COMMONLIB_REPO": "/tier/CommonLib", "SAME": "x", "ONLY_TIER": "y"},
+			wantLine: "gate test: tier1 runs with env values that differ from this session's environment: COMMONLIB_REPO=/tier/CommonLib (the session has /session/CommonLib); " +
+				"a result of tier1 reflects the tier's values, not the session's; " +
+				"way forward: read the result under those values, or change tiers.tier1.env with \"lym config gate\" from the prime" + roleClause,
+		},
+		{name: "ValuesTheSessionSharesOrLacksNameNothing", env: map[string]string{"SAME": "x", "ONLY_TIER": "y"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			var stderr bytes.Buffer
+			request := testRequest{root: dir, stderr: &stderr, timeoutUnit: 30 * time.Second, pipeWaitDelay: defaultPipeWaitDelay, sessionEnv: session}
+			run := tierRun{number: 1, tier: gateslot.Tier{Command: "true", Env: tt.env, Counter: counterGoJSON, TimeoutMin: 1}, invocations: []invocation{{dir: dir}}}
+
+			result := runTier(context.Background(), io.Discard, run, []string{"PATH=" + os.Getenv("PATH")}, request)
+
+			if result.refusal != "" || result.record.ExitCode != 0 {
+				t.Fatalf("runTier() = refusal %q, exit %d; want exit 0 and no refusal", result.refusal, result.record.ExitCode)
+			}
+			wantStderr := ""
+			if tt.wantLine != "" {
+				wantStderr = tt.wantLine + "\n"
+			}
+			if stderr.String() != wantStderr {
+				t.Errorf("runTier() stderr = %q; want %q", stderr.String(), wantStderr)
+			}
+			if tt.wantLine != "" && !strings.Contains(string(result.log), tt.wantLine+"\n") {
+				t.Errorf("runTier() log = %q; want it to hold %q", result.log, tt.wantLine)
+			}
+		})
+	}
+}
+
 func TestFailedRunLabel(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

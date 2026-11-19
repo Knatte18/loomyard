@@ -104,6 +104,7 @@ func runTierChecked(ctx context.Context, out io.Writer, run tierRun, env []strin
 // When the resulting GOFLAGS carries `-trimpath`, it logs a line saying so before the first command,
 // and it returns that line for the caller to print.
 // Every command's GOFLAGS then opens with gateslot.TestCacheOffFlag, so `go test` keeps no test result cache.
+// A run with an invocation first prints and logs envOverrideLine for the tier's env against the session's.
 // A passing `vstest` invocation that reported no test prints the line naming it to stderr and the log.
 // A failed run prints and logs each run-level message its test results files report, such as a test host crash,
 // and counts it among the causes.
@@ -133,6 +134,11 @@ func runTierCommands(ctx context.Context, out io.Writer, run tierRun, env []stri
 	notice := func(line string) {
 		logBuffer.WriteString(line + "\n")
 		printLine(request.stderr, line)
+	}
+	if len(run.invocations) > 0 {
+		if line := envOverrideLine(tierName(run.number), renderTierEnv(run.tier), request.sessionEnv); line != "" {
+			notice(line)
+		}
 	}
 	exit, commands, stops, refusal := runInvocations(tierCtx, run, counter, gateslot.WithTestCacheOff(tierEnv), request, notice)
 	if refusal != "" {
@@ -216,6 +222,34 @@ func runTierCommands(ctx context.Context, out io.Writer, run tierRun, env []stri
 		processCapped: stops.processCap != "", memoryStopped: len(stops.memoryLines()) > 0,
 		failures: failures, causes: causes, unparsed: counter.Unparsed(),
 	}
+}
+
+// envOverrideLine returns the line naming each entry of tierEnv whose variable session sets to another value.
+// tierEnv holds the tier's own env entries, and session the environment of the session that started the call.
+// A result the tier gives reflects the tier's values, so a session that measures through the gate must know them.
+// A variable the session leaves unset is not named, since the session reads no value of its own for it.
+// It returns "" when no entry differs.
+func envOverrideLine(tier string, tierEnv, session []string) string {
+	sessionValues := make(map[string]string, len(session))
+	for _, entry := range session {
+		if name, value, ok := strings.Cut(entry, "="); ok {
+			sessionValues[name] = value
+		}
+	}
+	var differing []string
+	for _, entry := range tierEnv {
+		name, value, _ := strings.Cut(entry, "=")
+		if held, set := sessionValues[name]; set && held != value {
+			differing = append(differing, fmt.Sprintf("%s=%s (the session has %s)", name, value, held))
+		}
+	}
+	if len(differing) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("gate test: %s runs with env values that differ from this session's environment: %s; "+
+		"a result of %s reflects the tier's values, not the session's; "+
+		"way forward: read the result under those values, or change tiers.%s.env with \"lym config gate\" from the prime%s",
+		tier, strings.Join(differing, ", "), tier, tier, roleClause)
 }
 
 // runStops is what the guards over a tier's commands stopped.

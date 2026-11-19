@@ -137,6 +137,10 @@
 // They are the hub's with this machine's override inside a hub, and the worktree's own outside every hub.
 // `proc.BuildServerOffEnv` replaces an inherited or env module value, so the module never undoes a build-server switch.
 // The tier's `env`, with `{parallel}` filled, replaces an env module value.
+// A tier run with an invocation first prints and logs one line naming each `env` variable
+// that the environment of the session that started the call sets to another value, with both values.
+// A result the tier gives reflects the tier's values, so a session measuring through the gate learns it measured those.
+// A variable the session leaves unset is not named.
 // The lease's `gateslot.InheritEnv` and the enclosing-gate pid are added last.
 // The tier's `dir`, relative to the worktree root, is the run directory.
 // A tier that sets no `dir` runs in the worktree's anchor.
