@@ -149,7 +149,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	wantLocalKeys := map[string][]string{
 		"agents":  {"efforts"},
 		"darn":    {"gate_fixer", "report_dir", "verify_attempts", "verify_budget_min", "writer", "writer_timeout_min"},
-		"drift":   {"enabled", "expect_model", "judge_interactive", "judge_model", "scope"},
+		"drift":   {"enabled", "expect_model", "judge_ask_parent", "judge_interactive", "judge_model", "judge_parent_timeout_min", "scope"},
 		"ide":     {"open_files", "render_markdown"},
 		"landing": {"conflict", "conflict_timeout_min", "describe", "describe_timeout_min", "fixer", "fixer_timeout_min", "pr_reviewer"},
 		"sampler": {"agent", "code_review"},

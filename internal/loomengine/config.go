@@ -550,6 +550,15 @@ type Config struct {
 	// The cap leaves the reviewer room to consolidate.
 	// It is a positive integer.
 	DiscussionReviewParentTimeoutMin int `yaml:"discussion_review_parent_timeout_min"`
+
+	// CodeReviewAskParent makes each Code-Review round's Bouncer ask the parent orch to review the task's code change.
+	// The ask goes out once the round's fixer report exists, before the Bouncer judges the round.
+	// It is open to the local layer, so a task's run_settings turns it on or off for one run.
+	CodeReviewAskParent bool `yaml:"code_review_ask_parent"`
+	// CodeReviewParentTimeoutMin is the minutes from a Code-Review parent-review ask to its deadline, before the cap.
+	// The cap is the one run_timeout_min sets on the Bouncer's judge, which waits for the parent.
+	// It is a positive integer.
+	CodeReviewParentTimeoutMin int `yaml:"code_review_parent_timeout_min"`
 }
 
 // DiscussionAdvisor is one Discussion-Write advisor: Name is its seat name and Model its model-spec.
@@ -679,6 +688,8 @@ func ConfigSpec() configengine.Spec {
 
 			"discussion_review_ask_parent":         none,
 			"discussion_review_parent_timeout_min": none,
+			"code_review_ask_parent":               none,
+			"code_review_parent_timeout_min":       none,
 		},
 		RetiredKeys: map[string]configengine.Category{
 			"fan_review": none,
@@ -1410,6 +1421,9 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 	if cfg.DiscussionReviewParentTimeoutMin < 1 {
 		return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; set it to a positive integer in loom.yaml", "discussion_review_parent_timeout_min", cfg.DiscussionReviewParentTimeoutMin)
+	}
+	if cfg.CodeReviewParentTimeoutMin < 1 {
+		return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; set it to a positive integer in loom.yaml", "code_review_parent_timeout_min", cfg.CodeReviewParentTimeoutMin)
 	}
 
 	if err := reviewbudget.CheckResolved(dirs, spec, reviewbudget.Values{

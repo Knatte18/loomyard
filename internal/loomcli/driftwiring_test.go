@@ -10,6 +10,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -74,6 +75,28 @@ func TestDriftDeps_CarryTheDecisionRecord(t *testing.T) {
 
 	if deps.DecisionRecord != record {
 		t.Errorf("DriftDeps() DecisionRecord = %q; want %q", deps.DecisionRecord, record)
+	}
+}
+
+// TestDriftDeps_BuildTheJudgesParentSeat covers the seat the judge asks the run's parent through.
+// Its ask files sit under the task's anchor, where `parent-review answer` resolves them, and it names the run's slug.
+// It also posts and resolves through the run's routing.
+func TestDriftDeps_BuildTheJudgesParentSeat(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	location := &lymcwd.Location{HubPath: filepath.Join(t.TempDir(), "hub"), WorktreeName: "pair", AnchorRel: "backend"}
+
+	seat := loomcli.DriftDepsAt(location, "status.json", "status.lock").JudgeParent
+
+	if seat == nil {
+		t.Fatal("DriftDeps() JudgeParent = nil; want the judge's parent seat")
+	}
+	if want := burlerengine.ParentReviewFilesOf(location.AnchorPath()); seat.Files != want {
+		t.Errorf("JudgeParent.Files = %+v; want %+v", seat.Files, want)
+	}
+	if seat.Slug != "pair" || seat.Resolve == nil || seat.Post == nil {
+		t.Errorf("JudgeParent = slug %q, Resolve set %v, Post set %v; want slug %q with both seams set", seat.Slug, seat.Resolve != nil, seat.Post != nil, "pair")
 	}
 }
 

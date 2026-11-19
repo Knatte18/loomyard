@@ -85,6 +85,7 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"webster-template-plan-fix", WebsterTemplatePlanFix, []string{"edit_directive", "friction_directive", "parent_directive", "plan_dir", "record_path", "reply_path", "specs_dir", "worktree_root"}},
 		{"bouncer-template-escalation", BouncerTemplateEscalation, []string{"cause", "cause_detail", "decide_options", "decision_record_path", "judge_stencil_path", "ledger_path", "review_path", "round", "segment", "slug", "verdict_path", "worktree"}},
 		{"bouncer-fragment-decide-capped", BouncerFragmentDecideCapped, []string{"slug"}},
+		{"bouncer-fragment-parent-review", BouncerFragmentParentReview, nil},
 		{"bouncer-fragment-decision", BouncerFragmentDecision, []string{"blocking_findings", "decide_verbs", "decision_findings", "refusal", "slug"}},
 		{"pattern-fragment-changes", PatternFragmentChanges, []string{"pattern_change_list"}},
 		{"loom-directive-project-record", LoomDirectiveProjectRecord, []string{"project_records"}},

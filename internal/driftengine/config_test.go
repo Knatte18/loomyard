@@ -285,7 +285,7 @@ func seedLocalDrift(t *testing.T, local string) configengine.Dirs {
 
 // templateConfig returns the Config the embedded template loads as, changed by mutate.
 func templateConfig(mutate func(*Config)) Config {
-	cfg := Config{Diff: DiffLines, KeyPatterns: defaultTestKeyPatterns, Volatile: Volatile{Files: []string{}, Keys: []string{}}, ExpectModel: "sonnet[medium]", JudgeModel: "opus[high]"}
+	cfg := Config{Diff: DiffLines, KeyPatterns: defaultTestKeyPatterns, Volatile: Volatile{Files: []string{}, Keys: []string{}}, ExpectModel: "sonnet[medium]", JudgeModel: "opus[high]", JudgeParentTimeoutMin: 30}
 	mutate(&cfg)
 	return cfg
 }
@@ -329,6 +329,16 @@ func TestLoadConfig(t *testing.T) {
 			name: "judge_interactive loads", seed: true,
 			contents: withKey(t, "judge_interactive", "judge_interactive: true"),
 			want:     templateConfig(func(c *Config) { c.JudgeInteractive = true }),
+		},
+		{
+			name: "the judge's parent keys load", seed: true,
+			contents: withKeys(t, map[string]string{"judge_ask_parent": "judge_ask_parent: true", "judge_parent_timeout_min": "judge_parent_timeout_min: 5"}),
+			want:     templateConfig(func(c *Config) { c.JudgeAskParent, c.JudgeParentTimeoutMin = true, 5 }),
+		},
+		{
+			name: "a judge_parent_timeout_min below 1", seed: true,
+			contents: withKey(t, "judge_parent_timeout_min", "judge_parent_timeout_min: 0"),
+			wantErr:  []string{`"judge_parent_timeout_min"`, "positive integer", "lym config drift"},
 		},
 		{
 			name: "diff command loads beside a declared compare", seed: true,

@@ -141,6 +141,8 @@ var templateDefaults = map[string]any{
 	"PRReviewSmallMax":                 3,
 	"DiscussionReviewAskParent":        false,
 	"DiscussionReviewParentTimeoutMin": 30,
+	"CodeReviewAskParent":              false,
+	"CodeReviewParentTimeoutMin":       30,
 }
 
 // loadTemplateConfig returns the Config the shipped template loads to, read from an anchor that holds only the template.
@@ -231,6 +233,11 @@ review_timeout_min: 240
 			name:   "Discussion-Review parent-review keys overridden",
 			values: map[string]string{"discussion_review_ask_parent": "true", "discussion_review_parent_timeout_min": "1"},
 			mutate: func(c *Config) { c.DiscussionReviewAskParent, c.DiscussionReviewParentTimeoutMin = true, 1 },
+		},
+		{
+			name:   "Code-Review parent-review keys overridden",
+			values: map[string]string{"code_review_ask_parent": "true", "code_review_parent_timeout_min": "1"},
+			mutate: func(c *Config) { c.CodeReviewAskParent, c.CodeReviewParentTimeoutMin = true, 1 },
 		},
 		{
 			name:   "reviewer_model as a per-round list",
@@ -720,6 +727,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"negative review_stalemate_rounds", "review_stalemate_rounds", "-1", []string{"must not be negative", "set it to 0 to turn the check off", "lym config loom --set review_stalemate_rounds=<n>", "in the task worktree"}, ""},
 		{"zero discussion_review_parent_timeout_min", "discussion_review_parent_timeout_min", "0", []string{"must be at least 1", positiveIntegerForward}, ""},
 		{"negative discussion_review_parent_timeout_min", "discussion_review_parent_timeout_min", "-1", []string{"must be at least 1", positiveIntegerForward}, ""},
+		{"zero code_review_parent_timeout_min", "code_review_parent_timeout_min", "0", []string{"must be at least 1", positiveIntegerForward}, ""},
 		{"negative review_max_bounces", "review_max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, or to a positive integer"}, ""},
 		{"negative discussion_max_bounces", "discussion_max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, to a positive integer, or to null to take review_max_bounces"}, ""},
 		{"negative code_max_bounces", "code_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},

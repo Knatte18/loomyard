@@ -1479,6 +1479,13 @@ User-facing modules each get one `lym <module>` namespace:
   The parent answers with `lym loom parent-review answer`, and the reviewer waits with `lym loom parent-review await`.
   A round asks when the record is new to the parent or rewritten since its last ask, or to confirm the fixes of its findings.
   The reviewer keeps every parent finding as `origin: parent`, and a gate entry holds the review to each report id.
+  `code_review_ask_parent` has every Code-Review round ask the parent orch to review the task's code change,
+  once the round's fixer report exists and before its Bouncer judges the round.
+  The ask names the round's own review and fixer report, so the parent sees each ruling,
+  and the Bouncer's judge waits for the answer and keeps every finding the parent returns.
+  A CONVERGED verdict is refused while the parent's report holds findings.
+  `code_review_parent_timeout_min` sets the minutes to that ask's deadline,
+  capped to end before the judge's own timeout, `run_timeout_min`; both are open to `run_settings`.
   `discussion_lenses` names the `lenses.yaml` fan whose lenses the Discussion-Write lead forks itself for.
   Empty turns the forks off, and the key is closed to the local layer.
   `subagent_model` names the model of the fresh subagents that Plan, Discussion-Write and darn writers hand lookups to.

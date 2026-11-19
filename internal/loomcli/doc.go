@@ -172,18 +172,23 @@
 // `recordHistory` reads the record's versions from the newest such trailer's cut onward,
 // so the dropped-entry check no longer holds the record to an entry a replace dropped.
 //
-// `parent-review answer` records the parent orch's answer to the run's latest Discussion-Review ask.
+// `parent-review answer` records the parent orch's answer to the run's latest ask:
+// a Discussion-Review or Code-Review round's, or the drift judge's.
 // It admits the operator's unnamed shell, the run's parent orch resolved at call time, and the strand the ask went to.
 // A refused answer names `decision add` as the way forward, run by the run's parent orch or the operator's shell.
 // An older ask while the latest awaits an answer is instead sent to review the record again under the latest ask.
-// `parent-review await` is the chair's capped wait on the same ask.
+// `parent-review await` is the asking agent's capped wait on the same ask: a review chair's or the drift judge's.
 // It reads the record once a second up to the caller's keep-warm cap.
 // It sets an ask past its deadline timeout and writes nothing else.
-// The wiring gives the Discussion-Review segment its parent seat, `discussionParentSeat`.
-// On each call the seat reads `discussion_review_ask_parent` through the wiring's setting lookup.
+// The wiring gives the Discussion-Review and Code-Review segments their parent seats, `parentSeats`.
+// On each call a seat reads its setting through the wiring's setting lookup:
+// `discussion_review_ask_parent` or `code_review_ask_parent`.
 // An unreadable value reads as false.
-// It also uses the capped wait, the latest Discussion-Write call in the status history, and `NotifyParent`'s routing.
-// It posts as `<shortname>:LOOM`, tagged with the pair's run.
+// It also uses its perch's capped wait and `NotifyParent`'s routing.
+// The discussion seat also reads the latest Discussion-Write call in the status history;
+// the code seat asks before the judge: its Bouncer asks for each round, naming that round's own review and fixer report.
+// Each posts as `<shortname>:LOOM`, tagged with the pair's run.
+// The Drift rows' judge gets its parent seat in `driftDeps`, posting the same way.
 //
 // # Start
 //

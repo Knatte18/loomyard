@@ -292,7 +292,8 @@ func (p *BurlerReviewProducer) roundProfile(round int, fan, rubric string) burle
 // so a restart with the fixer pending resumes at the fix row without re-running the reviewer;
 // that hand-on first settles the round's parent-review ask, as an accepted review does.
 //
-// A row with a parent seat asks the run's parent orch, through roundParentAsk, before the probe and before any spawn.
+// A row with a parent seat asks the run's parent orch before the probe and before any spawn.
+// A seat that asks before the judge leaves its asks to the segment's Bouncer.
 // It tells the round's table the ask's number.
 // A live reviewer is probed before anything is archived, since archiving renames the file it is about to write.
 // On a row with fan lists, the round's reviewer and fixer fan names go into its usage record before the first spawn;
@@ -330,7 +331,8 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: %w", p.name, burlerReviewEngineLabel, round, err)
 	}
 	if _, statErr := os.Stat(reviewPath); accepted && statErr == nil {
-		p.settleRoundParentAsk(round, p.heldParentAsk(round), reviewPath)
+		asker := p.parentAsker()
+		asker.settle(round, asker.heldAsk(round), reviewPath)
 		return p.handOn(ctx, reviewPath, fmt.Sprintf("round %d review is accepted; handing on to the fixer", round))
 	}
 
@@ -372,7 +374,7 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 		return "", shedengine.OutputPointer{}, primaryErr
 	}
 
-	parentAsk := p.roundParentAsk(round)
+	parentAsk := p.parentAsker().roundStartAsk(round)
 	if parentAsk != 0 {
 		withParentReportPath(&profile, p.parent.Files.ReportPath(parentAsk))
 		withParentReportPath(&probeProfile, p.parent.Files.ReportPath(parentAsk))
@@ -552,7 +554,7 @@ func (p *BurlerReviewProducer) acceptedExit(ctx context.Context, round int, resu
 		}
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: %w", p.name, burlerReviewEngineLabel, round, err)
 	}
-	p.settleRoundParentAsk(round, parentAsk, roundReviewPath(p.runDir, round))
+	p.parentAsker().settle(round, parentAsk, roundReviewPath(p.runDir, round))
 	if cerr := cancelErr(ctx, p.name, burlerReviewEngineLabel); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
 	}

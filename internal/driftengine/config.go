@@ -88,6 +88,10 @@ type Config struct {
 	JudgeModel string
 	// JudgeInteractive makes the judge a session with the operator in its pane, who decides each ruling.
 	JudgeInteractive bool
+	// JudgeAskParent has the judge ask the run's parent orch to agree with its rulings before they are stored.
+	JudgeAskParent bool
+	// JudgeParentTimeoutMin is the minutes from the judge's ask to the parent to its deadline; it is a positive integer.
+	JudgeParentTimeoutMin int
 	// Scope is the task's regression scope, ScopeOff or ScopeFull, which Drift-Baseline records with no agent.
 	// An empty scope records full, and a stored partial reads as ScopeFull.
 	Scope string
@@ -107,7 +111,10 @@ type configFile struct {
 	ExpectModel      string   `yaml:"expect_model"`
 	JudgeModel       string   `yaml:"judge_model"`
 	JudgeInteractive bool     `yaml:"judge_interactive"`
-	Scope            string   `yaml:"scope"`
+	JudgeAskParent   bool     `yaml:"judge_ask_parent"`
+	// JudgeParentTimeoutMin is judge_parent_timeout_min.
+	JudgeParentTimeoutMin int    `yaml:"judge_parent_timeout_min"`
+	Scope                 string `yaml:"scope"`
 }
 
 // stepFile is a command step as drift.yaml spells it; TimeoutMin is a pointer so a missing key reads apart from a zero.
@@ -154,7 +161,10 @@ func ConfigSpec() configengine.Spec {
 			"expect_model":      configengine.CategoryNone,
 			"judge_model":       configengine.CategoryNone,
 			"judge_interactive": configengine.CategoryNone,
+			"judge_ask_parent":  configengine.CategoryNone,
 			"scope":             configengine.CategoryNone,
+
+			"judge_parent_timeout_min": configengine.CategoryNone,
 		},
 		RetiredKeys: map[string]configengine.Category{
 			"verify_max_runs": configengine.CategoryNone,
@@ -176,6 +186,7 @@ func ConfigSpec() configengine.Spec {
 // A diff must be lines or command, and diff command needs a declared compare.
 // Every key_patterns entry must compile with the named groups key and value.
 // Every volatile_files entry must be a valid glob and no volatile_files or volatile_keys entry may be blank.
+// judge_parent_timeout_min must be at least 1.
 // Every refusal names the key and lym config drift as the way forward.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.Load(dirs, ConfigSpec())
@@ -219,22 +230,27 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	if err := checkScope(file.Scope); err != nil {
 		return Config{}, err
 	}
+	if file.JudgeParentTimeoutMin < 1 {
+		return Config{}, refuseKey("judge_parent_timeout_min", fmt.Sprintf("%d; want a positive integer", file.JudgeParentTimeoutMin))
+	}
 	scope := file.Scope
 	if scope == ScopePartial {
 		scope = ScopeFull
 	}
 	return Config{
-		Scope:            scope,
-		ScopeWasPartial:  file.Scope == ScopePartial,
-		Enabled:          file.Enabled,
-		Capture:          capture,
-		Compare:          compare,
-		Diff:             file.Diff,
-		KeyPatterns:      file.KeyPatterns,
-		Volatile:         Volatile{Files: file.VolatileFiles, Keys: file.VolatileKeys},
-		ExpectModel:      file.ExpectModel,
-		JudgeModel:       file.JudgeModel,
-		JudgeInteractive: file.JudgeInteractive,
+		Scope:                 scope,
+		ScopeWasPartial:       file.Scope == ScopePartial,
+		Enabled:               file.Enabled,
+		Capture:               capture,
+		Compare:               compare,
+		Diff:                  file.Diff,
+		KeyPatterns:           file.KeyPatterns,
+		Volatile:              Volatile{Files: file.VolatileFiles, Keys: file.VolatileKeys},
+		ExpectModel:           file.ExpectModel,
+		JudgeModel:            file.JudgeModel,
+		JudgeInteractive:      file.JudgeInteractive,
+		JudgeAskParent:        file.JudgeAskParent,
+		JudgeParentTimeoutMin: file.JudgeParentTimeoutMin,
 	}, nil
 }
 

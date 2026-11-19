@@ -44,6 +44,9 @@ type DriftVerify struct {
 	row       Row
 	judgement shuttleengine.GateEntry
 	deps      Deps
+	// judgeStartedAt is when the judge run of the pass in progress starts; the zero time before any judge run.
+	// A fresh spawn and an attach to a live chair each start a fresh run deadline.
+	judgeStartedAt time.Time
 }
 
 var _ shedengine.ShedProducer = (*DriftVerify)(nil)
@@ -803,6 +806,45 @@ func (p *DriftVerify) tableFor() (seatengine.Table, error) {
 	return table, nil
 }
 
+// tableWithParent builds the judge's table for request's spawn:
+// when the judge asks the parent, the spawn's parent agreement entry follows the judgement entry.
+func (p *DriftVerify) tableWithParent(request JudgeRequest) (seatengine.Table, error) {
+	table, err := p.tableFor()
+	if err != nil {
+		return seatengine.Table{}, err
+	}
+	agreement, asks, err := p.parentAgreement(request)
+	if err != nil {
+		return seatengine.Table{}, err
+	}
+	if asks {
+		table.Gate = append(table.Gate, agreement)
+	}
+	return table, nil
+}
+
+// parentAgreement returns the parent agreement entry of request's spawn, and whether the judge's table carries it.
+// It does under judge_ask_parent, and once the spawn holds an ask whatever the key now reads.
+// A row told no parent seat carries none.
+func (p *DriftVerify) parentAgreement(request JudgeRequest) (shuttleengine.GateEntry, bool, error) {
+	seat := p.deps.JudgeParent
+	if seat == nil {
+		return shuttleengine.GateEntry{}, false, nil
+	}
+	cfg, err := p.deps.Config()
+	if err != nil {
+		return shuttleengine.GateEntry{}, false, err
+	}
+	if !cfg.JudgeAskParent {
+		held, err := seat.heldJudgeAsk(request.SpawnID)
+		if err != nil || !held {
+			return shuttleengine.GateEntry{}, false, err
+		}
+	}
+	wait := time.Duration(cfg.JudgeParentTimeoutMin) * time.Minute
+	return ParentAgreementGateEntry(seat, request.want(), p.deps.Paths.Judgement, wait, judgeAskLimit(p.judgeStartedAt), p.now), true, nil
+}
+
 // judgeSession is the rulings a judge session wrote and the strand that gave them.
 type judgeSession struct {
 	// Judgement is the parsed judgement.yaml.
@@ -840,8 +882,11 @@ func (r *strandRecorder) Run(table seatengine.Table) (seatengine.Result, error) 
 // so the next entry resumes the judge.
 func (p *DriftVerify) runAgent(ctx context.Context, request JudgeRequest) (shedengine.Outcome, shedengine.OutputPointer, *judgeSession, error) {
 	d := p.deps
+	// The judge of either diff mode runs here, and the table's parent agreement caps its ask by this start.
+	p.judgeStartedAt = p.now()
 	seats := &strandRecorder{inner: d.Seats}
-	agent := shedadapters.NewMultiLLMProducerSourced(p.name, p.tableFor, seats, d.Now, nil).KeepGateFindings(d.GateFindingsFile)
+	table := func() (seatengine.Table, error) { return p.tableWithParent(request) }
+	agent := shedadapters.NewMultiLLMProducerSourced(p.name, table, seats, d.Now, nil).KeepGateFindings(d.GateFindingsFile)
 	outcome, pointer, err := agent.Call(ctx)
 	if err != nil || outcome != shedengine.Done {
 		return outcome, pointer, nil, err

@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -23,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/selfexec"
@@ -156,10 +159,20 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 		WorktreeRoot: location.WorktreePath(),
 		Config:       config,
 		Status:       status,
-		Rows:         tables.rows,
-		Head:         head,
-		BranchPoint:  branchPoint,
-		DirtyPaths:   dirtyPaths,
+		// The judge's asks go to the orch NotifyParent's routing resolves.
+		// They are signed as lym's loom program and tagged with the pair's run.
+		JudgeParent: &driftengine.JudgeParentSeat{
+			Files:   burlerengine.ParentReviewFilesOf(location.AnchorPath()),
+			Slug:    seedSlug(location.WorktreeName),
+			Resolve: func() (string, bool, error) { return orchcli.ParentStrand(location) },
+			Post: func(strand, line string) error {
+				return orchcli.PostAsProgram(location, strand, loomProgram, line, creelengine.PostTags{Run: location.WorktreeName})
+			},
+		},
+		Rows:        tables.rows,
+		Head:        head,
+		BranchPoint: branchPoint,
+		DirtyPaths:  dirtyPaths,
 		Commit: func(relPaths []string) error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, relPaths, fmt.Sprintf("loom: drift records for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err

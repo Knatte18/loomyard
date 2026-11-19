@@ -19,6 +19,8 @@ Machine alone opens a key to the machine layer.
 - **Cross-pair**: the key reaches across pairs, including a shared process's boot option or what lands on the parent branch.
 - **Guard**: the key switches off or hollows a guard.
   That includes a review or an approval gate and a timeout whose expiry lets that gate pass.
+  A key that only adds an ask to the run's parent, and the timeout bounding that added wait, is no Guard key:
+  unset or expired, it leaves the run's own gates exactly as they are without it.
   It also includes the prose or lens set a reviewer is given.
   `loom.code_reviewer_fan` is the one reviewer fan key open to the local layer:
   its value names only a fan the guarded `lenses.yaml` defines, or `""` for a solo round,

@@ -349,6 +349,12 @@ var BouncerFragmentDecideCapped []byte
 //go:embed bouncer/bouncer-fragment-decision.md
 var BouncerFragmentDecision []byte
 
+// BouncerFragmentParentReview is the Bouncer's shipped-default parent-review section of the judge prompt:
+// it tells a judge whose round asked the run's parent orch to wait for the answer and keep the parent's findings.
+//
+//go:embed bouncer/bouncer-fragment-parent-review.md
+var BouncerFragmentParentReview []byte
+
 // BouncerTemplateParentNotice is the Bouncer's shipped-default one-line parent notice:
 // it points the parent at the escalation brief.
 //
@@ -960,6 +966,7 @@ var entries = []registryEntry{
 	{"bouncer-fragment-decide-open", &BouncerFragmentDecideOpen},
 	{"bouncer-fragment-decide-capped", &BouncerFragmentDecideCapped},
 	{"bouncer-fragment-decision", &BouncerFragmentDecision},
+	{"bouncer-fragment-parent-review", &BouncerFragmentParentReview},
 	{"bouncer-template-parent-notice", &BouncerTemplateParentNotice},
 	{"treadle-template-judge-circling", &TreadleTemplateJudgeCircling},
 	{"treadle-template-judge-milestone", &TreadleTemplateJudgeMilestone},

@@ -45,16 +45,22 @@ func (s ParentAskState) Ended() bool {
 	return s != ParentAskPendingPost && s != ParentAskOpen
 }
 
-// ParentAsk is one ask to the parent orch to review a round.
+// ParentAsk is one ask to the parent orch, from a review round or from the drift judge.
 type ParentAsk struct {
 	// Number is the ask's number within the run, from 1 up in the order the asks were recorded.
 	Number int `json:"number"`
-	// Round is the review round the ask belongs to.
+	// Round is the round the ask belongs to: a review round, or the drift judge's ask counted from 1 within its seed.
 	Round int `json:"round"`
-	// Seed names the review generation the ask belongs to, since round numbers restart at 1 in each generation.
-	// It is the write time of the generation's round-1 focus file, in RFC 3339 with nanoseconds.
-	Seed  string         `json:"seed,omitempty"`
-	State ParentAskState `json:"state"`
+	// Seed names what the ask belongs to, since round numbers restart at 1 under each seed.
+	// A review generation's seed is the write time of its round-1 focus file, in RFC 3339 with nanoseconds.
+	// The drift judge's seed is its fixed prefix followed by the judge spawn's id.
+	Seed string `json:"seed,omitempty"`
+	// Tag is the line tag of the seat that made the ask, which tells one seat's asks from another's in the run's one record.
+	Tag string `json:"tag,omitempty"`
+	// Digest names the content the ask put to the parent when that content can change under the ask, empty otherwise.
+	// The drift judge records the digest of its rulings.
+	Digest string         `json:"digest,omitempty"`
+	State  ParentAskState `json:"state"`
 	// Strand is the orch strand the ask went to, which may answer it whichever orch the run's parent resolves to later.
 	Strand  string    `json:"strand,omitempty"`
 	AskedAt time.Time `json:"asked_at"`
@@ -94,6 +100,26 @@ func (r ParentAskRecord) Ask(number int) (ParentAsk, bool) {
 func (r ParentAskRecord) RoundAsk(seed string, round int) (ParentAsk, bool) {
 	for i := len(r.Asks) - 1; i >= 0; i-- {
 		if r.Asks[i].Seed == seed && r.Asks[i].Round == round {
+			return r.Asks[i], true
+		}
+	}
+	return ParentAsk{}, false
+}
+
+// LatestTagged returns the run's latest ask made under tag, and false when the run holds none.
+func (r ParentAskRecord) LatestTagged(tag string) (ParentAsk, bool) {
+	for i := len(r.Asks) - 1; i >= 0; i-- {
+		if r.Asks[i].Tag == tag {
+			return r.Asks[i], true
+		}
+	}
+	return ParentAsk{}, false
+}
+
+// LatestOfSeed returns the run's latest ask made under seed, whatever its round, and false when the run holds none.
+func (r ParentAskRecord) LatestOfSeed(seed string) (ParentAsk, bool) {
+	for i := len(r.Asks) - 1; i >= 0; i-- {
+		if r.Asks[i].Seed == seed {
 			return r.Asks[i], true
 		}
 	}

@@ -13,6 +13,7 @@
 // `volatile_files` and `volatile_keys`, the capture files and line keys the diff ignores;
 // `expect_model` and `judge_model`, the model-specs of the expect agent and the judge;
 // `judge_interactive`, which makes the judge a session with the operator in its pane;
+// `judge_ask_parent` and `judge_parent_timeout_min`, which route the judge's rulings to the run's parent orch;
 // and `scope`, a task's regression scope, which a task sets in its board entry's `run_settings`.
 // A capture's provenance needs no `volatile_files` or `volatile_keys` entry, and lym hard-codes no name of it:
 // a harness writes it to `{meta_dir}`, and the expect agent marks any it finds among the results as metadata.
@@ -244,6 +245,26 @@
 // The row sets the `judgement` entry, NewJudgementGate.
 // It parses the file with ParseJudgement against the JudgementWant of the JudgeRequest.
 // A refusal fails the entry with the parser's message.
+//
+// Under `judge_ask_parent` Drift-Verify appends the `parent-agreement` entry, ParentAgreementGateEntry, after it.
+// The entry runs over the row's Deps.JudgeParent seat.
+// Once the spawn holds an ask the entry stays whatever the key now reads.
+// A spawn's first evaluation records an ask in burlerengine's never-tracked ask record, under a seed naming the spawn id.
+// It mails the run's parent orch one `[drift-judge request]` line, signed as the loom program.
+// The line names judgement.yaml, a summary of the rulings, the answer verb,
+// and the deadline `judge_parent_timeout_min` sets.
+// The summary counts the cells and files by ruling.
+// It names each cell that does not match, each case with its ruling, and each file with an uncaused check.
+// The ask records a digest of the rulings it presented, read from the parsed file.
+// The entry passes only on an answer to those rulings.
+// The entry holds the judge, telling it to wait with `lym loom parent-review await`, until the ask ends.
+// A report with findings holds it while judgement.yaml still holds the rulings the report answered.
+// A judgement changed after the ask, whatever its answer, gets a new ask naming the new rulings;
+// an ask still open is set timeout in its place.
+// A satisfied report to the current rulings, a timeout and an ask that never reached the parent pass.
+// The deadline is capped to end before the judge run's own timeout with room to end its turn;
+// a cap that leaves no room records the ask not-sent, and the entry passes.
+// Bound: the entry checks that the judge changed its rulings after the parent's findings, not that it took each one.
 // Drift-Verify writes the JudgeRequest, `.lym/drift/judge-request.json`, through WriteJudgeRequest before each spawn:
 // the spawn id and the mode;
 // the cells, with their exact old and new value and covering why;

@@ -313,6 +313,7 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 		Now:               env.Now,
 		Slug:              env.Slug,
 		ParentName:        env.ParentName,
+		Parent:            segment.Parent,
 		Bounces:           bounces,
 		AutoAccept:        autoAccept,
 		HardCap:           segment.HardMaxBounces,

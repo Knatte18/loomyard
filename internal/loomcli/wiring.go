@@ -1222,13 +1222,15 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 			return loomrecipe.Routing(c.recipe, loomSegmentBudgets(loomCfg))
 		}),
 
-		// The Discussion-Review segment's parent seat reads its key, history and routing on a call, never at wire time.
-		Segments: loomSegmentSettings(loomCfg, reviewSettings, judgeSettings, assistBounds, discussionParentSeat(parentSeatInputs{
+		// The Discussion-Review and Code-Review parent seats read their key, history and routing on a call, never at wire time.
+		Segments: loomSegmentSettings(loomCfg, reviewSettings, judgeSettings, assistBounds, parentSeats(parentSeatInputs{
 			location:       location,
 			cfg:            loomCfg,
 			runTimeout:     time.Duration(shuttleCfg.RunTimeoutMin) * time.Minute,
 			startAllowance: shuttleCfg.StartAllowance(),
-			awaitCap:       chairAwaitCap(location, burlerGeom, loomengine.PerchDiscussion),
+			awaitCap: func(perch loomengine.Perch) time.Duration {
+				return chairAwaitCap(location, burlerGeom, perch)
+			},
 			setting:        settingLookup,
 			statusPath:     statusPath,
 			statusLockPath: statusLockPath,
@@ -1499,8 +1501,8 @@ func chairAwaitCap(location *lymcwd.Location, geom burlerengine.Geometry, perch 
 // The budget and hard cap, with their keys, come from cfg.Caps, which resolves them through reviewbudget.
 // The assistant's lists come from review too, and each segment's assistant takes its perch's entry of assistBounds.
 // The split perch has no assistant, so its segment's assistant lists are empty.
-// The discussion perch alone takes parentSeat; every other segment asks the parent nothing.
-func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings, judge loomengine.JudgeSettings, assistBounds map[loomengine.Perch]assistBound, parentSeat *shedadapters.ParentReviewSeat) map[string]shedrecipe.SegmentSettings {
+// Each segment takes its perch's seat of parentSeats; a segment whose perch has none asks the parent nothing.
+func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings, judge loomengine.JudgeSettings, assistBounds map[loomengine.Perch]assistBound, parentSeats map[loomengine.Perch]*shedadapters.ParentReviewSeat) map[string]shedrecipe.SegmentSettings {
 	assists := map[loomengine.Perch]loomengine.AssistModels{
 		loomengine.PerchDiscussion: review.DiscussionAssist,
 		loomengine.PerchPlan:       review.PlanAssist,
@@ -1546,11 +1548,7 @@ func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings
 				Timeout:    assistBounds[perch].timeout,
 				SkipReason: assistBounds[perch].skipReason,
 			},
-		}
-		if perch == loomengine.PerchDiscussion {
-			discussion := settings[segment]
-			discussion.Parent = parentSeat
-			settings[segment] = discussion
+			Parent: parentSeats[perch],
 		}
 	}
 	return settings

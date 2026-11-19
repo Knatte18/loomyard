@@ -139,6 +139,12 @@ type BouncerConfig struct {
 	// ParentName is the name of the session this Bouncer's spawned roles escalate to.
 	// The judge and seed prompts render it through parentdirective.Directive; empty renders its no-parent variant.
 	ParentName string
+	// Parent is the segment's parent seat.
+	// A seat that asks before the judge has each round's judge call ask the run's parent orch to review the round.
+	// The ask goes out once the round's review and fixer report exist, and the judge is told to wait for the answer.
+	// The Bouncer settles that ask once the judge has ruled.
+	// Nil, or a seat that asks at round start, asks nothing here.
+	Parent *ParentReviewSeat
 	// DecisionRecordPath is the absolute decision record path the escalation brief names.
 	// Empty is legal and only degrades the brief render.
 	DecisionRecordPath string
@@ -1051,14 +1057,25 @@ func (b *Bouncer) retireLegacyVerdict(ctx context.Context, round int) (shedengin
 
 // settleUnlessRefused settles round's judgment unless the judgment is refused, in which case the round is re-judged.
 // It first records the round's post-fix target id, so a round that routing decisions take records it too.
+// It then settles the parent-review ask the round holds before its judge.
+// A judge that ruled leaves that ask done or timed out.
 // A round that routing decisions take is settled there instead, ahead of the refusal check.
+// The refusal covers the parent's findings as well as the judgment's own ledger and review,
+// so a judgment found on disk by a restarted call is refused as a fresh harvest is.
 // verdict and ledger are round's judgment as the verdict reader parsed them.
 func (b *Bouncer) settleUnlessRefused(ctx context.Context, round int, verdict bouncerVerdict, ledger ledgerFile, spawned bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	b.recordPostFixTargetID(round)
+	asker := b.parentAsker()
+	parentAsk := asker.heldBeforeJudgeAsk(round)
+	asker.settle(round, parentAsk, filepath.Join(b.cfg.RunDir, b.cfg.ReportName(round)))
 	if outcome, ptr, err, handled := b.routeDecisions(ctx, round, verdict, ledger, spawned); handled {
 		return outcome, ptr, err
 	}
-	if cause := b.judgmentRefusal(round, verdict, ledger); cause != "" {
+	cause := b.judgmentRefusal(round, verdict, ledger)
+	if cause == "" {
+		cause = b.parentFindingsRefusal(verdict, parentAsk)
+	}
+	if cause != "" {
 		return b.rejudge(ctx, round, verdict, cause)
 	}
 	return b.settle(ctx, round, spawned)
@@ -1113,6 +1130,36 @@ func (b *Bouncer) refusalLeavingOut(round int, verdict bouncerVerdict, ledger le
 		}
 	}
 	return b.droppedKeyRefusal(round, ledger)
+}
+
+// parentFindingsRefusal returns why a verdict of the round whose parent-review ask is numbered number does not stand.
+// It returns "" when the verdict stands.
+// A CONVERGED verdict is refused while the parent's report holds findings.
+// Any other verdict, a round with no ask, and an ask that is not done stand.
+// A record or report that cannot be read is warned about and lets the verdict stand.
+// The parent seat never fails the round.
+func (b *Bouncer) parentFindingsRefusal(verdict bouncerVerdict, number int) string {
+	if verdict != verdictConverged || number == 0 {
+		return ""
+	}
+	record, _, err := burlerengine.ReadParentAsks(b.cfg.Parent.Files)
+	if err != nil {
+		logger.Warn("shedadapters: bouncer could not read the parent-review ask record; the verdict stands", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "ask", number, "cause", err)
+		return ""
+	}
+	ask, found := record.Ask(number)
+	if !found || ask.State != burlerengine.ParentAskDone {
+		return ""
+	}
+	report, err := burlerengine.ReadParentReport(ask.Report)
+	if err != nil {
+		logger.Warn("shedadapters: bouncer could not read the parent's report; the verdict stands", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "ask", number, "cause", err)
+		return ""
+	}
+	if len(report.Findings) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("the parent's report %s holds findings, which rule out CONVERGED", ask.Report)
 }
 
 // droppedKeyRefusalPrefix is the text every dropped-key refusal reason starts with.
@@ -1943,8 +1990,29 @@ func (b *Bouncer) RenderJudgePrompt(engine string, round int) (string, error) {
 	return string(prompt), nil
 }
 
+// parentAsker returns the asker of the Bouncer's parent seat, which asks nothing for a Bouncer with none.
+func (b *Bouncer) parentAsker() *parentAsker {
+	return newParentAsker(b.cfg.Parent, b.cfg.Name, bouncerEngineLabel, b.cfg.RunDir, b.cfg.Now)
+}
+
+// renderParentReviewBlock returns the section of the judge's prompt that tells the judge to await the parent's review.
+// It fails when the parent-review fragment cannot be read or filled.
+func (b *Bouncer) renderParentReviewBlock() (string, error) {
+	fragment, err := stencilstore.Read(b.cfg.StencilsDir, "bouncer-fragment-parent-review")
+	if err != nil {
+		return "", &promptRenderError{"shedadapters: bouncer parent-review fragment unreadable", err}
+	}
+	block, err := stencil.Fill(fragment, map[string]string{})
+	if err != nil {
+		return "", &promptRenderError{"shedadapters: bouncer parent-review fragment fill failed", err}
+	}
+	return strings.TrimSpace(string(block)), nil
+}
+
 // judgeCall runs the Bouncer's per-round judge pass for round n.
 // It reads the round's report and resolves the previous-ledger marker.
+// When its seat asks before the judge, it sends the round's ask to the parent.
+// The judge's prompt then tells the judge to wait for the answer.
 // It then runs the judge spawn and harvests whatever the spawn produced.
 // A judgment that provably happened after the run returns is acted on whatever the run reported.
 // Without such a judgment, the call degrades on a run error or a non-done outcome.
@@ -1962,10 +2030,19 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		return b.degrade(ctx, "shedadapters: bouncer report file is empty", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "path", reportPath)
 	}
 
+	parentAsk := b.parentAsker().beforeJudgeAsk(n)
+
 	engine := b.cfg.Shuttle.EngineName(b.cfg.Models.Judge)
 	prompt, err := b.RenderJudgePrompt(engine, n)
 	if err != nil {
 		return b.degrade(ctx, renderFailureReason(err), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", renderFailureCause(err))
+	}
+	if parentAsk != 0 {
+		block, err := b.renderParentReviewBlock()
+		if err != nil {
+			return b.degrade(ctx, renderFailureReason(err), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", renderFailureCause(err))
+		}
+		prompt += "\n\n" + block + "\n"
 	}
 
 	// The output list is never conditional on the verdict:

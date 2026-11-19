@@ -23,6 +23,8 @@ import (
 const (
 	parentSlug       = "disc-slug"
 	parentRecordPath = "/worktree/_lym/discussion/decision-record.md"
+	// parentSubject is the subject the fixture's seat names: the decision record by its path.
+	parentSubject = "the decision record " + parentRecordPath
 	// parentWait is the time from an ask to its deadline that the fixture's Wait answers.
 	parentWait = 20 * time.Minute
 	// resolvedStrand is the strand the fixture's Resolve answers; storedStrand is the one a prior ask already records.
@@ -52,6 +54,8 @@ type parentPost struct {
 type priorAsk struct {
 	ask      burlerengine.ParentAsk
 	findings []burlerengine.ParentFinding
+	// untagged records the ask with no tag, as the asks recorded before asks carried one.
+	untagged bool
 }
 
 // parentFixture is a run directory seeded with a round-1 focus file, and a parent seat whose collaborators it scripts.
@@ -83,7 +87,8 @@ func newParentFixture(t *testing.T) *parentFixture {
 	f.seat = &ParentReviewSeat{
 		Files:           f.files,
 		Slug:            parentSlug,
-		RecordPath:      parentRecordPath,
+		Tag:             DiscussionParentAskLineTag,
+		Subject:         parentSubject,
 		AskEnabled:      func() bool { return f.keyOn },
 		Wait:            func() (time.Duration, string) { return parentWait, f.skipReason },
 		RecordWrittenAt: func() (time.Time, error) { return f.writtenAt, f.writtenErr },
@@ -121,6 +126,9 @@ func (f *parentFixture) recordAsk(t *testing.T, prior priorAsk) {
 	ask := prior.ask
 	if ask.Seed == "" {
 		ask.Seed = parentSeed
+	}
+	if ask.Tag == "" && !prior.untagged {
+		ask.Tag = f.seat.Tag
 	}
 	ask.AskedAt, ask.Deadline = priorAskedAt, priorDeadline
 	answered := ask.State == burlerengine.ParentAskDone
@@ -178,6 +186,8 @@ func TestBurlerReviewProducer_Call_ParentAskingRule(t *testing.T) {
 		judged int
 		keyOn  bool
 		prior  *priorAsk
+		// foreign is an ask of another seat, with its own seed, recorded after prior.
+		foreign *priorAsk
 		// rewritten sets the history's latest Discussion-Write call after the prior ask.
 		rewritten bool
 		// writtenErr is the error the history read fails with.
@@ -256,6 +266,18 @@ func TestBurlerReviewProducer_Call_ParentAskingRule(t *testing.T) {
 			prior:   &priorAsk{ask: burlerengine.ParentAsk{Round: 1, State: burlerengine.ParentAskOpen, Strand: storedStrand}},
 			wantAsk: 1, wantState: burlerengine.ParentAskOpen, wantAsksOn: 1,
 		},
+		{
+			name: "an ask recorded before asks carried a tag counts as the discussion seat's", judged: 1, keyOn: true,
+			prior:      &priorAsk{ask: burlerengine.ParentAsk{Round: 1, State: burlerengine.ParentAskDone}, untagged: true},
+			foreign:    &priorAsk{ask: burlerengine.ParentAsk{Tag: CodeParentAskLineTag, Seed: otherParentSeed, Round: 1, State: burlerengine.ParentAskTimeout}},
+			wantAsksOn: 2,
+		},
+		{
+			name: "another seat's ask as the latest leaves the seat's own satisfied ask standing", judged: 1, keyOn: true,
+			prior:      &priorAsk{ask: burlerengine.ParentAsk{Round: 1, State: burlerengine.ParentAskDone}},
+			foreign:    &priorAsk{ask: burlerengine.ParentAsk{Tag: CodeParentAskLineTag, Seed: otherParentSeed, Round: 1, State: burlerengine.ParentAskTimeout}},
+			wantAsksOn: 2,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -265,6 +287,9 @@ func TestBurlerReviewProducer_Call_ParentAskingRule(t *testing.T) {
 			f.judgeRounds(t, tt.judged)
 			if tt.prior != nil {
 				f.recordAsk(t, *tt.prior)
+			}
+			if tt.foreign != nil {
+				f.recordAsk(t, *tt.foreign)
 			}
 			if tt.dropReport {
 				if err := os.Remove(f.files.ReportPath(1)); err != nil {
@@ -319,7 +344,7 @@ func TestBurlerReviewProducer_Call_ParentAskingRule(t *testing.T) {
 			}
 			var wantPosts []parentPost
 			if tt.wantPosts > 0 {
-				wantPosts = []parentPost{{strand: wantStrand, line: ParentAskLine(parentSlug, parentRecordPath, ask)}}
+				wantPosts = []parentPost{{strand: wantStrand, line: ParentAskLine(DiscussionParentAskLineTag, parentSlug, parentSubject, ask)}}
 			}
 			if !reflect.DeepEqual(f.posts, wantPosts) {
 				t.Errorf("posts = %+v; want %+v", f.posts, wantPosts)
@@ -371,6 +396,106 @@ func TestBurlerReviewProducer_Call_ParentRecordOrSeedUnreadable(t *testing.T) {
 			}
 			if f.resolveCalls != 0 || len(f.posts) != 0 {
 				t.Errorf("Resolve calls %d, posts %+v; want none", f.resolveCalls, f.posts)
+			}
+		})
+	}
+}
+
+// TestBurlerReviewProducer_Call_SeatAskingBeforeTheJudgeLeavesItsAsksToTheBouncer pins the producer of such a seat.
+// It sends no ask at round start, and neither sends nor settles an ask the round holds.
+func TestBurlerReviewProducer_Call_SeatAskingBeforeTheJudgeLeavesItsAsksToTheBouncer(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name string
+		// alreadyAccepted writes the round's review and acceptance record before the call.
+		alreadyAccepted bool
+		prior           *priorAsk
+		wantAsks        int
+	}{
+		{name: "a round start with the key on asks nothing"},
+		{
+			name: "an accepted review leaves the round's open ask open", alreadyAccepted: true,
+			prior:    &priorAsk{ask: burlerengine.ParentAsk{Round: 1, State: burlerengine.ParentAskOpen, Strand: storedStrand}},
+			wantAsks: 1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := newParentFixture(t)
+			f.keyOn = true
+			f.seat.Tag, f.seat.AskBeforeJudge = CodeParentAskLineTag, true
+			if tt.alreadyAccepted {
+				writeAcceptedRound(t, f.runDir, 1, "d")
+			}
+			if tt.prior != nil {
+				f.recordAsk(t, *tt.prior)
+			}
+			runner := &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{reviewDone("d")}}
+
+			if _, _, err := f.producer(t, runner).Call(context.Background()); err != nil {
+				t.Fatalf("Call() error = %v; want nil", err)
+			}
+
+			if tt.alreadyAccepted {
+				if runner.ReviewCalls != 0 {
+					t.Errorf("Review calls = %d; want a hand-on that spawns nothing", runner.ReviewCalls)
+				}
+			} else if runner.ReviewCalls != 1 || runner.GotReviewOpts[0].ParentAsk != 0 {
+				t.Errorf("Review calls = %d with opts %+v; want one call told no ask", runner.ReviewCalls, runner.GotReviewOpts)
+			}
+			record := f.readAsks(t)
+			if len(record.Asks) != tt.wantAsks {
+				t.Fatalf("recorded asks = %+v; want %d", record.Asks, tt.wantAsks)
+			}
+			for _, ask := range record.Asks {
+				if ask.State != burlerengine.ParentAskOpen {
+					t.Errorf("ask %d state = %s; want it left open for the Bouncer", ask.Number, ask.State)
+				}
+			}
+			if f.resolveCalls != 0 || len(f.posts) != 0 {
+				t.Errorf("Resolve calls %d, posts %+v; want none", f.resolveCalls, f.posts)
+			}
+		})
+	}
+}
+
+// TestParentAsker_BeforeJudgeAsk_NamesTheRoundsOwnReviewAndFixerReport pins the ask of a seat asking before the judge.
+// It sends the ask for any round, the first included.
+// The ask names that round's own review and fixer report beside the subject.
+// The ask opens with the seat's tag and records it.
+// The same seat asks nothing at round start, and a seat asking at round start asks nothing before the judge.
+func TestParentAsker_BeforeJudgeAsk_NamesTheRoundsOwnReviewAndFixerReport(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	for _, round := range []int{1, 2} {
+		t.Run(fmt.Sprintf("Round%d", round), func(t *testing.T) {
+			t.Parallel()
+			f := newParentFixture(t)
+			f.keyOn = true
+			f.seat.Tag, f.seat.AskBeforeJudge = CodeParentAskLineTag, true
+			now := func() time.Time { return archiveTestInstant }
+			asker := newParentAsker(f.seat, "bouncer", "bouncer", f.runDir, now)
+			atRoundStart := *f.seat
+			atRoundStart.AskBeforeJudge = false
+
+			if got := newParentAsker(&atRoundStart, "bouncer", "bouncer", f.runDir, now).beforeJudgeAsk(round); got != 0 {
+				t.Errorf("beforeJudgeAsk() on a seat asking at round start = %d; want 0", got)
+			}
+			if got := asker.roundStartAsk(round); got != 0 {
+				t.Errorf("roundStartAsk() = %d; want 0", got)
+			}
+			number := asker.beforeJudgeAsk(round)
+
+			ask, found := f.readAsks(t).RoundAsk(parentSeed, round)
+			if number != 1 || !found || ask.Number != 1 || ask.State != burlerengine.ParentAskOpen || ask.Tag != CodeParentAskLineTag {
+				t.Fatalf("beforeJudgeAsk() = %d, round %d ask = %+v, found %v; want ask 1 open under the code tag", number, round, ask, found)
+			}
+			subject := fmt.Sprintf("%s, with round %d's review %s and fixer report %s", parentSubject, round, roundReviewPath(f.runDir, round), roundFixerReportPath(f.runDir, round))
+			want := []parentPost{{strand: resolvedStrand, line: ParentAskLine(CodeParentAskLineTag, parentSlug, subject, ask)}}
+			if !reflect.DeepEqual(f.posts, want) {
+				t.Errorf("posts = %+v; want %+v", f.posts, want)
 			}
 		})
 	}
@@ -455,15 +580,17 @@ func TestBurlerReviewProducer_Call_ParentAskThatDoesNotGoOut(t *testing.T) {
 	}
 }
 
-// TestParentAskLine pins the line's exact text: the tag, the slug, the round, the ask number and the record path.
+// TestParentAskLine pins the line's exact text: the tag, the slug, the round, the ask number and the subject.
 // It also pins the deadline as a local wall-clock time and the answer verb with its --ask flag in both forms.
+//
+//testtiming:keep pins the parent ask line's literal text, which the asking-rule test builds through ParentAskLine
 func TestParentAskLine(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	deadline := time.Date(2026, 8, 16, 15, 33, 26, 0, time.UTC)
 	ask := burlerengine.ParentAsk{Number: 3, Round: 2, Deadline: deadline}
 
-	got := ParentAskLine("my-slug", "/wt/decision-record.md", ask)
+	got := ParentAskLine(DiscussionParentAskLineTag, "my-slug", "the decision record /wt/decision-record.md", ask)
 
 	answer := "lym loom parent-review answer my-slug --ask 3"
 	want := fmt.Sprintf(`[discussion-review request] my-slug round 2 ask 3: review the decision record /wt/decision-record.md and answer by %s with "%s --satisfied" or "%s --findings-file <path>"`,
@@ -471,8 +598,8 @@ func TestParentAskLine(t *testing.T) {
 	if got != want {
 		t.Errorf("ParentAskLine() = %q; want %q", got, want)
 	}
-	if !strings.HasPrefix(got, ParentAskLineTag) {
-		t.Errorf("ParentAskLine() = %q; want it to open with %q", got, ParentAskLineTag)
+	if !strings.HasPrefix(got, DiscussionParentAskLineTag) {
+		t.Errorf("ParentAskLine() = %q; want it to open with %q", got, DiscussionParentAskLineTag)
 	}
 }
 

@@ -1015,12 +1015,13 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
 	}
-	// Only the Discussion-Review segment carries a parent seat, whose closures DeepEqual cannot compare.
+	// Only the Discussion-Review and Code-Review segments carry a parent seat, whose closures DeepEqual cannot compare.
 	// The seat is checked present, and the comparison below runs over the segments with it cleared.
 	gotSegments := make(map[string]shedrecipe.SegmentSettings, len(c.env.Segments))
 	for name, segment := range c.env.Segments {
-		if segment.Parent != nil != (name == "Discussion-Review") {
-			t.Errorf("Segments[%s].Parent non-nil = %t; want %t", name, segment.Parent != nil, name == "Discussion-Review")
+		wantParent := name == "Discussion-Review" || name == "Code-Review"
+		if segment.Parent != nil != wantParent {
+			t.Errorf("Segments[%s].Parent non-nil = %t; want %t", name, segment.Parent != nil, wantParent)
 		}
 		segment.Parent = nil
 		gotSegments[name] = segment

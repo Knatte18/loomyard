@@ -757,6 +757,7 @@ func driftDeps(root string) driftengine.Deps {
 		ReplacedDecisionRecord: func(string) ([]byte, bool, error) { return nil, false, nil },
 		EndRoles:               func([]string) error { return nil },
 		JudgeSnapshotDir:       filepath.Join(root, "judge-snapshot"),
+		JudgeParent:            &driftengine.JudgeParentSeat{},
 	}
 }
 

@@ -619,11 +619,17 @@
 // The ask lives in burlerengine's never-tracked ask record.
 // The row finds the round's ask by the generation's seed, the write time of its round-1 focus file, and by the round.
 // A round already holding an ask is posted again only while that ask is pending-post, whatever the key now reads.
-// A round holding none sends a new ask only with `discussion_review_ask_parent` on, and only when the round asks.
-// A round asks when the run has no ask of this seed.
-// It also asks when the history records a Discussion-Write call after the latest ask.
+// A round holding none sends a new ask only with its segment's ask setting on, and only when the round asks.
+// A round asks when the seat has no ask of this seed; the asks of other seats in the run's record are not read.
+// It also asks when the history records a rewrite of the seat's subject after the latest ask.
 // It also asks when the round before ended done with findings, or an earlier round's ask was not-sent.
-// The ask's one line opens `[discussion-review request]`.
+// A seat that asks before the judge sends no ask from the review row, and settles none.
+// Its segment's Bouncer asks for each round instead, once the round's fixer report exists and before the judge spawns.
+// That ask names the round's own review and fixer report, and the judge's prompt tells it to wait for the answer.
+// The Bouncer settles the ask once the judge has ruled, and a done report is copied beside the review.
+// A CONVERGED verdict is refused while the parent's report holds findings, and the round is judged again.
+// The ask's one line opens with the seat's tag and names its subject.
+// The tags are `[discussion-review request]` and `[code-review request]`.
 // It goes to the strand resolved once, signed as the loom program.
 // A wait the chair's timeout leaves no room for records the ask not-sent;
 // an unresolved parent, a parent with no orch strand and a failed post record it no-parent;

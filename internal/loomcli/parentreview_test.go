@@ -167,10 +167,10 @@ func TestParentReviewAnswerVerb(t *testing.T) {
 			wantStates: []burlerengine.ParentAskState{},
 		},
 		{
-			name:       "an older ask while the latest awaits an answer is sent to review the record again",
+			name:       "an older ask while the latest awaits an answer is sent to review what the newer ask names",
 			asks:       []burlerengine.ParentAsk{{State: burlerengine.ParentAskTimeout}, openParentAsk(time.Minute)},
 			input:      parentAnswerInput{ask: 1, satisfied: true},
-			want:       []string{"ask 2 is", "the decision record may have changed since ask 1", "review the record again under ask 2's own request", "--ask 2"},
+			want:       []string{"a newer ask, ask 2, awaits an answer", "review again what ask 2's own request names", "--ask 2"},
 			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskTimeout, burlerengine.ParentAskOpen},
 		},
 		{

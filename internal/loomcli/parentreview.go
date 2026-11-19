@@ -1,6 +1,7 @@
-// parentreview.go implements the `parent-review` loom group over a run's Discussion-Review asks to its parent orch.
+// parentreview.go implements the `parent-review` loom group over a run's asks to its parent orch:
+// a Discussion-Review or Code-Review round's, and the drift judge's.
 // `answer` writes the parent's report for the run's latest ask and sets the ask done.
-// `await` is the review chair's capped wait for that ask to end, setting it timeout once its deadline passed.
+// `await` is the asking agent's capped wait for that ask to end, setting it timeout once its deadline passed.
 // Both move the ask only through burlerengine's ask record, under its one lock.
 // The caller check guards against a mistaken call, not a forged strand name.
 
@@ -163,8 +164,8 @@ func parentAnswerRefusalText(slug string, number int, refusal *burlerengine.Pare
 		return "the run has no parent-review ask; " + wayDecision
 	case burlerengine.ParentAnswerNotLatest:
 		if !latest.State.Ended() {
-			return fmt.Sprintf("ask %d is not the run's latest ask: ask %d is, and it awaits an answer, so the decision record may have changed since ask %d; way forward: review the record again under ask %d's own request, then answer with --ask %d",
-				number, latest.Number, number, latest.Number, latest.Number)
+			return fmt.Sprintf("ask %d is not the run's latest ask: a newer ask, ask %d, awaits an answer; way forward: review again what ask %d's own request names, then answer with --ask %d",
+				number, latest.Number, latest.Number, latest.Number)
 		}
 		return fmt.Sprintf("ask %d is not the run's latest ask, which is ask %d, already %s; %s", number, latest.Number, latest.State, wayDecision)
 	case burlerengine.ParentAnswerPastDeadline:
@@ -327,10 +328,11 @@ func (c *loomCLI) parentReviewCmd() *cobra.Command {
 
 	group := &cobra.Command{
 		Use:   parentReviewGroup,
-		Short: "answer or await a Discussion-Review round's ask to the parent orch",
-		Long: `parent-review holds the verbs of a Discussion-Review round's ask to the run's
-parent orch. "parent-review answer" records the parent's review of the decision
-record; "parent-review await" is the review chair's wait for that answer.
+		Short: "answer or await an ask to the run's parent orch",
+		Long: `parent-review holds the verbs of an ask to the run's parent orch: a
+Discussion-Review or Code-Review round's ask to review the round's subject, or
+the drift judge's ask to agree with its rulings. "parent-review answer" records
+the parent's answer; "parent-review await" is the asking agent's wait for it.
 
 The verb takes an optional slug naming the task worktree. A task worktree
 addresses itself; from the prime the slug is required. The ask record and the
@@ -345,7 +347,7 @@ Example:
 
 	answer := &cobra.Command{
 		Use:         parentReviewAnswerName + " [<slug>]",
-		Short:       "record the parent orch's review of a Discussion-Review round's ask",
+		Short:       "record the parent orch's answer to the run's latest parent-review ask",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `answer writes the parent's report for the ask --ask names and sets the ask
 done. --ask is required, with exactly one of --satisfied, which writes a report

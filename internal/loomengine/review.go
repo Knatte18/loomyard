@@ -89,30 +89,61 @@ func chairTimeout(cfg Config, runTimeout time.Duration) time.Duration {
 	return time.Duration(cfg.ReviewTimeoutMin) * time.Minute
 }
 
-// ParentConsolidationMargin is the time a Discussion-Review chair keeps after its wait for the parent orch ends.
+// ParentConsolidationMargin is the time a review chair keeps after its wait for the parent orch ends.
 // The chair uses it to consolidate the round before its own timeout.
 const ParentConsolidationMargin = 5 * time.Minute
 
-// CapParentReviewWait returns the time from a Discussion-Review parent-review ask to its deadline.
+// parentReviewTimeout returns the key holding perch's uncapped parent-review wait, and that wait.
+// Only the discussion and code perches ask the parent, so any other perch is a wiring fault and panics.
+func parentReviewTimeout(cfg Config, perch Perch) (string, time.Duration) {
+	switch perch {
+	case PerchDiscussion:
+		return "discussion_review_parent_timeout_min", time.Duration(cfg.DiscussionReviewParentTimeoutMin) * time.Minute
+	case PerchCode:
+		return "code_review_parent_timeout_min", time.Duration(cfg.CodeReviewParentTimeoutMin) * time.Minute
+	}
+	panic(fmt.Sprintf("loomengine: the %s perch asks no parent", perch))
+}
+
+// CapParentReviewWait returns the time from a parent-review ask of perch's review round to its deadline.
 // The wait is capped so the chair keeps room to consolidate before its own timeout.
-// The uncapped wait is discussion_review_parent_timeout_min.
+// The uncapped wait is the perch's own key: discussion_review_parent_timeout_min or code_review_parent_timeout_min.
 // The room is the chair's timeout less startAllowance, one awaitCap and ParentConsolidationMargin.
 // The chair's timeout is review_timeout_min, or runTimeout, shuttle's run_timeout_min, when that key is 0.
 // startAllowance is what shuttle grants a launch and its start retries; awaitCap is the chair's keep-warm cap.
-// A capped wait logs one Warn naming discussion_review_parent_timeout_min and review_timeout_min.
+// A capped wait logs one Warn naming the perch's timeout key and review_timeout_min.
 // A room of zero or less returns a zero wait and a non-empty reason naming both keys, and logs a Warn:
 // the round then sends no ask.
-func CapParentReviewWait(cfg Config, runTimeout, startAllowance, awaitCap time.Duration) (time.Duration, string) {
-	chair := chairTimeout(cfg, runTimeout)
-	room := chair - startAllowance - awaitCap - ParentConsolidationMargin
+func CapParentReviewWait(cfg Config, perch Perch, runTimeout, startAllowance, awaitCap time.Duration) (time.Duration, string) {
+	key, want := parentReviewTimeout(cfg, perch)
+	return capParentWait(key, want, chairTimeout(cfg, runTimeout), "reviewer", "review_timeout_min", startAllowance, awaitCap)
+}
+
+// CapParentJudgeWait returns the time from a parent-review ask made for perch's Bouncer judge to its deadline.
+// The judge waits for the parent inside its own session, which shuttle bounds by runTimeout, shuttle's run_timeout_min.
+// The wait is capped so the judge keeps room to finish before that timeout.
+// The uncapped wait is the perch's own key: discussion_review_parent_timeout_min or code_review_parent_timeout_min.
+// The room is runTimeout less startAllowance, one awaitCap and ParentConsolidationMargin.
+// A capped wait logs one Warn naming the perch's timeout key and run_timeout_min.
+// A room of zero or less returns a zero wait and a non-empty reason naming both keys, and logs a Warn:
+// the round then sends no ask.
+func CapParentJudgeWait(cfg Config, perch Perch, runTimeout, startAllowance, awaitCap time.Duration) (time.Duration, string) {
+	key, want := parentReviewTimeout(cfg, perch)
+	return capParentWait(key, want, runTimeout, "judge", "run_timeout_min", startAllowance, awaitCap)
+}
+
+// capParentWait returns want, the wait the key names, capped to the room a session bound by timeout leaves.
+// session names that session, and timeoutKey the key holding its timeout, in the Warn and the reason.
+// A room of zero or less returns a zero wait and a reason.
+func capParentWait(key string, want, timeout time.Duration, session, timeoutKey string, startAllowance, awaitCap time.Duration) (time.Duration, string) {
+	room := timeout - startAllowance - awaitCap - ParentConsolidationMargin
 	if room <= 0 {
-		reason := fmt.Sprintf("discussion_review_parent_timeout_min leaves the parent no time: the reviewer's timeout of %s (review_timeout_min) is spent by its start allowance of %s, one await cap of %s and the consolidation margin of %s; raise review_timeout_min", chair, startAllowance, awaitCap, ParentConsolidationMargin)
-		logger.Warn("loom: the parent review gets no time and no ask is sent; raise review_timeout_min", "key", "discussion_review_parent_timeout_min", "chairKey", "review_timeout_min", "chair", chair, "startAllowance", startAllowance, "awaitCap", awaitCap, "margin", ParentConsolidationMargin)
+		reason := fmt.Sprintf("%s leaves the parent no time: the %s's timeout of %s (%s) is spent by its start allowance of %s, one await cap of %s and the consolidation margin of %s; raise %s", key, session, timeout, timeoutKey, startAllowance, awaitCap, ParentConsolidationMargin, timeoutKey)
+		logger.Warn("loom: the parent review gets no time and no ask is sent; raise "+timeoutKey, "key", key, "chairKey", timeoutKey, "chair", timeout, "startAllowance", startAllowance, "awaitCap", awaitCap, "margin", ParentConsolidationMargin)
 		return 0, reason
 	}
-	want := time.Duration(cfg.DiscussionReviewParentTimeoutMin) * time.Minute
 	if want > room {
-		logger.Warn("loom: discussion_review_parent_timeout_min is capped to leave the reviewer room to consolidate before its own timeout", "key", "discussion_review_parent_timeout_min", "chairKey", "review_timeout_min", "value", want, "capped", room)
+		logger.Warn("loom: the parent-review wait is capped to leave the "+session+" room to finish before its own timeout", "key", key, "chairKey", timeoutKey, "value", want, "capped", room)
 		return room, ""
 	}
 	return want, ""

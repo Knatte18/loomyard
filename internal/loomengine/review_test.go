@@ -284,11 +284,13 @@ func TestCapAssistTimeout(t *testing.T) {
 // TestCapParentReviewWait verifies the parent's wait is kept when it fits, and capped when it does not.
 // The room is the chair's timeout less the start allowance, one await cap and the consolidation margin;
 // with no room left the wait is zero, and the reason names both keys and says to raise review_timeout_min.
+// Each perch takes its own timeout key; a row with no perch is the discussion perch's.
 func TestCapParentReviewWait(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name           string
+		perch          Perch
 		cfg            Config
 		runTimeout     time.Duration
 		startAllowance time.Duration
@@ -296,6 +298,8 @@ func TestCapParentReviewWait(t *testing.T) {
 		want           time.Duration
 		wantSkip       bool
 	}{
+		{name: "the code perch takes code_review_parent_timeout_min", perch: PerchCode, cfg: Config{ReviewTimeoutMin: 240, DiscussionReviewParentTimeoutMin: 30, CodeReviewParentTimeoutMin: 45}, startAllowance: 3 * time.Minute, awaitCap: 5 * time.Minute, want: 45 * time.Minute},
+		{name: "the code perch's no-room reason names its own key", perch: PerchCode, cfg: Config{ReviewTimeoutMin: 13, CodeReviewParentTimeoutMin: 30}, startAllowance: 3 * time.Minute, awaitCap: 5 * time.Minute, wantSkip: true},
 		{name: "a wait that fits is kept", cfg: Config{ReviewTimeoutMin: 240, DiscussionReviewParentTimeoutMin: 30}, startAllowance: 3 * time.Minute, awaitCap: 5 * time.Minute, want: 30 * time.Minute},
 		{name: "a wait past the room is capped to chair less start allowance, await cap and margin", cfg: Config{ReviewTimeoutMin: 20, DiscussionReviewParentTimeoutMin: 30}, startAllowance: 3 * time.Minute, awaitCap: 5 * time.Minute, want: 7 * time.Minute},
 		{name: "a zero review timeout takes the run timeout as the chair", cfg: Config{ReviewTimeoutMin: 0, DiscussionReviewParentTimeoutMin: 60}, runTimeout: 40 * time.Minute, startAllowance: 5 * time.Minute, awaitCap: 5 * time.Minute, want: 25 * time.Minute},
@@ -305,7 +309,11 @@ func TestCapParentReviewWait(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, reason := CapParentReviewWait(tt.cfg, tt.runTimeout, tt.startAllowance, tt.awaitCap)
+			perch, key := PerchDiscussion, "discussion_review_parent_timeout_min"
+			if tt.perch == PerchCode {
+				perch, key = PerchCode, "code_review_parent_timeout_min"
+			}
+			got, reason := CapParentReviewWait(tt.cfg, perch, tt.runTimeout, tt.startAllowance, tt.awaitCap)
 			if got != tt.want {
 				t.Errorf("CapParentReviewWait(...) wait = %s; want %s", got, tt.want)
 			}
@@ -319,9 +327,47 @@ func TestCapParentReviewWait(t *testing.T) {
 				}
 				return
 			}
-			for _, want := range []string{"discussion_review_parent_timeout_min", "review_timeout_min", "raise review_timeout_min"} {
+			for _, want := range []string{key, "review_timeout_min", "raise review_timeout_min"} {
 				if !strings.Contains(reason, want) {
 					t.Errorf("CapParentReviewWait(...) reason = %q; want it to name %q", reason, want)
+				}
+			}
+		})
+	}
+}
+
+// TestCapParentJudgeWait verifies the judge's parent wait is capped by the run timeout its session runs under.
+// It ignores review_timeout_min, and a room spent to zero sends no ask, with a reason that says to raise run_timeout_min.
+func TestCapParentJudgeWait(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	cfg := Config{ReviewTimeoutMin: 240, CodeReviewParentTimeoutMin: 30}
+	tests := []struct {
+		name       string
+		runTimeout time.Duration
+		want       time.Duration
+		wantSkip   bool
+	}{
+		{name: "a wait that fits is kept", runTimeout: 120 * time.Minute, want: 30 * time.Minute},
+		{name: "a wait past the run timeout's room is capped to it", runTimeout: 30 * time.Minute, want: 23 * time.Minute},
+		{name: "a room spent to zero sends no ask", runTimeout: 7 * time.Minute, wantSkip: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, reason := CapParentJudgeWait(cfg, PerchCode, tt.runTimeout, time.Minute, time.Minute)
+			if got != tt.want {
+				t.Errorf("CapParentJudgeWait(...) wait = %s; want %s", got, tt.want)
+			}
+			if !tt.wantSkip {
+				if reason != "" {
+					t.Errorf("CapParentJudgeWait(...) reason = %q; want none", reason)
+				}
+				return
+			}
+			for _, want := range []string{"code_review_parent_timeout_min", "run_timeout_min", "raise run_timeout_min"} {
+				if !strings.Contains(reason, want) {
+					t.Errorf("CapParentJudgeWait(...) reason = %q; want it to name %q", reason, want)
 				}
 			}
 		})

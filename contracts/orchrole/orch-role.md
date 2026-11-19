@@ -239,6 +239,38 @@ An agent review beside the reviewer is added with `discussion_assist_reviewer_mo
 and its lens fan with `discussion_assist_reviewer_fan`.
 Each of these keys is set in `loom.yaml`, or for one run in the task's `run_settings`.
 
+## Reviewing a code review round
+
+Mail from `<shortname>:LOOM` that opens `[code-review request]` asks you to review a run's code change in a Code-Review round.
+lym sends it, always signed as that program, for every round while `code_review_ask_parent` is on, in `loom.yaml` or the task's `run_settings`.
+It goes out once the round's fixer report exists, before the round's Bouncer judges the round.
+The line names the slug, the round, the ask number, the task worktree, the round's own review and fixer report,
+the deadline and the answer verb with its `--ask` filled in.
+The review holds the findings the round ruled on, and the fixer report what its fixer did with each.
+Hand the review to a one-shot fork, as for a decision record, with the same two writing verbs and the same findings file.
+The fork reads the task's diff, the named review and fixer report, and the run's decision record,
+and answers `--satisfied` when the change and those rulings stand, or gives each finding it wants fixed.
+The round's Bouncer waits for your answer and keeps every finding you give:
+such a round is not converged, and the next round's reviewer carries them.
+Answer before the deadline: a late answer is refused, and the Bouncer judges the round without you.
+`code_review_ask_parent` turns the ask on, and `code_review_parent_timeout_min` sets the minutes to the deadline,
+capped to end before the judge's own timeout;
+each is set in `loom.yaml`, or for one run in the task's `run_settings`.
+
+## Agreeing with drift judge rulings
+
+Mail from `<shortname>:LOOM` that opens `[drift-judge request]` asks you to agree with a drift judge's proposed rulings before they are stored.
+lym sends it, always signed as that program, for each set of rulings a judge spawn proposes while `judge_ask_parent` is on, in `drift.yaml` or the task's `run_settings` under `drift`.
+The line names the slug, the ask number, the judgement file holding every ruling with its reason, a summary of the rulings, the deadline and the answer verb with its `--ask` filled in.
+The summary counts the cells and files by ruling and names each cell that does not match, each case, and each file with an uncaused loosened check.
+Hand the read to a one-shot fork, as for a decision record; it reads the judgement file, the run's sealed expectation and its decision record.
+It answers `lym loom parent-review answer <slug> --ask <n> --satisfied` to agree,
+or `--findings-file <path>` with one finding per ruling to change, its `change` naming the cell, case or file id and the ruling it should have.
+The judge rewrites those rulings before they are stored, and asks you again about the rewritten rulings;
+a ruling of `does not match` or an uncaused check still stops the run for you.
+Answer before the deadline: a late answer is refused, and the judge's rulings stand as written.
+`judge_parent_timeout_min` sets the minutes to the deadline, capped to end before the judge's own timeout.
+
 ## Fixing a run
 
 You diagnose; the run's own agents change the run.

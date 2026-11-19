@@ -57,6 +57,9 @@ type Deps struct {
 	ExpectTable func(listing string) (seatengine.Table, error)
 	// JudgeTable builds the judge's table over the request file Drift-Verify wrote before the spawn.
 	JudgeTable func(request string) (seatengine.Table, error)
+	// JudgeParent is the judge's seat for asking the run's parent orch to agree with its rulings under judge_ask_parent.
+	// Nil asks the parent nothing.
+	JudgeParent *JudgeParentSeat
 	// Checkouts reads the state of the code checkout and of the records checkout.
 	Checkouts func() (code, records fabricengine.CheckoutState, err error)
 	// RecordsChangedSince lists the records paths committed since the revision rev.
