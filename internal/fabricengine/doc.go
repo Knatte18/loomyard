@@ -1348,6 +1348,8 @@
 // A squash landing's commit and a merge over hand-resolved code conflicts are not fabric merge commits,
 // so each is owed until a landing's push of the parent or the operator's `git push` takes it to origin.
 // `MergeStateActive` is the weft-only, git-level mid-merge probe a path-scoped commit must consult before landing.
+// In a two-repository hub it reads a merge alone: a weft cherry-pick, revert or rebase is fabric's own replay,
+// which holds the write lock the commit waits on, so it never makes the commit skip.
 // It differs from `Fabric.MergeInProgress` and from the two-sided `foreignMergeStatePresent`.
 // `PairComplete(l)` is the predicate over `Add`'s own post-condition.
 // It lets a caller tell a finished pair creation from one a SIGKILL interrupted partway through.

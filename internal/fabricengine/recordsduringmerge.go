@@ -139,15 +139,13 @@ func mergeRouteApplies(worktree string) (bool, error) {
 	return kind != recordsMergeNone, err
 }
 
-// MergeStateOperation names the git operation a records commit in l's worktree cannot pass.
-// It answers "merge" for a live MERGE_HEAD or a conflicted index.
-// It answers "cherry-pick", "revert" or "rebase" for those operations in progress.
-// It answers "" when none blocks.
-// In a one-repository worktree a merge blocks only when its index holds a records path unlike HEAD's.
-// It also blocks when the index is conflicted on a records path.
-// It does not block while a fabric merge record stands with its records unsettled.
-// A cherry-pick, revert or rebase blocks there too.
-// In a two-repository worktree any merge state of the records worktree blocks.
+// MergeStateOperation names the git operation a records commit in l's worktree cannot pass, "" when none blocks.
+// In a two-repository worktree only a merge blocks: it answers "merge" for a live MERGE_HEAD or a conflicted index.
+// A cherry-pick, revert or rebase there does not block,
+// because fabric's own weft replay cherry-picks under the write lock the records commit waits on.
+// In a one-repository worktree it answers "cherry-pick", "revert" or "rebase" for those operations in progress.
+// A merge there blocks only when its index holds a records path unlike HEAD's, or is conflicted on one,
+// and never while a fabric merge record stands with its records unsettled.
 func MergeStateOperation(l *lymcwd.Location) (string, error) {
 	worktree := RecordsWorktree(l)
 	if oneRepositoryAt(worktree) {
@@ -158,10 +156,6 @@ func MergeStateOperation(l *lymcwd.Location) (string, error) {
 		return operation, nil
 	}
 
-	operation, err := gitOperationAt(worktree)
-	if err != nil || operation != "" {
-		return operation, err
-	}
 	repo := gitrepo.New(worktree)
 	mergeHead, err := repo.MergeHeadPresent()
 	if err != nil {

@@ -84,6 +84,25 @@ func startForeignMergeInRecords(t *testing.T, recordsSibling string) {
 	}
 }
 
+// startStoppedCherryPickInRecords leaves a cherry-pick in progress in the records sibling, with a clean index.
+// It picks an empty commit, which git stops on with CHERRY_PICK_HEAD set, as a weft replay mid-pick leaves it.
+func startStoppedCherryPickInRecords(t *testing.T, recordsSibling string) {
+	t.Helper()
+	current := gitkit.CurrentBranch(t, recordsSibling)
+	gitkit.Git(t, recordsSibling, "checkout", "-q", "-b", "replayed-side")
+	gitkit.Git(t, recordsSibling, "commit", "-q", "--allow-empty", "-m", "replayed side commit")
+	gitkit.Git(t, recordsSibling, "checkout", "-q", current)
+	runGitAllowingFailure(t, recordsSibling, "cherry-pick", "replayed-side")
+
+	path := gitkit.Git(t, recordsSibling, "rev-parse", "--git-path", "CHERRY_PICK_HEAD")
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(recordsSibling, path)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("no CHERRY_PICK_HEAD in the records sibling after picking an empty commit: %v", err)
+	}
+}
+
 // runGitAllowingFailure runs git in dir and ignores its exit status, for a command that stops on a conflict.
 func runGitAllowingFailure(t *testing.T, dir string, args ...string) {
 	t.Helper()
@@ -372,6 +391,36 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		if mergeHeadPresent(t, recordsSibling) {
 			t.Fatal("MERGE_HEAD survives the abort; the steps after this one need a records side with no merge in progress")
 		}
+	})
+
+	// A records cherry-pick in a two-repository hub is fabric's own weft replay,
+	// which holds the write lock the commit waits on.
+	// The real probe runs while the pick is in progress; the pick then ends, as the replay does, before the commit.
+	// Relies on the step above leaving no merge in progress.
+	t.Run("records cherry-pick in progress commits the transition", func(t *testing.T) {
+		changeStatus()
+		startStoppedCherryPickInRecords(t, recordsSibling)
+		before := gitkit.RevParse(t, recordsSibling, "HEAD")
+
+		deps := loomCommitStatusDeps(location, shedrun.SelfRunID)
+		realMergeActive := deps.MergeActive
+		probes := 0
+		deps.MergeActive = func() (bool, error) {
+			probes++
+			active, err := realMergeActive()
+			if probes == 1 {
+				gitkit.Git(t, recordsSibling, "cherry-pick", "--abort")
+			}
+			return active, err
+		}
+
+		if err := newCommitStatusSeam(deps)("Discussion-Write", "running"); err != nil {
+			t.Fatalf("seam(...) error = %v; want nil", err)
+		}
+		if got := gitkit.RevParse(t, recordsSibling, "HEAD"); got == before {
+			t.Errorf("records HEAD = %q; want a transition commit — a records cherry-pick must not skip it", got)
+		}
+		statusOnly(t)
 	})
 
 	// A one-repository hub: the transition waits for a plain-git operation instead of skipping, then commits.
