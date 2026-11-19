@@ -133,7 +133,7 @@ func TestLoopIntegration_PanicKillsTheInFlightStepTree(t *testing.T) {
 	fx.spec.Loop.Runner = func(context.Context, ChildRequest) (Child, error) {
 		return groupChild{record: proc.TreeRecord{PID: pid, PGID: pid, StartTime: startTime}}, nil
 	}
-	// The loop reads its clock right after it records the child, so this panics with the child in flight.
+	// The loop reads its clock right after it records the child, so the read panics with the child in flight.
 	fx.spec.Loop.Now = func() time.Time { panic("boom") }
 
 	env, _ := fx.execute()
@@ -200,7 +200,7 @@ func TestLoopIntegration_KeeperWaitsThroughATerminatingSignal(t *testing.T) {
 	}
 
 	want := regexp.MustCompile(`^; loop exit: lym shed: loop loop-x process [0-9]+ exited: exit status 3$`)
-	if got := loopExitEvidence(spec.Loop.LogPath, "loop-x"); !want.MatchString(got) {
+	if got := loopExitEvidence(spec.Loop, "loop-x", ""); !want.MatchString(got) {
 		t.Errorf("loopExitEvidence = %q; want it to match %s", got, want)
 	}
 }
@@ -290,7 +290,7 @@ func TestLoopIntegration_ProcessExitsAreMarked(t *testing.T) {
 
 			tt.run(t, spec, tt.script, tt.wantCode, tt.wantStarts)
 
-			if got := loopExitEvidence(spec.Loop.LogPath, "loop-x"); !tt.want.MatchString(got) {
+			if got := loopExitEvidence(spec.Loop, "loop-x", ""); !tt.want.MatchString(got) {
 				t.Errorf("loopExitEvidence = %q; want it to match %s", got, tt.want)
 			}
 		})

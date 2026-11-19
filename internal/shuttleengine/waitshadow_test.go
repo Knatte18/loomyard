@@ -183,6 +183,15 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 			wantChanges: []string{"busy/turn running", "idle-stalled/no-output held", "idle-fresh/session-start held", "idle-done/done done"},
 		},
 		{
+			name:   "a gated turn end held with unawaited shells running reads busy on background beside the held loop without a disagreement",
+			events: "WAIT:background work\n", outstanding: shadowPayloadShell, liveness: LivenessAlive, timeout: time.Hour, jump: 2 * time.Hour,
+			gate: func() GateSpec {
+				pending := func() (GateResult, error) { return GateResult{Pending: true}, nil }
+				return GateSpec{{Name: "parent-review", Gate: pending, Final: pending, Attempts: 3, PassOnCap: true}}
+			},
+			wantChanges: []string{"busy/background held"},
+		},
+		{
 			name:   "done beside busy on background work is expected",
 			events: "WAIT:background work\n", outstanding: shadowPayloadShell, liveness: LivenessAlive, outputsAtStart: true, timeout: time.Hour,
 			wantChanges: []string{"busy/background done"},

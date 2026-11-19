@@ -1026,7 +1026,10 @@
 // The fold's states also reach the caller on Result.SessionStates, in order, as a record the loop never branches on.
 // It logs `shuttle: session state disagrees` at Warn once per disagreement, again only after either side changed, when the pair is outside the fixed mapping, and the line carries `stands=loop`:
 // waiting and running read busy, held reads idle-stalled, idle-fresh or asking, done reads idle-done, died reads dead.
-// Two pairings are expected and log nothing: a gate wait with every output present beside idle-done, and done beside busy on background work.
+// Three pairings are expected and log nothing:
+// a gate wait with every output present beside idle-done, and done or held beside busy on background work.
+// A turn end counted done or held leaves shells running that the loop no longer waits on.
+// That holds at once or once its shells pass the wait bound.
 // The loop never branches on the state; an engine without the parser, an unreadable events file or a failed fact read logs once at Debug and changes no verdict, notice, wait mark or return.
 // Event.At is the hook-side time of the line an event was parsed from, zero when the engine gives none, and Runner.ReadEvents is the only place that sets it.
 // For an engine with the parser, ReadEvents parses events from the bytes the signal reading consumed only and advances the offset by that count, so a stamp read ahead of its Stop payload stays unconsumed and is read with it on the next call.

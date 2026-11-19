@@ -41,6 +41,10 @@
 // CreationTime is the exception: it reads a process's creation time by pid on Windows, where StartTime is unreadable.
 // Elsewhere it is always the zero time and false.
 //
+// BootID reads the id the kernel drew when the machine last booted, from /proc/sys/kernel/random/boot_id on Linux.
+// It changes at a boot and not with the clock, so two reads equal tell that no boot lay between them.
+// It reports false on Windows.
+//
 // ReadTaskLimit reads `pids.current` and `pids.max` over the calling process's cgroup and its ancestors.
 // It returns the cgroup v2 task limit closest to being reached.
 // A caller uses it to hold back new work before every fork fails.

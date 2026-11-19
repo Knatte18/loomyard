@@ -48,6 +48,21 @@ func StartTime(pid int) (string, bool) {
 	return fields[19], true
 }
 
+// bootIDPath is the kernel's file holding the random id it draws at each boot.
+const bootIDPath = "/proc/sys/kernel/random/boot_id"
+
+// BootID returns the id the kernel drew when the machine last booted, which changes at a boot and at no other time.
+// A clock step does not move it.
+// It reports false when the file cannot be read or is empty.
+func BootID() (string, bool) {
+	data, err := os.ReadFile(bootIDPath)
+	if err != nil {
+		return "", false
+	}
+	id := strings.TrimSpace(string(data))
+	return id, id != ""
+}
+
 // ParentPID returns the parent process id of the process identified by pid, field 4 of /proc/<pid>/stat.
 // It reports false for a pid of 0 or below, a process that does not exist and a stat that cannot be parsed.
 func ParentPID(pid int) (int, bool) {

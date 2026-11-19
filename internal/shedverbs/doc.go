@@ -152,7 +152,7 @@
 // Its waiter sees its spawn exited and the lock held, and it adopts the holder's loop id from the pid file.
 //
 // The loop lock is the liveness record, held for the loop's life, and the pid file is the loop's record for the kill.
-// The pid file holds the loop id and the loop's own pid and start time.
+// The pid file holds the loop id, the loop's own pid and process start time, and the id of the boot the loop started in.
 // It also holds the in-flight child's record:
 // its process tree, its trace id, and the status file's current_producer and history_length when that child started.
 // The loop writes the pid file after taking the lock and removes it only after its envelope is on disk.
@@ -221,6 +221,9 @@
 // Such a signal comes from whatever ends the run's processes, as a cancel, a teardown or a reap does.
 // Once the loop has seen the signal it writes no failed stop, runs no interrupt hook and writes no envelope;
 // the dead-loop stop below reports it.
+// A loop that ends before its first step without an envelope marks the reason in the loop log.
+// Such an end comes from a refusal, a lock another loop holds, or a directory or pid file the loop cannot write.
+// A loop that cannot write its envelope marks the reason too.
 // A mark opens its own line in the loop log, even after a last line of output that has no newline.
 // The waiter that spawns a loop marks in the loop log that the loop is starting, before the keeper starts.
 // It also marks the keeper's pid and exit status once it reaps the keeper.
@@ -268,8 +271,15 @@
 // The dead-loop stop therefore first waits a bounded time for it.
 // First come the marks of the loop, its keeper and the waiter's spawn.
 // Such a mark records a signal the loop received or the loop's exit status.
-// With no marks the clause reads "loop exit: not recorded" and says why:
+// A mark about the steps the loop reconciled at its start is no exit record.
+// With no exit mark the clause reads "loop exit: not recorded" and says why:
 // the log holds no starting mark for the loop, or no process marked the exit.
+// For an unmarked exit it sets the boot id the pid file records against the machine's boot id now.
+// The current boot id is read through Spec.Loop.BootID.
+// A different id names a stop of the machine as likely.
+// The same id names a kill of the loop and its keeper that no process can catch as likely.
+// An unknown id names both.
+// Reconciliation marks follow an unmarked exit's clause as "loop marks".
 // Then comes an excerpt of the loop's own output, a Go crash's first lines or the last lines;
 // a finished child's output is left out of it.
 // A log with no starting mark for the loop gives the marks clause alone.

@@ -76,6 +76,11 @@ func CreationTime(pid int) (time.Time, bool) {
 	return time.Unix(0, creation.Nanoseconds()), true
 }
 
+// BootID reports false on Windows, where no id that changes only at a boot is readable.
+func BootID() (string, bool) {
+	return "", false
+}
+
 // ParentPID reports no parent on Windows, where identity is resolved from process ancestry on Linux only.
 func ParentPID(pid int) (int, bool) {
 	return 0, false
