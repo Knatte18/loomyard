@@ -161,5 +161,8 @@ func readInclude(baseDir, engine, stencilName, include string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("stencilstore: read engine block %q of engine %q: %w", block, engine, err)
 	}
+	if err := refuseNewerBoardCopy(EngineBlockName(engine, block), content); err != nil {
+		return nil, err
+	}
 	return bytes.TrimSuffix(content, []byte("\n")), nil
 }

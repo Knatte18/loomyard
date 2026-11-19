@@ -1131,7 +1131,15 @@ func (registry) Default(name string) ([]byte, bool) {
 
 // Registry returns the stencilstore.Registry backed by this package's embedded defaults.
 // No engine imports this package outside its tests.
-// An engine reads a stencil at call time via stencilstore.Read, which needs no registry.
+// An engine reads a stencil at call time via stencilstore.Read.
+// This package registers the registry with stencilstore at init.
+// A read can then detect a board copy that a newer binary wrote.
 func Registry() stencilstore.Registry {
 	return registry{}
+}
+
+// init registers the embedded defaults with stencilstore,
+// so a read can refuse a board copy a newer binary wrote instead of rendering text this binary does not understand.
+func init() {
+	stencilstore.RegisterShipped(Registry())
 }

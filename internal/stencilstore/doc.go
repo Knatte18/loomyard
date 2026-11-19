@@ -27,6 +27,16 @@
 // Reconcile runs once per process, so each of those lines appears once per process.
 // The caller tells the drift warning its build-ancestry input through Source, because stencilstore runs no git.
 //
+// A process can outlive the binary that wrote the board copies it reads:
+// a production refresh by a newer binary rewrites them under a running driver.
+// The embedding package registers its defaults through RegisterShipped.
+// The caller registers its writer ordering through RegisterOrdering, normally the same function as Source's Older.
+// After that, a read of a board copy that a newer binary wrote is a NewerBoardCopyError.
+// A copy whose body equals its shipped default is read as it stands.
+// The error names the restart of the run's driver on the current binary as the way forward.
+// An edited copy is refused the same as an untouched one, and a refusal never writes the board.
+// Without a registered ordering, newer is ordered by the writer's and the running binary's commit times.
+//
 // Pins hashes each installed board copy's body, so a caller can record what a run may render when it starts.
 // ChangedPins reports the pinned stencils whose board copy changed or is gone since.
 //
