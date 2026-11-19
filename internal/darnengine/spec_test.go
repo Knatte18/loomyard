@@ -78,6 +78,13 @@ const (
 	gatedNoGateStep     = "3. Run no `lym gate test` yourself."
 )
 
+// The values the report passage fills for a report_dir of reportDir, and the heading of the step the passage follows.
+const (
+	reportDir   = "docs/research"
+	reportPath  = reportDir + "/fix-the-thing.md"
+	step4Marker = "## Step 4"
+)
+
 // TestDarnSpec covers the table's lead and settings.
 // It checks the rendered tokens for a first spawn, where the optional prior-work token renders to none.
 // It also checks a spawn that carries prior work, a parent and a friction directory.
@@ -87,10 +94,14 @@ func TestDarnSpec(t *testing.T) {
 
 	cfg := Config{Writer: "opus[effort=high]", WriterTimeoutMin: 45}
 	tests := []struct {
-		name            string
-		configure       func(in *DarnInputs)
-		parentName      string
-		wantInPrompt    func(in DarnInputs) []string
+		name      string
+		configure func(in *DarnInputs)
+		// reportDir is the Config's report_dir for the row; empty asks for no report file.
+		reportDir    string
+		parentName   string
+		wantInPrompt func(in DarnInputs) []string
+		// wantAfterStep4 lists values the prompt must carry after the Step 4 heading.
+		wantAfterStep4  []string
 		wantNotInPrompt []string
 		wantNone        int
 		wantNoParent    bool
@@ -102,9 +113,18 @@ func TestDarnSpec(t *testing.T) {
 			wantInPrompt: func(in DarnInputs) []string {
 				return []string{"fix-the-thing", in.DescriptionPath, filepath.ToSlash(in.SpecsDir), in.DecisionRecordPath, in.StopMarkerPath, in.ConditionStopMarkerPath, `model: "haiku"`, ungatedTestStep, ungatedSubagentGate}
 			},
-			wantNotInPrompt: []string{gatedNoGateStep},
+			wantNotInPrompt: []string{gatedNoGateStep, reportPath},
 			wantNone:        1,
 			wantNoParent:    true,
+		},
+		{
+			name:           "a report directory has the writer commit the report there, named for the slug by default",
+			configure:      func(in *DarnInputs) {},
+			reportDir:      reportDir,
+			wantInPrompt:   func(in DarnInputs) []string { return nil },
+			wantAfterStep4: []string{reportPath},
+			wantNone:       1,
+			wantNoParent:   true,
 		},
 		{
 			name:      "a cold fixer on the verify gate has the writer and its subagents run no gate",
@@ -145,6 +165,8 @@ func TestDarnSpec(t *testing.T) {
 			in := newSpecInputs(t)
 			tt.configure(&in)
 			reg := newTestRegistry(t)
+			cfg := cfg
+			cfg.ReportDir = tt.reportDir
 			table, err := DarnTable(in, cfg, reg)
 			if err != nil {
 				t.Fatalf("DarnTable() = _, %v; want nil error", err)
@@ -194,6 +216,12 @@ func TestDarnSpec(t *testing.T) {
 			for _, want := range tt.wantInPrompt(in) {
 				if !strings.Contains(prompt, want) {
 					t.Errorf("lead prompt does not contain %q", want)
+				}
+			}
+			step4 := strings.Index(prompt, step4Marker)
+			for _, want := range tt.wantAfterStep4 {
+				if step4 < 0 || strings.LastIndex(prompt, want) < step4 {
+					t.Errorf("lead prompt does not carry %q after the Step 4 heading", want)
 				}
 			}
 			for _, unwanted := range tt.wantNotInPrompt {
@@ -263,6 +291,10 @@ func TestDarnSpec_Refusals(t *testing.T) {
 		{"missing Step 4 fragment", func(t *testing.T, in *DarnInputs, cfg *Config) {
 			stencilkit.Remove(t, in.StencilsDir, makeChangeStencil)
 		}, makeChangeStencil},
+		{"missing report fragment under a report directory", func(t *testing.T, in *DarnInputs, cfg *Config) {
+			cfg.ReportDir = reportDir
+			stencilkit.Remove(t, in.StencilsDir, reportStencil)
+		}, reportStencil},
 		{"missing gated Step 4 fragment", func(t *testing.T, in *DarnInputs, cfg *Config) {
 			in.GateFixed = true
 			stencilkit.Remove(t, in.StencilsDir, makeChangeGatedStencil)

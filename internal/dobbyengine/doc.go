@@ -437,6 +437,8 @@
 //     It also owes it when `land_notice` is per-task and the entry's request, remembered or read that tick, asks for it.
 //     Under off it owes none.
 //     The line is `[dobby notice] <slug>: landed as <commit>`.
+//     When Finalize recorded the landed diff as empty, it reads `landed with an empty diff`,
+//     naming the commit as the one the parent branch stays at.
 //     With no commit recorded it reads `landed, commit unknown`.
 //     For a run that did not land it reads `ended without landing` with `lym batten status <slug>`.
 //     A beam's batten run is driven by its parent's dobby, so a beam's landing gets its line the same way.

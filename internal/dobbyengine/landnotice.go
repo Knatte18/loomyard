@@ -305,6 +305,7 @@ func (d *daemon) updateLandNotice(slug string, mutate func(*LandNoticeState)) {
 
 // landNoticeLine is the line a run's landing notice posts.
 // It names the slug and the outcome, and for a landing the head of its landing commit followed by followUp.
+// A landing that changed no code path on the parent branch says so in place of naming its commit as the landing.
 func landNoticeLine(run RunView, followUp string) string {
 	if !run.Landed {
 		return fmt.Sprintf("%s %s: %s; lym batten status %s shows the run", runNoticePrefix, run.Slug, landNoticeOutcome(run), run.Slug)
@@ -312,7 +313,11 @@ func landNoticeLine(run RunView, followUp string) string {
 	if run.LandingCommit == "" {
 		return fmt.Sprintf("%s %s: landed, commit unknown%s", runNoticePrefix, run.Slug, followUp)
 	}
-	return fmt.Sprintf("%s %s: landed as %s%s", runNoticePrefix, run.Slug, run.LandingCommit[:min(len(run.LandingCommit), landingCommitWidth)], followUp)
+	commit := run.LandingCommit[:min(len(run.LandingCommit), landingCommitWidth)]
+	if run.EmptyLanding {
+		return fmt.Sprintf("%s %s: landed with an empty diff: no file of its parent branch changed, which stays at %s%s", runNoticePrefix, run.Slug, commit, followUp)
+	}
+	return fmt.Sprintf("%s %s: landed as %s%s", runNoticePrefix, run.Slug, commit, followUp)
 }
 
 // landNoticeOutcome names how a run past its Land row ended.

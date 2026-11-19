@@ -230,6 +230,7 @@ func LandingDeps(dir string) landingshed.Deps {
 		},
 		HoldsWork:          func(string, string) (bool, error) { return false, nil },
 		ChangedPaths:       func(string, string) ([]string, error) { return nil, nil },
+		ChangedCodePaths:   func(string, string) ([]string, error) { return nil, nil },
 		MergeBase:          func(string) (string, error) { return "base", nil },
 		MergeRecordPath:    landingshed.MergeRecordPath(filepath.Join(dir, "landing-scratch")),
 		FixerSeats:         noopFixerSeats{},

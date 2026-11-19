@@ -4,7 +4,7 @@
      seatengine fills it from the lead's value map that `darnengine.DarnTable` builds.
      It then hands the result to shuttle as the writer's whole prompt.
      Every marker below is a top-level {{.X}} substitution, and the file has no {{if}}/{{range}} conditionals.
-     Every marker must be non-empty except pattern_directive, project_directive, friction_directive and parent_directive.
+     Every marker must be non-empty except pattern_directive, project_directive, friction_directive, parent_directive and report_directive.
      project_directive is rendered by internal/loomengine.ProjectRecordDirective for a run under a beam.
      It shares the pattern directive's line, so an empty value leaves the prompt's bytes unchanged.
      decision_record_path names the decision record the writer reads as its scope.
@@ -13,7 +13,9 @@
      prior_work is never empty: `darnengine.DarnTable` fills it with (none) when it has nothing to tell.
      edit_directive is rendered unconditionally by internal/editdirective.
      make_change holds Step 4's list: `darnengine.DarnTable` fills it with darn-fragment-make-change,
-     or with darn-fragment-make-change-gated when a cold fixer clears the row's verify gate. -->
+     or with darn-fragment-make-change-gated when a cold fixer clears the row's verify gate.
+     report_directive holds darn-fragment-report, led by a blank line, when darn.yaml's report_dir is set.
+     It shares make_change's line, so an empty value leaves the prompt's bytes unchanged. -->
 
 # Darn — make the change a board entry asks for, in one session
 
@@ -61,7 +63,7 @@ Check whether landed work, another board entry or another run overtook or contra
 
 ## Step 4 — Make the change
 
-{{.make_change}}
+{{.make_change}}{{.report_directive}}
 
 ## Step 5 — Write the change description
 

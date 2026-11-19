@@ -331,7 +331,7 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 		deps.ArchiveParentMerge = func() error { order = append(order, "archive"); merger.headSHA = "originTip"; return nil }
 		deps.CommitStatus = func() error { order = append(order, "commit"); return nil }
 		deps.PushRecords = func() error { order = append(order, "push-records"); return nil }
-		deps.RecordLanding = func(commit string) error { order = append(order, "record "+commit); return nil }
+		deps.RecordLanding = func(commit string, _ bool) error { order = append(order, "record "+commit); return nil }
 		deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
 		fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
@@ -508,7 +508,7 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 			var order []string
 			deps := newTestDeps(t)
 			deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
-			deps.RecordLanding = func(commit string) error { order = append(order, "record "+commit); return nil }
+			deps.RecordLanding = func(commit string, _ bool) error { order = append(order, "record "+commit); return nil }
 			deps.CommitParentRecords = func() error { order = append(order, "records"); return nil }
 			summary, err := summaryparser.Parse(deps.DescriptionPath)
 			if err != nil {
@@ -575,7 +575,7 @@ func TestFinalize_RecordsTheLandingCommitOnTheFirstTry(t *testing.T) {
 	var order []string
 	deps := newTestDeps(t)
 	deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
-	deps.RecordLanding = func(commit string) error { order = append(order, "record "+commit); return nil }
+	deps.RecordLanding = func(commit string, _ bool) error { order = append(order, "record "+commit); return nil }
 	deps.RecordLandedSize = func(from, to string) error { order = append(order, "size "+from+".."+to); return nil }
 	merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}, order: &order, headSHA: "landed1", preMergeHeadSHA: stringPointer("parent0")}
 	fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
@@ -608,7 +608,7 @@ func TestFinalize_RecordLandingFailureKeepsDone(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			sizeCalls := 0
 			deps := newTestDeps(t)
-			deps.RecordLanding = func(string) error { return tt.recordErr }
+			deps.RecordLanding = func(string, bool) error { return tt.recordErr }
 			deps.RecordLandedSize = func(string, string) error { sizeCalls++; return tt.sizeErr }
 			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}, headSHA: "landed1", headErr: tt.headErr, preMergeHeadSHA: tt.preMergeHeadSHA}
 			fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
@@ -619,6 +619,47 @@ func TestFinalize_RecordLandingFailureKeepsDone(t *testing.T) {
 			}
 			if sizeCalls != tt.wantSizeCalls {
 				t.Errorf("RecordLandedSize calls = %d; want %d", sizeCalls, tt.wantSizeCalls)
+			}
+		})
+	}
+}
+
+// TestFinalize_RecordsWhetherTheLandedDiffIsEmpty pins the empty-diff flag handed to RecordLanding.
+// It is set only when the landing changed no code path against the parent head merged into the task worktree.
+// A failed path read, or no merged head held, records the landing as not empty.
+func TestFinalize_RecordsWhetherTheLandedDiffIsEmpty(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name            string
+		landedPaths     []string
+		pathsErr        error
+		preMergeHeadSHA string
+		want            bool
+	}{
+		{"NoPathChanged", nil, nil, "parent0", true},
+		{"APathChanged", []string{"docs/research/report.md"}, nil, "parent0", false},
+		{"ThePathReadFails", nil, errors.New("no diff"), "parent0", false},
+		{"NoMergedHeadHeld", nil, nil, "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var recorded []bool
+			deps := newTestDeps(t)
+			deps.ChangedCodePaths = func(from, to string) ([]string, error) {
+				if from == "parent0" && to == "landed1" {
+					return tt.landedPaths, tt.pathsErr
+				}
+				return []string{"another.go"}, nil
+			}
+			deps.RecordLanding = func(_ string, emptyDiff bool) error { recorded = append(recorded, emptyDiff); return nil }
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}, headSHA: "landed1", preMergeHeadSHA: stringPointer(tt.preMergeHeadSHA)}
+			fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+			shedfake.RequireOutcome(t, fz, shedengine.Done)
+			if want := []bool{tt.want}; !slices.Equal(recorded, want) {
+				t.Errorf("RecordLanding empty-diff flags = %v; want %v", recorded, want)
 			}
 		})
 	}
@@ -827,7 +868,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			deps := newTestDeps(t)
 			markCalled := false
 			deps.MarkTaskDone = func() error { markCalled = true; return nil }
-			deps.RecordLanding = func(string) error { markCalled = true; return nil }
+			deps.RecordLanding = func(string, bool) error { markCalled = true; return nil }
 			if tt.recordsErr != nil {
 				deps.CommitParentRecords = func() error { return tt.recordsErr }
 			}

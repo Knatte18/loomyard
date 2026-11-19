@@ -280,7 +280,7 @@ func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitAndTheEndedEntryAndPair(t 
 	if err := os.WriteFile(filepath.Join(h.BoardDir(), "board.json"), []byte(board), 0o644); err != nil {
 		t.Fatalf("write board.json: %v", err)
 	}
-	if err := shedrun.WriteLandedCommit(prime, "landed", "abc123"); err != nil {
+	if err := shedrun.WriteLandedCommit(prime, "landed", shedrun.LandedCommit{Commit: "abc123", EmptyDiff: true}); err != nil {
 		t.Fatalf("WriteLandedCommit() = %v; want nil", err)
 	}
 
@@ -297,6 +297,7 @@ func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitAndTheEndedEntryAndPair(t 
 	type landing struct {
 		pastLand, landed        bool
 		commit                  string
+		emptyLanding            bool
 		entryEnded, pairPresent bool
 		cancelMarker            bool
 	}
@@ -308,7 +309,7 @@ func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitAndTheEndedEntryAndPair(t 
 	got := map[string]landing{}
 	gotJudged := map[string]judged{}
 	for _, view := range views {
-		got[view.Slug] = landing{view.PastLand, view.Landed, view.LandingCommit, view.EntryEnded, view.PairPresent, view.CancelMarker}
+		got[view.Slug] = landing{view.PastLand, view.Landed, view.LandingCommit, view.EmptyLanding, view.EntryEnded, view.PairPresent, view.CancelMarker}
 		gotJudged[view.Slug] = judged{view.Run, view.Verdict.Answer, view.Verdict.Reason}
 	}
 	wantJudged := map[string]judged{
@@ -325,7 +326,7 @@ func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitAndTheEndedEntryAndPair(t 
 		"ahead":      {pairPresent: true},
 		"paused":     {pairPresent: true},
 		"cancelling": {pairPresent: true, cancelMarker: true},
-		"landed":     {pastLand: true, landed: true, commit: "abc123", entryEnded: true, pairPresent: true},
+		"landed":     {pastLand: true, landed: true, commit: "abc123", emptyLanding: true, entryEnded: true, pairPresent: true},
 		"unlanded":   {pastLand: true, entryEnded: true, pairPresent: true},
 		"unreadable": {pastLand: true, landed: true, pairPresent: true},
 		"pairless":   {pastLand: true, entryEnded: true},

@@ -9,6 +9,11 @@
 // A verify gate is the writer's or a Code-Review fix round's.
 // `verify_budget_min` is how long, in minutes, a verify gate runs before the run's parent gets one notice.
 // The attempts go on, and 0 turns the notice off.
+// `report_dir` is a worktree-relative directory.
+// When it is set, the writer's prompt has it commit the task's report there.
+// The path is the one the task names, or else `<slug>.md`.
+// A finding then reaches the parent branch instead of the run's records alone.
+// LoadConfig refuses a `report_dir` that leaves the worktree or has a records directory in its path.
 // The darn recipe's Code-Review perch takes its models, fans, budgets and auto-accept flag from `loom.yaml`.
 // darn.yaml holds none of them.
 // A `verify` key in the hub file is dropped at load and pruned by `lym config reconcile`;

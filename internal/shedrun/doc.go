@@ -45,7 +45,10 @@
 // The filing writes it once it turned the run's own board entry into the project of the family it filed.
 // WriteFilingMark writes it and FilingMarked reads it; while it stands, the run's status writes leave that entry alone.
 // LandedCommitFile is the ephemeral file under ScratchDir holding the commit a run's landing put on the parent branch.
-// WriteLandedCommit writes it and ReadLandedCommit reads it, empty when none is recorded.
+// Its second line, when present, marks a landing that changed no code path on the parent branch.
+// WriteLandedCommit and RecordLandedCommit write it.
+// ReadLandedCommit reads it, the zero LandedCommit when none is recorded.
+// RecordLandedCommit keeps the flag of a landing already recorded for the same commit.
 // ParentNoticeFile is an ephemeral file under ScratchDir.
 // It holds the key of the parent-branch notice a run's pre-push check last posted.
 // The intent writers own the batten record's `cancel` and `pause_intent` keys.

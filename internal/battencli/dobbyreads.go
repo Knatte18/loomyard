@@ -228,12 +228,12 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 				if !view.Landed {
 					return nil
 				}
-				commit, err := shedrun.ReadLandedCommit(prime, slug)
+				landed, err := shedrun.ReadLandedCommit(prime, slug)
 				if err != nil {
 					logger.Warn("battencli: a landed run's landing commit is unreadable and stays unknown", "slug", slug, "error", err)
 					return nil
 				}
-				view.LandingCommit = commit
+				view.LandingCommit, view.EmptyLanding = landed.Commit, landed.EmptyDiff
 				return nil
 			},
 			func() error {

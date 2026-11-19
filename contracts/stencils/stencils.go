@@ -57,6 +57,12 @@ var DarnFragmentMakeChange []byte
 //go:embed darn/darn-fragment-make-change-gated.md
 var DarnFragmentMakeChangeGated []byte
 
+// DarnFragmentReport is the darn writer prompt's passage that has the writer commit the task's report as a file.
+// It is rendered only for a run whose darn.yaml names a report directory.
+//
+//go:embed darn/darn-fragment-report.md
+var DarnFragmentReport []byte
+
 // SamplerTemplateAgent is the sampler agent's shipped-default prompt.
 // It is the whole instruction set of the interactive session the operator works a change out with.
 //
@@ -897,6 +903,7 @@ var entries = []registryEntry{
 	{"darn-template-write", &DarnTemplateWrite},
 	{"darn-fragment-make-change", &DarnFragmentMakeChange},
 	{"darn-fragment-make-change-gated", &DarnFragmentMakeChangeGated},
+	{"darn-fragment-report", &DarnFragmentReport},
 	{"sampler-template-agent", &SamplerTemplateAgent},
 	{"raddle-template-agent", &RaddleTemplateAgent},
 	{"drift-template-expect", &DriftTemplateExpect},
