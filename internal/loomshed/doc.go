@@ -129,6 +129,8 @@
 // `lym gate test`'s closing line of failed runs follows them.
 // A log that names none is quoted as its tail instead.
 // When the whole log holds the CPU watchdog's line, the findings add a paragraph naming the window.
+// A log whose failure report holds triage lines adds a Triage section after the failures.
+// That section puts each failed test's lines under its identity.
 // `lym gate test` prints that line after it quits a busy test binary.
 // A watchdog quit of a healthy package has no code fix:
 // the way forward is raising `busy_quit_sec` through `lym config gate` from the prime, then re-stepping the row.

@@ -822,6 +822,15 @@
 // Otherwise it is one line saying no current report exists and why.
 // That line names the gate key of a report written on a red tier.
 //
+// The rubric's `reach_report` marker is filled the same way from the worktree's reach report.
+// A `lym gate test` call with the `reach` report step writes that report.
+// The marker lists the report's note lines when `gatecli.ReachReportMatches` matches the report against HEAD.
+// Otherwise it is one line saying no current report exists and why; a report written in the prime never matches.
+//
+// `wire` also tells the closure `gatecli.ReachPendingOf` builds to the recipe Env's `VerifyReach`.
+// It tells the same closure to the weaver geometry's `ReachPending`.
+// The verify gate of a row whose key lists `reach` and the weaver batch gate then hand the writer the reach note.
+//
 // Every loom recipe builds its Describe session from one `landingshed.DescribeTable`.
 // It lists the run records that exist.
 // It renders `(none)` for a run that has none, as a darn run has no webster summary.

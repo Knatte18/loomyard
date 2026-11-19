@@ -41,6 +41,20 @@ func TestFailedTests(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			name: "triage lines under a failed test change nothing about the tests the report names",
+			log: report(
+				"tier0 (exit 1), log /runs/a.log:",
+				"  example.com/m/a TestA/sub:",
+				"    "+TriageLinePrefix+"not in the coverage maps",
+				"    a_test.go:3: got 1; want 2",
+				"  example.com/m/b TestB:",
+				"    "+TriageLinePrefix+"reaches none of this run's changes; map commit c1",
+				"    "+TriageLinePrefix+"lym gate reach --test b.TestB --since <last green commit>",
+			),
+			want:   []FailedTest{{Tier: 0, Package: "example.com/m/a", Test: "TestA"}, {Tier: 0, Package: "example.com/m/b", Test: "TestB"}},
+			wantOK: true,
+		},
+		{
 			name: "a log with no report names none",
 			log:  "--- FAIL: TestA (0.00s)\nFAIL\texample.com/m/a\t0.1s\n",
 		},
@@ -75,6 +89,67 @@ func TestFailedTests(t *testing.T) {
 			got, ok := FailedTests(tt.log)
 			if ok != tt.wantOK || !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("FailedTests() = %+v, %v; want %+v, %v", got, ok, tt.want, tt.wantOK)
+			}
+		})
+	}
+}
+
+// TestTriageLines pins which triage lines a failure report yields per failed test, and that a log with none yields none.
+func TestTriageLines(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	report := func(lines ...string) string {
+		return "=== RUN   TestA\nFAIL\n" + FailureReportHeader + "\n" + strings.Join(lines, "\n") + "\n" +
+			FailedRunsPrefix + "tier0 (exit 1); the exit code is tier0's\n"
+	}
+	notMapped := TriageLinePrefix + "not in the coverage maps"
+	tests := []struct {
+		name string
+		log  string
+		want map[string][]string
+	}{
+		{
+			name: "triage lines under two tests, a subtest named by its path, keep their prefix and their order",
+			log: report(
+				"tier0 (exit 1), log /runs/a.log:",
+				"  example.com/m/a TestA/sub:",
+				"    "+notMapped,
+				"    a_test.go:3: got 1; want 2",
+				"  example.com/m/b TestB:",
+				"    "+TriageLinePrefix+"reaches none of this run's changes; map commit c1",
+				"    "+TriageLinePrefix+"lym gate reach --test b.TestB --since <last green commit>",
+				"guard tier1 (exit 1), log /runs/g.log:",
+				"  example.com/m/g TestGuard:",
+				"    "+notMapped,
+			),
+			want: map[string][]string{
+				"example.com/m/a.TestA/sub": {notMapped},
+				"example.com/m/b.TestB": {
+					TriageLinePrefix + "reaches none of this run's changes; map commit c1",
+					TriageLinePrefix + "lym gate reach --test b.TestB --since <last green commit>",
+				},
+				"example.com/m/g.TestGuard": {notMapped},
+			},
+		},
+		{
+			name: "a report with no triage line yields none",
+			log:  report("tier0 (exit 1), log /runs/a.log:", "  example.com/m/a TestA:", "    a_test.go:3: boom"),
+		},
+		{
+			name: "a triage-shaped line under a failure outside any test belongs to no test",
+			log:  report("tier0 (exit 1), log /runs/a.log:", "  example.com/m/b, failed outside any test:", "    "+notMapped),
+		},
+		{
+			name: "a log with no report yields none",
+			log:  "--- FAIL: TestA (0.00s)\n    " + notMapped + "\nFAIL\texample.com/m/a\t0.1s\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := TriageLines(tt.log); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("TriageLines() = %q; want %q", got, tt.want)
 			}
 		})
 	}

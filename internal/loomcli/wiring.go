@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gatecli"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -822,6 +823,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 
 	weaverGeom.Index = planglyph.NewSlottedIndex(fabricengine.NewReferenceRule(), weaverGeom.GateSlots, weaverGeom.GateWaitDir)
 	weaverGeom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
+	weaverGeom.ReachPending = gatecli.ReachPendingOf(location)
 	weaverDeps := weaverengine.RunDeps{
 		Geom:   weaverGeom,
 		Runner: runner,
@@ -911,9 +913,11 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// VerifyMergeBase and ReviewBase are nil for a standalone run, which records no parent branch.
 		VerifyMergeBase: verifyMergeBase,
 		ReviewBase:      verifyMergeBase,
-		// RedundancyReport reads the gate's report at each fill of a rubric carrying the marker, never at wire time.
+		// RedundancyReport and ReachReport read the gate's reports at each rubric fill, never at wire time.
 		RedundancyReport: redundancyReportNote(location),
+		ReachReport:      reachReportNote(location),
 		VerifyHold:       verifytree.NewPauseHold(pauseGeom, nil),
+		VerifyReach:      gatecli.ReachPendingOf(location),
 		// GateFixer wraps the Darn-Write, Plan-Write and Discussion-Write gates of a pair run with a cold fixer.
 		// It reads every value here at wire time and opens nothing.
 		GateFixer: gateFixerSeam(gateFixerInputs{

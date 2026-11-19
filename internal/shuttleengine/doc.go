@@ -842,6 +842,12 @@
 // and its findings text rides GateOutcome.Reason.
 // A failed outcome carries the failing entry's findings text on GateOutcome.Findings beside that terminal reason.
 // Finalize removes the findings file with the run directory.
+// A failing result flagged GateResult.WriterOnly is meant for the writer alone:
+// the loop treats it as any failing result, and a wrapper that hands failures to a cold fixer hands it none.
+// GateEntry.Rerun is the RerunMark such a wrapper sets while it runs the entry's gate again over a fixer's tree.
+// A nil mark leaves the entry as it is.
+// RerunMark.On reports whether such a run is in progress, so a gate can tell the re-run from its first call;
+// a nil mark is never on.
 // A failed entry with budget remaining is re-prompted with one default line naming the findings file.
 // An entry that sets GateEntry.Reprompt sends its rendered line instead.
 // Every send validates its text.

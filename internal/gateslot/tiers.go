@@ -107,7 +107,8 @@ type GateKey struct {
 	Scope string `yaml:"scope"`
 	// Lints are the lint steps the key's call runs after its tiers, in order, each LintComments or LintPattern; empty runs none.
 	Lints []string `yaml:"lints"`
-	// Reports are the advisory report steps the key's call runs after its lints, each ReportRedundancy; empty runs none.
+	// Reports are the advisory report steps the key's call runs after its lints.
+	// Each is ReportReach or ReportRedundancy; empty runs none.
 	// A report step never changes the call's result.
 	Reports []string `yaml:"reports"`
 	// Fixer is the model-spec of the cold fixer that a red agent call of this key hands its verdict to; empty turns it off.
@@ -137,6 +138,13 @@ const (
 	// LintPattern is the PATTERN headroom lint: it flags PATTERN.md growth past its headroom line versus HEAD.
 	LintPattern = "pattern"
 )
+
+// ReportReach names the reach report step a gate key's reports may hold.
+// It refreshes the worktree's coverage maps of the packages the diff changes.
+// It finds the changed functions no test of the maps reaches.
+// It writes them to the worktree as a note for the writer and the review.
+// It runs before every other report step.
+const ReportReach = "reach"
 
 // ReportRedundancy names the redundancy report step a gate key's reports may hold.
 // It judges the diff's new and changed tests against the per-package coverage maps.

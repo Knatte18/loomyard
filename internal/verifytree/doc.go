@@ -85,6 +85,27 @@
 // ReadLandingFailure reads it, and IsLogPath checks a log path against the verify directory.
 // The record sits in the verify directory beside the logs.
 //
+// WithReachTurn is the reach turn.
+// It is a decorator over any verify gate that hands a writer the reach note through its own gate.
+// A ReachTurn tells it a source of the pending report and the entry's attempt budget.
+// It also tells it the entry's shuttleengine.RerunMark and the listed file.
+// `ReachListedPath` names the listed file in the verify directory.
+// A failing result of the inner gate is returned as it is and counts one failing arrival.
+// A passing result reads the pending report.
+// The turn runs when the report holds a function whose id and hash the listed file lacks.
+// The count plus one must also be below the budget.
+// The turn then adds the report's functions to those the listed file holds.
+// It returns one failing result marked WriterOnly.
+// Its findings are the note and the way forward: add the missing tests and commit them, or end the turn unchanged.
+// Any other pass is returned and resets the count.
+// So a function listed once brings no second turn, and an arrival one failure short of the budget passes without one.
+// A call inside the turn's RerunMark, the re-run after a cold fixer, adds nothing to the count.
+// That arrival's first, failing call counted already.
+// The pending source's error is the gate's error.
+// A listed file that cannot be read or written is logged at Warn, and the gate returns the pass without the turn.
+// Bound: the turn costs one writer turn and one gate attempt per arrival.
+// Only an arrival whose report lists an unreached function no earlier turn listed costs them.
+//
 // Every site of one worktree shares one directory, Dir(anchorRoot), so a pass at one site lets the next site skip.
 // The package imports no resolver: the worktree and the directory are told through Paths.
 package verifytree

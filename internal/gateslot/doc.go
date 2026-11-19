@@ -63,8 +63,12 @@
 // Each passes the `-p` value it reads from the pool's Limits at its acquire,
 // so a hub that declares `tier0` bounds them by its parallel and a hub that declares none adds no `-p`.
 // The redundancy report step of `lym gate test` is one: it takes one slot after the call's tiers released theirs.
+// The reach report step holds a slot only for its refresh of a task worktree's own maps.
+// That refresh runs the map run's measurement in the map run's slot ask.
 // `lym gate redundant` is another.
 // It waits for its slot once it has a candidate to check by mutation, and holds it to its end.
+// `lym gate mutate` is a third.
+// It waits for its slot after its refresh of the worktree's maps, and holds it to its end.
 //
 // # Prebuilt store
 //
@@ -108,8 +112,10 @@
 // `tier_parallel` is an open map from a tier name to this machine's parallel for it.
 // A GateKey may also hold `lints`, the lint steps its call runs after its tiers, each LintComments or LintPattern.
 // The template's `card` key lists both.
-// A GateKey may also hold `reports`, the advisory steps its call runs after its lints, each ReportRedundancy.
-// The template lists it on `webster`, `parent-align`, `darn-write` and `code-burler-fix`.
+// A GateKey may also hold `reports`, the advisory steps its call runs after its lints.
+// Each is ReportReach or ReportRedundancy.
+// The template lists `reach` first on `batch`, `webster`, `parent-align`, `darn-write` and `code-burler-fix`.
+// It lists `redundancy` after it on every one of those but `batch`.
 // Config load fills a template key a tuned `gates` entry lacks into that entry,
 // so a hub base file that tunes one of those keys without `reports` still runs the step, and `reports: []` turns it off.
 // `tiers` and `build` are executable keys, since a tier or build command runs any shell command in a task worktree.
@@ -166,27 +172,36 @@
 // a `tier_parallel` entry that is no integer of at least 1;
 // a gate key whose scope is not `card`, `diff` or `all`, and the retired `coverage`, which names `lym fabric reconcile`;
 // a `card` scope on any key but `card` and `batch`; a lint other than `comments` or `pattern`;
-// a report other than ReportRedundancy, `redundancy`.
+// a report other than ReportReach, `reach`, or ReportRedundancy, `redundancy`.
 // A GateKey may also hold `fixer`, a model-spec naming the cold fixer an agent's red call hands its failures to.
 // Only the `card` key may hold one; the template sets `sonnet[medium]` there, and an empty value turns the fixer off.
 // `fixer_timeout_min` bounds how long the callers of a cold gate fixer wait for it.
 // LoadConfig refuses a value below 1, and Config.FixerTimeout returns it as a duration.
 // `lym gate test --map` builds coverage maps under three bounds.
+// The reach report step refreshes a task worktree's own maps under them too.
 // `redundancy_build_timeout_min` bounds each build in minutes.
 // `redundancy_test_timeout_sec` bounds each test in seconds.
 // `redundancy_test_memory_mb` caps the memory of each test and of every process it starts, in megabytes.
 // Config.RedundancyTestMemory returns it in bytes.
-// The redundancy report step of `lym gate test` and the mutation check of `lym gate redundant` take the three bounds too.
-// In `lym gate redundant` a mutant run past the test bound or the memory cap is unjudged, never a kill.
-// `lym gate test --map` and `lym gate redundant` run fewer tests side by side when memory is short.
+// The redundancy report step of `lym gate test` takes the three bounds too.
+// So do the mutation checks of `lym gate redundant` and `lym gate mutate`.
+// In both verbs a mutant run past the test bound or the memory cap is unjudged, never a kill.
+// `lym gate test --map`, `lym gate redundant` and `lym gate mutate` run fewer tests side by side when memory is short.
+// So does the reach step's refresh.
 // That is when the limit they sit under leaves less than the caps of those tests together.
 // A map call runs each mapped tier's tests up to that tier's parallel.
 // A tier that sets `memory_mb` fits no more tests than its memory divides into `redundancy_test_memory_mb` caps.
-// It holds the larger of tier0's and tier1's slot asks, where `slots: all` ranks above any count.
+// A map call, and the reach step's refresh, holds the larger of tier0's and tier1's slot asks.
+// There `slots: all` ranks above any count.
 // The report step has two bounds of its own.
 // `redundancy_max_tests` caps the tests it judges in one call.
 // `redundancy_budget_min` bounds, in minutes, its builds and tests once it holds its slot.
 // They are cross-pair keys, since every worktree of the hub reads the maps, and LoadConfig refuses a value below 1.
+// Three more keys bound the reach report step and `lym gate mutate`, which refresh the worktree's own maps.
+// `reach_budget_min` bounds, in minutes, the step's and the verb's refresh of those maps once they hold a slot.
+// `mutation_max_mutants` caps the mutants `lym gate mutate` runs for one diff, spread over the changed functions in turn.
+// `mutation_budget_min` bounds, in minutes, its mutant builds and runs once it holds a slot.
+// They are cross-pair keys too, and LoadConfig refuses each below 1.
 // LoadConfig refuses a `fixer` on any key but `card`, and a `fixer` that `modelspec.Parse` rejects.
 // Each refusal names the key and its way forward.
 // A `gates` entry still in the retired list shape, such as `card: [0]`, is refused naming `lym fabric reconcile`.
@@ -271,6 +286,10 @@
 // FailureReportHeader opens the failure report a failing call prints.
 // FailedTests reads the report's failed tests, each with the tier of the run that failed it.
 // It reports false unless every failure of the report is a named test of a tier or guard run.
+// TriageLinePrefix opens each advisory triage line a failure report holds under a failed test;
+// FailedTests reads past such a line as it does any four-space output line.
+// TriageLines reads them back, per failed test as `<package>.<Test>`, for a report that re-renders failures.
+// RenderTriageSection renders them as the `Triage:` section of a findings text.
 // TierRunFailures reads every failure of the report, each opened by its run's label.
 // It reports false unless every run the report lists is a tier or guard run.
 // It also reports false for a package that failed outside any test, such as by a compile error, which a rerun repeats.

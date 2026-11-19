@@ -311,6 +311,8 @@
 //     ReviewInputNote renders from the record of a full generation the note that fills the rubric's optional
 //     `review_input` marker, naming each input the generation reads besides the diff.
 //     AmendmentNote renders from the record the note that fills the rubric's optional `amendment` marker.
+//     BouncerConfig.RedundancyReport and BouncerConfig.ReachReport return the notes that fill the optional
+//     `redundancy_report` and `reach_report` markers; each is read only for a rubric carrying its marker.
 //     The note scopes the seed, the reviewers and the judge to the change:
 //     for a document it is the artifacts' change since the base commit;
 //     for code it is the stored settle-record.patch against the working-tree diff at the current merge base.

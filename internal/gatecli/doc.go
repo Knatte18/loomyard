@@ -4,6 +4,8 @@
 // Its verb `card-verify` runs a plan card's `**Verify:**` line.
 // Its flag `--map` makes `test` build the per-package coverage maps on command at the HEAD of the worktree it runs in,
 // and its verb `redundant` lists one package's redundancy candidates from its map, confirmed by mutation.
+// Its verb `reach` prints the tests that reach one function, or the landings of a branch that a test reaches.
+// Its verb `mutate` mutates the lines the worktree's diff changes and lists the mutants no covering test kills.
 //
 // The module is not standalone-capable and does not go through internal/cliwire.
 // It has no target directory, state, plan or stencils to wire, and it resolves hub membership itself.
@@ -72,7 +74,8 @@
 // Explicit `<targets>` beside `--gate` replace the key's scope.
 // Each run record carries the key as `gate_key`, empty for a call with manual flags.
 // `--gate` opens no flag combination the manual flags lack.
-// The exception is the key's lint and report steps, described in the Lint steps and Redundancy report sections.
+// The exception is the key's lint and report steps.
+// The Lint steps, Reach report and Redundancy report sections describe them.
 // `--tier` names a tier and may repeat.
 // The default is tier0 when neither `--tier` nor `--upto` is given.
 // A tier another listed tier covers is dropped and named as covered on stderr.
@@ -617,6 +620,145 @@
 // Such a change is one to a helper or a callee.
 // Review reading each finding against its covering tests bounds that.
 //
+// # Reach report
+//
+// A `--gate` key whose `reports` lists `gateslot.ReportReach` runs the reach report step before the redundancy step.
+// It runs after the key's lints in an uncancelled call, under the same memory guard, whatever the key's scope.
+// The step is advisory: every failure it meets is an error line of its report, and it never changes the exit code.
+// It writes `ReachReport` through `internal/state` as `reach.json` in the worktree's gate directory.
+// It prints the report's note to stderr, at most a fixed number of lines.
+// A report it cannot write is logged at Warn.
+// A call one of whose runs failed gets a report marked `red_gate` that judges nothing.
+// So does a call outside every hub, a hub whose `scoper` is not `go`, or a task worktree with no parent branch.
+// Each such report carries a note and makes no lookup.
+//
+// The step diffs from the merge base with the parent branch.
+// The prime has no parent branch, so it diffs the working tree from HEAD, and its report records `prime`.
+// `changedFuncsAt` finds the changed functions.
+// It takes each package directory holding a changed production Go file.
+// It reads every production Go file of the directory at the base, through fabric, and in the working tree.
+// It hands the two sets to `testreach.ChangedFuncs`.
+//
+// A task worktree first refreshes its own coverage maps, under `testcover.Dir` of its anchor.
+// A package holding a changed function is refreshed when its worktree map is absent or no longer fresh.
+// It is refreshed only when no file it or a package its test binary links owns is uncommitted.
+// The linked packages are those the map records, or for a package with no map those the go command lists.
+// The refresh runs the map run's measurement over those packages.
+// It holds the map run's slot ask and passes the map run's own clean checks.
+// It never writes the hub's shared maps.
+// `reach_budget_min` counts from the hold, and past it the walk starts no further package.
+// A package left unrefreshed is a line of the report with its reason and its way forward.
+// The prime refreshes nothing: it keeps no worktree maps, and its shared maps are rebuilt with `lym gate test --map`.
+//
+// The step then reads the shared maps and, outside the prime, the worktree's own through `testreach.Open`.
+// It records, per changed function, its package, file, name and hash, and whether it is new.
+// It records the tests that reach it too: its own package's first, fewest reached functions first.
+// It keeps a fixed number of them and counts the rest.
+// A function no mapped test reaches carries its caveats.
+// One caveat is that its package holds a test above tier1 or an entry marked as running code in another process.
+// Another, for a function new since the base, is a package linking its package whose map is older than its files.
+// A hub with no coverage map at all gets a report that judges nothing, whose note names `lym gate test --map`.
+// The report also records the maps it read and the hashes of the Go files of each package it names.
+// `ReachReport.NoteLines` renders the note.
+// It holds the tests per function, the commit and age of each map,
+// and the unreached functions with their caveats and the unrefreshed packages.
+// It is cut at a line cap that names the report.
+// `ReadReachReport` reads a worktree's report.
+// `ReachReportMatches` matches one against a commit.
+// `ReachPendingOf` returns the pending-report source of the reach turn.
+// The loomshed verify gate and the weaver batch gate both read it.
+// It answers the note and the unreached functions of the worktree's report for the asked gate key.
+// A report of another key, one that judged nothing and one that no longer matches HEAD answer false.
+// So does a report that cannot be read or matched, with a Warn and no error, since the note is advisory.
+// It never matches a report that judged nothing, a red-gate report or a prime report.
+// Otherwise it holds when `changedFuncsAt` over the commit's tree gives the recorded functions with their hashes.
+// The merge base it works from is the current one.
+// Each package of the recorded file hashes must also hash the same at the commit.
+// Bound: a map older than the files can make a function read as unreached.
+// So can a test that runs the function in another process.
+//
+// # Reach verb
+//
+// `lym gate reach <file>#<Func>` prints the reach note of one function, read from the maps, and changes nothing.
+// The file is the worktree-relative slash path, and the function's name is `Type.Method` for a method.
+// The note is the reach step's.
+// It lists the tests that reach the function, its own package's first and a fixed number at most.
+// It also gives the caveats of a function no test reaches, and the commit and age of each map read.
+// The maps are the hub's shared maps and, outside the prime, the worktree's own, read through `testreach.Open`.
+// The verb runs no build, takes no gate slot and writes nothing, the index included.
+// A function the maps do not hold prints its line with the commit of its package's map, or says no map holds the package.
+// Bound: it only reads, from maps that may be days old, and the note says how old.
+//
+// `lym gate reach --test <package>.<Test> --since <rev> [--branch <name>]` lists the landings a test reaches.
+// The package is the module-relative package path, split from the test at the last dot.
+// It walks the first-parent commits after `--since` through `Fabric.FirstParentCommits`.
+// The branch is `--branch`, else the parent branch the pair's fabric origin record names, else the current branch.
+// For each commit it takes the functions the commit changes against its first parent, as `changedFuncsAt` does,
+// and lists the commit when the test reaches one of them, naming them.
+// The output says how many commits it checked and names the commit of the map that holds the test.
+// A test no map holds walks nothing: the output says so and names the commits of the maps read.
+// An empty list is thereby never read as no landing to blame.
+// A range past the verb's commit cap is refused, naming a later `--since`, and so is a `--since` the history never meets.
+// Bound: a function renamed or removed since its landing matches nothing in the current maps.
+//
+// A hub whose scoper is not `go` reads nothing: the verb prints a note naming the scoper, with exit 0.
+// Every refusal names its way forward.
+//
+// # Mutate verb
+//
+// `lym gate mutate [--base <rev>]` mutates the lines the worktree's diff changes.
+// It lists the mutants no covering test kills.
+// It is a hand verb for the mutation trial.
+// It changes nothing but the worktree's own coverage maps, which its refresh writes, and the budgets bound its time.
+// The base is `--base`, else the merge base with the parent branch.
+// A worktree with no parent branch and no `--base`, the prime's case, is refused.
+// So is a `--base` that names no commit.
+// A hub whose scoper is not `go` judges nothing: the verb prints a note naming the scoper, with exit 0.
+// `changedFuncsAt` finds the changed functions between the base and the worktree.
+// `testreach.ChangedLines` finds the changed lines of each changed production Go file against the file at the base.
+//
+// The call refreshes the worktree's own maps of the packages holding a changed function, as the reach report step does.
+// The refresh runs under `reach_budget_min`; the prime refreshes nothing.
+// A package is judged only with a fresh map: one the refresh wrote, or a map whose file hashes match the worktree.
+// That is the worktree's own map, read through `testreach.ReadPackageMap`, or in the prime the hub's shared map.
+// Every other changed package is listed as not judged, with its reason and way forward, and gets no mutant.
+//
+// The check then waits for one gate slot, after the refresh, and holds it to its end.
+// `mutation_budget_min` counts from the hold.
+// Per judged package it builds the coverage binary and reads its block table, as `lym gate redundant` does.
+// `testcover.PlanLineMutants` then places the mutants over the blocks the map's tests cover.
+// The tests it counts are those of the map with a passing measurement whose check does not read source files.
+// A block only a source-checking test covers is therefore uncovered.
+// Each coverage build and plan runs whatever the budget, bounded by `redundancy_build_timeout_min`.
+// `mutation_max_mutants` caps the mutants of the diff, taken one changed function at a time in turn across the packages.
+// The rest count as not run.
+// Past `mutation_budget_min` the check starts no further mutant build or run.
+// Every mutant left is unjudged for the budget.
+//
+// One mutant binary per package holds the chosen mutants, built as `lym gate redundant` builds its own:
+// a mutant the compiler refuses is dropped and counted unbuildable.
+// Each mutant runs the map's tests that cover its block, the fastest first, until one fails.
+// Each test runs alone in its own process.
+// Up to the slot's tier0 parallel of the mutants go side by side, fewer when memory is short.
+// A kill made beside other runs is run again alone.
+// A killer that then passes sends the mutant on to the next covering test.
+// Every run is capped at `redundancy_test_memory_mb`.
+// A run past its time bound, at the memory cap or killed by the memory guard is unjudged, never a kill.
+// A mutant every covering test passes is a survivor, and one with an unjudged run and no kill is unjudged.
+// A survivor lists, as possible killers, the tests of other packages that the maps show reach its function.
+// Those tests are not run.
+//
+// The call prints `base`, `prime` and the number of changed functions.
+// It prints `mutants`: the mutants run, killed, survived and unjudged, those unbuildable and those left out by the cap.
+// It prints `runs` too, the test processes it started.
+// `survivors` holds each survivor's worktree-relative file, line, operator and function with its possible killers.
+// `unjudged_mutants` holds each mutant left without a verdict, with why.
+// `uncovered_blocks` holds the changed blocks no test of the package's map covers.
+// `not_judged` holds each package the check judged nothing of, with why.
+// `errors` holds the error lines of the refresh.
+// It exits 0 once it ran, whatever it found.
+// Bound: a mutant changes the package's own code only, so a test of another package never kills one.
+//
 // # Failure report
 //
 // A call with a failed run, a halted call included, prints the failure report to stderr before its closing line.
@@ -628,6 +770,17 @@
 // A failed test shows as its package and test path, and a `vstest` test as its name alone.
 // A package that failed outside any test, such as by a build error or a crash in `TestMain`, shows as its package.
 // A lint finding shows as its own `file:line` line.
+// Under a failed test, first, come its triage lines: four-space lines opening with `gateslot.TriageLinePrefix`.
+// They exist in a hub whose scoper is `go`, built once per report from the coverage maps.
+// A test a map holds gets a line naming the changed functions it reaches and the map's commit.
+// The line names at most five functions, then the count of the rest.
+// A test reaching none gets a line saying so with the map's commit.
+// It then gets a line holding the `lym gate reach --test` command.
+// The prime and a worktree with no parent branch have no change set, and a line says so and why, with no command.
+// A test no map holds gets one line saying it is not in the coverage maps.
+// The lines are advisory: they count after every other line, and a failure's lines stay whole or are dropped,
+// so a triage line never causes a cut and is dropped before any test output line is cut.
+// Bound: a stored map may lack a function the run added, and a stale entry can show a reach the test no longer has.
 // Each carries up to `failureLines` lines it printed beside go test's own status and summary lines,
 // so an error's got and want, a panic's first frames or a .NET exception's message show.
 // A bare file name a test printed is prefixed with its package's worktree-relative directory.
@@ -722,7 +875,8 @@
 // The line also names the `-test.run` value the binary was given and the reason.
 // The tier's log and failure report carry the line, and the tier is never rerun.
 // A go-json tier's log and failure report also name the tests that had started and never passed, failed or skipped.
-// `lym gate redundant`, `lym gate test --map` and the redundancy report step of `lym gate test` run the same guard.
+// `lym gate redundant`, `lym gate mutate` and `lym gate test --map` run the same guard.
+// So do the refresh of the reach report step and the redundancy report step.
 // It watches their own process tree for the whole call, or for the step alone.
 // It runs beside the kernel cap of `redundancy_test_memory_mb` on each test run, and each kill's line goes to stderr.
 // A test run the guard kills in the redundancy report step or `lym gate redundant` is not judged,
@@ -1027,7 +1181,9 @@
 //
 // `lym gate test --map [<targets>...]` builds the `internal/testcover` maps.
 // It builds them at the HEAD of the worktree it runs in, over the packages of the call's scope.
-// It runs only on command: no dobby, landing or gate starts it, and the gate selects no test from the maps.
+// It runs only on command: no dobby or landing starts it, and the gate selects no test from the maps.
+// The reach report step of a gate call also runs its measurement.
+// It runs it over a task worktree's own maps and never the hub's shared ones.
 // The operator runs it before `lym gate redundant`, and over the whole module before a sweep of redundant tests.
 // `--map` goes with none of `--tier`, `--upto`, `--gate`, `--guards` and `--stop-on-fail`.
 // It goes with neither `-C` nor words after `--`.
@@ -1171,6 +1327,9 @@
 // The call writes the map of every package that passes its checks, failed entries included.
 // It exits 1 when a build failed, `unmeasured` is not empty or `failed_tests` is not empty.
 // It exits 0 once it walked its packages, and 1 for a refusal or a read, slot or write failure that ends the walk.
+// A call from the prime whose HEAD stayed put then writes the index of the shared maps through `testreach.WriteIndex`.
+// A task worktree's call writes none, and neither does a call whose HEAD moved.
+// A failed index write is logged at Warn and changes neither the output nor the exit code.
 //
 // `lym gate redundant <package>` judges the map of one package and confirms its redundancy candidates by mutation.
 // It runs from any worktree of the hub and resolves the module as the redundancy report step does.

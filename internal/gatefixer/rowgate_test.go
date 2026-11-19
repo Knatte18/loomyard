@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // fakeFixer is a Fixer scripted by its fields.
@@ -84,9 +86,14 @@ type scriptedGate struct {
 	results []shuttleengine.GateResult
 	err     error
 	calls   int
+	// rerun is the mark the gate reads at each call; nil reads as off.
+	rerun *shuttleengine.RerunMark
+	// sawRerun holds what rerun.On() answered at each call.
+	sawRerun []bool
 }
 
 func (g *scriptedGate) Gate() (shuttleengine.GateResult, error) {
+	g.sawRerun = append(g.sawRerun, g.rerun.On())
 	result := g.results[min(g.calls, len(g.results)-1)]
 	g.calls++
 	return result, g.err
@@ -295,6 +302,186 @@ func TestWrapRowGate(t *testing.T) {
 				}
 			})
 		}
+	})
+
+	t.Run("WriterOnlyFailureSpawnsNoFixerAndIsReturnedAsItIs", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name   string
+			forked bool
+		}{
+			{"EntryGate", false},
+			{"ForkedGate", true},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				h := newRowHarness(t)
+				writerOnly := shuttleengine.GateResult{Findings: "reach note", WriterOnly: true}
+				gate := &scriptedGate{results: []shuttleengine.GateResult{writerOnly, passing()}}
+				original := shuttleengine.GateEntry{Name: rowEntry, Attempts: 2}
+				call := &original.Gate
+				if tt.forked {
+					call = &original.Forked
+				}
+				*call = gate.Gate
+				entry := h.wrap(t, original)
+				run := entry.Gate
+				if tt.forked {
+					run = entry.Forked
+				}
+
+				got, err := run()
+				if err != nil || got != writerOnly {
+					t.Errorf("gate() = %+v, %v; want %+v and no error", got, err, writerOnly)
+				}
+				if len(h.fixer.specs) != 0 || gate.calls != 1 {
+					t.Errorf("spawns = %d, inner calls = %d; want none and 1", len(h.fixer.specs), gate.calls)
+				}
+			})
+		}
+	})
+
+	t.Run("WriterOnlyVerdictOfTheReRunReturnsToTheWriterWithTheFixersReply", func(t *testing.T) {
+		t.Parallel()
+		h := newRowHarness(t)
+		gate := &scriptedGate{results: []shuttleengine.GateResult{failing("lint broke"), {Findings: "reach note", WriterOnly: true}}}
+		original := verifyEntry(gate, 2)
+		original.Rerun = &shuttleengine.RerunMark{}
+		entry := h.wrap(t, original)
+
+		got, err := entry.Gate()
+		if err != nil || got.Passed || !got.WriterOnly {
+			t.Fatalf("Gate() = %+v, %v; want a writer-only failure", got, err)
+		}
+		if !strings.HasPrefix(got.Findings, "reach note") || !strings.Contains(got.Findings, "## Cold fixer reply\n\nfixed it") {
+			t.Errorf("Gate().Findings = %q; want the re-run's findings, then the fixer's reply", got.Findings)
+		}
+		if len(h.fixer.specs) != 1 || gate.calls != 2 {
+			t.Errorf("spawns = %d, inner calls = %d; want 1 and 2", len(h.fixer.specs), gate.calls)
+		}
+	})
+
+	t.Run("TheJudgingRunAfterAFixerRunsUnderTheEntrysMark", func(t *testing.T) {
+		t.Parallel()
+		h := newRowHarness(t)
+		mark := &shuttleengine.RerunMark{}
+		gate := &scriptedGate{results: []shuttleengine.GateResult{failing("lint broke"), passing()}, rerun: mark}
+		original := verifyEntry(gate, 2)
+		original.Rerun = mark
+		entry := h.wrap(t, original)
+
+		if got, err := entry.Gate(); err != nil || !got.Passed {
+			t.Fatalf("Gate() = %+v, %v; want a pass", got, err)
+		}
+		if want := []bool{false, true}; !slices.Equal(gate.sawRerun, want) {
+			t.Errorf("re-run mark seen by the inner calls = %v; want %v", gate.sawRerun, want)
+		}
+	})
+
+	t.Run("TheJudgingRunAfterALiveFixerRunsUnderTheEntrysMark", func(t *testing.T) {
+		t.Parallel()
+		h := newRowHarness(t)
+		h.seed(t, Record{StrandGUID: "left-live"})
+		mark := &shuttleengine.RerunMark{}
+		gate := &scriptedGate{results: []shuttleengine.GateResult{passing()}, rerun: mark}
+		original := verifyEntry(gate, 2)
+		original.Rerun = mark
+		entry := h.wrap(t, original)
+
+		if got, err := entry.Gate(); err != nil || !got.Passed {
+			t.Fatalf("Gate() = %+v, %v; want a pass", got, err)
+		}
+		if want := []bool{true}; !slices.Equal(gate.sawRerun, want) {
+			t.Errorf("re-run mark seen by the inner call = %v; want %v", gate.sawRerun, want)
+		}
+	})
+
+	t.Run("FinalRunsUnderTheEntrysMarkOnlyOverALiveFixersTree", func(t *testing.T) {
+		t.Parallel()
+		for _, live := range []bool{false, true} {
+			t.Run(fmt.Sprintf("LiveRecord_%v", live), func(t *testing.T) {
+				t.Parallel()
+				h := newRowHarness(t)
+				if live {
+					h.seed(t, Record{StrandGUID: "left-live"})
+				}
+				mark := &shuttleengine.RerunMark{}
+				gate := &scriptedGate{results: []shuttleengine.GateResult{failing("broke")}, rerun: mark}
+				original := verifyEntry(gate, 2)
+				original.Rerun = mark
+				entry := h.wrap(t, original)
+
+				if _, err := entry.Final(); err != nil {
+					t.Fatalf("Final() error = %v; want none", err)
+				}
+				if want := []bool{live}; !slices.Equal(gate.sawRerun, want) {
+					t.Errorf("re-run mark seen by the inner call = %v; want %v", gate.sawRerun, want)
+				}
+			})
+		}
+	})
+
+	t.Run("TheReachTurnComposedWithTheWrapReturnsItsNoteToTheWriter", func(t *testing.T) {
+		t.Parallel()
+		first := verifytree.ReachPending{Note: "reach note one", Functions: map[string]string{"a.go#F": "h1"}}
+		second := verifytree.ReachPending{Note: "reach note two", Functions: map[string]string{"b.go#G": "h2"}}
+		// compose wraps a scripted gate decorated with the turn, as production orders them, over one shared mark.
+		compose := func(t *testing.T, results []shuttleengine.GateResult) (*rowHarness, *scriptedGate, shuttleengine.GateEntry) {
+			t.Helper()
+			h := newRowHarness(t)
+			mark := &shuttleengine.RerunMark{}
+			gate := &scriptedGate{results: results, rerun: mark}
+			pendings := []verifytree.ReachPending{first, second}
+			asked := 0
+			original := verifyEntry(gate, 4)
+			original.Gate = verifytree.WithReachTurn(gate.Gate, verifytree.ReachTurn{
+				Pending: func() (verifytree.ReachPending, bool, error) {
+					pending := pendings[min(asked, len(pendings)-1)]
+					asked++
+					return pending, true, nil
+				},
+				Attempts:   4,
+				Rerun:      mark,
+				ListedPath: filepath.Join(t.TempDir(), "listed.json"),
+			})
+			original.Rerun = mark
+			return h, gate, h.wrap(t, original)
+		}
+
+		t.Run("APassingArrivalWithAnUnreachedFunctionSpawnsNoFixer", func(t *testing.T) {
+			t.Parallel()
+			h, gate, entry := compose(t, []shuttleengine.GateResult{passing()})
+
+			got, err := entry.Gate()
+			if err != nil || got.Passed || !got.WriterOnly || !strings.HasPrefix(got.Findings, first.Note) {
+				t.Fatalf("Gate() = %+v, %v; want the writer-only note", got, err)
+			}
+			if len(h.fixer.specs) != 0 || gate.calls != 1 {
+				t.Errorf("spawns = %d, inner calls = %d; want none and 1", len(h.fixer.specs), gate.calls)
+			}
+		})
+
+		t.Run("AFailingArrivalSpawnsOneFixerAndItsReRunCountsNoSecondFailure", func(t *testing.T) {
+			t.Parallel()
+			h, gate, entry := compose(t, []shuttleengine.GateResult{failing("lint broke"), passing(), failing("lint broke"), passing()})
+
+			// Each arrival's re-run returns the note with the fixer's reply.
+			// A re-run that counted a failure of its own would spend the budget before the second arrival's turn.
+			for arrival, note := range []string{first.Note, second.Note} {
+				got, err := entry.Gate()
+				if err != nil || got.Passed || !got.WriterOnly ||
+					!strings.HasPrefix(got.Findings, note) || !strings.Contains(got.Findings, "## Cold fixer reply\n\nfixed it") {
+					t.Fatalf("arrival %d: Gate() = %+v, %v; want the writer-only note %q and the fixer's reply", arrival+1, got, err, note)
+				}
+				if len(h.fixer.specs) != arrival+1 {
+					t.Errorf("arrival %d: spawns = %d; want %d", arrival+1, len(h.fixer.specs), arrival+1)
+				}
+			}
+			if want := []bool{false, true, false, true}; !slices.Equal(gate.sawRerun, want) {
+				t.Errorf("re-run mark seen by the inner calls = %v; want %v", gate.sawRerun, want)
+			}
+		})
 	})
 
 	t.Run("SpawnErrorLeavesTheInnerFailureStandingWithNoRecord", func(t *testing.T) {
@@ -605,9 +792,10 @@ func TestWrapRowGate(t *testing.T) {
 			Name: rowEntry, Gate: (&scriptedGate{results: []shuttleengine.GateResult{passing()}}).Gate, Attempts: 4, PassOnCap: true,
 			Reprompt: func(path string) string { return "fix " + path },
 		}
+		original.Rerun = &shuttleengine.RerunMark{}
 		entry := h.wrap(t, original)
-		if entry.Name != rowEntry || entry.Attempts != 4 || !entry.PassOnCap || entry.Reprompt("x") != "fix x" {
-			t.Errorf("wrapped entry = %+v; want name, attempts, pass-on-cap and re-prompt kept", entry)
+		if entry.Name != rowEntry || entry.Attempts != 4 || !entry.PassOnCap || entry.Reprompt("x") != "fix x" || entry.Rerun != original.Rerun {
+			t.Errorf("wrapped entry = %+v; want name, attempts, pass-on-cap, re-prompt and re-run mark kept", entry)
 		}
 	})
 

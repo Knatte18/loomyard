@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/testcover"
+	"github.com/Knatte18/loomyard/internal/testreach"
 )
 
 // testMapSite labels the slot holder record of a `lym gate test --map` call.
@@ -128,6 +129,9 @@ type testMapRun struct {
 	headMoved bool
 	// headNow is the HEAD the latest read found.
 	headNow string
+	// deadline is when the walk stops starting packages: it lists each package it did not reach as unmeasured for the budget.
+	// The zero time sets no bound.
+	deadline time.Time
 	// lease is the held slot; it stays nil before the first build and inside an enclosing gate run's slot.
 	lease *gateslot.Lease
 	// holderEnv is env with the slot's Go flags, nil until the call holds its slot.
@@ -210,6 +214,7 @@ func runTestMap(ctx context.Context, out io.Writer, request testMapRequest) int 
 		}
 		return output.Err(out, fmt.Sprintf("gate test --map: %v; way forward: re-run the same command", err))
 	}
+	run.writeIndex()
 	if len(run.passedAlone) > 0 {
 		logger.Info("gate test --map: tests that failed beside others and passed alone", "tests", run.passedAlone)
 	}
@@ -524,10 +529,15 @@ func holdsGoFile(dir string) bool {
 	})
 }
 
+// mapBudgetReason is why a package is unmeasured once the walk's deadline passed.
+const mapBudgetReason = "past reach_budget_min; way forward: run the gate again, since a package refreshed now costs nothing on the next call"
+
 // mapPackages reads HEAD and measures each package of packages whole, in order.
 // Every map write checks HEAD itself, so the walk reads it only once, before the first package.
 // Once a package's check saw HEAD move the walk ends,
 // and every package it had not measured is listed as unmeasured with the HEAD-moved reason.
+// Once the deadline, when one is set, has passed the walk starts no further package,
+// and every package it had not reached is listed as unmeasured with the budget reason.
 // The error reports a read, slot or write failure, or a cancelled call, that ends the walk.
 func (r *testMapRun) mapPackages(packages []string) error {
 	head, err := r.fabric.HeadSHA()
@@ -538,6 +548,12 @@ func (r *testMapRun) mapPackages(packages []string) error {
 	for i, pkg := range packages {
 		if err := r.ctx.Err(); err != nil {
 			return err
+		}
+		if !r.deadline.IsZero() && !time.Now().Before(r.deadline) {
+			for _, left := range packages[i:] {
+				r.skip(left, mapBudgetReason)
+			}
+			break
 		}
 		dir := path.Join(r.moduleRel, pkg)
 		files, err := r.fileHashes(r.head, dir)
@@ -573,6 +589,28 @@ func (r *testMapRun) readHead() error {
 		r.headMoved = true
 	}
 	return nil
+}
+
+// writeIndex writes the index of the hub's shared maps beside them, after a walk that ended without an error.
+// A task worktree's call writes none, since its maps are few and the reader reads them whole.
+// A call whose HEAD moved ended its walk early and writes none either, so readers build the table in memory.
+// A failed write is logged at Warn and changes neither the call's output nor its exit code.
+func (r *testMapRun) writeIndex() {
+	if r.headMoved {
+		return
+	}
+	prime, err := hubgeom.IsPrime(r.location)
+	if err != nil {
+		logger.Warn("gate test --map: could not tell whether the call runs in the prime, so it writes no index", "cause", err)
+		return
+	}
+	if !prime {
+		return
+	}
+	module := testreach.Module{Dir: r.moduleDir, Rel: r.moduleRel, Path: r.modulePath}
+	if err := testreach.WriteIndex(module, r.mapsDir); err != nil {
+		logger.Warn("gate test --map: could not write the coverage map index; readers build the table in memory", "maps", r.mapsDir, "cause", err)
+	}
 }
 
 // headMovedReason returns why a package is left unmeasured once HEAD moved from the HEAD the call measures at.

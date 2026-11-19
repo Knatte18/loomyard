@@ -1831,6 +1831,9 @@
 //
 // Geometry and ref lookups run in-process through `gitrepo`.
 // They cover the git dir, common dir, branch existence, a ref's SHA, the current branch, a branch's upstream and a ref's tree.
+// `FirstParentCommits` reads a branch's first-parent history newer than a told commit.
+// It lists the commits newest first, each with its first parent, and stops at a limit.
+// It says whether the walk met the told commit, and an unresolvable branch or commit is its own error.
 // A file's bytes at a revision are read through `gitrepo` too, so reading a committed file starts no git process.
 // A `rev-parse` spawn survives only where git derives the answer from config or revision syntax:
 //

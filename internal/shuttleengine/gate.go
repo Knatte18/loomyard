@@ -7,6 +7,7 @@ package shuttleengine
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 )
 
@@ -39,6 +40,35 @@ type GateResult struct {
 	// Only a must-pass entry may return it:
 	// Terminal on a passed or pending result, or from a PassOnCap entry, is a returned gate error.
 	Terminal bool
+	// WriterOnly marks a failing result meant for the writer alone, which no cold fixer is handed.
+	// The run loop treats it as any failing result:
+	// the findings are written, the entry's failure counts and the writer is re-prompted.
+	WriterOnly bool
+}
+
+// RerunMark marks a gate call as a re-run of a gate that already ran in the same evaluation.
+// The zero value is ready, and a nil *RerunMark marks nothing.
+// It is safe for concurrent use.
+type RerunMark struct {
+	// active counts the marked calls in flight.
+	active atomic.Int32
+}
+
+// Run calls gate with the mark set, clears the mark once gate returns and returns gate's result.
+// A nil receiver calls gate unmarked.
+func (m *RerunMark) Run(gate Gate) (GateResult, error) {
+	if m == nil {
+		return gate()
+	}
+	m.active.Add(1)
+	defer m.active.Add(-1)
+	return gate()
+}
+
+// On reports whether a Run of m is in progress, so a gate can tell the re-run from its first call.
+// A nil mark is never on.
+func (m *RerunMark) On() bool {
+	return m != nil && m.active.Load() > 0
 }
 
 // Gate is a mechanical validator a gated run consults at each arrival and at its single verdict site, finalize.
@@ -94,6 +124,9 @@ type GateEntry struct {
 	// A result of several lines, or an empty or whitespace-only line, fails the send,
 	// and the loop ends with the attempts spent so far.
 	Reprompt func(findingsPath string) string
+	// Rerun is the mark a wrapper sets while it runs this entry's gate again over a fixer's tree.
+	// It is nil for an entry nothing re-runs.
+	Rerun *RerunMark
 }
 
 // GateSpec is the ordered list of gate entries a gated run consults at each arrival.

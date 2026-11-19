@@ -5,12 +5,14 @@
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
@@ -195,6 +197,54 @@ func (f *Fabric) CommitMessages(from, to string) ([]string, error) {
 		messages = append(messages, detail.Message)
 	}
 	return messages, nil
+}
+
+// ErrBranchUnresolved marks a FirstParentCommits error whose branch resolves to no commit.
+var ErrBranchUnresolved = errors.New("the branch resolves to no commit")
+
+// ErrCommitUnresolved marks a FirstParentCommits error whose since commit resolves to no commit.
+var ErrCommitUnresolved = errors.New("the commit resolves to no commit")
+
+// FirstParentCommit is one commit of a branch's first-parent history with its first parent.
+type FirstParentCommit struct {
+	// SHA is the commit's full SHA.
+	SHA string
+	// Parent is the full SHA of the commit's first parent, empty for a root commit.
+	Parent string
+}
+
+// FirstParentCommits returns the commits of branch's first-parent history newer than since, newest first.
+// branch and since are each resolved to a commit in the pair's code repository.
+// Each may be a branch, a remote-tracking ref or a SHA.
+// The result is true when the walk met since, and holds the commits before it.
+// The walk stops after limit+1 commits it has not met since in, so a longer range returns limit+1 commits and false.
+// A history that ends without meeting since returns false with every commit it holds.
+// A branch or since that resolves to no commit is an error wrapping ErrBranchUnresolved or ErrCommitUnresolved.
+func (f *Fabric) FirstParentCommits(branch, since string, limit int) ([]FirstParentCommit, bool, error) {
+	tip, err := f.code.ResolveSHA(branch)
+	if err != nil {
+		return nil, false, fmt.Errorf("fabricengine: first-parent commits of %q: %w: %v", branch, ErrBranchUnresolved, err)
+	}
+	sinceSHA, err := f.code.ResolveSHA(since)
+	if err != nil {
+		return nil, false, fmt.Errorf("fabricengine: first-parent commits since %q: %w: %v", since, ErrCommitUnresolved, err)
+	}
+	history, err := f.code.Log(tip, gitrepo.LogQuery{FirstParent: true, Limit: limit + 1})
+	if err != nil {
+		return nil, false, fmt.Errorf("fabricengine: first-parent commits of %q: %w", branch, err)
+	}
+	var commits []FirstParentCommit
+	for _, entry := range history {
+		if entry.SHA == sinceSHA {
+			return commits, true, nil
+		}
+		commit := FirstParentCommit{SHA: entry.SHA}
+		if len(entry.Parents) > 0 {
+			commit.Parent = entry.Parents[0]
+		}
+		commits = append(commits, commit)
+	}
+	return commits, false, nil
 }
 
 // HeadHoldsCommitsNotIn reports whether the pair's code HEAD holds a commit that ref lacks.

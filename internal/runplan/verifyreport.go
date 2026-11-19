@@ -52,6 +52,9 @@ type VerifyGateReport struct {
 	WatchdogWindow string `yaml:"watchdog_window,omitempty"`
 	// Failures lists the failing identities the verify output parsed to.
 	Failures []VerifyFailure `yaml:"failures,omitempty"`
+	// Triage maps each failed test to its triage lines.
+	// The key is `<package>.<Test>`; the lines are those the verify log's failure report holds under that test.
+	Triage map[string][]string `yaml:"triage,omitempty"`
 	// LogPath is the full verify log.
 	LogPath string `yaml:"log_path,omitempty"`
 	// Hint lists the NN-slug labels of the cards whose commits touched a failing package, in trail order.
@@ -160,6 +163,7 @@ func LogTail(output string) string {
 // A timeout carries the log path and tail.
 // A hang carries its matched marker, identities, log path and tail.
 // Identities carry their output tail, the full log path and the hint.
+// A report holding triage lines adds them as a Triage section after the identities.
 // A timeout or hang says the step was not re-run.
 // A watchdog quit also names the window and the operator's way forward.
 func RenderVerifyGateFindings(r VerifyGateReport, wayForward string) string {
@@ -198,6 +202,7 @@ func RenderVerifyGateFindings(r VerifyGateReport, wayForward string) string {
 		}
 		fmt.Fprintf(&b, "Matched: %s\n", r.Hang)
 		writeFailingIdentities(&b, r.Failures)
+		b.WriteString(gateslot.RenderTriageSection(r.Triage))
 		writeLogLocation(&b, r)
 		return b.String()
 	}
@@ -209,6 +214,7 @@ func RenderVerifyGateFindings(r VerifyGateReport, wayForward string) string {
 	}
 
 	writeFailingIdentities(&b, r.Failures)
+	b.WriteString(gateslot.RenderTriageSection(r.Triage))
 	writeLogLocation(&b, r)
 	if len(r.Hint) > 0 {
 		fmt.Fprintf(&b, "Cards whose commits touched a failing package: %s\n", strings.Join(r.Hint, ", "))

@@ -107,6 +107,14 @@ func (f *gateFake) seams() verifyGateSeams {
 
 const failingPackageLog = "FAIL\texample.com/mod/internal/a\t0.01s\n"
 
+// triagedPackageLog is failingPackageLog followed by a failure report with a triage line under the failed test.
+var triagedPackageLog = failingPackageLog + gateslot.FailureReportHeader + "\n" +
+	"tier0 (exit 1), log /runs/a.log:\n" +
+	"  example.com/mod/internal/a TestA:\n" +
+	"    " + gateslot.TriageLinePrefix + "not in the coverage maps\n" +
+	"    a_test.go:3: boom\n" +
+	gateslot.FailedRunsPrefix + "tier0 (exit 1); the exit code is tier0's\n"
+
 func failedResult() verifytree.Result {
 	return verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
 }
@@ -394,6 +402,31 @@ func TestVerifyGate_FailedEvaluationWritesReport(t *testing.T) {
 	}
 	if !strings.HasPrefix(second.Findings, verifyGateWayForward(FixerFork, testFixPromptPath)+"\n") {
 		t.Errorf("findings = %q; want them to open with the way forward naming %s", second.Findings, testFixPromptPath)
+	}
+	if len(report.Triage) != 0 || strings.Contains(second.Findings, "Triage:") {
+		t.Errorf("report triage = %v, findings %q; want none for a log with no triage line", report.Triage, second.Findings)
+	}
+
+	// A log whose failure report holds a triage line puts it in the report of a first evaluation and of one that fails again.
+	triaged := &gateFake{outcome: outcomeDone, command: "go test ./...", head: "head0", results: []verifytree.Result{failedResult()}, logs: []string{triagedPackageLog}}
+	triagedReports := t.TempDir()
+	triagedGate := newVerifyGate(triagedReports, 3, &VerifyGateNotes{}, testFixPromptPath, triaged.seams())
+	wantTriage := map[string][]string{"example.com/mod/internal/a.TestA": {gateslot.TriageLinePrefix + "not in the coverage maps"}}
+	for evaluation := 1; evaluation <= 2; evaluation++ {
+		result, err := triagedGate()
+		if err != nil || result.Passed {
+			t.Fatalf("triaged gate() evaluation %d = %+v, %v; want a failure", evaluation, result, err)
+		}
+		triagedReport, err := readVerifyGateReport(VerifyGateReportPath(triagedReports))
+		if err != nil {
+			t.Fatalf("readVerifyGateReport() error = %v", err)
+		}
+		if !reflect.DeepEqual(triagedReport.Triage, wantTriage) {
+			t.Errorf("evaluation %d report triage = %v; want %v", evaluation, triagedReport.Triage, wantTriage)
+		}
+		if !strings.Contains(result.Findings, "Triage:\n- example.com/mod/internal/a.TestA\n") {
+			t.Errorf("evaluation %d findings = %q; want the Triage section", evaluation, result.Findings)
+		}
 	}
 }
 

@@ -93,6 +93,8 @@ type mutationCheck struct {
 	guardKilled func(pid int) bool
 	// env is the environment the check's children start from, before the slot's Go flags.
 	env []string
+	// site labels the slot holder record and the log lines of the call; empty means redundantSite.
+	site string
 
 	// The fields below fill as the check goes.
 
@@ -354,6 +356,11 @@ func (c *mutationCheck) stopsOf(ended map[mutantRun]bool) []mutantStop {
 	return stops
 }
 
+// siteLabel returns the label of the call that runs the check: its slot holder site, `lym ` and the verb's name.
+func (c *mutationCheck) siteLabel() string {
+	return cmp.Or(c.site, redundantSite)
+}
+
 // mutantTimeout returns the bound of a run with a mutant on of a test that passed unmutated in elapsed seconds.
 func (c *mutationCheck) mutantTimeout(elapsed float64) time.Duration {
 	timeout := max(time.Duration(mutantTimeoutFloor)*c.request.secondUnit, time.Duration(elapsed*mutantTimeoutFactor*float64(time.Second)))
@@ -363,9 +370,8 @@ func (c *mutationCheck) mutantTimeout(elapsed float64) time.Duration {
 	return timeout
 }
 
-// planMutants builds the package's coverage binary and reads its block table from a run of no test.
-// It returns the mutants of the blocks targets holds.
-func (c *mutationCheck) planMutants(targets testcover.BlockSet) (*testcover.MutantPlan, error) {
+// profileBlocks builds the package's coverage binary and reads its block table from a run of no test.
+func (c *mutationCheck) profileBlocks() ([]testcover.ProfileBlock, error) {
 	bin := filepath.Join(c.tmp, "cover.test")
 	if err := c.toolchain().BuildBinary(c.importPath, c.importPath, "", bin); err != nil {
 		return nil, fmt.Errorf("coverage build: %w", err)
@@ -375,7 +381,12 @@ func (c *mutationCheck) planMutants(targets testcover.BlockSet) (*testcover.Muta
 		Env: slices.Concat(c.holderEnv, renderTierEnv(lowest)), Ctx: c.ctx,
 		TestTimeout: c.testTimeout, MemoryLimit: c.testMemory, Grace: c.request.grace,
 	}
-	profile, err := runner.ProfileBlocks(bin, c.pkgDir, filepath.Join(c.tmp, "blocks.out"))
+	return runner.ProfileBlocks(bin, c.pkgDir, filepath.Join(c.tmp, "blocks.out"))
+}
+
+// planMutants places the mutants of the blocks targets holds over the block table profileBlocks reads.
+func (c *mutationCheck) planMutants(targets testcover.BlockSet) (*testcover.MutantPlan, error) {
+	profile, err := c.profileBlocks()
 	if err != nil {
 		return nil, err
 	}
@@ -490,7 +501,7 @@ func (c *mutationCheck) runJob(bin string, job mutantJob) (testcover.RunResult, 
 		env = append(env, gateslot.PrebuiltLymEnv+"="+c.lymBin)
 	}
 	if mutant, on := c.mutants[job.mutant]; on {
-		logger.Info("gate redundant: running a test with a mutant on",
+		logger.Info(strings.TrimPrefix(c.siteLabel(), "lym ")+": running a test with a mutant on",
 			"test", job.test.Name, "mutant", mutant.ID, "file", mutant.File, "line", mutant.Line, "operator", mutant.Operator)
 	}
 	runner := testcover.Toolchain{
@@ -532,7 +543,7 @@ func (c *mutationCheck) holdSlot() error {
 	}
 	inherited := envValue(c.request.environ, gateslot.InheritEnv)
 	if inherited == "" || !c.pool.Inherited(inherited) {
-		if c.lease, err = c.pool.Acquire(c.ctx, gateslot.Holder{Worktree: c.location.WorktreePath(), Site: redundantSite}); err != nil {
+		if c.lease, err = c.pool.Acquire(c.ctx, gateslot.Holder{Worktree: c.location.WorktreePath(), Site: c.siteLabel()}); err != nil {
 			return fmt.Errorf("acquire a gate slot: %w", err)
 		}
 	}

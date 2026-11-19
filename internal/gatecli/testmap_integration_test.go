@@ -108,6 +108,9 @@ const testMapMeetWait = 10 * time.Second
 // testMapExcludeWait is how long an Excludes test stays recorded while it looks for another test beside it.
 const testMapExcludeWait = 300 * time.Millisecond
 
+// testMapIndexFile is the file name of the index the prime's map run writes beside the shared maps.
+const testMapIndexFile = "index.json"
+
 // The stand-in's `go env GOVERSION GOOS GOARCH` answer.
 const (
 	testMapGoVersion = "go1.26.8"
@@ -769,6 +772,12 @@ func TestGateTestMapInATaskWorktreeKeepsItsOwnMaps(t *testing.T) {
 	if _, found, err := testcover.ReadMap(testcover.Dir(fabricengine.BoltDir(h.Location.HubPath)), "solo"); err != nil || found {
 		t.Errorf("ReadMap(solo) in the hub's shared maps = found %v, err %v; want no map", found, err)
 	}
+	// A task worktree's maps are few and read whole, so its call indexes neither its own maps nor the shared ones.
+	for _, dir := range []string{testcover.Dir(anchor), testcover.Dir(fabricengine.BoltDir(h.Location.HubPath))} {
+		if _, err := os.Stat(filepath.Join(dir, testMapIndexFile)); !os.IsNotExist(err) {
+			t.Errorf("stat of the index under %s after the task worktree's call = %v; want no index file", dir, err)
+		}
+	}
 
 	var out bytes.Buffer
 	code := clihelp.ExecuteIn(Command(), pair, &out, []string{"redundant", "solo"})
@@ -1046,6 +1055,10 @@ func TestGateTestMap(t *testing.T) {
 			FailedTests: []string{"alpha.TestAlphaHangs", "outcomes.TestOutcomesFails"},
 		})
 		wantBrokenFailed(t, got)
+		// zmoved's test moved HEAD, which ended the walk, so the call wrote no index.
+		if _, err := os.Stat(filepath.Join(mapsDir, testMapIndexFile)); !os.IsNotExist(err) {
+			t.Errorf("stat of the index after a call whose HEAD moved = %v; want no index file", err)
+		}
 
 		alpha := readMap(t, "alpha")
 		wantTests := []testcover.MapTest{
@@ -1111,6 +1124,26 @@ func TestGateTestMap(t *testing.T) {
 		wantOutcome(t, got, testMapOutcome{Exit: 1, Built: []string{"alpha"}, TimedOut: []string{"alpha.TestAlphaHangs"}, FailedTests: []string{"alpha.TestAlphaHangs"}})
 		if after := readMap(t, "alpha"); !after.BuiltAt.After(before.BuiltAt) {
 			t.Errorf("alpha map built at %v; want after %v", after.BuiltAt, before.BuiltAt)
+		}
+		// The call ran in the prime and measured its package with HEAD in place, so it wrote the index beside the maps.
+		if info, err := os.Stat(filepath.Join(mapsDir, testMapIndexFile)); err != nil || info.IsDir() {
+			t.Errorf("stat of the index after a measuring prime call = %v, %v; want an index file", info, err)
+		}
+	})
+
+	t.Run("AFailedIndexWriteChangesNeitherTheOutputNorTheExitCode", func(t *testing.T) {
+		indexPath := filepath.Join(mapsDir, testMapIndexFile)
+		if err := os.RemoveAll(indexPath); err != nil {
+			t.Fatal(err)
+		}
+		// A directory at the index's path fails its write.
+		if err := os.Mkdir(indexPath, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(indexPath) })
+		wantOutcome(t, call(t, "steady"), testMapOutcome{Built: []string{"steady"}})
+		if info, err := os.Stat(indexPath); err != nil || !info.IsDir() {
+			t.Errorf("stat of the index path = %v, %v; want the directory the test made, since no index was written", info, err)
 		}
 	})
 

@@ -282,6 +282,7 @@ func commentLintFindings(findings []commentlint.Finding) string {
 // verifyFailureFindings renders a StatusFailed result with its exit code, timeout or runner crash, and log path.
 // It quotes each failing test and package the log names, with its own output.
 // It also quotes the gate's closing line of failed runs.
+// When the log's failure report holds triage lines, a Triage section lists them under each failed test's identity.
 // A log that names no failing test or package is quoted as its tail instead.
 // In the output of parallel packages, the last lines need not hold the failures.
 // When the whole log holds the CPU watchdog's line, the rendered text adds a paragraph after its first sentence.
@@ -311,6 +312,9 @@ func verifyFailureFindings(res verifytree.Result, logPath string) string {
 		}
 	} else if tail := logTail(log); tail != "" {
 		fmt.Fprintf(&b, "\nLog tail:\n\n%s\n", tail)
+	}
+	if section := gateslot.RenderTriageSection(gateslot.TriageLines(string(log))); section != "" {
+		fmt.Fprintf(&b, "\n%s", section)
 	}
 	return b.String()
 }

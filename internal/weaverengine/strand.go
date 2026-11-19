@@ -140,7 +140,15 @@ func batchGateSpec(geom Geometry, cards []planparser.Card, last bool, rowGates s
 		if i < len(cards) {
 			name = gateKeyCard + " " + cards[i].ID()
 		}
-		spec = append(spec, shuttleengine.GateEntry{Name: name, Gate: batchGateClosure(geom, name, call), Attempts: batchGateAttempts})
+		gate := batchGateClosure(geom, name, call)
+		if i >= len(cards) && geom.ReachPending != nil {
+			gate = verifytree.WithReachTurn(gate, verifytree.ReachTurn{
+				Pending:    func() (verifytree.ReachPending, bool, error) { return geom.ReachPending(gateKeyBatch) },
+				Attempts:   batchGateAttempts,
+				ListedPath: verifytree.ReachListedPath(geom.VerifyDir, batchGateSite),
+			})
+		}
+		spec = append(spec, shuttleengine.GateEntry{Name: name, Gate: gate, Attempts: batchGateAttempts})
 	}
 	return append(spec, rowGates...), nil
 }
@@ -192,6 +200,7 @@ func readVerifyLog(path string) (string, error) {
 // failureReport builds the verify-failure record of a failed run of command.
 // A timed-out run carries its timeout and the log tail.
 // A failure that names no test carries the log tail alone, and any other carries its failing identities.
+// A log whose failure report holds triage lines under its failed tests adds them to the record.
 func failureReport(command string, attempt, budget int, res verifytree.Result, output string) runplan.VerifyGateReport {
 	report := runplan.VerifyGateReport{Attempt: attempt, Cap: budget, Command: command, ExitCode: res.ExitCode, LogPath: res.Log}
 	if res.TimedOut {
@@ -199,6 +208,7 @@ func failureReport(command string, attempt, budget int, res verifytree.Result, o
 		report.LogTail = runplan.LogTail(output)
 		return report
 	}
+	report.Triage = gateslot.TriageLines(output)
 	failures := runplan.ParseVerifyRun(output, false)
 	if len(failures) == 1 && failures[0].Kind == runplan.FailureKindOpaque {
 		report.LogTail = runplan.LogTail(output)

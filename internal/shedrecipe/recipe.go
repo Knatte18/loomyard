@@ -113,6 +113,10 @@ type Env struct {
 	// VerifyBudget is the told time budget of the "verify" gate; its zero value turns the budget off.
 	// A darn run tells darn.yaml's verify_budget_min and a notice to the run's parent.
 	VerifyBudget loomshed.VerifyBudget
+	// VerifyReach is the told source of the pending reach report, keyed by a row's gate key, read by the "verify" gate.
+	// Set, the gate runs under the reach turn and its entry carries the re-run mark of a cold fixer's wrap.
+	// Nil leaves the gate as it is.
+	VerifyReach func(gateKey string) (verifytree.ReachPending, bool, error)
 	// GateFixer is the told wrap that hands a row's gate failure to a cold fixer; nil leaves every gate as written.
 	// The Darn-Write, Plan-Write and Discussion-Write entries read it for a gate with a "fixer" key.
 	// It receives the row's complete gate spec and returns the spec the row runs.
@@ -311,6 +315,10 @@ type Env struct {
 	// It is filled into the redundancy_report marker.
 	// It is read only for a rubric carrying the marker; nil renders the marker as `none`.
 	RedundancyReport func() string
+	// ReachReport returns the gate's reach report as a code review reads it.
+	// It is filled into the reach_report marker.
+	// It is read only for a rubric carrying the marker; nil renders the marker as `none`.
+	ReachReport func() string
 	// ReflectFriction is the injected closure the FrictionReflect entry's producer calls once per Call.
 	// It returns the reflection's status string.
 	// It arrives as a closure because its dependencies are already resolved in internal/loomcli.

@@ -152,6 +152,8 @@ type Mutant struct {
 	// helper is the function the site's value passes through, empty for a dropped statement;
 	// args are the arguments the helper takes between the value and the ID.
 	helper, args string
+	// callee is the import path of the callee's package for a dropped call statement, empty for any other site.
+	callee string
 }
 
 // InBlocks reports whether blocks holds one of the mutant's blocks, so a run of those blocks reaches the mutant.
@@ -204,6 +206,9 @@ type site struct {
 	helper, args string
 	// variables names the package-level variables whose value holds the site; it is empty for a site of a function body.
 	variables []string
+	// callee is the import path of the callee's package for a dropped call statement of a package-qualified call.
+	// It is empty for a local or method call and for every other operator.
+	callee string
 }
 
 // packageFile is one parsed non-test Go file of a package.
@@ -245,14 +250,7 @@ type packageDecls struct {
 // The step rewrite makes such an expression non-constant, so an intermediate that overflows its type changes the value.
 // A file that does not parse, an embedded file that cannot be read, or a block outside its file is an error.
 func PlanMutants(dir, importPath string, profile []ProfileBlock, targets BlockSet) (*MutantPlan, error) {
-	var own []ProfileBlock
-	seen := map[string]bool{}
-	for _, block := range PackageBlocks(profile, importPath) {
-		if !seen[block.Position()] {
-			seen[block.Position()] = true
-			own = append(own, block)
-		}
-	}
+	own := ownBlocks(profile, importPath)
 	keys, err := KeyBlocks(dir, own)
 	if err != nil {
 		return nil, err
@@ -362,7 +360,7 @@ func PlanMutants(dir, importPath string, profile []ProfileBlock, targets BlockSe
 			}
 			plan.Mutants = append(plan.Mutants, Mutant{
 				File: f.name, Line: f.tokenFile.Line(f.tokenFile.Pos(s.start)), lastLine: f.tokenFile.Line(f.tokenFile.Pos(s.end)),
-				Operator: s.operator, Blocks: blocks, start: s.start, end: s.end, helper: s.helper, args: s.args,
+				Operator: s.operator, Blocks: blocks, start: s.start, end: s.end, helper: s.helper, args: s.args, callee: s.callee,
 			})
 			plan.sources[f.name] = f.text
 		}
@@ -371,6 +369,19 @@ func PlanMutants(dir, importPath string, profile []ProfileBlock, targets BlockSe
 		plan.Mutants[i].ID = i + 1
 	}
 	return plan, nil
+}
+
+// ownBlocks returns the blocks of profile that lie in the files of the package at importPath, each position once.
+func ownBlocks(profile []ProfileBlock, importPath string) []ProfileBlock {
+	var own []ProfileBlock
+	seen := map[string]bool{}
+	for _, block := range PackageBlocks(profile, importPath) {
+		if !seen[block.Position()] {
+			seen[block.Position()] = true
+			own = append(own, block)
+		}
+	}
+	return own
 }
 
 // parsePackageFiles parses every file sources holds, in name order.
@@ -666,10 +677,12 @@ func fileSites(file *ast.File, tokenFile *token.File, decls packageDecls) []site
 	}
 	conditions := map[ast.Expr]bool{}
 	fixed := map[ast.Node]bool{}
-	addStatements := func(list []ast.Stmt) {
+	imported := importedPackages(file)
+	addStatements := func(list []ast.Stmt, locals map[string]bool) {
 		for _, stmt := range list {
 			if droppable(stmt) {
 				add(stmt, OperatorDropStatement, "", "", nil)
+				sites[len(sites)-1].callee = calleePackage(stmt, locals, imported)
 			}
 		}
 	}
@@ -748,11 +761,11 @@ func fileSites(file *ast.File, tokenFile *token.File, decls packageDecls) []site
 						add(n, OperatorChangeEmbeddedLine, "lymMutantLine", strconv.Itoa(line), nil)
 					}
 				case *ast.BlockStmt:
-					addStatements(n.List)
+					addStatements(n.List, locals)
 				case *ast.CaseClause:
-					addStatements(n.Body)
+					addStatements(n.Body, locals)
 				case *ast.CommClause:
-					addStatements(n.Body)
+					addStatements(n.Body, locals)
 				}
 				return true
 			})
@@ -777,6 +790,45 @@ func addClauses(expr *ast.BinaryExpr, add func(operand ast.Expr, helper string))
 			add(operand, helper)
 		}
 	}
+}
+
+// importedPackages maps each name the imports of file bind to the import path it names.
+// An import with no name binds the last element of its path, and a blank or dot import binds none.
+func importedPackages(file *ast.File) map[string]string {
+	imported := map[string]string{}
+	for _, spec := range file.Imports {
+		importPath, _ := strconv.Unquote(spec.Path.Value)
+		name := path.Base(importPath)
+		if spec.Name != nil {
+			name = spec.Name.Name
+		}
+		if name != "_" && name != "." {
+			imported[name] = importPath
+		}
+	}
+	return imported
+}
+
+// calleePackage returns the import path of the package a call statement calls into, or "" for any other statement.
+// Only a call through a package name the file imports counts, and a local of that name shadows it.
+func calleePackage(stmt ast.Stmt, locals map[string]bool, imported map[string]string) string {
+	exprStmt, ok := stmt.(*ast.ExprStmt)
+	if !ok {
+		return ""
+	}
+	call, ok := exprStmt.X.(*ast.CallExpr)
+	if !ok {
+		return ""
+	}
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return ""
+	}
+	pkg, ok := selector.X.(*ast.Ident)
+	if !ok || locals[pkg.Name] {
+		return ""
+	}
+	return imported[pkg.Name]
 }
 
 // droppable reports whether dropping stmt can change what the code does and still compiles:

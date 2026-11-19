@@ -129,6 +129,7 @@ Do not flag any of the following as a finding:
   When it pins what coverage cannot see, such as an error message, an output shape, an ordering or a side effect the covering tests never check, accept it:
   file a finding to mark it `//testtiming:keep <reason>` directly above its `func Test…` line, the reason naming what it pins.
   A test the report lists as unique or not judged is no finding on that ground; judge it by the bullets above.
+  The reach report below is evidence for two of these findings: a behavior the diff adds with no coverage, and the covering test a redundancy finding names.
 
 ## Redundancy report
 
@@ -136,6 +137,15 @@ Do not flag any of the following as a finding:
 
 The note above is the advisory report `lym gate test` writes on the diff's new and changed Go tests, read only when it still matches HEAD's tree.
 When it is `none`, or says no current report exists, judge test economy by the bullets above alone, and raise no finding about the report's absence.
+
+## Reach report
+
+{{.reach_report}}
+
+The note above is the advisory report `lym gate test` writes on the diff's changed functions, read only when it still matches HEAD's tree.
+Read it as evidence for "a behavior the diff adds with no coverage", and for naming a covering test in a redundancy finding.
+A function it lists as reached by no test is a candidate, never a finding by itself.
+When it is `none`, or says no current report exists, raise no finding about its absence.
 
 ## Amendment
 

@@ -53,6 +53,8 @@ type rowWrap struct {
 	rf       RowFixer
 	entry    string
 	attempts int
+	// rerun is the fixer entry's own mark, set while the gate runs again after a fixer; nil when the entry has none.
+	rerun *shuttleengine.RerunMark
 
 	mu      sync.Mutex
 	spawned map[string]bool
@@ -65,7 +67,10 @@ type rowWrap struct {
 // The named entry's gate, and its forked gate when set, run the inner closure once;
 // a failure spawns one fixer with the findings as its report, and waits for it;
 // the closure then runs again, and its verdict is returned with the fixer's reply appended to a failure.
-// No fixer is spawned for a passing, pending, terminal or erroring result.
+// No fixer is spawned for a passing, pending, terminal, writer-only or erroring result;
+// a writer-only failure is returned as it is.
+// The run after the fixer goes through the entry's re-run mark,
+// and a writer-only verdict of it carries the fixer's reply.
 // It is not spawned for a forked failure SkipForked reports, or once the entry's set holds attempts plus one records.
 // A fixer that cannot be started leaves the inner failure standing with a line saying no fixer ran.
 // A live record in the set is waited on instead of spawning, so a restarted driver finds the fixer it left running.
@@ -74,6 +79,7 @@ type rowWrap struct {
 // an entry that passes over a live record leaves it live;
 // a later entry still folds the fixer's reply into its findings.
 // The entry's final closure never spawns; it only waits for a live record, then judges once.
+// That run goes through the entry's re-run mark.
 // An entry naming no entry of spec is refused.
 func WrapRowGate(spec shuttleengine.GateSpec, entry string, rf RowFixer) (shuttleengine.GateSpec, error) {
 	at := slices.IndexFunc(spec, func(candidate shuttleengine.GateEntry) bool { return candidate.Name == entry })
@@ -88,8 +94,8 @@ func WrapRowGate(spec shuttleengine.GateSpec, entry string, rf RowFixer) (shuttl
 			wrapped[i] = wrap.fixerEntry(candidate)
 			continue
 		}
-		candidate.Gate = wrap.waitOnly(candidate.Gate, false)
-		candidate.Forked = wrap.waitOnly(candidate.Forked, false)
+		candidate.Gate = wrap.waitOnly(candidate.Gate, false, false)
+		candidate.Forked = wrap.waitOnly(candidate.Forked, false, false)
 		wrapped[i] = candidate
 	}
 	return wrapped, nil
@@ -101,13 +107,14 @@ func (w *rowWrap) fixerEntry(original shuttleengine.GateEntry) shuttleengine.Gat
 	if w.rf.Forked && original.Forked != nil {
 		finalInner = original.Forked
 	}
+	w.rerun = original.Rerun
 	wrapped := original
 	wrapped.Gate = w.spawning(original.Gate, false)
 	if original.Forked != nil {
 		wrapped.Forked = w.spawning(original.Forked, true)
 	}
 	wrapped.MayHold = true
-	wrapped.Final = w.waitOnly(finalInner, true)
+	wrapped.Final = w.waitOnly(finalInner, true, true)
 	wrapped.Expired = w.expired
 	return wrapped
 }
@@ -123,7 +130,8 @@ func (w *rowWrap) openStore() (rowStore, error) {
 // waitOnly returns inner behind a wait on the set's live fixer, and nil for a nil inner.
 // With no live record it runs inner at once.
 // markOnPass says whether a passing or pending inner marks the live record terminal; a failing one always does.
-func (w *rowWrap) waitOnly(inner shuttleengine.Gate, markOnPass bool) shuttleengine.Gate {
+// afterFixer says whether the run over a live fixer's finished tree goes through the entry's re-run mark.
+func (w *rowWrap) waitOnly(inner shuttleengine.Gate, markOnPass, afterFixer bool) shuttleengine.Gate {
 	if inner == nil {
 		return nil
 	}
@@ -135,7 +143,11 @@ func (w *rowWrap) waitOnly(inner shuttleengine.Gate, markOnPass bool) shuttleeng
 		if live == nil {
 			return inner()
 		}
-		return w.waitThenRun(store, live, inner, markOnPass)
+		judge := inner
+		if afterFixer {
+			judge = func() (shuttleengine.GateResult, error) { return w.rerun.Run(inner) }
+		}
+		return w.waitThenRun(store, live, judge, markOnPass)
 	}
 }
 
@@ -148,10 +160,10 @@ func (w *rowWrap) spawning(inner shuttleengine.Gate, forked bool) shuttleengine.
 			return shuttleengine.GateResult{}, err
 		}
 		if live != nil {
-			return w.waitThenRun(store, live, inner, true)
+			return w.waitThenRun(store, live, func() (shuttleengine.GateResult, error) { return w.rerun.Run(inner) }, true)
 		}
 		failed, err := inner()
-		if err != nil || failed.Passed || failed.Pending || failed.Terminal {
+		if err != nil || failed.Passed || failed.Pending || failed.Terminal || failed.WriterOnly {
 			return failed, err
 		}
 		held, err := store.count()
@@ -178,7 +190,7 @@ func (w *rowWrap) liveRecord() (rowStore, *Record, error) {
 }
 
 // spawnAndJudgeAgain writes failed's findings as the report of the fixer numbered n;
-// it spawns that fixer and returns inner's verdict once the fixer has ended.
+// it spawns that fixer and returns inner's verdict once the fixer has ended, inner run under the entry's re-run mark.
 func (w *rowWrap) spawnAndJudgeAgain(store rowStore, n int, inner shuttleengine.Gate, failed shuttleengine.GateResult) (shuttleengine.GateResult, error) {
 	reportPath, replyPath := store.reportPath(n), store.replyPath(n)
 	if err := os.MkdirAll(store.dir, 0o755); err != nil {
@@ -201,7 +213,7 @@ func (w *rowWrap) spawnAndJudgeAgain(store rowStore, n int, inner shuttleengine.
 		w.spawned[rec.StrandGUID] = true
 		w.mu.Unlock()
 	}
-	return w.waitThenRun(store, rec, inner, true)
+	return w.waitThenRun(store, rec, func() (shuttleengine.GateResult, error) { return w.rerun.Run(inner) }, true)
 }
 
 // waitThenRun waits for rec's fixer and runs inner once.

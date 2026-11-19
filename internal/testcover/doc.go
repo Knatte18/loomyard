@@ -67,6 +67,15 @@
 // One that does not pass unmutated, holds no mutant in its blocks or kills none is not judged.
 // Its greedy pass, slowest first, removes a candidate only while a test it keeps kills each mutant the candidate killed.
 // ScanSourceReaders marks the tests that reach the module's scan kit, whose check reads source files no mutant changes.
+// PlanLineMutants plans the mutants of the lines a diff adds or changes instead, in the blocks a map's tests cover.
+// It keeps at most one mutant per changed line, the first site of this operator order:
+// a negated condition or comparison, a deleted operand of a && or || chain.
+// Then come a dropped statement and a shifted integer or rune constant.
+// A string constant, a line of an embedded file and a dropped call into `internal/logger` get no mutant.
+// A block that holds a changed line and that no covered key names gets none either, and comes back as an uncovered block.
+// A block holds a line when it covers a byte of it that is neither blank nor a lone brace.
+// The plan is a MutantPlan, so WriteOverlay, BuildMutantBinary, UnbuildableMutants and MutantEnv serve it unchanged.
+// Mutant.FuncOf names the function a mutant's block lies in.
 //
 // A block's key is its content: its file, its enclosing function, a hash of its source text and its ordinal.
 // The ordinal counts blocks equal in the first three parts.

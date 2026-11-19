@@ -29,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -39,6 +40,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
+	"github.com/Knatte18/loomyard/internal/testcover"
 	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
@@ -1419,6 +1421,12 @@ func TestGateTest_Scenario(t *testing.T) {
 			"broken/broken.go":      "package broken\n\nvar x = undefinedThing\n",
 			"broken/broken_test.go": "package broken\n\nimport \"testing\"\n\nfunc TestBuilds(t *testing.T) {}\n",
 		})
+		// The triage lines read the coverage maps of the module in tier0's directory, which is the prime's root.
+		primeModule := filepath.Join(prime, "go.mod")
+		if err := os.WriteFile(primeModule, []byte("module example.com/hub\n\ngo 1.21\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Remove(primeModule) })
 		code, stdout := runGate(t, gateRun{cwd: t.TempDir(), realGo: true, args: []string{"test", "--tier", "5", "-C", module, "./..."}})
 		if code != 1 {
 			t.Errorf("exit code = %d, stdout %q; want 1", code, stdout)
@@ -1440,6 +1448,48 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 		if report, closing := strings.Index(stdout, failureReportHeader), strings.Index(stdout, gateslot.FailedRunsPrefix); report < 0 || closing < report {
 			t.Errorf("stdout %q; want the failure report before the closing line", stdout)
+		}
+		// No coverage map holds the test, so its first line under it is the triage line saying so.
+		if want := "  example.com/report/p TestFails:\n    " + gateslot.TriageLinePrefix + triageNotInMaps + "\n    report/p/p_test.go:6"; !strings.Contains(stdout, want) {
+			t.Errorf("stdout %q lacks %q", stdout, want)
+		}
+		requireFree(t)
+	})
+
+	t.Run("a failing test a prime's coverage map holds gets the no-change-set line naming the missing parent branch and no reach command", func(t *testing.T) {
+		module := writeModule(t, "reportmapped", map[string]string{
+			"p/p.go":      "package p\n",
+			"p/p_test.go": "package p\n\nimport \"testing\"\n\nfunc TestFails(t *testing.T) {\n\tt.Errorf(\"got %d; want %d\", 1, 2)\n}\n",
+		})
+		primeModule := filepath.Join(prime, "go.mod")
+		if err := os.WriteFile(primeModule, []byte("module example.com/hub\n\ngo 1.21\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Remove(primeModule) })
+		// The module is outside the prime's own, so the map is keyed by the test package's import path.
+		sharedDir := testcover.Dir(fabricengine.BoltDir(h.Location.HubPath))
+		const mapCommit = "mapcommit"
+		heldTest := testcover.Map{
+			Commit: mapCommit, BuiltAt: time.Now().Add(-time.Hour),
+			Blocks: []testcover.BlockKey{{File: "p.go", Func: "F", Hash: "h"}},
+			Tests:  []testcover.MapTest{{Name: "TestFails", FuncHash: "x", Seconds: 0.01, Blocks: []int{0}}},
+		}
+		if err := testcover.WriteMap(sharedDir, "example.com/reportmapped/p", heldTest); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(sharedDir, "example.com")) })
+
+		code, stdout := runGate(t, gateRun{cwd: t.TempDir(), realGo: true, args: []string{"test", "--tier", "5", "-C", module, "./..."}})
+		if code != 1 {
+			t.Errorf("exit code = %d, stdout %q; want 1", code, stdout)
+		}
+		want := "  example.com/reportmapped/p TestFails:\n    " + gateslot.TriageLinePrefix + "no change set exists, " + triageReasonNoParent +
+			"; map commit " + mapCommit + "\n    reportmapped/p/p_test.go:6"
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout %q lacks %q", stdout, want)
+		}
+		if strings.Contains(stdout, "lym gate reach --test") {
+			t.Errorf("stdout %q holds a reach command; want none for a test with no change set", stdout)
 		}
 		requireFree(t)
 	})

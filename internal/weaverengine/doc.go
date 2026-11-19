@@ -28,6 +28,8 @@
 //
 // One batch attempt is one cold strand started through StrandRunner, with a gate entry per card and one for the batch.
 // Each entry runs its `lym gate test` call through `verifytree.Verify`, so the agent fixes its own gate failures.
+// When the geometry tells a `ReachPending` source, the batch entry runs under `verifytree.WithReachTurn`.
+// A writer whose batch gate passes then gets one turn for each unreached function of its reach report.
 // A waited attempt is judged into one verdict.
 // An OK report with every gate passed is recordable.
 // A FAILED report, a gate that still fails, a timeout and a missing or unparseable report are failures.
@@ -46,6 +48,7 @@
 // After the last batch, the plan-level verify runs the hub's verify gate call through `verifytree.Verify`.
 // A failure is rerun once, and a pass on the rerun is flaky.
 // A failure that survives writes the verify-failure record and goes to one cold verify fixer on the next ladder rung.
+// The record carries the triage lines the verify log's failure report holds under its failed tests.
 // Weaver runs the verify again after it.
 // The fixer carries no gates, since the re-run of the verify judges it.
 // RunDeps is everything the row's producer is told.

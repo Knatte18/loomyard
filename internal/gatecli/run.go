@@ -233,12 +233,21 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 				code, firstFailed = 1, lint.label
 			}
 		}
-		// The report steps run last and never change the code.
-		if slices.Contains(cfg.Gates[request.gate].Reports, gateslot.ReportRedundancy) {
+		// The report steps run last and never change the code; the reach step runs before the redundancy step.
+		reports := cfg.Gates[request.gate].Reports
+		runsReach, runsRedundancy := slices.Contains(reports, gateslot.ReportReach), slices.Contains(reports, gateslot.ReportRedundancy)
+		if runsReach || runsRedundancy {
 			stopGuard, guardKilled := startMemoryGuard(runCtx, newMemoryGuard(request.memoryQuit, request.stderr), os.Getpid(), exe.request.memoryGuarding)
-			step := exe.redundancyStep()
-			step.guardKilled = guardKilled
-			step.run(red, inHub)
+			if runsReach {
+				reach := exe.reachStep()
+				reach.guardKilled = guardKilled
+				reach.run(red, inHub)
+			}
+			if runsRedundancy {
+				step := exe.redundancyStep()
+				step.guardKilled = guardKilled
+				step.run(red, inHub)
+			}
 			stopGuard()
 		}
 	}
@@ -537,10 +546,12 @@ type execution struct {
 
 // printReport writes the failure report of the call's failed runs to stderr, and nothing when no run failed.
 // The report names the files the change touches.
+// It holds triage lines under the failed tests the coverage maps can judge.
 func (e *execution) printReport(inHub bool) {
 	if len(e.failed) == 0 {
 		return
 	}
+	e.addTriage(inHub)
 	printFailureReport(e.request.stderr, e.failed, touchedFiles(e.ctx, e.location, e.request.root, inHub))
 }
 

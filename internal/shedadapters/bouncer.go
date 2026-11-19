@@ -91,6 +91,9 @@ type BouncerConfig struct {
 	// RedundancyReport returns the note the rubric's redundancy_report marker is filled from.
 	// It is called each time the seed or judge reads a rubric carrying the marker; nil renders `none`.
 	RedundancyReport func() string
+	// ReachReport returns the note the rubric's reach_report marker is filled from.
+	// It is called each time the seed or judge reads a rubric carrying the marker; nil renders `none`.
+	ReachReport func() string
 	// RubricStencil is the stencilstore name of the rubric this Bouncer's judge applies.
 	RubricStencil string
 	// Models holds the already-resolved seed and judge pairs, threaded verbatim into the shuttleengine.Spec of each pass.
@@ -1687,7 +1690,7 @@ func (b *Bouncer) seedCall(ctx context.Context) (shedengine.Outcome, shedengine.
 // rubricNotes gathers the notes that fill the rubric's markers.
 // Each note is blank when no function is configured for it.
 func (b *Bouncer) rubricNotes() RubricNotes {
-	notes := RubricNotes{GateTiers: b.cfg.GateTiers, Amendment: AmendmentNote(b.cfg.RunDir), ReviewInput: ReviewInputNote(b.cfg.RunDir), RedundancyReport: b.cfg.RedundancyReport}
+	notes := RubricNotes{GateTiers: b.cfg.GateTiers, Amendment: AmendmentNote(b.cfg.RunDir), ReviewInput: ReviewInputNote(b.cfg.RunDir), RedundancyReport: b.cfg.RedundancyReport, ReachReport: b.cfg.ReachReport}
 	if b.cfg.WebsterRecord != nil {
 		notes.WebsterRecord = b.cfg.WebsterRecord()
 	}

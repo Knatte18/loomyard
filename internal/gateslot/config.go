@@ -47,6 +47,13 @@ type Config struct {
 	RedundancyMaxTests int `yaml:"redundancy_max_tests"`
 	// RedundancyBudgetMin is the minutes the redundancy report step may spend on builds and tests once it holds its slot.
 	RedundancyBudgetMin int `yaml:"redundancy_budget_min"`
+	// ReachBudgetMin is the minutes the reach report step and `lym gate mutate` may spend on coverage maps.
+	// They spend it refreshing the worktree's maps, once they hold a slot.
+	ReachBudgetMin int `yaml:"reach_budget_min"`
+	// MutationMaxMutants caps the mutants `lym gate mutate` runs for one diff, spread over the changed functions in turn.
+	MutationMaxMutants int `yaml:"mutation_max_mutants"`
+	// MutationBudgetMin is the minutes `lym gate mutate` may spend on its mutant builds and runs once it holds a slot.
+	MutationBudgetMin int `yaml:"mutation_budget_min"`
 	// Tiers are the declared test tiers keyed tier0, tier1, and so on.
 	Tiers map[string]Tier `yaml:"tiers"`
 	// Gates maps a gate key to the tiers and scope that site runs.
@@ -99,6 +106,9 @@ type configFile struct {
 	RedundancyTestMemoryMB    int                  `yaml:"redundancy_test_memory_mb"`
 	RedundancyMaxTests        int                  `yaml:"redundancy_max_tests"`
 	RedundancyBudgetMin       int                  `yaml:"redundancy_budget_min"`
+	ReachBudgetMin            int                  `yaml:"reach_budget_min"`
+	MutationMaxMutants        int                  `yaml:"mutation_max_mutants"`
+	MutationBudgetMin         int                  `yaml:"mutation_budget_min"`
 	Tiers                     map[string]tierFile  `yaml:"tiers"`
 	Gates                     map[string]yaml.Node `yaml:"gates"`
 	Scoper                    string               `yaml:"scoper"`
@@ -129,7 +139,7 @@ func ConfigPerNameMaps() []string {
 // `slots` and `tier_parallel` take a machine override, and every key stays closed to the local layer.
 // `fixer_timeout_min` and `memory_quit_mb` are cross-pair like `busy_quit_sec`;
 // a gate key's `fixer` sits inside `gates`, a guard key.
-// The coverage map and redundancy report keys are cross-pair too:
+// The coverage map, redundancy report, reach report and mutation keys are cross-pair too:
 // every worktree of the hub reads the maps they bound.
 // `tiers` and `build` run any shell command in a task worktree, so they are executable.
 // The gate lists, the scoper, the refused commands and the inert paths switch off or hollow a guard.
@@ -160,6 +170,9 @@ func ConfigSpec() configengine.Spec {
 			"redundancy_test_memory_mb":    configengine.CategoryCrossPair,
 			"redundancy_max_tests":         configengine.CategoryCrossPair,
 			"redundancy_budget_min":        configengine.CategoryCrossPair,
+			"reach_budget_min":             configengine.CategoryCrossPair,
+			"mutation_max_mutants":         configengine.CategoryCrossPair,
+			"mutation_budget_min":          configengine.CategoryCrossPair,
 			"tiers":                        configengine.CategoryExecutable,
 			"gates":                        configengine.CategoryGuard,
 			"scoper":                       configengine.CategoryGuard,
@@ -295,6 +308,9 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		{"redundancy_test_memory_mb", file.RedundancyTestMemoryMB},
 		{"redundancy_max_tests", file.RedundancyMaxTests},
 		{"redundancy_budget_min", file.RedundancyBudgetMin},
+		{"reach_budget_min", file.ReachBudgetMin},
+		{"mutation_max_mutants", file.MutationMaxMutants},
+		{"mutation_budget_min", file.MutationBudgetMin},
 	} {
 		if bound.value < 1 {
 			return Config{}, fmt.Errorf("gate config key %q: %d; want at least 1", bound.key, bound.value)
@@ -337,6 +353,9 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		RedundancyTestMemoryMB:    file.RedundancyTestMemoryMB,
 		RedundancyMaxTests:        file.RedundancyMaxTests,
 		RedundancyBudgetMin:       file.RedundancyBudgetMin,
+		ReachBudgetMin:            file.ReachBudgetMin,
+		MutationMaxMutants:        file.MutationMaxMutants,
+		MutationBudgetMin:         file.MutationBudgetMin,
 		Tiers:                     tiers,
 		Gates:                     gates,
 		Scoper:                    file.Scoper,
@@ -516,8 +535,8 @@ func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 			}
 		}
 		for _, report := range key.Reports {
-			if report != ReportRedundancy {
-				return nil, guidedError{fmt.Errorf("gate config key %q: report %q; want %s; fix it with \"lym config gate\" from the prime%s", path, report, ReportRedundancy, roleClause)}
+			if report != ReportReach && report != ReportRedundancy {
+				return nil, guidedError{fmt.Errorf("gate config key %q: report %q; want %s or %s; fix it with \"lym config gate\" from the prime%s", path, report, ReportReach, ReportRedundancy, roleClause)}
 			}
 		}
 		if key.Fixer != "" {

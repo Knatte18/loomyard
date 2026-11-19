@@ -148,6 +148,7 @@
 // BurlerReview renders the amendment note of its run directory into the rubric's amendment marker.
 // BurlerReview and the Bouncer hand Env.RedundancyReport to the rubric's redundancy_report marker.
 // The rubric reads it only when it carries the marker.
+// They hand Env.ReachReport to the rubric's reach_report marker the same way.
 //
 // # The Drift rows
 //
@@ -193,6 +194,14 @@
 // A row whose element names a fixer hands its finished gate spec to Env.GateFixer in a GateFixerRequest,
 // and it runs the spec the seam returns.
 // A nil Env.GateFixer, and an empty setting value, leave the row's gates as written.
+//
+// # The reach turn
+//
+// A "verify" element is wrapped with `verifytree.WithReachTurn` when Env.VerifyReach is set.
+// The turn reads the pending reach report of the row's gate key and spends the element's attempts.
+// Its listed file sits in Env.VerifyDir under the row's site label.
+// The element's entry carries a new shuttleengine.RerunMark, which the turn reads and the gate fixer's wrap sets.
+// A nil Env.VerifyReach leaves the element as written.
 //
 // # Segment settings and row settings
 //

@@ -277,6 +277,10 @@ const ReportCutPrefix = "... "
 // ReportOutputLine, indented under a run, opens the output lines no test event carried; it names no failure.
 const ReportOutputLine = "its output:"
 
+// TriageLinePrefix opens each triage line the failure report holds under a failed test, as an advisory four-space line.
+// A triage line says whether the failed test reaches a function the call's change set touches.
+const TriageLinePrefix = "triage: "
+
 // ReportOutsideAnyTestSuffix ends the package a failure report names as failed outside any test, before its colon.
 const ReportOutsideAnyTestSuffix = ", failed outside any test"
 

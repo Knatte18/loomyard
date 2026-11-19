@@ -46,6 +46,8 @@
 // Each fixer's report and reply sit beside it as `report-<n>.md` and `reply-<n>.md`.
 // At most one fixer runs per failed evaluation, and at most the entry's attempts plus one per row visit.
 // A failure judged over a fixer the same evaluation waited on goes to the writer.
+// A failing result its gate marks WriterOnly is meant for the writer alone, so it spawns no fixer.
+// The judging run after a fixer goes through the entry's RerunMark, so a gate can tell that run from the first.
 // The entry's final closure and every other entry only wait for a live fixer,
 // so every entry is judged over the fixer's finished tree.
 //

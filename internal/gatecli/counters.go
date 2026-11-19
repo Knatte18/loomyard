@@ -80,6 +80,13 @@ type runFailure struct {
 	// lines are the failure's first printed lines, trimmed and without go test's status lines, at most failureLines.
 	// A lint finding has its one line.
 	lines []string
+	// triage holds the failure's triage lines, each opening with gateslot.TriageLinePrefix; empty when it has none.
+	triage []string
+}
+
+// isTest reports whether the failure is a failed test of a named package, the kind a coverage map can hold.
+func (f runFailure) isTest() bool {
+	return f.pkg != "" && f.test != ""
 }
 
 const (

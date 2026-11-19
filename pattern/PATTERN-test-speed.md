@@ -217,12 +217,14 @@ so every run takes its slots, its timeout and its log.
 
 - Tests run only through `lym gate test` over `gate.yaml`'s tiers.
   Two things run outside it: a card `**Verify:**` line and `cmd/testtiming`'s runs in every mode.
-- Three redundancy runs take a tier's `env` and a gate slot as a tier run does.
+- The redundancy runs take a tier's `env` and a gate slot as a tier run does.
   `lym gate test --map` rebuilds the per-package coverage maps over its scope at the HEAD of the worktree it runs in,
   into the hub's shared maps from the prime and into the worktree's anchor `.lym` elsewhere.
   The `redundancy` report step a gate key's `reports` lists runs after the key's tiers released their slots.
-  Both run every test alone under a coverage binary, since coverage counters are process-wide.
+  The `reach` report step refreshes a task worktree's own anchor maps by the same measurement, in the map run's slot ask.
+  The map run, the refresh and the `redundancy` step run every test alone under a coverage binary, since coverage counters are process-wide.
   `lym gate redundant` runs each test alone under a binary holding the mutants of its package, one mutant on per run.
+  `lym gate mutate` does the same for the tests covering each mutant of the lines a diff changes, after it refreshed the worktree's own maps.
 - A card `**Verify:**` line runs through the shared `internal/cardverify` runner,
   and `cmd/testtiming` measures outside the gate because its modes measure what a tier run hides.
 - A site or stencil names a gate key, never a tier list, scope form, test command or target list.
@@ -290,7 +292,9 @@ this section keeps only what is project-specific or stricter here.
   A map records, for each tier0 and tier1 test, its function hash, the blocks it covers of its own package's files,
   the functions it covers of each other in-module package its test binary links, and its spawn scan verdict.
   It also records the hashes of the package's files and of each linked package's files at the commit it was built from.
-  The maps are built only on command: no dobby, landing or gate builds them, and the gate selects no test from them.
+  The hub's shared maps are built only on command: no dobby, landing or gate builds them, and the gate selects no test from them.
+  The `reach` step refreshes a task worktree's own anchor maps of the packages holding changed functions,
+  under its budget and the map run's clean checks.
   A call measures each package of its scope's set whole at the HEAD of the worktree it runs in, and replaces the package's map.
   A failed build keeps the map's entries.
   The map run bounds its test processes by the tiers' own limits:
@@ -319,6 +323,15 @@ this section keeps only what is project-specific or stricter here.
   It lists the candidates with their seconds, covering tests and kills, and the refuted, unconfirmed, keep-marked and unjudged tests.
   Bound: a mutant changes the package's own code only,
   so a candidate whose check differs from its covers only in another package's result is confirmed falsely.
+- A gate key whose `reports` lists `reach` runs the report step after its lints and before the redundancy step.
+  It finds the functions the diff changes against the merge base with the parent branch, or against HEAD in the prime,
+  and writes `reach.json` in the worktree's gate directory with the tests of the maps that reach each one.
+  It prints a note of the report.
+  A task worktree first refreshes its own anchor maps of the packages holding a changed function whose map is absent or stale,
+  within `reach_budget_min`; a package with an uncommitted file of its own or of a linked package keeps its map and is listed.
+  The prime refreshes nothing and answers from the shared maps.
+  The step is advisory: it never changes the gate's result.
+  Bound: a map older than the files, or a test that runs the function in another process, can make a function read as unreached.
 - A gate key whose `reports` lists `redundancy` runs the report step after its tiers and lints.
   It takes the diff's new and changed top-level tests against the merge base with the parent branch,
   leaving out tier2 and tier3 tests, tests marked `//testtiming:keep` and tests that may run module code in another process.
