@@ -29,7 +29,7 @@ const (
 
 // layoutAnswers maps the cleaned path of a worktree on disk to whether it belongs to a one-repository hub.
 // An answer holds for the process.
-// Fabric's own marker writes in this process clear the map through forgetLayouts,
+// Fabric's own writes in this process that add or retire a marker clear the map through forgetLayouts,
 // and a marker another process adds or retires is seen only by a later process.
 // A read that overlaps a clear is not kept.
 var layoutAnswers sync.Map
@@ -58,8 +58,9 @@ func oneRepositoryAt(path string) bool {
 		logger.Warn("fabricengine: reading the layout of a worktree failed; reading it as two repositories", "path", key, "error", err)
 		return false
 	}
-	if layoutClears.Load() == clearsBeforeRead {
-		layoutAnswers.Store(key, answer)
+	layoutAnswers.Store(key, answer)
+	if layoutClears.Load() != clearsBeforeRead {
+		layoutAnswers.Delete(key)
 	}
 	return answer
 }

@@ -2490,7 +2490,7 @@
 // The main worktree of a two-repository records repository is a records sibling and never reads as one repository.
 // A path with no worktree on disk reads as two repositories without running git or logging.
 // The answer for a worktree on disk is kept for the process, so a repeated read runs no git;
-// a fabric write that adds or retires a marker drops every kept answer, and a rewrite of a marker that stays leaves them.
+// a fabric write that adds or retires a marker drops every kept answer.
 // The bound is the process:
 // a marker another process adds or retires is seen only by a later process.
 // In a one-repository hub a worktree is its own records worktree.
