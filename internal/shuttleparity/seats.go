@@ -214,7 +214,8 @@ func buildDarn(env SeatEnv) ([]seatengine.Table, error) {
 	return []seatengine.Table{table}, err
 }
 
-// measureCallStandIn is the measuring call the darn builder is given, the one a hub with no tier gives its darn-write key.
+// measureCallStandIn is the measuring call the darn builder is given.
+// It is the call a hub with no tier gives its darn-write key.
 const measureCallStandIn = "lym gate test --gate darn-write -- <args>"
 
 func buildDescribe(env SeatEnv) ([]seatengine.Table, error) {

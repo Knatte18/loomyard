@@ -447,8 +447,8 @@ func TestRunTierNoTestNotice(t *testing.T) {
 }
 
 // TestRunTierReadsTheVSTestResultsFile pins a vstest tier's verdict on the TRX file the gate asks for.
-// The command finds the results directory among its args, copies a fixture TRX file there,
-// prints the summary a detailed console logger prints, which the console counter cannot read, and exits.
+// The command finds the results directory among its args and copies a fixture TRX file there.
+// It then prints the summary a detailed console logger prints, which the console counter cannot read, and exits.
 func TestRunTierReadsTheVSTestResultsFile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -549,7 +549,8 @@ The test running when the crash occurred: Ns.Tests.Kept</Text></RunInfo>`
 	}
 }
 
-// TestRunTierNamesEnvThatDiffersFromTheSession pins the line a tier run prints for its env values the session sets otherwise.
+// TestRunTierNamesEnvThatDiffersFromTheSession pins the env line of a tier run.
+// The line names each env value the session sets otherwise.
 func TestRunTierNamesEnvThatDiffersFromTheSession(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

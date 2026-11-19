@@ -1,6 +1,6 @@
 // trx.go reads the VSTest results files a vstest tier's invocation writes into a directory the gate names.
-// The tier's counts, failures and run messages then come from a file the gate asked for,
-// never from console text whose shape a logger among the call's own args changes.
+// The tier's counts, failures and run messages then come from a file the gate asked for.
+// They never come from console text whose shape a logger among the call's own args changes.
 
 package gatecli
 
@@ -47,7 +47,8 @@ type trxTestResult struct {
 }
 
 // readTRXResults sums the `.trx` files directly under dir and reports whether any of them could be read.
-// A test counts as passed for the outcome Passed, as failed for Failed, Error, Timeout and Aborted, and as skipped otherwise.
+// A test counts as passed for the outcome Passed.
+// It counts as failed for Failed, Error, Timeout and Aborted, and as skipped otherwise.
 // A failed test keeps the first failureLines non-empty lines of its error message and stack trace.
 // A file that cannot be read or parsed is left out with a warning, so the console counts stand when none is read.
 func readTRXResults(dir string) (trxResults, bool) {

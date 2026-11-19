@@ -428,8 +428,9 @@ func (c Config) AgentGateCall(key string, cards ...string) (string, error) {
 }
 
 // MeasureCall renders the call an agent runs to measure one test class through the named gate key.
-// It is `lym gate test --gate <key>`, then `<its package or test project>` when a tier the key runs takes targets,
-// then `-- <args>` for the words by which the tier's runner selects the class.
+// It is `lym gate test --gate <key>`.
+// A tier the key runs that takes targets adds `<its package or test project>`.
+// Then comes `-- <args>` for the words by which the tier's runner selects the class.
 // A key Gate refuses falls back to `lym gate test --tier 0`, whose target word follows tier0's command,
 // so the call names only a form the hub's gate config can run.
 func (c Config) MeasureCall(key string) string {

@@ -137,8 +137,8 @@
 // They are the hub's with this machine's override inside a hub, and the worktree's own outside every hub.
 // `proc.BuildServerOffEnv` replaces an inherited or env module value, so the module never undoes a build-server switch.
 // The tier's `env`, with `{parallel}` filled, replaces an env module value.
-// A tier run with an invocation first prints and logs one line naming each `env` variable
-// that the environment of the session that started the call sets to another value, with both values.
+// A tier run with an invocation first prints and logs one line.
+// The line names each `env` variable that the session's environment sets to another value, with both values.
 // A result the tier gives reflects the tier's values, so a session measuring through the gate learns it measured those.
 // A variable the session leaves unset is not named.
 // The lease's `gateslot.InheritEnv` and the enclosing-gate pid are added last.
@@ -547,14 +547,16 @@
 // It keeps the first lines of the test's block, which hold its error message and stack trace;
 // the block's section headings are left out.
 // A `vstest` invocation whose command holds `{args}` gets its results from a file the gate asks for instead.
-// Its `{args}` open with `--results-directory <dir> --logger trx;LogFilePrefix=gate --blame`, the `dotnet test` spelling,
-// over a fresh `lymtemp` directory, ahead of the call's own words after `--`.
-// Once the command ends, the TRX files there replace the counts and failed tests its console output gave,
-// so a console logger among the call's own words never changes the verdict; the directory is then removed.
+// Its `{args}` open with `--results-directory <dir> --logger trx;LogFilePrefix=gate --blame`.
+// That is the `dotnet test` spelling, over a fresh `lymtemp` directory, ahead of the call's own words after `--`.
+// Once the command ends, the TRX files there replace the counts and failed tests its console output gave.
+// A console logger among the call's own words so never changes the verdict.
+// The directory is then removed.
 // A test counts as passed for the outcome Passed, failed for Failed, Error, Timeout and Aborted, and skipped otherwise.
 // A failed test keeps the first lines of its error message and stack trace.
-// A failed run prints and logs each run-level message of those files, such as a test host crash with the test
-// the blame collector saw running, and the failure report lists it among the causes.
+// A failed run prints and logs each run-level message of those files.
+// Such a message is a test host crash with the test the blame collector saw running.
+// The failure report lists it among the causes.
 // An invocation that wrote no readable TRX file keeps the console counts, as does a command without `{args}`.
 // The record carries each failed test with its first line as `failures`.
 // A `go-json` tier under the `go` scoper fails when a package holding a test under the tier's tag ran none;

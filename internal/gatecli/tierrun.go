@@ -106,8 +106,8 @@ func runTierChecked(ctx context.Context, out io.Writer, run tierRun, env []strin
 // Every command's GOFLAGS then opens with gateslot.TestCacheOffFlag, so `go test` keeps no test result cache.
 // A run with an invocation first prints and logs envOverrideLine for the tier's env against the session's.
 // A passing `vstest` invocation that reported no test prints the line naming it to stderr and the log.
-// A failed run prints and logs each run-level message its test results files report, such as a test host crash,
-// and counts it among the causes.
+// A failed run prints and logs each run-level message its test results files report, such as a test host crash.
+// It counts each among the causes.
 // A run with no invocation passes at once with nothing discovered.
 func runTierCommands(ctx context.Context, out io.Writer, run tierRun, env []string, request testRequest) tierResult {
 	started := time.Now()
