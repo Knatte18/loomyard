@@ -313,8 +313,9 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 			return seatengine.Table{}, err
 		}
 		// The measuring call follows the hub's gate config, so the prompt names only a form that config can run.
+		// An absent gate.yaml leaves the zero config, whose measuring call is the --tier form.
 		gateCfg, err := gateslot.LoadConfig(dirs)
-		if err != nil {
+		if err != nil && !errors.Is(err, gateslot.ErrConfigAbsent) {
 			return seatengine.Table{}, err
 		}
 		table, err := darnengine.DarnTable(darnengine.DarnInputs{

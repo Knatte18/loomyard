@@ -398,8 +398,9 @@ func startGate(t *testing.T, run gateRun) *runningGate {
 	t.Cleanup(cancel)
 	g.cmd = exec.CommandContext(ctx, os.Args[0], run.args...)
 	// The outer environment's slot, enclosing gate or strand, must not make the gate think it is nested or an agent's.
+	// Its GOFLAGS is dropped too: a session value differing from the tier's would add an env line to every run.
 	g.cmd.Env = slices.DeleteFunc(os.Environ(), func(entry string) bool {
-		return strings.HasPrefix(entry, gateslot.InheritEnv+"=") || strings.HasPrefix(entry, enclosingGateEnv+"=") || strings.HasPrefix(entry, agentname.StrandNameEnv+"=")
+		return strings.HasPrefix(entry, gateslot.InheritEnv+"=") || strings.HasPrefix(entry, enclosingGateEnv+"=") || strings.HasPrefix(entry, agentname.StrandNameEnv+"=") || strings.HasPrefix(entry, "GOFLAGS=")
 	})
 	g.cmd.Env = append(g.cmd.Env, helperEnv+"="+helperRoleGate, helperCwdEnv+"="+run.cwd, helperRecordEnv+"="+g.record)
 	if !run.realGo {
