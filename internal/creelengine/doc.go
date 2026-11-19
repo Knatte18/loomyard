@@ -102,6 +102,13 @@
 // and `lym reed resume` in its worktree for any other strand.
 // A waiting post sends that warning in a progress response right after its pending one.
 // A post to a program or to a strand of another hub answers no liveness, since creel cannot tell whether either runs.
+// The hub's Slack relay program, `<shortname>:SLACK`, is the exception for a post or reply from a strand or EXTERNAL:
+// the daemon asks its told MachineBridge first.
+// The bridge refuses a sender whose mail the relay would drop unposted, and the refused post or reply stores nothing.
+// Otherwise it answers whether the relay runs, as both receiver_live and delivered,
+// and a relay that is down comes with a warning naming `lym slack start`.
+// The relay posts waiting mail only when it starts within a day.
+// A program's post to the relay, and any post in a daemon without the bridge, asks nothing.
 // A terminal is never typed into;
 // a caller that wants an answer waits on the socket with `post --wait-reply` or `read --wait`.
 //

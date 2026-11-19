@@ -1,11 +1,13 @@
-// machinemail_test.go pins mail across machines inside creel:
-// the relay's take, report and settle verbs with the machine mail hour,
-// and the deliver verb with its dedupe, its reply rules and the replies and forwards of the mail it stores.
+// machinemail_test.go pins mail across machines inside creel.
+// It covers the relay's take, report and settle verbs with the machine mail hour.
+// It covers the deliver verb with its dedupe, its reply rules and the replies and forwards of the mail it stores.
+// It covers the post to the Slack relay's program, which asks the bridge whether the relay would post it.
 
 package creelengine_test
 
 import (
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -260,6 +262,103 @@ func TestStore_MachineOutbound(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			tt.run(t, newEnv(t).withBridge(creelfake.NewBridge("neve")))
+		})
+	}
+}
+
+func TestStore_PostToTheSlackRelay(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	refusal := errors.New("creel: the slack button of ly:orch is off")
+	const (
+		relayDown = slack + " is not running, so the message waits in its mail, and the relay posts it only if it starts within a day, " +
+			"since it drops older mail; way forward: start it with lym slack start"
+		// beamSlack is the relay program of a beam, which is no program of this hub's relay.
+		beamSlack = "ly:zz:SLACK"
+	)
+	shown := func(live *bool) any {
+		if live == nil {
+			return nil
+		}
+		return *live
+	}
+	tests := []struct {
+		name   string
+		sender creelengine.Sender
+		// receiver is the receiver of the post, or the sender of the mail the reply answers.
+		receiver string
+		// reply answers mail the receiver posted to the sender instead of posting to the receiver.
+		reply bool
+		// bridge tells the store a bridge; a store without one asks nothing.
+		bridge    bool
+		relayLive bool
+		// refused makes the bridge refuse the sender.
+		refused       bool
+		wantErr       error
+		wantLive      *bool
+		wantDelivered *bool
+		wantWarning   string
+	}{
+		{"AnOrchsPostWhileTheRelayRunsIsStoredAndLive", strand(orch), slack, false, true, true, false, nil, new(true), new(true), ""},
+		{"AnOrchsPostWhileTheRelayIsDownIsStoredNotDeliveredWithAWarningNamingSlackStart", strand(orch), slack, false, true, false, false, nil, new(false), new(false), relayDown},
+		{"ASenderTheBridgeRefusesIsRefusedWithItsWayForwardAndNothingIsStored", strand(orch), slack, false, true, true, true, refusal, nil, nil, ""},
+		{"AnExternalSenderTheBridgeRefusesIsRefusedAndNothingIsStored", external(), slack, false, true, true, true, refusal, nil, nil, ""},
+		{"AProgramsPostAsksTheBridgeNothing", program(batten), slack, false, true, false, true, nil, nil, nil, ""},
+		{"AStoreWithoutTheBridgeStoresThePostAndAnswersNoLiveness", strand(orch), slack, false, false, false, false, nil, nil, nil, ""},
+		{"APostToAStrandSkipsTheBridgeAndAnswersTheStrandsOwnLiveness", strand(orch), alpha, false, true, false, true, nil, new(true), nil, ""},
+		{"APostToABeamsRelayProgramSkipsTheBridgeAndAnswersNoLiveness", strand(orch), beamSlack, false, true, false, true, nil, nil, nil, ""},
+		{"AReplyToRelayMailWhileTheRelayRunsIsStoredAndLive", strand(orch), slack, true, true, true, false, nil, new(true), new(true), ""},
+		{"AReplyToRelayMailWhileTheRelayIsDownIsStoredNotDeliveredWithAWarningNamingSlackStart", strand(orch), slack, true, true, false, false, nil, new(false), new(false), relayDown},
+		{"AReplyToRelayMailTheBridgeRefusesIsRefusedAndNothingIsStored", strand(orch), slack, true, true, true, true, refusal, nil, nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t)
+			for _, name := range []string{slack, beamSlack} {
+				reading, err := e.store.Read(program(name), "")
+				must(t, err)
+				reading.Release()
+			}
+			if tt.bridge {
+				bridge := creelfake.NewBridge("neve")
+				bridge.SetRelayLive(tt.relayLive)
+				if tt.refused {
+					bridge.Refuse(tt.sender.Name, refusal)
+				}
+				e.withBridge(bridge)
+			}
+
+			var posted creelengine.PostResult
+			var err error
+			if tt.reply {
+				asked := e.post(t, program(tt.receiver), tt.sender.Name, "the operator's words")
+				posted, err = e.store.ReplyWith(tt.sender, asked, "the result")
+			} else {
+				posted, err = e.store.PostWith(tt.sender, tt.receiver, "the result", creelengine.PostOptions{})
+			}
+
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("post from %s to %s error = %v; want %v", tt.sender.Name, tt.receiver, err, tt.wantErr)
+			}
+			if !reflect.DeepEqual(posted.ReceiverLive, tt.wantLive) || !reflect.DeepEqual(posted.Delivered, tt.wantDelivered) || posted.Warning != tt.wantWarning {
+				t.Errorf("post from %s to %s = live %v, delivered %v, warning %q; want live %v, delivered %v, warning %q",
+					tt.sender.Name, tt.receiver, shown(posted.ReceiverLive), shown(posted.Delivered), posted.Warning,
+					shown(tt.wantLive), shown(tt.wantDelivered), tt.wantWarning)
+			}
+			stored := 0
+			for _, entry := range e.store.Log(creelengine.LogFilter{To: tt.receiver}) {
+				if entry.Event == "posted" && entry.From == tt.sender.Name {
+					stored++
+				}
+			}
+			wantStored := 1
+			if tt.wantErr != nil {
+				wantStored = 0
+			}
+			if stored != wantStored {
+				t.Errorf("posts journaled from %s to %s = %d; want %d", tt.sender.Name, tt.receiver, stored, wantStored)
+			}
 		})
 	}
 }

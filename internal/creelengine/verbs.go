@@ -127,11 +127,22 @@ type PostResult struct {
 	Interrupted bool
 	// Waiter is the wait for the reply the options registered, nil without Wait.
 	Waiter *Waiter
-	// ReceiverLive reports whether the receiver had a live pane when the post was stored.
-	// It is nil when creel cannot tell: for a program and for a strand of another hub or machine.
+	// ReceiverLive reports whether the receiver had a live pane when the post or reply was stored.
+	// For one to this hub's Slack relay program that the bridge was asked about, it reports whether the relay runs.
+	// It is nil when creel cannot tell: for any other post to a program and for a strand of another hub or machine.
 	ReceiverLive *bool
-	// Warning names a receiver that is not live and the command that starts it, and is empty for every other post.
+	// Warning names a receiver that is not live and the command that starts it, and is empty for every other post or reply.
 	Warning string
+	// Delivered reports whether the Slack relay was running to take the mail.
+	// It answers for a post or reply to this hub's relay program, at the time it was stored.
+	// False means the mail waits for the relay to start.
+	// It is nil for every other post or reply.
+	Delivered *bool
+}
+
+// noteRelay records the state of the hub's Slack relay in r, for a post stored to receiver, the relay's program.
+func (r *PostResult) noteRelay(receiver string, live bool) {
+	r.ReceiverLive, r.Delivered, r.Warning = new(live), new(live), relayDownWarning(receiver, live)
 }
 
 // PostWith stores a message for receiver as opts say and answers what the post did.
@@ -189,9 +200,12 @@ func (s *Store) post(sender Sender, receiver, body string, opts PostOptions) (Po
 	if err := validateLine(sender.Name, body); err != nil {
 		return PostResult{}, err
 	}
+	relayLive, err := s.slackRelayCheck(sender, receiver)
+	if err != nil {
+		return PostResult{}, err
+	}
 	var interrupted bool
 	if opts.Interrupt {
-		var err error
 		interrupted, err = s.interruptBeforePost(sender, receiver)
 		if err != nil && !interrupted {
 			return PostResult{}, err
@@ -205,7 +219,40 @@ func (s *Store) post(sender Sender, receiver, body string, opts PostOptions) (Po
 		return PostResult{Interrupted: true}, storedAfterInterrupt(receiver, err)
 	}
 	posted.Interrupted = interrupted
+	if err == nil && relayLive != nil {
+		posted.noteRelay(receiver, *relayLive)
+	}
 	return posted, err
+}
+
+// slackRelayCheck asks the bridge about a post from sender to receiver when receiver is this hub's Slack relay program.
+// It answers whether the relay runs, or the bridge's refusal of a sender whose mail the relay would drop unposted.
+// It asks nothing and answers nil for any other receiver, for a program sender and in a daemon without the bridge.
+func (s *Store) slackRelayCheck(sender Sender, receiver string) (*bool, error) {
+	bridge := s.bridge
+	if bridge == nil || sender.Kind == KindProgram {
+		return nil, nil
+	}
+	relay, err := agentname.FormatProgram(s.geom.Shortname, BridgeProgram)
+	if err != nil || receiver != relay {
+		return nil, nil
+	}
+	live, err := bridge.RelayPostReady(sender.Name)
+	if err != nil {
+		return nil, err
+	}
+	return &live, nil
+}
+
+// relayDownWarning says that the Slack relay receiver is not running, so its mail waits.
+// The relay posts the waiting mail only when it starts within a day, and drops older mail.
+// It names the command that starts the relay, and it is empty when the relay is live.
+func relayDownWarning(receiver string, live bool) string {
+	if live {
+		return ""
+	}
+	return fmt.Sprintf("%s is not running, so the message waits in its mail, and the relay posts it only if it starts within a day, "+
+		"since it drops older mail; way forward: start it with lym slack start", receiver)
 }
 
 // storedAfterInterrupt words a store failure that came after a turn was stopped.
@@ -302,7 +349,7 @@ func notLiveWarning(receiver, worktree string) string {
 	return fmt.Sprintf("%s is not live, so the message waits in its mail until it runs again; way forward: start it with %s", receiver, start)
 }
 
-// Reply posts text as an answer to message id, addressed to the original sender.
+// ReplyWith posts text as an answer to message id, addressed to the original sender, and answers what the reply did.
 // The caller must hold or have read the message.
 // A reply to an EXTERNAL sender is handed to the wait registered on id, and journaled undelivered when none is.
 // A reply to a chase answers the message the chase chases, and only from that message's holder.
@@ -312,9 +359,15 @@ func notLiveWarning(receiver, worktree string) string {
 // It is journaled as a machine-outbound message to the sending orch.
 // The line is validated with the longer stamped length, and the original message is marked replied.
 // A sender notice from creel takes no reply, since creel holds no mailbox.
-func (s *Store) Reply(sender Sender, id int64, text string) (int64, error) {
+// A reply to mail from this hub's Slack relay program runs the check of a post to that program,
+// so it is refused with nothing stored when the relay would drop it, and its result carries the relay's state.
+func (s *Store) ReplyWith(sender Sender, id int64, text string) (PostResult, error) {
+	repliedTo, relayLive, err := s.relayReplyCheck(sender, id)
+	if err != nil {
+		return PostResult{}, err
+	}
 	var replyID int64
-	err := s.do(func() error {
+	err = s.do(func() error {
 		original := s.state.messages[id]
 		if original == nil {
 			return fmt.Errorf("creel: message #%d is no longer in the pool", id)
@@ -376,7 +429,32 @@ func (s *Store) Reply(sender Sender, id int64, text string) (int64, error) {
 		}
 		return s.writer.append(record{Event: eventUndelivered, ID: replyID})
 	})
-	return replyID, err
+	replied := PostResult{ID: replyID}
+	if err == nil && relayLive != nil {
+		replied.noteRelay(repliedTo, *relayLive)
+	}
+	return replied, err
+}
+
+// relayReplyCheck runs the Slack relay check for a reply by sender to message id.
+// It runs before the reply takes the store's lock.
+// The bridge reads files, so the check runs with no lock held.
+// It answers the receiver the reply goes to and the relay's state, nil unless that receiver is this hub's relay program.
+// The receiver is the original sender, or for a chase the sender of the message the chase chases.
+// A message already gone, or one from another hub or machine, answers nil, and the reply itself refuses or routes it.
+func (s *Store) relayReplyCheck(sender Sender, id int64) (string, *bool, error) {
+	s.mu.Lock()
+	original := s.state.messages[id]
+	if original != nil && original.ChaseOf != 0 {
+		original = s.state.messages[original.ChaseOf]
+	}
+	receiver := ""
+	if original != nil && original.SendingHub == "" && original.SendingMachine == "" {
+		receiver = original.From
+	}
+	s.mu.Unlock()
+	live, err := s.slackRelayCheck(sender, receiver)
+	return receiver, live, err
 }
 
 // EchoHeading is the line hook-read puts above the echoed lines.

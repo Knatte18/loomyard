@@ -45,6 +45,9 @@
 // For a forward, hold, release or interrupt it says the verb took effect.
 // The refusal fallback line opens with that statement too for a post or inject that stored before it refused.
 // `post` adds `receiver_live` to the envelope when the daemon answers it, and leaves it out for a program or another hub.
+// For the hub's Slack relay program, `<shortname>:SLACK`, it answers whether the relay runs.
+// It adds `delivered` with the same answer.
+// `post --reply` to mail from that program answers the same fields and prints the same warning.
 // A post to a receiver that is not live is stored all the same, and prints one `creel: warning: ` line on stderr.
 // The line names the receiver and the command that starts it, and it is printed before the answer line.
 // A `--wait-reply` prints it as soon as the post is stored.
@@ -146,6 +149,10 @@
 // The daemon is told a bridge over the hub's Slack files:
 // this machine's names, and whether an orch may post to another machine.
 // Only the hub's own orch and a beam's orch may, while their slack button is on and the machine and hub are set up.
+// The bridge also answers a post from a strand or EXTERNAL to the hub's relay program.
+// It refuses the post unless the sender is the hub's orch, a beam's orch or one of their threads,
+// and that orch's button is on.
+// Otherwise it answers whether the relay runs.
 // Each call of the bridge reads its files afresh.
 // The read envelope of a message from another machine carries `trust`, `sending_id` and `sending_machine`.
 // A `log` entry of mail across machines adds `receiving_machine`, `sending_machine` and `slack_ts` where set.

@@ -131,9 +131,15 @@ type Response struct {
 	// Sent says an interrupt stopped a running turn, and Interrupted that an inject or a post did.
 	Sent        bool `json:"sent,omitempty"`
 	Interrupted bool `json:"interrupted,omitempty"`
-	// ReceiverLive answers a post whether its receiver had a live pane, and is absent when creel cannot tell.
+	// ReceiverLive answers a post or reply whether its receiver had a live pane.
+	// For the hub's Slack relay it answers whether the relay runs.
+	// It is absent when creel cannot tell.
 	ReceiverLive *bool `json:"receiver_live,omitempty"`
-	// Warning names a post's receiver that is not live and the command that starts it.
+	// Delivered answers a post or reply to the hub's Slack relay program whether the relay was running to take the mail.
+	// False means the mail waits for the relay to start.
+	// It is absent for every other receiver.
+	Delivered *bool `json:"delivered,omitempty"`
+	// Warning names the receiver of a post or reply that is not live or running and the command that starts it.
 	// A waiting post carries it in a progress response right after its pending one.
 	Warning string `json:"warning,omitempty"`
 	// Hold is the hold a hold verb set; Released says a release ended one.

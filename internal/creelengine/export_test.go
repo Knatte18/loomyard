@@ -15,6 +15,12 @@ func (s *Store) Post(sender Sender, receiver, body string) (int64, error) {
 	return posted.ID, err
 }
 
+// Reply posts text as an answer to message id and returns the id of the reply.
+func (s *Store) Reply(sender Sender, id int64, text string) (int64, error) {
+	replied, err := s.ReplyWith(sender, id, text)
+	return replied.ID, err
+}
+
 // PostWait stores a message for receiver and registers a wait for its reply, before any reply can arrive.
 func (s *Store) PostWait(sender Sender, receiver, body string) (int64, *Waiter, error) {
 	posted, err := s.post(sender, receiver, body, PostOptions{Wait: true})

@@ -4,7 +4,9 @@
 The hub's Slack relay connects you to your own Slack channel while the operator has your slack button on:
 its mail comes from `<shortname>:SLACK`,
 and mail you post to `<shortname>:SLACK` is posted to your channel under your own name.
-While your button is off you have no channel, and mail you post to `<shortname>:SLACK` is dropped.
+While your button is off you have no channel, and a post to `<shortname>:SLACK` is refused with nothing stored.
+A post while the relay is down is stored and answers `receiver_live` false with a creel warning line naming `lym slack start`.
+On either answer, report the text in your pane.
 
 - Mail from `<shortname>:SLACK` that opens `[slack relay]` is a notice about the relay itself.
   It carries no operator authority and is not answered.

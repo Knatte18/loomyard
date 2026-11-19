@@ -313,11 +313,11 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 			return err
 		}
 		if req.Wait {
-			stamp := postStamp{interrupted: posted.Interrupted, receiverLive: posted.ReceiverLive, warning: posted.Warning}
+			stamp := postStamp{interrupted: posted.Interrupted, receiverLive: posted.ReceiverLive, delivered: posted.Delivered, warning: posted.Warning}
 			return d.awaitOutcome(conn, reader, posted.Waiter, posted.ID, sender, stamp)
 		}
 		ok.ID, ok.Interrupted = posted.ID, posted.Interrupted
-		ok.ReceiverLive, ok.Warning = posted.ReceiverLive, posted.Warning
+		ok.ReceiverLive, ok.Delivered, ok.Warning = posted.ReceiverLive, posted.Delivered, posted.Warning
 	case VerbWaitReply:
 		waiter, err := store.WaitReply(sender, req.ID)
 		if err != nil {
@@ -325,11 +325,11 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 		}
 		return d.awaitOutcome(conn, reader, waiter, req.ID, sender, postStamp{})
 	case VerbReply:
-		id, err := store.Reply(sender, req.ID, req.Text)
+		replied, err := store.ReplyWith(sender, req.ID, req.Text)
 		if err != nil {
 			return err
 		}
-		ok.ID = id
+		ok.ID, ok.ReceiverLive, ok.Delivered, ok.Warning = replied.ID, replied.ReceiverLive, replied.Delivered, replied.Warning
 	case VerbRead:
 		return d.read(conn, reader, sender, req)
 	case VerbClaim:
@@ -456,6 +456,7 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 type postStamp struct {
 	interrupted  bool
 	receiverLive *bool
+	delivered    *bool
 	warning      string
 }
 
@@ -468,7 +469,7 @@ type postStamp struct {
 // A client that closes its connection, or a daemon that shuts down, ends the wait with no answer.
 func (d *daemon) awaitOutcome(conn net.Conn, reader *bufio.Reader, waiter *Waiter, id int64, sender Sender, stamp postStamp) error {
 	defer waiter.Cancel()
-	if err := d.write(conn, Response{OK: true, Pending: true, ID: id, Sender: sender.Name, Interrupted: stamp.interrupted, ReceiverLive: stamp.receiverLive}); err != nil {
+	if err := d.write(conn, Response{OK: true, Pending: true, ID: id, Sender: sender.Name, Interrupted: stamp.interrupted, ReceiverLive: stamp.receiverLive, Delivered: stamp.delivered}); err != nil {
 		return nil
 	}
 	if stamp.warning != "" {
@@ -505,7 +506,7 @@ func (d *daemon) awaitOutcome(conn net.Conn, reader *bufio.Reader, waiter *Waite
 			}
 			resp := Response{
 				OK: true, ID: id, Sender: sender.Name, Interrupted: stamp.interrupted, ReceiverLive: stamp.receiverLive,
-				Outcome: outcome.Kind, Stall: outcome.Stall, StallAt: outcome.StallAt,
+				Delivered: stamp.delivered, Outcome: outcome.Kind, Stall: outcome.Stall, StallAt: outcome.StallAt,
 			}
 			if outcome.Kind == OutcomeReply || outcome.Kind == OutcomeReturned || outcome.Kind == OutcomeUnanswered {
 				resp.Message = &outcome.Message

@@ -1,4 +1,6 @@
-// slackbridge_test.go pins which orchs the Slack bridge lets post to another machine and the refusal of each other orch.
+// slackbridge_test.go pins which orchs the Slack bridge lets post to another machine.
+// It pins the refusal of each other orch.
+// It also pins which senders the bridge lets post to the hub's relay program, with whether the relay runs.
 
 package creelcli
 
@@ -9,9 +11,85 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/slackengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+func TestSlackBridge_RelayPostReady(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		sender string
+		// buttonOrch is the orch whose slack button is on, none when empty.
+		buttonOrch string
+		// relayLive holds the relay's lock, so the relay reads as running.
+		relayLive bool
+		wantLive  bool
+		wantErr   string
+	}{
+		{"AnOrchWithItsButtonOnWhileTheRelayRunsIsLive", "ly:orch", "ly:orch", true, true, ""},
+		{"AnOrchWithItsButtonOnWhileTheRelayIsDownIsNotLive", "ly:orch", "ly:orch", false, false, ""},
+		{"AnOrchThreadCountsAsTheOrchOfItsBeam", "ly:pay:orch-2", "ly:pay:orch", true, true, ""},
+		{"AnOrchWhoseButtonIsOffIsRefusedNamingTheStatusBar", "ly:orch", "", true, false, "press the button on its status bar"},
+		{"APairsOrchIsRefusedNamingTheHubsOrch", "ly:zz:orch", "ly:zz:orch", true, false, "ask the hub's orch or a beam's orch to post it"},
+		{"AStrandThatIsNoOrchIsRefusedNamingItsOrch", "ly:pay:driver", "ly:pay:orch", true, false, "ask your orch to post it"},
+		{"AnExternalSenderIsRefusedNamingItsOrch", "ly:EXTERNAL", "ly:orch", true, false, "ask your orch to post it"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			geom := slackengine.Geometry{
+				Shortname:      "ly",
+				ForwardingPath: filepath.Join(dir, "forwarding.json"),
+				LockPath:       filepath.Join(dir, "relay.lock"),
+			}
+			if tt.buttonOrch != "" {
+				if _, err := slackengine.WriteForwarding(geom.ForwardingPath, tt.buttonOrch, true, time.Unix(0, 0)); err != nil {
+					t.Fatalf("WriteForwarding() = %v", err)
+				}
+			}
+			if tt.relayLive {
+				held, acquired, err := lock.TryAcquireWriteLock(geom.LockPath)
+				if err != nil || !acquired {
+					t.Fatalf("TryAcquireWriteLock(%s) = %v, %v; want the relay's lock held", geom.LockPath, acquired, err)
+				}
+				t.Cleanup(func() { _ = held.Release() })
+			}
+			bridge := &slackBridge{
+				geometry: func() (slackengine.Geometry, error) { return geom, nil },
+				beams:    func() ([]string, error) { return []string{"pay"}, nil },
+			}
+
+			live, err := bridge.RelayPostReady(tt.sender)
+
+			if tt.wantErr == "" {
+				if err != nil || live != tt.wantLive {
+					t.Errorf("RelayPostReady(%q) = %v, %v; want %v, nil", tt.sender, live, err, tt.wantLive)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("RelayPostReady(%q) = %v, %v; want an error containing %q", tt.sender, live, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestSlackBridge_RelayPostReadyRefusesWithAWayForwardWhenAReadFails(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	failure := errors.New("no geometry")
+	bridge := &slackBridge{geometry: func() (slackengine.Geometry, error) { return slackengine.Geometry{}, failure }}
+
+	live, err := bridge.RelayPostReady("ly:orch")
+
+	if live || !errors.Is(err, failure) || !strings.Contains(err.Error(), "way forward: run lym slack status") {
+		t.Errorf("RelayPostReady() = %v, %v; want not live and an error wrapping the geometry's with a way forward", live, err)
+	}
+}
 
 func TestSlackBridge(t *testing.T) {
 	tiergate.Require(t, 0)

@@ -16,6 +16,7 @@ import (
 
 // MachineBridge is the seam through which the engine learns what it cannot know itself about the Slack bridge.
 // A nil MachineBridge means a daemon started without the bridge, which takes no post to another machine.
+// Such a daemon stores a post to this hub's Slack relay program without asking anything.
 type MachineBridge interface {
 	// Names answers this machine's current name and its former names.
 	Names() (current string, former []string, err error)
@@ -23,6 +24,9 @@ type MachineBridge interface {
 	// it has a slack button that is on, the machine holds both tokens and the hub has its setup.
 	// Otherwise it answers a refusal that names the way forward.
 	SendReady(orch string) error
+	// RelayPostReady answers whether this hub's Slack relay runs, for a post or reply from sender to the relay's program.
+	// It refuses a sender whose mail the relay would drop unposted, with a refusal that names the way forward.
+	RelayPostReady(sender string) (relayLive bool, err error)
 }
 
 // SetMachineBridge sets the seam to the Slack bridge.
