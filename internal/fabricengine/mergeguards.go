@@ -9,6 +9,7 @@ package fabricengine
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -24,7 +25,8 @@ type mergeSources struct {
 
 // resolveMergeSources resolves the SHA each side of f merges, applying the freshness rule independently per side.
 // The warp side resolves source itself.
-// The weft side resolves RecordsBranchName(source), the sole "-weft" composition (branchname.go).
+// The weft side resolves the records branch of source.
+// That is the paired "-weft" branch, or source itself in a one-repository hub.
 // Both sides run a best-effort Fetch first; a fetch failure is logged via logger.Warn and is never fatal.
 // Each side then resolves its local branch and its origin/<branch> remote-tracking ref via gitrepo.ResolveSHA.
 // A warp source resolvable on neither local nor remote appends mergeReasonSourceNotFound.
@@ -42,7 +44,7 @@ type mergeSources struct {
 // It does not disclose that both sides were checked.
 func resolveMergeSources(f *Fabric, source string) (mergeSources, []string) {
 	var reasons []string
-	weftBranch := RecordsBranchName(source)
+	weftBranch := recordsBranchAt(f.warpPath, source)
 
 	if err := f.code.Fetch(); err != nil {
 		logger.Warn("fabricengine: best-effort fetch before merge source resolution failed", "side", "warp", "error", err)
@@ -99,10 +101,18 @@ func pickMergeSourceSHA(repo *gitrepo.Repo, localSHA string, localFound bool, re
 // It is not a merge participant, so its dirtiness cannot affect a warp-only merge's correctness.
 // Checking it could only refuse a merge that would have been right.
 // The returned paths are the checkout's worktree-relative, sorted tracked dirty paths, so a guard error can carry them.
+// In a one-repository worktree the records paths of HEAD are left out, because the merge commits them first.
 func pairDirtyReason(f *Fabric) ([]string, []string, error) {
 	paths, err := codeDirtyPaths(f)
 	if err != nil {
 		return nil, nil, fmt.Errorf("fabricengine: check checkout dirtiness: %w", err)
+	}
+	if oneRepositoryAt(f.warpPath) {
+		recordsPaths, err := RecordsPathsAt(f.warpPath, "HEAD")
+		if err != nil {
+			return nil, nil, fmt.Errorf("fabricengine: read the records paths of the checkout: %w", err)
+		}
+		paths = slices.DeleteFunc(paths, func(path string) bool { return underRecordsPath(path, recordsPaths) })
 	}
 
 	if len(paths) > 0 {
@@ -199,6 +209,18 @@ func syncedToUpstreamReason(f *Fabric) ([]string, error) {
 	warpNotSynced, err := sideNotSyncedToUpstream(f.code, f.warpPath)
 	if err != nil {
 		return nil, err
+	}
+	if warpNotSynced && oneRepositoryAt(f.warpPath) {
+		// A diverged one-repository branch whose local commits are all records-only is leveled by the sync step.
+		upstreamSHA, _, err := upstreamSHAAt(f.warpPath)
+		if err != nil {
+			return nil, err
+		}
+		codeCommits, err := unpushedCodeCommits(f.warpPath, upstreamSHA)
+		if err != nil {
+			return nil, err
+		}
+		warpNotSynced = len(codeCommits) > 0
 	}
 	if warpNotSynced {
 		return []string{mergeReasonNotSynced}, nil

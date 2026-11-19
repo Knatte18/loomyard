@@ -128,8 +128,9 @@ func takeoverStop(l *lymcwd.Location, weftPath, slug string, here MachineNames) 
 }
 
 // warpLocationOfRecords returns the location of the code worktree that the records worktree at weftPath pairs with.
+// In a one-repository hub that worktree is the records worktree itself.
 func warpLocationOfRecords(weftPath string) (*lymcwd.Location, error) {
-	warpSlug, ok := WeftWarpSlug(filepath.Base(weftPath))
+	warpSlug, ok := pairSlugOfRecords(weftPath)
 	if !ok {
 		return nil, fmt.Errorf("fabricengine: %s is no weft sibling worktree", weftPath)
 	}

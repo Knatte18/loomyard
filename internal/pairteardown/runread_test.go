@@ -314,7 +314,10 @@ func TestReadRun(t *testing.T) {
 				{Error: "connection refused", RepoPath: "/hub/task-records"},
 				{Error: "older failure", RepoPath: "/hub/task"},
 			}},
-			wantIn:    runfsm.Inputs{PushOwed: true, PushOwedError: "connection refused", PushOwedWorktree: "/hub/task-records"},
+			wantIn: runfsm.Inputs{
+				PushOwed: true, PushOwedError: "connection refused", PushOwedWorktree: "/hub/task-records",
+				PushOwedWayForward: fabricengine.FailedPushWayForward(fabricengine.FailedPush{Error: "connection refused", RepoPath: "/hub/task-records"}),
+			},
 			wantCalls: []string{"child-origin"},
 		},
 		{

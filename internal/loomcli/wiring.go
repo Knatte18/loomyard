@@ -66,11 +66,24 @@ import (
 // They are injected as plain function values rather than reached directly.
 // Injected this way, the seam's branching is drivable in a Tier 1 test from stub closures.
 // Such a test needs no hub fixture and no git spawn:
-// a commit failure is a hard error, an owed push is retried, and a mid-merge state skips the step.
+// a commit failure is a hard error, and an owed push is retried.
+// A mid-merge state skips the step in a two-repository worktree.
+// In a one-repository worktree a blocking git operation makes the step wait instead.
 type commitStatusDeps struct {
 	// MergeActive reports whether the fabric sibling worktree that carries the status file is mid-merge,
-	// and the seam then skips its commit.
+	// and the seam then skips its commit in a two-repository worktree.
+	// The callers that refuse on a merge in progress read it in both layouts.
 	MergeActive func() (bool, error)
+	// MergeOperation names the git operation that blocks the records commit, and "" for none.
+	// The seam waits for it to end in a one-repository worktree.
+	MergeOperation func() (operation string, err error)
+	// Stalled reports whether a commit failure waits rather than halts the run, a prime off its branch.
+	Stalled func(err error) bool
+	// Protected reports whether a push failure is a protected-branch refusal and nothing else.
+	Protected func(err error) bool
+	// OneRepository reports that the worktree belongs to a one-repository hub,
+	// so the seam waits on MergeOperation in place of skipping on MergeActive.
+	OneRepository bool
 	// Commit commits loom's own status file with msg.
 	// When the reviews directory holds a file, the same commit also carries the review round record.
 	// It reports whether it made a commit.
@@ -103,8 +116,8 @@ type commitStatusDeps struct {
 // staging the parent carries the friction directory and every timestamped archive sibling in one entry,
 // where a friction-only entry would miss the archives.
 // Directories are staged whole, not per file, since the staging step runs `git add -- <pathspec>`:
-// an archive stages both the new timestamped sibling and the covered files' removal from the friction directory,
-// and a transition whose commit was skipped mid-merge is caught up by the next one.
+// an archive stages both the new timestamped sibling and the covered files' removal from the friction directory.
+// In a two-repository worktree, a transition whose commit was skipped mid-merge is caught up by the next one.
 // Existence alone is not enough.
 // The recipe's review entries create every review row's run directory when the recipe is built.
 // So from a run's first transition the reviews root exists holding only empty segment directories.
@@ -219,6 +232,12 @@ func commitStatusDepsGuardedBy(check prePushCheck, location *lymcwd.Location, ru
 		MergeActive: func() (bool, error) {
 			return fabricengine.MergeStateActive(location)
 		},
+		MergeOperation: func() (string, error) {
+			return fabricengine.MergeStateOperation(location)
+		},
+		Stalled:       fabricengine.IsPrimeBranchRefusal,
+		Protected:     fabricengine.IsPushProtected,
+		OneRepository: lymcwd.OneRepository(location.WorktreePath()),
 		// A Commit over an already-clean tracked path is a no-op that reports committed false, not a failure.
 		// The status seam pushes nothing for it.
 		Commit: check.guardedCommit(func(msg string) (bool, error) {
@@ -338,11 +357,15 @@ func sketchRefusedNotice(slug string, refusal error) string {
 // the board is the hub's overview, never the run's own bookkeeping.
 // It then calls the shared statuscommit core, which owns the dispositions:
 // skip-while-mid-merge, commit-hard-errors, the synchronous push and the retry of an owed push.
+// In a one-repository worktree the core waits for a blocking git operation in place of its skip-while-mid-merge,
+// and a push refused only by a protected branch completes the transition with its records unpushed.
 // This seam passes loom's own commit and log prefixes and no after-commit callback.
 // A commit the pre-push check stopped reads as no commit made, so the core pushes nothing and the transition goes on.
 func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) error {
-	core := statuscommit.New(statuscommit.Deps{
+	coreDeps := statuscommit.Deps{
 		MergeActive: deps.MergeActive,
+		Stalled:     deps.Stalled,
+		Protected:   deps.Protected,
 		Commit: func(msg string) (bool, error) {
 			committed, err := deps.Commit(msg)
 			if errors.Is(err, errPushStopped) {
@@ -355,7 +378,12 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 		Admit: deps.Admit,
 		Owed:  deps.Owed,
 		Sleep: deps.Sleep,
-	}, "loom", "loomcli", nil)
+	}
+	if deps.OneRepository {
+		coreDeps.MergeActive = nil
+		coreDeps.MergeOperation = deps.MergeOperation
+	}
+	core := statuscommit.New(coreDeps, "loom", "loomcli", nil)
 	lastBoardStatus, finished := "", false
 	return func(producer, state string) error {
 		switch {

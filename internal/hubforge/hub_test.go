@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // TestInitRepos_WriteFixtureConfigKeys verifies each repository initialiser's fixture keys.
@@ -388,6 +389,70 @@ func assertRealHub(t *testing.T, h *Hub) {
 	if _, err := os.Stat(warpBinding); err != nil {
 		t.Errorf("weft:main warp-URL binding missing at %s: %v", warpBinding, err)
 	}
+}
+
+// TestNewOneRepoHub builds one-repository hubs and checks the layout, a second clone of it and the config seeder.
+func TestNewOneRepoHub(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	t.Run("IsAOneRepositoryHub", func(t *testing.T) {
+		t.Parallel()
+		h := NewOneRepoHub(t, ".")
+
+		entries, err := os.ReadDir(h.Path)
+		if err != nil {
+			t.Fatalf("read the hub %s: %v", h.Path, err)
+		}
+		for _, entry := range entries {
+			if strings.HasSuffix(entry.Name(), weftname.Suffix) {
+				t.Errorf("the hub holds %s; want no records sibling", entry.Name())
+			}
+		}
+		if h.RecordsBare != "" || h.CodeBare == "" {
+			t.Errorf("RecordsBare = %q and CodeBare = %q; want the records bare empty and the code bare set", h.RecordsBare, h.CodeBare)
+		}
+		if h.PrimeRecords() != h.PrimeWorktree() {
+			t.Errorf("PrimeRecords() = %s; want the prime worktree %s", h.PrimeRecords(), h.PrimeWorktree())
+		}
+		if tracked := gitkit.LsFiles(t, h.PrimeWorktree(), "--", lymcwd.AnchorFileName); len(tracked) != 1 || tracked[0] != lymcwd.AnchorFileName {
+			t.Errorf("the prime tracks %v for the anchor marker; want [%s]", tracked, lymcwd.AnchorFileName)
+		}
+	})
+
+	t.Run("CloneSecondTakesTheSameLayout", func(t *testing.T) {
+		t.Parallel()
+		second := CloneSecond(t, NewOneRepoHub(t, "."))
+
+		if second.RecordsBare != "" || second.PrimeRecords() != second.PrimeWorktree() {
+			t.Errorf("the second hub has RecordsBare %q and PrimeRecords() %s; want the one-repository layout", second.RecordsBare, second.PrimeRecords())
+		}
+		if got := gitkit.Git(t, second.PrimeWorktree(), "config", "--get", fabricengine.PrimeBranchConfigKey); got != "main" {
+			t.Errorf("%s = %q; want %q", fabricengine.PrimeBranchConfigKey, got, "main")
+		}
+		if got := gitkit.CurrentBranch(t, second.BoardDir()); got != fabricengine.BoltBranchName {
+			t.Errorf("the second hub's board is on %q; want %q", got, fabricengine.BoltBranchName)
+		}
+	})
+
+	t.Run("SeedConfigCommitsOnlyTheConfig", func(t *testing.T) {
+		t.Parallel()
+		h := NewOneRepoHub(t, ".")
+		stagedFile := filepath.Join(h.PrimeWorktree(), "staged-code.txt")
+		if err := os.WriteFile(stagedFile, []byte("code\n"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", stagedFile, err)
+		}
+		gitkit.Git(t, h.PrimeWorktree(), "add", "--", "staged-code.txt")
+
+		SeedConfig(t, h, map[string]string{"loom": "review_max_bounces: 2\n"})
+
+		if committed := gitkit.Git(t, h.PrimeWorktree(), "show", "--name-only", "--format=", "HEAD"); strings.Contains(committed, "staged-code.txt") || !strings.Contains(committed, "loom") {
+			t.Errorf("the seed's commit holds %q; want the loom config alone", committed)
+		}
+		if staged := gitkit.Git(t, h.PrimeWorktree(), "diff", "--cached", "--name-only"); staged != "staged-code.txt" {
+			t.Errorf("the index holds %q after the seed; want the code file still staged", staged)
+		}
+	})
 }
 
 // TestNewHub_Concurrent launches N concurrent NewHub calls from one test.

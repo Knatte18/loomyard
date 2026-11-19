@@ -247,7 +247,7 @@ func NewHub(tb testing.TB, anchor string) *Hub {
 	warpBare, weftBare := copyBares(tb)
 	container := tb.TempDir()
 
-	hub, _ := cloneHub(tb, anchor, warpBare, weftBare, container)
+	hub, _ := cloneHub(tb, anchor, warpBare, weftBare, container, false)
 
 	// Registered after copyBares and the container's tb.TempDir() call.
 	// LIFO cleanup then runs junction removal before Go's tb.TempDir() cleanup removes the container.
@@ -258,9 +258,33 @@ func NewHub(tb testing.TB, anchor string) *Hub {
 	return hub
 }
 
+// NewOneRepoHub builds a real one-repository hub at anchor ("." or "backend").
+// It copies the cached warp bare alone into tb's own temp dir.
+// It then drives fabriccli.CloneAndWire over the copy with SingleRepo set.
+// The clone creates the layout marker and the board branch in the copy, so the copy stands for the hub's one remote.
+// The returned Hub has CodeBare set and RecordsBare empty, since the hub has no records repository.
+// It calls tb.Fatalf on any error.
+func NewOneRepoHub(tb testing.TB, anchor string) *Hub {
+	tb.Helper()
+
+	defer markFixtureBuild()()
+
+	templateWarp, _ := buildBareTemplate()
+	warpBare := filepath.Join(tb.TempDir(), "warp-bare")
+	if err := copyDirRecursive(templateWarp, warpBare); err != nil {
+		tb.Fatalf("copy warp bare template: %v", err)
+	}
+	container := tb.TempDir()
+
+	hub, _ := cloneHub(tb, anchor, warpBare, "", container, true)
+	RegisterTeardown(tb, hub.Path)
+	return hub
+}
+
 // CloneSecond clones a second hub from h's bares, at h's anchor, into a container of tb's own.
 // It stands for a second machine working on the same remote.
 // The second hub shares h's remotes and nothing else, so a push from either reaches the other through them.
+// A one-repository hub's second hub is cloned from its code bare by one URL, over the board branch the first one pushed.
 // It calls tb.Fatalf on any error.
 func CloneSecond(tb testing.TB, h *Hub) *Hub {
 	tb.Helper()
@@ -268,15 +292,17 @@ func CloneSecond(tb testing.TB, h *Hub) *Hub {
 	defer markFixtureBuild()()
 
 	container := tb.TempDir()
-	second, _ := cloneHub(tb, h.Anchor, h.CodeBare, h.RecordsBare, container)
+	second, _ := cloneHub(tb, h.Anchor, h.CodeBare, h.RecordsBare, container, false)
 	RegisterTeardown(tb, second.Path)
 	return second
 }
 
 // cloneHub drives fabriccli.CloneAndWire at anchor against the given bares, into the existing container directory.
+// With an empty weftBare it clones warpBare by one URL and builds a one-repository hub.
+// SingleRepo is set from singleRepo.
 // It returns the Hub and the prime cwd its Location was resolved from.
 // It calls tb.Fatalf on any error.
-func cloneHub(tb testing.TB, anchor, warpBare, weftBare, container string) (*Hub, string) {
+func cloneHub(tb testing.TB, anchor, warpBare, weftBare, container string, singleRepo bool) (*Hub, string) {
 	tb.Helper()
 
 	subpath := ""
@@ -284,12 +310,17 @@ func cloneHub(tb testing.TB, anchor, warpBare, weftBare, container string) (*Hub
 		subpath = anchor
 	}
 
-	res, err := fabriccli.CloneAndWire(container, fabricengine.CloneOptions{
-		WeftURL:   filepath.ToSlash(weftBare),
-		WarpURL:   filepath.ToSlash(warpBare),
-		Subpath:   subpath,
-		Shortname: TestShortname,
-	})
+	options := fabricengine.CloneOptions{
+		WeftURL:    filepath.ToSlash(weftBare),
+		WarpURL:    filepath.ToSlash(warpBare),
+		Subpath:    subpath,
+		Shortname:  TestShortname,
+		SingleRepo: singleRepo,
+	}
+	if weftBare == "" {
+		options.WeftURL, options.WarpURL = filepath.ToSlash(warpBare), ""
+	}
+	res, err := fabriccli.CloneAndWire(container, options)
 	if err != nil {
 		tb.Fatalf("NewHub: CloneAndWire: %v", err)
 	}
@@ -313,7 +344,9 @@ func cloneHub(tb testing.TB, anchor, warpBare, weftBare, container string) (*Hub
 		tb.Fatalf("NewHub: lymcwd.Resolve(%s): %v", res.PrimeCwd, err)
 	}
 
-	forgetCloneCorrespondence(tb, res.WeftBase, loc)
+	if weftBare != "" {
+		forgetCloneCorrespondence(tb, res.WeftBase, loc)
+	}
 
 	return &Hub{
 		Path:        res.HubPath,

@@ -752,6 +752,15 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			wantNotInReason: `"a b.go"`,
 		},
 		{
+			name:            "UnsettledParkedMergeNamesOnlyAbort",
+			resolved:        mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
+			mergeErr:        guardWith("merge already in progress", "worktree dirty"),
+			midMerge:        fabricengine.MidMergeState{Kind: fabricengine.MidMergeRecordsUnsettled, Verb: fabricengine.MergeVerbMergeIn, Source: "task-x"},
+			wantMerges:      1,
+			wantInOrder:     []string{"merge already in progress; worktree dirty", "/hub/parent", "merge-in of task-x", "lym fabric merge --abort", gotoResume, "lym loom resume"},
+			wantNotInReason: "merge --continue",
+		},
+		{
 			name:            "merge already in progress with an unreadable parked merge names no verb and keeps the way forward",
 			resolved:        mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
 			mergeErr:        guardWith("merge already in progress", "worktree dirty"),

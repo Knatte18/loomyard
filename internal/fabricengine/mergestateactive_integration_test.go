@@ -97,4 +97,45 @@ func TestMergeStateActive(t *testing.T) {
 
 		requireMergeStateActive(t, true, "a conflicted weft squash merge (no MERGE_HEAD)")
 	})
+
+	t.Run("one-repository pair", func(t *testing.T) {
+		p := newRecordsMergePair(t)
+		requireOperation := func(t *testing.T, wantActive bool, wantOperation, shape string) {
+			t.Helper()
+			active, err := fabricengine.MergeStateActive(p.loc)
+			operation, operationErr := fabricengine.MergeStateOperation(p.loc)
+			if err != nil || operationErr != nil || active != wantActive || operation != wantOperation {
+				t.Errorf("MergeStateActive, MergeStateOperation with %s = (%v, %q, %v, %v); want (%v, %q)",
+					shape, active, operation, err, operationErr, wantActive, wantOperation)
+			}
+		}
+
+		t.Run("MergeWithRecordsAsHEADReportsFalse", func(t *testing.T) {
+			driveMergeHeadOnlyNoConflicts(t, p.task.Path)
+
+			requireOperation(t, false, "", "a merge whose index holds the records as HEAD does")
+
+			gitkit.MustRun(t, p.task.Path, "git", "merge", "--abort")
+		})
+
+		t.Run("ForeignMergeWithARecordsPathUnlikeHEADReportsTrue", func(t *testing.T) {
+			gitkit.MustRun(t, p.task.Path, "git", "checkout", "-q", "-b", "records-branch")
+			gitkit.CommitFile(t, p.task.Path, "_lym/shared.txt", "branch\n", "records edit on the branch")
+			gitkit.MustRun(t, p.task.Path, "git", "checkout", "-q", p.task.Branch)
+			gitkit.MustRun(t, p.task.Path, "git", "merge", "--no-commit", "--no-ff", "records-branch")
+
+			requireOperation(t, true, "merge", "a merge staging a records path unlike HEAD's")
+
+			gitkit.MustRun(t, p.task.Path, "git", "merge", "--abort")
+		})
+
+		t.Run("CherryPickInProgressReportsTrue", func(t *testing.T) {
+			gitkit.MustRun(t, p.task.Path, "git", "checkout", "-q", "-b", "other", p.task.Branch+"~1")
+			gitkit.CommitFile(t, p.task.Path, "code.txt", "other\n", "other edit of the code file")
+			gitkit.MustRun(t, p.task.Path, "git", "checkout", "-q", p.task.Branch)
+			runGitAllowingFailure(t, p.task.Path, "cherry-pick", "other")
+
+			requireOperation(t, true, "cherry-pick", "a conflicted cherry-pick")
+		})
+	})
 }

@@ -116,7 +116,7 @@ func (t *Topology) Status(l *lymcwd.Location) (StatusResult, error) {
 		pair.JunctionReason = junctionReason
 
 		// The verdict combines branch correspondence with junction health, and the first failing check sets DriftReason.
-		expectedWeftBranch := RecordsBranchName(warpBranch)
+		expectedWeftBranch := recordsBranchIn(warpLayout, warpBranch)
 		switch {
 		case weftBranch != expectedWeftBranch:
 			pair.InSync = false

@@ -577,10 +577,10 @@ func (fz *Finalize) dirtyParentReason(parentHandle parentMerger, guardErr *fabri
 		switch {
 		case err != nil:
 			logger.Warn("landingshed: read the parent pair's parked merge failed", "producer", finalizeName, "cause", err)
-			wayForward = fz.parkedMergeWayForward(checkout)
-		case state.Kind == fabricengine.MidMergeParked:
+			wayForward = fz.parkedMergeWayForward(checkout, false)
+		case state.Kind == fabricengine.MidMergeParked || state.Kind == fabricengine.MidMergeRecordsUnsettled:
 			reason += fmt.Sprintf("; the parked fabric merge is a %s of %s in the parent pair", state.Verb, state.Source)
-			wayForward = fz.parkedMergeWayForward(checkout)
+			wayForward = fz.parkedMergeWayForward(checkout, state.Kind == fabricengine.MidMergeRecordsUnsettled)
 		}
 		return reason + "; way forward: " + wayForward
 	case guardErr.DetachedHead():
@@ -598,9 +598,15 @@ func (fz *Finalize) dirtyParentReason(parentHandle parentMerger, guardErr *fabri
 // "--abort" hard-resets the parent's code checkout,
 // and a plain git commit or stash there would take the staged merge with it,
 // so the operator saves a copy of their own change outside the checkout first.
-func (fz *Finalize) parkedMergeWayForward(checkout string) string {
-	return fmt.Sprintf(`the party that started that merge, or the orch or the operator when that party is gone, concludes it with "lym fabric merge --continue" or discards it with "lym fabric merge --abort" in the parent pair, then %s; "--abort" hard-resets the parent's code checkout to the merge's start, so the operator first saves a copy of any change of their own in %s outside it, since a plain git commit or stash there would take the staged merge with it; a session lym refuses the verb from reports status: FAILED and the orch runs it`,
-		gotoResumeWayForward, checkout)
+// A merge stopped before its records step cannot be continued.
+// So with recordsUnsettled the way forward names the abort alone.
+func (fz *Finalize) parkedMergeWayForward(checkout string, recordsUnsettled bool) string {
+	options := `concludes it with "lym fabric merge --continue" or discards it with "lym fabric merge --abort"`
+	if recordsUnsettled {
+		options = `discards it with "lym fabric merge --abort"`
+	}
+	return fmt.Sprintf(`the party that started that merge, or the orch or the operator when that party is gone, %s in the parent pair, then %s; "--abort" hard-resets the parent's code checkout to the merge's start, so the operator first saves a copy of any change of their own in %s outside it, since a plain git commit or stash there would take the staged merge with it; a session lym refuses the verb from reports status: FAILED and the orch runs it`,
+		options, gotoResumeWayForward, checkout)
 }
 
 // configChangeNotice composes the one-line notice about the task's per-worktree config changes, key by key.
@@ -797,7 +803,7 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, n
 		if terr := transientFailure(ctx, finalizeName, "push parent branch", err); terr != nil {
 			return &ending{err: terr}
 		}
-		if protectedBranchRefusal(err) {
+		if fabricengine.ProtectedBranchRefusal(err) {
 			cause := err
 			var failed *fabricengine.PushFailedError
 			if errors.As(err, &failed) {
@@ -842,22 +848,6 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, n
 		}
 	}
 	return done()
-}
-
-// protectedBranchMarkers are the lower-case texts of GitHub's push rejection for a protected branch.
-// Such a branch takes changes only through a pull request,
-// and the markers cover classic branch protection and repository rules.
-var protectedBranchMarkers = []string{"protected branch", "repository rule violations"}
-
-// protectedBranchRefusal reports whether err is a push the remote refused because the branch is protected.
-func protectedBranchRefusal(err error) bool {
-	text := strings.ToLower(err.Error())
-	for _, marker := range protectedBranchMarkers {
-		if strings.Contains(text, marker) {
-			return true
-		}
-	}
-	return false
 }
 
 // protectedParentWayForward is the way forward of a parent push refused as a protected branch.

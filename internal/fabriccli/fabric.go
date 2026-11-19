@@ -75,9 +75,17 @@ monorepo; a re-clone adopts the recorded subpath. --into names the directory
 the hub is created in. --force-bootstrap admits a brand-new weft remote that
 is neither empty nor lym-anchored, such as one created with a README.
 
+--single-repo makes a one-repository hub: the one URL is the code repository,
+its records live on each code branch, and the board lives on the ` + fabricengine.BoltBranchName + ` branch.
+It takes one URL, commits the layout marker on the repository's branch and
+pushes that branch and the ` + fabricengine.BoltBranchName + ` branch. Run it against a repository that holds
+neither. A clone of a repository that already holds ` + fabricengine.BoltBranchName + ` takes this layout
+without the flag.
+
 Example:
   lym fabric clone --shortname mono --subpath backend https://github.com/user/mono-weft https://github.com/user/mono
   lym fabric clone https://github.com/user/repo-weft
+  lym fabric clone --single-repo --shortname repo https://github.com/user/repo
   lym fabric clone --into ~/repos https://github.com/user/repo-weft`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
 			reset, _ := cloneCmd.Flags().GetBool("reset")
@@ -85,9 +93,11 @@ Example:
 			forceBootstrap, _ := cloneCmd.Flags().GetBool("force-bootstrap")
 			into, _ := cloneCmd.Flags().GetString("into")
 			shortname, _ := cloneCmd.Flags().GetString("shortname")
-			return runCloneWithReset(ctx, out, args, reset, subpath, forceBootstrap, into, shortname)
+			singleRepo, _ := cloneCmd.Flags().GetBool("single-repo")
+			return runCloneWithReset(ctx, out, args, reset, subpath, forceBootstrap, into, shortname, singleRepo)
 		}),
 	}
+	cloneCmd.Flags().Bool("single-repo", false, "clone one repository as a one-repository hub, creating its layout marker and the "+fabricengine.BoltBranchName+" branch")
 	cloneCmd.Flags().String("shortname", "", "the repo's shortname, 2-6 characters matching [a-z][a-z0-9]{1,5}; required when the weft is bound for the first time, recorded as "+fabricengine.ShortnameFileName)
 	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning (idempotent re-clone)")
 	// The default is empty, not ".": only an empty default lets CloneHub tell an omitted --subpath from an explicit one.

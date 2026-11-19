@@ -42,6 +42,11 @@ type Fabric struct {
 
 	warpPath string
 	weftPath string
+
+	// afterMergeStart runs in a one-repository merge between the merge start and the settling of the records.
+	// It is nil in production.
+	// An error it returns ends the merge verb with that error and leaves the merge parked.
+	afterMergeStart func() error
 }
 
 // newPaired returns a Fabric over the git checkouts at warpPath and weftPath.
@@ -100,9 +105,13 @@ func EnvSyncOptions() SyncOptions {
 	}
 }
 
-// RecordsWorktree returns the path to the weft worktree paired with l's warp worktree.
-// Code outside this package uses it to find the weft sibling, so that path stays fabric-owned.
+// RecordsWorktree returns the path to the records worktree of l's worktree.
+// It is the weft sibling paired with l's warp worktree, and in a one-repository hub l's worktree itself.
+// Code outside this package uses it to find the records worktree, so that path stays fabric-owned.
 func RecordsWorktree(l *lymcwd.Location) string {
+	if oneRepositoryAt(l.WorktreePath()) {
+		return l.WorktreePath()
+	}
 	return weftname.SiblingPath(l.HubPath, filepath.Base(l.WorktreePath()))
 }
 

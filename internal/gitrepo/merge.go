@@ -54,8 +54,31 @@ const (
 // anything else means MergeStaged.
 // A ref with a leading '-' is rejected as ErrInvalidSHA before git runs.
 func (r *Repo) MergeStart(ref string, squash bool) (MergeOutcome, error) {
+	return r.mergeStart(ref, squash, false)
+}
+
+// MergeStartNoFastForward merges ref into the repo without committing, and classifies the resulting state.
+// With squash false it runs `git merge --no-ff --no-commit <ref>`.
+// A ref that is a fast-forward of HEAD then still stages a merge for the caller to conclude, with MERGE_HEAD live.
+// The `--no-ff` is pinned on the command line, so the caller's `merge.ff` setting cannot change the outcome.
+// With squash true it runs `git merge --squash <ref>`, which never fast-forwards.
+// A conflicted merge returns MergeConflicted with a nil error, read from the unmerged index entries.
+// A live MERGE_HEAD, or any staged change, means MergeStaged.
+// A merge that stages nothing and writes no MERGE_HEAD means MergeAlreadyUpToDate.
+// A ref with a leading '-' is rejected as ErrInvalidSHA before git runs.
+func (r *Repo) MergeStartNoFastForward(ref string, squash bool) (MergeOutcome, error) {
+	return r.mergeStart(ref, squash, true)
+}
+
+// mergeStart merges ref without committing and classifies the resulting state.
+// noFastForward selects `--no-ff` over `--ff` for the non-squash form.
+func (r *Repo) mergeStart(ref string, squash, noFastForward bool) (MergeOutcome, error) {
 	if strings.HasPrefix(ref, "-") {
 		return MergeStaged, ErrInvalidSHA
+	}
+	fastForwardFlag := "--ff"
+	if noFastForward {
+		fastForwardFlag = "--no-ff"
 	}
 
 	headBefore, err := r.CurrentSHA()
@@ -67,7 +90,7 @@ func (r *Repo) MergeStart(ref string, squash bool) (MergeOutcome, error) {
 	if squash {
 		_, mergeErr = r.runChecked("merge", "--squash", ref)
 	} else {
-		_, mergeErr = r.runChecked("merge", "--ff", "--no-commit", ref)
+		_, mergeErr = r.runChecked("merge", fastForwardFlag, "--no-commit", ref)
 	}
 
 	if mergeErr != nil {

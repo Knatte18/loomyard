@@ -44,6 +44,10 @@ const mergeStateFileName = "fabric-merge.json"
 // The fields are kept for two reasons.
 // mergeAttemptIncompleteReason refuses a resume on an empty WeftOutcome.
 // Keeping them also leaves the persisted JSON schema byte-compatible in both directions across the binary change.
+//
+// RecordsUnsettled is set while a merge in a one-repository worktree has staged the source's records.
+// It stays set until the records are set back to the receiving side's.
+// A record an older binary wrote reads it false, so it reads settled.
 type mergeState struct {
 	Verb          string    `json:"verb"`   // "merge-in" | "merge"
 	Source        string    `json:"source"` // caller-supplied branch
@@ -58,6 +62,8 @@ type mergeState struct {
 	WarpCommitted string    `json:"warp_committed"` // conclude SHAs, set as each lands
 	WeftCommitted string    `json:"weft_committed"`
 	StartedAt     time.Time `json:"started_at"`
+
+	RecordsUnsettled bool `json:"records_unsettled"`
 }
 
 // The mergeState outcome strings a gitrepo.MergeOutcome maps onto, recorded in WarpOutcome and

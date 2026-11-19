@@ -26,6 +26,8 @@ import (
 // It then tells the worktree seam that the prime was made.
 // A failed event's warning goes in SeamWarning, or in the error when the walk that follows fails.
 // The anchor marker is already committed on the prime's weft branch when the wiring starts.
+// A one-repository clone commits the hub-wide config on the board branch and the module configs on the prime's branch.
+// It wires real directories where a two-repository clone links junctions, and pushes both branches once before the walk.
 //
 // Keeping the sequence in one place stops a second copy from drifting away from it.
 //
@@ -85,8 +87,12 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	// Such an entry would claim a push this call did not observe.
 	// The commit above is already recorded.
 	// A seed-commit drop behind the push is recorded in rec as commits_dropped.
-	if err := b.PushRecorded(fabricengine.SyncOptions{}, rec); err != nil {
-		return fabricengine.CloneResult{}, err
+	// A one-repository clone pushes nothing here:
+	// its board branch may not be on origin yet, and PushOneRepositoryClone pushes it after the prime's branch.
+	if !res.OneRepository {
+		if err := b.PushRecorded(fabricengine.SyncOptions{}, rec); err != nil {
+			return fabricengine.CloneResult{}, err
+		}
 	}
 
 	l, err := lymcwd.Resolve(res.PrimeCwd)
@@ -127,6 +133,14 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	// The commit then is a legitimate no-op, taking no lock and recording nothing.
 	// The commit records its own KindCommitCreated entry at its success site, so nothing is recorded here.
 	if _, _, err := fabricengine.CommitAnchoredPaths(rec, l, relPaths, "fabric clone: record module configs", fabricengine.SyncOptions{}); err != nil {
+		return fabricengine.CloneResult{}, err
+	}
+
+	// A --single-repo clone has created the marker, the seed records and the board branch locally.
+	// Origin holds none of them.
+	// The push comes after the records are committed and before the walk below, which pushes the board.
+	// A refused push tears the hub down, so the clone leaves nothing to complete by hand.
+	if err := fabricengine.PushOneRepositoryClone(res); err != nil {
 		return fabricengine.CloneResult{}, err
 	}
 
@@ -203,7 +217,7 @@ func absentRepoDefaults(boardDir string) []string {
 // "warning" is empty when there is none.
 // "seam_warning" is the warning of a failed render into the prime, naming `lym heddle render` there; empty when none.
 // Every field is always present, so a consumer never has to tell an absent field from a false one.
-func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset bool, subpath string, forceBootstrap bool, into string, shortname string) int {
+func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset bool, subpath string, forceBootstrap bool, into string, shortname string, singleRepo bool) int {
 	// Nothing has been mutated yet at cwd resolution: a bare output.Err carries no record.
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
@@ -211,7 +225,7 @@ func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset 
 	}
 
 	if len(args) != 1 && len(args) != 2 {
-		return output.Err(out, "usage: lym fabric clone [--shortname <shortname>] [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]")
+		return output.Err(out, "usage: lym fabric clone [--shortname <shortname>] [--reset] [--subpath <rel>] [--force-bootstrap] [--single-repo] [--into <dir>] <weft-url> [<warp-url>]")
 	}
 	weftURL := args[0]
 	warpURL := ""
@@ -241,6 +255,7 @@ func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset 
 		Reset:          reset,
 		ForceBootstrap: forceBootstrap,
 		Shortname:      shortname,
+		SingleRepo:     singleRepo,
 	})
 	if err != nil {
 		// CloneAndWire's defer sets res.Mutations before it returns,

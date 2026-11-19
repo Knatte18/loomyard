@@ -247,7 +247,9 @@ func (r *Repo) PushRebaseFree() error {
 // mapPlainPushError maps the error of a plain push to the package's classified push errors.
 // Nil stays nil.
 // An exhausted retry wraps ErrPushRetriesExhausted, and an authentication refusal wraps ErrPushAuthRefused.
-// A rejection wraps ErrPushRejected, and every other failure is wrapped as a git push failure.
+// A rejection wraps ErrPushRejected and carries git's rejection line followed by the push's `remote:` lines,
+// so a hook's own refusal text reaches the caller.
+// Every other failure is wrapped as a git push failure.
 func mapPlainPushError(err error) error {
 	if err == nil {
 		return nil
@@ -262,10 +264,27 @@ func mapPlainPushError(err error) error {
 			return fmt.Errorf("%w: %s", ErrPushAuthRefused, line)
 		}
 		if line, found := lastLineHolding(gitErr.Stderr, rebaseRetryTriggers); found {
-			return fmt.Errorf("%w: %s", ErrPushRejected, line)
+			detail := line
+			for _, remoteLine := range remoteLines(gitErr.Stderr) {
+				if remoteLine != line {
+					detail += "; " + remoteLine
+				}
+			}
+			return fmt.Errorf("%w: %s", ErrPushRejected, detail)
 		}
 	}
 	return fmt.Errorf("gitrepo: git push: %w", err)
+}
+
+// remoteLines returns the trimmed lines of stderr that git relays from the remote, those starting with `remote:`.
+func remoteLines(stderr string) []string {
+	var lines []string
+	for _, line := range strings.Split(stderr, "\n") {
+		if trimmed := strings.TrimSpace(line); strings.HasPrefix(trimmed, "remote:") {
+			lines = append(lines, trimmed)
+		}
+	}
+	return lines
 }
 
 // lastLineHolding returns the last line of stderr that holds one of triggers, trimmed.

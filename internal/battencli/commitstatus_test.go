@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -94,6 +95,59 @@ func TestNewCommitStatusSeam(t *testing.T) {
 			last := tt.calls[len(tt.calls)-1]
 			if want := "batten: " + last.producer + " -> " + last.state; msg != want {
 				t.Errorf("Commit msg = %q; want %q", msg, want)
+			}
+		})
+	}
+}
+
+// TestNewCommitStatusSeam_LayoutWiring pins how the seam wires the layout into the shared core.
+// A one-repository worktree waits on the blocking operation and never reads MergeActive.
+// It completes the transition when the push fails as protected.
+// A two-repository worktree with a merge in progress skips the transition and never probes the operation.
+func TestNewCommitStatusSeam_LayoutWiring(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	protectedPush := errors.New("push refused by a protected branch")
+	tests := []struct {
+		name          string
+		oneRepository bool
+		wantEvents    []string
+	}{
+		{name: "OneRepositoryWaitsForTheOperationThenCommitsAndToleratesAProtectedPush", oneRepository: true,
+			wantEvents: []string{"probe:rebase", "sleep", "probe:", "commit", "push"}},
+		{name: "TwoRepositoryMergeInProgressSkips", wantEvents: []string{"merge-active"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var events []string
+			operations := []string{"rebase", ""}
+			markerPath := filepath.Join(t.TempDir(), "last-commit")
+			seam := newCommitStatusSeam(commitStatusDeps{
+				OneRepository: tt.oneRepository,
+				MergeActive:   func() (bool, error) { events = append(events, "merge-active"); return true, nil },
+				MergeOperation: func() (string, error) {
+					operation := operations[0]
+					if len(operations) > 1 {
+						operations = operations[1:]
+					}
+					events = append(events, "probe:"+operation)
+					return operation, nil
+				},
+				Protected: func(err error) bool { return errors.Is(err, protectedPush) },
+				Commit:    func(string) (bool, error) { events = append(events, "commit"); return true, nil },
+				Push:      func() error { events = append(events, "push"); return protectedPush },
+				Sleep:     func(time.Duration) { events = append(events, "sleep") },
+			}, markerPath, markerPath+".lock")
+
+			if err := seam("Run-Shed", "running"); err != nil {
+				t.Fatalf("seam(Run-Shed, running) = %v; want nil", err)
+			}
+
+			if !reflect.DeepEqual(events, tt.wantEvents) {
+				t.Errorf("events = %q; want %q", events, tt.wantEvents)
 			}
 		})
 	}

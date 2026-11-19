@@ -53,9 +53,14 @@ func TestReadRecordedAnchor_MarkerSemantics(t *testing.T) {
 		staleValue  string // content for StaleAnchorFileName at the board root, "" for absent
 		boardValue  string // content for AnchorFileName at the board root, "" for absent
 		ownValue    string // content for AnchorFileName in the worktree's own records sibling, "" for absent
+		rootValue   string // content for AnchorFileName at the worktree's own root, "" for absent
 		wantAnchor  string
 		wantErr     error
 		wantErrFile string // path the error must name, "" for none
+		// wantErrAtRoot makes the error-file check read the root marker's path instead of the records sibling's.
+		wantErrAtRoot bool
+		// wantOneRepository maps a root (worktree, sibling, bolt) to the answer OneRepository gives for it; absent is false.
+		wantOneRepository map[string]bool
 	}{
 		{name: "AbsentAll_IsFallback", wantAnchor: "."},
 		{name: "StaleOnly_HardErrors", staleValue: "backend\n", wantErr: ErrStaleAnchorMarker},
@@ -68,6 +73,19 @@ func TestReadRecordedAnchor_MarkerSemantics(t *testing.T) {
 		{name: "OwnMarkerOnly", ownValue: "frontend\n", wantAnchor: "frontend"},
 		{name: "OwnMarkerInvalid_IsErrorNamingFile", boardValue: "backend\n", ownValue: "../out\n", wantErr: ErrInvalidAnchor, wantErrFile: AnchorFileName},
 		{name: "StaleBoardMarkerBesideOwnMarker_IsNoError", staleValue: "old\n", ownValue: "frontend\n", wantAnchor: "frontend"},
+		{
+			name: "RootMarker_WinsOverSiblingAndBoard", rootValue: "backend\n", ownValue: "frontend\n", boardValue: "other\n",
+			wantAnchor: "backend", wantOneRepository: map[string]bool{"worktree": true},
+		},
+		{name: "RootMarkerWithBoltMissing", rootValue: "backend\n", wantAnchor: "backend", wantOneRepository: map[string]bool{"worktree": true}},
+		{
+			name: "EmptyRootMarker_IsRootAnchor", rootValue: "  \n", boardValue: "backend\n",
+			wantAnchor: ".", wantOneRepository: map[string]bool{"worktree": true},
+		},
+		{
+			name: "RootMarkerInvalid_IsErrorNamingFile", rootValue: "../out\n",
+			wantErr: ErrInvalidAnchor, wantErrFile: AnchorFileName, wantErrAtRoot: true, wantOneRepository: map[string]bool{"worktree": true},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -76,9 +94,11 @@ func TestReadRecordedAnchor_MarkerSemantics(t *testing.T) {
 			hub := t.TempDir()
 			board := boardDir(hub)
 			ownRoot := weftname.SiblingPath(hub, worktreeName)
+			worktreeRoot := filepath.Join(hub, worktreeName)
 			for dir, files := range map[string]map[string]string{
-				board:   {StaleAnchorFileName: tt.staleValue, AnchorFileName: tt.boardValue},
-				ownRoot: {AnchorFileName: tt.ownValue},
+				board:        {StaleAnchorFileName: tt.staleValue, AnchorFileName: tt.boardValue},
+				ownRoot:      {AnchorFileName: tt.ownValue},
+				worktreeRoot: {AnchorFileName: tt.rootValue},
 			} {
 				if err := os.MkdirAll(dir, 0o755); err != nil {
 					t.Fatalf("mkdir %s: %v", dir, err)
@@ -93,13 +113,23 @@ func TestReadRecordedAnchor_MarkerSemantics(t *testing.T) {
 				}
 			}
 
+			for root, dir := range map[string]string{"worktree": worktreeRoot, "sibling": ownRoot, "bolt": board} {
+				if got := OneRepository(dir); got != tt.wantOneRepository[root] {
+					t.Errorf("OneRepository(%s root) = %v; want %v", root, got, tt.wantOneRepository[root])
+				}
+			}
+
 			location, err := NamedWorktree(hub, worktreeName)
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) {
 					t.Fatalf("NamedWorktree() error = %v; want %v", err, tt.wantErr)
 				}
-				if tt.wantErrFile != "" && !strings.Contains(err.Error(), filepath.Join(ownRoot, tt.wantErrFile)) {
-					t.Errorf("NamedWorktree() error = %q; want it to name %s", err, filepath.Join(ownRoot, tt.wantErrFile))
+				errDir := ownRoot
+				if tt.wantErrAtRoot {
+					errDir = worktreeRoot
+				}
+				if tt.wantErrFile != "" && !strings.Contains(err.Error(), filepath.Join(errDir, tt.wantErrFile)) {
+					t.Errorf("NamedWorktree() error = %q; want it to name %s", err, filepath.Join(errDir, tt.wantErrFile))
 				}
 				return
 			}

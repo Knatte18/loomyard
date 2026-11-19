@@ -165,6 +165,8 @@ func TakeOverRun(prime *lymcwd.Location, req TakeOverRequest) (TakeOverResult, e
 // land writes the takeover entry on the branch, commits it and pushes it under the records push lock.
 // The caller has passed the process's pause gate, so a pause never holds it while it holds the lock.
 // retries counts each push it repeated.
+// On a one-repository prime each push first passes the operator-commit guard.
+// A hold drops the entry commit and returns the guard's error, so the prime keeps no unpushed takeover entry.
 func (b *takeoverBranch) land(rec *Mutations, req TakeOverRequest, entry shedengine.Takeover, retries *int) error {
 	delays := req.Delays
 	if delays == nil {
@@ -174,6 +176,24 @@ func (b *takeoverBranch) land(rec *Mutations, req TakeOverRequest, entry shedeng
 	if err != nil {
 		return err
 	}
+	// A worktree that is mid-merge commits the entry around the merge, which needs the write lock.
+	// It is taken before the push lock, the order the replay takes them, so no blocking acquire runs under the push lock.
+	routed, err := mergeRouteApplies(b.weft)
+	if err != nil {
+		return err
+	}
+	var writeLock *lock.FileLock
+	if routed {
+		writeLock, err = lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
+		if err != nil {
+			return fmt.Errorf("take the write lock of %s for the takeover of run %q: %w", b.weft, req.Slug, err)
+		}
+	}
+	defer func() {
+		if writeLock != nil {
+			_ = writeLock.Release()
+		}
+	}()
 	held, acquired, err := lock.AcquireWriteLockWithin(filepath.Join(lockDir, weftPushLockFile), StatusPushLockWait)
 	if err != nil {
 		return fmt.Errorf("take the push lock of %s for the takeover of run %q: %w", b.weft, req.Slug, err)
@@ -187,9 +207,16 @@ func (b *takeoverBranch) land(rec *Mutations, req TakeOverRequest, entry shedeng
 	if err := b.commitEntry(rec, req.Slug, entry); err != nil {
 		return err
 	}
+	if writeLock != nil {
+		_ = writeLock.Release()
+		writeLock = nil
+	}
 	for attempt := 1; ; attempt++ {
 		if takeoverBeforePushHook != nil {
 			takeoverBeforePushHook(attempt)
+		}
+		if held := holdPrimePushForOperator(b.loc.HubPath, b.weft, time.Now()); held != nil {
+			return errors.Join(fmt.Errorf("push the takeover entry of run %q from %s: %w", req.Slug, b.weft, held), b.dropEntry(rec))
 		}
 		pushErr := repo.PushRebaseFree()
 		if pushErr == nil {
@@ -211,6 +238,9 @@ func (b *takeoverBranch) land(rec *Mutations, req TakeOverRequest, entry shedeng
 
 // commitEntry writes the entry into the run's status file and commits it, remembering the tip it was committed onto.
 func (b *takeoverBranch) commitEntry(rec *Mutations, slug string, entry shedengine.Takeover) error {
+	if err := refuseOffPrimeBranch(b.weft); err != nil {
+		return err
+	}
 	repo := gitrepo.New(b.weft)
 	base, err := repo.CurrentSHA()
 	if err != nil {
@@ -224,7 +254,22 @@ func (b *takeoverBranch) commitEntry(rec *Mutations, slug string, entry shedengi
 	if err := state.WriteJSON(statusPath, lockPath, takeoverStatusPatch{Takeover: &entry}); err != nil {
 		return fmt.Errorf("write the takeover entry of run %q into %s: %w", slug, statusPath, err)
 	}
-	sha, committed, err := repo.StageAndCommit(fmt.Sprintf("takeover of %s by %s", slug, entry.Machine), []string{rel})
+	var sha string
+	var committed bool
+	message := fmt.Sprintf("takeover of %s by %s", slug, entry.Machine)
+	routed, err := mergeRouteApplies(b.weft)
+	if err != nil {
+		return err
+	}
+	if routed {
+		sha, committed, err = commitRecordsAroundMerge(rec, b.weft, ".", []string{rel}, message)
+	} else {
+		err = retryHeldIndexLock(indexLockRetryBound, time.Sleep, func() error {
+			var commitErr error
+			sha, committed, commitErr = repo.StageAndCommit(message, []string{rel})
+			return commitErr
+		})
+	}
 	if err != nil {
 		return err
 	}

@@ -4,15 +4,14 @@
 package fabricengine
 
 import (
-	"fmt"
-
-	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// MergeStateActive reports whether the weft worktree of l is mid-merge at the git level: a live
-// MERGE_HEAD or a non-empty conflicted index, rather than whether fabric itself has a merge in
-// progress.
+// MergeStateActive reports whether the weft worktree of l is in a git operation a records commit cannot pass.
+// MergeStateOperation names that operation:
+// a live MERGE_HEAD or a non-empty conflicted index, or a cherry-pick, revert or rebase.
+// It does not report whether fabric itself has a merge in progress.
+// In a one-repository worktree a merge counts only when its index holds a records path unlike HEAD's.
 //
 // It is weft-only, because warp and weft are independent clones with independent .git directories.
 // The status commit this probe guards runs in the weft worktree alone, so warp-side git state cannot block it.
@@ -28,16 +27,9 @@ import (
 //
 // The probe is read-only, so it returns a plain bool and error, not a result type that embeds a mutation record.
 func MergeStateActive(l *lymcwd.Location) (bool, error) {
-	repo := gitrepo.New(RecordsWorktree(l))
-
-	mergeHeadPresent, err := repo.MergeHeadPresent()
+	operation, err := MergeStateOperation(l)
 	if err != nil {
-		return false, fmt.Errorf("fabricengine: check merge head: %w", err)
+		return false, err
 	}
-	conflicted, err := repo.ConflictedFiles()
-	if err != nil {
-		return false, fmt.Errorf("fabricengine: check conflicted files: %w", err)
-	}
-
-	return mergeHeadPresent || len(conflicted) > 0, nil
+	return operation != "", nil
 }

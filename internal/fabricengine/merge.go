@@ -135,6 +135,7 @@ func (f *Fabric) MergeInAt(source, warpSHA string) (res MergeResult, err error) 
 // An empty warpSHA resolves the code side from source through the freshness rule.
 // A set warpSHA replaces that pick after checking it resolves to a commit.
 // The records side and every other guard still resolve from source.
+// In a one-repository worktree the merge keeps the receiving side's records, as Merge does.
 func (f *Fabric) mergeIn(source, warpSHA string) (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { finalizeMergeResult(&res, rec) }()
@@ -237,6 +238,15 @@ func (f *Fabric) mergeIn(source, warpSHA string) (res MergeResult, err error) {
 		return MergeResult{}, err
 	}
 
+	// In a one-repository worktree the source's marker edits are judged and the receiving records are committed first.
+	// The commit moves HEAD, so the starts below are read after it.
+	oneRepo := oneRepositoryAt(f.warpPath)
+	if oneRepo {
+		if err := f.prepareOneRepositoryMerge(rec, sources.warpSHA); err != nil {
+			return MergeResult{}, err
+		}
+	}
+
 	// Re-read warpStart under the lock and discard the pre-lock read.
 	// A concurrent writer, most plausibly a Commit landing new tips, may hold the lock while this call waits.
 	// That makes the pre-lock SHA stale,
@@ -256,22 +266,23 @@ func (f *Fabric) mergeIn(source, warpSHA string) (res MergeResult, err error) {
 	// and an empty outcome is what mergeAttemptIncompleteReason refuses a MergeContinue resume on.
 	// A crash in that window would leave an unresumable record for a state this code never intends to occupy.
 	st := &mergeState{
-		Verb:        MergeVerbMergeIn,
-		Source:      source,
-		Squash:      false,
-		Message:     "",
-		WarpStart:   warpStart,
-		WeftStart:   weftStart,
-		WarpSource:  sources.warpSHA,
-		WeftSource:  sources.weftSHA,
-		WeftOutcome: mergeOutcomeAlreadyUpToDate,
-		StartedAt:   time.Now(),
+		Verb:             MergeVerbMergeIn,
+		RecordsUnsettled: oneRepo,
+		Source:           source,
+		Squash:           false,
+		Message:          "",
+		WarpStart:        warpStart,
+		WeftStart:        weftStart,
+		WarpSource:       sources.warpSHA,
+		WeftSource:       sources.weftSHA,
+		WeftOutcome:      mergeOutcomeAlreadyUpToDate,
+		StartedAt:        time.Now(),
 	}
 	if err := f.saveMergeState(st); err != nil {
 		return MergeResult{}, err
 	}
 
-	warpOutcome, err := f.code.MergeStart(sources.warpSHA, false)
+	warpOutcome, err := f.startMerge(sources.warpSHA, false, oneRepo)
 	if err != nil {
 		return MergeResult{}, f.selfAbortMergeAttempt(rec, st, "warp", err)
 	}
@@ -281,6 +292,13 @@ func (f *Fabric) mergeIn(source, warpSHA string) (res MergeResult, err error) {
 	}
 	if warpOutcome != gitrepo.MergeAlreadyUpToDate {
 		rec.Append(KindMergeStaged, f.warpPath, sources.warpSHA)
+	}
+
+	if oneRepo {
+		warpOutcome, err = f.settleRecordsAfterMergeStart(rec, st, warpOutcome)
+		if err != nil {
+			return MergeResult{}, err
+		}
 	}
 
 	if warpOutcome == gitrepo.MergeConflicted {
@@ -349,6 +367,9 @@ func (f *Fabric) mergeIn(source, warpSHA string) (res MergeResult, err error) {
 // The sync step checks it again after the fetch and refuses with the same not-synced reason.
 // The sync runs inside the weft write lock, not ahead of it.
 // It mutates the warp checkout while no merge record exists yet, so only the lock serializes it.
+// In a one-repository worktree the merge keeps the receiving side's records.
+// It commits them first and refuses a source that edited the anchor marker by hand.
+// It never fast-forwards, and it sets the records of both sides back to the receiving HEAD's once the merge is staged.
 func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { finalizeMergeResult(&res, rec) }()
@@ -465,27 +486,43 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 		return MergeResult{AlreadyUpToDate: true, Conflicts: mergeNoConflicts}, nil
 	}
 
+	// In a one-repository worktree the source's marker edits are judged and the receiving records are committed.
+	// The commit moves HEAD, so the starts are read again after it.
+	oneRepo := oneRepositoryAt(f.warpPath)
+	if oneRepo {
+		if err := f.prepareOneRepositoryMerge(rec, sources.warpSHA); err != nil {
+			return MergeResult{}, err
+		}
+		if warpStart, err = f.code.CurrentSHA(); err != nil {
+			return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
+		}
+		if weftStart, err = f.records.CurrentSHA(); err != nil {
+			return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
+		}
+	}
+
 	// Pre-merge SHAs are captured after the sync step, so MergeAbort returns the pair to its synced state.
 	// That restore never undoes a legitimate upstream advance.
 	// WeftOutcome is set in the literal rather than by a second write.
 	// That avoids saving an intermediate record with an empty outcome.
 	st := &mergeState{
-		Verb:        MergeVerbMerge,
-		Source:      source,
-		Squash:      opts.Squash,
-		Message:     opts.Message,
-		WarpStart:   warpStart,
-		WeftStart:   weftStart,
-		WarpSource:  sources.warpSHA,
-		WeftSource:  sources.weftSHA,
-		WeftOutcome: mergeOutcomeAlreadyUpToDate,
-		StartedAt:   time.Now(),
+		Verb:             MergeVerbMerge,
+		RecordsUnsettled: oneRepo,
+		Source:           source,
+		Squash:           opts.Squash,
+		Message:          opts.Message,
+		WarpStart:        warpStart,
+		WeftStart:        weftStart,
+		WarpSource:       sources.warpSHA,
+		WeftSource:       sources.weftSHA,
+		WeftOutcome:      mergeOutcomeAlreadyUpToDate,
+		StartedAt:        time.Now(),
 	}
 	if err := f.saveMergeState(st); err != nil {
 		return MergeResult{}, err
 	}
 
-	warpOutcome, err := f.code.MergeStart(sources.warpSHA, opts.Squash)
+	warpOutcome, err := f.startMerge(sources.warpSHA, opts.Squash, oneRepo)
 	if err != nil {
 		return MergeResult{}, f.selfAbortMergeAttempt(rec, st, "warp", err)
 	}
@@ -495,6 +532,13 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 	}
 	if warpOutcome != gitrepo.MergeAlreadyUpToDate {
 		rec.Append(KindMergeStaged, f.warpPath, sources.warpSHA)
+	}
+
+	if oneRepo {
+		warpOutcome, err = f.settleRecordsAfterMergeStart(rec, st, warpOutcome)
+		if err != nil {
+			return MergeResult{}, err
+		}
 	}
 
 	// Any conflict on the warp side self-aborts.
@@ -549,6 +593,10 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 // An observed advance is recorded as KindRepoAdvanced, with the checkout path as Target and the new SHA as Detail.
 // Equal and ahead are no-ops.
 //
+// In a one-repository worktree the uncommitted records are committed first.
+// A diverged side then replays its local records-only commits onto the upstream, under the push lock.
+// It refuses only when a local commit changes a code path or the replay stops.
+//
 // Diverged refuses with mergeReasonNotSynced.
 // The pre-merge guard stage decides from remote-tracking state before anything fetches,
 // so it can read a checkout whose upstream has moved on as ahead, and pass it.
@@ -576,6 +624,12 @@ func (f *Fabric) syncSideBeforeMerge(rec *Mutations, repo *gitrepo.Repo, dir, si
 		return nil
 	}
 
+	oneRepo := oneRepositoryAt(dir)
+	if oneRepo {
+		if err := f.commitReceivingRecords(rec); err != nil {
+			return err
+		}
+	}
 	head, err := repo.CurrentSHA()
 	if err != nil {
 		return fmt.Errorf("fabricengine: resolve HEAD in %s: %w", dir, err)
@@ -604,7 +658,41 @@ func (f *Fabric) syncSideBeforeMerge(rec *Mutations, repo *gitrepo.Repo, dir, si
 		return nil
 	}
 
+	if oneRepo {
+		return f.replayDivergedOneRepository(rec, dir, upstreamSHA)
+	}
 	return newMergeGuardError([]string{mergeReasonNotSynced})
+}
+
+// replayDivergedOneRepository levels the diverged one-repository worktree at dir with upstreamSHA before a merge.
+// It replays the local records-only commits onto the upstream.
+// The replay runs under the push lock, beside the write lock its caller holds.
+// A local commit that changes a code path, or a replay that stops, refuses with mergeReasonNotSynced.
+func (f *Fabric) replayDivergedOneRepository(rec *Mutations, dir, upstreamSHA string) error {
+	notSynced := newMergeGuardError([]string{mergeReasonNotSynced})
+	codeCommits, err := unpushedCodeCommits(dir, upstreamSHA)
+	if err != nil {
+		return err
+	}
+	if len(codeCommits) > 0 {
+		return notSynced
+	}
+	lockDir, err := f.ensureWeftLockDir()
+	if err != nil {
+		return err
+	}
+	pushLock, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftPushLockFile))
+	if err != nil {
+		return fmt.Errorf("fabricengine: acquire push lock: %w", err)
+	}
+	releasePush := holdPushLock(pushLock, lockDir, time.Now())
+	defer func() { _ = releasePush() }()
+
+	err = f.replayOneRepositoryRecords(rec, upstreamSHA)
+	if errors.Is(err, ErrReplayConflict) || errors.Is(err, ErrReplayDirty) {
+		return notSynced
+	}
+	return err
 }
 
 // wrapMergeSyncError shapes an error from the pre-merge sync step for Merge's return.

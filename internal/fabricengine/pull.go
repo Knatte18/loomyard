@@ -301,6 +301,13 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 	if weftStop != nil && errors.Is(weftStop, ErrAnchorChange) {
 		return result, weftStop
 	}
+	// A one-repository worktree has no warp arm: the records arm moved its one branch.
+	if oneRepositoryAt(f.warpPath) {
+		if weftStop != nil {
+			return result, weftStop
+		}
+		return result, nil
+	}
 
 	warpErr := f.pullWarpArm(rec, &result)
 	switch {
@@ -425,6 +432,7 @@ func (f *Fabric) settleUnmovedWeft(rec *Mutations, result *PullResult, pullErr e
 	defer release()
 
 	outcome, err := replayWeft(rec, l, f.weftPath, upstream, ended)
+	var codeStop *localCodeCommitsStop
 	switch {
 	case err == nil:
 		result.WeftPulled = true
@@ -432,6 +440,8 @@ func (f *Fabric) settleUnmovedWeft(rec *Mutations, result *PullResult, pullErr e
 		return nil, nil
 	case errors.Is(err, ErrReplayConflict):
 		return f.weftConflictStop(branch, outcome.Conflicts, ahead, err), nil
+	case errors.As(err, &codeStop):
+		return f.weftCodeCommitsStop(branch, codeStop), nil
 	case errors.Is(err, ErrReplayDirty):
 		dirtyPaths, pathsErr := f.weftDirtyPaths()
 		if pathsErr != nil {
@@ -465,6 +475,16 @@ func (f *Fabric) weftConflictStop(branch string, paths, ahead []string, cause er
 	}
 }
 
+// weftCodeCommitsStop builds the weft stop for a one-repository replay that found local commits changing code paths.
+// The way forward merges origin's branch in, then pushes.
+func (f *Fabric) weftCodeCommitsStop(branch string, stop *localCodeCommitsStop) *WeftStopError {
+	return &WeftStopError{
+		Branch:     branch,
+		WayForward: localCodeCommitsWayForward(f.weftPath, branch, stop.commits, fmt.Sprintf("`lym fabric push` in %s", lymVerbDir(f.warpPath))),
+		Err:        stop,
+	}
+}
+
 // weftDirtyPaths returns the weft worktree's tracked uncommitted paths, relative to it, with slash separators.
 func (f *Fabric) weftDirtyPaths() ([]string, error) {
 	absolute, err := trackedDirtyPaths(f.weftPath)
@@ -483,10 +503,10 @@ func (f *Fabric) weftDirtyPaths() ([]string, error) {
 }
 
 // hubLocation resolves the location of the warp worktree paired with f's weft, from the weft sibling's own name.
+// In a one-repository hub the weft is the warp worktree, named by the pair's slug.
 // It never reads f.warpPath, which a caller may hold outside the hub.
 func (f *Fabric) hubLocation() (*lymcwd.Location, error) {
-	name := filepath.Base(f.weftPath)
-	slug, ok := WeftWarpSlug(name)
+	slug, ok := pairSlugOfRecords(f.weftPath)
 	if !ok {
 		return nil, fmt.Errorf("fabricengine: %s is no weft sibling worktree", f.weftPath)
 	}

@@ -436,6 +436,60 @@ func replayStop(outcome ReplayOutcome, err error) (ReplayOutcome, error) {
 	return outcome, err
 }
 
+// localCodeCommitsStop is the stop of a one-repository replay that found local commits changing a code path.
+// Such a commit is never rewritten, so the replay moves nothing and names the commits.
+type localCodeCommitsStop struct {
+	commits []string
+}
+
+func (e *localCodeCommitsStop) Error() string {
+	return fmt.Sprintf("the branch holds local commits that change code paths (%s), so no local commit was replayed onto origin's", joinOrNone(e.commits))
+}
+
+// unpushedCodeCommits returns the local commits of the worktree that upstream lacks and that are not records-only.
+// The commits come oldest first.
+// upstream is a commit SHA.
+func unpushedCodeCommits(worktree, upstream string) ([]string, error) {
+	repo := gitrepo.New(worktree)
+	head, err := repo.CurrentSHA()
+	if err != nil {
+		return nil, err
+	}
+	local, err := repo.CommitsNotIn(head, upstream)
+	if err != nil {
+		return nil, err
+	}
+	slices.Reverse(local)
+	var code []string
+	for _, sha := range local {
+		recordsOnly, err := IsRecordsOnlyCommit(worktree, sha)
+		if err != nil {
+			return nil, err
+		}
+		if !recordsOnly {
+			code = append(code, sha)
+		}
+	}
+	return code, nil
+}
+
+// rewordWarpSHA returns the message rewrite of a replayed commit's Warp-SHA trailer.
+// A trailer naming a commit in replayed becomes forkPoint, the commit whose code the replayed commit was made over.
+// Any other trailer stays as it is.
+func rewordWarpSHA(replayed map[string]bool, forkPoint string) func(message string) string {
+	prefix := WarpSHATrailerKey + ":"
+	return func(message string) string {
+		lines := strings.Split(message, "\n")
+		for i, line := range lines {
+			value, found := strings.CutPrefix(strings.TrimSpace(line), prefix)
+			if found && replayed[strings.TrimSpace(value)] {
+				lines[i] = prefix + " " + forkPoint
+			}
+		}
+		return strings.Join(lines, "\n")
+	}
+}
+
 // replayWeft brings a weft worktree's branch level with upstream when both moved, under its caller's locks.
 // It refuses with ErrReplayDirty, naming the paths, when a tracked change sits on a path the local commits touch,
 // and it leaves the branch unmoved.
@@ -445,15 +499,29 @@ func replayStop(outcome ReplayOutcome, err error) (ReplayOutcome, error) {
 // The other commits are replayed onto upstream oldest first, and a commit that becomes empty is dropped.
 // A conflict returns ErrReplayConflict with the starting tip restored.
 // The ended set is first narrowed to the runs this machine's own landing has not reached.
+// In a one-repository worktree a local commit that changes a code path is never rewritten:
+// the replay then moves nothing and returns a *localCodeCommitsStop naming those commits.
+// Otherwise only records-only commits are replayed.
+// Each replayed commit's Warp-SHA trailer that names a replayed commit becomes the fork point with upstream.
 func replayWeft(rec *Mutations, l *lymcwd.Location, worktree, upstream string, ended EndedSet) (ReplayOutcome, error) {
 	repo := gitrepo.New(worktree)
 	upstreamSHA, err := repo.ResolveSHA(upstream)
 	if err != nil {
 		return ReplayOutcome{}, err
 	}
-	_, ahead, err := replayAhead(repo, upstreamSHA)
+	tip, ahead, err := replayAhead(repo, upstreamSHA)
 	if err != nil || len(ahead) == 0 {
 		return ReplayOutcome{}, err
+	}
+	oneRepo := oneRepositoryAt(worktree)
+	if oneRepo {
+		codeCommits, err := unpushedCodeCommits(worktree, upstreamSHA)
+		if err != nil {
+			return ReplayOutcome{}, err
+		}
+		if len(codeCommits) > 0 {
+			return ReplayOutcome{}, &localCodeCommitsStop{commits: codeCommits}
+		}
 	}
 
 	live := withoutFinalizeEntered(l, ended)
@@ -480,9 +548,25 @@ func replayWeft(rec *Mutations, l *lymcwd.Location, worktree, upstream string, e
 		return outcome, err
 	}
 	req := replayRequest(worktree, ownedWarpCheckout(worktree), touched)
-	dropped, err := cherryPickOnto(rec, req, repo, upstreamSHA, kept)
-	if err != nil {
-		return replayStop(outcome, err)
+	var dropped []string
+	if oneRepo {
+		forkPoint, err := repo.MergeBase(tip, upstreamSHA)
+		if err != nil {
+			return outcome, err
+		}
+		replaying := make(map[string]bool, len(kept))
+		for _, sha := range kept {
+			replaying[sha] = true
+		}
+		dropped, err = cherryPickReworded(rec, req, repo, upstreamSHA, kept, rewordWarpSHA(replaying, forkPoint))
+		if err != nil {
+			return replayStop(outcome, err)
+		}
+	} else {
+		dropped, err = cherryPickOnto(rec, req, repo, upstreamSHA, kept)
+		if err != nil {
+			return replayStop(outcome, err)
+		}
 	}
 	outcome.Dropped = dropped
 	for _, sha := range kept {
@@ -491,6 +575,34 @@ func replayWeft(rec *Mutations, l *lymcwd.Location, worktree, upstream string, e
 		}
 	}
 	return outcome, nil
+}
+
+// replayOneRepositoryRecords replays the local records-only commits of f's one-repository worktree onto upstream.
+// upstream is a commit SHA, and the caller holds the records write lock and the push lock.
+// The errors are replayWeft's.
+func (f *Fabric) replayOneRepositoryRecords(rec *Mutations, upstream string) error {
+	l, err := f.hubLocation()
+	if err != nil {
+		return err
+	}
+	head, err := f.records.CurrentSHA()
+	if err != nil {
+		return err
+	}
+	ahead, err := f.records.CommitsNotIn(head, upstream)
+	if err != nil {
+		return err
+	}
+	ended, err := f.weftEndedByOrigin(l, ahead)
+	if err != nil {
+		return err
+	}
+	outcome, err := replayWeft(rec, l, f.warpPath, upstream, ended)
+	if err != nil {
+		return err
+	}
+	logWeftReplay(f.warpPath, outcome)
+	return nil
 }
 
 // endedRunSlug returns the slug of the first ended run a commit of paths belongs to.

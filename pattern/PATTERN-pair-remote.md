@@ -25,6 +25,9 @@ Go pushes a run's records side, and in a task pair the code branch goes after it
 - A teardown's archive step pushes the weft branch alone, with no code branch, before the archive tag naming its tip,
   and a refusal of that push is logged only, since the removal archives and deletes the branch anyway.
 
+A one-repository pair pushes its one branch once.
+The prime's records push is guarded and owed as `operator_unpushed` while the operator has unpushed commits.
+
 ### A refused push stays visible
 
 A push still refused after its retry leaves a failed-push record and a creel notice, never a silent loss.

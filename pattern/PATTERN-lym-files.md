@@ -46,6 +46,9 @@ Every never-tracked file lives under `.lym`, at the mirrored subpath of the `_ly
   The files sit beside the repository's own instruction files in the sessions' working directory.
   The temporary directory sits beside them, so a rename onto them never crosses a filesystem.
 
+In a one-repository hub `_lym` and `.lym` are real directories at the anchor.
+Records are per-branch and never a merge participant, because fabric's merge restores them to the receiving side.
+
 ### Single declarer
 
 Only `internal/lymdirs` names `_lym` or `.lym` in a path.

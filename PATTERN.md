@@ -6,7 +6,7 @@
 
 ## Paths and geometry
 
-- `PATTERN-cwd-resolution` — Resolving a cwd, worktree root or anchor: only `lymcwd`, from the worktree's weft-root `.lym-anchor`; only `fabricengine` writes or git-reads it; engines get absolute paths, never import lymcwd; hub containers and workspace files stay hub-reachable only. (test) — [background](pattern/PATTERN-cwd-resolution.md)
+- `PATTERN-cwd-resolution` — Resolving a cwd, worktree root or anchor: only `lymcwd`, from the `.lym-anchor` at the worktree's records root; only `fabricengine` writes or git-reads it; engines get absolute paths, never import lymcwd; hub containers and workspace files stay hub-reachable only. (test) — [background](pattern/PATTERN-cwd-resolution.md)
 - `PATTERN-lym-files` — Placing a file, temp dir, lock or link: tracked under `_lym`, never-tracked under `.lym` as a cache a fresh machine rebuilds or starts without; named only by `lymdirs`; temp under `lymtemp`, lock paths via `lock`, links via `fslink`. (test) — [background](pattern/PATTERN-lym-files.md)
 - `PATTERN-leaf-packages` — Importing into a leaf package: only closed import set. — [background](pattern/PATTERN-leaf-packages.md)
 
@@ -20,6 +20,7 @@
 
 - `PATTERN-fabric-boundary` — Changing fabric or running git on warp or weft: only `internal/fabricengine`, called "fabric", which learns nothing of IDEs, shuttle, the board or heddle. (test) — [background](pattern/PATTERN-fabric-boundary.md)
 - `PATTERN-gitrepo-client-boundary` — Running git or writing remote-tracking refs: through `gitexec` and `gitrepo`, raw only at pinned sites; fetch, pull and push under the remote-refs lock. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
+- `PATTERN-single-repo-hub` — Running a hub as one repository: records on each code branch, the board on `lym-bolt`; merges, pull request views and code identity strip the records paths. — [background](pattern/PATTERN-single-repo-hub.md)
 - `PATTERN-pair-remote` — Pushing run records or tearing down a pair: the code branch goes along after the records side, both before the run acts; a pair's remote steps hold the slug's teardown lock; teardown only via `internal/pairteardown`. (test) — [background](pattern/PATTERN-pair-remote.md)
 - `PATTERN-owner-machine` — Starting, resuming, pushing or landing a run, a Finalize past its merge included, or picking a pair's parent: only on the entry's owner machine, read through hubgeom's one `ParentOf` and Bolt's machine registry; after an absence, a catch-up from origin first. — [background](pattern/PATTERN-owner-machine.md)
 - `PATTERN-landing` — Landing on a local parent branch or deciding on a pull request: only in a run's Finalize under `internal/parentlock`'s lock; landingshed's one resolver decides the pull request. — [background](pattern/PATTERN-landing.md)
@@ -29,7 +30,7 @@
 
 - `PATTERN-shed-recipe-registry` — Adding a producer, recipe row, block gate or loom recipe: one `shedrecipe` map, row values by key; a loom recipe declares `contract: loom`. — [background](pattern/PATTERN-shed-recipe-registry.md)
 - `PATTERN-shed-driver` — Driving or stopping a shed run: verbs in `shedverbs`, the loop in `sheddriver`, paths in `shedrun`, shared machinery in shed; one stop chain; transient marks only via `shedengine`. (test) — [background](pattern/PATTERN-shed-driver.md)
-- `PATTERN-run-fsm` — Reading or acting on a run's lifecycle state: only `internal/runfsm`'s states and act rule; a transition commits and pushes before the run acts; a run whose record holds another machine's takeover hands over, never replays. — [background](pattern/PATTERN-run-fsm.md)
+- `PATTERN-run-fsm` — Reading or acting on a run's lifecycle state: only `internal/runfsm`'s states and act rule; a transition commits and pushes before the run acts, bar a prime push failing `protected`; an `operator_unpushed` push is owed; another machine's takeover hands over, never replays. — [background](pattern/PATTERN-run-fsm.md)
 - `PATTERN-dobby-runs` — Starting or holding a board task's run: only its parent's dobby, started with its orch bar `lym adopt --no-orch`; front tasks only via `fronttask`; an adopt holds the hub through Bolt's holds until an adopt's check is green. — [background](pattern/PATTERN-dobby-runs.md)
 - `PATTERN-run-records` — Writing a run's friction note, usage record or project record: only its one writer, `internal/friction`, shed's usage writer or `lym loom decision add` or `replace`. (test) — [background](pattern/PATTERN-run-records.md)
 - `PATTERN-tolerant-records` — Go-written JSON records: never refuse an unknown key; rewrite via `internal/state`. (test) — [background](pattern/PATTERN-tolerant-records.md)

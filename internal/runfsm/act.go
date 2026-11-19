@@ -36,6 +36,8 @@ type Inputs struct {
 	PushOwedError string
 	// PushOwedWorktree is the worktree whose side is owed, for the push-owed refusal.
 	PushOwedWorktree string
+	// PushOwedWayForward is the owed push's own way forward, which the push-owed refusal names when it is set.
+	PushOwedWayForward string
 	// CodeTipMissing is true when the run's code tip is not on origin.
 	CodeTipMissing bool
 	// CodeTip is the code tip the run's last transition on origin names, for the code-tip refusal.
@@ -82,12 +84,13 @@ type Verdict struct {
 	// Owner and AdoptSubject are copied from the inputs for the hand-over refusal.
 	Owner        string
 	AdoptSubject string
-	// PushOwedError and PushOwedWorktree are copied from the inputs for the push-owed refusal.
+	// PushOwedError, PushOwedWorktree and PushOwedWayForward are copied from the inputs for the push-owed refusal.
 	// CodeTip and CodeTipMachine are copied from the inputs for the code-tip refusal.
-	PushOwedError    string
-	PushOwedWorktree string
-	CodeTip          string
-	CodeTipMachine   string
+	PushOwedError      string
+	PushOwedWorktree   string
+	PushOwedWayForward string
+	CodeTip            string
+	CodeTipMachine     string
 	// CancelMachine and CancelRemove are the record's cancel intent, for the cancelling refusal; Judge fills them.
 	CancelMachine string
 	CancelRemove  bool
@@ -106,7 +109,7 @@ type Verdict struct {
 func Act(in Inputs) Verdict {
 	verdict := Verdict{
 		Answer: AnswerWait, State: in.State, Owner: in.Owner, AdoptSubject: in.AdoptSubject,
-		PushOwedError: in.PushOwedError, PushOwedWorktree: in.PushOwedWorktree,
+		PushOwedError: in.PushOwedError, PushOwedWorktree: in.PushOwedWorktree, PushOwedWayForward: in.PushOwedWayForward,
 		CodeTip: in.CodeTip, CodeTipMachine: in.CodeTipMachine, HoldMachine: in.HoldMachine,
 	}
 	switch {
@@ -144,9 +147,12 @@ func (v Verdict) Refusal(slug, retry string) error {
 		if v.PushOwedError != "" {
 			reason += fmt.Sprintf(" (last error: %s)", v.PushOwedError)
 		}
-		if v.PushOwedWorktree != "" {
+		switch {
+		case v.PushOwedWayForward != "":
+			wayForward = fmt.Sprintf("%s; then run %s again", v.PushOwedWayForward, retry)
+		case v.PushOwedWorktree != "":
 			wayForward = fmt.Sprintf("run `lym fabric push` in %s once origin answers, then run %s again", v.PushOwedWorktree, retry)
-		} else {
+		default:
 			wayForward = fmt.Sprintf("run %s again once the owed push lands", retry)
 		}
 	case ReasonOwnedElsewhere:
@@ -226,7 +232,7 @@ type Aside struct {
 	Hold bool
 	// ShedPause reads a shed state of paused as not paused.
 	ShedPause bool
-	// PushOwed drops the owed push: Inputs.PushOwed, its error and its worktree.
+	// PushOwed drops the owed push: Inputs.PushOwed, its error, its worktree and its way forward.
 	PushOwed bool
 }
 
@@ -252,6 +258,7 @@ func Judge(r Records, in Inputs, aside Aside) (Reading, Verdict) {
 		in.PushOwed = false
 		in.PushOwedError = ""
 		in.PushOwedWorktree = ""
+		in.PushOwedWayForward = ""
 	}
 	reading := Derive(r)
 	in.State = reading.State

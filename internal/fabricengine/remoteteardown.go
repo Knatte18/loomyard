@@ -13,6 +13,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -56,6 +57,10 @@ const (
 	remoteTeardownDiscard = "discard"
 )
 
+// ViewRefPrefix is the prefix of the branch a pull request view of a one-repository pair holds on origin.
+// The branch is named ViewRefPrefix followed by the pair's slug, and a removal's remote steps delete it.
+const ViewRefPrefix = "lym-view/"
+
 // remoteTeardownJob is the remote half of one teardown.
 // The command writes it, and the holder of the slug's teardown lock runs it.
 type remoteTeardownJob struct {
@@ -80,6 +85,11 @@ type remoteTeardownJob struct {
 	DeleteTaskOnOrigin bool   `json:"delete_task_on_origin,omitempty"`
 	// TaskTip is the local task tip a discard tagged and deleted, empty when no local task branch existed.
 	TaskTip string `json:"task_tip,omitempty"`
+	// DeleteViewRef is set only for a one-repository pair.
+	// It asks for the delete of the pair's view ref on origin after the pair's one branch is deleted there.
+	// The branch is then deleted through the pair-branch gate, since its name carries no records suffix.
+	// A job an older binary wrote reads it as false and deletes no view ref.
+	DeleteViewRef bool `json:"delete_view_ref,omitempty"`
 	// ExemptPause is set when the command that wrote the job runs exempt from every pause;
 	// so the child's remote steps pass under a pause as the command's own did.
 	ExemptPause bool `json:"exempt_pause,omitempty"`
@@ -96,6 +106,8 @@ type remoteOutcome struct {
 	archiveSkipped string
 	// weft carries the outcome of the weft branch's delete on origin.
 	weft CleanupBranchEntry
+	// viewRefError is why the delete of the pair's view ref on origin failed, empty when it did not fail or never ran.
+	viewRefError string
 	// weftKeptOnOrigin is set when the weft branch lives only on origin and the job did not ask for its delete.
 	weftKeptOnOrigin string
 	taskDeleted      bool
@@ -117,6 +129,9 @@ type remoteOutcome struct {
 // A removal and a cleanup archive the weft tips and then delete the weft branch on origin when asked.
 // A removal pushes the weft tip first and then deletes the landed task branch on origin when asked.
 // A discard archives the task branch's tips and deletes it on origin.
+// A one-repository removal deletes the pair's one branch on origin through the pair-branch gate.
+// The archive tag covers that delete.
+// It then deletes the pair's view ref there.
 func runRemoteTeardown(rec *Mutations, l *lymcwd.Location, job remoteTeardownJob, sleep func(time.Duration)) remoteOutcome {
 	out := remoteOutcome{ran: true, weft: CleanupBranchEntry{Branch: job.WeftBranch}}
 	if job.Kind == remoteTeardownDiscard {
@@ -136,15 +151,74 @@ func runRemoteTeardown(rec *Mutations, l *lymcwd.Location, job remoteTeardownJob
 				out.err = out.weftRootErr
 				return out
 			}
-			deleteWeftBranchOnRemote(rec, l, job.WeftBranch, weftRoot, out.archive.leaseTip, &out.weft)
+			if job.DeleteViewRef {
+				deleteOneRepositoryBranchOnRemote(rec, job, weftRoot, out.archive, &out.weft)
+			} else {
+				deleteWeftBranchOnRemote(rec, l, job.WeftBranch, weftRoot, out.archive.leaseTip, &out.weft)
+			}
 		} else if job.WeftTip == "" {
 			out.weftKeptOnOrigin = fmt.Sprintf("the sibling branch %q exists only on %q and was kept; pass --remote to delete it", job.WeftBranch, originRemoteName)
 		}
+	}
+	if out.archiveSkipped == "" && job.DeleteViewRef {
+		out.viewRefError = deleteViewRefOfPair(rec, l, job.Slug)
 	}
 	if job.DeleteTaskOnOrigin {
 		out.taskDeleted, out.taskKept, out.taskFailed = deleteTaskBranchOnOrigin(rec, l, job.WarpBranch, job.ParentBranch)
 	}
 	return out
+}
+
+// deleteOneRepositoryBranchOnRemote deletes a one-repository pair's one branch from origin.
+// It runs in the repository at repoRoot.
+// The branch is the job's records branch, which is also the pair's code branch.
+// The delete is leased on the origin tip the archive read.
+// The archive tag that covers that tip proves no work is lost.
+// The outcome goes to entry as deleteWeftBranchOnRemote records it:
+// a branch origin moved since the lease is kept and reported as kept, and any other failure as a remote error.
+func deleteOneRepositoryBranchOnRemote(rec *Mutations, job remoteTeardownJob, repoRoot string, archive weftArchive, entry *CleanupBranchEntry) {
+	coveringTag := archive.originTag
+	if coveringTag == "" {
+		coveringTag = archive.localTag
+	}
+	if removeBeforeWeftDeleteHook != nil {
+		removeBeforeWeftDeleteHook()
+	}
+	deleted, err := deleteRemoteBranch(rec, remoteBranchRequest{
+		what:      "delete the pair branch on remote",
+		repoDir:   repoRoot,
+		remote:    originRemoteName,
+		branch:    job.WeftBranch,
+		ownership: ownedPairWarpBranch(job.WeftBranch, job.ParentBranch),
+		dirtiness: dirtyArchivedOnRemote(coveringTag),
+		leaseSHA:  archive.leaseTip,
+	})
+	if err != nil {
+		if errors.Is(err, gitrepo.ErrLeaseRejected) {
+			entry.RemoteKeptReason = fmt.Sprintf("kept: origin's branch %q moved during the removal, so it is another process's live branch", job.WeftBranch)
+			return
+		}
+		if refusal, ok := RefusalOf(err); ok {
+			entry.RemoteError = fmt.Sprintf("gate refused remote deletion of %q: %s", job.WeftBranch, refusal.Reason)
+		} else {
+			entry.RemoteError = fmt.Sprintf("delete remote branch %q on %q failed: %v", job.WeftBranch, originRemoteName, err)
+		}
+		return
+	}
+	entry.RemoteDeleted = deleted
+}
+
+// deleteViewRefOfPair deletes the view ref of the pair slug from origin, in the repository l belongs to.
+// It returns the failure's text, and "" when the ref is gone, whether this call or an earlier one deleted it.
+func deleteViewRefOfPair(rec *Mutations, l *lymcwd.Location, slug string) string {
+	repoRoot, err := RecordsRepoRoot(l)
+	if err != nil {
+		return fmt.Sprintf("resolve the repository: %v", err)
+	}
+	if err := deleteViewRefOnOrigin(rec, repoRoot, slug); err != nil {
+		return err.Error()
+	}
+	return ""
 }
 
 // remoteStepFailure is one failed remote step of a teardown job and the way forward that settles it.
@@ -203,6 +277,10 @@ func failedRemoteSteps(job remoteTeardownJob, out remoteOutcome, weftRoot string
 	}
 	if out.weft.RemoteError != "" {
 		failures = append(failures, remoteStepFailure{"the delete of its records branch on origin", out.weft.RemoteError, rerunWayForward(job)})
+	}
+	if out.viewRefError != "" {
+		deleteByHand := fmt.Sprintf("delete it with `git -C %s push %s --delete %s%s`", job.Worktree, originRemoteName, ViewRefPrefix, job.Slug)
+		failures = append(failures, remoteStepFailure{"the delete of its view ref on origin", out.viewRefError, deleteByHand})
 	}
 	if out.taskFailed {
 		failures = append(failures, remoteStepFailure{"the delete of its task branch on origin", out.taskKept, rerunWayForward(job)})

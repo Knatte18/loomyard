@@ -33,6 +33,12 @@ const refusedOriginURL = "http://127.0.0.1:1/x"
 // authRefusingHook is a pre-receive hook that declines every push the way GitHub declines one for want of permission.
 const authRefusingHook = "#!/bin/sh\necho 'Permission to hub denied to tester.' >&2\nexit 1\n"
 
+// protectedRefusingHook returns a pre-receive hook that declines every push to branch.
+// It declines the way GitHub declines a push to a protected branch.
+func protectedRefusingHook(branch string) string {
+	return "#!/bin/sh\necho 'GH006: Protected branch update failed for refs/heads/" + branch + ".' >&2\nexit 1\n"
+}
+
 // newFailureFixture builds a hub with the board replay installed and a notifier counting the mails of its own hub.
 // A push reaches the notifier only through the options the notifier builds.
 func newFailureFixture(t *testing.T) (*recordsFixture, *fakePushNotifier) {
@@ -396,6 +402,48 @@ func TestPushFailureClasses(t *testing.T) {
 		}
 		if len(fake.lines) != 1 {
 			t.Errorf("mails = %q; want one", fake.lines)
+		}
+	})
+
+	t.Run("AProtectedBranchRefusalIsRecordedProtectedAndIsNotOwed", func(t *testing.T) {
+		f, fake := newFailureFixture(t)
+		prime := f.hub.PrimeWorktree()
+		gitkit.CommitFile(t, prime, lymcwd.AnchorFileName, ".\n", "record the anchor")
+		gitkit.CommitFile(t, prime, "local.txt", "local\n", "local")
+		branch := gitkit.CurrentBranch(t, prime)
+		installPreReceive(t, f.hub.CodeBare, protectedRefusingHook(branch))
+		sleeps := 0
+
+		_, err := hubforge.OpenFabric(t, f.hub).PushBranch(fake.options(countingBackoff(&sleeps, nil)))
+
+		if !fabricengine.IsPushProtected(err) || fabricengine.IsPushOwed(err) {
+			t.Fatalf("PushBranch() error = %v; want a protected push that is not owed", err)
+		}
+		if sleeps != 0 {
+			t.Errorf("backoff sleeps = %d; want none, a protected refusal is not retried", sleeps)
+		}
+		record := requireOneFailedPush(t, f.hub.Location.HubPath, "code", fabricengine.PushFailureProtected)
+		if wayForward := fabricengine.FailedPushWayForward(record); !strings.Contains(wayForward, "allow direct pushes to "+branch) {
+			t.Errorf("way forward = %q; want it to name allowing direct pushes to %s", wayForward, branch)
+		}
+		if len(fake.lines) != 1 {
+			t.Errorf("mails = %q; want one", fake.lines)
+		}
+	})
+
+	t.Run("AProtectedRefusalOutsideAOneRepositoryPrimeKeepsTodaysClass", func(t *testing.T) {
+		f, fake := newFailureFixture(t)
+		weft, branch := f.primeWeft()
+		gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
+		installPreReceive(t, f.hub.RecordsBare, protectedRefusingHook(branch))
+
+		if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, fake.options(countingBackoff(new(int), nil)), fabricengine.MachineNames{}); err != nil {
+			t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
+		}
+
+		record := requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabricengine.PushFailureOther)
+		if fabricengine.IsPushProtected(&fabricengine.PushFailedError{Record: record}) {
+			t.Errorf("IsPushProtected(%+v) = true; want false outside a one-repository prime", record)
 		}
 	})
 

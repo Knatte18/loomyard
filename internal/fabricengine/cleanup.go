@@ -348,7 +348,7 @@ func primaryWeftBranch(l *lymcwd.Location) (string, error) {
 			"the %s worktree at %s is not on a named branch; refusing to enumerate orphan weft branches",
 			BoltDirName, boardDir)
 	}
-	return RecordsBranchName(boardBranch), nil
+	return recordsBranchIn(l, boardBranch), nil
 }
 
 // weftBranchCheckout pairs a weft branch name with its checked-out worktree path if any.

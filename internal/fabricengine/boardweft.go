@@ -6,6 +6,7 @@
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 
@@ -14,13 +15,20 @@ import (
 
 // ensureBoardWorktree materializes boardPath as a second worktree of the weft repo, checked out on warpBranch.
 // When warpBranch exists locally, the worktree adopts it, which is the ordinary case.
+// When only origin carries it, the worktree starts a local branch from origin's with that branch as its upstream.
 // Otherwise the weft remote is genuinely empty, and the worktree is created as an orphan.
 // It returns any git error.
 func ensureBoardWorktree(weftRepoRoot, warpBranch, boardPath string) error {
-	// A missing branch is not an error; it selects the orphan path below. A failed read is one.
-	branchExistsLocally, err := gitrepo.New(weftRepoRoot).BranchExists(warpBranch)
+	repo := gitrepo.New(weftRepoRoot)
+	// A missing branch is not an error; it selects the paths below. A failed read is one.
+	branchExistsLocally, err := repo.BranchExists(warpBranch)
 	if err != nil {
 		return fmt.Errorf("check for local weft branch %q: %w", warpBranch, err)
+	}
+	remoteBranch := originRemoteName + "/" + warpBranch
+	_, remoteErr := repo.RefSHA("refs/remotes/" + remoteBranch)
+	if remoteErr != nil && !errors.Is(remoteErr, gitrepo.ErrRefNotFound) {
+		return fmt.Errorf("check for remote weft branch %q: %w", remoteBranch, remoteErr)
 	}
 
 	// Both worktree-add forms route through containedWorktreeAdd.
@@ -32,6 +40,15 @@ func ensureBoardWorktree(weftRepoRoot, warpBranch, boardPath string) error {
 			return []string{"worktree", "add", worktreePath, warpBranch}
 		}); err != nil {
 			return fmt.Errorf("add %s worktree on existing branch %q: %w", BoltDirName, warpBranch, err)
+		}
+		return nil
+	}
+
+	if remoteErr == nil {
+		if err := containedWorktreeAdd(weftRepoRoot, boardContainer, boardPath, func(worktreePath string) []string {
+			return []string{"worktree", "add", "--track", "-b", warpBranch, worktreePath, remoteBranch}
+		}); err != nil {
+			return fmt.Errorf("add %s worktree tracking %q: %w", BoltDirName, remoteBranch, err)
 		}
 		return nil
 	}

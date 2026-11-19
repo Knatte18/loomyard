@@ -10,9 +10,11 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -80,6 +82,14 @@ func startForeignMergeInRecords(t *testing.T, recordsSibling string) {
 	if !mergeHeadPresent(t, recordsSibling) {
 		t.Fatal("no MERGE_HEAD in the records sibling after a plain-git merge --no-commit; the fixture proves nothing without one")
 	}
+}
+
+// runGitAllowingFailure runs git in dir and ignores its exit status, for a command that stops on a conflict.
+func runGitAllowingFailure(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	_, _ = cmd.CombinedOutput()
 }
 
 // mergeHeadPresent reports whether the repo at dir currently has a live MERGE_HEAD.
@@ -363,6 +373,78 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 			t.Fatal("MERGE_HEAD survives the abort; the steps after this one need a records side with no merge in progress")
 		}
 	})
+
+	// A one-repository hub: the transition waits for a plain-git operation instead of skipping, then commits.
+	// Each row's Sleep ends the operation on its first call, so the commit lands only after the wait.
+	oneRepositoryHub := hubforge.NewOneRepoHub(t, ".")
+	oneRepositoryRows := []struct {
+		name  string
+		start func(t *testing.T, worktree, branch string)
+		abort []string
+	}{
+		{
+			name: "one-repository cherry-pick in progress waits, then commits",
+			start: func(t *testing.T, worktree, branch string) {
+				gitkit.CommitFile(t, worktree, "conflict.txt", "task\n", "task adds the file")
+				gitkit.MustRun(t, worktree, "git", "checkout", "-q", "-b", "other", branch+"~1")
+				gitkit.CommitFile(t, worktree, "conflict.txt", "other\n", "other adds the file")
+				gitkit.MustRun(t, worktree, "git", "checkout", "-q", branch)
+				runGitAllowingFailure(t, worktree, "cherry-pick", "other")
+			},
+			abort: []string{"cherry-pick", "--abort"},
+		},
+		{
+			name: "one-repository merge with a records path unlike HEAD waits, then commits",
+			start: func(t *testing.T, worktree, branch string) {
+				gitkit.MustRun(t, worktree, "git", "checkout", "-q", "-b", "side")
+				gitkit.CommitFile(t, worktree, "_lym/side.txt", "side\n", "side adds a records file")
+				gitkit.MustRun(t, worktree, "git", "checkout", "-q", branch)
+				gitkit.CommitFile(t, worktree, "ahead.txt", "ahead\n", "task moves ahead")
+				runGitAllowingFailure(t, worktree, "merge", "--no-commit", "--no-ff", "side")
+			},
+			abort: []string{"merge", "--abort"},
+		},
+	}
+	for i, row := range oneRepositoryRows {
+		t.Run(row.name, func(t *testing.T) {
+			pair := hubforge.AddPairWith(t, oneRepositoryHub, fmt.Sprintf("oneseam%d", i), fabricengine.AddOptions{SkipPush: true})
+			oneLocation, err := lymcwd.ResolveWorktree(pair.Path)
+			if err != nil {
+				t.Fatalf("ResolveWorktree(%s) error = %v; want nil", pair.Path, err)
+			}
+			writeStatusFile(t, oneLocation, `{"current_producer":"seed","state":"running"}`)
+			row.start(t, pair.Path, pair.Branch)
+			if operation, err := fabricengine.MergeStateOperation(oneLocation); err != nil || operation == "" {
+				t.Fatalf("MergeStateOperation() = (%q, %v); want an operation the fixture left blocking", operation, err)
+			}
+
+			// The pre-push check judges origin, which a later card readies for a one-repository hub; the rows reach the wait alone.
+			skipCheck := prePushCheck{slug: "task", skip: func() (bool, error) { return true, nil }}
+			deps := commitStatusDepsGuardedBy(skipCheck, oneLocation, shedrun.SelfRunID)
+			deps.Push = func() error { return nil }
+			sleeps := 0
+			deps.Sleep = func(time.Duration) {
+				sleeps++
+				if sleeps == 1 {
+					gitkit.Git(t, pair.Path, row.abort...)
+				}
+			}
+			before := gitkit.RevParse(t, pair.Path, "HEAD")
+
+			if err := newCommitStatusSeam(deps)("Discussion-Write", "running"); err != nil {
+				t.Fatalf("seam(...) error = %v; want nil", err)
+			}
+			if sleeps != 1 {
+				t.Errorf("Sleep called %d time(s); want 1 -- the wait ended with the operation", sleeps)
+			}
+			if got := gitkit.RevParse(t, pair.Path, "HEAD"); got == before {
+				t.Errorf("HEAD = %q; want a transition commit after the wait", got)
+			}
+			if got := gitkit.Git(t, pair.Path, "log", "-1", "--format=%s"); got != "loom: Discussion-Write -> running" {
+				t.Errorf("HEAD subject = %q; want %q", got, "loom: Discussion-Write -> running")
+			}
+		})
+	}
 
 	// The task branch advanced on its remote by a second clone, past every tip the run's transitions name:
 	// The commit-records commit is itself a transition, so the owner's code push resets origin's branch to its tip.

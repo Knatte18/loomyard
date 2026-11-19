@@ -54,6 +54,13 @@
 // A copy's Mutations are the template's, unrewritten.
 // A shape outside the set fails through tb.Fatalf, whose message points at NewHub and Registration.
 //
+// NewOneRepoHub builds a one-repository hub.
+// It copies the warp bare alone and drives CloneAndWire over it by one URL with SingleRepo set.
+// The Hub it returns has CodeBare set and RecordsBare empty, and has no records sibling.
+// CloneSecond of such a hub clones CodeBare by one URL, over the board branch the first hub pushed.
+// ReanchorPair fails the test on a hub with an empty RecordsBare, since it moves a records sibling.
+// A one-repository hub has no registration or shape: its builder runs per test.
+//
 // A build's process-wide calls are outside its TB's reach.
 // They are os.Setenv, os.MkdirTemp, global git config, a package-global seam setter and a once-only registration.
 // The TB's Context kept past the build is one too.

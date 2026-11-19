@@ -147,9 +147,12 @@
 // StageAllAndCommit is the separate wildcard-stage variant, an opt-in exception for board.
 // It does not relax the explicit-list default, which fabric and raddle keep using.
 // Merge start and conclude and conflicted-path enumeration are admitted for fabric's two-sided merge coordination.
-// They are MergeStart, MergeConclude, ConflictedFiles, MergeHeadPresent, HeadDetached, MergeFFOnly and ResolveSHA.
+// The merge operations are MergeStart, MergeStartNoFastForward, MergeConclude and MergeFFOnly.
+// The inspection operations are ConflictedFiles, MergeHeadPresent, HeadDetached and ResolveSHA.
 // Two behaviours they depend on are pinned on the command line instead of inherited from the caller's git config:
 // MergeStart passes --ff so merge.ff=only/false cannot change the outcome it classifies.
+// MergeStartNoFastForward passes --no-ff for the same reason.
+// A fast-forwardable source still stages a merge to conclude.
 // MergeConclude passes --no-edit so core.editor can never hang a non-interactive caller.
 // MergeStart's four-way classification reads a live MERGE_HEAD as MergeStaged before it reads HEAD movement.
 // A real merge whose result tree equals HEAD's tree stages nothing and moves no HEAD, yet leaves a merge to conclude;
@@ -188,6 +191,8 @@
 // A retryable refusal never triggers the rebase-retry.
 // A push that exhausts the attempts returns an error wrapping ErrPushRetriesExhausted and the last push error.
 // It never returns ErrPushRejected.
+// A rejection's error carries git's rejection line followed by the push's `remote:` lines.
+// So a hook's own refusal text, such as GitHub's protected-branch message, reaches the caller.
 // PushWithRetry exposes the same loop for a caller that runs its own push, on the backoff delays the caller passes;
 // PushWithRetryReasons adds reasons the caller names as retryable beside those two forms.
 // PushCoalesced adds cross-process coalescing.

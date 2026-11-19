@@ -236,6 +236,7 @@ func (r runReader) read(slug string) (runfsm.Records, runfsm.Inputs, error) {
 		inputs.PushOwed = true
 		inputs.PushOwedError = owed[0].Error
 		inputs.PushOwedWorktree = owed[0].RepoPath
+		inputs.PushOwedWayForward = fabricengine.FailedPushWayForward(owed[0])
 	}
 	tip, err := r.codeTip(slug)
 	if err != nil {

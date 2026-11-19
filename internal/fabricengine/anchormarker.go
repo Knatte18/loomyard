@@ -166,7 +166,10 @@ func recordAdoptedWeftAnchor(rec *Mutations, hubPath, slug, weftPath string, nam
 		if err != nil {
 			return nil, err
 		}
-		if _, err := commitAnchorMarker(rec, weftPath, anchor, "fabric add: record anchor "+anchor); err != nil {
+		if err := refuseMarkerCommitDuringMerge(weftPath); err != nil {
+			return nil, err
+		}
+		if err := commitMissingAnchorMarker(rec, weftPath, anchor, "fabric add: record anchor "+anchor); err != nil {
 			return nil, err
 		}
 	}

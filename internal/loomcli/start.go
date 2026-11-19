@@ -176,8 +176,10 @@ func isLandingProducer(producer string) bool {
 
 // ownMergeInLeftover reports whether st is a parked merge-in of parentBranch that the producer aborts and redoes itself:
 // a parked `merge-in` sourced from the parent branch, at Parent-Align or Finalize.
+// A merge-in stopped before its records step counts as parked, since the abort handles it.
 func ownMergeInLeftover(st fabricengine.MidMergeState, producer, parentBranch string) bool {
-	return st.Kind == fabricengine.MidMergeParked && st.Verb == fabricengine.MergeVerbMergeIn && st.Source == parentBranch && isLandingProducer(producer)
+	parked := st.Kind == fabricengine.MidMergeParked || st.Kind == fabricengine.MidMergeRecordsUnsettled
+	return parked && st.Verb == fabricengine.MergeVerbMergeIn && st.Source == parentBranch && isLandingProducer(producer)
 }
 
 // readRecordedParentBranch returns the parent branch the pair's fabric origin record names.
@@ -233,7 +235,7 @@ func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, 
 	switch st.Kind {
 	case fabricengine.MidMergeNone:
 		return true
-	case fabricengine.MidMergeParked:
+	case fabricengine.MidMergeParked, fabricengine.MidMergeRecordsUnsettled:
 		if st.Verb == fabricengine.MergeVerbMergeIn && isLandingProducer(producer) {
 			parentBranch, err := c.recordedParentBranch(c.location)
 			if err != nil {
@@ -245,7 +247,11 @@ func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, 
 				return true
 			}
 		}
-		msg = `loom: a fabric merge is in progress in this worktree; resolve each listed path, mark it resolved with "lym fabric merge-stage <path>...", then run "lym fabric merge --continue" (or "lym fabric merge --abort" to discard the merge), then re-run "` + retry + `"; a session lym refuses the verb from reports status: FAILED and the orch runs it`
+		if st.Kind == fabricengine.MidMergeRecordsUnsettled {
+			msg = `loom: a fabric merge is in progress in this worktree with its records unsettled; run "lym fabric merge --abort" to discard the merge, then re-run "` + retry + `"; a session lym refuses the verb from reports status: FAILED and the orch runs it`
+		} else {
+			msg = `loom: a fabric merge is in progress in this worktree; resolve each listed path, mark it resolved with "lym fabric merge-stage <path>...", then run "lym fabric merge --continue" (or "lym fabric merge --abort" to discard the merge), then re-run "` + retry + `"; a session lym refuses the verb from reports status: FAILED and the orch runs it`
+		}
 	default:
 		msg = `loom: a git merge, cherry-pick or squash that fabric did not start is in progress in this worktree; conclude or abort it with git, then re-run "` + retry + `"`
 	}

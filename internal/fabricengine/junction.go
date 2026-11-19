@@ -90,12 +90,17 @@ func WireJunctionsWith(rec *Mutations, l *lymcwd.Location, slug string, names []
 
 // wireJunctionSet creates the warp junctions for names and seeds the weft-side exclude.
 // It also appends the junction names to the warp git-exclude and seeds the warp exclude list.
+// A worktree of a one-repository hub gets real directories and no junction, as wireOneRepositoryDirs describes.
 // It loads the fabric config first, so a load failure fails the wiring before anything is written.
 // It records every change into rec.
 func wireJunctionSet(rec *Mutations, l *lymcwd.Location, slug string, names []string) error {
 	cfg, err := LoadConfig(ConfigDirs(l))
 	if err != nil {
 		return fmt.Errorf("load fabric config for wiring %s: %w", slug, err)
+	}
+
+	if oneRepositoryAt(WorktreePath(l, slug)) {
+		return wireOneRepositoryDirs(rec, l, slug, cfg)
 	}
 
 	if err := seedLymJunction(rec, l, slug, names); err != nil {
@@ -117,6 +122,30 @@ func wireJunctionSet(rec *Mutations, l *lymcwd.Location, slug string, names []st
 		return err
 	}
 
+	return seedWarpExcludeLines(rec, WorktreePath(l, slug), l.AnchorRel, cfg.WarpExcludePaths())
+}
+
+// wireOneRepositoryDirs wires a worktree of a one-repository hub, where the records live in the worktree itself.
+// It makes `_lym` and `.lym` real directories at the anchor and links nothing.
+// The only exclude lines it seeds are the anchored `.lym` line and the warp exclude list.
+// `_lym` is tracked records content and `.lym-anchor` is the layout marker, so neither is ever excluded.
+// It records every change into rec.
+func wireOneRepositoryDirs(rec *Mutations, l *lymcwd.Location, slug string, cfg Config) error {
+	anchored := filepath.Join(WorktreePath(l, slug), l.AnchorRel)
+	for _, name := range []string{lymdirs.LymDirName, lymdirs.DotLymDirName} {
+		dir := filepath.Join(anchored, name)
+		if _, err := os.Stat(dir); err == nil {
+			continue
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create %s for wiring %s: %w", dir, slug, err)
+		}
+		rec.Append(KindDirCreated, dir, "")
+	}
+
+	if err := seedGitExclude(rec, l, slug, []string{lymdirs.DotLymDirName}); err != nil {
+		return err
+	}
 	return seedWarpExcludeLines(rec, WorktreePath(l, slug), l.AnchorRel, cfg.WarpExcludePaths())
 }
 

@@ -36,7 +36,7 @@ The `tapestry` recipe, for a task big enough to need a discussion and a plan:
 
 | Step | What happens |
 |---|---|
-| Start | Dobby makes the task's **worktree pair**: a git checkout of the project, and beside it a checkout of the **records repository** that holds LoomYard's files. |
+| Start | Dobby makes the task's **worktree pair**: a git checkout of the project, and beside it a checkout of the **records repository** that holds LoomYard's files. A hub of one repository has no second checkout: the records sit on each code branch, and the board on the branch `lym-bolt`. |
 | Discussion | An agent turns the board entry into a **decision record**, also called a sketch: scope, decisions taken, what is left out. |
 | Plan | An agent writes cards that name the code they touch by symbol. `lym` looks each symbol up in a syntax index of the real tree, so a plan naming a function that does not exist fails before any code is written. |
 | Implementation | `lym` groups the cards into batches. One agent reads the plan once and forks an implementer per batch; `lym` runs each batch's tests and records its commits. |
@@ -68,6 +68,32 @@ After a set number of failed attempts the run halts.
 
 A task with no recipe runs the hub's default, `darn` unless the hub changed it.
 The recipe files are data, in [`contracts/recipes/`](contracts/recipes/).
+
+### A hub of one repository
+
+A project can run as one repository instead of two.
+Clone it with one URL:
+
+```bash
+lym fabric clone --shortname <short> --single-repo <project-url>   # a repository with no hub yet
+lym fabric clone <project-url>                                      # an origin that already holds the branch lym-bolt
+```
+
+The layout puts `.lym-anchor` at the root of every code branch and the records under `<anchor>/_lym`.
+Records are committed beside the agents' work and stripped at every fabric merge, so they never reach the parent branch.
+The board lives on the orphan branch `lym-bolt`, which no code branch merges.
+
+Three hazards:
+
+- `--single-repo` cannot recognise the code repository of an existing two-repository hub.
+  Run there, it starts a separate hub over the same code.
+- Switching, resetting or stashing in the prime holds or drops its live records.
+  A prime off the branch `lym.primeBranch` names refuses every records commit until you switch back,
+  and a `git reset` or `git stash` can drop uncommitted records.
+- A prime whose branch refuses direct pushes keeps its records unpushed.
+  The prime's records push also waits while you have unpushed commits on that branch.
+
+[`docs/getting-started.md`](docs/getting-started.md) describes the layout and its hazards in full.
 
 ## Beyond the run
 
@@ -132,7 +158,7 @@ Every run since late September 2026 can be read artifact by artifact:
 | hub | the directory that holds one project's worktrees and records |
 | worktree | a separate git checkout; each task gets its own |
 | prime | the worktree on the project's main branch |
-| records repository | the second git repository, holding LoomYard's files for each worktree |
+| records repository | the second git repository, holding LoomYard's files for each worktree; a hub of one repository has none, keeping the records on each code branch and the board on the branch `lym-bolt` |
 | worktree pair | a worktree and its sibling in the records repository |
 | board | the hub's list of tasks, notes and projects |
 | recipe | the list of steps a task's run walks |

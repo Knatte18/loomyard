@@ -5,12 +5,14 @@
 - `root` is the worktree or repo root and `cwd` is the current working directory; the two are never conflated.
 - `Resolve` requires cwd to be a git worktree root and to equal `Join(worktreeRoot, AnchorRel)`.
 - `ResolveWithin` accepts cwd at or below `Join(worktreeRoot, AnchorRel)` or anywhere in the records sibling.
+  In a one-repository hub it accepts a cwd at or below the anchor only.
   Only a read-only verb a session runs from wherever its harness moved the cwd calls it.
 - It exposes only `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel`, `WorktreePath()` and `AnchorPath()`.
 - Every cwd or worktree-root query goes through `lymcwd.Getwd()` or `Resolve()`;
   raw `os.Getwd` and `git rev-parse --show-toplevel` are banned elsewhere.
 - A module's own durable subdirectory is its own constant joined onto `AnchorPath()`, never a `lymcwd` call.
-- A worktree's anchor comes from its own `.lym-anchor` at the root of its weft branch.
+- A worktree's anchor comes from its own `.lym-anchor` at its records root:
+  the weft root in a two-repository hub and the worktree root in a one-repository hub.
   The fallback is the hub-wide Bolt marker, and `"."` after that.
 - Code outside `lymcwd` gets another worktree's `Location` through `lymcwd.NamedWorktree(hubPath, name)`.
   The `Location` is at that worktree's own anchor.

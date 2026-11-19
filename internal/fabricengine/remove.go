@@ -240,6 +240,9 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 	}
 
 	target := WorktreePath(l, slug)
+	// Read before the teardown, while the layout's marker is still in the worktree it deletes.
+	// A one-repository pair is one worktree on one branch, so every sibling step below is skipped for it.
+	oneRepo := oneRepositoryAt(l.WorktreePath())
 	pair, err := t.inspectPair(l, slug)
 	if err != nil {
 		return RemoveResult{}, err
@@ -250,7 +253,7 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 		pair.warpBranch = onOrigin
 	}
 	warpBranch := pair.warpBranch
-	weftBranch := RecordsBranchName(warpBranch)
+	weftBranch := recordsBranchIn(l, warpBranch)
 	// Read before the teardown deletes the records worktree that holds the pair's own marker.
 	pairLoc, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
@@ -360,11 +363,14 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 	}
 
 	// A sibling with neither worktree nor local branch is known only from origin, and only the teardown child asks origin.
-	siblingSteps, err := t.removeSibling(rec, l, slug, weftBranch, pair, force)
-	if err != nil {
-		return RemoveResult{}, err
+	// A one-repository pair has none: its one worktree and branch went with the task side above and below.
+	if !oneRepo {
+		siblingSteps, err := t.removeSibling(rec, l, slug, weftBranch, pair, force)
+		if err != nil {
+			return RemoveResult{}, err
+		}
+		steps = append(steps, siblingSteps...)
 	}
-	steps = append(steps, siblingSteps...)
 
 	if removeAfterTeardownHook != nil {
 		removeAfterTeardownHook()
@@ -439,7 +445,8 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 		DeleteWeftOnOrigin: remote && !weftBranchExists(l, weftBranch),
 		WarpBranch:         warpBranch,
 		ParentBranch:       parentBranch,
-		DeleteTaskOnOrigin: remote,
+		DeleteTaskOnOrigin: remote && !oneRepo,
+		DeleteViewRef:      remote && oneRepo,
 	})
 	res.RemoteHandedOff = out.handedOff
 	if !out.ran {
@@ -577,7 +584,7 @@ func (t *Topology) inspectPair(l *lymcwd.Location, slug string) (pairState, erro
 		return pairState{}, err
 	}
 	s.taskBranch = taskBranch
-	s.siblingBranch = weftBranchExists(l, RecordsBranchName(warpBranch))
+	s.siblingBranch = weftBranchExists(l, recordsBranchIn(l, warpBranch))
 	return s, nil
 }
 

@@ -29,10 +29,11 @@ func TestAct(t *testing.T) {
 	t.Parallel()
 
 	const (
-		pushOwed     = `run "slug" cannot act: a push to origin is owed (last error: dial tcp: refused); way forward: run ` + "`lym fabric push`" + ` in /wt/slug once origin answers, then run the verb again`
-		pushOwedBare = `run "slug" cannot act: a push to origin is owed; way forward: run the verb again once the owed push lands`
-		owned        = "run \"slug\" cannot act: machine neve owns the run; way forward: run the same verb on neve, or run `lym adopt sub` on this machine first"
-		codeTip      = `run "slug" cannot act: the code tip abc123 the run's last transition names is not on origin yet; machine neve owes it; way forward: run ` +
+		pushOwed      = `run "slug" cannot act: a push to origin is owed (last error: dial tcp: refused); way forward: run ` + "`lym fabric push`" + ` in /wt/slug once origin answers, then run the verb again`
+		pushOwedBare  = `run "slug" cannot act: a push to origin is owed; way forward: run the verb again once the owed push lands`
+		pushOwedNamed = `run "slug" cannot act: a push to origin is owed (last error: refused); way forward: run ` + "`git push`" + ` in /hub/main to send your commits; then run the verb again`
+		owned         = "run \"slug\" cannot act: machine neve owns the run; way forward: run the same verb on neve, or run `lym adopt sub` on this machine first"
+		codeTip       = `run "slug" cannot act: the code tip abc123 the run's last transition names is not on origin yet; machine neve owes it; way forward: run ` +
 			"`lym fabric push`" + ` in the task worktree on machine neve, then run the verb again once the code push lands`
 		codeTipNoMachine = `run "slug" cannot act: the code tip abc123 the run's last transition names is not on origin yet; way forward: run the verb again once the code push lands`
 		held             = `run "slug" cannot act: an adopt on machine another machine holds the hub; way forward: wait for that adopt's hold to clear, then run the verb again; if machine another machine has stopped, ask the operator`
@@ -57,6 +58,7 @@ func TestAct(t *testing.T) {
 		}{
 			{"PushOwedWaitsFirst", runfsm.Inputs{State: runfsm.Running, PushOwed: true, PushOwedError: "dial tcp: refused", PushOwedWorktree: "/wt/slug", OwnedElsewhere: true, Owner: "neve", AdoptSubject: "sub"}, runfsm.AnswerWait, runfsm.ReasonPushOwed, pushOwed},
 			{"PushOwedWithoutErrorOrWorktreeIsBare", runfsm.Inputs{State: runfsm.Running, PushOwed: true}, runfsm.AnswerWait, runfsm.ReasonPushOwed, pushOwedBare},
+			{"PushOwedNamesTheRecordsOwnWayForwardInPlaceOfFabricPush", runfsm.Inputs{State: runfsm.Running, PushOwed: true, PushOwedError: "refused", PushOwedWorktree: "/wt/slug", PushOwedWayForward: "run `git push` in /hub/main to send your commits"}, runfsm.AnswerWait, runfsm.ReasonPushOwed, pushOwedNamed},
 			{"OwnedElsewhereHandsOver", runfsm.Inputs{State: runfsm.Running, OwnedElsewhere: true, Owner: "neve", AdoptSubject: "sub"}, runfsm.AnswerHandOver, runfsm.ReasonOwnedElsewhere, owned},
 			{"OwnedElsewhereLandingPastMergeHandsOver", runfsm.Inputs{State: runfsm.Landing, PastParentMerge: true, OwnedElsewhere: true, Owner: "neve", AdoptSubject: "sub"}, runfsm.AnswerHandOver, runfsm.ReasonOwnedElsewhere, owned},
 			{"MissingCodeTipWaits", runfsm.Inputs{State: runfsm.Running, CodeTipMissing: true, CodeTip: "abc123", CodeTipMachine: "neve"}, runfsm.AnswerWait, runfsm.ReasonCodeTip, codeTip},
