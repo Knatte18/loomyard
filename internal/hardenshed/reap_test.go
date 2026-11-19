@@ -114,8 +114,8 @@ func TestReap(t *testing.T) {
 
 	t.Run("EndsAnOrphanWhoseCwdIsUnderTheRootsLinkTarget", func(t *testing.T) {
 		t.Parallel()
-		worktree, weft := t.TempDir(), t.TempDir()
-		if err := fslink.CreateDirLink(filepath.Join(worktree, lymdirs.DotLymDirName), weft); err != nil {
+		worktree, linkTarget := t.TempDir(), t.TempDir()
+		if err := fslink.CreateDirLink(filepath.Join(worktree, lymdirs.DotLymDirName), linkTarget); err != nil {
 			t.Fatal(err)
 		}
 		root := SandboxRoot(worktree)
