@@ -404,6 +404,15 @@ func validateSlugNotReserved(slug string) error {
 	return nil
 }
 
+// ValidateEntrySlug applies the length limit and the root reservation every board write applies to a new slug.
+// A caller that plans entries checks their slugs with it before a write refuses one.
+func ValidateEntrySlug(slug string) error {
+	if err := validateSlugLength(slug); err != nil {
+		return err
+	}
+	return validateSlugNotReserved(slug)
+}
+
 // NewTask builds a Task from a raw field map, assigning nextID.
 // The fields pass through a JSON round-trip, so their types are validated exactly as they are on disk.
 // Unknown fields are not rejected here; the caller validates them.
@@ -418,10 +427,7 @@ func NewTask(fields map[string]any, nextID int) (Task, error) {
 		return Task{}, fmt.Errorf("slug must be a non-empty string")
 	}
 
-	if err := validateSlugLength(slugStr); err != nil {
-		return Task{}, err
-	}
-	if err := validateSlugNotReserved(slugStr); err != nil {
+	if err := ValidateEntrySlug(slugStr); err != nil {
 		return Task{}, err
 	}
 

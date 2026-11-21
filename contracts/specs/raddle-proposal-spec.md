@@ -62,7 +62,7 @@ A part holds:
 - `cells` — the `lym report cost` cells both figures rest on, each `{recipe, profile, stored_record}`.
 
 Shape `tapestry` has exactly one part, which builds every decision.
-Every filed slug, each part's and the project's, is new: free on the board and in the raddle store, and not the Sketch's.
+Every filed slug, each part's and the project's, is new, and one the board's slug rules admit: free on the board and in the raddle store, and not the Sketch's.
 The one exception is a perch-mode run's project, whose slug is the run's own entry.
 
 ## Perch mode
@@ -107,6 +107,7 @@ The gate, `raddle-propose` and `raddle-approve` run the checks of the proposal a
 - `slug-taken` — a new slug already on the board or in the raddle store; the run's own entry is exempt, which `slug-sketch` judges.
 - `slug-sketch` — a filed slug equal to the Sketch's; a perch-mode project whose slug is the run's own entry is exempt.
 - `slug-duplicate` — a slug that two filed entries share.
+- `slug-invalid` — a filed slug the board's slug rules refuse: one over the board's slug length limit, the reserved `root`, or one the pair slug rule refuses, which `lym board` writes and pair creation apply; its way forward is a slug the board admits.
 - `shape-invalid` — a `tapestry` shape with other than one part or with a part that does not build every decision, a `project` or `beam` shape with no project, or another shape with one.
 - `perch-outcome` — in perch mode, a proposal that is neither one task nor one project under the run's own entry.
 - `cost-missing` — a missing proposal cost line or next-best cost line.

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -27,6 +28,8 @@ func TestRaddleBoardContext(t *testing.T) {
 
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPair(t, hub, "the-sketch")
+	// "docs" is no structural reservation, so only the hub's configured junction names refuse it.
+	hubforge.SeedFabricConfig(t, hub, "pathspec: docs\n")
 
 	// A board write cannot file an entry with a label the config lacks,
 	// so the entries are written to the board file directly.
@@ -106,6 +109,21 @@ func TestRaddleBoardContext(t *testing.T) {
 	for _, recipe := range []string{raddleparser.RecipeTapestry, raddleparser.RecipeDarn} {
 		if len(got.Profiles[recipe]) == 0 {
 			t.Errorf("Profiles[%s] = none; want the profiles that hold a block for it", recipe)
+		}
+	}
+	for _, tt := range []struct {
+		slug        string
+		wantRefused bool
+	}{
+		{"part-a", false},
+		{strings.Repeat("a", boardengine.MaxSlugLength), false},
+		{strings.Repeat("a", boardengine.MaxSlugLength+1), true},
+		{boardengine.RootSubject, true},
+		{"part/a", true},
+		{"docs", true},
+	} {
+		if err := got.ValidateSlug(tt.slug); (err != nil) != tt.wantRefused {
+			t.Errorf("ValidateSlug(%q) = %v; want refused %v", tt.slug, err, tt.wantRefused)
 		}
 	}
 }

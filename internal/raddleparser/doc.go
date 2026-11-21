@@ -12,6 +12,8 @@
 //
 // Check is pure.
 // It judges a Proposal against the decision record's bytes and a BoardContext the caller builds.
+// The board's slug rules reach it as a function in the BoardContext.
+// So a slug the board would refuse fails before approval.
 // It returns one Finding per broken rule of the spec.
 // A BoardContext with Perch set is a perch-mode run's, whose split perch approves the proposal:
 // Check then allows one task or one project whose slug is the run's own entry, which the slug rules exempt.

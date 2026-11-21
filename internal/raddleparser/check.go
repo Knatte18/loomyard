@@ -42,6 +42,7 @@ const (
 	CheckSlugTaken              = "slug-taken"
 	CheckSlugSketch             = "slug-sketch"
 	CheckSlugDuplicate          = "slug-duplicate"
+	CheckSlugInvalid            = "slug-invalid"
 	CheckShapeInvalid           = "shape-invalid"
 	CheckPerchOutcome           = "perch-outcome"
 	CheckCostMissing            = "cost-missing"
@@ -94,6 +95,8 @@ type BoardEntry struct {
 // Perch is true in a perch-mode run, whose split perch approves the proposal in place of the operator:
 // the checks then allow only one task, or one project whose slug is the run's own entry.
 // LivePattern reports whether the run's PATTERN.md holds the entry id.
+// ValidateSlug returns the refusal of a filed slug by the board's slug rules and the pair slug rule.
+// It returns nil for a slug they admit, and a nil ValidateSlug checks nothing.
 type BoardContext struct {
 	Sketch          string
 	Entry           string
@@ -106,6 +109,7 @@ type BoardContext struct {
 	Filing          bool
 	Perch           bool
 	LivePattern     func(id string) bool
+	ValidateSlug    func(slug string) error
 }
 
 // decisionIDPattern matches a decision id as a whole word;
@@ -481,7 +485,7 @@ func (c *checker) perchProject() bool {
 	return c.board.Perch && p.Shape == ShapeProject && p.Project != nil && p.Project.Slug == c.board.Entry
 }
 
-// slugs reports a filed slug that is the Sketch's, taken, or used twice.
+// slugs reports a filed slug that is the Sketch's, taken, used twice, or refused by the board's slug rules.
 // A perch run's project slug that is the run's own entry is not reported as the Sketch's;
 // the run's own entry is never reported as taken.
 func (c *checker) slugs() []Finding {
@@ -498,6 +502,11 @@ func (c *checker) slugs() []Finding {
 		}
 		if slices.Contains(seen, slug) {
 			findings = append(findings, Finding{Check: CheckSlugDuplicate, Part: slug, Detail: fmt.Sprintf("the slug %q is filed twice", slug)})
+		}
+		if c.board.ValidateSlug != nil {
+			if err := c.board.ValidateSlug(slug); err != nil {
+				findings = append(findings, Finding{Check: CheckSlugInvalid, Part: slug, Detail: fmt.Sprintf("the board refuses the slug: %v; way forward: pick a slug the board admits, then run lym loom raddle-propose again", err)})
+			}
 		}
 		seen = append(seen, slug)
 	}

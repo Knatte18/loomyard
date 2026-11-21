@@ -259,6 +259,8 @@
 //
 // # Slug rule
 //
+// ValidateEntrySlug is the length limit and root reservation every new slug passes.
+// It is exported so a caller that plans entries refuses a slug before the write would.
 // Config.ValidateSlug is how the board applies the pair slug rule to the task and project slugs a write makes.
 // A nil ValidateSlug checks nothing.
 // Board copies it, and the write critical section runs it after the mutation.
