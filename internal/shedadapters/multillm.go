@@ -85,7 +85,7 @@ func NewMultiLLMProducerSourced(name string, tables TableSource, seats SeatRunne
 
 // KeepGateFindings sets the file an exhausted chair gate's findings are kept in, which the Stuck reason names.
 // It returns the producer so a constructor call can chain it.
-// A call whose chair gate passed removes the file; an empty path keeps no findings file.
+// A later call whose chair gate passed leaves the file in place; an empty path keeps no findings file.
 func (p *MultiLLMProducer) KeepGateFindings(path string) *MultiLLMProducer {
 	p.gateFindingsPath = path
 	return p
@@ -187,9 +187,6 @@ func (p *MultiLLMProducer) mapOutcome(ctx context.Context, result seatengine.Res
 			}
 			logger.Warn("shedadapters: chair's gate did not pass", "producer", p.name, "engine", multiLLMEngineLabel, "attempts", chair.Gate.Attempts, "findingsPath", chair.Gate.FindingsPath, "sessionID", chair.SessionID, "strandGUID", chair.StrandGUID)
 			return shedengine.Stuck, shedengine.OutputPointer{Path: result.ChairOutputs[0], GateAttempts: gateAttemptsPointer(chair.Gate), GateSpans: gateSpansOf(chair.Gate), Reason: gateFailedReason(chair.Gate, p.gateFindingsPath)}, nil
-		}
-		if chair.Gate != nil {
-			clearGateFindings(p.gateFindingsPath)
 		}
 		return shedengine.Done, shedengine.OutputPointer{Path: result.ChairOutputs[0], GateAttempts: gateAttemptsPointer(chair.Gate), GateSpans: gateSpansOf(chair.Gate)}, nil
 

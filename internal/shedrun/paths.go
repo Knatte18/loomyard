@@ -293,7 +293,7 @@ func BattenWatchedMarker(l *lymcwd.Location, runID string) string {
 // GateFindingsFile returns the path to the ephemeral gate findings file of the row named row.
 // It sits under ScratchDir(l, runID).
 // There is one file per row: the row's producer writes it when its gate is exhausted,
-// and the row's next call whose gates pass removes it.
+// and a later call whose gates pass leaves it in place.
 // A goto, a resume and a pause leave the scratch directory alone, so the file outlives them.
 func GateFindingsFile(l *lymcwd.Location, runID, row string) string {
 	return filepath.Join(ScratchDir(l, runID), gateFindingsDirName, row+gateFindingsFileSuffix)

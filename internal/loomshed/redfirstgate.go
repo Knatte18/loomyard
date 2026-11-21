@@ -17,65 +17,228 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// NewRedFirstGate returns a must-pass shuttleengine.Gate that proves a bug fix's test was red before the fix.
-// At each arrival it reads the entry's labels, and an entry without gateslot.BugLabel passes at once and runs nothing.
+// RedFirstGate holds the two closures of a red-first gate entry, which share one attempt count.
+type RedFirstGate struct {
+	// Gate is the closure each arrival runs.
+	// It answers pending on a refusal the writer's next turn may not lift, so its entry must be MayHold.
+	Gate shuttleengine.Gate
+	// Final is the closure a final evaluation runs in place of Gate: it fails on that refusal with its findings.
+	Final shuttleengine.Gate
+}
+
+// NewRedFirstGate returns the closures of a must-pass gate entry that proves a bug fix's test was red before the fix.
+// Each call reads the entry's labels, and an entry without gateslot.BugLabel passes at once and runs nothing.
 // It then reads the decision record at recordPath.
 // An added entry whose title opens with gateslot.NoTestSeamTitle passes at once and runs nothing.
 // The title is compared case-insensitively.
 // Otherwise it runs command through verifytree.Verify over worktreeRoot, keeping its record, marker and log in verifyDir.
 // command is the site's own `lym gate red-first --gate <key>` call.
-// siteLabel names the call site in the running marker, and the closure's own count of its calls is the attempt.
+// siteLabel names the call site in the running marker, and the closures' shared count of their calls is the attempt.
 // hold is the told pause hold of the worktree's scope; nil holds nothing.
 //
 // `StatusPassed` and `StatusSkipped` pass, and `StatusDirty` fails with the dirty paths.
 // A `StatusFailed` run whose exit code is gateslot.RedFirstGreenExit fails with the way forward of a green test.
-// One whose exit code is gateslot.RedFirstNoTestExit fails with the way forward of a diff that holds no test.
-// One whose exit code is gateslot.RedFirstUnjudgedExit fails with the way forward of a check that cannot judge the diff.
+// An exit of gateslot.RedFirstNoTestExit or gateslot.RedFirstUnjudgedExit waits on a new commit or the parent's record.
+// Gate answers it pending, so the run holds without spending an attempt.
+// A hold's pending answers carry one line telling the writer its way forward until the loop reports it delivered;
+// later ones send nothing.
+// While HEAD's tree stays the one the refusal judged, Gate answers pending again without running command.
+// Final answers that refusal as a failure whose findings name the same way forward.
+// On that same tree it runs no command again.
 // Any other failed run, a timeout or a runner crash included, judged none of the diff's tests and fails terminally:
 // no change to the code mends it, and resuming the run runs the check again.
-// A labels read error, a record read or parse error and a verify error are returned errors.
-func NewRedFirstGate(worktreeRoot, verifyDir, siteLabel, command string, labels func() ([]string, error), recordPath string, hold *verifytree.PauseHold) shuttleengine.Gate {
-	attempt := 0
-	paths := verifytree.NewPaths(worktreeRoot, verifyDir)
-	return func() (shuttleengine.GateResult, error) {
-		attempt++
-		entryLabels, err := labels()
-		if err != nil {
-			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: red-first gate: read the entry's labels: %w", err)
-		}
-		if !slices.Contains(entryLabels, gateslot.BugLabel) {
-			return shuttleengine.GateResult{Passed: true}, nil
-		}
-		record, err := os.ReadFile(recordPath)
-		if err != nil {
-			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: red-first gate: read the decision record: %w", err)
-		}
-		added, err := discussionparser.ParseAddedDecisions(record)
-		if err != nil {
-			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: red-first gate: parse the decision record's added entries: %w", err)
-		}
-		for _, entry := range added {
-			if strings.HasPrefix(strings.ToLower(entry.Title), strings.ToLower(gateslot.NoTestSeamTitle)) {
-				logger.Info("loomshed: red-first gate ran nothing, the decision record names a bug no test can reach", "gate", siteLabel, "attempt", attempt, "title", entry.Title)
-				return shuttleengine.GateResult{Passed: true}, nil
-			}
-		}
+// A labels read error, a record read or parse error, a HEAD read error and a verify error are returned errors.
+func NewRedFirstGate(worktreeRoot, verifyDir, siteLabel, command string, labels func() ([]string, error), recordPath string, hold *verifytree.PauseHold) RedFirstGate {
+	g := &redFirstGate{
+		paths:        verifytree.NewPaths(worktreeRoot, verifyDir),
+		worktreeRoot: worktreeRoot,
+		siteLabel:    siteLabel,
+		command:      command,
+		labels:       labels,
+		recordPath:   recordPath,
+		hold:         hold,
+	}
+	return RedFirstGate{Gate: g.arrival, Final: g.final}
+}
 
-		site := verifytree.Site{Label: siteLabel, Attempt: attempt, BaseCommand: command, Hold: hold}
-		res, err := verifytree.Verify(context.Background(), paths, site, command)
+// redFirstGate is the state a red-first entry's closures share.
+type redFirstGate struct {
+	paths        verifytree.Paths
+	worktreeRoot string
+	siteLabel    string
+	command      string
+	labels       func() ([]string, error)
+	recordPath   string
+	hold         *verifytree.PauseHold
+	// attempt counts the closures' calls.
+	attempt int
+	// heldTree is the HEAD tree a held refusal judged, empty while the gate holds nothing.
+	heldTree string
+	// heldResult is the refusal the hold judged on heldTree.
+	heldResult verifytree.Result
+	// holdLine is the line the hold offers the writer until told.
+	holdLine string
+	// told reports that the loop delivered holdLine to the writer.
+	told bool
+}
+
+// arrival is the entry's Gate closure.
+func (g *redFirstGate) arrival() (shuttleengine.GateResult, error) {
+	g.attempt++
+	exempt, err := g.exempt()
+	if err != nil {
+		return shuttleengine.GateResult{}, err
+	}
+	if exempt {
+		g.heldTree = ""
+		return shuttleengine.GateResult{Passed: true}, nil
+	}
+	if g.heldTree != "" {
+		tree, err := verifytree.HeadTree(g.worktreeRoot)
 		if err != nil {
 			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: red-first gate: %w", err)
 		}
-		switch res.Status {
-		case verifytree.StatusPassed, verifytree.StatusSkipped:
-			return shuttleengine.GateResult{Passed: true}, nil
-		case verifytree.StatusDirty:
-			return dirtyResult(res, siteLabel, attempt), nil
+		if tree == g.heldTree {
+			return g.holdResult(), nil
 		}
-		logger.Warn("loomshed: red-first gate failed", "gate", siteLabel, "attempt", attempt, "exitCode", res.ExitCode, "timedOut", res.TimedOut, "runnerCrash", res.RunnerCrash, "log", res.Log)
+	}
+
+	res, verdict, err := g.verify()
+	if err != nil {
+		return shuttleengine.GateResult{}, err
+	}
+	if verdict != nil {
+		g.heldTree = ""
+		return *verdict, nil
+	}
+	if !holdsForCommitOrRecord(res) {
+		g.heldTree = ""
 		return redFirstFailure(res), nil
 	}
+	if g.heldTree == "" {
+		logger.Info("loomshed: red-first gate holds until a new commit or the parent's record", "gate", g.siteLabel, "attempt", g.attempt, "exitCode", res.ExitCode, "log", res.Log)
+		g.told = false
+	}
+	if !g.told {
+		g.holdLine = redFirstHoldLine(res)
+	}
+	g.heldTree = res.Tree
+	g.heldResult = res
+	return g.holdResult(), nil
 }
+
+// holdResult is the pending answer of a hold.
+// It offers the hold line until the loop reports it delivered.
+func (g *redFirstGate) holdResult() shuttleengine.GateResult {
+	result := shuttleengine.GateResult{Pending: true, SendFailedWayForward: redFirstHoldSendFailed, Delivered: &g.told}
+	if !g.told {
+		result.Send = g.holdLine
+	}
+	return result
+}
+
+// final is the entry's Final closure.
+func (g *redFirstGate) final() (shuttleengine.GateResult, error) {
+	g.attempt++
+	exempt, err := g.exempt()
+	if err != nil {
+		return shuttleengine.GateResult{}, err
+	}
+	if exempt {
+		return shuttleengine.GateResult{Passed: true}, nil
+	}
+	if g.heldTree != "" {
+		tree, err := verifytree.HeadTree(g.worktreeRoot)
+		if err != nil {
+			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: red-first gate: %w", err)
+		}
+		if tree == g.heldTree {
+			return redFirstFailure(g.heldResult), nil
+		}
+	}
+	res, verdict, err := g.verify()
+	if err != nil {
+		return shuttleengine.GateResult{}, err
+	}
+	if verdict != nil {
+		return *verdict, nil
+	}
+	return redFirstFailure(res), nil
+}
+
+// exempt reports whether the entry needs no red-first check:
+// it is not labelled a bug, or the parent recorded that the bug has no test seam.
+func (g *redFirstGate) exempt() (bool, error) {
+	entryLabels, err := g.labels()
+	if err != nil {
+		return false, fmt.Errorf("loomshed: red-first gate: read the entry's labels: %w", err)
+	}
+	if !slices.Contains(entryLabels, gateslot.BugLabel) {
+		return true, nil
+	}
+	record, err := os.ReadFile(g.recordPath)
+	if err != nil {
+		return false, fmt.Errorf("loomshed: red-first gate: read the decision record: %w", err)
+	}
+	added, err := discussionparser.ParseAddedDecisions(record)
+	if err != nil {
+		return false, fmt.Errorf("loomshed: red-first gate: parse the decision record's added entries: %w", err)
+	}
+	for _, entry := range added {
+		if strings.HasPrefix(strings.ToLower(entry.Title), strings.ToLower(gateslot.NoTestSeamTitle)) {
+			logger.Info("loomshed: red-first gate ran nothing, the decision record names a bug no test can reach", "gate", g.siteLabel, "attempt", g.attempt, "title", entry.Title)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// verify runs the red-first command.
+// It returns the verdict of a run that passed, was skipped or found the tree dirty,
+// and a nil verdict with the result of a run that failed.
+func (g *redFirstGate) verify() (verifytree.Result, *shuttleengine.GateResult, error) {
+	site := verifytree.Site{Label: g.siteLabel, Attempt: g.attempt, BaseCommand: g.command, Hold: g.hold}
+	res, err := verifytree.Verify(context.Background(), g.paths, site, g.command)
+	if err != nil {
+		return verifytree.Result{}, nil, fmt.Errorf("loomshed: red-first gate: %w", err)
+	}
+	switch res.Status {
+	case verifytree.StatusPassed, verifytree.StatusSkipped:
+		return res, &shuttleengine.GateResult{Passed: true}, nil
+	case verifytree.StatusDirty:
+		dirty := dirtyResult(res, g.siteLabel, g.attempt)
+		return res, &dirty, nil
+	}
+	logger.Warn("loomshed: red-first gate failed", "gate", g.siteLabel, "attempt", g.attempt, "exitCode", res.ExitCode, "timedOut", res.TimedOut, "runnerCrash", res.RunnerCrash, "log", res.Log)
+	return res, nil, nil
+}
+
+// holdsForCommitOrRecord reports whether a failed red-first run is a refusal the writer's next turn may not lift.
+// Only a commit that adds a failing test, or the parent's no-test-seam record, lifts a diff with no test;
+// only that record lifts a check that cannot judge the tests.
+func holdsForCommitOrRecord(res verifytree.Result) bool {
+	if res.TimedOut || res.RunnerCrash {
+		return false
+	}
+	return res.ExitCode == gateslot.RedFirstNoTestExit || res.ExitCode == gateslot.RedFirstUnjudgedExit
+}
+
+// redFirstHoldLine is the one line a hold's first arrival sends the writer, naming the way forward of res's refusal.
+func redFirstHoldLine(res verifytree.Result) string {
+	if res.ExitCode == gateslot.RedFirstNoTestExit {
+		return fmt.Sprintf("The red-first gate holds your handoff, spending no attempt, since the diff adds or changes no test (log: %s): "+
+			"add and commit a test that fails on the merge base and passes with the fix, then end your turn; "+
+			"when the bug has no seam a test can reach, %s", res.Log, noSeamAsk())
+	}
+	return fmt.Sprintf("The red-first gate holds your handoff, spending no attempt, since it cannot judge the diff's tests on the merge base: "+
+		"the hub's scoper is not go (log: %s); %s", res.Log, noSeamAsk())
+}
+
+// redFirstHoldSendFailed is the way forward the wait loop logs when the hold's line cannot reach the writer.
+// The hold offers the line again until it is delivered.
+const redFirstHoldSendFailed = "the writer was not told why the red-first gate holds; " +
+	"the hold lifts on a commit that adds a failing test or on the parent's `lym loom decision add` record under a title opening \"" +
+	gateslot.NoTestSeamTitle + "\""
 
 // redFirstFailure renders a StatusFailed red-first result as a failing verdict.
 // Only a run that exited with one of the gateslot red-first exit codes is one the writer, or its parent, can mend.

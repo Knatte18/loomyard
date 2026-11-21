@@ -33,6 +33,9 @@ type GateResult struct {
 	Send string
 	// SendFailedWayForward is the clause the loop's Warn quotes when sending Send fails.
 	SendFailedWayForward string
+	// Delivered, when non-nil, is set true by the loop each time it has delivered Send to the writer.
+	// A closure that offers Send until it is delivered reads it to stop offering.
+	Delivered *bool
 	// Terminal marks a failing result the run finalizes at once, with no re-prompt.
 	// The entry's failure count is not incremented for it.
 	// Its Findings text rides GateOutcome.Reason to the producer:

@@ -1,14 +1,11 @@
 // gateattempts.go holds the helpers that gated producers share.
 // They carry a gate's attempt count and spans onto shedengine.OutputPointer.
-// The findings-file helpers keep an exhausted gate's findings in a file and name it in the Stuck reason,
-// and they clear it once a gate passes.
+// The findings-file helper keeps an exhausted gate's findings in a file and names it in the Stuck reason.
 
 package shedadapters
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,7 +24,8 @@ const gateFindingsReasonLimit = 400
 // The gated producers share it so the wording never diverges.
 // A terminal entry's own explanation (GateOutcome.Reason) replaces the generic text and writes no file.
 // A run that ended with re-prompts left says why, so a gate that failed its first check never reads as a spent budget.
-// With a non-empty findingsPath it keeps gate.Findings there, overwriting an earlier file, and names that file;
+// With a non-empty findingsPath it keeps gate.Findings there, overwriting an earlier file, and names that file.
+// The file outlives a later call whose gate passed, so a halt's reason never names a removed file;
 // a failed write is logged and the reason carries the findings text, cut to one line, in place of the path.
 // With an empty findingsPath the reason names gate.FindingsPath.
 func gateFailedReason(gate *shuttleengine.GateOutcome, findingsPath string) string {
@@ -62,17 +60,6 @@ func gateFailedLead(gate *shuttleengine.GateOutcome) string {
 		return fmt.Sprintf("gate failed its first check and the session was never re-prompted, since %s", gate.EndedEarly)
 	default:
 		return fmt.Sprintf("gate did not pass after %d attempts and the run ended with re-prompts left, since %s", gate.Attempts, gate.EndedEarly)
-	}
-}
-
-// clearGateFindings removes the gate findings file at path, so a call whose gate passed leaves none behind.
-// An empty path and an absent file are no-ops, and any other removal failure is logged and changes no verdict.
-func clearGateFindings(path string) {
-	if path == "" {
-		return
-	}
-	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		logger.Warn("shedadapters: gate findings file was not removed", "findingsPath", path, "error", err)
 	}
 }
 

@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
@@ -121,8 +122,10 @@ func darnTreeScope(l *lymcwd.Location, trees func() (map[string]string, error)) 
 
 // latestDarnOutcome returns the latest Darn-Write history entry of the status file at statusPath.
 // The status file is read under the lock at statusLockPath.
-// The returned `FindingsPath` is findingsPath when that file exists, and empty otherwise:
+// The returned `FindingsPath` is findingsPath when the entry is a Stuck and that file exists, and empty otherwise:
 // the kept findings outlive the resume write that clears the status file's error before the row is called.
+// The file also outlives a later call whose gate passed, so an entry that did not halt names none.
+// A Stuck whose spawn began after the file was last written wrote no findings of its own, so it names none either.
 // Reroute, goto and skipped entries record no spawn that did work, so they are passed over.
 // An absent status file, or a history with no Darn-Write entry besides the passed-over ones, reports not found.
 func latestDarnOutcome(statusPath, statusLockPath, findingsPath string) (loomshed.DarnOutcome, bool, error) {
@@ -140,8 +143,14 @@ func latestDarnOutcome(statusPath, statusLockPath, findingsPath string) (loomshe
 			continue
 		}
 		latest := loomshed.DarnOutcome{Outcome: entry.Outcome}
-		if _, err := os.Stat(findingsPath); err == nil {
-			latest.FindingsPath = findingsPath
+		if entry.Outcome != shedengine.Stuck {
+			return latest, true, nil
+		}
+		info, err := os.Stat(findingsPath)
+		if err == nil {
+			if !fileWrittenBeforeSpawn(info.ModTime(), entry.StartedAt) {
+				latest.FindingsPath = findingsPath
+			}
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			return loomshed.DarnOutcome{}, false, err
 		}
@@ -149,6 +158,13 @@ func latestDarnOutcome(statusPath, statusLockPath, findingsPath string) (loomshe
 	}
 
 	return loomshed.DarnOutcome{}, false, nil
+}
+
+// fileWrittenBeforeSpawn reports whether a file last written at modTime is older than the spawn that began at startedAt.
+// A start time that is empty or not RFC 3339 cannot be compared, so the file is not counted older.
+func fileWrittenBeforeSpawn(modTime time.Time, startedAt string) bool {
+	started, err := time.Parse(time.RFC3339, startedAt)
+	return err == nil && modTime.Before(started)
 }
 
 // discussionRecordCheck returns the record check a recipe's agent rows run over the decision record.
@@ -263,6 +279,7 @@ func (c *loomCLI) treeScopeSettings(location *lymcwd.Location) (int, loomshed.Ve
 // the writer's seams, its table, and Preflight's stencils check.
 // That check builds the table a first spawn reads and refuses a marker of its stencils no value fills.
 // A stencil newer than the running binary, or a blank value, halts the run at Preflight, before any agent row.
+// The newer stencil's refusal keeps its own way forward alone.
 // It loads the hub-wide darn.yaml strictly.
 // So start, run, step and resume refuse an absent or malformed file before any row builds.
 // A malformed tree_scope key is refused with the editor way forward, since --set cannot remove a key the hub file holds.
@@ -322,12 +339,23 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 	}
 	c.env.DarnTable = darnTable
 	c.env.PreflightStencils = func() error {
-		table, err := darnTable(loomshed.DarnTold{})
+		table, err := c.env.DarnTable(loomshed.DarnTold{})
 		if err != nil {
-			return fmt.Errorf("build the darn writer table: %w; way forward: fix the config or model spec it names, then re-step", err)
+			return preflightTableError(err)
 		}
 		return table.CheckMarkers(stencilsDir, c.shuttleCfg.Engine)
 	}
 
 	return nil
+}
+
+// preflightTableError wraps a failed build of the darn writer's table for the Preflight stencils check.
+// A refusal of a stencil that a newer lym build wrote keeps its own way forward alone, since no config is at fault.
+// Any other build error gains the way forward that fixes the config or model spec it names.
+func preflightTableError(err error) error {
+	var newer *stencilstore.NewerBoardCopyError
+	if errors.As(err, &newer) {
+		return fmt.Errorf("build the darn writer table: %w", err)
+	}
+	return fmt.Errorf("build the darn writer table: %w; way forward: fix the config or model spec it names, then re-step", err)
 }

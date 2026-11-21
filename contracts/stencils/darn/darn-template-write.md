@@ -107,8 +107,9 @@ When the change is intended, leave it: only the run's parent amends the expectat
 When the task's board entry is labelled `bug`, the fix's test must fail before the fix.
 Write a test that reaches the bug through code the merge base already has, so it fails on the merge base and passes with the fix.
 Once you end your turn, the row's red-first gate runs the tests your diff adds or changes once on the merge base's code.
-It fails when every one of them passes there, when the diff adds or changes no test,
-and when it cannot judge them, as on a hub whose scoper is not go.
+It fails when every one of them passes there.
+When the diff adds or changes no test, or the check cannot judge them, as on a hub whose scoper is not go,
+it holds your handoff without spending an attempt until a new commit or your parent's record lands.
 When the bug has no seam a test can reach, or the check cannot judge it, send your parent `lym creel post --parent --expect-reply "<text>"` naming why,
 and ask it to record that with `lym loom decision add` under a title opening `No test seam`; then end your turn to wait.
 

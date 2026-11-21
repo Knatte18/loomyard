@@ -388,10 +388,11 @@ func TestBurlerFixProducer_Call_GateFailedAndChangedReviewArchiveTheWholeRound(t
 			wantFindings: "the gate's findings",
 		},
 		{
-			name:         "a passed gate removes a findings file left by an earlier call",
+			name:         "a passed gate keeps the findings file an earlier halt names",
 			result:       burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: true, Attempts: 1}},
 			keepFindings: true,
 			preWritten:   true,
+			wantFindings: "x",
 			finished:     true,
 		},
 		{name: "a changed review", err: burlerengine.ErrReviewChanged, wantErrIs: burlerengine.ErrReviewChanged, wantErrEnd: wayForwardToReview},

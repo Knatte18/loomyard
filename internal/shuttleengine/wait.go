@@ -558,6 +558,7 @@ func gateEntryError(name, problem string) error {
 // A resume refused or failed before its strand registers ends the loop, naming both failures.
 // Any other re-prompt send failure ends the loop.
 // A pending result sends its Send text when non-empty and keeps polling.
+// It sets the result's Delivered once the text is delivered.
 // A failed pending send warns once per entry and episode, naming the entry, the error and the closure's way-forward.
 // It logs Debug while it keeps failing and Info when it is delivered.
 // It leaves the entry pending and the writer at the boundary, and never ends the loop.
@@ -579,6 +580,9 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 			return Result{}, false, nil
 		}
 		run.failures.Recover(pendingKey, "shuttle: gate: pending send delivered again", "strandGUID", run.state.StrandGUID, "gate", run.gate[run.gatePendingAt].Name)
+		if run.gatePendingDelivered != nil {
+			*run.gatePendingDelivered = true
+		}
 		run.gateAtBoundary = false
 		run.boundaryHeld = false
 		return Result{}, false, nil
@@ -1840,6 +1844,7 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 	failedAt := -1
 	pendingAt := -1
 	pendingSend, pendingWayForward := "", ""
+	var pendingDelivered *bool
 	findingsPath, findings := "", ""
 	terminal, reason := false, ""
 	for i, entry := range run.gate {
@@ -1888,6 +1893,7 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 				pendingAt = i
 				pendingSend = result.Send
 				pendingWayForward = result.SendFailedWayForward
+				pendingDelivered = result.Delivered
 				break
 			}
 			if result.Passed {
@@ -1940,6 +1946,7 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 	run.gatePendingAt = pendingAt
 	run.gatePendingSend = pendingSend
 	run.gatePendingWayForward = pendingWayForward
+	run.gatePendingDelivered = pendingDelivered
 	return outcome, nil
 }
 

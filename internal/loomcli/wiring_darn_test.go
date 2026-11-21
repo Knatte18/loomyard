@@ -3,11 +3,12 @@
 // It covers the early refusals of a malformed or absent darn.yaml and the routing per recipe.
 // It covers the Darn-Write row's status and failure-record seams.
 // It covers which recipes tell the Drift expect agent a plan directory.
-// Every test is Tier 1: wire resolves no cwd and spawns no process over a hand-built hub.
+// Every test that calls wire is Tier 1: wire resolves no cwd and spawns no process over a hand-built hub.
 
 package loomcli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/samplerengine"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -243,6 +245,39 @@ func TestWire_DarnRecipe(t *testing.T) {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("c.env.PreflightStencils() = %q; want it to contain %q", err.Error(), want)
 			}
+		}
+	})
+
+	t.Run("the wired stencils check keeps a newer stencil's own way forward and adds the config clause to any other build error", func(t *testing.T) {
+		t.Parallel()
+		const configClause = "fix the config or model spec it names"
+		newer := &stencilstore.NewerBoardCopyError{Stencil: "darn-fragment-make-change-gated", WrittenBy: "newer-build", Running: "running-build"}
+		tests := []struct {
+			name             string
+			err              error
+			wantConfigClause bool
+		}{
+			{name: "a stencil a newer build wrote keeps its own way forward alone", err: fmt.Errorf("darn: DarnTable: Step 4 list: %w", newer)},
+			{name: "any other build error gains the config or model-spec way forward", err: errors.New("darn: DarnTable: writer model-spec: unknown alias"), wantConfigClause: true},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				c := wireDarnHub(t)
+				c.env.DarnTable = func(loomshed.DarnTold) (seatengine.Table, error) { return seatengine.Table{}, tt.err }
+
+				got := c.env.PreflightStencils()
+
+				if !errors.Is(got, tt.err) {
+					t.Fatalf("c.env.PreflightStencils() = %v; want it to wrap %v", got, tt.err)
+				}
+				if has := strings.Contains(got.Error(), configClause); has != tt.wantConfigClause {
+					t.Errorf("c.env.PreflightStencils() = %q; want the config clause %v", got.Error(), tt.wantConfigClause)
+				}
+				if n := strings.Count(got.Error(), "way forward:"); n != 1 {
+					t.Errorf("c.env.PreflightStencils() = %q names %d ways forward; want 1", got.Error(), n)
+				}
+			})
 		}
 	})
 
@@ -726,8 +761,10 @@ func TestLatestDarnOutcome(t *testing.T) {
 		status *shedengine.Status
 		// findingsKept writes the row's gate findings file before the read.
 		findingsKept bool
-		wantFound    bool
-		want         loomshed.DarnOutcome
+		// findingsWritten, when set, is the RFC 3339 time the kept findings file was last written.
+		findingsWritten string
+		wantFound       bool
+		want            loomshed.DarnOutcome
 		// wantFindings expects the outcome to name the kept findings file.
 		wantFindings bool
 		// invalidPath gives the findings path a NUL byte, so stat fails with an invalid-argument error on every platform.
@@ -743,12 +780,42 @@ func TestLatestDarnOutcome(t *testing.T) {
 			want:      loomshed.DarnOutcome{Outcome: shedengine.Done},
 		},
 		{
+			name:         "a Done latest entry names no findings file an earlier halt kept",
+			status:       &shedengine.Status{CurrentProducer: loomshed.NameFinalize, State: shedengine.StateRunning, History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck}, {Producer: loomshed.NameDarnWrite, Outcome: shedengine.Done}}},
+			findingsKept: true,
+			wantFound:    true,
+			want:         loomshed.DarnOutcome{Outcome: shedengine.Done},
+		},
+		{
 			name:         "a resumed run, its error cleared, names the kept findings",
 			status:       &shedengine.Status{CurrentProducer: loomshed.NameDarnWrite, State: shedengine.StateRunning, History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck}}},
 			findingsKept: true,
 			wantFound:    true,
 			want:         loomshed.DarnOutcome{Outcome: shedengine.Stuck},
 			wantFindings: true,
+		},
+		{
+			name: "a later Stuck whose own gate wrote no findings names no file an earlier halt kept",
+			status: &shedengine.Status{CurrentProducer: loomshed.NameDarnWrite, State: shedengine.StateRunning, History: []shedengine.HistoryEntry{
+				{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck, StartedAt: "2026-11-20T10:00:00Z"},
+				{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Done, StartedAt: "2026-11-20T11:00:00Z"},
+				{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck, StartedAt: "2026-11-20T12:00:00Z"},
+			}},
+			findingsKept:    true,
+			findingsWritten: "2026-11-20T10:30:00Z",
+			wantFound:       true,
+			want:            loomshed.DarnOutcome{Outcome: shedengine.Stuck},
+		},
+		{
+			name: "a Stuck whose own gate wrote the findings names the file",
+			status: &shedengine.Status{CurrentProducer: loomshed.NameDarnWrite, State: shedengine.StateRunning, History: []shedengine.HistoryEntry{
+				{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck, StartedAt: "2026-11-20T12:00:00Z"},
+			}},
+			findingsKept:    true,
+			findingsWritten: "2026-11-20T12:30:00Z",
+			wantFound:       true,
+			want:            loomshed.DarnOutcome{Outcome: shedengine.Stuck},
+			wantFindings:    true,
 		},
 		{
 			name:         "a Darn-Write reroute entry is skipped for the last real entry",
@@ -792,6 +859,15 @@ func TestLatestDarnOutcome(t *testing.T) {
 			if tt.findingsKept {
 				if err := os.WriteFile(findingsPath, []byte("verify failed"), 0o644); err != nil {
 					t.Fatalf("write the findings file: %v", err)
+				}
+			}
+			if tt.findingsWritten != "" {
+				written, err := time.Parse(time.RFC3339, tt.findingsWritten)
+				if err != nil {
+					t.Fatalf("parse findingsWritten: %v", err)
+				}
+				if err := os.Chtimes(findingsPath, written, written); err != nil {
+					t.Fatalf("Chtimes(%q) = %v; want nil", findingsPath, err)
 				}
 			}
 			if tt.invalidPath {

@@ -132,7 +132,9 @@ producers:
         # or changes fails on the merge base: it runs `lym gate red-first` over the row's gate key, which
         # runs those tests once on the merge base's code. An entry without the label passes it at once,
         # and so does a bug the parent recorded, with lym loom decision add, under a title opening
-        # "No test seam". It has no fixer: only the writer can make a test show the bug.
+        # "No test seam". A diff that adds no test, and a check that cannot judge the tests, hold the run
+        # without spending an attempt until a new commit or that record lands. It has no fixer: only the
+        # writer can make a test show the bug.
         - name: red-first
           attempts: 3
         # The drift gate runs the drift check over the committed code against the sealed expectation and

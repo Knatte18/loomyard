@@ -676,7 +676,7 @@ func TestVerify_PauseHold(t *testing.T) {
 		}},
 		{"a record naming HEAD's tree written during the stop's pause skips after the resume", false, func(t *testing.T, e *pauseEnv) {
 			out := stopAndWait(t, e)
-			tree, err := headTree(e.p.Worktree)
+			tree, err := HeadTree(e.p.Worktree)
 			if err != nil {
 				t.Fatal(err)
 			}

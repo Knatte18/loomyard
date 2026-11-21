@@ -458,12 +458,13 @@ type Run struct {
 	gateHeldAt      int
 	gateHeldSince   time.Time
 	// gatePending reports that the last real evaluation stopped at a pending entry, whose index is gatePendingAt;
-	// gatePendingSend and gatePendingWayForward carry that result's Send and SendFailedWayForward.
-	// Every real evaluation resets all four; Wait's helper clears the memo, so poll ticks re-evaluate on fresh state.
+	// gatePendingSend, gatePendingWayForward and gatePendingDelivered carry that result's fields of the same names.
+	// Every real evaluation resets all five; Wait's helper clears the memo, so poll ticks re-evaluate on fresh state.
 	gatePending           bool
 	gatePendingAt         int
 	gatePendingSend       string
 	gatePendingWayForward string
+	gatePendingDelivered  *bool
 	// gateAtBoundary is the turn-boundary state: the writer's last arrival was Done and the loop has sent it nothing since.
 	// It is false for a fresh run and for one AttachGated reconstructs, and becomes true at the first gated Done arrival;
 	// every gate send and every pending re-evaluation happens only while it is true.

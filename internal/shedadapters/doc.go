@@ -51,7 +51,8 @@
 //     The fix row's gate-failed exit is counted against its own MaxBounces.
 //     A gated producer told a findings path keeps an exhausted gate's findings in that file.
 //     The path is MultiLLMProducer.KeepGateFindings or BurlerHalfDeps.GateFindingsPath.
-//     Such a producer names the file in the Stuck reason and removes it on a call whose gate passed.
+//     Such a producer names the file in the Stuck reason and leaves it in place on a later call whose gate passed,
+//     so a halt never names a removed file.
 //     Both rows are gate carriers.
 //     The review row's hand-on pointer carries the gate count and spans of the reviewer's review-parse gate.
 //     That holds for a spawned and a resumed review alike.

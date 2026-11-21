@@ -339,7 +339,7 @@ func Verify(ctx context.Context, p Paths, site Site, command string) (Result, er
 			return Result{Status: StatusDirty, Dirty: dirty}, nil
 		}
 
-		tree, err := headTree(p.Worktree)
+		tree, err := HeadTree(p.Worktree)
 		if err != nil {
 			return Result{}, err
 		}
@@ -444,7 +444,7 @@ func runAndRecord(ctx context.Context, p Paths, site Site, command, tree, commit
 
 	// A commit that landed mid-run means the command may have read a tree other than the one it started on,
 	// so the pass is not recorded.
-	afterTree, err := headTree(p.Worktree)
+	afterTree, err := HeadTree(p.Worktree)
 	if err != nil {
 		return Result{}, false, err
 	}
@@ -539,8 +539,8 @@ func runnerCrashDetail(logPath string) (bool, string) {
 	return true, "gate test runner crashed with no failing test: " + runs
 }
 
-// headTree returns HEAD's tree SHA in worktree.
-func headTree(worktree string) (string, error) {
+// HeadTree returns HEAD's tree SHA in worktree, so a caller can tell whether the tree a verify judged is still HEAD's.
+func HeadTree(worktree string) (string, error) {
 	out, err := gitexec.Run([]string{"rev-parse", "HEAD^{tree}"}, worktree)
 	if err != nil {
 		return "", fmt.Errorf("verifytree: resolve HEAD tree in %s: %w", worktree, err)

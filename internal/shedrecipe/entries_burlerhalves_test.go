@@ -851,7 +851,7 @@ func TestBurlerHalfEntries_RunDirectory(t *testing.T) {
 		})
 	}
 
-	t.Run("ReviewWhoseGatePassedRemovesTheRowsFindingsFile", func(t *testing.T) {
+	t.Run("ReviewWhoseGatePassedKeepsTheRowsFindingsFile", func(t *testing.T) {
 		env := newTestEnv(t)
 		withGateFindingsFile(&env, t.TempDir())
 		env.Burler = &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{{
@@ -873,8 +873,9 @@ func TestBurlerHalfEntries_RunDirectory(t *testing.T) {
 
 		shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 
-		if _, err := os.Stat(findings); !os.IsNotExist(err) {
-			t.Errorf("os.Stat(%q) error = %v; want the findings file removed", findings, err)
+		const earlierFindings = "an earlier call's findings"
+		if got, err := os.ReadFile(findings); err != nil || string(got) != earlierFindings {
+			t.Errorf("os.ReadFile(%q) = %q, %v; want the earlier findings %q kept", findings, got, err, earlierFindings)
 		}
 	})
 

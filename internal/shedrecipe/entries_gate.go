@@ -59,8 +59,9 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // "judgement" returns driftengine.NewJudgementGate over env.Drift, which reads only its Paths and requires no seam;
 // "red-first" requires the absolute env.WorktreeRoot, env.VerifyDir and env.DecisionRecordPath,
 // and the non-nil env.EntryLabels and env.RedFirstCommand;
-// it returns loomshed.NewRedFirstGate over the call env.RedFirstCommand renders for the row's gate key;
+// it returns loomshed.NewRedFirstGate's closures over the call env.RedFirstCommand renders for the row's gate key;
 // the site label is "<row name> red-first gate" and the hold is env.VerifyHold;
+// its entry is MayHold, since the gate holds the run on a refusal its writer may not lift, and carries the gate's Final;
 // any other value is an error naming the key and every legal value.
 // A name may appear once per list.
 //
@@ -147,11 +148,21 @@ func resolveGateEntry(entry, row, gateKey string, index int, elem Config, env En
 	if err != nil {
 		return shuttleengine.GateEntry{}, wrap(err)
 	}
-	closure, err := resolvePlainGateClosure(entry, row, gateKey, index, name, env)
-	if err != nil {
-		return shuttleengine.GateEntry{}, err
+	var closure, final shuttleengine.Gate
+	if name == "red-first" {
+		redFirst, err := resolveRedFirstGate(entry, row, gateKey, env)
+		if err != nil {
+			return shuttleengine.GateEntry{}, err
+		}
+		closure, final = redFirst.Gate, redFirst.Final
+	} else {
+		closure, err = resolvePlainGateClosure(entry, row, gateKey, index, name, env)
+		if err != nil {
+			return shuttleengine.GateEntry{}, err
+		}
 	}
-	resolved := shuttleengine.GateEntry{Name: name, Gate: closure, Attempts: attempts, PassOnCap: passOnCap}
+	// Only the red-first gate carries a Final closure, and its Gate answers pending, so its entry holds.
+	resolved := shuttleengine.GateEntry{Name: name, Gate: closure, Final: final, MayHold: final != nil, Attempts: attempts, PassOnCap: passOnCap}
 	if name == "verify" && env.VerifyReach != nil {
 		resolved.Rerun = &shuttleengine.RerunMark{}
 		resolved.Gate = verifytree.WithReachTurn(closure, verifytree.ReachTurn{
@@ -318,22 +329,26 @@ func resolvePlainGateClosure(entry, row, gateKey string, index int, name string,
 		return driftengine.NewExpectationGate(driftDepsFrom(env)), nil
 	case "judgement":
 		return driftengine.NewJudgementGate(driftDepsFrom(env)), nil
-	case "red-first":
-		for _, root := range []struct{ field, value string }{
-			{"WorktreeRoot", env.WorktreeRoot}, {"VerifyDir", env.VerifyDir}, {"DecisionRecordPath", env.DecisionRecordPath},
-		} {
-			if err := requireAbsRoot(entry, root.field, root.value); err != nil {
-				return nil, err
-			}
-		}
-		if err := requireSeam(entry, "EntryLabels", env.EntryLabels); err != nil {
-			return nil, err
-		}
-		if err := requireSeam(entry, "RedFirstCommand", env.RedFirstCommand); err != nil {
-			return nil, err
-		}
-		return loomshed.NewRedFirstGate(env.WorktreeRoot, env.VerifyDir, row+" red-first gate", env.RedFirstCommand(gateKey), env.EntryLabels, env.DecisionRecordPath, env.VerifyHold), nil
 	default:
 		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q, %q, %q, %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "clean", "discussion", "plan", "parts", "raddle", "description", "verify", "drift", "expectation", "judgement", "red-first", name)
 	}
+}
+
+// resolveRedFirstGate checks the Env the "red-first" gate requires and returns its closures.
+// They run the call env.RedFirstCommand renders for gateKey, labelled "<row> red-first gate" and held by env.VerifyHold.
+func resolveRedFirstGate(entry, row, gateKey string, env Env) (loomshed.RedFirstGate, error) {
+	for _, root := range []struct{ field, value string }{
+		{"WorktreeRoot", env.WorktreeRoot}, {"VerifyDir", env.VerifyDir}, {"DecisionRecordPath", env.DecisionRecordPath},
+	} {
+		if err := requireAbsRoot(entry, root.field, root.value); err != nil {
+			return loomshed.RedFirstGate{}, err
+		}
+	}
+	if err := requireSeam(entry, "EntryLabels", env.EntryLabels); err != nil {
+		return loomshed.RedFirstGate{}, err
+	}
+	if err := requireSeam(entry, "RedFirstCommand", env.RedFirstCommand); err != nil {
+		return loomshed.RedFirstGate{}, err
+	}
+	return loomshed.NewRedFirstGate(env.WorktreeRoot, env.VerifyDir, row+" red-first gate", env.RedFirstCommand(gateKey), env.EntryLabels, env.DecisionRecordPath, env.VerifyHold), nil
 }

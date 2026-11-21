@@ -766,8 +766,8 @@ func requireAcceptedReviewRecorded(t *testing.T, engine string) {
 
 	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 
-	if _, err := os.Stat(spec.gateFindingsPath); !os.IsNotExist(err) {
-		t.Errorf("findings file stat error = %v; want it removed by a review whose gate passed", err)
+	if got, err := os.ReadFile(spec.gateFindingsPath); err != nil || string(got) != "x" {
+		t.Errorf("findings file = %q, %v; want the earlier halt's %q kept by a review whose gate passed", got, err, "x")
 	}
 	if ptr.Path != roundReviewPath(runDir, 1) || !ptr.BudgetExempt || ptr.GateAttempts == nil || *ptr.GateAttempts != 1 {
 		t.Errorf("Call() pointer = %+v; want round 1's review, BudgetExempt and the review gate's one attempt", ptr)

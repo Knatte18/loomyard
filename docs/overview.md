@@ -1103,6 +1103,7 @@ User-facing modules each get one `lym <module>` namespace:
   its `drift` gate entry checks the code's changes against that expectation.
   For an entry labelled `bug`, its `red-first` gate entry runs `lym gate red-first` and holds the handoff until a test the diff adds or changes fails on the merge base,
   unless the parent recorded an added decision titled `No test seam`;
+  a diff with no test, or a check that cannot judge the tests, holds the handoff without spending an attempt until a new commit or that record;
   the fix's commit carries a `Root-Cause:` trailer that the `Code-Review` perch checks.
   `Drift-Verify` checks the writer's code by containment and has a judge rule on the expected changes.
   The judge also rules on each loosened check, an assertion, tolerance or limit widened in a test existing at the review base, as caused or uncaused.

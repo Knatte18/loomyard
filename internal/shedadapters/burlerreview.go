@@ -57,7 +57,7 @@ type BurlerHalfDeps struct {
 	// RequiresFans makes the fix producer read the review producer's recorded fan names and refuse a round with none.
 	RequiresFans bool
 	// GateFindingsPath is the file an exhausted gate's findings are kept in and the Stuck reason names;
-	// the producer removes it on a call whose gate passed.
+	// a later call whose gate passed leaves it in place.
 	// Empty keeps no findings file.
 	GateFindingsPath string
 	// NotifyParent posts one line to the run's parent.
@@ -157,7 +157,7 @@ type BurlerReviewProducer struct {
 	diff func() (string, error)
 	// rubric, when non-nil, reads each round's rubric.
 	rubric func() (string, error)
-	// gateFindingsPath, when non-empty, is the file cleared once the review's gate has passed.
+	// gateFindingsPath, when non-empty, is the file an exhausted gate's findings are kept in.
 	gateFindingsPath string
 	profile          burlerengine.Profile
 	opts             burlerengine.RunOpts
@@ -557,9 +557,6 @@ func (p *BurlerReviewProducer) acceptedExit(ctx context.Context, round int, resu
 	p.parentAsker().settle(round, parentAsk, roundReviewPath(p.runDir, round))
 	if cerr := cancelErr(ctx, p.name, burlerReviewEngineLabel); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
-	}
-	if result.Gate != nil && result.Gate.Passed {
-		clearGateFindings(p.gateFindingsPath)
 	}
 	review, _ := p.models.Pick(round)
 	half := reviewHalfUsage(review, result.Review)

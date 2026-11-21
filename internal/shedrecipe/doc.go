@@ -207,6 +207,8 @@
 // It holds it until a test the diff adds or changes fails on the merge base.
 // The parent may instead record a decision titled `No test seam`.
 // That fits a bug no test can reach, or a check that cannot judge the tests.
+// A diff that adds no test, and a check that cannot judge the tests, hold the run without spending an attempt.
+// The hold lasts until a new commit or that record, so its entry is MayHold.
 // It reads the entry's labels through Env.EntryLabels at each arrival.
 // It runs the call Env.RedFirstCommand renders for the row's gate key.
 // An entry without the label passes at once.

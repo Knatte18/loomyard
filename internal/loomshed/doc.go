@@ -173,9 +173,13 @@
 // That entry is the parent's recorded stop for a bug no test can reach.
 // Exit 0 passes.
 // Exit gateslot.RedFirstGreenExit fails with the way forward of a test that passed on the merge base.
-// Exit gateslot.RedFirstNoTestExit fails with the way forward of a diff that adds or changes no test;
-// it names the `lym creel post --parent --expect-reply` ask for the parent's no-test-seam record.
-// Exit gateslot.RedFirstUnjudgedExit fails with that same ask, for a hub whose scoper is not go.
+// Exit gateslot.RedFirstNoTestExit, a diff that adds or changes no test, holds the run without spending an attempt.
+// So does exit gateslot.RedFirstUnjudgedExit, a hub whose scoper is not go.
+// The hold lasts until a new commit or the parent's no-test-seam record.
+// Its first arrival sends the writer one line with the way forward.
+// That line names the `lym creel post --parent --expect-reply` ask for that record.
+// An arrival on the same HEAD tree runs nothing.
+// The entry's Final closure answers either exit as a failure naming the same way forward.
 // Any other exit code, a timeout or a runner crash judged no test and fails terminally.
 // A labels or record read error is the gate's returned error.
 //
@@ -215,7 +219,8 @@
 // The producer removes the condition stop marker before each session too.
 // The note, written in Go, is told whenever the run's history holds a Darn-Write entry.
 // It says the change is already under way on the task branch.
-// It names that entry's outcome and the row's kept gate findings file when one exists.
+// It names that entry's outcome,
+// and the row's kept gate findings file only when that entry is a Stuck the file postdates.
 // It lets a decision recorded after the Discussion win over a finding it forbids fixing.
 // It reads no halt reason, because the shed's resume write clears the status error before the row is called.
 // Each Darn-Write gate entry re-prompts with DarnGateReprompt's line.

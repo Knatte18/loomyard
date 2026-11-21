@@ -66,7 +66,8 @@ type DarnTold struct {
 type DarnOutcome struct {
 	// Outcome is the result the history entry recorded for the spawn.
 	Outcome shedengine.Outcome
-	// FindingsPath is the row's kept gate findings file, which holds the last failed gate's text; empty when none is kept.
+	// FindingsPath is the row's kept gate findings file, which holds the last failed gate's text.
+	// It is empty when no file is kept, when the entry is not a Stuck, or when the file predates the Stuck's spawn.
 	FindingsPath string
 }
 

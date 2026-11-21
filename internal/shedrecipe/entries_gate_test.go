@@ -417,6 +417,17 @@ func TestResolveGateSpec_RedFirstRendersTheCallOfTheRowsOwnGateKey(t *testing.T)
 	}
 }
 
+func TestResolveGateSpec_RedFirstEntryMayHoldAndCarriesAFinal(t *testing.T) {
+	tiergate.Require(t, 0)
+	spec, err := resolveGateSpec("Row", gatesCfg("red-first", 3), newTestEnv(t))
+	if err != nil {
+		t.Fatalf("resolveGateSpec() error = %v; want nil", err)
+	}
+	if !spec[0].MayHold || spec[0].Final == nil {
+		t.Errorf("resolveGateSpec()[0] MayHold = %v, Final set = %v; want true, true, since the gate holds the run on a refusal its writer may not lift", spec[0].MayHold, spec[0].Final != nil)
+	}
+}
+
 func TestResolveGateSpec_CleanRequiresAbsoluteWorktreeRoot(t *testing.T) {
 	tiergate.Require(t, 0)
 	for _, root := range []string{"", "relative/worktree"} {

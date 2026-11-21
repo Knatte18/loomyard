@@ -330,9 +330,6 @@ func (p *BurlerFixProducer) fixedExit(ctx context.Context, round int, result bur
 		logger.Warn("shedadapters: burler fix's gate did not pass", "producer", p.name, "engine", burlerFixEngineLabel, "round", round, "attempts", result.Gate.Attempts, "findingsPath", result.Gate.FindingsPath)
 		return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate), GateSpans: gateSpansOf(result.Gate), Reason: gateFailedReason(result.Gate, p.gateFindingsPath)}, nil
 	}
-	if result.Gate != nil {
-		clearGateFindings(p.gateFindingsPath)
-	}
 	if cerr := cancelErr(ctx, p.name, burlerFixEngineLabel); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
 	}
