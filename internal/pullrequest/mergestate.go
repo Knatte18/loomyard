@@ -93,6 +93,12 @@ func ReadMergeState(ctx context.Context, api API, number int, wantHead, base str
 	}, nil
 }
 
+// MergeabilityUncomputed reports whether the only thing stopping the merge is that GitHub has not computed mergeability.
+// Such a state is pending, not a definite refusal: the pull request is open, not a draft, and at the expected head.
+func (s MergeState) MergeabilityUncomputed() bool {
+	return s.State == StateOpen && s.MergeableState == mergeableUnknown && len(s.Causes) == 1
+}
+
 // mergeCauses names every reason a pull request in status cannot merge with wantHead as its head.
 // The reasons come in the order a reader fixes them.
 // A pull request not open gets no mergeable_state cause, since GitHub's mergeable_state says nothing of one.

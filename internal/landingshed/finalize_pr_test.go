@@ -313,9 +313,16 @@ func TestFinalize_PullRequest(t *testing.T) {
 			name: "AMergeabilityGitHubNeverComputesHaltsNamingItAfterTheWindow", parentMode: "on", record: recorded(),
 			scripts:     map[string][]scriptedCall{"Status": {open, openAt("unknown")}, "Merge": {notMergeable}},
 			wantOutcome: shedengine.Stuck, wantHalt: true,
-			wantReason: []string{"Pull Request is not mergeable", "GitHub reports: GitHub has not yet computed whether it can merge", "lym loom resume"},
+			wantReason:      []string{"Pull Request is not mergeable", "GitHub reports: GitHub has not yet computed whether it can merge", "lym loom resume"},
+			wantNotInReason: []string{"approves", "lym batten cancel"},
 			// The reading sleeps 1, 2, 4, 8, 16 and then 29 seconds, the rest of the minute, so it reads the status seven times.
 			wantCalls: slices.Concat([]string{"Status 7", wantGitHubMerge}, slices.Repeat([]string{"Status 7"}, 7), []string{"RequiredChecks main task-head"}),
+		},
+		{
+			name: "AFailedMergeStateReadAfterANotMergeableRefusalHaltsAndMergesNoSecondTime", parentMode: "on", record: recorded(),
+			scripts:     map[string][]scriptedCall{"Status": {open, {err: errors.New("404 Not Found")}}, "Merge": {notMergeable}},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"read whether the pull request can merge", "404 Not Found"},
+			wantCalls: []string{"Status 7", wantGitHubMerge, "Status 7"},
 		},
 		{
 			name: "ARefusalThatOutlastsTheWindowWhileGitHubReportsItCanMergeHaltsNamingOnlyTheResume", parentMode: "on", record: recorded(),

@@ -18,7 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-// prMergeRetryWindow is how long a merge GitHub refuses as pending is retried under the lock.
+// prMergeRetryWindow is how long the retries of a pending refusal,
+// and of a refusal whose merge-state reading says the pull request can merge, are scheduled under the lock.
 const prMergeRetryWindow = pullrequest.MergeRetryWindow
 
 // prLanding is what the decision about the run's pull request hands the landing.
@@ -457,7 +458,8 @@ func pullRequestCommitTitle(title string, number int) string {
 // the commit message is the message passed in.
 // A merge that GitHub refuses as pending is retried for up to `prMergeRetryWindow`, on `PullRequest.Now`'s clock.
 // Any other refusal but a method one has GitHub's merge state read, waiting out a mergeability not yet computed;
-// the merge is retried within the same window while that state reports the pull request can merge.
+// the merge is retried while that state reports the pull request can merge, scheduled only while the window has not passed.
+// Each merge-state reading can wait up to a further window, so Finalize halts within about two windows.
 // It then fetches the parent's upstream and fast-forwards the parent pair to it,
 // so the parent-side merge that follows finds the parent holding the task's work.
 // It returns nil when the landing goes on; each halt opens with LandingStopPrefix.
@@ -568,9 +570,12 @@ func (fz *Finalize) openAtOnce(ctx context.Context, api pullrequest.API, head, t
 // mergeRefusalReason is the Stuck reason for a merge GitHub refused for good.
 // It also covers a merge GitHub kept refusing as pending past the retry window.
 // A method refusal names the squash setting, or the repository's settings for a parent that always squashes.
-// A beam's refusal never names a cancel: it names GitHub's message, the pull request's status verb and the resume.
+// A beam's refusal never names a cancel: it names GitHub's message, the pull request's status verb and the resume,
+// except that a refusal outlasting the window while GitHub reports the pull request can merge names the resume alone.
 // state is GitHub's merge state read after the refusal, nil when none was read;
-// each cause it names follows GitHub's message, and a state that can merge names the resume alone.
+// each cause it names follows GitHub's message.
+// A state that can merge names the resume alone;
+// a state whose only cause is a mergeability GitHub has not computed names waiting for it, with no approval or cancel.
 func (fz *Finalize) mergeRefusalReason(landing prLanding, refusal *pullrequest.MergeRefusal, state *pullrequest.MergeState) string {
 	rec := landing.record
 	reported := ""
@@ -579,6 +584,13 @@ func (fz *Finalize) mergeRefusalReason(landing prLanding, refusal *pullrequest.M
 			return fmt.Sprintf("GitHub refused to merge pull request %s: %s, yet GitHub now reports it can merge; way forward: run lym loom resume, which retries the merge", rec.URL, refusal.Message)
 		}
 		reported = "; GitHub reports: " + strings.Join(state.Causes, ", ")
+		if state.MergeabilityUncomputed() {
+			wait := "wait until GitHub computes whether the pull request can merge"
+			if fz.deps.PullRequest.BeamRecord != nil {
+				wait += fmt.Sprintf(", which lym beam pr status %s shows", fz.deps.Slug)
+			}
+			return fmt.Sprintf("GitHub refused to merge pull request %s: %s%s; way forward: %s, then run lym loom resume", rec.URL, refusal.Message, reported, wait)
+		}
 	}
 	if fz.deps.PullRequest.BeamRecord != nil {
 		check := fmt.Sprintf("check the pull request with lym beam pr status %s, then run lym loom resume", fz.deps.Slug)
