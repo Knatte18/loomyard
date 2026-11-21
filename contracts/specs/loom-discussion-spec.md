@@ -119,6 +119,19 @@ The Discussion-Write and Discussion-Burler-Fix gates halt on a quarry outage as 
 - **No italic prose-coaching.**
   Write terse, structured prose the plan writer can act on, not a template with meta-commentary about how to fill it in.
 
+### A bug entry's record
+
+The Discussion-Write lead's record for a `bug` entry states up front what the red-first gate later checks:
+
+- `## Goal` names the observed fault and the steps that reproduce it.
+- `## Constraints` states the root cause and the evidence it rests on, or names what is still unknown about it.
+- An `## Acceptance criteria` bullet names the test that fails on the merge base and passes after the fix,
+  or states why no test seam exists.
+  The test reaches the bug through code the merge base already has.
+
+A record's statement that no test seam exists does not lift the red-first gate;
+only the parent's `### Added after Discussion` entry whose title opens `No test seam` does.
+
 ### Parts no writer authors
 
 - `### Added after Discussion (<by>, <date>): <title>` entries under `## Decisions` are appended only by `lym loom decision add`.

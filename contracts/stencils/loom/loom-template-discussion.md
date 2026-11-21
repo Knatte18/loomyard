@@ -99,6 +99,12 @@ Cover:
   Phrase each acceptance criterion as behavior a test can check;
   a criterion about wording in a stencil, spec, doc or other prose is a review check, marked as the discussion spec's acceptance-criteria rule says, never a test of that prose.
 
+When the entry is labelled `bug`, the design also settles the observed fault and how to reproduce it,
+its root cause or what is still unknown about it,
+and the test that will fail on the merge base and pass after the fix, or why no test seam exists.
+The fault and its cause are facts Step 2 researches, never interview questions;
+the record states all three as the discussion spec's bug-entry rule says.
+
 For every question, give your **recommended answer**.
 Where there are distinct viable approaches, propose 2–3 with explicit trade-offs, leading with the recommendation.
 Challenge the problem itself, not just the proposed solution — "is this the right thing to build" is always a valid question.
