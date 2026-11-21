@@ -8,6 +8,7 @@
 // A yes marked MergeAtOnce is opened and squash-merged at once with no review.
 // A `merge-in` field is a no marked TrueMerge, so the beam keeps the parent's commit as an ancestor.
 // GitHub's rules that require a pull request count as a required parent whatever beam.yaml and the field say.
+// A repository whose plan has no repository rules has none, so GitHub's 403 for it reads as no rule, never a failure.
 // Bound: a rule the read misses ends in a direct push GitHub refuses.
 // So does branch protection set outside repository rules.
 //

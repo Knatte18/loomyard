@@ -14,6 +14,8 @@
 // NewWithClient binds a told client, which tests point at an httptest server.
 // The API interface lists the calls a caller makes, so a test of the caller fakes GitHub behind it.
 // Each call takes the caller's context, and githubclient's own per-request time bound applies as well.
+// The branch rules reads take GitHub's 403 for a repository whose plan has no rules as no rules,
+// whatever the token.
 // SetDraft uses GraphQL, since the REST API cannot change a pull request's draft state.
 // An error GitHub lists in the GraphQL response is a failure.
 // Status reads the state (merged wins over closed), the head SHA and whether the pull request is a draft.

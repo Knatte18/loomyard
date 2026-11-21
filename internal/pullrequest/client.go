@@ -18,6 +18,21 @@ import (
 // listPageSize is the page size the list calls request, GitHub's maximum.
 const listPageSize = 100
 
+// planGatedMessagePrefix opens GitHub's message on a 403 for a feature the repository's plan lacks.
+// Repository rules on a private repository under a free plan are one such feature.
+const planGatedMessagePrefix = "Upgrade to GitHub"
+
+// rulesFeatureUnavailable reports whether err is GitHub's 403 for a repository whose plan has no repository rules.
+// GitHub answers it for every token, so it says nothing about the token;
+// a repository without the rules feature has no rules.
+func rulesFeatureUnavailable(err error) bool {
+	var resp *github.ErrorResponse
+	if !errors.As(err, &resp) || resp.Response == nil {
+		return false
+	}
+	return resp.Response.StatusCode == http.StatusForbidden && strings.HasPrefix(resp.Message, planGatedMessagePrefix)
+}
+
 // State is where a pull request stands on GitHub.
 type State string
 
@@ -296,10 +311,14 @@ func (c *Client) graphQL(ctx context.Context, query string, variables map[string
 
 // RequiresPullRequest reports whether the repository rules active on branch include a pull_request rule.
 // It reads the rules one page at a time and stops at the first page with a pull_request rule.
+// A repository whose plan has no repository rules has none, so GitHub's 403 for it reads as false.
 func (c *Client) RequiresPullRequest(ctx context.Context, branch string) (bool, error) {
 	opts := &github.ListOptions{PerPage: listPageSize}
 	for {
 		rules, resp, err := c.gh.Repositories.GetRulesForBranch(ctx, c.owner, c.repo, branch, opts)
+		if rulesFeatureUnavailable(err) {
+			return false, nil
+		}
 		if err != nil {
 			return false, fmt.Errorf("pullrequest: read the rules active on branch %s: %w", branch, err)
 		}
@@ -319,11 +338,15 @@ func (c *Client) RequiresPullRequest(ctx context.Context, branch string) (bool, 
 // A pending commit status reads as unfinished, with an empty conclusion.
 // A context with neither is reported as missing.
 // When base requires no status checks, it returns no checks, without reading check runs or commit statuses.
+// A repository whose plan has no repository rules requires none, so GitHub's 403 for it reads as no checks.
 func (c *Client) RequiredChecks(ctx context.Context, base, head string) ([]Check, error) {
 	var contexts []string
 	ruleOpts := &github.ListOptions{PerPage: listPageSize}
 	for {
 		rules, resp, err := c.gh.Repositories.GetRulesForBranch(ctx, c.owner, c.repo, base, ruleOpts)
+		if rulesFeatureUnavailable(err) {
+			return nil, nil
+		}
 		if err != nil {
 			return nil, fmt.Errorf("pullrequest: read the rules active on branch %s: %w", base, err)
 		}
