@@ -11,24 +11,17 @@
 // # Seams
 //
 // Every outside effect goes through a deps value that the command closes over, never a package-level variable.
-// The file seam locates the machine file and its lock; the hostname seam gives the hostname rule's name of this host.
-// The start seams list and look up the live hubs and read each hub's start deps.
-// They also run the `lym beam start` child and open the workspace file, the terminal windows and the desktop.
-// Tests build a deps by hand, so each hands in a file path under its own temporary directory.
-// None reads or writes the developer's machine file, hubs or desktop.
+// Tests build a deps by hand, so none reads or writes the developer's machine file, hubs or desktop.
 //
 // # Start
 //
 // `lym machine start [<shortname>]` brings back what this machine owns, from any directory.
 // It reaches every hub hubregistry.Live lists, or the one hub hubregistry.Lookup resolves for shortname.
 // Per hub it pulls the board, then reads the owners and the hold from the local board.
-// It reads the machine names through the registry.
-// It sorts the worktrees dobbyengine.OwnedWorktrees lists over the hub's prime, with hubgeom.DobbyStart's owner reads.
 // A prime or beam another machine owns is skipped, naming that machine and `lym adopt`.
 // One with no recorded owner is skipped too, since dobbyengine.EnsureLive would claim a prime with none.
 // The hub's owned beams still start.
 // The rest start through `lym beam start` in the hub's prime.
-// The child is named through selfexec.LymBinary, logged and waited on.
 // The prime starts with `--all` when this machine owns it, which brings up every owned beam with it.
 // Otherwise each owned beam starts by its slug, with the hidden `--no-prime-claim` flag,
 // so no child claims a prime that has no recorded owner.
@@ -39,9 +32,6 @@
 // It also opens one terminal window per started worktree running `lym reed attach`, through termwindow.
 // A started worktree whose window does not open carries its attach command in the result.
 // So does every started worktree when no launcher resolves.
-// The result lists every worktree under `worktrees`, each with a `line` of its outcome, detail and attach command.
-// Each hub carries a `line` of its hold.
-// The readable summary of a terminal prints those lines.
 // A standing Bolt hold is printed with its machine and subjects.
 // For this machine's own hold it also prints the `lym adopt <subjects>` re-run.
 // It keeps the desktop launchers internal/desktoplauncher writes.
@@ -86,7 +76,6 @@
 // The verb then exits non-zero.
 // A hub whose registration fails is not swept.
 // The re-run with the same name finishes the registration and the sweep and leaves the machine file as it is.
-// The result lists the recoveries each state needs.
 //
 // # Forget
 //

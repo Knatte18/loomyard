@@ -13,35 +13,24 @@
 // `tree_scope` is an open map, which ConfigOpenMaps names.
 // LoadConfig loads the unit strictly through `configengine`, then runs CheckValues over the resolved document.
 // It normalizes `tree_scope` through the one tree-key rule darn's `tree_scope` takes.
-// CheckValues refuses a `concurrency`, `live_attempts`, `verify_attempts` or `hard_max_bounces` below 1.
-// It refuses a negative `max_bounces`.
-// It refuses a `reviewer`, `fixer`, `judge` or `seed` entry whose model-spec does not parse.
 // A refusal of LoadConfig names the write for the layer the value comes from, then `lym loom resume`.
 //
 // # Campaign check
 //
 // CheckCampaign is Preflight's check of a campaign, and returns the first refusal in a fixed order.
 // Each refusal names its way forward and ends with `lym loom resume`.
-// It refuses a campaign with no package or a package the worktree lacks, and a live gate key the hub did not set.
-// It refuses a live key naming the billed tier, and a copies key naming more than one tier while copies run.
-// It refuses a package holding no test of a tier a live key runs.
-// It refuses a reviewer list that repeats a model in neighbouring rounds, and a soft round cap above the hard one.
 // Copies run when the live tests drive no LLM session and the concurrency is above 1.
 // Rotate expands a per-round model list cyclically, so a round past the list's length never clamps to its last entry.
 //
 // # Live gate
 //
 // NewLiveGate is Go's independent check of each fix round, run through `lym gate test` calls that take their own slots.
-// Each call runs the `harden-live` key once.
-// It then runs the `harden-live-copies` key with the configured copies.
-// That second run is made only when the live tests drive no LLM session and the concurrency is above 1.
+// Each call runs the `harden-live` key once, then the `harden-live-copies` key when copies run.
 // The gate names keys only, never a tier.
 // It writes the round's live report, `harden-live-<round>.json` in the run directory.
 // ReadLiveReport is the report's sole reader.
 // The report's mark is red when the `harden-live` run failed or started no test binary, and green otherwise.
 // A copies run never changes the mark: a red copies run, one that started none and a refused one are recorded beside it.
-// A red report lists the `harden-live` run's failing lines as deferred findings.
-// The report also names the packages whose test files hold no `tmuxkit.Main(` call, as outside the stray-state cover.
 // A refused `harden-live` call, or a call that could not run, is returned as an error and writes no report.
 //
 // # Sandbox hubs
@@ -49,8 +38,6 @@
 // NewSandbox makes a throwaway hub for the live tests, writing only under the run's sandbox root.
 // SandboxRoot derives that root from the worktree root, so every process of a run names the same directory.
 // The package names the hub's two bares by role, the code bare and the records bare, and never by side name.
-// A hub is made in a container of its own: the bares are seeded, the hub is cloned, and the sandbox config is committed.
-// The `.dev-bin` lym is rebuilt only when its revision is not the worktree HEAD's or it is marked modified.
 // The root's hub list, `hubs.json`, records every hub made, and ListSandbox reads it alone.
 // A failure after the container is made removes the container before the error returns.
 //
@@ -63,8 +50,6 @@
 // Only a process that names the root and that no record names is ended as an orphan, never the caller or its ancestors.
 // A process names the root through its working directory, executable or command line,
 // and the root counts both as written and with its links resolved, the form the kernel reports a working directory in.
-// It returns one StrayEntry per server and process it found.
-// A ReapStart entry is marked as left by an interrupted row.
 // Off Linux the process scan is skipped and only the servers are stopped.
 // Every entry under the root but the hub list is removed, so no bare repository is left for a cleanup to refuse.
 //
@@ -72,15 +57,10 @@
 //
 // WrapRow decorates a Harden round row, a RowReview or a RowFix, with a reap at its start and at its end.
 // It fixes the row's round once, at the start of the call, so a resumed row keeps the round it began.
-// A review row writes the round's models file, `harden-models-<round>.json`.
-// A fix row records the head it first started at in the round's head file, `harden-head-<round>.json`.
+// A fix row records the head it first started at in the round's head file.
 // A call resumed after a crash reuses that head, so the commits file lists every commit the round's calls made.
-// A fix row writes the round's commits file, `harden-commits-<round>.json`, when its call returned no error.
-// Every reap adds its strays to the round's stray report, `harden-strays-<round>.json`.
-// A fix row whose call returned no error then archives the round through ArchiveRound.
-// ArchiveRound copies the round's files and the latest Bouncer ledger into `_lym/harden/round-<round>/` and commits them.
-// It replaces the directory, so a second archive of one round is harmless.
-// ArchiveFinalLedger copies the latest ledger into `_lym/harden/`.
+// A fix row whose call returned no error writes the commits file and then archives the round through ArchiveRound.
+// ArchiveRound replaces the round's archive directory, so a second archive of one round is harmless.
 //
 // # Method
 //

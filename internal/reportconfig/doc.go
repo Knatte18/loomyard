@@ -8,7 +8,6 @@
 // So the key is classified cross-pair, and a worktree's local override cannot set it.
 //
 // LoadConfig degrades to the template when the hub holds no report.yaml.
-// A report therefore never fails on a hub not yet reconciled.
 // The module sits apart from the report engine because configreg registers its template,
 // and the engine already reaches configreg through its own imports.
 // LoadConfig never resolves cwd itself: the caller hands it the directories (see PATTERN-cwd-resolution).

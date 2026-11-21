@@ -1,5 +1,3 @@
-// doc.go carries the package-level doc comment for internal/testreach.
-
 // Package testreach is the one cross-package reader of the per-test coverage maps of internal/testcover.
 // It runs no git: a caller hands it the file contents of each side it compares.
 //
@@ -13,18 +11,11 @@
 // A function is matched across the sets by package and name, whatever its file,
 // so a function moved verbatim to another file of its package is unchanged.
 // A name that either side defines in more than one file of its package is matched by package, file and name instead.
-// Build-constrained variants are such a name.
-// The init functions of one file are matched by package, file and their order in that file.
 // A function is changed when it is new or its declaration text differs;
 // a function only the base holds is no changed function.
-// A ChangedFunc keys its function as the coverage map's block keys do, `Type.Method` for a method.
 // A file that does not parse is an error naming the file.
 // ChangedTests finds the test functions a diff adds or changes, from the `_test.go` files of the same sets.
-// A test function is a top-level `Test` function `go test` runs as a test, TestMain excepted,
-// and it is matched across the sets as a function is.
 // ChangedLines returns the 1-based lines of a file's head text that a line diff against its base text adds or changes.
-// An empty base marks every line, and a line only the base holds marks none.
-// A rewritten stretch too large for the diff's table marks every head line of the stretch.
 //
 // Open reads the coverage maps of the module from two directories, each a testcover.Dir:
 // the hub's shared maps and the worktree's own maps, which the prime keeps none of.
@@ -33,23 +24,17 @@
 // A map that holds only a build failure, names a block or function outside its tables or does not parse is passed over,
 // and a map that does not parse is logged, so one corrupt map never stops the other packages from answering.
 // ReadPackageMap reads one package's map with the same pass-over rules.
-// It is the read every caller of one package's map uses.
 // In its own package a test reaches a function when its blocks hold a block of the function;
 // in another package, when the function is among the functions its map lists.
 // An entry with an outcome or a spawn mark reaches nothing.
-// TestsReaching returns the tests that reach a function, the function's own package first.
-// FuncsReachedBy answers the other way: which of a list of functions one named test reaches, with the map that holds it.
-// A test whose entry reaches no function counts as held by no map.
 // SpawnMarked and StaleLinkers name the two caveats of an answer:
 // a package whose map holds a test that may run code in another process,
 // and the packages whose maps recorded a linked package's files before they changed.
 //
 // The reverse table of the shared maps, from function to reaching tests, is a cache file beside them, the index.
-// Its stamp is the set of map files in the directory, each with its size and modification time.
 // Open uses the index when its stamp equals the directory's current stamp.
 // An absent index, an unreadable one or one whose stamp differs is never refused: Open builds the table in memory.
-// Open never writes the index.
-// WriteIndex does, from the maps in the directory, stamped as the directory stood when it read them.
+// Open never writes the index; WriteIndex does.
 // Bound: a map rewritten at the same size within one modification-time tick keeps its stamp.
 // Open can then serve the index's old pairs until the next WriteIndex; every answer is advisory.
 // The worktree's own maps are few and are read whole, never indexed.

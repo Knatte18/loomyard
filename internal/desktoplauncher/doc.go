@@ -6,7 +6,6 @@
 // Locate finds this machine's desktop directory and the form its launchers take:
 //
 //   - On Linux, a freedesktop `.desktop` file in the desktop directory `user-dirs.dirs` names, else `$HOME/Desktop`.
-//     It runs the verb in a terminal through a login bash, and the terminal waits for Enter before it closes.
 //   - Under WSL, a `.cmd` file on the Windows desktop, which runs the verb in this distribution through `wsl.exe`.
 //   - On native Windows, a `.cmd` file on the Windows desktop that runs the verb directly.
 //
@@ -17,9 +16,7 @@
 //
 // A hub's launcher is named by the hub's shortname, `lym-hub-<shortname>` with the form's extension,
 // and the all-hubs launcher is `lym-hubs`.
-// Add writes a hub's launcher and the all-hubs launcher.
-// Remove removes a hub's launcher, and the all-hubs launcher once no hub's launcher stands.
-// Shortnames lists the hubs whose launcher stands, so a caller removes those of hubs that are gone.
-// Add and Remove hold one lock per desktop, kept in the per-user state directory.
-// So concurrent processes never leave a hub launcher standing without the all-hubs one.
+// Remove removes the all-hubs launcher once no hub's launcher stands.
+// Add and Remove hold one lock per desktop, kept in the per-user state directory,
+// so concurrent processes never leave a hub launcher standing without the all-hubs one.
 package desktoplauncher

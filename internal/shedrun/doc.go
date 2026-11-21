@@ -4,9 +4,6 @@
 // That file records a run's chosen recipe, driver, and parameters at seed time.
 //
 // The recipe names a seed may hold are the closed vocabulary RecipeNames returns.
-// Motif, the recipe that makes a sketch, the decision record, runs alone and is also the tapestry recipe's Motif block.
-// Arras runs it as its Motif block too, then splits the record into board entries.
-// Hardener drives a lym module against throwaway sandbox hubs round after round and lands the fixes.
 //
 // "Seed" here names one thing only: the run-identity artefact this package reads and writes via ReadSeed and WriteSeed.
 // It is not the status file; this package does not touch a status file.
@@ -15,88 +12,15 @@
 // ResolveRunID maps it to the told location's WorktreeName, and a run's directory is named by that slug.
 //
 // WriteSeed stamps `started_at`, the RFC 3339 UTC time the run was seeded, when the seed has none.
-// It keeps a given stamp;
-// a re-written agreeing seed keeps its original stamp, and a seed without the field has none.
+// It keeps a given stamp, so a re-written agreeing seed keeps its original stamp.
 //
 // A seed decodes with any key this binary does not know, and an agreeing WriteSeed leaves the file as it is.
 // A run's parent is resolved at use from the pair's origin record alone; see internal/agentname's package doc.
 //
-// The ephemeral run-directory contents include the loop's files, all under StepsDir:
-// the loop lock, pid file and log, and each step's trace copy and stderr file.
-// They also include the envelope the waiter prints and the per-loop-id slot it is retired into.
-// LoopJobName names the loop's Windows job object from a hash of the steps directory, so it is unique across hubs.
-//
-// The arbiter's paths are declared here too.
-// ArbiterDir is the durable directory of a run's arbiter attempts, and ArbiterRel its anchor-relative form.
-// ArbiterAttemptDir is one attempt's directory (attempt-<N>, 1-based).
-// ArbiterMarker is the ephemeral in-flight marker under ScratchDir.
-//
-// The Go driver and its tackler have paths here too.
-// DriverLock is the ephemeral Go-driver lock under ScratchDir, distinct from the run lock and the status lock.
-// TacklerDir is the durable directory of a run's tackler attempts, and TacklerRel is its anchor-relative form.
-// TacklerAttemptDir is one attempt's directory (attempt-<N>, 1-based).
-// TacklerMarker is the ephemeral in-flight marker under ScratchDir.
-// DriverRecordsRel lists the anchor-relative drive-reports, arbiter and tackler directories that hold a file.
-// A run's records commit uses it as a pathspec, since a pathspec that matches nothing fails the commit.
-// ChildRecipeFile is the durable record under RunDir of the recipe a batten run seeded its task worktree's run with.
-// WriteChildRecipe writes it and ReadChildRecipe reads it, empty when none is recorded.
-// It outlives the task worktree's own seed, so a done run still tells which recipe its child ran.
-// FilingMarkFile is the durable mark under RunDir that a raddle filing writes.
-// The filing writes it once it turned the run's own board entry into the project of the family it filed.
-// WriteFilingMark writes it and FilingMarked reads it; while it stands, the run's status writes leave that entry alone.
-// LandedCommitFile is the ephemeral file under ScratchDir holding the commit a run's landing put on the parent branch.
-// Its second line, when present, marks a landing that changed no code path on the parent branch.
-// WriteLandedCommit and RecordLandedCommit write it.
-// ReadLandedCommit reads it, the zero LandedCommit when none is recorded.
-// RecordLandedCommit keeps the flag of a landing already recorded for the same commit.
-// ParentNoticeFile is an ephemeral file under ScratchDir.
-// It holds the key of the parent-branch notice a run's pre-push check last posted.
-// The intent writers own the batten record's `cancel` and `pause_intent` keys.
-// CancelMarkerLock is the lock a cancel under way on this machine holds, whose holder is its live writer.
-// It sits directly under ScratchRoot beside the per-slug scratch directories, never inside RunDir or ScratchDir.
-// A slug's records removal therefore leaves it.
-// Batten's verbs read the cancel's intent in the record and this lock.
-// SettleRecords is the Go driver's settle-record file under a run's directory, beside its drive reports.
-// The settle-record format is declared here too: SettleRecord, StopKey, and the settler and action names.
-// ParseSettleRecords is the tolerant decoder; it skips a line that does not decode and reports it by line number.
-// The Go driver appends and reads the file.
-//
-// The batten-watched marker's format is declared here too.
-// BattenWatchedContent renders the pid on the first line.
-// When known, the prime's batten scratch directory and the Run-Shed row's name follow on the next two.
-// ParseBattenWatched reads it back, and a one-line marker parses with an empty scratch directory and row.
-//
-// StencilPinsFile is the durable record under RunDir of the stencils a run may render, as installed at its first seed.
-// It maps each stencil's name to its body hash then; WriteStencilPins writes it and ReadStencilPins reads it.
-// StencilPinsRel is its anchor-relative form, which the seed's commit takes.
-//
-// WakeRecord is the ephemeral wake record under ScratchDir.
-// WriteWakeStamp writes it after a row completes a wake.
-// ReadWakeStamp reads it back by row, found only for the row that wrote it.
-// The Go driver reads it to tell a loop that lived through a wake from one that kept dying.
-//
-// RowNoticeRecord is the ephemeral row-notice record under ScratchDir:
-// the last row visit the run's parent was told of, which WriteRowNotice replaces and ReadRowNotice reads.
-//
-// RunsRootRel names the anchor-relative run-records root,
-// so a caller that needs the whole run-records tree need not name the shed segment itself.
-// RunsRoot and ScratchRoot are its absolute durable and ephemeral forms.
-// Every run directory and scratch directory sits under one of them.
-// RunDirRel is a run directory's anchor-relative form.
-// A records commit that deletes the whole directory uses it as its pathspec.
-//
-// TreeRunFileRels names a run's seed.json and status.json as slash-separated paths relative to a git tree.
-// It resolves no alias.
-// ParseSeed decodes seed bytes a caller read elsewhere, as ReadSeed does.
-//
-// The usage directory is declared here too.
-// UsageDirRel names the anchor-relative durable directory _lym/usage, and UsageDir its absolute form.
-// It holds these record files.
-// session-<session id>.json is a SessionUsageRecord per agent session, which WriteSessionUsage writes.
-// A later write of the same id replaces it.
-// run.json is a RunUsageRecord holding the run's recipe, profile and stored-record flag, which WriteRunUsage writes.
-// landed.json is a LandedSizeRecord holding the landed diff's size, which WriteLandedSize writes.
-// ParseRunUsage is the one reader of the directory's files, given as a name-to-bytes map.
+// The package also declares the paths and record formats of a run's durable and ephemeral files.
+// These cover the loop's files, the arbiter, the Go driver and its tackler and the settle records.
+// They also cover the batten-watched marker, the stencil pins, the wake and row-notice records and the usage directory.
+// Each has its own doc comment.
 // Every record is written through internal/state and read tolerantly, so an unknown key is kept and never refused.
 //
 // Every constructor that returns an absolute path joins onto a told *lymcwd.Location's AnchorPath().

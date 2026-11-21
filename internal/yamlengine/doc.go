@@ -1,21 +1,8 @@
 // Package yamlengine reconciles, fills, checks and sets YAML configuration against a template.
 // It keeps the template's comments and key order.
 //
-// [Reconcile] merges a template with a user's existing file: the file's values win,
-// template keys the file lacks are reported added,
-// file keys the template lacks are reported removed,
-// and the result is idempotent.
-// [FillMissing] appends only the mapping keys the template holds and the file lacks;
-// it never replaces a file value, and it refuses a shape mismatch.
-// [MissingKeys] reports the template leaf paths the file lacks.
-// It treats a template list as a default, not a minimum length.
-// [SetValues] applies dotted key=value pairs to the template-shaped tree and refuses a key the template does not know.
-// [SetEntries] sets whole top-level entries from JSON objects, or one value below an entry by a dotted key.
-// It serves a module whose top-level keys are names the operator owns.
-// [FollowTemplate] carries a template change into an operator-owned file unit by unit.
-// It works against the template the file last followed:
-// a unit left at that template's value takes the new one,
-// and a unit the operator set is kept and reported when the template holds it otherwise.
+// The per-file operations are [Reconcile], [FillMissing], [MissingKeys], [SetValues], [SetEntries] and [FollowTemplate].
+// The layer operations below work on the layer stack.
 //
 // # Layer operations
 //
@@ -44,12 +31,6 @@
 // An absent argument keeps exact-key behaviour on every mapping.
 // For a declared path P:
 //
-//   - Reconcile carries the file's value at P whole, whatever its kind,
-//     so a legacy list survives,
-//     and reports nothing at or under P as added or removed.
-//     When the file lacks P, the template's value stays and added reports P itself.
-//   - FillMissing skips a key at P that the file holds before any shape check, and appends a missing P whole.
-//   - MissingKeys counts a template leaf at or under P as satisfied by the presence of key P.
 //   - SetValues and SetSparse know P.<name> for any name, set it in the mapping at P, and append the key when absent.
 //     The entry is a string scalar, except that a value whose first non-blank character is { is a YAML flow mapping,
 //     and one whose first non-blank character is [ is a YAML flow list;
@@ -87,27 +68,14 @@
 // Reconcile, Prune, DropTemplateEqualNames, SetValues and SetSparse each take a perNameMaps argument.
 // It comes before the open maps, and DropTemplateEqualNames takes no open maps.
 // A per-name map is a dotted key path whose template value is a mapping of names, each name one unit carried whole.
-// Examples are a lens's prose and a fan's list.
 // An empty argument keeps every other behaviour byte for byte.
 // Merge, Strip, LeafPaths, AnnotateLeaves and FillMissing take no per-name maps.
 // They step into P name by name and into each mapping entry key by key.
 // For a declared path P:
 //
-//   - Reconcile writes at P only what the file changed.
-//     The load's fill resolves every other template name from the template.
-//     The written names are:
-//     each template name the file holds with a value other than the template's, whole and in template order;
-//     then every name only the file holds, in file order.
-//     It leaves out a template name the file holds with the template's value and reports it P.<name> dropped.
-//     Equal means the two values decode to the same data.
-//     The loaded value is unchanged, so a later template edit to that name reaches the file.
-//     A template name the file lacks stays out and is not reported.
-//     It writes an absent or null P as an empty mapping and reports P added,
-//     and reports P.<name> kept for each name only the file holds.
-//     Nothing at or under P is reported removed, and a list under a name is never merged element by element.
-//     A file value at P that is neither a mapping nor null is refused.
+//   - Reconcile refuses a file value at P that is neither a mapping nor null.
 //     The refusal's way forward is `rewrite P as a map of name to value`.
-//   - Prune keeps every name under P whole and reports a name the template lacks as kept, never removed.
+//     A name Reconcile drops resolves from the template at load, so a later template edit to it reaches the loaded value.
 //   - SetValues and SetSparse know P.<name> for any one dot-free name.
 //     They refuse P itself and a deeper key under P, bar one case below.
 //     The pair sets the name to the shape the template's entries at P decide:

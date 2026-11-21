@@ -38,7 +38,6 @@
 // The steers of the raw go and refuse-raw rows each carry the full rule, so a denied call has the way forward at hand.
 // The raw go row's steer and notice also name a package-scoped go build or go vet as the compile check.
 // Each is named only while no refuse-raw prefix refuses it.
-// A refused ./... run thus has a way forward short of a gate run.
 // The edit rule, reading a file with Read and changing it with Edit or Write, is stated likewise:
 // once in the system prompt, in the shell-edit row's notice;
 // and in full in the steers of the shell-edit and python rows.
@@ -54,7 +53,6 @@
 // A row whose text names a tool another engine lacks carries that engine's own text in EngineTexts.
 // EngineTexts is keyed by the engine's registry name.
 // SteerFor and NoticeFor return that text, or the plain text for an engine without one.
-// The Codex texts name Codex's apply_patch tool for the edit rule and Codex's own subagents for the headless claude row.
 //
 // A row hangs on a Switch.
 // A SwitchNone row is installed for every run, and so is a SwitchDenyPython row.
@@ -62,7 +60,6 @@
 // SwitchDenyPublish, which the publish row hangs on, is turned on only by a launch spec.
 // Only the session that sets it cannot run git push or a gh call outside what the row's table lets through:
 // reads, comments, and title and body edits.
-// The row's pattern refuses every gh command and subcommand the table does not list.
 // A generated pattern matches any word but the listed ones, so a new gh subcommand is refused until listed.
 //
 // It imports the standard library and the packages that own the environment variables the raw go row's pattern names.

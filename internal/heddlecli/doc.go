@@ -11,7 +11,6 @@
 // A shipped entry an override replaces is marked overridden.
 // An override file that does not load is reported in warnings and ignored.
 // It prints in `file_targets` each file target and the files it renders into at a worktree's anchor.
-// Those come from heddle's target table, which `set`'s help also lists.
 // `get <slug>` prints one entry in full, a shipped entry with the text renders use.
 // It lists in shadowed any repository entry that shares its slug.
 //
@@ -26,8 +25,7 @@
 // Both take the Bolt write lock, load the store, apply the change, save it, render `HEDDLE.md` and release the lock.
 // They then render every file target into every live worktree of the hub: the prime, beams and task pairs.
 // So an agent in a running worktree takes the change at its next compaction instead of waiting for a hand render.
-// A worktree git marks prunable is skipped.
-// So is one still being made in a worktree staging directory.
+// A worktree git marks prunable, or one still being made in a worktree staging directory, is skipped.
 // So is one whose path is not a direct child of the hub.
 // They print the worktrees rendered in `rendered`.
 // They print in `failed` each worktree whose render failed or left a file unwritten.
@@ -51,7 +49,6 @@
 //
 // `render [<worktree>]` renders every file target into the named worktree of the current hub.
 // The current worktree is the default.
-// It seeds the worktree's exclude lines first, so a file is written only after its line is in place.
 // It then prints the files written and removed and the render's warnings.
 // A worktree name is the last element of a path `lym fabric list` prints;
 // a name matching no listed worktree, or only one git marks prunable, is refused.
@@ -66,7 +63,5 @@
 //
 // # Wiring
 //
-// The pre-run resolves the hub as the other hub-only CLIs do.
-// It refuses a cwd that is no drivable worktree of a hub, and a hub whose Bolt checkout is absent.
-// The receiver holds two seams a test replaces, `save` and `spawnSync`; a nil one means the engine's own function.
+// The pre-run refuses a cwd that is no drivable worktree of a hub, and a hub whose Bolt checkout is absent.
 package heddlecli

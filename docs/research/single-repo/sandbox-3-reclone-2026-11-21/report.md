@@ -25,7 +25,7 @@ result: every check passed; no lym bug found, so no note was filed
 - `greet-reclone` ran from the second hub to landing with no halt, landed as `1c74466`, and tore down as trial 2's landings did.
 - `lym fabric pull` in the first hub brought its code store and records store level with the landing.
   The first hub's board caught up only at `lym board sync`, because the pull moves the pair and not the board
-  (see [The first hub after the pull](#the-first-hub-after-the-pull)).
+  (see [The first hub after the pull](#3-the-first-hub-after-the-pull)).
 - The hand check found no origin ref built from a bare `refs/heads/` or `refs/tags/` on a records-store path.
 
 As in trials 1 and 2, the orch ran the steps the task session is refused: the clone, filing and releasing the task, and the dobby start.

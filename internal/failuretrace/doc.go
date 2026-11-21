@@ -5,24 +5,16 @@
 //
 // The package reaches quarry through internal/planglyph, so it lives apart from the landing and loom producer packages.
 // Those producers link no tree-sitter grammar.
-// It is told the worktree root and the anchor path.
-// It takes the plan directory from the owning package's path function,
-// and the active implementer's run-plan state through the implementer seam over the anchor.
-// It joins `go.mod` and its existence checks onto the worktree root.
-// It reads plan refs only through internal/planparser.
+// It is told the worktree root and the anchor path, and it reads plan refs only through internal/planparser.
 //
 // Locations reads the failure identities of a verify log and extracts their `path:line` locations.
 // It reads Go test and build output only, and places each location relative to the repository root.
-// A location is placed as written when it exists at the head.
-// An absolute location has the worktree root stripped.
-// A `-trimpath` frame has the module path stripped.
-// A bare or `./`-relative name is joined onto its identity's package directory.
+// A location that is a standard-library or dependency frame is dropped.
 // An opaque identity carries no package, so its bare and `./`-relative locations are untraced as written.
-// Any other location, such as a standard-library or dependency frame, is dropped.
 // Placed locations are capped at twenty.
 //
-// Trace asks quarry's EncloseAt about each placed location at the record's head.
-// It matches each answer to the live plan's cards:
+// Trace asks quarry's EncloseAt about each placed location at the record's head
+// and matches each answer to the live plan's cards:
 //
 //   - A found answer matches every card with a target that holds one of its member glyphs or its file.
 //   - A not_found answer is a location inside no member, such as an unused import.
@@ -30,12 +22,10 @@
 //     or a member target that resolves into that file at the head.
 //     A member target that does not resolve there, such as one its card deletes, renames or moves out,
 //     is looked up in the delta from its batch's start to the head.
-//     A target found in neither matches only by the file rule.
 //   - A rejected location is untraced.
 //   - A not_found location no card matches is untraced, and so is a found location no card's targets hold.
 //
 // Each matched card carries its implementer batch and that batch's commit range.
-// The range runs from the batch's start to its last card commit.
 // The later range runs from the last card commit of the highest-numbered matched batch to the head.
 // A card the implementer holds no record of reads as batch 0 with an empty range.
 //

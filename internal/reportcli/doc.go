@@ -13,38 +13,20 @@
 //
 // All run from the hub's prime worktree only.
 // After resolving the cwd they apply fabric's drivable-worktree check and refuse any worktree that is not the prime.
-// The refusal names `lym report <verb>` and the prime and says to re-run it there.
 // The flags are checked before any cwd resolution or read.
 // Each refusal is a JSON error with exit 1 naming the flag, the value given and the form accepted.
 //
-// `convergence` takes:
-//
-//   - `--since` takes a `YYYY-MM-DD` date in UTC and defaults to the UTC date twelve weeks before now.
-//   - `--fresh-days` is an integer of at least 1 and defaults to 3.
-//   - `--format` is `json` (the default) or `markdown`.
-//
-// `timing` takes:
-//
-//   - `--since` takes a `YYYY-MM-DD` date in UTC and defaults to the UTC date seven days before today's.
-//     A date after today is accepted and gives an empty report.
-//   - `--by` is `day` (the default) or `week`, the bucket width.
-//   - `--format` is `json` (the default) or `markdown`.
-//
-// `cost` takes:
-//
-//   - `--since` takes a `YYYY-MM-DD` date in UTC.
-//     It defaults to the UTC date seven days before today's, as `timing` does.
-//   - `--format` is `json` (the default) or `markdown`.
-//
-// It reads `cost_min_runs` from the hub's `report.yaml` through `internal/reportconfig`.
-// That key is the run count a cell needs before it shows its figures.
-//
-// `raddle` takes `--format`, `json` (the default) or `markdown`, and no date.
-// It lists every Sketch of the raddle store on the board branch at its tip.
+// `--since` takes a `YYYY-MM-DD` date in UTC.
+// It defaults to twelve weeks before now for `convergence` and seven days before today for `timing` and `cost`.
+// A date after today is accepted and gives an empty report.
+// `--format` is `json` (the default) or `markdown`.
+// `--fresh-days` is an integer of at least 1 and defaults to 3.
+// `--by` is `day` (the default) or `week`, the bucket width.
+// `cost` reads `cost_min_runs` from the hub's `report.yaml` through `internal/reportconfig`.
+// `raddle` takes no date.
 //
 // `replies` takes no flags.
-// It reads the creel journal, which keeps seven days, as the `REPORT` program.
-// The read goes through creelcli.NewProgramClient, whose `Log` the package seam `creelLog` wraps.
+// It reads the creel journal as the `REPORT` program.
 // It prints one `{"ok":true}` envelope holding `roles`, the engine's counts per receiver role.
 // The program claim is accepted from the operator's terminal or an orch pane, the places the report verbs run from;
 // creel refuses it from another agent's pane, naming the claim.
@@ -60,13 +42,11 @@
 // # The sleep
 //
 // When `journalctl` is on PATH, `timing` runs it once per invocation for the systemd-sleep entries.
-// It logs the spawn and its end at Info.
 // It hands the sleeps it parses to the engine, which leaves them out of every interval.
 // A journal with no sleep leaves nothing out, and `sleep_note` says why.
 //
 // The machine's sleep is unknown in three cases:
 // journalctl is absent or fails, the user may not read the journal, or the output does not parse.
-// A journal the user may not read makes journalctl exit 0 with empty output and a permission hint on standard error.
 // The verb then reads the hub's pause record instead.
 // It hands the engine every hub-scope entry's interval, a live one running to now.
 // A hub pause holds every run, and `lym hibernate` pauses the hub before the machine sleeps.
@@ -89,7 +69,6 @@
 // With `markdown` each prints its rendered document instead.
 // The report verbs exit 0 whatever findings the report holds.
 // A record that does not decode is a finding and not a failure.
-// A hub with no archive tags prints an empty report.
 // An error from reading the repositories themselves is a JSON error with exit 1.
 // The verbs write nothing, take no lock and make no commit.
 package reportcli

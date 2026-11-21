@@ -18,8 +18,7 @@
 // `partial` is true exactly when the envelope is an error and the record is non-empty.
 //
 // Without `--apply` the reconcile only judges:
-// it asks origin for the heads and fetches the moved heads' objects into no ref,
-// so it moves, replays and tears down nothing, tracking refs included.
+// it moves, replays and tears down nothing, tracking refs included.
 // A diverged Bolt or prime records branch is reported as needing a replay, and nothing is refused;
 // the report names each move and teardown that accounts for `--apply`'s segments listing fewer.
 // A reconcile error is printed as `reconcile_error` and the segments run.
@@ -48,7 +47,6 @@
 //   - board: `lym board prune`'s behavior over the hub board.
 //   - orch: `orchengine.CleanupHandoffs` over the prime's orch and each beam's.
 //     It removes nothing outside the idle phase.
-//     The listing carries one entry per worktree with its kept and removed handoffs.
 //   - scratch: this package's own segment, below.
 //   - logs: `logger.SweepDir` over the prime's anchor and the Bolt checkout, with the bounds the exit sweep picks.
 //   - temp: `lymtemp`'s sweep of the dead owners' run directories, failing when the root fails its checks

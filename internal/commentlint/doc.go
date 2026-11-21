@@ -6,19 +6,15 @@
 // Lint is told the worktree and the base and resolves no cwd.
 // With an empty base it diffs the working tree against HEAD, untracked `.go` files included;
 // with a base commit it diffs base against HEAD with rename detection, so a pure rename adds no line.
-// Git runs through `gitexec.Run`, and the base side of each file is read through git.
 // A diff with no `.go` file yields no findings.
 //
 // A break between two consecutive prose lines of a paragraph is checked only when it is new:
 // the words on its two sides are not adjacent across a line end in the base text.
-// A line end an edit carries over unchanged is not new.
-// Fixing one flagged break therefore never makes another break of the block checked.
-// A legacy wrapped block is flagged only where an edit creates a break.
-// A line end is not new either when the base holds a line pair with the same word counts as the break's two lines.
-// The pair must differ from them only by words substituted in place,
-// and its unchanged words must outnumber the substituted ones.
-// A word rename inside a legacy wrapped paragraph therefore flags none of its breaks.
-// A rename that changes a line's word count still makes the breaks around that line new.
+// A line end an edit carries over unchanged is not new,
+// so fixing one flagged break never makes another break of the block checked,
+// and a legacy wrapped block is flagged only where an edit creates a break.
+// A word rename inside a legacy wrapped paragraph therefore flags none of its breaks,
+// but a rename that changes a line's word count still makes the breaks around that line new.
 //
 // A checked break passes in one of three cases:
 // its line ends a sentence (`.`, `!`, `?` or `:`, each optionally followed by a closing `)`, quote or backtick);
@@ -26,19 +22,13 @@
 // or its line ends in a comma and the next line starts with a coordinating conjunction that opens an independent clause.
 // The conjunctions are `and`, `but`, `or`, `nor`, `yet` and `so`.
 // `for` is left out because `, for example` is introductory.
-// The words after the conjunction, up to the next `,`, `;`, `:` or sentence end, open a clause under two conditions.
-// They start with a subject, and a finite-verb candidate follows the subject's head word.
-// A subject is a subject or demonstrative pronoun, a determiner followed by a word, or a backticked identifier.
-// A finite-verb candidate is an auxiliary or modal from a closed set, or a word ending in `s` or `ed`.
-// A comma-plus-conjunction break that opens no clause is a finding.
-// Such a break joins a list item or a compound predicate.
+// A comma-plus-conjunction break that opens no clause is a finding, since it joins a list item or a compound predicate.
 // An uncertain case errs toward flagging, since joining the two lines always passes.
-// A finding is the line of a checked break that passes none of these.
+//
 // A directive comment (`//go:`, `//lym:`, `//testtiming:`, `//nolint`) ends the block it sits in.
 // The prose above it is still checked.
 // A paragraph is the lines of a block between blank comment lines.
 // It is skipped whole when any of its lines is indented code, a doc-comment list item or a heading.
-// The paragraphs around it are still checked.
 // A generated file is skipped whole.
 // The kinds of line skipped follow `tools/godocreflow`.
 // This package re-implements them, since `tools/` is not importable.
@@ -56,8 +46,6 @@
 // A line holding a URL, code span or other unbroken word that alone reaches the limit is exempt too.
 // Directive comments, end-of-line comments and generated files are not checked.
 //
-// Bound: the line-length rule also asks where an over-long line is split.
-// The split goes at a semicolon, a colon or a comma before a clause-opening conjunction, never mid-phrase;
-// with no such place, the line is rewritten as shorter sentences.
-// That choice is not checked here; the wrapped-break check only judges the break a split leaves.
+// Bound: where an over-long line is split is not checked here;
+// the wrapped-break check only judges the break a split leaves.
 package commentlint

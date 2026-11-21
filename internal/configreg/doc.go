@@ -11,14 +11,13 @@
 // The override holds only the module's machine keys and never sits in a worktree.
 // `<BoardDir>/_lym/config/` also holds each per-worktree module's repo default, the base layer of that module's stack.
 // A per-worktree module with machine keys reads the same machine override, above its worktree file.
-// Module.HubWide tells the two kinds of file apart.
 // A hub-wide module also reads the reading worktree's local override, restricted to the module's LocalKeys.
 //
 // # Run settings
 //
 // PrepareRunSettings validates a task's run settings against the module's local layer.
-// A key the module's Spec lists in `RetiredWayForward` or `HubOnlyWayForward` is refused.
-// The refusal carries that text as its way forward.
+// A key the module's Spec lists in `RetiredWayForward` or `HubOnlyWayForward` is refused,
+// and the refusal carries that text as its way forward.
 // The hub-only keys are set only in the hub's file, such as drift's `diff` and `key_patterns`.
 // They still load from the hub layers.
 //

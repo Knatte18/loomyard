@@ -18,20 +18,16 @@
 // so its answer never depends on a working directory.
 //
 // Told-geometry tier: the package is told its geometry.
-// Derive takes an already-absolute target from its caller and uses none of the three resolution tiers.
 // `TestLeafInvariant_AllowlistOnly` in internal/standalonestate/leaf_enforcement_test.go enforces this;
 // its stdlib-only allowlist omits internal/lymcwd.
 // See PATTERN-cwd-resolution.
 //
 // Derive normalizes the target before hashing: symlinks resolved, the result cleaned, lower-cased on Windows.
-// Two spellings of the same directory therefore hash identically:
-// a symlink and its target and, on Windows, two paths that differ only in case.
-// The case fold is Windows-only to match internal/lymcwd's samePath rule, which every other path comparison in lym uses;
-// folding on more platforms would make Derive disagree with lymcwd.
+// Two spellings of the same directory therefore hash identically.
+// The case fold is Windows-only to match internal/lymcwd's samePath rule, which every other path comparison in lym uses.
 // Another case-insensitive filesystem, such as the default macOS APFS, behaves differently:
 // two differently-cased spellings of one repository hash to two state directories, two sockets and two tmux sessions.
 //
 // A hash8 collision is accepted rather than handled:
 // at 32 bits, two distinct targets can in principle share one state directory, which is wrong but not corrupting.
-// Widening hash8 in Derive fixes it in one line, because every consumer takes the value from Derive.
 package standalonestate

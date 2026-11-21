@@ -18,20 +18,10 @@
 // The template's starting profiles are a ladder of review rounds per perch, `speed`, `light`, `solid` and `wide`.
 // Each perch's hard cap is its rounds plus one.
 // `docs` is a darn-only profile for prose and config value edits.
-// The template's defaults are `solid` for tapestry, motif and arras and `light` for darn, pawl and raddle.
-// Sampler has no default.
-// Each ladder profile's motif block carries its tapestry block's Discussion perch values, a motif run's only perch.
-// Each ladder profile's arras block carries the same Discussion perch values, and the same rounds for the split perch.
-// Each ladder profile's pawl block carries the same perch values as its darn block.
-// Its sampler block carries them too, and also turns the review on with `sampler.code_review` from `light` up.
-// A `speed` sampler run and a sampler run naming no profile skip the Code-Review perch.
-// `docs` and `speed`'s tapestry block run the Code-Review round solo through `loom.code_reviewer_fan: ""`.
-// `light`, `solid`, `wide` and the rest take the hub's fan.
-// Every darn block, `docs`'s included, sets `loom.code_reviewer_model` to `opus[medium]`.
+// A round count of 0 turns a perch off, since its Bouncer then settles approved with no review round.
 // A darn run has no Discussion or Plan review,
 // so its Code-Review reviewer also judges whether the run did what the entry asks.
-// The pawl and sampler blocks and the tapestry blocks take the hub's Code-Review model.
-// A round count of 0 turns a perch off, since its Bouncer then settles approved with no review round.
+// The tapestry recipe's plan perch keys are set under the `tapestry` module, not under `loom`.
 //
 // The module is hub-wide and seed-only.
 // The hub reconcile seeds an absent file with the template's entries.
@@ -40,15 +30,11 @@
 // A key the operator set, added or removed is kept, and reported under `differs` when the template holds it otherwise.
 // A file with no base yet gains each template key it lacks and keeps every value it holds.
 // It reports under `differs` a value the template holds otherwise.
-// Seed-Child refuses a profile or `defaults` that holds a recipe only under its former name.
-// `loom` for `tapestry` is one such case.
-// The refusal names the hand rename with `lym config profiles` as the way forward.
-// The tapestry recipe's plan perch keys are set under the `tapestry` module, not under `loom`.
-// `plan_max_bounces` is one such key.
+// Seed-Child refuses a profile or `defaults` that holds a recipe only under its former name,
+// and the refusal names the hand rename with `lym config profiles` as the way forward.
 // Each profile, like `defaults`, is one whole entry,
 // and `lym config profiles --set <name>='<json object>'` adds or replaces one whole entry.
 // A dotted key sets one value inside a profile and keeps the rest, as in `--set docs.darn.loom.code_max_bounces=0`.
-// Renaming a profile is adding it under the new name and removing the old block in the editor, `lym config profiles`.
 // No key is open to the local layer.
 //
 // `Load` decodes the stacked file without filling it from the template,

@@ -12,36 +12,19 @@
 // Beam-Up marks the pair a beam, spawns its push and regenerates the hub workspace.
 // It removes a land request and the await marker a run before left, and runs the beam steps, each idempotent.
 // Once the beam's dobby and orch are up, Beam-Up hands the beam's Sketch and proposal to the orch, once.
-// It hands off through the told HandOff and Notify seams.
 // The hand-off marker records that it is settled, and Beam-Up never removes it.
 // A failing step, a failing hand-off or a hand-off post that reached no orch is a halting Stuck.
 // The Stuck names its cause and `lym loom resume`.
 //
 // Beam-Await spawns no agent.
-// It holds the run until a land request naming this run passes the re-check.
-// It wakes on a change in the request's directory and on a timer.
-// The timer starts at one second and doubles to one minute while idle.
-// An accepted request writes the status naming Finalize, so the landing hold stands.
-// It then writes the dobby-stop marker and stops the dobby.
-// It re-checks the beam through the told Recheck seam: its members and pairs, its owners and its ready record.
+// It holds the run until a land request naming this run passes the re-check of the beam through the told Recheck seam:
+// its members and pairs, its owners and its ready record.
+// An accepted request writes the status naming Finalize, so the landing hold stands, and stops the dobby.
 // A passing re-check ends the row.
-// A failing one lifts the hold again and restarts the dobby the marker says was stopped, with its orch.
-// It removes the request and posts the blockers to the beam's orch.
-// An await marker tells a re-entry from the first entry.
-// Two re-entries post one notice naming `lym beam start` and `lym beam land`.
-// One is a re-entry whose dobby is down, once until a re-entry sees it live, recorded in the marker.
-// The other is a re-entry that finds the hold standing after a crash.
-// The hold stands when the entry's status names Finalize and no land request stands.
-// The entry settles an accepted landing it finds with no land request before it writes any status.
-// These states mark such a landing: the hold standing;
-// the ready record standing with the await marker absent, as after a goto from a halted Finalize;
-// and the dobby-stop marker standing, as after a resume of a run halted inside the re-check.
-// When the ready record stands, read through Deps.ReadyStands, the entry runs the accept's re-check itself.
-// It ends the row or refuses as the accept does.
-// Without the ready record, the entry lifts the hold and removes the dobby-stop marker.
-// It restarts the dobby and posts a notice naming `lym beam ready`.
+// A failing one lifts the hold again, restarts the dobby and its orch and removes the request.
+// It also posts the blockers to the beam's orch.
+// A re-entry after a crash settles an accepted landing it finds with no land request before it writes any status.
 // A failed read of the ready record decides nothing and is retried at the next wake.
-// Each completed wake that does not end the row is stamped through Deps.StampWake, which a failure leaves unchanged.
 // A beam another machine owns removes any request and yields, deciding nothing.
 //
 // Beam-Down stops the beam's dobby and orch through the told Down seam.

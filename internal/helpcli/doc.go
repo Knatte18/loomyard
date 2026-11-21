@@ -14,12 +14,7 @@
 // The audience annotation each invocable command carries filters it.
 // The audience is `operator` by default; `role` and `internal` print the other two classes,
 // and a value outside `clihelp.Audiences` is refused naming that set.
-//
-// A group line is the name and its short description.
-// A leaf line is the name and the rest of its usage in one code span.
-// The flags its usage does not spell follow in a second span, then its short description.
-// A group appears only when a command under it is in the selected audience,
-// and a runnable group prints in leaf form when its own audience is selected.
+// A group appears only when a command under it is in the selected audience.
 // The index is generated from the live cobra tree on every call, reads no file and caches nothing.
 // It cannot drift from the binary.
 //

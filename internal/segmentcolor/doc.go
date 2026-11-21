@@ -4,7 +4,6 @@
 //
 // A segment is the loom phase a spawned strand belongs to, named by the spawning module on its launch spec.
 // The segment constants' values are the keys of reed's segment color config.
-// One vocabulary therefore serves the launch spec, the strand record and the config.
 // No segment's default color lives here: defaults are reed's config template values.
 //
 // The palette is lym's own vocabulary.

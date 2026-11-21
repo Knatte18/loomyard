@@ -3,18 +3,14 @@
 //
 // It reads C# source itself, with no compiler or language server.
 // The lexer turns a file into identifier and punctuation tokens and drops everything that is not code:
-// `//` and `/* */` comments, `#` preprocessor lines, character literals, and the literal text of every string.
-// That covers regular, verbatim `@"…"` with its doubled quotes, and raw `"""…"""` strings with any quote count.
-// An interpolated string may be regular `$"…"`, verbatim `$@"…"` or `@$"…"`, or raw `$"""…"""` with any count of `$`.
-// The code of every hole is kept as tokens, nested strings and braces included;
-// the literal text and the `{{` and `}}` escapes are dropped.
+// comments, `#` preprocessor lines, character literals, and the literal text of every string of any form.
+// The code of every interpolated string's hole is kept as tokens, nested strings and braces included.
 //
 // Each source file reads into a set of its identifiers and its type declarations.
 // A declaration records the type's name without type parameters, its kind, and whether it is abstract.
-// It also records its namespace from a block or file-scoped `namespace`, and its enclosing types.
-// It records the first name of its base list, and whether it carries a test attribute or a member does.
+// It also records its namespace, its enclosing types and the first name of its base list.
+// It records too whether it carries a test attribute or a member does.
 // An attribute is matched in its plain, `Attribute`-suffixed and namespace-qualified spelling.
-// It is matched with arguments, and anywhere inside a multi-attribute list.
 // An attribute with a target prefix such as `[assembly: …]` sets nothing.
 //
 // A seed is a set of changed or targeted `.cs` paths and a set of type names.
@@ -38,8 +34,7 @@
 // Both are told the worktree and the tier's `dir` relative to it.
 // Both are also told a predicate over worktree-relative paths that says which are inert.
 // Git runs through `gitexec.Run` only, and the package spawns nothing else.
-// scanTree reads every `.cs` file and lists every `.csproj` under the `dir`.
-// It skips `bin`, `obj`, `.scratch`, `.git`, `_lym` and `.lym` directories.
+// The scan skips `bin`, `obj`, `.scratch`, `.git`, `_lym` and `.lym` directories.
 //
 // DeriveDiff diffs a base to the working tree, untracked files included, and drops the inert paths first.
 // A diff left with no path, empty or inert-only, is the empty scope, read before the scan.

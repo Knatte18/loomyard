@@ -13,10 +13,8 @@
 // It states that in lym sessions it overrides any harness text that permits changing files by shell.
 // A Go file's formatting goes through `lym loom fmt`.
 // Scratch files go under `.scratch/`, and those with a source extension are written with Write.
-// `.scratch` is a link to a directory kept for the task alone.
 // Nothing is built, restored or compiled under `.scratch`, `.lym` or `_lym`.
 // No git worktree, clone or checkout is created there.
-// A build under the link sees each project under two paths.
 // It also keeps a role in its own worktree:
 // no edit, commit, push or new worktree elsewhere unless its parent or the operator says so for that case.
 // It names the tools a role edits with and the worktree it edits in, never what the role may write.
@@ -33,7 +31,6 @@
 // Each spawning module's renderer calls Directive once per prompt, with the engine its launch resolves to.
 // It passes the text as the value of the MarkerName marker its opening stencil carries.
 // The marker is required, so a renderer that forgets it fails at composition.
-// No prompt ships without the rule.
 //
 // # Imports
 //

@@ -17,588 +17,330 @@
 // The form is `lym gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--main-packages] [--base <rev>] [--all] [--guards] [--stop-on-fail] [--copies N] [--map] [--wait] [<targets>...] [-- <args>]`.
 // It runs the tiers the hub declares in gate.yaml in ascending tier number.
 // It then runs the vet step and the guard step below when they are planned.
-// A run that fails does not stop the call: every later tier, vet and guard run still runs.
-// A failure the change under test did not cause, such as one present at the base, therefore hides no later check.
-// `--stop-on-fail` ends the call at its first failed run instead, a tier the build blocked included.
-// No later tier, vet or guard run starts, and a stderr line names the failed run and every run it skipped.
+// A run that fails does not stop the call: every later tier, vet and guard run still runs,
+// so a failure the change under test did not cause hides no later check.
+// `--stop-on-fail` ends the call at its first failed run instead, naming the failed run and every run it skipped.
 // A run that crashed its test runner in its run and its rerun judged no code, so it stops nothing.
-// The key's lint and report steps still run, and the failure report and closing line follow as for any failed call.
-// Darn-Write's verify gate adds the flag, so its fixer hears of a failed tier before a slower tier runs.
-// `--copies N` runs N copies of one tier side by side, each the tier's own command over the same explicit targets.
-// It needs `--gate` and explicit targets, and the key must name one tier below `gateslot.BilledTier`.
-// Each is refused before any slot, naming its way forward, as is a call inside a slot an enclosing gate run holds.
-// The call takes one lease of N times the tier's slots, and releases it when the call ends.
-// A tier with `slots: all` asks every slot and runs one copy.
-// A count above the pool's slots runs one copy per whole share held.
-// A line names the asked and the run copy count whenever they differ.
-// Each copy runs under the tier's own counter, timeout, CPU watchdog and memory guard.
-// The call is red when any copy is.
-// A failed copy is labelled `copy <i>` in the failure report.
-// Bound: a copy is a tier run of its own, never a raw compiled test binary, and the green record carries none.
-// A call with `--copies 0` or no flag runs as it always did.
-// Every tier run prints one started line, built by `gateslot.FormatStartedLine`.
-// It names the run and the packages whose test binary started.
-// A copy prints its own, labelled `copy <i>`, and `gateslot.ParseStartedLines` is the line's sole parser.
-// When a run failed, the verb closes with one stderr line naming each failed run.
-// The line follows the failure report the Failure report section describes.
-// It names a vet run as `vet tierN`, a guard run as `guard tierN` and a lint step as `lint <name>`.
-// Each name carries the run's exit code, or a lint step's finding count.
-// When no run failed under the `--card` scope form, the verb closes with one stderr line.
-// It names each declared tier that no listed tier is or covers, manual tiers included.
-// The line says the pass is not green for them, so a card gate that runs tier0 is never read as fully green.
-// A vet or guard run under a tier does not count as running it.
-// Bound: the line is output only and changes no exit code or record.
-// No other scope form prints it, since their tier lists are the coverage the hub chose for that site.
-// A tier run that fails without timing out and whose output holds a resource-shortage marker is rerun once.
-// The markers are `resource temporarily unavailable`, `failed to create new OS thread` and `cannot fork`.
-// Matching ignores case.
-// The rerun uses the same slots and starts after a ten-second delay, and its result is the tier's.
-// A stderr line names the marker, and the rerun's log opens with it.
-// A rerun that fails on a marker again keeps its exit code.
-// The closing line names the run as a resource shortage, an environment error.
-// It gives the way forward of re-running once the machine's process load drops.
-// A tier run is also rerun once after the same delay when all three hold:
-// it fails without timing out, it reports no failing test, and it exits 128 plus the number of a crash signal.
-// The crash signals are SIGABRT, SIGILL, SIGTRAP, SIGBUS, SIGSEGV and SIGFPE.
-// A shell reports that exit code when a runtime aborted and crashed its test runner, so the run judged no code.
-// A command the shell replaced and the signal ended takes that same exit code.
-// A run with no shortage marker is read for a crash.
-// The stderr line names the exit code and the signal, and the rerun's log opens with it.
-// The first run's record and log are written before either rerun starts.
-// The first run's record carries a crash's signal as `runner_crash`.
-// The rerun's record carries `rerun` and counts its slot wait as none, since the first run's record holds it.
-// A rerun that crashes again keeps its exit code.
-// The closing line names the run as a runner crash with no failing test.
-// A call closes with `gateslot.RunnerCrashLine` after the line of failed runs when every failed run crashed so.
-// It does so only when no failing test, failed build or lint finding stands beside them.
-// A site thereby tells a runtime's crash from a failing test.
-// Bound: one rerun per tier run, so a test whose own output holds a marker costs one extra run and keeps its verdict.
-// A test that aborts its own runner, such as a .NET stack overflow, is reported as a crash, not as a failing test.
-// The build step is not rerun.
-// A refusal, a slot wait that does not end with the slots held and a terminating signal still end the call at once.
-// `--gate <key>` runs the tiers and the scope the `gates` key of that name holds.
-// `listedTiers` takes the key's tiers as the listed tiers.
-// It goes with none of `--tier`, `--upto`, `--all` and `--base`, since the key's tiers and scope come from gate.yaml.
-// Such a call is refused before hub resolution, naming the key and the flag to drop.
-// Once the config is loaded, a key the config does not hold, an empty tier list and an undeclared tier are refused.
-// The refusal takes its way forward from `gateslot.Config.Gate` and names `lym config gate`.
-// In a hub that declares no tier at all, a `--gate` call names that on stderr and runs the key's lints and no tier,
-// so a fresh hub with no tests yet runs and lands its tasks while its lints still hold.
-// A key of scope `card` takes the `--card` ids as the card form.
-// It is refused when none is given, naming the key and the way forward of passing `--card <id>` per card.
-// A key of scope `all` is the `--all` form, and a key of scope `diff` is the computed form.
-// `--card` ids beside a key of another scope are ignored.
-// Explicit `<targets>` beside `--gate` replace the key's scope.
-// Each run record carries the key as `gate_key`, empty for a call with manual flags.
-// `--gate` opens no flag combination the manual flags lack.
-// The exception is the key's lint and report steps.
-// The Lint steps, Reach report, Redundancy report and Mutation report sections describe them.
-// `--tier` names a tier and may repeat.
-// The default is tier0 when neither `--tier` nor `--upto` is given.
+// When a run failed, the call prints the failure report, then closes with one stderr line naming each failed run.
+// The line names a vet run as `vet tierN`, a guard run as `guard tierN` and a lint step as `lint <name>`.
+//
+// `--tier` names a tier and may repeat; the default is tier0 when neither `--tier` nor `--upto` is given.
 // A tier another listed tier covers is dropped and named as covered on stderr.
-// `--upto N` adds every declared tier numbered 0 through N to the `--tier` values, skipping a gap in the numbers.
-// It also skips a tier marked `manual`, which it names on stderr unless `--tier` names it.
+// `--upto N` adds every declared tier numbered 0 through N, skipping a tier marked `manual` unless `--tier` names it.
 // A manual tier runs only when `--tier` names it, so a tier that spends tokens never starts from a range.
-// A negative N is refused before hub resolution.
-// `--tags` stays a registered flag only to be refused before any slot, naming `--tier`.
-// A tier's own command sets its build tags.
+// `--tags` stays a registered flag only to be refused, naming `--tier`; a tier's own command sets its build tags.
 // The words after `--` fill each tier's `{args}`.
+//
+// `--gate <key>` runs the tiers and the scope the `gates` key of that name holds.
+// It goes with none of `--tier`, `--upto`, `--all` and `--base`.
+// A key the config does not hold, an empty tier list and an undeclared tier are refused, naming `lym config gate`.
+// In a hub that declares no tier at all, a `--gate` call runs the key's lints and no tier.
+// A key of scope `card` takes the `--card` ids and is refused without one.
+// A key of scope `all` is the `--all` form, and `diff` is the computed form.
+// Explicit `<targets>` beside `--gate` replace the key's scope.
+// Each run record carries the key as `gate_key`.
+// `--gate` opens no flag combination the manual flags lack, except the key's lint and report steps.
+//
+// `--copies N` runs N copies of one tier side by side, each the tier's own command over the same explicit targets.
+// It needs `--gate` and explicit targets, the key must name one tier below `gateslot.BilledTier`,
+// and it is refused inside a slot an enclosing gate run holds.
+// The call takes one lease of N times the tier's slots, and a count above the pool's slots runs one copy per share held.
+// Each copy runs under the tier's own counter, timeout and guards.
+// A failed copy is labelled `copy <i>` in the report.
+// A copy is a tier run of its own, never a raw test binary, and the green record carries none.
+//
+// Every tier run prints one started line, built by `gateslot.FormatStartedLine`;
+// `gateslot.ParseStartedLines` is its sole parser.
+//
+// Under the `--card` scope form, when no run failed, the verb closes with a stderr line.
+// The line names each declared tier that no listed tier is or covers, manual tiers included;
+// a card gate that runs tier0 is therefore never read as fully green.
+// A vet or guard run does not count as running a tier.
+// The line is output only and changes no exit code or record.
+//
+// A tier run that fails without timing out is rerun once after a delay in two cases.
+// The first is an output that holds a resource-shortage marker.
+// The markers are `resource temporarily unavailable`, `failed to create new OS thread` and `cannot fork`.
+// The second is a run that reports no failing test and exits 128 plus a crash signal number.
+// That code is what a shell reports when a runtime aborted and crashed its test runner.
+// The rerun's result is the tier's.
+// The first run's record carries `runner_crash` for a crash; the rerun's record carries `rerun`.
+// A call closes with `gateslot.RunnerCrashLine` when every failed run of it crashed so.
+// It needs no failing test, failed build or lint finding beside those runs;
+// the line lets a site tell a runtime's crash from a failing test.
+// Bound: one rerun per tier run, and a test that aborts its own runner is reported as a crash, not a failing test.
+// The build step is not rerun.
 //
 // A tier is one shell command that may hold these placeholders:
 // `{targets}`, `{test_targets}`, `{parallel}`, `{args}`, `{filter}` and `{test_timeout}`.
-// `renderTierCommand` fills them, quoting each target and each arg for the platform shell through `verifyrun.QuoteArg`.
-// `{test_timeout}` renders as the tier's `test_timeout_min` followed by `m`, such as `20m`.
-// A hub's `go test -timeout {test_timeout}` thereby takes its per-binary bound from config.
-// `{filter}` renders as `--filter ` and the quoted expression, or as nothing when there is no expression.
-// With no class terms the expression is the tier's `filter`.
-// With the terms of an invocation the dotnet scoper narrowed to one project it is `(<filter>)&(<term>|<term>...)`.
-// It is the terms alone when the tier has no filter.
-// Terms that push the expression past `greenCommandBudget` are dropped, and an Info log names the tier.
-// The tier's `filter` then stands alone, so that project runs whole within itself.
+// Each target and arg is quoted for the platform shell.
+// `{filter}` renders as `--filter ` and the tier's filter expression, or as nothing when there is none.
+// A narrowed dotnet invocation combines the tier's filter with the class terms the scoper chose.
 // A command without `{filter}` renders no filter whatever terms it is given.
-// A tier's `filter` applies at whole scope too, landing gates included.
-// The executable, hub-file-only `tiers` key bounds it.
-// `{test_targets}` stands where the targets reach `go test`, beside a `{targets}` the command's other steps take.
+// `{test_targets}` stands where the targets reach `go test`.
 // It renders each invocation's targets narrowed to the packages that hold a test function the tier runs,
-// so a pass compiles, links and starts no test binary that would find no test of its tier.
-// `impactset.HoldsTierTest` judges each package over the tier and the tiers it `covers`.
+// so a pass starts no test binary that would find no test of its tier.
 // A test function opening with `tiergate.Require(t, N)` counts for tier N alone, and any other for every tier.
-// A pattern target is listed with `go list` first, as the green record lists one, and an import path is kept.
-// An invocation with no package left runs no command, its other steps included, and says so on stderr.
-// The targets fill it unnarrowed when they cannot be listed or the narrowed list passes `greenCommandBudget`.
-// A command that holds `{test_targets}` without `{targets}` takes a scope's targets as one holding `{targets}` does.
-// A package gaining its first test of a tier thereby joins that tier's runs with no config edit.
+// An invocation with no package left runs no command and says so on stderr.
 // Bound: a tier whose `LYM_TEST_TIER` names a range runs the tests of tiers it does not `covers`,
 // and a package holding only those is left out.
-// The command runs through the shell `verifyrun.ShellFor` names, as a tied child in the run directory.
-// It starts from this process's environment, less the strand-name and trace-id variables.
+//
+// The command runs through a tied child in the run directory, the tier's `dir` or the worktree's anchor.
+// The environment is this process's, less the strand-name and trace-id variables.
 // An inherited `gateslot.PrebuiltLymEnv` is dropped too.
-// The variables of the `env` config module (`internal/envconfig`) replace an inherited value.
-// They are the hub's with this machine's override inside a hub, and the worktree's own outside every hub.
-// `proc.BuildServerOffEnv` replaces an inherited or env module value, so the module never undoes a build-server switch.
-// The tier's `env`, with `{parallel}` filled, replaces an env module value.
-// A tier run with an invocation first prints and logs one line.
-// The line names each `env` variable that the session's environment sets to another value, with the tier's value only.
-// It prints once for a `--copies` run, and never prints the session's value, which may be a secret.
-// A result the tier gives reflects the tier's values, so a session measuring through the gate learns it measured those.
-// A variable the session leaves unset is not named.
-// The lease's `gateslot.InheritEnv` and the enclosing-gate pid are added last.
-// The tier's `dir`, relative to the worktree root, is the run directory.
-// A tier that sets no `dir` runs in the worktree's anchor.
-// `gateslot.Config.WithDefaultDir` fills that once the config is loaded,
-// so a hub anchored at a subdirectory need not spell it per tier.
-// A tier with `prebuilt_lym` first builds `lym` at the tier's `parallel`, inside its slots and timeout.
-// It builds only where the worktree root holds `cmd/lym`, and it exports `gateslot.PrebuiltLymEnv`.
-// Inside a hub the binary is copied into the pool's store (`gateslot.Pool.PrebuiltDir`).
-// The copy is named `lym-` and the first 16 hex digits of the binary's SHA-256.
-// The build directory is removed, and the variable names the stored copy.
-// Outside a hub the variable names the build directory's binary, which is removed after the tier.
-// Go keys a cached test result on the variable's value.
-// A path named by the binary's content therefore keeps a re-run on an unchanged tree cached.
-// A stored binary already present is reused, with its modification time set to mark its last use.
-// Each store prunes the other entries unused for two hours.
+// The `env` config module (`internal/envconfig`) then replaces an inherited value.
+// `proc.BuildServerOffEnv` replaces an env module value, and the tier's `env` replaces an env module value.
+// A tier run first prints and logs one line naming each `env` variable the session sets to another value.
+// It names the tier's value only, never the session's, which may be a secret.
+// A tier with `prebuilt_lym` first builds `lym` inside its slots and timeout, where the worktree root holds `cmd/lym`.
+// It then exports `gateslot.PrebuiltLymEnv`.
+// Inside a hub the binary is copied into the pool's store under a name from its content hash.
+// Go therefore keeps a re-run on an unchanged tree cached.
 //
 // # Scope
 //
 // A call takes one scope form:
 // explicit `<targets>`, `--all`, `--card <id>`, `--base <rev>` or, with none of them, the computed form.
 // Explicit targets replace each run's `{targets}` verbatim and run in the `-C` directory, else in the tier's `dir`.
-// `--all` sets `{targets}` to the tier's `all_targets`, split at spaces, and runs in the tier's `dir`.
-// A command holding neither `{targets}` nor `{test_targets}` runs once, whole.
-// It does so under explicit targets and under a non-empty narrower scope.
-// It says so on stderr.
+// `--all` sets `{targets}` to the tier's `all_targets`.
+// A command holding neither `{targets}` nor `{test_targets}` runs once, whole, under any scope, and says so on stderr.
 // Explicit targets that no listed tier's command takes are refused before any slot.
-// The call would run none of them.
-// The refusal names dropping the targets, a `--tier` whose command takes them, and the prime's `lym config gate` step.
-// Flag-shape refusals need no config and run first, before hub resolution:
-// `--tags`, naming `--tier`; a negative `--upto`; `-C` without explicit targets, naming them;
-// `--gate` beside `--tier`, `--upto`, `--all` or `--base`; more than one scope form;
-// and `--main-packages` without `--card`, naming `--card <id>`.
+// Flag-shape refusals need no config and run before hub resolution:
+// `--tags`; a negative `--upto`; `-C` without explicit targets; `--gate` beside `--tier`, `--upto`, `--all` or `--base`;
+// more than one scope form; and `--main-packages` without `--card`.
 //
 // # Scoper
 //
-// `computeScope` resolves the computed, `--base` and `--card` forms inside the pre-tier ceiling.
-// `gate.yaml`'s `scoper` decides what they mean.
-// The computed form takes its base per listed tier.
-// A tier's base is the newest commit that is an ancestor of HEAD, read through `gitrepo`'s `IsAncestor`.
-// The green record must hold that commit whole-green for the tier under its current fingerprint.
-// The entry has empty args and the tier's module directory (`greenRecord.newestWholeAncestor`).
+// `gate.yaml`'s `scoper` decides what the computed, `--base` and `--card` forms mean.
+// The computed form takes its base per listed tier:
+// the newest ancestor of HEAD the green record holds whole-green for the tier under its current fingerprint;
+// else the merge base of HEAD with the parent branch.
 // A narrowed green never becomes a base.
-// Neither does a whole entry recorded under `-- -run X` or under a since-changed tier command.
-// Without such a commit the base is the merge base of HEAD with the parent branch.
-// `parentMergeBase` reads that branch from the pair's fabric origin record.
-// A tier with neither base, such as the prime on `main` or a standalone run with no green ancestor, runs whole.
+// A tier with neither base, such as the prime on `main`, runs whole.
 // A dirty worktree reads no record, so it takes the merge base.
-// Tiers that land on the same base share one `impactset.DeriveTargets` derivation.
-// Each derivation prints `gate test: diff scope from <base> for <tiers>` on stderr.
 // `--base` names one base for every tier.
-// `--card`, repeatable, reads the plan at the anchor's plan directory through `planparser.ParsePlan`.
-// It takes `planparser.CardPackages` of the named cards.
-// An id is a card's number or its `N-slug`.
-// An unknown id is refused before any slot, naming the plan's ids.
-// A worktree with no plan is refused, naming `--all` and explicit targets.
-// The plan read and its refusals, held by `readCards`, run first under every scoper.
+// `--card`, repeatable, reads the plan and takes the packages of the named cards.
+// An id is a card's number or its `N-slug`; an unknown id and a worktree with no plan are refused.
 //
-// Under the `none` scoper each scoped form is whole, so a tier takes its `all_targets`.
-// No guard step is planned, except under `inert_paths` below.
-// Under the `dotnet` scoper `dotnetScope` derives the forms through `dotnetimpact`.
-// A computed or `--base` scope groups the listed tiers by base as above.
-// It runs `dotnetimpact.DeriveDiff` once per distinct base and tier `dir`.
-// Each derivation prints `gate test: diff scope from <base> for <tiers>`.
-// A tier with no base runs whole.
-// A `--card` scope runs `dotnetimpact.DeriveCards` once per distinct tier `dir`.
-// The seeds are `planparser.CardCSharpSeeds` of the cards.
-// Both are told `gateslot.Config.Inert` as the inert predicate.
-// A derivation that falls back gives its tiers a whole share.
-// It prints `gate test: the scope falls back to whole: <reason>`.
-// A narrowed share runs each selected test project once in the tier's `dir`, under one slot hold and one `timeout_min`.
-// The project path is `{targets}`, and its class terms render into `{filter}`.
-// A command holding neither `{targets}` nor `{test_targets}` runs once, whole, with its tier filter only.
-// Such a run is passed none of the selected projects.
-// When no run of the call reaches a selected project, the call closes with one stderr line per such project.
-// The line says the pass is not green for that project.
-// A run reaches a project when its names hold that project's file or its built assembly, or a solution file.
-// It also reaches every project when its names hold no project, solution or built assembly file at all.
-// The names are the run's targets, or for a command without a target placeholder its command's words.
-// The line's way forward runs the lowest declared tier, not manual, whose command reaches the project.
-// With none it is the prime's `lym config gate` step of adding `{targets}` to a tier's command.
-// Bound: the line is output only and changes no exit code or record.
-// Two empty scopes tell apart.
-// Nothing testable changed, such as an inert-only diff: that makes no invocation, as under `go`.
-// Changes that no test class names run a tier with `shared_build` as no invocation.
-// Any other tier runs whole and is named on stderr, so a compile break still fails the gate.
-// The scope plans no guard step and no vet step.
-// `--guards` is refused, naming the scoper and the way forward of dropping it.
-// No config change gives a C# hub the guard tests.
-// Green record: a narrowed project invocation is partial and writes no entry.
-// That holds even when its target equals the tier's `all_targets`, so a filtered pass never stands in for a whole run.
-// A whole `dotnet` pass writes its whole entry as under `none`, and only whole entries carry.
-// The class closure skips every test class it does not select.
-// It therefore misses only references that never spell a changed type's name.
-// The gates that run whole, such as `parent-align` and `finalize`, catch those.
-// Under the `go` scoper a computed or `--base` scope is `impactset.DeriveTargets` of the diff from its base.
-// The diff runs to the working tree.
-// The scope falls back to whole wherever the derivation does, naming the reason on stderr.
-// A `--card` scope is the cards' packages.
-// With `--main-packages` it also holds every `package main` package of tier0's module.
-// `impactset.ModuleMainPackages` lists them.
-// A main package a card already names is listed once, and a failed listing refuses the call naming the module.
-// Under the `none` and `dotnet` scopers the flag adds nothing.
-// A narrower scope runs each listed tier once per module, in that module's directory with its module-relative targets.
+// Under the `none` scoper each scoped form is whole, so a tier takes its `all_targets`, and no guard step is planned.
+// Under the `go` scoper a computed or `--base` scope is `impactset.DeriveTargets` of the base-to-working-tree diff.
+// It falls back to whole wherever the derivation does, naming the reason on stderr.
+// A `--card` scope is the cards' packages;
+// with `--main-packages` it also holds every `package main` package of tier0's module.
+// A narrower scope runs each listed tier once per module, in that module's directory.
 // One slot hold and one `timeout_min` cover every invocation.
 // An empty scope, such as a diff of Markdown files only, runs no listed tier's command, bar a tier with `carry: false`:
-// each other listed tier passes with zero discovered, is logged so and takes no slot, and only the guard step runs;
-// a `shared_build` tier that only has the build to run takes its slots for it, as the Build step section says.
-// A tier with `carry: false` runs whole over its `all_targets` in its `dir` under every scope form but explicit targets.
-// That includes the empty scope, so a timing or capture tier never goes unrun on a computed scope.
-// The import graph cannot see everything a narrower run skips, such as `go build ./...`.
-// That is left to the whole runs at `final` and `landing`.
-// Once the config is loaded, `planTierRuns` refuses these before any slot, naming `lym config gate`:
-// words after `--` for a tier whose command lacks `{args}`; explicit targets that no listed tier's command takes;
-// an undeclared tier; a hub with no `tier0`;
-// a `covers` entry naming a tier the hub does not declare;
-// and, for the guard step below, a guard group whose tier the hub does not declare.
+// each other listed tier passes with zero discovered and takes no slot, and only the guard step runs.
+// A tier with `carry: false` runs whole over its `all_targets` under every scope form but explicit targets.
+// The import graph cannot see everything a narrower run skips, such as `go build ./...`;
+// the whole runs at `final` and `landing` cover that.
+//
+// Under the `dotnet` scoper the forms are derived through `dotnetimpact` over test projects and their classes.
+// A narrowed share runs each selected test project once in the tier's `dir`.
+// The project path is `{targets}` and its class terms render into `{filter}`.
+// A derivation that falls back gives its tiers a whole share and prints the reason.
+// When no run of the call reaches a selected project, the call closes with a stderr line per project.
+// The line says the pass is not green for that project; it is output only and changes no exit code or record.
+// An empty scope is no invocation when nothing testable changed,
+// and a tier with `shared_build` runs only its build when no test class is named.
+// Any other tier runs whole, so a compile break still fails the gate.
+// The scope plans no guard step and no vet step, and `--guards` is refused, naming the scoper.
+// A narrowed project invocation is partial and writes no green entry.
+// The class closure misses only references that never spell a changed type's name;
+// the gates that run whole, such as `parent-align` and `finalize`, catch those.
+//
+// Once the config is loaded, planning refuses these before any slot, naming `lym config gate`:
+// words after `--` for a tier whose command lacks `{args}`; explicit targets no listed tier's command takes;
+// an undeclared tier; a hub with no `tier0`; a `covers` entry naming an undeclared tier;
+// and a guard group whose tier the hub does not declare.
 // Every such refusal closes with a clause for a session that is not the prime:
 // it takes none of the steps, reports status: FAILED and leaves them to the orch.
 //
 // # Inert paths
 //
 // A hub's `inert_paths` lists the patterns of files no test reads, and `gateslot.Config.Inert` is the one matcher.
-// `allInertSince` reads the files that differ between a base and the working tree, untracked files included.
-// It holds them inert when every one matches.
-// An empty diff is not inert-only.
-// A read error is logged at Warn and holds the diff not inert, so the scope stays as it would be.
-// Under the `go` and `none` scopers a computed or `--base` scope checks each base group's diff before deriving it.
-// A group that is inert-only gets the empty share.
-// None of its tiers runs a command but a `carry: false` tier, which runs whole.
-// Under `go` the derivation is skipped for that group.
-// A call whose groups are all inert-only plans the guard step over a module scan of `tier0`'s dir, as a whole tier does.
-// Under `none` the empty share is the only change, and every other group and tier stays whole.
-// The scope plans no guard step.
+// Under the `go` and `none` scopers a computed or `--base` scope gets the empty scope when its diff is inert-only.
+// A diff is inert-only when it matches only inert paths, untracked files included;
+// an empty diff is not inert-only, and a read error holds the diff not inert.
 // Under `dotnet` the derivation drops inert paths itself.
 // Under every scoper a `--gate` key of scope `all` checks the diff from the merge base with the parent branch,
-// and an inert-only diff gets the empty scope, so the Finalize gate of an inert-only change runs no tier.
-// A worktree with no parent branch and an explicit `--all` stay whole.
+// so the Finalize gate of an inert-only change runs no tier.
 // A `--card` scope is not narrowed by `inert_paths`.
-// A whole gate carries over inert-only history.
-// A whole invocation of a tier that carries, with no entry on the current tree, is carried under one condition.
-// The condition is that the newest whole entry of an ancestor has an inert-only diff to the working tree.
-// The entry must be under the tier's fingerprint and the same module.
-// A whole entry is then written for the current tree, so a later gate carries it directly.
-// The carry runs only on a clean tree, and the inert list is part of the fingerprint, so a changed list voids it.
-//
-// Bound: a test that reads an inert file is skipped when only that file changes.
-// A hub therefore lists only files no test reads.
+// A whole invocation of a tier that carries is carried over inert-only history.
+// This holds when the newest whole entry of an ancestor has an inert-only diff to the working tree;
+// the entry is taken under the tier's fingerprint and module, and a whole entry is written for the current tree.
+// The carry runs only on a clean tree, and the inert list is part of the fingerprint.
+// Bound: a test that reads an inert file is skipped when only that file changes, so list only files no test reads.
 //
 // # Build step
 //
 // A hub's `build` declares a shell command, run once per call, that the tiers with `shared_build: true` depend on.
-// The first such tier in plan order whose run takes slots runs `runBuild` inside its slots, before its own command.
-// No later tier runs it again.
-// A run takes slots when it has invocations left after the green record's subtraction or has only a build to run.
-// A call whose opted-in tiers are all carried, or whose shares are empty, runs no build.
-// A share is empty for an inert-only, all-inert-card or empty diff.
-// A `carry: false` tier is the exception: it runs whole and so runs the build before its command.
-// A `shared_build` tier whose share selected no test class has no invocation and takes its slots only to run the build.
-// A compile break therefore still fails the gate, and the tier otherwise passes with nothing discovered.
-// The command runs through the platform shell as a tied child in the build's `dir`.
-// Its environment is the call's, the env config module's variables included.
-// It adds the slot's inherited variable and the build's `env`, which replaces an env module value.
-// The words after `--` never reach the command, and lym adds no switch to it.
-// A build that sets no `dir` runs in the anchor, as a tier does.
-// Its output passes to stdout and into its log.
-// Its own `timeout_min`, counted from the hold, bounds it, so the tier's `timeout_min` starts after it.
-// A timeout kills the tree, exits 1 and prints and logs `gateslot.BuildTimeoutLine`.
-// A shell that cannot start is refused naming the build's `dir`, halts the call with exit 1 and writes no build record.
-// The build writes a run record, `build` true and scope form `build`, for the tier it precedes.
-// It prints `gateslot.BuildSummaryLine` on stderr.
-// A failed or timed-out build is a failed run counted before that tier.
-// The call exits with the first failed run's code in plan order.
-// Every tier that opts into the build from there on runs no command.
-// It writes a run record with outcome failed, the build's exit code and `blocked_by` the build's log.
-// It prints `gate test: tierN did not run, since the build failed; see <log>` and no tier summary line.
-// The closing line names it blocked by the build.
+// The first such tier in plan order whose run takes slots runs it inside its slots, before its own command.
+// A call whose opted-in tiers are all carried or empty runs no build; a `carry: false` tier runs it before its command.
+// A `shared_build` tier with no invocation takes its slots only to run the build,
+// so a compile break still fails the gate.
+// The command runs in the build's `dir` with the call's environment plus the build's `env`.
+// The words after `--` never reach it.
+// The build's own `timeout_min` counts from the hold.
+// A timeout kills the tree, exits 1 and prints `gateslot.BuildTimeoutLine`.
+// The build writes a run record with `build` true and scope form `build`, and prints `gateslot.BuildSummaryLine`.
+// A failed build is a failed run counted before its tier, and every tier that opted in from there on runs no command:
+// its record has outcome failed, the build's exit code and `blocked_by` the build's log.
 // Tiers that do not opt in still run.
 // `lym gate report` totals build records apart, in `build_runs` and `build_seconds`.
-//
-// Bound: a `shared_build` tier whose command lacks `--no-build` builds again inside its own run.
-// lym does not read the command.
+// Bound: a `shared_build` tier whose command lacks `--no-build` builds again inside its own run; lym does not read it.
 //
 // # Vet step
 //
 // Under the `go` scoper a `--card` scope also plans vet runs, after the listed tiers and before the guard step.
-// Each declared tier whose build tag `tierN` brings a `.go` file into a card package (`tagTiers`) gets one vet run.
-// The file is one that a build without tags leaves out.
-// Vet runs go in ascending tier order.
-// A listed tier and a tier a listed tier covers get none, since their own commands compile under that tag.
+// Each declared tier whose build tag `tierN` brings a `.go` file into a card package gets a `go vet -tags tierN` run.
+// The run covers the card's packages, once per module.
+// A listed tier and a tier a listed tier covers get none.
 // So a card that breaks the compile under another tier's tag fails at its own gate.
-// It does not wait for the batch gate's `go vet` steps.
-// A helper a `tier0` file defines and a `tier1` file uses is such a break.
-// A vet run is `go vet -tags tierN` over the card's packages, once per module in that module's directory.
-// It uses the prebuild's go command, runs under the tier's `env`, `parallel` and `timeout_min`, and holds one slot.
-// Its summary line and run record carry the scope form `vet`.
-// It takes part in the green record under its own fingerprint, and a failed vet run stops no later run.
-// Bound: this step does not vet a break visible only under a combination of tags.
-// It does not vet one under a tag that adds no file to a card package either.
-// The batch gate finds both.
+// The run holds one slot, takes part in the green record under its own fingerprint, and stops no later run.
+// Bound: it does not vet a break visible only under a combination of tags.
+// Nor does it vet one visible only under a tag that adds no file to a card package; the batch gate finds both.
 //
 // # Guard step
 //
-// The verb runs the guard step after the listed tiers.
-// It runs with `--guards`, and under the `go` scoper after any computed, `--base` or `--card` scope.
-// `guardStepRun` builds the step over the module's `//lym:guard` tests outside the scope.
-// `impactset.DeriveTargets` names those packages for a narrower computed or `--base` scope.
-// An `impactset.ModuleGuardTests` scan of the module at the run directory names them in the other cases:
-// a `--card` scope, a scope fallen back to whole, and `--guards` over explicit targets.
-// The run directory is `tier0`'s dir or the `-C` directory of explicit targets.
-// The round and darn writer gates run `--base`.
-// Every guard package counts as outside a tier that does not compile it, so those gates keep full guard coverage.
-// The scan reads each guard test's tier from its file's `tierN` build tag, a file naming none counting as `tier0`.
-// The step plans one guard run per tier holding guard tests, ascending.
-// A guard run is one run of that tier's command with the group's guard packages as `{targets}`.
-// The `{args}` are any words from `--` followed by `-run '^(<names>)$'`,
-// so the guard's own pattern is the last `-run` and wins over one among those words.
-// It acquires that tier's slots after the last listed tier and vet run released their own.
-// It runs under that tier's `timeout_min` and `prebuilt_lym`, and it is logged as a guard step.
-// A failed guard run, like a failed listed tier, stops no later run.
+// The verb runs the guard step after the listed tiers when given `--guards`.
+// Under the `go` scoper it also runs after any computed, `--base` or `--card` scope.
+// It covers the module's `//lym:guard` tests outside the scope, so a narrower gate keeps full guard coverage.
+// A guard test's tier comes from its file's `tierN` build tag, a file naming none counting as `tier0`.
+// The step plans one run per tier holding guard tests, ascending.
+// Each run is the tier's command with the group's packages as `{targets}`;
+// `-run '^(<names>)$'` follows any words from `--`, so the guard's own pattern wins.
+// It acquires its slots after the last listed tier and vet run released theirs, and a failed run stops no later run.
 // A group is skipped when the call ran its tier, or a tier covering it, whole.
 // A group whose tier the green record holds green carries.
 // A group is refused before any slot when its tier is undeclared.
-// It is refused likewise when its tier's command lacks `{args}`, or lacks both `{targets}` and `{test_targets}`.
-// The refusal names `lym config gate`.
-// A scan error refuses the call before any slot.
-// The refusal names the file, the line when there is one and a way forward for its kind:
-// move a misplaced marker directly above its `func Test…` line;
-// move a marked test out of a `tier2` or `tier3` file into a `tier0` or `tier1` file;
-// or make an unparsable or unreadable file readable and parseable.
-// Any other scan error, such as an unreadable package directory, names the module directory.
-// Its way forward is to make `go list ./...` succeed there.
-// `--guards` under the `none` or `dotnet` scoper is refused naming the scoper, since the scan is Go's.
+// It is also refused when its command lacks `{args}`, or lacks both `{targets}` and `{test_targets}`.
+// A scan error refuses the call before any slot, naming the file, the line when there is one and a way forward.
+// `--guards` under the `none` or `dotnet` scoper is refused, since the scan is Go's.
 // A module with no marked test runs no guard step and logs so.
 //
 // # Watched tests
 //
 // A top-level test marked `//lym:watch <pattern>...` guards only the files its patterns name.
 // An example is a cross-compile that matters only when a `_linux.go` file changes.
-// Under the `go` scoper a narrowed computed or `--base` share and a `--card` scope skip such a test.
-// They skip it when no changed file matches a pattern and its own file did not change.
-// `impactset.DeriveTargets` names those tests for a computed or `--base` share.
-// A `--card` scope reads its changes as the diff from the merge base with the parent branch.
-// It matches the watched tests of its packages through `impactset.UnwatchedTests`.
-// With no parent branch, or a diff that cannot be read, it skips none.
-// A listed tier's run gets `-skip '^(<names>)$'` after the words from `--`, and a line on stderr names the tests.
-// A call whose words after `--` carry a filter flag gets no skip, nor does a tier whose command holds no `{args}`.
-// The guard step leaves out a watched guard test that the same changes leave alone.
-// A whole scope and explicit targets skip nothing, so the whole gates run every watched test.
-// A skipped test does not count toward the empty-tier check,
-// and a whole pass with empty args covers a skipping run in the green record.
+// Under the `go` scoper a narrowed computed or `--base` share and a `--card` scope skip such a test;
+// it is skipped when no changed file matches a pattern and its own file did not change.
+// A `--card` scope reads its changes as the diff from the merge base with the parent branch, and skips none without one.
+// A listed tier's run gets `-skip '^(<names>)$'` after the words from `--`, and the guard step leaves such a test out.
+// A call whose words after `--` carry a filter flag, and a tier whose command holds no `{args}`, get no skip.
+// A whole scope and explicit targets skip nothing.
 // A misplaced or malformed watch marker refuses the call, as a guard scan error does.
 // Bound: `-skip` matches by name in every package of the run, so a test of the same name elsewhere is skipped too.
 //
 // # Hub resolution
 //
-// The directory is resolved with lymcwd.ResolveWorktree.
-// It finds the containing worktree from any directory inside it, a nested module directory included.
+// The directory is resolved with lymcwd.ResolveWorktree from any directory inside a worktree, a nested module included.
 // Every verb acts on code, so a directory in a records worktree resolves to the code worktree it pairs with.
-// A worktree's `.scratch` link reaches such a directory.
-// The pairing goes through `fabricengine.CodeLocation`.
-// preflight.BoardLymPresent then reports whether the hub carries a board.
-// It does not use the standalone-capable CLIs' mode resolution.
-// Its anchor gate would refuse a nested module directory.
 // Inside a hub the config is `gateslot.LoadConfig` over the hub, this machine's override included.
-// An absent gate.yaml is refused with a way forward naming `lym fabric reconcile`.
-// An invalid one is refused with an error that names each file in the stack and its way forward.
-// A hub with no tier is refused naming `lym config gate`.
+// An absent gate.yaml, an invalid one and a hub with no tier are refused with a way forward.
 // Outside every hub, in a git worktree whose hub carries no board, the run is unslotted.
-// The worktree's own gate.yaml is read through the same loader with only the anchor told.
-// With none, the call is refused naming `lym config gate`.
-// A directory in no git worktree has no worktree layer to read.
-// It is refused naming `lym config gate` run in a git worktree.
+// It reads the worktree's own gate.yaml.
+// With none, or in no git worktree, the call is refused naming `lym config gate`.
 //
 // # Slots
 //
 // A tier first takes the slots it asks for through `gateslot.Pool.AcquireSlots`, with a holder that names the tier.
-// It writes a wait record under the worktree's wait directory while it waits.
-// It releases the slots before the next tier.
-// The wait of a call that runs in this process has no cap.
-// It ends when the slots free.
-// An interrupt from the caller cancels the wait and exits 128 plus the signal number.
-// Bound: a gate tier or the build step holds its slots for at most its `timeout_min`.
-// A slot-held card-verify line holds them for at most the runner's per-line timeout.
-// Any other slot taker of the pool, such as a drift step run or a plan-glyph type load, is bounded only by its own run.
-// A capped call's front is bounded by the caller role's keep-warm cap instead, as the Capped call section says.
+// It releases them before the next tier.
+// The wait of a call that runs in this process has no cap and ends when the slots free.
+// An interrupt cancels the wait and exits 128 plus the signal number.
 // A tier with `slots: all` holds every slot and waits behind the pool's drain.
+// Bound: a gate tier or the build step holds its slots for at most its `timeout_min`.
 // Outside a hub the tiers run unslotted.
 //
 // `lym gate status` reads the pool of the hub that contains the working directory and changes nothing.
 // It answers an ok envelope with `in_hub`, the pool's `slots` count, `draining` and `held`.
-// `draining` says whether a multi-slot acquire holds the drain, so new single-slot runs wait while a slot is free.
 // `held` has one entry per held slot, oldest first.
-// Each entry carries its `slot` number, `worktree`, `site`, `tier`, `pid` and `started` time.
 // Outside every hub it answers `in_hub: false` and nothing held.
 //
 // # Inheritance
 //
 // The slot variable gateslot.InheritEnv may name a slot of the pool that is held.
-// The run then goes inside that slot without acquiring, whatever slots its tiers ask for,
+// The run then goes inside that slot without acquiring,
 // so a verify command that calls `lym gate test` cannot deadlock.
 // Bound: a forged variable naming any held slot runs unslotted inside that holder's slot.
 // The standing agent deny refuses an agent command that names the variable.
 // An operator shell or a script that hides the name is outside the bound.
 //
-// The prebuilt-binary variable is set or stripped on every path.
-// A run that exports no fresh build removes an inherited value from the tier's environment.
-// `gateslot.StripPrebuilt` does the removal.
-// A forged value therefore never reaches a gated run, and can mislead only an ungated raw run.
+// The prebuilt-binary variable is set or stripped on every path,
+// so a forged value never reaches a gated run and can mislead only an ungated raw run.
 //
 // # Green record
 //
 // `lym gate test` carries a green tier forward over an unchanged tree, at every site and manual run alike.
-// The record is one JSON file per worktree, `green.json` in the worktree's never-tracked gate directory.
-// That directory is `gateslot.WaitDir` of the anchor.
-// The file is read tolerantly: an unreadable or malformed file reads as empty.
-// An entry holds the tier fingerprint, HEAD's tree and commit, the module directory and the args after `--`.
-// It also holds either `whole` or the green package set, and its write time.
-// `tierFingerprint` hashes the tier's declaration without `parallel`, `timeout_min`, `test_timeout_min` and `slots`.
-// A changed command, env, targets, counter, `filter`, `shared_build` or `carry` therefore never carries.
-// It also hashes the hub's `build` declaration for a tier with `shared_build`.
-// It hashes the hub's `inert_paths` when it is non-empty.
-// A changed build or inert list therefore stops the tiers it concerns from carrying.
-// A key at its default value adds nothing to the hash.
-// A tier that sets none of these therefore keeps its fingerprint and its green entries.
+// The record is `green.json` in the worktree's never-tracked gate directory, and an unreadable file reads as empty.
+// A tier's fingerprint hashes its declaration without `parallel`, `timeout_min`, `test_timeout_min` and `slots`.
+// It adds the hub's `build` declaration for a `shared_build` tier and the hub's `inert_paths` when non-empty.
+// A changed command, env, targets, counter, filter, build or inert list therefore never carries.
 //
-// Before the first tier the verb checks the worktree with `verifytree.DirtyPaths`.
-// A dirty worktree neither reads nor writes the record.
-// On a clean worktree it reads HEAD's tree and commit.
-// Before acquiring slots each listed tier subtracts what `greenRecord.covered` holds green for the current tree:
-// a whole entry covers every target;
-// under the `go` scoper a package entry covers its packages, so a remainder runs as explicit packages;
-// under the `none` scoper only a whole entry carries.
-// The same holds under the `dotnet` scoper, since a pass narrowed to a project and its classes records nothing.
+// A dirty worktree, judged by `verifytree.DirtyPaths`, neither reads nor writes the record.
+// On a clean worktree each listed tier subtracts what the record holds green for the current tree:
+// a whole entry covers every target, and under the `go` scoper a package entry covers its packages.
+// Under the `none` and `dotnet` scopers only a whole entry carries.
 // An entry with empty args covers a request with empty args, the guard step's own `-run` filter and the watch skip;
 // any other args need an exact match, so `-- -count=1` reruns.
-// A remainder whose targets would exceed a shell-safe length runs whole instead.
-// So does one whose packages `go list` cannot list.
 // A tier with nothing left is carried: it takes no slot, runs no command and writes a run record with `carried` set.
-// It prints its summary line with `carried` after the scope form and exit 0, so every reader of the line parses it.
+// A tier with `carry: false` is never carried and writes no entry.
 //
 // A pass is recorded only when HEAD's tree is unchanged and the worktree still clean at that point.
-// A tree that changes during a run therefore records nothing.
-// A tier writes a whole entry when its carried part and passed remainder cover every package of its `all_targets`.
-// The packages are listed once with `go list` under the tags the tier's command names.
-// Otherwise the tier writes the packages it ran.
-// The guard step writes its entries under its own `-run` args.
-// Such an entry never covers an empty-args request, and an exact repeat of the guard group carries.
-// Writers serialize through a lock file beside the record.
-// Each write keeps the current tree's entries and each fingerprint's 20 newest whole-green commits.
-// An older ancestor therefore stays findable.
-// Only a whole entry with empty args counts toward the 20 and outlives its tree.
-// Only such an entry can serve as a base.
-// The carry sits under `verifytree`'s command-and-tree skip, which every site keeps.
-// The record only saves time, so a failure around it decides nothing.
-// An unreadable record, a failed lock, or a failed status or HEAD read is logged at Warn, and every tier runs.
-// A failed write is logged and leaves the tier's outcome and exit code unchanged.
-//
-// A tier with `carry: false` is never carried:
-// `subtract` keeps every invocation of it and `recordPass` writes no entry for it,
-// so it runs again on an unchanged tree.
-// Bound: that is the record's rule alone.
-// A verify site's verified-tree record still skips a command over a tree it passed on.
-// Explicit targets still narrow such a tier, and a listed tier whose `covers` names it still drops it.
+// A tier writes a whole entry when its carried part and passed remainder cover every package of its `all_targets`;
+// else the packages it ran.
+// Each write keeps the current tree's entries and each fingerprint's 20 newest whole-green commits;
+// only a whole entry with empty args outlives its tree and can serve as a base.
+// The record only saves time, so a failure around it is logged and decides nothing: every tier runs.
 //
 // Bound: a carried tier trusts a pass over the same tree, tier declaration and args on this worktree,
 // so a flaky test that passed once is not rerun.
-// A Go toolchain change is outside the fingerprint and the clean check.
-// So are inherited environment variables outside the tier's `env`, and ignored files such as `.dev-bin`.
+// A Go toolchain change, inherited environment variables outside the tier's `env` and ignored files are outside it.
 // The record never leaves the machine, so an adopted run tests afresh.
-// A forged or hand-edited whole entry carries every later gate on that tree, Parent-Align and Finalize included.
+// A forged or hand-edited whole entry carries every later gate on that tree.
 // That is accepted: a session that can write the worktree can change the code and tests under review.
-// The record guards only honest repeats, and no further deny is added, since `cp` and `tee` would still reach it.
 //
 // # Timeouts
 //
 // The tier's `timeout_min`, counted once its slots are held, bounds the prebuild and every invocation of its command.
-// A tier that outlives it has its process tree killed through the tied child's context.
-// It fails with exit code 1 and `gateslot.TierTimeoutLine` on stderr and in its log.
-// The work before the first tier is bounded by a ceiling, 10 minutes in production.
-// A step that outlives it fails naming the step and the way forward, which is to run the same command again;
-// a transient hang such as a stalled `go list` passes on the rerun.
-// The length of a `timeout_min` minute, the ceiling and the pipe wait delay are parameters of `newCommand`,
-// so a test shortens them.
+// A tier that outlives it has its process tree killed, fails with exit code 1 and prints `gateslot.TierTimeoutLine`.
+// The work before the first tier is bounded by a ceiling;
+// a step that outlives it fails naming the step, and the way forward is to run the same command again.
 //
 // # Counters, record and log
 //
 // A tier's output goes through its counter, `go-json` or `vstest`, which passes the text on and counts its tests.
-// After each tier the verb prints `gateslot.TierSummaryLine` to stderr.
-// It writes the run record and log through `gateslot.WriteRunRecord` under `gateslot.RunLogDir`:
+// After each tier the verb prints `gateslot.TierSummaryLine` to stderr
+// and writes the run record and log through `gateslot.WriteRunRecord` under `gateslot.RunLogDir`:
 // the board's gate directory inside a hub, so the records outlive the worktree;
-// the worktree's own `.lym` gate directory outside every hub.
-// The record's slug is the one the pair's fabric origin record names, empty for the prime and outside every hub.
+// else the worktree's `.lym` gate directory.
 // A write failure is logged and decides nothing.
-// The `go-json` counter keeps, per package, the gap from its `start` event to its next event.
-// It keeps the closing event's elapsed time too.
-// The record carries both as `launches`; a cached package and one with no test files are left out,
-// and a `vstest` run records none.
-// It keeps, per package, the number of tests that ran in it, and a `vstest` run keeps none.
-// For the failure report it keeps each failed test with its first printed lines.
-// It keeps them beside `go test`'s status and summary lines, and leaves out a test whose subtest failed.
-// It keeps each failed package that no failed test explains, with its own first lines and its build's.
-// It keeps the first lines that were no JSON event.
-// The `vstest` counter keeps each test a `Failed <name> [<duration>]` line reports, with no package.
-// It keeps the first lines of the test's block, which hold its error message and stack trace;
-// the block's section headings are left out.
-// A `vstest` tier that sets `results: trx` gets its results from a file the gate asks for instead.
-// Each invocation's `{args}` open with `--results-directory <dir> --logger trx;LogFilePrefix=gate --blame`.
-// That is the `dotnet test` spelling, over a fresh `lymtemp` directory, ahead of the call's own words after `--`.
-// A call whose own words hold a results directory or a `trx` logger is refused, since the gate owns those words.
-// Once the command ends, its console output is read to the end.
-// The TRX files there then replace the counts and failed tests its console output gave.
-// A console logger among the call's own words so never changes the verdict.
-// The directory is then removed.
-// A test counts as passed for the outcome Passed, failed for Failed, Error, Timeout and Aborted, and skipped otherwise.
-// A failed test keeps the first lines of its error message and stack trace.
-// A failed run prints and logs each run-level message of outcome Error in those files.
-// Such a message is a test host crash with the test the blame collector saw running.
-// The failure report lists it among the causes.
+// The record carries each failed test with its first line as `failures`, and `launches` for a `go-json` run.
+//
+// A `vstest` tier that sets `results: trx` gets its results from TRX files the gate asks for.
+// The gate owns the results-directory and logger words, so a call whose own words hold them is refused.
+// The TRX files replace the console counts and failed tests.
+// A run-level error message, such as a test host crash, is listed among the causes.
 // An invocation that wrote no readable TRX file keeps the console counts.
-// A `vstest` tier that sets no `results` gets no results file, so it keeps the console counts and logs no crash cause.
-// Adding `results: trx` and `{args}` to its command gives it both.
-// The record carries each failed test with its first line as `failures`.
-// A `go-json` tier under the `go` scoper fails when a package holding a test under the tier's tag ran none;
+// A `vstest` tier that sets no `results` keeps the console counts and logs no crash cause.
+//
+// A `go-json` tier under the `go` scoper fails with exit 1 when a package holding a test under the tier's tag ran none;
 // the tier's command then lacks its tag.
-// A package holds such a test when a file of it has a `Test` function,
-// and that file carries a build constraint that holds under `tierN` on the host's GOOS and GOARCH.
-// The failure exits 1.
-// Its line names the tier, the package and `lym config gate`, and goes to stderr and the log before the summary line.
-// A run whose words after `--` carry `-run`, `-skip`, `-list` or `-bench` is exempt, since its filter may match nothing;
-// the guard step's own `-run` filter exempts nothing.
-// A test the run's watch skip names does not count as a test the package holds.
-// Otherwise a tier that discovers no tests passes with zero counted, as a package with only a `TestMain` does.
-// A passing `vstest` invocation whose output reported no test still passes, and prints a line to stderr and the log.
-// A test project that sets IsTestProject false unless an MSBuild property is passed builds and exits 0 this way.
-// The line names the tier, the invocation's targets, or its directory when it has none, and its class filter terms.
-// Its way forward is running the tests by hand with `dotnet test` and the property the project file names.
-// That is offered only while the hub's `refuse_raw` does not list `dotnet test`.
-// Otherwise the agent reports the skipped tests to its parent.
-// The line covers an invocation whose whole output reported no test.
-// It cannot see a disabled project beside a project that ran.
-// It cannot see a gated class in a project that ran other tests.
-// It cannot name the property behind a skip: the line reads only each invocation's total.
+// The line names the tier, the package and `lym config gate`.
+// A run whose words after `--` carry `-run`, `-skip`, `-list` or `-bench` is exempt.
+// A watch-skipped test does not count as a test the package holds.
+// A passing `vstest` invocation whose output reported no test still passes and prints a line to stderr and the log.
+// The line is there because a test project can skip all tests unless an MSBuild property is passed.
+// The line cannot see a disabled project beside a project that ran, or name the property behind a skip.
 //
 // # Stray files
 //
-// A tier run with an invocation lists the worktree's untracked, non-ignored files before and after it.
-// The listing is taken through `git ls-files`.
-// The first listing is taken once per tier run, before its first attempt,
-// so a rerun after a shortage or a crash is held to it as well.
+// A tier run lists the worktree's untracked, non-ignored files before and after it.
 // A file the second listing holds and the first lacks fails the run with exit 1, a failing run keeping its own code.
-// Such a file is one a test wrote outside its own temp directory, as a lock beside a record whose path was empty.
-// A line naming at most `strayFilesListed` of the files goes to stderr and the log before the summary line.
-// Each name is a quoted string, so a name with a newline or a comma stays one item.
-// The line gives the way forward: move the write under the test's temp directory and remove the files.
-// A `--copies` run is listed once around all its copies,
-// and the failure report lists its stray-file failure as a failed run of its own.
-// A worktree git cannot list, such as a directory outside every repository, is not checked.
+// Such a file is one a test wrote outside its own temp directory.
+// A stderr and log line names it, with the way forward of moving the write under the test's temp directory.
+// A `--copies` run is listed once around all its copies.
+// A worktree git cannot list is not checked.
 // Bound: a file another process makes in the worktree while the tier runs fails the run as well.
 //
 // # Lint steps
@@ -607,240 +349,108 @@
 // Each runs over the worktree against HEAD, untracked files included:
 // `comments` through `commentlint.Lint` and `pattern` through `patternlint.Lint`.
 // A step that finds something, or cannot run, is a failed run labelled `lint <name>`.
-// Its exit code is 1 when no earlier run failed.
-// Its findings go into the failure report with the step's way forward.
-// The template's `card` key lists both, so a card gate is one call, and a call with manual flags runs none.
+// Its exit code is 1 when no earlier run failed, and its findings go into the failure report.
+// A call with manual flags runs none.
 // Bound: a step reads only the working tree against HEAD, so on a clean tree it finds nothing;
 // the round and darn gates lint their own range through `loomshed`.
 //
-// # Redundancy report
+// # Report steps
 //
-// A `--gate` key whose `reports` lists `gateslot.ReportRedundancy` runs the redundancy report step last.
-// It runs after the key's lints in an uncancelled call, whatever the key's scope.
-// The step is advisory: every failure it meets is a line of its report, and it never changes the exit code.
-// It writes `RedundancyReport` through `internal/state` as `redundancy.json` in the worktree's gate directory.
-// It prints one stderr line with its counts and path.
-// A report it cannot write is logged at Warn.
+// A `--gate` key's `reports` may list `gateslot.ReportRedundancy`, `gateslot.ReportReach` or `gateslot.ReportMutation`.
+// The key runs each listed step after its lints in an uncancelled call, whatever the key's scope.
+// The reach step runs before the redundancy step.
+// Each step is advisory: every failure it meets is a line of its report, and it never changes the exit code.
+// It writes its report through `internal/state` into the worktree's gate directory.
+// The file is `redundancy.json`, `reach.json` or `mutation.json`, and a report it cannot write is logged at Warn.
 // A call one of whose runs failed gets a report marked `red_gate` that judges nothing.
-// So does a call outside every hub, a hub whose `scoper` is not `go`, or a worktree with no parent branch.
+// So does a call outside every hub, a hub whose `scoper` is not `go`, or a task worktree with no parent branch.
 // Each such report carries a note.
-//
-// The step judges the module of the lowest declared of tier0 and tier1, as `lym gate test --map` maps it.
-// It diffs the working tree from the merge base with the parent branch through `impactset.ChangedPaths`.
-// It reads the test files of each package holding a changed `_test.go` file at the merge base.
-// The reads go through `Fabric.CodeDirAt` and `Fabric.CodeFileAt`.
-// It takes each top-level test of a changed file whose name the merge base lacks or whose text differs there.
-// So a test file moved within its package adds none of its unchanged tests, and a deleted one adds none.
-// It drops, each listed with its reason, a tier2 or higher test and a test of a tier the hub does not declare.
-// It also drops a test marked `//testtiming:keep`, with the marker's reason,
-// and a test the spawn scan marks as possibly running module code in another process.
-// A test that opens with no `tiergate.Require` counts as tier0.
-// It keeps the first `redundancy_max_tests` of the rest in file then name order, and lists the others.
-// A package with no coverage map, an unreadable one or one holding only a build failure is not judged.
-// Nor are its tests.
-// A map that records a later failed build beside its entries is judged by those entries.
-// Before any build the step takes one gate slot, after the call's tiers released theirs.
+// A report never matches a later commit when it judged nothing, is a red-gate report or a prime report,
+// so a later call on a matching tree reruns nothing and keeps it.
+// Each step takes one gate slot where it builds, after the call's tiers released theirs.
 // It takes none inside an enclosing gate run's slot.
-// It holds the slot to its end, and its wait has no bound but the call's context.
-// `redundancy_budget_min` counts from the hold.
-// Once it is spent the step starts no further build or test.
-// It lists each test it did not run as not judged for the spent budget.
-// Per package it builds the coverage binary under the slot's `gateslot.HolderEnv`.
-// It runs each test alone under its tier's env, as `lym gate test --map` does.
-// It builds `lym` once for a tier with `prebuilt_lym`.
-// Each build is bounded by `redundancy_build_timeout_min` and each test by `redundancy_test_timeout_sec`.
-// Each test is also capped at `redundancy_test_memory_mb` of memory.
-// One the cap ends is not judged, with the cap as its reason.
-// A skipped, failed, timed-out or block-free test is not judged.
-// A map entry covers each judged test when it passes and its test still exists with the same function hash.
-// The map entries for the judged tests themselves are left out.
-// The other judged tests cover each one as well.
-// An outcome entry and a spawn-marked one record no coverage, so they cover nothing.
-// `testcover.JudgeAgainst` runs the greedy pass, slowest first, keeping every map test.
-// A test the pass drops is contained, with its covering tests largest overlap first; any other judged test is unique.
-// The report records the function hash of every test the step took and the hashes of each judged package's Go files.
-// A judged package's line names its map's commit and age,
-// and the files whose text at the merge base hashes otherwise than the map, its drift from the run's base.
-// A later call on a tree that matches the report runs no build and no test and keeps the report.
-// A report never matches when it judged nothing, holds an error line or a package with no usable map.
-// It never matches either when it lists a test the spent budget or a cancelled call left unrun.
-// `ReadRedundancyReport` reads a worktree's report.
-// `RedundancyReportMatches` matches one against a commit:
-// the step's selection over the commit's tree, and the judged packages' file hashes there.
-// Bound: the step can let a redundant test through.
-// An edited block is uncovered, and a test changed since the map covers nothing.
-// It can flag a test falsely: a map test counts as a cover whenever its own text is unchanged.
-// A change outside that text can stop it reaching a block it reached when the map was built.
-// Such a change is one to a helper or a callee.
+// The memory guard and the build and test bounds bound the steps.
+// So do the `redundancy_*`, `reach_budget_min` and `mutation_*` budgets in `gate.yaml`.
+//
+// The redundancy step judges the module of the lowest declared of tier0 and tier1, as `lym gate test --map` maps it.
+// It takes the top-level tests the diff from the merge base with the parent branch adds or changes.
+// It drops tests of tier2 or higher, `//testtiming:keep` tests and tests that may run module code in another process.
+// It judges the rest against the package's coverage map through `testcover.JudgeAgainst`.
+// A package with no usable coverage map, and a test the budget or a cap left unrun, is listed as not judged.
+// A test is contained when the greedy pass drops it, and unique otherwise.
+// `ReadRedundancyReport` reads a worktree's report and `RedundancyReportMatches` matches one against a commit.
+// Bound: the step can let a redundant test through, since an edited block is uncovered.
+// It can also flag a test falsely, since a change outside a map test's own text can stop it reaching a block.
 // Review reading each finding against its covering tests bounds that.
 //
-// # Reach report
-//
-// A `--gate` key whose `reports` lists `gateslot.ReportReach` runs the reach report step before the redundancy step.
-// It runs after the key's lints in an uncancelled call, under the same memory guard, whatever the key's scope.
-// The step is advisory: every failure it meets is an error line of its report, and it never changes the exit code.
-// It writes `ReachReport` through `internal/state` as `reach.json` in the worktree's gate directory.
-// It prints the report's note to stderr, at most a fixed number of lines.
-// A report it cannot write is logged at Warn.
-// A call one of whose runs failed gets a report marked `red_gate` that judges nothing.
-// So does a call outside every hub, a hub whose `scoper` is not `go`, or a task worktree with no parent branch.
-// Each such report carries a note and makes no lookup.
-//
-// The step diffs from the merge base with the parent branch.
-// The prime has no parent branch, so it diffs the working tree from HEAD, and its report records `prime`.
-// `changedFuncsAt` finds the changed functions.
-// It takes each package directory holding a changed production Go file.
-// It reads every production Go file of the directory at the base, through fabric, and in the working tree.
-// It hands the two sets to `testreach.ChangedFuncs`.
-//
-// A task worktree first refreshes its own coverage maps, under `testcover.Dir` of its anchor.
-// A package holding a changed function is refreshed when its worktree map is absent or no longer fresh.
-// It is refreshed only when no file it or a package its test binary links owns is uncommitted.
-// The linked packages are those the map records, or for a package with no map those the go command lists.
-// The refresh runs the map run's measurement over those packages.
-// It holds the map run's slot ask and passes the map run's own clean checks.
-// It never writes the hub's shared maps.
-// `reach_budget_min` counts from the hold, and past it the walk starts no further package.
-// A package left unrefreshed is a line of the report with its reason and its way forward.
-// The prime refreshes nothing: it keeps no worktree maps, and its shared maps are rebuilt with `lym gate test --map`.
-//
-// The step then reads the shared maps and, outside the prime, the worktree's own through `testreach.Open`.
-// It records, per changed function, its package, file, name and hash, and whether it is new.
-// It records the tests that reach it too: its own package's first, fewest reached functions first.
-// It keeps a fixed number of them and counts the rest.
+// The reach step diffs from the merge base with the parent branch.
+// The prime diffs the working tree from HEAD and records `prime`.
+// A task worktree first refreshes its own coverage maps for the packages holding a changed function.
+// It does so under `reach_budget_min` and never into the hub's shared maps; the prime refreshes nothing.
+// A package left unrefreshed is a line of the report with its reason and way forward.
+// It then records each changed function and the tests that reach it, from the shared maps and the worktree's own.
 // A function no mapped test reaches carries its caveats.
-// One caveat is that its package holds a test above tier1 or an entry marked as running code in another process.
-// Another, for a function new since the base, is a package linking its package whose map is older than its files.
-// A hub with no coverage map at all gets a report that judges nothing, whose note names `lym gate test --map`.
-// The report also records the maps it read and the hashes of the Go files of each package it names.
-// `ReachReport.NoteLines` renders the note.
-// It holds the tests per function, the commit and age of each map,
-// and the unreached functions with their caveats and the unrefreshed packages.
-// It is cut at a line cap that names the report.
-// `ReadReachReport` reads a worktree's report.
-// `ReachReportMatches` matches one against a commit.
-// `ReachPendingOf` returns the pending-report source of the reach turn.
-// The loomshed verify gate and the weaver batch gate both read it.
-// It answers the note and the unreached functions of the worktree's report for the asked gate key.
-// A report of another key, one that judged nothing and one that no longer matches HEAD answer false.
-// So does a report that cannot be read or matched, with a Warn and no error, since the note is advisory.
-// It never matches a report that judged nothing, a red-gate report or a prime report.
-// Otherwise it holds when `changedFuncsAt` over the commit's tree gives the recorded functions with their hashes.
-// The merge base it works from is the current one.
-// Each package of the recorded file hashes must also hash the same at the commit.
-// Bound: a map older than the files can make a function read as unreached.
-// So can a test that runs the function in another process.
+// A hub with no coverage map gets a report that judges nothing, whose note names `lym gate test --map`.
+// `ReachReport.NoteLines` renders the note, cut at a line cap.
+// `ReadReachReport` and `ReachReportMatches` read and match a report.
+// `ReachPendingOf` answers its note and unreached functions for the asked gate key.
+// It answers false for a report that is stale or cannot be read.
+// Bound: a function can read as unreached when its map is older than the files or a test runs it in another process.
 //
-// # Mutation report
-//
-// A `--gate` key whose `reports` lists `gateslot.ReportMutation` runs the mutation report step last.
-// It runs after the key's lints in an uncancelled call, under the same memory guard, whatever the key's scope.
-// The step is advisory: every failure it meets is an error line of its report, and it never changes the exit code.
-// It writes `MutationReport` through `internal/state` as `mutation.json` in the worktree's gate directory.
-// It prints one stderr line, which counts the mutants run, killed, survived and unjudged.
-// The line also counts the uncovered changed blocks, the packages not judged and any error lines.
-// It ends with the report's path.
-// A report it cannot write is logged at Warn.
-// A call one of whose runs failed gets a report marked `red_gate` that judges nothing.
-// So does a call outside every hub, a hub whose `scoper` is not `go`, or a task worktree with no parent branch.
-//
-// The step diffs from the base the reach step diffs from, HEAD in the prime, whose report records `prime`.
-// It then runs the refresh and the mutation check of the Mutate verb under the same keys.
-// Its slot holder record carries its own label.
-// Inside an enclosing gate run's slot it takes none.
+// The mutation step diffs from the base the reach step diffs from.
+// It then runs the refresh and mutation check of the Mutate verb under the same keys.
 // The report holds the counts and every survivor, unjudged mutant, uncovered changed block and package not judged.
-// It also records the changed functions with their hashes and the hashes of the Go files of their packages.
-// `ReadMutationReport` reads a worktree's report.
-// `MutationReportMatches` matches one against a commit by its functions and file hashes, as `ReachReportMatches` does.
-// It never matches a report that judged nothing, a red-gate report or a prime report.
-// `MutationReport.ReviewLines` renders the counts and each survivor with its possible killers for a review.
-// It is cut at a line cap that names the report.
-// A report whose mutation call ended in error records no changed function, so it never matches a diff that changes one.
+// `ReadMutationReport` and `MutationReportMatches` read and match a report.
+// `MutationReport.ReviewLines` renders it for a review, cut at a line cap.
 // Bound: a survivor is a changed line no covering test checks, or one no test can reasonably check;
 // review tells them apart.
-// Bound: the file hashes cover the Go files of the changed packages only.
-// A change to a non-Go file a package's tests read, such as testdata, leaves the report matching HEAD.
+// Bound: the file hashes cover the Go files of the changed packages only,
+// so a change to a non-Go file a package's tests read leaves the report matching HEAD.
 //
 // # Reach verb
 //
 // `lym gate reach <file>#<Func>` prints the reach note of one function, read from the maps, and changes nothing.
 // The file is the worktree-relative slash path, and the function's name is `Type.Method` for a method.
-// The note is the reach step's.
-// It lists the tests that reach the function, its own package's first and a fixed number at most.
-// It also gives the caveats of a function no test reaches, and the commit and age of each map read.
-// The maps are the hub's shared maps and, outside the prime, the worktree's own, read through `testreach.Open`.
-// The verb runs no build, takes no gate slot and writes nothing, the index included.
-// A function the maps do not hold prints its line with the commit of its package's map, or says no map holds the package.
+// The verb runs no build, takes no gate slot and writes nothing.
 // Bound: it only reads, from maps that may be days old, and the note says how old.
 //
 // `lym gate reach --test <package>.<Test> --since <rev> [--branch <name>]` lists the landings a test reaches.
 // The package is the module-relative package path, split from the test at the last dot.
-// It walks the first-parent commits after `--since` through `Fabric.FirstParentCommits`.
-// The branch is `--branch`, else the parent branch the pair's fabric origin record names, else the current branch.
-// For each commit it takes the functions the commit changes against its first parent, as `changedFuncsAt` does,
-// and lists the commit when the test reaches one of them, naming them.
-// The output says how many commits it checked and names the commit of the map that holds the test.
-// A test no map holds walks nothing: the output says so and names the commits of the maps read.
-// An empty list is thereby never read as no landing to blame.
-// A range past the verb's commit cap is refused, naming a later `--since`, and so is a `--since` the history never meets.
+// It walks the first-parent commits after `--since` on the branch, else the parent branch, else the current branch,
+// and lists each commit that changes a function the test reaches, naming them.
+// The output says how many commits it checked, so an empty list is never read as no landing to blame.
+// A test no map holds walks nothing and says so.
+// A range past the verb's commit cap and a `--since` the history never meets are refused.
 // Bound: a function renamed or removed since its landing matches nothing in the current maps.
 //
 // A hub whose scoper is not `go` reads nothing: the verb prints a note naming the scoper, with exit 0.
-// Every refusal names its way forward.
 //
 // # Mutate verb
 //
 // `lym gate mutate [--base <rev>]` mutates the lines the worktree's diff changes.
 // It lists the mutants no covering test kills.
 // It is a hand verb; the mutation report step runs the same refresh and check in a gate call.
-// It changes nothing but the worktree's own coverage maps, which its refresh writes, and the budgets bound its time.
+// It changes nothing but the worktree's own coverage maps, which its refresh writes.
 // The base is `--base`, else the merge base with the parent branch.
-// A worktree with no parent branch and no `--base`, the prime's case, is refused.
-// So is a `--base` that names no commit.
+// A worktree with no parent branch and no `--base`, the prime's case, and a `--base` that names no commit are refused.
 // A hub whose scoper is not `go` judges nothing: the verb prints a note naming the scoper, with exit 0.
-// `changedFuncsAt` finds the changed functions between the base and the worktree.
-// `testreach.ChangedLines` finds the changed lines of each changed production Go file against the file at the base.
 //
-// The call refreshes the worktree's own maps of the packages holding a changed function, as the reach report step does.
-// The refresh runs under `reach_budget_min`; the prime refreshes nothing.
 // A package is judged only with a fresh map: one the refresh wrote, or a map whose file hashes match the worktree.
-// That is the worktree's own map, read through `testreach.ReadPackageMap`, or in the prime the hub's shared map.
 // Every other changed package is listed as not judged, with its reason and way forward, and gets no mutant.
-//
-// The check then waits for one gate slot, after the refresh, and holds it to its end.
-// `mutation_budget_min` counts from the hold.
-// Per judged package it builds the coverage binary and reads its block table, as `lym gate redundant` does.
-// `testcover.PlanLineMutants` then places the mutants over the blocks the map's tests cover.
-// The tests it counts are those of the map with a passing measurement whose check does not read source files.
-// A block only a source-checking test covers is therefore uncovered.
-// Each coverage build and plan runs whatever the budget, bounded by `redundancy_build_timeout_min`.
-// `mutation_max_mutants` caps the mutants of the diff, taken one changed function at a time in turn across the packages.
-// A round with more functions than the cap leaves takes functions spread evenly over the order of package, file and name.
-// The rest count as not run.
-// Past `mutation_budget_min` the check starts no further mutant build or run.
-// Every mutant left is unjudged for the budget.
-//
-// One mutant binary per package holds the chosen mutants, built as `lym gate redundant` builds its own:
-// a mutant the compiler refuses is dropped and counted unbuildable.
-// Each mutant runs the map's tests that cover its block, the fastest first, until one fails.
-// Each test runs alone in its own process.
-// Up to the slot's tier0 parallel of the mutants go side by side, fewer when memory is short.
-// A kill made beside other runs is run again alone.
-// A killer that then passes sends the mutant on to the next covering test.
-// Every run is capped at `redundancy_test_memory_mb`.
+// The check holds one gate slot after the refresh.
+// It plans mutants over the blocks the map's tests cover, excluding tests whose check reads source files,
+// so a block only a source-checking test covers is uncovered.
+// `mutation_max_mutants` caps the mutants of the diff, and `mutation_budget_min` bounds the run;
+// a mutant left is unjudged for the budget.
+// Each mutant runs the map's tests that cover its block, fastest first, each alone in its own process, until one fails.
+// A mutant the compiler refuses is counted unbuildable.
 // A run past its time bound, at the memory cap or killed by the memory guard is unjudged, never a kill.
 // A mutant every covering test passes is a survivor, and one with an unjudged run and no kill is unjudged.
 // A survivor lists, as possible killers, the tests of other packages that the maps show reach its function.
 // Those tests are not run.
 //
-// The call prints `base`, `prime` and the number of changed functions.
-// It prints `mutants`: the mutants run, killed, survived and unjudged, those unbuildable and those left out by the cap.
-// It prints `runs` too, the test processes it started.
-// `survivors` holds each survivor's worktree-relative file, line, operator and function with its possible killers.
-// `unjudged_mutants` holds each mutant left without a verdict, with why.
-// `uncovered_blocks` holds the changed blocks no test of the package's map covers.
-// `not_judged` holds each package the check judged nothing of, with why.
-// `errors` holds the error lines of the refresh.
+// The output holds `base`, `prime`, the changed functions, `mutants` counts and `runs`.
+// It also holds `survivors`, `unjudged_mutants`, `uncovered_blocks`, `not_judged` and `errors`.
 // It exits 0 once it ran, whatever it found.
 // Bound: a mutant changes the package's own code only, so a test of another package never kills one.
 //
@@ -849,40 +459,19 @@
 // `lym gate red-first --gate <key> [--base <rev>]` proves that a bug fix's test was red before the fix.
 // A gate on a bug fix's writer row runs it as a subprocess and reads its exit code.
 // The base is `--base`, else the merge base with the parent branch, refused as the Mutate verb refuses it.
-// `--gate` is required, and a key the config cannot run is refused with the config's way forward.
-// The refusal for a missing `--gate` comes before hub resolution, as a flag-shape refusal does.
-// A hub whose scoper is not `go` can judge nothing.
-// The verb then refuses, naming the scoper, with exit `gateslot.RedFirstUnjudgedExit`.
-// The way forward is the parent's recorded decision whose title opens `gateslot.NoTestSeamTitle`.
+// `--gate` is required, and its refusal comes before hub resolution.
+// A diff with no added or changed test is refused with exit `gateslot.RedFirstNoTestExit`,
+// and a hub whose scoper is not `go` with exit `gateslot.RedFirstUnjudgedExit`.
+// The way forward of both is a recorded decision whose title opens `gateslot.NoTestSeamTitle`.
 //
-// `testreach.ChangedTests` finds the tests the diff adds or changes.
-// It compares the `_test.go` files of each package holding a changed one, at the base and in the working tree.
-// A diff with no such test is refused, naming the way forward, with exit `gateslot.RedFirstNoTestExit`.
-// The way forward includes recording a decision for a bug no test can reach.
-// Its title opens `gateslot.NoTestSeamTitle`.
-//
-// The verb then puts the base's production code back with a Go build overlay.
-// It runs the key's tiers once in this process.
-// The overlay maps each changed production `.go` file of the module to a copy of its text at the base.
-// A file the base lacks maps to the empty path, which Go reads as deleted.
-// Test files keep their working-tree text.
-// The overlay also maps each changed non-Go file that a production Go file at the base embeds to its base text.
-// The go command reads an embedded file through the overlay.
-// An embed directive of a Go file in its directory or above it, up to the module's root, names the file.
-// The directive may instead name a directory the file lies under, or a glob matching either.
-// A directory's subtree leaves out the names that open with a dot or an underscore, unless the pattern carries `all:`.
-// A file under `testdata` or a dot- or underscore-prefixed directory counts when a directive names it.
-// Every other changed non-Go file keeps its working-tree text, as an input of the tests or nothing the build reads.
-// The overlay and the copies live in a `lymtemp` directory that the verb removes when it ends.
-// The tiers run through the same code as `lym gate test` over explicit targets in the module's directory.
-// They run once for each package that holds a changed test, so a test of one package never runs by another's name.
-// The target is that package.
-// The words of `{args}` are `-overlay=<file>` and `-run=^(<names>)$`, the names being that package's changed tests.
-// `renderTierCommand` quotes each word through `verifyrun.QuoteArg`.
-// The pattern's `|`, `(`, `)` and `$` reach `go test` whole.
+// The verb puts the base's production code back with a Go build overlay.
+// It runs the key's tiers once in this process, once per package that holds a changed test.
+// The `{args}` are `-overlay=<file>` and `-run=^(<names>)$`.
+// The overlay maps each changed production `.go` file of the module to its text at the base.
+// It maps a file the base lacks to the empty path.
+// It maps each changed non-Go file a base production file embeds to its base text.
+// Test files and every other changed non-Go file keep their working-tree text.
 // The key's lints, scope and report steps never run, and each tier's command must hold `{args}`.
-// The tier run's output and its failure report go to stderr as they come, and the verb keeps them for its verdict.
-// A line first names the base, the tests and the number of files the overlay replaces.
 //
 // The exit code is the contract:
 // - 0 when a changed test failed on the base; the envelope lists the red tests as `<package>.<Name>`.
@@ -892,320 +481,169 @@
 // - 1 for a refusal, and for a run that judged none of the tests, such as a timeout or a crash.
 // - 128 plus the signal number after a terminating signal.
 //
-// A test is red when `gateslot.NamedFailedTests` names its package and name in the output.
-// That holds whatever else the failure report lists, such as a cut line or another package's failure.
-// It is also red when `gateslot.PackagesFailedOutsideTests` names its package.
-// A test that does not build on the base therefore counts as red.
+// A test is red when `gateslot.NamedFailedTests` names its package and name in the output,
+// or `gateslot.PackagesFailedOutsideTests` names its package, so a test that does not build on the base counts as red.
 // Bound: `go.mod` and `go.sum` are not put back.
 // Bound: a changed non-Go file that the code reads at run time, rather than embeds, keeps its working-tree text.
 // Bound: a test that every tier of the key skips counts as passing.
-// Bound: a `lym` binary a tier prebuilds is built from the working tree, not from the base, and no overlay reaches it.
+// Bound: a `lym` binary a tier prebuilds is built from the working tree, not from the base.
 //
 // # Failure report
 //
-// A call with a failed run, a halted call included, prints the failure report to stderr before its closing line.
-// One read of the call's result then shows every failure.
+// A call with a failed run, a halted call included, prints the failure report to stderr before its closing line,
+// so one read of the call's result shows every failure.
 // It opens with `gate test: failure report, every failure of this call:`.
-// It then names each failed run in plan order, lint steps last.
-// Each name carries the run's outcome and its log path, and for a lint step its way forward.
-// Under a run each failure follows.
-// A failed test shows as its package and test path, and a `vstest` test as its name alone.
-// A package that failed outside any test, such as by a build error or a crash in `TestMain`, shows as its package.
-// A lint finding shows as its own `file:line` line.
-// Each carries up to `failureLines` lines it printed beside go test's own status and summary lines,
-// so an error's got and want, a panic's first frames or a .NET exception's message show.
-// A bare file name a test printed is prefixed with its package's worktree-relative directory.
-// A build error in a package that failed outside any test may print a path relative to the run directory.
-// That path is prefixed with the directory's worktree-relative path.
-// A run lists the verb's own cause line, such as a timeout, whether or not a failure was read.
-// A run with no failure read lists up to `unparsedLines` output lines no test event carried, such as a `go vet` error;
-// it may instead say its log holds the cause.
-// A build step's run lists the last `unparsedLines` lines of its output.
-// The report holds at most `failureReportLines` lines below its header, each cut at `failureReportLineBytes`.
-// Past that a line names the lines each run lost.
-// It points at the logs for a run with one and at the standalone lint verb for a lint step, which has no log.
-// The report closes with the files the change touches, at most `touchedFilesListed` named, untracked files included.
-// The change is the diff from the merge base with the pair's parent branch.
-// Outside a hub or without a parent it is the diff from HEAD.
-// A failed test's first line is also its run record's `failures` entry.
+// It names each failed run in plan order, lint steps last, with its outcome and log path.
+// Under a run each failure follows: a failed test as its package and test path, a package that failed outside any test,
+// and a lint finding as its `file:line`, each with the first lines it printed.
+// The report holds a bounded number of lines and names the lines each run lost.
+// It points at the logs, or at the standalone lint verb for a lint step.
+// It closes with the files the change touches.
+// They are the diff from the merge base with the pair's parent branch;
+// outside a hub or without a parent they are the diff from HEAD.
 //
 // # Trimpath
 //
-// A hub's tiers set `-trimpath` in their GOFLAGS, as the example below does,
-// so a fresh worktree reuses the build cache.
+// A hub's tiers set `-trimpath` in their GOFLAGS so a fresh worktree reuses the build cache.
 // Under it `runtime.Caller` reports module-relative file paths,
 // so a test that locates its repository from one fails, though a raw `go test` passes.
-// The verb writes a line when a tier's last GOFLAGS entry, inherited or the tier's own, holds an enabled `-trimpath`.
-// The line names the tier, that GOFLAGS value and the way forward:
-// locate the repository from the working directory or `go.mod`.
-// The line opens the tier's log, before its first command's output.
-// It goes to stderr just before the tier's summary line, so it sits beside a failing run's verdict.
-// A tier with an empty scope runs no command and gets no such line, and a refused tier prints only its JSON envelope.
+// When a tier's last GOFLAGS entry enables it, the verb prints a line naming the tier and its GOFLAGS value.
+// The line gives the way forward, locating the repository from the working directory or `go.mod`.
+// The line opens the tier's log and goes to stderr just before the tier's summary line.
 //
 // # Test result cache
 //
-// Every tier command runs with `gateslot.TestCacheOffFlag`, `-count=1`, first in its GOFLAGS.
-// It comes ahead of the inherited or tier-set value, which the trimpath line names without it.
-// `go test` therefore keeps no test result cache.
-// It writes no test log into the build cache either.
-// No hub config is needed.
-// The green record carries a pass over an unchanged tree.
+// Every tier command runs with `gateslot.TestCacheOffFlag`, `-count=1`, first in its GOFLAGS,
+// so `go test` keeps no test result cache and the green record carries a pass over an unchanged tree.
 // A hub's own `-count` in GOFLAGS, or one in the words after `--`, still wins.
 //
 // # Child lifetime
 //
-// A tier's shell runs through `internal/proc`'s tied child.
-// The tied child keeps the tree killable without signalling the shell that called the verb.
-// It ends the tree when the verb dies, a hard kill included.
+// A tier's shell runs through `internal/proc`'s tied child, which ends the tree when the verb dies, a hard kill included.
 // On a terminating signal, including one sent to the verb's own group, the verb kills that tree.
-// It then releases its slots and exits with 128 plus the signal number.
+// It releases its slots and exits with 128 plus the signal number.
 // Bound: the parent-death signal reaches the shell alone,
 // so a command the shell forks rather than replaces outlives a hard kill of the verb;
 // a tier command that must die with it starts with `exec`.
 //
 // A tier's or the build's shell that exits ends its run with its own exit code.
-// This holds even while a process it started still holds its output pipe.
-// An MSBuild worker node a crashed `dotnet` left is one such process.
-// After the exit the verb reads the output for at most the pipe wait delay, 10 seconds in production.
-// It then kills what is left of the shell's process group, on Windows by closing the child's kill-on-close job,
-// so no leftover holds the pipe or runs on inside the slots.
+// This holds even while a leftover process holds its output pipe.
+// One example is an MSBuild worker node a crashed `dotnet` left.
+// After a bounded delay the verb kills what is left of the shell's process group.
 // Bound: a leftover that left the shell's process group, such as one in a session of its own, is not killed.
-// Only the delay bounds its hold on the pipe.
 //
 // # CPU watchdog
 //
-// While a tier's command runs, the verb samples its child tree through `proc.TreeSample` once per period.
-// The period is 5 seconds in production.
+// While a tier's command runs, the verb samples its child tree through `proc.TreeSample`.
 // A `.test` process that keeps at least 90 percent of one core busy for `busy_quit_sec` gets one SIGQUIT,
-// so the Go runtime prints every goroutine's stack,
-// and the test run reports the package failed long before the tier's own timeout.
-// The window counts whole samples, and a pid's first sample is its baseline.
-// Any sample below 90 percent restarts the count.
-// The verb prints `gateslot.WatchdogLine` to its stderr after the quit, and a halt names `gateslot.BusyQuitWayForward`.
-// Off Linux `proc.TreeSample` reports `errors.ErrUnsupported`.
-// The watchdog then logs that no watchdog applies and ends, and the tier runs as before.
-// The watchdog is off when `busy_quit_sec` is 0.
-// It is off when the words after `--` carry `-bench` or `-fuzz`, which keep a core busy by intent.
-// It is off when the `LYM_GATE_TEST_PID` an outer `lym gate test` sets in the tier's environment names a live ancestor.
-// That outer run's watchdog already sees this run's test binaries.
-// An empty, unparsable or non-ancestor value is ignored.
-// One example is a value a tmux server started by a test carried into its panes after leaving the outer run's tree.
-// An inherited slot does not turn it off:
-// a verify run holds a slot and passes it to a verify command whose `lym gate test` call is the outermost gate run.
+// so the Go runtime prints every goroutine's stack and the run reports the package failed long before the tier's timeout.
+// The verb prints `gateslot.WatchdogLine` after the quit, and a halt names `gateslot.BusyQuitWayForward`.
+// The watchdog is off when `busy_quit_sec` is 0 or when the words after `--` carry `-bench` or `-fuzz`.
+// It is also off when `LYM_GATE_TEST_PID` in the tier's environment names a live ancestor.
+// That ancestor's own watchdog sees these binaries.
+// It is off where `proc.TreeSample` is unsupported.
 // It watches `.test` processes only, so a `vstest` tier is bounded by its `timeout_min` alone.
 //
 // # Memory guard
 //
-// While a tier's command runs, a memory guard samples its child tree through `proc.TreeSample` once a second.
-// A `.test` process is killed whole with SIGKILL when its tree holds more than `memory_quit_mb` resident.
-// The tree is the process itself and every process it started.
-// A tree that holds another tree over the cap is spared, and the inner binary is killed.
-// When no tree passes the cap, the guard reads the memory limit the verb sits under through `proc.ReadMemoryLimit`.
-// If that limit has less than a tenth of its Max left, the largest tree of 1024 MB or more is killed whole.
-// Each kill prints a line naming the binary and its package directory, read from its working directory.
-// The line also names the `-test.run` value the binary was given and the reason.
-// The tier's log and failure report carry the line, and the tier is never rerun.
-// A go-json tier's log and failure report also name the tests that had started and never passed, failed or skipped.
-// `lym gate redundant`, `lym gate mutate` and `lym gate test --map` run the same guard.
-// So do the refresh of the reach report step, the redundancy report step and the mutation report step.
-// It watches their own process tree for the whole call, or for the step alone.
-// It runs beside the kernel cap of `redundancy_test_memory_mb` on each test run, and each kill's line goes to stderr.
-// A test run the guard kills in the redundancy report step or `lym gate redundant` is not judged,
-// and a mutant run it kills counts as no mutant kill.
-// `lym gate test --map` records the entry of a test run the guard kills as failed.
-// The guard is off when `memory_quit_mb` is 0.
-// It is also off when `LYM_GATE_TEST_PID` names a live ancestor, whose own guard already sees these test binaries.
-// Off Linux `proc.TreeSample` reports `errors.ErrUnsupported`, and the guard logs that and ends.
+// While a tier's command runs, a memory guard samples its child tree through `proc.TreeSample`.
+// A `.test` process whose tree holds more than `memory_quit_mb` resident is killed whole with SIGKILL;
+// a tree that holds another tree over the cap is spared, and the inner binary is killed.
+// When no tree passes the cap and the memory limit the verb sits under is nearly spent;
+// the largest tree of 1024 MB or more is killed whole.
+// Each kill prints a line naming the binary, its package directory and the reason;
+// the tier's log and failure report carry it, and the tier is never rerun.
+// `lym gate redundant`, `lym gate mutate`, `lym gate test --map` and the report steps run the same guard.
+// A test run the guard kills there is not judged, a mutant run it kills counts as no kill,
+// and `--map` records the entry as failed.
+// The guard is off when `memory_quit_mb` is 0 or when `LYM_GATE_TEST_PID` names a live ancestor.
+// It is also off where `proc.TreeSample` is unsupported.
 //
-// A tier's `memory_mb` runs its command under `proc.RunMemoryCappedVia`, with the shell still tied to the verb.
-// That is the kernel cap of `proc.RunMemoryCapped`.
-// The cap holds the command's builds and test binaries together.
+// A tier's `memory_mb` runs its command under `proc.RunMemoryCappedVia`.
+// One cap holds its builds and test binaries together.
 // A kill at that cap fails the run with a line naming the tier and its cap, and the tier is never rerun.
-// On a host whose user manager cannot cap a scope, the cap limits each process's data segment to `memory_mb` alone.
-// An allocation past it fails in that process, and no cap line is printed.
+// On a host whose user manager cannot cap a scope, the cap limits each process's data segment instead,
+// and an allocation past it fails in that process with no cap line.
 // A command that cannot be started under the cap is a refusal naming the cap and its way forward.
-// The guard watches `.test` processes only.
 // This cap holds every process of the command, a `vstest` tier's included.
 //
 // # Process cap
 //
-// While a tier's command runs, the verb also lists, once per period, every process carrying the run's entry.
-// The entry is `LYM_GATE_TEST_PID` in the process's environment, and `proc.PIDsWithEnv` does the listing.
-// A tmux server a test starts and its panes keep that entry after they leave the command's tree, so they count too.
-// When the list passes `runProcessCap`, the verb kills every listed process with SIGKILL.
-// It kills again at each later period until the command ends.
-// The tier then fails with a line naming the cap and the way forward, and it is never rerun as a resource shortage.
+// While a tier's command runs, the verb also lists every process carrying the run's `LYM_GATE_TEST_PID` entry.
+// An example is a tmux server a test starts, which leaves the command's tree.
+// When the list passes `runProcessCap`, the verb kills every listed process with SIGKILL at each period.
+// It does so until the command ends.
+// The tier then fails with a line naming the cap and the way forward, and is never rerun as a resource shortage.
 // The cap guards against a test binary that a pinned tmux job or child runs again, re-running its own suite.
-// A nested `lym gate test` sets its own entry, so its processes count toward its own cap.
-// The nested run itself counts once toward the outer one.
-// Off Linux `proc.PIDsWithEnv` reports `errors.ErrUnsupported`, and the cap logs that none applies and ends.
-//
-// # Example
-//
-// loomyard declares tiers and a go scoper; this block shows its `gate.yaml` tier section.
-// Every tier's `env` puts the cap in GOFLAGS, so every go command in the tier, its build and vet included, takes it.
-// Each tier's `LYM_TEST_TIER` picks its tests at run time, and `{test_targets}` keeps `go test` to their packages.
-//
-//	scoper: go
-//	refuse_raw: ["go test"]
-//	tiers:
-//	  tier0:
-//	    about: unit tests
-//	    command: go test -json {test_targets} {args}
-//	    all_targets: ./...
-//	    env: {GOFLAGS: "-trimpath -p={parallel}", LYM_TEST_TIER: "0"}
-//	    counter: go-json
-//	    parallel: 4
-//	    timeout_min: 10
-//	  tier1:
-//	    about: integration tests with build and vet first
-//	    command: go build ./... && go vet {targets} && go test -json {test_targets} {args}
-//	    all_targets: ./...
-//	    env: {GOFLAGS: "-trimpath -p={parallel}", LYM_TEST_TIER: "1"}
-//	    counter: go-json
-//	    parallel: 4
-//	    timeout_min: 30
-//	    prebuilt_lym: true
-//	  tier2:
-//	    about: tmux tests
-//	    command: go test -json {test_targets} {args}
-//	    all_targets: ./...
-//	    env: {GOFLAGS: "-trimpath -p={parallel}", LYM_TEST_TIER: "2"}
-//	    counter: go-json
-//	    parallel: 4
-//	    timeout_min: 30
-//	    prebuilt_lym: true
-//	gates:
-//	  card: {tiers: [0], scope: card}
-//	  batch: {tiers: [0, 1], scope: card}
-//	  webster: {tiers: [0, 1], scope: all}
-//	  parent-align: {tiers: [0, 1], scope: all}
-//	  finalize: {tiers: [0, 1], scope: all}
-//	  adopt: {tiers: [0, 1], scope: all}
-//	  webster-fix: {tiers: [0, 1], scope: diff}
-//	  darn-write: {tiers: [0, 1], scope: diff}
-//	  code-burler-fix: {tiers: [0, 1], scope: diff}
-//	  pr-review: {tiers: [0], scope: diff}
-//
-// A tier is written whole with one flow mapping, for example:
-// `lym config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", all_targets: ./..., counter: go-json, timeout_min: 10}'`.
+// A nested `lym gate test` sets its own entry and counts once toward the outer cap.
+// It is unsupported where `proc.PIDsWithEnv` is, and the cap then ends.
 //
 // # Detached run
 //
 // `lym gate run-detached <run-dir>` is a hidden internal-audience verb: it runs a gate call that outlasts its caller.
-// A run lives in `gateslot.WaitDir(anchor)/detach/<key>/<run id>`, under the never-tracked gate directory.
-// Its directory holds these files.
-// `request.json` holds the verb, `test` or `card-verify`, the call's words after it and the directory it ran in.
-// `lease.json` holds the deadline.
-// `process.json` holds the runner's pid and start reading.
-// `tree.json` holds HEAD's tree and the sorted dirty paths the front recorded.
-// `phase.json` holds `starting`, `slots` or `running`, with the tier name or the card line.
-// `line.json` holds the process tree of a card-verify run's line.
-// `exit.json` holds the call's code and whether it was abandoned.
-// The directory also holds `stdout`, `stderr`, `runner.log` and `delivered`.
+// A run lives in `gateslot.WaitDir(anchor)/detach/<key>/<run id>`, under the never-tracked gate directory,
+// and its directory holds the request, lease, process claim, tree identity, phase, line, exit and output files.
 // The lease is the latest deadline any call wrote, and only an explicit expiry moves it earlier.
 //
-// Before it runs anything or writes an exit file, the runner refuses:
-// a directory with no live lease, a request that is missing or malformed, a verb it does not run, or a claimed run.
-// The refusal names `lym gate test` and `lym gate card-verify` as the way forward.
-// The claim is an exclusive create of `process.json`, so it is the one check for a claimed run,
-// and a reader that finds the file not yet decodable reads it again.
+// Before it runs anything, the runner refuses a directory with no live lease or a missing or malformed request.
+// It also refuses a verb it does not run and a claimed run.
+// Each refusal names `lym gate test` and `lym gate card-verify` as the way forward.
+// The claim is an exclusive create of `process.json`.
 // Bound: a direct call reaches only a directory a front made and refuses one its runner claimed,
 // so a hand-written lease lets one run start, which ends at that lease.
 //
-// The runner runs the request in-process through a fresh gate tree, as a `--wait` call does.
-// Its output goes to `stdout` and `stderr`, and it reports the tier it waits for or runs to `phase.json`.
-// A `card-verify` request runs the card's line instead, as the Card verify section says.
-// It reads the lease once a second from its start, the slot wait included.
-// It cancels the call once the lease is read as lapsed, an unreadable lease being read again a second later.
-// A terminating signal cancels the call too.
+// The runner runs the request in-process through a fresh gate tree, as a `--wait` call does,
+// and reports the tier it waits for or runs to `phase.json`.
+// It cancels the call once the lease lapses or a terminating signal arrives.
+// It kills its tiers and releases its slots as a signal does, and its records carry the abandoned mark.
 // A call that ended on its own writes its own code to `exit.json`.
-// A lease that lapsed while the call ran appends an abandoned line to `stderr`, naming the request's verb.
-// It then writes code 1 and the abandoned mark to `exit.json`.
+// A lease that lapsed while the call ran appends an abandoned line to `stderr` and writes code 1 and the abandoned mark.
 // A lease that lapsed after the call returned abandons nothing.
-// A signal writes 128 plus its number and the abandoned mark.
-// The cancelled call kills its tiers and releases its slots as a signal does,
-// and the records it writes carry the abandoned mark.
 //
 // # Capped call
 //
 // A `lym gate test` call without `--wait` from an agent strand is capped:
 // it starts or joins a detached runner and waits for the run's result up to the caller role's keep-warm cap,
 // so a run that outlasts the cap keeps the agent's prompt cache warm instead of blocking one long call.
-// `frontDecision` makes the choice.
 // A call is not capped when it gives `--wait` or when `agentname.StrandNameEnv` is empty.
-// It is also uncapped when its directory is in no git worktree or when the resolver's cap is zero.
-// A call inside a slot an enclosing gate run holds is uncapped too.
-// The cap is the answer of `shuttleengines.KeepWarm` for the strand;
-// a fallback answer is logged at Warn once per call and still caps, at its `DefaultAwaitCap`.
-// A call that is not capped runs in this process.
-// `RunGate` and every call a verify or card-verify line makes are among them and never reach the front.
+// A call is also not capped when its directory is in no git worktree or the resolver's cap is zero.
+// A call inside a slot an enclosing gate run holds is not capped either.
+// An uncapped call runs in this process; `RunGate` and every call a verify or card-verify line makes are among them.
+// The cap is the answer of `shuttleengines.KeepWarm` for the strand.
 // Bound: the strand is read from the caller's environment,
 // so a forged or absent strand chooses only how long a call blocks, never what runs or its verdict.
-// Bound: only a hand-set slot variable beside a strand reaches the inherited-slot branch.
-// Every lym path that holds a slot runs its child without the strand.
-// The branch stays so the choice is complete,
-// and the standing agent deny on the variable keeps an agent from reaching it.
 //
 // A call's key is a hash of the verb, the resolved run directory and the call's words.
-// The key directory `detach/<key>` under the gate directory holds the key's lock and one subdirectory per run.
-// It also holds `current.json`, which names the current run id.
 // A call from a fixer strand, a role `gatefixer.IsFixerRole` matches, adds its strand name to the hashed words,
 // so a fixer's own gate call never joins the run waiting on it and two fixer strands never share one.
-// The front parses the strand's role through `strandRole` and writes it to the request as `role`.
-// The runner's environment carries no strand name;
-// a request without a role reads as one from a strand that is no fixer.
-// The front counts its cap from its own start and catches terminating signals.
-// A signal ends the front alone with 128 plus the signal number while the runner goes on.
-// It takes the key directory's lock, trying once a second only while at least the lock margin of its cap remains;
-// past that it answers as at a passed cap in the phase `starting`.
-// Under the lock it joins the key's current run when `joinable` holds, else it starts a fresh one.
-// A run is joinable only while its lease holds and no front printed its result (`delivered` is absent).
-// HEAD's tree and the sorted dirty paths must also equal the run's `tree.json`.
-// The run must also have ended without the abandoned mark, or have a live runner.
-// A runner is live when its pid is live with the start reading it recorded, so a reused pid is no runner.
-// Joining writes the call's deadline plus the grace to the lease, which keeps the later one.
+// Under the key directory's lock the front joins the key's current run when `joinable` holds, else starts a fresh one.
+// A run is joinable only while its lease holds and no front printed its result;
+// HEAD's tree and the sorted dirty paths equal the run's `tree.json`,
+// and the run ended without the abandoned mark or has a live runner.
 // A fresh run expires the superseded run's lease, so a live runner of it ends at its next lease read.
-// The front writes `request.json`, `tree.json` and the lease before launching.
-// It points `current.json` at the new id.
-// It launches `lym gate run-detached <run dir>` detached, the strand name dropped.
-// The front registers the runner under the pair's slug with `runproc.RoleGate` inside a hub,
-// so the pair's teardown ends it;
-// the prime and a worktree outside every hub register nothing.
-// It holds the lock until the runner claimed the run, checking once a second for at most the claim bound.
-// A launch that failed, or a runner that ended or did not claim by the bound, is a failed start.
-// The front then claims the run itself so no runner can, expires the lease, and prints the runner's log to stderr.
-// It exits 1 with an error whose way forward is to run the same command again.
-// When that fails again, the way forward is to run it with `--wait`.
-// It then waits for the run's `exit.json` for what remains of its cap.
-// A result without the abandoned mark is printed: `stdout`, then `stderr`, then `delivered` is created.
-// A `stdout` past `replayStdoutBytes` is named on stderr with its size instead of printed.
-// Its last line is printed when it is a JSON envelope,
-// so the answer reads as one tool result and the failure report on `stderr` carries the failures.
-// A failure to copy the output leaves the run joinable.
-// The call exits with the recorded code.
-// A recorded 75 exits 1 after a stderr line saying the code was a test's own.
+// The front launches `lym gate run-detached <run dir>` detached with the strand name dropped.
+// Inside a hub it registers the runner with `runproc.RoleGate` so the pair's teardown ends it.
+// A launch that fails, or a runner that ends or does not claim in time, is a failed start:
+// the front exits 1 with a way forward of running the same command again, then with `--wait`.
+// A signal ends the front alone with 128 plus the signal number while the runner goes on.
+//
+// A result without the abandoned mark is printed: `stdout`, then `stderr`.
+// A `stdout` past `replayStdoutBytes` is named on stderr with its size.
+// Its last line is printed when it is a JSON envelope, so the answer reads as one tool result.
+// The call exits with the recorded code; a recorded 75 exits 1 after a stderr line saying the code was a test's own.
 // A passed cap, and a result with the abandoned mark, answer ok with `done: false` and the phase from `phase.json`.
-// The phase is `starting` when there is none.
 // The answer carries a message to run the same command again in a turn that does nothing else.
 // While the run waits for its slots it also carries `slot_free: false` with each holder's worktree, site and tier.
 // The exit code is SlotBusyExit.
-// A fresh run removes the key directory's other run directories older than 14 days whose runner is not live.
-// A call with `--gate <key>` may wait one long call in place of many short ones.
-// The resolver may give a break-even (`shuttle.yaml`'s `keep_warm_max_reruns`, 0 for none or for a fallback).
-// With one, `chooseCap` reads this machine's run records and `longWait` weighs the latest five full calls of the key.
-// A full call ran every tier it listed to an outcome and was neither carried, abandoned nor of an empty scope.
-// Given at least three, a median wall time above the cap times the break-even sets the cap to the resolver's long cap.
-// The long cap is 55 minutes from the claude engine, and the lease takes it too.
-// A read error, no key and no break-even keep the short cap.
+//
+// A call with `--gate <key>` may wait one long call in place of many short ones:
+// with the resolver's break-even, `chooseCap` raises the cap to the resolver's long cap;
+// it does so when the median wall time of the key's latest full calls exceeds the cap times the break-even.
 // Bound: an estimate from a few earlier calls can mis-pick, which costs cache money only, never a verdict.
 // Bound: the join compares the tree and the dirty paths, not the dirty files' content,
-// so an edit to an already-dirty file between two calls with the same words gets the earlier content's run,
-// and a second call with the same words after another took the result starts a fresh run.
-// Bound: the plan lives under `_lym`, which neither `headIdentity` nor `verifytree.DirtyPaths` reads.
-// After a plan edit, a `--card` call with the same words and an unchanged code tree joins the run of the old plan.
-// The join lasts while its lease holds.
-// It costs at most the earlier plan's verdict for the remaining lease, after which the same command starts afresh.
+// so an edit to an already-dirty file between two calls with the same words gets the earlier content's run.
+// Bound: the plan lives under `_lym`, which neither the join nor `verifytree.DirtyPaths` reads.
+// So after a plan edit a `--card` call with the same words joins the run of the old plan while its lease holds.
 //
 // # Card fixer
 //
@@ -1214,35 +652,18 @@
 // Config load allows `fixer` on the `card` key alone, so only the Webster card gate hands off;
 // only a capped call reaches a runner;
 // an operator's call, a `--wait` call and a call inside an enclosing slot never do.
-// `handsOff` decides it from the request:
-// the verb is `test`, the request's role is no fixer role, the call names a gate key whose `fixer` is non-empty,
-// and the pair has a slug.
-// `newCardFixer` builds the kit:
-// a strand fixer over the worktree's reed geometry, registered under the slug with the gate fixer role.
-// The kit carries the model choice the key's `fixer` names, the gate config's fixer timeout and the stencils directory.
-// It also carries the hub's language skills.
-// A call outside a hub, with no slug, or for a key or role `handsOff` turns down ends as it does without a fixer.
+// A call outside a hub, with no slug, or for a key or role that does not hand off ends as it does without a fixer.
 // A kit that cannot be built ends the same way, after the runner logs why.
-// `runWithFixer` runs in place of `runRequest`.
-// Before the gate runs it waits on a live fixer record of an earlier run in the key directory's `fixer.json`.
-// When it cannot attach it stops the strand through `fixerStopper`.
-// It marks the record dead only once the stop succeeded.
-// When the stop failed it ends with exit 1 and the way forward.
-// On a red verdict, once `runRequest` released its slots, it writes the phase `fixing`.
-// It writes the stderr report to `fixer-report.md`.
-// It spawns one fixer with the shared cold frame and the card body.
-// It waits on the fixer, rewrites `tree.json` and runs `runRequest` again.
-// It then marks the fixer's record terminal, so a restart during the re-run still finds it live.
+//
+// On a red verdict, once the slots are released, the runner writes the phase `fixing`.
+// It writes the stderr report to `fixer-report.md` and spawns one fixer with the shared cold frame and the card body.
+// It then runs the gate again.
 // It appends the fixer's reply or the dead note to the re-run's stderr under `## Cold fixer reply`.
-// A pass, an abandoned exit and a `card-verify` request end with the first run's result.
-// So does a non-zero exit that left nothing on stderr, as a refusal does.
-// So does a red verdict whose stderr holds `gateslot.RunnerCrashLine`.
-// So does a spawn that failed, with a stderr line saying no fixer ran.
-// A passed lease or a terminating signal during the phase stops the fixer.
-// The run then ends abandoned, with the fixer's record marked dead once the stop succeeded.
+// A pass, an abandoned exit, a `card-verify` request and a refusal end with the first run's result.
+// So do a red verdict holding `gateslot.RunnerCrashLine` and a failed spawn.
+// A passed lease or a terminating signal during the phase stops the fixer and the run ends abandoned.
 // A run in the phase `fixing` is joinable under changed dirty paths,
-// so a caller's repeated call joins whatever tree the fixer is changing;
-// from the re-run's start the rewritten `tree.json` holds the rule again.
+// so a caller's repeated call joins whatever tree the fixer is changing.
 // Bound: one fixer per red call, which Go bounds;
 // the number of red calls per card rests on the Webster fork prompt's self-fix cap.
 // Bound: a fixer's own gate call never hands off, and its strand name keys it apart from the call waiting on it.
@@ -1251,313 +672,148 @@
 //
 // `lym gate report [--slug <slug>] [--since <YYYY-MM-DD>]` prints one row per slug and gate key.
 // It reads this machine's run records through `gateslot.ReadRunRecords`.
-// They come from the board's gate run directory inside a hub and the worktree's own outside every hub.
-// A row holds the tier runs, the carried tiers and the summed wall time.
-// It holds the summed slot wait, a record's start minus its wait start.
-// It holds the launch time with its share.
-// The launch time is the sum of the records' launch gaps, and its share is that sum over their summed package time.
-// A record from before `--gate` has no key and groups under its tier list and scope form, such as `tiers 0,1 all`;
-// a record without a launch list adds nothing to the launch time,
-// and a group whose records hold none shows no launch time.
-// A record marked abandoned is written after its call was cancelled by a terminating signal or a passed lease.
-// It counts only in the row's `abandoned_runs`, `abandoned_wait_seconds` and `abandoned_wall_seconds`.
-// It adds nothing to the tier runs, the carried tiers, the wait, the wall time, the build step or the launch totals.
-// Every record of one call carries the call's id.
+// A row holds the tier runs, the carried tiers, the summed wall time and slot wait,
+// and the launch time with its share.
+// A record marked abandoned counts only in the row's `abandoned_*` fields and adds nothing to the other totals.
 // A malformed `--since` is refused naming the expected form before hub resolution.
 // The verb carries the operator audience annotation, takes no slot and changes nothing.
 //
 // # Card verify
 //
 // `lym gate card-verify <card id>` runs one plan card's `**Verify:**` line through `internal/cardverify`'s `Runner`.
-// Webster's record-batch re-run shares that runner.
 // It sits under `lym gate` because the fork-mode hook refuses every `lym webster` command from a fork.
 // It carries the role audience annotation because the implementer fork's prompt names it.
 // An id is a card's number or its `N-slug`, read from the plan at the anchor's plan directory;
-// an unknown id is refused naming the plan's ids,
-// and a worktree with no plan is refused naming the way forward:
-// run it from the task worktree whose `_lym/plan` holds the card.
+// an unknown id and a worktree with no plan are refused.
 // A card with no `**Verify:**` line passes with a message saying so.
-// The line's output passes through to the terminal and the verb exits with the line's own code;
-// a line that timed out or did not start exits 1.
-// Inside a hub a line that is not a `--wait` gate call takes one slot of the hub's pool;
-// outside every hub it runs unslotted.
+// The line's output passes through and the verb exits with the line's own code.
+// A line that timed out or did not start exits 1.
+// Inside a hub a line that is not a `--wait` gate call takes one slot of the hub's pool.
 //
-// The verb has no `--wait`, so `frontDecision` caps a call from an agent strand as it does a `lym gate test` call,
+// The verb has no `--wait`, so a call from an agent strand is capped as a `lym gate test` call is,
 // and the line runs in a detached runner the call starts or joins.
-// The key is the verb `card-verify`, the worktree as run directory and the matched card's `N-slug` id as its word.
-// A call with `4` and a call with `4-<slug>` therefore share one run.
-// The runner reads the plan again in the request's directory and matches the card;
-// a refusal there, as when the plan was edited since the front's read, is written to `stderr` with exit 1.
-// The front replays it.
-// A card with no line in the runner's read answers the in-process message with exit 0.
-// The line runs through a `cardverify.Runner` over the worktree with the hub's pool and wait directory.
-// The runner's lease-cancelled context governs the line.
-// `phase.json` names `slots` with the line while a slot-held line waits for its slot.
-// It names `running` with the line once it runs, a `--wait` gate line included.
-// A `--wait` gate line takes its own slots inside its child and answers no `slot_free`.
-// The line's process tree goes to `line.json`.
-// On Windows the runner first holds the kill-on-close job `lym-gate-<run id>`, which the line's tree inherits;
-// on Linux the line's shell carries the parent-death SIGKILL of `verifyrun.RunTied`.
+// The key is the verb, the worktree and the matched card's `N-slug` id, so `4` and `4-<slug>` share one run.
 // A cancelled line's process group gets SIGTERM and then SIGKILL,
-// and a `--wait` gate child cancels on that SIGTERM, killing its tiers and releasing its slots.
-// A front that supersedes a `card-verify` run whose runner is not live first kills the group `line.json` records.
-// That reaches the shell's descendants the parent-death signal misses.
-// Bound: a job that cannot be held is logged and the line runs without it.
-// On Windows the runner's death then leaves the line's tree to its own end, since `proc.KillTree` kills nothing there.
+// and a front that supersedes a run whose runner is not live first kills the group `line.json` records.
+// Bound: a job that cannot be held on Windows is logged and the line runs without it,
+// so the runner's death leaves the line's tree to its own end.
 // Bound: on Linux a dead runner's line runs on until a front supersedes it, or to its own end when no front comes.
 // Bound: the key is the card's id,
 // so a call after an edit of the card's `**Verify:**` line joins the run of the old line while its lease holds.
 //
 // # Coverage maps
 //
-// `lym gate test --map [<targets>...]` builds the `internal/testcover` maps.
-// It builds them at the HEAD of the worktree it runs in, over the packages of the call's scope.
+// `lym gate test --map [<targets>...]` builds the `internal/testcover` maps at the HEAD of the worktree it runs in.
+// It builds them over the packages of the call's scope.
 // It runs only on command: no dobby or landing starts it, and the gate selects no test from the maps.
-// The reach report step of a gate call also runs its measurement.
-// It runs it over a task worktree's own maps and never the hub's shared ones.
 // The operator runs it before `lym gate redundant`, and over the whole module before a sweep of redundant tests.
 // `--map` goes with none of `--tier`, `--upto`, `--gate`, `--guards` and `--stop-on-fail`.
 // It goes with neither `-C` nor words after `--`.
-// Such a call is refused before hub resolution, naming the flag to drop.
+// Such a call is refused before hub resolution.
 // A map call measures tier0 and tier1 whatever the tiers' commands, filters, memory scopes and timeouts say.
 // It reaches no shared build, lint, report step, guard step, green record or card fixer.
-// It writes nothing but the maps and its log.
-// The module root is the dir of the lowest declared of tier0 and tier1, and its go.mod names the import path.
+// It writes only the maps and its log.
+// The module root is the dir of the lowest declared of tier0 and tier1.
 // A hub whose tier0 or tier1 does not count its tests as `go-json` is refused, naming the tier.
-// A package is a directory relative to that root holding a Go file, found as `go list ./...` finds one:
-// testdata, a directory whose name opens with a dot or an underscore, and a nested module are left out.
-// The verb runs in any worktree of the hub and refuses outside every hub.
-// From the hub's prime, told by `hubgeom.IsPrime`, it reads and writes the hub's shared maps.
-// Those are `testcover.Dir` of the board directory.
-// From any other worktree it reads and writes that worktree's own maps.
-// Those are `testcover.Dir` of its anchor; they go with the worktree and never touch the shared maps.
-// A task's call therefore builds at the HEAD only its own session moves.
+// The verb refuses outside every hub.
+// From the hub's prime it reads and writes the hub's shared maps, `testcover.Dir` of the board directory.
+// From any other worktree it reads and writes that worktree's own maps, which never touch the shared ones.
 // With no lock between calls, two calls over one package from one worktree each write its map, and the later write wins.
-// It reads HEAD through `Fabric.HeadSHA` before its walk, and measures every package at that HEAD.
-// It writes a package's map only when HEAD is still that commit.
-// It also needs that no file the package or a linked package owns is modified or untracked.
-// Two checks each read HEAD and the worktree status afresh.
-// One runs once the package's coverage build ended and compiled, before its tests run.
-// The other runs before every map write.
-// It reads the tracked files through `Fabric.CodeDirAt`, `Fabric.CodeTreeAt` and `Fabric.CodeFileAt`.
-// It reads the uncommitted and untracked files through `Fabric.CodeWorktreeChanges`: only the code side counts.
 //
 // The call's scope is chosen as for any call, with no green record read.
-// It is the explicit targets, `--all`, `--card`, `--base`, or the diff from the merge base with the parent branch.
 // The diff is the whole module when the worktree has no parent branch.
-// It reads the scope's own shares for tier0 and tier1 and never the tiers' commands.
-// Explicit targets resolve against the module root; `./...` and a `/...` suffix expand to the packages below.
-// A target that names no package directory of the module is refused.
-// A whole scope, or a whole tier0 or tier1 share of it, reaches every package of the module.
-// Any other scope reaches the packages its tier0 and tier1 shares name, those inside the module root.
-// A package reached enters the set only when it has a map, or tracks a Go file at HEAD and holds a tier0 or tier1 test.
+// Explicit targets resolve against the module root, and a target that names no package directory is refused.
+// A package enters the set only when it has a map, or tracks a Go file at HEAD and holds a tier0 or tier1 test.
 // A package the targets named that stays out is listed under `left_out` with its reason.
-// A package with a modified or untracked file of its own or of a linked package is left unmeasured, as below.
 //
-// The call measures the packages of its set in import path order, each whole.
-// A whole measurement starts from an empty map at HEAD, so it replaces any map the package had.
-// A package owns every tracked file under its directory, testdata included.
-// Its files stop at the next package directory or nested module.
-// The map holds the hashes of its Go files in `Files` and of the others it owns in `OtherFiles`.
+// The call measures the packages of its set in import path order, each whole, from an empty map at HEAD.
+// A package owns every tracked file under its directory, testdata included, up to the next package or nested module.
 // Its tests are the top-level Test functions whose `tiergate.Require` names a tier0 or tier1 the hub declares.
-// A package with none gets a map of its file hashes and no tests, with no build.
-// For any other the call needs the gate slots its mapped tiers ask for:
-// the larger of tier0's and tier1's `slots`, where `all` ranks above any count.
-// Inside the slots an enclosing gate run holds, named by `gateslot.InheritEnv`, it takes none.
-// Otherwise it waits for them through `gateslot.Pool.AcquireSlots` and holds them to its end.
-// It lists the in-module packages the package's test binary links through `testcover.Toolchain.LinkedPackages`,
-// and the map holds the hashes of the files each other one owns in `Linked`.
-// It builds the package's coverage binary with a coverpkg naming every linked package.
-// The build runs under the slot's `gateslot.HolderEnv`.
-// The listing and build of the next queued package start once the current package's binary is ready,
-// so they run while the current package's tests run; a build whose package then needs no binary is cancelled and dropped.
-// Once a package's build ended and compiled the call checks HEAD and the worktree status afresh.
-// A modified or untracked file owned by any linked package, the package itself included, leaves the package unmeasured.
-// The reason names the file and the way forward: commit or revert it, then re-run the same command.
-// It runs each test alone in its own process with its own profile, in the package directory under its tier's env.
-// It runs them through `testcover.Toolchain.RunAlone`.
-// A package's tier0 tests run first and then its tier1 tests, so at most one tier's count runs at once.
-// A tier's tests go side by side up to its `parallel`, this machine's `tier_parallel` entry applied.
-// That count is clamped as in `lym gate redundant` to what the memory limit lym sits under leaves.
-// It is one where the cap covers no process tree.
-// A tier that sets `memory_mb` also runs at most `memory_mb` divided by `redundancy_test_memory_mb` tests at once.
+// The call takes the gate slots its mapped tiers ask for, inside an enclosing gate run's slot it takes none.
+// It builds the package's coverage binary with a coverpkg naming every in-module package its test binary links.
+// It runs each test alone in its own process with its own profile in the package directory under its tier's env.
+// Tier0 tests run before tier1 tests, each tier side by side up to its `parallel`, clamped to the memory left.
 // A hub whose tier0 or tier1 sets a `memory_mb` below `redundancy_test_memory_mb` is refused.
-// No test process fits such a tier.
-// That holds whether or not a test calls `t.Parallel`:
-// each test runs in its own process with its own environment and profile, all in the package directory,
-// so a test that writes a fixed path there can disturb another.
+// Each test shares the package directory, so a test that writes a fixed path there can disturb another.
 // A test that fails, times out or is ended by the memory guard or its cap beside other tests runs once more alone,
-// and that run's outcome stands.
-// A test that passed only alone is listed under `passed_alone` and in the run's log, and enters the map as a plain pass.
-// The re-run alone bounds a failure or timeout beside others, but a run that still passes is recorded as it ran.
-// It reads each profile once: `testcover.ProfileByPackage` groups its blocks by package,
-// and each linked package's `testcover.FuncIndex` names the covered functions from that package's group alone.
-// A profile is dropped once read, so the call holds no more profiles than tests run side by side.
-// The call writes the map once, after the package's tests ran.
-// The call builds no `lym` and sets no `gateslot.PrebuiltLymEnv`, and its environment drops an inherited one.
-// A tier0 test spawns nothing.
-// The spawn scan marks every other test that reaches `internal/testkit/lymbin`, and such a test is never run.
-// Each build is bounded by `redundancy_build_timeout_min` and each test by `redundancy_test_timeout_sec`.
-// Each test is also capped at `redundancy_test_memory_mb` of memory, and one the cap ends is recorded as failed.
-// Past its bound the process group is killed.
-// The wait for its exit and output then lasts at most the pipe wait the gate already uses.
+// and that run's outcome stands; a test that passed only alone is listed under `passed_alone`.
+// The call builds no `lym` and sets no `gateslot.PrebuiltLymEnv`.
+// The spawn scan marks every test that reaches `internal/testkit/lymbin`, and such a test is never run.
+// Each build is bounded by `redundancy_build_timeout_min`.
+// Each test is bounded by `redundancy_test_timeout_sec` and `redundancy_test_memory_mb`.
+// A run the cap ends is recorded as failed.
 // A failed or timed-out build is listed as failed.
-// A readable map of the package that holds test entries keeps its commit, entries and marker.
-// It records the failure and HEAD in its `Failure`.
-// With no such map the call writes a map of the file hashes with no tests and the failure as its `BuildFailure`.
-// No later call at that HEAD queues the package again.
-// A test of a file only another platform compiles is no mapped test, so it never counts as failed.
-// A test the `testcover.ScanSpawns` scan marks out of process or unresolved is never run;
-// a whole rebuild records it with its verdict.
-// A timed-out test is listed.
-// Each run enters the map.
-// A passing test enters with its coverage when it covers a block of the package's own files.
-// It does too when it covers a function of another linked package.
-// Any other test enters with its `testcover.TestOutcome`: failed, timed out, skipped or covered nothing.
-// A test that could not run counts as failed.
-// An entry holds the tier, function hash, duration, blocks, linked functions, its outcome or spawn verdict,
-// and the commit and time it was measured at.
-// A linked function is named by its package's import path, its file and the name a block key gives it;
-// no block of another package is stored.
-// A run or build that a terminating signal ends records nothing, and nor does the rest of its package's job.
-// Once the package's tests ran the call checks HEAD and the worktree status again.
-// Every map write checks once more before it writes.
-// So each write path is guarded.
-// A package with no mapped test has no build.
-// So does one whose mapped tests are all spawn-marked.
-// Each is checked over the package's own files before its write.
-// A test or spawn scan failure before any build is checked over the package's own files before its failure is written.
-// A failed coverage build is checked over the linked packages' files before its failure is written.
-// It is checked over the files under the module root when listing the linked packages failed.
-// A failure while the tests run is checked over the linked packages' files before its failure is written.
-// A package that fails a check writes no map, whatever its outcome would have been.
-// It is listed under `unmeasured` with the reason.
-// A dirty package does not end the call, and the walk goes on to the next package.
-// A moved HEAD ends the walk:
-// the current package and every package not yet measured are listed with the reason `HEAD moved from <start> to <now>`,
-// and the way forward to re-run the same command once HEAD stays put.
-// Bound: an edit made before a package's first check, or between its two checks, goes unseen.
-// That holds when the edit is reverted before the next check.
-// The map then holds coverage measured on the edited code under the committed hashes.
-// A gitignored file is seen by neither check.
-// So a gitignored Go file the build compiles enters the map under HEAD's hashes.
-// Every map the call writes, a failed build's included, carries a `testcover.MapFormat` marker.
-// Each write sets the map's build time to the time of the write,
-// and the marker to the map's commit and build time and the current environment stamp;
-// recording a failure beside kept entries alone leaves the map's time and marker as they were.
-// The stamp holds the toolchain's Go version and platform and the hashes of go.mod and go.sum at the commit.
-// It also holds digests of the mapped tiers' commands and env as configured and of the hub's env.yaml variables.
+// A readable map of the package keeps its entries and records the failure.
+// A passing test enters the map with its coverage; any other test enters with its `testcover.TestOutcome`.
+// A run or build that a terminating signal ends records nothing.
 //
-// The call prints `built`, the packages whose map a measurement wrote.
-// It prints `unmeasured` with each reason, `failed` with each failure, `timed_out` and `left_out`.
-// It prints `failed_tests` too.
-// Each is a test whose written entry records a failed or timed-out outcome after the re-run alone.
-// It prints `passed_alone` as well, each as `<package>.<Test>`.
-// It also prints `head`, the HEAD it measured at.
-// Its `packages` holds each measured package's build seconds, run seconds and test count.
-// The call writes the map of every package that passes its checks, failed entries included.
+// A package's map is written only when HEAD is still the commit the walk started at.
+// It is also written only when no file the package or a linked package owns is modified or untracked.
+// The check runs after the coverage build and before every map write.
+// A package that fails a check writes no map and is listed under `unmeasured` with the reason,
+// and the walk goes on to the next package.
+// A moved HEAD ends the walk: the current package and every package not yet measured are listed with the reason.
+// Bound: an edit made before a package's first check goes unseen.
+// So does an edit made between its two checks and reverted before the next.
+// The map then holds coverage measured on the edited code under the committed hashes.
+// A gitignored file is seen by neither check,
+// so a gitignored Go file the build compiles enters the map under HEAD's hashes.
+// Every map the call writes carries a `testcover.MapFormat` marker.
+// It also carries a stamp of the toolchain, go.mod and go.sum and the digests of the mapped tiers' commands and env.
+//
+// The call prints `built`, `unmeasured`, `failed`, `timed_out`, `left_out`, `failed_tests`, `passed_alone` and `head`.
+// It also prints `packages` with each measured package's build seconds, run seconds and test count.
 // It exits 1 when a build failed, `unmeasured` is not empty or `failed_tests` is not empty.
-// It exits 0 once it walked its packages, and 1 for a refusal or a read, slot or write failure that ends the walk.
-// A call from the prime whose HEAD stayed put then writes the index of the shared maps through `testreach.WriteIndex`.
-// A task worktree's call writes none, and neither does a call whose HEAD moved.
-// A failed index write is logged at Warn and changes neither the output nor the exit code.
+// It also exits 1 for a refusal or a read, slot or write failure that ends the walk.
+// A call from the prime whose HEAD stayed put then writes the index of the shared maps through `testreach.WriteIndex`;
+// a failed index write is logged at Warn and changes neither the output nor the exit code.
 //
 // `lym gate redundant <package>` judges the map of one package and confirms its redundancy candidates by mutation.
-// It runs from any worktree of the hub and resolves the module as the redundancy report step does.
-// It reads the map as it stands where `lym gate test --map` from the same worktree writes it.
-// The redundancy report step reads the hub's shared maps from every worktree.
-// It judges through `testcover.JudgeMap`.
-// It leaves out the tests the keep scan of the package's directory in this worktree names.
-// A contained test whose check reads source files, which no mutant changes, is not judged.
-// Such a test carries `//lym:guard`, read through `impactset.FindGuardTests`, or `testcover.ScanSourceReaders` marks it.
+// It runs from any worktree of the hub and reads the map as `lym gate test --map` from the same worktree writes it.
+// It judges the map through `testcover.JudgeMap`.
+// It leaves out the tests the keep scan names.
+// It also leaves out a contained test whose check reads source files, which no mutant changes.
 // With no other contained test the call runs nothing and takes no slot.
 // Otherwise it refuses when the package's Go files in the worktree differ from those the map records.
-// It then checks the contained tests inside one gate slot, which it waits for and holds to its end.
-// It builds the package's coverage binary over the package alone and reads its block table from a run of no test.
-// `testcover.PlanMutants` gives the mutants of the contained tests' blocks,
-// and `testcover.Toolchain.BuildMutantBinary` builds one test binary holding them all.
-// A refused build drops the mutants on the lines the compiler names and builds again, counting them unbuildable.
-// From build `mutantBuildRounds` on, it drops every mutant of the files the compiler names.
-// When the compiler names no line or file of a mutant, it drops every mutant left,
-// so a mutant that does not compile never fails the check.
-// A contained test's covering tests here are those `testcover.CoveringTests` picks among the other judged tests.
-// The pick ignores what the greedy pass removed, so it never depends on the tests' seconds.
-// A source-checking test is no covering test, since it kills no mutant.
-// It runs every contained test and each of their covering tests once with no mutant on.
-// A test that does not pass then runs with no mutant.
-// Each other test gets a bound of `mutantTimeoutFactor` times its seconds, and at least `mutantTimeoutFloor` seconds.
-// The bound stays within `redundancy_test_timeout_sec`, so a mutant that makes a loop endless ends early.
-// Every test run is capped at `redundancy_test_memory_mb` of memory, and so is the run that reads the block table.
-// A mutant that makes a loop keep memory for ever therefore ends at the cap,
-// and the rest of the machine keeps its memory.
-// Each contained test then runs with each mutant of its blocks on.
-// The call logs each such run's mutant, with its file, line and operator, before the run starts.
-// A test that killed a mutant, or whose own run of it was unjudged, has its covering tests run with that mutant on.
-// Only a covering test whose entry covers one of the mutant's blocks runs.
-// A run that fails kills its mutant.
-// A run that times out or ends at the memory cap is unjudged, never a kill, since it proves no check of the mutant.
-// Up to the slot's tier0 parallel runs go side by side, each alone in its process under its test's tier env.
-// Fewer go side by side when memory is short.
-// The caps of the runs together stay within the memory `proc.ReadMemoryLimit` finds left.
-// Where `proc.MemoryCapCoversTree` says the cap bounds each process alone, one run goes at a time.
-// A tier with `prebuilt_lym` gets the `lym` the call builds once into the pool's prebuilt store.
-// A covering test that kills or times out beside other runs runs once more alone, and that run stands.
-// A run the memory cap ended is not run again, since it reaches the cap alone too.
-// That holds for a covering test that is also a contained test.
+// If they match, it checks the contained tests inside one gate slot.
+// It builds one mutant test binary over the contained tests' blocks, dropping the mutants a compiler refuses.
+// Each contained test runs with each mutant of its blocks on.
+// A test that killed a mutant, or whose run was unjudged, has its covering tests run with that mutant on.
+// A run that fails kills its mutant, and a run that times out or ends at the memory cap is unjudged, never a kill.
+// A covering test that kills or times out beside other runs runs once more alone.
+// A run the memory cap ended is not rerun.
 // `testcover.JudgeMutants` judges each contained test from the kills and the unjudged runs.
 // Bound: a contained test's own kill from its candidate runs is not rerun alone,
 // so a disturbed run can refute it falsely.
 // Bound: a mutant changes the package's own code only,
 // so a contained test whose check differs from its covers only in another package's result is confirmed falsely.
-// It prints the map's commit, build time and test count.
-// It prints `map_build_failure` with the commit and error of a later failed coverage build the map records.
-// It omits the key when the map records none.
-// It prints `candidates`, each redundant test with its tier, seconds, covering tests and `mutants_killed`.
-// The covering tests are the pick described above.
+//
+// It prints the map's commit, build time and test count, and `map_build_failure` when the map records one.
+// It also prints `candidates`, `refuted`, `unconfirmed`, `kept`, `not_judged` and `mutation`.
 // A candidate is removable when both the coverage pass and the mutation pass remove it.
-// It prints `refuted`, each test that kills a mutant its covering tests miss.
-// Each carries those mutants' file, line and operator.
-// It prints `unconfirmed`, each other contained test whose answer rests on an unjudged run:
-// its own run of a mutant none of its covering tests killed,
-// or its covering tests' runs of a mutant it killed and none of them killed.
-// Each carries its tier, seconds, covering tests, `mutants_killed` and those mutants' file, line and operator.
-// It prints `kept`, each keep-marked test with its reason, and `not_judged`, each other unjudged test with why.
-// When it checked a test it prints `mutation`: the mutants built and dropped, the build and run seconds and the runs.
-// `mutation` also holds `timed_out` and `memory_capped`.
-// They list the runs with a mutant on that ended at their time bound or at the memory cap.
-// Each carries its mutant's file, line and operator and its test.
+// `unconfirmed` is each other contained test whose answer rests on an unjudged run.
 // It refuses outside a hub.
-// It refuses for a package whose map is missing, unreadable, holds only a failed build or records other Go files.
+// It refuses a package whose map is missing, unreadable, holds only a failed build or records other Go files.
 // It refuses for a failed keep or source scan, and for a mutation check whose slot, build or run fails.
 // A terminating signal ends it with 128 plus the signal number.
 //
 // # In-process run
 //
 // `RunGate(ctx, dir, gate, out, stderr, observer)` runs the gate key `gate` in `dir`.
-// It runs through the same `runTest` as `lym gate test --wait --gate <gate>`, with the CLI's defaults.
-// `dir` is seeded as the context's working directory.
+// It runs through the same path as `lym gate test --wait --gate <gate>`, with the CLI's defaults.
 // The caller names only the key and the directory, never targets or tiers.
 // It gets the call's exit code, the envelope on `out` and the summary lines on `stderr`.
-// A `TierObserver` hears each tier of the run through `Started` and `Ended`.
-// `Started` gets the tier's number once its slots are held, or at once for a run that takes none.
-// `Ended` gets the tier's run record when the tier reports.
-// A tier carried as already green ends with no start,
-// and a tier blocked by a failed build ends with its blocked record.
-// Only the tier whose slots ran the build is started.
-// A tier rerun after a crash or a resource shortage ends once, with the rerun's record.
-// A guard or vet run reports through the same calls with its record's own flags,
-// and a refusal after a start ends with no end.
-// A nil func is skipped, and every CLI call passes the zero observer.
+// A `TierObserver` hears each tier of the run through `Started` and `Ended`, and a nil func is skipped.
+// A tier carried as already green ends with no start, and a tier blocked by a failed build ends with its blocked record.
+// A rerun tier ends once, with the rerun's record, and a refusal after a start ends with no end.
 //
 // # Exit codes
 //
 // The exit code is the first failing run's own code, in plan order.
-// For a test binary the watchdog quit it is the test run's failure code.
-// For a runner crash it is 128 plus the signal's number.
-// A tier that timed out gives 1.
-// SlotBusyExit (75) comes only as a capped call's `done: false` answer.
-// That answer is no failure and never the code of a call that runs in this process.
-// A run that ended without a failure while the call was cancelled gives 1.
+// For a test binary the watchdog quit it is the test run's failure code, and for a runner crash 128 plus the signal.
+// A tier that timed out gives 1, a run that ended without a failure while the call was cancelled gives 1,
+// and a refusal gives 1 with a JSON error envelope on stdout.
 // A terminating signal gives 128 plus the signal number.
-// A refusal gives 1, with a JSON error envelope on stdout.
+// SlotBusyExit (75) comes only as a capped call's `done: false` answer.
+// It is never the code of a call that runs in this process.
 package gatecli

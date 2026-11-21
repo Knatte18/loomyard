@@ -12,14 +12,11 @@
 // `lym harden sandbox new` builds a throwaway hub under the worktree's sandbox root.
 // The hub is cloned from two local bare repositories, with no GitHub remote and no wiki,
 // and its prime records commit a `loom.yaml` that turns Tier 2 self-reporting off.
-// It rebuilds the worktree's `.dev-bin` lym only when that binary is not built from the worktree's HEAD or is modified.
 // It prints the hub's path and the absolute path of the `.dev-bin` lym, as JSON, and writes only under the root.
 //
 // `lym harden sandbox list` prints the root's hub list, as JSON.
 //
-// `lym harden sandbox clear` reaps the root.
-// It ends what the sandbox hubs left running, stops their reed servers, and removes the root's contents.
-// It prints what it ended.
+// `lym harden sandbox clear` reaps the root and prints what it ended.
 //
 // # Bounds
 //

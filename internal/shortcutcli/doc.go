@@ -29,17 +29,14 @@
 //   - Every other word, and everything after `--`, goes to the end of the last argv.
 //
 // A word a global flag spells with a value its parser refuses, such as `--json=bogus`, is not a global word.
-// It goes to the last argv.
-// That root refuses it after the earlier argvs ran, as typing the expanded commands in turn would.
+// It goes to the last argv, and that root refuses it after the earlier argvs ran, as typing the commands in turn would.
 //
 // # Dispatch
 //
 // Each argv runs in order on a fresh root from `newRoot`, in the shortcut's own context.
 // That context carries the cwd the outer root was given, so the shortcut resolves no cwd itself.
-// Input and output writers pass through.
 // A non-zero exit code stops the sequence and becomes the shortcut's own;
 // the inner root already printed its envelope, so the shortcut prints nothing.
 // Every argv runs through a full root with its own pre-run, refusals and pause holds.
 // A shortcut therefore adds no path past any command's guard.
-// The root's persistent pre-run runs once for the shortcut and once per argv in one process; the repeat is harmless.
 package shortcutcli
