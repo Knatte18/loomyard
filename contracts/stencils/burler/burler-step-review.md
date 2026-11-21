@@ -52,3 +52,5 @@ a section without that heading has none of them.
   When there is no changes file, name the moved site in the `summary` and the `fix`.
 - In an incremental round, raise a new finding only at `BLOCKING`, and only on a changed hunk.
   Locate a regression a fix caused in an untouched file at the changed line that causes it, and name the broken site in its `summary`.
+  A card that an added entry marked as amending the plan names may be located whether or not the changes file lists it.
+  A finding raising the plan executor's halt reason, when the section above quotes one, carries `origin: webster` and may sit outside the changed files.

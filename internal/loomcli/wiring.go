@@ -45,6 +45,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runfsm"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/samplerengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -920,6 +921,8 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		PreflightDrift:   preflightDrift,
 		Cwd:              cwd,
 		AnchorPath:       anchorPath,
+		AmendmentPath:    loomengine.LoomAmendmentRecord(location),
+		HaltConflictDir:  runplan.ConflictDir(websterGeom.AnchorRoot),
 		ConfigDirs:       fabricengine.ConfigDirs(location),
 		WorktreeRoot:     location.WorktreePath(),
 		// RunScratchDir is the directory the step envelope reports as scratch_dir.

@@ -55,6 +55,7 @@ Frontmatter rules, all strict:
 - In a cluster round, each finding also carries an `origin:` key — `lens:<name>` for a finding kept from a named fork, or `handler` for one you found yourself.
 - A finding kept from the parent orch's report carries `origin: parent` and an optional `parent_ids` list naming the report ids it covers, such as `parent_ids: [P1, P3]`.
   No other finding carries `parent_ids`.
+- A finding that raises the plan executor's halt reason, when the review step quotes one, carries `origin: webster`.
 - A finding's `location` opens with the file's path, followed by `:<line>` or `#<symbol>`.
   It names the site the fix changes, which may lie apart from where the defect shows:
   a wrong value that one file prints and another sets is located where it is set.
@@ -71,6 +72,7 @@ Frontmatter rules, all strict:
   Every `open` entry is carried by exactly one finding, and a finding with no `carries` is new.
   A carried finding keeps its `class`, keeps or lowers its `severity`, and keeps its location path or moves to a file the changes file lists.
 - In an incremental round a new finding is `BLOCKING` and sits on a changed hunk, in a file the changes file lists.
+  A card a listed added entry marked as amending the plan names is exempt from the file rule, and so is a new `origin: webster` finding.
 
 Below the closing `---`, write prose: exactly one `### [SEVERITY] <title>` block per finding, each carrying `**Location:**` and `**Issue:**` lines.
 The change lives in the finding's `fix` key; no prose `**Fix:**` line restates it.

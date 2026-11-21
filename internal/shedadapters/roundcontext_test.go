@@ -11,8 +11,30 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"gopkg.in/yaml.v3"
 )
+
+// amendmentTitlesFile returns a reader of the `titles` the amendment record fixture at path lists.
+// The reader lists none when the fixture is absent.
+// It stands in for the record's own reader, which this package cannot import.
+func amendmentTitlesFile(path string) func() ([]string, error) {
+	return func() ([]string, error) {
+		content, err := os.ReadFile(path)
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		var record struct {
+			Titles []string `yaml:"titles"`
+		}
+		err = yaml.Unmarshal(content, &record)
+		return record.Titles, err
+	}
+}
 
 const (
 	// contextReview is a parsing review holding a design finding F1 and a decision-class finding F2.
@@ -81,7 +103,7 @@ func TestBuildRoundContext(t *testing.T) {
 
 	// env is what a row's setup lays out: the run directory, the decision record's path and the run's anchor.
 	type env struct {
-		runDir, recordPath, anchor string
+		runDir, recordPath, anchor, amendment, conflictDir string
 	}
 	// complete lays round 1 out as complete, with decisions not routed, as most rows start.
 	complete := func(t *testing.T, e env) { writeCompleteRound(t, e.runDir, 1, false) }
@@ -99,9 +121,11 @@ func TestBuildRoundContext(t *testing.T) {
 		setup func(t *testing.T, e env)
 		// withAnchor passes the run's anchor to the builder.
 		withAnchor bool
-		wantNil    bool
-		wantErr    bool
-		check      func(t *testing.T, got *burlerengine.RoundContext, e env)
+		// withPlanPaths passes the amendment record and the conflict directory to the builder.
+		withPlanPaths bool
+		wantNil       bool
+		wantErr       bool
+		check         func(t *testing.T, got *burlerengine.RoundContext, e env)
 	}{
 		{name: "RoundOneHasNoEarlierRound", round: 1, setup: complete, wantNil: true},
 		{
@@ -285,27 +309,98 @@ func TestBuildRoundContext(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "AmendingTextsHoldOnlyEntriesTheAmendmentRecordLists", withPlanPaths: true,
+			setup: then(func(t *testing.T, e env) {
+				writeDecisionRecord(t, e.recordPath, addedEntry("Fix the batch order", "swap cards 3 and 4"), addedEntry("Rename the flag", "use --force"))
+				writeRoundFileWith(t, e.amendment, "titles:\n  - Fix the batch order\nwritten_at: 2026-11-17T10:00:00Z\n")
+			}),
+			check: func(t *testing.T, got *burlerengine.RoundContext, _ env) {
+				if len(got.AmendingTexts) != 1 || !strings.Contains(got.AmendingTexts[0], "swap cards 3 and 4") || strings.Contains(got.AmendingTexts[0], "--force") {
+					t.Errorf("AmendingTexts = %q; want only the listed entry's text", got.AmendingTexts)
+				}
+			},
+		},
+		{
+			name: "AmendingTextsIncludeEntriesAlreadyInThePreviousSnapshot", withPlanPaths: true,
+			setup: then(func(t *testing.T, e env) {
+				writeDecisionRecord(t, e.recordPath, addedEntry("Fix the batch order", "swap cards 3 and 4"))
+				recordDigests(t, e.runDir, 1, e.recordPath)
+				writeRoundFileWith(t, e.amendment, "titles:\n  - Fix the batch order\n")
+			}),
+			check: func(t *testing.T, got *burlerengine.RoundContext, _ env) {
+				if len(got.AddedTexts) != 0 || len(got.AmendingTexts) != 1 {
+					t.Errorf("AddedTexts = %q and AmendingTexts = %q; want none added since and one amending", got.AddedTexts, got.AmendingTexts)
+				}
+			},
+		},
+		{
+			name: "NoAmendingTextsWhenNoAmendmentRecordExists", withPlanPaths: true,
+			setup: then(func(t *testing.T, e env) {
+				writeDecisionRecord(t, e.recordPath, addedEntry("Fix the batch order", "swap cards 3 and 4"))
+			}),
+			check: func(t *testing.T, got *burlerengine.RoundContext, _ env) {
+				if len(got.AmendingTexts) != 0 {
+					t.Errorf("AmendingTexts = %q; want none", got.AmendingTexts)
+				}
+			},
+		},
+		{
+			name: "HaltReasonComesFromTheHaltFile", withPlanPaths: true,
+			setup: then(func(t *testing.T, e env) {
+				if err := runplan.WriteHaltReason(e.conflictDir, "cards ran out"); err != nil {
+					t.Fatalf("WriteHaltReason() = %v; want nil", err)
+				}
+			}),
+			check: func(t *testing.T, got *burlerengine.RoundContext, _ env) {
+				if got.HaltReason != "cards ran out" {
+					t.Errorf("HaltReason = %q; want %q", got.HaltReason, "cards ran out")
+				}
+			},
+		},
+		{
+			name: "PlanPathsLeftEmptyReadNothing",
+			setup: then(func(t *testing.T, e env) {
+				writeDecisionRecord(t, e.recordPath, addedEntry("Fix the batch order", "swap cards 3 and 4"))
+				writeRoundFileWith(t, e.amendment, "titles:\n  - Fix the batch order\n")
+				if err := runplan.WriteHaltReason(e.conflictDir, "cards ran out"); err != nil {
+					t.Fatalf("WriteHaltReason() = %v; want nil", err)
+				}
+			}),
+			check: func(t *testing.T, got *burlerengine.RoundContext, _ env) {
+				if len(got.AmendingTexts) != 0 || got.HaltReason != "" {
+					t.Errorf("AmendingTexts = %q and HaltReason = %q; want neither", got.AmendingTexts, got.HaltReason)
+				}
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			root := t.TempDir()
-			e := env{runDir: filepath.Join(root, "run"), recordPath: filepath.Join(root, "decisions.md"), anchor: filepath.Join(root, "anchor")}
+			e := env{
+				runDir: filepath.Join(root, "run"), recordPath: filepath.Join(root, "decisions.md"), anchor: filepath.Join(root, "anchor"),
+				amendment: filepath.Join(root, "amendment.yaml"), conflictDir: filepath.Join(root, "conflict"),
+			}
 			if err := os.MkdirAll(e.runDir, 0o755); err != nil {
 				t.Fatalf("MkdirAll(run dir) = %v; want nil", err)
 			}
 			if tt.setup != nil {
 				tt.setup(t, e)
 			}
-			round, anchor := tt.round, ""
+			round := tt.round
 			if round == 0 {
 				round = 2
 			}
+			paths := RoundContextSources{DecisionRecordPath: e.recordPath}
 			if tt.withAnchor {
-				anchor = e.anchor
+				paths.AnchorPath = e.anchor
+			}
+			if tt.withPlanPaths {
+				paths.AmendmentTitles, paths.ConflictDir = amendmentTitlesFile(e.amendment), e.conflictDir
 			}
 
-			got, err := BuildRoundContext(e.runDir, round, e.recordPath, anchor)
+			got, err := BuildRoundContext(e.runDir, round, paths)
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("BuildRoundContext() error = %v; want an error: %v", err, tt.wantErr)

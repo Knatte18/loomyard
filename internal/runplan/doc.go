@@ -7,6 +7,7 @@
 //
 // The machinery covers the batch report contract and its parser, and the plan fingerprint and its re-baseline.
 // It also covers the plan re-resolution at dispatch, the post-batch checks and the card gate rendering.
+// The done checks skip a Create target the run's decision record drops, and warn about it.
 //
 // Every piece is told its paths through Geometry: the implementer's run, reports, prompts and scratch directories,
 // and the scratch directory its state-mutation lease sits in.

@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -82,16 +84,63 @@ func roundParentReportPath(runDir string, round int, files burlerengine.ParentRe
 	return files.ReportPath(ask.Number)
 }
 
+// RoundContextSources names what BuildRoundContext reads beyond the run directory.
+// An empty path or a nil reader reads nothing.
+type RoundContextSources struct {
+	// DecisionRecordPath is the decision record whose added entries the context lists.
+	DecisionRecordPath string
+	// AnchorPath locates the run's parent-review files.
+	AnchorPath string
+	// AmendmentTitles reads the titles of the pending amending decision entries from the plan amendment record.
+	AmendmentTitles func() ([]string, error)
+	// ConflictDir is the directory holding the plan executor's halt-reason file.
+	ConflictDir string
+}
+
+// amendingEntryTexts returns the full text of every added entry of the decision record whose title amendmentTitles lists.
+// It covers all added entries, in record order, not only those added since an earlier round.
+func amendingEntryTexts(recordPath string, amendmentTitles func() ([]string, error)) ([]string, error) {
+	if amendmentTitles == nil {
+		return nil, nil
+	}
+	pending, err := amendmentTitles()
+	if err != nil {
+		return nil, fmt.Errorf("shedadapters: read the plan amendment record: %w", err)
+	}
+	if len(pending) == 0 {
+		return nil, err
+	}
+	digests, err := addedDecisionDigests(recordPath)
+	if err != nil || len(digests) == 0 {
+		return nil, err
+	}
+	entryTexts, err := discussionparser.AddedDecisionTexts(recordPath)
+	if err != nil {
+		return nil, fmt.Errorf("shedadapters: read the added entries of %q: %w", recordPath, err)
+	}
+	if len(entryTexts) != len(digests) {
+		return nil, fmt.Errorf("shedadapters: decision record %q changed while its added entries were read", recordPath)
+	}
+	var texts []string
+	for i, digest := range digests {
+		if slices.Contains(pending, digest.Title) {
+			texts = append(texts, entryTexts[i])
+		}
+	}
+	return texts, nil
+}
+
 // BuildRoundContext returns what round's review is judged against.
-// That is the findings of round-1, the fixer's answer to each, the decision record entries added since,
-// and the files the fixes changed.
+// It holds the findings of round-1 and the fixer's answer to each.
+// It holds the decision record entries added since, and the texts of the entries pending as plan amendments.
+// It holds the plan executor's halt reason and the files the fixes changed.
 // It returns nil, with a nil error, when round-1 is not complete:
 // round is 1; round-1's review is absent or does not parse; its snapshot record is absent or holds no `decisions_routed`;
 // or its fixer-report is neither one the engine wrote itself nor a fixer-written one that passes the fix check.
 // A read error other than an absence is returned.
 // The round is incremental unless the run directory's generation is an amendment.
-// anchorPath locates the run's parent-review files; an empty anchorPath leaves ParentReportPath empty.
-func BuildRoundContext(runDir string, round int, decisionRecordPath, anchorPath string) (*burlerengine.RoundContext, error) {
+// An empty paths.AnchorPath leaves ParentReportPath empty.
+func BuildRoundContext(runDir string, round int, paths RoundContextSources) (*burlerengine.RoundContext, error) {
 	if round < 2 {
 		return nil, nil
 	}
@@ -128,9 +177,19 @@ func BuildRoundContext(runDir string, round int, decisionRecordPath, anchorPath 
 		return nil, nil
 	}
 
-	titles, texts, err := addedSincePreviousSnapshot(decisionRecordPath, snapshot.AddedDecisions)
+	titles, texts, err := addedSincePreviousSnapshot(paths.DecisionRecordPath, snapshot.AddedDecisions)
 	if err != nil {
 		return nil, err
+	}
+	amendingTexts, err := amendingEntryTexts(paths.DecisionRecordPath, paths.AmendmentTitles)
+	if err != nil {
+		return nil, err
+	}
+	haltReason := ""
+	if paths.ConflictDir != "" {
+		if haltReason, err = runplan.ReadHaltReason(paths.ConflictDir); err != nil {
+			return nil, err
+		}
 	}
 	generation, _, err := readGenerationRecord(runDir)
 	if err != nil {
@@ -158,6 +217,8 @@ func BuildRoundContext(runDir string, round int, decisionRecordPath, anchorPath 
 		Prior:                prior,
 		AddedTitles:          titles,
 		AddedTexts:           texts,
+		AmendingTexts:        amendingTexts,
+		HaltReason:           haltReason,
 		HasChanges:           hasChanges,
 		Changed:              changed,
 		PriorReviewPath:      reviewPath,
@@ -166,8 +227,8 @@ func BuildRoundContext(runDir string, round int, decisionRecordPath, anchorPath 
 	if hasChanges {
 		context.ChangesPath = roundChangesPath(runDir, round)
 	}
-	if anchorPath != "" {
-		context.ParentReportPath = roundParentReportPath(runDir, round, burlerengine.ParentReviewFilesOf(anchorPath))
+	if paths.AnchorPath != "" {
+		context.ParentReportPath = roundParentReportPath(runDir, round, burlerengine.ParentReviewFilesOf(paths.AnchorPath))
 	}
 	return context, nil
 }

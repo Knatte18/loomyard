@@ -233,6 +233,12 @@ var knownNonCardFiles = map[string]bool{
 	LensReviewFileName: true,
 }
 
+// IsNonCardFileName reports whether name is the base name of a plan-directory file that holds no card:
+// the overview, the amendment log, the lens review or a lens report.
+func IsNonCardFileName(name string) bool {
+	return knownNonCardFiles[name] || IsLensReportFileName(name)
+}
+
 // checkIndexFileConsistency implements index-file-mismatch.
 // Every *.md file on disk must be named by a parsed card, except the plan-level and lens report files it exempts.
 // Card numbers must run consecutively from first_card, which defaults to 1, with no gaps or duplicates.
@@ -267,7 +273,7 @@ func checkIndexFileConsistency(plan *Plan) []ValidationError {
 	default:
 		var onDisk []string
 		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || knownNonCardFiles[e.Name()] || IsLensReportFileName(e.Name()) {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || IsNonCardFileName(e.Name()) {
 				continue
 			}
 			if !indexed[e.Name()] {

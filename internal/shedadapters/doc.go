@@ -18,6 +18,10 @@
 //     Its "stuck" outcome and its run-entry refusals are Stuck.
 //     A Stuck from a "stuck" outcome consults the plan-conflict record and may ask for a reroute (OutputPointer.Reroute).
 //     Any other outcome value is an engine-level error.
+//     WebsterProducer records every Stuck's final reason in the conflict directory (runplan.WriteHaltReason),
+//     and its Done removes the record.
+//     The plan segment's review row reads it, so the reviewer sees why the run was sent back.
+//     A failed write or removal is logged and never changes the outcome.
 //   - BurlerReviewProducer and BurlerFixProducer: a finished half maps to Stuck, never Done.
 //     That Stuck is a routine hand-off, not a stuck condition:
 //     the review row hands to the fix row, and the fix row hands to the segment's Bouncer.
@@ -170,6 +174,15 @@
 // A changed subject starts a new generation, which archives the run directory with its records.
 // A segment without BouncerConfig.FullGeneration starts an amendment under BouncerConfig.AmendAllowance instead.
 // With no record at all, the run clears and re-seeds.
+//
+// # The round context
+//
+// BuildRoundContext returns what a round's review is judged against, from round N-1's files in the run directory.
+// RoundContextSources names what it reads beyond the run directory; an empty path or a nil reader reads nothing.
+// The context's AmendingTexts holds the full text of every added entry whose title the plan amendment record lists.
+// That includes entries added before the round's start.
+// The caller reads those titles through the record's own reader and passes the reader in.
+// The context's HaltReason holds the plan executor's last stuck reason from the conflict directory.
 //
 // # The Command producer
 //

@@ -12,6 +12,9 @@
 // A call can instead withdraw a declared change:
 // it strikes the entry's bullet and closes its added entry with a `Withdraws:` line.
 // CheckAddedDecisionsKept reads that line as a strike rather than a drop.
+// A call can also drop plan Create targets:
+// the entry then carries one `Drops Create: `<target>“ line per target after its Rationale paragraph.
+// DroppedCreates returns each dropped target with the title of the entry that drops it.
 //
 // CheckDecisionIDs checks the record's decision headings and their acceptance coverage.
 // Each H3 under `## Decisions` reads `### D<n> — <title>` with a unique id,

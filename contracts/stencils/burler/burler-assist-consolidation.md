@@ -8,6 +8,6 @@
 
 An assistant reviewer reviews the same target beside you and writes one report; your prompt names its report and its end marker.
 Before you consolidate, and before you write anything to the review file, wait for the assistant's end marker as your prompt says.
-When the marker reads `done`, read the assistant's report and judge each of its findings with the same skepticism as a fork's: keep a finding that holds against what you read, tagged in its frontmatter with `origin: {{.assist_origin}}`, merge one that repeats a finding you keep, and move a false one to the `## Rejected` section with a one-line reason.
+When the marker reads `done`, read the assistant's report and judge each of its findings with the same skepticism as a fork's: keep a finding that holds against what you read, tagged in its frontmatter with `origin: {{.assist_origin}}` (a finding that raises the plan executor's halt reason keeps `origin: webster` instead), merge one that repeats a finding you keep, and move a false one to the `## Rejected` section with a one-line reason.
 When the marker reads anything else, consolidate without the assistant.
 The verdict is yours alone: the assistant's verdict is one more opinion, never a vote.

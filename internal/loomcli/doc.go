@@ -251,6 +251,15 @@
 // A run that is not running wakes no Webster Master session or Weaver strand;
 // the envelope names each such strand and why under `notice_held_back`.
 //
+// # Decision drops-create
+//
+// `lym loom decision add --drops-create <target>` (repeatable) records that the decision drops a Create target.
+// The target is spelled as the card spells it.
+// The entry gets one `Drops Create: `<target>“ line per target after its Rationale paragraph.
+// Webster's done-check skips a dropped target.
+// The flag applies to one entry: a call that records several is refused, naming a separate call as the way forward.
+// An empty target, or one holding a backtick or a line break, is refused.
+//
 // # Decision amends-plan
 //
 // `lym loom decision add --amends-plan` records a decision that amends the approved plan.

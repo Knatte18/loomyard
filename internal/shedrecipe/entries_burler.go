@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/hardenshed"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -179,7 +180,12 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 	snapshot := reviewTargetSnapshot(env, runSubdir)
 	snapshot.Scope, snapshot.Paths = profile.FixScope, profile.Target.Paths
 	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), ReviewKey: segment.ReviewKey}
-	producer, err := shedadapters.NewBurlerReviewProducer(row.Name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, Fans: fans, Assist: segment.Assist, Parent: segment.Parent, GateFindingsPath: env.gateFindingsPath(row.Name), Snapshot: &snapshot, DecisionRecordPath: env.DecisionRecordPath, Diff: diff, Rubric: rubric}, profile, opts, runDir, env.Now)
+	halfDeps := shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, Fans: fans, Assist: segment.Assist, Parent: segment.Parent, GateFindingsPath: env.gateFindingsPath(row.Name), Snapshot: &snapshot, DecisionRecordPath: env.DecisionRecordPath, Diff: diff, Rubric: rubric}
+	// Only the plan segment's review answers to the plan amendment record and the plan executor's halt reason.
+	if row.Name == loomshed.NamePlanBurlerReview {
+		halfDeps.AmendmentTitles, halfDeps.HaltConflictDir = amendmentTitlesAt(env.AmendmentPath), env.HaltConflictDir
+	}
+	producer, err := shedadapters.NewBurlerReviewProducer(row.Name, halfDeps, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerReview: %w", err)
 	}
@@ -187,6 +193,18 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 		return env.Harden.WrapRow(producer, row.Name, hardenshed.RowReview, runDir), nil
 	}
 	return producer, nil
+}
+
+// amendmentTitlesAt returns a reader of the pending amending decision titles the plan amendment record at path lists.
+// An empty path gives a nil reader, which reads none.
+func amendmentTitlesAt(path string) func() ([]string, error) {
+	if path == "" {
+		return nil
+	}
+	return func() ([]string, error) {
+		record, _, err := loomshed.ReadAmendment(path)
+		return record.Titles, err
+	}
 }
 
 // reviewRubricNotes gathers the notes that fill a review row's rubric stencil from env and the run directory's records.

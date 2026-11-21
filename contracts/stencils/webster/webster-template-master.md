@@ -254,6 +254,8 @@ You read no decision record for it, and you edit no source, so the decision reac
 
 The decisions your parent recorded for this run before this session started are below, `none` when there is none.
 They are answers your parent already gave, often to an earlier stop of this run: follow each like a decision notice, so every fork you spawn inherits it, and never raise a question one of them answers.
+They are in the order the parent recorded them, and where a later one differs from an earlier one the later one supersedes it, for you and every fork.
+The same holds between a decision notice and the recorded decisions: the later one wins, even where an earlier one told you to revert or drop work.
 
 {{.parent_decisions}}
 

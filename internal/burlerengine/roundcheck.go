@@ -13,6 +13,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -62,6 +63,12 @@ type RoundContext struct {
 	// HasChanges is true when the round holds a changes file; Changed then lists its worktree-relative paths.
 	HasChanges bool
 	Changed    []string
+	// AmendingTexts holds the full text, heading included, of every decision record entry pending as a plan amendment.
+	// A plan card file such an entry names is exempt from the changed-file rule.
+	AmendingTexts []string
+	// HaltReason is the stuck reason of the plan executor call that sent the run back to review, empty when none.
+	// A new BLOCKING `origin: webster` finding is exempt from the changed-file rule while it is set.
+	HaltReason string
 	// ParentReportPath is the report of the round's parent-review ask, empty when the round holds none.
 	ParentReportPath string
 	// PriorReviewPath, PriorFixerReportPath and ChangesPath name the files the prior-findings block points at.
@@ -98,6 +105,8 @@ func roundRefusal(problem, rewrite string) error {
 // and a new finding in an incremental round that is not BLOCKING, is outside the changed files, or is not covered.
 // A new `origin: parent` finding is exempt from the BLOCKING and changed-file rules.
 // It is exempt only when its parent_ids are all ids of the round's parent report.
+// A carried or new finding located in a file that an entry of ctx.AmendingTexts names passes the changed-file rule.
+// A new BLOCKING finding with `origin: webster` passes it too, when ctx.HaltReason is set.
 func CheckReviewRound(content []byte, ctx *RoundContext) error {
 	_, findings, err := ParseReview(content)
 	if err != nil {
@@ -261,6 +270,9 @@ func (c *roundCheck) carriedFinding(f, earlier Finding) error {
 	if path == locationPath(earlier.Location, c.ctx.WorktreeRoot) {
 		return nil
 	}
+	if c.namedByAmendment(path) {
+		return nil
+	}
 	if !c.ctx.HasChanges {
 		return roundRefusal(fmt.Sprintf("finding %q carries %q but moves its location from the earlier path, and the round has no changes file", f.ID, earlier.ID),
 			fmt.Sprintf("with the location of %q keeping the path of %q", f.ID, earlier.ID))
@@ -277,6 +289,7 @@ func (c *roundCheck) newFindings(findings []Finding) error {
 	if !c.ctx.Incremental {
 		return nil
 	}
+	websterOutside := 0
 	for _, f := range findings {
 		if f.Carries != "" {
 			continue
@@ -292,12 +305,81 @@ func (c *roundCheck) newFindings(findings []Finding) error {
 			return roundRefusal(fmt.Sprintf("has the new finding %q at %s, but an incremental round raises a new finding only at BLOCKING", f.ID, f.Severity),
 				fmt.Sprintf("without %q, or with it at BLOCKING on a changed hunk", f.ID))
 		}
-		if path := locationPath(f.Location, c.ctx.WorktreeRoot); c.ctx.HasChanges && !slices.Contains(c.ctx.Changed, path) {
+		path := locationPath(f.Location, c.ctx.WorktreeRoot)
+		outsideChanges := c.ctx.HasChanges && !slices.Contains(c.ctx.Changed, path) && !c.namedByAmendment(path)
+		if outsideChanges && f.Origin == WebsterOrigin && c.ctx.HaltReason != "" {
+			// The halt reason is one finding, so only one finding outside the changed files takes its exemption.
+			if websterOutside++; websterOutside == 1 {
+				continue
+			}
+			return roundRefusal(fmt.Sprintf("has a second new finding %q with `origin: webster` at %q, which the changes file does not list, but the plan executor's halt reason admits one", f.ID, path),
+				fmt.Sprintf("with %q located at a file the changes file lists, or without it", f.ID))
+		}
+		if outsideChanges {
 			return roundRefusal(fmt.Sprintf("has the new finding %q at %q, which the changes file does not list", f.ID, path),
 				fmt.Sprintf("with %q located at the changed line that causes it, or without it", f.ID))
 		}
 	}
 	return nil
+}
+
+// minAmendmentStemLength is the shortest file stem that namedByAmendment matches.
+// A shorter stem would match some text by accident.
+const minAmendmentStemLength = 4
+
+// namedByAmendment reports whether path is a plan card file named by a decision record entry pending as a plan amendment.
+// Two spellings of the card count.
+// One is its base name without extension; the other is that stem without a leading run of digits and one `-`.
+// Either appears in one of the round's AmendingTexts as a whole token, with no identifier character beside it.
+// Plan cards are files like `14-card-slug.md`, which an entry may name by `14-card-slug` or `card-slug`.
+func (c *roundCheck) namedByAmendment(path string) bool {
+	// The plan directory is `_lym/plan`.
+	// `_lym` is a link out of the worktree, so a location may spell it under another root.
+	dir := filepath.ToSlash(filepath.Dir(path))
+	if len(c.ctx.AmendingTexts) == 0 || dir != planparser.PlanDirRel() && !strings.HasSuffix(dir, "/"+planparser.PlanDirRel()) || filepath.Ext(path) != ".md" {
+		return false
+	}
+	base := filepath.Base(path)
+	if planparser.IsNonCardFileName(base) {
+		return false
+	}
+	stem := strings.TrimSuffix(base, filepath.Ext(base))
+	names := []string{stem}
+	if rest := strings.TrimLeft(stem, "0123456789"); rest != stem {
+		if slug, found := strings.CutPrefix(rest, "-"); found {
+			names = append(names, slug)
+		}
+	}
+	for _, name := range names {
+		if len(name) < minAmendmentStemLength {
+			continue
+		}
+		for _, text := range c.ctx.AmendingTexts {
+			if containsToken(text, name) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// containsToken reports whether text holds token with no letter, digit, `-` or `_` directly before or after it.
+func containsToken(text, token string) bool {
+	isIdentifier := func(r byte) bool {
+		return r == '-' || r == '_' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z'
+	}
+	for offset := 0; ; {
+		found := strings.Index(text[offset:], token)
+		if found < 0 {
+			return false
+		}
+		start := offset + found
+		end := start + len(token)
+		if (start == 0 || !isIdentifier(text[start-1])) && (end == len(text) || !isIdentifier(text[end])) {
+			return true
+		}
+		offset = start + 1
+	}
 }
 
 // parentCovered reports whether f is a finding kept from the round's parent report:

@@ -290,4 +290,10 @@
 // CheckReviewRound judges the review against the context alone, so the package reads no format of its caller.
 // RoundCheckGateEntry lets the round through on its cap.
 // A review that passes on the cap keeps its out-of-bound findings, which the fixer works.
+// A plan card file that an entry of RoundContext.AmendingTexts names is exempt from the changed-file rule.
+// The match is the file's stem, with or without its leading number, as a whole token of the entry.
+// It applies to a stem of 4 characters or more.
+// Profile.HaltReason adds a halt-reason block to the review prompt.
+// RoundContext.HaltReason lets the finding it asks for sit outside the changed files.
+// That finding is tagged `origin: webster` (WebsterOrigin), and it must still be BLOCKING in an incremental round.
 package burlerengine

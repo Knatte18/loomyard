@@ -88,6 +88,11 @@ type Env struct {
 	PreflightHarden func() error
 	// AnchorPath is the told anchor path, read by Webster, Bouncer and the gate resolver's "plan" gate.
 	AnchorPath string
+	// AmendmentPath is the told plan amendment record path, read by the Plan-Burler-Review row alone.
+	AmendmentPath string
+	// HaltConflictDir is the told conflict directory holding the plan executor's halt reason.
+	// Only the Plan-Burler-Review row reads it.
+	HaltConflictDir string
 	// ConfigDirs is the told geometry of a layered config load, read by Webster, which loads batcher through it.
 	ConfigDirs configengine.Dirs
 	// WorktreeRoot is the told worktree root, read by the gate resolver's "plan", "verify" and loom "discussion" gates.

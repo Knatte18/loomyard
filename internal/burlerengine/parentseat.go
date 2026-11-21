@@ -16,6 +16,10 @@ import (
 // ParentOrigin is the origin a review finding kept from the parent's report carries.
 const ParentOrigin = "parent"
 
+// WebsterOrigin is the origin of the review finding that raises the plan executor's halt reason.
+// That halt is what sent the run back to plan review.
+const WebsterOrigin = "webster"
+
 // parentConsolidateStencil is the chair's parent consolidation part.
 // parentRulesMarker is the review step's optional marker it fills.
 const (

@@ -549,11 +549,12 @@ func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome, r
 	if gate.Reason != "" {
 		return "verify gate failed: " + oneLine(gate.Reason) + "; " + wayForwardSteps("lym webster reset --to pre-fix", reentry)
 	}
-	report, err := readVerifyGateReport(VerifyGateReportPath(reportsDir))
+	reportPath := VerifyGateReportPath(reportsDir)
+	report, err := readVerifyGateReport(reportPath)
 	if err != nil {
 		return fmt.Sprintf("verify gate did not pass after %d re-prompt(s); its report could not be read: %v; %s", failedEntryReprompts(gate), err, wayForwardSteps(reentry))
 	}
-	return verifyGateStuckLead(gate, report.Cap) + ": " + verifyGateStuckFailure(report, reentry)
+	return verifyGateStuckLead(gate, report.Cap) + ": " + verifyGateStuckFailure(report, reportPath, reentry)
 }
 
 // verifyGateStuckLead opens the stuck reason of a verify gate that did not pass with no terminal reason.
@@ -590,14 +591,25 @@ const verifyGateStuckTextBytes = 400
 // A failure that named no identity says so.
 // It quotes the tail of the command's output, or says the output was empty, since the gate itself may have erred.
 // A run-level entry's failure names the entry and opens its findings.
+// It names reportPath, the verify-gate report holding all of them.
+// The drift entry's way forward closes with the parent's acceptance of the drift as the alternative to fixing it.
 // After a CPU watchdog quit, the hang's own way forward replaces the general one.
-func verifyGateStuckFailure(report VerifyGateReport, reentry string) string {
+func verifyGateStuckFailure(report VerifyGateReport, reportPath, reentry string) string {
 	fixStep := fmt.Sprintf("read %s and commit a fix on the task branch", report.LogPath)
-	var what string
+	var what, alternative string
 	switch {
 	case report.Entry != "":
-		what = fmt.Sprintf("the run-level %q entry failed: %s", report.Entry, oneLine(cutHead(report.Findings, verifyGateStuckTextBytes)))
+		findings := oneLine(cutHead(report.Findings, verifyGateStuckTextBytes))
+		if len(report.Findings) > verifyGateStuckTextBytes {
+			findings += "… (cut; the full findings are in " + reportPath + ")"
+		} else {
+			findings += "; the full report is " + reportPath
+		}
+		what = fmt.Sprintf("the run-level %q entry failed: %s", report.Entry, findings)
 		fixStep = fmt.Sprintf("fix what the %q entry's findings name and commit it on the task branch", report.Entry)
+		if report.Entry == driftGateEntry {
+			alternative = "; or, when the drift is the change the plan intends, the run's parent accepts it with `lym drift amend <slug> --entries <file>`, then runs `lym loom resume`"
+		}
 	case len(report.Dirty) > 0:
 		what = "the worktree held uncommitted paths " + strings.Join(report.Dirty, ", ")
 		fixStep = "commit or remove those paths on the task branch"
@@ -618,8 +630,11 @@ func verifyGateStuckFailure(report VerifyGateReport, reentry string) string {
 		what = fmt.Sprintf("the verify command exited with code %d and its output named no failing test, so the gate itself may have erred; %s; see %s",
 			report.ExitCode, output, report.LogPath)
 	}
-	return withCommand(report.Command, what) + "; " + wayForwardSteps(fixStep, reentry)
+	return withCommand(report.Command, what) + "; " + wayForwardSteps(fixStep, reentry) + alternative
 }
+
+// driftGateEntry is the run-level gate entry name a recipe gives the drift check.
+const driftGateEntry = "drift"
 
 // withCommand opens what with the verify command it failed under, and returns what alone when command is empty.
 func withCommand(command, what string) string {

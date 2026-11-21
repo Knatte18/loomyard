@@ -62,6 +62,10 @@
 // A batch failed on a correctness finding records its suspect paths with the blob each held when it first failed.
 // recover-batch records the batch done only once each was reverted or re-derived and committed.
 //
+// A create-not-done finding offers a card amendment and recover-batch as ways forward.
+// It also offers a parent decision recorded with `--drops-create`, which makes the done-check skip the target.
+// A rename-not-done finding offers the amendment and recover-batch alone, since a decision drops only a Create target.
+//
 // # One dispatch scope for begin-batch, run entry and validate
 //
 // A plan describes intended change.
@@ -108,6 +112,9 @@
 // Only the loom's Webster row sets RunOptions.AutoRebaseline.
 // It runs Rebaseline on entry for every changed card file; its errors wrap ErrAutoRebaseline.
 // Run renders every `Added after Discussion` decision entry into the master prompt's `parent_decisions` marker.
+// The entries are numbered `Decision 1:` onward in record order,
+// and a later entry that differs from an earlier one supersedes it for Master and every fork.
+// Refusal and prompt text name a loom verb only as a step for the run's parent, never as a step for Master or a fork.
 //
 // # Audit findings: correctness fails the batch, policy warns once
 //
@@ -234,6 +241,9 @@
 // A failure is rerun once and only a failure that survives the rerun goes to a fixer;
 // a hang (classifyHang) or a crashed test runner is never rerun, since neither is flakiness.
 // Tests that fail once and pass on the rerun are reported as flaky, not failed.
+// A run whose gate spent its budget ends stuck with a reason that names the command and what failed.
+// A run-level entry's failure quotes the head of its findings and names the report, which holds them all.
+// A drift entry's way forward also names the parent's `lym drift amend`, which accepts a drift the plan intends.
 //
 // # The plan fixer
 //

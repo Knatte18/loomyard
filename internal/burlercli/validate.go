@@ -13,8 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/spf13/cobra"
 )
@@ -112,7 +115,21 @@ func checkRoundInRunDirectory(cwd, reviewFile string) (refusal error, builderNot
 		return nil, ""
 	}
 
-	roundContext, err := shedadapters.BuildRoundContext(runDir, round, loomengine.DiscussionDecisionRecord(location), location.AnchorPath())
+	paths := shedadapters.RoundContextSources{DecisionRecordPath: loomengine.DiscussionDecisionRecord(location), AnchorPath: location.AnchorPath()}
+	// The plan segment's review and fix rows share the run_subdir of its Bouncer row, which the loom recipe gives.
+	planSubdir, found, err := loomrecipe.BouncerRunSubdir(loomshed.NamePlanBouncer)
+	if err != nil {
+		return nil, fmt.Sprintf("the plan review run directory could not be read from the recipe, so the parse alone decided: %s", err)
+	}
+	if found && filepath.Clean(runDir) == filepath.Join(loomengine.LoomReviewsDir(location), planSubdir) {
+		amendmentPath := loomengine.LoomAmendmentRecord(location)
+		paths.AmendmentTitles = func() ([]string, error) {
+			record, _, err := loomshed.ReadAmendment(amendmentPath)
+			return record.Titles, err
+		}
+		paths.ConflictDir = runplan.ConflictDir(location.AnchorPath())
+	}
+	roundContext, err := shedadapters.BuildRoundContext(runDir, round, paths)
 	if err != nil {
 		return nil, fmt.Sprintf("the round context could not be built, so the parse alone decided: %s", err)
 	}

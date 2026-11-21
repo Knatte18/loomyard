@@ -83,6 +83,9 @@ type Profile struct {
 	// Round is what the review is judged against when an earlier round is complete, and what the prior-findings block lists.
 	// Nil is a full round: the prior-rounds text and the round checks of a round with no earlier findings.
 	Round *RoundContext
+	// HaltReason is the stuck reason of the plan executor call that sent the run back to review, empty when none.
+	// A non-empty value makes the review prompt carry it as a finding the reviewer must raise.
+	HaltReason string
 }
 
 // rolePrefix returns base led by the profile's RolePrefix, or base alone when there is none.

@@ -124,6 +124,9 @@ const (
 	ConflictRecordName = "plan-conflict.md"
 	// routedConflictName is the file holding the findings of the conflict last routed to plan review.
 	routedConflictName = "plan-conflict-routed.md"
+	// HaltReasonName is the file in the conflict directory holding the stuck reason of the latest stuck Webster call.
+	// A plan review the parent routes the run back to raises it as a finding; Webster removes it when a call ends done.
+	HaltReasonName = "webster-halt.md"
 )
 
 // ConflictDir returns the never-tracked directory under anchorRoot that holds the plan-conflict record.
@@ -195,6 +198,40 @@ func RemoveConflictRecord(scratchDir string) error {
 // RemoveRoutedConflict removes the last-routed conflict, and is a no-op when it is absent.
 func RemoveRoutedConflict(scratchDir string) error {
 	return removeIfPresent(RoutedConflictPath(scratchDir))
+}
+
+// HaltReasonPath returns the Webster halt reason's path under dir.
+func HaltReasonPath(dir string) string {
+	return filepath.Join(dir, HaltReasonName)
+}
+
+// WriteHaltReason writes reason, newline-terminated, as the Webster halt reason under dir.
+// It creates dir first, since no lock file sits in it.
+func WriteHaltReason(dir, reason string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("runplan: create halt-reason directory: %w", err)
+	}
+	if err := os.WriteFile(HaltReasonPath(dir), []byte(reason+"\n"), 0o644); err != nil {
+		return fmt.Errorf("runplan: write halt reason: %w", err)
+	}
+	return nil
+}
+
+// ReadHaltReason returns the trimmed Webster halt reason under dir, or "" when there is none.
+func ReadHaltReason(dir string) (string, error) {
+	data, err := os.ReadFile(HaltReasonPath(dir))
+	if os.IsNotExist(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("runplan: read %s: %w", HaltReasonPath(dir), err)
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+// RemoveHaltReason removes the Webster halt reason under dir, and is a no-op when it is absent.
+func RemoveHaltReason(dir string) error {
+	return removeIfPresent(HaltReasonPath(dir))
 }
 
 // removeIfPresent removes the file at filePath and returns nil when there is none.

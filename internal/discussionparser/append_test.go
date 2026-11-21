@@ -2,8 +2,10 @@ package discussionparser
 
 import (
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -407,6 +409,7 @@ func TestAppendDecisions_WritesBatchWholeOrNothing(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the exact parsed author, date and title of each entry in record order, which its covering test does not assert
 func TestParseAddedDecisions(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -460,11 +463,93 @@ func TestParseAddedDecisions(t *testing.T) {
 				t.Fatalf("ParseAddedDecisions() = %+v; want %+v", got, tt.want)
 			}
 			for i := range got {
-				if got[i] != tt.want[i] {
+				if !reflect.DeepEqual(got[i], tt.want[i]) {
 					t.Errorf("entry %d = %+v; want %+v", i, got[i], tt.want[i])
 				}
 			}
 		})
+	}
+}
+
+// TestAppendDecision_DroppedCreates asserts each dropped target renders as its own line after the Rationale paragraph.
+// A target is trimmed, and an empty one or one holding a backtick or a newline is an error that writes nothing.
+func TestAppendDecision_DroppedCreates(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		targets []string
+		// want is the entry's text after the Decisions body; empty means the call must fail.
+		want string
+	}{
+		{"OneTarget", []string{"internal/x/a.go"}, wantEntry + "\nDrops Create: `internal/x/a.go`\n"},
+		{"TwoTargetsTrimmed", []string{" a.go ", "b.go\t"}, wantEntry + "\nDrops Create: `a.go`\nDrops Create: `b.go`\n"},
+		{"EmptyTarget", []string{"a.go", "  "}, ""},
+		{"BacktickInTarget", []string{"a`b.go"}, ""},
+		{"NewlineInTarget", []string{"a\nb.go"}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			decisionPath, supportPath := writeFixture(t, t.TempDir(), allSectionsContent(), "log")
+			d := addedDecision()
+			d.DroppedCreates = tt.targets
+
+			findings, err := AppendDecision(decisionPath, supportPath, d)
+			got := readFile(t, decisionPath)
+			if tt.want == "" {
+				if err == nil {
+					t.Fatal("AppendDecision() error = nil; want an error")
+				}
+				if got != allSectionsContent() {
+					t.Errorf("record changed:\n%q", got)
+				}
+				return
+			}
+			if err != nil || len(findings) != 0 {
+				t.Fatalf("AppendDecision() = %v, %v; want no findings and nil error", findings, err)
+			}
+			want := strings.Replace(allSectionsContent(), "## Decisions\n\nbody text.\n", "## Decisions\n\nbody text.\n"+tt.want, 1)
+			if got != want {
+				t.Errorf("record =\n%q\nwant\n%q", got, want)
+			}
+		})
+	}
+}
+
+// TestDroppedCreates asserts the targets of two added entries come back with their entries' titles.
+// A later entry's title replaces an earlier one's for the same target, a fenced line is ignored,
+// and a missing record and an empty path read as none.
+func TestDroppedCreates(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	record := "# Record\n\n## Decisions\n\n### Discussion call\n\nDrops Create: `ignored.go`\n\n" +
+		"### Added after Discussion (parent, 2026-03-01): First\n\nDecision: a.\n\nRationale: b.\n\n" +
+		"Drops Create: `a.go`\nDrops Create: `shared.go`\n\n" +
+		"```\nDrops Create: `fenced.go`\n```\n\n" +
+		"### Added after Discussion (parent, 2026-03-02): Second\n\nDecision: a.\n\nRationale: b.\n\n" +
+		"Drops Create: `shared.go`\n\n## Constraints\n\nDrops Create: `outside.go`\n"
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "decision-record.md")
+	if err := os.WriteFile(path, []byte(record), 0o644); err != nil {
+		t.Fatalf("write record: %v", err)
+	}
+
+	got, err := DroppedCreates(path)
+	if err != nil {
+		t.Fatalf("DroppedCreates() error = %v; want nil", err)
+	}
+	want := map[string]string{"a.go": "First", "shared.go": "Second"}
+	if !maps.Equal(got, want) {
+		t.Errorf("DroppedCreates() = %v; want %v", got, want)
+	}
+	for _, p := range []string{filepath.Join(dir, "missing.md"), ""} {
+		if got, err := DroppedCreates(p); got != nil || err != nil {
+			t.Errorf("DroppedCreates(%q) = %v, %v; want nil, nil", p, got, err)
+		}
 	}
 }
 

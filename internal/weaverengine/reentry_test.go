@@ -12,6 +12,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
@@ -71,6 +72,26 @@ func TestRun_Reentry(t *testing.T) {
 		}
 		if got := len(fx.verify.calls); got != 3 {
 			t.Errorf("verify calls = %d; want the batch's card and batch gate and the plan-level verify", got)
+		}
+	})
+
+	t.Run("StoppedBatchWithADroppedCreateIsRecordedDoneWithNoSpawn", func(t *testing.T) {
+		t.Parallel()
+		const target = "internal/x/one.go"
+		fx := newRunFixture(t, 1, "one")
+		stopFirstBatch(t, fx)
+		fx.git.commit("the parent repaired the batch")
+		fx.index.notDone = []planindex.Finding{{Check: "create-not-done", Card: "1-one", Severity: planindex.SeverityBlocking, Detail: target + " does not resolve"}}
+		fx.index.notDoneTarget = target
+		record := "## Decisions\n\n### Added after Discussion (parent, 2026-11-21): Drop it\n\nDecision: drop it.\nRationale: unneeded.\nDrops Create: `" + target + "`\n"
+		if err := os.WriteFile(fx.deps.Geom.DecisionRecordPath, []byte(record), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		requireDone(t, mustRun(t, fx), 1)
+
+		if got := len(fx.runner.specs); got != 3 {
+			t.Errorf("strands started = %d; want the stopped batch's three, none to re-enter", got)
 		}
 	})
 

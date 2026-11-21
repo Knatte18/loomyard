@@ -898,7 +898,7 @@ func TestRenderPrompts(t *testing.T) {
 			second := "### Added after Discussion (arbiter, 2026-10-26): Keep the seam\n\nDecision: keep it.\n\nRationale: two callers."
 			text, err := renderMasterWithDecisions(seamBatches, root, root, stencilsDir, "", "", nil, []string{first, second})
 			return promptCheck{text: text, err: err,
-				inOrder:     []string{first + "\n\n" + second},
+				inOrder:     []string{"Decision 1:\n" + first + "\n\nDecision 2:\n" + second},
 				notContains: []string{"{{.parent_decisions}}"}}
 		}},
 		{"master renders none for no parent decision", func(t *testing.T) promptCheck {
@@ -907,14 +907,9 @@ func TestRenderPrompts(t *testing.T) {
 			if err != nil {
 				return promptCheck{err: err}
 			}
-			withNone, err := renderMasterWithDecisions(seamBatches, root, root, stencilsDir, "", "", nil, []string{"none"})
-			if err != nil {
-				return promptCheck{err: err}
-			}
-			if text != withNone {
-				t.Error("master prompt with no parent decision differs from the one rendered with the decision none")
-			}
-			return promptCheck{text: text, notContains: []string{"{{.parent_decisions}}"}}
+			return promptCheck{text: text,
+				inOrder:     []string{"even where an earlier one told you to revert or drop work.\n\nnone\n\n## A plan defect goes"},
+				notContains: []string{"{{.parent_decisions}}", "Decision 1:"}}
 		}},
 		{"master and recovery for a codex launch carry the codex edit directive", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)

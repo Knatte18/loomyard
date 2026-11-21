@@ -11,6 +11,8 @@ Before you edit anything, read — in THIS turn — every card file this section
 A decision notice in your inherited context, the one your parent directive admits, is your parent's call for this run.
 Where it touches your cards, follow it over the card, inside your cards' targets;
 a change it needs outside them is not yours to make.
+Where two decisions in your context differ, the later one supersedes the earlier one, whether it came as a notice or among the recorded decisions:
+follow the later one even where an earlier one told you to revert or drop work.
 
 ## Prior-batch context
 

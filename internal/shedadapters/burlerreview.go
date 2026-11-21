@@ -19,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -76,6 +77,14 @@ type BurlerHalfDeps struct {
 	Snapshot *TargetSnapshot
 	// DecisionRecordPath is the decision record whose added entries the round's start records; empty records none.
 	DecisionRecordPath string
+	// AmendmentTitles reads the titles of the pending amending decision entries.
+	// A later round's review may name findings against them.
+	// Nil for a segment that reads none.
+	AmendmentTitles func() ([]string, error)
+	// HaltConflictDir is the conflict directory holding the plan executor's halt-reason file.
+	// The review producer reads it on every call and puts the reason in the review prompt.
+	// Empty for a segment that reads none.
+	HaltConflictDir string
 	// Diff reads the unified diff a spawned reviewer is given in pieces, read by the review producer once per spawning call.
 	// Nil gives no diff, and so does a failed read, which is logged.
 	Diff func() (string, error)
@@ -153,6 +162,10 @@ type BurlerReviewProducer struct {
 	snapshot *TargetSnapshot
 	// decisionRecordPath, when non-empty, is the decision record whose added entries each round's start records.
 	decisionRecordPath string
+	// amendmentTitles, when set, reads the pending amendment titles into each round's context.
+	amendmentTitles func() ([]string, error)
+	// haltConflictDir, when non-empty, is the conflict directory whose halt-reason file each call reads.
+	haltConflictDir string
 	// diff, when non-nil, reads the diff a spawned reviewer is given.
 	diff func() (string, error)
 	// rubric, when non-nil, reads each round's rubric.
@@ -183,7 +196,7 @@ func NewBurlerReviewProducer(name string, deps BurlerHalfDeps, profile burlereng
 	if now == nil {
 		now = time.Now
 	}
-	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, fans: deps.Fans, assist: deps.Assist, parent: deps.Parent, snapshot: deps.Snapshot, decisionRecordPath: deps.DecisionRecordPath, diff: deps.Diff, rubric: deps.Rubric, gateFindingsPath: deps.GateFindingsPath, profile: profile, opts: opts, runDir: runDir, now: now}, nil
+	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, fans: deps.Fans, assist: deps.Assist, parent: deps.Parent, snapshot: deps.Snapshot, decisionRecordPath: deps.DecisionRecordPath, amendmentTitles: deps.AmendmentTitles, haltConflictDir: deps.HaltConflictDir, diff: deps.Diff, rubric: deps.Rubric, gateFindingsPath: deps.GateFindingsPath, profile: profile, opts: opts, runDir: runDir, now: now}, nil
 }
 
 // recordRoundStart writes round's snapshot record when none exists yet.
@@ -256,7 +269,7 @@ func (p *BurlerReviewProducer) roundProfile(round int, fan, rubric string) burle
 	profile.PriorFixerReports = append(append([]string{}, p.profile.PriorFixerReports...), priorFixerReports...)
 	profile.ClusterExclude = nil
 	profile.ClusterExcludeHeld = nil
-	roundContext, err := BuildRoundContext(p.runDir, round, p.decisionRecordPath, "")
+	roundContext, err := BuildRoundContext(p.runDir, round, RoundContextSources{DecisionRecordPath: p.decisionRecordPath, AmendmentTitles: p.amendmentTitles, ConflictDir: p.haltConflictDir})
 	if err != nil {
 		logger.Warn("shedadapters: burler review could not build the round context; the round is reviewed in full", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", err)
 	}
@@ -343,6 +356,13 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 		}
 	}
 
+	haltReason := ""
+	if p.haltConflictDir != "" {
+		if haltReason, err = runplan.ReadHaltReason(p.haltConflictDir); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: read the halt reason: %w", p.name, burlerReviewEngineLabel, round, err)
+		}
+	}
+
 	p.recordRoundStart(round)
 
 	fan, fixFan := p.profile.ClusterFan, ""
@@ -356,9 +376,11 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 		}
 	}
 	profile := p.roundProfile(round, fan, rubric)
+	profile.HaltReason = haltReason
 	probeProfile := profile
 	if probeFan != fan {
 		probeProfile = p.roundProfile(round, probeFan, rubric)
+		probeProfile.HaltReason = haltReason
 	}
 	paths := []string{profile.ReviewPath, profile.FixerReportPath, roundAcceptancePath(p.runDir, round), burlerengine.AssistCopyPath(profile.ReviewPath, burlerengine.AssistSeatName), burlerengine.ParentCopyPath(profile.ReviewPath)}
 	archiveRound := func() {

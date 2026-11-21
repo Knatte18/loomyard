@@ -441,8 +441,9 @@ func masterPlanDirDisplay(paneCwd, planDir string) string {
 // Master never edits code, only forks.
 // patternChanges is the task's declared PATTERN changes as rendered bullet lines;
 // it is passed to the pattern directive, and nil renders none.
-// parentDecisions is every decision the run's parent recorded after the Discussion, each entry's text verbatim;
-// it renders into {{.parent_decisions}}, so a fresh Master knows the answers its parent already gave;
+// parentDecisions is every decision the run's parent recorded after the Discussion, each entry's text verbatim.
+// It renders into {{.parent_decisions}} numbered in record order.
+// A fresh Master thereby knows the answers its parent already gave, and which later one supersedes an earlier one.
 // nil renders `none`.
 // parentName is the told parent agent name; an empty one renders parentdirective's no-parent variant.
 // notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
@@ -499,13 +500,18 @@ func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summary
 	return prompt, nil
 }
 
-// renderParentDecisions renders the decisions for {{.parent_decisions}}:
-// the entries in order, joined by a blank line, or `none` when there are none.
+// renderParentDecisions renders the decisions for {{.parent_decisions}} in record order, or `none` when there are none.
+// Each entry sits under its own `Decision N:` line, and a blank line joins the entries.
+// The numbers let a later entry that differs from an earlier one be named as superseding it.
 func renderParentDecisions(decisions []string) string {
 	if len(decisions) == 0 {
 		return "none"
 	}
-	return strings.Join(decisions, "\n\n")
+	numbered := make([]string, len(decisions))
+	for i, decision := range decisions {
+		numbered[i] = fmt.Sprintf("Decision %d:\n%s", i+1, decision)
+	}
+	return strings.Join(numbered, "\n\n")
 }
 
 // RenderBatchIndex renders batches as ordered-list text for {{.batch_index}}, one line per batch.

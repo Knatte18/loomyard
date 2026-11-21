@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -64,6 +65,9 @@ type CardNotDoneError struct {
 	GlyphRejected bool
 	// CreateNotDone is set for a Create target that still does not resolve, or for a Rename pair that did not happen.
 	CreateNotDone bool
+	// DroppableCreate is set for a Create target that still does not resolve.
+	// A decision can drop such a target, and it cannot drop a Rename pair.
+	DroppableCreate bool
 	// SignatureMismatch is set when a target's member is declared only with another parameter list.
 	SignatureMismatch bool
 }
@@ -117,6 +121,9 @@ type PostBatchInputs struct {
 	// StartSHA is the bracket record's captured start SHA and HeadSHA the reconciled report head.
 	StartSHA string
 	HeadSHA  string
+	// DecisionRecordPath is the run's decision record, whose dropped Create targets skip their done-check.
+	// Empty reads no decisions.
+	DecisionRecordPath string
 	// Label names the batch in warnings.
 	Label string
 	// Renames are the glyph renames the batch's report lists, which drift detection repairs in the cards not yet begun.
@@ -185,7 +192,10 @@ func CardNotDoneFor(number int, cards []planparser.Card, findings []planindex.Fi
 			notDone.DeleteNotDone = true
 		case "glyph-rejected":
 			notDone.GlyphRejected = true
-		case "create-not-done", "rename-not-done":
+		case "create-not-done":
+			notDone.CreateNotDone = true
+			notDone.DroppableCreate = true
+		case "rename-not-done":
 			notDone.CreateNotDone = true
 		case "signature-mismatch":
 			notDone.SignatureMismatch = true
@@ -215,8 +225,50 @@ func rereadCards(plan *planparser.Plan, cards []planparser.Card) []planparser.Ca
 	return reread
 }
 
+// withoutDroppedCreates returns cards with every Create target in dropped removed from its target groups.
+// A dropped target that a card declares through a `plan:` handle loses its declaration too.
+// The card then owns no handle for it.
+// Each such target adds a warning naming the card, the target and the decision that dropped it.
+// A card it changes is a copy: the caller's cards and their slices stay as given.
+func withoutDroppedCreates(cards []planparser.Card, dropped map[string]string) (kept []planparser.Card, warnings []string) {
+	kept = slices.Clone(cards)
+	for i, c := range kept {
+		groups := slices.Clone(c.TargetGroups)
+		droppedHandles := map[string]bool{}
+		for j, g := range groups {
+			if g.Type != planparser.CardTypeCreate {
+				continue
+			}
+			var refs []string
+			for _, ref := range g.Refs {
+				title, isDropped := dropped[ref]
+				if !isDropped {
+					refs = append(refs, ref)
+					continue
+				}
+				droppedHandles[ref] = true
+				warnings = append(warnings, fmt.Sprintf("card %s: Create target %q is dropped by the decision %q, so its done-check did not run", c.ID(), ref, title))
+			}
+			groups[j].Refs = refs
+			groups[j].Declarations = declarationsWithout(g.Declarations, droppedHandles)
+		}
+		kept[i].TargetGroups = groups
+		kept[i].Declarations = declarationsWithout(c.Declarations, droppedHandles)
+	}
+	return kept, warnings
+}
+
+// declarationsWithout returns a copy of declarations without those whose handle is in handles.
+func declarationsWithout(declarations []planparser.CardDeclaration, handles map[string]bool) []planparser.CardDeclaration {
+	return slices.DeleteFunc(slices.Clone(declarations), func(d planparser.CardDeclaration) bool { return handles[d.Handle] })
+}
+
 // PostBatchChecks runs the mechanical pass every terminal batch owes, whichever path takes it terminal.
 // It runs the card done-checks and carries a recorded C# re-sign into the plan.
+// The done-checks skip each Create target that an `Added after Discussion` decision in in.DecisionRecordPath drops,
+// and a warning names each such target.
+// Binding owns no handle for a dropped target either; drift detection and the scope guard still read the cards as given.
+// A decision record that cannot be read is an error with a way forward.
 // It computes the single delta that the rest of the pass shares.
 // It then binds handles, runs the glyph scope guard, and runs drift detection with its exact-tier auto-repair.
 // It also runs the plan-staleness re-baseline each of those rewrites requires.
@@ -246,7 +298,14 @@ func PostBatchChecks(in PostBatchInputs) (deviations, warnings []string, err err
 	if err != nil {
 		return nil, nil, err
 	}
-	doneFindings, err := index.DoneChecks(in.Plan, in.Cards, in.Geom.WorktreeRoot)
+	dropped, err := discussionparser.DroppedCreates(in.DecisionRecordPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read the dropped Create targets of the decision record %s: %w; way forward: restore the decision record at that path, or have the run's parent replace it with `lym loom decision replace`, then re-run the verb that failed", in.DecisionRecordPath, err)
+	}
+	cardsToCheck, droppedWarnings := withoutDroppedCreates(in.Cards, dropped)
+	// Every return below carries the dropped-target warnings, so a refusal never hides them.
+	defer func() { warnings = append(droppedWarnings, warnings...) }()
+	doneFindings, err := index.DoneChecks(in.Plan, cardsToCheck, in.Geom.WorktreeRoot)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -325,7 +384,9 @@ func PostBatchChecks(in PostBatchInputs) (deviations, warnings []string, err err
 
 	// Binding runs after the done-checks above, so a card that already failed create-not-done is never bound.
 	// It applies its whole batch of substitutions in one RewriteRefs call.
-	bindFindings, bindOutcomes, bindErr := delta.BindHandles(in.Plan, in.Geom.PlanDir, in.Cards)
+	// A dropped Create declares nothing the delta could create, so its handle is left out of the cards binding reads.
+	bindCards, _ := withoutDroppedCreates(in.Cards, dropped)
+	bindFindings, bindOutcomes, bindErr := delta.BindHandles(in.Plan, in.Geom.PlanDir, bindCards)
 	// The trace is logged before the restamp below, so a restamp failure still reports the bind that landed.
 	// The trace names the reason the pass decided.
 	// That reason overrides the outcomes BindHandles computed when there is no glyph language or no delta.

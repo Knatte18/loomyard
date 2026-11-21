@@ -89,6 +89,9 @@ const (
 	decisionWayFromKeys  = `way forward: set pattern_entry and pattern_action together, and pattern_text for adds or changes, never for withdraws, then re-run the verb`
 	decisionWayFromTwice = `way forward: give each entry of the --from file its own title and its own PATTERN entry, or record the second in a later call`
 
+	decisionWayDropsCreateAlone = `way forward: record the dropping decision as its own call`
+	decisionWayDropsCreateShape = `way forward: pass --drops-create with the Create target as the plan card spells it, without backticks or line breaks`
+
 	decisionWayFabricCommit    = `way forward: run "lym fabric commit" to commit the record; a session lym refuses the verb from reports status: FAILED and the orch runs it`
 	decisionWayStore           = `way forward: once the cause above is cleared, run "lym loom decision store" to copy the committed record onto the board entry`
 	decisionWayAmendsPlanRetry = `way forward: the entry and the amendment record are restored and nothing landed; re-run "lym loom decision add ... --amends-plan"`
@@ -134,11 +137,13 @@ const decisionWayNoRecord = `way forward: the record exists once Discussion-Writ
 // The three pattern fields are the optional PATTERN-change form and are all empty without it.
 // from names the batch file whose entries replace the per-entry fields, and is empty for a one-entry call.
 // amendsPlan marks a decision that amends the approved plan, so the call also writes the plan amendment record.
+// dropsCreate lists the Create targets of plan cards the call's one entry drops.
 type decisionInput struct {
 	by, title, decision, rationale           string
 	patternEntry, patternAction, patternText string
 	from                                     string
 	amendsPlan                               bool
+	dropsCreate                              []string
 }
 
 // replaceInput holds the flag values of one `decision replace` call.
@@ -924,6 +929,9 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 	if refusal != "" {
 		return refuse("%s", refusal)
 	}
+	if refusal := dropsCreateRefusal(input.dropsCreate, len(entries)); refusal != "" {
+		return refuse("%s", refusal)
+	}
 	if refusal := decisionCallerRefusal(deps, input.by); refusal != "" {
 		return refuse("%s", refusal)
 	}
@@ -1014,6 +1022,9 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 			Decision:  entry.Decision,
 			Rationale: entry.Rationale,
 			Date:      date,
+		}
+		if len(entries) == 1 {
+			d.DroppedCreates = input.dropsCreate
 		}
 		switch id, action := strings.TrimSpace(entry.PatternEntry), strings.TrimSpace(entry.PatternAction); {
 		case action == discussionparser.PatternActionWithdraws:
@@ -1118,6 +1129,24 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		result["commit_error"] = commitErr.Error()
 	}
 	return output.Ok(out, result)
+}
+
+// dropsCreateRefusal returns the refusal text for --drops-create targets that cannot be recorded, or empty when they can.
+// The flag belongs to one entry, so a call recording several entries is refused,
+// and a target that is empty or holds a backtick or a line break cannot be written as a line.
+func dropsCreateRefusal(targets []string, entryCount int) string {
+	if len(targets) == 0 {
+		return ""
+	}
+	if entryCount > 1 {
+		return "--drops-create applies to one entry and this call records several; " + decisionWayDropsCreateAlone
+	}
+	for _, target := range targets {
+		if strings.TrimSpace(target) == "" || strings.ContainsAny(target, "`\n\r") {
+			return fmt.Sprintf("--drops-create target %q is empty or holds a backtick or a line break; %s", target, decisionWayDropsCreateShape)
+		}
+	}
+	return ""
 }
 
 // entriesChangePattern reports whether any entry carries the PATTERN-change form.
@@ -1954,33 +1983,36 @@ Example:
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `add appends an entry under an "Added after Discussion" heading, carrying the
 --by label and today's date, to the record's Decisions section, re-runs the
-discussion check (restoring the record on a finding) and commits.
-It changes neither the support log nor the plan. Past Discussion approval it
-also copies the record onto the run's board entry; a failed copy is reported
-as "record_store_error", never fails the verb. It then notifies the run's other
-live agents ("notified", "notice_errors", "notice_held_back").
+discussion check and commits.
+Past Discussion approval it also copies the record onto the run's board entry;
+a failed copy is "record_store_error" and never fails the verb.
+It then notifies the run's other live agents.
 
 --by is parent, operator or arbiter (the last only from the run's arbiter
-strand). --title, --decision and --rationale are required without --from. A named session other than the run's parent orch, arbiter or sampler
-session (--by operator only) is refused, as is any call while Discussion-Write
-runs or, on a Record-Write recipe, before it has committed the record.
+strand). --title, --decision and --rationale are required without --from.
+A session other than the run's parent orch, arbiter or sampler session (--by
+operator only) is refused, as is any call while Discussion-Write runs or, on a
+Record-Write recipe, before it has committed the record.
 
 --amends-plan marks a decision that amends the approved plan: the call also
 appends the title to the plan amendment record in the same commit. It is
 refused on a recipe with no Plan-Write row and with no approved plan.
-Afterwards the parent runs "lym loom goto --to Plan-Burler-Review" and
-"lym loom resume".
+Then the parent runs "lym loom goto --to Plan-Burler-Review", "lym loom resume".
 
 A decision on a PATTERN entry also passes --pattern-entry <PATTERN-id>,
 --pattern-action adds|changes|removes and, for adds or changes, --pattern-text
 <new entry text>, which writes its bullet to the "## PATTERN changes" section.
---pattern-action withdraws strikes the entry's declared bullet in the same
-commit, takes no --pattern-text and is refused when the record declares none.
+--pattern-action withdraws strikes the declared bullet, takes no --pattern-text
+and is refused when the record declares none.
 
 --from <file> records several decisions from a JSON array of objects with the
 keys title, decision, rationale and optional pattern_entry, pattern_action,
 pattern_text. --by and --amends-plan apply to every entry. All land in one
 commit or none does; no two share a title or a PATTERN entry.
+
+--drops-create <target> (repeatable) records that the decision drops a Create
+target, as the card spells it, so Webster's done-check skips it. It applies to
+one entry; record the dropping decision as its own call.
 
 Example:
   lym loom decision add <slug> --by parent --title "T" --decision "D" --rationale "R"`,
@@ -2001,6 +2033,7 @@ Example:
 	add.Flags().StringVar(&st.input.patternAction, "pattern-action", "", "what the decision does to the entry: adds, changes, removes or withdraws")
 	add.Flags().StringVar(&st.input.patternText, "pattern-text", "", "the entry's new text, for adds or changes")
 	add.Flags().StringVar(&st.input.from, "from", "", "a JSON file of several decisions to record in one call, in place of the per-entry flags")
+	add.Flags().StringArrayVar(&st.input.dropsCreate, "drops-create", nil, "a Create target of a plan card the decision drops, as the card spells it; Webster's done-check then skips it")
 	add.Flags().BoolVar(&st.input.amendsPlan, "amends-plan", false, "the decision amends the approved plan: also record it in the plan amendment record")
 
 	store := &cobra.Command{

@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/friction"
@@ -387,6 +388,9 @@ const priorFindingsHeading = "### Prior findings"
 // heldByParentMark marks a prior finding that the run's parent rules on, not the fixer.
 const heldByParentMark = "held by the parent: the run's parent rules on this finding"
 
+// amendsPlanMark leads an added decision record entry that is pending as a plan amendment.
+const amendsPlanMark = "(amends the plan) "
+
 // rulingReportLabel labels a `ruling` disposition.
 // It is the fixer's report of a ruling that reached it, never the parent's answer.
 const rulingReportLabel = "the fixer's report of a ruling that reached it, never the parent's answer"
@@ -397,6 +401,33 @@ const rulingReportLabel = "the fixer's report of a ruling that reached it, never
 // A profile with prior-round files gets a bullet list of the prior review and fixer-report paths.
 // That list is followed by the clean-room rule.
 func priorRoundsBlock(p *Profile) string {
+	block := priorRoundsBase(p)
+	if p.HaltReason == "" {
+		return block
+	}
+	return block + "\n\n" + haltReasonBlock(p.HaltReason)
+}
+
+// haltReasonHeading is the heading line that opens the halt-reason block.
+const haltReasonHeading = "### Plan executor halt"
+
+// haltReasonBlock renders the block that makes the reviewer raise the plan executor's halt reason as a finding.
+// The reason is quoted verbatim.
+func haltReasonBlock(reason string) string {
+	var b strings.Builder
+	b.WriteString(haltReasonHeading)
+	b.WriteString("\n\n")
+	b.WriteString("The plan executor halted with the reason quoted below, and the run was sent back to plan review.\n")
+	fmt.Fprintf(&b, "Raise it as a BLOCKING finding with `origin: %s`, located on the card or file it names,\n", WebsterOrigin)
+	b.WriteString("whose fix is the plan edit the reason asks for.\n")
+	b.WriteString("When the plan already does what the reason asks, raise no finding and say so in the review summary.\n\n")
+	b.WriteString("> ")
+	b.WriteString(strings.ReplaceAll(strings.TrimRight(reason, "\n"), "\n", "\n> "))
+	return b.String()
+}
+
+// priorRoundsBase returns the prior-rounds text of p before any halt-reason block.
+func priorRoundsBase(p *Profile) string {
 	if p.Round != nil {
 		return priorFindingsBlock(p.Round)
 	}
@@ -428,6 +459,7 @@ func priorRoundsBlock(p *Profile) string {
 // priorFindingsBlock renders round as the prior-findings block.
 // The block names the files of the round before and says whether this round is incremental.
 // It lists each prior finding with the fixer's disposition of it, and the decision-record entries added since.
+// An entry that amends the plan is listed and marked whether it was added since or earlier.
 func priorFindingsBlock(round *RoundContext) string {
 	var b strings.Builder
 	b.WriteString(priorFindingsHeading)
@@ -447,15 +479,39 @@ func priorFindingsBlock(round *RoundContext) string {
 		writePriorFinding(&b, prior)
 	}
 	b.WriteString("\n")
-	if len(round.AddedTexts) == 0 {
-		b.WriteString("No entry was added to the decision record since the previous round.")
-		return b.String()
-	}
-	b.WriteString("Entries added to the decision record since the previous round:\n\n")
-	for _, text := range round.AddedTexts {
+	writeEntry := func(text string) {
 		b.WriteString("- ")
+		if slices.Contains(round.AmendingTexts, text) {
+			b.WriteString(amendsPlanMark)
+		}
 		b.WriteString(strings.ReplaceAll(strings.TrimRight(text, "\n"), "\n", "\n  "))
 		b.WriteString("\n")
+	}
+	if len(round.AddedTexts) == 0 {
+		b.WriteString("No entry was added to the decision record since the previous round.\n")
+	} else {
+		b.WriteString("Entries added to the decision record since the previous round:\n\n")
+		for _, text := range round.AddedTexts {
+			writeEntry(text)
+		}
+	}
+	// An amendment pending since an earlier round stays in force until the plan carries it, so it stays in the prompt.
+	var carriedAmendments []string
+	for _, text := range round.AmendingTexts {
+		if !slices.Contains(round.AddedTexts, text) {
+			carriedAmendments = append(carriedAmendments, text)
+		}
+	}
+	if len(carriedAmendments) > 0 {
+		b.WriteString("\nEntries added in an earlier round that still amend the plan:\n\n")
+		for _, text := range carriedAmendments {
+			writeEntry(text)
+		}
+	}
+	if len(round.AmendingTexts) > 0 {
+		b.WriteString("\nThe entries marked as amending the plan amend the approved plan.\n")
+		b.WriteString("A new BLOCKING finding on a card an amending entry names is admitted whether or not the changes file lists that card.\n")
+		b.WriteString("Raise one on each named card that does not yet carry the amendment.\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
 }

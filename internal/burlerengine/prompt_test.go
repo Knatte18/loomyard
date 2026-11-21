@@ -423,12 +423,20 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 		withChanges.ChangesPath = "/runs/round-2-changes.md"
 		twoAdded := round()
 		twoAdded.AddedTexts = []string{"first added entry text", "second added entry text"}
+		amended := round()
+		amended.AddedTexts = []string{"first added entry text", "second added entry text"}
+		amended.AmendingTexts = []string{"second added entry text"}
+
+		carried := round()
+		carried.AmendingTexts = []string{"entry from an earlier round"}
 
 		tests := []struct {
-			name    string
-			round   *RoundContext
-			want    []string
-			notWant []string
+			name  string
+			round *RoundContext
+			// haltReason is the profile's HaltReason.
+			haltReason string
+			want       []string
+			notWant    []string
 			// once holds texts the review step must hold exactly one time.
 			once []string
 		}{
@@ -472,12 +480,29 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 				once: []string{"first added entry text", "second added entry text"},
 			},
 			{name: "NoAddedEntryIsSaid", round: round(), want: []string{"No entry was added"}},
+			{
+				name: "AmendingEntryIsMarkedAndExplained", round: amended,
+				want:    []string{amendsPlanMark + "second added entry text", "amend the approved plan", "whether or not the changes file lists that card"},
+				notWant: []string{amendsPlanMark + "first added entry text"},
+			},
+			{
+				name: "AmendmentFromAnEarlierRoundStaysMarkedAndExplained", round: carried,
+				want:    []string{"No entry was added", amendsPlanMark + "entry from an earlier round", "amend the approved plan"},
+				notWant: []string{"Entries added to the decision record since the previous round"},
+			},
+			{name: "NoAmendingEntryHasNoParagraph", round: twoAdded, notWant: []string{amendsPlanMark, "amend the approved plan"}},
+			{
+				name: "HaltReasonIsQuotedAsABlockingFinding", round: round(), haltReason: "card 14 misses the retry",
+				want: []string{haltReasonHeading, "> card 14 misses the retry", "`origin: " + WebsterOrigin + "`", "BLOCKING"},
+			},
+			{name: "NoHaltReasonHasNoBlock", round: round(), notWant: []string{haltReasonHeading}},
 		}
 		for _, engine := range []string{"claude", "codex"} {
 			for _, tt := range tests {
 				t.Run(engine+"_"+tt.name, func(t *testing.T) {
 					p := newComposableProfile(t)
 					p.Round = tt.round
+					p.HaltReason = tt.haltReason
 
 					prompt, err := composeReviewPrompt(stencilsDir, testSpecsDir, engine, &p, "", "", "", testReviewFiles)
 					if err != nil {

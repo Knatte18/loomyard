@@ -717,8 +717,8 @@ func TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch(t *testing
 	if bs.Digest == nil || len(bs.Digest.Reasons) == 0 {
 		t.Errorf("failed digest = %+v; want reasons naming the done-check finding", bs.Digest)
 	}
-	if !strings.Contains(err.Error(), "way forward: amend the card's Create target") || strings.Contains(err.Error(), "to build the target as the card names it") {
-		t.Errorf("RecoverBatch() second call error = %q; want the card amendment alone as its way forward", err)
+	if !strings.Contains(err.Error(), "way forward: amend the card's Create target") || !strings.Contains(err.Error(), "--drops-create <target>") || !strings.Contains(err.Error(), "to build the target as the card names it") {
+		t.Errorf("RecoverBatch() second call error = %q; want the card amendment, the dropping decision and recover-batch as its way forward", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))); !os.IsNotExist(statErr) {
 		t.Errorf("stat(live report) = %v; want the report archived away", statErr)

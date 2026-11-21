@@ -79,6 +79,26 @@ func TestCheckReviewRound(t *testing.T) {
 			ctx.Prior[0].Disposition = &FindingDisposition{ID: "E1", Disposition: disposition}
 		}
 	}
+	amending := func(texts ...string) func(*RoundContext) {
+		return func(ctx *RoundContext) { ctx.AmendingTexts = texts }
+	}
+	halted := func(reason string) func(*RoundContext) {
+		return func(ctx *RoundContext) { ctx.HaltReason = reason }
+	}
+	changedWith := func(tweaks ...func(*RoundContext)) func(*RoundContext) {
+		return func(ctx *RoundContext) {
+			changed("c.go")(ctx)
+			for _, tweak := range tweaks {
+				tweak(ctx)
+			}
+		}
+	}
+	fromWebster := func(f Finding) Finding {
+		f.Origin = WebsterOrigin
+		return f
+	}
+	const planCard = "_lym/plan/14-card-slug.md"
+	const amendingEntry = "### Rework the slug card\n\nAmend plan card 14-card-slug to name the retry."
 	held := func(titles ...string) func(*RoundContext) {
 		return func(ctx *RoundContext) {
 			ctx.Prior[0].Held, ctx.AddedTitles = true, titles
@@ -151,6 +171,25 @@ func TestCheckReviewRound(t *testing.T) {
 			name: "CarriedParentFindingNeedsNoAsk", ctx: round(nil), prior: []PriorEntry{entry("E1", PriorOpen)},
 			findings: []Finding{carrying(fromParent(finding("F1", SeverityMedium, "a.go:10"), "P1"), "E1")},
 		},
+		{name: "NewBlockingOnAPlanCardOutsideTheChangedFiles", ctx: round(changed("c.go")), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{finding("F1", SeverityBlocking, planCard+":3")}, wantErr: "does not list"},
+		{name: "NewBlockingOnAnAmendedCardPasses", ctx: round(changedWith(amending(amendingEntry))), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{finding("F1", SeverityBlocking, planCard+":3")}},
+		{name: "NewBlockingOnAnAmendedCardNamedBySlugPasses", ctx: round(changedWith(amending("Change the card-slug card"))), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{finding("F1", SeverityBlocking, planCard+":3")}},
+		{name: "NewMediumOnAnAmendedCardIsStillRefused", ctx: round(changedWith(amending(amendingEntry))), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{finding("F1", SeverityMedium, planCard+":3")}, wantErr: "only at BLOCKING"},
+		{name: "NewBlockingOnACardNoAmendmentNamesIsRefused", ctx: round(changedWith(amending("Amend plan card 15-other-card."))), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{finding("F1", SeverityBlocking, planCard+":3")}, wantErr: "does not list"},
+		{name: "NewBlockingOnACardWhoseSlugIsInsideALongerNamedSlugIsRefused", ctx: round(changedWith(amending("Amend plan card 14-card-slug-extra."))), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{finding("F1", SeverityBlocking, "_lym/plan/15-card-slug.md:3")}, wantErr: "does not list"},
+		{name: "NewBlockingOnANonCardFileSharingACardStemIsRefused", ctx: round(changedWith(amending(amendingEntry))), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{finding("F1", SeverityBlocking, "internal/card-slug.go:3")}, wantErr: "does not list"},
+		{name: "NewBlockingOnThePlanOverviewNamedByAnAmendmentIsRefused", ctx: round(changedWith(amending(amendingEntry + " Revise the overview too."))), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{finding("F1", SeverityBlocking, "_lym/plan/00-overview.md:3")}, wantErr: "does not list"},
+		{name: "NewBlockingOnThePlanAmendmentLogNamedByAnAmendmentIsRefused", ctx: round(changedWith(amending(amendingEntry + " Record it in amendments."))), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{finding("F1", SeverityBlocking, "_lym/plan/amendments.md:3")}, wantErr: "does not list"},
+		{name: "NewBlockingOnThePlanLensReviewNamedByAnAmendmentIsRefused", ctx: round(changedWith(amending(amendingEntry + " Update lens-review."))), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{finding("F1", SeverityBlocking, "_lym/plan/lens-review.md:3")}, wantErr: "does not list"},
+		{name: "SecondNewWebsterFindingUnderAHaltReasonIsRefused", ctx: round(changedWith(halted("card 14 misses the retry"))), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{fromWebster(finding("F1", SeverityBlocking, planCard+":3")), fromWebster(finding("F2", SeverityBlocking, "_lym/plan/15-other.md:3"))}, wantErr: "halt reason admits one"},
+		{name: "NewBlockingOnAnAmendedCardSpelledThroughTheLinkPasses", ctx: round(changedWith(amending(amendingEntry))), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{finding("F1", SeverityBlocking, "/elsewhere/"+planCard+":3")}},
+		{name: "WebsterFindingsOneOutsideAndOneInsideTheChangedFilesPass", ctx: round(changedWith(halted("card 14 misses the retry"))), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{fromWebster(finding("F1", SeverityBlocking, planCard+":3")), fromWebster(finding("F2", SeverityBlocking, "c.go:4"))}},
+		{name: "NewBlockingOnAShortStemIsNotMatched", ctx: round(changedWith(amending("Rework plan card 1-a before the run."))), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{finding("F1", SeverityBlocking, "_lym/plan/1-a.md:3")}, wantErr: "does not list"},
+		{name: "CarriedMovedToAnAmendedCardPasses", ctx: round(changedWith(amending(amendingEntry))), prior: []PriorEntry{entry("E1", PriorOpen)}, findings: []Finding{carrying(finding("F1", SeverityMedium, planCard+":3"), "E1")}},
+		{name: "CarriedMovedToACardNoAmendmentNamesIsRefused", ctx: round(changedWith()), prior: []PriorEntry{entry("E1", PriorOpen)}, findings: []Finding{carrying(finding("F1", SeverityMedium, planCard+":3"), "E1")}, wantErr: "does not list"},
+		{name: "NewWebsterFindingWithNoHaltReasonIsRefused", ctx: round(changed("c.go")), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{fromWebster(finding("F1", SeverityBlocking, planCard+":3"))}, wantErr: "does not list"},
+		{name: "NewWebsterFindingWithAHaltReasonPasses", ctx: round(changedWith(halted("card 14 misses the retry"))), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{fromWebster(finding("F1", SeverityBlocking, planCard+":3"))}},
+		{name: "NewWebsterFindingBelowBlockingIsRefused", ctx: round(changedWith(halted("card 14 misses the retry"))), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{fromWebster(finding("F1", SeverityMedium, planCard+":3"))}, wantErr: "only at BLOCKING"},
 		{
 			name: "HeldPairOneResolvedAndOneCarried",
 			ctx: round(func(ctx *RoundContext) {

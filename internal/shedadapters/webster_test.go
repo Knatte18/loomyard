@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -65,7 +66,10 @@ func TestWebsterProducer_OutcomeDone(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
-			deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
+			deps := websterengine.RunDeps{Geom: websterengine.Geometry{AnchorRoot: t.TempDir(), WebsterDir: dir}}
+			if err := runplan.WriteHaltReason(deps.Geom.ConflictDir(), "an earlier halt"); err != nil {
+				t.Fatalf("seed halt reason: %v", err)
+			}
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "done", Gate: gate}}
@@ -97,6 +101,9 @@ func TestWebsterProducer_OutcomeDone(t *testing.T) {
 			}
 			if !fake.gotOptions.AutoRebaseline {
 				t.Error("Call() invoked the run seam with RunOptions.AutoRebaseline = false; want true")
+			}
+			if got, err := runplan.ReadHaltReason(deps.Geom.ConflictDir()); err != nil || got != "" {
+				t.Errorf("halt reason file = %q, %v; want it removed", got, err)
 			}
 		})
 	}
@@ -261,6 +268,9 @@ func TestWebsterProducer_OutcomeStuck(t *testing.T) {
 					t.Errorf("Call() Reason = %q; want it not to contain %q", ptr.Reason, lack)
 				}
 			}
+			if got, err := runplan.ReadHaltReason(scratch); err != nil || got != strings.TrimSpace(ptr.Reason) {
+				t.Errorf("halt reason file = %q, %v; want the pointer's reason %q", got, err, ptr.Reason)
+			}
 			if strings.Contains(strings.ToLower(ptr.Reason), "question") {
 				t.Errorf("Call() pointer reason %q names a question; a stuck outcome is never reported as one", ptr.Reason)
 			}
@@ -359,13 +369,16 @@ func TestWebsterProducer_PendingAuditFindingsIsStuck(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
-			deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}, ReentryStep: tt.reentryStep}
+			deps := websterengine.RunDeps{Geom: websterengine.Geometry{AnchorRoot: t.TempDir(), WebsterDir: dir}, ReentryStep: tt.reentryStep}
 			fake := &fakeWebsterRunner{err: pendingAuditErr()}
 			p := NewWebsterProducer("loom", fake.run, deps)
 
 			ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 			if ptr.Path != "" {
 				t.Errorf("Call() path = %q; want empty", ptr.Path)
+			}
+			if got, err := runplan.ReadHaltReason(deps.Geom.ConflictDir()); err != nil || got != ptr.Reason {
+				t.Errorf("halt reason file = %q, %v; want the refusal's text %q", got, err, ptr.Reason)
 			}
 			for _, want := range []string{"internal/x.go", "lym webster accept-audit", "re-step the loom row"} {
 				if !strings.Contains(ptr.Reason, want) {
@@ -395,7 +408,7 @@ func TestWebsterProducer_PendingAuditFindingsBlocksRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("seed status: %v", err)
 	}
-	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
+	deps := websterengine.RunDeps{Geom: websterengine.Geometry{AnchorRoot: t.TempDir(), WebsterDir: dir}}
 	fake := &fakeWebsterRunner{err: pendingAuditErr()}
 	shed := &shedengine.Shed{
 		Producers:      []shedengine.ProducerDef{{Name: "Webster", Producer: NewWebsterProducer("Webster", fake.run, deps)}},

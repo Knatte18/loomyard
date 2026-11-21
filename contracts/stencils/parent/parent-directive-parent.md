@@ -30,4 +30,5 @@ When you are the parent of a run yourself, keep its decision record current this
 - change or withdraw an earlier decision on a run past its approval with `lym loom decision replace`, folding every added entry into the main decisions;
   on a record whose `## Goal` is a fenced board body, as Record-Write renders it, the fold rewrites that body to carry the call, since darn and drift give precedence over the body to added entries alone;
 - once a motif run has made a Sketch whose record holds added entries, fold them with `lym board upsert --record-file`;
-- before sending a run back to a Webster row after a fold, record each folded call again with `lym loom decision add`.
+- before sending a run back to a Webster row after a fold, record each folded call again with `lym loom decision add`;
+  a call that carried `Drops Create:` lines passes the same targets again with `--drops-create`.

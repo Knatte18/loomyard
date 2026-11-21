@@ -725,6 +725,9 @@ func TestVerifyGateStuckReason_NamesTheFailureAndAWayForward(t *testing.T) {
 		cmd  = "lym gate test --gate webster"
 		lead = "verify gate did not pass after 2 of 2 re-prompt(s): "
 		fix  = "way forward: 1) read " + log + " and commit a fix on the task branch; 2) lym webster run"
+
+		reportPath  = "<verify-gate-report>"
+		driftAccept = "or, when the drift is the change the plan intends, the run's parent accepts it with `lym drift amend <slug> --entries <file>`, then runs `lym loom resume`"
 	)
 	tests := []struct {
 		name   string
@@ -777,8 +780,14 @@ func TestVerifyGateStuckReason_NamesTheFailureAndAWayForward(t *testing.T) {
 		{
 			name:   "a long entry findings text is cut to its first bytes on a rune boundary",
 			report: VerifyGateReport{Attempt: 3, Cap: 2, Entry: "drift", Findings: strings.Repeat("a", verifyGateStuckTextBytes-1) + "étail"},
-			want: lead + `the run-level "drift" entry failed: ` + strings.Repeat("a", verifyGateStuckTextBytes-1) + `; ` +
-				`way forward: 1) fix what the "drift" entry's findings name and commit it on the task branch; 2) lym webster run`,
+			want: lead + `the run-level "drift" entry failed: ` + strings.Repeat("a", verifyGateStuckTextBytes-1) + `… (cut; the full findings are in ` + reportPath + `); ` +
+				`way forward: 1) fix what the "drift" entry's findings name and commit it on the task branch; 2) lym webster run; ` + driftAccept,
+		},
+		{
+			name:   "a long findings text of a non-drift entry is cut and names the report without the drift route",
+			report: VerifyGateReport{Attempt: 3, Cap: 2, Entry: "expectation", Findings: strings.Repeat("a", verifyGateStuckTextBytes+1)},
+			want: lead + `the run-level "expectation" entry failed: ` + strings.Repeat("a", verifyGateStuckTextBytes) + `… (cut; the full findings are in ` + reportPath + `); ` +
+				`way forward: 1) fix what the "expectation" entry's findings name and commit it on the task branch; 2) lym webster run`,
 		},
 		{
 			name:   "a long output tail is cut to its last bytes",
@@ -794,8 +803,8 @@ func TestVerifyGateStuckReason_NamesTheFailureAndAWayForward(t *testing.T) {
 		{
 			name:   "a run-level entry's failure names the entry and its findings",
 			report: VerifyGateReport{Attempt: 3, Cap: 2, Entry: "drift", Findings: "cell a.txt:3 moved\nsee expected.yaml"},
-			want: lead + `the run-level "drift" entry failed: cell a.txt:3 moved see expected.yaml; ` +
-				`way forward: 1) fix what the "drift" entry's findings name and commit it on the task branch; 2) lym webster run`,
+			want: lead + `the run-level "drift" entry failed: cell a.txt:3 moved see expected.yaml; the full report is ` + reportPath + `; ` +
+				`way forward: 1) fix what the "drift" entry's findings name and commit it on the task branch; 2) lym webster run; ` + driftAccept,
 		},
 	}
 	for _, tt := range tests {
@@ -808,7 +817,8 @@ func TestVerifyGateStuckReason_NamesTheFailureAndAWayForward(t *testing.T) {
 			}
 			gate := &shuttleengine.GateOutcome{Attempts: 2, Entries: []shuttleengine.GateEntryOutcome{{Name: verifyGateName, Attempts: 2, State: shuttleengine.GateEntryFailed}}}
 
-			got := verifyGateStuckReason(reportsDir, gate, "lym webster run")
+			// The report lives in a per-test temp directory; the stable reportPath stands in for it in the expectation.
+			got := strings.ReplaceAll(verifyGateStuckReason(reportsDir, gate, "lym webster run"), VerifyGateReportPath(reportsDir), reportPath)
 
 			if got != tt.want {
 				t.Errorf("verifyGateStuckReason() = %q; want %q", got, tt.want)

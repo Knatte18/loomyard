@@ -53,6 +53,9 @@ A record without the section is valid.
 Each decision under `## Decisions` is one H3 headed `### D<n> — <title>`.
 `n` is a positive integer, and ids are unique within the record.
 An `### Added after Discussion` entry carries no id.
+An entry that drops a plan card's Create target carries one line `` Drops Create: `<target>` `` per target, after its Rationale paragraph.
+`<target>` is spelled as the card spells it, and `lym loom decision add --drops-create` writes the line;
+Webster's done-check skips a target some entry drops.
 Any other H3 there is refused as a `decision-heading-malformed` finding.
 A repeated id is a `decision-id-duplicate` finding.
 Each id appears as a whole word in a bullet of `## Acceptance criteria`.
