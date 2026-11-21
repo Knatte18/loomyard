@@ -24,6 +24,8 @@
 Every finding in the review gets fixed — all severities, including LOW and NIT.
 Severity affects how a finding is reported, not whether it gets fixed.
 The files to change are the ones the findings' `location` keys name, or the gate findings name.
+A `fix` key that opens with `site not found —` marks a finding whose `location` names only where the defect shows:
+find the site the change belongs at before you edit.
 Weigh each finding twice: its premise, and the change its `fix` key proposes.
 Give it exactly one of three dispositions, decided in this order.
 
@@ -93,5 +95,5 @@ The round is not done until `{{.fixer_report_path}}` exists on disk — a skippe
 
 You must never push,
 and you must never run any git command against a `_lym` path — those are owned by the loop that spawned you, not by this round.
-If your fix-scope rules above name commit-per-fix on the repo, stay inside the working tree;
+If your fix-scope rules above have you commit on the repo, stay inside the working tree;
 nothing here ever authorizes an `_lym` commit.

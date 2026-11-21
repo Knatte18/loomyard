@@ -63,7 +63,9 @@ const GatingClass = ClassDesign
 
 // Finding is one review-file finding.
 // Its ID is unique within the file, so cross-round hydration and audit can cite it unambiguously.
-// Location points at the offending content, and Summary states the problem in prose.
+// Location names the site the fix changes.
+// When Fix opens with site not found, Location names where the defect shows instead.
+// Summary states the problem in prose.
 type Finding struct {
 	ID       string   `yaml:"id"`
 	Severity Severity `yaml:"severity"`

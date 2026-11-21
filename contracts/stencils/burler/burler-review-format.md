@@ -56,6 +56,11 @@ Frontmatter rules, all strict:
 - A finding kept from the parent orch's report carries `origin: parent` and an optional `parent_ids` list naming the report ids it covers, such as `parent_ids: [P1, P3]`.
   No other finding carries `parent_ids`.
 - A finding's `location` opens with the file's path, followed by `:<line>` or `#<symbol>`.
+  It names the site the fix changes, which may lie apart from where the defect shows:
+  a wrong value that one file prints and another sets is located where it is set.
+  When you did not find that site, `location` names where the defect shows,
+  and the `fix` key opens with `site not found —` and names what the fixer must find.
+  A carried finding keeps the location path the carry rules allow and names a fix site outside it in its `summary` and `fix`.
 - `prior` is a list, written only when the review step's prior-rounds section lists prior findings.
   It holds one entry per listed finding, each with its `id`, a `status` and an optional `answer`.
   `status` is exactly one of `resolved`, `open`, `outdated`, `withdrawn`.

@@ -375,8 +375,14 @@
 //
 //   - FixScopeSource: the target is the repo's own files.
 //     The fixer's write surface is the working tree.
-//     It commits each fix individually once green and never pushes.
+//     It commits each finding's fix on its own once green and never pushes.
 //     The message format is "<module-or-target>: fix <finding-id> — <one-line what/why>".
+//     The fixer forms the groups before it starts fixing.
+//     Findings whose changes touch a file in common are fixed and committed together,
+//     the subject naming every id, since a fixer cannot split one file's changes between commits.
+//     Groups chain: a finding that touches a file any member of a group changes joins that whole group,
+//     so every finding lands in exactly one commit.
+//     A finding whose change reaches a file an earlier commit already changed is committed on its own.
 //     If the round dies mid-fix, git log shows which findings landed.
 //   - FixScopeOverlay: the target is lym system/orchestration state, such as plan, discussion and review artifacts.
 //     It is reached through the _lym junction.

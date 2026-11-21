@@ -327,7 +327,7 @@ func TestComposePrompt_ParentDirective(t *testing.T) {
 }
 
 // TestComposePrompt_FixScope proves the fix-scope block switches on p.FixScope.
-// FixScopeSource's output carries the commit-per-fix phrasing and not the overlay-exclusive "no git" phrasing.
+// FixScopeSource's output carries a commit rule and not the overlay-exclusive "no git" phrasing.
 // FixScopeOverlay's output does the reverse.
 // In neither scope does the fixer's rendered write surface list the review file, which only the reviewer writes.
 func TestComposePrompt_FixScope(t *testing.T) {
@@ -352,7 +352,6 @@ func TestComposePrompt_FixScope(t *testing.T) {
 		fix, got := fixHalf(t, stencilsDir, &p, "")
 
 		requireContains(t, got, "no git")
-		requireNotContains(t, got, "commit each fix")
 		writeSurface := findLineContaining(fix.Files[fixStepFile].Content, "Write surface")
 		requireContains(t, writeSurface, "plus the fixer-report (`"+p.FixerReportPath+"`)")
 		requireNotContains(t, writeSurface, p.ReviewPath)

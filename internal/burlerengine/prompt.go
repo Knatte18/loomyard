@@ -310,7 +310,13 @@ func formatFileSet(fs FileSet) string {
 }
 
 // fixScopeRules returns the write-surface and git-discipline prose for p's FixScope.
-// FixScopeSource gets the commit-per-fix rules (working tree, commit each fix individually, never push).
+// FixScopeSource gets the commit rules.
+// The write surface is the working tree.
+// Each finding gets its own commit.
+// The fixer forms the groups before it starts fixing.
+// Findings that change a file in common share one joint commit, and groups chain through a shared finding.
+// A finding that reaches a file an earlier commit already changed is committed on its own.
+// It never pushes.
 // FixScopeOverlay gets the overlay rules.
 // The write surface is exactly the target paths plus the fixer-report, never the review file.
 // It runs no git at all, since the loop owner commits.
@@ -321,9 +327,18 @@ func fixScopeRules(p *Profile) string {
 		return "Write surface: the working tree in this task worktree — the files the " +
 			"findings point at, plus whatever the discipline requires in the same change (a " +
 			"test that would have caught the bug, the module doc).\n\n" +
-			"You commit each fix individually, once green, before starting the next finding. " +
+			"Except for a group below, you commit each finding's fix on its own, once green, before starting the next finding. " +
 			"Commit message format: `<module-or-target>: fix <finding-id> — <one-line " +
-			"what/why>`. Never push."
+			"what/why>`.\n\n" +
+			"Before you start fixing, form the groups from the files the findings' location and " +
+			"fix keys name. Findings whose changes touch a file in common form one group, and groups " +
+			"chain: a finding whose change touches a file any member of a group changes joins that " +
+			"whole group, so every finding lands in exactly one commit. Fix a group's findings " +
+			"together and commit them, once green, as one commit whose subject names every id in " +
+			"it: `<module-or-target>: fix <finding-id>, <finding-id> — <one-line what/why>`. " +
+			"A finding that shares no changed file with another keeps its own commit. " +
+			"A finding whose change reaches a file an earlier commit already changed is committed " +
+			"on its own, never folded into that commit. Never push."
 	case FixScopeOverlay:
 		var lensReports string
 		if p.FixFan != "" {
