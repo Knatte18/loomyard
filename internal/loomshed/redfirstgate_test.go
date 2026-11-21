@@ -103,13 +103,13 @@ func TestRedFirstGate_VerdictPerLabelRecordAndExitCode(t *testing.T) {
 			},
 		},
 		{
-			name:    "a check that exits 5 fails naming the scoper or file it cannot judge and the No test seam record",
+			name:    "a check that exits 5 fails naming the scoper it cannot judge under and the No test seam record",
 			labels:  bugLabels,
 			record:  validDecisionRecord,
 			command: "exit 5",
 			wantRan: true,
 			wantFindings: []string{
-				"The red-first check cannot judge the diff's tests on the merge base",
+				"The red-first check cannot judge the diff's tests on the merge base: the hub's scoper is not go.",
 				"lym creel post --parent --expect-reply",
 				"`lym loom decision add`",
 				`under a title opening "No test seam"`,

@@ -990,8 +990,8 @@ User-facing modules each get one `lym <module>` namespace:
   A mutant every covering test passes is a survivor, listed with the tests of other packages that reach its function;
   the call also lists the changed blocks no test covers and the packages it did not judge, with the reason, and exits 0 once it ran.
   `lym gate red-first --gate <key> [--base <rev>]` runs the tests the worktree's diff adds or changes, which `internal/testreach` names, once under the key's tiers,
-  with a Go overlay that puts the base's production files back, and exits 0 when one of them fails there;
-  a run in which every one passes, a diff with no test, and a run the check cannot judge (a hub whose scoper is not `go`, or a changed non-Go file of a package) each exit with their own code from `internal/gateslot`.
+  with a Go overlay that puts the base's production files and the non-Go files they embed back, and exits 0 when one of them fails there;
+  a run in which every one passes, a diff with no test, and a run the check cannot judge (a hub whose scoper is not `go`) each exit with their own code from `internal/gateslot`.
   `lym gate test --map [<targets>...]` builds the per-package coverage maps of `internal/testcover` over its scope's packages at the HEAD of the worktree it runs in, only on command
   (the `reach` report step's refresh of a task worktree's own maps runs the same measurement under the same build and test bounds and memory cap),
   the hub's shared maps from the prime and a worktree's own, under its `.lym`, from any other worktree:

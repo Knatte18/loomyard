@@ -175,7 +175,7 @@
 // Exit gateslot.RedFirstGreenExit fails with the way forward of a test that passed on the merge base.
 // Exit gateslot.RedFirstNoTestExit fails with the way forward of a diff that adds or changes no test;
 // it names the `lym creel post --parent --expect-reply` ask for the parent's no-test-seam record.
-// Exit gateslot.RedFirstUnjudgedExit fails with that same ask, for a hub or a diff the check cannot judge.
+// Exit gateslot.RedFirstUnjudgedExit fails with that same ask, for a hub whose scoper is not go.
 // Any other exit code, a timeout or a runner crash judged no test and fails terminally.
 // A labels or record read error is the gate's returned error.
 //

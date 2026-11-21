@@ -12,7 +12,7 @@ const RedFirstGreenExit = 3
 const RedFirstNoTestExit = 4
 
 // RedFirstUnjudgedExit is the exit code of a `lym gate red-first` call that cannot judge the diff's tests on the base.
-// The hub's scoper is not go, or the diff changes a non-Go file of a Go package, which the base run cannot put back.
+// The cause is a hub scoper that is not go.
 // Only a parent's recorded NoTestSeamTitle decision lifts it.
 const RedFirstUnjudgedExit = 5
 

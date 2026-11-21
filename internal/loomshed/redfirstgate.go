@@ -100,8 +100,7 @@ func redFirstFailure(res verifytree.Result) shuttleengine.GateResult {
 			"When the bug has no seam a test can reach, %s", noSeamAsk())
 	case res.ExitCode == gateslot.RedFirstUnjudgedExit:
 		fmt.Fprintf(&b, "The red-first check cannot judge the diff's tests on the merge base: "+
-			"the hub's scoper is not go, or the diff changes a non-Go file the base run cannot put back. "+
-			"The log tail names which.\n\nWay forward: %s", noSeamAsk())
+			"the hub's scoper is not go. The log tail names it.\n\nWay forward: %s", noSeamAsk())
 	default:
 		terminal = true
 		fmt.Fprintf(&b, "The red-first check failed with exit code %d, so it judged none of the diff's tests. %s", res.ExitCode, redFirstNoMend)

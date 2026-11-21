@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -37,6 +38,27 @@ func (m memoryTree) goFiles(dir string) ([]string, error) {
 	}
 	slices.Sort(names)
 	return names, nil
+}
+
+// failingTree is a memoryTree whose reads fail with the error it holds, for each read it holds one for.
+type failingTree struct {
+	memoryTree
+	goFilesError error
+	fileError    error
+}
+
+func (f failingTree) file(rel string) ([]byte, bool, error) {
+	if f.fileError != nil {
+		return nil, false, f.fileError
+	}
+	return f.memoryTree.file(rel)
+}
+
+func (f failingTree) goFiles(dir string) ([]string, error) {
+	if f.goFilesError != nil {
+		return nil, f.goFilesError
+	}
+	return f.memoryTree.goFiles(dir)
 }
 
 func TestChangedTestsAt_ComparesTheTestFilesOfEachPackageHoldingAChangedOne(t *testing.T) {
@@ -77,55 +99,76 @@ func TestChangedTestsAt_ComparesTheTestFilesOfEachPackageHoldingAChangedOne(t *t
 	}
 }
 
-func TestBaseOverlay_ReplacesOnlyTheProductionGoFilesOfTheModule(t *testing.T) {
+func TestBaseOverlay_ReplacesTheFilesOfTheModuleTheBasesBuildReads(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	module := goModule{dir: "/w/sub", rel: "sub", path: "example.com/m"}
-	const baseText = "package a // the base\n"
+	const baseText = "the base\n"
+	// At the base, sub/a's production file embeds data.json and testdata/golden.json.
+	// It embeds the directory embedded under all:, and the directory plain.
+	// It embeds the globs q*.txt and inner/*.txt, and a backtick-quoted glob back*.txt.
+	// It embeds the double-quoted name "my file.txt", and tabbed.txt after a tab.
+	// Its test file embeds fixture.json.
+	// The file of sub/a/inner embeds nothing.
+	baseFiles := map[string]string{
+		"sub/a/a.go": "package a\n\nimport _ \"embed\"\n\n" +
+			"//go:embed data.json all:embedded \"q*.txt\" plain testdata/golden.json\n" +
+			"//go:embed inner/*.txt\n" +
+			"//go:embed `back*.txt` \"my file.txt\"\n" +
+			"//go:embed\ttabbed.txt\n" +
+			"var data string\n",
+		"sub/a/a_test.go":  "package a\n\nimport _ \"embed\"\n\n//go:embed fixture.json\nvar fixture string\n",
+		"sub/a/inner/i.go": "package inner\n",
+	}
 	tests := []struct {
 		name string
 		rel  string
-		// baseHolds is whether the base holds the file.
+		// baseHolds is whether the base holds the file, with the text baseText.
 		baseHolds bool
 		// wantReplaced is whether the overlay names the file.
 		wantReplaced bool
 		// wantCopy is the text of the copy the file maps to; "" when it maps to no copy.
 		wantCopy string
-		// wantUnrestorable is whether the file is one the overlay cannot put back.
-		wantUnrestorable bool
 	}{
 		{name: "ProductionFileTheBaseHoldsMapsToACopyOfTheBaseText", rel: "sub/a/a.go", baseHolds: true, wantReplaced: true, wantCopy: baseText},
 		{name: "ProductionFileTheBaseLacksMapsToNoCopy", rel: "sub/a/new.go", wantReplaced: true},
 		{name: "TestFileIsLeftAsTheWorkingTreeHoldsIt", rel: "sub/a/a_test.go", baseHolds: true},
 		{name: "FileOutsideTheModuleIsLeftAlone", rel: "other/x.go", baseHolds: true},
-		{name: "NonGoFileOfAPackageIsUnrestorable", rel: "sub/a/data.json", baseHolds: true, wantUnrestorable: true},
-		{name: "NonGoFileBelowAPackageDirectoryIsUnrestorable", rel: "sub/a/embedded/data.json", baseHolds: true, wantUnrestorable: true},
+		{name: "NonGoFileAProductionFileEmbedsMapsToACopyOfTheBaseText", rel: "sub/a/data.json", baseHolds: true, wantReplaced: true, wantCopy: baseText},
+		{name: "NonGoFileUnderAnEmbeddedDirectoryMapsToACopy", rel: "sub/a/embedded/deep/data.json", baseHolds: true, wantReplaced: true, wantCopy: baseText},
+		{name: "NonGoFileAQuotedGlobEmbedsMapsToACopy", rel: "sub/a/q1.txt", baseHolds: true, wantReplaced: true, wantCopy: baseText},
+		{name: "NonGoFileAPackageAboveEmbedsMapsToACopy", rel: "sub/a/inner/embedded.txt", baseHolds: true, wantReplaced: true, wantCopy: baseText},
+		{name: "EmbeddedNonGoFileTheBaseLacksMapsToNoCopy", rel: "sub/a/embedded/new.json", wantReplaced: true},
+		{name: "NonGoFileNoGoFileEmbedsIsLeftAlone", rel: "sub/a/notes.md", baseHolds: true},
+		{name: "NonGoFileOnlyATestFileEmbedsIsLeftAlone", rel: "sub/a/fixture.json", baseHolds: true},
 		{name: "NonGoFileWithNoGoFileAtOrAboveItIsLeftAlone", rel: "sub/notes/readme.md", baseHolds: true},
 		{name: "FileUnderTestdataIsLeftAlone", rel: "sub/a/testdata/x.go", baseHolds: true},
-		{name: "NonGoFileUnderTestdataIsLeftAlone", rel: "sub/a/testdata/data.json", baseHolds: true},
+		{name: "NonGoFileUnderTestdataNoGoFileEmbedsIsLeftAlone", rel: "sub/a/testdata/data.json", baseHolds: true},
+		{name: "NonGoFileUnderTestdataAProductionFileEmbedsMapsToACopy", rel: "sub/a/testdata/golden.json", baseHolds: true, wantReplaced: true, wantCopy: baseText},
+		{name: "NonGoFileUnderAPlainDirectoryMapsToACopy", rel: "sub/a/plain/ok.json", baseHolds: true, wantReplaced: true, wantCopy: baseText},
+		{name: "DotNamedFileUnderAPlainDirectoryIsLeftAlone", rel: "sub/a/plain/.hidden.json", baseHolds: true},
+		{name: "UnderscoreNamedFileUnderAPlainDirectoryIsLeftAlone", rel: "sub/a/plain/_x.json", baseHolds: true},
+		{name: "FileUnderADotNamedSubdirectoryOfAPlainDirectoryIsLeftAlone", rel: "sub/a/plain/.d/x.json", baseHolds: true},
+		{name: "UnderscoreNamedFileUnderAnAllPrefixedDirectoryMapsToACopy", rel: "sub/a/embedded/_x.json", baseHolds: true, wantReplaced: true, wantCopy: baseText},
+		{name: "NonGoFileABacktickQuotedGlobEmbedsMapsToACopy", rel: "sub/a/back1.txt", baseHolds: true, wantReplaced: true, wantCopy: baseText},
+		{name: "NonGoFileADoubleQuotedNameWithASpaceEmbedsMapsToACopy", rel: "sub/a/my file.txt", baseHolds: true, wantReplaced: true, wantCopy: baseText},
+		{name: "NonGoFileATabSeparatedDirectiveEmbedsMapsToACopy", rel: "sub/a/tabbed.txt", baseHolds: true, wantReplaced: true, wantCopy: baseText},
 	}
-	head := memoryTree{"sub/a/a.go": []byte("package a\n")}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
-			baseFile := func(rel string) ([]byte, bool, error) {
-				if rel != tt.rel || !tt.baseHolds {
-					return nil, false, nil
-				}
-				return []byte(baseText), true, nil
+			base := memoryTree{}
+			for rel, text := range baseFiles {
+				base[rel] = []byte(text)
 			}
-			got, unrestorable, err := baseOverlay(dir, "/w", module, []string{tt.rel}, baseFile, head)
+			if tt.baseHolds {
+				base[tt.rel] = []byte(baseText)
+			}
+			got, err := baseOverlay(dir, "/w", module, []string{tt.rel}, base)
 			if err != nil {
 				t.Fatalf("baseOverlay() error = %v; want none", err)
-			}
-			var wantUnrestorable []string
-			if tt.wantUnrestorable {
-				wantUnrestorable = []string{tt.rel}
-			}
-			if diff := cmp.Diff(wantUnrestorable, unrestorable); diff != "" {
-				t.Errorf("baseOverlay(%s) unrestorable mismatch (-want +got):\n%s", tt.rel, diff)
 			}
 			if !tt.wantReplaced {
 				if len(got) != 0 {
@@ -152,6 +195,35 @@ func TestBaseOverlay_ReplacesOnlyTheProductionGoFilesOfTheModule(t *testing.T) {
 			}
 			if string(data) != tt.wantCopy {
 				t.Errorf("baseOverlay(%s) copy = %q; want %q", tt.rel, data, tt.wantCopy)
+			}
+		})
+	}
+}
+
+func TestBaseOverlay_ReturnsTheErrorOfAFailedBaseReadWhileFindingEmbeddingFiles(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	module := goModule{dir: "/w/sub", rel: "sub", path: "example.com/m"}
+	boom := errors.New("boom")
+	baseFiles := memoryTree{"sub/a/a.go": []byte("package a\n\n//go:embed data.json\nvar data string\n")}
+	tests := []struct {
+		name     string
+		base     failingTree
+		wantText string
+	}{
+		{"ListingTheGoFilesFails", failingTree{memoryTree: baseFiles, goFilesError: boom}, "list the Go files of sub/a at the base"},
+		{"ReadingAGoFileFails", failingTree{memoryTree: baseFiles, fileError: boom}, "read sub/a/a.go at the base"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := baseOverlay(t.TempDir(), "/w", module, []string{"sub/a/data.json"}, tt.base)
+			if !errors.Is(err, boom) || !strings.Contains(err.Error(), tt.wantText) {
+				t.Errorf("baseOverlay() error = %v; want it to wrap %v and contain %q", err, boom, tt.wantText)
+			}
+			if got != nil {
+				t.Errorf("baseOverlay() = %v; want a nil replacement map", got)
 			}
 		})
 	}

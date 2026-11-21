@@ -866,11 +866,13 @@
 // The overlay maps each changed production `.go` file of the module to a copy of its text at the base.
 // A file the base lacks maps to the empty path, which Go reads as deleted.
 // Test files keep their working-tree text.
-// A changed non-Go file of a package of the module is one the overlay cannot put back.
-// The package may embed or read it.
-// It counts when a Go file lies in its directory or above it, up to the module's root, and it is not under `testdata`.
-// The verb then refuses before any tier runs, naming the paths, with exit `gateslot.RedFirstUnjudgedExit`.
-// The way forward is the same parent decision as for a hub whose scoper is not `go`.
+// The overlay also maps each changed non-Go file that a production Go file at the base embeds to its base text.
+// The go command reads an embedded file through the overlay.
+// An embed directive of a Go file in its directory or above it, up to the module's root, names the file.
+// The directive may instead name a directory the file lies under, or a glob matching either.
+// A directory's subtree leaves out the names that open with a dot or an underscore, unless the pattern carries `all:`.
+// A file under `testdata` or a dot- or underscore-prefixed directory counts when a directive names it.
+// Every other changed non-Go file keeps its working-tree text, as an input of the tests or nothing the build reads.
 // The overlay and the copies live in a `lymtemp` directory that the verb removes when it ends.
 // The tiers run through the same code as `lym gate test` over explicit targets in the module's directory.
 // They run once for each package that holds a changed test, so a test of one package never runs by another's name.
@@ -886,7 +888,7 @@
 // - 0 when a changed test failed on the base; the envelope lists the red tests as `<package>.<Name>`.
 // - `gateslot.RedFirstGreenExit` when every changed test passed on the base, which does not show the bug.
 // - `gateslot.RedFirstNoTestExit` when the diff adds or changes no test.
-// - `gateslot.RedFirstUnjudgedExit` when the hub's scoper is not `go`, or the overlay cannot put back a changed file.
+// - `gateslot.RedFirstUnjudgedExit` when the hub's scoper is not `go`.
 // - 1 for a refusal, and for a run that judged none of the tests, such as a timeout or a crash.
 // - 128 plus the signal number after a terminating signal.
 //
@@ -895,6 +897,7 @@
 // It is also red when `gateslot.PackagesFailedOutsideTests` names its package.
 // A test that does not build on the base therefore counts as red.
 // Bound: `go.mod` and `go.sum` are not put back.
+// Bound: a changed non-Go file that the code reads at run time, rather than embeds, keeps its working-tree text.
 // Bound: a test that every tier of the key skips counts as passing.
 // Bound: a `lym` binary a tier prebuilds is built from the working tree, not from the base, and no overlay reaches it.
 //

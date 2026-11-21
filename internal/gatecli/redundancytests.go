@@ -178,10 +178,15 @@ func testHashesAt(fabric *fabricengine.Fabric, rev, dir string) (map[string]stri
 	return hashes, nil
 }
 
+// inModule reports whether the worktree-relative slash directory dir is the module's root at moduleRel or lies under it.
+func inModule(moduleRel, dir string) bool {
+	return moduleRel == "." || dir == moduleRel || strings.HasPrefix(dir, moduleRel+"/")
+}
+
 // isModulePackage reports whether the worktree-relative slash directory dir is a package of the module at moduleRel.
 // It is one a package walk enters: no testdata, and no directory whose name opens with a dot or an underscore.
 func isModulePackage(moduleRel, dir string) bool {
-	if moduleRel != "." && dir != moduleRel && !strings.HasPrefix(dir, moduleRel+"/") {
+	if !inModule(moduleRel, dir) {
 		return false
 	}
 	pkg := modulePackageOf(moduleRel, dir)

@@ -323,8 +323,7 @@
 // That call runs the tests a diff adds or changes on its merge base.
 // RedFirstGreenExit is its exit code when every one of those tests passed there.
 // RedFirstNoTestExit is its exit code when the diff adds or changes no test.
-// RedFirstUnjudgedExit is its exit code when it cannot judge the tests:
-// the hub's scoper is not go, or the diff changes a non-Go file of a Go package, which the base run cannot put back.
+// RedFirstUnjudgedExit is its exit code when it cannot judge the tests, on a hub whose scoper is not go.
 // BugLabel is the board label of an entry the call guards.
 // NoTestSeamTitle opens the title of the parent's decision that names a bug no test can reach.
 // That decision lifts the guard.

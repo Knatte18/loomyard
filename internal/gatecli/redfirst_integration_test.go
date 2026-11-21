@@ -46,7 +46,12 @@ func TestGateRedFirst(t *testing.T) {
 		}
 	}
 	writeOtherTests("\t_ = 1\n")
-	gitkit.Git(t, prime, "add", "internal", "other")
+	// The package spec embeds text.txt, whose base text is "base".
+	plankit.WriteTree(t, prime, map[string]string{
+		"spec/spec.go":  "package spec\n\nimport _ \"embed\"\n\n// Text is the embedded text.\n//\n//go:embed text.txt\nvar Text string\n",
+		"spec/text.txt": "base\n",
+	})
+	gitkit.Git(t, prime, "add", "internal", "other", "spec")
 	gitkit.Git(t, prime, "commit", "-q", "-m", "add the tier gate stand-in")
 	base := gitkit.RevParse(t, prime, "HEAD")
 
@@ -108,13 +113,24 @@ func TestGateRedFirst(t *testing.T) {
 			t.Errorf("red-first = exit %d, error %q; want exit %d, the changed tests passing in their own packages", code, message, gateslot.RedFirstGreenExit)
 		}
 	})
-	t.Run("ADiffThatChangesANonGoFileOfAPackageExitsUnjudgedBeforeRunningATier", func(t *testing.T) {
+	t.Run("ANonGoFileNoProductionFileEmbedsLeavesTheVerdictToTheTests", func(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(prime, "calc", "data.json"), []byte("{}\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		code, _, message := run()
-		if code != gateslot.RedFirstUnjudgedExit || !strings.Contains(message, "calc/data.json") || !strings.Contains(message, "No test seam") {
-			t.Errorf("red-first = exit %d, error %q; want exit %d naming calc/data.json and the No test seam way forward", code, message, gateslot.RedFirstUnjudgedExit)
+		if code != gateslot.RedFirstGreenExit || !strings.Contains(message, "does not show the bug") {
+			t.Errorf("red-first = exit %d, error %q; want exit %d, the changed tests passing on the base", code, message, gateslot.RedFirstGreenExit)
+		}
+	})
+	t.Run("ATestOfAnEmbeddedFileTheDiffChangesRunsOnTheBasesText", func(t *testing.T) {
+		plankit.WriteTree(t, prime, map[string]string{
+			"spec/text.txt": "fixed\n",
+			"spec/spec_test.go": "package spec\n\nimport (\n\t\"testing\"\n\n\t\"github.com/Knatte18/loomyard/internal/testkit/tiergate\"\n)\n\n" +
+				"func TestTextIsFixed(t *testing.T) {\n\ttiergate.Require(t, 0)\n\tif Text != \"fixed\\n\" {\n\t\tt.Fatalf(\"Text = %q\", Text)\n\t}\n}\n",
+		})
+		code, envelope, message := run()
+		if code != 0 || !strings.Contains(envelope, `"red_tests":["github.com/Knatte18/loomyard/spec.TestTextIsFixed"]`) {
+			t.Errorf("red-first = exit %d, envelope %q, error %q; want exit 0 naming TestTextIsFixed as red on the base's text", code, envelope, message)
 		}
 	})
 }

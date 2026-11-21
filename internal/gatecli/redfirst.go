@@ -1,6 +1,6 @@
 // redfirst.go implements `lym gate red-first`, which proves a bug fix's test was red before the fix.
 // It runs the tests the worktree's diff adds or changes once on the code of the diff's base.
-// It lays the base's production files over the working tree with a Go build overlay.
+// It lays the base's production files, and the non-Go files they embed, over the working tree with a Go build overlay.
 // A site reads the verb's exit code.
 // The code is 0 when a changed test failed on the base, and a gateslot red-first code otherwise.
 
@@ -17,6 +17,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -62,14 +63,14 @@ func redFirstCmd(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, rer
 		Long: `red-first proves that a bug fix's test was red before the fix.
 It takes the tests the worktree's diff adds or changes, from --base, else the merge base with the parent branch.
 It runs them once per package, through the tiers of the gate key --gate names, on the code of that base:
-a Go build overlay puts the base's production files back, and the tests keep their working-tree text.
+a Go build overlay puts the base's production files and the non-Go files they embed back,
+and the tests and every other non-Go file keep their working-tree text.
 It runs the key's tiers only, never its lints, its scope or its report steps.
 A test that does not build on the base counts as failing there.
 It exits 0 when a changed test failed on the base, and prints the red tests.
 It exits ` + fmt.Sprint(gateslot.RedFirstGreenExit) + ` when every changed test passed on the base, since such a test does not show the bug.
 It exits ` + fmt.Sprint(gateslot.RedFirstNoTestExit) + ` when the diff adds or changes no test.
-It exits ` + fmt.Sprint(gateslot.RedFirstUnjudgedExit) + ` when the run cannot judge the tests on the base:
-a hub whose scoper is not go, or a changed non-Go file of a Go package, which the overlay cannot put back.
+It exits ` + fmt.Sprint(gateslot.RedFirstUnjudgedExit) + ` when the run cannot judge the tests on the base, on a hub whose scoper is not go.
 It exits 1 for a refusal, or when the run judged none of the tests.
 
 Examples:
@@ -101,7 +102,7 @@ Examples:
 // The code is 0 when a changed test failed on the base.
 // It is gateslot.RedFirstGreenExit when all passed.
 // It is gateslot.RedFirstNoTestExit when the diff holds no changed test.
-// It is gateslot.RedFirstUnjudgedExit when the hub's scoper is not go or the overlay cannot put back a changed file.
+// It is gateslot.RedFirstUnjudgedExit when the hub's scoper is not go.
 // It is 1 for a refusal or a run that judged none of them.
 // After a terminating signal the code is 128 plus the signal number.
 func runRedFirst(ctx context.Context, out io.Writer, request redFirstRequest) int {
@@ -186,7 +187,8 @@ type redFirstCall struct {
 	baseTree redundancyTree
 }
 
-// run lays the base's production files over the working tree, runs the changed tests and prints the verdict.
+// run lays the base's production files and the non-Go files they embed over the working tree.
+// It runs the changed tests and prints the verdict.
 // It runs the tiers once per package of the changed tests, so a test of one package never runs by another's name.
 // The tier runs' output and failure reports go to the verb's stderr as they come.
 // Each is kept for its package's verdict.
@@ -196,15 +198,9 @@ func (c redFirstCall) run(ctx context.Context, out io.Writer) int {
 		return output.Err(out, fmt.Sprintf("%s: cannot make the overlay directory: %v; way forward: re-run the same command", redFirstVerb, err))
 	}
 	defer os.RemoveAll(dir)
-	replace, unrestorable, err := baseOverlay(dir, c.root, c.module, c.changed, c.baseTree.file, workingTree{root: c.root})
+	replace, err := baseOverlay(dir, c.root, c.module, c.changed, c.baseTree)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("%s: %v; way forward: re-run the same command", redFirstVerb, err))
-	}
-	if len(unrestorable) > 0 {
-		output.Err(out, fmt.Sprintf("%s: the diff changes %s, which the overlay cannot put back, "+
-			"so a run on the base would read the fixed file and show a test green that needs no fix; way forward: %s",
-			redFirstVerb, strings.Join(unrestorable, ", "), noSeamWayForward()))
-		return gateslot.RedFirstUnjudgedExit
 	}
 	overlayPath, err := writeOverlay(dir, replace)
 	if err != nil {
@@ -358,67 +354,151 @@ func changedTestsAt(base, head redundancyTree, module goModule, changed []string
 	return testreach.ChangedTests(reachModuleOf(module), baseFiles, headFiles)
 }
 
-// baseOverlay writes the base's text of each changed production Go file of module into dir.
+// baseOverlay writes into dir the base's text of each changed file of module that the base's build reads.
+// Those are the production Go files and the non-Go files a production Go file at the base embeds.
+// The go command reads an embedded file through the overlay too.
 // It returns the overlay's replacements: the absolute working-tree path of the file, mapped to the written copy.
 // A file the base lacks maps to "", which the Go overlay reads as deleted.
-// It also returns the changed paths it cannot put back:
-// each non-Go file of a package of module with a Go file in its directory or above it, up to the module's root, in head.
-// Such a file may be embedded or read by the package, and the run on the base would still hold its working-tree text.
-// changed are the worktree-relative slash paths that differ between the base and the working tree under root.
-// baseFile reads a worktree-relative slash path at the base and reports whether the base holds it.
-// A test file, a file outside the module's packages and a file under testdata are left as the working tree holds them.
-func baseOverlay(dir, root string, module goModule, changed []string, baseFile func(rel string) ([]byte, bool, error), head redundancyTree) (map[string]string, []string, error) {
+// changed are the worktree-relative slash paths that differ between base and the working tree under root.
+// These files are left as the working tree holds them:
+// a test file, a Go file outside the module's packages or under testdata, a file outside the module,
+// and a non-Go file no production file embeds.
+// They are the tests' inputs, or nothing the build reads.
+func baseOverlay(dir, root string, module goModule, changed []string, base redundancyTree) (map[string]string, error) {
 	replace := map[string]string{}
-	var unrestorable []string
 	for i, rel := range changed {
-		if !isModulePackage(module.rel, path.Dir(rel)) {
-			continue
-		}
-		if !strings.HasSuffix(rel, ".go") {
-			held, err := holdsGoFileAtOrAbove(head, module.rel, path.Dir(rel))
-			if err != nil {
-				return nil, nil, err
-			}
-			if held {
-				unrestorable = append(unrestorable, rel)
-			}
-			continue
-		}
 		if strings.HasSuffix(rel, "_test.go") {
 			continue
 		}
-		data, found, err := baseFile(rel)
+		if strings.HasSuffix(rel, ".go") {
+			if !isModulePackage(module.rel, path.Dir(rel)) {
+				continue
+			}
+		} else {
+			if !inModule(module.rel, path.Dir(rel)) {
+				continue
+			}
+			embedded, err := embeddedAtBase(base, module.rel, rel)
+			if err != nil {
+				return nil, err
+			}
+			if !embedded {
+				continue
+			}
+		}
+		data, found, err := base.file(rel)
 		if err != nil {
-			return nil, nil, fmt.Errorf("read %s at the base: %w", rel, err)
+			return nil, fmt.Errorf("read %s at the base: %w", rel, err)
 		}
 		copyPath := ""
 		if found {
 			copyPath = filepath.Join(dir, fmt.Sprintf("%d-%s", i, path.Base(rel)))
 			if err := os.WriteFile(copyPath, data, 0o600); err != nil {
-				return nil, nil, fmt.Errorf("write the base copy of %s: %w", rel, err)
+				return nil, fmt.Errorf("write the base copy of %s: %w", rel, err)
 			}
 		}
 		replace[filepath.Join(root, filepath.FromSlash(rel))] = copyPath
 	}
-	return replace, unrestorable, nil
+	return replace, nil
 }
 
-// holdsGoFileAtOrAbove reports whether tree holds a Go file in the worktree-relative slash directory dir or above it.
-// The search stops at the module's root at moduleRel.
-func holdsGoFileAtOrAbove(tree redundancyTree, moduleRel, dir string) (bool, error) {
+// goEmbedDirective opens the comment line that names the files a Go package embeds.
+// A space or a tab separates it from its patterns.
+const goEmbedDirective = "//go:embed"
+
+// embeddedAtBase reports whether a production Go file of base embeds the worktree-relative slash path rel.
+// It reads the embed patterns of the Go files in rel's directory.
+// It reads those in each directory above it too, up to the module's root at moduleRel.
+// A pattern embeds rel when it matches rel's path below the Go file's directory, or a directory rel lies under.
+func embeddedAtBase(base redundancyTree, moduleRel, rel string) (bool, error) {
+	dir := path.Dir(rel)
 	for {
-		names, err := tree.goFiles(dir)
+		names, err := base.goFiles(dir)
 		if err != nil {
-			return false, fmt.Errorf("list the Go files of %s: %w", dir, err)
+			return false, fmt.Errorf("list the Go files of %s at the base: %w", dir, err)
 		}
-		if len(names) > 0 {
-			return true, nil
+		below := strings.TrimPrefix(rel, dir+"/")
+		for _, name := range names {
+			if strings.HasSuffix(name, "_test.go") {
+				continue
+			}
+			source, _, err := base.file(path.Join(dir, name))
+			if err != nil {
+				return false, fmt.Errorf("read %s at the base: %w", path.Join(dir, name), err)
+			}
+			if slices.ContainsFunc(embedPatterns(source), func(pattern embedPattern) bool { return embedPatternMatches(pattern, below) }) {
+				return true, nil
+			}
 		}
 		if dir == moduleRel || dir == "." {
 			return false, nil
 		}
 		dir = path.Dir(dir)
 	}
+}
+
+// embedPattern is one pattern of an embed directive.
+type embedPattern struct {
+	// glob is the pattern, unquoted and without its `all:` prefix.
+	glob string
+	// all is whether the pattern carried the `all:` prefix.
+	// Such a pattern embeds the files of a directory whose names open with a dot or an underscore too.
+	all bool
+}
+
+// embedPatterns returns the patterns of every embed directive in the Go source.
+// It reads a directive's arguments as Go does:
+// a double-quoted or backtick-quoted argument runs to its closing quote, and any other argument ends at whitespace.
+// An argument with a malformed quote ends the directive's patterns.
+func embedPatterns(source []byte) []embedPattern {
+	var patterns []embedPattern
+	for line := range strings.Lines(string(source)) {
+		rest, found := strings.CutPrefix(strings.TrimSpace(line), goEmbedDirective)
+		if !found || rest == "" || (rest[0] != ' ' && rest[0] != '\t') {
+			continue
+		}
+		for rest = strings.TrimLeft(rest, " \t"); rest != ""; rest = strings.TrimLeft(rest, " \t") {
+			var field string
+			if rest[0] == '"' || rest[0] == '`' {
+				quoted, err := strconv.QuotedPrefix(rest)
+				if err == nil {
+					field, err = strconv.Unquote(quoted)
+				}
+				if err != nil {
+					break
+				}
+				rest = rest[len(quoted):]
+			} else {
+				end := strings.IndexAny(rest, " \t")
+				if end < 0 {
+					end = len(rest)
+				}
+				field, rest = rest[:end], rest[end:]
+			}
+			glob, all := strings.CutPrefix(field, "all:")
+			patterns = append(patterns, embedPattern{glob: glob, all: all})
+		}
+	}
+	return patterns
+}
+
+// embedPatternMatches reports whether the embed pattern matches the slash path below, or a directory below lies under.
+// A directory's subtree leaves out the names that open with a dot or an underscore, unless the pattern carries `all:`.
+// A malformed pattern matches nothing, since the build that reads it fails anyway.
+func embedPatternMatches(pattern embedPattern, below string) bool {
+	for candidate := below; candidate != "."; candidate = path.Dir(candidate) {
+		if matched, _ := path.Match(pattern.glob, candidate); !matched {
+			continue
+		}
+		if candidate == below || pattern.all {
+			return true
+		}
+		inside := strings.Split(strings.TrimPrefix(below, candidate+"/"), "/")
+		if !slices.ContainsFunc(inside, func(name string) bool { return strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") }) {
+			return true
+		}
+	}
+	return false
 }
 
 // writeOverlay writes the Go build overlay file that holds replace into dir and returns its path.
