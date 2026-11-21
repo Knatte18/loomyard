@@ -18,8 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-// prMergeRetryWindow is how long the retries of a pending refusal,
-// and of a refusal whose merge-state reading says the pull request can merge, are scheduled under the lock.
+// prMergeRetryWindow is how long retries are scheduled under the lock.
+// It bounds the retries of a pending refusal.
+// It also bounds those of a refusal whose merge-state reading says the pull request can merge.
 const prMergeRetryWindow = pullrequest.MergeRetryWindow
 
 // prLanding is what the decision about the run's pull request hands the landing.
@@ -458,10 +459,11 @@ func pullRequestCommitTitle(title string, number int) string {
 // the commit message is the message passed in.
 // A merge that GitHub refuses as pending is retried for up to `prMergeRetryWindow`, on `PullRequest.Now`'s clock.
 // Any other refusal but a method one has GitHub's merge state read, waiting out a mergeability not yet computed;
-// the merge is retried while that state reports the pull request can merge,
-// scheduled only while the window has not passed.
-// Each merge-state reading can wait up to a further window, and a scheduled retry sleeps its backoff first,
-// so Finalize halts within about two and a half windows.
+// the merge is retried while that state reports the pull request can merge.
+// A retry is scheduled only while the window has not passed.
+// Each merge-state reading can wait up to a further window.
+// A scheduled retry sleeps its backoff first.
+// So Finalize halts within about two and a half windows.
 // It then fetches the parent's upstream and fast-forwards the parent pair to it,
 // so the parent-side merge that follows finds the parent holding the task's work.
 // It returns nil when the landing goes on; each halt opens with LandingStopPrefix.
@@ -572,8 +574,10 @@ func (fz *Finalize) openAtOnce(ctx context.Context, api pullrequest.API, head, t
 // mergeRefusalReason is the Stuck reason for a merge GitHub refused for good.
 // It also covers a merge GitHub kept refusing as pending past the retry window.
 // A method refusal names the squash setting, or the repository's settings for a parent that always squashes.
-// A beam's refusal never names a cancel: it names GitHub's message, the pull request's status verb and the resume,
-// except that a refusal outlasting the window while GitHub reports the pull request can merge names the resume alone.
+// A beam's refusal never names a cancel.
+// It names GitHub's message, the pull request's status verb and the resume.
+// The exception is a refusal outlasting the window while GitHub reports the pull request can merge.
+// That one names the resume alone.
 // state is GitHub's merge state read after the refusal, nil when none was read;
 // each cause it names follows GitHub's message.
 // A state that can merge names the resume alone;
