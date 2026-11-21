@@ -70,15 +70,15 @@ func ReturnToPreviousTransition(pair *lymcwd.Location, slug string) (returned bo
 		return false, fmt.Errorf("the previous transition %s of %q names no code tip", previous.SHA, slug)
 	}
 
-	runID, status, found, err := statusAtCommit(pair, recordsDir, previous.SHA, slug)
+	status, found, err := statusAtCommit(pair, recordsDir, previous.SHA, slug)
 	if err != nil {
 		return false, err
 	}
 	if !found {
 		return false, fmt.Errorf("the previous transition %s of %q holds no status record", previous.SHA, slug)
 	}
-	statusPath := shedrun.StatusFile(pair, runID)
-	if err := state.WriteJSON(statusPath, shedrun.StatusLock(pair, runID), status); err != nil {
+	statusPath := shedrun.StatusFile(pair, slug)
+	if err := state.WriteJSON(statusPath, shedrun.StatusLock(pair, slug), status); err != nil {
 		return false, fmt.Errorf("write the status of %q as the previous transition left it: %w", slug, err)
 	}
 	statusRel, err := filepath.Rel(pair.AnchorPath(), statusPath)
@@ -98,33 +98,30 @@ func ReturnToPreviousTransition(pair *lymcwd.Location, slug string) (returned bo
 }
 
 // statusAtCommit reads the run record of slug at the records commit sha of the repository at recordsDir.
-// It tries the run directory named for the slug, then the legacy `self` one, and returns the run id that held it.
-func statusAtCommit(pair *lymcwd.Location, recordsDir, sha, slug string) (runID string, status shedengine.Status, found bool, err error) {
+// found is false when the commit holds none.
+func statusAtCommit(pair *lymcwd.Location, recordsDir, sha, slug string) (status shedengine.Status, found bool, err error) {
 	names, err := RepoWiredNames(pair)
 	if err != nil {
-		return "", shedengine.Status{}, false, fmt.Errorf("load the fabric config: %w", err)
+		return shedengine.Status{}, false, fmt.Errorf("load the fabric config: %w", err)
 	}
 	anchor, err := treeAnchor(recordsDir, sha, names, pair.AnchorRel)
 	if err != nil {
-		return "", shedengine.Status{}, false, err
+		return shedengine.Status{}, false, err
 	}
-	for _, candidate := range []string{slug, shedrun.SelfRunID} {
-		_, statusRel, err := shedrun.TreeRunFileRels(candidate)
-		if err != nil {
-			return "", shedengine.Status{}, false, err
-		}
-		data, err := showFile(recordsDir, sha, path.Join(filepath.ToSlash(anchor), statusRel))
-		if err != nil {
-			return "", shedengine.Status{}, false, fmt.Errorf("read the status of %q at %s: %w", slug, sha, err)
-		}
-		if data == nil {
-			continue
-		}
-		status, err := shedengine.ParseStatusTolerant(data)
-		if err != nil {
-			return "", shedengine.Status{}, false, fmt.Errorf("parse the status of %q at %s: %w", slug, sha, err)
-		}
-		return candidate, status, true, nil
+	_, statusRel, err := shedrun.TreeRunFileRels(slug)
+	if err != nil {
+		return shedengine.Status{}, false, err
 	}
-	return "", shedengine.Status{}, false, nil
+	data, err := showFile(recordsDir, sha, path.Join(filepath.ToSlash(anchor), statusRel))
+	if err != nil {
+		return shedengine.Status{}, false, fmt.Errorf("read the status of %q at %s: %w", slug, sha, err)
+	}
+	if data == nil {
+		return shedengine.Status{}, false, nil
+	}
+	status, err = shedengine.ParseStatusTolerant(data)
+	if err != nil {
+		return shedengine.Status{}, false, fmt.Errorf("parse the status of %q at %s: %w", slug, sha, err)
+	}
+	return status, true, nil
 }

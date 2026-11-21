@@ -203,13 +203,12 @@ func TestAttach_OutcomeDisposition(t *testing.T) {
 		relaunching bool
 	}{
 		{"terminal_done", "done", true, false, nil, false},
-		{"legacy_asking_attaches", "asking", true, true, nil, false},
 		{"terminal_died", "died", true, false, nil, false},
 		{"terminal_timeout", "timeout", true, false, nil, false},
 		{"terminal_stopped_is_respawn_eligible_on_a_live_strand", runOutcomeStopped, true, false, nil, false},
 		{"running_attaches", runOutcomeRunning, true, true, nil, false},
 		{"relaunching_attaches_over_a_held_paneless_strand", runOutcomeRunning, true, true, &reedengine.StrandStatus{GUID: "strand-1", Held: true}, true},
-		{"omitted_outcome_is_legacy_upgrade_path", "", false, false, nil, false},
+		{"omitted_outcome_is_never_attachable", "", false, false, nil, false},
 		{"unrecognized_outcome", "some-future-value", true, false, nil, false},
 	}
 	for _, tt := range tests {
@@ -486,7 +485,7 @@ func TestAttach_OutputFilesMismatch(t *testing.T) {
 func TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("Untracked", func(t *testing.T) {
-		for _, outcome := range []string{"done", "asking", "died", "timeout", "api-error", runOutcomeStopped} {
+		for _, outcome := range []string{"done", "died", "timeout", "api-error", runOutcomeStopped} {
 			t.Run(outcome, func(t *testing.T) {
 				reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: nil}}}
 				fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
@@ -511,7 +510,7 @@ func TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge(t *testin
 	})
 
 	t.Run("BindingCleared", func(t *testing.T) {
-		for _, outcome := range []string{"done", "asking", "died", "timeout", "api-error", runOutcomeStopped} {
+		for _, outcome := range []string{"done", "died", "timeout", "api-error", runOutcomeStopped} {
 			t.Run(outcome, func(t *testing.T) {
 				reed := &fakeReed{StatusQueue: []reedengine.StatusResult{deadStatus("strand-1", "")}}
 				fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())

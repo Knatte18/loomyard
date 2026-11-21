@@ -77,20 +77,6 @@ type Shed struct {
 	// Machine is the name of the machine driving this run, stamped on every history entry the shed appends.
 	// The caller supplies it and this package never reads it; the empty string stamps nothing.
 	Machine string
-	// Retired maps each row name the recipe dropped to the row a run on it moves to.
-	// A step whose status names a key of it, and no row of Producers, moves the run onto the target and pauses it.
-	// A current row that is a row of Producers never consults it.
-	// The caller supplies it; nil means no row is retired.
-	Retired map[string]string
-	// RetiredWayForward is the way-forward command that a move off a retired row names in its pause reason and error.
-	// The caller supplies it;
-	// the empty string falls back to the run verb that resumes the run.
-	RetiredWayForward string
-	// RetiredMove is the recipe wiring's side effects of a move off a retired row.
-	// It is called with the retired row, its target, and whether the status was not running.
-	// A non-nil error refuses the move and persists nothing, so the next step calls it again;
-	// it must be idempotent. The caller supplies it; nil does nothing.
-	RetiredMove func(from, to string, resumed bool) error
 }
 
 // RunOutcome is the whole run's terminal classification.

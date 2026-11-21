@@ -335,7 +335,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 // so a bootstrap that failed or was killed after seeding leaves a running status with no driver behind it.
 // The confirmation is a marker under scratchDir (SpawnConfirmedFile) holding the pid of the process that wrote it.
 // The marker is cleared before every spawn attempt and written only once deps.Spawn returns success.
-// A marker naming another pid, or one in the old layout, reads as unconfirmed.
+// A marker naming another pid reads as unconfirmed.
 // Batten's own run lock means a pid other than this process's belongs to an earlier, dead batten process.
 // An unconfirmed running child is adopted, not spawned, when deps.DriverStrand reports a live or retiring driver.
 // It is also adopted when deps.ChildRunLockHeld reports a held run lock.

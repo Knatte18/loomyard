@@ -373,10 +373,6 @@ func TestCloneHub_ResetSubpathCheckReadsRecordedAnchor(t *testing.T) {
 			seedWeftBranchFromMain(t, fixtures, weftBare, "main-weft")
 			commitFileOnBranch(t, fixtures, weftBare, "main-weft", lymcwd.AnchorFileName, "backend\n")
 		}, "elsewhere", "backend"},
-		{"MainWeftWithoutMarkerFallsBackToDefaultBranch", func(t *testing.T, fixtures, weftBare string) {
-			seedWeftBranchFromMain(t, fixtures, weftBare, "main-weft")
-			commitFileOnBranch(t, fixtures, weftBare, "main", lymcwd.AnchorFileName, "backend\n")
-		}, "elsewhere", "backend"},
 		{"MarkerOnNonWarpDefaultBranchIsNotAdopted", func(t *testing.T, fixtures, weftBare string) {
 			seedWeftBranchFromMain(t, fixtures, weftBare, "main-weft")
 			seedWeftBranchFromMain(t, fixtures, weftBare, "trunk")

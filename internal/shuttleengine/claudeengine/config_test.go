@@ -101,20 +101,6 @@ func TestLoadConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("a repo default holding the retired deny_agent_tool loads without it", func(t *testing.T) {
-		clearMarker(t)
-		board, anchor := t.TempDir(), t.TempDir()
-		writeClaudeLayer(t, configengine.ConfigFile(board, "claude"), ConfigTemplate()+"deny_agent_tool: false\n")
-		writeClaudeLayer(t, configengine.ConfigFile(anchor, "claude"), "")
-		cfg, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board})
-		if err != nil {
-			t.Fatalf("LoadConfig() = _, %v; want nil error", err)
-		}
-		if !cfg.DenyAskUserQuestion || cfg.PromptCacheTTL != "5m" {
-			t.Errorf("LoadConfig() = %+v; want the template's values", cfg)
-		}
-	})
-
 	t.Run("a local file holds the cache lifetimes", func(t *testing.T) {
 		clearMarker(t)
 		board, anchor := t.TempDir(), t.TempDir()

@@ -1,4 +1,4 @@
-// runsettings.go holds the one migrate-then-validate step for run settings and run profiles, and their layering.
+// runsettings.go holds the one validation step for run settings and run profiles, and their layering.
 
 package configreg
 
@@ -12,7 +12,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/runprofile"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
@@ -34,20 +33,14 @@ func (e *RunSettingsError) Unwrap() error {
 	return e.Cause
 }
 
-// PrepareRunSettings migrates and validates a task's run settings.
+// PrepareRunSettings validates a task's run settings.
 // The settings are decoded from JSON as module name to an object of that module's keys.
 // It returns each named module's local-layer YAML document, and drops a module whose object is empty.
-// A key that a declared move relocated is first rewritten into its target module's object.
 // A module that is not registered is refused.
-// A module that a declared move retired is refused with the way forward of removing its object from the run settings.
 // A top-level key the module's Spec maps to a RetiredWayForward or HubOnlyWayForward text is refused with that text.
-// The check runs before the module's Migrate.
 // Every refusal is a [*RunSettingsError]; value semantics are left to the module's load.
-// Each line a module's Migrate returns is logged at Warn, naming the module, the migration and the way forward.
-// Nothing rewrites a profile or a run_settings document, so the Warn repeats at every read until the operator edits it.
 // Nil or empty settings return an empty map.
 func PrepareRunSettings(settings map[string]any) (map[string][]byte, error) {
-	settings = moveRunSettings(settings)
 	names := make([]string, 0, len(settings))
 	for name := range settings {
 		names = append(names, name)
@@ -58,9 +51,6 @@ func PrepareRunSettings(settings map[string]any) (map[string][]byte, error) {
 	for _, name := range names {
 		module, ok := Lookup(name)
 		if !ok {
-			if retiredByKeyMove(name) {
-				return nil, &RunSettingsError{Module: name, Cause: configengine.MarkInvalid(fmt.Errorf("module %q is not registered: its keys moved to another module; way forward: remove the %s object from run_settings", name, name))}
-			}
 			return nil, &RunSettingsError{Module: name, Cause: configengine.MarkInvalid(fmt.Errorf("module %q is not registered", name))}
 		}
 		keys, ok := settings[name].(map[string]any)
@@ -79,16 +69,6 @@ func PrepareRunSettings(settings map[string]any) (map[string][]byte, error) {
 		document, err := yaml.Marshal(wholeNumbersAsIntegers(keys))
 		if err != nil {
 			return nil, &RunSettingsError{Module: name, Cause: configengine.MarkInvalid(err)}
-		}
-		if module.Migrate != nil {
-			var lines []string
-			document, lines, err = module.Migrate(document)
-			if err != nil {
-				return nil, &RunSettingsError{Module: name, Cause: err}
-			}
-			for _, line := range lines {
-				logger.Warn(fmt.Sprintf("run_settings for module %s: %s; way forward: rename or remove the key in profiles.yaml or in the entry's run_settings", name, line))
-			}
 		}
 		if err := checkLocalDocument(module, document); err != nil {
 			return nil, &RunSettingsError{Module: name, Cause: err}
@@ -124,18 +104,8 @@ func refuseHubOnlyKeys(module Module, keys map[string]any) error {
 	return nil
 }
 
-// retiredByKeyMove reports whether a declared key move names the module as its source.
-func retiredByKeyMove(name string) bool {
-	for _, move := range KeyMoves() {
-		if move.FromModule == name {
-			return true
-		}
-	}
-	return false
-}
-
 // LayerRunSettings returns the local-layer documents of a task's run settings layered over the run profile profileName.
-// Both maps are migrated and validated per module before the merge.
+// Both maps are validated per module before the merge.
 // Each module's task document is laid over its profile document key by key.
 // It is merged with yamlengine.Merge, using the module's open maps.
 // A task key replaces the profile's, and a profile key the task lacks stays.

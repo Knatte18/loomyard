@@ -386,12 +386,6 @@ Framing paragraph.
 				if card.TypeLabelCount != 2 {
 					t.Errorf("card.TypeLabelCount = %d; want 2", card.TypeLabelCount)
 				}
-				if !card.HasType {
-					t.Errorf("card.HasType = false; want true")
-				}
-				if card.Type != planparser.CardTypeEdit {
-					t.Errorf("card.Type = %q; want %q (the first type label seen)", card.Type, planparser.CardTypeEdit)
-				}
 				if len(card.TargetGroups) != 2 {
 					t.Fatalf("len(card.TargetGroups) = %d; want 2", len(card.TargetGroups))
 				}
@@ -420,12 +414,6 @@ Framing paragraph.
 			check: func(t *testing.T, card planparser.Card) {
 				if card.TypeLabelCount != 0 {
 					t.Errorf("card.TypeLabelCount = %d; want 0", card.TypeLabelCount)
-				}
-				if card.HasType {
-					t.Errorf("card.HasType = true; want false")
-				}
-				if card.Type != planparser.CardTypeUnknown {
-					t.Errorf("card.Type = %q; want %q", card.Type, planparser.CardTypeUnknown)
 				}
 				if len(card.TargetGroups) != 0 {
 					t.Errorf("len(card.TargetGroups) = %d; want 0", len(card.TargetGroups))
@@ -629,9 +617,6 @@ Framing paragraph.
 				"- `internal/foo#Other`\n" +
 				"**Intent:** placeholder.\n",
 			check: func(t *testing.T, card planparser.Card) {
-				if card.Type != planparser.CardTypeExtends {
-					t.Errorf("card.Type = %q; want %q", card.Type, planparser.CardTypeExtends)
-				}
 				wantRefs := []string{"internal/foo#Thing", "internal/foo#Other"}
 				if !slices.Equal(card.Targets, wantRefs) {
 					t.Errorf("card.Targets = %v; want %v", card.Targets, wantRefs)
@@ -842,7 +827,6 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		number           int
 		slug             string
 		summary          string
-		typ              planparser.CardType
 		typeLabelCount   int
 		targets          []string
 		groups           []wantGroup
@@ -860,8 +844,8 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 	wants := []wantCard{
 		{
 			number: 1, slug: "json-row-type", summary: "define the RowJSON struct",
-			typ: planparser.CardTypeCreate, typeLabelCount: 1,
-			targets: []string{"internal/boardcli#RowJSON"},
+			typeLabelCount: 1,
+			targets:        []string{"internal/boardcli#RowJSON"},
 			groups: []wantGroup{
 				{typ: planparser.CardTypeCreate, refs: []string{"internal/boardcli#RowJSON"}},
 			},
@@ -870,8 +854,8 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		},
 		{
 			number: 2, slug: "json-flag", summary: "add the --json bool flag and wire list.go",
-			typ: planparser.CardTypeEdit, typeLabelCount: 2,
-			targets: []string{"internal/boardcli#newListCmd", "internal/boardcli/list_json_test.go#"},
+			typeLabelCount: 2,
+			targets:        []string{"internal/boardcli#newListCmd", "internal/boardcli/list_json_test.go#"},
 			groups: []wantGroup{
 				{typ: planparser.CardTypeEdit, refs: []string{"internal/boardcli#newListCmd"}},
 				{typ: planparser.CardTypeCreate, refs: []string{"internal/boardcli/list_json_test.go#"}},
@@ -883,8 +867,8 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		},
 		{
 			number: 3, slug: "json-emission", summary: "marshal each row through output.Ok when --json is set",
-			typ: planparser.CardTypeCustom, typeLabelCount: 1,
-			targets: []string{"internal/output#emitJSON", "internal/output/emit.go#"},
+			typeLabelCount: 1,
+			targets:        []string{"internal/output#emitJSON", "internal/output/emit.go#"},
 			groups: []wantGroup{
 				{typ: planparser.CardTypeCustom, refs: []string{"internal/output#emitJSON", "internal/output/emit.go#"}},
 			},
@@ -893,8 +877,8 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		},
 		{
 			number: 4, slug: "legacy-rows-delete", summary: "remove the superseded legacy row-conversion file",
-			typ: planparser.CardTypeDelete, typeLabelCount: 1,
-			targets: []string{"internal/boardengine/legacyrows.go#"},
+			typeLabelCount: 1,
+			targets:        []string{"internal/boardengine/legacyrows.go#"},
 			groups: []wantGroup{
 				{typ: planparser.CardTypeDelete, refs: []string{"internal/boardengine/legacyrows.go#"}},
 			},
@@ -904,8 +888,8 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		},
 		{
 			number: 5, slug: "rowmapper-rename", summary: "rename the row mapper ahead of a later extraction",
-			typ: planparser.CardTypeRename, typeLabelCount: 1,
-			targets: []string{"internal/boardengine#MapRow", "plan:internal/boardengine#MapRowJSON", "internal/boardengine/rows.go#", "internal/boardengine/rowsjson.go#"},
+			typeLabelCount: 1,
+			targets:        []string{"internal/boardengine#MapRow", "plan:internal/boardengine#MapRowJSON", "internal/boardengine/rows.go#", "internal/boardengine/rowsjson.go#"},
 			groups: []wantGroup{
 				{typ: planparser.CardTypeRename, refs: []string{"internal/boardengine#MapRow", "plan:internal/boardengine#MapRowJSON", "internal/boardengine/rows.go#", "internal/boardengine/rowsjson.go#"}},
 			},
@@ -917,8 +901,8 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		},
 		{
 			number: 6, slug: "helppins-move", summary: "relocate the pinned help-tree fixture",
-			typ: planparser.CardTypeMove, typeLabelCount: 1,
-			targets: []string{"cmd/lym/helppins.go#"},
+			typeLabelCount: 1,
+			targets:        []string{"cmd/lym/helppins.go#"},
 			groups: []wantGroup{
 				{typ: planparser.CardTypeMove, refs: []string{"cmd/lym/helppins.go#"}},
 			},
@@ -926,8 +910,8 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		},
 		{
 			number: 7, slug: "json-docs", summary: "update the package doc comment and the standalone docs page",
-			typ: planparser.CardTypeProsa, typeLabelCount: 1,
-			targets: []string{"internal/boardcli/doc.go#", "docs/boardcli-json.md#"},
+			typeLabelCount: 1,
+			targets:        []string{"internal/boardcli/doc.go#", "docs/boardcli-json.md#"},
 			groups: []wantGroup{
 				{typ: planparser.CardTypeProsa, refs: []string{"internal/boardcli/doc.go#", "docs/boardcli-json.md#"}},
 			},
@@ -942,9 +926,6 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		}
 		if c.Summary != w.summary {
 			t.Errorf("card %d Summary = %q; want %q", w.number, c.Summary, w.summary)
-		}
-		if c.Type != w.typ {
-			t.Errorf("card %d Type = %q; want %q", w.number, c.Type, w.typ)
 		}
 		if c.TypeLabelCount != w.typeLabelCount {
 			t.Errorf("card %d TypeLabelCount = %d; want %d", w.number, c.TypeLabelCount, w.typeLabelCount)

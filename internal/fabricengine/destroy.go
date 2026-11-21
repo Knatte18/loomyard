@@ -237,7 +237,6 @@ const (
 	pathOwnershipRegisteredLinkedWorktree
 	pathOwnershipWarpCheckout
 	pathOwnershipFabricHub
-	pathOwnershipUnderGeometryRoot
 	pathOwnershipFreshlyCreatedPath
 	pathOwnershipFreshlyCreatedWorktree
 	pathOwnershipWiredJunction
@@ -322,14 +321,6 @@ func ownedHubScratch(root string) pathOwnership {
 // the Bolt checkout entry, or at least one weft sibling, per looksLikeHub.
 func ownedFabricHub() pathOwnership {
 	return pathOwnership{kind: pathOwnershipFabricHub}
-}
-
-// ownedUnderGeometryRoot declares target as owned when root is a member of the closed set of fabric geometry roots.
-// It admits a target that resolves at or below root, including deep descendants and non-directory targets.
-// It supplies what containment cannot: containment proves target is below the container,
-// but proves nothing if the caller chose the container.
-func ownedUnderGeometryRoot(root string) pathOwnership {
-	return pathOwnership{kind: pathOwnershipUnderGeometryRoot, root: root}
 }
 
 // ownedFreshlyCreatedPath declares target as owned when tok, minted by createExclusiveDir, covers exactly this path.
@@ -616,22 +607,6 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 	case pathOwnershipFabricHub:
 		if !looksLikeHub(target) {
 			return false, fmt.Sprintf("%s does not look like a fabric hub (no %s entry and no weft sibling)", target, BoltDirName)
-		}
-		return true, ""
-
-	case pathOwnershipUnderGeometryRoot:
-		// A fabric geometry root is a directory whose base name is launchersDirName or portalsDirName.
-		// A root outside that set is refused, so a call site cannot satisfy this check by naming a convenient parent.
-		//
-		// The base-name test runs against the resolved root, not the nominal one, as pathAtOrBelow does.
-		// A link standing where the geometry root belongs is not the geometry root.
-		// Testing the nominal spelling would let it masquerade as one.
-		resolvedRoot := resolveAncestorSymlinks(own.root)
-		if base := filepath.Base(resolvedRoot); base != launchersDirName && base != portalsDirName {
-			return false, fmt.Sprintf("%s is not a fabric geometry root", own.root)
-		}
-		if !pathAtOrBelow(own.root, target) {
-			return false, fmt.Sprintf("%s does not resolve at or below geometry root %s", target, own.root)
 		}
 		return true, ""
 

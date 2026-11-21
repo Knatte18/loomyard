@@ -88,7 +88,7 @@ func (f *holdFixture) escalate(cause, decision string) {
 		"round-1-escalation.md": "---\nround: 1\ncause: " + cause + "\n---\nbrief\n",
 	}
 	if decision != "" {
-		files["round-1-circling-decision.md"] = "---\nround: 1\ndecision: " + decision + "\n---\n"
+		files["round-1-circling-decision.md"] = "---\nround: 1\ndecision: " + decision + "\ncause: " + cause + "\n---\n"
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(runDir, name), []byte(content), 0o644); err != nil {

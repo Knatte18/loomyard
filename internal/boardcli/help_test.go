@@ -133,11 +133,6 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 			mustContain: []string{"done", "depends_on", "--apply"},
 		},
 		{
-			name:        "retire-legacy",
-			args:        []string{"retire-legacy"},
-			mustContain: []string{"--apply", "tasks.json", "notes.json"},
-		},
-		{
 			name: "intake import",
 			args: []string{"intake", "import"},
 		},

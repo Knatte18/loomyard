@@ -1,5 +1,4 @@
 // sketch.go holds the Sketch: the built-in sketch type label, and the write that makes an entry a Sketch.
-// It also migrates tasks left with the discussed status.
 
 package boardengine
 
@@ -19,10 +18,6 @@ const SketchType = "sketch"
 
 // sketchTypeDescription is the description of the built-in sketch type label when board.yaml does not list it.
 const sketchTypeDescription = "a note whose Discussion was approved and whose decision record is stored, waiting for triage into tasks or a project"
-
-// LegacyStatusDiscussed is the status an earlier lym version wrote on a task whose Discussion-only run finished.
-// A task still carrying it is no run's to start, so a start guard refuses it like a draft.
-const LegacyStatusDiscussed = "discussed"
 
 // ErrSketchRefused matches, through errors.Is, a MakeSketch the board refused as an invalid write:
 // such as while another entry depends on the entry.
@@ -136,18 +131,4 @@ func checkDiscussedPromotion(loaded, after []Task, recordStored func(slug string
 		return fmt.Errorf("entry %q is a discussed note with a stored decision record, which becomes tasks only through a raddle run; way forward: `%s`, which gives it recipe raddle", task.Slug, SketchPromoteCommand(task.Slug))
 	}
 	return nil
-}
-
-// migrateDiscussedStatus makes a Sketch of every open task of the store carrying LegacyStatusDiscussed, in place.
-// A task the write would refuse as a Sketch, such as one another entry depends on, keeps the status as a hand-set word.
-func migrateDiscussedStatus(store *Store) {
-	for i, task := range store.tasks {
-		if task.Kind != KindTask || isDone(task) || task.Status == nil || *task.Status != LegacyStatusDiscussed {
-			continue
-		}
-		sketch := sketchOf(task, *store.vocab)
-		if store.validateWrite(store.tasks, sketch) == nil {
-			store.tasks[i] = sketch
-		}
-	}
 }

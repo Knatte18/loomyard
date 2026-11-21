@@ -128,9 +128,6 @@ It is also the sole parser and writer of `seed.json`.
 
 - `self` is an alias only `shedrun.ResolveRunID` interprets.
   It maps to the told location's worktree slug (`l.WorktreeName`), and a run's directory is named by that slug.
-- One exception: a read-only legacy fallback in `shedrun`'s directory-segment resolution.
-  When `_lym/shed/<slug>/` is absent and `_lym/shed/self/` exists, both spellings join `self`.
-  A run directory under the `self` spelling keeps working with no on-disk migration.
 - No other package resolves `self`, and none joins `SelfRunID` onto a path itself.
 
 #### Forked branches

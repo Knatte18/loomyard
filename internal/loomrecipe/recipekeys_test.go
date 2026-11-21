@@ -1,12 +1,11 @@
 // recipekeys_test.go covers the recipe-keyed accessors:
-// contract, engines, record engine, verify source and retired rows.
+// contract, engines, record engine and verify source.
 
 package loomrecipe
 
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -103,7 +102,6 @@ func TestRecipeKeys(t *testing.T) {
 		wantVerify    string
 		wantEngines   map[string]bool
 		wantEngineRow map[string]string
-		wantRetired   map[string]string
 		wantRefusals  bool
 	}{
 		{
@@ -126,11 +124,6 @@ func TestRecipeKeys(t *testing.T) {
 				"RecordWrite": false,
 			},
 			wantEngineRow: map[string]string{"DiscussionWrite": "Discussion-Write", "Block": "Motif"},
-			wantRetired: map[string]string{
-				"Merge-In":           "Parent-Align",
-				"Loom-Preflight":     "Preflight",
-				"Tapestry-Preflight": "Preflight",
-			},
 		},
 		{
 			name:       "EmptyReadsAsTapestry",
@@ -141,11 +134,6 @@ func TestRecipeKeys(t *testing.T) {
 			wantEngines: map[string]bool{
 				"Implementer": true,
 			},
-			wantRetired: map[string]string{
-				"Merge-In":           "Parent-Align",
-				"Loom-Preflight":     "Preflight",
-				"Tapestry-Preflight": "Preflight",
-			},
 		},
 		{
 			name:        "Darn",
@@ -154,7 +142,6 @@ func TestRecipeKeys(t *testing.T) {
 			wantRecord:  "RecordWrite",
 			wantVerify:  "tree_scope",
 			wantEngines: map[string]bool{"DarnWrite": true, "RecordWrite": true, "PlanWrite": false},
-			wantRetired: map[string]string{"Darn": "Darn-Write"},
 		},
 		{
 			name:        "Pawl",
@@ -221,9 +208,6 @@ func TestRecipeKeys(t *testing.T) {
 					t.Errorf("EngineRow(%q, %q) = %q, %v, %v; want %q, true, nil", tt.recipe, engine, got, found, err, want)
 				}
 			}
-			if got := RetiredRows(tt.recipe); !reflect.DeepEqual(got, tt.wantRetired) {
-				t.Errorf("RetiredRows(%q) = %v; want %v", tt.recipe, got, tt.wantRetired)
-			}
 		})
 	}
 }
@@ -241,8 +225,5 @@ func assertRefusedByEveryAccessor(t *testing.T, recipe string) {
 		if err == nil || !strings.Contains(err.Error(), recipe) {
 			t.Errorf("%s(%q) error = %v; want a refusal naming the recipe", accessor, recipe, err)
 		}
-	}
-	if got := RetiredRows(recipe); got != nil {
-		t.Errorf("RetiredRows(%q) = %v; want nil", recipe, got)
 	}
 }

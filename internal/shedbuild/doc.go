@@ -19,13 +19,6 @@
 // It lands nothing and needs the record row alone.
 // The engine sets come from shedrecipe, so a new loom recipe needs no change to the check.
 //
-// A recipe may set an optional top-level retired map.
-// Each key is the name of a retired row, and each value is the row a run on it moves to.
-// Parse decodes it into Recipe.Retired.
-// It refuses a key that is also a row of the recipe and a target that names no row.
-// Each refusal names the key and the way forward.
-// NewShedFrom copies the map onto the shed, which moves a run off a retired row at its next step.
-//
 // # Block rows
 //
 // A row with block or block_gate set is a block row: it names a recipe to run inline and the check that gates it.

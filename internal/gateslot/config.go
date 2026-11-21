@@ -3,7 +3,6 @@
 package gateslot
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -155,7 +154,7 @@ func ConfigPerNameMaps() []string {
 // `tiers` and `build` run any shell command in a task worktree, so they are executable.
 // The gate lists, the scoper, the refused commands and the inert paths switch off or hollow a guard.
 // `cli_wait_sec`, `go_parallel`, `guard_tier` and `test_map_max_age_days` are retired;
-// a hub or machine file that still sets one loads, and reconcile prunes it.
+// a file that still sets one is refused, naming the key.
 // `tiers` and `build` carry the shape their decode gives them.
 // So `--set` reaches one key inside a tier or the build step, such as `tiers.tier0.env.LYM_TEST_TIER`;
 // it refuses a key neither holds.
@@ -497,10 +496,9 @@ type guidedError struct{ error }
 
 func (e guidedError) Unwrap() error { return e.error }
 
-// refuseRetiredGateLists refuses a hub file whose gates entry is still in the retired list shape;
-// a deploy leaves such a file until reconcile runs MigrateConfig.
+// refuseRetiredGateLists refuses a hub file whose gates entry is still in the retired list shape.
 // The layered load would refuse it first as a shape mismatch against the template;
-// it names no way forward that migrates it.
+// the refusal names the mapping shape that replaces the list.
 func refuseRetiredGateLists(hubFile string) error {
 	data, err := os.ReadFile(hubFile)
 	if err != nil {
@@ -516,7 +514,7 @@ func refuseRetiredGateLists(hubFile string) error {
 	}
 	for i := 0; i+1 < len(gates.Content); i += 2 {
 		if gates.Content[i+1].Kind == yaml.SequenceNode {
-			return fmt.Errorf("gate config key %q: the retired list shape; fix it with \"lym fabric reconcile\" (or \"lym config reconcile --layer default --apply\") from the prime, which migrates it%s", "gates."+gates.Content[i].Value, roleClause)
+			return fmt.Errorf("gate config key %q: the retired list shape; write it as a mapping with tiers and scope, such as {tiers: [0], scope: diff}, with \"lym config gate\" from the prime%s", "gates."+gates.Content[i].Value, roleClause)
 		}
 	}
 	return nil
@@ -555,7 +553,7 @@ func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 			}
 		case scopeDiff, scopeAll:
 		case retiredScopeCoverage:
-			return nil, guidedError{fmt.Errorf("gate config key %q: scope coverage is retired, since the gate no longer selects tests from the coverage maps; fix it with \"lym fabric reconcile\" (or \"lym config reconcile --layer default --apply\") from the prime, which migrates it to scope diff%s", path, roleClause)}
+			return nil, guidedError{fmt.Errorf("gate config key %q: scope coverage is retired, since the gate no longer selects tests from the coverage maps; set scope diff with \"lym config gate\" from the prime%s", path, roleClause)}
 		default:
 			return nil, guidedError{fmt.Errorf("gate config key %q: scope %q; want card, diff or all; fix it with \"lym config gate\" from the prime%s", path, key.Scope, roleClause)}
 		}
@@ -590,266 +588,6 @@ func (c Config) Limits() Limits {
 		Tier0Parallel: c.Tiers[tierKey(0)].Parallel,
 		BusyQuit:      time.Duration(c.BusyQuitSec) * time.Second,
 	}
-}
-
-// gateTarget is one key a retired gate list migrates to, with the scope its mapping takes.
-type gateTarget struct {
-	key   string
-	scope string
-}
-
-// The gate key of the parent-align check, and the retired merge-in key that migrates to it.
-const (
-	parentAlignGateKey    = "parent-align"
-	retiredMergeInGateKey = "merge-in"
-)
-
-// The gate keys the adopt seed reads and writes.
-const (
-	finalizeGateKey = "finalize"
-	adoptGateKey    = "adopt"
-)
-
-// retiredGateLists maps each retired gate list to the keys it becomes.
-var retiredGateLists = map[string][]gateTarget{
-	"landing": {{parentAlignGateKey, scopeAll}, {"finalize", scopeAll}, {"darn-write", scopeDiff}, {"code-burler-fix", scopeDiff}},
-	"final":   {{"webster", scopeAll}},
-	"round":   {{"webster-fix", scopeDiff}},
-}
-
-// MigrateConfig migrates a gate.yaml document's retired gates and keys and returns one line per rewrite.
-// The retired gates.publish list and the retired guard_tier key are pruned.
-// A landing, final or round list becomes the keys that `retiredGateLists` maps it to,
-// and a card or batch list becomes a mapping with scope card.
-// A gates.merge-in key is renamed to gates.parent-align, keeping its value.
-// A gates entry whose mapping holds the retired `scope: coverage` is rewritten to `scope: diff`.
-// It keeps its other fields.
-// A key the file already holds in the new shape keeps its value,
-// and every comment and other key is carried through yaml node editing.
-// A document with nothing to migrate is returned unchanged, so a migrated file is unchanged on a second pass.
-// A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
-func MigrateConfig(existing []byte) ([]byte, []string, error) {
-	var document yaml.Node
-	if err := yaml.Unmarshal(existing, &document); err != nil {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate gate config: unmarshal yaml: %w", err))
-	}
-	if document.Kind != yaml.DocumentNode || len(document.Content) == 0 {
-		return existing, nil, nil
-	}
-	root := document.Content[0]
-	if root.Kind != yaml.MappingNode {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate gate config: yaml root is not a mapping"))
-	}
-	var lines []string
-	if gates := mappingValue(root, "gates"); gates != nil && gates.Kind == yaml.MappingNode {
-		if at := mappingKeyIndex(gates, "publish"); at >= 0 {
-			gates.Content = append(gates.Content[:at], gates.Content[at+2:]...)
-			lines = append(lines, "gates.publish: retired, removed")
-		}
-		lines = append(lines, migrateGateLists(gates)...)
-		lines = append(lines, renameGateKeys(gates)...)
-		lines = append(lines, migrateCoverageScopes(gates)...)
-	}
-	if at := mappingKeyIndex(root, "guard_tier"); at >= 0 {
-		root.Content = append(root.Content[:at], root.Content[at+2:]...)
-		lines = append(lines, "guard_tier: retired, removed")
-	}
-	if len(lines) == 0 {
-		return existing, nil, nil
-	}
-
-	encoded, err := encodeGateDocument(&document, "migrate gate config")
-	if err != nil {
-		return nil, nil, err
-	}
-	return encoded, lines, nil
-}
-
-// encodeGateDocument encodes a parsed gate document with two-space indentation.
-// It returns an error marked configengine.ErrInvalid whose message opens with what.
-func encodeGateDocument(document *yaml.Node, what string) ([]byte, error) {
-	var out bytes.Buffer
-	encoder := yaml.NewEncoder(&out)
-	encoder.SetIndent(2)
-	if err := encoder.Encode(document); err != nil {
-		return nil, configengine.MarkInvalid(fmt.Errorf("%s: encode yaml: %w", what, err))
-	}
-	if err := encoder.Close(); err != nil {
-		return nil, configengine.MarkInvalid(fmt.Errorf("%s: encode yaml: %w", what, err))
-	}
-	return out.Bytes(), nil
-}
-
-// SeedAdoptGate adds the adopt gate to a hub's base gate document when the document tunes finalize;
-// it returns the line that says so.
-// The new gates.adopt carries a copy of gates.finalize's value,
-// so the adopt check runs the tiers the hub tuned for its landing.
-// A document with no gates.finalize, or already holding gates.adopt, is returned unchanged with no line,
-// so a second pass changes nothing.
-// A hub that tunes finalize cannot pin adopt to the template's own value:
-// the reconcile drops a template-equal entry, and the next pass seeds adopt again from finalize.
-// It runs over the hub base file alone: a local-layer file, a seed and a run-settings gate object are never seeded.
-// A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
-func SeedAdoptGate(existing []byte) ([]byte, []string, error) {
-	var document yaml.Node
-	if err := yaml.Unmarshal(existing, &document); err != nil {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("seed adopt gate: unmarshal yaml: %w", err))
-	}
-	if document.Kind != yaml.DocumentNode || len(document.Content) == 0 {
-		return existing, nil, nil
-	}
-	root := document.Content[0]
-	if root.Kind != yaml.MappingNode {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("seed adopt gate: yaml root is not a mapping"))
-	}
-	gates := mappingValue(root, "gates")
-	if gates == nil || gates.Kind != yaml.MappingNode {
-		return existing, nil, nil
-	}
-	lines := seedAdoptGate(gates)
-	if len(lines) == 0 {
-		return existing, nil, nil
-	}
-	encoded, err := encodeGateDocument(&document, "seed adopt gate")
-	if err != nil {
-		return nil, nil, err
-	}
-	return encoded, lines, nil
-}
-
-// seedAdoptGate writes adopt into the gates mapping right after finalize:
-// a flow mapping holding a copy of finalize's value; it returns the line that says so.
-// A mapping without a finalize mapping, or already holding adopt, is left as it is.
-func seedAdoptGate(gates *yaml.Node) []string {
-	at := mappingKeyIndex(gates, finalizeGateKey)
-	if at < 0 || gates.Content[at+1].Kind != yaml.MappingNode || mappingKeyIndex(gates, adoptGateKey) >= 0 {
-		return nil
-	}
-	value := cloneGateNode(gates.Content[at+1])
-	value.Style = yaml.FlowStyle
-	name := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: adoptGateKey}
-	gates.Content = slices.Insert(gates.Content, at+2, name, value)
-	return []string{fmt.Sprintf("gates.%s: added with the value of gates.%s", adoptGateKey, finalizeGateKey)}
-}
-
-// cloneGateNode returns a deep copy of node without its comments.
-func cloneGateNode(node *yaml.Node) *yaml.Node {
-	clone := *node
-	clone.HeadComment, clone.LineComment, clone.FootComment = "", "", ""
-	clone.Content = make([]*yaml.Node, len(node.Content))
-	for i, child := range node.Content {
-		clone.Content[i] = cloneGateNode(child)
-	}
-	return &clone
-}
-
-// migrateGateLists rewrites every list-shaped gate entry into the keyed shape and returns one line per rewrite.
-// A retired key's list is dropped from its place;
-// its targets, minus those the mapping already holds, take that place.
-func migrateGateLists(gates *yaml.Node) []string {
-	held := make(map[string]bool)
-	for i := 0; i+1 < len(gates.Content); i += 2 {
-		held[gates.Content[i].Value] = true
-	}
-	var lines []string
-	var content []*yaml.Node
-	for i := 0; i+1 < len(gates.Content); i += 2 {
-		name, value := gates.Content[i], gates.Content[i+1]
-		if value.Kind != yaml.SequenceNode {
-			content = append(content, name, value)
-			continue
-		}
-		if name.Value == cardGateKey || name.Value == "batch" {
-			content = append(content, name, gateMapping(value, scopeCard))
-			lines = append(lines, fmt.Sprintf("gates.%s: list shape retired, migrated to tiers and scope %s", name.Value, scopeCard))
-			continue
-		}
-		targets, retired := retiredGateLists[name.Value]
-		if !retired {
-			content = append(content, name, value)
-			continue
-		}
-		var created []string
-		for _, target := range targets {
-			if held[target.key] {
-				continue
-			}
-			held[target.key] = true
-			targetName := *name
-			targetName.Value = target.key
-			if len(created) > 0 {
-				targetName.HeadComment, targetName.LineComment, targetName.FootComment = "", "", ""
-			}
-			content = append(content, &targetName, gateMapping(value, target.scope))
-			created = append(created, target.key)
-		}
-		if len(created) == 0 {
-			lines = append(lines, fmt.Sprintf("gates.%s: retired, removed", name.Value))
-			continue
-		}
-		lines = append(lines, fmt.Sprintf("gates.%s: retired, migrated to %s", name.Value, joinWithAnd(created)))
-	}
-	gates.Content = content
-	return lines
-}
-
-// renameGateKeys renames the gates mapping's retired merge-in key to parent-align and returns one line per rewrite.
-// The renamed key carries the value and comments of the retired one.
-// When the mapping already holds parent-align, that key keeps its value and the retired key is dropped.
-func renameGateKeys(gates *yaml.Node) []string {
-	at := mappingKeyIndex(gates, retiredMergeInGateKey)
-	if at < 0 {
-		return nil
-	}
-	if mappingKeyIndex(gates, parentAlignGateKey) >= 0 {
-		gates.Content = append(gates.Content[:at], gates.Content[at+2:]...)
-		return []string{fmt.Sprintf("gates.%s: retired, removed", retiredMergeInGateKey)}
-	}
-	gates.Content[at].Value = parentAlignGateKey
-	return []string{fmt.Sprintf("gates.%s: renamed to gates.%s", retiredMergeInGateKey, parentAlignGateKey)}
-}
-
-// migrateCoverageScopes rewrites the retired scope coverage of every gates mapping entry to scope diff.
-// It returns one line per rewrite, in the order of the entries; the entry's other fields and comments stay.
-func migrateCoverageScopes(gates *yaml.Node) []string {
-	var lines []string
-	for i := 0; i+1 < len(gates.Content); i += 2 {
-		entry := gates.Content[i+1]
-		if entry.Kind != yaml.MappingNode {
-			continue
-		}
-		scope := mappingValue(entry, "scope")
-		if scope == nil || scope.Kind != yaml.ScalarNode || scope.Value != retiredScopeCoverage {
-			continue
-		}
-		scope.Value = scopeDiff
-		lines = append(lines, fmt.Sprintf("gates.%s: scope %s retired, migrated to scope %s", gates.Content[i].Value, retiredScopeCoverage, scopeDiff))
-	}
-	return lines
-}
-
-// gateMapping returns a flow mapping node holding a copy of the tiers list and the scope.
-func gateMapping(tiers *yaml.Node, scope string) *yaml.Node {
-	list := *tiers
-	list.Content = slices.Clone(tiers.Content)
-	list.Style = yaml.FlowStyle
-	scalar := func(value string) *yaml.Node {
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
-	}
-	return &yaml.Node{
-		Kind:    yaml.MappingNode,
-		Tag:     "!!map",
-		Style:   yaml.FlowStyle,
-		Content: []*yaml.Node{scalar("tiers"), &list, scalar("scope"), scalar(scope)},
-	}
-}
-
-// joinWithAnd joins names with commas and a final "and".
-func joinWithAnd(names []string) string {
-	if len(names) == 1 {
-		return names[0]
-	}
-	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 // mappingKeyIndex returns the index of key in mapping's Content, or -1 when the mapping holds no such key.

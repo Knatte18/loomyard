@@ -68,14 +68,10 @@ const (
 	ReconcileActionVanishedMidWalk ReconcileAction = "vanished_mid_walk"
 )
 
-// WarpBindingOutcome describes the result of the warp-URL binding backfill, which each reconcile pass runs once.
+// WarpBindingOutcome describes how the recorded warp-URL binding compares with the warp side's origin remote.
 type WarpBindingOutcome string
 
 const (
-	// WarpBindingOutcomeRecorded means no binding existed yet,
-	// and the reconcile pass wrote one from the warp side's origin remote.
-	WarpBindingOutcomeRecorded WarpBindingOutcome = "recorded"
-
 	// WarpBindingOutcomePresent means a binding already exists and normalizes to the warp side's origin remote.
 	// In that case nothing is written.
 	WarpBindingOutcomePresent WarpBindingOutcome = "present"
@@ -84,20 +80,10 @@ const (
 	// the record is left untouched and the reconcile pass still succeeds.
 	WarpBindingOutcomeDiverged WarpBindingOutcome = "diverged"
 
-	// WarpBindingOutcomeSkipped means the warp side has no origin remote to read.
-	// That is a legitimate state, such as a synthetic test hub or a locally-initialised warp, not an error.
+	// WarpBindingOutcomeSkipped means there is nothing to compare.
+	// The warp side has no origin remote to read, as in a synthetic test hub or a locally-initialised warp,
+	// or the board records no binding.
 	WarpBindingOutcomeSkipped WarpBindingOutcome = "skipped"
-
-	// WarpBindingOutcomeDeferred means no binding existed and the reconcile pass did not write one.
-	// The board worktree was dirty, or the write itself failed.
-	// The backfill waits for the next reconcile call.
-	WarpBindingOutcomeDeferred WarpBindingOutcome = "deferred"
-
-	// WarpBindingOutcomeRecordFailed means the CLI handler's commit or push of the backfilled record failed.
-	//
-	// The reconcile pass never returns this value.
-	// Only the CLI handler sets it, since the commit and push run after the pass has returned.
-	WarpBindingOutcomeRecordFailed WarpBindingOutcome = "record_failed"
 )
 
 // ReconcilePairResult describes the outcome for one warp↔weft pair.
@@ -121,10 +107,10 @@ type ReconcileResult struct {
 	// Pairs is the ordered list of per-worktree reconcile outcomes.
 	Pairs []ReconcilePairResult `json:"pairs"`
 
-	// WarpBinding is the outcome of the warp-URL binding backfill, which runs once per reconcile pass.
-	// It runs after the pair loop and is never reported per pair.
+	// WarpBinding is the outcome of comparing the recorded warp-URL binding with the warp origin.
+	// It runs once per reconcile pass, after the pair loop, and is never reported per pair.
 	//
-	// The binding is a hub-wide fact written to the board directory;
+	// The binding is a hub-wide fact held in the board directory;
 	// reporting it per pair would leave unclear which pair owns it.
 	//
 	// The CLI handler builds its own envelope, so this tag documents intent only.
@@ -134,15 +120,6 @@ type ReconcileResult struct {
 	// Like that outcome, it is a once-per-pass, repo-wide field, never a per-pair one.
 	// Its JSON tag documents intent only, since the CLI handler never serializes this struct.
 	WarpBindingDetail string `json:"warp_binding_detail,omitempty"`
-
-	// HubDetails names each retired hub artifact the sweep kept or could not remove, one entry per path.
-	// Like the binding outcome, it is a once-per-pass, hub-level field, never a per-pair one.
-	HubDetails []string `json:"hub_details,omitempty"`
-
-	// BoltAnchor is the once-per-pass verdict on the hub-wide anchor marker on the board.
-	// It reads "removed", or "kept: <reason>" while the marker stays,
-	// and it is empty for a hub with no such marker.
-	BoltAnchor string `json:"bolt_anchor,omitempty"`
 }
 
 // Reconcile walks the warp worktrees reachable from layout l and restores a valid paired topology.
@@ -153,10 +130,7 @@ type ReconcileResult struct {
 // A blank marker fails that pair alone and leaves its wiring untouched.
 // A weft that carries a move record fails its pair the same way, with the record's way forward as the error.
 // A weft with no committed marker gets the one its content implies, committed and handed to a detached push.
-// After the pair loop it retires the hub-wide marker on the board once every weft carries its own.
-// It reports that verdict in BoltAnchor.
-// It then sweeps the retired portal links and the old hub workspace file.
-// It reports what it kept in HubDetails.
+// After the pair loop it compares the recorded warp binding with the warp origin and reports the outcome.
 func (t *Topology) Reconcile(l *lymcwd.Location) (res ReconcileResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -242,7 +216,7 @@ func (t *Topology) Reconcile(l *lymcwd.Location) (res ReconcileResult, err error
 			}
 		} else if repairWiring {
 			// Read after any recreation above, so a pair whose weft came back carrying its own marker is wired at that anchor.
-			wiredLayout, markerOK := migrateWeftMarker(rec, l.HubPath, weftPath, slug, &pr)
+			wiredLayout, markerOK := settleWeftMarker(rec, l.HubPath, weftPath, slug, &pr)
 			if markerOK {
 				t.repairPairWiring(rec, wiredLayout, slug, warpBranch, &pr, weftWorktreeExists)
 			} else if pr.Action == "" {
@@ -261,24 +235,14 @@ func (t *Topology) Reconcile(l *lymcwd.Location) (res ReconcileResult, err error
 		result.Pairs = append(result.Pairs, pr)
 	}
 
-	// The board marker goes before the binding backfill, so the backfill finds a clean board.
-	boltAnchor, boltAnchorErr := retireBoltAnchorMarker(rec, l)
-	if boltAnchorErr != nil {
-		boltAnchor = boltAnchorKeptPrefix + boltAnchorErr.Error()
-	}
-	result.BoltAnchor = boltAnchor
-
-	result.WarpBinding, result.WarpBindingDetail = t.reconcileWarpBinding(rec, l)
-
-	// The sweep runs before the regeneration, so the regeneration does not warn about artifacts the sweep removed.
-	result.HubDetails = sweepRetiredHubArtifacts(rec, l)
+	result.WarpBinding, result.WarpBindingDetail = reconcileWarpBinding(l)
 
 	regenerateAfterVerb(rec, l, "reconcile")
 
 	return result, nil
 }
 
-// migrateWeftMarker judges the anchor marker of the weft worktree at weftPath, which belongs to the pair slug.
+// settleWeftMarker judges the anchor marker of the weft worktree at weftPath, which belongs to the pair slug.
 // It reports the pair's Location, read from its own marker, and whether wiring may go on.
 //
 // A marker that is blank in the working tree fails the pair in pr.Error.
@@ -287,7 +251,7 @@ func (t *Topology) Reconcile(l *lymcwd.Location) (res ReconcileResult, err error
 // A weft with no committed marker gets an anchor derived from the tree committed on it,
 // and the commit goes to a detached push; the anchor value is noted in pr.Detail.
 // A failed spawn of that push is noted in pr.Detail too, since the next detached push carries the commit.
-func migrateWeftMarker(rec *Mutations, hubPath, weftPath, slug string, pr *ReconcilePairResult) (*lymcwd.Location, bool) {
+func settleWeftMarker(rec *Mutations, hubPath, weftPath, slug string, pr *ReconcilePairResult) (*lymcwd.Location, bool) {
 	current, err := lymcwd.NamedWorktree(hubPath, slug)
 	if err != nil {
 		pr.Error = fmt.Sprintf("read the anchor: %v", err)
@@ -333,26 +297,11 @@ func migrateWeftMarker(rec *Mutations, hubPath, weftPath, slug string, pr *Recon
 	return migrated, true
 }
 
-// reconcileWarpBinding backfills the once-per-hub .lym-warp record from the warp origin remote.
-// It exists for hubs that predate the binding.
+// reconcileWarpBinding compares the .lym-warp record with the warp origin remote.
 // It runs once per reconcile call, after the pair loop, and never per pair.
-// It never returns an error: a binding backfill is a convenience that must not fail or downgrade a reconcile verdict,
-// so any failure is folded into a Deferred outcome.
-// rec is the recorder of the current reconcile call.
-// The branch that calls writeWarpBinding records KindFileWritten at the .lym-warp path under boardDir;
-// without that record the write would be an uncovered hub-visible addition.
-func (t *Topology) reconcileWarpBinding(rec *Mutations, l *lymcwd.Location) (WarpBindingOutcome, string) {
-	boardDir := BoltDir(l.HubPath)
-
-	// Re-seed the weft repo's operational excludes on every reconcile pass.
-	// The seeding is idempotent and otherwise runs only from a weft-git verb or a wiring call.
-	// A hub wired by an earlier binary would never pick up a newly added artifact pattern,
-	// and the dirty-board gate below reads the status those patterns govern,
-	// so a hub that runs no weft-git verb would defer its backfill forever.
-	// A seeding failure is not fatal: the board worktree's excludes self-heal on the next weft-git verb,
-	// and the gate simply sees whatever git reports.
-	_ = seedWeftArtifactExcludes(boardDir)
-
+// It writes nothing and never returns an error:
+// the comparison is a convenience that must not fail or downgrade a reconcile verdict.
+func reconcileWarpBinding(l *lymcwd.Location) (WarpBindingOutcome, string) {
 	// The read-only `git remote get-url` falls outside the Fabric Git Invariant's mutating-warp-git rule.
 	// It still targets the warp worktree.
 	originOut, err := gitexec.Run([]string{"remote", "get-url", "origin"}, l.WorktreePath())
@@ -363,40 +312,23 @@ func (t *Topology) reconcileWarpBinding(rec *Mutations, l *lymcwd.Location) (War
 		return WarpBindingOutcomeSkipped, ""
 	}
 
-	recorded, found := readWarpBinding(boardDir)
-	if found {
-		if normalizeWarpURL(recorded) == normalizeWarpURL(origin) {
-			return WarpBindingOutcomePresent, ""
-		}
-
-		detail := fmt.Sprintf("recorded warp binding %s does not match warp origin %s", recorded, origin)
-		if warpURLTransportIdentity(recorded) == warpURLTransportIdentity(origin) {
-			// The record does not describe the transport in use,
-			// so a transport-only spelling difference is advisory, not a genuine divergence: it is surfaced but never fatal.
-			detail += "; the two spellings differ only by transport, which is advisory: the record does not describe the transport in use"
-		}
-		// Divergence is reported, never overwritten and never fatal.
-		// Reconcile is the repair verb, and an unrelated URL mismatch must not block it.
-		return WarpBindingOutcomeDiverged, detail
+	recorded, found := readWarpBinding(BoltDir(l.HubPath))
+	if !found {
+		return WarpBindingOutcomeSkipped, "no warp binding is recorded"
+	}
+	if normalizeWarpURL(recorded) == normalizeWarpURL(origin) {
+		return WarpBindingOutcomePresent, ""
 	}
 
-	// Bolt.Commit stages all changes. That is safe at clone time, when the board was created seconds earlier.
-	// At reconcile time, a long-lived board may carry unrelated uncommitted content.
-	// A backfill commit would sweep that content up and push it.
-	// This check is read-only and runs before anything is written, so no half-written state is ever left behind.
-	dirty, _, statusErr := worktreeDirty(scopeAll, boardDir)
-	if statusErr != nil {
-		return WarpBindingOutcomeDeferred, fmt.Sprintf("board status check failed: %v", statusErr)
+	detail := fmt.Sprintf("recorded warp binding %s does not match warp origin %s", recorded, origin)
+	if warpURLTransportIdentity(recorded) == warpURLTransportIdentity(origin) {
+		// The record does not describe the transport in use,
+		// so a transport-only spelling difference is advisory, not a genuine divergence: it is surfaced but never fatal.
+		detail += "; the two spellings differ only by transport, which is advisory: the record does not describe the transport in use"
 	}
-	if dirty {
-		return WarpBindingOutcomeDeferred, "board worktree has uncommitted changes; backfill deferred to avoid sweeping them into an unrelated commit"
-	}
-
-	if err := writeWarpBinding(boardDir, origin); err != nil {
-		return WarpBindingOutcomeDeferred, fmt.Sprintf("write warp binding: %v", err)
-	}
-	rec.Append(KindFileWritten, filepath.Join(boardDir, WarpBindingFileName), "")
-	return WarpBindingOutcomeRecorded, fmt.Sprintf("recorded warp binding %s", origin)
+	// Divergence is reported, never overwritten and never fatal.
+	// Reconcile is the repair verb, and an unrelated URL mismatch must not block it.
+	return WarpBindingOutcomeDiverged, detail
 }
 
 // restoreWeftLockDir recreates an existing weft worktree's missing .weft lock directory.

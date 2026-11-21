@@ -11,7 +11,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -150,7 +149,7 @@ func ConfigSpec() configengine.Spec {
 			"finalize_fix_max_lines":     configengine.CategoryCrossPair,
 			"finalize_fix_review_rounds": configengine.CategoryCrossPair,
 		},
-		// A file still holding a retired key loads and reconcile prunes it.
+		// The local and machine layers refuse a retired key.
 		// publish_verify belongs to the hub's publish gate.
 		// The co-author and trailer keys are not carried into the credit keys, since their values are co-author lines.
 		RetiredKeys: map[string]configengine.Category{
@@ -222,24 +221,4 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	}
 
 	return cfg, nil
-}
-
-// retiredKeyRenames maps each retired landing.yaml key onto the key that replaced it.
-var retiredKeyRenames = []yamlengine.KeyRename{
-	{From: "require_pr_to_base", To: "deploy_branches"},
-	{From: "merge_fix_attempts", To: "parent_align_fix_attempts"},
-}
-
-// MigrateConfig rewrites a landing.yaml document for lym config reconcile.
-// It returns the rewritten bytes and one line per rewrite.
-// Each retired key is renamed to the key that replaced it, keeping its value, an empty list included.
-// When the document already holds the replacement key, that key is kept and the retired key is dropped.
-// A document without a retired key is returned unchanged, so a migrated file is unchanged on a second pass.
-// A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
-func MigrateConfig(existing []byte) ([]byte, []string, error) {
-	migrated, lines, err := yamlengine.RenameKeys([]byte(ConfigTemplate()), existing, retiredKeyRenames)
-	if err != nil {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate landing config: %w", err))
-	}
-	return migrated, lines, nil
 }

@@ -18,7 +18,7 @@ import (
 )
 
 // prepareRunSettings validates the run_settings and profile of one task payload before the store write.
-// It migrates run_settings in place, so the board stores the migrated value.
+// It replaces run_settings with its validated form, so the board stores the validated value.
 // A payload with neither field passes untouched.
 // run_settings must be an object of module name to keys, and profile must be a string;
 // a non-empty profile must name a run profile that loadProfiles returns.
@@ -31,13 +31,13 @@ func prepareRunSettings(b *boardengine.Board, fields map[string]any, strandName 
 	if !settingsPresent && !profilePresent {
 		return "", nil
 	}
-	var migrated map[string]any
+	var validated map[string]any
 	if settingsPresent {
 		var err error
-		if migrated, err = migrateRunSettings(settingsValue); err != nil {
+		if validated, err = validateRunSettings(settingsValue); err != nil {
 			return "", err
 		}
-		fields["run_settings"] = migrated
+		fields["run_settings"] = validated
 	}
 	profile, isString := profileValue.(string)
 	if profilePresent && !isString {
@@ -63,7 +63,7 @@ func prepareRunSettings(b *boardengine.Board, fields map[string]any, strandName 
 	}
 	changed := profilePresent && profile != stored.Profile
 	if settingsPresent {
-		same, err := sameRunSettings(stored.RunSettings, migrated)
+		same, err := sameRunSettings(stored.RunSettings, validated)
 		if err != nil {
 			return "", err
 		}
@@ -135,8 +135,8 @@ func refuseBeamOrchOutsideBeam(b *boardengine.Board, strandName string, name age
 		strandName, name.Slug, parentOrch)
 }
 
-// migrateRunSettings returns a payload's run_settings value migrated and validated, as module name to keys.
-func migrateRunSettings(value any) (map[string]any, error) {
+// validateRunSettings returns a payload's run_settings value validated, as module name to keys.
+func validateRunSettings(value any) (map[string]any, error) {
 	requested, isObject := value.(map[string]any)
 	if value != nil && !isObject {
 		return nil, fmt.Errorf("run_settings must be an object of module name to keys, got %T", value)
@@ -145,15 +145,15 @@ func migrateRunSettings(value any) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	migrated := make(map[string]any, len(documents))
+	validated := make(map[string]any, len(documents))
 	for module, document := range documents {
 		var keys map[string]any
 		if err := yaml.Unmarshal(document, &keys); err != nil {
-			return nil, fmt.Errorf("run_settings for module %q: decode migrated keys: %w", module, err)
+			return nil, fmt.Errorf("run_settings for module %q: decode validated keys: %w", module, err)
 		}
-		migrated[module] = keys
+		validated[module] = keys
 	}
-	return migrated, nil
+	return validated, nil
 }
 
 // sameRunSettings reports whether two run settings values are equal as the board stores them;

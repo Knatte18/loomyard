@@ -40,13 +40,11 @@
 // A key the operator set, added or removed is kept, and reported under `differs` when the template holds it otherwise.
 // A file with no base yet gains each template key it lacks and keeps every value it holds.
 // It reports under `differs` a value the template holds otherwise.
-// It also renames a recipe block or `defaults` entry held under a recipe's former name, keeping its value.
-// An example is `loom` for `tapestry`.
-// A former block beside a current one is dropped only when it equals the current block.
-// A differing one stays, and reconcile reports it under `unsettled` as `<entry>.<from>: differs from <entry>.<to>`.
-// The operator settles it by hand.
 // Seed-Child refuses a profile or `defaults` that holds a recipe only under its former name.
-// The refusal names that reconcile as the way forward.
+// `loom` for `tapestry` is one such case.
+// The refusal names the hand rename with `lym config profiles` as the way forward.
+// The tapestry recipe's plan perch keys are set under the `tapestry` module, not under `loom`.
+// `plan_max_bounces` is one such key.
 // Each profile, like `defaults`, is one whole entry,
 // and `lym config profiles --set <name>='<json object>'` adds or replaces one whole entry.
 // A dotted key sets one value inside a profile and keeps the rest, as in `--set docs.darn.loom.code_max_bounces=0`.

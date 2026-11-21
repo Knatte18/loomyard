@@ -328,12 +328,9 @@ func TestRunRelay(t *testing.T) {
 	t.Run("RefusedHubMailsTheOperatorOnceAndExitsWithTheRefusal", func(t *testing.T) {
 		t.Parallel()
 		bothTokens := slackengine.Credentials{BotToken: "xoxb-secret", AppToken: "xapp-secret", AppID: "A1"}
-		withOnlyAnOlderSetupChannel := func(r *relayRun) {
+		withNoChannelMap := func(r *relayRun) {
 			if err := os.Remove(r.geom.ChannelMapPath); err != nil {
 				r.t.Fatalf("Remove = %v", err)
-			}
-			if err := slackengine.WriteSetup(r.geom.SetupPath, slackengine.Setup{ChannelID: "C7", OperatorID: testOperator}); err != nil {
-				r.t.Fatalf("WriteSetup = %v", err)
 			}
 		}
 		tests := []struct {
@@ -347,14 +344,11 @@ func TestRunRelay(t *testing.T) {
 			{"BotTokenAloneNamesTheAppLevelTokenAndPostsToThePrimeChannel",
 				slackengine.Credentials{BotToken: "xoxb-secret"}, nil,
 				[]string{"app-level token (xapp-)", "lym slack login", "lym slack start"}, testChannel},
-			{"BotTokenAloneWithOnlyAnOlderSetupChannelPostsThere",
-				slackengine.Credentials{BotToken: "xoxb-secret"}, withOnlyAnOlderSetupChannel,
-				[]string{"app-level token (xapp-)", "lym slack login", "lym slack start"}, "C7"},
+			{"BotTokenAloneWithNoChannelMapPostsNothing",
+				slackengine.Credentials{BotToken: "xoxb-secret"}, withNoChannelMap,
+				[]string{"app-level token (xapp-)", "lym slack login", "lym slack start"}, ""},
 			{"AppLevelTokenAloneNamesTheBotTokenAndPostsNothing",
 				slackengine.Credentials{AppToken: "xapp-secret", AppID: "A1"}, nil,
-				[]string{"bot token (xoxb-)", "lym slack login", "lym slack start"}, ""},
-			{"AppLevelTokenAloneWithOnlyAnOlderSetupChannelPostsNothing",
-				slackengine.Credentials{AppToken: "xapp-secret", AppID: "A1"}, withOnlyAnOlderSetupChannel,
 				[]string{"bot token (xoxb-)", "lym slack login", "lym slack start"}, ""},
 			{"BothTokensAndNoSetupNamesTheOperatorVerbAndPostsToThePrimeChannel",
 				bothTokens, func(r *relayRun) {

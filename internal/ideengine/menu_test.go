@@ -76,8 +76,8 @@ func addChildWorktree(t *testing.T, container, mainWorktreePath, name string, wi
 	}
 }
 
-// writeBoard writes the board config and a board tasks.json holding tasksJSON under the hub at container.
-func writeBoard(t *testing.T, container, tasksJSON string) {
+// writeBoard writes the board config and a board.json holding the comma-joined entriesJSON under the hub at container.
+func writeBoard(t *testing.T, container, entriesJSON string) {
 	t.Helper()
 
 	configDir := configengine.ConfigDir(fabricengine.BoardDir(container))
@@ -94,8 +94,9 @@ func writeBoard(t *testing.T, container, tasksJSON string) {
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("failed to create board dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(boardDir, "tasks.json"), []byte(tasksJSON), 0o644); err != nil {
-		t.Fatalf("failed to write tasks.json: %v", err)
+	boardJSON := `{"version":1,"entries":[` + entriesJSON + `]}`
+	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(boardJSON), 0o644); err != nil {
+		t.Fatalf("failed to write board.json: %v", err)
 	}
 }
 
@@ -129,7 +130,7 @@ func TestMenuScenario(t *testing.T) {
 	}
 
 	// The steps below rely on this board config, which exists only from this line on.
-	writeBoard(t, container, `{"tasks":[]}`)
+	writeBoard(t, container, "")
 
 	if !t.Run("requires lym dir", func(t *testing.T) {
 		addChildWorktree(t, container, mainWorktreePath, "child", false)
@@ -196,7 +197,7 @@ func TestMenuScenario(t *testing.T) {
 	t.Run("numeric selection", func(t *testing.T) {
 		addChildWorktree(t, container, mainWorktreePath, "child1", true)
 		addChildWorktree(t, container, mainWorktreePath, "child2", true)
-		writeBoard(t, container, `{"tasks":[{"slug":"child1","title":"Task 1"},{"slug":"child2","title":"Task 2"}]}`)
+		writeBoard(t, container, `{"id":0,"slug":"child1","title":"Task 1","kind":"task"},{"id":1,"slug":"child2","title":"Task 2","kind":"task"}`)
 
 		var launchCount int
 		originalLauncher := CodeLauncher

@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // TestCommit_TwoSided_WarpFirstOrdering asserts that a two-sided Fabric.Commit's weft commit
@@ -200,17 +201,17 @@ func TestCommit_InvokesPushRecorder(t *testing.T) {
 	})
 }
 
-// writeFabricAnchor writes anchor as the .lym-anchor marker in warpPath's hub board directory.
+// writeFabricAnchor writes anchor as the .lym-anchor marker in the records sibling of the worktree at warpPath.
 // A later lymcwd.ResolveWorktree call then resolves the anchor instead of falling back to a cwd-derived ".".
 // The writeAnchor helper in lymcwd_test.go cannot be imported across packages, so this copy duplicates it.
 func writeFabricAnchor(t *testing.T, warpPath, anchor string) {
 	t.Helper()
 
-	boardDir := fabricengine.BoardDir(filepath.Dir(warpPath))
-	if err := os.MkdirAll(boardDir, 0o755); err != nil {
-		t.Fatalf("mkdir board dir: %v", err)
+	recordsDir := weftname.SiblingPath(filepath.Dir(warpPath), filepath.Base(warpPath))
+	if err := os.MkdirAll(recordsDir, 0o755); err != nil {
+		t.Fatalf("mkdir records dir: %v", err)
 	}
-	anchorPath := filepath.Join(boardDir, lymcwd.AnchorFileName)
+	anchorPath := filepath.Join(recordsDir, lymcwd.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte(anchor), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
 	}

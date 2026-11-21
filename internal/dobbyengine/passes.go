@@ -48,9 +48,8 @@ type RunView struct {
 	DriverLockHeld bool
 	// Covered reports whether a pause entry covers the hub or the slug.
 	Covered bool
-	// Held reports whether a live pause entry of the run's own scope is an adopt pause or a bolt-hold entry.
-	// An adopt pause carries pauserecord.AdoptCaller, or the legacy pauserecord.HoldCaller, and only a hand lifts it.
-	// A bolt-hold entry carries pauserecord.BoltHoldCaller, and the dobby lifts it itself.
+	// Held reports whether a live pause entry of the run's own scope is a bolt-hold entry.
+	// It carries pauserecord.BoltHoldCaller, and the dobby lifts it itself.
 	Held bool
 	// NoSlot reports whether the run takes no slot under max_runs: a pawl run whose landing hold does not stand.
 	NoSlot bool

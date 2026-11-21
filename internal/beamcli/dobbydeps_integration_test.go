@@ -137,7 +137,7 @@ func TestHubDobbyDeps_PrimeTickEnsuresRelay(t *testing.T) {
 	if err := slackengine.WriteCredentials(geom.TokenPath, slackengine.Credentials{BotToken: "xoxb-test", AppToken: "xapp-test", AppID: "A1"}); err != nil {
 		t.Fatalf("WriteCredentials = %v", err)
 	}
-	if err := slackengine.WriteSetup(geom.SetupPath, slackengine.Setup{ChannelID: "C1", OperatorID: "U1"}); err != nil {
+	if err := slackengine.WriteSetup(geom.SetupPath, slackengine.Setup{OperatorID: "U1"}); err != nil {
 		t.Fatalf("WriteSetup = %v", err)
 	}
 	// The relay runs only while an orch's slack button is on, so one orch's button is pressed.

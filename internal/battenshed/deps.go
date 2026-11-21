@@ -328,7 +328,7 @@ type SeedChildDeps struct {
 	ChildDriver func(recipe string) (string, error)
 	// ReadRunSettings returns the Board task's run profile and settings, read afresh each call; SeedChild sets the Recipe.
 	ReadRunSettings func(ctx context.Context) (RunSettings, error)
-	// PrepareRunSettings returns each module's migrated local-layer document, the task's keys laid over the profile's block.
+	// PrepareRunSettings returns each module's local-layer document, the task's keys laid over the profile's block.
 	// An empty profile takes the recipe's default profile, and a recipe with none takes the task's settings alone.
 	// An error wrapping ErrInvalidRunSettings (unknown profile, no block, bad key) goes to Stuck; other errors are hard.
 	PrepareRunSettings func(settings RunSettings) (map[string][]byte, error)

@@ -1421,11 +1421,11 @@ var keptA = [][3]string{
 
 // TestLoad asserts Store.Load's handling of board.json.
 // A missing file yields an empty store, and nil depends_on and labels normalize to empty slices.
-// The version-1 and old tier-and-type shapes load, and a Save round-trips them.
+// The version-1 shape loads, and a Save round-trips it.
 // An unknown version or a corrupt file is an error.
 // It also pins the kept keys:
-// an entry key or top-level key this binary does not know survives every write path with its exact digits;
-// it sits after the known fields in key order, and the retired tier and type are still dropped.
+// an entry key or top-level key this binary does not know survives every write path with its exact digits,
+// and it sits after the known fields in key order.
 func TestLoad(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1483,51 +1483,12 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "a nil depends_on becomes an empty slice",
-			body: `{"version":1,"entries":[{"id":0,"slug":"task1","title":"Task 1","tier":3,"type":"feature"}]}`,
+			body: `{"version":1,"entries":[{"id":0,"slug":"task1","title":"Task 1","kind":"task"}]}`,
 			check: func(t *testing.T, tasks []boardengine.Task) {
 				if len(tasks) != 1 || tasks[0].DependsOn == nil || len(tasks[0].DependsOn) != 0 {
 					t.Errorf("want one entry with an empty non-nil DependsOn, got %+v", tasks)
 				}
 			},
-		},
-		{
-			name: "a task's stored priority is dropped and a note's kept",
-			body: `{"version":1,"entries":[{"id":0,"slug":"t","kind":"task","priority":"high"},{"id":1,"slug":"n","kind":"note","priority":"low"}]}`,
-			check: func(t *testing.T, tasks []boardengine.Task) {
-				if len(tasks) != 2 || tasks[0].Priority != "" || tasks[1].Priority != boardengine.PriorityLow {
-					t.Errorf("loaded %+v; want the task without a priority and the note low", tasks)
-				}
-			},
-			save:     true,
-			wantKeys: [][3]string{{"t", "priority", ""}, {"n", "priority", `"low"`}},
-		},
-		{
-			name: "a task's and a grouping project's recorded owner is dropped and a beam project's kept",
-			body: `{"version":1,"entries":[` +
-				`{"id":0,"slug":"t","kind":"task","owner_machine":"box"},` +
-				`{"id":1,"slug":"g","kind":"project","owner_machine":"box"},` +
-				`{"id":2,"slug":"b","kind":"project","beam":true,"owner_machine":"box"}]}`,
-			check: func(t *testing.T, tasks []boardengine.Task) {
-				if len(tasks) != 3 || tasks[0].OwnerMachine != "" || tasks[1].OwnerMachine != "" || tasks[2].OwnerMachine != "box" {
-					t.Errorf("loaded %+v; want no owner on the task and the grouping project and box on the beam", tasks)
-				}
-			},
-			save:     true,
-			wantKeys: [][3]string{{"t", "owner_machine", ""}, {"g", "owner_machine", ""}, {"b", "owner_machine", `"box"`}},
-		},
-		{
-			name: "a task's and a grouping project's recorded beam colour is dropped and a beam project's kept",
-			body: `{"version":1,"entries":[` +
-				`{"id":0,"slug":"t","kind":"task","beam_color":"#7d2d6b"},` +
-				`{"id":1,"slug":"g","kind":"project","beam_color":"#7d2d6b"},` +
-				`{"id":2,"slug":"b","kind":"project","beam":true,"beam_color":"#7d2d6b"}]}`,
-			check: func(t *testing.T, tasks []boardengine.Task) {
-				if len(tasks) != 3 || tasks[0].BeamColor != "" || tasks[1].BeamColor != "" || tasks[2].BeamColor != "#7d2d6b" {
-					t.Errorf("loaded %+v; want no colour on the task and the grouping project and #7d2d6b on the beam", tasks)
-				}
-			},
-			save:     true,
-			wantKeys: [][3]string{{"t", "beam_color", ""}, {"g", "beam_color", ""}, {"b", "beam_color", `"#7d2d6b"`}},
 		},
 		{
 			name: "a kind with no labels key becomes an empty labels list",
@@ -1539,50 +1500,13 @@ func TestLoad(t *testing.T) {
 			},
 		},
 		{
-			name: "the version-1 shape loads and Save keeps legacy_done",
-			body: `{"version":1,"entries":[{"id":4,"slug":"a","title":"A","kind":"task","labels":["bug"],"depends_on":[]}],"legacy_done":["old"]}`,
+			name: "a version-1 entry loads as stored",
+			body: `{"version":1,"entries":[{"id":4,"slug":"a","title":"A","kind":"task","labels":["bug"],"depends_on":[]}]}`,
 			check: func(t *testing.T, tasks []boardengine.Task) {
 				if len(tasks) != 1 || tasks[0].Slug != "a" || tasks[0].Kind != boardengine.KindTask || len(tasks[0].Labels) != 1 || tasks[0].Labels[0] != "bug" {
 					t.Errorf("loaded %+v; want entry a as a task labelled bug", tasks)
 				}
 			},
-			save:         true,
-			saveContains: []string{`"legacy_done"`},
-		},
-		{
-			name: "the old tier-and-type shape converts on Load and Save writes kind and labels",
-			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","tier":1,"type":"bug","brief":"[infra] fix it","depends_on":[],"zz_scalar":9007199254740993}]}`,
-			check: func(t *testing.T, tasks []boardengine.Task) {
-				if len(tasks) != 1 || tasks[0].Kind != boardengine.KindTask || strings.Join(tasks[0].Labels, ",") != "bug,infra" || tasks[0].Brief != "fix it" {
-					t.Errorf("loaded %+v; want a task labelled bug, infra with the stripped brief", tasks)
-				}
-			},
-			save:         true,
-			saveContains: []string{`"kind":"task"`, `"labels"`},
-			saveAbsent:   []string{`"tier"`, `"type"`},
-			wantKeys:     [][3]string{{"a", "zz_scalar", "9007199254740993"}},
-			saveExact: `{
-  "version": 1,
-  "entries": [
-    {
-      "id": 0,
-      "handle": "T1",
-      "slug": "a",
-      "title": "A",
-      "kind": "task",
-      "labels": [
-        "bug",
-        "infra"
-      ],
-      "issues": [],
-      "depends_on": [],
-      "isolated": false,
-      "brief": "fix it",
-      "body": "",
-      "zz_scalar": 9007199254740993
-    }
-  ]
-}`,
 		},
 		{
 			name: "set-status keeps kept keys after the known fields in key order",

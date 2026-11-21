@@ -661,7 +661,7 @@ func fabricVocabularyFailures(t *testing.T, base string) ([]string, int) {
 			}
 			f := file.AST(t, parser.ParseComments|parser.SkipObjectResolution)
 			bareIdent, bareLiteralOrComment, hostHit := fabricVocabularyHits(f)
-			if bareScope && !fabricvocab.SkipsBareCheck(dir) && failsBareCheck(dir, bareIdent, bareLiteralOrComment) {
+			if bareScope && !fabricvocab.SkipsBareCheck(dir) && (bareIdent || bareLiteralOrComment) {
 				fail(rel, "bare weft/warp token outside the owner set")
 			}
 			if hostScope && hostHit {
@@ -689,16 +689,6 @@ func fabricVocabularyFailures(t *testing.T, base string) ([]string, int) {
 		}
 	})
 	return failures, scanned
-}
-
-// failsBareCheck reports whether a file in dir fails the bare-token check, given its hits.
-// fabricvocab.ConfigsyncOwnerDir passes on a literal-or-comment-only hit and fails on an identifier hit.
-// Any other directory reaching it is not an owner, so it fails on either kind of hit.
-func failsBareCheck(dir string, bareIdent, bareLiteralOrComment bool) bool {
-	if dir == fabricvocab.ConfigsyncOwnerDir {
-		return bareIdent
-	}
-	return bareIdent || bareLiteralOrComment
 }
 
 // hostPhrases are the fabric-sense "host X" phrases fabric-vocabulary-rule polices, checked
@@ -855,31 +845,6 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 			_, _, hostHit := fabricVocabularyHits(f)
 			if !hostHit {
 				t.Error("expected the host-phrase rule to still fire for internal/fabricengine")
-			}
-		})
-
-		t.Run("configsync_row_passes_on_literal_and_comment_but_fails_on_identifier", func(t *testing.T) {
-			f := parseWithComments(t, "package configsync\n\n"+
-				"// legacyFabricConfigModules names the pre-cutover warp.yaml/weft.yaml files.\n"+
-				"var legacyFabricConfigModules = []string{\"warp\", \"weft\"}\n")
-			bareIdent, bareLiteralOrComment, _ := fabricVocabularyHits(f)
-			if bareIdent {
-				t.Error("literal-and-comment-only fixture unexpectedly produced an identifier hit")
-			}
-			if !bareLiteralOrComment {
-				t.Fatal("expected the literal/comment hit to be detected")
-			}
-			if failsBareCheck(fabricvocab.ConfigsyncOwnerDir, bareIdent, bareLiteralOrComment) {
-				t.Error("configsync row must pass on a literal/comment-only hit")
-			}
-
-			identFixture := parseWithComments(t, "package configsync\n\nvar weftModule = \"m\"\n")
-			identHit, _, _ := fabricVocabularyHits(identFixture)
-			if !identHit {
-				t.Fatal("expected the identifier hit to be detected")
-			}
-			if !failsBareCheck(fabricvocab.ConfigsyncOwnerDir, identHit, true) {
-				t.Error("configsync row must still fail on an identifier hit")
 			}
 		})
 

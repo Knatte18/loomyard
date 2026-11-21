@@ -11,7 +11,7 @@
 // A key missing inside a list element is the one gap fill cannot close, and is an error.
 // The result is resolved through envsource's markers once, after the merge.
 // A default- or worktree-layer file holding units the template lacks still loads.
-// Open-map entries and retired keys do not count as such units.
+// Open-map entries do not count as such units, and a retired key is one.
 // The load logs a Warn naming the file, the keys and the `lym config reconcile` that removes them.
 // The warning is logged once per file and key list in a process.
 // A module may list entries that match nothing, such as `lenses`' `remove`.
@@ -86,10 +86,6 @@
 // [StackLayers] is the one place layers are merged:
 // the present files merge unexpanded in stack order under the spec's open maps;
 // a list, scalar or open map from a higher layer replaces the lower one whole.
-// A [Spec] may set a `MigrateLayer` hook, which rewrites each present file's bytes in memory before the merge.
-// The hook runs ahead of the retired-key drop.
-// So a load reads the value a retired key carried in a layer no reconcile has rewritten yet.
-// The hook's lines are discarded, and no file is written.
 // A [Stack] also names, in `Origins`, the highest layer holding each top-level key.
 // The merged document is expanded once, against `Board` for a hub-wide module and `Anchor` otherwise.
 //
@@ -118,8 +114,8 @@
 // A [Spec] may also map a top-level key to a `HubOnlyWayForward` text, for a key only the hub's file sets.
 // The key still loads from the hub layers.
 // The run-settings refusal in `internal/configreg` ends with that text as its way forward.
-// Every load drops the retired keys from the stacked document before it fills the template.
-// So a layer not yet reconciled still loads, and no loader reads a retired key.
+// In a default or worktree layer a retired key is an unknown key like any other:
+// the load warns, no loader reads it, and only `lym config reconcile --apply` removes it.
 // No cleanup deletes a local override file.
 // Seed-Child removes a local file when it rewrites the pair's local layer to equal the task's run settings.
 // Reconcile removes a local file whose retired keys it pruned to nothing.
@@ -139,7 +135,7 @@
 // An empty or comment-only machine file is dropped as an empty local file is.
 // [Set] and [Edit] check a machine write with [ValidateMachine] as they check a local one.
 // A refused key writes nothing.
-// A retired key recorded [CategoryMachine] is admitted and dropped from the stacked document without a warning.
+// A retired key recorded [CategoryMachine] is admitted, and no loader reads it.
 //
 // # Open maps
 //
@@ -164,7 +160,7 @@
 // [TemplateUnder] reads the base layer's file and does the same.
 // A caller judging a file above the base therefore composes nothing itself.
 // Every judging path uses the effective template:
-// the load's unknown-key warning, template fill and missing-key check, [BelowLayer] and [Provenance].
+// the load's unknown-key warning, template fill and missing-key check and [Provenance].
 // A value no document names, or a non-scalar value, is an [ErrInvalid] error.
 // It names the shipped values and the `lym config` command that sets the selector in the base.
 // Only the base layer picks.

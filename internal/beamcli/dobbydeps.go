@@ -14,7 +14,6 @@ import (
 	"maps"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -46,7 +45,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/proc"
-	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -139,85 +137,6 @@ func syncBoltHoldEntries(prime *lymcwd.Location, recordPath, boardDir string, sc
 	return err
 }
 
-// upgradeLockFileName is the lock of the first read after an upgrade, which sits beside the pause record.
-const upgradeLockFileName = "upgrade-first-read.lock"
-
-// hubUpgradeDeps fills the seams of the first read after an upgrade over the hub of prime, for the dobby of the worktree.
-// Its notice goes through the nearest live orch of the worktree, scoped to slug.
-// Entries are read from the pause record at recordPath, and pullBolt is the catch-up's own Bolt pull.
-// Classify reads the run through the act rule's inputs, so its owner is judged through the machine registry.
-// An entry drops through tender's lift, by the entry's exact scope, caller and pause time.
-func hubUpgradeDeps(prime, worktree *lymcwd.Location, slug, recordPath string, pullBolt func() error) dobbyengine.UpgradeDeps {
-	boardDir := fabricengine.BoardDir(prime.HubPath)
-	var tender tenderengine.Deps
-	tenderBuilt := false
-	return dobbyengine.UpgradeDeps{
-		Lock: filepath.Join(filepath.Dir(recordPath), upgradeLockFileName),
-		Now:  time.Now,
-		Entries: func() ([]pauserecord.Entry, error) {
-			record, err := pauserecord.Read(recordPath)
-			return record.Live, err
-		},
-		PullBolt: pullBolt,
-		Classify: func(slug string) (dobbyengine.UpgradeRun, error) {
-			records, inputs, err := pairteardown.ReadRun(prime, slug)
-			if err != nil {
-				return dobbyengine.UpgradeRun{}, err
-			}
-			state := runfsm.Derive(records).State
-			return dobbyengine.UpgradeRun{
-				OwnedHere: !inputs.OwnedElsewhere,
-				HasRecord: records.BattenFound,
-				Terminal:  state == runfsm.Landed || state == runfsm.Cancelled,
-				Queued:    state == runfsm.Queued,
-				Subject:   inputs.AdoptSubject,
-			}, nil
-		},
-		PauseIntent: func(slug string) (bool, error) {
-			err := tendercli.RecordPauseIntent(prime, slug)
-			if errors.Is(err, fabricengine.ErrHandedOver) {
-				return true, nil
-			}
-			return false, err
-		},
-		Machine: machinename.Name,
-		OpenFixTask: func(subject string) (string, bool, error) {
-			board, err := boardengine.OpenHub(prime.HubPath)
-			if err != nil {
-				return "", false, err
-			}
-			tasks, err := board.ListTasksFull()
-			if err != nil {
-				return "", false, err
-			}
-			project := subject
-			if subject == boardengine.RootSubject {
-				project = ""
-			}
-			task, found := fronttask.FrontOf(tasks, project, fronttask.ActionAdoptCheck)
-			return task.Slug, found, nil
-		},
-		AdoptDir: fabricengine.AdoptScratchDir(prime.HubPath),
-		WriteHold: func(hold boardengine.Hold) (boardengine.HoldWrite, error) {
-			return boardengine.WriteHold(boardDir, hold)
-		},
-		Drop: func(entry pauserecord.Entry) error {
-			if !tenderBuilt {
-				built, _, err := tendercli.HubDeps(prime, os.Getenv(agentname.StrandNameEnv))
-				if err != nil {
-					return err
-				}
-				tender, tenderBuilt = built, true
-			}
-			_, err := tenderengine.Lift(tender, tenderengine.EntryRef{Scope: entry.Scope, Caller: entry.Caller, PausedAt: entry.PausedAt})
-			return err
-		},
-		Notice: func(line string) error {
-			return requirePosted(orchcli.NotifyFromScoped(worktree, slug, dobbyProgram, line))
-		},
-	}
-}
-
 // hubDobbyDeps fills every seam of dobbyengine.Run over the hub of prime, for the dobby of geom.
 // Its log lines are appended to the file the dobby tells.
 // The dobby's own working directory is the hub root, so every path comes from prime and geom.
@@ -296,7 +215,6 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		PullBolt:     func() error { return pullBolt(geom.HubRoot, boardDir) },
 		ArchiveOwner: func() error { return archiveOwnerTips(prime, geom.WorktreeName) },
 		CatchUp:      catchUp,
-		Upgrade:      hubUpgradeDeps(prime, worktree, geom.Slug, pause.RecordPath, catchUp.PullBolt),
 		SyncBoltHold: func(_ context.Context, scope, held []string) error {
 			return syncBoltHoldEntries(prime, pause.RecordPath, boardDir, scope, held)
 		},
@@ -309,9 +227,6 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 			return spawnPass(geom, slug, continuePass, noReopen)
 		},
 		TearDownLeftovers: func(pairs []dobbyengine.LeftoverPair) <-chan map[string]error { return tearDownLeftovers(prime, pairs) },
-		MarkKeptCancels: func() ([]string, error) {
-			return battencli.MarkKeptCancels(prime, geom, parents)
-		},
 		Notice: func(_ context.Context, line string) error {
 			return requirePosted(orchcli.NotifyFromScoped(worktree, geom.Slug, dobbyProgram, line))
 		},

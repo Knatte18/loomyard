@@ -13,12 +13,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/creelconfig"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubregistry"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
@@ -50,71 +47,6 @@ func TestNames(t *testing.T) {
 	}
 }
 
-// TestModules_RegisterTheirReinterpretation pins that a module carries the change a binary made to one of its values,
-// so the hub-wide reconcile rewrites a hub's file with no hand step.
-// creel carries the change of trusted_hubs from shortnames to repository names.
-// shuttle carries the change of edit_loop_edits from every edit to the edits that return a file to earlier content.
-// agents carries the retirement of the treadle-judge and treadle-targeting roles.
-//
-//testtiming:keep pins the module-to-reinterpretation table, which TestPrepareRunSettings never asserts
-func TestModules_RegisterTheirReinterpretation(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	tests := []struct {
-		module string
-		wantID string
-	}{
-		{module: "agents", wantID: agentconfig.RetiredRolesReinterpretation},
-		{module: "creel", wantID: creelconfig.TrustedHubsRepositoryReinterpretation},
-		{module: "shuttle", wantID: shuttleengine.EditLoopRepeatsReinterpretation},
-	}
-	for _, tt := range tests {
-		t.Run(tt.module, func(t *testing.T) {
-			t.Parallel()
-			module, ok := Lookup(tt.module)
-			if !ok {
-				t.Fatalf("Lookup(%q) found no module", tt.module)
-			}
-			if len(module.Reinterpretations) != 1 || module.Reinterpretations[0].ID != tt.wantID || module.Reinterpretations[0].Rewrite == nil {
-				t.Errorf("%s Reinterpretations = %+v; want one with ID %q and a rewrite", tt.module, module.Reinterpretations, tt.wantID)
-			}
-		})
-	}
-}
-
-// TestMarkUnresolvable pins which resolve failures drop a trusted_hubs entry and which end the rewrite.
-func TestMarkUnresolvable(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	unreadable := errors.New("the per-user state directory is unreadable")
-	tests := []struct {
-		name          string
-		err           error
-		wantUnmarked  bool
-		wantUnchanged bool
-	}{
-		{"ShortnameNamingNoHub", fmt.Errorf("no hub: %w", hubregistry.ErrUnresolved), false, false},
-		{"HubWithNoRepository", fmt.Errorf("no origin: %w", hubregistry.ErrNoRepository), false, false},
-		{"UnreadableState", unreadable, true, true},
-		{"NoError", nil, true, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got := markUnresolvable(tt.err)
-			if marked := errors.Is(got, creelconfig.ErrShortnameUnresolvable); marked == tt.wantUnmarked {
-				t.Errorf("markUnresolvable(%v) matches ErrShortnameUnresolvable = %v; want %v", tt.err, marked, !tt.wantUnmarked)
-			}
-			if tt.wantUnchanged && got != tt.err {
-				t.Errorf("markUnresolvable(%v) = %v; want it unchanged", tt.err, got)
-			}
-			if tt.err != nil && (got == nil || got.Error() != tt.err.Error() || !errors.Is(got, tt.err)) {
-				t.Errorf("markUnresolvable(%v) = %v; want the same text and the same chain", tt.err, got)
-			}
-		})
-	}
-}
-
 // TestModules_SeedOnlyAndHubWideFlags pins which modules carry the SeedOnly, HubWide and SeedsFromPrime flags.
 // Seed-only modules hold an open-ended, operator-owned key set; hub-wide modules describe facts about the hub.
 // The test body lists the members of each set.
@@ -139,6 +71,11 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 		spec := m.Spec()
 		if spec.Name != m.Name || string(spec.Template) != m.Template() || !slices.Equal(spec.OpenMaps, m.OpenMaps) || !slices.Equal(spec.PerNameMaps, m.PerNameMaps) || spec.HubWide != m.HubWide || spec.SeedOnly != m.SeedOnly {
 			t.Errorf("Modules(): module %q Spec() = {Name: %q, OpenMaps: %v, PerNameMaps: %v, HubWide: %v, SeedOnly: %v}; want it to carry the entry's own name, template text, open maps, per-name maps, hub-wide flag and seed-only flag", m.Name, spec.Name, spec.OpenMaps, spec.PerNameMaps, spec.HubWide, spec.SeedOnly)
+		}
+	}
+	for _, engine := range shuttleengines.ConfigModules() {
+		if _, found := Lookup(engine.Name); !found {
+			t.Errorf("Lookup(%q) found no module; want every shuttle engine's config module registered", engine.Name)
 		}
 	}
 }
@@ -436,7 +373,7 @@ func TestLookup(t *testing.T) {
 
 // TestFingerprint pins what the registry fingerprint is sensitive to.
 // It changes with a module's template, flags, open maps, per-name maps, name and overlay documents.
-// It does not change with its Migrate hook or an empty overlay.
+// It does not change with its CheckLoad hook or an empty overlay.
 func TestFingerprint(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -470,8 +407,8 @@ func TestFingerprint(t *testing.T) {
 		{"added OpenMaps entry", func(m []Module) { m[1].OpenMaps = []string{"b"} }, false},
 		{"added PerNameMaps entry", func(m []Module) { m[1].PerNameMaps = []string{"b"} }, false},
 		{"renamed module", func(m []Module) { m[0].Name = "gamma" }, false},
-		{"swapped Migrate hook", func(m []Module) {
-			m[0].Migrate = func(existing []byte) ([]byte, []string, error) { return existing, nil, nil }
+		{"swapped CheckLoad hook", func(m []Module) {
+			m[0].CheckLoad = func(configengine.Dirs) error { return nil }
 		}, true},
 	}
 	want := fingerprintOf(base())

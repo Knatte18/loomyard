@@ -204,7 +204,6 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 // parentName is the told parent agent name; an empty one renders parentdirective's no-parent variant.
 // failureDigest is the prior failed record's reasons and suspect paths, or "" when the batch was not failed;
 // it fills the optional failure_digest marker, rendered as "none" when empty.
-// Being optional, the marker leaves an older deployed stencil rendering.
 // uncommittedPaths is the caller-rendered block of the worktree's uncommitted paths grouped by who wrote them;
 // it fills the optional uncommitted_paths marker, rendered as "none" when empty.
 // cardFixer says a failed card gate call goes through a cold fixer first;
@@ -538,7 +537,7 @@ func RenderBatchIndex(batches []batcher.Batch) string {
 // A waiting batch's line names its need and the verb that resumes it.
 // st may be nil (as-yet-uninitialized run).
 // Only the numbers of the walked batches are looked up, and each is positive,
-// so a legacy -1 record in st.Batches never surfaces here.
+// so a record under a non-positive number in st.Batches never surfaces here.
 func RenderProgress(batches []batcher.Batch, st *State) string {
 	if st == nil {
 		return "none"

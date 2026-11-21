@@ -59,9 +59,8 @@ type fakeSubstrates struct {
 	// battenSeeded and battenState are what batten's run reads answer.
 	battenSeeded bool
 	battenState  string
-	// runRecord is the batten run record the follow-up reads, absent when nil; ownerPaused is whether an owner pause covers the slug.
-	runRecord   *shedengine.Status
-	ownerPaused bool
+	// runRecord is the batten run record the follow-up reads, absent when nil.
+	runRecord *shedengine.Status
 	// claim is the board entry's status when claimFound; claimReadErr fails the read.
 	claim        *string
 	claimFound   bool
@@ -245,7 +244,6 @@ func (f *fakeSubstrates) teardown() *Teardown {
 			}
 			return *f.runRecord, true, nil
 		},
-		ownerHeld: func(string) (bool, error) { return f.ownerPaused, nil },
 		removeCancelledRecord: func(string) (bool, error) {
 			if f.runRecord == nil || f.runRecord.State != shedengine.StateCancelled {
 				return false, nil
@@ -424,9 +422,8 @@ func TestTeardown_CallSequence(t *testing.T) {
 		// wantEnded and wantSurvivors are the EndedProcesses and Survivors of the returned session result.
 		wantEnded     []runproc.Ended
 		wantSurvivors []runproc.Ended
-		// runRecord and ownerPaused script the follow-up's reads; wantWarning is the Result.Warning a Run must return.
+		// runRecord scripts the follow-up's read; wantWarning is the Result.Warning a Run must return.
 		runRecord   *shedengine.Status
-		ownerPaused bool
 		wantWarning string
 		// removeCancelledErr fails the deletion of a cancelled run record.
 		removeCancelledErr error
@@ -837,7 +834,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:     Request{Slug: "slug"},
 			runRecord:   runShed,
 			wantCalls:   sessionEnd + ",landed,archive,remove,dropRunMail,readClaim",
-			wantWarning: "the batten run of slug still stands; " + BattenFollowUp("slug", *runShed, true, false),
+			wantWarning: "the batten run of slug still stands; " + BattenFollowUp("slug", *runShed, true),
 		},
 		{
 			name:      "CancelledRecordIsDeletedAfterTheRemovalAndGivesNoWarning",
@@ -856,15 +853,6 @@ func TestTeardown_CallSequence(t *testing.T) {
 			removeCancelledErr: errors.New("disk full"),
 			wantCalls:          sessionEnd + ",landed,archive,remove,dropRunMail,readClaim,removeCancelledRecord",
 			wantWarning:        `the pair of slug is removed but its cancelled run record is not: disk full; way forward: run "lym batten cleanup --apply", which removes it`,
-		},
-		{
-			name:        "OwnerPauseCoveringTheSlugGivesNoWarning",
-			run:         true,
-			quiets:      []quietState{{quiet: true}},
-			request:     Request{Slug: "slug"},
-			runRecord:   runShed,
-			ownerPaused: true,
-			wantCalls:   sessionEnd + ",landed,archive,remove,dropRunMail,readClaim",
 		},
 		{
 			name:      "LeaveClaimGivesNoWarning",
@@ -1006,7 +994,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 				endedProcs: tt.endedProcs, endOwnedErr: tt.endOwnedErr, driverLockHeld: tt.driverLockHeld,
 				driverPID: tt.driverPID, driverFound: tt.driverFound, battenAlive: tt.battenAlive,
 				paused: tt.paused, hubEntry: tt.hubEntry, pausedErr: tt.pausedErr, awaitOrPassErr: tt.awaitOrPassErr, owned: tt.owned,
-				runRecord: tt.runRecord, ownerPaused: tt.ownerPaused, removeCancelledErr: tt.removeCancelledErr,
+				runRecord: tt.runRecord, removeCancelledErr: tt.removeCancelledErr,
 			}
 			td := f.teardown()
 			if tt.goos != "" {

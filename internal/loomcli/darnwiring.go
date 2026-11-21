@@ -1,6 +1,6 @@
 // darnwiring.go holds the wiring only a tree-scoped or darn run needs.
 // It holds the tree scope reader for `verify_source: tree_scope`, the verify source, and the Darn-Write row's seams.
-// It also holds the writer's Spec source, the agent rows' record check, and the rename of retired darn rows.
+// It also holds the writer's Spec source and the agent rows' record check.
 // A tapestry run leaves all of it unwired, but shares the merge base readers `pairMergeBase` and `taskMergeBase` build.
 
 package loomcli
@@ -18,7 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hardenshed"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -183,32 +182,6 @@ func darnDeps(l *lymcwd.Location, runID, recipe string) loomshed.DarnDeps {
 		},
 		CheckRecord: discussionRecordCheck(l, recipe),
 	}
-}
-
-// renameRetiredRows rewrites each retired row name in the run's status file onto its current name, as renames maps it.
-// The rename lets a run parked under an old name resume.
-// A live driver holding the run lock is left alone with a warning, since it runs the binary that wrote the old name;
-// a later verb renames them once that driver has stopped.
-func (c *loomCLI) renameRetiredRows(renames map[string]string) error {
-	renamed, err := shedengine.RenameProducers(shedengine.RenameRequest{
-		StatusPath:     c.shedPaths.StatusPath,
-		LockPath:       c.shedPaths.LockPath,
-		StatusLockPath: c.shedPaths.StatusLockPath,
-		Renames:        renames,
-		RunID:          c.runID,
-	})
-	if errors.Is(err, shedengine.ErrShedBusy) {
-		logger.Warn("loom: a live driver holds the run lock; left the retired row names in its status file", "status", c.shedPaths.StatusPath)
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if renamed {
-		logger.Info("loom: renamed retired rows in the status file", "status", c.shedPaths.StatusPath)
-	}
-
-	return nil
 }
 
 // wireTreeScope fills the verify Env fields that a recipe whose verify_source is tree_scope reads.

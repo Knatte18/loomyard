@@ -63,14 +63,14 @@
 // A TargetGroup holds that label's own Refs and, for a Rename group, its own Pairs and malformed RenameRaw bullets.
 // The flat Targets, Pairs, and RenameRaw fields are the union across the card's TargetGroups, in body order.
 // They serve consumers that read the card-level shape rather than the per-label groups.
-// Type (the first label seen) and TypeLabelCount are not validation state;
-// a check must key on TargetGroups, never on Type, or it reintroduces first-label-wins.
+// TypeLabelCount is not validation state;
+// a check must key on TargetGroups, never on a first label seen, or it reintroduces first-label-wins.
 // A Card also carries its Card Index fields (Number, Slug, Summary) and its own file's Title.
 // Its Uses list holds refs read or depended on, not targeted.
 // Its Intent prose states what and why.
 // Its inline ImpactSummary is a hard-capped one-line blast-radius conclusion.
 // ImpactSummaryTrailing captures any lines that follow it, which the validator reports as a defect.
-// Its per-label HasX presence bits are HasType, HasUses, HasIntent, HasImpactSummary and HasVerify.
+// Its per-label HasX presence bits are HasUses, HasIntent, HasImpactSummary and HasVerify.
 // RetiredLabels holds one entry per format-3 label the card body carries.
 // The optional Commit and Verify fields complete the card.
 //

@@ -22,8 +22,7 @@
 // `skip` and `verify_max_runs` are retired keys that ConfigSpec lists in RetiredKeys.
 // A board entry whose `run_settings` carries one seeds and the load drops the key;
 // `lym config reconcile` prunes them from a hub base.
-// LoadConfig refuses a scope other than empty, `off`, `partial` or `full`;
-// it reads a stored `partial` as `full` and sets Config.ScopeWasPartial, so a base not yet edited still loads.
+// LoadConfig refuses a scope other than empty, `off` or `full`, a stored `partial` included.
 // A declared command holds the placeholder `{baseline_dir}`:
 // the directory the capture writes its profile files to and the compare reads them from.
 // It may hold `{meta_dir}`, the capture's metadata directory, a sibling of the capture directory named with `.meta`.
@@ -32,7 +31,7 @@
 // A command holding the retired `{skip_file}` placeholder is refused when it runs.
 // CheckRetiredPlaceholders refuses the same command before the run starts while drift is enabled,
 // and the Preflight row of a recipe with Drift rows runs it.
-// The refusal names `lym config reconcile --layer default --apply` and the edit of that step as the way forward.
+// The refusal names the hand edit of that step that removes the placeholder as the way forward.
 // It addresses the operator or the hub orch, since a task or beam session is refused hub-wide config writes.
 // A step's `dir` resolves by gateslot.ResolveCommandDir and means what a gate tier's `dir` means:
 // relative to the worktree root, absolute as written, and the worktree's anchored directory when unset.
@@ -43,11 +42,6 @@
 // A capture then needs `lym drift capture` and `lym loom resume`, and a compare needs `lym loom resume`.
 // CheckDirs refuses the same `dir` over the loaded config against a told worktree;
 // a hub-wide `lym config drift` write runs it against the prime.
-// RebaseDirsOntoRoot, the module's reinterpretation DirBaseReinterpretation, runs once per hub.
-// It moves a relative `dir` written against the anchored directory onto the root.
-// A dir naming a directory under the prime's anchored directory is rewritten to name it from the root.
-// One naming a directory under the root alone is kept as already written for it.
-// One naming neither is flagged with `lym config drift --set <step>.dir=<dir>`.
 // `capture` and `compare` are executable keys: only the template and the hub's board default layer set them.
 // A first declaration sets a step whole, as in `lym config drift --set 'capture={command: ..., timeout_min: N}'`.
 // Once a step is declared, `--set` also changes one of its keys alone and refuses a key the step lacks.
@@ -61,17 +55,6 @@
 // a `diff` other than `lines` or `command`;
 // a `key_patterns` entry CompileKeyPatterns refuses;
 // and `diff: command` with no `compare` declared, which names `compare` as the key to set.
-// MigrateConfig renames `baseline_model` to `expect_model` and `verify_model` to `judge_model`.
-// It renames `verify_interactive` to `judge_interactive`.
-// It keeps each value.
-// It removes each whole `-e NAME={skip_file}` argument, in its `--env` forms too, from the capture and compare commands.
-// It leaves an argument that ends a quoted shell string, as in `sh -c 'docker run -e A={skip_file}'`.
-// The quote that closes the string follows such an argument, so FlagDiffMode names it instead.
-// Drift's registration runs MigrateConfig for a hub base at reconcile, the walk of a new build included.
-// It also runs it for a task's run settings, with a Warn.
-// FlagDiffMode, the module's reinterpretation DiffModeReinterpretation, rewrites nothing.
-// It flags a `compare` set with no `diff`, a command holding `{skip_file}` and `scope: partial`.
-// Each flag carries its way forward.
 // Config.Step returns a declared step and refuses an undeclared one.
 // Config.StepWithHubEnv adds the env config module's variables beneath the step's own `env`.
 // Every row and verb that runs a command calls it.
@@ -90,16 +73,14 @@
 // A dotfile has no extension to drop, so its whole name is the test's name.
 //
 // Every record is JSON written through `internal/state`, so an unknown key survives a rewrite.
-// The scope record (`scope.json`) holds the recorded scope (`off`, `partial` or `full`) and its skipped tests.
+// The scope record (`scope.json`) holds the recorded scope (`off` or `full`).
 // It also holds when the baseline was awaited or deferred and what the checks record, which the Records section lists.
-// Legacy acceptance, compare and waiver fields stay readable, for the verdict and for an in-flight `partial` scope.
 // Verdict renders the `## Regression check` section a landing carries and runs no capture.
 // It reads the copies of `scope.json` and `judged.json` in the newest `Drift-Records` commit through ReadRecords,
 // or the files as they are on a run with no such commit.
 // The section holds:
 // the scope and, for `off`, its source;
 // a deferred capture, saying no compare ran;
-// for a legacy `partial` record, the cases its skip list left out;
 // the commit the counted baseline was captured at, from the oldest `Drift-Baseline` commit;
 // the diff mode, and under `command` that containment was the judge's;
 // the last check's counts of changed, expected, matching, reused and unexpected cells;
@@ -108,11 +89,10 @@
 // the files and keys marked as metadata, which no check compared;
 // each open range with its `why` and the judge's sentence;
 // and each amendment with who made it.
-// A record with no last check renders its legacy compare, acceptance and waiver fields.
-// A line above them says the check ran under the earlier Drift.
+// A record with no last check and no deferral renders a line saying the check did not run.
 // With no scope record Verdict renders nothing and creates no directory.
 // The capture record (`capture.json`) holds the state of the latest main capture (`running`, `passed` or `failed`).
-// It also holds the pid, HEAD, skipped tests, times, exit code, reason and log.
+// It also holds the pid, HEAD, times, exit code, reason and log.
 // A flag records that it exited 0 with no file written.
 //
 // # Capture
@@ -195,7 +175,6 @@
 // A Cell is a case added or removed, or a line changed, added or removed.
 // Old holds the baseline's value and New the current one.
 // DiffCaptures returns the cells in case order and then file order.
-// It skips a case it is told to leave out on both sides, which serves a run whose scope record skipped tests.
 // Volatile holds the `volatile_files` and `volatile_keys` lists, and the metadata marks of a run:
 // a file entry is a glob over a case's file name at any depth, or over its whole path when it holds a slash;
 // a key entry names a line key in every case.
@@ -388,8 +367,7 @@
 // The metadata marks are the scope record's joined with the merged expectation's, and CheckReport.Metadata holds them.
 // Under `lines` the current capture is taken through Deps.CaptureCurrent.
 // A capture that did not pass sets CaptureFault naming its log and the way forward;
-// the diff leaves out the cases of the scope record's skipped tests when its scope is the legacy `partial`;
-// the cells of the volatile lists and the metadata marks are dropped;
+// the cells of the volatile lists and the metadata marks are dropped from the diff;
 // each cell left is classified by Expectation.Cover, with Expectation.Uncovering listing the entries no cell uses.
 // Under `command` Deps.Compare runs the declared compare and the report carries its exit and log.
 // CheckReport.Findings renders the report:
@@ -483,8 +461,7 @@
 // It then records the scope once through WriteRecords when none is recorded.
 // The scope is `off` when `drift.scope` is `off`, with ScopeSource `drift.scope`.
 // Otherwise it is `full`, with the config's `diff`, `key_patterns` and volatile lists.
-// A config scope read from `partial` is recorded `full` with one Warn naming the key.
-// A recorded scope, `off`, `full` or an old `partial`, is kept;
+// A recorded scope, `off` or `full`, is kept;
 // a later config change changes neither it nor the recorded mode and patterns.
 // Scope off, a set awaited_at and a passed capture take no capture; a capture holding the lock is left running.
 // Otherwise it captures again.

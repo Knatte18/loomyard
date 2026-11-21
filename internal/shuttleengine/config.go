@@ -8,14 +8,12 @@
 package shuttleengine
 
 import (
-	"bytes"
 	"fmt"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -91,7 +89,7 @@ func (c Config) StartAllowance() time.Duration {
 
 // ConfigSpec returns shuttle's layered-load spec.
 // It carries the template and the per-key classification, which decides which keys a local override may hold.
-// It also carries the retired keys that an unreconciled layer may still hold.
+// It also carries the retired keys, which a local layer is refused by their category.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     "shuttle",
@@ -194,84 +192,4 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	cfg.Agents = agents
 
 	return cfg, nil
-}
-
-// MigrateConfig serves lym config reconcile.
-// It raises a below-floor or null poll_interval_ms in a shuttle.yaml document to the poll floor.
-// It also renames a legacy claude_deny_python to deny_python.
-// It returns the rewritten bytes and a line for each rewrite.
-// Everything else is carried through with its comments;
-// the loader never calls it.
-// A document that does not parse returns an error marked configengine.ErrInvalid.
-func MigrateConfig(existing []byte) ([]byte, []string, error) {
-	rewritten, line, err := yamlengine.RaiseIntFloor(existing, "poll_interval_ms", int(pollFloor.Milliseconds()))
-	if err != nil {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate shuttle config: %w", err))
-	}
-	var lines []string
-	if line != "" {
-		lines = append(lines, line)
-	}
-	rewritten, renameLine, err := renameDenyPython(rewritten)
-	if err != nil {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate shuttle config: %w", err))
-	}
-	if renameLine != "" {
-		lines = append(lines, renameLine)
-	}
-	return rewritten, lines, nil
-}
-
-// renameDenyPython renames a top-level claude_deny_python key to deny_python in place.
-// It keeps the value, position and line comment of the key.
-// It returns the rewritten document and one line describing the rewrite.
-// A document holding deny_python beside claude_deny_python keeps deny_python and drops the legacy key.
-// The returned line reports the dropped value.
-// A document holding neither key, or no content, comes back unchanged with an empty line.
-// A document that does not parse, or whose root is not a mapping, returns an error.
-func renameDenyPython(existing []byte) ([]byte, string, error) {
-	var document yaml.Node
-	if err := yaml.Unmarshal(existing, &document); err != nil {
-		return nil, "", fmt.Errorf("unmarshal yaml: %w", err)
-	}
-	if document.Kind != yaml.DocumentNode || len(document.Content) == 0 {
-		return existing, "", nil
-	}
-	root := document.Content[0]
-	if root.Kind != yaml.MappingNode {
-		return nil, "", fmt.Errorf("yaml root is not a mapping")
-	}
-
-	legacyIndex, currentIndex := -1, -1
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		switch root.Content[i].Value {
-		case "claude_deny_python":
-			legacyIndex = i
-		case "deny_python":
-			currentIndex = i
-		}
-	}
-	if legacyIndex < 0 {
-		return existing, "", nil
-	}
-
-	var line string
-	if currentIndex >= 0 {
-		line = fmt.Sprintf("claude_deny_python: %s dropped, deny_python already set", root.Content[legacyIndex+1].Value)
-		root.Content = append(root.Content[:legacyIndex], root.Content[legacyIndex+2:]...)
-	} else {
-		root.Content[legacyIndex].Value = "deny_python"
-		line = "claude_deny_python: renamed to deny_python"
-	}
-
-	var out bytes.Buffer
-	encoder := yaml.NewEncoder(&out)
-	encoder.SetIndent(2)
-	if err := encoder.Encode(&document); err != nil {
-		return nil, "", fmt.Errorf("encode yaml: %w", err)
-	}
-	if err := encoder.Close(); err != nil {
-		return nil, "", fmt.Errorf("encode yaml: %w", err)
-	}
-	return out.Bytes(), line, nil
 }

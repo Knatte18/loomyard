@@ -56,7 +56,7 @@ A key meeting no category is `CategoryNone` and the local layer may hold it.
 
 - No cleanup, `lym-cleanup` included, deletes a local override file.
   The only removals are Seed-Child rewriting the pair's local layer to equal the task's run settings;
-  and reconcile deleting a local file whose retired keys it pruned to nothing.
+  and reconcile deleting a local file whose unknown keys it pruned to nothing.
 - The git-ignored per-worktree `.env` stays an untracked route for marker-carrying denied keys;
   the local layer must not widen it.
 
@@ -71,7 +71,8 @@ Reconciling a hub's config after a binary change goes only through `hubreconcile
 ### Keys the template lacks
 
 Only the operator's `lym config reconcile` removes a key the running template lacks, from a hub base or worktree file.
-That applies when no retired key of the module covers the key; the command alone sets `configsync`'s `PruneUnknown`.
+A key a module retired is such a key like any other: the load warns of it and no loader reads it.
+The command alone sets `configsync`'s `PruneUnknown`.
 Every other reconcile keeps such a key and carries it in `configsync`'s `Result.Preserved`.
 That covers the binary-change walk, a clone and `lym fabric reconcile`.
 The walk logs it when it writes the file.
@@ -111,7 +112,7 @@ a caller adopts exactly one, except `runprofile`.
 
 ## Sparse hub base
 
-Rule: Writing a hub base file, from any package: only the units the hub tuned, never a template fill; only `internal/hubreconcile`'s one-time strip drops a template-equal unit.
+Rule: Writing a hub base file, from any package: only the units the hub tuned, never a template fill.
 
 ## Config reinterpretation
 

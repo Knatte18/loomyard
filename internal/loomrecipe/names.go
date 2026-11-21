@@ -1,5 +1,5 @@
 // names.go derives facts from the embedded recipes.
-// It gives the engine set, the row names and rows in file order, and the retired row names.
+// It gives the engine set, and the row names and rows in file order.
 // It also gives the amendment target and the entry number of each row.
 
 package loomrecipe
@@ -100,24 +100,6 @@ func Rows(recipe string) ([]RecipeRow, error) {
 		})
 	}
 	return rows, nil
-}
-
-// RetiredRowNames returns the sorted row names the named recipe's `retired` map declares:
-// the rows a run of an earlier version of the recipe may still stand at.
-// It reads only the recipe's `retired` map, not the arm-time renames.
-// It is empty for a recipe that retires none.
-// The recipe names are the shedrun.Recipe* constants; any other name is refused with an error naming it.
-func RetiredRowNames(recipe string) ([]string, error) {
-	parsed, err := parseEmbeddedRecipe(recipe)
-	if err != nil {
-		return nil, err
-	}
-	names := make([]string, 0, len(parsed.Retired))
-	for name := range parsed.Retired {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names, nil
 }
 
 // AmendmentTarget returns the optional `amendment_target` of the named recipe:

@@ -202,20 +202,12 @@
 // plan every Plan row, Parts-Write, Parts-Plan-Write, Drift-Baseline and Drift-Await;
 // webster every Webster row and every Code row (Code-Bouncer, Code-Burler-Review, Code-Burler-Fix);
 // webster also Drift-Verify, Drift-Recheck and Describe;
-// webster also Batchifier, a row only a past run's history holds;
 // merge Parent-Align and every Merge row;
 // publish-finalize PR-Review, Finalize and Friction-Reflect.
-// The table also maps, by the literals the report declares, rows that only a past run's history holds:
-// Publish, PR-Align, PR-Gate and PR-Rework count under publish-finalize;
-// Loom-Preflight counts under setup;
-// the Merge-In, Merge-Bouncer and Merge-Burler rows count under merge;
-// the Webster-Bouncer and Webster-Burler rows count under webster.
 // A darn run's setup also holds Preflight, Record-Write, Drift-Baseline, Drift-Await and Drift-Expect;
-// write Darn-Write and Describe, and each row the darn recipe retires counts under its successor's phase;
+// write Darn-Write and Describe;
 // review every Code-Review row (Code-Bouncer, Code-Burler-Review, Code-Burler-Fix), Drift-Verify and Drift-Recheck;
-// review also the Darn-Bouncer, Darn-Burler-Review and Darn-Burler-Fix rows a past run's history holds;
-// merge the Merge-In row a past run's history holds;
-// publish-finalize PR-Review, Finalize and Friction-Reflect, and the Publish, PR-Align and PR-Gate rows of a past run.
+// publish-finalize PR-Review, Finalize and Friction-Reflect.
 // A hardener run's setup holds Preflight and Record-Write;
 // review every Harden row (Harden-Bouncer, Harden-Burler-Review, Harden-Burler-Fix);
 // write Describe;
@@ -233,15 +225,12 @@
 // A wait is time the run spent on someone else, an interval of one kind.
 // The kinds, in the order an overlap is credited to them:
 // parent_review, a parent-review round from its request's opened_at to its verdict's recorded_at;
-// pr_gate, a batten change of the child into awaiting at PR-Gate, a row only a past run holds;
-// escalation, a change into awaiting at any other row;
+// escalation, a change into awaiting;
 // halt, a change into blocked or failed.
 // A change's wait runs from batten's entry for it to the next row of either history stamped after it.
 // A batten-row halt is an entry at one of batten's own rows, never Run-Shed.
 // It is an awaiting outcome, or a stuck outcome no OnStuck edge bounced (its routed_to is empty).
 // It is a wait of kind escalation when awaiting and halt otherwise, from its entry to the next row.
-// A batten stuck entry written before routed_to existed has it empty even when an edge bounced it,
-// so an older batten record reads such a bounce as a batten-row halt.
 // A wait with no later row and no verdict runs to the span's close, which is Sources.SnapshotAt for a run in flight.
 // An open wait in a run in flight therefore runs to the snapshot with no finding.
 // A parent-review round with no request opens no wait.

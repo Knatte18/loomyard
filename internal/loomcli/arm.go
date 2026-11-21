@@ -272,10 +272,6 @@ func (c *loomCLI) armAt(location *lymcwd.Location, verb string, args []string) (
 		return shedverbs.Spec{}, err
 	}
 
-	if err := c.renameRetiredRows(loomrecipe.RetiredRows(c.recipe)); err != nil {
-		return shedverbs.Spec{}, err
-	}
-
 	if err := c.loadRouting(); err != nil {
 		return shedverbs.Spec{}, err
 	}

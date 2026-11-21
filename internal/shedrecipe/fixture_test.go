@@ -71,7 +71,6 @@ func validPawlDeps(dir string) pawlengine.Deps {
 		RunID: "run-1",
 		Paths: pawlengine.Paths{
 			LandRequest:     filepath.Join(dir, "land-request.json"),
-			ReopenRequest:   filepath.Join(dir, "reopen-request.json"),
 			DobbyStopMarker: filepath.Join(dir, "dobby-stop"),
 			AwaitMarker:     filepath.Join(dir, "await-entered"),
 			HandOffMarker:   filepath.Join(dir, pawlengine.HandOffMarkerName),

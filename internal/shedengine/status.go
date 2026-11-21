@@ -181,7 +181,7 @@ type Takeover struct {
 // PauseRequestedBy, PauseBeforeBy and PauseAfterBy are set from outside beside the request they accompany.
 // They are cleared in the same write as the request.
 // EnteredRow is Shed-owned.
-// Its writers are the entry evaluation, the routed writes, Goto, Relaunch and RenameProducers.
+// Its writers are the entry evaluation, the routed writes, Goto and Relaunch.
 // Product is external-writer-owned and only ever carried through.
 // Cancel, PauseIntent and Takeover are outside-owned like PauseRequested: Shed never writes them.
 type Status struct {

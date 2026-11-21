@@ -1,7 +1,7 @@
 // sync_integration_test.go covers Sync.
 // Sync pushes through Bolt.Push, whose absorbing-lock coalescing loop lives in fabricengine.
 // A dirty board still commits and pushes.
-// .gitignore ignores the render manifest and loses the retired lock patterns.
+// .gitignore ignores the render manifest.
 // The absorbing push lock lives in the board checkout's lock directory.
 // No lock file is left beside the board's files.
 // skipPush still commits locally without advancing the remote.
@@ -83,7 +83,7 @@ type syncFixture struct {
 // It calls t.Parallel and no step does: the steps share the one repository, so they run serially.
 // The skip-push step runs first because it asserts the remote is still empty.
 // Each later step relies on the repository the earlier steps left behind.
-// The retire-legacy step runs last because it replaces the legacy files the earlier steps wrote.
+// The board-write step runs last because it replaces the files the earlier steps wrote.
 func TestSync_Scenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -97,9 +97,9 @@ func TestSync_Scenario(t *testing.T) {
 	}{
 		{"SkipPush_CommitsLocallyButDoesNotPush", stepSyncSkipPushCommitsLocallyButDoesNotPush},
 		{"DirtyBoard_CommitsAndPushes", stepSyncDirtyBoardCommitsAndPushes},
-		{"GitignoreIgnoresManifestAndDropsLockPatterns", stepSyncGitignoreIgnoresManifestAndDropsLockPatterns},
+		{"GitignoreIgnoresManifest", stepSyncGitignoreIgnoresManifest},
 		{"ConcurrentCallSerializesOnBoardPushLock", stepSyncConcurrentCallSerializesOnBoardPushLock},
-		{"RetireLegacy_CommitsBoardJSONAndLegacyDeletions", stepSyncRetireLegacyCommitsBoardJSONAndLegacyDeletions},
+		{"BoardWrite_CommitsBoardJSONWithNoLockFile", stepSyncBoardWriteCommitsBoardJSONWithNoLockFile},
 	}
 	for _, step := range steps {
 		if !t.Run(step.name, func(t *testing.T) { step.run(t, fixture) }) {
@@ -169,10 +169,10 @@ func stepSyncDirtyBoardCommitsAndPushes(t *testing.T, f *syncFixture) {
 	}
 }
 
-// stepSyncGitignoreIgnoresManifestAndDropsLockPatterns asserts Sync reduces .gitignore to the render manifest entry.
-func stepSyncGitignoreIgnoresManifestAndDropsLockPatterns(t *testing.T, f *syncFixture) {
+// stepSyncGitignoreIgnoresManifest asserts Sync appends the render manifest entry to a .gitignore that lacks it.
+func stepSyncGitignoreIgnoresManifest(t *testing.T, f *syncFixture) {
 	gitignorePath := filepath.Join(f.boardPath, ".gitignore")
-	writeBoardFile(t, f.boardPath, ".gitignore", "*.lock\n*.swaplock\n"+renderManifestFile+"\n")
+	writeBoardFile(t, f.boardPath, ".gitignore", "other\n")
 
 	if err := Sync(f.boardPath, false, false); err != nil {
 		t.Fatalf("Sync() error = %v; want nil", err)
@@ -182,7 +182,7 @@ func stepSyncGitignoreIgnoresManifestAndDropsLockPatterns(t *testing.T, f *syncF
 	if err != nil {
 		t.Fatalf("read .gitignore: %v", err)
 	}
-	if want := renderManifestFile + "\n"; string(got) != want {
+	if want := "other\n" + renderManifestFile + "\n"; string(got) != want {
 		t.Errorf(".gitignore = %q; want %q", got, want)
 	}
 }
@@ -220,22 +220,15 @@ func stepSyncConcurrentCallSerializesOnBoardPushLock(t *testing.T, f *syncFixtur
 	}
 }
 
-// stepSyncRetireLegacyCommitsBoardJSONAndLegacyDeletions asserts Sync commits board.json and the legacy deletions.
-// The step runs RetireLegacy on a synced board that tracked the legacy files.
+// stepSyncBoardWriteCommitsBoardJSONWithNoLockFile asserts Sync commits the board.json a board write made.
 // It then checks the tree is clean, with no lock file beside the board's files.
-func stepSyncRetireLegacyCommitsBoardJSONAndLegacyDeletions(t *testing.T, f *syncFixture) {
-	writeBoardFile(t, f.boardPath, legacyTasksFile, `[{"id":0,"slug":"alpha","title":"Alpha","depends_on":[]}]`)
-	writeBoardFile(t, f.boardPath, legacyNotesFile, `[]`)
-	if err := Sync(f.boardPath, false, false); err != nil {
-		t.Fatalf("initial Sync() error = %v", err)
-	}
-
-	b := New(Config{Path: f.boardPath, Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true})
-	if _, err := b.RetireLegacy(true); err != nil {
-		t.Fatalf("RetireLegacy() error = %v", err)
+func stepSyncBoardWriteCommitsBoardJSONWithNoLockFile(t *testing.T, f *syncFixture) {
+	b := New(Config{Path: f.boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: []Label{{Name: "bug"}}, SkipGit: true})
+	if _, err := b.UpsertTask(map[string]any{"slug": "alpha", "title": "Alpha", "kind": "task", "labels": []any{"bug"}}); err != nil {
+		t.Fatalf("UpsertTask() error = %v", err)
 	}
 	if err := Sync(f.boardPath, false, false); err != nil {
-		t.Fatalf("Sync() after retire error = %v", err)
+		t.Fatalf("Sync() after the write error = %v", err)
 	}
 
 	tracked, _, _, err := gitexec.RunGit([]string{"ls-files"}, f.boardPath)
@@ -244,11 +237,6 @@ func stepSyncRetireLegacyCommitsBoardJSONAndLegacyDeletions(t *testing.T, f *syn
 	}
 	if !strings.Contains(tracked, boardFile) {
 		t.Errorf("tracked files = %q; want %s committed", tracked, boardFile)
-	}
-	for _, name := range []string{legacyTasksFile, legacyNotesFile} {
-		if strings.Contains(tracked, name) {
-			t.Errorf("tracked files = %q; want %s deletion committed", tracked, name)
-		}
 	}
 	status, _, _, err := gitexec.RunGit([]string{"status", "--porcelain"}, f.boardPath)
 	if err != nil {

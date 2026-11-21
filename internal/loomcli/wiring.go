@@ -1316,7 +1316,6 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		MissingStatusWayForward: loomMissingStatusWayForward,
 		RerouteCapWayForward:    loomRerouteCapWayForward,
 		BudgetWayForward:        loomBudgetWayForward,
-		RetiredWayForward:       loomRetiredWayForward,
 	}
 
 	// wireDarn and wireLanding pass the list on to the Darn-Write writer and the landing conflict session.
@@ -1376,8 +1375,6 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 			return err
 		}
 		c.env.Pawl = pawl
-		// A run moved off a row its recipe retired gets the landing's side effects, which only a beam run has.
-		c.shedPaths.RetiredMove = pawlRetiredMove(location, seedSlug(location.WorktreeName), pawl)
 	}
 
 	c.location = location
@@ -1601,10 +1598,6 @@ const loomRerouteCapWayForward = "run \"lym loom resume\" in the task worktree o
 // loomBudgetWayForward is the told clause a bounce-budget-exhausted halt ends with, whichever row's budget ran out.
 // Only the resume grants a budget; a goto keeps the spent one.
 const loomBudgetWayForward = "run \"lym loom resume\" in the task worktree: the resume grants the row one more budget; a goto keeps the spent budget and grants none"
-
-// loomRetiredWayForward is the command a move off a retired row names as the way forward.
-// The resume steps the run again, so it is the command to name.
-const loomRetiredWayForward = "lym loom resume"
 
 // hubConfigWayForward is the trailing clause for a failed load of the hub-wide landing config:
 // reconciling the hub's config is what restores it.

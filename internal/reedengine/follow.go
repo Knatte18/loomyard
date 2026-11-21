@@ -18,7 +18,7 @@ import (
 const followSessionOption = "@lym_follow"
 
 // followingLocked reports whether the session's viewer follows the run, by reading the follow session option.
-// Only the trimmed value "off" reports false, so a session booted by an older lym, whose option is unset, follows.
+// Only the trimmed value "off" reports false, so a session whose option is unset follows.
 // A failed read reports false and is logged at Warn, so a broken read never moves a viewer.
 func (e *Engine) followingLocked() bool {
 	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), "#{"+followSessionOption+"}")
@@ -64,7 +64,7 @@ const followTargetFormat = "#{window_id} #{window_index} #{?#{@lym_own},1,0} #{?
 // It reads window options instead of reed state.
 // Among windows with the own option and not the overview option, it picks the highest-index one with a live pane.
 // With none, it picks the lowest-index window with the overview option, and with none of those, the empty string.
-// An overview window opened by an older lym has no overview marker, so it counts as an agent window.
+// An overview window with no overview marker counts as an agent window.
 // It wins only when no other agent window is live, which gives the same outcome as the overview fallback.
 // A line it cannot parse is skipped.
 func followTargetWindow(listing string) string {

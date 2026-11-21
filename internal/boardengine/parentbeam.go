@@ -38,7 +38,7 @@ func ParentBeam(tasks []Task, slug string) string {
 }
 
 // ReadTasks returns the entries the local board.json under boardDir holds, for callers that hold no open board.
-// It reads under the swap lock, folds a legacy file no further than a board read does, and writes nothing.
+// It reads under the swap lock and writes nothing.
 // An absent board file is an empty list.
 func ReadTasks(boardDir string) ([]Task, error) {
 	store := NewStore(boardDir)

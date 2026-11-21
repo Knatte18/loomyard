@@ -512,12 +512,11 @@ func TestWireJunctions_UpgradesLymOnlyWorktreeToBoth(t *testing.T) {
 	}
 }
 
-// TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName checks the exclude entry.
+// TestSeedGitExclude_AnchorsPattern checks the exclude entry.
 // It names exactly the one junction path fabric wires, not every same-named directory in the repo.
 // A gitignore pattern with no slash matches at any depth.
 // A bare "_lym" line would silently untrack a monorepo's own frontend/_lym/ on a subpath-anchored hub.
-// A hub that already holds the bare line must end up with the anchored pattern only.
-func TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName(t *testing.T) {
+func TestSeedGitExclude_AnchorsPattern(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -525,12 +524,6 @@ func TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName(t *testing.T) {
 
 	l := h.Location
 	slug := l.WorktreeName
-
-	// Seed the exclude file with the bare-name line an older binary wrote.
-	excludePath := excludeFilePath(t, l, slug)
-	if err := os.WriteFile(excludePath, []byte(lymdirs.LymDirName+"\n"), 0o644); err != nil {
-		t.Fatalf("seed legacy exclude line: %v", err)
-	}
 
 	if err := fabricengine.WireJunctions(l, slug, []string{lymdirs.LymDirName}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
@@ -542,7 +535,7 @@ func TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName(t *testing.T) {
 		t.Errorf(".git/info/exclude = %v; want it to contain the anchored pattern %q", lines, pattern)
 	}
 	if containsLine(lines, lymdirs.LymDirName) {
-		t.Errorf(".git/info/exclude = %v; want the legacy bare %q line replaced, not kept beside the anchored pattern",
+		t.Errorf(".git/info/exclude = %v; want no bare %q line beside the anchored pattern",
 			lines, lymdirs.LymDirName)
 	}
 

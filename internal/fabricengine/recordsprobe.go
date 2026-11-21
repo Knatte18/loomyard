@@ -139,13 +139,13 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 
 	// A weft carrying only the superseded anchor marker is unambiguously a weft.
 	// Recognising it here keeps the stale-marker error in clone.go reachable.
-	// That error names re-cloning as the migration remedy.
+	// That error names the marker rename as the remedy.
 	// Without this probe, a generic refusal would fire first and replace that specific, actionable message.
 	stalePresent, err := probeTreeHasPath(weftURL, probeDir, staleFabricAnchorName)
 	if err != nil {
 		return warpProbeResult{}, err
 	}
-	// The superseded marker also counts as a bound weft, so its migration error is reached, not a fresh-bind refusal.
+	// The superseded marker also counts as a bound weft, so its refusal is reached, not a fresh-bind refusal.
 	return warpProbeResult{WeftLooksLikeWeft: stalePresent, RecordedShortname: recordedShortname, ShortnameFound: shortnameFound, AnchorFound: stalePresent}, nil
 }
 

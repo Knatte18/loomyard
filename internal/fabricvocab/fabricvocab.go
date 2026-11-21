@@ -8,11 +8,6 @@ import (
 	"strings"
 )
 
-// ConfigsyncOwnerDir is the owner directory allowed to name the side tokens in string literals and comments.
-// It may not name them in identifiers.
-// Its literals are the on-disk legacy config filenames its migration must read by name.
-const ConfigsyncOwnerDir = "internal/configsync"
-
 // owners is the set of directories permitted to use the bare side tokens.
 // It governs the bare-token rule only; the fabric-sense host-phrase rule applies inside these directories too.
 // internal/hubforge names fabric's own geometry in its non-test .go files, so it owns the tokens.
@@ -23,7 +18,6 @@ var owners = map[string]bool{
 	"internal/weftname":     true,
 	"internal/gitkit":       true,
 	"internal/boardengine":  true,
-	ConfigsyncOwnerDir:      true,
 	"internal/hubforge":     true,
 	"internal/fabricvocab":  true,
 }
@@ -103,9 +97,9 @@ func IsOwner(dir string) bool {
 }
 
 // SkipsBareCheck reports whether dir is exempt from the bare-token check entirely.
-// Every owner directory is exempt except internal/configsync, which is still checked for identifier hits.
+// Every owner directory is exempt.
 func SkipsBareCheck(dir string) bool {
-	return owners[dir] && dir != ConfigsyncOwnerDir
+	return owners[dir]
 }
 
 // IsDocRoot reports whether first, a path's first segment, is a doc root.

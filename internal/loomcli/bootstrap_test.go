@@ -15,7 +15,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -63,7 +62,7 @@ func TestMustSpawnDriver(t *testing.T) {
 
 // TestResolveDriverStrandAction covers every arm of `resolveDriverStrandAction`.
 //
-//testtiming:keep pins the driver strand action over every strand shape: none, status-only, live, dead, retiring, full-name and legacy-named; its covering tests resolve it without asserting each arm
+//testtiming:keep pins the driver strand action over every strand shape: none, status-only, live, dead, retiring and full-name; its covering tests resolve it without asserting each arm
 func TestResolveDriverStrandAction(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -110,18 +109,6 @@ func TestResolveDriverStrandAction(t *testing.T) {
 			name:     "LiveFullNameDriverStrand",
 			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: "ly:task:driver", PaneID: "%0", Live: true}},
 			want:     driverStrandLive,
-			wantGUID: "g0",
-		},
-		{
-			name:     "LiveLegacyDriverStrand",
-			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: loomengine.LegacyLoomDriverStrandName, PaneID: "%0", Live: true}},
-			want:     driverStrandLive,
-			wantGUID: "g0",
-		},
-		{
-			name:     "DeadLegacyDriverStrand",
-			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: loomengine.LegacyLoomDriverStrandName, PaneID: "", Live: false}},
-			want:     driverStrandDead,
 			wantGUID: "g0",
 		},
 	}

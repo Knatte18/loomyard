@@ -194,8 +194,7 @@ func (p *BurlerFixProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 
 	// A row told to require fans runs the fixer fan its reviewer was spawned with,
 	// so a list edited between the halves cannot reach this round.
-	// A round with no recorded names can only hold a fixer an older binary spawned.
-	// It is probed as the single fixer that binary ran, and the refusal waits for that probe.
+	// A round with no recorded names is probed as a single fixer, and the refusal waits for that probe.
 	var unrecorded error
 	if p.requiresFans {
 		_, fixFan, recordedErr := readRecordedFans(p.runDir, round)

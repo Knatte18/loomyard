@@ -168,29 +168,21 @@
 // It is a dry run unless applied.
 // A per-name map entry holding the template's value is reported under `dropped` and left out of the written file.
 // Applying rewrites a file whenever the reconcile adds, removes or drops anything.
-// A module that retires keys or floors a value declares a migration, which reconcile runs over its present file first;
-// the dry run lists each rewrite under the module's `migrated` key;
-// applying writes the migrated file, even when the reconcile itself adds, removes and drops nothing.
+// A key the template lacks, a retired key included, is pruned only by this verb.
 // With no `--layer` it reconciles the worktree's own and local files.
 // `lym config reconcile --layer default` reconciles every file under the Bolt checkout's `_lym/config/` instead.
 // Those are the hub-wide modules' files and each per-worktree module's repo default.
-// Renamed keys are migrated, keys the template lacks are pruned and an absent file is seeded sparse.
+// Keys the template lacks are pruned and an absent file is seeded sparse.
 // Each entry carries the `seed` it started from.
 // A seed-only file, such as `profiles`, is never pruned down to the template.
-// Its migration runs first, such as renaming a profile's block held under a recipe's former name.
-// Then each template change is carried in against the template base kept beside the file as `<module>.template-base`.
+// Each template change is carried in against the template base kept beside the file as `<module>.template-base`.
 // An apply writes that template base.
 // A unit the file holds as the base does takes the template's value and is listed under `added`, `updated` or `removed`.
 // A unit the operator set is kept, and listed under `differs` when the template holds it otherwise.
-// A pair the module leaves for the operator to settle is listed under `unsettled`.
-// An example is a former recipe block that differs from the current one.
 // It never fills a base that is not seed-only.
-// Its dry run and apply list the one-time base strip under `stripped` as pending.
-// Only the hub reconcile of a start verb performs that strip.
-// The envelope then carries a top-level `base_strip` field saying so, and `--apply` writes no board marker.
 // `--apply` with `--layer default` passes the default-layer write guard above.
 // Under the board write lock it first runs a dry run.
-// So a file that fails to parse or migrate leaves every file unwritten.
+// So a file that fails to parse leaves every file unwritten.
 // It then writes, commits the written files in the Bolt checkout and pushes.
 // A write that fails part-way is undone by restoring the Bolt checkout's config files.
 // A write that is made but not committed, or committed but not pushed, is reported as an error.
@@ -199,6 +191,6 @@
 // A reconcile never reads or writes a machine file.
 // Any other `--layer` value is refused.
 // So is any reconcile whose worktree is the Bolt checkout itself.
-// Such a reconcile would strip the hub's files as a sparse worktree layer.
+// Such a reconcile would prune the hub's files as a sparse worktree layer.
 // Both refusals name the way forward.
 package configcli

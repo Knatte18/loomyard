@@ -13,6 +13,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+// testFailureKind is the gate key the records of these tests name.
+const testFailureKind FailureKind = "finalize"
+
 func TestLandingFailureRecord(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -36,7 +39,7 @@ func TestLandingFailureRecord(t *testing.T) {
 			t.Parallel()
 			p := newPaths(t)
 			want := LandingFailure{
-				Kind:        FailureKindPublish,
+				Kind:        testFailureKind,
 				Tier:        tier,
 				Tests:       []FailedTest{{Package: "example.com/m/a", Test: "TestA/sub"}},
 				LogPath:     filepath.Join(p.Dir, "verify-3.log"),
@@ -68,7 +71,7 @@ func TestLandingFailureRecord(t *testing.T) {
 	t.Run("trace fields round-trip and an untraced record writes none of their keys", func(t *testing.T) {
 		t.Parallel()
 		p := newPaths(t)
-		base := LandingFailure{Kind: FailureKindPublish, LogPath: filepath.Join(p.Dir, "verify-1.log"), Head: "abc123"}
+		base := LandingFailure{Kind: testFailureKind, LogPath: filepath.Join(p.Dir, "verify-1.log"), Head: "abc123"}
 		if err := WriteLandingFailure(p, base); err != nil {
 			t.Fatal(err)
 		}
@@ -101,24 +104,6 @@ func TestLandingFailureRecord(t *testing.T) {
 		}
 	})
 
-	t.Run("a record written before the tier field decodes with tier 0, and its row and target keys are ignored", func(t *testing.T) {
-		t.Parallel()
-		p := newPaths(t)
-		if err := os.WriteFile(p.LandingFailure, []byte("kind: plan_verify\nrow: Merge-In\ntarget: Webster-Burler\nlog_path: verify-1.log\nhead: abc123\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		got, ok, err := ReadLandingFailure(p)
-		if !ok || err != nil {
-			t.Fatalf("ReadLandingFailure = (_, %v, %v); want (_, true, nil)", ok, err)
-		}
-		if got.Tier != 0 || got.Kind != FailureKindPlanVerify {
-			t.Fatalf("record = %+v; want tier 0 and kind %q", got, FailureKindPlanVerify)
-		}
-		if got.Cards != nil || got.LaterRange != (CommitRange{}) || got.Untraced != nil {
-			t.Fatalf("record = %+v; want empty trace fields", got)
-		}
-	})
-
 	t.Run("malformed record is an error", func(t *testing.T) {
 		t.Parallel()
 		p := newPaths(t)
@@ -137,7 +122,7 @@ func TestLandingFailureRecord(t *testing.T) {
 		if err := os.WriteFile(log, []byte("output"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := WriteLandingFailure(p, LandingFailure{Kind: FailureKindPlanVerify, LogPath: log, Head: "abc123"}); err != nil {
+		if err := WriteLandingFailure(p, LandingFailure{Kind: testFailureKind, LogPath: log, Head: "abc123"}); err != nil {
 			t.Fatal(err)
 		}
 		for range 2 {

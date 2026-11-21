@@ -68,7 +68,6 @@ type cancelFake struct {
 	claimErr        error
 	lifted          []string
 	notifyErr       error
-	ownerHeld       bool
 	pushOwed        bool
 	pushErr         error
 
@@ -149,7 +148,6 @@ func (f *cancelFake) deps() cancelDeps {
 			f.call("ReadStatus")
 			return f.status, f.statusFound, nil
 		},
-		OwnerHeld:      func() (bool, error) { f.call("OwnerHeld"); return f.ownerHeld, nil },
 		BoardStatus:    func() (*string, bool, error) { f.call("BoardStatus"); return f.boardStatus, f.boardFound, nil },
 		RecordsPresent: func() (bool, error) { f.call("RecordsPresent"); return f.recordsPresent, nil },
 		ChildReachedParent: func(shedengine.Status, bool) (bool, error) {
@@ -650,7 +648,7 @@ func TestCancelRun(t *testing.T) {
 				f.report = entry(fabricengine.EntryStopped)
 				f.report.Branches = []fabricengine.BranchOutcome{{Branch: "some-slug-records", Repo: "records", Slug: cancelSlug, State: fabricengine.BranchDiverged, WayForward: "run `lym fabric remove some-slug` to clear it"}}
 			},
-			wantErr:   "cannot cancel \"some-slug\": branch some-slug-records is diverged against origin; run `lym fabric remove some-slug` to clear it; " + pairteardown.BattenFollowUp(cancelSlug, runningStatus(battenrecipe.NameLand), true, false),
+			wantErr:   "cannot cancel \"some-slug\": branch some-slug-records is diverged against origin; run `lym fabric remove some-slug` to clear it; " + pairteardown.BattenFollowUp(cancelSlug, runningStatus(battenrecipe.NameLand), true),
 			errAbsent: []string{`then run "lym batten cancel some-slug" again`},
 			noCalls:   append([]string{"TakeMarker"}, destructiveCancelCalls...),
 			marker:    "none",

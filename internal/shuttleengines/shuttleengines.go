@@ -37,8 +37,6 @@ type ConfigModule struct {
 	Template func() string
 	// OpenMaps are the template's dotted paths whose entries belong to the operator.
 	OpenMaps []string
-	// Migrate, when non-nil, rewrites a present file's bytes before reconcile compares them to the template.
-	Migrate func(existing []byte) ([]byte, []string, error)
 	// Spec returns the module's layered-load spec.
 	Spec func() configengine.Spec
 	// CheckLoad runs the module's own loader under dirs and returns its error, discarding the loaded config.

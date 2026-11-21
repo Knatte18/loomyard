@@ -16,9 +16,7 @@
 // The codex-file target carries the anchor's AGENTS.md and its CLAUDE.md both, with CLAUDE.md's imports expanded.
 // Its render records the imported files that lie inside the worktree in the scratch directory's heddle directory,
 // so a take-in of one of them re-renders the file.
-// heddle.json carries a format version.
-// A store without one was written while claude-file rendered into both files,
-// so a read takes its claude-file targets as agents-file, and the next save writes the version.
+// heddle.json carries a format version, which a save writes and a read keeps.
 // The Bolt replayer decodes each side of a replayed commit the same way.
 //
 // The claude-settings target is a JSON-object target, rendered into the anchor's `.claude/settings.local.json`:

@@ -1309,10 +1309,9 @@ func TestDaemon_Lifecycle(t *testing.T) {
 				t.Errorf("wait-inject = %+v, %v; want expired once the consumed TTL ran out", got.resp, got.err)
 			}
 		}},
-		{"StageOneOrchMailAndItsWithheldRecordFoldAndTheStartedDaemonReminds", func(t *testing.T, r *rig) {
+		{"OrchMailInTheJournalFoldsAndTheStartedDaemonReminds", func(t *testing.T, r *rig) {
 			r.writeJournal("2026-10-01",
-				`{"event":"posted","at":"2026-10-01T11:00:00Z","id":1,"from":"`+alpha+`","to":"`+orch+`","kind":"mail","body":"hello"}`,
-				`{"event":"withheld","at":"2026-10-01T11:00:00Z","id":1,"to":"`+orch+`","notice":"creel-notices"}`)
+				`{"event":"posted","at":"2026-10-01T11:00:00Z","id":1,"from":"`+alpha+`","to":"`+orch+`","kind":"mail","body":"hello"}`)
 			r.start()
 			r.clock.AwaitWaitsWhere(1, isProbeWait)
 			want := []creelfake.Send{{Strand: orch, Text: "[creel] 1 unread: #1 from \"" + alpha + "\" — run lym creel read"}}

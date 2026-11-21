@@ -174,7 +174,6 @@
 //     A start and each recorded sleep owe every run a full pass.
 //     The state record keeps it until a full pass exits 0.
 //   - While a pause covers the run, the act rule waits it and it gets no pass, and the lift gives it the full pass.
-//     Only a hand lifts an adopt pause, the legacy `adopt-hold` entry included.
 //   - A refused continue pass owes a full pass, and a covered pass or a pass that waits on origin counts as no failure.
 //     Any other non-zero exit counts a failure by its error text and is retried on the next probe tick.
 //     The third failure in a row with one text posts one notice to the nearest live orch.
@@ -307,10 +306,6 @@
 //     A nil TearDownLeftovers tears nothing down.
 //   - The pair of a cancelled run whose cancel kept it stays.
 //     Each fresh start posts one notice listing those pairs and naming `lym fabric remove <slug>`, and the view lists them.
-//     Before the passes of its first tick, a dobby process gives each run cancelled with keep before cancel intents existed,
-//     whose pair stands here, its finished keep cancel intent through Deps.MarkKeptCancels, so such a run reads kept;
-//     the same call commits again a finished keep intent of this machine whose commit failed;
-//     a failure logs once per episode and is tried again at the next tick, and the notice waits for it.
 //
 // The landing step:
 //
@@ -549,24 +544,6 @@
 //     It owes it too when a listed run's verdict hands it over while its pair is still here,
 //     once per run until the run stops answering hand over.
 //     Deps.CatchUp with no PullBolt means no catch-up.
-//   - UpgradeRead is the first read after an upgrade, run through Deps.Upgrade before the first catch-up that succeeds.
-//     It turns the pause record's standing `adopt`, legacy `adopt-hold` and `owner` entries into the Bolt model.
-//     It holds UpgradeDeps.Lock, so the dobbies of one machine run it one at a time and the second finds nothing left.
-//     With no such entry it does nothing.
-//     Otherwise it pulls Bolt first.
-//     An unreachable origin returns an error wrapping ErrOriginUnreachable with nothing written.
-//     Each adopt entry of a run this machine owns that has a batten record and is not terminal becomes a pause intent.
-//     A pause intent whose push meets another machine's takeover entry reads the run as owned elsewhere and records none.
-//     The subjects of those runs and of the released tasks the entries name form one Bolt hold.
-//     The hold is `adopt-fix` while an open adopt fix task of a subject stands, with each subject's try count.
-//     Otherwise the hold is `adopt`.
-//     A hold of another machine that stands writes none.
-//     One notice names the hold or the standing one, and an identical hold of this machine that already stands posts none.
-//     It gives the way forward of re-running `lym adopt` and then `lym tender resume`.
-//     Only then does it drop every adopt, adopt-hold and owner entry.
-//     The catch-up then writes this machine's entries from the intents.
-//     A failure before the drops leaves the entries, so the read runs again; a failed read keeps the catch-up owed.
-//     An `Upgrade` whose Entries is nil means no first read.
 //   - A tick runs the owed catch-up first, when its next try is due, before any scheduling.
 //     Success clears the wait, resets the retry delay and owes every run a full pass.
 //     Failure keeps it owed, retries after a delay that doubles from a second to the idle ceiling,

@@ -93,10 +93,8 @@ type Config struct {
 	// JudgeParentTimeoutMin is the minutes from the judge's ask to the parent to its deadline; it is a positive integer.
 	JudgeParentTimeoutMin int
 	// Scope is the task's regression scope, ScopeOff or ScopeFull, which Drift-Baseline records with no agent.
-	// An empty scope records full, and a stored partial reads as ScopeFull.
+	// An empty scope records full.
 	Scope string
-	// ScopeWasPartial is true when the stored scope was partial, which reads as full.
-	ScopeWasPartial bool
 }
 
 // configFile is drift.yaml as it is spelled, before defaults and validation.
@@ -182,7 +180,7 @@ func ConfigSpec() configengine.Spec {
 // LoadConfig loads and validates the drift module's configuration strictly through the hub-wide layer stack under dirs.
 // A declared step needs a command holding {baseline_dir} and a timeout_min of at least 1;
 // an all-empty step is undeclared and loads as the zero CommandStep.
-// A scope must be empty, off, partial or full; a stored partial reads as full and sets ScopeWasPartial.
+// A scope must be empty, off or full; a stored partial is refused.
 // A diff must be lines or command, and diff command needs a declared compare.
 // Every key_patterns entry must compile with the named groups key and value.
 // Every volatile_files entry must be a valid glob and no volatile_files or volatile_keys entry may be blank.
@@ -233,13 +231,8 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	if file.JudgeParentTimeoutMin < 1 {
 		return Config{}, refuseKey("judge_parent_timeout_min", fmt.Sprintf("%d; want a positive integer", file.JudgeParentTimeoutMin))
 	}
-	scope := file.Scope
-	if scope == ScopePartial {
-		scope = ScopeFull
-	}
 	return Config{
-		Scope:                 scope,
-		ScopeWasPartial:       file.Scope == ScopePartial,
+		Scope:                 file.Scope,
 		Enabled:               file.Enabled,
 		Capture:               capture,
 		Compare:               compare,
@@ -277,12 +270,11 @@ func checkVolatile(files, keys []string) error {
 	return nil
 }
 
-// checkScope refuses a scope other than empty, off, partial or full.
-// A stored partial passes, since it reads as full.
+// checkScope refuses a scope other than empty, off or full, a stored partial included.
 // The refusal names the key and its ways forward, the task's run_settings among them, since a task sets its scope there.
 func checkScope(scope string) error {
 	switch scope {
-	case "", ScopeOff, ScopePartial, ScopeFull:
+	case "", ScopeOff, ScopeFull:
 		return nil
 	}
 	return fmt.Errorf("drift config key \"scope\": %q; want %s, %s, or empty for %s; way forward: fix it in the board entry's run_settings, or with lym config drift", scope, ScopeOff, ScopeFull, ScopeFull)

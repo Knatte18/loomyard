@@ -21,7 +21,7 @@ type Step struct {
 type Deps struct {
 	// Slug is the beam's slug, which names its landing and start in a notice.
 	Slug string
-	// Paths holds the run's land and reopen requests, dobby-stop marker, await marker and hand-off marker.
+	// Paths holds the run's land request, dobby-stop marker, await marker and hand-off marker.
 	Paths Paths
 	// RunID is the pawl run's seed id, which a land request names.
 	RunID string
@@ -29,9 +29,6 @@ type Deps struct {
 	SetStatus func(producer string) error
 	// EntryProducer reads the producer the entry's run status names.
 	EntryProducer func() (string, error)
-	// RetiredRows are the names of the rows the pawl recipe retired, told by the wiring; nil reads as none.
-	// An entry status naming one is a landing hold an older binary wrote.
-	RetiredRows []string
 	// OwnedElsewhere reports whether another machine owns the beam.
 	OwnedElsewhere func() (bool, error)
 	// MarkBeam marks the pair a beam; it is a no-op on a marked pair.
@@ -88,7 +85,6 @@ func requireSeams(producer string, seams ...seam) error {
 func (d Deps) pathsSeams() []seam {
 	return []seam{
 		{"Paths.LandRequest", d.Paths.LandRequest != ""},
-		{"Paths.ReopenRequest", d.Paths.ReopenRequest != ""},
 		{"Paths.DobbyStopMarker", d.Paths.DobbyStopMarker != ""},
 		{"Paths.AwaitMarker", d.Paths.AwaitMarker != ""},
 		{"Paths.HandOffMarker", d.Paths.HandOffMarker != ""},

@@ -16,7 +16,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
-	"gopkg.in/yaml.v3"
 )
 
 // seedLandingConfig creates <baseDir>/_lym/config/landing.yaml with the given contents.
@@ -179,107 +178,6 @@ func TestConfig_CreditBlock(t *testing.T) {
 			t.Parallel()
 			if got := tt.cfg.CreditBlock(tt.enginesRun); got != tt.want {
 				t.Errorf("CreditBlock(%v) = %q; want %q", tt.enginesRun, got, tt.want)
-			}
-		})
-	}
-}
-
-// TestMigrateConfig verifies the migration of retired keys, keeping their values:
-// require_pr_to_base moves to deploy_branches, and merge_fix_attempts to parent_align_fix_attempts.
-// The retired co-author and trailer keys are left for reconcile's prune, with no value carried into credit_engines.
-// A migrated document passes unchanged.
-func TestMigrateConfig(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		existing  string
-		wantLines int
-		// wantDeploy is deploy_branches as fmt.Sprint renders the decoded value; empty skips the check.
-		wantDeploy string
-		// wantAttempts is parent_align_fix_attempts as fmt.Sprint renders the decoded value; empty skips the check.
-		wantAttempts string
-	}{
-		{"RetiredCoAuthorAndTrailerKeysLeftToReconcilesPrune", "squash: true\nco_authored_by: Someone <s@x>\ntrailer_text: Fixed\nengine_trailers:\n  claude: \"Co-Authored-By: Kept <k@x>\"\n", 0, "", ""},
-		{"RetiredPublishVerifyLeftToReconcilesPrune", "publish_verify: go test -tags tmux ./...\n", 0, "", ""},
-		{"RequirePRToBaseListMovesToDeployBranches", "require_pr_to_base: [main, develop]\nsquash: true\n", 1, "[main develop]", ""},
-		{"RequirePRToBaseEmptyListStaysEmpty", "require_pr_to_base: []\nsquash: true\n", 1, "[]", ""},
-		{"ExistingDeployBranchesWins", "require_pr_to_base: [old]\ndeploy_branches: [main]\n", 1, "[main]", ""},
-		{"CoAuthoredByLeftAndRequirePRToBaseMoves", "co_authored_by: Someone <s@x>\nrequire_pr_to_base: [main]\n", 1, "[main]", ""},
-		{"MergeFixAttemptsMovesToParentAlignFixAttempts", "merge_fix_attempts: 5\nsquash: true\n", 1, "", "5"},
-		{"ExistingParentAlignFixAttemptsWins", "merge_fix_attempts: 5\nparent_align_fix_attempts: 3\n", 1, "", "3"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			migrated, lines, err := MigrateConfig([]byte(tt.existing))
-			if err != nil {
-				t.Fatalf("MigrateConfig() error = %v; want nil", err)
-			}
-			if len(lines) != tt.wantLines {
-				t.Errorf("MigrateConfig() lines = %q; want %d line(s)", lines, tt.wantLines)
-			}
-			if tt.wantLines == 0 && string(migrated) != tt.existing {
-				t.Errorf("MigrateConfig() = %q; want the document unchanged", migrated)
-			}
-			var got map[string]any
-			if err := yaml.Unmarshal(migrated, &got); err != nil {
-				t.Fatalf("unmarshal migrated document: %v", err)
-			}
-			if _, ok := got[creditEnginesKey]; ok {
-				t.Errorf("migrated document %q holds %s; want no value carried into it", migrated, creditEnginesKey)
-			}
-			if _, ok := got["require_pr_to_base"]; ok {
-				t.Errorf("migrated document %q still holds require_pr_to_base", migrated)
-			}
-			if _, ok := got["merge_fix_attempts"]; ok {
-				t.Errorf("migrated document %q still holds merge_fix_attempts", migrated)
-			}
-			if tt.wantAttempts != "" {
-				if gotAttempts := fmt.Sprint(got["parent_align_fix_attempts"]); gotAttempts != tt.wantAttempts {
-					t.Errorf("migrated parent_align_fix_attempts = %s; want %s", gotAttempts, tt.wantAttempts)
-				}
-			}
-			if tt.wantDeploy != "" {
-				if gotDeploy := fmt.Sprint(got["deploy_branches"]); gotDeploy != tt.wantDeploy {
-					t.Errorf("migrated deploy_branches = %s; want %s", gotDeploy, tt.wantDeploy)
-				}
-			}
-			again, againLines, err := MigrateConfig(migrated)
-			if err != nil || len(againLines) != 0 || string(again) != string(migrated) {
-				t.Errorf("second MigrateConfig() = %q, %q, %v; want the document unchanged with no lines", again, againLines, err)
-			}
-		})
-	}
-	t.Run("MergeFixAttemptsRenameLine", func(t *testing.T) {
-		t.Parallel()
-		_, lines, err := MigrateConfig([]byte("merge_fix_attempts: 5\n"))
-		const want = "merge_fix_attempts: renamed to parent_align_fix_attempts"
-		if err != nil || len(lines) != 1 || lines[0] != want {
-			t.Errorf("MigrateConfig() lines = %q, %v; want [%q]", lines, err, want)
-		}
-	})
-}
-
-// TestMigrateConfig_InvalidDocument verifies that MigrateConfig rejects invalid documents:
-// an unparsable one and a non-mapping root, each with an error marked configengine.ErrInvalid.
-func TestMigrateConfig_InvalidDocument(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		existing string
-	}{
-		{"Unparsable", "co_authored_by: [unclosed\n"},
-		{"NonMappingRoot", "- co_authored_by\n"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if _, _, err := MigrateConfig([]byte(tt.existing)); !errors.Is(err, configengine.ErrInvalid) {
-				t.Errorf("MigrateConfig(%q) error = %v; want one marked configengine.ErrInvalid", tt.existing, err)
 			}
 		})
 	}

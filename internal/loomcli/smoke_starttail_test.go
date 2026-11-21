@@ -39,7 +39,7 @@ func reedAttachedClients(t *testing.T, tmuxPath string, eng *reedengine.Engine) 
 }
 
 // TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand pins that `lym loom start` exits 0 with an ok envelope.
-// It attaches no client, with or without --no-attach and with or without $TMUX naming reed's own server.
+// It attaches no client, with or without $TMUX naming reed's own server.
 // It leaves no strand named "loom-operator" and exactly one status strand.
 // The fixture is unseeded, so resolveSeedDriver seeds it llm, and an llm-driven start ensures the status strand.
 // The literal is spelled inline as a guard against the removed operator strand coming back.
@@ -100,19 +100,18 @@ func TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand(t *testing.T) {
 	clientsBefore := reedAttachedClients(t, tmuxPath, eng)
 	t.Setenv("TMUX", strings.TrimSpace(string(tmuxEnv)))
 	startOK("loom start inside reed's tmux server")
-	startOK("loom start --no-attach inside reed's tmux server", "--no-attach")
 
 	if clientsAfter := reedAttachedClients(t, tmuxPath, eng); strings.Join(clientsAfter, ",") != strings.Join(clientsBefore, ",") {
 		t.Errorf("reed session's attached clients = %v after start inside its server; want %v unchanged", clientsAfter, clientsBefore)
 	}
 }
 
-// TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon pins the watchdog spawn after `lym loom start --no-attach`.
+// TestSmokeWatchdog_StartSpawnsTheDaemon pins the watchdog spawn after `lym loom start`.
 // It checks for a live per-hub watchdog daemon for the fixture hub.
 // The check finds the daemon by the argv-signature scan the smoke teardown uses.
 // The test proves the watchdog spawn fires on every start, not only on an attaching one.
 // A later edit is most likely to break that, and hermetic tests cannot reach it.
-func TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon(t *testing.T) {
+func TestSmokeWatchdog_StartSpawnsTheDaemon(t *testing.T) {
 	tiergate.Require(t, 2)
 	tmuxBinaryPath(t)
 	exe := lymbin.Build(t)
@@ -122,12 +121,12 @@ func TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon(t *testing.T) {
 	waitForFixtureProcessesToExit(t)
 	registerBootstrapTeardown(t, loc, worktree)
 
-	stdout, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start", "--no-attach")
+	stdout, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start")
 	if err != nil {
-		t.Fatalf("loom start --no-attach: %v; output: %s", err, stdout)
+		t.Fatalf("loom start: %v; output: %s", err, stdout)
 	}
 
 	if pids := findWatchdogPIDs(loc.HubPath); len(pids) == 0 {
-		t.Errorf("no watchdog daemon found for hub %s after --no-attach; want the watchdog spawn to fire on every start", loc.HubPath)
+		t.Errorf("no watchdog daemon found for hub %s after start; want the watchdog spawn to fire on every start", loc.HubPath)
 	}
 }

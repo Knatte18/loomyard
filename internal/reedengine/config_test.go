@@ -365,7 +365,7 @@ func TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored(t *testing.T) {
 		{"StaleHeaderBlock", "\nheader:\n  template: \"stale\"\n  height_rows: 5\n", nil},
 		{"RetiredStrandNameKey", "\nstrand_name: '<ROLE>:<ROUND>:<SHORT_GUID>'\n", nil},
 		{"RetiredStatusLineBlock", "\nstatus_line:\n  template: \"{{.repo}}\"\n", nil},
-		{"RetiredLayoutKeys", "\ncollapsed_rows: 3\nmin_full_rows: 3\nselvage:\n  height_rows: 1\n", []string{"collapsed_rows", "min_full_rows", "selvage"}},
+		{"RetiredLayoutKeys", "\ncollapsed_rows: 3\nmin_full_rows: 3\nselvage:\n  height_rows: 1\n", nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

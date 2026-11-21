@@ -153,7 +153,7 @@
 // The size check measures that form for every post, so it never depends on the mark.
 // A reply to an EXTERNAL sender keeps a 64 KiB cap on its body.
 // Only a waiting `post --wait-reply` receives it, and no claim hands it out.
-// A claim never hands out a message an older binary stored whose line is past 10,000 UTF-16 units.
+// A claim never hands out a message whose line is past 10,000 UTF-16 units.
 // That is the cap Claude Code keeps of one hook field.
 // Such a message stays for `lym creel read` and raises no mail flag.
 //
@@ -558,8 +558,7 @@
 // An orch strand without hook delivery has its mail reminded.
 // An inject or interrupt into an orch strand is typed.
 // A program's mailbox is never reminded; a program reads with `read --wait`.
-// A journal may hold `withheld` records for orch mail;
-// the fold keeps them in the log and acts on none, and the daemon reminds that mail from its first probe.
+// The daemon reminds orch mail from its first probe.
 //
 // # Reply discipline
 //

@@ -182,16 +182,16 @@
 // A removal leaves the batten run record of the pair's slug standing,
 // and the next batten run of the slug then meets a pair that is gone.
 // BattenFollowUp words the step that settles that record.
-// It reads the record and whether an owner pause covers the slug.
+// It reads whether the slug's record stands.
 // A record before Land names the batten cancel that clears it.
 // A record at Land names the batten run, never a cancel, since the run's work already reached its parent.
 // The failed stop of that run words the restore of each branch the removal took.
-// A slug with no record, a record past its Land row and a slug an owner pause covers give no follow-up.
+// A slug with no record and a record past its Land row give no follow-up.
 // Teardown.Run sets Result.Warning to it, behind the slug, after a successful removal of a request without LeaveClaim.
 // A cancel's own removal settles the record itself.
-// A failed read of the record or of the owner pause is logged and adds no warning.
+// A failed read of the record is logged and adds no warning.
 // A refusal or stopped reason elsewhere that quotes `lym fabric remove` ends in the same text.
-// It reads the follow-up through ReadBattenRecord, OwnerPauseHeld and FollowUpFor.
+// It reads the follow-up through ReadBattenRecord and FollowUpFor.
 //
 // # Run FSM inputs
 //

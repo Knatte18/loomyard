@@ -42,18 +42,14 @@ func seedRepoWideFabricConfig(t *testing.T, hub string) {
 	}
 }
 
-// seedFabricAnchor records relPath as the .lym-anchor marker under hub's board directory.
+// seedFabricAnchor records relPath as the .lym-anchor marker at the root of the records worktree at records.
 // Fabric.Commit re-resolves its geometry from the code path, not from the *lymcwd.Location fabricSync holds.
 // Without the marker, that resolution falls back to a cwd-derived ".".
 // A nested AnchorRel therefore has to be recorded here for real git to classify it correctly.
-func seedFabricAnchor(t *testing.T, hub, relPath string) {
+func seedFabricAnchor(t *testing.T, records, relPath string) {
 	t.Helper()
 
-	boardDir := fabricengine.BoardDir(hub)
-	if err := os.MkdirAll(boardDir, 0o755); err != nil {
-		t.Fatalf("mkdir board dir: %v", err)
-	}
-	anchorPath := filepath.Join(boardDir, lymcwd.AnchorFileName)
+	anchorPath := filepath.Join(records, lymcwd.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte(relPath), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
 	}
@@ -136,7 +132,7 @@ func newPairFixtureAt(t *testing.T, relPath string) (*lymcwd.Location, string) {
 	}
 
 	seedRepoWideFabricConfig(t, hub)
-	seedFabricAnchor(t, hub, filepath.ToSlash(relPath))
+	seedFabricAnchor(t, records, filepath.ToSlash(relPath))
 
 	return layout, records
 }

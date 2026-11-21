@@ -13,8 +13,6 @@
 // so Attach and AttachGated first remove the live strand of every respawn-eligible candidate of the same output-file set:
 // re-running a producer supersedes the session it halted.
 // AttachIfLive is the same probe with that removal off, for a caller that starts nothing after a not-found answer.
-// A record an older binary left at outcome "asking" is attached like a running one when reed tracks its strand as live,
-// whether or not it carries an AskingOffset: that agent is still there, and respawning would run a second one beside it.
 // Only a live, tracked strand is attached, and the attach starts a fresh deadline.
 
 package shuttleengine
@@ -312,28 +310,10 @@ func (r *Runner) reconstruct(candidate attachCandidate, normalized Spec, gate Ga
 		logger.Warn("shuttle: attach: the spec names a different engine than the run's record, driving the run through the record's", "runDir", candidate.runDir, "specEngine", specEngineName, "recordEngine", engineName)
 	}
 
-	// A legacy asking candidate is reset to running so the run's own finalize records its verdict.
-	// With a recorded AskingOffset it replays from there and counts that old ask as notified:
-	// the parent already saw that run halt, so the ask is neither read nor notified again.
-	// Without one it replays from the prompt offset like every other candidate, past the skill-load turns,
-	// so its last turn end is read as a held turn end and notified once.
-	state := candidate.state
-	startOffset := state.PromptOffset
-	if state.Outcome == legacyAskingOutcome {
-		state.Outcome = runOutcomeRunning
-		if state.AskingOffset != nil {
-			startOffset = *state.AskingOffset
-			state.NotifiedOffset = *state.AskingOffset
-			state.AskingOffset = nil
-		}
-	}
-
 	// The attaching process now waits on the run, so liveness readers must see its pid.
-	// Only the pid changes on disk: the legacy reset above stays in memory until the run's own persists.
+	state := candidate.state
 	state.PID = os.Getpid()
-	persisted := candidate.state
-	persisted.PID = state.PID
-	if err := saveRunState(candidate.runDir, persisted); err != nil {
+	if err := saveRunState(candidate.runDir, state); err != nil {
 		logger.Warn("shuttle: attach: could not record the attaching pid", "runDir", candidate.runDir, "cause", err)
 	}
 
@@ -352,8 +332,7 @@ func (r *Runner) reconstruct(candidate attachCandidate, normalized Spec, gate Ga
 		// offset starts at the prompt offset, deliberately replaying every event of the run's own turns:
 		// seeding at EOF would mean a terminal Stop that landed while the driver was down is never observed, converting a completed step into an OutcomeTimeout failure —
 		// and a replayed backlog ending in an ask is read as a held turn end.
-		// The one exception is a candidate that recorded an asking offset (startOffset above): the parent already saw that ask.
-		offset: startOffset,
+		offset: state.PromptOffset,
 		clock:  r.clock,
 		// deadline is a fresh now+Timeout computed at attach time, never CreatedAt+Timeout: a run
 		// that hit OutcomeTimeout leaves both its strand and its run dir behind, and inheriting
@@ -548,13 +527,11 @@ func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, 
 	}
 
 	if tracked && strand.Live {
-		// A legacy asking record is an older binary's halted run whose agent is still there,
-		// so a live strand attaches it whether or not it carries an AskingOffset and whether or not its events grew.
 		// This sits below the file-contract-first check above, which still runs first.
-		if c.state.Outcome == runOutcomeRunning || c.state.Outcome == legacyAskingOutcome {
+		if c.state.Outcome == runOutcomeRunning {
 			return verdictAttachable
 		}
-		// A terminal value, the empty string (a legacy record), or an unrecognized one all mean the
+		// A terminal value, the empty string, or an unrecognized one all mean the
 		// record carries a run that already ended, whatever reed still thinks of its pane.
 		return verdictRespawnEligible
 	}
@@ -595,11 +572,11 @@ func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, 
 // all already exist is a leftover from a run that already finished, respawn-eligible at any directory
 // age; otherwise a candidate whose persisted Outcome already reads a terminal value is respawn-eligible
 // at any age too, for the same reason dispositionCandidate's own tracked-and-live branch already treats
-// a terminal Outcome as respawn-eligible whatever reed says of the pane: an untracked timeout/asking
+// a terminal Outcome as respawn-eligible whatever reed says of the pane: an untracked timeout
 // record written by finalize may still have a live pane behind it (finalize cleans up only on
 // OutcomeDone), and respawning beside it adds no hazard class the tracked-live branch does not already
 // accept; otherwise a candidate old enough to rule out a concurrently-starting run (sweepOrphans' own
-// minAge guard) is respawn-eligible; a younger one with an empty (legacy) or unrecognised Outcome keeps
+// minAge guard) is respawn-eligible; a younger one with an empty or unrecognised Outcome keeps
 // the age rule, since a live agent cannot yet be ruled out.
 func leftoverThenAgeVerdict(c attachCandidate, spec Spec, minAge time.Duration, now time.Time) attachVerdict {
 	if allOutputFilesExist(spec.OutputFiles) {
@@ -614,15 +591,13 @@ func leftoverThenAgeVerdict(c attachCandidate, spec Spec, minAge time.Duration, 
 	return verdictError
 }
 
-// legacyAskingOutcome is the RunState.Outcome an older binary's finalize wrote for a run that halted at a turn end.
-// Nothing writes it now, and Attach reads it only to attach a record whose strand is live.
-const legacyAskingOutcome = "asking"
-
-// isTerminalOutcome reports whether outcome is a terminal value a run record holds: done, died, timeout, api-error, stopped, or the legacy asking.
-// It is false for the empty string (a legacy pre-Outcome-field record, or a run.json Start has not yet finalized), for runOutcomeRunning, and for any value this package does not recognize.
+// isTerminalOutcome reports whether outcome is a terminal value a run record holds:
+// done, died, timeout, api-error or stopped.
+// It is false for the empty string, which a run.json Start has not yet finalized.
+// It is also false for runOutcomeRunning and for any value this package does not recognize.
 func isTerminalOutcome(outcome string) bool {
 	switch outcome {
-	case string(OutcomeDone), legacyAskingOutcome, string(OutcomeDied), string(OutcomeTimeout), string(OutcomeAPIError), runOutcomeStopped:
+	case string(OutcomeDone), string(OutcomeDied), string(OutcomeTimeout), string(OutcomeAPIError), runOutcomeStopped:
 		return true
 	default:
 		return false

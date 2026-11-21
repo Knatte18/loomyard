@@ -107,7 +107,7 @@
 // else the lowest-index window carrying @lym_overview; else none.
 // openOwnWindowLocked sets the window option @lym_overview beside @lym_own on an overview window.
 // That marker lets the rule tell the overview from an agent window.
-// An overview window opened by an older lym carries no marker and counts as an agent window;
+// An overview window carrying no marker counts as an agent window;
 // it can win only when no other agent is live, the same outcome as the overview fallback.
 // A failed listing, which is how an unknown session answers, returns an error before any write;
 // a failed option write returns before any select;
@@ -161,7 +161,7 @@
 // The strand window carries @lym_strands.
 // Launch sets the pane options and boot marks the strand window.
 // Every attach pre-flight marks the window and re-asserts the pane options on every strand bound to a live pane,
-// so a session or strand spawned by an older lym gets them at its next attach.
+// so a changed option reaches a running session or strand at its next attach.
 // The Selvage pane carries the user option @lym_console (consolePaneOption).
 // It is set when the pane is split and re-asserted by every attach pre-flight.
 // The options are display only but @lym_strand_name:
@@ -231,8 +231,7 @@
 // Bound: between an older binary's boot or attach and the newest binary's next op, follow can show on lines 2 and 3;
 // a session an older binary boots or attaches keeps status 2, without line 3, until the newest binary next attaches it.
 // The re-pin restores only the global options.
-// The pin starts with `unbind-key -n M-z`, which removes the Alt+z an older build bound.
-// A `bind-key` re-pin never removes a binding, and reed binds no zoom key.
+// Reed binds no zoom key.
 // Alt+Up and Alt+Down step to the previous or next window in index order, in every window.
 // The step wraps with tmux's own window wrap.
 // A step that lands on a window carrying @lym_hidden goes on:
@@ -379,7 +378,6 @@
 //
 // The move rule: the head of every reconcile (listReconcilePanesLocked) lists the shell window's panes.
 // It breaks any pane a strand is bound to out into a window of its own.
-// That upgrades a session an older lym left with strands split under a parent.
 // The recorded Selvage pane and an unbound pane never move.
 // Without a Selvage pane the last bound pane stays: breaking out a window's only pane would take the window with it.
 // The shell window is found by the Selvage pane first, else by the @lym_strands marker.
@@ -453,7 +451,7 @@
 // and an empty told shortname refuses before anything boots, naming `lym fabric shortname <shortname>`.
 // The name is a birth attribute and the only lookup key:
 // it is stored in the strand record, and every by-name lookup resolves through it.
-// A lookup matches the full name, its role segment, or a legacy exact name.
+// A lookup matches the full name or its role segment.
 // An add can also name a strand whose presence in this worktree's state skips it (AddStrandUnless).
 // The name is matched by the same rule as an explicit name;
 // a live, dormant or hidden match all skip,
@@ -674,7 +672,7 @@
 // The one seam is windowtarget.go's TmuxCmd.strandWindowTarget.
 // It lists the session's panes across all its windows (`list-panes -s -t '=<session>' -F "#{pane_id} #{window_id}"`).
 // It resolves the window of the recorded Selvage pane, alive or a dead corpse.
-// Failing that, it resolves the window of any present recorded strand pane left in the shell window by an older lym.
+// Failing that, it resolves the window of any present recorded strand pane left in the shell window.
 // Failing both, it uses the current-window target "=<session>:", which only the seam keeps.
 // A session reap (Down, and the engine-less ReapSession) ends every window,
 // so it lists the panes of all of them (`list-panes -s`) and reads no reed state.
@@ -725,12 +723,12 @@
 // Reed ends only a window carrying @lym_own and reuses only one carrying @lym_hidden; a window opened by hand stays.
 // The shell window is the window of the recorded console pane (Selvage), named shell with automatic-rename off.
 // A fresh boot's one window ends up named that way.
-// ensureShellWindowLocked brings a session booted by an older lym into that order.
+// ensureShellWindowLocked brings the session into that order.
 // It runs wherever a window opens, once the boot marks the strands' window and at the head of every attach pre-flight.
 // It runs also when no client size is known.
 // It renames the shell window when its name is wrong and moves it behind the last non-hidden window.
 // It touches only that window;
-// a strand pane an older lym left in the shell window is broken out by the reconcile head's move rule.
+// a strand pane left in the shell window is broken out by the reconcile head's move rule.
 // It does nothing, logged at Debug, when no console pane is recorded or the window listing does not carry its window.
 // A check never fails its caller.
 // A failed rename or move warns once per failure episode; the session option @lym_shell_check_failed keeps it open.
@@ -813,7 +811,7 @@
 // the overview, the shell and hidden windows are not agent windows.
 // The follow state is the session option @lym_follow (followSessionOption): boot sets it on off Windows,
 // and it is off only while it reads off.
-// An unset option reads on, as on Windows or in a session booted by an older lym.
+// An unset option reads on, as on Windows.
 // followingLocked reads it, and a failed read counts as off for that one decision and is logged at Warn,
 // so a broken read never moves a viewer.
 // Only @lym_follow, @lym_button_spec, @lym_button_dir and @lym_button_answer are decision-bearing session options.
@@ -908,8 +906,8 @@
 // requiredSubcommands (probe.go) fails the capability probe on a binary missing any of them.
 // set-hook is absent from requiredSubcommands.
 // Gating the capability probe on it would take every reed verb down on a psmux lacking it.
-// The hooks it serves are the unseen-clear hook, the window-resized unpin and a group window's even-layout hook.
-// All three are quality-only and degrade silently.
+// The hooks it serves are the unseen-clear hook and a group window's even-layout hook.
+// Both are quality-only and degrade silently.
 //
 // Load-bearing behavioral assumptions, each with the rationale that makes it load-bearing:
 //
@@ -1158,8 +1156,6 @@
 //     A prime session booted without the mark draws in the second loop.
 //     That lasts until a `lym reed attach` to it reaches the geometry pins.
 //     An attach whose pre-flight degrades to the bare argv leaves it unmarked.
-//     The same function clears a stale `window-resized` hook on the shell window.
-//     It runs `set-hook -u` in the window and session scopes everywhere but Windows, so boot and attach both clear it.
 //     Every pin here is non-fatal, unlike the remain-on-exit and mouse pins beside them.
 //     Those two are correctness dependencies.
 //     These are geometry-quality options whose absence degrades to a working session.
@@ -1169,7 +1165,7 @@
 //     the daemon points the logger's durable sink at fabricengine.HubLogsDir(hub) first, before it takes its lock.
 //     That ordering keeps its diagnostics reachable, since nothing reads a detached process's stdio.
 //
-// requiredSubcommands (probe.go) needs nothing more for the option pins or the window-resized unpin:
+// requiredSubcommands (probe.go) needs nothing more for the option pins:
 // display-message, set-option and list-panes are already required.
 //
 // StopServer stops a hub's whole tmux server from the hub's path alone, whether or not the hub's directory still exists.

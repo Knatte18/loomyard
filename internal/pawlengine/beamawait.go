@@ -6,7 +6,6 @@ package pawlengine
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -108,9 +107,8 @@ func (p *BeamAwait) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 }
 
 // interruptedLanding reports whether the row is entered with no land request standing,
-// and the entry's status names Finalize or a row of Deps.RetiredRows.
+// and the entry's status names Finalize.
 // Such a status is the landing hold a crash left between the accept's removals and the row's Done.
-// An older binary may also have written it under a row name that Deps.RetiredRows lists.
 // A failed read counts as not interrupted and is logged.
 func (p *BeamAwait) interruptedLanding() bool {
 	_, found, err := ReadLandRequest(p.deps.Paths)
@@ -126,7 +124,7 @@ func (p *BeamAwait) interruptedLanding() bool {
 		logger.Warn("pawlengine: the entry's status could not be read on entry", "producer", p.name, "error", err)
 		return false
 	}
-	return producer == finalizeName || slices.Contains(p.deps.RetiredRows, producer)
+	return producer == finalizeName
 }
 
 // awaitRun is the state of one Call: its producer, what its entry found and when it last woke.

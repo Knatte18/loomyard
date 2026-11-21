@@ -99,15 +99,6 @@
 // and every edge is kept.
 // The `Describe` row carries the entry gate `budget.Code-Review`,
 // so a budget of 0 skips it and the writer's own change description stands.
-// RetiredRows keeps each recipe's retired row names as that recipe's data:
-// `Darn` maps onto `Darn-Write`, and `Merge-In` onto `Parent-Align`;
-// `Loom-Preflight` and `Tapestry-Preflight` map onto `Preflight`.
-// The caller carries a run parked under a retired name across with shedengine.RenameProducers.
-// It does so at arm and with no side effect.
-// A row a recipe dropped is declared apart, in the recipe's own `retired` map.
-// RetiredRowNames returns that map's keys and never reads RetiredRows.
-// The shed moves a run parked at one of them to the row the map names and pauses it.
-// No row of the recipe carries the name on.
 //
 // The pawl recipe, a beam's life, is a loom recipe New builds like the others.
 // It has no review segment and no reroute edge.
@@ -117,7 +108,6 @@
 // It is held while the members' runs work in the beam.
 // It is held also while the beam's orch writes the description and handles the pull request.
 // A merge Finalize cannot land halts the run for the orch.
-// Its `retired` map sends a run parked at Parent-Align, Beam-Describe or PR-Review back to Beam-Await.
 // A run at Finalize or any row after it holds its beam; before it the beam is free to start members.
 //
 // Rows and RowNames serve every embedded recipe.
@@ -125,13 +115,13 @@
 // a review segment is one entry and every other row its own,
 // so a recipe added to Rows is numbered with no change to its readers.
 //
-// IsLoom, HasEngine, RecordEngine, VerifySource and RetiredRows each answer one question about a recipe by its name.
+// IsLoom, HasEngine, RecordEngine and VerifySource each answer one question about a recipe by its name.
 // A consumer thus reads the recipe's rows and keys instead of comparing the name.
 // An empty recipe name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
 //
 // DiscussionApprovalRow answers the row that approves a recipe's discussion:
 // the Bouncer row the DiscussionWrite row hands to, and none for a recipe without one.
-// PastDiscussionApproval answers whether a run standing at a row, mapped through RetiredRows, is past that approval:
+// PastDiscussionApproval answers whether a run standing at a row is past that approval:
 // its row follows every row of the approval row's segment.
 // Both read the recipe's expanded rows and never its name:
 // darn, sampler and pawl answer no approval row, and tapestry's approval row is the one inside its Motif block.

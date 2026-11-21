@@ -2,8 +2,7 @@
 // It also holds the strict parser that reads a report back.
 // A report holds the attempt's status, its head SHA, its glyph renames, any step it needs its parent to take,
 // and an optional journal of what the batch did.
-// ParseReport fails only on shape violations of Status, HeadSHA, Need and Renames;
-// an older report's deviations key is accepted and never read.
+// ParseReport fails only on shape violations of Status, HeadSHA, Need and Renames.
 
 package runplan
 
@@ -39,9 +38,6 @@ type Report struct {
 	// Journal is the attempt's own account of what the batch did, for the run's journal.
 	// It is optional: an implementer that keeps no journal leaves it empty.
 	Journal string `yaml:"journal,omitempty"`
-	// Deviations is accepted and never read: an older report carries the key,
-	// and the known-fields decoding must keep accepting it.
-	Deviations []string `yaml:"deviations,omitempty"`
 }
 
 // ReportRename is one glyph rename a batch reports.

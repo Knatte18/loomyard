@@ -265,7 +265,7 @@ func TestStore(t *testing.T) {
 		}
 	})
 
-	t.Run("StoreVersionDecidesHowClaudeFileIsRead", func(t *testing.T) {
+	t.Run("ClaudeFileIsReadAsWrittenWhateverTheStoreVersion", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
 			name    string
@@ -273,11 +273,7 @@ func TestStore(t *testing.T) {
 			targets string
 			want    []string
 		}{
-			{"ClaudeFile", "", `["claude-file"]`, []string{"agents-file"}},
-			{"ClaudeAndCodexFile", "", `["codex-file", "claude-file"]`, []string{"agents-file"}},
-			{"ClaudeFileBesideAPrompt", "", `["claude-prompt", "claude-file"]`, []string{"claude-prompt", "agents-file"}},
-			{"CodexFileAlone", "", `["codex-file"]`, []string{"codex-file"}},
-			{"AgentsFileBesideClaudeFile", "", `["agents-file", "claude-file"]`, []string{"agents-file"}},
+			{"UnversionedClaudeFile", "", `["claude-file"]`, []string{"claude-file"}},
 			{"VersionedClaudeFile", `"version": 1, `, `["claude-file"]`, []string{"claude-file"}},
 			{"NewerVersionedClaudeFile", `"version": 2, `, `["claude-file"]`, []string{"claude-file"}},
 		}

@@ -60,9 +60,9 @@ func TestDriftAwait(t *testing.T) {
 			want: shedengine.Done,
 		},
 		{
-			name: "a missing record under partial is Stuck naming capture and defer",
+			name: "a missing record under full is Stuck naming capture and defer",
 			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopePartial, Skip: []string{"s"}})
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull})
 			},
 			want:       shedengine.Stuck,
 			wantReason: []string{"no baseline capture", capturePath, deferPath},

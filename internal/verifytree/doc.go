@@ -68,11 +68,6 @@
 // Its optional `build` field is true when the gate failed in its build step before any test ran.
 // The record then holds the first tier the build blocked and no tests.
 // A record without the field reads as a test failure.
-// A record may carry the retired kinds `plan_verify` and `publish_verify` and no tier.
-// A reader maps them onto the two gates.
-// A record carrying the retired kind `landing` reads as the key of the row that reads it:
-// Parent-Align, Finalize or the merge fixer they spawn.
-// The record names no row, and only those rows read it.
 // The record may also carry a trace of the failure to the plan.
 // `cards` holds one TracedCard per card, with the card's number and the glyphs and `path:line` locations matched to it.
 // A TracedCard also holds its Webster batch (0 when Webster holds no record of the card) and that batch's commit range.

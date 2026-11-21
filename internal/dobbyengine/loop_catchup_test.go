@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -292,45 +291,6 @@ func TestRun_CatchUp(t *testing.T) {
 		h.tick(true)
 		if catchUps != 2 {
 			t.Errorf("catch-ups after the run stopped answering hand over and answered again = %d; want 2", catchUps)
-		}
-	})
-
-	t.Run("a failing first read keeps the catch-up owed and spawns no pass, and a succeeding one runs once", func(t *testing.T) {
-		t.Parallel()
-		h := newPassHarness(t, runningRun("r1"))
-		pulls, reads := 0, 0
-		h.d.deps.CatchUp = fakeCatchUpDeps(func() error { pulls++; return nil })
-		h.d.deps.Upgrade = fakeUpgradeDeps(t, func() ([]pauserecord.Entry, error) {
-			reads++
-			if reads == 1 {
-				return nil, errors.New("pause record locked")
-			}
-			return nil, nil
-		})
-		h.d.catchUpOwed = true
-
-		h.tick(false)
-
-		wait := h.stateRecord().CatchUp
-		if wait == nil || wait.Reason != CatchUpWaitFailed || !strings.Contains(wait.Detail, "pause record locked") {
-			t.Errorf("recorded wait = %+v; want the failed wait carrying the first read's error", wait)
-		}
-		if pulls != 0 || len(h.fake.spawned) != 0 {
-			t.Errorf("catch-ups, passes = %d, %d; want none while the first read fails", pulls, len(h.fake.spawned))
-		}
-
-		h.tickAfter(time.Second)
-		if reads != 2 || pulls != 1 || h.stateRecord().CatchUp != nil {
-			t.Errorf("reads, catch-ups, wait = %d, %d, %+v; want the first read retried once, the catch-up after it and the wait cleared", reads, pulls, h.stateRecord().CatchUp)
-		}
-		if got := h.fake.spawned; len(got) != 1 || got[0].continuePass {
-			t.Errorf("passes after the first read = %+v; want one full pass", got)
-		}
-
-		h.d.catchUpOwed = true
-		h.tick(false)
-		if reads != 2 || pulls != 2 {
-			t.Errorf("reads, catch-ups after a later absence = %d, %d; want no second first read and a second catch-up", reads, pulls)
 		}
 	})
 

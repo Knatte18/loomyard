@@ -317,31 +317,4 @@ func TestRenderBoardData(t *testing.T) {
 			t.Errorf("BoardRevision() = %q, %v; want %q", got, err, hex.EncodeToString(sum[:]))
 		}
 	})
-
-	t.Run("ViewOfAMigratedBoardReadsTheMigratedRevisionAndWritesNothing", func(t *testing.T) {
-		t.Parallel()
-		boardPath := t.TempDir()
-		seed := `{"version":1,"entries":[{"id":1,"slug":"loose","title":"Loose","kind":"task","labels":["bug"]}]}`
-		boardFile := filepath.Join(boardPath, "board.json")
-		if err := os.WriteFile(boardFile, []byte(seed), 0o644); err != nil {
-			t.Fatalf("seed board.json: %v", err)
-		}
-		board := boardengine.New(boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
-		got, err := board.View()
-		if err != nil {
-			t.Fatalf("View: %v", err)
-		}
-		loaded, found, err := board.GetTask("loose")
-		if err != nil || !found {
-			t.Fatalf("GetTask(loose) = %v, %v; want the entry", found, err)
-		}
-		draft := boardengine.StatusDraft
-		loaded.Status = &draft
-		if len(got.Entries) != 1 || got.Entries[0].Revision != boardengine.EntryRevision(loaded) || got.Entries[0].Status != boardengine.StatusDraft {
-			t.Errorf("entries = %+v; want the one entry with the migrated draft status and its revision", got.Entries)
-		}
-		if after, err := os.ReadFile(boardFile); err != nil || string(after) != seed {
-			t.Errorf("board.json after View = %q, %v; want it unchanged", after, err)
-		}
-	})
 }

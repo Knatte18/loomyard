@@ -147,7 +147,11 @@ func TestTemplateLadder(t *testing.T) {
 			got := map[string]map[string]int{}
 			want := map[string]map[string]int{"discussion": perch(tt.discussion), "plan": perch(tt.plan), "code": perch(tt.code), "darn code": perch(tt.darnCode)}
 			for _, segment := range []string{"discussion", "plan", "code"} {
-				keys := tapestry["loom"].(map[string]any)
+				module := "loom"
+				if segment == "plan" {
+					module = "tapestry"
+				}
+				keys := tapestry[module].(map[string]any)
 				got[segment] = map[string]int{"max": keys[segment+"_max_bounces"].(int), "hard": keys[segment+"_hard_max_bounces"].(int)}
 			}
 			darnKeys := darn["loom"].(map[string]any)
@@ -238,6 +242,35 @@ func TestTemplateDocsProfile(t *testing.T) {
 	}
 	if _, err := profiles.Settings("docs", "tapestry"); err == nil {
 		t.Error("Settings(docs, tapestry) error = nil; want a refusal for the missing tapestry block")
+	}
+}
+
+// TestFormerRecipeNameRefusal pins that Settings and Default refuse a recipe held only under its former name.
+// A profile or the defaults may hold such a recipe; the refusal names the hand rename as the way forward.
+func TestFormerRecipeNameRefusal(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	profiles, err := runprofile.Load(configengine.Dirs{Board: boardWithProfiles(t, "defaults: {loom: light}\nlight:\n  loom:\n    loom: {plan_max_bounces: 1}\n")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const wayForward = `lym config profiles`
+
+	_, err = profiles.Settings("light", "tapestry")
+	for _, want := range []string{`"light"`, "no tapestry block but a loom block", wayForward} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Settings(light, tapestry) error = %v; want it to name %q", err, want)
+		}
+	}
+
+	name, err := profiles.Default("tapestry")
+	for _, want := range []string{"no tapestry entry but a loom entry", wayForward} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Default(tapestry) = %q, %v; want an error naming %q", name, err, want)
+		}
+	}
+	if name, err := profiles.Default("darn"); name != "" || err != nil {
+		t.Errorf("Default(darn) = %q, %v; want empty and no error for a recipe with no default under any name", name, err)
 	}
 }
 

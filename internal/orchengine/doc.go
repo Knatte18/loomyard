@@ -43,7 +43,6 @@
 // This package holds what sits behind the seam:
 // the config, the stencil renders, the persisted state, the start's two decisions, and the watcher.
 // It is told every path through Paths and derives none (Told-Geometry Invariant).
-// MigrateConfig raises the module's below-floor poll_interval_ms to its floor for lym config reconcile.
 //
 // # Start prompt order
 //
@@ -516,8 +515,6 @@
 //   - watch.log: the detached watcher's stdout and stderr.
 //   - handoffs/: one timestamped handoff file per cycle.
 //     The one State.LastHandoff names is kept, and `lym cleanup --apply` removes the rest.
-//   - notices/: the retired notice queue, which nothing writes.
-//     `lym cleanup` lists it beside the prime's retired `.lym/notices.log` under `retired`, and `--apply` removes both.
 //   - session-*.never: one sentinel per launch, an output file nothing ever writes.
 //     A shuttle Spec needs an output file to validate, and the watcher, not shuttle's Wait, owns the session's lifetime.
 //

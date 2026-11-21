@@ -83,7 +83,7 @@ func ReadHandOverMark(hubPath, slug string) (mark HandOverMark, found bool, err 
 // ReadUpstreamTakeover reads the takeover entry of the run slug.
 // It reads at the fetched upstream tip of the records worktree at weftPath.
 // The run's status file is read under the anchor that tip records.
-// It comes from the slug's run directory or the legacy `self` directory.
+// It comes from the slug's run directory.
 // In a pair that is the child record.
 // On the prime's records branch it is the record of the run slug the caller names.
 // It reports found false when the worktree has no upstream, or the tip holds no record or no takeover entry.

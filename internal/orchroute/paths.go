@@ -26,12 +26,9 @@ func Paths(location *lymcwd.Location) orchengine.Paths {
 		CycleRequestPath: filepath.Join(dir, "cycle-request"),
 		ResumeMarkPath:   filepath.Join(dir, "resume-mark"),
 		HandoffsDir:      filepath.Join(dir, "handoffs"),
-		NoticesDir:       filepath.Join(dir, "notices"),
 		WatchLogPath:     filepath.Join(dir, "watch.log"),
 		RolePath:         filepath.Join(dir, "role.md"),
 		NoteTemplatePath: filepath.Join(dir, "note-template.md"),
 		PrimeRoot:        location.WorktreePath(),
-
-		RetiredNoticeLogPath: filepath.Join(dotLym, "notices.log"),
 	}
 }

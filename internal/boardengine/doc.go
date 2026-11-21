@@ -299,38 +299,11 @@
 // An entry's and the store's unknown keys are the board.json keys this binary does not declare.
 // They are kept as raw JSON and written back after the known fields, in key order, on every write.
 // A binary built without this guarantee still drops them.
-// Retiring a board field means naming it in the decode shape so it is consumed and dropped, as tier and type are.
 // A field a binary stops declaring is kept forever.
 // The only keys that pass through are those already in board.json.
 // They come from another binary, a hand edit or a git merge of the records repository.
 // This binary adds, changes or merges none.
 // A kept value has no size or shape limit and is trusted exactly as far as an entry's body is.
-//
-// # Migration
-//
-// A board.json entry in the old shape, with a numeric tier and a type, converts in memory on load.
-// It persists in the new shape on the next write.
-// Tier 1 becomes a task and every other tier a note.
-// The type becomes a label: bug stays bug, design becomes enhancement and undecided.
-// Every other type and an absent one become enhancement.
-// Each leading bracketed prefix of the brief becomes a label too, and is stripped from the brief unless it names a type.
-// A note's former depends_on moves into the body as a closing line,
-// and a task's dependency on an entry that became a note is dropped.
-// A board directory that holds the legacy tasks.json and notes.json migrates the same way.
-// It persists to board.json on the first write.
-// A done mark that a binary using the legacy files writes later is folded into the store,
-// so a long-running old driver keeps working until the legacy files are retired.
-// A board without the top-level `draft_status` key is marked once.
-// The next write sets `draft` on every open task whose status is empty.
-// It writes the key `draft_status: true` in the same save, and a board holding the key is never migrated again.
-// The store's on-disk version stays 1, and a binary that does not declare the key keeps it as an unknown one.
-// A replayed commit that set the key sets it on origin's board.
-// So a replay cannot leave origin to migrate released tasks again.
-// The accepted bound is that a task an older binary creates after the migration has no status.
-// It starts without a release until every machine runs the new binary.
-// A task left in status `discussed` by a binary's Discussion-only run becomes a Sketch at the start of the next write.
-// It keeps the status as a hand-set word when the write would refuse it as a Sketch.
-// One such case is another entry depending on it.
 //
 // # README
 //
@@ -783,7 +756,7 @@
 // Read methods (Get/List) bypass the lock and load directly from disk, persisting nothing.
 //
 // Board.Expecting returns a copy of the board that expects one entry's revision, which Board.View gave a viewer.
-// The write section checks it under the lock, on the entries as loaded and migrated and before the mutation.
+// The write section checks it under the lock, on the entries as loaded and before the mutation.
 // A board that never calls Expecting skips the check.
 // A stale check refuses with a *StaleEntryError and writes, renders and syncs nothing.
 // Its Fresh entry is the projection a reload shows, nil when the entry is gone.
@@ -862,7 +835,6 @@
 // both sides changed the same field or design file since the merge base;
 // origin removed the entry.
 // A change a check refuses is reported refused, and so is a later change depending on an entry a refused change added.
-// A commit that set `draft_status` sets it on origin's board too, and neither side ever clears it.
 // The replay carries the commit's `holds` and `machines` records as well.
 // A commit whose holds differ from its parent's is refused whole when origin gained a hold of another machine:
 // none of its entry, prime owner, hold or registry changes applies, and one refusal names that hold's machine and time.
@@ -872,12 +844,4 @@
 // A machine entry the commit added or changed is set on origin's registry unless origin changed it since the merge base.
 // A commit that changes neither key replays as before, even when origin gained a hold.
 // It takes neither the board lock nor the push lock, spawns no sync, and writes nothing when no change survives.
-//
-// # loomyard's own area labels
-//
-// Before deploying the landed binary, write this list into the hub's live `_lym/config/board.yaml` in the Bolt checkout, then delete this paragraph.
-// The migration turns every bracketed brief prefix on loomyard's live board that is not a type into a label, and the board refuses writes until board.yaml lists them.
-// The PR description must quote this snippet verbatim, because the hub copies the list from the PR description, not from the diff.
-//
-//	labels: [undecided, agents, batcher, batten, board, bouncer, burler, cli, config, cost, discussion, docs, engines, fabric, finalize, github, glyph, ide, landing, loom, messaging, models, orch, parent-review, perf, permissions, plan, plugins, process, quarry, recipes, reed, review, search, shed, shuttle, slack, speed, testing, ui, vocabulary, webster, windows]
 package boardengine

@@ -1,107 +1,19 @@
-// leftoverpairs.go reads and settles, for the dobby, the pairs no run's own teardown takes.
-// It lists the hub's orphan pairs,
-// and it gives a run cancelled with keep before cancel intents existed its finished keep cancel intent.
+// leftoverpairs.go reads, for the dobby, the pairs no run's own teardown takes.
 
 package battencli
 
 import (
 	"fmt"
 	"os"
-	"path/filepath"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/runproc"
-	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
-
-// MarkKeptCancels gives each run whose parent worktree is geom's a committed, finished keep cancel intent.
-// The intent names this machine.
-// It marks a run when its batten record is in shed state cancelled with no cancel intent and its pair stands here.
-// A cancel with keep left such a record before cancel intents existed,
-// and the run FSM reads it as neither cancelled nor kept.
-// A record whose finished keep intent this machine wrote, but whose commit failed, is committed again.
-// No intent is written while a merge is in progress on the prime's records side.
-// A refused commit therefore leaves nothing written.
-// Each record is committed and pushed through the synchronous records push; a push origin cannot take now is owed.
-// It returns the slugs it committed, and stops at the first run whose write, commit or push fails, naming it.
-func MarkKeptCancels(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *DobbyParents) ([]string, error) {
-	runs, err := dobbyParentRuns(prime, geom, parents)
-	if err != nil {
-		return nil, err
-	}
-	var marked []string
-	machine := ""
-	for _, run := range runs {
-		if run.status.State != shedengine.StateCancelled {
-			continue
-		}
-		stands, err := pairStands(prime, run.slug)
-		if err != nil {
-			return marked, err
-		}
-		if !stands {
-			continue
-		}
-		if machine == "" {
-			if machine, err = machinename.Name(); err != nil {
-				return marked, err
-			}
-		}
-		deps := battenCommitStatusDeps(prime, run.slug)
-		if intent := run.status.Cancel; intent == nil {
-			written, err := writeKeptCancel(prime, deps, run.slug, machine)
-			if err != nil {
-				return marked, err
-			}
-			if !written {
-				continue
-			}
-		} else {
-			if intent.Remove || intent.Finish == nil || intent.Machine != machine {
-				continue
-			}
-			// An intent already written waits for the next call while a merge is in progress, as it may be committed already.
-			active, err := deps.MergeActive()
-			if err != nil {
-				return marked, fmt.Errorf("read the prime's records merge state for %s: %w", run.slug, err)
-			}
-			if active {
-				continue
-			}
-		}
-		committed, err := commitCancelRecord(deps, run.slug)
-		if err != nil {
-			return marked, fmt.Errorf("commit and push the kept cancel of %s: %w", run.slug, err)
-		}
-		if committed {
-			marked = append(marked, run.slug)
-		}
-	}
-	return marked, nil
-}
-
-// writeKeptCancel writes slug's finished keep cancel intent naming machine, and reports whether it wrote one.
-// It writes nothing while a merge is in progress on the prime's records side.
-func writeKeptCancel(prime *lymcwd.Location, deps commitStatusDeps, slug, machine string) (bool, error) {
-	if err := refuseWhileMergeActive(deps); err != nil {
-		return false, fmt.Errorf("record the kept cancel of %s: %w", slug, err)
-	}
-	if err := os.MkdirAll(filepath.Dir(shedrun.StatusLock(prime, slug)), 0o755); err != nil {
-		return false, err
-	}
-	written, err := shedrun.WriteKeptCancel(prime, slug, machine, time.Now())
-	if err != nil {
-		return false, fmt.Errorf("record the kept cancel of %s: %w", slug, err)
-	}
-	return written, nil
-}
 
 // unreadableOrphanTip keeps one failure episode per orphan candidate whose last commit does not read.
 // It is keyed by slug, so a persistent failure logs one Warn, not one line per dobby probe tick.

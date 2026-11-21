@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"slices"
 	"strings"
 
@@ -94,21 +93,6 @@ func checkRecipeShape(recipe Recipe) error {
 		seen[row.Name] = i
 	}
 
-	return checkRetiredShape(recipe.Retired, seen)
-}
-
-// checkRetiredShape checks the retired map against rows, the recipe's own row names:
-// a retired key must not be a row, and its target must be one.
-// Keys are visited in sorted order so a recipe always names the same offender.
-func checkRetiredShape(retired map[string]string, rows map[string]int) error {
-	for _, from := range slices.Sorted(maps.Keys(retired)) {
-		if _, isRow := rows[from]; isRow {
-			return fmt.Errorf("shedbuild: retired row %q is also a row of the recipe; way forward: remove it from retired, or remove the row", from)
-		}
-		if _, ok := rows[retired[from]]; !ok {
-			return fmt.Errorf("shedbuild: retired row %q moves to %q, which names no row of the recipe; way forward: name a row of the recipe as its target", from, retired[from])
-		}
-	}
 	return nil
 }
 

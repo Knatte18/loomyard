@@ -24,6 +24,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -203,6 +204,36 @@ func seedBoardTask(t *testing.T, h *hubforge.Hub, slug, recipeType string) {
 	}
 }
 
+// madeRecorder is a worktree seam that records the roots of the worktrees it was told were made.
+type madeRecorder struct {
+	mu    sync.Mutex
+	roots []string
+}
+
+// Made records event's root.
+func (r *madeRecorder) Made(event fabricengine.WorktreeEvent) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.roots = append(r.roots, event.Root)
+	return nil
+}
+
+// TookIn records nothing.
+func (r *madeRecorder) TookIn(fabricengine.WorktreeEvent) error { return nil }
+
+// madeCount returns how many times the seam was told the worktree at root was made.
+func (r *madeRecorder) madeCount(root string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	count := 0
+	for _, got := range r.roots {
+		if filepath.Clean(got) == filepath.Clean(root) {
+			count++
+		}
+	}
+	return count
+}
+
 // pathExists reports whether path exists on disk.
 func pathExists(path string) bool {
 	_, err := os.Stat(path)
@@ -210,12 +241,12 @@ func pathExists(path string) bool {
 }
 
 // TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating pins both reconcile calls of `lym batten run`.
-// With a fresh stamp the first call is a no-op,
-// so the new pair losing the prime's retired key can only come from the unconditional pair call after the create row.
+// With a fresh stamp the first call is a no-op.
+// A second worktree-made notification for the new pair comes only from the unconditional pair call after the create row.
 // Against an absent stamp, `arm` for run reconciles ahead of armAt's non-prime refusal and its auto-seed.
+// It does not call t.Parallel: it installs the process-wide worktree seam.
 func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *testing.T) {
 	tiergate.Require(t, 1)
-	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "batten-reconcile-pair"
@@ -231,9 +262,8 @@ func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *t
 		t.Fatalf("write stamp: %v", err)
 	}
 
-	batcher, _ := configreg.Lookup("batcher")
-	retired := strings.Replace(batcher.Template(), "orientation: 31400", "master_base: 52000", 1)
-	gitkit.CommitFile(t, h.PrimeRecords(), configengine.ConfigFileRel("batcher"), retired, "fixture: retired key")
+	seam := &madeRecorder{}
+	t.Cleanup(fabricengine.InstallWorktreeSeam(seam))
 
 	c := &battenCLI{location: h.Location}
 	if err := c.wire(h.Location, slug); err != nil {
@@ -259,8 +289,8 @@ func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *t
 	if got := pairPushCounts.count(pair); got != 1 {
 		t.Errorf("pair pushes spawned for %s = %d; want 1", pair, got)
 	}
-	if data, err := os.ReadFile(configengine.ConfigFile(pair, "batcher")); err != nil || strings.Contains(string(data), "master_base") {
-		t.Errorf("new pair's batcher.yaml still carries the retired key (err %v)", err)
+	if got := seam.madeCount(pair); got < 2 {
+		t.Errorf("worktree-made notifications for the new pair = %d; want the create row's and the pair reconcile's", got)
 	}
 	if status := gitkit.GitStatusPorcelain(t, h.PairRecordsSibling(slug)); status != "" {
 		t.Errorf("new pair's records worktree is dirty after the create row:\n%s", status)
@@ -1309,6 +1339,9 @@ func stepCommandRows_IgnoreACommandSetInTheTasksTrackedLayer(t *testing.T, h *hu
 	c, markers, pair := newCommandRowFixture(t, h, slug)
 	trackedMarker := filepath.Join(t.TempDir(), "tracked")
 	tracked := "open_window_command: " + strconv.Quote("printf %s tracked > "+trackedMarker) + "\n"
+	if err := os.MkdirAll(configengine.ConfigDir(pair), 0o755); err != nil {
+		t.Fatalf("create the pair's config dir: %v", err)
+	}
 	if err := os.WriteFile(configengine.ConfigFile(pair, "batten"), []byte(tracked), 0o644); err != nil {
 		t.Fatalf("write the tracked batten.yaml: %v", err)
 	}

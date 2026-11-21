@@ -17,7 +17,6 @@
 // The channel map (`ChannelMap`) holds the channel of each orch whose button was ever on, with its read cursors.
 // A channel is named `<machine>-<shortname>-<project handle>-<project slug>` (`ChannelName`).
 // The project is the root project for the hub's own orch and the beam's project for a beam's.
-// The map an older relay kept under another file name is never read, so its channels are left alone.
 // The machine's peers record (`Peers`, `ReadPeers`, `UpdatePeers`) sits beside the credentials in `slack-peers.json`.
 // It holds the machines whose Slack app the operator approved, keyed by the lower-cased machine name.
 // The hub's bridge map (`BridgeMap`, `ReadBridgeMap`, `UpdateBridgeMap`) holds the bridge channel of each pair of orchs.

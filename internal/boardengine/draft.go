@@ -19,26 +19,6 @@ func isDraft(t Task) bool {
 	return t.Status != nil && *t.Status == StatusDraft
 }
 
-// migrateDraftStatus marks each open task of kind task whose status is empty as draft, once per board:
-// only while the store's draft_status key is absent.
-// It sets the key and reports whether it marked any task; the write it rides on saves both together.
-func migrateDraftStatus(store *Store) bool {
-	if store.draftStatus {
-		return false
-	}
-	store.draftStatus = true
-	marked := false
-	for i := range store.tasks {
-		task := &store.tasks[i]
-		if task.Kind == KindTask && !isDone(*task) && IsEmptyStatus(task.Status) {
-			draft := StatusDraft
-			task.Status = &draft
-			marked = true
-		}
-	}
-	return marked
-}
-
 // applyDraftRule sets StatusDraft on each entry of kind task in after whose status is empty.
 // An entry that was a task in loaded keeps an empty status if the write leaves it unchanged.
 // So a new task, a note or project made a task, and a task the write emptied from a non-empty status all read draft.

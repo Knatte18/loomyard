@@ -138,7 +138,6 @@ const StartMergeInProgressKind = "merge_in_progress"
 // RunDir returns the path to the durable, fabric-synced directory holding a single run's seed.json and status.json.
 // It joins the given *lymcwd.Location's AnchorPath() with lymdirs.LymDirName, shedDirName and the run's segment.
 // runSegment picks the segment: the worktree slug for SelfRunID.
-// The legacy "self" directory serves when only that one exists.
 func RunDir(l *lymcwd.Location, runID string) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.LymDirName, shedDirName, runSegment(l, runID))
 }
@@ -246,13 +245,6 @@ func PullRequestRecordLock(l *lymcwd.Location, runID string) string {
 // It is the pathspec a records commit takes for the record.
 func PullRequestRecordRel(l *lymcwd.Location, runID string) string {
 	return filepath.Join(lymdirs.LymDirName, shedDirName, runSegment(l, runID), pullRequestRecordFileName)
-}
-
-// LegacyPullRequestRecord returns the path where the run's pull request record lived while it was never-tracked.
-// It is pull-request.json under ScratchDir(l, runID).
-// A record found only there is moved to PullRequestRecord's path once, so a run in flight keeps its pull request.
-func LegacyPullRequestRecord(l *lymcwd.Location, runID string) string {
-	return filepath.Join(ScratchDir(l, runID), pullRequestRecordFileName)
 }
 
 // ParentNoticeFile returns the path to the ephemeral file, pre-push-parent-notice under ScratchDir(l, runID).
@@ -517,7 +509,7 @@ type RunTreeRels struct {
 }
 
 // TreeRunRels returns the tree-relative record paths of runID.
-// It validates runID and applies no "self" alias and no legacy directory fallback:
+// It validates runID and applies no "self" alias:
 // a tree read from git has no disk to resolve against.
 // A runID that fails validation returns that error and a zero value.
 func TreeRunRels(runID string) (RunTreeRels, error) {
@@ -538,7 +530,7 @@ func TreeRunRels(runID string) (RunTreeRels, error) {
 
 // TreeRunFileRels returns the tree-relative paths of a run's seed.json and status.json.
 // They are slash-separated, as a git tree read takes them.
-// It validates runID and applies no "self" alias and no legacy directory fallback:
+// It validates runID and applies no "self" alias:
 // a tree read from git has no disk to resolve against.
 // A runID that fails validation returns that error and empty paths.
 func TreeRunFileRels(runID string) (seedRel, statusRel string, err error) {

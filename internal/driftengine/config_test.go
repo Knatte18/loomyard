@@ -198,7 +198,7 @@ func TestCheckRetiredPlaceholders(t *testing.T) {
 		{
 			name:    "ALeftoverInTheCaptureIsRefused",
 			lines:   map[string]string{"enabled": "enabled: true", "capture": leftoverCapture},
-			wantErr: []string{"the drift capture command holds {skip_file}", "the operator or the hub orch runs lym config reconcile --layer default --apply", "way forward"},
+			wantErr: []string{"the drift capture command holds {skip_file}", "the operator or the hub orch removes every use of it", "way forward"},
 		},
 		{
 			name:  "ALeftoverInACompareThatNeverRunsPasses",
@@ -207,7 +207,7 @@ func TestCheckRetiredPlaceholders(t *testing.T) {
 		{
 			name:    "ALeftoverInTheCompareUnderDiffCommandIsRefused",
 			lines:   map[string]string{"enabled": "enabled: true", "diff": "diff: command", "compare": leftoverCompare},
-			wantErr: []string{"the drift compare command holds {skip_file}", "any other use of it from compare"},
+			wantErr: []string{"the drift compare command holds {skip_file}", "from compare with lym config drift --set"},
 		},
 		{
 			name:  "ACleanCompareUnderDiffCommandPasses",
@@ -396,9 +396,9 @@ func TestLoadConfig(t *testing.T) {
 			wantErr:  []string{`"scope"`, "run_settings", "lym config drift"},
 		},
 		{
-			name: "scope partial loads as full", seed: true,
+			name: "scope partial is refused naming full", seed: true,
 			contents: withKey(t, "scope", "scope: partial"),
-			want:     templateConfig(func(c *Config) { c.Scope, c.ScopeWasPartial = ScopeFull, true }),
+			wantErr:  []string{`"scope"`, `"partial"`, "full", "lym config drift"},
 		},
 		{
 			name: "a capture without the baseline placeholder", seed: true,
@@ -474,13 +474,13 @@ func TestLoadConfig(t *testing.T) {
 		})
 	}
 
-	t.Run("a local scope partial with the retired skip and verify_max_runs keys loads as full with both keys dropped", func(t *testing.T) {
+	t.Run("a local scope full with the retired skip and verify_max_runs keys loads with both keys dropped", func(t *testing.T) {
 		t.Parallel()
-		got, err := LoadConfig(seedLocalDrift(t, "scope: partial\nskip: [slow]\nverify_max_runs: 3\n"))
+		got, err := LoadConfig(seedLocalDrift(t, "scope: full\nskip: [slow]\nverify_max_runs: 3\n"))
 		if err != nil {
 			t.Fatalf("LoadConfig() = _, %v; want nil error", err)
 		}
-		want := templateConfig(func(c *Config) { c.Scope, c.ScopeWasPartial = ScopeFull, true })
+		want := templateConfig(func(c *Config) { c.Scope = ScopeFull })
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LoadConfig() = %+v; want %+v", got, want)
 		}

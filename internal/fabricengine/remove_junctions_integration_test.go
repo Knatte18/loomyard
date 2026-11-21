@@ -21,6 +21,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+// assertAbsent fails the test when path exists; a link counts as present even when its target is missing.
+func assertAbsent(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Lstat(path); !os.IsNotExist(err) {
+		t.Errorf("%s stat err = %v; want it removed", path, err)
+	}
+}
+
 // TestRemove_TearsDownNestedJunction wires a junction one level below the worktree root, at RelPath "sub".
 // It asserts Remove leaves no junction at that nested path.
 func TestRemove_TearsDownNestedJunction(t *testing.T) {

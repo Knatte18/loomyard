@@ -28,17 +28,7 @@ const (
 	// weftPushLockFile names the push lock that coalescePush holds for the whole loop-until-clean push window.
 	// It sits in .weft/ with weftWriteLockFile, so the .weft/ git exclude already covers it.
 	weftPushLockFile = "fabric.push.lock"
-	// retiredLockFilePattern and retiredSwapLockFilePattern are the broad excludes seedWeftArtifactExcludes removes.
-	// Keeping them would hide a lock file that strays into a tracked tree from git status.
-	retiredLockFilePattern     = "*.lock"
-	retiredSwapLockFilePattern = "*.swaplock"
 )
-
-// legacyLockFileNames are lock files that earlier versions wrote beside tracked files in the weft checkouts:
-// in the Bolt root, and beside the review records of a run directory.
-// No current code writes them.
-// They stay excluded by name, so a leftover one never enters a stage-all board commit or a records commit.
-var legacyLockFileNames = []string{".gitrepo-push.lock", "board.lock", "board.push.lock", "board.json.swaplock", "tasks.json.swaplock", "notes.json.swaplock", "generation-record.json.lock", "settle-record.json.lock", "settle-record.patch.lock"}
 
 // ensureWeftLockDir creates the .weft lock directory and seeds git-exclude
 // entries for fabric's lock artifacts.
@@ -88,9 +78,8 @@ func HoldRecordsWriteLock(recordsWorktreePath string, wait time.Duration) (relea
 }
 
 // seedWeftArtifactExcludes adds the weft repo's never-tracked operational artifacts to its .git/info/exclude.
-// They are the .weft/ lock directory, the lymdirs.DotLymDirName directory, and the legacy lock file names.
-// Each missing entry is appended line-exact and idempotently;
-// the retired *.lock and *.swaplock lines are removed.
+// They are the .weft/ lock directory and the lymdirs.DotLymDirName directory.
+// Each missing entry is appended line-exact and idempotently.
 // Exclude is used instead of a committed .gitignore: it needs no commit and no new file in the weft root.
 // Without these excludes, a weft worktree reports the artifacts as untracked dirt, which makes it look dirty.
 // The exclude file lives in the repo's common gitdir, so one seeding covers every linked weft worktree.
@@ -99,18 +88,10 @@ func HoldRecordsWriteLock(recordsWorktreePath string, wait time.Duration) (relea
 func seedWeftArtifactExcludes(weftPath string) error {
 	_, _, err := mutateGitExclude(weftPath, func(content string) (string, error) {
 		present := map[string]bool{}
-		var kept []string
 		for _, line := range strings.Split(content, "\n") {
-			trimmed := strings.TrimSpace(line)
-			if trimmed == retiredLockFilePattern || trimmed == retiredSwapLockFilePattern {
-				continue
-			}
-			present[trimmed] = true
-			kept = append(kept, line)
+			present[strings.TrimSpace(line)] = true
 		}
-		content = strings.Join(kept, "\n")
-		entries := append([]string{weftLockDirName + "/", lymdirs.DotLymDirName + "/"}, legacyLockFileNames...)
-		for _, entry := range entries {
+		for _, entry := range []string{weftLockDirName + "/", lymdirs.DotLymDirName + "/"} {
 			if present[entry] {
 				continue
 			}

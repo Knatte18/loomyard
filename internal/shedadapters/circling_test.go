@@ -41,26 +41,6 @@ func TestRecordCirclingDecision_WritesPendingFile(t *testing.T) {
 		wantCause EscalationCause
 	}{
 		{
-			name:     "accept over a circling verdict",
-			decision: CirclingAccept,
-			layout: func(t *testing.T, dir string) {
-				layoutCirclingRun(t, dir, 1, "CONTINUE")
-				layoutCirclingRun(t, dir, 2, "CIRCLING")
-			},
-			wantRound: 2,
-			wantCause: EscalationCircling,
-		},
-		{
-			name:     "continue over a circling verdict",
-			decision: CirclingContinue,
-			layout: func(t *testing.T, dir string) {
-				layoutCirclingRun(t, dir, 1, "CONTINUE")
-				layoutCirclingRun(t, dir, 2, "CIRCLING")
-			},
-			wantRound: 2,
-			wantCause: EscalationCircling,
-		},
-		{
 			name:     "accept over a budget escalation on a continue verdict",
 			decision: CirclingAccept,
 			layout: func(t *testing.T, dir string) {
@@ -150,10 +130,22 @@ func writeEscalationRecord(t *testing.T, dir string, cause EscalationCause) {
 	}
 }
 
+// recordCirclingDecisionOverEscalation escalates round with cause circling, then records d as the decision on it.
+func recordCirclingDecisionOverEscalation(t *testing.T, runDir string, round int, d CirclingDecision) {
+	t.Helper()
+	if err := writeEscalation(runDir, round, EscalationCircling, "brief\n", "notice"); err != nil {
+		t.Fatalf("writeEscalation(round %d) = %v; want nil", round, err)
+	}
+	if _, _, err := RecordCirclingDecision(runDir, d); err != nil {
+		t.Fatalf("RecordCirclingDecision(%s) = %v; want nil", d, err)
+	}
+}
+
 func TestRecordCirclingDecision_SecondRecordIsRefused(t *testing.T) {
 	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	layoutCirclingRun(t, dir, 1, "CIRCLING")
+	writeEscalationRecord(t, dir, EscalationCircling)
 	if _, _, err := RecordCirclingDecision(dir, CirclingAccept); err != nil {
 		t.Fatalf("first RecordCirclingDecision error = %v; want nil", err)
 	}
@@ -182,6 +174,7 @@ func TestRecordCirclingDecision_NotEscalatedWritesNothing(t *testing.T) {
 	}{
 		{"converged", func(t *testing.T, dir string) { layoutCirclingRun(t, dir, 1, "CONVERGED") }},
 		{"continue", func(t *testing.T, dir string) { layoutCirclingRun(t, dir, 1, "CONTINUE") }},
+		{"circling verdict with no escalation record", func(t *testing.T, dir string) { layoutCirclingRun(t, dir, 1, "CIRCLING") }},
 		{"unjudged", func(t *testing.T, dir string) { layoutCirclingRun(t, dir, 1, "") }},
 		{"earlier circling, later continue", func(t *testing.T, dir string) {
 			layoutCirclingRun(t, dir, 1, "CIRCLING")
@@ -218,13 +211,7 @@ func TestReadCirclingDecision(t *testing.T) {
 		wantCause    EscalationCause
 	}{
 		{name: "absent file"},
-		{
-			name:         "a legacy file without a cause reads as circling",
-			content:      "---\nround: 1\ndecision: accept\nsettled: false\n---\n",
-			wantExists:   true,
-			wantDecision: CirclingAccept,
-			wantCause:    EscalationCircling,
-		},
+		{name: "no cause", content: "---\nround: 1\ndecision: accept\nsettled: false\n---\n", wantExists: true, wantErr: true},
 		{
 			name:         "a hard-cap cause is legal",
 			content:      "---\nround: 1\ndecision: accept\ncause: hard-cap\nsettled: false\n---\n",

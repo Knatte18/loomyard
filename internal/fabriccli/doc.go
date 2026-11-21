@@ -30,7 +30,6 @@
 // `--subpath` must stay inside the warp repo.
 // An absolute path, or one escaping through `..`, is refused before anything is cloned.
 // A re-clone refuses a value that disagrees with the subpath recorded in the main-weft marker.
-// It uses the Bolt marker when main-weft carries none.
 // A fresh bind commits the `.lym-anchor` marker at the root of the prime's weft branch and writes none on the board.
 // `--force-bootstrap` bypasses the weft-candidate guard for one case only:
 // a brand-new weft remote that is neither empty nor lym-anchored.

@@ -1,5 +1,5 @@
 // verbs_test.go tests the board verbs beyond the store verbs:
-// promote, rename, prune, find, retire-legacy, the --text listing on list and find, and list's --sort.
+// promote, rename, prune, find, the --text listing on list and find, and list's --sort.
 // The steps run from TestCLI in cli_test.go, which also defines cliFixture; runCLI is in cli_unit_test.go, same package.
 
 package boardcli_test
@@ -409,50 +409,6 @@ func stepListShowsASketch(t *testing.T, f *cliFixture) {
 	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
 	if len(lines) < 2 || lines[len(lines)-2] != "sketches:" || !strings.HasPrefix(lines[len(lines)-1], "S1 ") || !strings.Contains(lines[len(lines)-1], "sketched") {
 		t.Errorf("list --text = %q; want it to end with a sketches: line and the S1 sketched line", stdout)
-	}
-}
-
-func stepRetireLegacy(t *testing.T, f *cliFixture) {
-	cwd := f.cwd
-	boardDir := fabricengine.BoardDir(filepath.Dir(cwd))
-
-	// A board with no legacy files refuses.
-	mustUpsert(t, `{"slug":"x","title":"X","labels":["bug"]}`)
-	for _, args := range [][]string{{"retire-legacy"}, {"retire-legacy", "--apply"}} {
-		result := runJSON(t, 1, args...)
-		if ok, _ := result["ok"].(bool); ok {
-			t.Fatalf("%v: expected refusal without legacy files, got %v", args, result)
-		}
-	}
-
-	// Seeded legacy files are reported by a bare run and left on disk.
-	for _, name := range []string{"tasks.json", "notes.json"} {
-		if err := os.WriteFile(filepath.Join(boardDir, name), []byte(`[]`), 0o644); err != nil {
-			t.Fatalf("seed %s: %v", name, err)
-		}
-	}
-	dry := runJSON(t, 0, "retire-legacy")
-	if files, _ := dry["legacy_files"].([]any); len(files) != 2 || files[0] != "tasks.json" || files[1] != "notes.json" || dry["applied"] != false {
-		t.Fatalf("dry run: legacy_files = %v applied = %v, want [tasks.json notes.json] false", dry["legacy_files"], dry["applied"])
-	}
-	for _, name := range []string{"tasks.json", "notes.json"} {
-		if _, err := os.Stat(filepath.Join(boardDir, name)); err != nil {
-			t.Fatalf("%s removed by a dry run: %v", name, err)
-		}
-	}
-
-	// --apply reports them again and removes them.
-	applied := runJSON(t, 0, "retire-legacy", "--apply")
-	if files, _ := applied["legacy_files"].([]any); len(files) != 2 || applied["applied"] != true {
-		t.Fatalf("retire-legacy --apply: legacy_files = %v applied = %v, want two files and true", applied["legacy_files"], applied["applied"])
-	}
-	for _, name := range []string{"tasks.json", "notes.json"} {
-		if _, err := os.Stat(filepath.Join(boardDir, name)); !os.IsNotExist(err) {
-			t.Fatalf("%s still present after retire-legacy (stat err: %v)", name, err)
-		}
-	}
-	if _, err := os.Stat(filepath.Join(boardDir, "board.json")); err != nil {
-		t.Fatalf("board.json missing after retire-legacy: %v", err)
 	}
 }
 

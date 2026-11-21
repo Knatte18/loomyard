@@ -22,7 +22,7 @@ const (
 )
 
 // ResolveStrandGUID returns the guid of the one strand of this worktree's session that name addresses:
-// its full name, its role segment, or a legacy exact name (agentname.Matches).
+// its full name or its role segment (agentname.Matches).
 // An unknown name and an ambiguous one (two strands carrying it) are both refused, so a removal never lands on a guess.
 func (e *Engine) ResolveStrandGUID(name string) (string, error) {
 	res, err := e.Status()

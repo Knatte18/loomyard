@@ -191,39 +191,11 @@ func (d *daemon) readLeftoverTeardown(now time.Time, pairs []LeftoverPair, resul
 	}
 }
 
-// markKeptCancels runs once per dobby process.
-// It gives each run cancelled with keep before cancel intents existed its finished keep cancel intent.
-// Each marked run logs one line.
-// A failure is logged once per episode and tried again at the next tick; a nil Deps.MarkKeptCancels marks nothing.
-func (d *daemon) markKeptCancels(now time.Time) {
-	if d.keptMarked {
-		return
-	}
-	if d.deps.MarkKeptCancels == nil {
-		d.keptMarked = true
-		return
-	}
-	slugs, err := d.deps.MarkKeptCancels()
-	if err != nil {
-		if !d.keptMarkFailing {
-			d.keptMarkFailing = true
-			d.logLine(now, "kept cancel marking failing: "+oneLine(err.Error()))
-		}
-		return
-	}
-	d.keptMarked = true
-	d.keptMarkFailing = false
-	for _, slug := range slugs {
-		d.logLine(now, "run "+slug+": a cancel that kept the pair before the upgrade now records its finished keep cancel intent")
-	}
-}
-
 // noticeKeptPairs posts one notice per fresh start listing the kept pairs of the listed runs.
 // The notice names the verb that removes one.
-// It waits for the kept cancels of this process to be marked, so a pre-upgrade kept pair is in the list.
 // A start with no kept pair posts nothing.
 func (d *daemon) noticeKeptPairs(ctx context.Context) {
-	if !d.keptNoticeOwed || !d.keptMarked {
+	if !d.keptNoticeOwed {
 		return
 	}
 	d.keptNoticeOwed = false

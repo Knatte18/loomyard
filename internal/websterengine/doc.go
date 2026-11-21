@@ -86,7 +86,6 @@
 // Drift detection rewrites every pending card still naming an `old` glyph through the exact tier's repair path.
 // The rewrite is under the amendment tier `reported`.
 // A reported `new` glyph that does not resolve is a later-card drift warning, refused at that card's begin-batch.
-// An older fork's `deviations` key is accepted and ignored.
 // The digest's `deviations` list is the glyph scope guard's file list over the batch delta:
 // the files changed outside the batch's own targets.
 // Record-batch and recover-batch fill it.

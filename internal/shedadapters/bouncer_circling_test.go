@@ -156,7 +156,7 @@ func TestBouncer_Circling_NoDecisionAwaitsNamingBothVerbs(t *testing.T) {
 // round: continue returns Stuck, runs no seam and writes the next round's focus file; accept
 // settles, approves and commits, returns Done, and the next Call clears the settled generation.
 //
-//testtiming:keep pins settling a decision recorded on a CIRCLING round that never wrote an escalation record, which the escalation tests never reach
+//testtiming:keep pins settling a decision recorded over a CIRCLING verdict through both verbs
 func TestBouncer_Circling_RecordedDecision(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -170,9 +170,7 @@ func TestBouncer_Circling_RecordedDecision(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			seams := &circlingSeams{}
 			b, cfg, shuttle := circlingBouncer(t, seams.install)
-			if _, _, err := RecordCirclingDecision(cfg.RunDir, tt.decision); err != nil {
-				t.Fatalf("RecordCirclingDecision(%s) = %v; want nil", tt.decision, err)
-			}
+			recordCirclingDecisionOverEscalation(t, cfg.RunDir, 2, tt.decision)
 
 			if tt.decision == CirclingContinue {
 				ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
@@ -232,9 +230,7 @@ func TestBouncer_Circling_AcceptCallsCarryOverBeforeSettling(t *testing.T) {
 		_, _, settled, _, err := readCirclingDecision(cfg.RunDir, 2)
 		settledAtCall = append(settledAtCall, err != nil || settled)
 	}
-	if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
-		t.Fatalf("RecordCirclingDecision(accept) = %v; want nil", err)
-	}
+	recordCirclingDecisionOverEscalation(t, cfg.RunDir, 2, CirclingAccept)
 
 	if _, _, err := b.Call(t.Context()); !errors.Is(err, recorder.err) {
 		t.Fatalf("Call() error = %v; want the carry-over failure", err)
@@ -277,9 +273,7 @@ func TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove(
 	tiergate.Require(t, 0)
 	seams := &circlingSeams{commitErr: errors.New("commit refused")}
 	b, cfg, _ := circlingBouncer(t, seams.install)
-	if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
-		t.Fatalf("RecordCirclingDecision(accept) = %v; want nil", err)
-	}
+	recordCirclingDecisionOverEscalation(t, cfg.RunDir, 2, CirclingAccept)
 
 	if _, _, err := b.Call(t.Context()); err == nil || !strings.Contains(err.Error(), "commit refused") {
 		t.Fatalf("Call() error = %v; want the commit failure", err)
@@ -301,9 +295,7 @@ func TestBouncer_Circling_SettledAcceptReachedInSettleDegrades(t *testing.T) {
 	tiergate.Require(t, 0)
 	seams := &circlingSeams{}
 	b, cfg, _ := circlingBouncer(t, seams.install)
-	if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
-		t.Fatalf("RecordCirclingDecision(accept) = %v; want nil", err)
-	}
+	recordCirclingDecisionOverEscalation(t, cfg.RunDir, 2, CirclingAccept)
 	if err := settleCirclingAccept(cfg.RunDir, 2); err != nil {
 		t.Fatalf("settleCirclingAccept = %v; want nil", err)
 	}

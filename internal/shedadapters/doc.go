@@ -315,7 +315,6 @@
 //     It carries the base: the settle record's, or the judge base when the judge subject differs from the live one.
 //     It carries the path of each review input kept, a full generation's record included.
 //     An input counts when BouncerConfig.ReviewInputs reports it written after the settle or judge time.
-//     A record written with a single review_input path reads as that one input.
 //     ReviewInputNote renders from the record of a full generation the note that fills the rubric's optional
 //     `review_input` marker, naming each input the generation reads besides the diff.
 //     AmendmentNote renders from the record the note that fills the rubric's optional `amendment` marker.
@@ -341,13 +340,10 @@
 //     Hiding it there would hide it when an operator most needs it.
 //     A pointer is either an existing file or empty, because Shed never stats a pointer.
 //     A pointer naming an unwritten file would be persisted into the history and read as though the artifact were there.
-//     A verdict already on disk at Call entry may use the legacy words APPROVED and BLOCKING.
-//     They are read as CONVERGED and CONTINUE.
-//     That covers the clear, the replay and the review row's may-advance check.
-//     A legacy word never settles a harvest.
-//     A judge this Call spawned or attached that writes one has its three outputs archived and the round re-judged.
+//     A verdict file must carry exactly CONVERGED, CONTINUE or CIRCLING; any other word reads as no judgment.
+//     A judgment the convergence guard refuses (see Limitations) has its three judge outputs archived.
+//     The round is then re-judged.
 //     The re-judge goes through the round producer's unjudged-round hand-back, at one bounce unit on each row.
-//     A judgment the convergence guard refuses (see Limitations) takes the same route.
 //     Its Reason names the cause and ends in `the round is re-judged`.
 //     A replayed round that carries an escalation record or a circling decision file stands as recorded.
 //     Such a round is never refused.

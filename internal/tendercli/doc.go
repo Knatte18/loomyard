@@ -58,12 +58,8 @@
 // Any other failed push fails the verb.
 // Until it lands another machine reads the run unpaused.
 // `PausePair` and every hub-wide pause record no intent.
-// `RecordPauseIntent` records one for a caller outside the verbs: the upgrade's first read.
-// Unlike the verb, it returns an owed push as an error, so no entry is dropped whose intent is not on origin.
-// A push that hands the run over returns an error wrapping `fabricengine.ErrHandedOver`.
-// That caller reads it as the run owned elsewhere.
 // `PauseIntentEntries` writes this machine's pause entries from the pause intents of the runs it owns.
-// The dobby's catch-up and the upgrade's first read call it.
+// The dobby's catch-up calls it.
 // A slug whose batten record holds an intent and whose scope has no live entry is paused under the default caller.
 //
 // # Bolt hold

@@ -27,11 +27,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// staleFabricAnchorName is the older lym-anchor marker filename, aliased from lymcwd.StaleAnchorFileName.
-// lymcwd never reads it as a fallback.
-// CloneHub reads it only to detect a leftover marker from an older clone.
-// It then fails, rather than silently re-anchoring at the wrong subpath.
-// The guard runs only on the Bolt fallback read: a marker at the prime's weft root supersedes it.
+// staleFabricAnchorName is the pre-rename lym-anchor marker filename, aliased from lymcwd.StaleAnchorFileName.
+// CloneHub looks for it only to refuse a hub that carries it, rather than silently re-anchoring at the wrong subpath.
+// The refusal applies only when the prime's weft root carries no marker.
 const staleFabricAnchorName = lymcwd.StaleAnchorFileName
 
 // CloneOptions carries the parameters of CloneHub as named fields.
@@ -139,7 +137,7 @@ type cloneSeed struct {
 //     captured warp branch if it already exists locally from step 3, or freshly orphan-creating it otherwise;
 //     on failure, tear down and return the error.
 //  5. Resolve the lym-anchor subpath, adopt or create. Adopt reads the marker committed at the root of the
-//     prime's weft worktree, else the Bolt legacy marker on weft:main, and writes nothing. Create validates
+//     prime's weft worktree and writes nothing. Create validates
 //     that the subpath exists in the warp worktree, then commits the marker on the prime's weft branch.
 //     Then write the warp-binding record when it is new, and return the resolved CloneResult.
 //
@@ -443,37 +441,29 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	// A fresh bind commits the marker on the prime's weft branch here;
 	// the Bolt commit the CLI layer makes later carries config and no anchor.
 	primeData, primeReadErr := os.ReadFile(filepath.Join(weftPath, lymcwd.AnchorFileName))
-	boardMarkerPath := filepath.Join(boardDir, lymcwd.AnchorFileName)
 	var anchor string
 	if primeReadErr == nil {
 		// Adopt path: the prime's weft worktree carries a committed marker at its root,
-		// so this is a re-clone of a hub that already recorded one.
-		// The marker wins over the Bolt legacy marker, and nothing is written.
+		// so this is a re-clone of a hub that already recorded one, and nothing is written.
 		anchor, err = adoptRecordedAnchor(primeData, "on "+RecordsBranchName(warpBranch), requestedAnchor, subpathRequestedExplicitly)
 		if err != nil {
 			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 		}
-	} else if boardData, boardReadErr := os.ReadFile(boardMarkerPath); boardReadErr == nil {
-		// Legacy adopt path: only the Bolt marker exists.
-		// The hub keeps resolving through it until `lym fabric reconcile` migrates it onto the prime's weft.
-		anchor, err = adoptRecordedAnchor(boardData, "on weft:main", requestedAnchor, subpathRequestedExplicitly)
-		if err != nil {
-			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
-		}
 	} else {
-		// A stale `.fabric-anchor` marker with no `.lym-anchor` beside it is a hard error, not a silent fallback:
+		// A `.fabric-anchor` marker on the board with no `.lym-anchor` marker on the prime is refused, not ignored:
 		// without this check the clone would fall through to the create path and re-anchor at "." or at the requested --subpath.
 		// The marker records a real anchor, so `_lym` would silently resolve to the wrong place for a subpath-anchored repo.
-		// This check runs on the Bolt fallback only, since a marker at the prime's weft root already supersedes the Bolt read.
 		if _, statErr := os.Stat(filepath.Join(boardDir, staleFabricAnchorName)); statErr == nil {
-			// The remedy names the marker rename, never a re-clone:
+			// The remedy names the marker on the prime's records branch, never a re-clone:
 			// this error comes from a clone, so telling the operator to clone again reproduces it.
-			// The record lives on weft:main, so migrating it is a rename plus a commit in an existing hub's board worktree.
-			// Once that is done, this clone succeeds.
+			// A clone adopts only the marker committed on that branch.
+			// Renaming the marker in the board worktree alone would let the retry fall through to the create path.
 			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf(
-				"found stale %s marker with no %s beside it at %s; in an existing hub's %s worktree run `git mv %s %s` and commit, then retry this clone",
+				"found stale %s marker with no %s beside it at %s; in an existing hub, commit %s holding the old marker's content at the root of the weft remote's records branch %s "+
+					"from the prime's weft worktree and push it, remove %s from the %s worktree, commit and push that, then retry this clone",
 				staleFabricAnchorName, lymcwd.AnchorFileName, boardDir,
-				BoltDirName, staleFabricAnchorName, lymcwd.AnchorFileName))
+				lymcwd.AnchorFileName, RecordsBranchName(warpBranch),
+				staleFabricAnchorName, BoltDirName))
 		}
 
 		// Create path: first-ever clone of this weft, no marker committed yet.
@@ -489,8 +479,6 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	}
 
 	// Write the warp-binding record when this clone determined it; both branches above fall through to this point.
-	// A re-clone of a pre-binding hub has .lym-anchor committed but no .lym-warp, so writeRecord is true,
-	// and the record is written here with no special casing, which makes this the clone-time backfill too.
 	var warpBindingRecorded bool
 	if writeRecord {
 		if err := writeWarpBinding(boardDir, effective); err != nil {
@@ -553,9 +541,8 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 
 // adoptRecordedAnchor validates the anchor a marker records and checks it against the requested subpath.
 // source names where the marker was read, for the error text.
-// The recorded value is validated, not trusted.
-// An older binary could have recorded an absolute or escaping anchor;
-// adopting one yields a hub whose every weft commit fails.
+// The recorded value is validated, not trusted:
+// adopting an absolute or escaping anchor yields a hub whose every weft commit fails.
 // An explicitly requested subpath that disagrees with the recorded anchor is refused, never silently re-anchored;
 // "." is not exempt: the flag defaults to the empty string, so an explicit "." is distinguishable from no request.
 func adoptRecordedAnchor(markerData []byte, source, requestedAnchor string, requestedExplicitly bool) (string, error) {

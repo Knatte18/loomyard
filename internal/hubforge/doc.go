@@ -92,7 +92,6 @@
 // Most tests need neither: fabriccli.CloneAndWire already ends in the hub walk.
 // A real hub therefore arrives with each per-worktree module's repo default committed on the board.
 // Its prime carries only the per-worktree config files the records repository already held.
-// The clone's walk also migrates the prime, so its prime arrives with the sparse marker committed.
 // SeedConfig writes a sparse worktree layer over those defaults.
 // SeedConfig commits with an empty stage allowed:
 // a seed byte-identical to a file already committed stages nothing.

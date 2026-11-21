@@ -36,28 +36,19 @@ func readoptPermanent(err error) bool {
 		errors.As(err, &taken)
 }
 
-// childStatusRels returns the tree-relative paths of the child run's status file under each run directory segment.
-// A run may carry the slug's own segment or the legacy self segment.
-func childStatusRels(slug string) ([]string, error) {
-	var rels []string
-	for _, runID := range []string{slug, shedrun.SelfRunID} {
-		_, statusRel, err := shedrun.TreeRunFileRels(runID)
-		if err != nil {
-			return nil, err
-		}
-		rels = append(rels, statusRel)
-	}
-	return rels, nil
+// childStatusRel returns the tree-relative path of the child run's status file under the slug's run directory.
+func childStatusRel(slug string) (string, error) {
+	_, statusRel, err := shedrun.TreeRunFileRels(slug)
+	return statusRel, err
 }
 
-// readoptRecordRels returns the paths a tag read must carry:
-// the child run's status under each run directory segment, then the origin record.
+// readoptRecordRels returns the paths a tag read must carry: the child run's status, then the origin record.
 func readoptRecordRels(slug string) ([]string, error) {
-	rels, err := childStatusRels(slug)
+	statusRel, err := childStatusRel(slug)
 	if err != nil {
 		return nil, err
 	}
-	return append(rels, fabricengine.OriginRecordRel()), nil
+	return []string{statusRel, fabricengine.OriginRecordRel()}, nil
 }
 
 // failReadopt records the permanent failure addErr as the stop of a run whose status is status.
@@ -277,16 +268,16 @@ func landRestoreWayForward(c *battenCLI, notLive *fabricengine.ErrNotLive) (stri
 }
 
 // newestFinishedTag returns the tag with the latest committer time whose child run status reads done.
-// It returns nil when no tag does, and the status is read under either run directory segment.
+// It returns nil when no tag does.
 // A tag whose status is absent or does not decode is skipped.
 func newestFinishedTag(slug string, tags []fabricengine.RecordsTag) (*fabricengine.RecordsTag, error) {
-	rels, err := childStatusRels(slug)
+	statusRel, err := childStatusRel(slug)
 	if err != nil {
 		return nil, err
 	}
 	var best *fabricengine.RecordsTag
 	for i := range tags {
-		if !childRunDone(tags[i], rels) {
+		if !childRunDone(tags[i], statusRel) {
 			continue
 		}
 		if best == nil || tags[i].CommitterTime.After(best.CommitterTime) {
@@ -296,17 +287,12 @@ func newestFinishedTag(slug string, tags []fabricengine.RecordsTag) (*fabricengi
 	return best, nil
 }
 
-// childRunDone reports whether the child run status held by tag under any of rels decodes with state done.
-func childRunDone(tag fabricengine.RecordsTag, rels []string) bool {
-	for _, rel := range rels {
-		data, present := tag.Files[rel]
-		if !present {
-			continue
-		}
-		var status shedengine.Status
-		if json.Unmarshal(data, &status) == nil && status.State == shedengine.StateDone {
-			return true
-		}
+// childRunDone reports whether the child run status held by tag at statusRel decodes with state done.
+func childRunDone(tag fabricengine.RecordsTag, statusRel string) bool {
+	data, present := tag.Files[statusRel]
+	if !present {
+		return false
 	}
-	return false
+	var status shedengine.Status
+	return json.Unmarshal(data, &status) == nil && status.State == shedengine.StateDone
 }

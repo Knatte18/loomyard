@@ -87,7 +87,7 @@
 // `slots` and `tier_parallel` take a machine-local override at `<BoardDir>/.lym/config/gate.machine.yaml`.
 // The override is never reconciled and is read at every acquire; every other key stays hub-file only.
 // `cli_wait_sec`, `go_parallel`, `guard_tier` and `test_map_max_age_days` are retired keys:
-// every load drops them, in the hub and machine layers alike, and reconcile prunes them.
+// a file that still sets one is refused, naming the key.
 // `lym gate test --map` rebuilds each map whole whatever its age, so `test_map_max_age_days` bounds nothing.
 // The slot wait of a call that runs in this process has no cap,
 // and a capped call's front is bounded by the caller role's keep-warm cap.
@@ -114,7 +114,7 @@
 // HubSetsGate reports whether the hub's own gate.yaml, its base layer alone, sets `gates.<key>`.
 // A template default, a worktree layer and a machine layer never count.
 // The scope `coverage` is retired, since the gate always runs whole packages and selects no test from a coverage map.
-// MigrateConfig rewrites it to `diff`, and the load refuses it with that way forward.
+// The load refuses it, naming scope `diff`.
 // `tier_parallel` is an open map from a tier name to this machine's parallel for it.
 // A GateKey may also hold `lints`, the lint steps its call runs after its tiers, each LintComments or LintPattern.
 // The template's `card` key lists both.
@@ -183,7 +183,7 @@
 // a `covers` entry not lower than its tier's number, a tier key not spelled `tier<N>`;
 // a `refuse_raw` entry that is not words of letters, digits, `.`, `_` and `-` separated by single spaces;
 // a `tier_parallel` entry that is no integer of at least 1;
-// a gate key whose scope is not `card`, `diff` or `all`, and the retired `coverage`, which names `lym fabric reconcile`;
+// a gate key whose scope is not `card`, `diff` or `all`, and the retired `coverage`, which names `diff`;
 // a `card` scope on any key but `card` and `batch`; a lint other than `comments` or `pattern`;
 // a report other than ReportReach, `reach`, ReportRedundancy, `redundancy`, or ReportMutation, `mutation`.
 // A GateKey may also hold `fixer`, a model-spec naming the cold fixer an agent's red call hands its failures to.
@@ -221,8 +221,8 @@
 // They are cross-pair keys too, and LoadConfig refuses each below 1.
 // LoadConfig refuses a `fixer` on any key but `card`, and a `fixer` that `modelspec.Parse` rejects.
 // Each refusal names the key and its way forward.
-// A `gates` entry still in the retired list shape, such as `card: [0]`, is refused naming `lym fabric reconcile`.
-// The reconcile runs MigrateConfig, which migrates it.
+// A `gates` entry still in the retired list shape, such as `card: [0]`, is refused.
+// The refusal names the mapping shape that replaces it.
 // A `tier_parallel` entry for a tier the config does not declare is dropped with a logged warning.
 // A tier the hub removes therefore leaves no entry that fails the load.
 // Cross-references are checked at use, never at load.
@@ -250,22 +250,6 @@
 // FailedTestsCall renders the command that runs a failure report's failed tests alone:
 // one `--wait` call per tier, joined by `&&`, each over the tier's packages with a `-run` pattern of its test names.
 // An agent strand's capped front answers it with `done: false` and exit 75 when its keep-warm cap passes.
-// MigrateConfig prunes the retired `gates.publish` list and `guard_tier` key from a gate.yaml document.
-// It also migrates the retired lists, so reconcile rewrites the hub file:
-// `landing` becomes `parent-align` and `finalize` with scope `all`;
-// it also becomes `darn-write` and `code-burler-fix` with scope `diff`;
-// `final` becomes `webster` with scope `all`; `round` becomes `webster-fix` with scope `diff`;
-// a `card` or `batch` list becomes a mapping with scope `card`;
-// a gates entry with the retired scope `coverage` takes scope `diff`.
-// A `merge-in` key is renamed to `parent-align` with its value, and dropped beside an existing `parent-align`.
-// A key the file already holds in the new shape keeps its value, and a second pass changes nothing.
-// SeedAdoptGate runs over the hub base file alone, through the registry's hub-base step.
-// When a hub tunes `finalize` and holds no `adopt`, it adds `adopt` with a copy of `finalize`'s value,
-// so the adopt check runs the tiers the hub tuned for the landing.
-// While `finalize` is tuned, the template's own `adopt` value cannot be pinned:
-// the reconcile drops a template-equal entry, and the next pass seeds it again from `finalize`.
-// MigrateConfig never seeds `adopt`: it also runs over a local-layer file, a seed and every run-settings gate object.
-// Only the hub base file takes the seed.
 // Config.TiersValue renders the tier lines and the Go-read gate keys a prompt takes, or `none` when no tier is declared.
 //
 // # Tier plan

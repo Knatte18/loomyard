@@ -19,8 +19,7 @@
 // ErrNotAGitRepo already covers that failure.
 // The branch is reached only through lymcwd's anchor-resolution path.
 // One example is ErrCwdOutsideAnchor from the cwd gate.
-// Another is ErrStaleAnchorMarker from a hub whose checkout carries only the stale anchor marker.
-// A third is an ErrInvalidAnchor-wrapping failure when a recorded anchor exists but fails validation.
+// Another is an ErrInvalidAnchor-wrapping failure when a recorded anchor exists but fails validation.
 //
 // The worktree-clean check skips lym's own state under `_lym` on the state side:
 // the run-records root, the loom friction directory and the friction directory's reflection archives.

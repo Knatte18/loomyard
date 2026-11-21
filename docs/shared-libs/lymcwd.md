@@ -62,10 +62,7 @@ A worktree's anchor is read in this order:
 
 1. the worktree's own `.lym-anchor`, at the root of its records sibling;
    an empty one counts as absent, and one that fails `ValidateAnchorRel` is an error naming the file;
-2. the legacy hub-wide `.lym-anchor` at the board root;
-   a stale pre-rename `.fabric-anchor` with no renamed marker beside it is `ErrStaleAnchorMarker`;
-   the guard applies to this read only;
-3. `"."`.
+2. `"."`.
 
 Only `fabricengine` writes the marker or reads it from git; `lymcwd` reads the working tree alone.
 

@@ -31,7 +31,7 @@ func TestLoomResumeReconcilesThenRefusesWithoutLiveDriver(t *testing.T) {
 	registerBootstrapTeardown(t, loc, worktree)
 	seedGoDriverRun(t, loc)
 	seedAndCommitStatus(t, loc, slug)
-	commitRetiredBatcherKey(t, loc)
+	deleteBoardLensesDefault(t, loc)
 
 	out, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 60*time.Second, "loom", "resume")
 	if err != nil {

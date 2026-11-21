@@ -236,13 +236,12 @@ func listLines(content string, patterns []*regexp.Regexp) []ListedLine {
 // For a case on both sides, a changed or removed line follows the baseline's file order,
 // and an added line follows them in the current file's order.
 // Unkeyed identities pair by position among the unkeyed lines, so a keyed line inserted moves no unkeyed identity.
-// A case named in leaveOut is skipped on both sides.
-func DiffCaptures(baselineDir, currentDir string, patterns []*regexp.Regexp, leaveOut []string) ([]Cell, error) {
-	baseline, err := listCasesByName(baselineDir, patterns, leaveOut)
+func DiffCaptures(baselineDir, currentDir string, patterns []*regexp.Regexp) ([]Cell, error) {
+	baseline, err := listCasesByName(baselineDir, patterns)
 	if err != nil {
 		return nil, err
 	}
-	current, err := listCasesByName(currentDir, patterns, leaveOut)
+	current, err := listCasesByName(currentDir, patterns)
 	if err != nil {
 		return nil, err
 	}
@@ -274,8 +273,8 @@ func DiffCaptures(baselineDir, currentDir string, patterns []*regexp.Regexp, lea
 	return cells, nil
 }
 
-// listCasesByName lists dir and keys the cases by name, leaving out the cases leaveOut names.
-func listCasesByName(dir string, patterns []*regexp.Regexp, leaveOut []string) (map[string]CaseListing, error) {
+// listCasesByName lists dir and keys the cases by name.
+func listCasesByName(dir string, patterns []*regexp.Regexp) (map[string]CaseListing, error) {
 	listings, err := ListCaptures(dir, patterns)
 	if err != nil {
 		return nil, err
@@ -283,9 +282,6 @@ func listCasesByName(dir string, patterns []*regexp.Regexp, leaveOut []string) (
 	byName := make(map[string]CaseListing, len(listings))
 	for _, listing := range listings {
 		byName[listing.Case] = listing
-	}
-	for _, name := range leaveOut {
-		delete(byName, name)
 	}
 	return byName, nil
 }

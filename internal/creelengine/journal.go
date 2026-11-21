@@ -38,8 +38,6 @@ const (
 	// eventRenewed marks the same owner extending its live hold; it carries the new expiry and is not logged as an event.
 	eventRenewed  = "renewed"
 	eventReleased = "released"
-	// eventWithheld marks an orch reminder held back; the fold reads it from old journals only, and nothing writes it.
-	eventWithheld = "withheld"
 	// eventCarried is written by retention: a snapshot of an entry whose original lines are about to be deleted.
 	eventCarried = "carried"
 	// eventHighWater opens every day file with the largest id issued so far.
@@ -126,8 +124,6 @@ type record struct {
 	Head bool `json:"head,omitempty"`
 	// ExpiresAt is a hold's expiry.
 	ExpiresAt time.Time `json:"expires_at,omitzero"`
-	// Notice names what a withheld record waited for; the fold reads it from old journals only.
-	Notice string `json:"notice,omitempty"`
 	// Reason is the stall a stalled record names.
 	Reason string `json:"reason,omitempty"`
 	// Step is the reminder backoff step of a reminded record.

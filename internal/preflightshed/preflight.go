@@ -99,8 +99,8 @@ const batchifierReasonPrefix = "active batchifier did not resolve: "
 const batchifierWayForward = "; way forward: fix batcher.yaml (its active: key or the profile it names), then re-step"
 
 // retiredKeyWayForward completes the way forward that a retired-key error already ends with.
-// It tells the operator to run `lym config reconcile --apply`, which migrates a worktree or local file.
-// For the repo default, it tells the operator to run `lym fabric reconcile`.
+// The error's own text names the reconcile that removes the key from a worktree or local file,
+// or the one that does so for the repo default.
 const retiredKeyWayForward = ", then re-step"
 
 // stencilsReasonPrefix leads the stuck reason of a failed stencils check;

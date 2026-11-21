@@ -536,36 +536,6 @@ Confirm the hook lands in THAT directory, and that `git checkout` onto a diverge
 
 ---
 
-### F17 -- The retired hub containers are swept (`add`, `reconcile`, `cleanup`)
-
-**Covers:** fabric
-
-**Goal:** "Plant what an older lym left in the hub's retired `_portals` and `_launchers` containers.
-Confirm the sweeps remove only what fabric wrote there."
-
-**Watch:** After `lym fabric add <slug>`, confirm the hub holds no `_launchers` directory.
-Then the retired-artifact sweep:
-plant a link `<hub>/_portals/<anchor>/<slug>` pointing at `<hub>/<slug>/<anchor>/_lym`;
-plant a file at `<hub>/_launchers/<anchor>/<prime>.code-workspace`;
-plant a foreign file of your own under `<hub>/_portals/<anchor>/`.
-Run a verb that regenerates the hub workspace file, such as `lym fabric add`.
-Confirm its log warns about the retired artifacts and names `lym fabric reconcile`.
-Then run `lym fabric reconcile`:
-the planted link and the old workspace file must be gone;
-your foreign file and `_portals` must survive, and `hub_details` must name the foreign file.
-Then the launchers sweep:
-plant `<hub>/_launchers/<anchor>/<slug>/run.sh` and `<hub>/_launchers/<anchor>/ide-menu.sh`,
-and a foreign file of your own under `<hub>/_launchers/<anchor>/keep/`.
-From the prime, `lym cleanup` must list both scripts and the emptied `<slug>` directory under the `launchers` segment,
-name your foreign file under `kept`, and change nothing.
-`lym cleanup --apply` must remove both scripts and the `<slug>` directory;
-your foreign file and the directories above it must survive.
-Delete your foreign file and run `lym cleanup --apply` again: `_launchers` must be gone.
-
-**Verdict:** `OK` / `WARN` / `FAIL`
-
----
-
 ### F18 -- Merge lifecycle end to end (`merge-in`, `merge-stage`, `merge --continue`, `merge --abort`)
 
 **Covers:** fabric
@@ -969,7 +939,6 @@ F13: <OK|WARN|FAIL> -- <one-line note if not OK>
 F14: <OK|WARN|FAIL> -- <one-line note if not OK>
 F15: <OK|WARN|FAIL> -- <one-line note if not OK>
 F16: <OK|WARN|FAIL> -- <one-line note if not OK>
-F17: <OK|WARN|FAIL> -- <one-line note if not OK>
 F18: <OK|WARN|FAIL> -- <one-line note if not OK>
 F19: <OK|WARN|FAIL> -- <one-line note if not OK>
 F20: <OK|WARN|FAIL> -- <one-line note if not OK>

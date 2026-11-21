@@ -752,7 +752,6 @@ func TestRenderPrompts(t *testing.T) {
 		}},
 		{"fork omits the rename mechanic and points at the card", func(t *testing.T) promptCheck {
 			card := cardWithSourcePath(4, "helptree-rename", "rename the row mapper")
-			card.Type = planparser.CardTypeRename
 			pair := planparser.MovePair{Old: "internal/boardengine/rows.go", New: "internal/boardengine/rowsjson.go"}
 			card.Pairs = []planparser.MovePair{pair}
 			card.Targets = []string{pair.Old, pair.New}

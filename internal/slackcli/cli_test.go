@@ -378,7 +378,7 @@ func (h *harness) storeCredentials(credentials slackengine.Credentials) {
 func (h *harness) configure() {
 	h.t.Helper()
 	h.storeCredentials(slackengine.Credentials{BotToken: "xoxb-stored", AppToken: "xapp-stored", AppID: "A1"})
-	if err := slackengine.WriteSetup(h.geom.SetupPath, slackengine.Setup{ChannelID: "C1", OperatorID: "U1"}); err != nil {
+	if err := slackengine.WriteSetup(h.geom.SetupPath, slackengine.Setup{OperatorID: "U1"}); err != nil {
 		h.t.Fatalf("WriteSetup = %v", err)
 	}
 }
@@ -770,24 +770,6 @@ func TestSlackCLI(t *testing.T) {
 			}
 			if diff := cmp.Diff(wantRequests, h.slack.seen(), requestOptions...); diff != "" {
 				t.Errorf("Slack requests mismatch (-want +got):\n%s", diff)
-			}
-		})
-
-		t.Run("KeepsTheChannelAnOlderSetupFileHolds", func(t *testing.T) {
-			t.Parallel()
-			h := newHarness(t, nil)
-			h.storeCredentials(slackengine.Credentials{BotToken: "xoxb-stored"})
-			if err := os.MkdirAll(filepath.Dir(h.geom.SetupPath), 0o700); err != nil {
-				t.Fatalf("MkdirAll = %v", err)
-			}
-			if err := os.WriteFile(h.geom.SetupPath, []byte(`{"channel_id":"C9"}`), 0o600); err != nil {
-				t.Fatalf("WriteFile = %v", err)
-			}
-			code, env := h.run("", setupArgs...)
-			wantOK(t, code, env)
-			want := slackengine.Setup{ChannelID: "C9", OperatorID: "U1"}
-			if got, found, err := slackengine.ReadSetup(h.geom.SetupPath); err != nil || !found || got != want {
-				t.Errorf("ReadSetup = %+v, %v, %v; want %+v", got, found, err, want)
 			}
 		})
 

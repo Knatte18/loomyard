@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -488,8 +487,6 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 // The seam commits the record's removal the same way.
 // A change it commits is pushed with the pair's records and waits for the push.
 // A push that is owed is logged and leaves the commit for the pair's next push; any other failed push is returned.
-// A record found only at its former scratch path is moved to the tracked path first.
-// So a run in flight keeps its pull request.
 // It commits nothing while neither the file nor a tracked copy of it exists.
 // A commit or push the pre-push check stops leaves the records local and returns nil.
 func pullRequestRecordCommitter(check prePushCheck, l *lymcwd.Location) func() error {
@@ -512,9 +509,6 @@ func pullRequestRecordCommitter(check prePushCheck, l *lymcwd.Location) func() e
 		return err
 	})
 	return func() error {
-		if err := moveLegacyPullRequestRecord(l); err != nil {
-			return err
-		}
 		hasContent, err := fabricengine.AnchoredPathHasContent(l, rel)
 		if err != nil || !hasContent {
 			return err
@@ -541,34 +535,6 @@ func pullRequestRecordCommitter(check prePushCheck, l *lymcwd.Location) func() e
 		}
 		return err
 	}
-}
-
-// moveLegacyPullRequestRecord moves the run's pull request record from its former scratch path to the tracked path.
-// It moves nothing when the tracked path holds a record or the scratch path holds none.
-func moveLegacyPullRequestRecord(l *lymcwd.Location) error {
-	current := shedrun.PullRequestRecord(l, shedrun.SelfRunID)
-	if _, err := os.Stat(current); err == nil {
-		return nil
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-	legacy := shedrun.LegacyPullRequestRecord(l, shedrun.SelfRunID)
-	data, err := os.ReadFile(legacy)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if err := state.WriteFile(current, shedrun.PullRequestRecordLock(l, shedrun.SelfRunID), data); err != nil {
-		return err
-	}
-	for _, stale := range []string{legacy, legacy + ".lock"} {
-		if err := os.Remove(stale); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return err
-		}
-	}
-	return nil
 }
 
 // landingPushRetryPauses are the growing pauses between the attempts of a landing push whose push lock stays held.

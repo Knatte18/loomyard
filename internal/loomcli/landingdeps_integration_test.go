@@ -67,20 +67,10 @@ func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 	})
 
 	paths := orchcli.PrimePaths(h.Location)
-	noticeCount := func() int {
-		entries, err := os.ReadDir(paths.NoticesDir)
-		if err != nil && !os.IsNotExist(err) {
-			t.Fatalf("ReadDir(%q) error = %v; want nil", paths.NoticesDir, err)
-		}
-		return len(entries)
-	}
 
-	if !t.Run("Notify with no orch strand recorded returns nil and writes no notice file", func(t *testing.T) {
+	if !t.Run("Notify with no orch strand recorded returns nil", func(t *testing.T) {
 		if err := deps.Notify("loom: a notice"); err != nil {
 			t.Fatalf("Notify() error = %v; want nil", err)
-		}
-		if got := noticeCount(); got != 0 {
-			t.Errorf("notice files = %d; want 0 without an orch strand", got)
 		}
 	}) {
 		return
@@ -94,9 +84,6 @@ func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 		err := deps.Notify("loom: a notice")
 		if err == nil || !strings.Contains(err.Error(), "loom: a notice") {
 			t.Fatalf("Notify() error = %v; want an error holding the notice line", err)
-		}
-		if got := noticeCount(); got != 0 {
-			t.Errorf("notice files = %d; want 0", got)
 		}
 	})
 
@@ -339,7 +326,7 @@ func TestLandingDeps_RecordLandingWritesWhereTheDobbyReads(t *testing.T) {
 
 // TestPullRequestDeps_CommitsTheRecord asserts the CommitRecord seam commits the run's record on the records side.
 // A record written through the deps' paths is committed, and so is its removal.
-// A clean call commits nothing, and a record found only at its former scratch path is moved and committed.
+// A clean call commits nothing.
 // Each commit is pushed synchronously, so origin's records branch holds it once the committer returns.
 func TestPullRequestDeps_CommitsTheRecord(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -401,28 +388,6 @@ func TestPullRequestDeps_CommitsTheRecord(t *testing.T) {
 	if got := gitkit.RevParse(t, records, "HEAD"); got != headBefore {
 		t.Errorf("records HEAD = %s with nothing to commit; want %s", got, headBefore)
 	}
-
-	legacy := shedrun.LegacyPullRequestRecord(location, shedrun.SelfRunID)
-	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(legacy, []byte("{\"number\":9}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := deps.CommitRecord(); err != nil {
-		t.Fatalf("CommitRecord() over a scratch record error = %v; want nil", err)
-	}
-	if got := headFiles("--name-only"); got != rel {
-		t.Errorf("records HEAD after the move = %q; want the moved record", got)
-	}
-	moved, found, err := pullrequest.ReadRecord(deps.RecordPath, deps.RecordLockPath)
-	if err != nil || !found || moved.Number != 9 {
-		t.Errorf("ReadRecord() after the move = %+v, found %v, error %v; want number 9", moved, found, err)
-	}
-	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
-		t.Errorf("the scratch record after the move: stat error = %v; want it gone", err)
-	}
-	requireOriginAtHead("after the move")
 }
 
 // TestLandingDeps_RemoveFollowUpIsEmptyWhenThePrimeIsUnreadable asserts the RemoveFollowUp seam returns no step.

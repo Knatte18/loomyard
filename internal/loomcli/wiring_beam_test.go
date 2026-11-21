@@ -6,7 +6,6 @@ package loomcli
 
 import (
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -14,7 +13,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -103,18 +101,6 @@ func TestWire_BeamRecipe(t *testing.T) {
 		if len(c.env.Pawl.Steps) != 1 {
 			t.Errorf("c.env.Pawl.Steps = %d steps; want the one beam-up step", len(c.env.Pawl.Steps))
 		}
-		wantRetired, err := loomrecipe.RetiredRowNames(shedrun.RecipePawl)
-		if err != nil {
-			t.Fatalf("RetiredRowNames(pawl) = %v; want nil", err)
-		}
-		if len(wantRetired) == 0 || !slices.Equal(c.env.Pawl.RetiredRows, wantRetired) {
-			t.Errorf("c.env.Pawl.RetiredRows = %v; want the recipe's retired rows %v", c.env.Pawl.RetiredRows, wantRetired)
-		}
-
-		if c.shedPaths.RetiredMove == nil || c.shedPaths.RetiredWayForward != "lym loom resume" {
-			t.Errorf("c.shedPaths RetiredMove set = %v, RetiredWayForward = %q; want the move set and `lym loom resume` as the way forward", c.shedPaths.RetiredMove != nil, c.shedPaths.RetiredWayForward)
-		}
-
 		routing, err := c.recipeRouting()
 		if err != nil {
 			t.Fatalf("recipeRouting() = %v; want nil", err)
@@ -140,9 +126,6 @@ func TestWire_BeamRecipe(t *testing.T) {
 		}
 		if c.env.Pawl.Down != nil || c.env.Pawl.Slug != "" {
 			t.Errorf("a loom seed filled c.env.Pawl = %+v; want the zero value", c.env.Pawl)
-		}
-		if c.shedPaths.RetiredMove != nil || c.shedPaths.RetiredWayForward != "lym loom resume" {
-			t.Errorf("c.shedPaths RetiredMove set = %v, RetiredWayForward = %q; want no move and `lym loom resume` as the way forward", c.shedPaths.RetiredMove != nil, c.shedPaths.RetiredWayForward)
 		}
 	})
 

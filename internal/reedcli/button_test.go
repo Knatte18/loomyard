@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -104,7 +105,11 @@ func TestButtonRunDirectory(t *testing.T) {
 				t.Fatalf("write HEAD: %v", err)
 			}
 			if tt.marker != "" {
-				marker := filepath.Join(hub, lymcwd.BoltDirName, lymcwd.AnchorFileName)
+				ownRoot := fabricengine.RecordsWorktreePath(&lymcwd.Location{HubPath: hub}, "task")
+				if err := os.MkdirAll(ownRoot, 0o755); err != nil {
+					t.Fatalf("mkdir %s: %v", ownRoot, err)
+				}
+				marker := filepath.Join(ownRoot, lymcwd.AnchorFileName)
 				if err := os.WriteFile(marker, []byte(tt.marker+"\n"), 0o644); err != nil {
 					t.Fatalf("write the anchor marker: %v", err)
 				}

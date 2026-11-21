@@ -13,14 +13,11 @@
 // the hex SHA-256 of the binary's VCS revision, its modified flag and the config registry's fingerprint.
 // The revision and the flag are also in readable form for the log.
 // A stamp naming the running key makes Ensure return after one file read.
-// It also costs one stat per per-worktree module and one for the board marker.
+// It also costs one stat per per-worktree module.
 // It takes no lock and runs no git; an absent or unreadable stamp counts as stale.
 // A stamp naming the running key also counts as stale when a per-worktree module's repo default is absent.
 // The check runs in the Bolt checkout.
 // A default deleted after a walk is therefore reseeded by the next start verb.
-// It counts as stale as well while the board marker `_lym/config/base-sparse` in the Bolt checkout is absent.
-// A board not yet stripped to sparse base files is therefore walked.
-// A marker removed by hand with a board commit makes the next start verb's walk strip the base files again.
 // The lock wait defaults to DefaultLockWait and is an Options field;
 // a lock still held when it runs out returns *LockTimeoutError and touches nothing.
 // The holder's own per-worktree commits wait on each pair's write lock as a plain commit does, unbounded.
@@ -31,7 +28,7 @@
 // The walk pulls the board first.
 // It reconciles the board's config and commits it on the board under a subject carrying the binary label.
 // It seeds every absent per-worktree repo default from the prime or the template.
-// It then reconciles the prime's sparse layers.
+// It then reconciles the prime's local override file.
 // It lists the hub's code worktrees again and reconciles each pair not yet walked.
 // It repeats until a listing finds no new pair.
 // A pair registered while the walk ran is therefore walked before the stamp is written.
@@ -52,64 +49,43 @@
 //
 // # Keys the template lacks
 //
-// The walk removes no key the running binary's template lacks unless a retired key of its module covers it.
+// The walk removes no key the running binary's template lacks, a retired key included.
 // Such a key, as a newer binary writes, stays in the board's base files and in each worktree file.
 // It is carried in the result as preserved and logged when the walk writes the file,
 // so a start verb run by an older binary never strips a newer one's settings from the hub.
 // `lym config reconcile --apply`, with `--layer default` for a board file, is the one way to remove it.
 // A local override file is pruned of every such key, since its load refuses one.
 //
-// A seed-only file follows its template: the walk runs its module's migration.
-// It then carries each template change into the file against the template base kept beside it on the board.
+// A seed-only file follows its template.
+// The walk carries each template change into the file against the template base kept beside it on the board.
 // That base is `<module>.template-base`, and the walk commits it with the file.
 // Every value the operator set is kept.
 // A key the file holds as the base does takes the template's new value, gained, changed or dropped.
 // A key the operator set, added or removed stays; a file with no base yet gains only the keys it lacks.
 // Once the board commit landed, one `[reconcile notice]` line goes to the hub's orch.
 // It names what each file took and each operator value the template holds otherwise.
-// A pair the module leaves for the operator to settle is logged in one Warn per module.
-// The Warn names `lym config <module>` as the way forward.
 //
-// # The base strip
+// # Sparse base files
 //
 // Every non-seed-only base file on the board is sparse over the template.
-// While the board marker is absent, the walk strips each present base file once.
-// It strips the units equal to the template or to a former template value.
-// It writes a base left with no unit as the header-only file.
-// It writes the marker only when every registered module's base file exists, after the files.
-// It commits files and marker in the one board commit.
-// A pass that leaves a base absent withholds the marker and the next walk strips again.
-// A failed hub-wide step restores the board's files to their prior bytes and removes a marker the pass wrote.
-// Steps that committed before it keep their commits.
-// With the marker present the walk strips no base, so a unit later set equal to the template stays as a pin.
-//
 // A base file is a hub-wide module's hub file, or a per-worktree module's repo default.
+// An absent one is seeded sparse: from the prime's copy for a module that reads it, else as the header-only file.
+// The walk never fills in a template value or strips a unit the template holds.
+// A failed hub-wide step restores the board's files to their prior bytes.
+// It also removes a marker or template base the pass wrote.
+// Steps that committed before it keep their commits.
+//
 // A seed-only module's board file is excepted.
-// A seed-only module's board file takes each template change on every walk, against the template base kept beside it.
+// It takes each template change on every walk, against the template base kept beside it.
 // It keeps every value the operator set.
 // Every write to a base file, by any package, holds only the units the hub tuned (PATTERN-config-layers).
-// It never fills in a template value.
-// Only this walk's one-time strip drops a unit the template holds, behind the board marker.
 // lenses' template-equal entries are the one exception:
 // a per-name entry equal to the template is dropped on every reconcile.
 //
-// # The sparse migration
+// # Worktrees
 //
-// A worktree without the sparse marker `_lym/config/sparse` holds full config files.
-// Once every per-worktree module's repo default exists, the walk strips each such file.
-// It strips the keys that equal what the layers below it resolve to, and the keys that equal a former template value.
-// Every key the file held then resolves unchanged, bar a former value, which resolves to the new template.
-// A file left empty is deleted, and the marker is written after the files.
-// The files, deletions and marker go into the worktree's one reconcile commit.
-// The log line of a changed module lists the keys it stripped and the keys it inherited.
-// An inherited key is one of the repo default's keys that the file lacked and whose value differs from the template's.
-// The operator can pin it with `lym config <module> --set`.
-// A worktree carrying the marker is never stripped, and a pair forked from a migrated worktree inherits the marker.
-// A pair forked before the migration is stripped by the next walk.
-// So is a pair skipped as being created or mid-merge, or left by a walk that died partway.
-// A failed or merge-interrupted walk restores the marker with the files.
-// A migrated pair may meet the landing warning for a changed tracked config file once, in the commit that strips it.
-// `lym config reconcile` reports the strip as pending and never performs it.
+// Each pair's per-worktree files are sparse layers over the repo defaults.
+// The walk prunes a worktree's local override file and leaves every tracked worktree file as it is.
 // Worktrees that committed before a failure keep their commits.
 // The failing worktree's, or the board's, config files are restored to their prior bytes.
 // A retry therefore rewrites and commits them instead of finding them already current.
@@ -185,7 +161,7 @@
 //
 // A fabric add whose fork read the prime before a walk committed it keeps the prime's older config.
 // This happens when its pair became enumerable only after the walk's last listing.
-// Preflight's batcher.yaml load, which refuses a retired key, backs that up.
+// The next walk reconciles that pair.
 // Two risks are accepted: a downgrade flip-flops the stamp between two binaries,
 // and a lym-authored records commit in a running pair can land beside a driver's own work.
 package hubreconcile

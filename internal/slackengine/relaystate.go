@@ -20,7 +20,6 @@ type RelayState struct {
 	// FirstReadRefusal is the text of the refusal the relay's first creel read met, empty when it met none.
 	FirstReadRefusal string `json:"first_read_refusal"`
 	// LastSlackOK is the relay's last-healthy time: the end of its latest outbound read and its latest Socket Mode pong.
-	// The key keeps its older name, so a state an older relay wrote still feeds the restart cap.
 	LastSlackOK time.Time `json:"last_slack_ok"`
 	// StartFailures counts the starts in a row whose relay did not live long enough to count as healthy.
 	StartFailures int `json:"start_failures"`

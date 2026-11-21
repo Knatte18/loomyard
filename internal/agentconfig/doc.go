@@ -16,10 +16,7 @@
 // efforts is classed None, so a worktree's local override may tune it.
 // A content failure returns an error marked configengine.ErrInvalid that names the key and ends with the way forward.
 //
-// A role lym stopped starting leaves its key in an older agents.yaml, which Load would refuse.
-// DropRetiredRoles is the module's reinterpretation for RetiredRolesReinterpretation:
-// it removes the retired roles' skills keys and every efforts key whose role part names one.
-// It rewrites the hub's base file only, so a worktree or local layer that still names a retired role fails the load.
-// That error's way forward is to remove the key from the layer that holds it.
+// A role lym stopped starting leaves its key in an older agents.yaml, and Load refuses it.
+// That error names the key, and its way forward is to remove the key from the layer that holds it.
 // Load never resolves cwd itself: the caller hands it the directories (see PATTERN-cwd-resolution).
 package agentconfig

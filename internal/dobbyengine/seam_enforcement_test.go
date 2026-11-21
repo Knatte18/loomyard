@@ -23,7 +23,6 @@ var dobbyengineAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/configengine",
 	"github.com/Knatte18/loomyard/internal/desktoplauncher",
 	"github.com/Knatte18/loomyard/internal/editdirective",
-	"github.com/Knatte18/loomyard/internal/fixtries",
 	"github.com/Knatte18/loomyard/internal/lock",
 	"github.com/Knatte18/loomyard/internal/logger",
 	"github.com/Knatte18/loomyard/internal/machinename",

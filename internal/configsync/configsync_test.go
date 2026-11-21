@@ -3,9 +3,7 @@
 package configsync
 
 import (
-	"bytes"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -21,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/runprofile"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
-	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -55,25 +52,6 @@ func lensesFixture(t *testing.T, edit func(cfg *lenses.Config)) string {
 	return string(out)
 }
 
-// burlerFixture returns a burler.yaml document holding only the template's lenses and fans, changed by edit.
-// Every key of such a document is one a `configreg.KeyMove` takes out, so the move leaves it empty.
-func burlerFixture(t *testing.T, edit func(cfg *lenses.Config)) string {
-	t.Helper()
-	var cfg lenses.Config
-	if err := yaml.Unmarshal([]byte(lenses.ConfigTemplate()), &cfg); err != nil {
-		t.Fatalf("decode the lenses template: %v", err)
-	}
-	edit(&cfg)
-	out, err := yaml.Marshal(struct {
-		Lenses map[string]string   `yaml:"lenses"`
-		Fans   map[string][]string `yaml:"fans"`
-	}{cfg.Lenses, cfg.Fans})
-	if err != nil {
-		t.Fatalf("marshal the burler fixture: %v", err)
-	}
-	return string(out)
-}
-
 // loadLensesWith returns lenses.Load over a scratch anchor whose lenses.yaml holds content, none when content is empty.
 func loadLensesWith(t *testing.T, content string) lenses.Config {
 	t.Helper()
@@ -84,16 +62,6 @@ func loadLensesWith(t *testing.T, content string) lenses.Config {
 		t.Fatalf("lenses.Load over %q: %v", content, err)
 	}
 	return cfg
-}
-
-// decodeDocument decodes a YAML document into generic values, so two documents compare regardless of key order.
-func decodeDocument(t *testing.T, data []byte) any {
-	t.Helper()
-	var document any
-	if err := yaml.Unmarshal(data, &document); err != nil {
-		t.Fatalf("decode a resolved document: %v", err)
-	}
-	return document
 }
 
 // loadLensesAt returns lenses.Load over dirs, failing the test on an error.
@@ -138,9 +106,6 @@ type moduleWant struct {
 	wantFile        *string
 	fileContains    []string
 	fileNotContains []string
-	// migratedAll lists the rewrites Result.Migrated must hold; migratedNone pins it empty.
-	migratedAll  []string
-	migratedNone bool
 	// loadsAsBatcher pins that batcher.Active loads the file after the run.
 	loadsAsBatcher bool
 	// wantLoadedLenses is what lenses.Load resolves after the run; nil skips the check.
@@ -156,6 +121,8 @@ type moduleWant struct {
 // A seed-only module (such as `models`) is materialized verbatim exactly once and never rewritten:
 // not even to resurrect a key the operator removed.
 // A non-seed-only module in the same run is still pruned.
+//
+//testtiming:keep pins the dry run's untouched bytes and each module's Applied, Removed, KeptExtra and Dropped result, which the idempotence and failure tests never assert
 func TestReconcileAll(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -164,9 +131,6 @@ func TestReconcileAll(t *testing.T) {
 	const modelsTrimmed = "sonnet:\n  engine: claude\n  model: sonnet\n"
 	loggerTemplate := loggerconfig.ConfigTemplate()
 	modelsTemplate := modelspec.ConfigTemplate()
-	batcherTemplate := batcher.ConfigTemplate()
-	retiredBatcher := strings.Replace(batcherTemplate, "orientation: 31400", "master_base: 52000", 1)
-	masterBaseRewrites := []string{"profiles.wide.weights.master_base: removed", "profiles.wide.weights.orientation: added 31400"}
 	lensesLacksSecurity := lensesFixture(t, func(cfg *lenses.Config) {
 		delete(cfg.Lenses, "security")
 		cfg.Lenses["hub-lens"] = "Hub emphasis.\n"
@@ -250,27 +214,9 @@ func TestReconcileAll(t *testing.T) {
 			},
 		},
 		{
-			name:  "dry run lists a batcher file's retired-key rewrites and writes nothing",
-			seed:  map[string]string{"batcher": retiredBatcher},
-			apply: false,
-			want:  map[string]moduleWant{"batcher": {applied: false, migratedAll: masterBaseRewrites, wantFile: &retiredBatcher}},
-		},
-		{
-			name:  "apply writes a migrated batcher file that batcher.Active loads",
-			seed:  map[string]string{"batcher": retiredBatcher},
+			name:  "absent batcher file is seeded from the template",
 			apply: true,
-			want: map[string]moduleWant{"batcher": {
-				applied:         true,
-				migratedAll:     masterBaseRewrites,
-				fileContains:    []string{"profiles: {}"},
-				fileNotContains: []string{"master_base"},
-				loadsAsBatcher:  true,
-			}},
-		},
-		{
-			name:  "absent batcher file is seeded from the template and not migrated",
-			apply: true,
-			want:  map[string]moduleWant{"batcher": {applied: true, migratedNone: true, fileContains: []string{"profiles: {}"}, loadsAsBatcher: true}},
+			want:  map[string]moduleWant{"batcher": {applied: true, fileContains: []string{"profiles: {}"}, loadsAsBatcher: true}},
 		},
 		{
 			name:  "absent seed-only file is materialized verbatim",
@@ -340,43 +286,6 @@ func TestReconcileAll(t *testing.T) {
 		},
 	}
 
-	// A below-floor key in each floored module: a dry run reports the raise and writes nothing;
-	// an apply writes the key at its floor.
-	for _, floored := range []struct{ module, seed, line, raised, stale string }{
-		{"shuttle", "poll_interval_ms: 500\n", "poll_interval_ms: raised from 500 to 1000", "poll_interval_ms: 1000", "poll_interval_ms: 500"},
-		{"orch", "poll_interval_ms: 500\n", "poll_interval_ms: raised from 500 to 1000", "poll_interval_ms: 1000", "poll_interval_ms: 500"},
-		{"loom", "step_idle_timeout_min: 0\n", "step_idle_timeout_min: raised from 0 to 1", "step_idle_timeout_min: 1", "step_idle_timeout_min: 0"},
-	} {
-		tests = append(tests,
-			struct {
-				name  string
-				seed  map[string]string
-				apply bool
-				want  map[string]moduleWant
-			}{
-				name: "dry run reports a below-floor " + floored.module + " key and writes nothing",
-				seed: map[string]string{floored.module: floored.seed},
-				want: map[string]moduleWant{floored.module: {migratedAll: []string{floored.line}, wantFile: ptr(floored.seed)}},
-			},
-			struct {
-				name  string
-				seed  map[string]string
-				apply bool
-				want  map[string]moduleWant
-			}{
-				name:  "apply writes a below-floor " + floored.module + " key at its floor",
-				seed:  map[string]string{floored.module: floored.seed},
-				apply: true,
-				want: map[string]moduleWant{floored.module: {
-					applied:         true,
-					migratedAll:     []string{floored.line},
-					fileContains:    []string{floored.raised},
-					fileNotContains: []string{floored.stale},
-				}},
-			},
-		)
-	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -437,14 +346,6 @@ func TestReconcileAll(t *testing.T) {
 				for _, key := range want.removedAll {
 					if !slices.Contains(result.Removed, key) {
 						t.Errorf("%s.Removed = %v; want it to contain %q", module, result.Removed, key)
-					}
-				}
-				if want.migratedNone && len(result.Migrated) != 0 {
-					t.Errorf("%s.Migrated = %v; want empty", module, result.Migrated)
-				}
-				for _, rewrite := range want.migratedAll {
-					if !slices.Contains(result.Migrated, rewrite) {
-						t.Errorf("%s.Migrated = %v; want it to contain %q", module, result.Migrated, rewrite)
 					}
 				}
 				if want.loadsAsBatcher {
@@ -521,25 +422,11 @@ func TestReconcileAll_Idempotent(t *testing.T) {
 	}
 }
 
-// reconcileFabricResult reconciles the hub-wide modules of boardDir and returns the fabric result;
-// it fails if the reconcile fails or reports no fabric result.
-func reconcileFabricResult(boardDir, primeBaseDir string, apply bool) (Result, error) {
-	results, err := ReconcileHubWideAt(boardDir, primeBaseDir, HubWideOptions{Apply: apply})
-	if err != nil {
-		return Result{}, err
-	}
-	result := findResult(results, "fabric")
-	if result == nil {
-		return Result{}, fmt.Errorf("ReconcileHubWideAt returned no fabric result: %+v", results)
-	}
-	return *result, nil
-}
-
-// TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate pins where each hub-wide module's reconcile starts from:
+// TestReconcileHubWideAt_SeedsFromHubPrimeOrTemplate pins where each hub-wide module's reconcile starts from:
 // a present hub file is never replaced;
 // an absent board.yaml or landing.yaml is seeded from the prime's copy when it has one,
 // and an absent fabric.yaml never reads the prime.
-func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
+func TestReconcileHubWideAt_SeedsFromHubPrimeOrTemplate(t *testing.T) {
 	tiergate.Require(t, 0)
 	const primeBoard = "types:\n  spike: A time-boxed investigation\nlabels:\n  area-x: Area X\n"
 	const hubBoard = "readme: README.md\ndesign_prefix: design-\ntypes:\n  bug: Hub bug\nlabels: {}\n"
@@ -562,27 +449,25 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 		module       string
 		hubFile      string
 		primeFile    string
-		legacyFirst  string
 		seedDefaults bool
-		// primeMarked writes the prime worktree's sparse marker.
-		primeMarked bool
+		pruneUnknown bool
 		// wantNoFile pins that the file is still absent after an apply.
 		wantNoFile   bool
 		wantSeed     string
 		wantContains []string
 		wantAbsent   []string
+		// withTemplateBase writes the module's current template as the template base beside the hub file.
+		withTemplateBase bool
 		// wantAdded and wantKeptExtra are the applied result's Added and KeptExtra, compared sorted; nil skips the check.
 		wantAdded     []string
 		wantKeptExtra []string
+		// wantAddedHas names entries the applied result's Added must hold.
+		wantAddedHas []string
 		// wantDropped and wantNotDropped are names the applied result's Dropped must and must not hold.
 		wantDropped    []string
 		wantNotDropped []string
 		// loadUnchanged pins that lenses.Load over the board dir resolves the same before the dry run and after the apply.
 		loadUnchanged bool
-		// wantMigrated and wantUnsettled are the applied result's Migrated and Unsettled, compared as they stand;
-		// nil skips the check.
-		wantMigrated  []string
-		wantUnsettled []string
 		// wantFileError means both the dry run and the apply return a *FileError naming the module;
 		// the hub file's bytes stay as they were.
 		wantFileError bool
@@ -630,24 +515,6 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			wantAdded:    []string{},
 		},
 		{
-			name:         "loom default seeded from an unmarked prime drops a former template value",
-			module:       "loom",
-			primeFile:    "discussion_lenses: \"\"\nreview_max_bounces: 99\n",
-			seedDefaults: true,
-			wantSeed:     SeedPrime,
-			wantContains: []string{"review_max_bounces: 99"},
-			wantAbsent:   []string{"discussion_lenses"},
-		},
-		{
-			name:         "loom default seeded from a marked prime keeps a former template value as tuned",
-			module:       "loom",
-			primeFile:    "discussion_lenses: \"\"\nreview_max_bounces: 99\n",
-			primeMarked:  true,
-			seedDefaults: true,
-			wantSeed:     SeedPrime,
-			wantContains: []string{"discussion_lenses: \"\"", "review_max_bounces: 99"},
-		},
-		{
 			name:         "loom default absent and no prime copy starts as the header-only base",
 			module:       "loom",
 			seedDefaults: true,
@@ -656,28 +523,38 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			wantAbsent:   []string{"review_max_bounces:"},
 		},
 		{
-			name:         "loom default present is pruned of a retired key in place and gains no template key",
+			name:         "loom default present keeps a key the template lacks and gains no template key",
 			module:       "loom",
 			hubFile:      "discussion_timeout_min: 7\npr_review: old\n",
 			primeFile:    "discussion_timeout_min: 480\n",
 			seedDefaults: true,
 			wantSeed:     SeedHub,
-			wantContains: []string{"discussion_timeout_min: 7"},
-			wantAbsent:   []string{"pr_review", "480", "review_max_bounces:"},
+			wantContains: []string{"discussion_timeout_min: 7", "pr_review: old"},
+			wantAbsent:   []string{"480", "review_max_bounces:"},
 			wantAdded:    []string{},
 		},
 		{
-			name:         "loom default present is pruned of a retired key without SeedDefaults",
+			name:         "loom default present keeps a key the template lacks without SeedDefaults",
 			module:       "loom",
 			hubFile:      "discussion_timeout_min: 7\npr_review: old\n",
+			wantSeed:     SeedHub,
+			wantContains: []string{"discussion_timeout_min: 7", "pr_review: old"},
+			wantAbsent:   []string{"review_max_bounces:"},
+		},
+		{
+			name:         "loom default is pruned of a key the template lacks under PruneUnknown",
+			module:       "loom",
+			hubFile:      "discussion_timeout_min: 7\npr_review: old\n",
+			pruneUnknown: true,
 			wantSeed:     SeedHub,
 			wantContains: []string{"discussion_timeout_min: 7"},
 			wantAbsent:   []string{"pr_review", "review_max_bounces:"},
 		},
 		{
-			name:         "loom default left with no unit is written as the header-only base",
+			name:         "loom default left with no unit by a prune is written as the header-only base",
 			module:       "loom",
 			hubFile:      "pr_review: old\n",
+			pruneUnknown: true,
 			wantSeed:     SeedHub,
 			wantContains: []string{configengine.SparseBaseHeader},
 			wantAbsent:   []string{"pr_review"},
@@ -695,6 +572,16 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			seedDefaults: true,
 			wantSeed:     SeedPrime,
 			wantContains: []string{"zephyr:\n  engine: claude\n  model: claude-zephyr-1\n", "sonnet:"},
+		},
+		{
+			name:             "models default absent seeded from the prime gains the template aliases it lacks although a template base holds them",
+			module:           "models",
+			primeFile:        "zephyr:\n  engine: claude\n  model: claude-zephyr-1\n",
+			seedDefaults:     true,
+			withTemplateBase: true,
+			wantSeed:         SeedPrime,
+			wantAddedHas:     []string{"sonnet"},
+			wantContains:     []string{"zephyr:\n  engine: claude\n  model: claude-zephyr-1\n", "sonnet:"},
 		},
 		{
 			name:         "models default present keeps its own alias and gains the template aliases it lacks",
@@ -758,32 +645,11 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			wantContains: []string{"defaults:", "light:", "solid:", "docs:"},
 		},
 		{
-			name:          "profiles present with no template base gain every template unit they lack and keep their own profile",
-			module:        "profiles",
-			hubFile:       "broad:\n  darn:\n    loom: {code_max_bounces: 2}\n",
-			wantSeed:      SeedHub,
-			wantContains:  []string{"broad:\n  darn:\n    loom: {code_max_bounces: 2}\n", "defaults:", "light:", "solid:", "docs:"},
-			wantMigrated:  []string{},
-			wantUnsettled: []string{},
-		},
-		{
-			name:          "profiles present under the recipe's former name are renamed in place and then gain the template units they lack",
-			module:        "profiles",
-			hubFile:       "# operator note\ndefaults: {loom: solid}\nsolid:\n  loom:\n    loom: {plan_max_bounces: 7}\n",
-			wantSeed:      SeedHub,
-			wantContains:  []string{"# operator note", "defaults: {tapestry: solid, motif: solid, darn: light, pawl: light, raddle: light, arras: solid}", "  tapestry:\n    loom: {plan_max_bounces: 7, discussion_max_bounces: 2,"},
-			wantAbsent:    []string{"loom: solid", "  loom:\n    loom:"},
-			wantMigrated:  []string{"defaults.loom: renamed to defaults.tapestry", "solid.loom: renamed to solid.tapestry"},
-			wantUnsettled: []string{},
-		},
-		{
-			name:          "profiles present with a former block differing from the current one keep both and list the pair",
-			module:        "profiles",
-			hubFile:       "light:\n  loom:\n    loom: {plan_max_bounces: 7}\n  tapestry:\n    loom: {plan_max_bounces: 1}\n",
-			wantSeed:      SeedHub,
-			wantContains:  []string{"  loom:\n    loom: {plan_max_bounces: 7}\n", "  tapestry:\n    loom: {plan_max_bounces: 1, discussion_max_bounces: 1,"},
-			wantMigrated:  []string{},
-			wantUnsettled: []string{"light.loom: differs from light.tapestry"},
+			name:         "profiles present with no template base gain every template unit they lack and keep their own profile",
+			module:       "profiles",
+			hubFile:      "broad:\n  darn:\n    loom: {code_max_bounces: 2}\n",
+			wantSeed:     SeedHub,
+			wantContains: []string{"broad:\n  darn:\n    loom: {code_max_bounces: 2}\n", "defaults:", "light:", "solid:", "docs:"},
 		},
 		{
 			name:          "profiles present that fails to parse is refused and left untouched",
@@ -799,13 +665,6 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			wantContains: []string{"tools: ./tools/...", "docs: \"\""},
 			wantAbsent:   []string{"review_max_bounces:"},
 		},
-		{
-			name:         "fabric absent with a legacy warp.yaml folds it in",
-			module:       "fabric",
-			legacyFirst:  "branch_prefix: legacy/\n",
-			wantSeed:     SeedLegacy,
-			wantContains: []string{"branch_prefix: legacy/"},
-		},
 	}
 
 	for _, tt := range tests {
@@ -815,13 +674,21 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			primeDir := t.TempDir()
 			writeModuleFile(t, boardDir, tt.module, tt.hubFile)
 			writeModuleFile(t, primeDir, tt.module, tt.primeFile)
-			if tt.primeMarked {
-				if err := os.WriteFile(configengine.SparseMarker(primeDir), []byte("# sparse\n"), 0o644); err != nil {
-					t.Fatalf("write the prime's sparse marker: %v", err)
+			if tt.withTemplateBase {
+				m, ok := configreg.Lookup(tt.module)
+				if !ok {
+					t.Fatalf("module %q is not registered", tt.module)
+				}
+				basePath := configengine.TemplateBaseFile(boardDir, tt.module)
+				if err := os.MkdirAll(filepath.Dir(basePath), 0o755); err != nil {
+					t.Fatalf("mkdir for the template base: %v", err)
+				}
+				if err := os.WriteFile(basePath, templateBaseContent(m), 0o644); err != nil {
+					t.Fatalf("write the template base: %v", err)
 				}
 			}
-			writeModuleFile(t, boardDir, "warp", tt.legacyFirst)
 			hubPath := configengine.ConfigFile(boardDir, tt.module)
+			options := HubWideOptions{SeedDefaults: tt.seedDefaults, PruneUnknown: tt.pruneUnknown}
 			var loadedBefore lenses.Config
 			if tt.loadUnchanged {
 				loadedBefore = loadLensesAt(t, configengine.Dirs{Board: boardDir})
@@ -829,7 +696,8 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 
 			if tt.wantFileError {
 				for _, apply := range []bool{false, true} {
-					_, err := ReconcileHubWideAt(boardDir, primeDir, HubWideOptions{Apply: apply, SeedDefaults: tt.seedDefaults})
+					options.Apply = apply
+					_, err := ReconcileHubWideAt(boardDir, primeDir, options)
 					var fileErr *FileError
 					if !errors.As(err, &fileErr) || fileErr.Module != tt.module {
 						t.Errorf("ReconcileHubWideAt(apply=%v) error = %v; want a *FileError naming module %q", apply, err, tt.module)
@@ -841,7 +709,7 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 				return
 			}
 
-			dry, err := ReconcileHubWideAt(boardDir, primeDir, HubWideOptions{SeedDefaults: tt.seedDefaults})
+			dry, err := ReconcileHubWideAt(boardDir, primeDir, options)
 			if err != nil {
 				t.Fatalf("ReconcileHubWideAt(dry): %v", err)
 			}
@@ -849,24 +717,14 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			if dryResult == nil || dryResult.Seed != tt.wantSeed || dryResult.Applied || dryResult.Layer != configengine.LayerDefault {
 				t.Errorf("dry-run result = %+v; want Seed %q, Layer default and Applied false", dryResult, tt.wantSeed)
 			}
-			if dryResult != nil && tt.wantMigrated != nil && !slices.Equal(dryResult.Migrated, tt.wantMigrated) {
-				t.Errorf("dry-run Migrated = %v; want %v", dryResult.Migrated, tt.wantMigrated)
-			}
-			if dryResult != nil && tt.wantUnsettled != nil && !slices.Equal(dryResult.Unsettled, tt.wantUnsettled) {
-				t.Errorf("dry-run Unsettled = %v; want %v", dryResult.Unsettled, tt.wantUnsettled)
-			}
 			if tt.hubFile == "" {
 				if _, err := os.Stat(hubPath); !os.IsNotExist(err) {
 					t.Errorf("hub file written on a dry run (stat err = %v)", err)
 				}
 			}
-			if tt.legacyFirst != "" {
-				if _, err := os.Stat(configengine.ConfigFile(boardDir, "warp")); err != nil {
-					t.Errorf("legacy warp.yaml removed on a dry run: %v", err)
-				}
-			}
 
-			applied, err := ReconcileHubWideAt(boardDir, primeDir, HubWideOptions{Apply: true, SeedDefaults: tt.seedDefaults})
+			options.Apply = true
+			applied, err := ReconcileHubWideAt(boardDir, primeDir, options)
 			if err != nil {
 				t.Fatalf("ReconcileHubWideAt(apply): %v", err)
 			}
@@ -877,14 +735,13 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			if tt.wantAdded != nil && !slices.Equal(sortedCopy(appliedResult.Added), tt.wantAdded) {
 				t.Errorf("applied Added = %v; want %v", appliedResult.Added, tt.wantAdded)
 			}
+			for _, name := range tt.wantAddedHas {
+				if !slices.Contains(appliedResult.Added, name) {
+					t.Errorf("applied Added = %v; want it to contain %q", appliedResult.Added, name)
+				}
+			}
 			if tt.wantKeptExtra != nil && !slices.Equal(sortedCopy(appliedResult.KeptExtra), tt.wantKeptExtra) {
 				t.Errorf("applied KeptExtra = %v; want %v", appliedResult.KeptExtra, tt.wantKeptExtra)
-			}
-			if tt.wantMigrated != nil && !slices.Equal(appliedResult.Migrated, tt.wantMigrated) {
-				t.Errorf("applied Migrated = %v; want %v", appliedResult.Migrated, tt.wantMigrated)
-			}
-			if tt.wantUnsettled != nil && !slices.Equal(appliedResult.Unsettled, tt.wantUnsettled) {
-				t.Errorf("applied Unsettled = %v; want %v", appliedResult.Unsettled, tt.wantUnsettled)
 			}
 			if tt.module == "profiles" && !appliedResult.WroteTemplateBase {
 				t.Errorf("applied WroteTemplateBase = false; want the template base written beside a board that held none")
@@ -1159,333 +1016,6 @@ func TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate(t *testing.T) {
 	}
 }
 
-// TestReconcileHubWideAt_MigratesLegacyFabricConfig pins the migration of legacy warp.yaml and weft.yaml values:
-// the values fold into fabric.yaml's first write;
-// without the fold, the bare template default would silently discard them,
-// and the legacy files are pruned afterward so the migration does not fire again.
-// The test drives the hub-wide reconcile directly, since the all-modules reconcile never reconciles a hub-wide module.
-func TestReconcileHubWideAt_MigratesLegacyFabricConfig(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	tests := []struct {
-		name         string
-		legacyFirst  string
-		legacySecond string
-		fabric       string
-		apply        bool
-		// wantApplied is checked only when non-nil.
-		wantApplied  *bool
-		wantMigrated []string
-		// wantFabric is a substring list of the written fabric.yaml; wantNoFabric means the file must not exist.
-		wantFabric []string
-		// wantFabricAbsent are substrings the written fabric.yaml must not contain.
-		wantFabricAbsent []string
-		wantNoFabric     bool
-		// wantPruned and wantKept name the legacy modules whose file must be gone or still on disk.
-		wantPruned []string
-		wantKept   []string
-	}{
-		{
-			name:         "both legacy files present, both values migrate, both files pruned",
-			legacyFirst:  "branch_prefix: hanf/\n",
-			legacySecond: "pathspec: _lym custom-dir\n",
-			apply:        true,
-			wantApplied:  ptr(true),
-			wantMigrated: []string{"warp", "weft"},
-			wantFabric:   []string{"branch_prefix: hanf/", "pathspec: _lym custom-dir"},
-			wantPruned:   []string{"warp", "weft"},
-		},
-		{
-			// _lym is structural, injected in code and never read from the pathspec key;
-			// so the sparse fabric.yaml holds no pathspec and the load resolves the template's empty one.
-			name:             "only warp.yaml present, the seeded file holds only the legacy unit",
-			legacyFirst:      "branch_prefix: hanf/\n",
-			apply:            true,
-			wantMigrated:     []string{"warp"},
-			wantFabric:       []string{"branch_prefix: hanf/"},
-			wantFabricAbsent: []string{"pathspec"},
-			wantPruned:       []string{"warp"},
-		},
-		{
-			name:         "dry run reports the pending migration but writes and deletes nothing",
-			legacyFirst:  "branch_prefix: hanf/\n",
-			wantApplied:  ptr(false),
-			wantMigrated: []string{"warp"},
-			wantNoFabric: true,
-			wantKept:     []string{"warp"},
-		},
-		{
-			name:        "fabric.yaml already present, legacy files untouched and not migrated",
-			legacyFirst: "branch_prefix: stale/\n",
-			fabric:      "branch_prefix: existing/\npathspec: _lym\n",
-			apply:       true,
-			wantFabric:  []string{"branch_prefix: existing/"},
-			wantKept:    []string{"warp"},
-		},
-		{
-			name:        "unparseable legacy file is skipped, left on disk, and not migrated",
-			legacyFirst: "branch_prefix: [unterminated\n",
-			apply:       true,
-			wantKept:    []string{"warp"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			boardDir := t.TempDir()
-			writeModuleFile(t, boardDir, "warp", tt.legacyFirst)
-			writeModuleFile(t, boardDir, "weft", tt.legacySecond)
-			writeModuleFile(t, boardDir, "fabric", tt.fabric)
-
-			fabricResult, err := reconcileFabricResult(boardDir, "", tt.apply)
-			if err != nil {
-				t.Fatalf("ReconcileHubWideAt(%v): %v", tt.apply, err)
-			}
-
-			if tt.wantApplied != nil && fabricResult.Applied != *tt.wantApplied {
-				t.Errorf("fabric.Applied = %v; want %v", fabricResult.Applied, *tt.wantApplied)
-			}
-			if !slices.Equal(sortedCopy(fabricResult.MigratedFrom), tt.wantMigrated) {
-				t.Errorf("fabric.MigratedFrom = %v; want %v", fabricResult.MigratedFrom, tt.wantMigrated)
-			}
-
-			fabricPath := configengine.ConfigFile(boardDir, "fabric")
-			if tt.wantNoFabric {
-				if _, err := os.Stat(fabricPath); !os.IsNotExist(err) {
-					t.Errorf("fabric.yaml was written on a dry run; want absent (stat err = %v)", err)
-				}
-			}
-			if len(tt.wantFabric) > 0 {
-				got, err := os.ReadFile(fabricPath)
-				if err != nil {
-					t.Fatalf("read fabric.yaml: %v", err)
-				}
-				for _, want := range tt.wantFabric {
-					if !strings.Contains(string(got), want) {
-						t.Errorf("fabric.yaml = %q; want it to contain %q", got, want)
-					}
-				}
-				for _, absent := range tt.wantFabricAbsent {
-					if strings.Contains(string(got), absent) {
-						t.Errorf("fabric.yaml = %q; want it not to contain %q", got, absent)
-					}
-				}
-			}
-			for _, module := range tt.wantPruned {
-				if _, err := os.Stat(configengine.ConfigFile(boardDir, module)); !os.IsNotExist(err) {
-					t.Errorf("%s.yaml still exists after migration; want pruned (stat err = %v)", module, err)
-				}
-			}
-			for _, module := range tt.wantKept {
-				if _, err := os.Stat(configengine.ConfigFile(boardDir, module)); err != nil {
-					t.Errorf("%s.yaml was removed; want it left on disk (stat err = %v)", module, err)
-				}
-			}
-		})
-	}
-}
-
-// TestReconcileHubWideAt_StripsAnUnmigratedBaseOnce pins the one-time strip of a hub's base files.
-// While the board's base-sparse marker is absent, a walk's pass (StripBase and Apply) reduces every non-seed-only base.
-// Each such base keeps only the units that differ from the template and from a former template value;
-// the marker is written only when every module's file exists.
-// Without StripBase or on a dry run the strip is only reported;
-// a marked board keeps a unit equal to a former value as a pin, and a seed-only file is never rewritten.
-func TestReconcileHubWideAt_StripsAnUnmigratedBaseOnce(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	loomTemplate := moduleTemplate(t, "loom")
-	darnTemplate := moduleTemplate(t, "darn")
-	const modelsTuned = "zephyr:\n  engine: claude\n  model: claude-zephyr-1\n"
-	const formerRoles = "prompt_cache_ttl_roles:\n  driver: 1h\n  webster: 1h\n"
-	loomFormer := strings.Replace(loomTemplate, "discussion_lenses: twill-discussion", `discussion_lenses: ""`, 1)
-	darnTuned := strings.Replace(darnTemplate, "writer_timeout_min: 180", "writer_timeout_min: 77", 1)
-	if loomFormer == loomTemplate || darnTuned == darnTemplate {
-		t.Fatal("the tapestry or darn template no longer holds the line this test rewrites")
-	}
-
-	tests := []struct {
-		name string
-		// overrides replaces a module's written file; every other module is written as its template.
-		overrides map[string]string
-		// withheld names modules whose file is not written.
-		withheld    []string
-		boardMarked bool
-		options     HubWideOptions
-		// wantUnchangedAll pins every file as written; otherwise a non-seed-only file ends header-only unless wantKept names it.
-		wantUnchangedAll bool
-		wantKept         map[string][]string
-		// wantStripped lists keys Result.Stripped must hold; wantNoStripped names modules whose Stripped is empty.
-		wantStripped   map[string][]string
-		wantNoStripped []string
-		wantMarker     bool
-	}{
-		{
-			name:         "unmigrated board is stripped to header-only bases, keeps a tuned unit and gets the marker",
-			overrides:    map[string]string{"loom": loomFormer, "darn": darnTuned, "models": modelsTuned},
-			options:      HubWideOptions{Apply: true, StripBase: true, SeedDefaults: true},
-			wantKept:     map[string][]string{"darn": {"writer_timeout_min: 77"}},
-			wantStripped: map[string][]string{"loom": {"discussion_lenses", "review_max_bounces"}, "darn": {"verify_attempts"}},
-			wantMarker:   true,
-		},
-		{
-			name:             "without StripBase nothing is stripped or marked and the keys are pending",
-			overrides:        map[string]string{"loom": loomFormer},
-			options:          HubWideOptions{Apply: true, SeedDefaults: true},
-			wantUnchangedAll: true,
-			wantStripped:     map[string][]string{"loom": {"discussion_lenses", "review_max_bounces"}},
-		},
-		{
-			name:             "a dry run with StripBase writes nothing",
-			overrides:        map[string]string{"loom": loomFormer},
-			options:          HubWideOptions{StripBase: true, SeedDefaults: true},
-			wantUnchangedAll: true,
-			wantStripped:     map[string][]string{"loom": {"discussion_lenses", "review_max_bounces"}},
-		},
-		{
-			name:         "a claude base holding the former roles map whole is stripped to the header",
-			overrides:    map[string]string{"claude": formerRoles},
-			options:      HubWideOptions{Apply: true, StripBase: true, SeedDefaults: true},
-			wantStripped: map[string][]string{"claude": {"prompt_cache_ttl_roles"}},
-			wantMarker:   true,
-		},
-		{
-			name:           "a roles map with one role changed is kept whole",
-			overrides:      map[string]string{"claude": "prompt_cache_ttl_roles:\n  driver: 1h\n  webster: 5m\n"},
-			options:        HubWideOptions{Apply: true, StripBase: true, SeedDefaults: true},
-			wantKept:       map[string][]string{"claude": {"webster: 5m"}},
-			wantNoStripped: []string{"claude"},
-			wantMarker:     true,
-		},
-		{
-			name:             "a marked board keeps a unit equal to a former value as a pin",
-			overrides:        map[string]string{"loom": "discussion_lenses: \"\"\n"},
-			boardMarked:      true,
-			options:          HubWideOptions{Apply: true, StripBase: true, SeedDefaults: true},
-			wantUnchangedAll: true,
-			wantNoStripped:   []string{"loom"},
-			wantMarker:       true,
-		},
-		{
-			name:       "an absent per-worktree base strips the others and withholds the marker",
-			withheld:   []string{"loom"},
-			options:    HubWideOptions{Apply: true, StripBase: true},
-			wantMarker: false,
-		},
-		{
-			name:       "a key move carrying the former roles map into an absent base leaves the created base header-only",
-			overrides:  map[string]string{"shuttle": "claude_prompt_cache_ttl_roles:\n  driver: 1h\n  webster: 1h\n"},
-			withheld:   []string{"claude"},
-			options:    HubWideOptions{Apply: true, StripBase: true, SeedDefaults: true},
-			wantMarker: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			boardDir := t.TempDir()
-			written := map[string]string{}
-			for _, m := range configreg.Modules() {
-				if slices.Contains(tt.withheld, m.Name) {
-					continue
-				}
-				content := m.Template()
-				if override, ok := tt.overrides[m.Name]; ok {
-					content = override
-				}
-				written[m.Name] = content
-				writeModuleFile(t, boardDir, m.Name, content)
-			}
-			if tt.boardMarked {
-				if err := WriteBaseSparseMarker(boardDir); err != nil {
-					t.Fatalf("WriteBaseSparseMarker: %v", err)
-				}
-			}
-
-			results, err := ReconcileHubWideAt(boardDir, "", tt.options)
-			if err != nil {
-				t.Fatalf("ReconcileHubWideAt: %v", err)
-			}
-
-			for module, content := range written {
-				registered, _ := configreg.Lookup(module)
-				gotBytes, err := os.ReadFile(configengine.ConfigFile(boardDir, module))
-				if err != nil {
-					t.Fatalf("read %s.yaml: %v", module, err)
-				}
-				got := string(gotBytes)
-				switch kept, isKept := tt.wantKept[module]; {
-				case tt.wantUnchangedAll || registered.SeedOnly:
-					// A per-name map drops its template-equal names on every applied reconcile, marked board or not.
-					if len(registered.PerNameMaps) > 0 && tt.options.Apply && !registered.SeedOnly {
-						continue
-					}
-					if registered.SeedOnly && tt.options.Apply {
-						// An applied seed-only file follows its template: it gains the units it lacks and keeps everything it held.
-						if !strings.Contains(got, content) {
-							t.Errorf("%s.yaml = %q; want it to keep what it held, %q", module, got, content)
-						}
-						continue
-					}
-					if got != content {
-						t.Errorf("%s.yaml changed; want it byte for byte as written", module)
-					}
-				case isKept:
-					for _, want := range kept {
-						if !strings.Contains(got, want) {
-							t.Errorf("%s.yaml = %q; want it to contain %q", module, got, want)
-						}
-					}
-				case got != configengine.SparseBaseHeader:
-					t.Errorf("%s.yaml = %q; want only the sparse header", module, got)
-				}
-			}
-			for _, module := range tt.withheld {
-				created := tt.options.SeedDefaults && tt.options.Apply
-				got, err := os.ReadFile(configengine.ConfigFile(boardDir, module))
-				switch {
-				case !created && !os.IsNotExist(err):
-					t.Errorf("%s.yaml written although the pass leaves an absent per-worktree base absent (read err = %v)", module, err)
-				case created && (err != nil || string(got) != configengine.SparseBaseHeader):
-					t.Errorf("%s.yaml = %q (read err = %v); want the created base to hold only the sparse header", module, got, err)
-				}
-			}
-			for module, keys := range tt.wantStripped {
-				result := findResult(results, module)
-				if result == nil {
-					t.Fatalf("no result for %s", module)
-				}
-				for _, key := range keys {
-					if !slices.Contains(result.Stripped, key) {
-						t.Errorf("%s Stripped = %v; want it to hold %q", module, result.Stripped, key)
-					}
-				}
-			}
-			for _, module := range tt.wantNoStripped {
-				if result := findResult(results, module); result == nil || len(result.Stripped) > 0 {
-					t.Errorf("%s result = %+v; want a result with no Stripped key", module, result)
-				}
-			}
-			_, markerErr := os.Stat(configengine.BaseSparseMarker(boardDir))
-			if marker := markerErr == nil; marker != tt.wantMarker {
-				t.Errorf("base-sparse marker present = %v; want %v", marker, tt.wantMarker)
-			}
-		})
-	}
-}
-
-// moduleTemplate returns the registered module's template text.
-func moduleTemplate(t *testing.T, module string) string {
-	t.Helper()
-	template, ok := configreg.Template(module)
-	if !ok {
-		t.Fatalf("configreg.Template(%q): module not registered", module)
-	}
-	return template()
-}
-
 // findResult returns the Result for the named module, or nil if absent.
 func findResult(results []Result, module string) *Result {
 	for i := range results {
@@ -1506,190 +1036,10 @@ func sortedCopy(keys []string) []string {
 // ptr returns a pointer to v, for a table field where nil means "unchecked".
 func ptr[T any](v T) *T { return &v }
 
-// gateKeyFile is one gate key of a gate.yaml as the seeding test reads it back.
-type gateKeyFile struct {
-	Tiers []int  `yaml:"tiers"`
-	Scope string `yaml:"scope"`
-}
-
-// TestReconcileHubWideAt_SeedsAdoptFromATunedFinalize pins that a hub gate.yaml gains adopt from its tuned finalize.
-// A present file holding the retired landing list gains adopt beside the finalize it became.
-// An absent file seeded from a prime copy that tunes finalize gains it too,
-// so the seeding pass leaves the file complete.
-func TestReconcileHubWideAt_SeedsAdoptFromATunedFinalize(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	const seededLine = "gates.adopt: added with the value of gates.finalize"
-	wantGate := gateKeyFile{[]int{0, 1}, "all"}
-
-	readGates := func(t *testing.T, boardDir string) map[string]gateKeyFile {
-		t.Helper()
-		data, err := os.ReadFile(configengine.ConfigFile(boardDir, "gate"))
-		if err != nil {
-			t.Fatalf("read gate.yaml: %v", err)
-		}
-		var file struct {
-			Gates map[string]gateKeyFile `yaml:"gates"`
-		}
-		if err := yaml.Unmarshal(data, &file); err != nil {
-			t.Fatalf("parse gate.yaml %q: %v", data, err)
-		}
-		return file.Gates
-	}
-	requireBoth := func(t *testing.T, boardDir string) {
-		t.Helper()
-		gates := readGates(t, boardDir)
-		for _, key := range []string{"finalize", "adopt"} {
-			// A sparse seed drops a scope equal to the template's, which the load then supplies.
-			got := gates[key]
-			if !slices.Equal(got.Tiers, wantGate.Tiers) || (got.Scope != wantGate.Scope && got.Scope != "") {
-				t.Errorf("gates.%s = %+v; want tiers %v and scope %q or the template's", key, got, wantGate.Tiers, wantGate.Scope)
-			}
-		}
-	}
-
-	t.Run("a present file holding a retired landing list gains adopt beside the finalize it became, once", func(t *testing.T) {
-		t.Parallel()
-		boardDir := t.TempDir()
-		writeModuleFile(t, boardDir, "gate", "gates:\n  landing: [0, 1]\n")
-
-		first, err := ReconcileHubWideAt(boardDir, "", HubWideOptions{Apply: true})
-		if err != nil {
-			t.Fatalf("ReconcileHubWideAt() = %v; want nil", err)
-		}
-		requireBoth(t, boardDir)
-		if gate := findResult(first, "gate"); gate == nil || !slices.Contains(gate.Migrated, seededLine) {
-			t.Errorf("gate result = %+v; want Migrated to hold %q", gate, seededLine)
-		}
-
-		before, err := os.ReadFile(configengine.ConfigFile(boardDir, "gate"))
-		if err != nil {
-			t.Fatalf("read gate.yaml: %v", err)
-		}
-		second, err := ReconcileHubWideAt(boardDir, "", HubWideOptions{Apply: true})
-		if err != nil {
-			t.Fatalf("second ReconcileHubWideAt() = %v; want nil", err)
-		}
-		after, err := os.ReadFile(configengine.ConfigFile(boardDir, "gate"))
-		if err != nil {
-			t.Fatalf("read gate.yaml: %v", err)
-		}
-		if gate := findResult(second, "gate"); gate == nil || len(gate.Migrated) != 0 || !bytes.Equal(before, after) {
-			t.Errorf("second pass gate result, file changed = %+v, %v; want no Migrated line and an identical file", gate, !bytes.Equal(before, after))
-		}
-	})
-
-	t.Run("an absent file seeded from a prime copy tuning finalize holds adopt after that one reconcile", func(t *testing.T) {
-		t.Parallel()
-		boardDir, primeBaseDir := t.TempDir(), t.TempDir()
-		writeModuleFile(t, primeBaseDir, "gate", "gates:\n  finalize: {tiers: [0, 1], scope: all}\n")
-
-		if _, err := ReconcileHubWideAt(boardDir, primeBaseDir, HubWideOptions{Apply: true}); err != nil {
-			t.Fatalf("ReconcileHubWideAt() = %v; want nil", err)
-		}
-		requireBoth(t, boardDir)
-	})
-}
-
-// TestReconcileAll_HubWideCopy pins how ReconcileAll treats a hub-wide module ("board"):
-// it never reconciles or writes it under the worktree.
-// A leftover per-worktree copy is kept.
-// It is reported Retired when the hub file subsumes it; apply then deletes it.
-// It is reported Divergent when it holds an entry the hub file lacks.
-func TestReconcileAll_HubWideCopy(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	const hubBoard = "types:\n  bug: Hub bug\nlabels:\n  area-x: Area X\n"
-
-	tests := []struct {
-		name          string
-		copyFile      string
-		hubFile       string
-		wantRetired   bool
-		wantDivergent []string
-		wantKept      bool
-	}{
-		{name: "no per-worktree copy"},
-		{name: "copy and no hub file keeps the copy", copyFile: hubBoard, wantKept: true},
-		{name: "copy subsumed by the hub file is retired", copyFile: "labels:\n  area-x: Area X\n", hubFile: hubBoard, wantRetired: true},
-		{
-			name:          "copy holding a label the hub file lacks is divergent",
-			copyFile:      "labels:\n  area-x: Area X\n  area-y: Area Y\n",
-			hubFile:       hubBoard,
-			wantDivergent: []string{"labels.area-y: Area Y"},
-			wantKept:      true,
-		},
-		{
-			name:          "copy value differing from the hub file is divergent",
-			copyFile:      "types:\n  bug: Local bug\n",
-			hubFile:       hubBoard,
-			wantDivergent: []string{"types.bug: Local bug"},
-			wantKept:      true,
-		},
-		{name: "copy holding a template default over a hub file lacking that key is retired", copyFile: "readme: ${env:LYM_README:-README.md}\n", hubFile: hubBoard, wantRetired: true},
-		{
-			name:          "copy value differing from both the template and the hub file is divergent",
-			copyFile:      "readme: custom.md\n",
-			hubFile:       hubBoard,
-			wantDivergent: []string{"readme: custom.md"},
-			wantKept:      true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			baseDir := t.TempDir()
-			boardDir := t.TempDir()
-			writeModuleFile(t, baseDir, "board", tt.copyFile)
-			writeModuleFile(t, boardDir, "board", tt.hubFile)
-			copyPath := configengine.ConfigFile(baseDir, "board")
-
-			check := func(apply bool) {
-				t.Helper()
-				results, err := ReconcileAll(baseDir, boardDir, Options{Apply: apply})
-				if err != nil {
-					t.Fatalf("ReconcileAll(%v): %v", apply, err)
-				}
-				r := findResult(results, "board")
-				if r == nil {
-					t.Fatal("no result for board")
-				}
-				if r.Retired != tt.wantRetired {
-					t.Errorf("apply=%v Retired = %v; want %v", apply, r.Retired, tt.wantRetired)
-				}
-				if r.Applied != (tt.wantRetired && apply) {
-					t.Errorf("apply=%v Applied = %v; want %v", apply, r.Applied, tt.wantRetired && apply)
-				}
-				if fmt.Sprint(r.Divergent) != fmt.Sprint(tt.wantDivergent) {
-					t.Errorf("apply=%v Divergent = %v; want %v", apply, r.Divergent, tt.wantDivergent)
-				}
-				_, statErr := os.Stat(copyPath)
-				wantPresent := tt.wantKept || (tt.wantRetired && !apply)
-				if present := statErr == nil; present != wantPresent {
-					t.Errorf("apply=%v per-worktree board.yaml present = %v; want %v", apply, present, wantPresent)
-				}
-				if tt.copyFile == "" {
-					if _, err := os.Stat(copyPath); !os.IsNotExist(err) {
-						t.Errorf("apply=%v per-worktree board.yaml created (stat err = %v)", apply, err)
-					}
-				}
-				if _, err := os.Stat(configengine.ConfigFile(baseDir, "fabric")); !os.IsNotExist(err) {
-					t.Errorf("apply=%v per-worktree fabric.yaml written (stat err = %v)", apply, err)
-				}
-			}
-			check(false)
-			check(true)
-		})
-	}
-}
-
 // TestReconcileAll_SparseLayers pins that in a hub a worktree file and a local file are sparse layers.
-// Retired keys are pruned and a below-floor value is migrated, but nothing is ever added.
+// Nothing is ever added, and a key the template lacks stays and is reported preserved unless PruneUnknown is set.
 // An absent file stays absent, a seed-only module's files are untouched, and a file emptied by a prune is deleted.
-// A worktree file keeps a key the template lacks and no retired key covers.
-// It reports that key preserved unless PruneUnknown is set.
-// A local file loses it either way.
+// A local file loses such a key either way.
 func TestReconcileAll_SparseLayers(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1704,7 +1054,6 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 		wantFile    *string
 		wantApplied bool
 		wantRemoved []string
-		wantMigrate []string
 		// wantResult is false when the layer is absent and no result is reported.
 		wantResult    bool
 		wantKeptExtra []string
@@ -1727,14 +1076,9 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 			wantResult: true, wantPreserved: []string{"newer_key"},
 		},
 		{
-			name: "worktree file loses a retired key without PruneUnknown and keeps a key the template lacks", module: "loom", layer: configengine.LayerWorktree,
-			content: "discussion_timeout_min: 480\npr_review: x\nnewer_key: x\n", wantFile: ptr("discussion_timeout_min: 480\nnewer_key: x\n"),
-			wantApplied: true, wantRemoved: []string{"pr_review"}, wantResult: true, wantPreserved: []string{"newer_key"},
-		},
-		{
-			name: "below-floor loom value is raised by Migrate", module: "loom", layer: configengine.LayerWorktree,
-			content: "step_idle_timeout_min: 0\n", wantFile: ptr("step_idle_timeout_min: 1\n"),
-			wantApplied: true, wantMigrate: []string{"step_idle_timeout_min: raised from 0 to 1"}, wantResult: true,
+			name: "worktree file keeps a retired key without PruneUnknown like any other key the template lacks", module: "loom", layer: configengine.LayerWorktree,
+			content: "discussion_timeout_min: 480\nnewer_key: x\npr_review: x\n", wantFile: ptr("discussion_timeout_min: 480\nnewer_key: x\npr_review: x\n"),
+			wantResult: true, wantPreserved: []string{"newer_key", "pr_review"},
 		},
 		{
 			name: "absent worktree file stays absent", module: "loom", layer: configengine.LayerWorktree,
@@ -1804,8 +1148,8 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 				t.Fatalf("result for %s layer %s = %+v; want present = %v", tt.module, tt.layer, result, tt.wantResult)
 			}
 			if result != nil {
-				if result.Applied != tt.wantApplied || !slices.Equal(result.Removed, tt.wantRemoved) || !slices.Equal(result.Migrated, tt.wantMigrate) || len(result.Added) != 0 {
-					t.Errorf("result = %+v; want Applied %v, Removed %v, Migrated %v and nothing Added", result, tt.wantApplied, tt.wantRemoved, tt.wantMigrate)
+				if result.Applied != tt.wantApplied || !slices.Equal(result.Removed, tt.wantRemoved) || len(result.Added) != 0 {
+					t.Errorf("result = %+v; want Applied %v, Removed %v and nothing Added", result, tt.wantApplied, tt.wantRemoved)
 				}
 				if !slices.Equal(result.KeptExtra, tt.wantKeptExtra) {
 					t.Errorf("KeptExtra = %v; want %v", result.KeptExtra, tt.wantKeptExtra)
@@ -1828,9 +1172,37 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 	}
 }
 
-// TestReconcileHubWideAt_PrunesUnknownKeysOnlyWhenAsked pins two behaviors.
-// A present board file loses a retired key on every run.
-// A key the template lacks and no retired key covers stays and is reported preserved unless PruneUnknown is set.
+// TestReconcileAll_HubWideModuleHasNoWorktreeResult pins that a hub-wide module is never reconciled as a worktree file.
+// Only its local override file is reconciled, and only when present.
+//
+//testtiming:keep pins that a hub-wide module yields no worktree result and that its per-worktree file is left as it was, which the sparse-layer test never asserts
+func TestReconcileAll_HubWideModuleHasNoWorktreeResult(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	baseDir, boardDir := t.TempDir(), t.TempDir()
+	writeModuleFile(t, baseDir, "board", "labels:\n  area-x: Area X\n")
+
+	results, err := ReconcileAll(baseDir, boardDir, Options{Apply: true})
+	if err != nil {
+		t.Fatalf("ReconcileAll: %v", err)
+	}
+	for _, result := range results {
+		if result.Module == "board" || result.Module == "fabric" {
+			t.Errorf("result %+v reports a hub-wide module; want none", result)
+		}
+	}
+	if got, err := os.ReadFile(configengine.ConfigFile(baseDir, "board")); err != nil || string(got) != "labels:\n  area-x: Area X\n" {
+		t.Errorf("per-worktree board.yaml = %q, %v; want it left as it was", got, err)
+	}
+	if _, err := os.Stat(configengine.ConfigFile(baseDir, "fabric")); !os.IsNotExist(err) {
+		t.Errorf("per-worktree fabric.yaml written (stat err = %v)", err)
+	}
+}
+
+// TestReconcileHubWideAt_PrunesUnknownKeysOnlyWhenAsked pins that a present board file keeps a key the template lacks.
+// That holds for a retired key as for any other: it stays and is reported preserved unless PruneUnknown is set.
+//
+//testtiming:keep pins the exact Preserved and Removed lists and the unchanged dry-run bytes of a kept unknown key, which the seed tests never assert
 func TestReconcileHubWideAt_PrunesUnknownKeysOnlyWhenAsked(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1848,11 +1220,11 @@ func TestReconcileHubWideAt_PrunesUnknownKeysOnlyWhenAsked(t *testing.T) {
 			wantFile: "newer_key: 1\n", wantPreserved: []string{"newer_key"},
 		},
 		{
-			name: "a retired key is pruned beside a preserved key", content: "newer_key: 1\npublish_verify: x\n",
-			wantFile: "newer_key: 1\n", wantApplied: true, wantRemoved: []string{"publish_verify"}, wantPreserved: []string{"newer_key"},
+			name: "a retired key stays beside a preserved key", content: "newer_key: 1\npublish_verify: x\n",
+			wantFile: "newer_key: 1\npublish_verify: x\n", wantPreserved: []string{"newer_key", "publish_verify"},
 		},
 		{
-			name: "PruneUnknown prunes the key the template lacks as well", content: "newer_key: 1\npublish_verify: x\n", pruneUnknown: true,
+			name: "PruneUnknown prunes every key the template lacks", content: "newer_key: 1\npublish_verify: x\n", pruneUnknown: true,
 			wantFile: configengine.SparseBaseHeader, wantApplied: true, wantRemoved: []string{"newer_key", "publish_verify"},
 		},
 	}
@@ -1861,9 +1233,6 @@ func TestReconcileHubWideAt_PrunesUnknownKeysOnlyWhenAsked(t *testing.T) {
 			t.Parallel()
 			boardDir := t.TempDir()
 			writeModuleFile(t, boardDir, "landing", tt.content)
-			if err := WriteBaseSparseMarker(boardDir); err != nil {
-				t.Fatalf("WriteBaseSparseMarker: %v", err)
-			}
 			path := configengine.ConfigFile(boardDir, "landing")
 			for _, apply := range []bool{false, true} {
 				results, err := ReconcileHubWideAt(boardDir, "", HubWideOptions{Apply: apply, PruneUnknown: tt.pruneUnknown})
@@ -1890,292 +1259,6 @@ func TestReconcileHubWideAt_PrunesUnknownKeysOnlyWhenAsked(t *testing.T) {
 	}
 }
 
-// TestReconcileAll_MigratesToSparse pins the one-time strip of a worktree's full files to sparse overrides:
-// The keys equal to what the layers below resolve to are stripped and reported.
-// An emptied file is deleted, and every key the file held resolves unchanged.
-// The keys the repo default adds are reported as inherited.
-// A marked worktree, a dry run, a run without Migrate and a hub missing a repo default strip nothing.
-func TestReconcileAll_MigratesToSparse(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	const (
-		stripFile         = "discussion_timeout_min: 480\nreview_max_bounces: 99\n"
-		markerDiscussion  = "discussion: \"${env:LYMMIG_PLAN:-sonnet}\"\n"
-		literalDiscussion = "discussion: sonnet\n"
-		defaultAlias      = "zephyr:\n  engine: claude\n  model: claude-zephyr-1\n"
-	)
-	batcherTemplate := batcher.ConfigTemplate()
-	batcherDiffering := strings.Replace(batcherTemplate, "orientation: 31400", "orientation: 31401", 1)
-	modelsTemplate := modelspec.ConfigTemplate()
-	migrate := Options{Apply: true, Migrate: true}
-	lensesCSharpConcurrency := lensSetFixture(t, "", map[string]string{"concurrency": loadLensesWith(t, "lens_set: csharp\n").Lenses["concurrency"]})
-
-	tests := []struct {
-		name         string
-		module       string
-		opts         Options
-		defaultFile  string
-		worktreeFile string
-		marked       bool
-		noDefault    bool
-		// wantFile is the worktree file's exact content afterwards; nil leaves it to wantDeleted and the substring lists.
-		wantFile        *string
-		wantDeleted     bool
-		wantContains    []string
-		wantNotContains []string
-		wantStripped    []string
-		wantInherited   []string
-		wantMarker      bool
-		// resolutionChanges marks a row whose strip drops a former value, so the worktree resolves to the layer below.
-		resolutionChanges bool
-	}{
-		{
-			name: "a former value is stripped even where the default tuned another, and the worktree resolves to the default's", module: "loom", opts: migrate,
-			defaultFile: loomTemplateWith(loomTemplate(), "discussion_lenses", "discussion_lenses: tuned-fan"), worktreeFile: "discussion_lenses: \"\"\nreview_max_bounces: 99\n",
-			wantContains: []string{"review_max_bounces: 99"}, wantNotContains: []string{"discussion_lenses"},
-			wantStripped: []string{"discussion_lenses"}, wantMarker: true, resolutionChanges: true,
-		},
-		{
-			name: "a whole open map equal to the former map is stripped", module: "claude", opts: migrate,
-			worktreeFile: "prompt_cache_ttl_roles:\n  driver: 1h\n  webster: 1h\n",
-			wantStripped: []string{"prompt_cache_ttl_roles"}, wantDeleted: true, wantMarker: true, resolutionChanges: true,
-		},
-		{
-			name: "a marked worktree keeps a former value byte for byte", module: "loom", opts: migrate, marked: true,
-			worktreeFile: "discussion_lenses: \"\"\n", wantFile: ptr("discussion_lenses: \"\"\n"),
-		},
-		{
-			name: "keys equal to the default are stripped and reported", module: "loom", opts: migrate,
-			worktreeFile: stripFile, wantContains: []string{"review_max_bounces: 99"}, wantNotContains: []string{"discussion_timeout_min"},
-			wantStripped: []string{"discussion_timeout_min"}, wantMarker: true,
-		},
-		{
-			name: "an emptied file is deleted", module: "loom", opts: migrate,
-			worktreeFile: "discussion_timeout_min: 480\n", wantStripped: []string{"discussion_timeout_min"}, wantDeleted: true, wantMarker: true,
-		},
-		{
-			name: "an open map differing in one entry is kept whole", module: "claude", opts: migrate,
-			worktreeFile: "prompt_cache_ttl_roles:\n  driver: 1h\n  webster: 2h\n", wantContains: []string{"driver: 1h", "webster: 2h"}, wantMarker: true,
-		},
-		{
-			name: "a per-name map keeps only the keys differing from the layers below", module: "batcher", opts: migrate,
-			worktreeFile: batcherDiffering, wantContains: []string{"orientation: 31401"}, wantMarker: true,
-			wantStripped: []string{
-				"active", "profiles.cautious.batchifier", "profiles.cautious.budget", "profiles.cautious.max_cards",
-				"profiles.cautious.weights.batch_growth", "profiles.cautious.weights.context_per_line", "profiles.cautious.weights.fork_messages",
-				"profiles.cautious.weights.message_context", "profiles.cautious.weights.orientation", "profiles.cautious.weights.package_context",
-				"profiles.cautious.weights.target_messages", "profiles.cautious.weights.test_file_messages", "profiles.cautious.weights.uses_messages",
-				"profiles.cautious.weights.write_per_card_line",
-				"profiles.identity.batchifier",
-				"profiles.wide.batchifier", "profiles.wide.budget", "profiles.wide.max_cards",
-				"profiles.wide.weights.batch_growth", "profiles.wide.weights.context_per_line", "profiles.wide.weights.fork_messages",
-				"profiles.wide.weights.message_context", "profiles.wide.weights.package_context", "profiles.wide.weights.target_messages",
-				"profiles.wide.weights.test_file_messages", "profiles.wide.weights.uses_messages", "profiles.wide.weights.write_per_card_line",
-			},
-		},
-		{
-			name: "the former batcher default active cautious is stripped so the worktree resolves to wide", module: "batcher", opts: migrate,
-			worktreeFile: "active: \"cautious\"\n", wantStripped: []string{"active"}, wantDeleted: true, wantMarker: true, resolutionChanges: true,
-		},
-		{
-			name: "a marked worktree keeps active cautious as a pin", module: "batcher", opts: migrate, marked: true,
-			worktreeFile: "active: \"cautious\"\n", wantFile: ptr("active: \"cautious\"\n"),
-		},
-		{
-			name: "a literal equal to the expansion of a marker below is kept", module: "loom", opts: migrate,
-			defaultFile: loomTemplateWith(loomTemplate(), "discussion", markerDiscussion), worktreeFile: literalDiscussion,
-			wantFile: ptr(literalDiscussion), wantMarker: true,
-		},
-		{
-			name: "a marker over a literal equal to its expansion is kept", module: "loom", opts: migrate,
-			defaultFile: loomTemplateWith(loomTemplate(), "discussion", literalDiscussion), worktreeFile: markerDiscussion,
-			wantFile: ptr(markerDiscussion), wantMarker: true,
-		},
-		{
-			name: "a seed-only key the default holds and the file lacks is reported inherited", module: "models", opts: migrate,
-			defaultFile: modelsTemplate + defaultAlias, worktreeFile: modelsTemplate,
-			wantStripped: []string{"astra", "fable", "haiku", "luna", "opus", "sol", "sonnet"}, wantInherited: []string{"zephyr"}, wantDeleted: true, wantMarker: true,
-		},
-		{
-			name: "a marked worktree is left alone", module: "loom", opts: migrate, marked: true,
-			worktreeFile: stripFile, wantFile: ptr(stripFile),
-		},
-		{
-			name: "a dry run strips nothing", module: "loom", opts: Options{Migrate: true},
-			worktreeFile: stripFile, wantFile: ptr(stripFile), wantStripped: []string{"discussion_timeout_min"},
-		},
-		{
-			name: "an apply without Migrate strips nothing", module: "loom", opts: Options{Apply: true},
-			worktreeFile: stripFile, wantFile: ptr(stripFile), wantStripped: []string{"discussion_timeout_min"},
-		},
-		{
-			name: "a hub missing a repo default strips nothing", module: "loom", opts: migrate, noDefault: true,
-			worktreeFile: stripFile, wantFile: ptr(stripFile),
-		},
-		{
-			name: "a lens equal to the prose of the layer the default picks is stripped and the picked selector is inherited", module: "lenses", opts: migrate,
-			defaultFile: "lens_set: csharp\n", worktreeFile: lensesCSharpConcurrency,
-			wantStripped: []string{"lenses.concurrency"}, wantInherited: []string{"lens_set"}, wantDeleted: true, wantMarker: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			anchor, boardDir := t.TempDir(), t.TempDir()
-			for _, m := range configreg.Modules() {
-				if !m.HubWide {
-					writeModuleFile(t, boardDir, m.Name, m.Template())
-				}
-			}
-			writeModuleFile(t, boardDir, tt.module, tt.defaultFile)
-			if tt.noDefault {
-				if err := os.Remove(configengine.ConfigFile(boardDir, "batcher")); err != nil {
-					t.Fatalf("remove batcher default: %v", err)
-				}
-			}
-			writeModuleFile(t, anchor, tt.module, tt.worktreeFile)
-			if tt.marked {
-				if err := os.WriteFile(configengine.SparseMarker(anchor), []byte("marked\n"), 0o644); err != nil {
-					t.Fatalf("write marker: %v", err)
-				}
-			}
-			module, _ := configreg.Lookup(tt.module)
-			dirs := configengine.Dirs{Anchor: anchor, Board: boardDir}
-			before, err := configengine.Load(dirs, module.Spec())
-			if err != nil {
-				t.Fatalf("Load before: %v", err)
-			}
-
-			results, err := ReconcileAll(anchor, boardDir, tt.opts)
-			if err != nil {
-				t.Fatalf("ReconcileAll: %v", err)
-			}
-
-			result := findLayerResult(results, tt.module, configengine.LayerWorktree)
-			if result == nil {
-				t.Fatalf("no worktree-layer result for %s", tt.module)
-			}
-			if !slices.Equal(result.Stripped, tt.wantStripped) && !(len(result.Stripped) == 0 && len(tt.wantStripped) == 0) {
-				t.Errorf("Stripped = %v; want %v", result.Stripped, tt.wantStripped)
-			}
-			if !slices.Equal(result.Inherited, tt.wantInherited) && !(len(result.Inherited) == 0 && len(tt.wantInherited) == 0) {
-				t.Errorf("Inherited = %v; want %v", result.Inherited, tt.wantInherited)
-			}
-
-			got, readErr := os.ReadFile(configengine.ConfigFile(anchor, tt.module))
-			switch {
-			case tt.wantDeleted:
-				if !os.IsNotExist(readErr) {
-					t.Errorf("worktree file = %q (err %v); want it deleted", got, readErr)
-				}
-			case tt.wantFile != nil:
-				if string(got) != *tt.wantFile {
-					t.Errorf("worktree file = %q; want %q", got, *tt.wantFile)
-				}
-			default:
-				for _, sub := range tt.wantContains {
-					if !strings.Contains(string(got), sub) {
-						t.Errorf("worktree file = %q; want it to contain %q", got, sub)
-					}
-				}
-				for _, sub := range tt.wantNotContains {
-					if strings.Contains(string(got), sub) {
-						t.Errorf("worktree file = %q; want it not to contain %q", got, sub)
-					}
-				}
-			}
-
-			_, markerErr := os.Stat(configengine.SparseMarker(anchor))
-			if markerPresent := markerErr == nil; markerPresent != (tt.wantMarker || tt.marked) {
-				t.Errorf("marker present = %v; want %v", markerPresent, tt.wantMarker || tt.marked)
-			}
-
-			after, err := configengine.Load(dirs, module.Spec())
-			if err != nil {
-				t.Fatalf("Load after: %v", err)
-			}
-			// A stripped per-name entry resolves from the template, so the keys may come back in another order.
-			sameResolution := reflect.DeepEqual(decodeDocument(t, before), decodeDocument(t, after))
-			if !tt.resolutionChanges && !sameResolution {
-				t.Errorf("resolution changed by the migration:\nbefore:\n%s\nafter:\n%s", before, after)
-			}
-			if tt.resolutionChanges && sameResolution {
-				t.Errorf("resolution unchanged by a strip of a former value:\n%s", after)
-			}
-		})
-	}
-}
-
-// TestFormerSourceDefaults_NameDeclaredMoveSources pins each former source default as a declared move's source key.
-func TestFormerSourceDefaults_NameDeclaredMoveSources(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	for module, keys := range formerSourceDefaults {
-		for key := range keys {
-			declared := slices.ContainsFunc(configreg.KeyMoves(), func(move configreg.KeyMove) bool {
-				return move.FromModule == module && move.FromKey == key
-			})
-			if !declared {
-				t.Errorf("formerSourceDefaults names %s.%s, which no declared key move takes as its source", module, key)
-			}
-		}
-	}
-}
-
-// TestFormerTemplateValues_DifferFromTheTemplate pins that each former value differs from the template.
-// A former value names a registered module and a unit its template holds.
-// It is compared as YAML nodes, with the module's open maps.
-func TestFormerTemplateValues_DifferFromTheTemplate(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	for module := range formerTemplateValues {
-		m, ok := configreg.Lookup(module)
-		if !ok {
-			t.Errorf("formerTemplateValues names module %q, which is not registered", module)
-			continue
-		}
-		spec := m.Spec()
-		held, err := yamlengine.LeafPaths(spec.Template, spec.OpenMaps, spec.WholeEntries)
-		if err != nil {
-			t.Fatalf("LeafPaths(%s template): %v", module, err)
-		}
-		units, err := yamlengine.LeafPaths(formerValuesDoc(module), spec.OpenMaps, spec.WholeEntries)
-		if err != nil {
-			t.Fatalf("LeafPaths(%s former values): %v", module, err)
-		}
-		_, equal, err := yamlengine.Strip(spec.Template, formerValuesDoc(module), spec.OpenMaps, spec.WholeEntries)
-		if err != nil {
-			t.Fatalf("Strip(%s template, former values): %v", module, err)
-		}
-		for _, unit := range units {
-			if !slices.Contains(held, unit) {
-				t.Errorf("former value %s.%s: the template holds no such unit", module, unit)
-			}
-			if slices.Contains(equal, unit) {
-				t.Errorf("former value %s.%s equals the template's current value", module, unit)
-			}
-		}
-	}
-}
-
-// loomTemplate returns loom's registered template.
-func loomTemplate() string {
-	template, _ := configreg.Template("loom")
-	return template()
-}
-
-// loomTemplateWith returns template with the named top-level key's line replaced by replacement.
-// The replacement is a whole "key: value" line.
-func loomTemplateWith(template, key, replacement string) string {
-	lines := strings.Split(template, "\n")
-	for i, line := range lines {
-		if strings.HasPrefix(line, key+":") {
-			lines[i] = strings.TrimSuffix(replacement, "\n")
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
 // findLayerResult returns the Result for the named module and layer, or nil if absent.
 func findLayerResult(results []Result, module string, layer configengine.Layer) *Result {
 	for i := range results {
@@ -2198,15 +1281,12 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 		run        func(baseDir, boardDir string) error
 		module     string
 		wantInBase bool
-		hubFile    string
 		// content is the failing file's bytes; empty keeps unparseable.
 		content string
 		// wantErr are substrings the message must hold.
 		wantErr []string
 		// worktreeFile is written as the module's file in the base dir beside a content file at the board dir.
 		worktreeFile string
-		// burlerFile is written as the board's burler.yaml.
-		burlerFile string
 	}{
 		{
 			name: "ReconcileAll on an unparseable per-worktree file",
@@ -2233,16 +1313,6 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 				return err
 			},
 			module: "fabric",
-		},
-		{
-			name: "ReconcileAll retiring an unparseable hub-wide copy",
-			run: func(baseDir, boardDir string) error {
-				_, err := ReconcileAll(baseDir, boardDir, Options{})
-				return err
-			},
-			module:     "board",
-			wantInBase: true,
-			hubFile:    "readme: README.md\n",
 		},
 		{
 			name: "ReconcileAll standalone on an unknown lens_set names its own file",
@@ -2287,18 +1357,6 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 			content:    unknownLensSet,
 			wantErr:    []string{"names no shipped layer", "delete the lens_set line from"},
 		},
-		{
-			name: "a key move seeding the board lenses.yaml from a prime copy under an unknown lens_set names the prime's copy",
-			run: func(baseDir, boardDir string) error {
-				_, err := ReconcileHubWideAt(boardDir, baseDir, HubWideOptions{SeedDefaults: true})
-				return err
-			},
-			module:     "lenses",
-			wantInBase: true,
-			content:    unknownLensSet,
-			burlerFile: "fans:\n  theirs:\n    - generic\n",
-			wantErr:    []string{"names no shipped layer", "delete the lens_set line from"},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2313,11 +1371,9 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 				content = unparseable
 			}
 			writeModuleFile(t, fileDir, tt.module, content)
-			writeModuleFile(t, boardDir, tt.module, tt.hubFile)
 			if tt.worktreeFile != "" {
 				writeModuleFile(t, baseDir, tt.module, tt.worktreeFile)
 			}
-			writeModuleFile(t, boardDir, "burler", tt.burlerFile)
 
 			err := tt.run(baseDir, boardDir)
 
@@ -2389,474 +1445,6 @@ func TestPrimeSeedError(t *testing.T) {
 			}
 			if hasDelete := strings.Contains(got.Error(), "also delete"); hasDelete != tt.wantDelete {
 				t.Errorf("primeSeedError() = %q; delete step present = %v, want %v", got, hasDelete, tt.wantDelete)
-			}
-		})
-	}
-}
-
-// TestReconcile_MovesKeysAcrossModules pins the declared key moves: shuttle-to-claude and burler-to-lenses.
-// The test runs at every reconcile entry point and checks where the value lands at each layer.
-// It also checks what a collision keeps or overwrites.
-// A dry run writes nothing, and a second pass moves nothing.
-func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	claudeTemplate, _ := configreg.Template("claude")
-	claudeModule, _ := configreg.Lookup("claude")
-	const templateBinary = "${env:LYM_SHUTTLE_CLAUDE:-}"
-	const tunedGeneric = "Tuned for the hub."
-	const formerRoles = "prompt_cache_ttl_roles:\n  driver: 1h\n  webster: 1h\n"
-	burlerToday := burlerFixture(t, func(cfg *lenses.Config) {
-		delete(cfg.Lenses, "security")
-		delete(cfg.Fans, "full")
-		cfg.Lenses["generic"] = tunedGeneric + "\n"
-	})
-	burlerOldTemplate := burlerFixture(t, func(cfg *lenses.Config) {
-		cfg.Fans["twill-discussion"] = cfg.Fans["twill-discussion"][:5]
-	})
-	lensesEqualTemplate := lensesFixture(t, func(cfg *lenses.Config) {})
-	lensesWithHubLens := lensesFixture(t, func(cfg *lenses.Config) {
-		cfg.Lenses["hub-lens"] = "Hub emphasis.\n"
-	})
-	const sparseFans = "fans:\n  mine:\n    - generic\n"
-	const burlerFans = "fans:\n  theirs:\n    - generic\n"
-	csharpConcurrency := loadLensesWith(t, "lens_set: csharp\n").Lenses["concurrency"]
-	keptLenses := []string{"burler.fans dropped, lenses.fans kept", "burler.lenses dropped, lenses.lenses kept"}
-	movedLenses := []string{"burler.fans -> lenses.fans", "burler.lenses -> lenses.lenses"}
-	tests := []struct {
-		name string
-		// files maps "<base|board|prime|local>:<module>" to the file's content.
-		files map[string]string
-		// call is "hub" (ReconcileAll over a board dir), "standalone" (ReconcileAll alone) or "board" (ReconcileHubWideAt).
-		call   string
-		dryRun bool
-		repeat bool
-		// boardMarker and primeMarked write the board's and the prime's sparse markers; their keys name module files only.
-		boardMarker bool
-		primeMarked bool
-		// contains and excludes map a file key to substrings its content must and must not hold after the run.
-		contains map[string][]string
-		excludes map[string][]string
-		absent   []string
-		// unchanged lists file keys whose content after the run equals the content before.
-		unchanged []string
-		// moved, kept and overwritten are the exact report lines the run must produce across all its results.
-		moved, kept, overwritten []string
-		// added lists lines each of which must appear in some result's Added.
-		added []string
-		// noAdded lists modules none of whose results carries an Added line.
-		noAdded []string
-		// stripped lists entries some result's Stripped must hold; nil skips the check.
-		stripped []string
-		// loadContains is what claude's resolved base+worktree stack must hold after the run.
-		loadContains string
-		// checkLoadRefuses is the file name claude's loader must refuse naming after the run.
-		checkLoadRefuses string
-	}{
-		{
-			name:     "a repo default moves into a created claude.yaml holding only the moved unit and leaves its emptied source as the header-only base",
-			files:    map[string]string{"board:shuttle": "claude: /x\n"},
-			call:     "board",
-			contains: map[string][]string{"board:claude": {"binary: /x"}, "board:shuttle": {configengine.SparseBaseHeader}},
-			excludes: map[string][]string{"board:claude": {"deny_ask_user_question"}, "board:shuttle": {"claude: /x"}},
-			moved:    []string{"shuttle.claude -> claude.binary"},
-		},
-		{
-			name:     "a shuttle layer holding the retired claude_deny_agent_tool writes no deny_agent_tool into claude.yaml",
-			files:    map[string]string{"board:shuttle": "claude_deny_agent_tool: true\n", "board:claude": "binary: /x\n"},
-			call:     "board",
-			excludes: map[string][]string{"board:claude": {"deny_agent_tool"}},
-		},
-		{
-			name:     "a hub's tuned darn perch keys move to loom's Code-Review keys",
-			files:    map[string]string{"board:darn": "review_max_bounces: 0\ndarn_fixer_fan: fix-plan\n"},
-			call:     "board",
-			contains: map[string][]string{"board:loom": {"code_max_bounces: 0", "code_fixer_fan: fix-plan"}, "board:darn": {configengine.SparseBaseHeader}},
-			excludes: map[string][]string{"board:darn": {"review_max_bounces", "darn_fixer_fan"}},
-			moved:    []string{"darn.darn_fixer_fan -> loom.code_fixer_fan", "darn.review_max_bounces -> loom.code_max_bounces"},
-		},
-		{
-			name: "a hub's tuned darn model, fan and amend keys move to loom's Code-Review keys",
-			files: map[string]string{"board:darn": "darn_reviewer_model: opus[high]\ndarn_fixer_model: opus[low]\ndarn_reviewer_fan: review-plan\n" +
-				"review_fan: review-plan\nreview_fix_fan: fix-plan\nreview_hard_max_bounces: 3\nreview_amend_max_bounces: 0\n"},
-			call: "board",
-			contains: map[string][]string{"board:loom": {"code_reviewer_model: opus[high]", "code_fixer_model: opus[low]", "code_reviewer_fan: review-plan",
-				"code_fixer_fan: fix-plan", "code_hard_max_bounces: 3", "review_amend_max_bounces: 0"}, "board:darn": {configengine.SparseBaseHeader}},
-			moved: []string{
-				"darn.darn_fixer_model -> loom.code_fixer_model", "darn.darn_reviewer_fan -> loom.code_reviewer_fan", "darn.darn_reviewer_model -> loom.code_reviewer_model",
-				"darn.review_amend_max_bounces -> loom.review_amend_max_bounces", "darn.review_fix_fan -> loom.code_fixer_fan",
-				"darn.review_hard_max_bounces -> loom.code_hard_max_bounces",
-			},
-			kept: []string{"darn.review_fan: review-plan dropped, loom.code_reviewer_fan: review-plan kept"},
-		},
-		{
-			name:     "a hub's tuned loom plan_max_bounces moves to a created tapestry.yaml",
-			files:    map[string]string{"board:loom": "plan_max_bounces: 5\n"},
-			call:     "board",
-			contains: map[string][]string{"board:tapestry": {"plan_max_bounces: 5"}, "board:loom": {configengine.SparseBaseHeader}},
-			excludes: map[string][]string{"board:loom": {"plan_max_bounces"}},
-			moved:    []string{"loom.plan_max_bounces -> tapestry.plan_max_bounces"},
-		},
-		{
-			name:     "an untuned darn.yaml's former defaults are dropped and leave loom's Code-Review keys as they are",
-			files:    map[string]string{"board:darn": "darn_reviewer_model: sonnet[high]\nreview_hard_max_bounces: 2\ndarn_fixer_fan: \"\"\nreview_fan: \"\"\n", "board:loom": "code_hard_max_bounces: 0\ncode_reviewer_model: sonnet[medium]\ncode_max_bounces: 1\n"},
-			call:     "board",
-			contains: map[string][]string{"board:loom": {"code_hard_max_bounces: 0", "code_reviewer_model: sonnet[medium]"}, "board:darn": {configengine.SparseBaseHeader}},
-			excludes: map[string][]string{"board:loom": {"sonnet[high]", "code_hard_max_bounces: 2", "code_fixer_fan: \"\""}},
-			kept: []string{
-				"darn.darn_fixer_fan:  dropped, a former template default", "darn.review_fan:  dropped, a former template default", "darn.darn_reviewer_model: sonnet[high] dropped, a former template default",
-				"darn.review_hard_max_bounces: 2 dropped, a former template default",
-			},
-		},
-		{
-			name:     "a former default dropped from a prime-seeded darn.yaml is reported though the move writes no file",
-			files:    map[string]string{"prime:darn": "review_hard_max_bounces: 2\n"},
-			call:     "board",
-			excludes: map[string][]string{"board:loom": {"code_hard_max_bounces: 2"}},
-			kept:     []string{"darn.review_hard_max_bounces: 2 dropped, a former template default"},
-		},
-		{
-			name:     "a loom.yaml's tuned code value is kept over a darn value at a base layer",
-			files:    map[string]string{"base:darn": "review_max_bounces: 0\n", "base:loom": "code_max_bounces: 2\n"},
-			call:     "standalone",
-			contains: map[string][]string{"base:loom": {"code_max_bounces: 2"}},
-			absent:   []string{"base:darn"},
-			kept:     []string{"darn.review_max_bounces: 0 dropped, loom.code_max_bounces: 2 kept"},
-		},
-		{
-			name:        "a loom.yaml's tuned code value is kept over a darn value at a sparse layer",
-			files:       map[string]string{"board:darn": "review_max_bounces: 0\n", "board:loom": "code_max_bounces: 2\n"},
-			boardMarker: true,
-			call:        "board",
-			contains:    map[string][]string{"board:loom": {"code_max_bounces: 2"}},
-			excludes:    map[string][]string{"board:darn": {"review_max_bounces"}},
-			kept:        []string{"darn.review_max_bounces: 0 dropped, loom.code_max_bounces: 2 kept"},
-		},
-		{
-			name:     "a board default seeded from the prime's shuttle.yaml carries the moved value and the prime's non-template units",
-			files:    map[string]string{"prime:shuttle": "claude: /x\n", "prime:claude": "deny_ask_user_question: false\nprompt_cache_ttl: 5m\n"},
-			call:     "board",
-			contains: map[string][]string{"board:claude": {"binary: /x", "deny_ask_user_question: false"}, "prime:shuttle": {"claude: /x"}},
-			excludes: map[string][]string{"board:claude": {"prompt_cache_ttl"}, "board:shuttle": {"claude: /x"}},
-			moved:    []string{"shuttle.claude -> claude.binary"},
-		},
-		{
-			name:     "a board target seeded from an unmarked prime drops a former template value",
-			files:    map[string]string{"board:shuttle": "claude: /x\n", "prime:claude": formerRoles},
-			call:     "board",
-			contains: map[string][]string{"board:claude": {"binary: /x"}},
-			excludes: map[string][]string{"board:claude": {"prompt_cache_ttl_roles"}},
-			moved:    []string{"shuttle.claude -> claude.binary"},
-		},
-		{
-			name:        "a board target seeded from a marked prime keeps a former template value as tuned",
-			files:       map[string]string{"board:shuttle": "claude: /x\n", "prime:claude": formerRoles},
-			primeMarked: true,
-			call:        "board",
-			contains:    map[string][]string{"board:claude": {"binary: /x", "prompt_cache_ttl_roles"}},
-			moved:       []string{"shuttle.claude -> claude.binary"},
-		},
-		{
-			name:        "a board base target holding the template default is overwritten while the board is unmarked",
-			files:       map[string]string{"board:shuttle": "claude: /x\n", "board:claude": "binary: " + templateBinary + "\n"},
-			call:        "board",
-			contains:    map[string][]string{"board:claude": {"binary: /x"}},
-			moved:       []string{"shuttle.claude -> claude.binary"},
-			overwritten: []string{"shuttle.claude: /x replaced claude.binary's template default " + templateBinary},
-		},
-		{
-			name:        "a board base target holding the template default keeps it as a pin once the board is marked",
-			files:       map[string]string{"board:shuttle": "claude: /x\n", "board:claude": "binary: " + templateBinary + "\n"},
-			boardMarker: true,
-			call:        "board",
-			contains:    map[string][]string{"board:claude": {templateBinary}},
-			excludes:    map[string][]string{"board:claude": {"/x"}},
-			kept:        []string{"shuttle.claude: /x dropped, claude.binary: " + templateBinary + " kept"},
-		},
-		{
-			name:     "a worktree layer in a hub moves into a created sparse claude.yaml",
-			files:    map[string]string{"base:shuttle": "claude: /x\n"},
-			call:     "hub",
-			repeat:   true,
-			contains: map[string][]string{"base:claude": {"binary: /x"}},
-			excludes: map[string][]string{"base:claude": {"deny_ask_user_question"}},
-			absent:   []string{"base:shuttle"},
-			moved:    []string{"shuttle.claude -> claude.binary"},
-		},
-		{
-			name:     "a local layer moves into a created sparse claude.local.yaml and the emptied source is removed",
-			files:    map[string]string{"local:shuttle": "claude_prompt_cache_ttl: 1h\n"},
-			call:     "hub",
-			contains: map[string][]string{"local:claude": {"prompt_cache_ttl: 1h"}},
-			absent:   []string{"local:shuttle"},
-			moved:    []string{"shuttle.claude_prompt_cache_ttl -> claude.prompt_cache_ttl"},
-		},
-		{
-			name:         "a base target holding the template default is overwritten",
-			files:        map[string]string{"base:shuttle": "claude: /x\n", "base:claude": claudeTemplate()},
-			call:         "standalone",
-			contains:     map[string][]string{"base:claude": {"binary: /x"}},
-			moved:        []string{"shuttle.claude -> claude.binary"},
-			overwritten:  []string{"shuttle.claude: /x replaced claude.binary's template default " + templateBinary},
-			loadContains: "binary: /x",
-		},
-		{
-			name:     "a standalone worktree creates a full claude.yaml from the template",
-			files:    map[string]string{"base:shuttle": "claude: /x\n"},
-			call:     "standalone",
-			contains: map[string][]string{"base:claude": {"binary: /x", "deny_ask_user_question"}},
-			moved:    []string{"shuttle.claude -> claude.binary"},
-		},
-		{
-			name:     "a base target holding its own value keeps it",
-			files:    map[string]string{"base:shuttle": "claude: /x\n", "base:claude": "binary: /keep\n"},
-			call:     "standalone",
-			contains: map[string][]string{"base:claude": {"binary: /keep"}},
-			excludes: map[string][]string{"base:claude": {"/x"}},
-			kept:     []string{"shuttle.claude: /x dropped, claude.binary: /keep kept"},
-		},
-		{
-			name:     "a sparse target holding the template default keeps it",
-			files:    map[string]string{"base:shuttle": "claude: /x\n", "base:claude": "binary: " + templateBinary + "\n"},
-			call:     "hub",
-			contains: map[string][]string{"base:claude": {templateBinary}},
-			excludes: map[string][]string{"base:claude": {"/x"}},
-			kept:     []string{"shuttle.claude: /x dropped, claude.binary: " + templateBinary + " kept"},
-		},
-		{
-			name:     "a dry run writes nothing and reports the pending move",
-			files:    map[string]string{"base:shuttle": "claude: /x\n"},
-			call:     "hub",
-			dryRun:   true,
-			contains: map[string][]string{"base:shuttle": {"claude: /x"}},
-			absent:   []string{"base:claude"},
-			moved:    []string{"shuttle.claude -> claude.binary"},
-		},
-		{
-			name:             "a local ttl map is moved verbatim and then refused by claude's loader",
-			files:            map[string]string{"board:claude": claudeTemplate(), "base:reed": "", "local:shuttle": "claude_prompt_cache_ttl:\n  a: 1\n"},
-			call:             "hub",
-			contains:         map[string][]string{"local:claude": {"a: 1"}},
-			absent:           []string{"local:shuttle"},
-			moved:            []string{"shuttle.claude_prompt_cache_ttl -> claude.prompt_cache_ttl"},
-			checkLoadRefuses: "claude.local.yaml",
-		},
-		{
-			name:     "a board burler.yaml of today's shape moves into a created lenses.yaml that reconcile cuts to its tuned entries",
-			files:    map[string]string{"board:burler": burlerToday},
-			call:     "board",
-			contains: map[string][]string{"board:lenses": {tunedGeneric, "fans: {}"}},
-			excludes: map[string][]string{"board:lenses": {"twill-discussion:", "security:", "full:", "correctness:"}},
-			absent:   []string{"board:burler"},
-			moved:    movedLenses,
-			noAdded:  []string{"lenses"},
-		},
-		{
-			name:     "a board dry run writes nothing and reports no seed additions for the lenses.yaml the moves would write",
-			files:    map[string]string{"board:burler": burlerToday},
-			call:     "board",
-			dryRun:   true,
-			contains: map[string][]string{"board:burler": {tunedGeneric}},
-			absent:   []string{"board:lenses"},
-			moved:    movedLenses,
-			noAdded:  []string{"lenses"},
-		},
-		{
-			name:     "a lenses.yaml equal to the template is kept over an old-template burler.yaml and cut to empty maps",
-			files:    map[string]string{"board:lenses": lensesEqualTemplate, "board:burler": burlerOldTemplate},
-			call:     "board",
-			contains: map[string][]string{"board:lenses": {"lenses: {}", "fans: {}"}},
-			absent:   []string{"board:burler"},
-			kept:     keptLenses,
-		},
-		{
-			name:     "a non-default board lenses.yaml is kept over a burler.yaml and cut to its hub-only lens",
-			files:    map[string]string{"board:lenses": lensesWithHubLens, "board:burler": burlerToday},
-			call:     "board",
-			contains: map[string][]string{"board:lenses": {"hub-lens:", "fans: {}"}},
-			excludes: map[string][]string{"board:lenses": {tunedGeneric, "Review broadly with no single area of emphasis"}},
-			absent:   []string{"board:burler"},
-			kept:     keptLenses,
-		},
-		{
-			name:      "a sparse lenses.yaml on a hub's worktree layer is kept beside a burler.yaml",
-			files:     map[string]string{"base:lenses": sparseFans, "base:burler": burlerFans},
-			call:      "hub",
-			absent:    []string{"base:burler"},
-			unchanged: []string{"base:lenses"},
-			kept:      []string{"burler.fans dropped, lenses.fans kept"},
-		},
-		{
-			name:     "a board burler.yaml seeded from a prime lenses.yaml keeps the prime's fans and moves burler's lenses",
-			files:    map[string]string{"board:burler": burlerToday, "prime:lenses": sparseFans},
-			call:     "board",
-			contains: map[string][]string{"board:lenses": {tunedGeneric, "mine:"}},
-			absent:   []string{"board:burler"},
-			moved:    []string{"burler.lenses -> lenses.lenses"},
-			kept:     []string{"burler.fans dropped, lenses.fans kept"},
-		},
-		{
-			name: "moved lenses are judged under the lens_set of the lenses.yaml the move creates from the prime's seed",
-			files: map[string]string{
-				"prime:lenses": "lens_set: csharp\n",
-				"board:burler": lensSetFixture(t, "", map[string]string{"concurrency": csharpConcurrency, "hub-lens": "Hub emphasis.\n"}),
-			},
-			call:     "board",
-			contains: map[string][]string{"board:lenses": {"lens_set: csharp", "hub-lens:"}},
-			excludes: map[string][]string{"board:lenses": {"concurrency:"}},
-			stripped: []string{"lenses.concurrency"},
-			moved:    []string{"burler.lenses -> lenses.lenses"},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			dirs := map[string]string{"base": t.TempDir(), "board": t.TempDir(), "prime": t.TempDir()}
-			pathOf := func(key string) string {
-				kind, module, _ := strings.Cut(key, ":")
-				if kind == "local" {
-					return configengine.LocalFile(dirs["base"], module)
-				}
-				return configengine.ConfigFile(dirs[kind], module)
-			}
-			for key, content := range tt.files {
-				path := pathOf(key)
-				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-					t.Fatalf("mkdir for %s: %v", key, err)
-				}
-				if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-					t.Fatalf("write %s: %v", key, err)
-				}
-			}
-			if tt.boardMarker {
-				if err := WriteBaseSparseMarker(dirs["board"]); err != nil {
-					t.Fatalf("WriteBaseSparseMarker: %v", err)
-				}
-			}
-			if tt.primeMarked {
-				if err := os.WriteFile(configengine.SparseMarker(dirs["prime"]), []byte("# sparse\n"), 0o644); err != nil {
-					t.Fatalf("write the prime's sparse marker: %v", err)
-				}
-			}
-			run := func() []Result {
-				var results []Result
-				var err error
-				switch tt.call {
-				case "hub":
-					results, err = ReconcileAll(dirs["base"], dirs["board"], Options{Apply: !tt.dryRun})
-				case "standalone":
-					results, err = ReconcileAll(dirs["base"], "", Options{Apply: !tt.dryRun})
-				case "board":
-					results, err = ReconcileHubWideAt(dirs["board"], dirs["prime"], HubWideOptions{Apply: !tt.dryRun, SeedDefaults: true})
-				}
-				if err != nil {
-					t.Fatalf("reconcile: %v", err)
-				}
-				return results
-			}
-			lines := func(results []Result, pick func(Result) []string) []string {
-				var all []string
-				for _, result := range results {
-					for _, line := range pick(result) {
-						if !slices.Contains(all, line) {
-							all = append(all, line)
-						}
-					}
-				}
-				slices.Sort(all)
-				return all
-			}
-			wantLines := func(want []string) []string {
-				slices.Sort(want)
-				return want
-			}
-
-			results := run()
-
-			for name, got := range map[string][]string{
-				"Moved":       lines(results, func(r Result) []string { return r.Moved }),
-				"KeptTarget":  lines(results, func(r Result) []string { return r.KeptTarget }),
-				"Overwritten": lines(results, func(r Result) []string { return r.Overwritten }),
-			} {
-				want := map[string][]string{"Moved": tt.moved, "KeptTarget": tt.kept, "Overwritten": tt.overwritten}[name]
-				if !slices.Equal(got, wantLines(slices.Clone(want))) {
-					t.Errorf("%s lines = %q; want %q", name, got, want)
-				}
-			}
-			for key, wants := range tt.contains {
-				content, err := os.ReadFile(pathOf(key))
-				if err != nil {
-					t.Fatalf("read %s: %v", key, err)
-				}
-				for _, want := range wants {
-					if !strings.Contains(string(content), want) {
-						t.Errorf("%s = %q; want it to contain %q", key, content, want)
-					}
-				}
-			}
-			for key, unwanted := range tt.excludes {
-				content, err := os.ReadFile(pathOf(key))
-				if err != nil {
-					t.Fatalf("read %s: %v", key, err)
-				}
-				for _, bad := range unwanted {
-					if strings.Contains(string(content), bad) {
-						t.Errorf("%s = %q; want it without %q", key, content, bad)
-					}
-				}
-			}
-			for _, key := range tt.absent {
-				if _, err := os.Stat(pathOf(key)); !os.IsNotExist(err) {
-					t.Errorf("%s exists (stat err = %v); want it absent", key, err)
-				}
-			}
-			addedLines := lines(results, func(r Result) []string { return r.Added })
-			for _, want := range tt.added {
-				if !slices.Contains(addedLines, want) {
-					t.Errorf("Added lines = %q; want one to be %q", addedLines, want)
-				}
-			}
-			strippedLines := lines(results, func(r Result) []string { return r.Stripped })
-			for _, want := range tt.stripped {
-				if !slices.Contains(strippedLines, want) {
-					t.Errorf("Stripped lines = %q; want one to be %q", strippedLines, want)
-				}
-			}
-			for _, module := range tt.noAdded {
-				for _, result := range results {
-					if result.Module == module && len(result.Added) > 0 {
-						t.Errorf("module %s Added = %q; want none", module, result.Added)
-					}
-				}
-			}
-			for _, key := range tt.unchanged {
-				content, err := os.ReadFile(pathOf(key))
-				if err != nil {
-					t.Fatalf("read %s: %v", key, err)
-				}
-				if string(content) != tt.files[key] {
-					t.Errorf("%s = %q after the run; want it unchanged from %q", key, content, tt.files[key])
-				}
-			}
-			if tt.loadContains != "" {
-				loaded, err := configengine.Load(configengine.Dirs{Anchor: dirs["base"]}, claudeModule.Spec())
-				if err != nil {
-					t.Fatalf("Load claude: %v", err)
-				}
-				if !strings.Contains(string(loaded), tt.loadContains) {
-					t.Errorf("claude resolves to %q; want it to contain %q", loaded, tt.loadContains)
-				}
-			}
-			if tt.checkLoadRefuses != "" {
-				err := claudeModule.CheckLoad(configengine.Dirs{Anchor: dirs["base"], Board: dirs["board"]})
-				if err == nil || !strings.Contains(err.Error(), tt.checkLoadRefuses) {
-					t.Errorf("claude CheckLoad error = %v; want it to name %q", err, tt.checkLoadRefuses)
-				}
-			}
-			if tt.repeat {
-				if again := lines(run(), func(r Result) []string { return r.Moved }); len(again) > 0 {
-					t.Errorf("second pass Moved = %q; want none", again)
-				}
 			}
 		})
 	}

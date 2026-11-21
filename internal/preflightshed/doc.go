@@ -21,8 +21,9 @@
 // so a fault they find stops the run before any agent row.
 // A recipe that holds an Implementer row gets a batcher check, which loads `batcher.yaml`.
 // A stale file in any layer stops the run.
-// A retired key names the way forward its layer file calls for:
-// `lym config reconcile --apply` for a worktree or local file, and `lym fabric reconcile` for the repo default.
+// A retired key names the way forward its layer file calls for.
+// For a worktree or local file that is `lym config reconcile --apply`, which removes the key.
+// For the repo default it is `lym fabric reconcile`.
 // A session lym refuses the verb from reports status: FAILED and the orch runs.
 // Any other load fault names the fix-and-re-step way forward.
 // A recipe whose writer row runs a seat table gets a stencils check.

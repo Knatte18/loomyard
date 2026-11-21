@@ -661,37 +661,6 @@ func TestResolveMode(t *testing.T) {
 		}
 	})
 
-	t.Run("StaleAnchorMarker", func(t *testing.T) {
-		t.Parallel()
-
-		h, _ := setupFixture(t)
-		cwd := h.PrimeWorktree()
-
-		// The stale guard applies only to the Bolt read, so the prime's own marker is removed.
-		anchorPath := filepath.Join(h.PrimeRecords(), lymcwd.AnchorFileName)
-		if err := os.Remove(anchorPath); err != nil {
-			t.Fatalf("remove %s: %v", anchorPath, err)
-		}
-		stalePath := filepath.Join(h.BoardDir(), lymcwd.StaleAnchorFileName)
-		if err := os.WriteFile(stalePath, []byte("."), 0o644); err != nil {
-			t.Fatalf("write %s: %v", stalePath, err)
-		}
-
-		loc, mode, err := preflight.ResolveMode(cwd)
-		if err == nil {
-			t.Fatalf("ResolveMode(%s) error = nil; want non-nil", cwd)
-		}
-		if !errors.Is(err, lymcwd.ErrStaleAnchorMarker) {
-			t.Errorf("ResolveMode(%s) error = %v; want wrapped ErrStaleAnchorMarker", cwd, err)
-		}
-		if mode != preflight.Mode(0) {
-			t.Errorf("ResolveMode(%s) mode = %v; want the zero Mode value", cwd, mode)
-		}
-		if loc != nil {
-			t.Errorf("ResolveMode(%s) Location = %+v; want nil", cwd, loc)
-		}
-	})
-
 	// A hub whose Bolt checkout has no _lym is a known residual of the design, not a bug.
 	// Nothing on disk distinguishes it from a plain git repo at that point,
 	// so it degrades to standalone rather than refusing.

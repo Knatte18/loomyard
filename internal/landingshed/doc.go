@@ -431,8 +431,6 @@
 // A dirty-tree reason names the paths.
 // The resume after an over-cap halt reads the operator's review as the alignment.
 // Every Done clears the entry's attempt record, and an entry reached again from another row starts at zero attempts.
-// A run halted on the row under its earlier name, Merge-In, resumes with its spent attempts:
-// the row reads the earlier name's attempt record when its own is absent, and every Done removes both.
 // Last it writes the merge record.
 // The record holds the tip merged, the task head before the merge and the parent tip last merged into the task.
 // It also holds the aligned tip, the merge commit and the overlap.
@@ -440,8 +438,7 @@
 // the parent's changes since the aligned tip, and the task's changes since its last merge base.
 // The aligned tip is the parent tip up to which the merge fixer has read what the parent brought in;
 // it is empty before the first alignment, and the overlap then starts at the task's fork point from the parent.
-// The record carries the earlier record's aligned tip forward unchanged,
-// and a record written with a reviewed tip, as an older build did, reads with an empty aligned tip.
+// The record carries the earlier record's aligned tip forward unchanged.
 // An up-to-date merge records an empty overlap, and a failed record write is an error, never Stuck.
 // Parent-Align holds no lock on any way out of the row, so no later row inherits one.
 //
@@ -460,13 +457,13 @@
 // On a tapestry, darn or sampler run it halts with a reason opening with EscalateStopPrefix.
 // On a pawl run, whose arbiter has no decision verb, it halts with a reason opening with LandingStopPrefix.
 // EscalateHalt is the only reader of the prefix:
-// a blocked stop at Parent-Align, Finalize or Merge-In whose reason opens with it.
+// a blocked stop at Parent-Align or Finalize whose reason opens with it.
 // Such a halt is no hand-back, so the driver's arbiter judges it first and batten's binary re-step leaves it alone.
-// Only a fixer's escalate changes route; a halt an older build parked under LandingStopPrefix stays a hand-back.
+// Only a fixer's escalate changes route; a halt parked under LandingStopPrefix stays a hand-back.
 //
 // A darn run's diff may lie wholly under its configured non-production trees.
 // Parent-Align and Finalize then run only the tree-scoped command, the hub's whole statement of what such a diff needs.
-// landing.yaml's `publish_verify` key loads and is dropped, and `lym config reconcile` prunes it.
+// landing.yaml's `publish_verify` key is retired, and a local file that holds it is refused.
 // landing.yaml's `pr_reviewer` is the model-spec of the PR-Review row's interactive session.
 //
 // landing.yaml's `deploy` is read only by batten's Land row.

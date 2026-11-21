@@ -1,15 +1,12 @@
 // config.go — configuration for the batcher module.
 //
 // Loads batcher.yaml through the layer stack and builds the batchifier its active profile names.
-// Also defines MigrateConfig, the pure rewrite that removes a batcher.yaml's retired keys.
 
 package batcher
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"sort"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"gopkg.in/yaml.v3"
@@ -48,18 +45,37 @@ var ErrRetiredKey = errors.New("retired key")
 
 // retiredKeyError builds the refusal for a profile that carries a retired key, naming the layer file holding it.
 // It wraps ErrRetiredKey, is marked configengine.ErrInvalid, and ends in the way forward that layer calls for:
-// lym config reconcile --apply for a worktree or local file.
-// For the repo default, which only the hub-wide reconcile rewrites, the way forward is lym fabric reconcile.
+// delete the key by hand or run lym config reconcile --apply for a worktree or local file.
+// Only a reconcile of the default layer rewrites the repo default.
+// Its way forward is to delete the key by hand.
+// It is also to run lym config reconcile --layer default --apply from the hub's prime worktree.
 // A session lym refuses that verb and reports status: FAILED, so the orch runs it.
+// A profile the template does not name is kept whole by reconcile, so its way forward is the hand delete alone.
 func retiredKeyError(file string, layer configengine.Layer, profileName, key string) error {
 	if file == "" {
 		file = moduleName + ".yaml"
 	}
-	wayForward := `run "lym config reconcile --apply"`
-	if layer == configengine.LayerDefault {
-		wayForward = `run "lym fabric reconcile"; a session lym refuses the verb from reports status: FAILED and the orch runs it`
+	wayForward := fmt.Sprintf("delete %s from the profile by hand", key)
+	if templateNamesProfile(profileName) {
+		if layer == configengine.LayerDefault {
+			wayForward = fmt.Sprintf(`%s, or run "lym config reconcile --layer default --apply" from the hub's prime worktree, which removes a key the template lacks; a session lym refuses the verb from reports status: FAILED and the orch runs it`, wayForward)
+		} else {
+			wayForward = fmt.Sprintf(`%s, or run "lym config reconcile --apply", which removes a key the template lacks`, wayForward)
+		}
 	}
 	return configengine.MarkInvalid(fmt.Errorf("%s profile %q carries %s, which no longer exists (%w); way forward: %s", file, profileName, key, ErrRetiredKey, wayForward))
+}
+
+// templateNamesProfile reports whether the shipped template holds a profile of the given name.
+func templateNamesProfile(profileName string) bool {
+	var template struct {
+		Profiles map[string]any `yaml:"profiles"`
+	}
+	if err := yaml.Unmarshal([]byte(ConfigTemplate()), &template); err != nil {
+		return false
+	}
+	_, named := template.Profiles[profileName]
+	return named
 }
 
 // ConfigPerNameMaps returns the batcher.yaml keys whose entries are named by the operator:
@@ -178,120 +194,4 @@ func unmarshalConfig(data []byte) (config, error) {
 		return config{}, configengine.MarkInvalid(fmt.Errorf("unmarshal batcher config: %w", err))
 	}
 	return cfg, nil
-}
-
-// MigrateConfig rewrites a batcher.yaml document so no profile under profiles: carries a retired key.
-// It returns the rewritten document and one sorted, human-readable line per change.
-// Each line reads like "profiles.<name>.alone_above: removed".
-// The rewrite drops each profile's alone_above, weights.startup_context and weights.master_base;
-// it also adds weights.orientation to a profile that carried either weights key and has no orientation of its own.
-// Its value is the orientation of the template's cautious profile, and an existing orientation is kept.
-// Everything else, inside and outside profiles:, is carried through yaml node editing with its comments.
-// A document with no retired key, or an empty one, comes back unchanged with no rewrites.
-// A document that does not parse returns an error marked configengine.ErrInvalid.
-// The loader never calls it; the migration runs only from lym config reconcile.
-func MigrateConfig(existing []byte) ([]byte, []string, error) {
-	if _, err := unmarshalConfig(existing); err != nil {
-		return nil, nil, err
-	}
-	var document yaml.Node
-	if err := yaml.Unmarshal(existing, &document); err != nil {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("unmarshal batcher config: %w", err))
-	}
-	if document.Kind != yaml.DocumentNode || len(document.Content) == 0 {
-		return existing, nil, nil
-	}
-	profiles := mappingValue(document.Content[0], "profiles")
-	if profiles == nil || profiles.Kind != yaml.MappingNode {
-		return existing, nil, nil
-	}
-	orientation, err := templateOrientation()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var rewrites []string
-	for i := 0; i+1 < len(profiles.Content); i += 2 {
-		name, entry := profiles.Content[i].Value, profiles.Content[i+1]
-		if entry.Kind != yaml.MappingNode {
-			continue
-		}
-		if _, removed := dropKey(entry, "alone_above"); removed {
-			rewrites = append(rewrites, "profiles."+name+".alone_above: removed")
-		}
-		weights := mappingValue(entry, "weights")
-		if weights == nil || weights.Kind != yaml.MappingNode {
-			continue
-		}
-		// The lowest index across the drops is the one the second drop leaves valid.
-		insertAt := -1
-		for _, retired := range []string{"master_base", "startup_context"} {
-			if index, removed := dropKey(weights, retired); removed {
-				rewrites = append(rewrites, "profiles."+name+".weights."+retired+": removed")
-				if insertAt < 0 || index < insertAt {
-					insertAt = index
-				}
-			}
-		}
-		if insertAt >= 0 && mappingValue(weights, "orientation") == nil {
-			key := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "orientation"}
-			weights.Content = append(weights.Content[:insertAt], append([]*yaml.Node{key, orientation}, weights.Content[insertAt:]...)...)
-			rewrites = append(rewrites, "profiles."+name+".weights.orientation: added "+orientation.Value)
-		}
-	}
-	if len(rewrites) == 0 {
-		return existing, nil, nil
-	}
-	sort.Strings(rewrites)
-
-	var out bytes.Buffer
-	encoder := yaml.NewEncoder(&out)
-	encoder.SetIndent(2)
-	if err := encoder.Encode(&document); err != nil {
-		return nil, nil, fmt.Errorf("encode migrated batcher config: %w", err)
-	}
-	if err := encoder.Close(); err != nil {
-		return nil, nil, fmt.Errorf("encode migrated batcher config: %w", err)
-	}
-	return out.Bytes(), rewrites, nil
-}
-
-// templateOrientation returns the orientation scalar of the template's cautious profile.
-func templateOrientation() (*yaml.Node, error) {
-	var document yaml.Node
-	if err := yaml.Unmarshal([]byte(ConfigTemplate()), &document); err != nil {
-		return nil, fmt.Errorf("unmarshal batcher template: %w", err)
-	}
-	profiles := mappingValue(document.Content[0], "profiles")
-	cautious := mappingValue(profiles, "cautious")
-	orientation := mappingValue(mappingValue(cautious, "weights"), "orientation")
-	if orientation == nil {
-		return nil, errors.New("batcher template: cautious profile has no weights.orientation")
-	}
-	return &yaml.Node{Kind: yaml.ScalarNode, Tag: orientation.Tag, Value: orientation.Value}, nil
-}
-
-// mappingValue returns the value node stored under key in mapping.
-// It returns nil when mapping is nil, is not a mapping, or lacks the key.
-func mappingValue(mapping *yaml.Node, key string) *yaml.Node {
-	if mapping == nil || mapping.Kind != yaml.MappingNode {
-		return nil
-	}
-	for i := 0; i+1 < len(mapping.Content); i += 2 {
-		if mapping.Content[i].Value == key {
-			return mapping.Content[i+1]
-		}
-	}
-	return nil
-}
-
-// dropKey removes key and its value from mapping, reporting the index its pair held in mapping.Content.
-func dropKey(mapping *yaml.Node, key string) (index int, removed bool) {
-	for i := 0; i+1 < len(mapping.Content); i += 2 {
-		if mapping.Content[i].Value == key {
-			mapping.Content = append(mapping.Content[:i], mapping.Content[i+2:]...)
-			return i, true
-		}
-	}
-	return 0, false
 }

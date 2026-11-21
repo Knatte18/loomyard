@@ -642,7 +642,7 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 	t.Run("a passing verify clears an earlier failure record", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
-		if err := verifytree.WriteLandingFailure(fx.gate.paths, verifytree.LandingFailure{Kind: verifytree.FailureKindLanding}); err != nil {
+		if err := verifytree.WriteLandingFailure(fx.gate.paths, verifytree.LandingFailure{Kind: verifytree.FailureKind("finalize")}); err != nil {
 			t.Fatal(err)
 		}
 

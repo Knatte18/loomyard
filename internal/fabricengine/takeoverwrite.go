@@ -145,7 +145,7 @@ func TakeOverRun(prime *lymcwd.Location, req TakeOverRequest) (TakeOverResult, e
 
 	entry := shedengine.Takeover{Machine: req.Machine, Subject: req.Subject, At: req.At.UTC().Format(time.RFC3339)}
 	branches := []*takeoverBranch{
-		{loc: req.Pair, weft: RecordsWorktree(req.Pair), runIDs: []string{req.Slug, shedrun.SelfRunID}},
+		{loc: req.Pair, weft: RecordsWorktree(req.Pair), runIDs: []string{req.Slug}},
 		{loc: parent, weft: RecordsWorktree(parent), runIDs: []string{req.Slug}},
 	}
 	for _, branch := range branches {

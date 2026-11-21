@@ -563,7 +563,6 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool, layer string) 
 // reconcileEnvelope builds the reconcile verb's success fields: the aggregate applied flag and one object per result.
 func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 	modules := make([]map[string]any, len(results))
-	baseStripPending := false
 	for i, result := range results {
 		m := map[string]any{
 			"module":  result.Module,
@@ -571,49 +570,6 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 			"removed": result.Removed,
 			"applied": result.Applied,
 			"layer":   string(result.Layer),
-		}
-		// migratedFrom is set only when a pre-cutover legacy config file's values were folded in during this run.
-		// Ordinary modules omit it rather than carry an empty array.
-		if len(result.MigratedFrom) > 0 {
-			m["migratedFrom"] = result.MigratedFrom
-		}
-		// migrated is set only by a module with a Migrate hook that rewrote its present file.
-		if len(result.Migrated) > 0 {
-			m["migrated"] = result.Migrated
-		}
-		// retired and divergent are set only by a hub-wide module's leftover per-worktree copy.
-		if result.Retired {
-			m["retired"] = true
-		}
-		if len(result.Divergent) > 0 {
-			m["divergent"] = result.Divergent
-		}
-		// stripped and inherited are set only on a worktree without the sparse marker;
-		// reconcile reports them there as pending without stripping.
-		// A default-layer result also carries stripped for an unmigrated board.
-		// It lists the base units that the hub reconcile of a start verb strips.
-		if len(result.Stripped) > 0 {
-			m["stripped"] = result.Stripped
-			if result.Layer == configengine.LayerDefault {
-				baseStripPending = true
-			}
-		}
-		if len(result.Inherited) > 0 {
-			m["inherited"] = result.Inherited
-		}
-		// moved, keptTarget and overwritten are set only by a declared key move.
-		if len(result.Moved) > 0 {
-			m["moved"] = result.Moved
-		}
-		if len(result.KeptTarget) > 0 {
-			m["keptTarget"] = result.KeptTarget
-		}
-		if len(result.Overwritten) > 0 {
-			m["overwritten"] = result.Overwritten
-		}
-		// copied is set only by a declared key copy.
-		if len(result.Copied) > 0 {
-			m["copied"] = result.Copied
 		}
 		// keptExtra is set only by a module with per-name maps whose file holds a name the template lacks.
 		if len(result.KeptExtra) > 0 {
@@ -630,10 +586,6 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 		if len(result.Differs) > 0 {
 			m["differs"] = result.Differs
 		}
-		// unsettled is set only by a seed-only module whose file holds a pair the module leaves for the operator to settle.
-		if len(result.Unsettled) > 0 {
-			m["unsettled"] = result.Unsettled
-		}
 		// seed is set only by a reconcile of the board dir's files.
 		if result.Seed != "" {
 			m["seed"] = result.Seed
@@ -643,9 +595,6 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 	fields := map[string]any{
 		"applied": apply,
 		"modules": modules,
-	}
-	if baseStripPending {
-		fields["base_strip"] = "the board's base files still hold units equal to the template; this command never strips them, and only the hub reconcile of a start verb such as `lym loom resume` or `lym batten run` does"
 	}
 	return fields
 }
@@ -716,24 +665,19 @@ A per-name map entry holding the template's value is reported under "dropped"
 and left out of the written file.
 Pass --apply to write the reconciled files to disk atomically;
 a file is rewritten when the reconcile adds, removes or drops anything.
-A module that retires keys or floors a value first migrates its present file: the dry-run lists
-each rewrite under the module's "migrated" key, and --apply writes the migrated
-file even when the reconcile adds, removes and drops nothing.
-Hub-wide modules (fabric, board) are reported, not reconciled here: a leftover
-per-worktree copy is "retired" when the hub file holds everything it holds
-(--apply deletes it), or "divergent" when it holds an entry the hub file lacks
-(it is left in place).
+Hub-wide modules (fabric, board) have no worktree file, so only their local
+override files are reconciled here.
 
 --layer default reconciles every file under the hub's board dir instead: the
 hub-wide modules' files and each per-worktree module's repo default, seeding
-an absent one from the prime. Renamed keys are migrated and keys the template
-lacks are removed. --apply with it runs only from the hub's prime worktree,
+an absent one from the prime. Keys the template lacks are removed.
+--apply with it runs only from the hub's prime worktree,
 outside a task session, and commits the files in ` + fabricengine.BoltDirName + ` and pushes.
 Reconcile is refused in the board dir itself.
 
-This verb is the one way to remove a key the template lacks: the reconcile a
-start verb, a clone or fabric reconcile runs keeps such a key, unless the
-module retired it, since a newer lym binary may have written it.`,
+This verb is the one way to remove a key the template lacks, a retired key
+included: the reconcile a start verb, a clone or fabric reconcile runs keeps
+such a key, since a newer lym binary may have written it.`,
 	}
 	apply := reconcileCmd.Flags().Bool("apply", false, "apply changes to disk (default: dry-run)")
 	reconcileLayer := reconcileCmd.Flags().String("layer", "", "default reconciles the files under the hub's board dir (default: this worktree's own and local files)")

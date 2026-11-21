@@ -73,9 +73,6 @@ type Deps struct {
 	// A CatchUp whose PullBolt is nil means no catch-up, as a nil PullBolt pulls nothing.
 	// Its Launcher also names the hub's desktop launcher the dobby's start adds.
 	CatchUp CatchUpDeps
-	// Upgrade is the seams of the first read after an upgrade, which the dobby runs before its first catch-up that succeeds.
-	// An Upgrade whose Entries is nil means no first read.
-	Upgrade UpgradeDeps
 	// SyncBoltHold brings the bolt-hold entries of the runs in scope in line with the hold, held being the slugs it holds.
 	// A nil SyncBoltHold syncs nothing.
 	SyncBoltHold func(ctx context.Context, scope, held []string) error
@@ -116,12 +113,6 @@ type Deps struct {
 	// The channel delivers once, mapping each slug to nil when its pair was removed and to the reason otherwise.
 	// A nil TearDownLeftovers tears nothing down.
 	TearDownLeftovers func(pairs []LeftoverPair) <-chan map[string]error
-	// MarkKeptCancels marks each run of this worktree cancelled with keep before cancel intents existed.
-	// Each marked run, whose pair stands here, gets its finished keep cancel intent.
-	// A finished keep intent of this machine whose commit failed is committed again.
-	// It returns the slugs it committed.
-	// A nil MarkKeptCancels marks nothing.
-	MarkKeptCancels func() ([]string, error)
 	// Orphans lists the hub's orphan pairs, the pairs neither a board entry nor a batten record names.
 	// The hub wiring gives it to the prime's dobby only; a nil Orphans or an empty OrphanRecord notices no orphan.
 	Orphans func() ([]OrphanView, error)
@@ -356,8 +347,6 @@ type daemon struct {
 	catchUpReason string
 	// catchUpNoticed holds the failure classes whose notice went out this episode.
 	catchUpNoticed map[string]bool
-	// upgraded reports whether the first read after an upgrade succeeded in this process.
-	upgraded bool
 	// handedOver holds the slugs whose hand-over verdict already owed the catch-up, until they stop answering hand over.
 	handedOver map[string]bool
 	// syncFailures is the failure episode of the bolt-hold sync; syncFailing reports whether its line was logged.
@@ -427,10 +416,6 @@ type daemon struct {
 	leftoverRetries map[string]leftoverRetry
 	// keptNoticeOwed reports whether this fresh start still owes its one notice of the kept pairs.
 	keptNoticeOwed bool
-	// keptMarked reports whether this process marked the kept cancels from before the upgrade.
-	// keptMarkFailing reports whether the failure episode of that step logged its line.
-	keptMarked      bool
-	keptMarkFailing bool
 	// orphansRead reports whether a probe tick of this process read the orphan pairs, and orphansDue the due ones it found.
 	orphansRead bool
 	orphansDue  []string
@@ -711,7 +696,6 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 	}
 	scheduling := moving == "" && !d.adoptHolds && !catchingUp
 	if scheduling {
-		d.markKeptCancels(now)
 		if err := d.drivePasses(ctx, now); err != nil {
 			return err
 		}

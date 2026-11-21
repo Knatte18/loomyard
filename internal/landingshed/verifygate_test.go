@@ -314,7 +314,7 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 				if err := os.MkdirAll(f.paths.Dir, 0o755); err != nil {
 					t.Fatal(err)
 				}
-				if err := verifytree.WriteLandingFailure(f.paths, verifytree.LandingFailure{Kind: verifytree.FailureKindLanding}); err != nil {
+				if err := verifytree.WriteLandingFailure(f.paths, verifytree.LandingFailure{Kind: verifytree.FailureKind("finalize")}); err != nil {
 					t.Fatal(err)
 				}
 			}

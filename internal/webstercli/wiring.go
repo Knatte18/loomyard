@@ -374,7 +374,7 @@ func (r configLoadRefusal) Unwrap() error { return r.cause }
 // configLoadError wraps the error of loading the named config file (such as "batcher.yaml") as a configLoadRefusal.
 // The refusal names the file and the way forward.
 // A content failure (configengine.ErrInvalid) is invalid and names the fix.
-// A retired batcher key (batcher.ErrRetiredKey) is invalid too, and its cause already ends in the reconcile way forward.
+// A retired batcher key (batcher.ErrRetiredKey) is invalid too, and its cause already ends in its own way forward.
 // A languageconfig.ErrUnusable cause is invalid and ends in its own way forward.
 // The hub-wide language.yaml never lives under a worktree's _lym/config.
 // That is why this cause gets its own way forward.
@@ -386,7 +386,7 @@ func configLoadError(file string, cause error) error {
 	case errors.Is(cause, languageconfig.ErrUnusable):
 		return configLoadRefusal{message: fmt.Sprintf("webster: %s did not load: %v, then re-run the verb", file, cause), invalid: true, cause: cause}
 	case errors.Is(cause, batcher.ErrRetiredKey):
-		// The retired-key cause already ends in the reconcile way forward.
+		// The retired-key cause already ends in its own way forward.
 		return configLoadRefusal{message: fmt.Sprintf("webster: %s did not load: %v, then re-run the verb", file, cause), invalid: true, cause: cause}
 	case errors.Is(cause, configengine.ErrInvalid):
 		return configLoadRefusal{message: fmt.Sprintf("webster: %s did not load: %v; way forward: fix %s under _lym/config, then re-run the verb", file, cause, file), invalid: true, cause: cause}

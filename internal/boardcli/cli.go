@@ -376,31 +376,6 @@ Example:
 		}),
 	}
 
-	var retireLegacyApply bool
-	retireLegacyCmd := &cobra.Command{
-		Use:         "retire-legacy",
-		Short:       "delete the legacy tasks.json and notes.json files once no pre-upgrade lym reads them",
-		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Without --apply, retire-legacy is a read-only dry run: it prints the legacy files it would delete
-under legacy_files and changes nothing.
-With --apply it ends the compatibility window with a pre-upgrade lym: it folds any last done marks
-from the legacy files into board.json, then deletes tasks.json and notes.json. Errors when neither
-file exists. Takes no payload. The output carries "applied": true or false.
-
-Example:
-  lym board retire-legacy
-  lym board retire-legacy --apply`,
-		Args: cobra.NoArgs,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			legacyFiles, err := b.RetireLegacy(retireLegacyApply)
-			if err != nil {
-				return outputError(out, err.Error())
-			}
-			return output.Ok(out, map[string]any{"legacy_files": legacyFiles, "applied": retireLegacyApply})
-		}),
-	}
-	retireLegacyCmd.Flags().BoolVar(&retireLegacyApply, "apply", false, "delete the legacy files (default is dry-run/report)")
-
 	rerenderCmd := &cobra.Command{
 		Use:         "rerender",
 		Short:       "rebuild the board's rendered files from board.json",
@@ -497,7 +472,6 @@ Example:
 		renameCmd,
 		pruneCmd,
 		findCmd,
-		retireLegacyCmd,
 		rerenderCmd,
 		syncCmd,
 		intakeCommand(board, hubRepo),
@@ -764,7 +738,7 @@ Fields:
   "slug"   string      — task slug (one of slug, id or handle)
   "id"     integer     — numeric task ID (one of slug, id or handle)
   "handle" string      — task handle, such as T4 (one of slug, id or handle)
-  "status" string|null — new status value; null releases a draft task, or a task an older binary left discussed
+  "status" string|null — new status value; null releases a draft task
 
 Examples:
   lym board set-status '{"slug":"my-task","status":"active"}'
@@ -1010,7 +984,7 @@ Fields:
     "slug"   string      — task slug (one of slug, id or handle)
     "id"     integer     — numeric task ID (one of slug, id or handle)
     "handle" string      — task handle, such as T4 (one of slug, id or handle)
-    "status" string|null — new status; null releases a draft task, or a task an older binary left discussed
+    "status" string|null — new status; null releases a draft task
 
 A task the merge creates is "draft", and a "set_status" of null releases it.
 

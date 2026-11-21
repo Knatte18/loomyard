@@ -47,9 +47,6 @@ type cancelDeps struct {
 	Owner func() (owner, subject string, elsewhere bool, err error)
 	// ReadStatus reads batten's status file for the slug.
 	ReadStatus func() (status shedengine.Status, found bool, err error)
-	// OwnerHeld reports whether an owner pause covers the slug.
-	// A refusal that sends the operator to remove the pair reads it to word the step that settles the run's record.
-	OwnerHeld func() (bool, error)
 	// BoardStatus reads the status of the slug's entry on the local board.
 	BoardStatus func() (status *string, found bool, err error)
 	// RecordsPresent reports whether the slug's records run directory exists.
@@ -667,7 +664,7 @@ func judgeOrigin(slug, rerun string, deps cancelDeps) (endOnly bool, err error) 
 
 // cancelStoppedRefusal words the refusal of a cancel whose run origin's judgment stopped, ending in reentry.
 // A refusal that names the pair's removal ends instead with the step that settles the run's batten record.
-// That step is read from batten's status and the owner pause.
+// That step is read from batten's status.
 // The removal leaves that record standing, and a cancel at Land would release a landed entry.
 // A read that fails is logged and keeps reentry, and so does an empty follow-up.
 func cancelStoppedRefusal(slug, reentry string, entry fabricengine.EntryOutcome, branches []fabricengine.BranchOutcome, deps cancelDeps) error {
@@ -680,12 +677,7 @@ func cancelStoppedRefusal(slug, reentry string, entry fabricengine.EntryOutcome,
 		logger.Warn("battencli: batten's status could not be read, so the refusal names no follow-up of the removal", "slug", slug, "cause", err)
 		return refusal
 	}
-	held, err := deps.OwnerHeld()
-	if err != nil {
-		logger.Warn("battencli: the owner pause could not be read, so the refusal names no follow-up of the removal", "slug", slug, "cause", err)
-		return refusal
-	}
-	followUp := pairteardown.BattenFollowUp(slug, status, found, held)
+	followUp := pairteardown.BattenFollowUp(slug, status, found)
 	if followUp == "" {
 		return refusal
 	}

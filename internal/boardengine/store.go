@@ -4,8 +4,6 @@
 // The store applies the CRUD and validation rules:
 // dangling-dependency, isolated, kind and label rules, and cycle detection.
 // Batch and merge apply atomically.
-// Load migrates the legacy tasks.json and notes.json in memory when board.json is absent,
-// and it folds the done marks of a pre-upgrade binary.
 // Save and Load take the fine-grained swap lock so a concurrent read never sees a half-written file.
 
 package boardengine
@@ -74,20 +72,16 @@ const (
 )
 
 // storeFile is the on-disk shape of board.json.
-// LegacyDone lists the slugs whose done mark came from a legacy file, so the fold never re-applies one.
 // PrimeOwner names the machine that owns the hub's prime, empty when none is recorded.
-// DraftStatus is true once the board's open tasks with no status were marked draft.
 // Machines is the machine registry and Holds the adopt holds, each omitted while empty.
 // Unknown holds the top-level keys this binary does not know, written back after the known ones in key order.
 type storeFile struct {
-	Version     int                        `json:"version"`
-	Entries     []Task                     `json:"entries"`
-	LegacyDone  []string                   `json:"legacy_done,omitempty"`
-	PrimeOwner  string                     `json:"prime_owner,omitempty"`
-	DraftStatus bool                       `json:"draft_status,omitempty"`
-	Machines    Registry                   `json:"machines,omitempty"`
-	Holds       []Hold                     `json:"holds,omitempty"`
-	Unknown     map[string]json.RawMessage `json:"-"`
+	Version    int                        `json:"version"`
+	Entries    []Task                     `json:"entries"`
+	PrimeOwner string                     `json:"prime_owner,omitempty"`
+	Machines   Registry                   `json:"machines,omitempty"`
+	Holds      []Hold                     `json:"holds,omitempty"`
+	Unknown    map[string]json.RawMessage `json:"-"`
 }
 
 // MarshalJSON encodes the known fields, then the Unknown members after them in key order.
@@ -100,32 +94,31 @@ func (f storeFile) MarshalJSON() ([]byte, error) {
 	return appendUnknown(object, f.Unknown)
 }
 
-// loadedStoreFile is the decode shape of board.json: its entries may still carry the retired tier and type.
+// loadedStoreFile is the decode shape of board.json.
 // Unknown holds the top-level keys this binary does not know, each with its raw JSON value.
 type loadedStoreFile struct {
-	Version     int                        `json:"version"`
-	Entries     []storedEntry              `json:"entries"`
-	LegacyDone  []string                   `json:"legacy_done,omitempty"`
-	PrimeOwner  string                     `json:"prime_owner,omitempty"`
-	DraftStatus bool                       `json:"draft_status,omitempty"`
-	Machines    Registry                   `json:"machines,omitempty"`
-	Holds       []Hold                     `json:"holds,omitempty"`
-	Unknown     map[string]json.RawMessage `json:"-"`
+	Version    int                        `json:"version"`
+	Entries    []Task                     `json:"entries"`
+	PrimeOwner string                     `json:"prime_owner,omitempty"`
+	Machines   Registry                   `json:"machines,omitempty"`
+	Holds      []Hold                     `json:"holds,omitempty"`
+	Unknown    map[string]json.RawMessage `json:"-"`
 }
+
+// taskFields is Task without its methods, so decoding it fills the known fields alone and never runs Task.UnmarshalJSON.
+type taskFields Task
 
 // UnmarshalJSON decodes the known fields in one json pass.
 // It then walks the raw bytes once to keep every other key, top-level and per entry, in Unknown.
-// The entries decode through decodedEntry, not storedEntry.
+// The entries decode through taskFields, not Task.
 // No json call is nested per entry, so the load stays as cheap as one decode.
 func (f *loadedStoreFile) UnmarshalJSON(data []byte) error {
 	var decoded struct {
-		Version     int            `json:"version"`
-		Entries     []decodedEntry `json:"entries"`
-		LegacyDone  []string       `json:"legacy_done,omitempty"`
-		PrimeOwner  string         `json:"prime_owner,omitempty"`
-		DraftStatus bool           `json:"draft_status,omitempty"`
-		Machines    Registry       `json:"machines,omitempty"`
-		Holds       []Hold         `json:"holds,omitempty"`
+		Version    int          `json:"version"`
+		Entries    []taskFields `json:"entries"`
+		PrimeOwner string       `json:"prime_owner,omitempty"`
+		Machines   Registry     `json:"machines,omitempty"`
+		Holds      []Hold       `json:"holds,omitempty"`
 	}
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
@@ -140,11 +133,13 @@ func (f *loadedStoreFile) UnmarshalJSON(data []byte) error {
 			unknown[key] = slices.Clone(value)
 		}
 	})
-	entries := make([]storedEntry, 0, len(decoded.Entries))
+	entries := make([]Task, 0, len(decoded.Entries))
 	eachElement(rawEntries, func(raw []byte) {
-		entries = append(entries, storedEntryFrom(decoded.Entries[len(entries)], raw))
+		task := Task(decoded.Entries[len(entries)])
+		task.Unknown = unknownMembers(raw, taskKeys)
+		entries = append(entries, task)
 	})
-	*f = loadedStoreFile{Version: decoded.Version, Entries: entries, LegacyDone: decoded.LegacyDone, PrimeOwner: decoded.PrimeOwner, DraftStatus: decoded.DraftStatus, Machines: decoded.Machines, Holds: decoded.Holds}
+	*f = loadedStoreFile{Version: decoded.Version, Entries: entries, PrimeOwner: decoded.PrimeOwner, Machines: decoded.Machines, Holds: decoded.Holds}
 	if len(unknown) > 0 {
 		f.Unknown = unknown
 	}
@@ -156,12 +151,9 @@ var loadedStoreFileKeys = jsonKeySet(reflect.TypeFor[loadedStoreFile]())
 
 // Store holds the in-memory entry list for one board directory's board.json.
 type Store struct {
-	tasks      []Task
-	legacyDone []string
+	tasks []Task
 	// primeOwner is the board.json prime_owner record, the machine that owns the hub's prime; empty when none is recorded.
 	primeOwner string
-	// draftStatus is the board.json draft_status record: true once the open tasks with no status were marked draft.
-	draftStatus bool
 	// machines is the board.json machine registry, kept and written back unchanged; nil when none is recorded.
 	machines Registry
 	// holds is the board.json adopt holds, kept and written back unchanged.
@@ -191,15 +183,11 @@ func NewStore(boardDir string) *Store {
 }
 
 // Load populates the store from boardDir and never writes.
-// board.json wins when it exists; otherwise the legacy files that exist are migrated in memory.
-// Whenever a legacy file exists, its done marks are folded into the loaded entries.
-// Entries in the old tier-and-type shape convert in memory and persist in the new shape on the next Save.
-// An entry without a handle of its own letter gets one in memory, persisted on the next Save too.
+// An absent board.json leaves the store empty.
+// An entry without a handle of its own letter gets one in memory, persisted on the next Save.
 func (s *Store) Load() error {
 	s.tasks = []Task{}
-	s.legacyDone = nil
 	s.primeOwner = ""
-	s.draftStatus = false
 	s.machines = nil
 	s.holds = nil
 	s.unknown = nil
@@ -207,21 +195,10 @@ func (s *Store) Load() error {
 		return nil
 	}
 
-	tasksRecords, haveTasks, err := readLegacyFile(filepath.Join(s.boardDir, legacyTasksFile))
-	if err != nil {
-		return fmt.Errorf("load store: %w", err)
-	}
-	notesRecords, haveNotes, err := readLegacyFile(filepath.Join(s.boardDir, legacyNotesFile))
-	if err != nil {
-		return fmt.Errorf("load store: %w", err)
-	}
-
 	path := filepath.Join(s.boardDir, boardFile)
 	var entries []Task
-	var legacyDone []string
 	var unknown map[string]json.RawMessage
 	var primeOwner string
-	var draftStatus bool
 	var machines Registry
 	var holds []Hold
 	if fileExists(path) {
@@ -239,19 +216,10 @@ func (s *Store) Load() error {
 			if file.Version != storeVersion {
 				return fmt.Errorf("load store: %s has version %d; this binary reads only version %d", boardFile, file.Version, storeVersion)
 			}
-			entries, legacyDone, unknown = migrateEntries(file.Entries, s.vocab), file.LegacyDone, file.Unknown
-			primeOwner, draftStatus = file.PrimeOwner, file.DraftStatus
+			entries, unknown = file.Entries, file.Unknown
+			primeOwner = file.PrimeOwner
 			machines, holds = file.Machines, file.Holds
 		}
-	} else if haveTasks || haveNotes {
-		entries, legacyDone, err = migrateLegacy(tasksRecords, notesRecords, s.vocab)
-		if err != nil {
-			return fmt.Errorf("load store: %w", err)
-		}
-	}
-
-	if haveTasks || haveNotes {
-		entries, legacyDone = foldLegacyDone(entries, legacyDone, append(slices.Clone(tasksRecords), notesRecords...))
 	}
 
 	if entries == nil {
@@ -270,9 +238,7 @@ func (s *Store) Load() error {
 	}
 	assignHandles(entries, s.vocab)
 	s.tasks = entries
-	s.legacyDone = legacyDone
 	s.primeOwner = primeOwner
-	s.draftStatus = draftStatus
 	s.machines = machines
 	s.holds = holds
 	s.unknown = unknown
@@ -285,8 +251,7 @@ func BoardFileRel() string {
 }
 
 // ParseBoardTasks decodes board.json bytes read from a board commit.
-// It takes no lock and reads no legacy file.
-// An entry in the old tier-and-type form still yields its labels, and an unknown key is ignored.
+// It takes no lock, and an unknown key is ignored.
 // A version other than the one this binary reads is an error.
 func ParseBoardTasks(data []byte) ([]Task, error) {
 	var file loadedStoreFile
@@ -296,20 +261,7 @@ func ParseBoardTasks(data []byte) ([]Task, error) {
 	if file.Version != storeVersion {
 		return nil, fmt.Errorf("load store: %s has version %d; this binary reads only version %d", boardFile, file.Version, storeVersion)
 	}
-	return migrateEntries(file.Entries, nil), nil
-}
-
-// readLegacyFile reads one legacy file when it exists, under its swap lock.
-// Existence is checked first so a read never creates a lock file for an absent file.
-func readLegacyFile(path string) ([]legacyRecord, bool, error) {
-	if !fileExists(path) {
-		return nil, false, nil
-	}
-	records, found, err := state.ReadJSON[[]legacyRecord](path, swapLockPath(path))
-	if err != nil {
-		return nil, false, err
-	}
-	return records, found, nil
+	return file.Entries, nil
 }
 
 // fileExists reports whether path names an existing file.
@@ -325,14 +277,12 @@ func (s *Store) Save() error {
 	}
 	path := filepath.Join(s.boardDir, boardFile)
 	return state.WriteJSON(path, swapLockPath(path), storeFile{
-		Version:     storeVersion,
-		Entries:     s.tasks,
-		LegacyDone:  s.legacyDone,
-		PrimeOwner:  s.primeOwner,
-		DraftStatus: s.draftStatus,
-		Machines:    s.machines,
-		Holds:       s.holds,
-		Unknown:     s.unknown,
+		Version:    storeVersion,
+		Entries:    s.tasks,
+		PrimeOwner: s.primeOwner,
+		Machines:   s.machines,
+		Holds:      s.holds,
+		Unknown:    s.unknown,
 	})
 }
 

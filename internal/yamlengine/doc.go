@@ -12,12 +12,6 @@
 // [SetValues] applies dotted key=value pairs to the template-shaped tree and refuses a key the template does not know.
 // [SetEntries] sets whole top-level entries from JSON objects, or one value below an entry by a dotted key.
 // It serves a module whose top-level keys are names the operator owns.
-// [RaiseIntFloor] raises one top-level integer key to a floor, for a module's migration hook.
-// It carries every other key and comment through unchanged.
-// [RenameKeys] renames retired top-level keys to their new names, for a module's migration hook.
-// Each keeps its value and takes the template's line comment for the new name.
-// [DropKeys] removes retired top-level keys with their values and comments, for a module's migration hook.
-// It reports one line per removed key.
 // [FollowTemplate] carries a template change into an operator-owned file unit by unit.
 // It works against the template the file last followed:
 // a unit left at that template's value takes the new one,

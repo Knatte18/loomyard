@@ -12,13 +12,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// concludeMergeSides lands the conclude-commit on both sides of an in-progress merge, under the
-// caller's already-held write lock: warp first, then weft.
-// The weft arm covers records an older binary wrote, where WeftOutcome can be "staged".
-// Records this binary writes carry mergeOutcomeAlreadyUpToDate on the weft side, so the arm's guard skips it.
-// A side whose recorded outcome is fast_forwarded or up_to_date is skipped, so no commit is fabricated on it.
-// A side whose committed SHA is already recorded is skipped too, which keeps a resumed MergeContinue idempotent.
-// A crash or I/O failure between a side's `git commit` and the record re-save leaves the commit landed unrecorded.
+// concludeMergeSides lands the conclude-commit on the warp side of an in-progress merge.
+// The caller already holds the write lock.
+// The weft is not a merge participant, so no commit lands there.
+// The warp side is skipped when its recorded outcome is fast_forwarded or up_to_date, so no commit is fabricated on it.
+// It is skipped too when its committed SHA is already recorded, which keeps a resumed MergeContinue idempotent.
+// A crash or I/O failure between the warp side's `git commit` and the record re-save leaves the commit landed unrecorded.
 // A re-run `git commit` then fails on the clean tree.
 // The conclude check adopts such a commit into the record when git parentage shows it is this merge's conclude.
 // MergeContinue then finishes the states that MergeAbort must not destroy.
@@ -28,9 +27,9 @@ import (
 // MergeContinue enforces this before the call.
 // The effective message is the explicit msg, then the record's Message, then empty.
 // An empty message makes git use the message it prepared for the merge.
-// After each side lands, its SHA is saved to the record and KindMergeCommitted is recorded.
+// After the warp side lands, its SHA is saved to the record and KindMergeCommitted is recorded.
 // Its target is the checkout path and its detail is the SHA.
-// If a conclude fails on either side, nothing is rolled back.
+// If the conclude fails, nothing is rolled back.
 // The record is kept, the git failure is logged, and *ErrMergeIncomplete is returned.
 func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) error {
 	effectiveMsg := msg
@@ -61,29 +60,6 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 		rec.Append(KindMergeCommitted, f.warpPath, sha)
 	}
 
-	if st.WeftOutcome != mergeOutcomeFastForwarded && st.WeftOutcome != mergeOutcomeAlreadyUpToDate && st.WeftCommitted == "" {
-		sha, landed, err := sideConcludeAlreadyLanded(f.records, st.WeftStart, st.WeftSource, st.Squash)
-		if err != nil {
-			return err
-		}
-		if !landed {
-			if err := f.records.MergeConclude(effectiveMsg); err != nil {
-				logger.Warn("fabricengine: merge conclude failed", "side", "weft", "error", err)
-				return &ErrMergeIncomplete{}
-			}
-			sha, err = f.records.CurrentSHA()
-			if err != nil {
-				logger.Warn("fabricengine: resolve weft HEAD after conclude failed", "error", err)
-				return &ErrMergeIncomplete{}
-			}
-		}
-		st.WeftCommitted = sha
-		if err := f.saveMergeState(st); err != nil {
-			return err
-		}
-		rec.Append(KindMergeCommitted, f.weftPath, sha)
-	}
-
 	return nil
 }
 
@@ -104,11 +80,10 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 // fabric starts a non-squash merge with `git merge --ff --no-commit <sourceSHA>`, so MERGE_HEAD holds
 // exactly that SHA, and the conclude-commit has exactly two parents: the pre-merge start first, the
 // merge source second.
-// All five of these must hold before a commit is adopted:
+// All four of these must hold before a commit is adopted:
 //   - HEAD moved off the recorded pre-merge start,
 //   - no live MERGE_HEAD (the merge is finished, not still concludable),
 //   - the record is not a squash (see below),
-//   - the record carries a resolved source SHA for this side,
 //   - HEAD is a merge commit with exactly two parents: the recorded start first, the recorded
 //     source SHA second.
 //
@@ -123,8 +98,6 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 // Its conclude is an ordinary one-parent commit, with no evidence separating it from other commits.
 // Refusing leaves the re-run `git commit` to fail on the clean tree.
 // It returns *ErrMergeIncomplete with the record retained.
-// An empty recorded source SHA, which a record without one carries, refuses too.
-// No evidence is not satisfied evidence.
 //
 // The caller records an adoption as KindMergeCommitted, although this call ran no `git commit`.
 // The commit is this merge's own conclude.
@@ -144,7 +117,7 @@ func sideConcludeAlreadyLanded(repo *gitrepo.Repo, start, sourceSHA string, squa
 	if mergeHeadPresent {
 		return "", false, nil
 	}
-	if squash || sourceSHA == "" {
+	if squash {
 		return "", false, nil
 	}
 

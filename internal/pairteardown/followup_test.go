@@ -20,10 +20,9 @@ func TestBattenFollowUp(t *testing.T) {
 		return shedengine.Status{State: state, CurrentProducer: producer}
 	}
 	tests := []struct {
-		name      string
-		record    shedengine.Status
-		found     bool
-		ownerHeld bool
+		name   string
+		record shedengine.Status
+		found  bool
 		// want lists substrings the follow-up must carry; none means the follow-up must be empty.
 		want []string
 		// notWant lists substrings it must never carry.
@@ -32,7 +31,6 @@ func TestBattenFollowUp(t *testing.T) {
 		{name: "NoRecord"},
 		{name: "DoneRecord", record: at(shedengine.StateDone, battenrecipe.NameLand), found: true},
 		{name: "RecordAtWorktreeTeardown", record: at(shedengine.StateBlocked, battenrecipe.NameWorktreeTeardown), found: true},
-		{name: "OwnerPauseCoveringTheSlug", record: at(shedengine.StateRunning, battenrecipe.NameRunShed), found: true, ownerHeld: true},
 		{
 			name:   "RecordAtRunShedNamesTheCancel",
 			record: at(shedengine.StateRunning, battenrecipe.NameRunShed), found: true,
@@ -54,7 +52,7 @@ func TestBattenFollowUp(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := pairteardown.BattenFollowUp("slug", tt.record, tt.found, tt.ownerHeld)
+			got := pairteardown.BattenFollowUp("slug", tt.record, tt.found)
 
 			if len(tt.want) == 0 && got != "" {
 				t.Errorf("BattenFollowUp() = %q; want empty", got)

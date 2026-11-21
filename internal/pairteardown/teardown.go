@@ -168,9 +168,6 @@ type Teardown struct {
 	// battenRecord reads the batten run record of the slug on the prime; found is false when the run has none.
 	// Nil reads as no record.
 	battenRecord func(slug string) (status shedengine.Status, found bool, err error)
-	// ownerHeld reports whether an owner pause covers the slug.
-	// Nil reads as none.
-	ownerHeld func(slug string) (bool, error)
 	// removeCancelledRecord deletes the slug's batten run record when its state is cancelled, and reports whether it did.
 	// Nil removes nothing.
 	removeCancelledRecord func(slug string) (removed bool, err error)
@@ -236,7 +233,6 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 	t.readClaim = t.readBoardClaim
 	t.writeClaim = t.writeBoardClaim
 	t.battenRecord = func(slug string) (shedengine.Status, bool, error) { return ReadBattenRecord(prime, slug) }
-	t.ownerHeld = func(slug string) (bool, error) { return OwnerPauseHeld(prime, slug) }
 	t.remove = func(req Request) (fabricengine.RemoveResult, error) {
 		top, err := t.topology()
 		if err != nil {
@@ -618,7 +614,7 @@ func (t *Teardown) Run(ctx context.Context, req Request) (Result, error) {
 		}
 	}
 	if !req.LeaveClaim {
-		if followUp := followUpOver(req.Slug, t.battenRecord, t.ownerHeld); followUp != "" {
+		if followUp := followUpOver(req.Slug, t.battenRecord); followUp != "" {
 			result.Warning = fmt.Sprintf("the batten run of %s still stands; %s", req.Slug, followUp)
 		}
 	}

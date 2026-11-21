@@ -228,7 +228,7 @@
 // A running child whose spawn this batten process has not confirmed is spawned again,
 // so a restarted batten brings a driverless child back up:
 // the confirmation marker holds the pid of the process that wrote it,
-// and a marker from another pid or in the old layout reads as unconfirmed.
+// and a marker from another pid reads as unconfirmed.
 // A child is adopted instead if its reed state holds a live or retiring driver strand;
 // a held run lock or a held Go driver lock adopts it too.
 // The confirmation is recorded for this process, so a second driver is never stacked.

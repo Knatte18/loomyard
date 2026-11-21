@@ -19,9 +19,7 @@ import (
 const (
 	// WaitParentReview is a parent-review round, from its request to its verdict.
 	WaitParentReview = "parent_review"
-	// WaitPRGate is a child awaiting at the PR gate, a row only a past run holds.
-	WaitPRGate = "pr_gate"
-	// WaitEscalation is a child or a batten row awaiting at any other row.
+	// WaitEscalation is a child or a batten row awaiting.
 	WaitEscalation = "escalation"
 	// WaitHalt is a child blocked or failed, or a batten row blocked.
 	WaitHalt = "halt"
@@ -35,7 +33,7 @@ const (
 )
 
 // timingWaitKinds lists every wait kind in crediting order.
-var timingWaitKinds = []string{WaitParentReview, WaitPRGate, WaitEscalation, WaitHalt}
+var timingWaitKinds = []string{WaitParentReview, WaitEscalation, WaitHalt}
 
 // waitInterval is a stretch of a run's time spent waiting, of one kind.
 type waitInterval struct {
@@ -80,7 +78,7 @@ func latestBattenHistory(row RunRow) []shedengine.HistoryEntry {
 
 // battenRowHalts returns the indexes of the history entries at which a batten row left batten awaiting or blocked.
 // Such an entry is one of batten's own rows, never Run-Shed's, and is an awaiting outcome or a stuck outcome.
-// A stuck outcome with no routed_to is a halt, so an entry written before routed_to was recorded reads as one.
+// A stuck outcome with no routed_to is a halt.
 func battenRowHalts(history []shedengine.HistoryEntry) []int {
 	var halts []int
 	for i, entry := range history {
@@ -127,9 +125,6 @@ func runWaits(row RunRow, rows []timedRow, end time.Time) []waitInterval {
 		switch change.To {
 		case shedengine.StateAwaiting:
 			kind = WaitEscalation
-			if change.Producer == retiredPRGateRow {
-				kind = WaitPRGate
-			}
 		case shedengine.StateBlocked, shedengine.StateFailed:
 			kind = WaitHalt
 		default:

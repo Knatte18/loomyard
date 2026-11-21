@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -292,13 +291,18 @@ func hubStampPath(loc *lymcwd.Location) string {
 	return hubreconcile.Geometry{BoardDir: fabricengine.BoardDir(loc.HubPath)}.StampPath()
 }
 
-// commitRetiredBatcherKey commits a batcher.yaml that carries a retired key into loc's records worktree.
-// This is the state that a hub reconcile after a binary change removes.
-func commitRetiredBatcherKey(t *testing.T, loc *lymcwd.Location) {
+// boardLensesDefault returns the path of the lenses repo default in loc's hub board.
+func boardLensesDefault(loc *lymcwd.Location) string {
+	return configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "lenses")
+}
+
+// deleteBoardLensesDefault commits the deletion of the lenses repo default in loc's hub board.
+// This is the state that a hub reconcile after a binary change reseeds.
+func deleteBoardLensesDefault(t *testing.T, loc *lymcwd.Location) {
 	t.Helper()
-	batcher, _ := configreg.Lookup("batcher")
-	retired := strings.Replace(batcher.Template(), "orientation: 31400", "master_base: 52000", 1)
-	gitkit.CommitFile(t, fabricengine.RecordsWorktree(loc), configengine.ConfigFileRel("batcher"), retired, "fixture: retired key")
+	board := fabricengine.BoardDir(loc.HubPath)
+	gitkit.Git(t, board, "rm", "-q", "--", filepath.ToSlash(configengine.ConfigFileRel("lenses")))
+	gitkit.Git(t, board, "commit", "-q", "-m", "fixture: delete lenses default")
 }
 
 // findWatchdogPIDs returns the pids of the live reed watchdog daemons.

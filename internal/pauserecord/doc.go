@@ -14,24 +14,12 @@
 // only `internal/hubgeom` and `internal/standalonegeom` construct it.
 // A reader that cannot decode the record logs it and reads uncovered, so a corrupt file never freezes the hub.
 //
-// `OwnerCaller` is the `Caller` a legacy pause entry carried for a run owned by another machine.
-// No code path writes it any more.
-// The name stays declared only so the upgrade's first read recognises and drops legacy entries.
-// `Coverage.OwnerHeld` is set when a live entry of the slug's own scope carries it.
-// It is set whichever entry is the oldest covering one.
-// `AdoptCaller` and `HoldCaller` are legacy callers of entries an older `lym adopt` wrote.
-// Such an entry held a run or a released task.
-// No code writes either now.
-// The upgrade's first read turns a standing one into the Bolt model.
-// `CoverageOf` still reads one as held.
-// `Coverage.Held` is set when a live entry of the slug's own scope carries either.
 // `BoltHoldCaller` is the `Caller` of the slug entry a machine writes for one of its runs while a Bolt hold stands,
 // and its `Entry.Machine` names the hold's machine.
-// `Coverage.Held` is set for it too, and `Coverage.HoldMachine` carries that machine.
+// `Coverage.Held` is set when a live entry of the slug's own scope carries it,
+// and `Coverage.HoldMachine` carries that machine.
 // `CoveredError` and the wait's start line word such an entry as an adopt's hold on that machine.
 // They name no resume, since the machine's dobby lifts the entry once the hold clears.
-// The parent-lock exemption (`OwnerEntryExempt`) judges only `OwnerCaller`.
-// So does the release of a parent lock under a pause.
 // LatestResumed finds the resumed entry covering a slug that resumed last,
 // so a reader that was away can tell a pause it never saw restarted what it measures.
 // ClaimSession records one session in the oldest live entry covering a slug.
@@ -87,9 +75,6 @@
 // With none stored, or one that returns, the gate waits as before, so it still fails no call.
 // `GateCovered` applies the exemptions the gate's waits apply,
 // and it reads false with no gate installed or an unreadable record.
-// Only a push child spawned under its slug's parent lock installs a gate with `OwnerEntryExempt` set.
-// Such a gate lets a live entry of its own slug whose `Caller` is `OwnerCaller` pass.
-// A hub entry, and an operator's entry of its own slug, still hold it.
 // SetGateExempt names one live entry, by scope and pause time, that the installed gate lets pass.
 // It serves the process that owns that entry.
 // Any other entry still holds the call, and the returned function restores the previous exemption.

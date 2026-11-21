@@ -16,8 +16,6 @@ import (
 const (
 	// LandRequestFileName is the file name of the land request under the beam's `.lym/beam/` directory.
 	LandRequestFileName = "land-request.json"
-	// ReopenRequestFileName is the file name of the reopen request an older binary wrote under the beam's `.lym/beam/` directory; no code reads or writes it.
-	ReopenRequestFileName = "reopen-request.json"
 	// DobbyStopMarkerName is the file name of the marker that says the landing stopped the beam's dobby.
 	DobbyStopMarkerName = "dobby-stop"
 	// AwaitMarkerName is the file name of the marker that says Beam-Await was entered before and whether its dobby-down notice was posted.
@@ -30,8 +28,6 @@ const (
 type Paths struct {
 	// LandRequest is the land request file.
 	LandRequest string
-	// ReopenRequest is the path of the reopen request an older binary wrote; no code reads or writes it.
-	ReopenRequest string
 	// DobbyStopMarker is the marker file the landing writes before it stops the dobby.
 	DobbyStopMarker string
 	// AwaitMarker is the marker file Beam-Await writes on its first entry; it also carries the line recording a posted dobby-down notice.

@@ -610,16 +610,12 @@ func parseCardBody(card *Card, lines []string) error {
 }
 
 // parseTypeLabelCase handles one type-label card-body case: it records the card's type-label
-// bookkeeping (TypeLabelCount, HasType, and, on the first type label seen, Type) and then collects
+// bookkeeping (TypeLabelCount) and then collects
 // the label's bullets — via parseRenameField for renameLabel, appending both endpoints of every
 // pair to card.Targets in pair order, or via parseRefField for every other type label — appending
 // exactly one new TargetGroup to card.TargetGroups for this call's own occurrence of label.
 func parseTypeLabelCase(card *Card, labelLine, label string, lines []string, start int) (next int, err error) {
 	card.TypeLabelCount++
-	card.HasType = true
-	if card.Type == CardTypeUnknown {
-		card.Type = typeLabels[label]
-	}
 
 	group := TargetGroup{Type: typeLabels[label]}
 

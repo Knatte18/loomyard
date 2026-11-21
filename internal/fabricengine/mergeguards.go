@@ -270,25 +270,21 @@ func concludeLandedReason(f *Fabric, st *mergeState) ([]string, error) {
 	return nil, nil
 }
 
-// recordedMergeGoneReason reports mergeReasonRecordedMergeGone when either side has lost its recorded merge.
-// Concluding a side runs git commit, which commits whatever MERGE_HEAD names.
+// recordedMergeGoneReason reports mergeReasonRecordedMergeGone when the warp side has lost its recorded merge.
+// The weft is not a merge participant, so only the warp side is evaluated.
+// Concluding the warp side runs git commit, which commits whatever MERGE_HEAD names.
 // An operator may legitimately discard the staged merge and start a different one before the continue.
 // Plain git in the warp checkout is allowed to do that.
 // Without this check, that different merge would be committed and recorded as this merge's conclude SHA.
 // It would be reported as a merge_committed mutation, paired in the correspondence index, and erased with the record.
 // The result is a silent false success that leaves the merge source un-merged with nothing left to inspect.
-// Both sides are evaluated first, so the single reason never reveals which side lost its merge.
 func recordedMergeGoneReason(f *Fabric, st *mergeState) ([]string, error) {
 	warpGone, err := sideRecordedMergeGone(f.code, f.warpPath, st.WarpCommitted, st.WarpOutcome, st.WarpSource, st.Squash)
 	if err != nil {
 		return nil, err
 	}
-	weftGone, err := sideRecordedMergeGone(f.records, f.weftPath, st.WeftCommitted, st.WeftOutcome, st.WeftSource, st.Squash)
-	if err != nil {
-		return nil, err
-	}
 
-	if warpGone || weftGone {
+	if warpGone {
 		return []string{mergeReasonRecordedMergeGone}, nil
 	}
 	return nil, nil
@@ -299,8 +295,8 @@ func recordedMergeGoneReason(f *Fabric, st *mergeState) ([]string, error) {
 // Only those get a commit from git commit.
 // A side with a fast-forwarded or up-to-date outcome is never refused, since it gets no commit.
 //
-// A squash merge and a record with no source SHA are never refused.
-// A squash writes no MERGE_HEAD, and an old record stores no source, so there is no evidence to compare.
+// A squash merge is never refused.
+// A squash writes no MERGE_HEAD, so there is no evidence to compare.
 // That residual case is left open rather than refused.
 //
 // The source must be the only entry in MERGE_HEAD, not merely one of its entries.
@@ -324,7 +320,7 @@ func sideRecordedMergeGone(repo *gitrepo.Repo, checkoutPath, committed, outcome,
 	if outcome != mergeOutcomeStaged && outcome != mergeOutcomeConflicted {
 		return false, nil
 	}
-	if squash || sourceSHA == "" {
+	if squash {
 		return false, nil
 	}
 

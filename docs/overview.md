@@ -147,8 +147,7 @@ The two-sided design is documented in `internal/fabricengine`'s package doc.
   └── <RepoName>.code-workspace     (the hub's VS Code workspace; lym-owned)
 ```
 
-`_bolt` is hub geometry, and `_portals` and `_launchers` are retired hub containers, so none of them can be claimed as a worktree slug.
-`lym cleanup` removes what a hub still holds under `_launchers`.
+`_bolt` is hub geometry, and `_portals` and `_launchers` are names no verb writes, so none of them can be claimed as a worktree slug.
 The check is `fabricengine.IsReservedHubName`.
 `.lym` is slug-reserved too, but via `structuralNeverCommittedDirs` rather than as hub geometry.
 It has no hub-level presence of its own.
@@ -503,7 +502,6 @@ User-facing modules each get one `lym <module>` namespace:
   It prunes but never fills a present board file that is not seed-only.
   For a seed-only board file such as `profiles.yaml`, it carries a template change in and keeps the operator's values.
   The change is made against the template base `<module>.template-base` beside the file.
-  It lists the one-time base strip as pending; only a start verb's hub reconcile performs that strip.
   With `--apply`, run from the prime, it commits the changes in the Bolt checkout.
   `lym config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation.
   It gives scripts and agents a non-interactive path.
@@ -549,7 +547,6 @@ User-facing modules each get one `lym <module>` namespace:
   CLI surface is `lym fabric clone|add|list|remove|checkout|pairs|reconcile|prune|cleanup|unwire|shortname|status|commit|push|pull|sync|diff|merge-in|merge|merge-stage`.
   `clone` takes the records URL first with the code URL optional.
   When omitted, the code URL is derived from the code binding recorded on the records main branch.
-  `reconcile` backfills that binding for hubs whose records predate it.
   `clone` also takes `--shortname` to record the repo's shortname as `.lym-shortname` on the records main branch,
   and `shortname [<shortname>]` prints the recorded shortname or records one on a hub that has none.
   `status` is the unified both-sides uncommitted-change view (`Fabric.Status`);
@@ -679,7 +676,7 @@ User-facing modules each get one `lym <module>` namespace:
   Background work is read off the Stop payload's `background_tasks` first, with the transcript as the fallback when the payload carries no list;
   a turn end with outstanding work is waiting, not held, unless its only outstanding work is non-awaited shells, which a gated run holds at once with an output file missing, a gated run with every output file present counts done once they pass the shell wait bound after telling the agent to read them,
   and an ungated run holds once they pass the shell wait bound.
-  `Attach` waits on a held run, and on a legacy `asking` record whose strand is still live, instead of respawning beside it.
+  `Attach` waits on a held run instead of respawning beside it.
   `died` is narrow:
   it means a strand reed still tracks has a pane that is not alive, the provider never came up inside the startup window, or the provider's process is proven gone behind a live pane shell (by the process registry, or a process-ending `SessionEnd` line past the wait's first liveness tick), with `done` instead when every output file exists.
   Reed's strand table losing the strand entirely — a `reed down`/`remove`, a deleted or rebuilt `reed.json`, a worktree renamed under an in-flight run — is reported as a mechanism failure carrying the run's identity, never as `died`, because reed's bookkeeping going away says nothing about the agent, whose process is often still working in its pane;
@@ -810,8 +807,7 @@ User-facing modules each get one `lym <module>` namespace:
 - **cleanup** — the routine cleanups of the hub prime's leftover state, as one verb (`internal/cleanupcli`; `lym cleanup [--apply]`, from the prime and from any beam).
   Without `--apply` it is a dry run that lists, per segment, what `--apply` would remove.
   The segments run in order and each calls its owner's own cleanup in-process:
-  `lym batten cleanup`, `lym board prune`, the orch's handoff cleanup, the `.scratch/` children at the prime's anchor older than 14 days that no open board entry cites, logger's trace retention sweep, the temp root's sweep of dead owners' run directories,
-  and fabric's sweep of the hub's retired `_launchers` directory.
+  `lym batten cleanup`, `lym board prune`, the orch's handoff cleanup, the `.scratch/` children at the prime's anchor older than 14 days that no open board entry cites, logger's trace retention sweep, and the temp root's sweep of dead owners' run directories.
   A failing segment never stops the later ones.
   ✅ Implemented. See the `internal/cleanupcli` package documentation.
 - **adopt** — the takeover of beam projects, or of root, and of the runs under them from another machine of the operator, as one verb (`internal/adoptcli`; `lym adopt <beam>...`, `lym adopt root` and `lym adopt --all`, from the prime and from any beam).
@@ -1169,7 +1165,6 @@ User-facing modules each get one `lym <module>` namespace:
   `tree_scope` in `darn.yaml` scopes a non-production diff at every verify site, Finalize included.
   `lym loom resume` re-spawns `Darn-Write`.
   `lym loom goto --to Darn-Write` re-enters it and keeps the spent review budget and any settled review verdict.
-  A `lym loom` verb that arms a darn run whose status file names the writer row `Darn` renames it onto `Darn-Write`.
   `start` is the session bootstrap, performing these steps in order:
   it resolves the recorded parent branch and seeds and commits the status file with the records when it is absent.
   It ensures the worktree's tmux session is up, and it keeps or adds the status strand.
@@ -1231,7 +1226,7 @@ User-facing modules each get one `lym <module>` namespace:
   Each history entry a producer call writes records the call's start in `started_at` beside its `at`.
   A routed `stuck` reads as `bounced to <row>` in `activity.last`.
   The run directory is named by the worktree slug (`_lym/shed/<slug>/`).
-  `self` is an alias that resolves to it, and a `_lym/shed/self/` directory resolves too.
+  `self` is an alias that resolves to it.
   `pause` records a `--before` or `--after` condition and refuses bare.
   The refusal names `lym tender pause` for stopping the agents.
   `validate-discussion` runs the same checks Discussion-Write's and Discussion-Burler-Fix's own gates run, standalone.
@@ -1442,9 +1437,6 @@ User-facing modules each get one `lym <module>` namespace:
   It holds `parent_align_fix_attempts`, `finalize_fix_attempts` and `finalize_fix_max_lines` too.
   `finalize_fix_review_rounds` is a landing key as well.
   `deploy_branches` lists the base branches whose landing runs `deploy`.
-  `lym config reconcile` renames it from the retired `require_pr_to_base`.
-  Reconcile also renames the retired `merge_fix_attempts` key to `parent_align_fix_attempts`.
-  It renames `gate.yaml`'s `merge-in` gate key to `parent-align`.
   `landing.yaml` also holds `describe` (the `Describe` row's model), `describe_timeout_min` and the `credit` keys.
   An existing hub takes their template defaults until `lym config reconcile --apply` writes them.
   That run also prunes the retired `co_authored_by`, `trailer_text` and `engine_trailers` keys.
@@ -1521,12 +1513,7 @@ User-facing modules each get one `lym <module>` namespace:
   An unset model list, judge or seed, a null budget and a hard cap of 0 take `loom.yaml`'s value.
   Both modules exist and reconcile via `lym config reconcile --apply`.
   The bare verb is a dry run that only reports added and removed keys and writes nothing.
-  Reconcile renames the retired `webster_*` perch keys of `loom.yaml` to `code_*`.
-  It renames the retired `review` and `fix` keys of `loom.yaml` to their new names.
-  It renames the retired `<segment>_review`, `<segment>_fix`, `<segment>_fan` and `<segment>_fix_fan` keys the same way.
-  It moves a value `loom.yaml` tuned for a plan perch key, or for `implementer`, into `tapestry.yaml`.
-  `darn.yaml`'s perch keys, `review_fan` and `review_fix_fan` among them, move to `loom.yaml`'s `code_*` keys.
-  It drops the retired `merge_*` perch keys and `rework`.
+  Reconcile drops the retired `merge_*` perch keys and `rework`.
   It also drops `alignment_pr_approve`, `alignment`, `alignment_timeout_min` and `skip_alignment`.
   `parent_review_wait_min` is dropped too.
   The driver, tackler and arbiter keys live in `shed.yaml` alone.
@@ -1559,9 +1546,6 @@ User-facing modules each get one `lym <module>` namespace:
   The forks review the record their inherited context holds, without reading it again.
   Only the lead forks, never an advisor.
   Both axes together are valid: advisors with the lead's lens forks.
-  Reconcile rewrites a `loom.yaml` that holds the retired `discussion_producer` or `plan_producer` key.
-  `twill` becomes the twill fan in the new lens key, and every other value becomes an empty one.
-  `discussion_advisors` is set to match, the retired `seats` entries becoming `advisor-<n>` for the operator to rename.
   The lead's session may spawn fork subagents when `discussion_lenses` is set.
   The lead opens with `contracts/stencils/loom/loom-template-discussion-chair.md`.
   That stencil includes the discussion stencil whole and adds the advisors section.

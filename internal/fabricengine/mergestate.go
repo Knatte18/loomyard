@@ -32,9 +32,6 @@ const mergeStateFileName = "fabric-merge.json"
 // The SHA fabric handed to `git merge` is what git wrote into MERGE_HEAD,
 // so it is exactly what a genuine conclude-commit carries as its second parent.
 // sideConcludeAlreadyLanded consumes them.
-// A record without them, written by an older binary, reads them as empty.
-// Every consumer treats empty as "no evidence available" and refuses to make a positive claim;
-// none treats it as "evidence satisfied".
 //
 // The weft is not a merge participant; its four fields record it as unmoved.
 // WeftStart is the weft HEAD at record time.

@@ -13,7 +13,6 @@
 //
 // The literal "self" is an alias for the worktree's own slug:
 // ResolveRunID maps it to the told location's WorktreeName, and a run's directory is named by that slug.
-// When _lym/shed/<slug>/ is absent and _lym/shed/self/ exists, both spellings join the "self" directory.
 //
 // WriteSeed stamps `started_at`, the RFC 3339 UTC time the run was seeded, when the seed has none.
 // It keeps a given stamp;
@@ -87,7 +86,7 @@
 // A records commit that deletes the whole directory uses it as its pathspec.
 //
 // TreeRunFileRels names a run's seed.json and status.json as slash-separated paths relative to a git tree.
-// It resolves no alias and has no legacy fallback.
+// It resolves no alias.
 // ParseSeed decodes seed bytes a caller read elsewhere, as ReadSeed does.
 //
 // The usage directory is declared here too.

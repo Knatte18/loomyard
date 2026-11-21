@@ -247,7 +247,8 @@ func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 // A record without hashes compares ids only.
 // A card named in deps.Cards is accepted instead when its batch is in flight or terminal failed, dead or stuck.
 // A failed batch whose record lists Uncheckable entries still refuses it.
-// It also refuses a changed card file whose number is not in deps.Cards, unless the state predates State.PlanFileHashes.
+// It also refuses a changed card file whose number is not in deps.Cards.
+// That refusal does not apply when the state records no State.PlanFileHashes.
 // A change to 00-overview.md is accepted only when it is confined to the Card Index.
 // The recorded overview frame must still equal the file's frame hash.
 // That frame is State.PlanOverviewFrameHash, or else the frame of the stored baseline copy.

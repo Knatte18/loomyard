@@ -263,7 +263,7 @@
 // Every caller builds that set from `structuralCommittedDirs`, `structuralNeverCommittedDirs` and the pair's `pathspec`.
 // The union is filtered against `HubReservedNames()`.
 // `HubReservedNames()` holds the hub-structural tokens that can never be a per-worktree junction:
-// the Bolt checkout, the retired `_portals` and `_launchers`.
+// the Bolt checkout, and the `_portals` and `_launchers` names, which no verb writes and which stay reserved.
 // The two structural sets (`_lym`, `.lym`) are injected in code and never read from `pathspec`;
 // only the third piece, the pair's `pathspec`, comes from config.
 // A weft-backed optional module is wired with no `fabric` code change:
@@ -516,7 +516,6 @@
 // Wiring seeds each as a root-anchored `/<anchor>/<path>` line (`/<path>` for anchor `.`) into the same `info/exclude`.
 // It never removes one, since every worktree shares the file.
 // `SeedWarpExclude` seeds it on demand, and `ExcludeWayForward` is the refusal text for a path off the list.
-// `AppendExcludePaths` is the hub reconcile's rewrite that adds a path lym starts rendering to a hub's own list.
 // The list is separate from `pathspec`.
 // It is never folded into the wired junction names, so health and drift checks never ask for a junction of it.
 //
@@ -547,27 +546,22 @@
 // `CloneHub` records the prime's marker first.
 // On a fresh bind it commits the marker on the prime's weft branch (`commitAnchorMarker`, anchormarker.go);
 // on a re-clone it adopts the marker from there.
-// The Bolt marker at `BoltDir(Hub)` is read only for a hub whose prime weft is still markerless.
-// `lym fabric reconcile` migrates it.
 // `Resolve` treats a present record as truth.
 // It sets `AnchorRel` from the marker and errors if cwd does not equal the anchored directory exactly.
 // Only when no marker is recorded yet does it fall back to `AnchorRel` `"."`:
 // mid-clone, a gitkit synthetic hub, or a non-fabric git repo.
-// A hub with only the stale marker `lymcwd.StaleAnchorFileName` is not a fallback case:
-// it recorded a real subpath under the old name, so every resolver returns `lymcwd.ErrStaleAnchorMarker`.
-// Answering `"."` would re-anchor the repo at its root and let `lym fabric reconcile` wire a second junction set there.
-// `CloneHub` refuses the same state at clone time, on its Bolt fallback read only.
-// It names the same literal, from the same single declarer.
+// `lymcwd` never reads the pre-rename marker `lymcwd.StaleAnchorFileName`.
+// `CloneHub` refuses a board that carries it while the prime's weft root carries no marker, and names the rename.
 //
 // A marker that is present but empty after trimming is a third state, and fabric refuses it rather than lymcwd:
 // `lymcwd` treats it as absent and falls back to `"."`.
 // That is right for a hub that never recorded an anchor and wrong for one whose marker was truncated.
 // Only `Reconcile` wires junctions, so only it can turn that fallback into the second-junction-set damage above.
-// It judges each present weft's own marker before wiring that pair (`migrateWeftMarker`, reconcile.go).
+// It judges each present weft's own marker before wiring that pair (`settleWeftMarker`, reconcile.go).
 // A blank one fails that pair alone through `refuseEmptyOwnMarker`, with its wiring untouched and the pass going on.
 // `lymcwd`'s documented fallback stays untouched.
 //
-// A weft with no committed marker is migrated by the same pass.
+// A weft with no committed marker gets one from the same pass.
 // `committedMarker` reads the file from git objects.
 // `treeAnchor` is the one rule for the anchor of a branch that records none:
 // the committed non-blank marker at the revision;
@@ -581,19 +575,6 @@
 // It does so right after the branch's worktree is added.
 // It builds every path for the pair at its own anchor; an adopted branch that carries a marker uses it.
 //
-// The Bolt marker is retired once every weft carries its own.
-// After the pair loop, `retireBoltAnchorMarker` (anchormarker.go) runs a census over local refs, with no network call:
-// the prime's weft and every local pair's weft carry a non-blank committed marker at `HEAD`;
-// and every weft branch, local or fetched, whose warp sibling is on origin carries one on its remote-tracking ref.
-// A weft branch with no warp sibling on origin is an orphan and is not counted.
-// An unfetched ref, an unpushed marker commit or a blank committed marker keeps the Bolt marker for a later reconcile.
-// When the census holds, the Bolt checkout's `.lym-anchor` and `.fabric-anchor` files are deleted through an `os.Root`.
-// The deletion is one board commit written by `Bolt.PullThenCommitWritten`, so it never writes over a stale board.
-// The commit is then pushed.
-// `ReconcileResult.BoltAnchor` carries the verdict.
-// It is `removed`, or `kept: <reason>` with the first branch that keeps it or the skip's detail.
-// `lym fabric reconcile` reports it as `bolt_anchor`.
-// A hub with no Bolt marker reports nothing.
 // `lym fabric unwire` leaves every marker.
 //
 // The warp binding is a repo-wide record beside the repo-wide `fabric.yaml` config.
@@ -607,8 +588,8 @@
 // the warp binding, the shortname and the old-order guard.
 // It also first checks an explicit `--subpath` against staged clones of both remotes (resetsubpathcheck.go).
 // A refused argument therefore leaves the hub untouched.
-// `Reconcile` backfills the record once per hub from the warp `origin` remote (`reconcileWarpBinding`, reconcile.go).
-// The CLI layer drives the commit and push, as it does for clone's own binding write.
+// `Reconcile` compares the record with the warp `origin` remote once per hub (`reconcileWarpBinding`, reconcile.go).
+// It writes nothing: a diverged or missing record is reported in `ReconcileResult.WarpBinding`.
 //
 // The hub's shortname is a repo-wide record, held the same way.
 // It is the single-line file `.lym-shortname` beside `.lym-warp` at the board root (see shortnamebinding.go).
@@ -657,15 +638,8 @@
 // It does not resolve it from the warp anchor.
 // The warp `.git/info/exclude` carries `/<anchor>/.scratch` (`/.scratch` at anchor `.`) with no trailing slash;
 // git matches a link as a file, so a directory-only pattern would not exclude it.
-// A legacy line with the trailing slash is replaced.
 //
 // At a subpath anchor nothing of lym's lands at the repository root.
-// The step therefore first retires what an earlier binary wired there:
-// a root `.scratch` link resolving into the pair's weft worktree is removed through the destruction chokepoint,
-// and the root `/.scratch` exclude line goes once no other warp worktree has an entry at its root `.scratch`.
-// Any other root `.scratch` is left as found with its exclude line kept and reported with its way forward.
-// `lym fabric reconcile` runs the step on every managed pair.
-// One pass therefore moves an anchored hub's worktrees and prime over.
 //
 // The step then runs in order: seed the exclude, refuse to link over paths git tracks, then classify the anchor's entry.
 // An absent entry is linked, creating the target when absent.
@@ -675,9 +649,9 @@
 // a link to another target, a real directory while the target exists, a regular file, and a tracked `.scratch`.
 // The step creates nothing when the pair's weft worktree is absent;
 // a weft torn down mid-repair does not get its `.lym/scratch` recreated as a plain directory.
-// It never fails wiring and removes nothing but a retired root link; a leave or a failure reaches the log as a warning.
+// It never fails wiring and removes nothing; a leave or a failure reaches the log as a warning.
 // `lym fabric unwire` keeps the link and its exclude.
-// `lym fabric remove` unlinks the link, and a retired root link still standing, ahead of the warp worktree removal.
+// `lym fabric remove` unlinks the link ahead of the warp worktree removal.
 // An anchor change unlinks the link at the old anchor.
 // It drops the exclude line unless another worktree still has an entry at that path.
 //
@@ -689,11 +663,9 @@
 // A pair that never reaches the repair gets no link and no target:
 // a raw-adopted pair, an unmanaged pair, or one whose weft worktree is still missing.
 // The stale-junction sweep never claims the scratch link and never strips its exclude line.
-// `lym fabric reconcile` run once converts the prime and every pair an older binary wired.
 //
 // `lym fabric remove` unlinks the anchor's `.scratch` link through the destructive gate before the worktree removal.
-// At a subpath anchor it also unlinks a root `.scratch` link an earlier binary wired.
-// It records a `link_removed` at each.
+// It records a `link_removed`.
 // It claims only a link that resolves into the pair's weft worktree; any other entry is left to the worktree removal.
 // The link's target lives in the pair's weft `.lym` and goes with the weft worktree teardown.
 //
@@ -1428,8 +1400,6 @@
 // It holds `internal/hubforge`, the hub-fixture factory.
 // It builds every hub fixture through `fabriccli.CloneAndWire` and so names both sides.
 // It holds `internal/boardengine`, since board lives at `weft:main`.
-// It holds `internal/configsync`, which uses the tokens in string literals and comments only.
-// They name the legacy config filenames `warp.yaml` and `weft.yaml`.
 // `internal/hubforge` and `internal/lymcwd` also sit in the narrower `weftname`-import subset.
 // `internal/fabricengine`, `internal/fabriccli` and `internal/gitkit` are in it too.
 // `tools/` and `sandbox/` are not in the owner set:
@@ -1661,8 +1631,6 @@
 // every junction the gate removes is a link inside the warp worktree pointing into the weft one.
 // Resolving the leaf would relocate the target into weft.
 // The warp-worktree container would then refuse every legitimate unwire.
-// `ownedUnderGeometryRoot` resolves the same way.
-// It is the only ownership kind with no independent authority to cross-check a target against.
 // The two worktree-shaped kinds compare against git's own worktree registration.
 // The two link-shaped kinds compare against `fslink.RawTarget`.
 // Both authorities already carry resolved paths.
@@ -1790,19 +1758,6 @@
 // It lists the folders only after taking the lock, so a pair created while the regeneration waits is listed.
 // It reads the folder names before taking the lock, so the namer's own locks never nest inside it.
 // The write goes through an `os.Root` at the hub, so a symlink planted at the file's path that escapes the hub is refused.
-//
-// # The retired launchers container
-//
-// Fabric once wrote launcher scripts under `<hub>/_launchers/<anchor>/`.
-// A pair had an `ide`, a `run` and a `fabric-checkout` script, and an anchor had an `ide-menu` script.
-// Each script was a `.sh` or a `.cmd`.
-// The hub workspace file was also written there before it moved to the hub dir.
-// No verb writes there now, and no pair verb removes it.
-// `SweepRetiredLaunchers` removes what a hub still holds, and `lym cleanup` runs it as its `launchers` segment.
-// It removes those script names and `.code-workspace` files, then each directory that empties, the container last.
-// Anything else under the container, a link included, is kept and named, with the directories above it.
-// Every removal goes through the gate under the container, non-recursively and without following a link.
-// The name stays in `HubReservedNames`, so no pair can take the container's path while a hub may still hold it.
 //
 // # The correspondence index's write path
 //
@@ -2055,7 +2010,6 @@
 // With a fabric merge record open, such a merge makes `merge --continue` refuse.
 // The refusal reads `unresolved: ["_lym/loom/status.json"]`.
 // The weft is invisible from the visible worktree, so naming the path is the only actionable refusal.
-// The arm also serves the legacy-record case `concludeMergeSides` handles.
 //
 // # The recorded merge
 //
@@ -2136,7 +2090,6 @@
 // `git merge --squash` writes no `MERGE_HEAD` and its conclude is an ordinary one-parent commit,
 // so it carries no evidence distinguishing it from any other commit.
 // A crashed squash conclude stays stuck with `*ErrMergeIncomplete` and the record retained.
-// So does a record written by a binary that predates the recorded source SHAs: no evidence is not satisfied evidence.
 // **The commit arm demands evidence too.**
 // Adoption is half of what `concludeMergeSides` does.
 // When the adoption arm reports "not landed", the other half runs `git commit`,
@@ -2175,7 +2128,6 @@
 // `git merge --squash` writes no `MERGE_HEAD`, so there is no evidence to demand.
 // Refusing every squash `--continue` would break the ordinary squash flow.
 // One residual remains: a squash record whose side was discarded and restaged by hand still concludes whatever is staged.
-// An empty recorded source SHA, from a record written by a binary that predates them, is exempt too.
 // The refusal never wedges a pair on its own.
 // In the state it fires on, the recorded source is nowhere in that side's history.
 // So `MergeAbort`'s `concludeLandedReason` still passes for a side sitting on its recorded start,

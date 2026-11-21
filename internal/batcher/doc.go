@@ -25,17 +25,17 @@
 // The retired keys are alone_above, and master_base and startup_context in weights:.
 // A retired-key error wraps ErrRetiredKey and names the highest layer file holding the profile.
 // It ends with the way forward that file calls for.
-// For a worktree or local file the way forward is running "lym config reconcile --apply", which migrates the profile.
-// For the repo default, which only the hub-wide reconcile rewrites, it is running "lym fabric reconcile".
+// For a worktree or local file the way forward is deleting the key by hand or running "lym config reconcile --apply".
+// For the repo default, only a reconcile of the default layer rewrites it.
+// The way forward there is deleting the key by hand.
+// It is also running "lym config reconcile --layer default --apply" from the hub's prime worktree.
 // A session lym refuses that verb and reports status: FAILED, so the orch runs it.
+// Reconcile keeps a profile the template does not name whole.
+// For such a profile the way forward is the hand delete alone.
 // Active loads batcher.yaml through the layer stack under a configengine.Dirs.
 // ConfigSpec classifies the active: and profiles: keys as meeting no category, so any layer may hold them,
 // and a retired key in any layer reaches the retired-key refusal.
 // Every load error is marked configengine.ErrInvalid, so a caller tells a file's content from an unreadable file.
-// MigrateConfig is a pure rewrite of a batcher.yaml document that drops the retired keys from every profile.
-// It adds weights.orientation at the template's value where a retired weights key stood and the profile had none.
-// It touches only those keys and carries every other entry and comment through yaml node editing.
-// The loader never calls it.
 // The template ships active: wide, so a fresh repo groups cards with the cost batchifier without configuring it.
 // Its cautious profile is the same cost batchifier at a tighter budget, kept for a repo that chooses it.
 // The budget trial behind that default is recorded in docs/research/webster/batch-budget/batch-budget-trial-2026-11-01.

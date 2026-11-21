@@ -116,11 +116,10 @@ func TestCompute_WakesAndStops(t *testing.T) {
 			want: figures{wakes: wakesOf(sourceOf(map[string]int{"review-escalation": 1}), nil, nil), automatic: map[string]int{}, paused: intPtr(0)},
 		},
 		{
-			name: "the gate halt, a Publish verify retry and a Land failure episode show one wake each of pr-gate and failed at Land and one automatic step",
+			name: "a Parent-Align verify retry and a Land failure episode show one wake of failed at Land and one automatic step",
 			setup: func(w *world) {
 				opening := battenStatusOf(running, "",
-					stateChange(running, blocked, "Publish", 4),
-					stateChange(running, awaiting, "PR-Gate", 10))
+					stateChange(running, blocked, "Parent-Align", 4))
 				episode := opening
 				episode.State = failed
 				episode.CurrentProducer = "Land"
@@ -128,11 +127,11 @@ func TestCompute_WakesAndStops(t *testing.T) {
 					shedengine.HistoryEntry{Producer: "Land", Outcome: shedengine.Done, At: at(12).Format(time.RFC3339)})
 				w.wakeRun(
 					[]shedengine.Status{opening, episode},
-					[]shedengine.HistoryEntry{{Producer: "Publish", Outcome: shedengine.OutcomeGoto, At: at(5).Format(time.RFC3339)}},
+					[]shedengine.HistoryEntry{{Producer: "Parent-Align", Outcome: shedengine.OutcomeGoto, At: at(5).Format(time.RFC3339)}},
 					nil)
 			},
 			want: figures{
-				wakes:     wakesOf(sourceOf(map[string]int{"pr-gate": 1, "failed at Land": 1}), nil, nil),
+				wakes:     wakesOf(sourceOf(map[string]int{"failed at Land": 1}), nil, nil),
 				automatic: map[string]int{"verify-retry": 1},
 				paused:    intPtr(0),
 			},
@@ -178,7 +177,7 @@ func TestCompute_WakesAndStops(t *testing.T) {
 			setup: func(w *world) {
 				w.wakeRun(
 					[]shedengine.Status{battenStatusOf(failed, "Publish",
-						stateChange(running, awaiting, "PR-Gate", 2),
+						stateChange(running, awaiting, "Plan-Bouncer", 2),
 						stateChange(running, failed, "Publish", 3))},
 					nil,
 					haltNoteFiles("", "loom-halt.md", haltnote.Note{
@@ -187,11 +186,11 @@ func TestCompute_WakesAndStops(t *testing.T) {
 					}))
 			},
 			want: figures{
-				wakes:     wakesOf(sourceOf(map[string]int{"pr-gate": 1, "failed at Publish": 1}), nil, nil),
+				wakes:     wakesOf(sourceOf(map[string]int{"awaiting at Plan-Bouncer": 1, "failed at Publish": 1}), nil, nil),
 				automatic: map[string]int{},
 				paused:    intPtr(0),
 				stops: []Stop{
-					{Class: "awaiting", State: "awaiting", Producer: "PR-Gate", Change: true},
+					{Class: "awaiting", State: "awaiting", Producer: "Plan-Bouncer", Change: true},
 					{Class: "status-missing", State: "failed", Producer: "Publish", Failure: "Publish: publish_verify failed after merging parent branch", Change: true, Note: path.Join(frictionDirRel(), "loom-halt.md")},
 				},
 				failures: map[string]int{"Publish: publish_verify failed after merging parent branch": 1},

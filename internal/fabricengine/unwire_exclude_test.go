@@ -10,8 +10,7 @@ import (
 )
 
 // TestExcludeLinesToStrip covers the exclude lines that survive an unwire given which names other worktrees still link.
-// A legacy bare line matches at every depth, so it stays while any worktree wires the name at any anchor;
-// an anchored line stays while another worktree links the same anchored path.
+// An anchored line stays while another worktree links the same anchored path.
 func TestExcludeLinesToStrip(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -19,9 +18,8 @@ func TestExcludeLinesToStrip(t *testing.T) {
 	tests := []struct {
 		name      string
 		anchorRel string
-		// sameAnchor and anyAnchor are the names a sibling still links at the same anchored path and at any anchor.
+		// sameAnchor is the names a sibling still links at the same anchored path.
 		sameAnchor []string
-		anyAnchor  []string
 		content    string
 		want       string
 	}{
@@ -29,29 +27,26 @@ func TestExcludeLinesToStrip(t *testing.T) {
 			name:       "SiblingAtTheSameAnchorKeepsTheAnchoredLine",
 			anchorRel:  ".",
 			sameAnchor: []string{"_lym"},
-			anyAnchor:  []string{"_lym"},
 			content:    "/_lym\n",
 			want:       "/_lym\n",
 		},
 		{
-			name:      "SiblingAtAnotherAnchorKeepsBareAndItsOwnLineAndStripsTheAnchoredOne",
+			name:      "SiblingAtAnotherAnchorKeepsItsOwnLineAndStripsTheAnchoredOne",
 			anchorRel: "sub",
-			anyAnchor: []string{"_lym"},
-			content:   "/_lym\n/sub/_lym\n_lym\n",
-			want:      "/_lym\n_lym\n",
+			content:   "/_lym\n/sub/_lym\n",
+			want:      "/_lym\n",
 		},
 		{
 			name:       "SiblingAtTheSubAnchorKeepsTheSubLine",
 			anchorRel:  "sub",
 			sameAnchor: []string{"_lym"},
-			anyAnchor:  []string{"_lym"},
 			content:    "/sub/_lym\n",
 			want:       "/sub/_lym\n",
 		},
 		{
-			name:      "NoSiblingStripsBothSpellingsAndKeepsOtherLines",
+			name:      "NoSiblingStripsTheAnchoredLineAndKeepsOtherLines",
 			anchorRel: "sub",
-			content:   "# header\n/sub/_lym\n_lym\nother\n",
+			content:   "# header\n/sub/_lym\nother\n",
 			want:      "# header\nother\n",
 		},
 		{
@@ -65,12 +60,9 @@ func TestExcludeLinesToStrip(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			wired := siblingWiring{sameAnchor: map[string]bool{}, anyAnchor: map[string]bool{}}
+			wired := siblingWiring{sameAnchor: map[string]bool{}}
 			for _, name := range tt.sameAnchor {
 				wired.sameAnchor[name] = true
-			}
-			for _, name := range tt.anyAnchor {
-				wired.anyAnchor[name] = true
 			}
 
 			stripSet := excludeLinesToStrip(tt.anchorRel, []string{"_lym"}, wired)

@@ -1,4 +1,4 @@
-// config_test.go tests batcher.yaml: its template, Active's profile resolution, ProfileWeights and MigrateConfig.
+// config_test.go tests batcher.yaml: its template, Active's profile resolution and ProfileWeights.
 // Its fixtures are plain files in a temporary directory, with no git repository.
 
 package batcher_test
@@ -7,7 +7,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -18,7 +17,8 @@ import (
 )
 
 // assertRetiredKey fails the test unless err wraps ErrRetiredKey exactly when want is set.
-func assertRetiredKey(t *testing.T, err error, want bool) {
+// A retired-key error offers the reconcile way forward exactly when handDeleteOnly is not set.
+func assertRetiredKey(t *testing.T, err error, want, handDeleteOnly bool) {
 	t.Helper()
 	if got := errors.Is(err, batcher.ErrRetiredKey); got != want {
 		t.Errorf("error %q wraps ErrRetiredKey = %v; want %v", err.Error(), got, want)
@@ -27,8 +27,11 @@ func assertRetiredKey(t *testing.T, err error, want bool) {
 		if !errors.Is(err, configengine.ErrInvalid) {
 			t.Errorf("retired-key error %q is not marked configengine.ErrInvalid", err.Error())
 		}
-		if !strings.Contains(err.Error(), `way forward: run "lym config reconcile --apply"`) {
-			t.Errorf("retired-key error %q lacks the reconcile way forward", err.Error())
+		if !strings.Contains(err.Error(), "by hand") {
+			t.Errorf("retired-key error %q lacks the hand-delete way forward", err.Error())
+		}
+		if offersReconcile := strings.Contains(err.Error(), `"lym config reconcile --apply"`); offersReconcile == handDeleteOnly {
+			t.Errorf("retired-key error %q offers the reconcile way forward = %v; want %v", err.Error(), offersReconcile, !handDeleteOnly)
 		}
 	}
 }
@@ -67,6 +70,8 @@ func TestActive(t *testing.T) {
 		wantErrWith []string
 		// wantRetired asserts the error wraps ErrRetiredKey.
 		wantRetired bool
+		// wantHandDeleteOnly asserts the retired-key way forward offers no reconcile verb.
+		wantHandDeleteOnly bool
 	}{
 		{
 			name: "templateDefaultResolvesWide",
@@ -173,6 +178,16 @@ func TestActive(t *testing.T) {
 			wantRetired: true,
 		},
 		{
+			name: "retiredAloneAboveInAnOperatorNamedProfileOffersOnlyTheHandDelete",
+			seed: func(t *testing.T, baseDir string) {
+				operatorCopy := strings.NewReplacer(`active: "wide"`, `active: "mine"`, "  wide:", "  mine:").Replace(template)
+				seedConfig(t, baseDir, "batcher", strings.Replace(operatorCopy, "    budget: ", "    alone_above: 1200000\n    budget: ", 1))
+			},
+			wantErrWith:        []string{"batcher.yaml", "mine", "alone_above"},
+			wantRetired:        true,
+			wantHandDeleteOnly: true,
+		},
+		{
 			name: "maxCardsBelowTwoErrors",
 			seed: func(t *testing.T, baseDir string) {
 				seedConfig(t, baseDir, "batcher", strings.Replace(template, "max_cards: 6", "max_cards: 1", 1))
@@ -201,7 +216,7 @@ func TestActive(t *testing.T) {
 				if !errors.Is(err, configengine.ErrInvalid) {
 					t.Errorf("Active error = %q; want it marked configengine.ErrInvalid", err.Error())
 				}
-				assertRetiredKey(t, err, tt.wantRetired)
+				assertRetiredKey(t, err, tt.wantRetired, tt.wantHandDeleteOnly)
 				return
 			}
 			if err != nil {
@@ -245,10 +260,10 @@ func TestActive(t *testing.T) {
 			wantErrWith: []string{"batcher.yaml", "wide", "max_cards"},
 		},
 		{
-			name:                   "retiredKeyInRepoDefaultNamesDefaultFileAndFabricReconcile",
+			name:                   "retiredKeyInRepoDefaultNamesDefaultFileAndDefaultLayerReconcile",
 			repoDefault:            strings.Replace(template, "    budget: ", "    alone_above: 1200000\n    budget: ", 1),
 			worktreeFile:           "profiles:\n  mine:\n    batchifier: identity\n",
-			wantErrWith:            []string{"alone_above", `way forward: run "lym fabric reconcile"`, "the orch runs it"},
+			wantErrWith:            []string{"alone_above", `or run "lym config reconcile --layer default --apply"`, "the orch runs it"},
 			wantDefaultFileInError: true,
 		},
 	}
@@ -395,7 +410,7 @@ func TestProfileWeights(t *testing.T) {
 						t.Errorf("ProfileWeights error = %q; want it to contain %q", err.Error(), want)
 					}
 				}
-				assertRetiredKey(t, err, tt.wantRetired)
+				assertRetiredKey(t, err, tt.wantRetired, true)
 				return
 			}
 			if err != nil {
@@ -420,8 +435,8 @@ func TestProfileWeights(t *testing.T) {
 		if wide != cautious {
 			t.Errorf("template wide weights = %+v; want cautious's %+v", wide, cautious)
 		}
-		if wide.Orientation != 31400 || wide.BatchGrowth != 7000 || wide.RetiredMasterBase != 0 || wide.RetiredStartupContext != 0 {
-			t.Errorf("template wide start = orientation %v, batch_growth %v, master_base %v, startup_context %v; want 31400, 7000, 0, 0", wide.Orientation, wide.BatchGrowth, wide.RetiredMasterBase, wide.RetiredStartupContext)
+		if wide.Orientation != 31400 || wide.BatchGrowth != 7000 {
+			t.Errorf("template wide start = orientation %v, batch_growth %v; want 31400, 7000", wide.Orientation, wide.BatchGrowth)
 		}
 	})
 	// No accessor exposes a profile's budget or max_cards, so the template is decoded directly.
@@ -443,114 +458,6 @@ func TestProfileWeights(t *testing.T) {
 		}
 		if wide.MaxCards != cautious.MaxCards || wide.Batchifier != cautious.Batchifier {
 			t.Errorf("template wide = batchifier %q, max_cards %d; want cautious's %q, %d", wide.Batchifier, wide.MaxCards, cautious.Batchifier, cautious.MaxCards)
-		}
-	})
-}
-
-// TestMigrateConfig pins the retired-key rewrite: retired keys are removed and everything else is carried.
-// Orientation is added at the template's value only where a retired weights key stood and none existed.
-// Where the input carried only retired keys, the result loads through Active.
-func TestMigrateConfig(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	const costProfile = "    batchifier: cost\n    max_cards: 6\n    budget: 450000\n"
-	const weightsTail = "      batch_growth: 7000\n      fork_messages: 4\n      message_context: 300\n      target_messages: 6\n      test_file_messages: 0.5\n      uses_messages: 2\n      context_per_line: 12\n      package_context: 2000\n      write_per_card_line: 12\n"
-	document := func(profileHead, weightsHead string) string {
-		return "active: \"cautious\"\nprofiles:\n  cautious:\n" + profileHead + costProfile + "    weights:\n" + weightsHead + weightsTail
-	}
-	tests := []struct {
-		name         string
-		input        string
-		want         string
-		wantRewrites []string
-		// wantLoads asserts the output loads through Active.
-		wantLoads bool
-	}{
-		{
-			name:         "master_base is replaced by the template orientation",
-			input:        document("", "      master_base: 52000\n"),
-			want:         document("", "      orientation: 31400\n"),
-			wantRewrites: []string{"profiles.cautious.weights.master_base: removed", "profiles.cautious.weights.orientation: added 31400"},
-			wantLoads:    true,
-		},
-		{
-			name:         "an operator orientation is kept",
-			input:        document("", "      master_base: 52000\n      orientation: 20000\n"),
-			want:         document("", "      orientation: 20000\n"),
-			wantRewrites: []string{"profiles.cautious.weights.master_base: removed"},
-			wantLoads:    true,
-		},
-		{
-			name:         "startup_context is replaced by the template orientation",
-			input:        document("", "      startup_context: 60000\n"),
-			want:         document("", "      orientation: 31400\n"),
-			wantRewrites: []string{"profiles.cautious.weights.orientation: added 31400", "profiles.cautious.weights.startup_context: removed"},
-			wantLoads:    true,
-		},
-		{
-			name:         "startup_context before a trailing master_base gets one orientation where startup_context stood",
-			input:        "profiles:\n  mine:\n    batchifier: identity\n    weights:\n      startup_context: 60000\n      custom: 2\n      master_base: 52000\n",
-			want:         "profiles:\n  mine:\n    batchifier: identity\n    weights:\n      orientation: 31400\n      custom: 2\n",
-			wantRewrites: []string{"profiles.mine.weights.master_base: removed", "profiles.mine.weights.orientation: added 31400", "profiles.mine.weights.startup_context: removed"},
-		},
-		{
-			name:         "master_base before a trailing startup_context gets one orientation where master_base stood",
-			input:        "profiles:\n  mine:\n    batchifier: identity\n    weights:\n      master_base: 52000\n      custom: 2\n      startup_context: 60000\n",
-			want:         "profiles:\n  mine:\n    batchifier: identity\n    weights:\n      orientation: 31400\n      custom: 2\n",
-			wantRewrites: []string{"profiles.mine.weights.master_base: removed", "profiles.mine.weights.orientation: added 31400", "profiles.mine.weights.startup_context: removed"},
-		},
-		{
-			name:         "alone_above is dropped without adding orientation",
-			input:        document("    alone_above: 1200000\n", "      orientation: 100\n"),
-			want:         document("", "      orientation: 100\n"),
-			wantRewrites: []string{"profiles.cautious.alone_above: removed"},
-			wantLoads:    true,
-		},
-		{
-			name:         "an operator profile's other keys are carried whole",
-			input:        "# mine\nnotes: keep\nprofiles:\n  mine:\n    batchifier: identity\n    extra: [1, 2]\n    weights:\n      master_base: 1\n      custom: 2\n",
-			want:         "# mine\nnotes: keep\nprofiles:\n  mine:\n    batchifier: identity\n    extra: [1, 2]\n    weights:\n      orientation: 31400\n      custom: 2\n",
-			wantRewrites: []string{"profiles.mine.weights.master_base: removed", "profiles.mine.weights.orientation: added 31400"},
-		},
-		{
-			name:  "a clean document comes back unchanged",
-			input: document("", "      orientation: 31400\n"),
-			want:  document("", "      orientation: 31400\n"),
-		},
-		{
-			name:  "an empty document comes back unchanged",
-			input: "",
-			want:  "",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got, rewrites, err := batcher.MigrateConfig([]byte(tt.input))
-			if err != nil {
-				t.Fatalf("MigrateConfig = _, _, %v; want nil error", err)
-			}
-			if string(got) != tt.want {
-				t.Errorf("MigrateConfig output:\n%s\nwant:\n%s", got, tt.want)
-			}
-			if !slices.Equal(rewrites, tt.wantRewrites) {
-				t.Errorf("MigrateConfig rewrites = %q; want %q", rewrites, tt.wantRewrites)
-			}
-			if tt.wantLoads {
-				baseDir := t.TempDir()
-				seedConfig(t, baseDir, "batcher", string(got))
-				if _, err := batcher.Active(configengine.Dirs{Anchor: baseDir}); err != nil {
-					t.Errorf("Active on the migrated document = %v; want nil error", err)
-				}
-			}
-		})
-	}
-
-	t.Run("a document that does not parse is invalid", func(t *testing.T) {
-		t.Parallel()
-		_, _, err := batcher.MigrateConfig([]byte("profiles: [unclosed\n"))
-		if !errors.Is(err, configengine.ErrInvalid) {
-			t.Errorf("MigrateConfig error = %v; want it marked configengine.ErrInvalid", err)
 		}
 	})
 }

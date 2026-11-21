@@ -151,28 +151,6 @@
 // A gate skips only its own row, and the shed goto verb is the one bypass:
 // Goto names its target as entered, so the target runs without evaluation.
 //
-// # Row renames
-//
-// Row names are durable resume identities,
-// so a product that renames a row carries in-flight runs across with RenameProducers.
-// It rewrites each retired name under the run lock, in these fields:
-// current_producer, entered_row, pause_before, pause_after and every history entry's producer.
-// A file that names no retired row is left untouched.
-// That rename has no side effect and serves a row that lives on under a new name.
-//
-// # Retired rows
-//
-// A row the recipe dropped is declared in the told Shed.Retired map, each name to the row a run on it moves to.
-// When a step finds current_producer naming no row but a key of the map, it calls the told Shed.RetiredMove.
-// The call receives the retired row, its target and whether the status was not running.
-// The step then persists the target as current_producer, state paused, with the reason:
-// `the row <from> is retired from the recipe, so the run moved to <target> and paused; way forward: <command>`.
-// The command is the told Shed.RetiredWayForward, or the run verb that resumes the run.
-// A RetiredMove error returns an error naming the cause and the same way forward, and persists nothing,
-// so the next step calls it again.
-// A current row that is a row of the list never consults the map,
-// and a name that is neither a row nor a key keeps the missing-producer refusal.
-//
 // # Field ownership and the stop conditions
 //
 // current_producer, state, pause_reason, error, activity and history are Shed-owned and rewritten on every persist.

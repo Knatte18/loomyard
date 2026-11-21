@@ -1,19 +1,16 @@
 // followup.go words the step that settles a batten run's record once a removal of its pair leaves the record standing.
-// It also reads the two facts that wording needs.
+// It also reads the fact that wording needs.
 
 package pairteardown
 
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -30,14 +27,14 @@ const (
 )
 
 // BattenFollowUp words the step that settles slug's batten run record after `lym fabric remove` of the run's pair.
-// The wording depends on the record, on whether one stands, and on whether an owner pause covers the slug.
-// A slug with no record, a record past its Land row, and a slug an owner pause covers give "".
+// The wording depends on the record and on whether one stands.
+// A slug with no record and a record past its Land row give "".
 // A record before Land names the cancel that clears the record and the task branch the next add would refuse.
 // A record at Land names the batten run whose failed stop words the restore of each branch the removal took.
 // It never names a cancel, since the run's work already reached its parent.
-func BattenFollowUp(slug string, record shedengine.Status, found, ownerHeld bool) string {
+func BattenFollowUp(slug string, record shedengine.Status, found bool) string {
 	switch {
-	case !found, ownerHeld, record.State == shedengine.StateDone, record.CurrentProducer == worktreeTeardownRow:
+	case !found, record.State == shedengine.StateDone, record.CurrentProducer == worktreeTeardownRow:
 		return ""
 	case record.CurrentProducer == landRow:
 		return fmt.Sprintf("the run's work already reached its parent, so never cancel it: run `lym batten run %s`, whose failed stop names the restore of each branch the removal took, run those steps, then `lym batten run %s` again", slug, slug)
@@ -48,19 +45,6 @@ func BattenFollowUp(slug string, record shedengine.Status, found, ownerHeld bool
 // ReadBattenRecord reads the batten run record of slug on the hub's prime; found is false when the run has none.
 func ReadBattenRecord(prime *lymcwd.Location, slug string) (shedengine.Status, bool, error) {
 	return readStatus(shedrun.StatusFile(prime, slug), shedrun.StatusLock(prime, slug))
-}
-
-// OwnerPauseHeld reports whether an owner pause covers slug in the hub's pause record.
-func OwnerPauseHeld(prime *lymcwd.Location, slug string) (bool, error) {
-	geometry, err := hubgeom.PauseGeometry(prime)
-	if err != nil {
-		return false, err
-	}
-	coverage, err := pauserecord.ReadCoverage(geometry.RecordPath, slug, time.Now())
-	if err != nil {
-		return false, err
-	}
-	return coverage.OwnerHeld, nil
 }
 
 // removeCancelledRunRecord deletes slug's batten run record on the hub's prime when its state is cancelled.
@@ -123,19 +107,15 @@ func recordsTrackRun(prime *lymcwd.Location, slug string) (bool, error) {
 }
 
 // FollowUpFor words the step that settles slug's batten run record on the hub's prime.
-// A failed read of the record or of the owner pause is logged and words nothing.
+// A failed read of the record is logged and words nothing.
 func FollowUpFor(prime *lymcwd.Location, slug string) string {
-	return followUpOver(
-		slug,
-		func(slug string) (shedengine.Status, bool, error) { return ReadBattenRecord(prime, slug) },
-		func(slug string) (bool, error) { return OwnerPauseHeld(prime, slug) },
-	)
+	return followUpOver(slug, func(slug string) (shedengine.Status, bool, error) { return ReadBattenRecord(prime, slug) })
 }
 
-// followUpOver words the step that settles slug's batten run record from the two reads it is given.
+// followUpOver words the step that settles slug's batten run record from the read it is given.
 // A nil read, or a read that fails, words nothing; a failed read is also logged.
-func followUpOver(slug string, record func(slug string) (shedengine.Status, bool, error), ownerHeld func(slug string) (bool, error)) string {
-	if record == nil || ownerHeld == nil {
+func followUpOver(slug string, record func(slug string) (shedengine.Status, bool, error)) string {
+	if record == nil {
 		return ""
 	}
 	status, found, err := record(slug)
@@ -143,10 +123,5 @@ func followUpOver(slug string, record func(slug string) (shedengine.Status, bool
 		logger.Warn("pairteardown: the batten record could not be read, so the removal names no follow-up", "slug", slug, "cause", err)
 		return ""
 	}
-	held, err := ownerHeld(slug)
-	if err != nil {
-		logger.Warn("pairteardown: the owner pause could not be read, so the removal names no follow-up", "slug", slug, "cause", err)
-		return ""
-	}
-	return BattenFollowUp(slug, status, found, held)
+	return BattenFollowUp(slug, status, found)
 }

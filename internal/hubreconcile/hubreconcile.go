@@ -44,8 +44,8 @@ type Options struct {
 
 // Ensure reconciles the hub's config once per binary build, under the hub lock, and commits what it wrote.
 // A build stamp naming the running build returns nil with no lock and no git.
-// That check reads the stamp, stats each per-worktree module's repo default, and stats the board's base-sparse marker.
-// An absent repo default or an absent marker makes the stamp stale.
+// That check reads the stamp and stats each per-worktree module's repo default.
+// An absent repo default makes the stamp stale.
 // Options.Pair selects the unconditional single-pair call instead of the stamp-gated walk over the whole hub.
 // A lock not acquired within the wait returns *LockTimeoutError; a reconcile or commit failure returns *WorktreeError.
 func Ensure(geom Geometry, opts Options) error {
@@ -83,7 +83,7 @@ type WorktreeError struct {
 	Worktree string
 	// File is the config file that failed; empty when the failure names no file.
 	File string
-	// Module is the config module of File; empty when File is empty or belongs to none, such as the board marker.
+	// Module is the config module of File; empty when File is empty or belongs to none, such as a template base.
 	Module string
 	// Board marks a failure at the board dir, whose files are edited at the default layer from the prime worktree.
 	Board bool

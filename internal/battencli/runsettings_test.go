@@ -21,7 +21,7 @@ func TestPrepareRunSettings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	const profiles = "defaults: {darn: light}\n" +
-		"light:\n  tapestry:\n    loom: {plan_max_bounces: 1, code_max_bounces: 1, merge_max_bounces: 1}\n  darn:\n    loom: {code_max_bounces: 2}\n" +
+		"light:\n  tapestry:\n    tapestry: {plan_max_bounces: 1}\n    loom: {code_max_bounces: 1}\n  darn:\n    loom: {code_max_bounces: 2}\n" +
 		"docs:\n  darn:\n    darn: {writer: opus}\n"
 	tests := []struct {
 		name        string
@@ -76,9 +76,9 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantDocs: map[string]string{"loom": "code_hard_max_bounces: 2\ncode_max_bounces: 1\n", "sampler": "code_review: true\n"},
 		},
 		{
-			name:        "the task's settings lie over the tapestry block with its plan keys in the tapestry document, and the profile's retired merge_max_bounces is dropped",
+			name:        "the task's settings lie over the tapestry block with its plan keys in the tapestry document",
 			profilesYML: profiles,
-			settings:    battenshed.RunSettings{Recipe: "tapestry", Profile: "light", Settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(3)}}},
+			settings:    battenshed.RunSettings{Recipe: "tapestry", Profile: "light", Settings: map[string]any{"tapestry": map[string]any{"plan_max_bounces": float64(3)}}},
 			wantDocs:    map[string]string{"loom": "code_max_bounces: 1\n", "tapestry": "plan_max_bounces: 3\n"},
 		},
 		{
@@ -100,16 +100,16 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantStuck:   []string{`"docs"`, "no tapestry block"},
 		},
 		{
-			name:        "a profile holding the recipe's block under its former name is Stuck naming the reconcile",
+			name:        "a profile holding the recipe's block under its former name is Stuck naming the hand rename",
 			profilesYML: "old:\n  loom:\n    loom: {code_max_bounces: 1}\n",
 			settings:    battenshed.RunSettings{Recipe: "tapestry", Profile: "old"},
-			wantStuck:   []string{`"old"`, "no tapestry block but a loom block", "lym config reconcile --layer default --apply"},
+			wantStuck:   []string{`"old"`, "no tapestry block but a loom block", "lym config profiles"},
 		},
 		{
-			name:        "a default held under the recipe's former name is Stuck naming the reconcile",
+			name:        "a default held under the recipe's former name is Stuck naming the hand rename",
 			profilesYML: "defaults: {loom: old}\nold:\n  loom:\n    loom: {code_max_bounces: 1}\n",
 			settings:    battenshed.RunSettings{Recipe: "tapestry"},
-			wantStuck:   []string{"no tapestry entry but a loom entry", "lym config reconcile --layer default --apply"},
+			wantStuck:   []string{"no tapestry entry but a loom entry", "lym config profiles"},
 		},
 		{
 			name:        "a profiles file that does not decode is Stuck",

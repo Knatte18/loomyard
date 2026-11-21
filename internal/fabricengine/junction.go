@@ -510,14 +510,13 @@ func unseedJunctionRecords(rec *Mutations, container string, junctions []WarpJun
 //
 // It resolves the exclude path with `git rev-parse --git-path info/exclude`.
 // The worktree path is joined to it when the resolved path is relative.
-// For each junction, it removes each line that trims to its anchored exclude pattern or to its legacy bare name.
+// For each junction, it removes each line that trims to its anchored exclude pattern.
 // The match is line-exact, the same comparison used to detect presence.
 // The remaining lines keep their original order.
 //
 // A line that another warp worktree in the same hub still needs is kept.
 // That holds even when this worktree no longer wires the name:
-// the anchored line while another worktree has the name linked at the same anchored path,
-// and the bare line while another worktree has the name linked at any anchor.
+// the line stays while another worktree has the name linked at the same anchored path.
 // git resolves info/exclude to the repo's common gitdir, so the repo has one exclude file, not one per worktree.
 // Removing a line a sibling still needs would show its live junctions as untracked dirt in git status.
 // That would trip the no-force dirty gate on worktrees the caller never touched.
@@ -562,19 +561,12 @@ func unseedGitExclude(rec *Mutations, l *lymcwd.Location, slug string, names []s
 }
 
 // excludeLinesToStrip returns the exclude lines an unwire of names at anchorRel may remove, given the sibling census.
-// Both spellings of a name are stripped when nothing still needs them.
-// One is the anchored pattern this binary writes; the other is the legacy bare name an earlier binary wrote.
-// Stripping both lets a hub wired by an earlier binary revert cleanly.
-// Only worktrees linked at the same anchored path share the anchored line.
-// A bare line matches at every depth, so every worktree wiring the name shares it.
+// The anchored pattern of a name is stripped when no other worktree links it at the same anchored path.
 func excludeLinesToStrip(anchorRel string, names []string, wired siblingWiring) map[string]bool {
 	stripSet := make(map[string]bool)
 	for _, name := range names {
 		if !wired.sameAnchor[name] {
 			stripSet[excludePatternFor(anchorRel, name)] = true
-		}
-		if !wired.anyAnchor[name] {
-			stripSet[name] = true
 		}
 	}
 	return stripSet
@@ -598,8 +590,6 @@ func stripExcludeLines(content string, stripSet map[string]bool) string {
 type siblingWiring struct {
 	// sameAnchor holds the names that another worktree has linked at the same anchored path as this one.
 	sameAnchor map[string]bool
-	// anyAnchor holds the names some other worktree has linked at its own anchored directory, whichever anchor that is.
-	anyAnchor map[string]bool
 }
 
 // namesWiredInSiblingWorktrees takes the census of names over the other warp worktrees registered in this repo.
@@ -607,17 +597,15 @@ type siblingWiring struct {
 // It is what keeps one worktree's unwire from dirtying every sibling:
 // the exclude file it would edit is repo-wide.
 // An anchored entry is only genuinely dead once no worktree links the same anchored path.
-// A bare entry, which matches at every depth, is dead once no worktree wires the name at any anchor.
 //
 // A failure to enumerate worktrees, or a sibling whose anchor cannot be read, reports every name as still wired.
 // Keeping a dead exclude line costs a stale line in a file only lym writes.
 // Removing a live one costs untracked-junction noise in a working tree the caller never asked to touch.
 func namesWiredInSiblingWorktrees(l *lymcwd.Location, slug string, names []string) siblingWiring {
-	wired := siblingWiring{sameAnchor: make(map[string]bool, len(names)), anyAnchor: make(map[string]bool, len(names))}
+	wired := siblingWiring{sameAnchor: make(map[string]bool, len(names))}
 	markAllWired := func() {
 		for _, name := range names {
 			wired.sameAnchor[name] = true
-			wired.anyAnchor[name] = true
 		}
 	}
 
@@ -641,14 +629,12 @@ func namesWiredInSiblingWorktrees(l *lymcwd.Location, slug string, names []strin
 			markAllWired()
 			return wired
 		}
-		sameAnchor := filepath.Clean(sibling.AnchorRel) == filepath.Clean(l.AnchorRel)
+		if filepath.Clean(sibling.AnchorRel) != filepath.Clean(l.AnchorRel) {
+			continue
+		}
 		for _, name := range names {
 			isLink, linkErr := fslink.IsLink(filepath.Join(entryPath, sibling.AnchorRel, name))
-			if linkErr != nil || !isLink {
-				continue
-			}
-			wired.anyAnchor[name] = true
-			if sameAnchor {
+			if linkErr == nil && isLink {
 				wired.sameAnchor[name] = true
 			}
 		}
@@ -673,33 +659,11 @@ func excludePatternFor(anchorRel, name string) string {
 // seedGitExclude adds junction names to the warp worktree's .git/info/exclude file if not already present.
 //
 // It appends the anchored exclude pattern of each warp junction that the file does not already hold.
-// A bare-name line for a seeded junction is replaced by the anchored pattern, not kept beside it.
-// An older binary may have written such a line,
-// so an existing hub converges on the narrower exclusion the first time it is re-wired.
 // Idempotent: re-running when all junction patterns are already present is a no-op.
 // rec is the calling verb's recorder.
 // It records KindFileWritten at the resolved exclude path via Append, only when the rewrite reports changed.
 func seedGitExclude(rec *Mutations, l *lymcwd.Location, slug string, names []string) error {
 	excludePath, changed, err := mutateGitExclude(WorktreePath(l, slug), func(content string) (string, error) {
-		// Drop any legacy bare-name line for a junction being seeded,
-		// so the anchored pattern replaces it rather than accumulating beside it.
-		legacy := make(map[string]bool, len(names))
-		for _, j := range WarpJunctions(l, slug, names) {
-			legacy[j.Name] = true
-		}
-		kept := make([]string, 0)
-		dropped := false
-		for _, line := range strings.Split(content, "\n") {
-			if legacy[strings.TrimSpace(line)] {
-				dropped = true
-				continue
-			}
-			kept = append(kept, line)
-		}
-		if dropped {
-			content = strings.Join(kept, "\n")
-		}
-
 		for _, j := range WarpJunctions(l, slug, names) {
 			pattern := excludePatternFor(l.AnchorRel, j.Name)
 

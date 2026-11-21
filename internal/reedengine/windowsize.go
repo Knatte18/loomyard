@@ -1,6 +1,5 @@
 // windowsize.go pins the geometry options of a reed session: the three-line status bar, window-size latest,
 // and the session shell options.
-// It also clears the window-resized hook that an older binary may have pinned on the shell window.
 // Every tmux call here is non-fatal.
 // A failure is logged with logger.Warn and answered with a safe fallback, never returned as an error.
 
@@ -64,16 +63,15 @@ func statusFormatPinArgvs() [][]string {
 // It also marks a prime session with "@lym_prime_session", which line 2 of the bar lists first.
 // It re-renders the button row.
 // A config edit or a pair marked a beam after boot reaches a live session at its next attach.
-// It also pins the navigation bindings, so a server booted by an older lym gets them at the next attach.
+// It also pins the navigation bindings, so a running server picks up a change to them at the next attach.
 // On every platform but Windows it pins the unseen-clear hook on the session.
-// It also clears the window-resized hook that an older binary may have pinned on the shell window.
 //
 // Every step runs even when an earlier one fails: each failure is logged via logger.Warn and ignored.
 // Windows skips the hook steps, because psmux lacks set-hook.
 // The option pins still run there, and psmux may refuse some of them.
 // target is the strands' window, as resolved by the window seam;
 // the session-wide options ride the window's session.
-// It runs at boot and in the attach pre-flight, so a session booted by an older lym loses its hook at the next attach.
+// It runs at boot and in the attach pre-flight.
 // Assumes the op lock is already held.
 func (e *Engine) pinGeometryOptionsLocked(target, shellPath string) {
 	for _, argv := range statusFormatPinArgvs() {
@@ -121,15 +119,5 @@ func (e *Engine) pinGeometryOptionsLocked(target, shellPath string) {
 	}
 	if err := e.tmux.run("set-hook", "-t", exactSessionWindowTarget(e.SessionName()), unseenClearHookName, unseenClearHookCommand); err != nil {
 		logger.Warn("reed: failed to pin the unseen-clear hook", "socket", e.Socket(), "session", e.SessionName(), "err", err)
-	}
-
-	// set-hook -u is idempotent and exits 0 whether or not a hook was set.
-	for _, argv := range [][]string{
-		{"set-hook", "-u", "-w", "-t", target, windowResizedHookName},
-		{"set-hook", "-u", "-t", target, windowResizedHookName},
-	} {
-		if err := e.tmux.run(argv...); err != nil {
-			logger.Warn("reed: failed to unset window-resized hook", "socket", e.Socket(), "session", e.SessionName(), "argv", argv, "err", err)
-		}
 	}
 }

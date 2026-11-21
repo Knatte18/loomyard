@@ -38,9 +38,7 @@ func validCard(number int, slug string) planparser.Card {
 		Number:           number,
 		Slug:             slug,
 		Title:            slug,
-		Type:             planparser.CardTypeEdit,
 		TypeLabelCount:   1,
-		HasType:          true,
 		Targets:          targets,
 		TargetGroups:     []planparser.TargetGroup{{Type: planparser.CardTypeEdit, Refs: targets}},
 		HasUses:          true,
@@ -54,12 +52,11 @@ func validCard(number int, slug string) planparser.Card {
 }
 
 // cardOfType returns a well-formed format-4 Card at number with slug.
-// Its Type, Targets, and single-entry TargetGroups all agree on typ and refs.
-// Reassigning Type or Targets on an already-returned Card does not update its separately-held TargetGroups entry,
+// Its Targets and single-entry TargetGroups agree on typ and refs.
+// Reassigning Targets on an already-returned Card does not update its separately-held TargetGroups entry,
 // so this is how a fixture whose type differs from validCard's is built.
 func cardOfType(number int, slug string, typ planparser.CardType, refs []string) planparser.Card {
 	card := validCard(number, slug)
-	card.Type = typ
 	card.Targets = refs
 	card.TargetGroups = []planparser.TargetGroup{{Type: typ, Refs: refs}}
 	return card
@@ -335,9 +332,7 @@ func TestValidate_CardTypeMissing(t *testing.T) {
 	t.Run("zero type labels", func(t *testing.T) {
 		t.Parallel()
 		card := validCard(1, "a")
-		card.HasType = false
 		card.TypeLabelCount = 0
-		card.Type = planparser.CardTypeUnknown
 		card.TargetGroups = nil
 		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
 		findings := planparser.Validate(plan, t.TempDir())
@@ -367,7 +362,6 @@ func TestValidate_CustomNotAlone(t *testing.T) {
 	t.Run("Custom group plus Edit group yields exactly one finding", func(t *testing.T) {
 		t.Parallel()
 		card := validCard(1, "a")
-		card.Type = planparser.CardTypeCustom
 		card.Targets = []string{"custom-target.go", "edit-target.go"}
 		card.TargetGroups = []planparser.TargetGroup{
 			{Type: planparser.CardTypeCustom, Refs: []string{"custom-target.go"}},
@@ -393,7 +387,6 @@ func TestValidate_CustomNotAlone(t *testing.T) {
 	t.Run("two Custom groups and nothing else yields none", func(t *testing.T) {
 		t.Parallel()
 		card := validCard(1, "a")
-		card.Type = planparser.CardTypeCustom
 		card.TypeLabelCount = 2
 		card.Targets = []string{"first-custom.go", "second-custom.go"}
 		card.TargetGroups = []planparser.TargetGroup{
@@ -410,7 +403,6 @@ func TestValidate_CustomNotAlone(t *testing.T) {
 	t.Run("two Custom groups plus one Edit group yields exactly one finding, not two", func(t *testing.T) {
 		t.Parallel()
 		card := validCard(1, "a")
-		card.Type = planparser.CardTypeCustom
 		card.TypeLabelCount = 3
 		card.Targets = []string{"first-custom.go", "second-custom.go", "edit-target.go"}
 		card.TargetGroups = []planparser.TargetGroup{
@@ -428,7 +420,6 @@ func TestValidate_CustomNotAlone(t *testing.T) {
 	t.Run("multi-label card with no Custom group yields none", func(t *testing.T) {
 		t.Parallel()
 		card := validCard(1, "a")
-		card.Type = planparser.CardTypeCreate
 		card.TypeLabelCount = 2
 		card.Targets = []string{"new-file.go", "edit-target.go"}
 		card.TargetGroups = []planparser.TargetGroup{
@@ -846,7 +837,6 @@ func TestValidate_RenameMechanicMissing(t *testing.T) {
 	t.Run("Rename group on a multi-label card, mechanic absent", func(t *testing.T) {
 		t.Parallel()
 		card := validCard(1, "a")
-		card.Type = planparser.CardTypeEdit
 		renamePairs := []planparser.MovePair{{Old: "old.go", New: "new.go"}}
 		card.Pairs = renamePairs
 		card.Targets = []string{"pkg/card1.go", "old.go", "new.go"}
@@ -980,7 +970,6 @@ func TestValidate_CardMissingField(t *testing.T) {
 	t.Run("Create-plus-Edit card with no ImpactSummary produces a finding", func(t *testing.T) {
 		t.Parallel()
 		card := validCard(1, "a")
-		card.Type = planparser.CardTypeCreate
 		card.Targets = []string{"new-file.go", "edit-file.go"}
 		card.TargetGroups = []planparser.TargetGroup{
 			{Type: planparser.CardTypeCreate, Refs: []string{"new-file.go"}},
@@ -998,7 +987,6 @@ func TestValidate_CardMissingField(t *testing.T) {
 	t.Run("Create-plus-Prosa card with no ImpactSummary produces none", func(t *testing.T) {
 		t.Parallel()
 		card := validCard(1, "a")
-		card.Type = planparser.CardTypeCreate
 		card.Targets = []string{"new-file.go", "doc.go"}
 		card.TargetGroups = []planparser.TargetGroup{
 			{Type: planparser.CardTypeCreate, Refs: []string{"new-file.go"}},
@@ -1036,7 +1024,6 @@ func TestValidate_CardFieldEmpty(t *testing.T) {
 		t.Parallel()
 		card := validCard(1, "a")
 		card.Uses = []string{"pkg/dep.go"}
-		card.Type = planparser.CardTypeEdit
 		card.TargetGroups = []planparser.TargetGroup{
 			{Type: planparser.CardTypeEdit, Refs: card.Targets},
 			{Type: planparser.CardTypeCreate, Refs: nil},
@@ -1431,7 +1418,6 @@ func TestValidate_ProsaSymbolTarget(t *testing.T) {
 	t.Run("Edit group symbol plus Prosa group member glyph: only the Prosa group's is flagged", func(t *testing.T) {
 		t.Parallel()
 		card := validCard(1, "a")
-		card.Type = planparser.CardTypeEdit
 		card.Targets = []string{"pkg.EditSymbol", "internal/foo#ProsaMember"}
 		card.TargetGroups = []planparser.TargetGroup{
 			{Type: planparser.CardTypeEdit, Refs: []string{"pkg.EditSymbol"}},
@@ -1601,7 +1587,6 @@ func TestValidate_PathMissing(t *testing.T) {
 		card := validCard(1, "a")
 		firstPairs := []planparser.MovePair{{Old: "missing-old.go", New: "missing-new.go"}}
 		secondPairs := []planparser.MovePair{{Old: "present-old.go", New: "present-new.go"}}
-		card.Type = planparser.CardTypeRename
 		card.Pairs = append(append([]planparser.MovePair{}, firstPairs...), secondPairs...)
 		card.Targets = []string{"missing-old.go", "missing-new.go", "present-old.go", "present-new.go"}
 		card.TargetGroups = []planparser.TargetGroup{
@@ -1632,7 +1617,6 @@ func TestValidate_PathMissing(t *testing.T) {
 	t.Run("Edit group absent, Create group on the same card absent: only the Edit path is reported", func(t *testing.T) {
 		t.Parallel()
 		card := validCard(1, "a")
-		card.Type = planparser.CardTypeEdit
 		card.Targets = []string{"missing-edit.go", "missing-create.go"}
 		card.TargetGroups = []planparser.TargetGroup{
 			{Type: planparser.CardTypeEdit, Refs: []string{"missing-edit.go"}},
@@ -1653,7 +1637,6 @@ func TestValidate_PathMissing(t *testing.T) {
 	t.Run("first group Create, second group Edit: the Edit group's absent path is still reported", func(t *testing.T) {
 		t.Parallel()
 		card := validCard(1, "a")
-		card.Type = planparser.CardTypeCreate
 		card.Targets = []string{"new-file.go", "missing-edit.go"}
 		card.TargetGroups = []planparser.TargetGroup{
 			{Type: planparser.CardTypeCreate, Refs: []string{"new-file.go"}},
@@ -1701,7 +1684,6 @@ func TestValidate_PathMissing(t *testing.T) {
 		root := t.TempDir()
 
 		createAndEdit := validCard(1, "create-and-edit")
-		createAndEdit.Type = planparser.CardTypeCreate
 		createAndEdit.Targets = []string{"shared-new.go", "own-edit.go"}
 		createAndEdit.TargetGroups = []planparser.TargetGroup{
 			{Type: planparser.CardTypeCreate, Refs: []string{"shared-new.go"}},

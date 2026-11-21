@@ -351,7 +351,7 @@ func TestVerify_Scenario(t *testing.T) {
 			t.Fatal(err)
 		}
 		named := logs[len(logs)-1].path
-		if err := WriteLandingFailure(p, LandingFailure{Kind: FailureKindPlanVerify, LogPath: named, Head: "abc"}); err != nil {
+		if err := WriteLandingFailure(p, LandingFailure{Kind: testFailureKind, LogPath: named, Head: "abc"}); err != nil {
 			t.Fatal(err)
 		}
 		mustVerify(t, p, "exit 1")

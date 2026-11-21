@@ -5,15 +5,14 @@
 package reedengine
 
 import (
-	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestPinBootOptionsLocked_ClearsTheWindowResizedHook pins that a fresh boot unpins the window-resized hook.
-// It does so in both scopes and installs no entry, whatever the watchdog value.
-func TestPinBootOptionsLocked_ClearsTheWindowResizedHook(t *testing.T) {
+// TestPinBootOptionsLocked_LeavesTheWindowResizedHookAlone pins the fresh boot's hooks.
+// It issues no set-hook naming window-resized, whatever the watchdog value.
+func TestPinBootOptionsLocked_LeavesTheWindowResizedHookAlone(t *testing.T) {
 	tiergate.Require(t, 0)
 	for _, watchdog := range []string{"on", "off"} {
 		t.Run("Watchdog_"+watchdog, func(t *testing.T) {
@@ -24,8 +23,8 @@ func TestPinBootOptionsLocked_ClearsTheWindowResizedHook(t *testing.T) {
 				t.Fatalf("pinBootOptionsLocked() = %v, want nil", err)
 			}
 
-			if got, want := fake.SetHookCalls(windowResizedHookName), wantResizedUnpins(exactSessionWindowTarget(e.SessionName())); !slices.EqualFunc(got, want, slices.Equal[[]string]) {
-				t.Errorf("set-hook calls naming %s = %v, want the two unpins and no installing entry: %v", windowResizedHookName, got, want)
+			if got := fake.SetHookCalls(windowResizedHookName); len(got) != 0 {
+				t.Errorf("set-hook calls naming %s = %v, want none", windowResizedHookName, got)
 			}
 			assertUnseenClearHookPinned(t, e, fake)
 		})

@@ -317,7 +317,7 @@ func TestPreflightRunOwner_RemoveFollowUp(t *testing.T) {
 			}
 			ending := resumeReentry(slug)
 			if tt.wantFollowUp {
-				ending = pairteardown.BattenFollowUp(slug, record, true, false)
+				ending = pairteardown.BattenFollowUp(slug, record, true)
 			}
 			want := fmt.Sprintf("battencli: cannot resume %q: branch some-slug-records is diverged against origin; %s; %s", slug, tt.wayForward, ending)
 			if err.Error() != want {

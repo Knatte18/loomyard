@@ -277,19 +277,9 @@ func documentSubjectWithHead(location *lymcwd.Location, head func() (string, err
 // fixerReportInput returns the review input seam of a tapestry run.
 // The seam reads the merge fixer's latest Parent-Align report under scratchDir.
 // It also returns the time the report was written.
-// It falls back to a report under the name Merge-In when the Parent-Align report is absent.
-// Older runs wrote their report under that name.
 // A session that never ran leaves no report, which answers not found.
 func fixerReportInput(scratchDir string) func() (string, time.Time, bool, error) {
-	current := reviewInputFile(filepath.Join(scratchDir, loomshed.NameParentAlign+"-fixer-report.md"))
-	retired := reviewInputFile(filepath.Join(scratchDir, "Merge-In-fixer-report.md"))
-	return func() (string, time.Time, bool, error) {
-		path, written, found, err := current()
-		if err != nil || found {
-			return path, written, found, err
-		}
-		return retired()
-	}
+	return reviewInputFile(filepath.Join(scratchDir, loomshed.NameParentAlign+"-fixer-report.md"))
 }
 
 // prFindingsPrefix and prFindingsSuffix frame the name of a send-back's findings file around the send-back's number.

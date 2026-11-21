@@ -148,19 +148,9 @@ type Card struct {
 	// SourcePath is the card's bare worktree-relative source-identity token `_lym/plan/NN-<slug>.md`.
 	SourcePath string
 
-	// Type is the first recognized type label the card body carried, or CardTypeUnknown when none.
-	// Type is retained for exported-field compatibility only: it is explicitly not validation
-	// state, no check in internal/planparser/validate.go reads it, and a new check must key on
-	// TargetGroups, never on Type, or it silently reintroduces first-label-wins.
-	Type CardType
-
-	// TypeLabelCount is how many recognized type labels the card body carried. TypeLabelCount is
-	// retained for exported-field compatibility only: a count above one is legal rather than a
-	// defect, and it is not validation state.
+	// TypeLabelCount is how many recognized type labels the card body carried.
+	// A count above one is legal rather than a defect, and a check keys on TargetGroups, never on the count.
 	TypeLabelCount int
-
-	// HasType reports whether TypeLabelCount is greater than zero.
-	HasType bool
 
 	// TargetGroups is one entry per recognized type label the card body carried, in body order.
 	// A card carrying two labels has two entries, and a card carrying the same label twice also

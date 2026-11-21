@@ -495,12 +495,10 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			RunID: "run-1",
 			Paths: pawlengine.Paths{
 				LandRequest:     filepath.Join(dir, "land-request.json"),
-				ReopenRequest:   filepath.Join(dir, "reopen-request.json"),
 				DobbyStopMarker: filepath.Join(dir, "dobby-stop"),
 				AwaitMarker:     filepath.Join(dir, "await-entered"),
 				HandOffMarker:   filepath.Join(dir, pawlengine.HandOffMarkerName),
 			},
-			RetiredRows:         []string{"Parent-Align"},
 			SetStatus:           func(string) error { return nil },
 			EntryProducer:       func() (string, error) { return "", nil },
 			OwnedElsewhere:      func() (bool, error) { return false, nil },

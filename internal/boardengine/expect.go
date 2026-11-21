@@ -36,7 +36,7 @@ func (b *Board) Expecting(slug, revision string) *Board {
 }
 
 // checkExpected refuses with a *StaleEntryError when the loaded entries do not hold the entry b expects.
-// loaded is the entries as the write section loaded and migrated them, so the revision is the one Board.View gives.
+// loaded is the entries as the write section loaded them, so the revision is the one Board.View gives.
 // A board with no expectation passes.
 func (b *Board) checkExpected(loaded []Task, primeOwner string) error {
 	if b.expected == nil {

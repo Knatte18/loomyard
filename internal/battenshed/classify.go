@@ -22,14 +22,10 @@ const stateChangeSeparator = " → "
 const (
 	// WakeKindReviewEscalation is a halt at a review row whose segment holds an escalation file.
 	WakeKindReviewEscalation = "review-escalation"
-	// WakeKindPRGate is a halt at the gate row.
-	WakeKindPRGate = "pr-gate"
 	// WakeKindFailed is a wake for a failed state or a failure episode of a batten row.
 	WakeKindFailed = "failed"
 	// AutomaticKindVerifyRetry is batten's own retry of a first verify failure.
 	AutomaticKindVerifyRetry = "verify-retry"
-	// AutomaticKindParentMovedResume is batten's resume of a child awaiting at the gate for a moved parent.
-	AutomaticKindParentMovedResume = "parent-moved-resume"
 )
 
 // StateChange is one recorded change of the child's state.
@@ -46,8 +42,6 @@ type StateChange struct {
 type NoticeRules struct {
 	// VerifyRows are the rows whose first verify failure batten retries.
 	VerifyRows []string
-	// GateRow is the row the gate halts at.
-	GateRow string
 	// EpisodeRows are batten's own rows whose repeated failures form one episode.
 	EpisodeRows []string
 	// Escalations maps a review row to the number of its segment's rounds that hold an escalation file.
@@ -170,20 +164,10 @@ func classifyChanges(result *Classification, child []shedengine.HistoryEntry, ru
 					}
 				}
 			}
-			if change.To == shedengine.StateAwaiting && row == rules.GateRow {
-				if index, ok := firstEntryAfter(child, change.At, time.Time{}, "", rules.GateRow); ok && child[index].Outcome == shedengine.OutcomeReroute {
-					result.Automatic = append(result.Automatic, AutomaticStep{Kind: AutomaticKindParentMovedResume, Producer: row, At: change.At})
-					result.AccountedChild = append(result.AccountedChild, index)
-					continue
-				}
-			}
 			kind := string(change.To)
-			switch {
-			case rules.Escalations[row] > escalated[row]:
+			if rules.Escalations[row] > escalated[row] {
 				escalated[row]++
 				kind = WakeKindReviewEscalation
-			case row == rules.GateRow:
-				kind = WakeKindPRGate
 			}
 			result.Wakes = append(result.Wakes, Wake{Kind: kind, Producer: row, At: change.At})
 		}

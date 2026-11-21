@@ -7,7 +7,6 @@ import (
 	"os"
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -71,45 +70,6 @@ func TestRunIntents(t *testing.T) {
 			if _, err := os.Stat(StatusFile(l, runID)); !os.IsNotExist(err) {
 				t.Errorf("%s(absent) left a status file, stat error %v", tt.name, err)
 			}
-		}
-	})
-
-	t.Run("KeptCancelWritesOnlyOverACancelledRecordWithNoIntent", func(t *testing.T) {
-		t.Parallel()
-		at := time.Date(2026, 11, 17, 9, 0, 0, 0, time.UTC)
-		stamp := at.Format(time.RFC3339)
-		kept := &shedengine.CancelIntent{StartedAt: stamp, Machine: "neve", Finish: &shedengine.CancelFinish{EndedAt: stamp}}
-		tests := []struct {
-			name        string
-			seed        map[string]any
-			wantWritten bool
-			wantCancel  *shedengine.CancelIntent
-		}{
-			{"CancelledWithNoIntent", map[string]any{"state": "cancelled"}, true, kept},
-			{"Running", map[string]any{"state": "running"}, false, nil},
-			{"CancelledWithAnIntent", map[string]any{"state": "cancelled", "cancel": keepCancel}, false, &keepCancel},
-			{"Absent", nil, false, nil},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				l := syntheticLocation(t)
-				if tt.seed != nil {
-					if err := state.WriteJSON(StatusFile(l, runID), StatusLock(l, runID), tt.seed); err != nil {
-						t.Fatalf("seed status file: %v", err)
-					}
-				}
-				written, err := WriteKeptCancel(l, runID, "neve", at)
-				if err != nil || written != tt.wantWritten {
-					t.Fatalf("WriteKeptCancel() = %v, %v; want %v, nil", written, err, tt.wantWritten)
-				}
-				if tt.seed == nil {
-					return
-				}
-				if got, _ := readIntentStatus(t, l, runID); !reflect.DeepEqual(got.Cancel, tt.wantCancel) {
-					t.Errorf("Cancel = %+v; want %+v", got.Cancel, tt.wantCancel)
-				}
-			})
 		}
 	})
 

@@ -39,11 +39,8 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 			t.Parallel()
 
 			argvs := bindingArgvs(tt.prev, tt.next, false, true, true, true)
-			if want := []string{"unbind-key", "-n", "M-z"}; !slices.Equal(argvs[0], want) {
-				t.Fatalf("first binding argv = %q, want %q ahead of every bind-key", argvs[0], want)
-			}
 			var keys []string
-			for _, argv := range argvs[1:] {
+			for _, argv := range argvs {
 				if len(argv) < 4 || argv[0] != "bind-key" || argv[1] != "-n" {
 					t.Fatalf("binding argv %q, want it to start with bind-key -n <key> <command>", argv)
 				}

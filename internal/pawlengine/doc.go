@@ -6,7 +6,7 @@
 // The package is told its geometry and every seam by its caller through Deps;
 // it imports no cwd resolver and no CLI package.
 // A producer refuses a nil seam it uses when built, naming the field.
-// Its records go through internal/state, so a key an older or newer binary wrote survives a rewrite.
+// Its records go through internal/state, so a key a newer binary wrote survives a rewrite.
 // A request naming another run is read, never refused.
 //
 // Beam-Up marks the pair a beam, spawns its push and regenerates the hub workspace.
@@ -31,8 +31,7 @@
 // Two re-entries post one notice naming `lym beam start` and `lym beam land`.
 // One is a re-entry whose dobby is down, once until a re-entry sees it live, recorded in the marker.
 // The other is a re-entry that finds the hold standing after a crash.
-// The hold stands when the entry's status names Finalize or a row of Deps.RetiredRows, the rows the recipe retired,
-// and no land request stands.
+// The hold stands when the entry's status names Finalize and no land request stands.
 // The entry settles an accepted landing it finds with no land request before it writes any status.
 // These states mark such a landing: the hold standing;
 // the ready record standing with the await marker absent, as after a goto from a halted Finalize;
@@ -51,23 +50,10 @@
 // The beam worktree's `.lym/beam/` holds these files:
 // the land request, the dobby-stop marker, the await marker and the hand-off marker.
 // The hub wiring composes their paths and tells them through Paths.
-// Paths also names the file of a reopen request an older binary wrote, which no code reads.
-//
-// MoveOffRetired runs the side effects that an in-flight landing needs when its run is moved off a retired row.
-// It works through RetiredMoveDeps.
-// It ends the PR-Review session.
-// It carries the run's scratch pull request into the landing record unless GitHub reports it closed or merged.
-// It removes the scratch record, the ready record, the land request, the dobby-stop marker and the reopen request.
-// It commits the landing directory.
-// It then writes the status naming the target row, which lifts the landing hold.
-// It posts one notice naming the commands that bring the beam back.
-// A move repeated after the scratch record was removed names the pull request the landing record holds.
-// It names none when GitHub reports that pull request closed or merged.
-// Each step is idempotent, so a retried move repeats safely, and a failed step is returned naming it.
 //
 // The ready record, ReadyRecord, flags a beam ready to be merged into its parent.
 // It names the beam it flags, since a pair forked from the beam inherits it.
-// ReadyFor reads a record naming another slug as no flag, and RemoveReady removes only a record naming the beam.
+// ReadyFor reads a record naming another slug as no flag.
 // It is tracked, unlike the files above, and its path and lock path are told by the caller.
 //
 // The landing record, LandingRecord, sits beside the ready record and is tracked like it.

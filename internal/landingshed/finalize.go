@@ -1012,11 +1012,7 @@ func (fz *Finalize) rebaseAfterParentMerge(rec FixerAttempts) (FixerAttempts, er
 
 // readAttempts reads the fixer attempt record at path for the row's current entry, entry 0 with no row-entry read.
 // A record that does not decode comes back as a halting reason naming the file and how to remove it.
-// A record found only under the scratch directory is moved to the records directory first.
 func (fz *Finalize) readAttempts(path string) (FixerAttempts, string, error) {
-	if err := moveScratchAttempts(fz.deps.ScratchDir, fz.deps.RecordsDir, finalizeName); err != nil {
-		return FixerAttempts{}, "", err
-	}
 	entry := 0
 	if fz.deps.RowEntry != nil {
 		var err error

@@ -239,35 +239,22 @@ func seedWeftBranchFromMain(t *testing.T, dir, bareRemote, branch string) {
 }
 
 // TestCloneHub_AnchorAdoptPath covers the adopt path against a weft remote with .lym-anchor="backend" committed.
-// The marker sits on main-weft, which the prime's weft worktree checks out and which wins;
-// or it sits only on the Bolt legacy branch, the fallback.
+// The marker sits on main-weft, which the prime's weft worktree checks out.
 // A re-clone with no --subpath reads the recorded value; a conflicting non-default --subpath hard-errors;
-// a matching --subpath succeeds; and no re-clone writes a Bolt marker the weft's own branch did not already carry.
+// a matching --subpath succeeds; and no re-clone writes a marker on the board.
 func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
-
-	// seedBoltMarker commits the marker on the weft remote's main, where a two-repository hub's board once kept it.
-	seedBoltMarker := func(t *testing.T, fixtures, weftBare string) {
-		seedWeftBranchFromMain(t, fixtures, weftBare, "main-weft")
-		commitFileOnBranch(t, fixtures, weftBare, "main", lymcwd.AnchorFileName, "backend\n")
-	}
 
 	tests := []struct {
 		name string
 		// seed commits the marker on the branch under test of the weft remote.
 		seed func(t *testing.T, fixtures, weftBare string)
-		// wantBoardMarker reports whether the board is expected to hold the marker on the weft remote's main.
-		wantBoardMarker bool
-		// oneURL clones from the weft alone: its main also records the warp binding, which a two-URL clone is given instead.
-		oneURL bool
 	}{
 		{"MainWeftMarker", func(t *testing.T, fixtures, weftBare string) {
 			seedWeftBranchFromMain(t, fixtures, weftBare, "main-weft")
 			commitFileOnBranch(t, fixtures, weftBare, "main-weft", lymcwd.AnchorFileName, "backend\n")
-		}, false, false},
-		{"BoltMarker", seedBoltMarker, true, false},
-		{"BoltMarkerOneURL", seedBoltMarker, true, true},
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -279,10 +266,6 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 			weftBare := makeBareRemote(t, fixtures, "anchor-adopt-weft")
 			tt.seed(t, fixtures, weftBare)
 			warpURL := filepath.ToSlash(warpBare)
-			if tt.oneURL {
-				commitFileOnBranch(t, fixtures, weftBare, "main", fabricengine.WarpBindingFileName, warpURL+"\n")
-				warpURL = ""
-			}
 
 			// With no --subpath, the recorded anchor is read and returned as-is.
 			// ForceBootstrap is not needed; the weft already carries the .lym-anchor marker seeded above,
@@ -300,9 +283,8 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 			if res.Anchor != "backend" {
 				t.Errorf("res.Anchor = %q; want %q (adopted from the recorded marker)", res.Anchor, "backend")
 			}
-			_, boardStatErr := os.Stat(filepath.Join(res.BoardDir, lymcwd.AnchorFileName))
-			if gotBoardMarker := boardStatErr == nil; gotBoardMarker != tt.wantBoardMarker {
-				t.Errorf("board holds a %s = %v; want %v (the adopt writes nothing)", lymcwd.AnchorFileName, gotBoardMarker, tt.wantBoardMarker)
+			if _, boardStatErr := os.Stat(filepath.Join(res.BoardDir, lymcwd.AnchorFileName)); boardStatErr == nil {
+				t.Errorf("board holds a %s; want none (the adopt writes nothing)", lymcwd.AnchorFileName)
 			}
 
 			// A conflicting non-default --subpath must hard-error rather than silently re-anchor:
@@ -371,9 +353,10 @@ func TestCloneHub_BoltCheckoutAdoptsARemoteOnlyBoardBranch(t *testing.T) {
 }
 
 // TestCloneHub_StaleFabricAnchorHardErrors asserts a hard error for a weft remote with a stale marker.
-// The stale marker is ".fabric-anchor" with no ".lym-anchor" beside it; the error names the marker rename as the remedy,
-// and teardownHub removes the hub.
+// The stale marker is ".fabric-anchor" with no ".lym-anchor" beside it.
+// The error names the marker on the prime's records branch as the remedy, and teardownHub removes the hub.
 // An old clone must never silently fall through to the create path and re-anchor under ".lym-anchor".
+// Applying the remedy lets the retried clone adopt the old marker's non-default anchor.
 func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -401,16 +384,32 @@ func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
 	if err == nil {
 		t.Fatalf("CloneHub() against a stale .fabric-anchor with no .lym-anchor should have failed")
 	}
-	// The remedy must be the marker rename, never "re-clone": this error is produced by a clone;
-	// prescribing another clone is a loop the operator cannot exit.
-	if !strings.Contains(err.Error(), "git mv .fabric-anchor .lym-anchor") {
-		t.Errorf("CloneHub() error = %q; want it to name the marker rename as the remedy", err.Error())
+	// The remedy must name the marker on the prime's records branch, never "re-clone":
+	// this error is produced by a clone, so prescribing another clone is a loop the operator cannot exit.
+	for _, want := range []string{lymcwd.AnchorFileName, "records branch main-weft", "retry this clone"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("CloneHub() error = %q; want it to contain %q", err.Error(), want)
+		}
 	}
 	if strings.Contains(err.Error(), "re-clone this hub") {
 		t.Errorf("CloneHub() error = %q; want it NOT to prescribe the very action that produced it", err.Error())
 	}
 	if _, statErr := os.Stat(expectedHubPath); statErr == nil {
 		t.Errorf("hub directory %s should have been removed by teardownHub after the stale-marker guard failure", expectedHubPath)
+	}
+
+	seedWeftBranchFromMain(t, fixtures, weftBare, "main-weft")
+	commitFileOnBranch(t, fixtures, weftBare, "main-weft", lymcwd.AnchorFileName, "backend\n")
+	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+		WeftURL: filepath.ToSlash(weftBare),
+		WarpURL: filepath.ToSlash(warpBare),
+		Subpath: "",
+	})
+	if err != nil {
+		t.Fatalf("CloneHub() after the remedy error = %v; want nil", err)
+	}
+	if res.Anchor != "backend" {
+		t.Errorf("res.Anchor = %q; want %q (adopted from the marker the remedy committed)", res.Anchor, "backend")
 	}
 }
 

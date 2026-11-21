@@ -276,21 +276,16 @@ missing, not a link, or points elsewhere, this re-wires every junction for
 that pair in one call — a pair with only one junction broken is repaired,
 not reported already-healthy.
 
-It also removes fabric's retired portal links (under _portals) and the old
-workspace file under _launchers, and keeps anything else found there, naming it
-under hub_details. Every regeneration of the hub workspace file warns until this
-has run.
-
 It also heals every hub-wide config file, such as fabric.yaml or gate.yaml, at
 the hub's board dir: an absent board.yaml is seeded from the prime worktree's copy
 when it has one, and the written files are committed in ` + fabricengine.BoltDirName + ` and pushed. The
 board is pulled first; when it cannot be brought up to date nothing is written
 and the reason is reported under hub_config_detail without failing the verb.
 The envelope reports each module under hub_config, a commit or push failure of
-the hub-wide config or the warp-binding record under hub_config_detail or
-warp_binding_detail and fails the verb with the envelope kept, and a board.yaml
-started from the template, which carries no custom types or labels, under
-warnings.`,
+the hub-wide config under hub_config_detail, which fails the verb with the
+envelope kept, how the recorded warp binding compares with the warp origin under
+warp_binding and warp_binding_detail, and a board.yaml started from the
+template, which carries no custom types or labels, under warnings.`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runReconcile(ctx, out, args) }),
 	})
 
@@ -627,15 +622,10 @@ func runPairs(ctx context.Context, out io.Writer, _ []string) int {
 }
 
 // runReconcile executes the fabric reconcile subcommand, walking and repairing all warp↔weft pairs.
-// The engine runs the once-per-hub warp-URL binding backfill and writes the record;
-// on "recorded" this handler commits the record through Bolt, and on "recorded" or "present" it attempts a push.
-// A record committed but not yet pushed is retried on every later reconcile.
-// A failure in either step downgrades the outcome to WarpBindingOutcomeRecordFailed.
-// That value is CLI-only: the engine never returns it, and the verb fails with the envelope kept.
-// A commit or push failure of the hub-wide config fails the verb the same way.
+// The engine compares the recorded warp-URL binding with the warp origin once per hub and reports it as warp_binding.
+// A commit or push failure of the hub-wide config fails the verb with the envelope kept.
 // A heal skipped because the Bolt checkout could not be brought up to date is reported under hub_config_detail;
 // it is no failure.
-// The verdict on the hub-wide anchor marker, when the Bolt checkout holds one, is reported under bolt_anchor.
 // A pair failure takes precedence over these as the error the verb returns.
 func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
@@ -654,7 +644,7 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 
 	// Reconcile is the repair verb, so it heals a missing hub-wide config here rather than reporting it.
 	// The strict config loader names reconcile as the remedy, so reconcile reporting the gap would be circular.
-	// ReconcileHubWideAt seeds absent hub files sparse and prunes retired keys, keeping any other key the template lacks.
+	// ReconcileHubWideAt seeds absent hub files sparse, keeping any key the template lacks.
 	// It never rewrites a recorded pathspec and strips no present base file.
 	// A PrimeName failure means no prime is resolvable, not an error: the seed falls back to the template.
 	boltDir := fabricengine.BoltDir(l.HubPath)
@@ -744,79 +734,19 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	}
 	rec.Extend(r.Mutated())
 
-	binding := r.WarpBinding
-	detail := r.WarpBindingDetail
-
-	if binding == fabricengine.WarpBindingOutcomeRecorded || binding == fabricengine.WarpBindingOutcomePresent {
-		b := fabricengine.NewBolt(fabricengine.BoltDir(l.HubPath))
-
-		if binding == fabricengine.WarpBindingOutcomeRecorded {
-			sha, committed, commitErr := b.Commit("fabric reconcile: record warp binding", fabricengine.SyncOptions{})
-			if commitErr != nil {
-				binding = fabricengine.WarpBindingOutcomeRecordFailed
-				detail = commitErr.Error()
-				if firstFailure == nil {
-					firstFailure = warpBindingFailure(detail, commitErr, fabricengine.BoltDir(l.HubPath))
-				}
-			} else if committed {
-				rec.Append(fabricengine.KindCommitCreated, fabricengine.BoltDir(l.HubPath), sha)
-			}
-		}
-
-		// Push on both "recorded" and "present".
-		// The "present" case retries a backfill that committed locally but failed to push on a prior reconcile.
-		// Without that push, the next reconcile would see the record already on disk and report "present" again,
-		// so a handler that pushed only on "recorded" would skip the push forever.
-		//
-		// Bolt's push returns nil without contacting the remote when HEAD is already in sync.
-		// It checks HasUnpushed, a purely local rev-list, so this costs nothing when there is nothing to push.
-		// HasUnpushed treats a checkout with no configured upstream as unpushed.
-		// So such a checkout attempts a network push on every reconcile.
-		// A checkout on an existing default branch carries its upstream from the initial clone and does not hit this.
-		// A hub bootstrapped against an empty weft remote hits it on every reconcile:
-		// its Bolt checkout branch is orphan-created with no upstream at all.
-		// The attempt is harmless: it either succeeds or yields record_failed with the error in the detail.
-		//
-		// This push records no branch_pushed entry.
-		// A nil error from Bolt.PushRecorded means either a push landed or nothing was unpushed.
-		// The two cannot be told apart, so a branch_pushed entry would claim a push that may not have happened.
-		// The commit above is already recorded, and omitting the entry costs the cross-check nothing.
-		// A seed-commit drop behind the push is recorded in rec as commits_dropped.
-		if binding == fabricengine.WarpBindingOutcomeRecorded || binding == fabricengine.WarpBindingOutcomePresent {
-			if pushErr := b.PushRecorded(fabricengine.SyncOptions{}, rec); pushErr != nil {
-				wasPresent := binding == fabricengine.WarpBindingOutcomePresent
-				binding = fabricengine.WarpBindingOutcomeRecordFailed
-				if wasPresent {
-					detail = fmt.Sprintf("a previously committed warp binding record could not be pushed: %v", pushErr)
-				} else {
-					detail = fmt.Sprintf("commit succeeded but push failed: %v", pushErr)
-				}
-				if firstFailure == nil {
-					firstFailure = warpBindingFailure(detail, pushErr, fabricengine.BoltDir(l.HubPath))
-				}
-			}
-		}
-	}
-
 	envelope := map[string]any{
 		"pairs":        r.Pairs,
-		"warp_binding": string(binding),
+		"warp_binding": string(r.WarpBinding),
 		"hub_config":   hubConfig,
 	}
-	if detail != "" {
-		envelope["warp_binding_detail"] = detail
+	if r.WarpBindingDetail != "" {
+		envelope["warp_binding_detail"] = r.WarpBindingDetail
 	}
 	if hubConfigDetail != "" {
 		envelope["hub_config_detail"] = hubConfigDetail
 	}
 	if len(warnings) > 0 {
 		envelope["warnings"] = warnings
-	}
-	if len(r.HubDetails) > 0 {
-		envelope["hub_details"] = r.HubDetails
-	}
-	if r.BoltAnchor != "" {
-		envelope["bolt_anchor"] = r.BoltAnchor
 	}
 
 	// A pair carrying an Error is a repair this verb was asked to perform and did not,
@@ -856,11 +786,6 @@ func reconcileFailureLine(cause error, boardDir string) string {
 // hubConfigFailure is the error that fails the verb when the hub-wide config's commit or push failed with cause.
 func hubConfigFailure(detail string, cause error, boardDir string) error {
 	return fmt.Errorf("fabric reconcile: %s%s", detail, reconcileFailureLine(cause, boardDir))
-}
-
-// warpBindingFailure is the error that fails the verb when the warp-binding record's commit or push failed with cause.
-func warpBindingFailure(detail string, cause error, boardDir string) error {
-	return fmt.Errorf("fabric reconcile: warp binding record failed: %s%s", detail, reconcileFailureLine(cause, boardDir))
 }
 
 // failedReconcilePairs returns an error that summarises every pair whose reconcile step failed.

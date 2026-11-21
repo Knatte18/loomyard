@@ -19,24 +19,6 @@ const RecordFileName = "record.json"
 // ScopeHub is the scope of an entry that covers every pair and the prime.
 const ScopeHub = "hub"
 
-// OwnerCaller is the Caller a legacy pause entry carried for a run owned by another machine.
-// No code path writes it now; the name stays declared so the upgrade's first read recognises and drops such entries.
-const OwnerCaller = "owner"
-
-// AdoptCaller is the legacy Caller of the pause entry an older `lym adopt` wrote.
-// It sat on a run, or a released task, that adopt took over.
-// No code writes it now.
-// The upgrade's first read turns a standing one into the Bolt model.
-// CoverageOf still reads one as held.
-const AdoptCaller = "adopt"
-
-// HoldCaller is the legacy Caller of the pause entry an older `lym adopt` left on a run it took over.
-// A released task it took over carries it too.
-// No code writes it now.
-// The upgrade's first read turns a standing one into the Bolt model.
-// CoverageOf still reads one as held.
-const HoldCaller = "adopt-hold"
-
 // BoltHoldCaller is the Caller of the slug entry a machine writes for one of its runs while a Bolt hold stands.
 // It holds the run's processes and network calls on that machine, and the machine's dobby lifts it once the hold clears.
 const BoltHoldCaller = "bolt-hold"
@@ -103,10 +85,7 @@ type Coverage struct {
 	Entry Entry
 	// Intervals holds every interval of every entry covering the slug, live and resumed.
 	Intervals []Interval
-	// OwnerHeld reports whether a live entry of the slug's own scope carries OwnerCaller.
-	// It is set even when another entry is the covering one.
-	OwnerHeld bool
-	// Held reports whether a live entry of the slug's own scope carries AdoptCaller, HoldCaller or BoltHoldCaller.
+	// Held reports whether a live entry of the slug's own scope carries BoltHoldCaller.
 	// It is set even when another entry is the covering one.
 	Held bool
 	// HoldMachine is the Machine of the BoltHoldCaller entry that set Held, empty when none did.
@@ -245,23 +224,15 @@ func ClaimSession(path, slug string, session Session, now time.Time) (Entry, boo
 
 // CoverageOf returns the covering live entry for slug and the interval of every entry covering it.
 // A live entry's interval runs from its pause to now, a resumed one's to its resume.
-// OwnerHeld is set when a live entry of slug's own scope carries OwnerCaller.
-// Held is set when one carries AdoptCaller, HoldCaller or BoltHoldCaller.
-// HoldMachine then names a BoltHoldCaller entry's machine.
+// Held is set when a live entry of slug's own scope carries BoltHoldCaller.
+// HoldMachine then names that entry's machine.
 func (r Record) CoverageOf(slug string, now time.Time) Coverage {
 	var coverage Coverage
 	coverage.Entry, coverage.Covered = r.Covering(slug)
 	for _, entry := range r.Live {
-		if slug != "" && entry.Scope == slug {
-			switch entry.Caller {
-			case OwnerCaller:
-				coverage.OwnerHeld = true
-			case AdoptCaller, HoldCaller:
-				coverage.Held = true
-			case BoltHoldCaller:
-				coverage.Held = true
-				coverage.HoldMachine = entry.Machine
-			}
+		if slug != "" && entry.Scope == slug && entry.Caller == BoltHoldCaller {
+			coverage.Held = true
+			coverage.HoldMachine = entry.Machine
 		}
 		if entry.covers(slug) {
 			coverage.Intervals = append(coverage.Intervals, Interval{Start: entry.PausedAt, End: now})

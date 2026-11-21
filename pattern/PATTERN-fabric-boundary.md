@@ -70,7 +70,6 @@ The entry binds lym's own code only.
   and every ignore it needs there goes to `.git/info/exclude` through `fabricengine`.
 - The one weft-side `.gitignore` writer is `boardengine`'s render-manifest pattern in the Bolt checkout.
   The Bolt checkout is the weft's `main` worktree.
-  The writer removes the retired `*.lock` and `*.swaplock` lines.
 
 ### Unwire and teardown
 

@@ -99,14 +99,6 @@ type Weights struct {
 	// so a fork at position k starts the start base + Orientation + (k−1) × BatchGrowth deep.
 	BatchGrowth float64 `json:"batch_growth"`
 
-	// RetiredMasterBase is read only: it lets a breakdown recorded without a start base decode.
-	// It is not one of the coefficients, and nothing writes it.
-	RetiredMasterBase float64 `json:"master_base,omitempty"`
-
-	// RetiredStartupContext is read only: it lets a breakdown whose start model ignored batch position decode.
-	// It is not one of the coefficients, and nothing writes it.
-	RetiredStartupContext float64 `json:"startup_context,omitempty"`
-
 	// ForkMessages is the messages spent starting a fork, before any card.
 	ForkMessages float64 `json:"fork_messages"`
 

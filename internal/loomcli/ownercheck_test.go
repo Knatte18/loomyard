@@ -16,7 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -40,10 +39,8 @@ func TestStartAndResume_RefuseARunOwnedElsewhere(t *testing.T) {
 		verdict      ownerVerdict
 		verdictErr   error
 		// act is the act rule's answer a fake runVerdict gives, and nil leaves the seam unset.
-		act *runfsm.Verdict
-		// ownerPause records the live pause entry that holds a run owned elsewhere.
-		ownerPause bool
-		wantCalls  int
+		act       *runfsm.Verdict
+		wantCalls int
 		// wantKind is the refusal's kind, empty when the verb must go on past the owner check.
 		wantKind string
 		// wantMessage lists substrings of the refusal's error.
@@ -72,13 +69,6 @@ func TestStartAndResume_RefuseARunOwnedElsewhere(t *testing.T) {
 			wantCalls:    1,
 			wantKind:     shedrun.StartOwnedElsewhereKind,
 			wantMessage:  []string{`"there"`, "lym adopt pair"},
-		},
-		{
-			name:         "OwnerPauseRefusesWithTheResumeWayBeforeTheOwnerVerdict",
-			statusExists: true,
-			verdict:      ownerVerdict{Owner: "there", Elsewhere: true},
-			ownerPause:   true,
-			wantMessage:  []string{"pause:", `"lym tender resume`},
 		},
 		{
 			name:         "VerdictErrorRefusesNamingTheRerun",
@@ -120,9 +110,6 @@ func TestStartAndResume_RefuseARunOwnedElsewhere(t *testing.T) {
 				}
 				if tt.act != nil {
 					c.runVerdict = func(*lymcwd.Location, string) (runfsm.Verdict, error) { return *tt.act, nil }
-				}
-				if tt.ownerPause {
-					coverRunBy(t, c, "", pauserecord.OwnerCaller)
 				}
 				if tt.statusExists {
 					if err := state.WriteJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, shedengine.Status{State: shedengine.StateDone}); err != nil {

@@ -65,17 +65,6 @@
 # A run parked before Drift-Expect reaches it, and one already past it has no seal and is checked against an empty expectation.
 # A run parked at a Drift-Verify halt from before this change goes on with lym loom resume, which checks it under the new Drift.
 #
-# An in-flight run parked on a row this recipe removed or renamed -- Webster-Bouncer and its
-# Burler rows, Merge-Bouncer and its Burler rows, Publish, PR-Align, PR-Gate or PR-Rework -- or on a
-# row whose edges changed with them, is restarted, not migrated: row names are durable on-disk
-# resume identities, and a permanent migration table mapping retired names onto their successors is
-# carrying cost a pre-release, single-operator system does not need when the operator can simply
-# re-run.
-# A run parked on Merge-In, the row now named Parent-Align, or on Loom-Preflight or Tapestry-Preflight, both now named
-# Preflight, is carried across by rename and not restarted: `lym loom` rewrites the old name
-# in its status file through RetiredRows, and the row keeps its position, so `lym loom peers`
-# reports the same positions.
-#
 # Every review segment follows the same shared-segment on_stuck ring: the Motif block's Discussion-Bouncer,
 # Discussion-Burler-Review and Discussion-Burler-Fix carry segment: Discussion-Review, the three
 # Plan rows carry segment: Plan-Review, and the three Code rows carry segment: Code-Review.
@@ -92,12 +81,6 @@
 # A review segment's round is two Shed rows, each one fresh session: the review row reviews, and
 # the fix row fixes only a review with findings, or a clean review whose row gates fail. The
 # reviewer's findings carry their own fix, so the fixer orients on the review and its targets alone.
-#
-# An in-flight run parked on one of the retired Discussion-Burler or Plan-Burler rows is restarted,
-# not migrated, as it is for the retired rows above.
-#
-# So is a run parked on the retired Batchifier row: the Webster row's implementer partitions the
-# plan itself, and Preflight's batcher.yaml load keeps the early failure the row gave.
 #
 # The Bouncer, review and fix rows of those segments declare no max_bounces: their budget is the
 # perch's own key (loom.yaml's discussion_max_bounces or code_max_bounces, tapestry.yaml's plan_max_bounces),

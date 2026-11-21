@@ -1,4 +1,4 @@
-// runsettings_test.go — tests for the run-settings migrate-then-validate step.
+// runsettings_test.go — tests for the run-settings validation step.
 
 package configreg
 
@@ -10,19 +10,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/runprofile"
-	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// renamedCodeMaxBounces is the line loom's Migrate writes for a retired webster_max_bounces of 2.
-// It carries the comment the loom template holds on code_max_bounces.
-const renamedCodeMaxBounces = "code_max_bounces: 2 # bounce budget of the Code-Review perch: N gives N judged Burler rounds, 1 by default; null takes review_max_bounces; 0 runs no review round: the perch's Bouncer settles approved at once; a checkpoint above this budget means the perch never rules CIRCLING and reaches the soft-cap rule, or the accept, instead\n"
-
 // TestPrepareRunSettings pins PrepareRunSettings over the real registry:
 // the documents it returns and the refusals that name the module and key.
-// It is not parallel: its Warn subtest reads the process-global logger, which parallel tests would also write to.
 func TestPrepareRunSettings(t *testing.T) {
 	tiergate.Require(t, 0)
+	t.Parallel()
 	tests := []struct {
 		name         string
 		settings     map[string]any
@@ -45,9 +40,17 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantDocs: map[string]string{"loom": "review_hard_max_bounces: 3\nreview_max_bounces: 2\n"},
 		},
 		{
-			name:     "a loom.plan_max_bounces lands in the tapestry document and keeps its zero-rounds meaning",
-			settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(0)}},
+			name:     "a tapestry plan_max_bounces keeps its zero-rounds meaning",
+			settings: map[string]any{"tapestry": map[string]any{"plan_max_bounces": float64(0)}},
 			wantDocs: map[string]string{"tapestry": "plan_max_bounces: 0\n"},
+		},
+		{
+			name:             "a loom plan_max_bounces is refused with the tapestry way forward, since it lives in tapestry's config",
+			settings:         map[string]any{"loom": map[string]any{"plan_max_bounces": float64(0)}},
+			wantRefusal:      "plan_max_bounces",
+			wantModule:       "loom",
+			wantInvalid:      true,
+			wantWayForwardOf: "plan_max_bounces",
 		},
 		{
 			name:        "a review hard cap of zero is refused by loom's CheckValues",
@@ -55,11 +58,6 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantRefusal: "review_hard_max_bounces",
 			wantModule:  "loom",
 			wantInvalid: true,
-		},
-		{
-			name:     "below-floor step_idle_timeout_min is raised by loom's Migrate",
-			settings: map[string]any{"loom": map[string]any{"step_idle_timeout_min": float64(0)}},
-			wantDocs: map[string]string{"loom": "step_idle_timeout_min: 1\n"},
 		},
 		{
 			name:     "hardener packages and llm_driving pass",
@@ -91,58 +89,38 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantDocs: map[string]string{"models": "opus:\n    defaults:\n        version: \"5\"\n"},
 		},
 		{
-			name:         "role under an open map moves from shuttle to claude",
-			settings:     map[string]any{"shuttle": map[string]any{"claude_prompt_cache_ttl_roles": map[string]any{"worker": "1h"}}},
-			wantDocs:     map[string]string{"claude": "prompt_cache_ttl_roles:\n    worker: 1h\n"},
-			wantNoModule: "shuttle",
-		},
-		{
-			name:         "a moved key yields to the value claude already holds",
-			settings:     map[string]any{"shuttle": map[string]any{"claude_prompt_cache_ttl": "1h"}, "claude": map[string]any{"prompt_cache_ttl": "5m"}},
-			wantDocs:     map[string]string{"claude": "prompt_cache_ttl: 5m\n"},
-			wantNoModule: "shuttle",
-		},
-		{
-			name:        "non-object shuttle value is still refused",
+			name:        "non-object shuttle value is refused",
 			settings:    map[string]any{"shuttle": "fast"},
 			wantRefusal: "shuttle",
 			wantModule:  "shuttle",
 			wantInvalid: true,
 		},
 		{
-			name:        "the legacy python switch is renamed by shuttle's Migrate and refused as a guard key",
+			name:        "the old python switch name is refused naming the key",
 			settings:    map[string]any{"shuttle": map[string]any{"claude_deny_python": true}},
-			wantRefusal: "deny_python",
+			wantRefusal: "claude_deny_python",
 			wantModule:  "shuttle",
 			wantInvalid: true,
 		},
 		{
-			name:        "a retired loom fan key is renamed by loom's Migrate and refused as a guard key",
+			name:        "a retired shuttle claude binary key is refused as an executable key",
+			settings:    map[string]any{"shuttle": map[string]any{"claude": "/x"}},
+			wantRefusal: `"claude"`,
+			wantModule:  "shuttle",
+			wantInvalid: true,
+		},
+		{
+			name:        "a retired loom fan key is refused naming the key",
 			settings:    map[string]any{"loom": map[string]any{"discussion_fan": "standard"}},
-			wantRefusal: "discussion_reviewer_fan",
+			wantRefusal: "discussion_fan",
 			wantModule:  "loom",
 			wantInvalid: true,
 		},
 		{
-			name:     "a retired webster model key is renamed to its code key by loom's Migrate",
-			settings: map[string]any{"loom": map[string]any{"webster_review": "sonnet[high]"}},
-			wantDocs: map[string]string{"loom": "code_reviewer_model: sonnet[high] # model-spec for the Code-Review reviewer, sonnet[medium] by default; empty takes reviewer_model, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment\n"},
-		},
-		{
-			name:     "a retired webster_max_bounces is renamed and a retired merge_max_bounces is dropped by loom's Migrate",
-			settings: map[string]any{"loom": map[string]any{"webster_max_bounces": float64(2), "merge_max_bounces": float64(1)}},
-			wantDocs: map[string]string{"loom": renamedCodeMaxBounces},
-		},
-		{
-			name:     "a retired merge_max_bounces is dropped by loom's Migrate and never refused",
-			settings: map[string]any{"loom": map[string]any{"merge_max_bounces": float64(1), "code_max_bounces": float64(2)}},
-			wantDocs: map[string]string{"loom": "code_max_bounces: 2\n"},
-		},
-		{
-			name:        "a retired darn fan key moves to loom's code_fixer_fan and is refused as a guard key",
+			name:        "a retired darn fan key is refused naming the key",
 			settings:    map[string]any{"darn": map[string]any{"review_fix_fan": "fix-code"}},
-			wantRefusal: "code_fixer_fan",
-			wantModule:  "loom",
+			wantRefusal: "review_fix_fan",
+			wantModule:  "darn",
 			wantInvalid: true,
 		},
 		{
@@ -160,16 +138,9 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
-			name:        "a burler object holding lenses is refused with the way forward",
+			name:        "a module that is not registered is refused, even one that held keys once",
 			settings:    map[string]any{"burler": map[string]any{"lenses": map[string]any{"generic": map[string]any{"prose": "x"}}}},
-			wantRefusal: "not registered: its keys moved to another module; way forward: remove the burler object from run_settings",
-			wantModule:  "burler",
-			wantInvalid: true,
-		},
-		{
-			name:        "an empty burler object is refused with the way forward",
-			settings:    map[string]any{"burler": map[string]any{}},
-			wantRefusal: "not registered: its keys moved to another module; way forward: remove the burler object from run_settings",
+			wantRefusal: "not registered",
 			wantModule:  "burler",
 			wantInvalid: true,
 		},
@@ -195,48 +166,6 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
-			name:         "a retired darn review budget of zero moves to loom's code_max_bounces",
-			settings:     map[string]any{"darn": map[string]any{"review_max_bounces": float64(0)}},
-			wantDocs:     map[string]string{"loom": "code_max_bounces: 0\n"},
-			wantNoModule: "darn",
-		},
-		{
-			name:     "a retired darn review budget and hard cap move to loom's code keys",
-			settings: map[string]any{"darn": map[string]any{"review_max_bounces": float64(2), "review_hard_max_bounces": float64(3)}},
-			wantDocs: map[string]string{"loom": "code_hard_max_bounces: 3\ncode_max_bounces: 2\n"},
-		},
-		{
-			name: "a retired darn model and amend key moves to loom's code key",
-			settings: map[string]any{"darn": map[string]any{
-				"darn_reviewer_model":      "opus[high]",
-				"darn_fixer_model":         "opus[low]",
-				"review_amend_max_bounces": float64(0),
-			}},
-			wantDocs: map[string]string{"loom": "code_fixer_model: opus[low]\ncode_reviewer_model: opus[high]\nreview_amend_max_bounces: 0\n"},
-		},
-		{
-			name:         "a retired darn reviewer fan key moves to loom's code_reviewer_fan and is admitted",
-			settings:     map[string]any{"darn": map[string]any{"darn_reviewer_fan": "review-code"}},
-			wantDocs:     map[string]string{"loom": "code_reviewer_fan: review-code\n"},
-			wantNoModule: "darn",
-		},
-		{
-			name:         "a retired darn review_fan moves to loom's code_reviewer_fan and is admitted",
-			settings:     map[string]any{"darn": map[string]any{"review_fan": "review-code"}},
-			wantDocs:     map[string]string{"loom": "code_reviewer_fan: review-code\n"},
-			wantNoModule: "darn",
-		},
-		{
-			name:     "a retired webster_fan is renamed to code_reviewer_fan and admitted by loom's Migrate",
-			settings: map[string]any{"loom": map[string]any{"webster_fan": "review-code"}},
-			wantDocs: map[string]string{"loom": "code_reviewer_fan: review-code # fan name from lenses.yaml, such as review-code, that turns the lens fan on for Code-Review; one fan name, or a YAML list with one fan name per round, the last entry serving every later round; the default fans round one out over review-code and runs later rounds solo; an empty entry runs that round solo\n"},
-		},
-		{
-			name:     "a retired webster_reviewer_fan is renamed to code_reviewer_fan and admitted by loom's Migrate",
-			settings: map[string]any{"loom": map[string]any{"webster_reviewer_fan": "review-code"}},
-			wantDocs: map[string]string{"loom": "code_reviewer_fan: review-code # fan name from lenses.yaml, such as review-code, that turns the lens fan on for Code-Review; one fan name, or a YAML list with one fan name per round, the last entry serving every later round; the default fans round one out over review-code and runs later rounds solo; an empty entry runs that round solo\n"},
-		},
-		{
 			name:     "a solo code_reviewer_fan is admitted as a profile block or run_settings carries it",
 			settings: map[string]any{"loom": map[string]any{"code_reviewer_fan": ""}},
 			wantDocs: map[string]string{"loom": "code_reviewer_fan: \"\"\n"},
@@ -256,12 +185,7 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
-			name:     "a retired loom key migrates away at read time",
-			settings: map[string]any{"loom": map[string]any{"skip_alignment": true, "code_max_bounces": float64(2)}},
-			wantDocs: map[string]string{"loom": "code_max_bounces: 2\n"},
-		},
-		{
-			name:     "a task's retired drift skip and verify_max_runs seed, and the load drops them",
+			name:     "a task's retired drift skip and verify_max_runs are admitted as retired keys of category none",
 			settings: map[string]any{"drift": map[string]any{"skip": []any{"t"}, "verify_max_runs": float64(3)}},
 			wantDocs: map[string]string{"drift": "skip:\n    - t\nverify_max_runs: 3\n"},
 		},
@@ -308,11 +232,6 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantRefusal: "key \"volatile_keys\" of module \"drift\" is set only in the hub's config; way forward: set it in the hub's drift.yaml",
 			wantModule:  "drift",
 			wantInvalid: true,
-		},
-		{
-			name:     "a retired drift verify_model is renamed to judge_model by drift's Migrate",
-			settings: map[string]any{"drift": map[string]any{"verify_model": "opus"}},
-			wantDocs: map[string]string{"drift": "judge_model: opus # model-spec for the judge, which rules on each expected value against its old and new value (see contracts/specs/llm-model-spec.md)\n"},
 		},
 		{
 			name:     "shed's driver_kind go is open to run settings",
@@ -398,31 +317,6 @@ func TestPrepareRunSettings(t *testing.T) {
 			}
 		})
 	}
-
-	// The logger's output is process-global, so this subtest is not parallel: it runs before the parallel rows above resume.
-	t.Run("each migration line is logged at Warn naming the module, the key and the way forward", func(t *testing.T) {
-		logs := logcapture.Capture(t)
-		settings := map[string]any{"loom": map[string]any{"webster_max_bounces": float64(2), "merge_max_bounces": float64(1)}}
-		if _, err := PrepareRunSettings(settings); err != nil {
-			t.Fatalf("PrepareRunSettings error = %v; want none", err)
-		}
-		const wayForward = "way forward: rename or remove the key in profiles.yaml or in the entry's run_settings"
-		for _, line := range []string{"webster_max_bounces: renamed to code_max_bounces", "merge_max_bounces: retired, removed"} {
-			want := "run_settings for module loom: " + line + "; " + wayForward
-			if got := strings.Count(logs.String(), want); got != 1 {
-				t.Errorf("log holds %d lines %q; want 1; log: %s", got, want, logs.String())
-			}
-		}
-		if _, err := PrepareRunSettings(map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1)}}); err != nil {
-			t.Fatalf("PrepareRunSettings error = %v; want none", err)
-		}
-		if got := strings.Count(logs.String(), "run_settings for module"); got != 2 {
-			t.Errorf("log holds %d migration lines after a document with nothing to migrate; want the 2 from before", got)
-		}
-		if !strings.Contains(logs.String(), "WARN") {
-			t.Errorf("log = %s; want the lines at Warn", logs.String())
-		}
-	})
 }
 
 // TestLayerRunSettings pins how a task's run settings lie over its run profile's:
@@ -439,26 +333,14 @@ func TestLayerRunSettings(t *testing.T) {
 	}{
 		{
 			name:     "a task key replaces the profile's and a profile key the task lacks stays",
-			profile:  map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1), "code_max_bounces": float64(1)}},
-			settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(3)}},
+			profile:  map[string]any{"tapestry": map[string]any{"plan_max_bounces": float64(1)}, "loom": map[string]any{"code_max_bounces": float64(1)}},
+			settings: map[string]any{"tapestry": map[string]any{"plan_max_bounces": float64(3)}},
 			wantDocs: map[string]string{"loom": "code_max_bounces: 1\n", "tapestry": "plan_max_bounces: 3\n"},
-		},
-		{
-			name:     "a profile's retired merge_max_bounces is dropped rather than refused",
-			profile:  map[string]any{"loom": map[string]any{"code_max_bounces": float64(1), "merge_max_bounces": float64(1)}},
-			settings: map[string]any{"loom": map[string]any{"code_max_bounces": float64(3)}},
-			wantDocs: map[string]string{"loom": "code_max_bounces: 3\n"},
-		},
-		{
-			name:     "a task's retired webster_max_bounces layers as code_max_bounces and its merge_max_bounces is dropped",
-			profile:  map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1)}},
-			settings: map[string]any{"loom": map[string]any{"webster_max_bounces": float64(2), "merge_max_bounces": float64(1)}},
-			wantDocs: map[string]string{"loom": renamedCodeMaxBounces, "tapestry": "plan_max_bounces: 1\n"},
 		},
 		{
 			name:     "a module only one side names is written as that side has it",
 			profile:  map[string]any{"darn": map[string]any{"verify_attempts": float64(2)}},
-			settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(2)}},
+			settings: map[string]any{"tapestry": map[string]any{"plan_max_bounces": float64(2)}},
 			wantDocs: map[string]string{"darn": "verify_attempts: 2\n", "tapestry": "plan_max_bounces: 2\n"},
 		},
 		{
@@ -478,7 +360,7 @@ func TestLayerRunSettings(t *testing.T) {
 		},
 		{
 			name:        "a refused task key names the module and the key",
-			profile:     map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1)}},
+			profile:     map[string]any{"tapestry": map[string]any{"plan_max_bounces": float64(1)}},
 			settings:    map[string]any{"loom": map[string]any{"discussion_lenses": []any{}}},
 			wantRefusal: []string{"loom", "discussion_lenses"},
 		},
@@ -525,9 +407,9 @@ func TestProfilesCheckLoad(t *testing.T) {
 		wantRefusal []string
 	}{
 		{name: "the template's starting profiles pass"},
-		{name: "a valid hub file passes", hubFile: "light:\n  loom:\n    loom: {plan_max_bounces: 1}\n  darn:\n    darn: {writer: opus}\n"},
-		{name: "a profile holding the retired webster_max_bounces and merge_max_bounces passes", hubFile: "light:\n  loom:\n    loom: {webster_max_bounces: 1, merge_max_bounces: 1}\n"},
-		{name: "an unknown key is refused naming the profile and the recipe", hubFile: "light:\n  loom:\n    loom: {plan_max_bounces: 1}\nodd:\n  loom:\n    loom: {plan_max_bounces: 1}\n  darn:\n    loom: {no_such_key: 1}\n", wantRefusal: []string{`run profile "odd", recipe "darn"`, "no_such_key"}},
+		{name: "a valid hub file passes", hubFile: "light:\n  tapestry:\n    tapestry: {plan_max_bounces: 1}\n  darn:\n    darn: {writer: opus}\n"},
+		{name: "a plan key under loom is refused naming the profile and the recipe", hubFile: "odd:\n  tapestry:\n    loom: {plan_max_bounces: 1}\n", wantRefusal: []string{`run profile "odd", recipe "tapestry"`, "plan_max_bounces"}},
+		{name: "an unknown key is refused naming the profile and the recipe", hubFile: "light:\n  tapestry:\n    tapestry: {plan_max_bounces: 1}\nodd:\n  tapestry:\n    tapestry: {plan_max_bounces: 1}\n  darn:\n    loom: {no_such_key: 1}\n", wantRefusal: []string{`run profile "odd", recipe "darn"`, "no_such_key"}},
 		{name: "an unknown module is refused naming the profile and the recipe", hubFile: "odd:\n  tapestry:\n    bogus: {x: 1}\n", wantRefusal: []string{`run profile "odd", recipe "tapestry"`, "bogus"}},
 	}
 	module, _ := Lookup(runprofile.ModuleName)

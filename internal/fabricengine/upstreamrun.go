@@ -10,7 +10,6 @@ import (
 	"path"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -37,7 +36,7 @@ func UpstreamAnchor(pair *lymcwd.Location, names []string) (anchor string, found
 // The status is read from the tree of the weft's fetched upstream tip.
 // A run is unfinished when its status holds a state other than done; a tree with no status reads as finished.
 // The status sits under the anchor the tip's own marker names; a tip that records none uses the pair's anchor.
-// It is read from the pair's slug directory, or from the legacy `self` directory when the tree lacks it.
+// It is read from the pair's slug directory.
 // A weft with no fetched upstream is read at HEAD.
 // names are the wired names the tip's anchor is derived from.
 func UpstreamRunUnfinished(pair *lymcwd.Location, names []string) (unfinished bool, err error) {
@@ -57,17 +56,6 @@ func UpstreamRunUnfinished(pair *lymcwd.Location, names []string) (unfinished bo
 	if err != nil {
 		return false, err
 	}
-	runDir := path.Dir(path.Join(filepath.ToSlash(anchor), statusRel))
-	listed, err := gitexec.Run([]string{"ls-tree", "-d", "--name-only", tip, "--", runDir}, weftPath)
-	if err != nil {
-		return false, fmt.Errorf("look for %s at %s in %s: %w", runDir, tip, weftPath, err)
-	}
-	if listed == "" {
-		if _, statusRel, err = shedrun.TreeRunFileRels(shedrun.SelfRunID); err != nil {
-			return false, err
-		}
-	}
-
 	statusPath := path.Join(filepath.ToSlash(anchor), statusRel)
 	data, err := showFile(weftPath, tip, statusPath)
 	if err != nil {

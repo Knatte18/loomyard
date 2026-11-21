@@ -85,13 +85,9 @@ func ensure(geom Geometry, opts Options, hooks walkHooks) error {
 	return writeStamp(geom.StampPath(), running)
 }
 
-// repoDefaultAbsent reports whether boardDir lacks the base-sparse marker or a per-worktree module's repo default.
+// repoDefaultAbsent reports whether boardDir lacks a per-worktree module's repo default.
 // A true result marks the build stamp stale, so the next start verb reseeds a default deleted after a walk.
-// A board not yet stripped to sparse base files, or whose marker was removed, is walked again.
 func repoDefaultAbsent(boardDir string) bool {
-	if !fileExists(configengine.BaseSparseMarker(boardDir)) {
-		return true
-	}
 	for _, module := range configreg.Modules() {
 		if module.HubWide {
 			continue
@@ -198,8 +194,6 @@ func findPrime(worktrees []fabricengine.CodeWorktree) (fabricengine.CodeWorktree
 var spawnBoardSync = boardengine.SpawnSync
 
 // reconcileHubWide reconciles the board's hub-wide config, seeded from the prime's anchor, and commits what it wrote.
-// While the base-sparse marker is absent, the pass strips each present base file once.
-// The marker it then writes joins the commit.
 // A seed-only module's template base that the pass wrote joins the commit beside its file.
 // A registered reinterpretation whose board marker is absent is judged against the prime and applied.
 // Its marker joins the commit.
@@ -228,18 +222,13 @@ func reconcileHubWide(boardDir string, prime fabricengine.CodeWorktree, label st
 			if err := snapshotFile(prior, filepath.Join(boardDir, heddleengine.OverviewFileName)); err != nil {
 				return nil, err
 			}
-			markedBefore := fileExists(configengine.BaseSparseMarker(boardDir))
-			results, err := configsync.ReconcileHubWideAt(boardDir, prime.Anchor, configsync.HubWideOptions{Apply: true, SeedDefaults: true, StripBase: true})
+			results, err := configsync.ReconcileHubWideAt(boardDir, prime.Anchor, configsync.HubWideOptions{Apply: true, SeedDefaults: true})
 			if err != nil {
 				return nil, err
 			}
 			var written []string
 			followed = nil
 			for _, result := range results {
-				if len(result.Unsettled) > 0 {
-					logger.Warn("hubreconcile: a seed-only config file holds a pair to settle, and reconcile never changes it", "module", result.Module, "unsettled", result.Unsettled,
-						"way_forward", fmt.Sprintf("in \"lym config %s\" from the hub's prime worktree, keep one block of each pair that differs", result.Module))
-				}
 				followed = append(followed, followedLines(result)...)
 				files := result.ChangedFilesRel()
 				if len(files) == 0 {
@@ -248,10 +237,7 @@ func reconcileHubWide(boardDir string, prime fabricengine.CodeWorktree, label st
 				logResult(boardDir, result)
 				written = append(written, files...)
 			}
-			if !markedBefore && fileExists(configengine.BaseSparseMarker(boardDir)) {
-				written = append(written, configengine.BaseSparseMarkerRel())
-			}
-			reinterpreted, lines, err := applyReinterpretations(boardDir, prime.Path, prime.Anchor)
+			reinterpreted, lines, err := applyReinterpretations(reinterpretationModules(), boardDir, prime.Path, prime.Anchor)
 			if err != nil {
 				return nil, err
 			}
@@ -340,8 +326,7 @@ func reconcileWorktree(boardDir string, w fabricengine.CodeWorktree, revision st
 	if err != nil {
 		return false, &WorktreeError{Worktree: w.Path, Err: err}
 	}
-	markedBefore := fileExists(configengine.SparseMarker(w.Anchor))
-	results, err := configsync.ReconcileAll(w.Anchor, boardDir, configsync.Options{Apply: true, Migrate: true})
+	results, err := configsync.ReconcileAll(w.Anchor, boardDir, configsync.Options{Apply: true})
 	if err != nil {
 		if _, statErr := os.Stat(w.Path); errors.Is(statErr, fs.ErrNotExist) {
 			logger.Info("hubreconcile: skipping a worktree removed during the walk", "worktree", w.Path)
@@ -364,12 +349,6 @@ func reconcileWorktree(boardDir string, w fabricengine.CodeWorktree, revision st
 			continue
 		}
 		files = append(files, filepath.Join(anchorRel, configengine.ConfigFileRel(result.Module)))
-		for _, legacy := range result.MigratedFrom {
-			files = append(files, filepath.Join(anchorRel, configengine.ConfigFileRel(legacy)))
-		}
-	}
-	if !markedBefore && fileExists(configengine.SparseMarker(w.Anchor)) {
-		files = append(files, filepath.Join(anchorRel, configengine.SparseMarkerRel()))
 	}
 
 	if hooks.beforeCommit != nil {
@@ -482,9 +461,8 @@ func notifyTemplateFollowed(boardDir, label string, lines []string) {
 // logResult logs one changed module.
 func logResult(worktree string, result configsync.Result) {
 	logger.Info("hubreconcile: config changed", "worktree", worktree, "module", result.Module,
-		"added", result.Added, "removed", result.Removed, "updated", result.Updated, "differs", result.Differs, "templateBase", result.WroteTemplateBase, "migrated", result.Migrated,
-		"stripped", result.Stripped, "inherited", result.Inherited, "preserved", result.Preserved,
-		"moved", result.Moved, "keptTarget", result.KeptTarget, "keptExtra", result.KeptExtra, "dropped", result.Dropped, "overwritten", result.Overwritten, "copied", result.Copied)
+		"added", result.Added, "removed", result.Removed, "updated", result.Updated, "differs", result.Differs, "templateBase", result.WroteTemplateBase,
+		"preserved", result.Preserved, "keptExtra", result.KeptExtra, "dropped", result.Dropped)
 }
 
 // fileExists reports whether path names an existing file.
@@ -495,8 +473,8 @@ func fileExists(path string) bool {
 
 // snapshotConfig reads every file that a reconcile under anchor may write, and maps an absent one to nil.
 // It covers every registry module's config and local override file and each seed-only module's template base.
-// It also covers the sparse, base-sparse and reinterpretation markers under anchor.
-// Every file in the config dir is covered too, so a legacy file that a migration removes is restored.
+// It also covers the reinterpretation markers under anchor.
+// Every file in the config dir is covered too, so a file a reconcile removes is restored.
 // Any read or list failure other than absence is returned naming the path.
 // A snapshot missing a file could not restore it.
 func snapshotConfig(anchor string) (map[string][]byte, error) {
@@ -517,14 +495,16 @@ func snapshotConfig(anchor string) (map[string][]byte, error) {
 		}
 		prior[path] = data
 	}
-	// The markers are snapshotted too, so a restore removes one a failed walk wrote.
-	// The worktree or board then stays unmarked for the next walk.
-	paths := []string{configengine.SparseMarker(anchor), configengine.BaseSparseMarker(anchor)}
+	// The reinterpretation markers are snapshotted too, so a restore removes one a failed walk wrote.
+	// The board then stays unmarked for the next walk.
+	var paths []string
 	for _, module := range configreg.Modules() {
 		paths = append(paths, configengine.ConfigFile(anchor, module.Name), configengine.LocalFile(anchor, module.Name))
 		if module.SeedOnly {
 			paths = append(paths, configengine.TemplateBaseFile(anchor, module.Name))
 		}
+	}
+	for _, module := range reinterpretationModules() {
 		for _, change := range module.Reinterpretations {
 			paths = append(paths, configengine.ReinterpretedMarker(anchor, change.ID))
 		}

@@ -69,9 +69,6 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 	finalize := func(state shedengine.State, transient string) shedengine.Status {
 		return shedengine.Status{State: state, CurrentProducer: finalizeRow, Transient: transient}
 	}
-	ownerHeld := func(int) pauserecord.Coverage {
-		return pauserecord.Coverage{Covered: true, OwnerHeld: true, Entry: pauserecord.Entry{Scope: "myslug", Caller: pauserecord.OwnerCaller}}
-	}
 	tests := []struct {
 		name   string
 		status shedengine.Status
@@ -111,11 +108,6 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 				}
 			},
 			wantChecks: 2,
-		},
-		{
-			name: "an owner-held coverage releases the record with no check", status: running,
-			configure:    func(h *lockHarness) { h.coverage = ownerHeld },
-			wantReleased: true,
 		},
 		{
 			name: "a running Finalize with the parent holding the work keeps the record", status: finalize(shedengine.StateRunning, ""), due: true,
@@ -234,13 +226,11 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 		h.requireAdoptNotice("lym adopt myslug")
 	})
 
-	t.Run("a done child under an owner-held pause is held until the coverage clears", func(t *testing.T) {
+	t.Run("a done child under a pause is held until the coverage clears", func(t *testing.T) {
 		t.Parallel()
 		h := newLockHarness(t, shedengine.Status{State: shedengine.StateDone})
 		h.coverage = func(call int) pauserecord.Coverage {
-			coverage := ownerHeld(call)
-			coverage.Covered = call < 5
-			return coverage
+			return pauserecord.Coverage{Covered: call < 5, Entry: pauserecord.Entry{Scope: "myslug", Caller: "EXTERNAL"}}
 		}
 		h.clock.pauseAtSleep = 50
 
@@ -317,7 +307,7 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 		// probeDue reports whether the memory's last probe is older than the notice probe.
 		probeDue bool
 		verdict  OwnerVerdict
-		// pauseCovers reports whether an owner pause covers the slug.
+		// pauseCovers reports whether a pause covers the slug.
 		pauseCovers bool
 		wantChecks  int
 		wantSpawns  int
@@ -329,7 +319,7 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 		{name: "an owner standing with no probe due yields with the owner reason and runs no check", wantSpawns: 0, wantOwner: "m2", wantReason: "held: the run is owned by machine m2"},
 		{name: "a probe due and an owned-here verdict spawns in the same pass", probeDue: true, wantChecks: 1, wantSpawns: 1, wantReason: ""},
 		{name: "a probe due and an owned-elsewhere verdict yields and spawns nothing", probeDue: true, verdict: OwnerVerdict{Owner: "m2", Elsewhere: true}, wantChecks: 1, wantOwner: "m2", wantReason: "held: the run is owned by machine m2"},
-		{name: "an owner pause covering the slug still re-checks, clears the owner on an owned-here verdict and yields on the pause", probeDue: true, pauseCovers: true, wantChecks: 1, wantReason: "held by the pause of myslug"},
+		{name: "a pause covering the slug still re-checks, clears the owner on an owned-here verdict and yields on the pause", probeDue: true, pauseCovers: true, wantChecks: 1, wantReason: "held by the pause of myslug"},
 	}
 	for _, tt := range spawnHoldTests {
 		t.Run("the spawn hold: "+tt.name, func(t *testing.T) {
@@ -344,7 +334,7 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 			}
 			if tt.pauseCovers {
 				deps.Pause = func() (pauserecord.Coverage, error) {
-					return pauserecord.Coverage{Covered: true, OwnerHeld: true, Entry: pauserecord.Entry{Scope: "myslug", Caller: pauserecord.OwnerCaller}}, nil
+					return pauserecord.Coverage{Covered: true, Entry: pauserecord.Entry{Scope: "myslug", Caller: "EXTERNAL"}}, nil
 				}
 			}
 			scratchDir := t.TempDir()

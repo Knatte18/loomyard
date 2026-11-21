@@ -135,7 +135,7 @@ const (
 )
 
 // retiredScopeCoverage is the gate key scope that once narrowed importing packages to the tests a coverage map selected.
-// The load refuses it and MigrateConfig rewrites it to scopeDiff.
+// The load refuses it, naming scopeDiff.
 const retiredScopeCoverage = "coverage"
 
 // Lint step names a gate key's lints may hold.

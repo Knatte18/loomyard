@@ -1176,7 +1176,7 @@ func TestDispatchSetProfiles(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	const seeded = "# operator notes\nlight:\n  loom:\n    loom: {plan_max_bounces: 1}\n"
+	const seeded = "# operator notes\nlight:\n  tapestry:\n    tapestry: {plan_max_bounces: 1}\n"
 	rows := []struct {
 		name string
 		// absent leaves the hub file unwritten instead of seeded.
@@ -1199,7 +1199,7 @@ func TestDispatchSetProfiles(t *testing.T) {
 		{
 			name:     "a new profile is added beside the existing one",
 			setFlag:  `broad={"loom":{"loom":{"code_max_bounces":2}}}`,
-			wantFile: "# operator notes\nlight:\n    loom:\n        loom: {plan_max_bounces: 1}\nbroad:\n    loom: {loom: {code_max_bounces: 2}}\n",
+			wantFile: "# operator notes\nlight:\n    tapestry:\n        tapestry: {plan_max_bounces: 1}\nbroad:\n    loom: {loom: {code_max_bounces: 2}}\n",
 		},
 		{
 			name:     "an existing profile is replaced whole",
@@ -1235,12 +1235,12 @@ func TestDispatchSetProfiles(t *testing.T) {
 		},
 		{
 			name:     "a dotted key changes one value and keeps the rest of the profile",
-			setFlag:  `light.loom.loom.plan_max_bounces=2`,
-			wantFile: "# operator notes\nlight:\n    loom:\n        loom: {plan_max_bounces: 2}\n",
+			setFlag:  `light.tapestry.tapestry.plan_max_bounces=2`,
+			wantFile: "# operator notes\nlight:\n    tapestry:\n        tapestry: {plan_max_bounces: 2}\n",
 		},
 		{
 			name:     "a dotted key leaving the profile in a wrong shape is refused and the file restored",
-			setFlag:  `light.loom.loom.no_such_key=1`,
+			setFlag:  `light.tapestry.loom.no_such_key=1`,
 			wantCode: 1,
 			wantFile: seeded,
 			wantErr:  `run profile "light"`,

@@ -86,9 +86,10 @@ func pushDetachedContentAsRemoteBranch(t *testing.T, dir, branch, filename, cont
 }
 
 // TestMergeContinue_FreshHandle_RecoversCrashedAfterCleanStaging covers the crash after clean staging.
-// Both sides are staged via the gitrepo.Repo.MergeStart seam, never a conflict.
+// The warp side is staged via the gitrepo.Repo.MergeStart seam, never a conflict.
+// The weft is not a merge participant.
 // A record is saved by hand, and nothing is concluded.
-// A fresh Fabric handle's MergeContinue then concludes both sides.
+// A fresh Fabric handle's MergeContinue then concludes the warp side.
 func TestMergeContinue_FreshHandle_RecoversCrashedAfterCleanStaging(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -99,34 +100,26 @@ func TestMergeContinue_FreshHandle_RecoversCrashedAfterCleanStaging(t *testing.T
 	weftStart := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 
 	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
-	setupCleanNonFastForward(t, h.PrimeRecords(), "feature-weft", "weft-branch.txt", "weft-current.txt")
 
 	warpRepo := fabricengine.WarpForTest(f)
-	weftRepo := fabricengine.WeftForTest(f)
 
 	warpSourceSHA, err := warpRepo.ResolveSHA("feature")
 	if err != nil {
 		t.Fatalf("ResolveSHA(feature) error = %v", err)
 	}
-	weftSourceSHA, err := weftRepo.ResolveSHA("feature-weft")
-	if err != nil {
-		t.Fatalf("ResolveSHA(feature-weft) error = %v", err)
-	}
 
 	if _, err := warpRepo.MergeStart(warpSourceSHA, false); err != nil {
 		t.Fatalf("warp MergeStart(%s) error = %v", warpSourceSHA, err)
-	}
-	if _, err := weftRepo.MergeStart(weftSourceSHA, false); err != nil {
-		t.Fatalf("weft MergeStart(%s) error = %v", weftSourceSHA, err)
 	}
 
 	if err := fabricengine.SaveMergeStateForTest(f, fabricengine.MergeStateForTest{
 		Verb:        "merge-in",
 		Source:      "feature",
 		WarpStart:   warpStart,
+		WarpSource:  warpSourceSHA,
 		WeftStart:   weftStart,
 		WarpOutcome: "staged",
-		WeftOutcome: "staged",
+		WeftOutcome: "up_to_date",
 		StartedAt:   time.Now(),
 	}); err != nil {
 		t.Fatalf("SaveMergeStateForTest() error = %v", err)

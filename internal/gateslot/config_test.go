@@ -353,7 +353,7 @@ func TestLoadConfig(t *testing.T) {
 		{"an unknown scope", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: some}\n", Config{}, `gate config key "gates.parent-align": scope "some"; want card, diff or all` + fixIt},
 		{
 			"the retired scope coverage names the migrating way forward", baseKeys + "gates:\n  webster-fix: {tiers: [0], scope: coverage}\n", Config{},
-			`gate config key "gates.webster-fix": scope coverage is retired, since the gate no longer selects tests from the coverage maps; fix it with "lym fabric reconcile" (or "lym config reconcile --layer default --apply") from the prime, which migrates it to scope diff` + roleClause,
+			`gate config key "gates.webster-fix": scope coverage is retired, since the gate no longer selects tests from the coverage maps; set scope diff with "lym config gate" from the prime` + roleClause,
 		},
 		{"an unknown lint", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: all, lints: [spelling]}\n", Config{}, `gate config key "gates.parent-align": lint "spelling"; want comments or pattern` + fixIt},
 		{
@@ -363,7 +363,7 @@ func TestLoadConfig(t *testing.T) {
 				c.Gates["parent-align"] = GateKey{Tiers: []int{0}, Scope: "all", Lints: []string{"pattern", "comments"}, Reports: []string{"reach", "redundancy"}}
 			}), "",
 		},
-		{"a key in the retired list shape", baseKeys + "gates:\n  card: [0]\n", Config{}, `gate config key "gates.card": the retired list shape; fix it with "lym fabric reconcile" (or "lym config reconcile --layer default --apply") from the prime, which migrates it` + roleClause},
+		{"a key in the retired list shape", baseKeys + "gates:\n  card: [0]\n", Config{}, `gate config key "gates.card": the retired list shape; write it as a mapping with tiers and scope, such as {tiers: [0], scope: diff}, with "lym config gate" from the prime` + roleClause},
 		{
 			"a manual tier above tier0 loads", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest}, tier3: {command: y, timeout_min: 5, counter: vstest, manual: true}}`,
 			hubWith(func(c *Config) {
@@ -792,170 +792,6 @@ func TestConfig_Inert(t *testing.T) {
 			}
 			if got := cfg.AllInert(tc.paths); got != tc.wantAll {
 				t.Errorf("AllInert(%q) = %v; want %v", tc.paths, got, tc.wantAll)
-			}
-		})
-	}
-}
-
-func TestMigrateConfig(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	withPublish := "gates:\n  card: {tiers: [0], scope: card}\n  webster-fix: {tiers: [0, 1], scope: diff}\n  publish: [2]\nscoper: none\n"
-	withoutPublish := "gates:\n  card: {tiers: [0], scope: card}\n  webster-fix: {tiers: [0, 1], scope: diff}\nscoper: none\n"
-	retiredLists := "gates:\n  # the lists\n  card: [0]\n  batch: [0, 1]\n  round: [0, 1]\n  final: [0, 1, 2]\n  landing: [0, 1]\nscoper: none\n"
-	migratedLists := "gates:\n  # the lists\n  card: {tiers: [0], scope: card}\n  batch: {tiers: [0, 1], scope: card}\n  webster-fix: {tiers: [0, 1], scope: diff}\n  webster: {tiers: [0, 1, 2], scope: all}\n" +
-		"  parent-align: {tiers: [0, 1], scope: all}\n  finalize: {tiers: [0, 1], scope: all}\n  darn-write: {tiers: [0, 1], scope: diff}\n  code-burler-fix: {tiers: [0, 1], scope: diff}\nscoper: none\n"
-
-	tests := []struct {
-		name      string
-		input     string
-		want      string
-		wantLines []string
-		wantErr   bool
-	}{
-		{"a publish list pruned and the round list kept", withPublish, withoutPublish, []string{"gates.publish: retired, removed"}, false},
-		{"an empty publish list pruned", "gates:\n  card: {tiers: [0], scope: card}\n  publish: []\n", "gates:\n  card: {tiers: [0], scope: card}\n", []string{"gates.publish: retired, removed"}, false},
-		{
-			"the retired lists migrate to keys with scopes", retiredLists, migratedLists,
-			[]string{
-				"gates.card: list shape retired, migrated to tiers and scope card",
-				"gates.batch: list shape retired, migrated to tiers and scope card",
-				"gates.round: retired, migrated to webster-fix",
-				"gates.final: retired, migrated to webster",
-				"gates.landing: retired, migrated to parent-align, finalize, darn-write and code-burler-fix",
-			},
-			false,
-		},
-		{
-			"a migrated key the file already holds keeps its value", "gates:\n  landing: [0, 1]\n  parent-align: {tiers: [0], scope: diff}\n",
-			"gates:\n  finalize: {tiers: [0, 1], scope: all}\n  darn-write: {tiers: [0, 1], scope: diff}\n  code-burler-fix: {tiers: [0, 1], scope: diff}\n  parent-align: {tiers: [0], scope: diff}\n",
-			[]string{"gates.landing: retired, migrated to finalize, darn-write and code-burler-fix"}, false,
-		},
-		{
-			"a merge-in key is renamed to parent-align with its value", "gates:\n  card: {tiers: [0], scope: card}\n  merge-in: {tiers: [0, 1], scope: all}\n",
-			"gates:\n  card: {tiers: [0], scope: card}\n  parent-align: {tiers: [0, 1], scope: all}\n",
-			[]string{"gates.merge-in: renamed to gates.parent-align"}, false,
-		},
-		{
-			"a merge-in key beside parent-align is dropped", "gates:\n  merge-in: {tiers: [0, 1], scope: all}\n  parent-align: {tiers: [0], scope: diff}\n",
-			"gates:\n  parent-align: {tiers: [0], scope: diff}\n",
-			[]string{"gates.merge-in: retired, removed"}, false,
-		},
-		{
-			"a hub file with the retired lists and guard_tier reconciles to the keys with no guard_tier", "gates:\n  # the lists\n  card: [0]\n  batch: [0, 1]\n  round: [0, 1]\n  final: [0, 1, 2]\n  landing: [0, 1]\nscoper: go\nguard_tier: 1\nrefuse_raw: []\n",
-			strings.Replace(migratedLists, "scoper: none\n", "scoper: go\nrefuse_raw: []\n", 1),
-			[]string{
-				"gates.card: list shape retired, migrated to tiers and scope card",
-				"gates.batch: list shape retired, migrated to tiers and scope card",
-				"gates.round: retired, migrated to webster-fix",
-				"gates.final: retired, migrated to webster",
-				"gates.landing: retired, migrated to parent-align, finalize, darn-write and code-burler-fix",
-				"guard_tier: retired, removed",
-			},
-			false,
-		},
-		{
-			"the retired scope coverage becomes diff, keeping the other fields and comments",
-			"gates:\n  # fixers\n  webster-fix: {tiers: [0, 1], scope: coverage, reports: [redundancy]}\n  pr-review: {tiers: [0], scope: diff}\n  darn-write: {tiers: [0], scope: coverage}\n",
-			"gates:\n  # fixers\n  webster-fix: {tiers: [0, 1], scope: diff, reports: [redundancy]}\n  pr-review: {tiers: [0], scope: diff}\n  darn-write: {tiers: [0], scope: diff}\n",
-			[]string{"gates.webster-fix: scope coverage retired, migrated to scope diff", "gates.darn-write: scope coverage retired, migrated to scope diff"}, false,
-		},
-		{"a guard_tier alone is pruned", "scoper: go\nguard_tier: 0\n", "scoper: go\n", []string{"guard_tier: retired, removed"}, false},
-		{"a document without publish unchanged", withoutPublish, withoutPublish, nil, false},
-		{
-			"a tuned finalize with no adopt gains none, since only the hub base seed adds it",
-			"gates:\n  finalize: {tiers: [0, 1], scope: all}\n", "gates:\n  finalize: {tiers: [0, 1], scope: all}\n", nil, false,
-		},
-		{"an empty document unchanged", "", "", nil, false},
-		{"an unparseable document", "gates: [", "", nil, true},
-		{"a root that is not a mapping", "- card\n", "", nil, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got, lines, err := MigrateConfig([]byte(tt.input))
-			if tt.wantErr {
-				if !errors.Is(err, configengine.ErrInvalid) {
-					t.Fatalf("MigrateConfig(%q) error = %v; want one marked configengine.ErrInvalid", tt.input, err)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("MigrateConfig(%q) error = %v; want none", tt.input, err)
-			}
-			if string(got) != tt.want {
-				t.Errorf("MigrateConfig(%q) = %q; want %q", tt.input, got, tt.want)
-			}
-			if diff := cmp.Diff(tt.wantLines, lines); diff != "" {
-				t.Errorf("MigrateConfig(%q) lines mismatch (-want +got):\n%s", tt.input, diff)
-			}
-			again, againLines, err := MigrateConfig(got)
-			if err != nil || string(again) != string(got) || len(againLines) != 0 {
-				t.Errorf("second MigrateConfig = (%q, %v, %v); want the document unchanged with no lines", again, againLines, err)
-			}
-		})
-	}
-}
-
-func TestSeedAdoptGate(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	const seededLine = "gates.adopt: added with the value of gates.finalize"
-	tests := []struct {
-		name      string
-		input     string
-		want      string
-		wantLines []string
-		wantErr   bool
-	}{
-		{
-			"a tuned finalize with no adopt gains adopt with its value right after it",
-			"gates:\n  card: {tiers: [0], scope: card}\n  finalize: {tiers: [0, 1], scope: all}\n  pr-review: {tiers: [0], scope: diff}\n",
-			"gates:\n  card: {tiers: [0], scope: card}\n  finalize: {tiers: [0, 1], scope: all}\n  adopt: {tiers: [0, 1], scope: all}\n  pr-review: {tiers: [0], scope: diff}\n",
-			[]string{seededLine}, false,
-		},
-		{
-			"a finalize in block style is copied as a flow mapping",
-			"gates:\n  finalize:\n    tiers: [0, 1]\n    scope: all\n",
-			"gates:\n  finalize:\n    tiers: [0, 1]\n    scope: all\n  adopt: {tiers: [0, 1], scope: all}\n",
-			[]string{seededLine}, false,
-		},
-		{
-			"a file holding both keys keeps its adopt",
-			"gates:\n  finalize: {tiers: [0, 1], scope: all}\n  adopt: {tiers: [0], scope: all}\n",
-			"gates:\n  finalize: {tiers: [0, 1], scope: all}\n  adopt: {tiers: [0], scope: all}\n",
-			nil, false,
-		},
-		{"a file with no finalize gains nothing", "gates:\n  card: {tiers: [0], scope: card}\n", "gates:\n  card: {tiers: [0], scope: card}\n", nil, false},
-		{"a document with no gates gains nothing", "scoper: go\n", "scoper: go\n", nil, false},
-		{"an empty document unchanged", "", "", nil, false},
-		{"an unparseable document", "gates: [", "", nil, true},
-		{"a root that is not a mapping", "- card\n", "", nil, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got, lines, err := SeedAdoptGate([]byte(tt.input))
-			if tt.wantErr {
-				if !errors.Is(err, configengine.ErrInvalid) {
-					t.Fatalf("SeedAdoptGate(%q) error = %v; want one marked configengine.ErrInvalid", tt.input, err)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("SeedAdoptGate(%q) error = %v; want none", tt.input, err)
-			}
-			if string(got) != tt.want {
-				t.Errorf("SeedAdoptGate(%q) = %q; want %q", tt.input, got, tt.want)
-			}
-			if diff := cmp.Diff(tt.wantLines, lines); diff != "" {
-				t.Errorf("SeedAdoptGate(%q) lines mismatch (-want +got):\n%s", tt.input, diff)
-			}
-			again, againLines, err := SeedAdoptGate(got)
-			if err != nil || string(again) != string(got) || len(againLines) != 0 {
-				t.Errorf("second SeedAdoptGate = (%q, %v, %v); want the document unchanged with no lines", again, againLines, err)
 			}
 		})
 	}

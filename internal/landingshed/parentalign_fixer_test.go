@@ -6,7 +6,6 @@ package landingshed
 import (
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -538,30 +537,6 @@ func TestMergeIn_Fixer(t *testing.T) {
 		}
 	})
 
-	t.Run("an attempt record found only under the scratch directory is moved to the records directory with its spent count", func(t *testing.T) {
-		t.Parallel()
-		fx := newMergeInFixture(t)
-		writeVerifyLog(t, fx.gate, "FAIL")
-		fx.scriptGate(failing)
-		scratchPath := FixerAttemptsPath(fx.m.deps.ScratchDir, parentAlignName)
-		if err := WriteFixerAttempts(scratchPath, spentEntry); err != nil {
-			t.Fatal(err)
-		}
-
-		outcome, ptr := fx.call(t)
-
-		requireHalt(t, outcome, ptr, "spent every attempt")
-		if rec, found := fx.attemptsOnDisk(t); !found || rec.Spent != 2 {
-			t.Errorf("attempt record under the records directory = %+v, %v; want the 2 spent turns kept", rec, found)
-		}
-		if _, err := os.Stat(scratchPath); !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("stat of the scratch attempt record = %v; want it gone", err)
-		}
-		if len(fx.seats.tables) != 0 {
-			t.Errorf("fixer sessions = %d; want none over the spent attempts the scratch record carried", len(fx.seats.tables))
-		}
-	})
-
 	t.Run("an undecodable attempt record halts naming the file and how to remove it", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
@@ -575,91 +550,6 @@ func TestMergeIn_Fixer(t *testing.T) {
 		requireHalt(t, outcome, ptr, path, "way forward: remove "+path, "`lym loom resume`")
 		if strings.Contains(strings.Join(fx.events, ","), "merge main") {
 			t.Errorf("a merge ran over an undecodable attempt record: %v", fx.events)
-		}
-	})
-
-	retiredAttemptsPath := func(fx *mergeInFixture) string {
-		return FixerAttemptsPath(fx.m.deps.RecordsDir, retiredMergeInName)
-	}
-	seedRetiredAttempts := func(t *testing.T, fx *mergeInFixture, rec FixerAttempts) {
-		t.Helper()
-		if err := WriteFixerAttempts(retiredAttemptsPath(fx), rec); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	t.Run("an attempt record under the retired row name is read with its spent turns and fork point", func(t *testing.T) {
-		t.Parallel()
-		fx := newMergeInFixture(t)
-		fx.holds["x0..p1"] = false
-		fx.seats.turns = []func(){fx.fixerTurn(t, fixedReport, "f1")}
-		seedRetiredAttempts(t, fx, FixerAttempts{Entry: 1, Spent: 1, Baseline: "t2", AlignFrom: "x0"})
-
-		outcome, ptr := fx.call(t)
-
-		if outcome != shedengine.Done || len(fx.seats.tables) != 1 {
-			t.Fatalf("Call() = %q, %+v with %d fixer session(s); want Done and one", outcome, ptr, len(fx.seats.tables))
-		}
-		if got := fx.seats.tables[0].Gate[0].Attempts; got != 1 {
-			t.Errorf("gate attempts = %d; want the 1 turn the retired record leaves the entry", got)
-		}
-		if got := fx.seats.tables[0].Values["aligned_tip"]; got != "x0" {
-			t.Errorf("fixer aligned_tip = %q; want the retired record's fork point x0", got)
-		}
-	})
-
-	t.Run("the spent halt a retired-name record holds still halts without a fixer", func(t *testing.T) {
-		t.Parallel()
-		fx := newMergeInFixture(t)
-		writeVerifyLog(t, fx.gate, "FAIL")
-		fx.scriptGate(failing)
-		seedRetiredAttempts(t, fx, FixerAttempts{Entry: 1, Spent: 2, Baseline: "t2", AlignFrom: "b0", Halt: fixerHaltSpent})
-
-		outcome, ptr := fx.call(t)
-
-		requireHalt(t, outcome, ptr, "spent every attempt")
-		if len(fx.seats.tables) != 0 {
-			t.Errorf("fixer sessions = %d; want none over the spent attempts the retired record carries", len(fx.seats.tables))
-		}
-	})
-
-	t.Run("an undecodable attempt record under the retired row name halts naming the old file", func(t *testing.T) {
-		t.Parallel()
-		fx := newMergeInFixture(t)
-		path := retiredAttemptsPath(fx)
-		if err := os.WriteFile(path, []byte("{nope"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-
-		outcome, ptr := fx.call(t)
-
-		requireHalt(t, outcome, ptr, path, "way forward: remove "+path, "`lym loom resume`")
-	})
-
-	t.Run("a Done removes the retired row name's attempt record on the success path and after the align path", func(t *testing.T) {
-		t.Parallel()
-		success := newMergeInFixture(t)
-		seedRetiredAttempts(t, success, FixerAttempts{Entry: 1, Spent: 1, Baseline: "t2", AlignFrom: "b0"})
-		if outcome, ptr := success.call(t); outcome != shedengine.Done {
-			t.Fatalf("success path: Call() = %q, %+v; want Done", outcome, ptr)
-		}
-		if _, err := os.Stat(retiredAttemptsPath(success)); !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("success path: stat of the retired attempt record = %v; want it removed", err)
-		}
-
-		aligned := newMergeInFixture(t)
-		writeVerifyLog(t, aligned.gate, "FAIL")
-		aligned.scriptGate(failing, passing)
-		aligned.seats.turns = []func(){aligned.fixerTurn(t, fixedReport, "f1")}
-		seedRetiredAttempts(t, aligned, FixerAttempts{Entry: 1, Spent: 1, Baseline: "t2", AlignFrom: "b0"})
-		if outcome, ptr := aligned.call(t); outcome != shedengine.Done {
-			t.Fatalf("align path: Call() = %q, %+v; want Done", outcome, ptr)
-		}
-		if _, err := os.Stat(retiredAttemptsPath(aligned)); !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("align path: stat of the retired attempt record = %v; want it removed", err)
-		}
-		if _, found := aligned.attemptsOnDisk(t); found {
-			t.Error("align path: the attempt record outlived a Done")
 		}
 	})
 }

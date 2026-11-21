@@ -156,16 +156,11 @@ func assertBareArgv(t *testing.T, e *Engine, got []string) {
 	}
 }
 
-// assertResizedUnpinned fails unless fake saw exactly the window-resized unpins for target.
-// Any other set-hook entry that installs that hook also fails it.
-func assertResizedUnpinned(t *testing.T, fake *fakeTmux, target string) {
+// assertResizedHookUntouched fails when fake saw any set-hook naming the window-resized hook.
+func assertResizedHookUntouched(t *testing.T, fake *fakeTmux) {
 	t.Helper()
-	var want [][]string
-	if resizedUnpinCount() > 0 {
-		want = wantResizedUnpins(target)
-	}
-	if got := fake.SetHookCalls(windowResizedHookName); !slices.EqualFunc(got, want, slices.Equal[[]string]) {
-		t.Errorf("set-hook calls naming %s = %v, want exactly the unpins %v", windowResizedHookName, got, want)
+	if got := fake.SetHookCalls(windowResizedHookName); len(got) != 0 {
+		t.Errorf("set-hook calls naming %s = %v, want none", windowResizedHookName, got)
 	}
 }
 
@@ -173,8 +168,7 @@ func assertResizedUnpinned(t *testing.T, fake *fakeTmux, target string) {
 // no client size, has-session failing, a pane listing that errors and a state with no strand owning a present pane.
 // Every one must yield exactly the bare argv, asserted element by element.
 // A path that gets past the session check still pins the geometry options,
-// so it also unpins the window-resized hook and pins the unseen-clear hook.
-// The unpins land on the strand window where one resolves and on the session's current window where none does.
+// so it also pins the unseen-clear hook and leaves the window-resized hook alone.
 // has-session failing returns before any pin.
 func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -184,13 +178,11 @@ func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
 		cols, rows    int
 		mutate        func(*fakeTmux)
 		wantPreflight bool
-		// sessionTarget marks a path whose strand window does not resolve, so the pins land on the session's current window.
-		sessionTarget bool
 	}{
-		{"UnknownClientSize", goodAttachStrands(), 0, 0, nil, true, false},
-		{"HasSessionFails", goodAttachStrands(), 80, 24, func(f *fakeTmux) { f.answer("has-session", "", errors.New("boom")) }, false, false},
-		{"NoStrandOwnsAPresentPane", nil, 80, 24, nil, true, true},
-		{"ListPanesErrors", goodAttachStrands(), 80, 24, func(f *fakeTmux) { f.answer("list-panes", "", errors.New("boom")) }, true, true},
+		{"UnknownClientSize", goodAttachStrands(), 0, 0, nil, true},
+		{"HasSessionFails", goodAttachStrands(), 80, 24, func(f *fakeTmux) { f.answer("has-session", "", errors.New("boom")) }, false},
+		{"NoStrandOwnsAPresentPane", nil, 80, 24, nil, true},
+		{"ListPanesErrors", goodAttachStrands(), 80, 24, func(f *fakeTmux) { f.answer("list-panes", "", errors.New("boom")) }, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -207,11 +199,7 @@ func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
 				}
 				return
 			}
-			target := fakeStrandWindow
-			if tt.sessionTarget {
-				target = exactSessionWindowTarget(e.SessionName())
-			}
-			assertResizedUnpinned(t, fake, target)
+			assertResizedHookUntouched(t, fake)
 			assertUnseenClearHookPinned(t, e, fake)
 		})
 	}
@@ -219,11 +207,11 @@ func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
 
 // TestAttachArgv_PreflightOnAKnownGoodSession pins the pre-flight of one known-good AttachArgv call.
 // AttachArgv itself issues every geometry pin,
-// and the window-resized unpin comes after the state and pane list are read.
+// and the window-resized hook is left alone.
 // It sets window options and hooks, but it issues no pane-set mutation and leaves reed.json untouched.
 // A set-hook error does not change a single element of the returned argv.
 //
-//testtiming:keep pins one known-good AttachArgv call issuing every geometry pin itself, the window-resized unpin in both scopes after list-panes, no pane-set mutation, reed.json left untouched, and a failing set-hook leaving the argv unchanged; its covering tests run this code without asserting it
+//testtiming:keep pins one known-good AttachArgv call issuing every geometry pin itself, no window-resized hook call, no pane-set mutation, reed.json left untouched, and a failing set-hook leaving the argv unchanged; its covering tests run this code without asserting it
 func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 	tiergate.Require(t, 0)
 	e, fake := newAttachTestEngine(t, goodAttachStrands())
@@ -256,25 +244,7 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 
 	assertStrandOptionsReasserted(t, fake, wantShellPins)
 
-	calls := fake.Calls()
-	listPanesIdx, firstSetHookIdx := -1, -1
-	for i, argv := range calls {
-		switch {
-		case callVerb(argv) == "list-panes" && listPanesIdx == -1:
-			listPanesIdx = i
-		case argv[0] == "set-hook" && containsArg(argv, windowResizedHookName) && firstSetHookIdx == -1:
-			firstSetHookIdx = i
-		}
-	}
-	if resizedUnpinCount() > 0 {
-		if listPanesIdx == -1 || firstSetHookIdx == -1 {
-			t.Fatalf("calls = %v, want a list-panes and a window-resized set-hook call", calls)
-		}
-		if firstSetHookIdx <= listPanesIdx {
-			t.Errorf("calls = %v, want the first set-hook call (index %d) after list-panes (index %d)", calls, firstSetHookIdx, listPanesIdx)
-		}
-	}
-	assertResizedUnpinned(t, fake, fakeStrandWindow)
+	assertResizedHookUntouched(t, fake)
 	assertUnseenClearHookPinned(t, e, fake)
 
 	stateAfter, err := LoadState(e.stateDir())
@@ -293,7 +263,7 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 		t.Errorf("AttachArgv() with failing set-hook = %v, want %v (a failing set-hook must not change the argv)", got, want)
 	}
 	if len(fake.ArgvFor("set-hook")) == hooksBefore {
-		t.Error("no set-hook call recorded despite the failing hook, want the unpin statements still attempted")
+		t.Error("no set-hook call recorded despite the failing hook, want the hook pin still attempted")
 	}
 
 	// A prime session created by an older binary gets the prime mark on attach, while a pair session gets none.

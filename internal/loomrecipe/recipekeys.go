@@ -1,5 +1,5 @@
 // recipekeys.go holds the accessors that answer questions about a recipe, selected by name.
-// They cover its contract, engines, Code-Review perch gate, record engine, verify source and retired rows.
+// They cover its contract, engines, Code-Review perch gate, record engine and verify source.
 // Consumers read a recipe's rows and keys through them instead of comparing the recipe name.
 
 package loomrecipe
@@ -10,28 +10,13 @@ import (
 	"slices"
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // loomContract is the value of a recipe's top-level contract key that declares it a loom recipe.
 const loomContract = "loom"
-
-// retiredRows holds each recipe's retired-row map, keyed by recipe name.
-// A recipe absent from it has no retired rows.
-var retiredRows = map[string]map[string]string{
-	shedrun.RecipeTapestry: {
-		"Merge-In":           loomshed.NameParentAlign,
-		"Loom-Preflight":     loomshed.NamePreflight,
-		"Tapestry-Preflight": loomshed.NamePreflight,
-	},
-	shedrun.RecipeDarn: {
-		"Darn": loomshed.NameDarnWrite,
-	},
-}
 
 // IsLoom reports whether the named recipe declares `contract: loom`.
 // An empty name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
@@ -191,14 +176,4 @@ func VerifySource(recipe string) (string, error) {
 	}
 
 	return parsed.VerifySource, nil
-}
-
-// RetiredRows maps each row name that an earlier recipe left in a run's status file onto the row that replaced it.
-// It is nil for a recipe with none, and an empty name reads as the tapestry recipe.
-func RetiredRows(recipe string) map[string]string {
-	if recipe == "" {
-		recipe = shedrun.RecipeTapestry
-	}
-
-	return retiredRows[recipe]
 }

@@ -76,7 +76,7 @@
 // It outlives the strand's removal and is pruned once the process dies.
 // A resume the provider refuses because a live process holds the session reads that record.
 // When the record names the holder, `BeamUp` ends it through `runproc.EndRole` and resumes the same session.
-// A holder lym has not registered, such as an orch the pre-upgrade lym launched, refuses the start, naming its pid;
+// A holder lym has not registered refuses the start, naming its pid;
 // the way forward is to exit that session and run `lym beam start` again.
 // A resume refused because this machine holds no transcript of the session launches fresh with shuttle's carry-over,
 // and the report's warnings say so.

@@ -1,13 +1,12 @@
 // pawlrecipe_test.go covers the pawl recipe as a loom recipe.
 // It pins the recipe's rows and their edges and producer types through New and Routing.
 // It also pins the absence of a review segment and of a reroute edge.
-// It pins the retired rows and the hold boundary against boardengine.RunHolds.
+// It pins the hold boundary against boardengine.RunHolds.
 
 package loomrecipe
 
 import (
 	"reflect"
-	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
@@ -97,7 +96,6 @@ func TestPawlRecipe(t *testing.T) {
 // boardengine imports no recipe package.
 // A beam project's run holds nothing of its entry at batten's claim row and at every pawl row before Finalize.
 // It holds it at Finalize and every row after it.
-// It also pins the recipe's retired rows, which a parked run may still stand at, as held.
 func TestPawlRecipe_HoldLiftsOnlyBeforeFinalize(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -125,19 +123,6 @@ func TestPawlRecipe_HoldLiftsOnlyBeforeFinalize(t *testing.T) {
 	}
 	if !reachedFinalize {
 		t.Fatalf("the pawl recipe's rows %v name no %s row", names, loomshed.NameFinalize)
-	}
-
-	retired, err := RetiredRowNames(shedrun.RecipePawl)
-	if err != nil {
-		t.Fatalf("RetiredRowNames(pawl) error = %v; want nil", err)
-	}
-	if want := []string{"Beam-Describe", loomshed.NamePRReview, loomshed.NameParentAlign}; !slices.Equal(retired, want) {
-		t.Errorf("RetiredRowNames(pawl) = %v; want %v, sorted", retired, want)
-	}
-	for _, name := range retired {
-		if !held(name) {
-			t.Errorf("RunHolds at the retired row %s = false; want true, a parked run there holds its beam", name)
-		}
 	}
 }
 

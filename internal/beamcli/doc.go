@@ -477,8 +477,6 @@
 //     the hub workspace file is regenerated once after each batch;
 //     Bound: a teardown in flight when the dobby stops ends half done;
 //     the next attempt or `lym cleanup --apply` finishes it;
-//   - `battencli.MarkKeptCancels`, which gives a run cancelled with keep before cancel intents existed
-//     its finished keep cancel intent, and commits again one whose commit failed;
 //   - for the prime's dobby only, `battencli.DobbyOrphans`,
 //     with the first-sight record `fabricengine.OrphanFirstSightPath` names;
 //   - `battencli.DobbyRuns` also reads each run's place against its Land row through `battenrecipe.LandOutcomeOf`;

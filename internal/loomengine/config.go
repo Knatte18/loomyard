@@ -3,16 +3,13 @@
 // A bad value fails at load time, not hours into a run when its producer first spawns.
 // The plan perch's keys live in tapestry.yaml, which LoadConfig never reads.
 // Config.WithTapestry copies them in for the callers that serve the Plan-Review segment.
-// MigrateConfig renames or removes the retired keys.
 
 package loomengine
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
@@ -26,7 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
-	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -711,6 +707,10 @@ func ConfigSpec() configengine.Spec {
 		spec.RetiredKeys[key] = guard
 		spec.RetiredWayForward[key] = shedOnlyKeyWayForward
 	}
+	for _, key := range tapestryPlanKeys {
+		spec.RetiredKeys[key] = guard
+		spec.RetiredWayForward[key] = tapestryPlanKeyWayForward
+	}
 	return spec
 }
 
@@ -724,6 +724,17 @@ var shedOnlyKeys = []string{
 
 // shedOnlyKeyWayForward is the way forward a refusal of a shedOnlyKeys key ends with.
 const shedOnlyKeyWayForward = "remove the key from the refused local file, profile block or run_settings object, and set it under the shed module instead: in a local file, in the pair's local shed.yaml; in a profile block or run_settings, in the shed object"
+
+// tapestryPlanKeys are the plan perch keys and the implementer key that live in tapestry.yaml alone.
+// loom.yaml does not read them, and a local file, profile block or run_settings object that sets one is refused.
+var tapestryPlanKeys = []string{
+	"plan", "plan_timeout_min", "implementer", "plan_lenses",
+	"plan_reviewer_model", "plan_fixer_model", "plan_reviewer_fan", "plan_fixer_fan",
+	"plan_judge", "plan_seed", "plan_max_bounces", "plan_hard_max_bounces", "plan_auto_accept",
+}
+
+// tapestryPlanKeyWayForward is the way forward a refusal of a tapestryPlanKeys key ends with.
+const tapestryPlanKeyWayForward = "set it under the tapestry module instead: in a local file, in the pair's local tapestry.yaml; in a profile block or run_settings, in the tapestry object"
 
 // segmentModelList is one per-segment reviewer or fixer model-spec list with the loom.yaml key it came from.
 type segmentModelList struct {
@@ -753,7 +764,6 @@ const (
 	// subagentModelKey is the loom.yaml key naming the writers' lookup subagent model; its value fills the stencil marker.
 	subagentModelKey = "subagent_model"
 	// planLensesKey is the tapestry.yaml key naming the fan the Plan-Write lead forks its lenses from.
-	// MigrateConfig writes it into a loom.yaml document, and the reconcile then moves it to tapestry.yaml.
 	planLensesKey = "plan_lenses"
 )
 
@@ -801,443 +811,6 @@ func fanKeys(cfg Config) []lenses.FanKey {
 		{Key: "discussion_assist_reviewer_fan", Fans: cfg.DiscussionAssistReviewerFan},
 		{Key: "code_assist_reviewer_fan", Fans: cfg.CodeAssistReviewerFan},
 	}
-}
-
-// MigrateConfig rewrites a loom.yaml document for lym config reconcile.
-// It returns the rewritten bytes and one report line per rewrite.
-// It raises a below-floor or null step_idle_timeout_min to its floor and replaces the retired producer keys.
-// It retires skip_merge_review and fan_review, and renames the retired reviewer, fixer and fan keys.
-// A discussion_producer of twill becomes discussion_lenses twill-discussion;
-// any other value, including single and seats, leaves an empty discussion_lenses.
-// A plan_producer of twill becomes plan_lenses twill-plan, and any other value leaves an empty plan_lenses.
-// A document that set discussion_producer also gets discussion_advisors written to match.
-// Under seats, each string entry n becomes {name: advisor-n, model: <entry>};
-// the report line asks the operator to rename it.
-// Under any other value the list is set to empty, even when the document set none.
-// That keeps a lower layer's list off where this document turned it off.
-// A seats document with no list of its own is left as it is, and the report line says where its advisors come from.
-// A document holding skip_merge_review sets each per-perch budget of integer 0 to null;
-// it also sets skip_merge_review true to merge_max_bounces: 0, and removes the key.
-// Under the old schema a budget of 0 meant take review_max_bounces.
-// A document without skip_merge_review keeps every budget as written, since its 0 already means zero rounds.
-// Last, yamlengine.DropKeys removes each retired loom key, the Merge-Review perch's and alignment keys included;
-// each dropped key reports the line `<key>: retired, removed`.
-// review becomes reviewer_model, and fix becomes fixer_model.
-// Each <segment>_review becomes <segment>_reviewer_model, and each <segment>_fix becomes <segment>_fixer_model.
-// Each <segment>_fan becomes <segment>_reviewer_fan, and each <segment>_fix_fan becomes <segment>_fixer_fan.
-// Each rename keeps the value; a document already holding the new name keeps its own value and drops the old key.
-// Before the renames, a document holding webster_review or webster_fix gets the matching Merge key set from it.
-// A Merge key already there is kept, so Merge-Review keeps the models it ran on.
-// The value is the webster key's value;
-// the renamed webster_reviewer_model or webster_fixer_model value replaces it when the document holds that too.
-// After the renames, each webster_* review-perch key becomes its code_* successor with its value.
-// The range runs from webster_reviewer_model to webster_auto_accept, so webster_review ends as code_reviewer_model.
-// A document already holding the code_* name keeps its value and drops the webster_* key.
-// A document without a retired key or comment is returned unchanged, so a migrated file is unchanged on a second pass.
-// Everything else is carried through yaml node editing with its comments.
-// The loader never calls it.
-// A document that does not parse returns an error marked configengine.ErrInvalid.
-func MigrateConfig(existing []byte) ([]byte, []string, error) {
-	raised, floorLine, err := yamlengine.RaiseIntFloor(existing, "step_idle_timeout_min", stepIdleTimeoutFloorMin)
-	if err != nil {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
-	}
-	var rewrites []string
-	if floorLine != "" {
-		rewrites = append(rewrites, floorLine)
-	}
-	migrated, producerLines, err := migrateProducerKeys(raised)
-	if err != nil {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
-	}
-	rewrites = append(rewrites, producerLines...)
-	migrated, retiredLines, err := retireSkipMergeReview(migrated)
-	if err != nil {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
-	}
-	rewrites = append(rewrites, retiredLines...)
-	migrated, fanReviewLines, err := retireFanReview(migrated)
-	if err != nil {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
-	}
-	rewrites = append(rewrites, fanReviewLines...)
-	migrated, mergeLines, err := copyWebsterModelsOntoMerge(migrated)
-	if err != nil {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
-	}
-	rewrites = append(rewrites, mergeLines...)
-	migrated, renameLines, err := yamlengine.RenameKeys([]byte(ConfigTemplate()), migrated, retiredReviewKeyRenames)
-	if err != nil {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
-	}
-	rewrites = append(rewrites, renameLines...)
-	migrated, perchRenameLines, err := yamlengine.RenameKeys([]byte(ConfigTemplate()), migrated, retiredPerchKeyRenames)
-	if err != nil {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
-	}
-	rewrites = append(rewrites, perchRenameLines...)
-	migrated, dropLines, err := yamlengine.DropKeys(migrated, retiredLoomKeys)
-	if err != nil {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
-	}
-	rewrites = append(rewrites, dropLines...)
-	return migrated, rewrites, nil
-}
-
-// migrateProducerKeys replaces the retired discussion_producer and plan_producer keys of document.
-// It returns the rewritten document and the report lines of the rewrites.
-// It returns document unchanged, with no lines, when it holds neither key.
-func migrateProducerKeys(document []byte) ([]byte, []string, error) {
-	var tree yaml.Node
-	if err := yaml.Unmarshal(document, &tree); err != nil {
-		return nil, nil, err
-	}
-	if tree.Kind != yaml.DocumentNode || len(tree.Content) == 0 || tree.Content[0].Kind != yaml.MappingNode {
-		return document, nil, nil
-	}
-	root := tree.Content[0]
-	discussionProducer := mappingValueNode(root, "discussion_producer")
-	planProducer := mappingValueNode(root, "plan_producer")
-	if discussionProducer == nil && planProducer == nil {
-		return document, nil, nil
-	}
-
-	var lines []string
-	if discussionProducer != nil {
-		producer := discussionProducer.Value
-		lines = append(lines, replaceProducerKey(root, "discussion_producer", discussionLensesKey, "twill-discussion", discussionProducer))
-		lines = append(lines, migrateAdvisors(root, producer))
-	}
-	if planProducer != nil {
-		lines = append(lines, replaceProducerKey(root, "plan_producer", planLensesKey, "twill-plan", planProducer))
-	}
-
-	var out bytes.Buffer
-	encoder := yaml.NewEncoder(&out)
-	encoder.SetIndent(2)
-	if err := encoder.Encode(&tree); err != nil {
-		return nil, nil, fmt.Errorf("encode migrated loom config: %w", err)
-	}
-	if err := encoder.Close(); err != nil {
-		return nil, nil, fmt.Errorf("encode migrated loom config: %w", err)
-	}
-	return out.Bytes(), slices.DeleteFunc(lines, func(line string) bool { return line == "" }), nil
-}
-
-// replaceProducerKey renames the retired producer key of root to lensesKey in place, keeping its comments.
-// It sets the key's value to fan when the producer was twill, and to an empty value otherwise.
-// value is the producer key's value node.
-// The returned line reports the rewrite.
-func replaceProducerKey(root *yaml.Node, producerKey, lensesKey, fan string, value *yaml.Node) string {
-	old := value.Value
-	lenses := ""
-	if old == "twill" {
-		lenses = fan
-	}
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		if root.Content[i].Value == producerKey {
-			root.Content[i].Value = lensesKey
-		}
-	}
-	value.Kind, value.Tag, value.Value, value.Content = yaml.ScalarNode, "!!str", lenses, nil
-	value.Style = 0
-	if lenses == "" {
-		value.Style = yaml.DoubleQuotedStyle
-	}
-	return fmt.Sprintf("%s: %s replaced by %s: %q", producerKey, old, lensesKey, lenses)
-}
-
-// migrateAdvisors rewrites root's discussion_advisors to match the retired discussion_producer value producer.
-// It returns the line reporting the rewrite, or "" when nothing changed.
-func migrateAdvisors(root *yaml.Node, producer string) string {
-	advisors := mappingValueNode(root, discussionAdvisorsKey)
-	if producer != "seats" {
-		if advisors == nil {
-			root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: discussionAdvisorsKey}, emptySequenceNode())
-			return fmt.Sprintf("%s: set to [] because discussion_producer was %s", discussionAdvisorsKey, producer)
-		}
-		if len(advisorEntryNodes(advisors)) == 0 {
-			return ""
-		}
-		*advisors = emptySequenceNodeKeeping(advisors)
-		return fmt.Sprintf("%s: emptied because discussion_producer was %s", discussionAdvisorsKey, producer)
-	}
-	if advisors == nil {
-		return fmt.Sprintf("discussion_producer was seats and %s is not set here, so its advisors come from a lower layer whose migration may have emptied them; set %s to a list of {name, model} entries", discussionAdvisorsKey, discussionAdvisorsKey)
-	}
-	entries := advisorEntryNodes(advisors)
-	if len(entries) == 0 {
-		*advisors = emptySequenceNodeKeeping(advisors)
-		return ""
-	}
-	renamed := 0
-	rewritten := make([]*yaml.Node, len(entries))
-	for i, entry := range entries {
-		if entry.Kind != yaml.ScalarNode {
-			rewritten[i] = entry
-			continue
-		}
-		renamed++
-		rewritten[i] = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{
-			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "name"},
-			{Kind: yaml.ScalarNode, Tag: "!!str", Value: fmt.Sprintf("advisor-%d", i+1)},
-			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "model"},
-			entry,
-		}}
-	}
-	advisors.Kind, advisors.Tag, advisors.Value, advisors.Style, advisors.Content = yaml.SequenceNode, "!!seq", "", 0, rewritten
-	if renamed == 0 {
-		return ""
-	}
-	return fmt.Sprintf("%s: %d string entries rewritten as {name: advisor-<n>, model: <entry>}; rename each advisor to its seat name", discussionAdvisorsKey, renamed)
-}
-
-// advisorEntryNodes returns the entries of a retired-form discussion_advisors value.
-// A sequence yields its own entries, and a scalar yields itself alone.
-// An empty or null value yields none, and so does a list holding one empty string.
-func advisorEntryNodes(value *yaml.Node) []*yaml.Node {
-	entries := value.Content
-	if value.Kind == yaml.ScalarNode {
-		scalar := *value
-		entries = []*yaml.Node{&scalar}
-	}
-	if len(entries) == 1 && entries[0].Kind == yaml.ScalarNode && entries[0].Value == "" {
-		return nil
-	}
-	return entries
-}
-
-// emptySequenceNode returns a flow-style sequence node holding no entries.
-func emptySequenceNode() *yaml.Node {
-	return &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Style: yaml.FlowStyle}
-}
-
-// emptySequenceNodeKeeping returns an empty flow-style sequence node carrying node's comments.
-func emptySequenceNodeKeeping(node *yaml.Node) yaml.Node {
-	empty := emptySequenceNode()
-	empty.HeadComment, empty.LineComment, empty.FootComment = node.HeadComment, node.LineComment, node.FootComment
-	return *empty
-}
-
-// mappingValueNode returns the value node stored under key in mapping, or nil when mapping lacks the key.
-func mappingValueNode(mapping *yaml.Node, key string) *yaml.Node {
-	for i := 0; i+1 < len(mapping.Content); i += 2 {
-		if mapping.Content[i].Value == key {
-			return mapping.Content[i+1]
-		}
-	}
-	return nil
-}
-
-// retireSkipMergeReview rewrites a document holding the retired skip_merge_review key onto the zero-round budgets.
-// It returns the rewritten bytes and one line per rewrite.
-// A document without the key comes back unchanged.
-func retireSkipMergeReview(document []byte) ([]byte, []string, error) {
-	var parsed yaml.Node
-	if err := yaml.Unmarshal(document, &parsed); err != nil {
-		return nil, nil, fmt.Errorf("unmarshal yaml: %w", err)
-	}
-	if parsed.Kind != yaml.DocumentNode || len(parsed.Content) == 0 || parsed.Content[0].Kind != yaml.MappingNode {
-		return document, nil, nil
-	}
-	root := parsed.Content[0]
-	skipAt := mappingKeyIndex(root, "skip_merge_review")
-	if skipAt < 0 {
-		return document, nil, nil
-	}
-
-	var lines []string
-	for _, perch := range []Perch{PerchDiscussion, PerchPlan, PerchCode} {
-		key := reviewbudget.SoftKey(string(perch))
-		at := mappingKeyIndex(root, key)
-		if at < 0 {
-			continue
-		}
-		value := root.Content[at+1]
-		if value.Kind == yaml.ScalarNode && value.Tag == "!!int" && value.Value == "0" {
-			value.Tag, value.Style, value.Value = "!!null", 0, "~"
-			lines = append(lines, key+": 0 rewritten to null, which takes review_max_bounces")
-		}
-	}
-
-	var skip bool
-	if err := root.Content[skipAt+1].Decode(&skip); err == nil && skip {
-		mergeKey := "merge_max_bounces"
-		if at := mappingKeyIndex(root, mergeKey); at >= 0 {
-			value := root.Content[at+1]
-			value.Kind, value.Tag, value.Style, value.Value = yaml.ScalarNode, "!!int", 0, "0"
-		} else {
-			root.Content = append(root.Content,
-				&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: mergeKey},
-				&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: "0"})
-		}
-		lines = append(lines, "skip_merge_review: true rewritten to merge_max_bounces: 0")
-	}
-
-	skipAt = mappingKeyIndex(root, "skip_merge_review")
-	root.Content = append(root.Content[:skipAt], root.Content[skipAt+2:]...)
-	lines = append(lines, "skip_merge_review: removed")
-
-	var out bytes.Buffer
-	encoder := yaml.NewEncoder(&out)
-	encoder.SetIndent(2)
-	if err := encoder.Encode(&parsed); err != nil {
-		return nil, nil, fmt.Errorf("encode yaml: %w", err)
-	}
-	if err := encoder.Close(); err != nil {
-		return nil, nil, fmt.Errorf("encode yaml: %w", err)
-	}
-	return out.Bytes(), lines, nil
-}
-
-// retireFanReview removes the retired fan_review key from document.
-// It returns the rewritten bytes and one line reporting the removal.
-// A document without the key comes back unchanged.
-func retireFanReview(document []byte) ([]byte, []string, error) {
-	var parsed yaml.Node
-	if err := yaml.Unmarshal(document, &parsed); err != nil {
-		return nil, nil, fmt.Errorf("unmarshal yaml: %w", err)
-	}
-	if parsed.Kind != yaml.DocumentNode || len(parsed.Content) == 0 || parsed.Content[0].Kind != yaml.MappingNode {
-		return document, nil, nil
-	}
-	root := parsed.Content[0]
-	at := mappingKeyIndex(root, "fan_review")
-	if at < 0 {
-		return document, nil, nil
-	}
-	root.Content = append(root.Content[:at], root.Content[at+2:]...)
-
-	var out bytes.Buffer
-	encoder := yaml.NewEncoder(&out)
-	encoder.SetIndent(2)
-	if err := encoder.Encode(&parsed); err != nil {
-		return nil, nil, fmt.Errorf("encode yaml: %w", err)
-	}
-	if err := encoder.Close(); err != nil {
-		return nil, nil, fmt.Errorf("encode yaml: %w", err)
-	}
-	return out.Bytes(), []string{"fan_review: removed; a fanned round's reviewer now runs on its segment's own reviewer list"}, nil
-}
-
-// retiredReviewKeyRenames maps each retired reviewer, fixer and fan key of loom.yaml onto the key that replaced it.
-var retiredReviewKeyRenames = []yamlengine.KeyRename{
-	{From: "review", To: "reviewer_model"},
-	{From: "fix", To: "fixer_model"},
-	{From: "discussion_review", To: "discussion_reviewer_model"},
-	{From: "discussion_fix", To: "discussion_fixer_model"},
-	{From: "plan_review", To: "plan_reviewer_model"},
-	{From: "plan_fix", To: "plan_fixer_model"},
-	{From: "webster_review", To: "webster_reviewer_model"},
-	{From: "webster_fix", To: "webster_fixer_model"},
-	{From: "discussion_fan", To: "discussion_reviewer_fan"},
-	{From: "plan_fan", To: "plan_reviewer_fan"},
-	{From: "webster_fan", To: "webster_reviewer_fan"},
-	{From: "merge_fan", To: "merge_reviewer_fan"},
-	{From: "discussion_fix_fan", To: "discussion_fixer_fan"},
-	{From: "plan_fix_fan", To: "plan_fixer_fan"},
-	{From: "webster_fix_fan", To: "webster_fixer_fan"},
-	{From: "merge_fix_fan", To: "merge_fixer_fan"},
-}
-
-// retiredPerchKeyRenames maps each webster_* review-perch key of loom.yaml onto the code_* key of the Code-Review perch.
-// Apply it after the review-key renames,
-// so a retired webster_review reaches code_reviewer_model through webster_reviewer_model.
-var retiredPerchKeyRenames = []yamlengine.KeyRename{
-	{From: "webster_reviewer_model", To: "code_reviewer_model"},
-	{From: "webster_fixer_model", To: "code_fixer_model"},
-	{From: "webster_reviewer_fan", To: "code_reviewer_fan"},
-	{From: "webster_fixer_fan", To: "code_fixer_fan"},
-	{From: "webster_judge", To: "code_judge"},
-	{From: "webster_seed", To: "code_seed"},
-	{From: "webster_max_bounces", To: "code_max_bounces"},
-	{From: "webster_hard_max_bounces", To: "code_hard_max_bounces"},
-	{From: "webster_auto_accept", To: "code_auto_accept"},
-}
-
-// retiredLoomKeys lists the loom.yaml keys no binary reads.
-// Each is removed after the key renames, so a retired key's value can still reach its successor first.
-var retiredLoomKeys = []string{
-	"merge_reviewer_model",
-	"merge_fixer_model",
-	"merge_reviewer_fan",
-	"merge_fixer_fan",
-	"merge_max_bounces",
-	"merge_hard_max_bounces",
-	"merge_auto_accept",
-	"rework",
-	"alignment_pr_approve",
-	"alignment",
-	"alignment_timeout_min",
-	"skip_alignment",
-	"parent_review_wait_min",
-}
-
-// copyWebsterModelsOntoMerge sets merge_reviewer_model and merge_fixer_model of document from their Webster keys.
-// webster_review feeds merge_reviewer_model and webster_fix feeds merge_fixer_model.
-// Each copy happens only when the document holds the Webster key and not the Merge key.
-// A renamed key, webster_reviewer_model or webster_fixer_model, wins over its retired key, since the rename keeps it.
-// The copy keeps Merge-Review on the models it ran on before it had keys of its own.
-// It returns the rewritten bytes, with one line per copied key.
-// It returns document itself, with no lines, when nothing is copied.
-func copyWebsterModelsOntoMerge(document []byte) ([]byte, []string, error) {
-	var parsed yaml.Node
-	if err := yaml.Unmarshal(document, &parsed); err != nil {
-		return nil, nil, fmt.Errorf("unmarshal yaml: %w", err)
-	}
-	if parsed.Kind != yaml.DocumentNode || len(parsed.Content) == 0 || parsed.Content[0].Kind != yaml.MappingNode {
-		return document, nil, nil
-	}
-	var template yaml.Node
-	if err := yaml.Unmarshal([]byte(ConfigTemplate()), &template); err != nil {
-		return nil, nil, fmt.Errorf("unmarshal loom template: %w", err)
-	}
-	root := parsed.Content[0]
-	var lines []string
-	for _, copied := range []struct{ webster, websterRenamed, merge string }{
-		{"webster_review", "webster_reviewer_model", "merge_reviewer_model"},
-		{"webster_fix", "webster_fixer_model", "merge_fixer_model"},
-	} {
-		retiredAt := mappingKeyIndex(root, copied.webster)
-		if retiredAt < 0 || mappingKeyIndex(root, copied.merge) >= 0 {
-			continue
-		}
-		// The rename keeps the new Webster key over the retired one, so Merge follows the new key's value.
-		source, at := copied.webster, retiredAt
-		if renamedAt := mappingKeyIndex(root, copied.websterRenamed); renamedAt >= 0 {
-			source, at = copied.websterRenamed, renamedAt
-		}
-		value := *root.Content[at+1]
-		if templated := mappingValueNode(template.Content[0], copied.merge); templated != nil {
-			value.LineComment = templated.LineComment
-		}
-		root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: copied.merge}, &value)
-		lines = append(lines, fmt.Sprintf("%s: set to %s's value, the models Merge-Review ran on", copied.merge, source))
-	}
-	if len(lines) == 0 {
-		return document, nil, nil
-	}
-
-	var out bytes.Buffer
-	encoder := yaml.NewEncoder(&out)
-	encoder.SetIndent(2)
-	if err := encoder.Encode(&parsed); err != nil {
-		return nil, nil, fmt.Errorf("encode yaml: %w", err)
-	}
-	if err := encoder.Close(); err != nil {
-		return nil, nil, fmt.Errorf("encode yaml: %w", err)
-	}
-	return out.Bytes(), lines, nil
-}
-
-// mappingKeyIndex returns the index of key in mapping's Content, or -1 when mapping lacks it.
-func mappingKeyIndex(mapping *yaml.Node, key string) int {
-	for i := 0; i+1 < len(mapping.Content); i += 2 {
-		if mapping.Content[i].Value == key {
-			return i
-		}
-	}
-	return -1
 }
 
 // ValidateLocalValues checks the review budget and hard-cap keys a local-layer document sets, through reviewbudget.

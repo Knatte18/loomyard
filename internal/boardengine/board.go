@@ -70,7 +70,6 @@ type promoted struct{ task Task }
 
 // boardCriticalSection runs the locked write scaffolding shared by every mutating Board method.
 // It takes the write lock and loads the store.
-// It migrates a board that has not been marked draft and every task left discussed.
 // A board made by Expecting then checks its entry's revision and refuses a stale one before anything is written.
 // It then calls fn to mutate the store, and it gives a new task the draft status except a promoted raddle task.
 // It stamps the entry dates and assigns the handles the mutation left missing or of another letter;
@@ -115,8 +114,6 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 		return nil, err
 	}
 
-	// Migrated before fn mutates, so a write that releases a task to an empty status is not re-drafted by the migration.
-	migrateLoaded(store)
 	loaded := cloneTasks(store.Tasks())
 	if err := b.checkExpected(loaded, store.primeOwner); err != nil {
 		return nil, err
@@ -375,24 +372,14 @@ func (b *Board) Sync() error {
 	return Sync(b.boardPath, b.skipGit, b.skipPush)
 }
 
-// HealthCheck verifies the board directory exists and holds a readable board.json or a readable legacy file.
-// Syntactically corrupt but readable files pass the health check.
+// HealthCheck verifies the board directory exists and holds a readable board.json.
+// A syntactically corrupt but readable file passes the health check.
 func (b *Board) HealthCheck() error {
 	if _, err := os.Stat(b.boardPath); err != nil {
 		return err
 	}
-
-	var firstErr error
-	for _, name := range []string{boardFile, legacyTasksFile, legacyNotesFile} {
-		_, err := os.ReadFile(filepath.Join(b.boardPath, name))
-		if err == nil {
-			return nil
-		}
-		if firstErr == nil {
-			firstErr = err
-		}
-	}
-	return firstErr
+	_, err := os.ReadFile(filepath.Join(b.boardPath, boardFile))
+	return err
 }
 
 // loadStore loads the store for a read and persists nothing.
@@ -408,21 +395,13 @@ func (b *Board) loadStore() (*Store, error) {
 	return store, nil
 }
 
-// migrateLoaded applies the migrations a load owes: the draft marking, then the left-over discussed statuses.
-// The write section and the view both run it, so they see one entry state.
-func migrateLoaded(store *Store) {
-	migrateDraftStatus(store)
-	migrateDiscussedStatus(store)
-}
-
-// View returns the board's view projection as a write would see the board: loaded and migrated, with nothing saved.
+// View returns the board's view projection as a write would see the board: loaded, with nothing saved.
 // An entry whose decision record file is missing reads as undiscussed, as the render treats it.
 func (b *Board) View() (BoardView, error) {
 	store, err := b.loadStore()
 	if err != nil {
 		return BoardView{}, err
 	}
-	migrateLoaded(store)
 	return buildView(store.Tasks(), withMissingRecordsUndiscussed(b.boardPath, store.Tasks()), store.primeOwner, b.out, b.now())
 }
 
@@ -589,56 +568,4 @@ func (b *Board) Find(text string, labels []string) ([]BriefTask, error) {
 		return nil, err
 	}
 	return store.Find(text, labels), nil
-}
-
-// RetireLegacy ends the pre-upgrade compatibility window under the write lock.
-// It returns the base names of the legacy files present, tasks file first.
-// It refuses when neither legacy file exists, whatever apply is.
-// With apply false it is a dry run: the names are reported and nothing is saved, rendered or deleted.
-// A dry run still takes the board write lock, creating the board directory and the lock file when they are absent.
-// With apply true the load folds the last done marks and board.json is saved with legacy_done still in place.
-// The legacy files and their swap locks are then deleted.
-// Only after that is legacy_done dropped and board.json saved again.
-// A crash or a failed deletion therefore leaves the surviving legacy files beside an intact legacy_done,
-// so a reload folds no mark twice and retire-legacy can be rerun.
-func (b *Board) RetireLegacy(apply bool) ([]string, error) {
-	legacyNames := []string{legacyTasksFile, legacyNotesFile}
-	legacyPaths := []string{
-		filepath.Join(b.boardPath, legacyTasksFile),
-		filepath.Join(b.boardPath, legacyNotesFile),
-	}
-	var retired *Store
-	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
-		var present []string
-		for i, path := range legacyPaths {
-			if fileExists(path) {
-				present = append(present, legacyNames[i])
-			}
-		}
-		if len(present) == 0 {
-			return nil, fmt.Errorf("nothing to retire: neither %s nor %s exists in the board directory", legacyTasksFile, legacyNotesFile)
-		}
-		if !apply {
-			return noWrite{result: present}, nil
-		}
-		retired = store
-		return present, nil
-	}, func() error {
-		for _, path := range legacyPaths {
-			for _, p := range []string{path, path + swapLockSuffix} {
-				if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
-					return fmt.Errorf("remove legacy file: %w", err)
-				}
-			}
-		}
-		retired.legacyDone = nil
-		if err := retired.Save(); err != nil {
-			return fmt.Errorf("save store: %w", err)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return result.([]string), nil
 }

@@ -455,23 +455,6 @@ func TestBouncer_Amendment(t *testing.T) {
 				t.Errorf("AmendmentNote() = %q; want the amendment scope and no input named", note)
 			}
 		}},
-		{"RecordWithOnlyReviewInputReadsAsThatOnePath", func(t *testing.T) {
-			verdict := "CONVERGED"
-			h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil))
-			legacy := `{"number":2,"amendment":true,"base":"base-1","review_input":"/review/legacy.md"}`
-			if err := os.MkdirAll(h.cfg.RunDir, 0o755); err != nil {
-				t.Fatalf("create run directory = %v; want nil", err)
-			}
-			if err := os.WriteFile(filepath.Join(h.cfg.RunDir, generationRecordFile), []byte(legacy), 0o644); err != nil {
-				t.Fatalf("write generation record = %v; want nil", err)
-			}
-			if generation := h.generation(); !hasInputPaths(generation, "/review/legacy.md") {
-				t.Errorf("generation record = %+v; want the one review input /review/legacy.md", generation)
-			}
-			if note := AmendmentNote(h.cfg.RunDir); !strings.Contains(note, "/review/legacy.md") {
-				t.Errorf("AmendmentNote() = %q; want it to name /review/legacy.md", note)
-			}
-		}},
 		{"SendBackInputOverAnUnchangedSubjectStartsAFullGeneration", func(t *testing.T) {
 			const sendBack = "/scratch/pr-findings-1.md"
 			verdict := "CONVERGED"
@@ -548,7 +531,7 @@ func TestBouncer_Amendment(t *testing.T) {
 		{"AmendmentRecordHoldingAReviewInputRendersNoReviewInputNote", func(t *testing.T) {
 			verdict := "CONVERGED"
 			h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil))
-			held := `{"number":2,"amendment":true,"base":"base-1","review_input":"/review/legacy.md"}`
+			held := `{"number":2,"amendment":true,"base":"base-1","review_inputs":["/review/held.md"]}`
 			if err := os.MkdirAll(h.cfg.RunDir, 0o755); err != nil {
 				t.Fatalf("create run directory = %v; want nil", err)
 			}
@@ -556,8 +539,8 @@ func TestBouncer_Amendment(t *testing.T) {
 				t.Fatalf("write generation record = %v; want nil", err)
 			}
 
-			if generation := h.generation(); !generation.Amendment || !hasInputPaths(generation, "/review/legacy.md") {
-				t.Fatalf("generation record = %+v; want an amendment holding the review input /review/legacy.md", generation)
+			if generation := h.generation(); !generation.Amendment || !hasInputPaths(generation, "/review/held.md") {
+				t.Fatalf("generation record = %+v; want an amendment holding the review input /review/held.md", generation)
 			}
 			if note := ReviewInputNote(h.cfg.RunDir); note != noNote {
 				t.Errorf("ReviewInputNote() = %q; want %q for an amendment, whatever input it holds", note, noNote)

@@ -46,7 +46,6 @@ func TestClassifyRecords(t *testing.T) {
 	t.Parallel()
 	rules := NoticeRules{
 		VerifyRows:  []string{"Parent-Align", "Publish"},
-		GateRow:     "PR-Gate",
 		EpisodeRows: []string{"Land", "Worktree-Teardown"},
 	}
 	escalating := rules
@@ -75,22 +74,6 @@ func TestClassifyRecords(t *testing.T) {
 			rules:     rules,
 			record:    changesRecord(nil, changeEntry(1, "child running → awaiting at Plan-Bouncer")),
 			wantWakes: []Wake{wantWake("awaiting", "Plan-Bouncer", 1)},
-		},
-		{
-			name:      "an awaiting at the gate with no later reroute is a pr-gate wake",
-			rules:     rules,
-			record:    changesRecord([]shedengine.HistoryEntry{childEntry(0, "PR-Gate", shedengine.Awaiting)}, changeEntry(1, "child running → awaiting at PR-Gate")),
-			wantWakes: []Wake{wantWake(WakeKindPRGate, "PR-Gate", 1)},
-		},
-		{
-			name:  "an awaiting at the gate followed by a gate reroute is a moved-parent resume",
-			rules: rules,
-			record: changesRecord(
-				[]shedengine.HistoryEntry{childEntry(0, "PR-Gate", shedengine.Awaiting), childEntry(2, "PR-Gate", shedengine.OutcomeReroute)},
-				changeEntry(1, "child running → awaiting at PR-Gate"),
-			),
-			wantAutomatic: []AutomaticStep{{Kind: AutomaticKindParentMovedResume, Producer: "PR-Gate", At: parseEntryTime(minuteText(1))}},
-			wantAccounted: []int{1},
 		},
 		{
 			name:  "a first blocked at a verify row followed by a goto is a verify retry and its pause is no wake",
@@ -167,7 +150,7 @@ func TestClassifyRecords(t *testing.T) {
 		{
 			name:   "no snapshots classify to nothing",
 			rules:  rules,
-			record: BattenRecord{Child: []shedengine.HistoryEntry{childEntry(1, "PR-Gate", shedengine.OutcomeReroute)}},
+			record: BattenRecord{Child: []shedengine.HistoryEntry{childEntry(1, "Parent-Align", shedengine.OutcomeReroute)}},
 		},
 	}
 	for _, tt := range tests {

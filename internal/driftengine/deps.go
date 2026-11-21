@@ -95,7 +95,7 @@ type Deps struct {
 	CaptureCurrent func(ctx context.Context) (CurrentCapture, error)
 	// Sleep waits d or until ctx ends; it is the clock of the capture wait.
 	Sleep func(ctx context.Context, d time.Duration) error
-	// Compare runs the mechanical compare against the baseline over the scope's skip list and returns how it ended.
+	// Compare runs the mechanical compare against the baseline and returns how it ended.
 	Compare func(ctx context.Context) (CompareResult, error)
 	// GateFindingsFile is the file an exhausted gate entry's findings are kept in; empty keeps none.
 	GateFindingsFile string

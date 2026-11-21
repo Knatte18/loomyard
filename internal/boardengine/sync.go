@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -21,10 +20,6 @@ import (
 // writeLockFile aliases fabricengine.BoardWriteLockFile, which declares the literal.
 // The name lives in fabricengine because a stencil-seeding commit verb outside boardengine must take the same lock.
 const writeLockFile = fabricengine.BoardWriteLockFile
-
-// retiredIgnorePatterns are lock patterns that must not stay in the board's .gitignore.
-// ensureBoardIgnores removes them, so a stray lock file shows in `git status` instead of being hidden.
-var retiredIgnorePatterns = []string{"*.lock", "*.swaplock"}
 
 // Sync commits pending changes and pushes to the remote, looping until clean and unpushed changes are gone.
 // skipGit disables it entirely;
@@ -76,8 +71,8 @@ func commitDirty(boardPath string, bolt *fabricengine.Bolt) (bool, error) {
 	return committed, nil
 }
 
-// ensureBoardIgnores keeps the render manifest ignored in the board's .gitignore and removes the retired lock patterns.
-// It writes the file only when its content changes.
+// ensureBoardIgnores keeps the render manifest ignored in the board's .gitignore.
+// It writes the file only when the manifest line is missing.
 func ensureBoardIgnores(boardPath string) error {
 	gitignorePath := filepath.Join(boardPath, ".gitignore")
 	existing, err := os.ReadFile(gitignorePath)
@@ -85,28 +80,16 @@ func ensureBoardIgnores(boardPath string) error {
 		return fmt.Errorf("read .gitignore: %w", err)
 	}
 
-	var kept []string
-	manifestIgnored := false
 	for _, line := range strings.Split(string(existing), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if slices.Contains(retiredIgnorePatterns, trimmed) {
-			continue
+		if strings.TrimSpace(line) == renderManifestFile {
+			return nil
 		}
-		if trimmed == renderManifestFile {
-			manifestIgnored = true
-		}
-		kept = append(kept, line)
 	}
-	content := strings.Join(kept, "\n")
-	if !manifestIgnored {
-		if content != "" && !strings.HasSuffix(content, "\n") {
-			content += "\n"
-		}
-		content += renderManifestFile + "\n"
+	content := string(existing)
+	if content != "" && !strings.HasSuffix(content, "\n") {
+		content += "\n"
 	}
-	if content == string(existing) {
-		return nil
-	}
+	content += renderManifestFile + "\n"
 	if err := os.WriteFile(gitignorePath, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write .gitignore: %w", err)
 	}

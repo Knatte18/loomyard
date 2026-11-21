@@ -167,12 +167,10 @@ func newHubCommit(boardDir string) hubCommitFunc {
 // reconcileDefaultLayer reconciles every module's file under the hub's board dir and reports the reconcile envelope.
 // It seeds absent bases sparse from the prime's anchor and never fills a present base that is not seed-only;
 // a present seed-only file follows its template against the template base kept beside it.
-// The one-time base strip of an unmigrated board is reported as pending and never performed,
-// so the board marker is not written.
 // A dry run writes nothing and takes no guard.
 // apply is refused when guard refuses.
 // Otherwise it holds the board write lock and runs a dry run first,
-// so a file that fails to parse or migrate leaves every file unwritten.
+// so a file that fails to parse leaves every file unwritten.
 // Then the reconcile writes, its files are committed in the Bolt checkout and the commit is pushed.
 // A write that fails part-way is undone, restoring every config file of the board dir.
 // A write that succeeded but was not committed, or was committed but not pushed, is reported as an error.

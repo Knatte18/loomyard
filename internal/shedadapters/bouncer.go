@@ -380,7 +380,6 @@ var _ shedengine.ShedProducer = (*Bouncer)(nil)
 //
 // A judged round whose verdict is CONVERGED was settled by an earlier call,
 // and so was a round whose recorded decision is a settled accept, whatever its verdict.
-// A legacy APPROVED verdict reads as CONVERGED.
 // A Bouncer told a Subject seam keeps a settle record and a generation record in the run directory,
 // and re-entry tells four cases apart:
 // 1. A live settle record whose subject equals the live subject, checked at entry at any round, including 0:
@@ -462,11 +461,8 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 			// Re-checked after the wait, against what the attached judge has now written.
 			// A judgment that landed inside this call is harvested here, so this call settles it.
 			// It is never the clear below, which presumes a verdict an earlier call already settled.
-			if verdict, ledger, ok := harvestedVerdict(b.cfg.RunDir, n); ok {
+			if verdict, ledger, ok := recordedVerdict(b.cfg.RunDir, n); ok {
 				return b.settleUnlessRefused(ctx, n, verdict, ledger, true)
-			}
-			if b.judged(n) {
-				return b.retireLegacyVerdict(ctx, n)
 			}
 		}
 		// Falling through covers both remaining cases without special-casing.
@@ -1055,19 +1051,6 @@ func (b *Bouncer) ensureFocus(round int) {
 	logger.Warn("shedadapters: bouncer synthesized an empty focus file", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "path", path)
 }
 
-// retireLegacyVerdict handles a spawned or attached judge whose verdict and ledger only the legacy reading accepts.
-// A retired APPROVED or BLOCKING word never settles a harvest.
-// It archives the three judge outputs, so the round reads as unjudged and is re-judged under the current prompt.
-// It degrades with a Reason naming the retired word.
-// Archiving is safe because the run returned or the attach waited, so no live judge owns the paths.
-// The Stuck outcome spends one counted bounce unit, and the next call re-judges the round.
-func (b *Bouncer) retireLegacyVerdict(ctx context.Context, round int) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	if err := archiveStaleOutputs(judgeOutputs(b.cfg.RunDir, round), b.cfg.Now); err != nil {
-		return b.degrade(ctx, "shedadapters: bouncer failed to archive a judge's retired-verdict outputs", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
-	}
-	return b.degrade(ctx, "shedadapters: bouncer judge wrote a retired verdict word (APPROVED or BLOCKING); re-judging the round", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round)
-}
-
 // settleUnlessRefused settles round's judgment unless the judgment is refused, in which case the round is re-judged.
 // It first records the round's post-fix target id, so a round that routing decisions take records it too.
 // It then settles the parent-review ask the round holds before its judge.
@@ -1221,9 +1204,6 @@ func (b *Bouncer) rejudge(ctx context.Context, round int, verdict bouncerVerdict
 
 // settle reads round's verdict file and maps its verdict onto shedengine's contract.
 // judged(round) has already proved the file parses.
-// Both harvest sites apply the strict harvestedVerdict check before calling settle;
-// so settle reads it through parseRecordedVerdict.
-// A replay over a legacy word settles as its alias instead of degrading.
 //
 // On verdictConverged, settle first calls b.cfg.CarryOver when non-nil, with the round's open findings;
 // a failure of that seam is returned as settle's own error, before Approve and Commit.
@@ -1255,7 +1235,7 @@ func (b *Bouncer) settle(ctx context.Context, round int, spawned bool) (shedengi
 		// This producer's one-call-at-a-time contract never causes that on its own.
 		return b.degrade(ctx, "shedadapters: bouncer verdict file vanished between judged and settle", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
 	}
-	verdict, _, _, err := parseRecordedVerdict(content)
+	verdict, _, err := parseVerdict(content)
 	if err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer verdict file failed to parse in settle despite judged", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
 	}
@@ -1288,7 +1268,7 @@ func (b *Bouncer) settle(ctx context.Context, round int, spawned bool) (shedengi
 	case verdictContinue, verdictCircling:
 		return b.settleUnconverged(ctx, round, verdict, spawned, ptr)
 	default:
-		// Unreachable: parseRecordedVerdict only ever returns one of the three verdict constants.
+		// Unreachable: parseVerdict only ever returns one of the three verdict constants.
 		return b.degrade(ctx, "shedadapters: bouncer verdict file carries an unrecognized verdict", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "verdict", verdict)
 	}
 }
@@ -1356,7 +1336,6 @@ func (b *Bouncer) settleUnconverged(ctx context.Context, round int, verdict boun
 // retireContinue moves round's escalation record, parent notice and decision file aside, in that order.
 // Each goes through archiveStaleOutputs to the timestamped sibling it names, which no reader opens.
 // Absent files are skipped.
-// So a round whose continue answered a legacy CIRCLING with no record moves only its decision file.
 // A crash between the moves leaves a state the next call finishes.
 // The decision file is still there, so the continue is retired again.
 // A replay after the moves, before the fresh record, finds no decision file and no record.
@@ -2144,11 +2123,8 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 
 	// Harvest: evaluate judged(n) against what is now on disk before classifying the run's own outcome.
 	// When it holds, act on a judgment that provably happened regardless of what the run reported.
-	if verdict, ledger, ok := harvestedVerdict(b.cfg.RunDir, n); ok {
+	if verdict, ledger, ok := recordedVerdict(b.cfg.RunDir, n); ok {
 		return b.settleUnlessRefused(ctx, n, verdict, ledger, true)
-	}
-	if b.judged(n) {
-		return b.retireLegacyVerdict(ctx, n)
 	}
 
 	if runErr != nil {

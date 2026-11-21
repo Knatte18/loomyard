@@ -260,21 +260,6 @@ func parsePrimeOwner(data []byte) (string, error) {
 	return decoded.PrimeOwner, nil
 }
 
-// parseDraftStatus decodes the top-level draft_status of a board.json read from a commit.
-// An absent or empty file, or an absent key, yields false.
-func parseDraftStatus(data []byte) (bool, error) {
-	if len(bytes.TrimSpace(data)) == 0 {
-		return false, nil
-	}
-	var decoded struct {
-		DraftStatus bool `json:"draft_status"`
-	}
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return false, err
-	}
-	return decoded.DraftStatus, nil
-}
-
 // parseReplayBoard decodes a board.json read from a commit, an absent or empty file being a board with no entry.
 func parseReplayBoard(data []byte) (map[string]Task, []Task, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
@@ -508,11 +493,6 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 		return fabricengine.ReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
 	}
 
-	commitDraft, err := parseDraftStatus(commitJSON)
-	if err != nil {
-		return fabricengine.ReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
-	}
-
 	store := NewStore(req.Dir)
 	store.vocab = &vocabulary
 	if err := store.Load(); err != nil {
@@ -555,10 +535,6 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 		}
 
 		run.changePrimeOwner(basePrime, parentPrime, commitPrime)
-		if commitDraft && !store.draftStatus {
-			store.draftStatus = true
-			run.applied = true
-		}
 		run.changeHolds()
 		run.changeRegistry()
 	}

@@ -70,12 +70,10 @@ func checkSubpathBeforeReset(cwd, weftURL, warpURL, requestedAnchor string, ns g
 // recordedAnchorOnWeft reads the anchor marker the hub clone would adopt, from the staged weft clone at weftStage.
 // The prime's weft branch, RecordsBranchName(warpBranch), supplies it when the remote carries that branch;
 // otherwise the weft's default HEAD supplies it, matching how the clone creates that branch.
-// Failing both, the default HEAD supplies the legacy board marker only when the default branch is warpBranch itself;
-// the board checkout adopts a local branch of that name and is orphan-created otherwise.
+// A marker found on neither reports not found.
 // source names where the marker was read, in adoptRecordedAnchor's wording.
 // Under a non-identity ns the staged clone is the code repository, whose HEAD is the code default branch.
 // The records branch is then read from the namespace alone, and an absent branch records no marker.
-// Neither HEAD nor the checked-out branch is consulted, since a one-repository board carries no legacy marker.
 func recordedAnchorOnWeft(weftURL, weftStage, warpBranch string, ns gitrepo.RefNamespace) (data []byte, source string, found bool, err error) {
 	primeBranch := RecordsBranchName(warpBranch)
 	primeRef := "HEAD"
@@ -86,24 +84,11 @@ func recordedAnchorOnWeft(weftURL, weftStage, warpBranch string, ns gitrepo.RefN
 	if onRemote {
 		primeRef = "FETCH_HEAD"
 	}
-	namespaced := ns != (gitrepo.RefNamespace{})
-	if namespaced && !onRemote {
+	if ns != (gitrepo.RefNamespace{}) && !onRemote {
 		return nil, "", false, nil
 	}
 	data, found, err = readAnchorMarkerAt(weftURL, weftStage, primeRef)
-	if err != nil || found || namespaced {
-		return data, "on " + primeBranch, found, err
-	}
-
-	stdout, err := gitexec.Run([]string{"branch", "--show-current"}, weftStage)
-	if err != nil {
-		return nil, "", false, wrapProbeError(weftURL, "branch --show-current", err)
-	}
-	if strings.TrimSpace(stdout) != warpBranch {
-		return nil, "", false, nil
-	}
-	data, found, err = readAnchorMarkerAt(weftURL, weftStage, "HEAD")
-	return data, "on weft:main", found, err
+	return data, "on " + primeBranch, found, err
 }
 
 // readAnchorMarkerAt returns the anchor marker's content at the root of ref in the staged clone at dir.

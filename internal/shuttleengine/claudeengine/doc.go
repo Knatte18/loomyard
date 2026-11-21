@@ -170,8 +170,7 @@
 // The lym status line replaces the operator's own in the sessions it covers.
 // ScrubbedEnv names `CLAUDE_CONFIG_DIR`,
 // so a server spawned from a pane on one account never hands it to a pane with no export.
-// The retired `deny_agent_tool` key is read out of every layer;
-// a local override setting it is refused, with deleting it as the way forward.
+// A local override setting the retired `deny_agent_tool` key is refused, with deleting it as the way forward.
 // LoadConfig resolves the module through the degrading loader.
 // The loader stacks the template, the repo default, the worktree file and the local override;
 // a local override may set every key but the binary and the tool denies.

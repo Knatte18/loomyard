@@ -27,7 +27,6 @@ func TestInImplementerSpan(t *testing.T) {
 		{"BetweenApprovalAndWebster_DriftExpect", shedrun.RecipeTapestry, "Drift-Expect", true},
 		{"TheWebsterRow", shedrun.RecipeTapestry, "Webster", true},
 		{"PastTheLastWebsterRow", shedrun.RecipeTapestry, "Parent-Align", false},
-		{"RetiredRowPastWebster", shedrun.RecipeTapestry, "Merge-In", false},
 		{"NoStatusFile", shedrun.RecipeTapestry, "", false},
 		{"RowTheRecipeLacks", shedrun.RecipeTapestry, "No-Such-Row", false},
 		{"DarnHasNoPlan", shedrun.RecipeDarn, "Darn-Write", false},

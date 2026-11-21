@@ -16,14 +16,10 @@
 // LoadConfig refuses a `report_dir` that leaves the worktree or has a records directory in its path.
 // The darn recipe's Code-Review perch takes its models, fans, budgets and auto-accept flag from `loom.yaml`.
 // darn.yaml holds none of them.
-// A `verify` key in the hub file is dropped at load and pruned by `lym config reconcile`;
+// `verify`, `tree_scope_verify` and `pr_review` are retired keys;
 // the hub's `landing` gate in `gate.yaml` holds the verify command.
 // The driver, tackler and arbiter keys belong to `shed.yaml` alone.
-// A hub file that sets one loads with the value dropped.
 // Setting one in a local file, profile block or `run_settings` object is refused, naming the `shed` module.
-// A `tree_scope_verify` key is dropped at load too, and MigrateConfig prunes it while it is in the hub file:
-// held empty it empties `tree_scope` so an off hub stays off, and held set it keeps `tree_scope`.
-// A hub file without the key is left alone, so trees the operator adds later are never touched.
 // The module is hub-wide, so a task cannot weaken `tree_scope` through its own tree,
 // and `lym config darn --set` writes it from the prime.
 // LoadConfig loads the file strictly and validates the `writer` model-spec at load time.

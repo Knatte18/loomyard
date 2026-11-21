@@ -167,34 +167,6 @@ func TestRunLock_SketchExemptionIsTheWholeNetChange(t *testing.T) {
 	}
 }
 
-// TestDiscussedTaskBecomesASketchOnTheNextWrite asserts a task left in status discussed becomes a Sketch at the next write of any entry, unless another entry depends on it.
-func TestDiscussedTaskBecomesASketchOnTheNextWrite(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	b := newSketchBoard(t)
-	mustUpsertEntry(t, b, map[string]any{"slug": "talked", "title": "Talked", "kind": "task", "labels": []string{"bug", "board"}})
-	mustUpsertEntry(t, b, map[string]any{"slug": "needed", "title": "Needed", "kind": "task", "labels": bugLabels})
-	mustUpsertEntry(t, b, map[string]any{"slug": "needs", "title": "Needs", "kind": "task", "labels": bugLabels, "depends_on": []string{"needed"}})
-	discussed := boardengine.LegacyStatusDiscussed
-	for _, slug := range []string{"talked", "needed"} {
-		if err := b.SetStatus(slug, &discussed); err != nil {
-			t.Fatalf("SetStatus(%q) error = %v; want nil", slug, err)
-		}
-	}
-
-	if err := b.Rerender(); err != nil {
-		t.Fatalf("Rerender() error = %v; want nil", err)
-	}
-
-	got := mustGetEntry(t, b, "talked")
-	if got.Kind != boardengine.KindNote || !slices.Equal(got.Labels, []string{boardengine.SketchType, "board"}) || got.Status != nil {
-		t.Errorf("entry kind, labels, status = %q, %v, %v; want note, [sketch board], none", got.Kind, got.Labels, got.Status)
-	}
-	if kept := mustGetEntry(t, b, "needed"); kept.Kind != boardengine.KindTask || kept.Status == nil || *kept.Status != discussed {
-		t.Errorf("depended-on entry kind, status = %q, %v; want task, discussed", kept.Kind, kept.Status)
-	}
-}
-
 // newPromotionBoard returns a board whose vocabulary carries the sketch type label, and the board's directory.
 func newPromotionBoard(t *testing.T) (*boardengine.Board, string) {
 	t.Helper()

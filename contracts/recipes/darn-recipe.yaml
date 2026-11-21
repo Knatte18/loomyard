@@ -9,8 +9,7 @@
 # each of them Skipped and spawns or runs nothing for them. It is
 # embedded into the binary by the sibling recipes.go rather than read from disk. The row names below are the
 # durable on-disk identities pinned against internal/loomshed's Name* constants -- a rename here
-# without a matching constant rename breaks resume for any in-flight task, unless internal/loomrecipe
-# maps the retired name onto its successor, as it maps the writer row's former name, Darn.
+# without a matching constant rename breaks resume for any in-flight task.
 #
 # The writer reads the decision record Record-Write wrote and never writes it, and the perch's open
 # findings land in the record's `## Open risks`.
@@ -48,9 +47,6 @@
 # Finalize declares no on_reroute: it settles a fixer change in place, through its own fix review
 # and the fixer, and never sends the run back to the perch.
 #
-# An in-flight run parked on a row this recipe removed -- Merge-In, Publish, PR-Align, PR-Gate -- or
-# on a row whose edges changed with them, or on the retired Darn-Burler, Darn-Bouncer,
-# Darn-Burler-Review or Darn-Burler-Fix row, is restarted, not migrated.
 # A run that passed Drift-Baseline before Drift-Await joined the recipe has no awaited_at, halts at
 # Drift-Verify with no counted baseline, and is settled by hand with lym drift defer.
 # A run parked at a Drift-Verify halt from before this change goes on with lym loom resume, which checks it under the new Drift.

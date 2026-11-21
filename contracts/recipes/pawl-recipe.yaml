@@ -28,10 +28,6 @@
 # that can fix it.
 # Record-Write carries no on_stuck: its Stuck names its way forward.
 #
-# The retired map: Parent-Align, Beam-Describe and PR-Review were rows of an earlier pawl recipe, whose work the beam's orch
-# now does at Beam-Await. A run parked at one of them moves to Beam-Await and pauses, so the orch settles the landing
-# there before the run goes on to Finalize.
-
 version: 1
 entry: Preflight
 # The recipe declares the loom contract, which Shed checks when it builds the recipe; Finalize runs the landing gate's
@@ -40,11 +36,6 @@ contract: loom
 verify_source: plan
 terminals:
   - Beam-Down
-
-retired:
-  Parent-Align: Beam-Await
-  Beam-Describe: Beam-Await
-  PR-Review: Beam-Await
 
 producers:
   - name: Preflight

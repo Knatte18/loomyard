@@ -4,7 +4,6 @@
 package configengine
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -81,8 +80,7 @@ const (
 // and a pair with a dotted key as the one value below an entry, with no template key check.
 // Categories classifies the template by dotted path: an entry covers its own path and every path under it.
 // RetiredKeys maps each dotted key the module has retired to the category it held as a template key;
-// they stay out of Categories and OpenMaps; the local and machine layers admit them by that category,
-// and a load drops them from the stacked document.
+// they stay out of Categories and OpenMaps, and the local and machine layers admit or refuse them by that category.
 // RetiredWayForward maps a retired dotted key to the text telling the operator where the key is set instead;
 // the local layer's refusal of that key ends with that text as the way forward.
 // HubOnlyWayForward maps a top-level key that a task's run settings may not carry.
@@ -92,9 +90,6 @@ const (
 // so its base stays full in a hub too.
 // Overlay is the module's optional template overlay, picked by a selector key in the base layer;
 // its zero value means none.
-// MigrateLayer, when set, rewrites each present layer file's bytes in memory before the layers merge,
-// so a load reads the value a retired key carried before any reconcile rewrote the file.
-// It returns the rewritten bytes and one line per rewrite; the merge discards the lines and writes no file.
 type Spec struct {
 	Name              string
 	Template          []byte
@@ -110,7 +105,6 @@ type Spec struct {
 	HubOnlyWayForward map[string]string
 	SeedOnly          bool
 	Overlay           Overlay
-	MigrateLayer      func(layer []byte) ([]byte, []string, error)
 }
 
 // LocalFile returns the path of a module's local override file under anchor:
@@ -222,67 +216,6 @@ func retiredCovering(spec Spec, path string) (string, Category, bool) {
 		}
 	}
 	return best, category, found
-}
-
-// DropRetired removes from doc every retired key of the spec, at its dotted path, keeping every other key and comment.
-// A mapping the removal leaves empty is removed with its key.
-// A document that holds none is returned byte for byte.
-func DropRetired(doc []byte, spec Spec) ([]byte, error) {
-	if len(spec.RetiredKeys) == 0 || len(strings.TrimSpace(string(doc))) == 0 {
-		return doc, nil
-	}
-	var parsed yaml.Node
-	if err := yaml.Unmarshal(doc, &parsed); err != nil {
-		return nil, MarkInvalid(err)
-	}
-	if parsed.Kind != yaml.DocumentNode || len(parsed.Content) == 0 {
-		return doc, nil
-	}
-	dropped := false
-	for key := range spec.RetiredKeys {
-		if removeKey(parsed.Content[0], strings.Split(key, ".")) {
-			dropped = true
-		}
-	}
-	if !dropped {
-		return doc, nil
-	}
-	var out bytes.Buffer
-	encoder := yaml.NewEncoder(&out)
-	encoder.SetIndent(2)
-	if err := encoder.Encode(&parsed); err != nil {
-		return nil, fmt.Errorf("marshal %s config without retired keys: %w", spec.Name, err)
-	}
-	if err := encoder.Close(); err != nil {
-		return nil, fmt.Errorf("marshal %s config without retired keys: %w", spec.Name, err)
-	}
-	return out.Bytes(), nil
-}
-
-// removeKey deletes the mapping entry at the key path under node;
-// it also deletes each mapping on the path that the deletion leaves empty.
-// It reports whether an entry was removed.
-func removeKey(node *yaml.Node, path []string) bool {
-	if node.Kind != yaml.MappingNode {
-		return false
-	}
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		if node.Content[i].Value != path[0] {
-			continue
-		}
-		if len(path) == 1 {
-			node.Content = append(node.Content[:i], node.Content[i+2:]...)
-			return true
-		}
-		if !removeKey(node.Content[i+1], path[1:]) {
-			return false
-		}
-		if child := node.Content[i+1]; child.Kind == yaml.MappingNode && len(child.Content) == 0 {
-			node.Content = append(node.Content[:i], node.Content[i+2:]...)
-		}
-		return true
-	}
-	return false
 }
 
 // ValidateLocal checks a local override document against the spec.
@@ -549,46 +482,6 @@ func readLayers(dirs Dirs, spec Spec, anchorLayers bool) ([]LayerDoc, error) {
 	return docs, nil
 }
 
-// BelowLayer returns the unexpanded merge of the spec's template and every present file layer below layer.
-// It is what a layer's keys are compared against to tell which of them add nothing.
-// It merges the layers the way the loaders do.
-func BelowLayer(dirs Dirs, spec Spec, layer Layer) ([]byte, error) {
-	layers, err := Layers(dirs, spec)
-	if err != nil {
-		return nil, err
-	}
-	merged, err := EffectiveTemplate(spec, baseDocument(dirs, spec, layers), dirs.Board != "")
-	if err != nil {
-		return nil, err
-	}
-	for _, doc := range layers {
-		if layerRank(doc.Layer) >= layerRank(layer) {
-			break
-		}
-		merged, err = yamlengine.Merge(merged, doc.Bytes, spec.OpenMaps, spec.WholeEntries)
-		if err != nil {
-			return nil, MarkInvalid(fmt.Errorf("config file %s: %w", doc.Path, err))
-		}
-	}
-	return merged, nil
-}
-
-// layerRank orders the layers from the template up.
-func layerRank(layer Layer) int {
-	switch layer {
-	case LayerTemplate:
-		return 0
-	case LayerDefault:
-		return 1
-	case LayerWorktree:
-		return 2
-	case LayerMachine:
-		return 3
-	default:
-		return 4
-	}
-}
-
 // Stack is one module's stacked layers.
 // Doc is the present file layers merged unexpanded in stack order, with no template key filled.
 // Layers are the layers Doc was merged from.
@@ -601,24 +494,16 @@ type Stack struct {
 
 // StackLayers returns the module's stack under dirs, and an error when a present layer is unreadable or invalid.
 // No present layer yields an empty Doc.
-// It merges the layers in stack order, each rewritten first by the spec's MigrateLayer when one is set.
+// It merges the layers in stack order.
 func StackLayers(dirs Dirs, spec Spec) (Stack, error) {
 	return stackLayers(dirs, spec, true)
 }
 
 // stackLayers merges a module's layers in stack order, reading them through readLayers with the given anchorLayers.
-// The spec's MigrateLayer rewrites each layer's bytes before the merge; a failed rewrite is marked [ErrInvalid].
 func stackLayers(dirs Dirs, spec Spec, anchorLayers bool) (Stack, error) {
 	layers, err := readLayers(dirs, spec, anchorLayers)
 	if err != nil {
 		return Stack{}, err
-	}
-	if spec.MigrateLayer != nil {
-		for i := range layers {
-			if layers[i].Bytes, _, err = spec.MigrateLayer(layers[i].Bytes); err != nil {
-				return Stack{}, MarkInvalid(fmt.Errorf("config file %s: %w", layers[i].Path, err))
-			}
-		}
 	}
 	stack := Stack{Doc: []byte{}, Layers: layers, Origins: map[string]LayerDoc{}}
 	for _, layer := range layers {

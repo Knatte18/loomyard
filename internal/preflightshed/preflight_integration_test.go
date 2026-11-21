@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -134,18 +133,16 @@ func hubStampPath(h *hubforge.Hub) string {
 	return hubreconcile.Geometry{BoardDir: h.BoardDir()}.StampPath()
 }
 
-// commitRetiredBatcherKey commits a batcher.yaml carrying the retired master_base key.
-// The commit goes into the records worktree at recordsRoot.
-func commitRetiredBatcherKey(t *testing.T, recordsRoot string) {
+// deleteBoardLensesDefault commits on the board the deletion of the lenses repo default.
+func deleteBoardLensesDefault(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
 
-	module, _ := configreg.Lookup("batcher")
-	content := strings.Replace(module.Template(), "orientation: 31400", "master_base: 52000", 1)
-	gitkit.CommitFile(t, recordsRoot, configengine.ConfigFileRel("batcher"), content, "fixture: retired key")
+	gitkit.Git(t, h.BoardDir(), "rm", "-q", "--", filepath.ToSlash(configengine.ConfigFileRel("lenses")))
+	gitkit.Git(t, h.BoardDir(), "commit", "-q", "-m", "fixture: delete lenses default")
 }
 
 // TestPreflight_StaleStampReconcilesBeforeTheCleanCheck verifies the reconcile step runs first.
-// A stale hub's committed retired key is removed and committed before the clean check.
+// A stale hub's deleted repo default is reseeded and committed before the clean check.
 // The row still ends Done and the stamp is written.
 func TestPreflight_StaleStampReconcilesBeforeTheCleanCheck(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -154,13 +151,13 @@ func TestPreflight_StaleStampReconcilesBeforeTheCleanCheck(t *testing.T) {
 	h := setupPreflightWrapperFixture(t)
 	hubforge.AddPair(t, h, "pair-a")
 	task := h.PairCodeWorktree("pair-a")
-	commitRetiredBatcherKey(t, h.PairRecordsSibling("pair-a"))
+	deleteBoardLensesDefault(t, h)
 	p := NewPreflight("Preflight", task)
 
 	shedfake.RequireOutcome(t, p, shedengine.Done)
 
-	if data, err := os.ReadFile(configengine.ConfigFile(task, "batcher")); err != nil || strings.Contains(string(data), "master_base") {
-		t.Errorf("task batcher.yaml still carries the retired key (err %v)", err)
+	if _, err := os.Stat(configengine.ConfigFile(h.BoardDir(), "lenses")); err != nil {
+		t.Errorf("board lenses.yaml after the row: %v; want the reconcile to have reseeded it", err)
 	}
 	if _, err := os.Stat(hubStampPath(h)); err != nil {
 		t.Errorf("stamp after a Done row: %v; want it written", err)

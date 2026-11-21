@@ -1511,7 +1511,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				// the WriteSeed seam below admits no other child recipe, so the two stay consistent by construction.
 				// Dir is the task worktree's AnchorPath(), never its bare worktree root.
 				// The resolver gates a child's working directory to the anchor, and a bare root fails on any subpath-anchored hub.
-				cmd := exec.Command(exe, "loom", "start", "--no-attach")
+				cmd := exec.Command(exe, "loom", "start")
 				cmd.Dir = taskLocation.AnchorPath()
 				// Captured rather than discarded: the child's own envelope is the only
 				// diagnosis this seam can offer for a failed bootstrap.

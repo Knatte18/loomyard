@@ -126,7 +126,7 @@ func TestLookForDegradesToATaskUnderThePrime(t *testing.T) {
 			name: "UnresolvableParent",
 			slug: "t1",
 			damage: func(t *testing.T, l *lymcwd.Location) {
-				marker := filepath.Join(fabricengine.BoardDir(l.HubPath), lymcwd.AnchorFileName)
+				marker := filepath.Join(fabricengine.RecordsWorktreePath(l, "prime"), lymcwd.AnchorFileName)
 				if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
 					t.Fatal(err)
 				}

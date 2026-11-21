@@ -14,9 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -51,7 +49,6 @@ func reconcileModule(t *testing.T, result map[string]any, module string) map[str
 // TestConfigReconcileInGitRepo runs `lym config reconcile` over one git repository.
 // A dry run reports without writing, and a --set-planted orphan key is reported by reconcile instead of being lost.
 // --apply prunes the sparse worktree layer without creating an absent file.
-// It also retires a per-worktree hub-wide copy that the hub file subsumes.
 // Its steps run in order in that one repository, so the scenario spawns git once.
 func TestConfigReconcileInGitRepo(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -67,10 +64,6 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 	if !t.Run("dry run writes nothing and reports every module's shape", func(t *testing.T) {
 		const originalContent = "discussion_timeout_min: 480\nstale_key: old_value\n"
 		seedModuleConfig(t, tmpDir, "loom", originalContent)
-		const retiredBatcher = "profiles:\n  cautious:\n    batchifier: cost\n    weights:\n      master_base: 52000\n"
-		seedModuleConfig(t, tmpDir, "batcher", retiredBatcher)
-		const movableShuttle = "claude: /x\n"
-		seedModuleConfig(t, tmpDir, "shuttle", movableShuttle)
 		seedModuleConfig(t, tmpDir, "lenses", "lenses:\n  hub-lens: |\n    Hub emphasis.\nfans:\n  standard: [generic, generic, correctness, error-handling, test-gaps]\n")
 
 		code, result := runReconcileCLI(t, tmpDir)
@@ -89,33 +82,6 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 		}
 		if _, err := os.Stat(reedPath); !os.IsNotExist(err) {
 			t.Errorf("reed.yaml written by a dry run (stat err = %v)", err)
-		}
-		migrated, _ := reconcileModule(t, result, "batcher")["migrated"].([]any)
-		if !slices.Contains(migrated, any("profiles.cautious.weights.master_base: removed")) {
-			t.Errorf("batcher module's migrated = %v; want it to list the master_base removal", migrated)
-		}
-		if content, err := os.ReadFile(configengine.ConfigFile(tmpDir, "batcher")); err != nil || string(content) != retiredBatcher {
-			t.Errorf("batcher.yaml = %q, %v; want it unchanged by a dry run", content, err)
-		}
-		pendingMoves := false
-		allModules, _ := result["modules"].([]any)
-		for _, entry := range allModules {
-			moved, _ := entry.(map[string]any)["moved"].([]any)
-			if slices.Contains(moved, any("shuttle.claude -> claude.binary")) {
-				pendingMoves = true
-			}
-		}
-		if !pendingMoves {
-			t.Errorf("no module entry reports the pending move shuttle.claude -> claude.binary; result = %v", result)
-		}
-		if content, err := os.ReadFile(configengine.ConfigFile(tmpDir, "shuttle")); err != nil || string(content) != movableShuttle {
-			t.Errorf("shuttle.yaml = %q, %v; want it unchanged by a dry run", content, err)
-		}
-		if _, err := os.Stat(configengine.ConfigFile(tmpDir, "claude")); !os.IsNotExist(err) {
-			t.Errorf("claude.yaml written by a dry run (stat err = %v)", err)
-		}
-		if _, has := reconcileModule(t, result, "reed")["migrated"]; has {
-			t.Error("reed module entry carries migrated; want it omitted without a migration")
 		}
 		keptExtra, _ := reconcileModule(t, result, "lenses")["keptExtra"].([]any)
 		if !slices.Equal(keptExtra, []any{"lenses.hub-lens"}) {
@@ -167,16 +133,7 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 		return
 	}
 
-	t.Run("apply prunes the sparse worktree layer and retires the subsumed board copy", func(t *testing.T) {
-		const subsumedBoard = "labels:\n  area-x: Area X\n"
-		boardPath := configengine.ConfigFile(tmpDir, "board")
-		seedModuleConfig(t, tmpDir, "board", subsumedBoard)
-		location, err := lymcwd.Resolve(tmpDir)
-		if err != nil {
-			t.Fatalf("resolve: %v", err)
-		}
-		seedModuleConfig(t, fabricengine.BoardDir(location.HubPath), "board", "labels:\n  area-x: Area X\n  area-y: Area Y\n")
-
+	t.Run("apply prunes the sparse worktree layer", func(t *testing.T) {
 		code, result := runReconcileCLI(t, tmpDir, "--apply")
 
 		if code != 0 {
@@ -188,21 +145,15 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 		if applied, _ := result["applied"].(bool); !applied {
 			t.Error("applied is false; want true")
 		}
-		// In a hub the worktree file is a sparse layer: apply prunes retired keys but never creates an absent module's file.
+		// In a hub the worktree file is a sparse layer: apply prunes unknown keys but never creates an absent module's file.
 		if _, err := os.Stat(reedPath); !os.IsNotExist(err) {
 			t.Errorf("reed.yaml created by --apply (stat err = %v); want it left absent", err)
 		}
 		if content, err := os.ReadFile(loomPath); err != nil || bytes.Contains(content, []byte("legacy_key")) {
-			t.Errorf("loom.yaml = %q, %v; want its retired legacy_key pruned", content, err)
+			t.Errorf("loom.yaml = %q, %v; want its unknown legacy_key pruned", content, err)
 		}
 		if layer, _ := reconcileModule(t, result, "loom")["layer"].(string); layer != "worktree" {
 			t.Errorf("loom module layer = %q; want worktree", layer)
-		}
-		if retired, _ := reconcileModule(t, result, "board")["retired"].(bool); !retired {
-			t.Errorf("board module not reported retired; result = %v", result)
-		}
-		if _, err := os.Stat(boardPath); !os.IsNotExist(err) {
-			t.Errorf("per-worktree board.yaml still present after --apply (stat err = %v)", err)
 		}
 	})
 }

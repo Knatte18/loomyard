@@ -73,7 +73,6 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 }
 
 // storeVersion is the format version this binary writes into heddle.json.
-// A store without a version was written while claude-file rendered into AGENTS.override.md as well as CLAUDE.local.md.
 const storeVersion = 1
 
 // Store is the content of heddle.json.
@@ -122,38 +121,6 @@ func (s *Store) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// upgradeStore returns s with the targets of a store without a version read as that store meant them.
-// Such a store's claude-file rendered into both agent files, so it reads as agents-file,
-// and a codex-file beside it adds nothing agents-file does not reach.
-// A store with a version is returned as it is.
-func upgradeStore(s Store) Store {
-	if s.Version >= storeVersion {
-		return s
-	}
-	entries := make([]Entry, len(s.Entries))
-	for i, entry := range s.Entries {
-		if slices.Contains(entry.Targets, claudeFileTarget) {
-			var targets []string
-			for _, name := range entry.Targets {
-				switch name {
-				case codexFileTarget:
-					continue
-				case claudeFileTarget:
-					name = agentsFileTarget
-				}
-				if !slices.Contains(targets, name) {
-					targets = append(targets, name)
-				}
-			}
-			entry.Targets = targets
-		}
-		entries[i] = entry
-	}
-	s.Entries = entries
-	s.Version = storeVersion
-	return s
-}
-
 // unknownKeys returns the members of the JSON object data whose key is not in known, or nil when there are none.
 func unknownKeys(data []byte, known map[string]bool) (map[string]json.RawMessage, error) {
 	var members map[string]json.RawMessage
@@ -198,14 +165,13 @@ func appendUnknown(object []byte, unknown map[string]json.RawMessage) ([]byte, e
 }
 
 // Decode decodes the bytes of a heddle.json committed in git, empty or whitespace-only bytes being an empty store.
-// The targets of bytes without a format version are read as the binary that wrote them meant them.
 // Bytes that do not decode are refused with an error that names the way forward.
 func Decode(data []byte) (Store, error) {
 	store, err := decodeBytes(data)
 	if err != nil {
 		return Store{}, fmt.Errorf("%s holds malformed JSON: %w; way forward: fix the file with a new commit on the branch that holds this blob", FileName, err)
 	}
-	return upgradeStore(store), nil
+	return store, nil
 }
 
 // decodeBytes decodes data, empty or whitespace-only data being an empty store.
@@ -221,15 +187,9 @@ func decodeBytes(data []byte) (Store, error) {
 }
 
 // Load reads heddle.json from the Bolt checkout boltDir, an absent file holding no entry.
-// The targets of a file without a format version are read as the binary that wrote it meant them,
-// and the next Save writes the version.
 // It takes no lock; the caller does.
 func Load(boltDir string) (Store, error) {
-	store, err := loadFile(boltDir, FileName)
-	if err != nil {
-		return Store{}, err
-	}
-	return upgradeStore(store), nil
+	return loadFile(boltDir, FileName)
 }
 
 // loadFile reads the store file name from boltDir, an absent file holding no entry.

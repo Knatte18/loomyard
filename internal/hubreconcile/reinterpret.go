@@ -34,14 +34,18 @@ func InstallNotifier(n Notifier) (restore func()) {
 // noticePrefix opens the mail a walk sends, so the orch tells it from operator input.
 const noticePrefix = "[reconcile notice]"
 
-// applyReinterpretations applies every registered reinterpretation whose board marker is absent.
+// reinterpretationModules lists the modules whose reinterpretations a walk applies.
+// It is a variable so a test can register a reinterpretation of its own.
+var reinterpretationModules = configreg.Modules
+
+// applyReinterpretations applies every reinterpretation of modules whose board marker is absent.
 // It applies each one to its module's hub base file at boardDir.
 // It judges the file's values against the prime's root and anchored directory.
 // It writes each marker after the file.
 // An absent base file holds no value to carry across, so only its marker is written.
 // It returns the board-relative paths it wrote and one line per value rewritten or flagged, naming the module's file.
-func applyReinterpretations(boardDir, primeRoot, primeAnchor string) (written, lines []string, err error) {
-	for _, module := range configreg.Modules() {
+func applyReinterpretations(modules []configreg.Module, boardDir, primeRoot, primeAnchor string) (written, lines []string, err error) {
+	for _, module := range modules {
 		for _, change := range module.Reinterpretations {
 			marker := configengine.ReinterpretedMarker(boardDir, change.ID)
 			if fileExists(marker) {

@@ -131,7 +131,6 @@ func TestCLI(t *testing.T) {
 		{"Find_NoArgumentRefused", stepFind_NoArgumentRefused},
 		{"ListAndFindText", stepListAndFindText},
 		{"ListShowsASketch", stepListShowsASketch},
-		{"RetireLegacy", stepRetireLegacy},
 		{"GetAndRemoveByID", stepGetAndRemoveByID},
 		{"Owners", stepOwners},
 		{"FrontTask", stepFrontTask},

@@ -1,6 +1,6 @@
 // windoworder.go fixes the order of a session's windows: overview windows in ascending order key;
 // agent windows in start order; the window named shell; then the hidden windows.
-// It lists the session's windows, computes where a new window goes and repairs a session booted by an older lym.
+// It lists the session's windows, computes where a new window goes and puts the shell window in its place.
 
 package reedengine
 
@@ -202,7 +202,7 @@ func planShellWindowFix(windows []sessionWindow, shellWindow string) (rename boo
 
 // ensureShellWindowLocked brings the window that holds the recorded console pane into its place.
 // That window is named shell and sits behind every non-hidden window.
-// It repairs a session that an older lym booted, and runs wherever a window opens and on attach.
+// It runs wherever a window opens and on attach, which is how a fresh boot names its one window shell.
 // A check that cannot read what it needs does nothing and logs at Debug,
 // and a failed repair never fails the caller; the next open or attach retries.
 // A failed repair logs at Warn once per failure episode, and at Debug while the episode stays open or on Windows.

@@ -48,7 +48,6 @@ func TestDiffCaptures(t *testing.T) {
 		baseline map[string]string
 		current  map[string]string
 		patterns []string
-		leaveOut []string
 		want     []Cell
 	}{
 		{
@@ -127,14 +126,6 @@ func TestDiffCaptures(t *testing.T) {
 			want:     []Cell{{Case: "a.txt", Identity: Identity{Key: "Test #3", N: 2}, Kind: CellChanged, Old: "ok", New: "bad"}},
 		},
 		{
-			name:     "LeaveOutCaseYieldsNoCell",
-			baseline: map[string]string{"skip.txt": "a = 1\n", "other.txt": "a = 1\n"},
-			current:  map[string]string{"skip.txt": "a = 2\n", "other.txt": "a = 2\n"},
-			patterns: defaultTestKeyPatterns,
-			leaveOut: []string{"skip.txt"},
-			want:     []Cell{{Case: "other.txt", Identity: Identity{Key: "a", N: 1}, Kind: CellChanged, Old: "1", New: "2"}},
-		},
-		{
 			name:     "ValueKeepsTheRestOfTheLine",
 			baseline: map[string]string{"cs.txt": "Re = 127069, dP = 7925.267 Pa\n"},
 			current:  map[string]string{"cs.txt": "Re = 127069, dP = 8000.000 Pa\n"},
@@ -152,7 +143,7 @@ func TestDiffCaptures(t *testing.T) {
 			if err != nil {
 				t.Fatalf("CompileKeyPatterns error = %v", err)
 			}
-			got, err := DiffCaptures(writeCaptureTree(t, tt.baseline), writeCaptureTree(t, tt.current), patterns, tt.leaveOut)
+			got, err := DiffCaptures(writeCaptureTree(t, tt.baseline), writeCaptureTree(t, tt.current), patterns)
 			if err != nil {
 				t.Fatalf("DiffCaptures error = %v", err)
 			}

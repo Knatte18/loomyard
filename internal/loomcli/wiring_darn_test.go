@@ -1,7 +1,7 @@
 // wiring_darn_test.go covers the wiring a darn run adds to wire: the darn seams and the verify source and attempts.
 // It covers the perch's settings from loom.yaml's Code-Review keys.
 // It covers the early refusals of a malformed or absent darn.yaml and the routing per recipe.
-// It covers the rename of retired darn rows when a verb arms and the Darn-Write row's status and failure-record seams.
+// It covers the Darn-Write row's status and failure-record seams.
 // It covers which recipes tell the Drift expect agent a plan directory.
 // Every test is Tier 1: wire resolves no cwd and spawns no process over a hand-built hub.
 
@@ -18,13 +18,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/samplerengine"
-	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -681,120 +678,6 @@ func TestWire_DriftExpectPlanReading(t *testing.T) {
 			}
 			if !tt.wantHasDir && !strings.HasPrefix(reading, "none:") {
 				t.Errorf("plan_reading of a %s run = %q; want it to say the run has no plan", tt.name, reading)
-			}
-		})
-	}
-}
-
-// TestArmAt_RenamesRetiredDarnRows pins the status-file rename that arming any verb over a darn run performs:
-// a file still naming the writer row's former name moves to Darn-Write, and a tapestry run's file is left alone.
-// A live driver holding the run lock keeps the old name, and the verb still arms.
-func TestArmAt_RenamesRetiredDarnRows(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	tests := []struct {
-		name        string
-		recipe      string
-		holdRunLock bool
-		want        string
-	}{
-		{name: "darn", recipe: shedrun.RecipeDarn, want: loomshed.NameDarnWrite},
-		{name: "tapestry", recipe: shedrun.RecipeTapestry, want: "Darn"},
-		{name: "darn with a live driver", recipe: shedrun.RecipeDarn, holdRunLock: true, want: "Darn"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			loc := hubLocation(t, "pair", ".")
-			if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: tt.recipe, Driver: shedrun.DriverGo}); err != nil {
-				t.Fatalf("shedrun.WriteSeed() = %v; want nil", err)
-			}
-			statusPath, statusLock := shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID)
-			if err := os.MkdirAll(filepath.Dir(statusLock), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			seed := shedengine.Status{CurrentProducer: "Darn", State: shedengine.StateBlocked, History: []shedengine.HistoryEntry{{Producer: "Darn", Outcome: shedengine.Stuck}}}
-			if err := state.WriteJSON(statusPath, statusLock, seed); err != nil {
-				t.Fatalf("state.WriteJSON() = %v; want nil", err)
-			}
-			if tt.holdRunLock {
-				runLock := shedrun.RunLock(loc, shedrun.SelfRunID)
-				held, locked, err := lock.TryAcquireWriteLock(runLock)
-				if err != nil || !locked {
-					t.Fatalf("TryAcquireWriteLock(%q) = _, %v, %v; want held", runLock, locked, err)
-				}
-				t.Cleanup(func() { _ = held.Release() })
-			}
-
-			c := &loomCLI{}
-			if _, err := c.armAt(loc, "status", nil); err != nil {
-				t.Fatalf("armAt(status) = %v; want nil", err)
-			}
-			got, _, err := state.ReadJSON[shedengine.Status](statusPath, statusLock)
-			if err != nil {
-				t.Fatalf("read status = %v; want nil", err)
-			}
-			if got.CurrentProducer != tt.want || got.History[0].Producer != tt.want {
-				t.Errorf("CurrentProducer, History[0].Producer = %q, %q; want both %q", got.CurrentProducer, got.History[0].Producer, tt.want)
-			}
-		})
-	}
-}
-
-// TestRenameRetiredRows pins what renameRetiredRows does to a status file naming a retired row:
-// every field moves to the successor row, for the loom table and for the darn one, and other rows are left alone.
-func TestRenameRetiredRows(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		renames map[string]string
-		retired string
-		want    string
-	}{
-		{name: "a tapestry run parked on Merge-In", renames: loomrecipe.RetiredRows(shedrun.RecipeTapestry), retired: "Merge-In", want: loomshed.NameParentAlign},
-		{name: "a tapestry run parked on Loom-Preflight", renames: loomrecipe.RetiredRows(shedrun.RecipeTapestry), retired: "Loom-Preflight", want: loomshed.NamePreflight},
-		{name: "a tapestry run parked on Tapestry-Preflight", renames: loomrecipe.RetiredRows(shedrun.RecipeTapestry), retired: "Tapestry-Preflight", want: loomshed.NamePreflight},
-		{name: "a darn run parked on Darn", renames: loomrecipe.RetiredRows(shedrun.RecipeDarn), retired: "Darn", want: loomshed.NameDarnWrite},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			loc := hubLocation(t, "pair", ".")
-			statusPath, statusLock := shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID)
-			if err := os.MkdirAll(filepath.Dir(statusLock), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			seed := shedengine.Status{
-				CurrentProducer: tt.retired, EnteredRow: tt.retired, PauseBefore: tt.retired, PauseAfter: tt.retired,
-				State:   shedengine.StateBlocked,
-				History: []shedengine.HistoryEntry{{Producer: loomshed.NameWebster, Outcome: shedengine.Done}, {Producer: tt.retired, Outcome: shedengine.Stuck}},
-			}
-			if err := state.WriteJSON(statusPath, statusLock, seed); err != nil {
-				t.Fatalf("state.WriteJSON() = %v; want nil", err)
-			}
-
-			c := &loomCLI{runID: shedrun.SelfRunID, shedPaths: shedbuild.ShedPaths{
-				StatusPath: statusPath, StatusLockPath: statusLock, LockPath: shedrun.RunLock(loc, shedrun.SelfRunID),
-			}}
-			if err := c.renameRetiredRows(tt.renames); err != nil {
-				t.Fatalf("renameRetiredRows() = %v; want nil", err)
-			}
-
-			got, _, err := state.ReadJSON[shedengine.Status](statusPath, statusLock)
-			if err != nil {
-				t.Fatalf("read status = %v; want nil", err)
-			}
-			fields := []string{got.CurrentProducer, got.EnteredRow, got.PauseBefore, got.PauseAfter, got.History[1].Producer}
-			for i, field := range fields {
-				if field != tt.want {
-					t.Errorf("renamed field %d = %q; want %q", i, field, tt.want)
-				}
-			}
-			if got.History[0].Producer != loomshed.NameWebster {
-				t.Errorf("History[0].Producer = %q; want %q, untouched", got.History[0].Producer, loomshed.NameWebster)
 			}
 		})
 	}

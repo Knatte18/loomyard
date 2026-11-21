@@ -505,10 +505,13 @@ func TestDobbyRunCells_ResolvesTheChildPairAgainInEachRunShedSpell(t *testing.T)
 		}
 	}
 	writeOverviewFile(t, filepath.Join(worktree, ".git", "HEAD"), []byte("ref: refs/heads/main\n"), minutesAgo(200))
-	// The hub-wide marker anchors every worktree that records none of its own.
-	marker := filepath.Join(fabricengine.BoardDir(hub), lymcwd.AnchorFileName)
+	// The worktree's own marker anchors it.
+	marker := filepath.Join(fabricengine.RecordsWorktreePath(&lymcwd.Location{HubPath: hub}, slug), lymcwd.AnchorFileName)
 	setAnchor := func(anchorRel string) {
 		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+			t.Fatal(err)
+		}
 		writeOverviewFile(t, marker, []byte(anchorRel+"\n"), minutesAgo(1))
 	}
 

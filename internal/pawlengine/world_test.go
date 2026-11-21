@@ -77,7 +77,6 @@ func newWorld(t *testing.T) *world {
 	return &world{
 		paths: pawlengine.Paths{
 			LandRequest:     filepath.Join(dir, pawlengine.LandRequestFileName),
-			ReopenRequest:   filepath.Join(dir, pawlengine.ReopenRequestFileName),
 			DobbyStopMarker: filepath.Join(dir, pawlengine.DobbyStopMarkerName),
 			AwaitMarker:     filepath.Join(dir, pawlengine.AwaitMarkerName),
 			HandOffMarker:   filepath.Join(dir, pawlengine.HandOffMarkerName),
@@ -173,7 +172,6 @@ func (w *world) deps() pawlengine.Deps {
 			defer w.mu.Unlock()
 			return w.status, nil
 		},
-		RetiredRows:    []string{"Beam-Describe", "PR-Review", "Parent-Align"},
 		OwnedElsewhere: func() (bool, error) { return w.owned, nil },
 		MarkBeam:       func() error { w.record("mark"); return w.markErr },
 		SpawnPush:      func() error { w.record("push"); return w.pushErr },

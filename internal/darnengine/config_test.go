@@ -1,5 +1,5 @@
 // config_test.go holds the tier 0 unit tests for darnengine's config functions.
-// It covers LoadConfig, TreeScopedTargets and MigrateConfig.
+// It covers LoadConfig and TreeScopedTargets.
 //
 // Seeds a bare t.TempDir() with a _lym/config/darn.yaml file only (no real hub, no SeedConfig, no git spawn).
 
@@ -287,68 +287,4 @@ func TestTreeScopedTargets(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestMigrateConfig covers the three states of a hub file's tree_scope_verify.
-// With held empty, it empties tree_scope and prunes the key.
-// With held set, it prunes the key and keeps tree_scope.
-// With the key absent, it changes nothing.
-// A second pass over each state changes nothing, and a malformed document is an invalid-config error.
-func TestMigrateConfig(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	const treesText = "\n  tools: ./tools/..."
-	withVerify := func(trees, verify string) string {
-		return strings.Replace(withTreeScope(trees), "verify_attempts:", "tree_scope_verify: "+strconv.Quote(verify)+"\nverify_attempts:", 1)
-	}
-	tests := []struct {
-		name      string
-		existing  string
-		wantTrees map[string]string
-		wantLines int
-	}{
-		{name: "held empty empties tree_scope and prunes the key", existing: withVerify(treesText, ""), wantTrees: map[string]string{}, wantLines: 1},
-		{name: "held set prunes the key and keeps tree_scope", existing: withVerify(treesText, "lym gate test --wait --tier 1 {targets}"), wantTrees: map[string]string{"tools": "./tools/..."}, wantLines: 1},
-		{name: "absent changes nothing and keeps the trees the hub holds", existing: withTreeScope(treesText), wantTrees: map[string]string{"tools": "./tools/..."}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got, lines, err := MigrateConfig([]byte(tt.existing))
-			if err != nil {
-				t.Fatalf("MigrateConfig() = _, _, %v; want nil error", err)
-			}
-			if len(lines) != tt.wantLines {
-				t.Errorf("MigrateConfig() lines = %q; want %d", lines, tt.wantLines)
-			}
-			if tt.wantLines == 0 && string(got) != tt.existing {
-				t.Errorf("MigrateConfig() = %q; want the document unchanged", got)
-			}
-			if strings.Contains(string(got), "tree_scope_verify") {
-				t.Errorf("MigrateConfig() = %q; want no tree_scope_verify key", got)
-			}
-
-			board := t.TempDir()
-			seedDarnConfig(t, board, string(got))
-			cfg, err := LoadConfig(configengine.Dirs{Board: board}, "darn")
-			if err != nil || !reflect.DeepEqual(cfg.TreeScope, tt.wantTrees) {
-				t.Errorf("LoadConfig() after MigrateConfig = %v, %v; want tree_scope %v", cfg.TreeScope, err, tt.wantTrees)
-			}
-
-			again, againLines, err := MigrateConfig(got)
-			if err != nil || len(againLines) != 0 || string(again) != string(got) {
-				t.Errorf("second MigrateConfig() = %q, %q, %v; want the document unchanged with no lines", again, againLines, err)
-			}
-		})
-	}
-
-	t.Run("a malformed document is an invalid-config error", func(t *testing.T) {
-		t.Parallel()
-		for _, existing := range []string{"writer: [\n", "- a\n- b\n"} {
-			if _, _, err := MigrateConfig([]byte(existing)); !errors.Is(err, configengine.ErrInvalid) {
-				t.Errorf("MigrateConfig(%q) error = %v; want ErrInvalid", existing, err)
-			}
-		}
-	})
 }

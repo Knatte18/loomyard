@@ -58,9 +58,8 @@ func TestResolvePersistentPreRun_SkipsSlugGroups(t *testing.T) {
 	}
 }
 
-// TestCommand_StartVerbCarriesParentAndHiddenNoAttach pins the start verb under the loom parent command:
-// it exposes --parent, and it accepts --no-attach, hidden, for existing callers.
-func TestCommand_StartVerbCarriesParentAndHiddenNoAttach(t *testing.T) {
+// TestCommand_StartVerbCarriesParent pins the start verb under the loom parent command: it exposes --parent.
+func TestCommand_StartVerbCarriesParent(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
@@ -75,11 +74,6 @@ func TestCommand_StartVerbCarriesParentAndHiddenNoAttach(t *testing.T) {
 	}
 	if registered.Flags().Lookup("parent") == nil {
 		t.Error(`"loom start" is missing the --parent flag`)
-	}
-	if noAttach := registered.Flags().Lookup("no-attach"); noAttach == nil {
-		t.Error(`"loom start" is missing the --no-attach flag`)
-	} else if !noAttach.Hidden {
-		t.Error(`"loom start"'s --no-attach flag is not hidden`)
 	}
 }
 

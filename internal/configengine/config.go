@@ -101,38 +101,9 @@ func ConfigFileRel(module string) string {
 	return filepath.Join(lymdirs.LymDirName, configDirName, module+".yaml")
 }
 
-// sparseMarkerName is the marker file's name; it has no .yaml suffix, so no module reader takes it for a module file.
-const sparseMarkerName = "sparse"
-
-// SparseMarker returns the tracked marker file under baseDir.
-// It records that a worktree's config files were migrated to sparse layers.
-func SparseMarker(baseDir string) string {
-	return filepath.Join(ConfigDir(baseDir), sparseMarkerName)
-}
-
-// SparseMarkerRel returns the sparse marker's path relative to a worktree's anchor.
-func SparseMarkerRel() string {
-	return filepath.Join(lymdirs.LymDirName, configDirName, sparseMarkerName)
-}
-
 // SparseBaseHeader is the whole content of a hub's base file holding no tuned unit:
 // one comment line saying the file holds the hub's tuned values over lym's template.
 const SparseBaseHeader = "# This file holds the hub's tuned values over lym's template.\n"
-
-// baseSparseMarkerName is the board marker file's name.
-// It has no .yaml suffix, so no module reader takes it for a module file.
-const baseSparseMarkerName = "base-sparse"
-
-// BaseSparseMarker returns the tracked marker file under boardDir.
-// It records that the hub's base files were stripped to sparse.
-func BaseSparseMarker(boardDir string) string {
-	return filepath.Join(ConfigDir(boardDir), baseSparseMarkerName)
-}
-
-// BaseSparseMarkerRel returns the base-sparse marker's path relative to the board dir.
-func BaseSparseMarkerRel() string {
-	return filepath.Join(lymdirs.LymDirName, configDirName, baseSparseMarkerName)
-}
 
 // reinterpretedMarkerPrefix opens the name of a board marker that records one applied reinterpretation.
 // The name has no .yaml suffix, so no module reader takes it for a module file.
@@ -271,11 +242,7 @@ func load(dirs Dirs, spec Spec, fallbackOnAbsent bool) ([]byte, error) {
 	}
 
 	label := stack.Layers[len(stack.Layers)-1].Path
-	stackDoc, err := DropRetired(stack.Doc, spec)
-	if err != nil {
-		return nil, MarkInvalid(fmt.Errorf("config file %s: %w", label, err))
-	}
-	filled, filledKeys, err := yamlengine.FillMissing(spec.Template, stackDoc, spec.OpenMaps...)
+	filled, filledKeys, err := yamlengine.FillMissing(spec.Template, stack.Doc, spec.OpenMaps...)
 	if err != nil {
 		return nil, MarkInvalid(fmt.Errorf("config file %s: %w", label, err))
 	}
@@ -316,8 +283,9 @@ func load(dirs Dirs, spec Spec, fallbackOnAbsent bool) ([]byte, error) {
 var warnedUnknownKeys sync.Map
 
 // warnUnknownKeys logs one warning for each default- or worktree-layer file holding units the template lacks.
-// Retired keys are not counted, and the warning names the reconcile that removes the unknown keys.
-// No loader reads such a unit, so a key the template renamed silently loses its value until the file is reconciled.
+// A retired key is an unknown key like any other, and the warning names the reconcile that removes the unknown keys.
+// No loader reads such a unit,
+// so a key the template renamed loses its value until the operator sets it under its new name.
 // A file and key list already warned in this process is not warned again, so a loader in a poll loop warns once.
 // The machine and local layers are skipped, since each refuses a unit the template lacks.
 // A spec with WholeEntries is skipped, since each of its top-level keys is a unit of its own.
@@ -339,16 +307,10 @@ func warnUnknownKeys(layers []LayerDoc, spec Spec) error {
 		if err != nil {
 			return MarkInvalid(fmt.Errorf("config file %s: %w", layer.Path, err))
 		}
-		var unknown []string
-		for _, key := range pruned {
-			if _, _, retired := retiredCovering(spec, key); !retired {
-				unknown = append(unknown, key)
-			}
-		}
-		if len(unknown) == 0 {
+		if len(pruned) == 0 {
 			continue
 		}
-		keys := strings.Join(unknown, ",")
+		keys := strings.Join(pruned, ",")
 		if _, warned := warnedUnknownKeys.LoadOrStore(layer.Path+"\x00"+keys, true); warned {
 			continue
 		}

@@ -54,8 +54,7 @@ func ConfigOpenMaps() []string {
 	return []string{"prompt_cache_ttl_roles", "keep_warm_cap_roles"}
 }
 
-// retiredAgentDenyKey is a retired key: no run denies the Agent tool, so the key switches nothing,
-// and a layer holding it is read without it.
+// retiredAgentDenyKey is a retired key: no run denies the Agent tool, so the key switches nothing.
 const retiredAgentDenyKey = "deny_agent_tool"
 
 // retiredAgentDenyWayForward is the way forward a local override setting retiredAgentDenyKey is refused with.

@@ -43,10 +43,10 @@ func writeWeftConfig(t *testing.T, weftPath, content string) {
 }
 
 // TestCommitWeft_LockArtifactsExcludedFromStatus commits scoped weft content, which creates the .weft lock dir.
-// It then drops a legacy push lock file, and it asserts neither artifact appears in `git status --porcelain`.
+// It asserts the lock dir does not appear in `git status --porcelain`.
 // The check is the one Remove's no-force dirty gate runs; a stray lock file under _lym must still show.
 //
-//testtiming:keep the .weft lock dir and legacy push lock being git-excluded from weft status while a stray lock under _lym still shows; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep the .weft lock dir being git-excluded from weft status while a stray lock under _lym still shows; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeft_LockArtifactsExcludedFromStatus(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -65,11 +65,6 @@ func TestCommitWeft_LockArtifactsExcludedFromStatus(t *testing.T) {
 		t.Fatalf(".weft lock dir missing after Commit: %v", err)
 	}
 
-	// Create the legacy push lock an older binary left at the worktree root.
-	const legacyPushLock = ".gitrepo-push.lock"
-	if err := os.WriteFile(filepath.Join(weftPath, legacyPushLock), nil, 0o644); err != nil {
-		t.Fatalf("write legacy push lock: %v", err)
-	}
 	const strayLock = "stray-record.json.lock"
 	if err := os.WriteFile(filepath.Join(weftPath, lymdirs.LymDirName, strayLock), nil, 0o644); err != nil {
 		t.Fatalf("write stray lock: %v", err)
@@ -78,9 +73,6 @@ func TestCommitWeft_LockArtifactsExcludedFromStatus(t *testing.T) {
 	status := gitkit.GitStatusPorcelain(t, weftPath)
 	if strings.Contains(status, ".weft") {
 		t.Errorf("git status --porcelain reports .weft as dirt: %q; want it git-excluded", status)
-	}
-	if strings.Contains(status, legacyPushLock) {
-		t.Errorf("git status --porcelain reports %s as dirt: %q; want it git-excluded", legacyPushLock, status)
 	}
 	if !strings.Contains(status, strayLock) {
 		t.Errorf("git status --porcelain = %q; want the stray %s under %s shown", status, strayLock, lymdirs.LymDirName)
@@ -102,8 +94,7 @@ func nonEmptyExcludeLines(content string) []string {
 }
 
 // TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent checks the entries seeded into the weft repo's info/exclude.
-// They are fabric's own .weft/ lock dir, the .lym/ dir, and the legacy lock file names, and no cross-module pattern.
-// The test first writes retired *.lock and *.swaplock lines, which the commit must remove.
+// They are fabric's own .weft/ lock dir and the .lym/ dir, and no cross-module pattern.
 // Re-seeding via a second commit leaves the file byte-identical.
 func TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -113,14 +104,6 @@ func TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent(t *testing.T) {
 	writeWeftConfig(t, weftPath, "modified for exclude test")
 
 	excludePath := filepath.Join(weftPath, ".git", "info", "exclude")
-	seeded, err := os.ReadFile(excludePath)
-	if err != nil && !os.IsNotExist(err) {
-		t.Fatalf("read info/exclude: %v", err)
-	}
-	if err := os.WriteFile(excludePath, append(seeded, []byte("*.lock\n*.swaplock\n")...), 0o644); err != nil {
-		t.Fatalf("write info/exclude: %v", err)
-	}
-
 	if _, err := f.Commit([]string{lymdirs.LymDirName}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
@@ -130,7 +113,7 @@ func TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent(t *testing.T) {
 		t.Fatalf("read info/exclude: %v", err)
 	}
 
-	wantLines := []string{".weft/", lymdirs.DotLymDirName + "/", ".gitrepo-push.lock", "board.lock", "board.push.lock", "board.json.swaplock", "tasks.json.swaplock", "notes.json.swaplock", "generation-record.json.lock", "settle-record.json.lock", "settle-record.patch.lock"}
+	wantLines := []string{".weft/", lymdirs.DotLymDirName + "/"}
 	gotLines := nonEmptyExcludeLines(string(first))
 	if len(gotLines) != len(wantLines) {
 		t.Fatalf("info/exclude entries = %v; want exactly the entries of %v", gotLines, wantLines)

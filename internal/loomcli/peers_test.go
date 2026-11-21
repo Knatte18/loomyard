@@ -47,7 +47,6 @@ func peersFakeTasks() []boardengine.Task {
 		{Slug: "blocked-peer", Title: "Blocked peer", Status: status("blocked · Plan-Write")},
 		{Slug: "darn-peer", Title: "Darn peer", Status: status("blocked · Darn-Write")},
 		{Slug: "finalize-peer", Title: "Finalize peer", Status: status("awaiting · Finalize")},
-		{Slug: "retired-row-peer", Title: "Retired row peer", Status: status("blocked · Merge-In")},
 		// A beam that has reached Finalize holds its entry, so it is a peer; its row is read in the pawl recipe.
 		{Slug: "pawl-peer", Title: "Pawl peer", Kind: boardengine.KindProject, Beam: true, Status: status("running · Finalize")},
 		// A beam whose pawl run stands at Beam-Await holds nothing, so it is no in-flight peer.
@@ -122,7 +121,7 @@ func TestPeersVerb(t *testing.T) {
 		for _, peer := range raw["peers"].([]any) {
 			slugs = append(slugs, peer.(map[string]any)["slug"].(string))
 		}
-		if want := []string{"running-peer", "awaiting-peer", "blocked-peer", "darn-peer", "finalize-peer", "retired-row-peer", "pawl-peer"}; !reflect.DeepEqual(slugs, want) {
+		if want := []string{"running-peer", "awaiting-peer", "blocked-peer", "darn-peer", "finalize-peer", "pawl-peer"}; !reflect.DeepEqual(slugs, want) {
 			t.Errorf("peers = %v; want %v", slugs, want)
 		}
 		wantRows := map[string]int{
@@ -133,9 +132,7 @@ func TestPeersVerb(t *testing.T) {
 			// Darn-Write is darn's row, and Finalize's position in pawl's recipe is not tapestry's.
 			"darn-peer":     recipeRowNumber(t, shedrun.RecipeDarn, "Darn-Write"),
 			"finalize-peer": loomRowNumber(t, "Finalize"),
-			// A peer parked on a row's retired name is listed at the row's current position.
-			"retired-row-peer": loomRowNumber(t, "Parent-Align"),
-			"pawl-peer":        recipeRowNumber(t, shedrun.RecipePawl, "Finalize"),
+			"pawl-peer":     recipeRowNumber(t, shedrun.RecipePawl, "Finalize"),
 		}
 		for _, peer := range raw["peers"].([]any) {
 			line := peer.(map[string]any)

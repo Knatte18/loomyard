@@ -35,7 +35,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// verbSmokeTimeout bounds one step or `start --no-attach` invocation.
+// verbSmokeTimeout bounds one step or `start` invocation.
 // The providerless shuttle config makes a step's producer launch and a start's llm driver launch fail within seconds.
 const verbSmokeTimeout = 60 * time.Second
 
@@ -217,9 +217,9 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 			t.Fatalf("write the status sidecar: %v", err)
 		}
 
-		out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, "loom", "start", "--no-attach")
+		out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, "loom", "start")
 		if err != nil {
-			t.Fatalf("lym loom start --no-attach: %v; output: %s", err, out)
+			t.Fatalf("lym loom start: %v; output: %s", err, out)
 		}
 
 		if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 1 {
@@ -298,9 +298,9 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 			// A second run in a reused pair starts over a session whose viewer turned follow off.
 			setFollow(t, eng, "off")
 
-			out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, "loom", "start", "--no-attach")
+			out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, "loom", "start")
 			if err != nil {
-				t.Fatalf("lym loom start --no-attach: %v; output: %s", err, out)
+				t.Fatalf("lym loom start: %v; output: %s", err, out)
 			}
 
 			if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 1 {

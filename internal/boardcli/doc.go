@@ -4,7 +4,7 @@
 // The verb tree:
 //   - From `storeVerbs`:
 //     `upsert`, `upsert-batch`, `set-status`, `remove`, `get`, `list`, `list-full`, `merge` and `set-deps`.
-//   - `promote`, `raddle`, `rename`, `prune`, `find`, `labels`, `profiles` and `retire-legacy` are built in `Command`.
+//   - `promote`, `raddle`, `rename`, `prune`, `find`, `labels` and `profiles` are built in `Command`.
 //     The `rerender` and `sync` maintenance verbs are built there too.
 //   - `intake` (list, import, close) comes from `intakeCommand`.
 //   - `open` and `serve` come from `openCommand` and `serveCommand`.
@@ -20,9 +20,9 @@
 // Both verbs refuse a run agent's session and a `--board-path` run, naming their way forward.
 // They need the hub's own board config.
 //
-// `prune` and `retire-legacy` are read-only dry runs without `--apply`.
-// Each prints the fields an applied run prints, filled with what it would change, plus `"applied": false`;
-// `prune` prints `removed` and `retire-legacy` prints `legacy_files`.
+// `prune` is a read-only dry run without `--apply`.
+// It prints the fields an applied run prints, filled with what it would change, plus `"applied": false`;
+// it prints `removed`.
 //
 // A `PersistentPreRunE` resolves configuration once.
 // It loads the Bolt checkout's `_lym/config/board.yaml` through `boardengine.LoadConfig` from any worktree.
@@ -121,8 +121,8 @@
 // A scope-changing write whose payload lacks `revised` gets it too.
 //
 // `upsert`, each task of `upsert-batch` and `merge`'s upsert check a payload's `run_settings` before the store write.
-// The value must be an object of module name to keys, and `configreg.PrepareRunSettings` migrates and validates it;
-// a refusal names the module and the key, and the board stores the migrated result.
+// The value must be an object of module name to keys, and `configreg.PrepareRunSettings` validates it;
+// a refusal names the module and the key, and the board stores the validated result.
 // A payload's `profile` is checked on the same paths, and it must be a string.
 // A non-empty one must name a run profile in the hub's `profiles.yaml` (`runprofile.Load` over the board dir);
 // otherwise the refusal names the known profiles and the way forward.

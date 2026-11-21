@@ -75,7 +75,7 @@ const SubagentEffortEnv = "CLAUDE_CODE_SUBAGENT_EFFORT"
 const wayForward = `; way forward: fix it with "lym config agents" from the prime`
 
 // layerWayForward is the clause a key naming no role lym starts ends with.
-// Such a key sits in a layer the hub's own reinterpretations never rewrite, so its owner removes it there.
+// A role lym once started is such a key too, and its owner removes it from the layer that holds it.
 const layerWayForward = `; way forward: remove the key from that layer's agents.yaml with lym config agents`
 
 // effortVocabulary is every effort value Claude Code accepts, lowest first.

@@ -53,6 +53,10 @@ func TestManifestWiredJunctionWalk(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fslink.RawTarget(%s): %v", linkAbs, err)
 	}
+	// A fresh hub's weft holds no tracked content behind the junction, so the test puts one file there.
+	if err := os.WriteFile(filepath.Join(rawTarget, "behind-the-junction.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write behind the junction %s: %v", rawTarget, err)
+	}
 	targetEntries, err := os.ReadDir(rawTarget)
 	if err != nil {
 		t.Fatalf("os.ReadDir(%s): %v", rawTarget, err)

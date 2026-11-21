@@ -139,14 +139,14 @@ func TestDobbyRuns_PairAtItsOwnAnchor(t *testing.T) {
 		}
 	})
 
-	t.Run("HoldCallerEntryReadsHeldAndOwnerEntryDoesNot", func(t *testing.T) {
+	t.Run("BoltHoldCallerEntryReadsHeldAndAnOperatorEntryDoesNot", func(t *testing.T) {
 		commitAnchorMarker(t, h, "broken", ".")
 		for _, row := range []struct {
 			caller   string
 			wantHeld bool
 		}{
-			{pauserecord.HoldCaller, true},
-			{pauserecord.OwnerCaller, false},
+			{pauserecord.BoltHoldCaller, true},
+			{"EXTERNAL", false},
 		} {
 			content, err := json.Marshal(pauserecord.Record{Live: []pauserecord.Entry{{Scope: "moved", Caller: row.caller, PausedAt: time.Now()}}})
 			if err != nil {

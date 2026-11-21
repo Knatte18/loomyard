@@ -393,9 +393,7 @@ func TestBouncer_JudgeCall_RefusedJudgment(t *testing.T) {
 				t.Fatalf("WriteFile(review round %d) = %v; want nil", n, err)
 			}
 		}
-		if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
-			t.Fatalf("RecordCirclingDecision(accept) = %v; want nil", err)
-		}
+		recordCirclingDecisionOverEscalation(t, cfg.RunDir, 2, CirclingAccept)
 	}
 	tests := []struct {
 		name        string

@@ -605,9 +605,7 @@ func TestBeginBatch_Record(t *testing.T) {
 				built := planparser.Card{
 					Number:         1,
 					Slug:           "json-flag",
-					Type:           planparser.CardTypeCreate,
 					TypeLabelCount: 1,
-					HasType:        true,
 					HasIntent:      true,
 					Intent:         "placeholder intent",
 					TargetGroups:   []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"sub#Built"}}},
@@ -810,9 +808,7 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 			{
 				Number:         1,
 				Slug:           "json-flag",
-				Type:           planparser.CardTypeCreate,
 				TypeLabelCount: 1,
-				HasType:        true,
 				HasIntent:      true,
 				Intent:         "placeholder intent",
 				TargetGroups:   []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"brandnew#Thing"}}},
@@ -912,9 +908,7 @@ func TestBeginBatch_AlreadyBuiltCardsAreNotReResolved(t *testing.T) {
 	built := planparser.Card{
 		Number:         1,
 		Slug:           "json-flag",
-		Type:           planparser.CardTypeCreate,
 		TypeLabelCount: 1,
-		HasType:        true,
 		HasIntent:      true,
 		Intent:         "placeholder intent",
 		TargetGroups:   []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"sub#Built"}}},
@@ -923,9 +917,7 @@ func TestBeginBatch_AlreadyBuiltCardsAreNotReResolved(t *testing.T) {
 	pending := planparser.Card{
 		Number:           2,
 		Slug:             "list-tests",
-		Type:             planparser.CardTypeEdit,
 		TypeLabelCount:   1,
-		HasType:          true,
 		HasIntent:        true,
 		Intent:           "placeholder intent",
 		HasImpactSummary: true,
@@ -1053,9 +1045,7 @@ func TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget(t *testing
 		c := planparser.Card{
 			Number:         number,
 			Slug:           slug,
-			Type:           typ,
 			TypeLabelCount: 1,
-			HasType:        true,
 			HasIntent:      true,
 			Intent:         "placeholder intent",
 			TargetGroups:   []planparser.TargetGroup{{Type: typ, Refs: []string{ref}}},

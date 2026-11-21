@@ -96,6 +96,7 @@ func TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides(t *testin
 		Verb:        "merge-in",
 		Source:      "feature",
 		WarpStart:   warpStart,
+		WarpSource:  gitkit.RevParse(t, h.PrimeWorktree(), "feature"),
 		WeftStart:   weftStart,
 		WarpOutcome: "staged",
 		StartedAt:   time.Now(),

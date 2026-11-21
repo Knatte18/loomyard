@@ -82,9 +82,7 @@
 // The keys a provider owns live in that engine's own config module.
 // shuttle.yaml's `keep_warm_max_reruns` is the gate's break-even:
 // the number of keep-warm re-runs one long gate wait is worth.
-// Retired Claude keys still load from an unreconciled layer and are dropped.
-// MigrateConfig raises the module's below-floor poll_interval_ms to its floor.
-// It also renames a legacy `claude_deny_python` to `deny_python` for lym config reconcile.
+// A retired Claude key is refused in a local layer by the module's `RetiredKeys`.
 // Start adds each run's engine name to `engines-run.json` at the run directory root before it registers the strand.
 // The orphan sweep never removes that file.
 // Runner.EnginesRun returns the union of that ledger and the engines of the run records still under the root.
@@ -140,7 +138,6 @@
 // Each Attach starts a fresh deadline, and the liveness check still classifies a dead pane.
 // RunState.Outcome records whether a run ever ended, seeded "running" and overwritten on every terminal classification.
 // "Has this run already ended?" is thus a fact on disk rather than an inference from pane liveness.
-// RunState.AskingOffset is read for records an older binary wrote and never written.
 //
 // Runner.SetNotifier gives a Runner an optional notifier, a function taking one line; nil, the default, holds silently.
 // On each held turn end of an autonomous run (Spec.Interactive false) on a runner with a notifier:
@@ -288,10 +285,6 @@
 // The line names the strand, the file, the subagent or fork when one made the edits, the count and the window.
 // It says the session keeps running.
 // An EditLoopEdits of 0 turns the watch off, and an engine then installs no edit hook.
-// The key once counted every edit.
-// DropEditLoopEdits, the module's reinterpretation EditLoopRepeatsReinterpretation, drops a hub's 0 or null value once,
-// and the template's count then applies.
-// It leaves any other count in the file and flags it with the way to set a count of repeats.
 // While a pause covers the run Wait reads no edits, so the edits made then are counted once it lifts.
 // RunState.EditLoopNotifiedOffset is the edit-records-file offset past the batch of the latest notice.
 // It is persisted before the notifier is called.
@@ -518,11 +511,6 @@
 // Both name the run directory and the strand guid in a logged warning.
 // The operator's only escape from either is out of band, via "lym reed status".
 // A run held at a turn end keeps outcome "running", so the same probe finds it.
-// A record left at the legacy outcome "asking" is attached too when reed tracks its strand as live,
-// with or without an AskingOffset and whether or not its events grew.
-// With a dead or untracked strand the usual classification applies.
-// The attach resets such a record to "running" and replays from its AskingOffset (the prompt offset when it has none).
-// It counts the old ask as notified, so only a held turn end after it notifies the parent.
 // Only a live, tracked strand is attached, and the attach starts a fresh deadline.
 // An attached record with no StrandName takes the name reed's status reports for its guid.
 // A not-found answer is the caller's cue to start a fresh run.

@@ -19,14 +19,6 @@
 //
 // A loom run's shed and routing come from one recipe-keyed builder in `internal/loomrecipe`.
 // Its entry points are `loomrecipe.New` and `loomrecipe.Routing`; both take the run's recipe name, pawl's included.
-// The row names a run parked under an old recipe may still carry are that recipe's retired-row data.
-// They are read through `loomrecipe.RetiredRows`:
-// arming renames them in the status file with no branch on the recipe name,
-// and a recipe with none renames nothing.
-// A row the recipe dropped is declared apart, in the recipe's `retired` map.
-// It is read through `loomrecipe.RetiredRowNames`:
-// arming renames nothing for it,
-// and the shed moves a run parked at it to the row the map names and pauses it.
 //
 // The wiring branches on the recipe's rows and keys, never its name.
 // It reads them through the `loomrecipe` accessors on the run's recipe, and an empty recipe reads as tapestry.
@@ -108,7 +100,6 @@
 // A run seeded with the recipe `pawl` is a beam's life, batten's Seed-Child seeds it in the beam's pair.
 // Its shed reads Preflight, Record-Write, Beam-Up, Beam-Await, Finalize and Beam-Down.
 // It has no plan, no review round and no reroute edge.
-// The recipe's `retired` map sends a run parked at Parent-Align, Beam-Describe or PR-Review back to Beam-Await.
 // Its Record-Write writes the project record and its support log from the project entry's body,
 // and it commits them under the beam's slug.
 // wire fills `Env.Pawl` for it through `pawlDeps`:
@@ -116,14 +107,7 @@
 // the status is written on the beam's project entry through the board;
 // Beam-Up's one step is `orchcli.BeamUp` with no prepare, since the run already judged origin;
 // the warnings its report carries are logged and posted to the beam's orch as one `PAWL` notice;
-// no warning halts the row;
-// `Deps.RetiredRows` is the recipe's retired row names.
-// wire also sets `ShedPaths.RetiredMove` to `pawlRetiredMove` for a beam run,
-// so a run moved off a retired row gets the landing's side effects,
-// and it sets `ShedPaths.RetiredWayForward` to `lym loom resume` for every loom run:
-// `pawlRetiredMove` ends the PR-Review session through the run's `RoleSession` records.
-// It reads the recorded pull request's state through the pair's origin, and commits the removal of its record.
-// It commits the landing directory in the beam's worktree.
+// no warning halts the row.
 // The beam's dobby is stopped through `runproc.EndRole` by its `RoleDobby` record.
 // It is restarted through `orchcli.BeamUpWorktree` naming the beam, which brings the beam's orch up with it.
 // Beam-Await's re-check reads `battencli.ReadBeamLandBlockers` and `battencli.BeamLandRefusal`.

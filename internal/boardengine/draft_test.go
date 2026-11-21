@@ -3,85 +3,13 @@
 package boardengine_test
 
 import (
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-func TestDraftMigration(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	statusOf := func(t *testing.T, w *boardengine.Board, slug string) *string {
-		t.Helper()
-		got, found, err := w.GetTask(slug)
-		if err != nil || !found {
-			t.Fatalf("GetTask(%q) = %+v, %v, %v; want the entry", slug, got, found, err)
-		}
-		return got.Status
-	}
-
-	t.Run("a board without the key marks its open tasks with no status on the next write", func(t *testing.T) {
-		t.Parallel()
-		w, boardPath := newLegacyBoard(t, nil)
-		seedBoardJSON(t, boardPath,
-			`{"id":0,"slug":"nilled","title":"Nilled","kind":"task","labels":["bug"]}`,
-			`{"id":1,"slug":"blank","title":"Blank","kind":"task","labels":["bug"],"status":""}`,
-			`{"id":2,"slug":"finished","title":"Finished","kind":"task","labels":["bug"],"status":"done"}`,
-			`{"id":3,"slug":"held","title":"Held","kind":"task","labels":["bug"],"status":"running · X"}`,
-		)
-
-		if err := w.Rerender(); err != nil {
-			t.Fatalf("Rerender() = %v; want nil", err)
-		}
-
-		for slug, want := range map[string]string{"nilled": boardengine.StatusDraft, "blank": boardengine.StatusDraft, "finished": "done", "held": "running · X"} {
-			if got := statusOf(t, w, slug); got == nil || *got != want {
-				t.Errorf("status of %q = %v; want %q", slug, got, want)
-			}
-		}
-		raw, err := os.ReadFile(filepath.Join(boardPath, "board.json"))
-		if err != nil || !strings.Contains(string(raw), `"draft_status": true`) {
-			t.Errorf("board.json = %s, %v; want it to hold draft_status", raw, err)
-		}
-	})
-
-	t.Run("a null-status release that is the first write to a board without the key stays released", func(t *testing.T) {
-		t.Parallel()
-		w, boardPath := newLegacyBoard(t, nil)
-		seedBoardJSON(t, boardPath, `{"id":0,"slug":"nilled","title":"Nilled","kind":"task","labels":["bug"]}`)
-
-		if err := w.SetStatus("nilled", nil); err != nil {
-			t.Fatalf("SetStatus() = %v; want nil", err)
-		}
-
-		if got := statusOf(t, w, "nilled"); got != nil {
-			t.Errorf("status of nilled = %q; want nil", *got)
-		}
-	})
-
-	t.Run("a board holding the key never migrates again", func(t *testing.T) {
-		t.Parallel()
-		w, boardPath := newLegacyBoard(t, nil)
-		content := `{"version":1,"draft_status":true,"entries":[{"id":0,"slug":"released","title":"Released","kind":"task","labels":["bug"]}]}`
-		if err := os.WriteFile(filepath.Join(boardPath, "board.json"), []byte(content), 0o644); err != nil {
-			t.Fatalf("WriteFile() = %v; want nil", err)
-		}
-
-		if err := w.Rerender(); err != nil {
-			t.Fatalf("Rerender() = %v; want nil", err)
-		}
-
-		if got := statusOf(t, w, "released"); got != nil {
-			t.Errorf("status of released = %q; want nil", *got)
-		}
-	})
-}
-
+//testtiming:keep pins that a new task reads draft through each write path and which writes release the draft status, which no covering test asserts
 func TestDraftStatus(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -208,7 +136,7 @@ func TestDraftStatus(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			w, _ := newLegacyBoard(t, nil)
+			w, _ := newTestBoard(t)
 			if tt.setup != nil {
 				tt.setup(t, w)
 			}

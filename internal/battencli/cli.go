@@ -111,7 +111,7 @@
 // The start guard lets a beam project start or resume.
 // A fresh start with no marked pair here gets a task's dirty-source and left-parts checks.
 // The dirty-source check applies only when the start forks from the prime.
-// A marked beam pair, a legacy beam's or a resumed run's, passes the checks.
+// A marked beam pair or a resumed run's pair passes the checks.
 // A beam project skips the draft check, since a beam's cancel leaves its entry draft.
 // `lym beam create` starts its run again.
 // The guard reads a marked pair as the leftover of a stopped promote.

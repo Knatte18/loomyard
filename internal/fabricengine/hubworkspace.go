@@ -178,9 +178,6 @@ func regenerateHubWorkspace(rec *Mutations, l *lymcwd.Location, lockWait time.Du
 	if err != nil {
 		return "", fmt.Errorf("read the prime's anchor: %w", err)
 	}
-	if retiredHubArtifactsPresent(primeLoc) {
-		logger.Warn(`fabricengine: the hub still holds retired portal links or the old _launchers workspace file; run "lym fabric reconcile" to remove them`)
-	}
 	settings, err := vscode.ReadSettings(filepath.Join(WorktreePath(l, prime), primeLoc.AnchorRel))
 	if err != nil {
 		return "", fmt.Errorf("read prime settings: %w", err)

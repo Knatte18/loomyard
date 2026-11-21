@@ -1664,7 +1664,7 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 					seedPersistentPreRunConfig(t, h, strings.Replace(batcher.ConfigTemplate(), "orientation: 31400", "master_base: 52000", 1))
 				},
 				wantConfig:   true,
-				wantContains: []string{"batcher.yaml did not load", "master_base", `way forward: run \"lym config reconcile --apply\", then re-run the verb`},
+				wantContains: []string{"batcher.yaml did not load", "master_base", `or run \"lym config reconcile --apply\", which removes a key the template lacks, then re-run the verb`},
 			},
 			{
 				name: "an unreadable batcher.yaml",

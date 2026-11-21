@@ -164,16 +164,6 @@ func TestBeamAwait(t *testing.T) {
 			wantFiles:   map[string]bool{"stop": false, "await": true},
 		},
 		{
-			name: "ReentryAtARetiredRowWithNoRequestAndNoReadyRecordLiftsTheHoldAndRestartsTheDobby",
-			setup: func(t *testing.T, w *world) {
-				w.status = "Parent-Align"
-				cancelAfter(w, 1)
-			},
-			wantCancelled: true, wantEvents: []string{beamAwait, "start"},
-			wantNotices: [][]string{{"interrupted", "lym beam ready my-beam"}},
-			wantFiles:   map[string]bool{"stop": false, "await": true},
-		},
-		{
 			name: "LiftedHoldWhoseDobbyWillNotStartNamesBeamStart",
 			setup: func(t *testing.T, w *world) {
 				w.status = "Finalize"
@@ -192,16 +182,6 @@ func TestBeamAwait(t *testing.T) {
 			},
 			wantOutcome: shedengine.Done, wantEvents: landed,
 			wantFiles: map[string]bool{"request": false, "stop": false, "await": false},
-		},
-		{
-			name: "HoldAtARetiredRowWithReadyStandingLandsLikeFinalize",
-			setup: func(t *testing.T, w *world) {
-				w.status = "Parent-Align"
-				w.ready = true
-				touch(t, w.paths.AwaitMarker)
-			},
-			wantOutcome: shedengine.Done, wantEvents: landed,
-			wantFiles: map[string]bool{"stop": false, "await": false},
 		},
 		{
 			name: "FailingRecheckOfAStandingLandingLiftsTheHoldRestartsTheDobbyAndPostsTheBlockers",
