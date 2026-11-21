@@ -72,8 +72,8 @@ const (
 	RefusalMethod RefusalKind = "method"
 	// RefusalPending means the base branch moved or GitHub is still computing mergeability, so a retry may succeed.
 	RefusalPending RefusalKind = "pending"
-	// RefusalOther covers every other refusal:
-	// a moved head, a missing approval, a required check or a conflict, none of which a retry clears.
+	// RefusalOther covers every other refusal, such as a moved head, a missing approval, a required check or a conflict.
+	// It also covers GitHub's "not mergeable" while mergeability is still being computed, which a retry can clear.
 	RefusalOther RefusalKind = "other"
 )
 

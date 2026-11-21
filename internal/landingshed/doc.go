@@ -632,10 +632,21 @@
 // Once the parent-side landing completes, `DropBeamRecord` drops a spent recorded pull request from the landing record;
 // a failed drop is logged only.
 // A refused merge of a beam's pull request names GitHub's message, `lym beam pr status <slug>` and `lym loom resume`.
+// A refusal outlasting the window while GitHub reports the pull request can merge names `lym loom resume` alone.
 // It never names `lym batten cancel`.
 // A merge GitHub refuses as pending is retried for at most a minute under the lock.
 // A method refusal names `lym config landing --set squash=<true|false>`, or the repository's settings under MergeAtOnce.
-// Any other refusal names a second person's approval or a settled check or conflict, and `lym batten cancel`.
+// Any other refusal has `pullrequest.ReadMergeState` read the pull request.
+// That reading waits out a mergeability not yet computed.
+// While that reading says the pull request can merge, a retry is scheduled only while the minute has not passed.
+// Each reading can wait up to a further minute.
+// A scheduled retry sleeps its backoff first.
+// So Finalize halts within about two and a half minutes.
+// Past the minute the halt names `lym loom resume` alone.
+// A reading whose only cause is a mergeability GitHub never computed halts naming GitHub's message and that cause.
+// Its way forward is waiting for GitHub and running `lym loom resume`, with no approval or cancel.
+// A reading that says it cannot merge for any other cause halts naming each cause it reports.
+// The halt also names a second person's approval or a settled check or conflict, and `lym batten cancel`.
 // The retry after a merge-in-required error never merges on GitHub a second time.
 // Every GitHub failure is judged as PR-Review judges one, with each halt opening with LandingStopPrefix.
 //

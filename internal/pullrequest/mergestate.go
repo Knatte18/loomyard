@@ -43,19 +43,19 @@ type MergeState struct {
 	// Checks are the required checks of the base branch, each with its conclusion at Head.
 	Checks []Check
 	// MergeableNow reports whether GitHub would merge the pull request now.
-	// It must be open, not a draft, at the beam's head, and in a mergeable state of clean, has_hooks or unstable.
+	// It must be open, not a draft, at the expected head, and in a mergeable state of clean, has_hooks or unstable.
 	MergeableNow bool
 	// Causes name what stops the merge, one per cause; empty exactly when MergeableNow.
 	Causes []string
 }
 
 // ReadMergeState reads pull request number and the required checks of base at its head.
-// It judges whether the pull request can merge now, with beamHead as the head it must be at.
+// It judges whether the pull request can merge now, with wantHead as the head it must be at.
 // A mergeable_state that GitHub has not yet computed is read again after sleep, doubling from one second.
 // Reads stop once MergeRetryWindow of the now clock has passed since the first read,
 // and the unknown state is then reported as a cause.
 // A failed GitHub call, and a failed sleep, are returned.
-func ReadMergeState(ctx context.Context, api API, number int, beamHead, base string, now func() time.Time, sleep func(ctx context.Context, d time.Duration) error) (MergeState, error) {
+func ReadMergeState(ctx context.Context, api API, number int, wantHead, base string, now func() time.Time, sleep func(ctx context.Context, d time.Duration) error) (MergeState, error) {
 	started := now()
 	status, err := api.Status(ctx, number)
 	if err != nil {
@@ -80,7 +80,7 @@ func ReadMergeState(ctx context.Context, api API, number int, beamHead, base str
 		return MergeState{}, fmt.Errorf("pullrequest: read the required checks of %s at %s: %w", base, status.HeadSHA, err)
 	}
 
-	causes := mergeCauses(status, beamHead, checks)
+	causes := mergeCauses(status, wantHead, checks)
 	return MergeState{
 		State:          status.State,
 		Draft:          status.Draft,
@@ -93,10 +93,16 @@ func ReadMergeState(ctx context.Context, api API, number int, beamHead, base str
 	}, nil
 }
 
-// mergeCauses names every reason a pull request in status cannot merge with beamHead as its head.
+// MergeabilityUncomputed reports whether the only thing stopping the merge is that GitHub has not computed mergeability.
+// Such a state is pending, not a definite refusal: the pull request is open, not a draft, and at the expected head.
+func (s MergeState) MergeabilityUncomputed() bool {
+	return s.State == StateOpen && s.MergeableState == mergeableUnknown && len(s.Causes) == 1
+}
+
+// mergeCauses names every reason a pull request in status cannot merge with wantHead as its head.
 // The reasons come in the order a reader fixes them.
 // A pull request not open gets no mergeable_state cause, since GitHub's mergeable_state says nothing of one.
-func mergeCauses(status Status, beamHead string, checks []Check) []string {
+func mergeCauses(status Status, wantHead string, checks []Check) []string {
 	var causes []string
 	switch status.State {
 	case StateClosed:
@@ -107,8 +113,8 @@ func mergeCauses(status Status, beamHead string, checks []Check) []string {
 	if status.Draft {
 		causes = append(causes, "draft")
 	}
-	if status.HeadSHA != beamHead {
-		causes = append(causes, fmt.Sprintf("head %s is not the beam's head %s", status.HeadSHA, beamHead))
+	if status.HeadSHA != wantHead {
+		causes = append(causes, fmt.Sprintf("head %s is not the expected head %s", status.HeadSHA, wantHead))
 	}
 	if status.State != StateOpen {
 		return causes
