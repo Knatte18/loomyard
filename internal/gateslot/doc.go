@@ -311,10 +311,6 @@
 // FailureReportHeader opens the failure report a failing call prints.
 // FailedTests reads the report's failed tests, each with the tier of the run that failed it.
 // It reports false unless every failure of the report is a named test of a tier or guard run.
-// TriageLinePrefix opens each advisory triage line a failure report holds under a failed test;
-// FailedTests reads past such a line as it does any four-space output line.
-// TriageLines reads them back, per failed test as `<package>.<Test>`, for a report that re-renders failures.
-// RenderTriageSection renders them as the `Triage:` section of a findings text.
 // TierRunFailures reads every failure of the report, each opened by its run's label.
 // It reports false unless every run the report lists is a tier or guard run.
 // It also reports false for a package that failed outside any test, such as by a compile error, which a rerun repeats.

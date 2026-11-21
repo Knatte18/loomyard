@@ -48,7 +48,6 @@
 // After the last batch, the plan-level verify runs the hub's verify gate call through `verifytree.Verify`.
 // A failure is rerun once, and a pass on the rerun is flaky.
 // A failure that survives writes the verify-failure record and goes to one cold verify fixer on the next ladder rung.
-// The record carries the triage lines the verify log's failure report holds under its failed tests.
 // Weaver runs the verify again after it.
 // The fixer carries no gates, since the re-run of the verify judges it.
 // RunDeps is everything the row's producer is told.

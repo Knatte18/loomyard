@@ -395,7 +395,6 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 	failHung := func(res verifytree.Result, output string, hang verifyHang) (shuttleengine.GateResult, error) {
 		return fail(VerifyGateReport{
 			Failures:       runplan.ParseVerifyRun(output, false),
-			Triage:         gateslot.TriageLines(output),
 			LogPath:        res.Log,
 			LogTail:        runplan.LogTail(output),
 			Hang:           hang.Matched,
@@ -513,7 +512,7 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		if hang, hung := classifyHang(res, rerunOutput); hung {
 			return failHung(res, rerunOutput, hang)
 		}
-		report := VerifyGateReport{Failures: runplan.ParseVerifyRun(rerunOutput, false), Triage: gateslot.TriageLines(rerunOutput), LogPath: res.Log, ExitCode: res.ExitCode}
+		report := VerifyGateReport{Failures: runplan.ParseVerifyRun(rerunOutput, false), LogPath: res.Log, ExitCode: res.ExitCode}
 		if len(report.Failures) == 1 && report.Failures[0].Kind == FailureKindOpaque {
 			// A failure that names no test, such as a build error or the gate tool's own error, is shown by its output alone.
 			report.Failures = nil

@@ -189,9 +189,6 @@ func touchedFiles(ctx context.Context, location *lymcwd.Location, root string, i
 // A run lists its cause lines, such as a timeout.
 // Then, when no failure was read, it lists the first lines of output no test event carried,
 // or it says that its log holds the cause.
-// A failed test's triage lines follow its own line, as four-space lines.
-// They are advisory: they count after every other line, and the report keeps a failure's lines whole or not at all,
-// so a triage line never causes a cut and the others are dropped first.
 // Past failureReportLines lines the report stops with a line saying how many lines each run lost and where to read them.
 // The touched-files line closes it, naming at most touchedFilesListed files.
 func renderFailureReport(runs []failedRun, touched []string) []string {
@@ -200,10 +197,9 @@ func renderFailureReport(runs []failedRun, touched []string) []string {
 	}
 	lines := []string{failureReportHeader}
 	budget := failureReportLines
-	triageKept := triageFailuresKept(runs)
 	var cut []cutRun
-	for i, run := range runs {
-		block := run.reportLines(triageKept[i])
+	for _, run := range runs {
+		block := run.reportLines()
 		kept := min(len(block), budget)
 		for _, line := range block[:kept] {
 			lines = append(lines, capLine(line))
@@ -235,31 +231,9 @@ type cutRun struct {
 	lines int
 }
 
-// triageFailuresKept returns, per run, how many of its leading failures keep their triage lines in the report.
-// It counts the lines of every run without triage first.
-// It then keeps triage lines in report order while the budget holds them whole.
-func triageFailuresKept(runs []failedRun) []int {
-	room := failureReportLines
-	for _, run := range runs {
-		room -= len(run.reportLines(0))
-	}
-	kept := make([]int, len(runs))
-	for i, run := range runs {
-		for j, failure := range run.failures {
-			if len(failure.triage) > room {
-				return kept
-			}
-			room -= len(failure.triage)
-			kept[i] = j + 1
-		}
-	}
-	return kept
-}
-
 // reportLines returns the report's lines for the run: its header, its failures, then its causes.
-// The first triageKept failures put their triage lines first under their test line.
 // The output no test event carried follows them.
-func (run failedRun) reportLines(triageKept int) []string {
+func (run failedRun) reportLines() []string {
 	header := fmt.Sprintf("%s (%s)", run.label, run.outcome)
 	if run.wayForward != "" {
 		header += "; way forward: " + run.wayForward
@@ -268,17 +242,12 @@ func (run failedRun) reportLines(triageKept int) []string {
 		header += ", log " + run.log
 	}
 	body := []string{header + ":"}
-	for i, failure := range run.failures {
+	for _, failure := range run.failures {
 		indent := "  "
 		switch {
 		case failure.test != "":
 			body = append(body, "  "+strings.TrimSpace(failure.pkg+" "+failure.test)+":")
 			indent = "    "
-			if i < triageKept {
-				for _, line := range failure.triage {
-					body = append(body, indent+line)
-				}
-			}
 		case failure.pkg != "":
 			body = append(body, fmt.Sprintf("  %s%s:", failure.pkg, gateslot.ReportOutsideAnyTestSuffix))
 			indent = "    "

@@ -14,8 +14,6 @@
 // The done-card readers, DoneCards, EditedDoneCards and LastBegunCard, read the batch records alone.
 // PendingPartition partitions the cards no done batch holds, and RecordBeginPartition records that partition.
 // The bounded wait for a batch report, the recovery strand stop and the verify-failure record belong to it too.
-// The verify-failure record carries the triage lines of its failed tests.
-// It renders them as a Triage section of its findings.
 //
 // Every piece is told its paths through Geometry: the implementer's run, reports, prompts and scratch directories,
 // and the scratch directory its state-mutation lease sits in.

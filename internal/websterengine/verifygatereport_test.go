@@ -240,15 +240,6 @@ func TestRenderVerifyGateFindings(t *testing.T) {
 		}
 	}
 
-	if strings.Contains(got, "Triage:") {
-		t.Errorf("findings without triage lines must carry no Triage section:\n%s", got)
-	}
-	triaged := r
-	triaged.Triage = map[string][]string{"m/a.TestX": {"triage: not in the coverage maps"}}
-	if got := renderVerifyGateFindings(triaged, fixPromptPath); !strings.Contains(got, "Triage:\n- m/a.TestX\n    triage: not in the coverage maps\n") {
-		t.Errorf("findings with triage lines should render the Triage section:\n%s", got)
-	}
-
 	r.Hint = nil
 	if got := renderVerifyGateFindings(r, fixPromptPath); !strings.Contains(got, "No recorded card touched a failing package") {
 		t.Errorf("findings without a hint should say no card touched a failing package:\n%s", got)

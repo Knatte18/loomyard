@@ -200,7 +200,6 @@ func readVerifyLog(path string) (string, error) {
 // failureReport builds the verify-failure record of a failed run of command.
 // A timed-out run carries its timeout and the log tail.
 // A failure that names no test carries the log tail alone, and any other carries its failing identities.
-// A log whose failure report holds triage lines under its failed tests adds them to the record.
 func failureReport(command string, attempt, budget int, res verifytree.Result, output string) runplan.VerifyGateReport {
 	report := runplan.VerifyGateReport{Attempt: attempt, Cap: budget, Command: command, ExitCode: res.ExitCode, LogPath: res.Log}
 	if res.TimedOut {
@@ -208,7 +207,6 @@ func failureReport(command string, attempt, budget int, res verifytree.Result, o
 		report.LogTail = runplan.LogTail(output)
 		return report
 	}
-	report.Triage = gateslot.TriageLines(output)
 	failures := runplan.ParseVerifyRun(output, false)
 	if len(failures) == 1 && failures[0].Kind == runplan.FailureKindOpaque {
 		report.LogTail = runplan.LogTail(output)

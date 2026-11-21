@@ -566,12 +566,10 @@ type execution struct {
 
 // printReport writes the failure report of the call's failed runs to stderr, and nothing when no run failed.
 // The report names the files the change touches.
-// It holds triage lines under the failed tests the coverage maps can judge.
 func (e *execution) printReport(inHub bool) {
 	if len(e.failed) == 0 {
 		return
 	}
-	e.addTriage(inHub)
 	printFailureReport(e.request.stderr, e.failed, touchedFiles(e.ctx, e.location, e.request.root, inHub))
 }
 

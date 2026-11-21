@@ -1199,7 +1199,6 @@
 // The report carries the attempt and the cap.
 // It also carries the verify command and its exit code.
 // It lists the failing identities or the dirty paths, and the verify log's path.
-// It also carries the triage lines the log's failure report holds under its failed tests, rendered as a Triage section.
 // The cap is the entry's re-prompt budget, so the evaluation that spends it is numbered one past the cap.
 // A failure whose log names no failing identity keeps the log's tail, since only its output shows what failed.
 // The stuck reason of a run whose gate spent its budget counts the failing entry's re-prompts against that budget.

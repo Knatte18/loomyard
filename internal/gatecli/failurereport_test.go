@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -132,23 +131,6 @@ func TestRenderFailureReport(t *testing.T) {
 				"  a.go:3: // wrapped at the",
 			},
 		},
-		{
-			name: "a failed test's triage lines come first under its test line, as four-space lines, with its output after them",
-			runs: []failedRun{{
-				label: "tier0", outcome: "exit 1", log: "/logs/tier0.log",
-				failures: []runFailure{{
-					pkg: "example.com/m/p", test: "TestA", lines: []string{"a_test.go:1: boom"},
-					triage: []string{gateslot.TriageLinePrefix + "not in the coverage maps"},
-				}},
-			}},
-			want: []string{
-				failureReportHeader,
-				"tier0 (exit 1), log /logs/tier0.log:",
-				"  example.com/m/p TestA:",
-				"    triage: not in the coverage maps",
-				"    a_test.go:1: boom",
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -210,35 +192,6 @@ func TestRenderFailureReport(t *testing.T) {
 		}
 		if len(want) <= failureReportLineBytes {
 			t.Errorf("cut line is %d bytes; want a case longer than the %d-byte line cap, which the cut line is exempt from", len(want), failureReportLineBytes)
-		}
-	})
-
-	t.Run("triage lines are dropped before any test output line, and are kept while the line cap holds them whole", func(t *testing.T) {
-		t.Parallel()
-		// Each failure takes two lines, its test line and its one output line, so the run leaves one line of the cap free.
-		failures := make([]runFailure, (failureReportLines-1)/2)
-		for i := range failures {
-			failures[i] = runFailure{pkg: "example.com/p", test: fmt.Sprintf("Test%d", i), lines: []string{"x"}}
-		}
-		render := func(triage map[int][]string) []string {
-			withTriage := slices.Clone(failures)
-			for i, lines := range triage {
-				withTriage[i].triage = lines
-			}
-			return renderFailureReport([]failedRun{{label: "tier0", outcome: "exit 1", log: "/l", failures: withTriage}}, nil)
-		}
-		triageLine := func(text string) string { return gateslot.TriageLinePrefix + text }
-
-		without := render(nil)
-		if got := render(map[int][]string{0: {triageLine("a"), triageLine("b")}}); !slices.Equal(got, without) {
-			t.Errorf("renderFailureReport() with triage lines that do not fit = %q; want the report without them, %q", got, without)
-		}
-		got := render(map[int][]string{0: {triageLine("a")}, 1: {triageLine("b")}})
-		if len(got) != len(without)+1 || got[3] != "    "+triageLine("a") {
-			t.Errorf("renderFailureReport() = %q; want one triage line, the first failure's, under its test line", got)
-		}
-		if slices.Contains(got, "    "+triageLine("b")) {
-			t.Errorf("renderFailureReport() = %q; want the second failure's triage line dropped once the cap holds no more", got)
 		}
 	})
 }

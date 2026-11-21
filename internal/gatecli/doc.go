@@ -909,17 +909,6 @@
 // A failed test shows as its package and test path, and a `vstest` test as its name alone.
 // A package that failed outside any test, such as by a build error or a crash in `TestMain`, shows as its package.
 // A lint finding shows as its own `file:line` line.
-// Under a failed test, first, come its triage lines: four-space lines opening with `gateslot.TriageLinePrefix`.
-// They exist in a hub whose scoper is `go`, built once per report from the coverage maps.
-// A test a map holds gets a line naming the changed functions it reaches and the map's commit.
-// The line names at most five functions, then the count of the rest.
-// A test reaching none gets a line saying so with the map's commit.
-// It then gets a line holding the `lym gate reach --test` command.
-// The prime and a worktree with no parent branch have no change set, and a line says so and why, with no command.
-// A test no map holds gets one line saying it is not in the coverage maps.
-// The lines are advisory: they count after every other line, and a failure's lines stay whole or are dropped,
-// so a triage line never causes a cut and is dropped before any test output line is cut.
-// Bound: a stored map may lack a function the run added, and a stale entry can show a reach the test no longer has.
 // Each carries up to `failureLines` lines it printed beside go test's own status and summary lines,
 // so an error's got and want, a panic's first frames or a .NET exception's message show.
 // A bare file name a test printed is prefixed with its package's worktree-relative directory.
