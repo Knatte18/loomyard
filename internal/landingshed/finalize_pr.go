@@ -458,8 +458,10 @@ func pullRequestCommitTitle(title string, number int) string {
 // the commit message is the message passed in.
 // A merge that GitHub refuses as pending is retried for up to `prMergeRetryWindow`, on `PullRequest.Now`'s clock.
 // Any other refusal but a method one has GitHub's merge state read, waiting out a mergeability not yet computed;
-// the merge is retried while that state reports the pull request can merge, scheduled only while the window has not passed.
-// Each merge-state reading can wait up to a further window, so Finalize halts within about two windows.
+// the merge is retried while that state reports the pull request can merge,
+// scheduled only while the window has not passed.
+// Each merge-state reading can wait up to a further window, and a scheduled retry sleeps its backoff first,
+// so Finalize halts within about two and a half windows.
 // It then fetches the parent's upstream and fast-forwards the parent pair to it,
 // so the parent-side merge that follows finds the parent holding the task's work.
 // It returns nil when the landing goes on; each halt opens with LandingStopPrefix.

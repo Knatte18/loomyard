@@ -639,7 +639,8 @@
 // Any other refusal has `pullrequest.ReadMergeState` read the pull request.
 // That reading waits out a mergeability not yet computed.
 // While that reading says the pull request can merge, a retry is scheduled only while the minute has not passed.
-// Each reading can wait up to a further minute, so Finalize halts within about two minutes.
+// Each reading can wait up to a further minute, and a scheduled retry sleeps its backoff first,
+// so Finalize halts within about two and a half minutes.
 // Past the minute the halt names `lym loom resume` alone.
 // A reading whose only cause is a mergeability GitHub never computed halts naming GitHub's message and that cause,
 // with the way forward of waiting for GitHub and running `lym loom resume`, and no approval or cancel.
