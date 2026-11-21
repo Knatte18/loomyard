@@ -143,7 +143,7 @@ func TestPush(t *testing.T) {
 			writeFile(t, cloneAPath, "a.txt", "from A, commit 1")
 			commitAll(t, cloneAPath, "commit from A #1")
 
-			if err := repoA.Push(); err != nil {
+			if err := repoA.Push(gitrepo.RefNamespace{}); err != nil {
 				t.Fatalf("Push() (first push, no upstream) error = %v; want nil", err)
 			}
 			if got := upstreamRef(t, cloneAPath); got == "" {
@@ -155,7 +155,7 @@ func TestPush(t *testing.T) {
 			cloneBPath, repoB = cloneFromBare(t, container, "cloneB", bareRemote)
 			writeFile(t, cloneBPath, "b.txt", "from B")
 			commitAll(t, cloneBPath, "commit from B")
-			if err := repoB.Push(); err != nil {
+			if err := repoB.Push(gitrepo.RefNamespace{}); err != nil {
 				t.Fatalf("Push() from clone B error = %v; want nil", err)
 			}
 
@@ -163,7 +163,7 @@ func TestPush(t *testing.T) {
 			// Push() must recover via the rebase-retry rather than fail outright.
 			writeFile(t, cloneAPath, "a.txt", "from A, commit 2")
 			commitAll(t, cloneAPath, "commit from A #2")
-			if err := repoA.Push(); err != nil {
+			if err := repoA.Push(gitrepo.RefNamespace{}); err != nil {
 				t.Fatalf("Push() from clone A (behind remote) error = %v; want nil (rebase-retry should recover)", err)
 			}
 
@@ -183,7 +183,7 @@ func TestPush(t *testing.T) {
 		{"a rebase conflict aborts to a clean state", func(t *testing.T) {
 			writeFile(t, cloneAPath, "shared.txt", "base\n")
 			commitAll(t, cloneAPath, "shared base")
-			if err := repoA.Push(); err != nil {
+			if err := repoA.Push(gitrepo.RefNamespace{}); err != nil {
 				t.Fatalf("Push() (shared base) error = %v; want nil", err)
 			}
 
@@ -192,7 +192,7 @@ func TestPush(t *testing.T) {
 			}
 			writeFile(t, cloneBPath, "shared.txt", "B version\n")
 			commitAll(t, cloneBPath, "B edit")
-			if err := repoB.Push(); err != nil {
+			if err := repoB.Push(gitrepo.RefNamespace{}); err != nil {
 				t.Fatalf("Push() from clone B error = %v; want nil", err)
 			}
 
@@ -200,7 +200,7 @@ func TestPush(t *testing.T) {
 			commitAll(t, cloneAPath, "A conflicting edit")
 			localHead := requireCurrentSHA(t, repoA)
 
-			err := repoA.Push()
+			err := repoA.Push(gitrepo.RefNamespace{})
 			if err == nil {
 				t.Fatal("Push() with a genuine rebase conflict error = nil; want an error")
 			}
@@ -225,7 +225,7 @@ func TestPush(t *testing.T) {
 			}
 			writeFile(t, cloneBPath, "c.txt", "from B again")
 			commitAll(t, cloneBPath, "second commit from B")
-			if err := repoB.Push(); err != nil {
+			if err := repoB.Push(gitrepo.RefNamespace{}); err != nil {
 				t.Fatalf("Push() from clone B error = %v; want nil", err)
 			}
 
@@ -235,7 +235,7 @@ func TestPush(t *testing.T) {
 			commitAll(t, cloneAPath, "commit from A #3")
 			writeFile(t, cloneAPath, "a.txt", "dirty uncommitted edit")
 
-			if err := repoA.Push(); err == nil {
+			if err := repoA.Push(gitrepo.RefNamespace{}); err == nil {
 				t.Fatal("Push() with a dirty tracked file during rebase-retry = nil error; want an error (rebase must abort, not recover)")
 			}
 		}},
@@ -247,7 +247,7 @@ func TestPush(t *testing.T) {
 			}
 			writeFile(t, cloneBPath, "b.txt", "from B, third")
 			commitAll(t, cloneBPath, "third commit from B")
-			if err := repoB.PushRebaseFree(); err != nil {
+			if err := repoB.PushRebaseFree(gitrepo.RefNamespace{}); err != nil {
 				t.Fatalf("PushRebaseFree() from clone B error = %v; want nil", err)
 			}
 
@@ -260,7 +260,7 @@ func TestPush(t *testing.T) {
 			writeFile(t, cloneAPath, "a.txt", dirtyContent)
 			localHead := requireCurrentSHA(t, repoA)
 
-			err := repoA.PushRebaseFree()
+			err := repoA.PushRebaseFree(gitrepo.RefNamespace{})
 			if err == nil {
 				t.Fatal("PushRebaseFree() against a diverged remote error = nil; want ErrPushRejected")
 			}
@@ -297,7 +297,7 @@ func TestPush(t *testing.T) {
 			commitAll(t, repoPath, "commit 1")
 			localHead := requireCurrentSHA(t, repo)
 
-			if err := repo.PushRebaseFree(); err != nil {
+			if err := repo.PushRebaseFree(gitrepo.RefNamespace{}); err != nil {
 				t.Fatalf("PushRebaseFree() (first push, no upstream) error = %v; want nil", err)
 			}
 			if got := upstreamRef(t, repoPath); got == "" {
@@ -326,7 +326,7 @@ func TestPush(t *testing.T) {
 			writeFile(t, repoPath, "a.txt", "refused")
 			commitAll(t, repoPath, "refused commit")
 
-			err := repo.PushRebaseFree()
+			err := repo.PushRebaseFree(gitrepo.RefNamespace{})
 			if !errors.Is(err, gitrepo.ErrPushAuthRefused) {
 				t.Fatalf("PushRebaseFree() error = %v; want errors.Is(err, gitrepo.ErrPushAuthRefused)", err)
 			}
@@ -373,13 +373,13 @@ func TestUpdateRemoteBranchLeased(t *testing.T) {
 	writeFile(t, clonePath, "a.txt", "one")
 	commitAll(t, clonePath, "commit one")
 	firstSHA := requireCurrentSHA(t, repo)
-	if err := repo.Push(); err != nil {
+	if err := repo.Push(gitrepo.RefNamespace{}); err != nil {
 		t.Fatalf("Push() (first commit) error = %v; want nil", err)
 	}
 	writeFile(t, clonePath, "a.txt", "two")
 	commitAll(t, clonePath, "commit two")
 	secondSHA := requireCurrentSHA(t, repo)
-	if err := repo.Push(); err != nil {
+	if err := repo.Push(gitrepo.RefNamespace{}); err != nil {
 		t.Fatalf("Push() (second commit) error = %v; want nil", err)
 	}
 
@@ -388,7 +388,7 @@ func TestUpdateRemoteBranchLeased(t *testing.T) {
 		run  func(t *testing.T)
 	}{
 		{"a lease at the remote's tip moves the branch backwards", func(t *testing.T) {
-			if err := repo.UpdateRemoteBranchLeased("origin", "main", firstSHA, secondSHA); err != nil {
+			if err := repo.UpdateRemoteBranchLeased("origin", "main", firstSHA, secondSHA, gitrepo.RefNamespace{}); err != nil {
 				t.Fatalf("UpdateRemoteBranchLeased(main, %s, lease %s) error = %v; want nil", firstSHA, secondSHA, err)
 			}
 			if got := remoteBranchSHA(t, bareRemote, "main"); got != firstSHA {
@@ -396,7 +396,7 @@ func TestUpdateRemoteBranchLeased(t *testing.T) {
 			}
 		}},
 		{"a stale lease returns ErrLeaseRejected and leaves the branch", func(t *testing.T) {
-			err := repo.UpdateRemoteBranchLeased("origin", "main", secondSHA, secondSHA)
+			err := repo.UpdateRemoteBranchLeased("origin", "main", secondSHA, secondSHA, gitrepo.RefNamespace{})
 			if !errors.Is(err, gitrepo.ErrLeaseRejected) {
 				t.Fatalf("UpdateRemoteBranchLeased() with a stale lease error = %v; want errors.Is(err, ErrLeaseRejected)", err)
 			}
@@ -404,9 +404,39 @@ func TestUpdateRemoteBranchLeased(t *testing.T) {
 				t.Errorf("bare remote main after a rejected lease = %q; want unchanged %q", got, firstSHA)
 			}
 		}},
+		{"an empty lease lands on an absent branch and fails on a present one", func(t *testing.T) {
+			if err := repo.UpdateRemoteBranchLeased("origin", "absent-lease", firstSHA, "", gitrepo.RefNamespace{}); err != nil {
+				t.Fatalf("UpdateRemoteBranchLeased() with an empty lease on an absent branch error = %v; want nil", err)
+			}
+			if got := remoteBranchSHA(t, bareRemote, "absent-lease"); got != firstSHA {
+				t.Errorf("bare remote absent-lease = %q; want %q", got, firstSHA)
+			}
+			err := repo.UpdateRemoteBranchLeased("origin", "absent-lease", secondSHA, "", gitrepo.RefNamespace{})
+			if !errors.Is(err, gitrepo.ErrLeaseRejected) {
+				t.Errorf("UpdateRemoteBranchLeased() with an empty lease on a present branch error = %v; want errors.Is(err, ErrLeaseRejected)", err)
+			}
+			if got := remoteBranchSHA(t, bareRemote, "absent-lease"); got != firstSHA {
+				t.Errorf("bare remote absent-lease after a rejected empty lease = %q; want unchanged %q", got, firstSHA)
+			}
+		}},
+		{"a namespaced branch is created and moved under its full ref name", func(t *testing.T) {
+			namespace := gitrepo.RefNamespace{Heads: "refs/lym/heads/", Tags: "refs/lym/tags/"}
+			if err := repo.UpdateRemoteBranchLeased("origin", "namespaced", secondSHA, "", namespace); err != nil {
+				t.Fatalf("UpdateRemoteBranchLeased() creating a namespaced branch error = %v; want nil", err)
+			}
+			if err := repo.UpdateRemoteBranchLeased("origin", "namespaced", firstSHA, secondSHA, namespace); err != nil {
+				t.Fatalf("UpdateRemoteBranchLeased() moving a namespaced branch error = %v; want nil", err)
+			}
+			if got := remoteBranchSHA(t, bareRemote, "refs/lym/heads/namespaced"); got != firstSHA {
+				t.Errorf("bare remote refs/lym/heads/namespaced = %q; want %q", got, firstSHA)
+			}
+			if got := branchSHA(t, bareRemote, "refs/heads/namespaced"); got != "" {
+				t.Errorf("bare remote refs/heads/namespaced = %q; want none", got)
+			}
+		}},
 		{"an invalid SHA returns ErrInvalidSHA", func(t *testing.T) {
 			for _, args := range [][2]string{{"not-a-sha", firstSHA}, {firstSHA, "not-a-sha"}} {
-				err := repo.UpdateRemoteBranchLeased("origin", "main", args[0], args[1])
+				err := repo.UpdateRemoteBranchLeased("origin", "main", args[0], args[1], gitrepo.RefNamespace{})
 				if !errors.Is(err, gitrepo.ErrInvalidSHA) {
 					t.Errorf("UpdateRemoteBranchLeased(%q, lease %q) error = %v; want ErrInvalidSHA", args[0], args[1], err)
 				}
@@ -418,7 +448,7 @@ func TestUpdateRemoteBranchLeased(t *testing.T) {
 				t.Fatalf("write pre-receive hook: %v", err)
 			}
 
-			err := repo.UpdateRemoteBranchLeased("origin", "main", secondSHA, firstSHA)
+			err := repo.UpdateRemoteBranchLeased("origin", "main", secondSHA, firstSHA, gitrepo.RefNamespace{})
 			if err == nil {
 				t.Fatal("UpdateRemoteBranchLeased() against a rejecting hook error = nil; want an error")
 			}
@@ -454,8 +484,8 @@ func TestPush_NoRemoteConfigured_SurfacesGitError(t *testing.T) {
 		name string
 		push func() error
 	}{
-		{"Push", repo.Push},
-		{"PushCoalesced", repo.PushCoalesced},
+		{"Push", func() error { return repo.Push(gitrepo.RefNamespace{}) }},
+		{"PushCoalesced", func() error { return repo.PushCoalesced(gitrepo.RefNamespace{}) }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -488,7 +518,7 @@ func init() {
 // pushCoalescedChild runs PushCoalesced against the clone at dir.
 // It runs in a separate OS process, so the single-pusher lock is exercised across processes.
 func pushCoalescedChild(dir string) int {
-	if err := gitrepo.New(dir).PushCoalesced(); err != nil {
+	if err := gitrepo.New(dir).PushCoalesced(gitrepo.RefNamespace{}); err != nil {
 		fmt.Fprintf(os.Stderr, "PushCoalesced() in child process error = %v; want nil\n", err)
 		return 1
 	}
@@ -542,7 +572,7 @@ func TestPushCoalesced(t *testing.T) {
 	repoPath, repo := newRepoWithRemote(t, container, "clone", bareRemote)
 	writeFile(t, repoPath, "a.txt", "initial")
 	commitAll(t, repoPath, "init")
-	if err := repo.Push(); err != nil {
+	if err := repo.Push(gitrepo.RefNamespace{}); err != nil {
 		t.Fatalf("Push() (establish upstream) error = %v; want nil", err)
 	}
 
@@ -563,7 +593,7 @@ func TestPushCoalesced(t *testing.T) {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
-				errs[i] = repo.PushCoalesced()
+				errs[i] = repo.PushCoalesced(gitrepo.RefNamespace{})
 			}(i)
 		}
 		wg.Wait()
@@ -691,7 +721,7 @@ func TestPushCoalesced(t *testing.T) {
 		// A fresh PushCoalesced must neither wedge nor fail:
 		// the OS released the dead holder's flock, and the pending commit gets pushed.
 		done := make(chan error, 1)
-		go func() { done <- repo.PushCoalesced() }()
+		go func() { done <- repo.PushCoalesced(gitrepo.RefNamespace{}) }()
 		select {
 		case err := <-done:
 			if err != nil {
@@ -746,7 +776,7 @@ func TestHasUnpulled(t *testing.T) {
 			seedPath, seed := newRepoWithRemote(t, container, "seed", bareRemote)
 			writeFile(t, seedPath, "a.txt", "initial")
 			commitAll(t, seedPath, "init")
-			if err := seed.Push(); err != nil {
+			if err := seed.Push(gitrepo.RefNamespace{}); err != nil {
 				t.Fatalf("Push() (seed) error = %v; want nil", err)
 			}
 			clonePath, clone := cloneFromBare(t, container, "clone", bareRemote)
@@ -772,7 +802,7 @@ func pushFromOtherClone(t *testing.T, container, bareRemote string) {
 	otherPath, other := cloneFromBare(t, container, "other", bareRemote)
 	writeFile(t, otherPath, "other.txt", "from other")
 	commitAll(t, otherPath, "commit from other")
-	if err := other.Push(); err != nil {
+	if err := other.Push(gitrepo.RefNamespace{}); err != nil {
 		t.Fatalf("Push() (other clone) error = %v; want nil", err)
 	}
 }

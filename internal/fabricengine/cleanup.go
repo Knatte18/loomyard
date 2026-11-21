@@ -28,7 +28,9 @@
 // Directory names are not compared, because the primary pair's worktree directory is the repo name:
 // its branch is the default branch.
 //
-// primaryWeftBranch names the primary weft branch, the default branch plus "-weft", and protects it explicitly.
+// primaryWeftBranch names the primary weft branch and protects it explicitly.
+// A two-repository hub's is the board's branch plus "-weft".
+// A one-repository hub's is the value of the records store's lym.primeRecordsBranch.
 // Branch-space liveness protects it only while the prime warp worktree sits on the default branch,
 // and `lym fabric checkout` can move that worktree, which would let the sweep delete the durable weft line.
 //
@@ -332,9 +334,34 @@ func (t *Topology) cleanupOrphan(rec *Mutations, l *lymcwd.Location, warpBranch 
 // A single `lym fabric checkout <other>` on the prime pair makes `main` not-live;
 // and promotes `main-weft`, the durable `_lym` line with its unpushed commits, to a deletable orphan.
 //
-// A hub whose board branch cannot be read is refused rather than swept:
-// deletions are irreversible, so an unreadable primary must fail closed.
+// A one-repository hub's board is on a fixed branch whatever the code default branch is, so its board names nothing here.
+// Its source is the records store's lym.primeRecordsBranch key, which the clone writes and no checkout moves.
+//
+// A hub whose primary cannot be read is refused rather than swept:
+// deletions are irreversible, so an unreadable board branch, layout or key must fail closed.
 func primaryWeftBranch(l *lymcwd.Location) (string, error) {
+	recordsDir, err := RecordsRepoRoot(l)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve the records store to determine the repo's primary weft branch (%w); refusing to enumerate orphan weft branches", err)
+	}
+	namespace, err := originNamespaceAt(recordsDir)
+	if err != nil {
+		return "", fmt.Errorf("cannot read the records store at %s (%w); refusing to enumerate orphan weft branches", recordsDir, err)
+	}
+	if namespace != (gitrepo.RefNamespace{}) {
+		out, err := gitexec.Run([]string{"config", "--default", "", "--get", PrimeRecordsBranchKey}, recordsDir)
+		if err != nil {
+			return "", fmt.Errorf("cannot read the records store at %s (%w); refusing to enumerate orphan weft branches", recordsDir, err)
+		}
+		primeRecordsBranch := strings.TrimSpace(out)
+		if primeRecordsBranch == "" {
+			return "", fmt.Errorf(
+				"the records store at %s has no %s; refusing to enumerate orphan weft branches — set it with `git -C %s config %s` to <prime-branch>-weft",
+				recordsDir, PrimeRecordsBranchKey, recordsDir, PrimeRecordsBranchKey)
+		}
+		return primeRecordsBranch, nil
+	}
+
 	boardDir := BoltDir(l.HubPath)
 	boardBranch, err := readBranch(boardDir)
 	if err != nil {

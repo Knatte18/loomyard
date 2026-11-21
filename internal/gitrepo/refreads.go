@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 )
 
@@ -82,9 +83,26 @@ func (r *Repo) RefTree(ref string) (string, error) {
 	})
 }
 
+// remoteTrackingRef maps a branch's merge ref to the remote-tracking ref that fetch writes for it.
+// It follows the remote's configured fetch refspecs, the mapping git itself uses for @{upstream}.
+// A remote with no fetch refspec keeps the default refs/remotes/<remote>/<short name> answer.
+// ok is false when the remote has refspecs and none maps the merge ref.
+func remoteTrackingRef(cfg *config.Config, remote string, merge plumbing.ReferenceName) (plumbing.ReferenceName, bool) {
+	configured, found := cfg.Remotes[remote]
+	if !found || len(configured.Fetch) == 0 {
+		return plumbing.NewRemoteReferenceName(remote, merge.Short()), true
+	}
+	for _, spec := range configured.Fetch {
+		if spec.Match(merge) {
+			return spec.Dst(merge), true
+		}
+	}
+	return "", false
+}
+
 // Upstream returns the hash of the remote-tracking ref that branch is configured to track.
-// The ref is named by `branch.<name>.remote` and `branch.<name>.merge`.
-// ok is false when either key is unset or the remote-tracking ref does not exist.
+// The ref is named by `branch.<name>.remote` and `branch.<name>.merge` mapped through the remote's fetch refspecs.
+// ok is false when either key is unset, no fetch refspec maps the merge ref, or the remote-tracking ref does not exist.
 func (r *Repo) Upstream(branch string) (sha string, ok bool, err error) {
 	type upstreamRead struct {
 		sha string
@@ -101,7 +119,10 @@ func (r *Repo) Upstream(branch string) (sha string, ok bool, err error) {
 			return upstreamRead{}, nil
 		}
 
-		trackingRef := plumbing.NewRemoteReferenceName(tracked.Remote, tracked.Merge.Short())
+		trackingRef, mapped := remoteTrackingRef(cfg, tracked.Remote, tracked.Merge)
+		if !mapped {
+			return upstreamRead{}, nil
+		}
 		resolved, err := repo.Reference(trackingRef, true)
 		if errors.Is(err, plumbing.ErrReferenceNotFound) {
 			return upstreamRead{}, nil

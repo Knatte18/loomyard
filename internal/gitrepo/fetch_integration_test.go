@@ -27,7 +27,7 @@ func TestFetch_RemoteAdvanced_UpdatesTrackingRefWithoutMovingHEAD(t *testing.T) 
 	cloneAPath, repoA := newRepoWithRemote(t, container, "cloneA", bareRemote)
 	writeFile(t, cloneAPath, "a.txt", "from A")
 	commitAll(t, cloneAPath, "commit from A")
-	if err := repoA.Push(); err != nil {
+	if err := repoA.Push(gitrepo.RefNamespace{}); err != nil {
 		t.Fatalf("Push() (establish upstream) error = %v; want nil", err)
 	}
 	headBefore := requireCurrentSHA(t, repoA)
@@ -35,7 +35,7 @@ func TestFetch_RemoteAdvanced_UpdatesTrackingRefWithoutMovingHEAD(t *testing.T) 
 	cloneBPath, repoB := cloneFromBare(t, container, "cloneB", bareRemote)
 	writeFile(t, cloneBPath, "b.txt", "from B")
 	commitAll(t, cloneBPath, "commit from B")
-	if err := repoB.Push(); err != nil {
+	if err := repoB.Push(gitrepo.RefNamespace{}); err != nil {
 		t.Fatalf("Push() from clone B error = %v; want nil", err)
 	}
 	remoteHead, stderr, code, err := runGit(t, bareRemote, "rev-parse", "main")

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -31,7 +32,7 @@ func TestPull(t *testing.T) {
 	cloneAPath, repoA := newRepoWithRemote(t, container, "cloneA", bareRemote)
 	writeFile(t, cloneAPath, "shared.txt", "base\n")
 	commitAll(t, cloneAPath, "init")
-	if err := repoA.Push(); err != nil {
+	if err := repoA.Push(gitrepo.RefNamespace{}); err != nil {
 		t.Fatalf("Push() (establish upstream) error = %v; want nil", err)
 	}
 	cloneBPath, repoB := cloneFromBare(t, container, "cloneB", bareRemote)
@@ -39,7 +40,7 @@ func TestPull(t *testing.T) {
 	if !t.Run("a remote that advanced is fast-forwarded in", func(t *testing.T) {
 		writeFile(t, cloneBPath, "b.txt", "from B")
 		commitAll(t, cloneBPath, "commit from B")
-		if err := repoB.Push(); err != nil {
+		if err := repoB.Push(gitrepo.RefNamespace{}); err != nil {
 			t.Fatalf("Push() from clone B error = %v; want nil", err)
 		}
 
@@ -62,7 +63,7 @@ func TestPull(t *testing.T) {
 	t.Run("a diverged local branch is refused and left untouched", func(t *testing.T) {
 		writeFile(t, cloneBPath, "shared.txt", "from B\n")
 		commitAll(t, cloneBPath, "conflicting commit from B")
-		if err := repoB.Push(); err != nil {
+		if err := repoB.Push(gitrepo.RefNamespace{}); err != nil {
 			t.Fatalf("Push() from clone B error = %v; want nil", err)
 		}
 

@@ -178,6 +178,10 @@ func leftoverArchiveWayForward(c *battenCLI, leftover *fabricengine.ErrRemoteLef
 		return "", fmt.Errorf("the leftover tip %q of %s is too short to name an archive tag", tip, leftover.Branch)
 	}
 	tag := fabricengine.ArchiveTagName(c.slug, tip)
+	branchRef, tagRef, err := fabricengine.OriginRefNamesAt(recordsRoot, leftover.Branch, tag)
+	if err != nil {
+		return "", err
+	}
 	tags, err := c.readopt.Tags(c.slug)
 	if err != nil {
 		return "", err
@@ -191,8 +195,8 @@ func leftoverArchiveWayForward(c *battenCLI, leftover *fabricengine.ErrRemoteLef
 		steps = append(steps, fmt.Sprintf("`git -C %s tag %s %s`", recordsRoot, tag, tip))
 	}
 	steps = append(steps,
-		fmt.Sprintf("`git -C %s push origin %s`", recordsRoot, tag),
-		fmt.Sprintf("`git -C %s push --force-with-lease=refs/heads/%s:%s origin --delete %s`", recordsRoot, leftover.Branch, tip, leftover.Branch),
+		fmt.Sprintf("`git -C %s push origin refs/tags/%s:%s`", recordsRoot, tag, tagRef),
+		fmt.Sprintf("`git -C %s push --force-with-lease=%s:%s origin --delete %s`", recordsRoot, branchRef, tip, branchRef),
 	)
 	upstream, err := c.readopt.Upstream(leftover.Branch)
 	if err != nil {

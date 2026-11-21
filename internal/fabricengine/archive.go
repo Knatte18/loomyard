@@ -153,7 +153,11 @@ func archiveWeftTip(rec *Mutations, l *lymcwd.Location, slug, weftBranch, tip st
 			}
 		}
 		if !originHoldsTip {
-			if pushErr := gitrepo.New(weftRoot).PushCommit(originRemoteName, tip, weftBranch); pushErr != nil {
+			ns, err := originNamespaceAt(weftRoot)
+			if err != nil {
+				return weftArchive{}, "", fmt.Errorf("read the layout of the repo holding weft branch %q: %w", weftBranch, err)
+			}
+			if pushErr := gitrepo.New(weftRoot).PushCommit(originRemoteName, tip, weftBranch, ns); pushErr != nil {
 				logger.Warn("fabricengine: pushing the weft branch before its archive tag failed; the tag still holds the local tip", "branch", weftBranch, "error", pushErr)
 			} else {
 				originTip = tip
@@ -219,6 +223,10 @@ func tagAndPushArchiveTip(rec *Mutations, repoDir, slug, tip, side string, sleep
 // KindTagPushed is recorded on rec only after the push observably succeeded.
 func pushArchiveTag(rec *Mutations, repoDir, tag string, sleep func(time.Duration)) error {
 	tagRef := "refs/tags/" + tag
+	ns, err := originNamespaceAt(repoDir)
+	if err != nil {
+		return fmt.Errorf("push archive tag %q to %q: %w", tag, originRemoteName, err)
+	}
 
 	pushTag := func() error {
 		if archiveTagPushHook != nil {
@@ -226,10 +234,10 @@ func pushArchiveTag(rec *Mutations, repoDir, tag string, sleep func(time.Duratio
 				return err
 			}
 		}
-		_, err := gitexec.Run([]string{"push", originRemoteName, tagRef}, repoDir)
+		_, err := gitexec.Run([]string{"push", originRemoteName, tagRef + ":" + ns.Tag(tag)}, repoDir)
 		return err
 	}
-	if err := gitrepo.PushWithRetryReasons(pushTag, tagRef, archiveTagPushDelays(), sleep, []string{"missing necessary objects"}); err != nil {
+	if err := gitrepo.PushWithRetryReasons(pushTag, tagRef, ns, archiveTagPushDelays(), sleep, []string{"missing necessary objects"}); err != nil {
 		return fmt.Errorf("push archive tag %q to %q: %w", tag, originRemoteName, err)
 	}
 	rec.Append(KindTagPushed, repoDir, tag)
@@ -315,7 +323,12 @@ func resolveArchiveTip(weftRoot, weftBranch string) (string, error) {
 		return tip, err
 	}
 
-	listed, err := gitexec.Run([]string{"ls-remote", "--heads", originRemoteName, "refs/heads/" + weftBranch}, weftRoot)
+	ns, err := originNamespaceAt(weftRoot)
+	if err != nil {
+		return "", err
+	}
+	wanted := ns.Branch(weftBranch)
+	listed, err := gitexec.Run([]string{"ls-remote", originRemoteName, wanted}, weftRoot)
 	if err != nil {
 		var gitErr *gitexec.GitError
 		if errors.As(err, &gitErr) {
@@ -327,7 +340,7 @@ func resolveArchiveTip(weftRoot, weftBranch string) (string, error) {
 	tip := ""
 	for _, line := range strings.Split(listed, "\n") {
 		sha, ref, found := strings.Cut(strings.TrimSpace(line), "\t")
-		if found && ref == "refs/heads/"+weftBranch {
+		if found && ref == wanted {
 			tip = sha
 		}
 	}

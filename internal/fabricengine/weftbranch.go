@@ -45,8 +45,12 @@ func resolveWeftBranch(rec *Mutations, l *lymcwd.Location, weftBranch string, co
 		return false, false, nil
 	}
 
+	ns, err := originNamespaceAt(weftRepoRoot)
+	if err != nil {
+		return false, false, err
+	}
 	trackingRef := originRemoteName + "/" + weftBranch
-	if _, err := gitrepo.New(weftRepoRoot).FetchWithArgs("--no-tags", originRemoteName, "refs/heads/"+weftBranch+":refs/remotes/"+trackingRef); err != nil {
+	if _, err := gitrepo.New(weftRepoRoot).FetchWithArgs("--no-tags", originRemoteName, ns.Branch(weftBranch)+":refs/remotes/"+trackingRef); err != nil {
 		return false, false, fmt.Errorf("fetch weft branch %q from %q: %w", weftBranch, originRemoteName, err)
 	}
 	if _, err := gitexec.Run([]string{"branch", "--track", weftBranch, trackingRef}, weftRepoRoot); err != nil {

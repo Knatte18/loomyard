@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -50,7 +51,7 @@ func TestPushRebaseFree_ADefaultPushGoesToTheRemoteTheSettingsPick(t *testing.T)
 				gitkit.Git(t, clone, append([]string{"config"}, setting...)...)
 			}
 
-			if err := gitrepo.New(clone).PushRebaseFree(); err != nil {
+			if err := gitrepo.New(clone).PushRebaseFree(gitrepo.RefNamespace{}); err != nil {
 				t.Fatalf("PushRebaseFree() error = %v; want nil", err)
 			}
 
@@ -69,6 +70,35 @@ func TestPushRebaseFree_ADefaultPushGoesToTheRemoteTheSettingsPick(t *testing.T)
 			}
 		})
 	}
+
+	t.Run("NamespacedFetchRefspecs", func(t *testing.T) {
+		t.Parallel()
+		clone, origin, commit := featureClone(t)
+		gitkit.Git(t, clone, "config", "--replace-all", "remote.origin.fetch", "+refs/lym/heads/*:refs/remotes/origin/*")
+		namespace := gitrepo.RefNamespace{Heads: "refs/lym/heads/", Tags: "refs/lym/tags/"}
+		repo := gitrepo.New(clone)
+
+		if err := repo.PushRebaseFree(namespace); err != nil {
+			t.Fatalf("PushRebaseFree() error = %v; want nil", err)
+		}
+
+		if got := branchSHA(t, origin, "refs/lym/heads/feature"); got != commit {
+			t.Errorf("origin's refs/lym/heads/feature = %q; want %q", got, commit)
+		}
+		if got := branchSHA(t, origin, "refs/heads/feature"); got != "" {
+			t.Errorf("origin's refs/heads/feature = %q; want none", got)
+		}
+		if got := strings.TrimSpace(gitkit.Git(t, clone, "config", "branch.feature.merge")); got != "refs/lym/heads/feature" {
+			t.Errorf("branch.feature.merge = %q; want %q", got, "refs/lym/heads/feature")
+		}
+		if got := branchSHA(t, clone, "refs/remotes/origin/feature"); got != commit {
+			t.Errorf("refs/remotes/origin/feature = %q; want %q", got, commit)
+		}
+		unpushed, err := repo.HasUnpushed()
+		if err != nil || unpushed {
+			t.Errorf("HasUnpushed() = %v, %v; want false, nil", unpushed, err)
+		}
+	})
 }
 
 func TestPush_AFailedRecordAfterALandedTransferStillSucceeds(t *testing.T) {
@@ -84,12 +114,12 @@ func TestPush_AFailedRecordAfterALandedTransferStillSucceeds(t *testing.T) {
 		{"PushBranch", "feature", func(t *testing.T, clone string, repo *gitrepo.Repo) (func() error, string) {
 			gitkit.Git(t, clone, "checkout", "-b", "feature")
 			want := gitkit.CommitFile(t, clone, "feature.txt", "feature", "feature commit")
-			return func() error { return repo.PushBranch("origin", "feature") }, want
+			return func() error { return repo.PushBranch("origin", "feature", gitrepo.RefNamespace{}) }, want
 		}},
 		{"DeleteRemoteBranch", "doomed", func(t *testing.T, clone string, repo *gitrepo.Repo) (func() error, string) {
 			gitkit.Git(t, clone, "push", "origin", "main:doomed")
 			return func() error {
-				deleted, err := repo.DeleteRemoteBranch("origin", "doomed")
+				deleted, err := repo.DeleteRemoteBranch("origin", "doomed", gitrepo.RefNamespace{})
 				if err == nil && !deleted {
 					return fmt.Errorf("DeleteRemoteBranch() deleted = false; want true")
 				}
@@ -145,7 +175,7 @@ func TestPushBranch_APushWithNoTrackingRefToWriteLandsAndRecordsNothing(t *testi
 			remote := tt.remoteFor(t, clone, second)
 			trackingBefore := gitkit.Git(t, clone, "for-each-ref", "refs/remotes")
 
-			if err := gitrepo.New(clone).PushBranch(remote, "feature"); err != nil {
+			if err := gitrepo.New(clone).PushBranch(remote, "feature", gitrepo.RefNamespace{}); err != nil {
 				t.Fatalf("PushBranch(%q, feature) error = %v; want nil", remote, err)
 			}
 

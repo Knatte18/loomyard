@@ -184,6 +184,10 @@ func (b *takeoverBranch) land(rec *Mutations, req TakeOverRequest, entry shedeng
 	defer func() { _ = held.Release() }()
 
 	repo := gitrepo.New(b.weft)
+	ns, err := originNamespaceAt(b.weft)
+	if err != nil {
+		return err
+	}
 	if err := b.commitEntry(rec, req.Slug, entry); err != nil {
 		return err
 	}
@@ -191,7 +195,7 @@ func (b *takeoverBranch) land(rec *Mutations, req TakeOverRequest, entry shedeng
 		if takeoverBeforePushHook != nil {
 			takeoverBeforePushHook(attempt)
 		}
-		pushErr := repo.PushRebaseFree()
+		pushErr := repo.PushRebaseFree(ns)
 		if pushErr == nil {
 			return nil
 		}

@@ -1093,7 +1093,11 @@ func checkUnlandedRemoteTip(req remoteBranchRequest) error {
 		}
 	}
 
-	return refuse(fmt.Sprintf("%s commit(s) on the remote branch are reachable from no other ref and not landed on the parent; if the work is disposable, delete it by hand with: git push %s --delete %s", count, req.remote, req.branch))
+	ns, err := originNamespaceAt(req.repoDir)
+	if err != nil {
+		return refuse(fmt.Sprintf("cannot read the origin layout to name the branch's delete: %v", err))
+	}
+	return refuse(fmt.Sprintf("%s commit(s) on the remote branch are reachable from no other ref and not landed on the parent; if the work is disposable, delete it by hand with: git push %s --delete %s", count, req.remote, ns.Branch(req.branch)))
 }
 
 // checkUnlandedWork refuses a local branch with commits that neither another ref nor its parent already holds.
@@ -1608,7 +1612,8 @@ func deleteBranch(rec *Mutations, req branchRequest) error {
 }
 
 // deleteRemoteBranch is the executor for the git push <remote> --delete primitive.
-// It runs the pipeline, then calls gitrepo.New(req.repoDir).DeleteRemoteBranch(req.remote, req.branch).
+// It runs the pipeline and reads the ref namespace of the repository at req.repoDir.
+// It then deletes the branch there by its full origin ref name.
 // It returns the (deleted, err) pair unchanged and wraps nothing, so every call site builds its own message from it.
 // A non-empty req.leaseSHA routes through DeleteRemoteBranchLeased instead, recording only on success.
 // It appends KindRemoteBranchDeleted to rec via AppendRef, not Append, only when err is nil and deleted is true.
@@ -1619,15 +1624,19 @@ func deleteRemoteBranch(rec *Mutations, req remoteBranchRequest) (deleted bool, 
 		return false, checkErr
 	}
 
+	ns, err := originNamespaceAt(req.repoDir)
+	if err != nil {
+		return false, err
+	}
 	if req.leaseSHA != "" {
-		if err = gitrepo.New(req.repoDir).DeleteRemoteBranchLeased(req.remote, req.branch, req.leaseSHA); err != nil {
+		if err = gitrepo.New(req.repoDir).DeleteRemoteBranchLeased(req.remote, req.branch, req.leaseSHA, ns); err != nil {
 			return false, err
 		}
 		rec.AppendRef(KindRemoteBranchDeleted, req.branch, req.remote)
 		return true, nil
 	}
 
-	deleted, err = gitrepo.New(req.repoDir).DeleteRemoteBranch(req.remote, req.branch)
+	deleted, err = gitrepo.New(req.repoDir).DeleteRemoteBranch(req.remote, req.branch, ns)
 	if err == nil && deleted {
 		rec.AppendRef(KindRemoteBranchDeleted, req.branch, req.remote)
 	}
@@ -1656,7 +1665,7 @@ func updateRemoteBranch(rec *Mutations, req remoteBranchUpdateRequest) error {
 		return &destructiveRefusal{Check: CheckOwnership, What: req.pathReq.what, Target: req.branch, Reason: fmt.Sprintf("%s has %q checked out, not the pair's own branch %q", req.pathReq.target, current, req.branch)}
 	}
 
-	err = req.repo.UpdateRemoteBranchLeased(req.remote, req.branch, req.sha, req.leaseSHA)
+	err = req.repo.UpdateRemoteBranchLeased(req.remote, req.branch, req.sha, req.leaseSHA, gitrepo.RefNamespace{})
 	switch {
 	case errors.Is(err, gitrepo.ErrLeaseRejected):
 		return &leaseLostError{message: fmt.Sprintf("the remote task branch %s moved while this reset ran, so it may now hold commits this checkout lacks; %s", req.branch, remoteDivergenceWayForward(req.remote, req.branch))}
@@ -1686,6 +1695,159 @@ func remoteDivergenceWayForward(remote, branch string) string {
 	return fmt.Sprintf("way forward: if those commits are this run's own abandoned work, run `git merge --strategy ours %s/%s` in the task worktree, "+
 		"which takes no content and cannot conflict, then re-run this reset, which rewinds both the checkout and the remote task branch and discards what the merge brought in; "+
 		"if they may be someone else's work, do not re-run this reset, which would discard them, and leave the rewind to the operator", remote, branch)
+}
+
+// seedPushHook is called with the origin ref about to be pushed, before each push of pushCloneSeed.
+// It is nil in production; a test sets it to move origin between the two pushes.
+var seedPushHook func(ref string)
+
+// checkSeedPush runs the destructive gate's four checks for one origin ref of a seed push or its restore.
+// Containment and ownership prove the hub is the directory this clone created,
+// and the ref must be the prime's records branch or the board branch, leased at a tip this seed knows.
+// Dirtiness is not applicable, since an origin ref carries no checkout file, and force is never set.
+// lease is the tip the push or restore is leased on.
+// pushedRecordsTip is the tip the seed pushed, empty before it did.
+func checkSeedPush(seed *cloneSeed, branch, lease, pushedRecordsTip string) error {
+	req := pathRequest{
+		what:      "push the --single-repo seed",
+		container: seed.container,
+		target:    seed.hubPath,
+		slug:      nil,
+		ownership: ownedFreshlyCreatedPath(seed.hubTok),
+		dirtiness: dirtinessNA("an origin ref carries no checkout file"),
+		force:     false,
+	}
+	if err := checkPathRequest(req); err != nil {
+		return err
+	}
+	leaseKnown := false
+	switch branch {
+	case seed.recordsBranch:
+		leaseKnown = lease == seed.observedTip || (pushedRecordsTip != "" && lease == pushedRecordsTip)
+	case OneRepositoryBoardBranch:
+		leaseKnown = lease == ""
+	}
+	if !leaseKnown {
+		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: branch, Reason: fmt.Sprintf("%s is not a ref of this seed, or its lease %q is not a tip the seed knows", branch, lease)}
+	}
+	return nil
+}
+
+// pushCloneSeed pushes a --single-repo clone's records branch and then its board to origin's records namespace.
+// The records branch is leased on the tip the precondition check observed, or on its absence.
+// The board's branch goes last, leased on absence: it is the key by which a layout is detected, so it lands only whole.
+// Once the board lands, the board branch takes its upstream, so its later pushes are default pushes.
+// A failed push removes the hub, and a records push that had landed is first returned to what the check observed.
+func pushCloneSeed(rec *Mutations, seed *cloneSeed) error {
+	ns := oneRepositoryNamespace()
+	records := gitrepo.New(seed.recordsPath)
+
+	fail := func(cause error, recordsTip string) error {
+		if recordsTip != "" {
+			if restoreErr := restoreSeededRecordsBranch(seed, recordsTip); restoreErr != nil {
+				cause = fmt.Errorf("%w; restoring the records branch %s on origin also failed: %v", cause, seed.recordsBranch, restoreErr)
+			}
+		}
+		return teardownHub(rec, seed.container, seed.hubPath, seed.hubTok, cause)
+	}
+
+	recordsTip, err := records.RefSHA("refs/heads/" + seed.recordsBranch)
+	if err != nil {
+		return fail(fmt.Errorf("read the records branch %s to seed it: %w", seed.recordsBranch, err), "")
+	}
+	boardTip, err := gitrepo.New(seed.boardDir).CurrentSHA()
+	if err != nil {
+		return fail(fmt.Errorf("read the board to seed it: %w", err), "")
+	}
+
+	if err := checkSeedPush(seed, seed.recordsBranch, seed.observedTip, ""); err != nil {
+		return err
+	}
+	if seed.observedTip != "" {
+		// The seed's records push replaces the branch origin holds, and a failed seed moves it back to that tip.
+		// The tip's objects reach this store only by fetching them before the push, since nothing on origin names them after it.
+		if err := records.Fetch(); err != nil {
+			return fail(fmt.Errorf("fetch the records branch %s that the seed replaces: %w", seed.recordsBranch, err), "")
+		}
+	}
+	if seedPushHook != nil {
+		seedPushHook(ns.Branch(seed.recordsBranch))
+	}
+	if err := records.UpdateRemoteBranchLeased(originRemoteName, seed.recordsBranch, recordsTip, seed.observedTip, ns); err != nil {
+		return fail(seedPushCause("records branch", false, err), "")
+	}
+	rec.AppendRef(KindRemoteBranchUpdated, originRemoteName+"/"+seed.recordsBranch, recordsTip)
+
+	if err := checkSeedPush(seed, OneRepositoryBoardBranch, "", recordsTip); err != nil {
+		return fail(err, recordsTip)
+	}
+	if seedPushHook != nil {
+		seedPushHook(ns.Branch(OneRepositoryBoardBranch))
+	}
+	if err := records.UpdateRemoteBranchLeased(originRemoteName, OneRepositoryBoardBranch, boardTip, "", ns); err != nil {
+		return fail(seedPushCause("board", true, err), recordsTip)
+	}
+	rec.AppendRef(KindRemoteBranchUpdated, originRemoteName+"/"+OneRepositoryBoardBranch, boardTip)
+
+	upstream := [][2]string{
+		{"branch." + OneRepositoryBoardBranch + ".remote", originRemoteName},
+		{"branch." + OneRepositoryBoardBranch + ".merge", ns.Branch(OneRepositoryBoardBranch)},
+	}
+	for _, setting := range upstream {
+		if _, err := gitexec.Run([]string{"config", setting[0], setting[1]}, seed.recordsPath); err != nil {
+			return fmt.Errorf("set the upstream of the board branch after seeding origin: %w; "+
+				"way forward: origin now holds the seeded hub, so run `lym fabric clone <url>` to join it, "+
+				"or set branch.%s.remote and branch.%s.merge in the records store by hand", err, OneRepositoryBoardBranch, OneRepositoryBoardBranch)
+		}
+	}
+	return nil
+}
+
+// restoreSeededRecordsBranch returns the prime's records branch on origin to what the precondition check observed.
+// It is leased on pushedTip, so a branch another push moved since stays as that push left it.
+// It deletes the branch when origin held none, and moves it back to the observed tip otherwise.
+func restoreSeededRecordsBranch(seed *cloneSeed, pushedTip string) error {
+	if err := checkSeedPush(seed, seed.recordsBranch, pushedTip, pushedTip); err != nil {
+		return err
+	}
+	ns := oneRepositoryNamespace()
+	records := gitrepo.New(seed.recordsPath)
+	if seed.observedTip == "" {
+		return records.DeleteRemoteBranchLeased(originRemoteName, seed.recordsBranch, pushedTip, ns)
+	}
+	return records.UpdateRemoteBranchLeased(originRemoteName, seed.recordsBranch, seed.observedTip, pushedTip, ns)
+}
+
+// seedPushCause wraps the failure of one seed push with the way forward its kind calls for.
+// what names the pushed ref in the message, and board is true for the board push.
+// An origin that refuses the ref outright is told apart from a lost board lease.
+// Every other cause, a lost records lease and a transient refusal included, is one a rerun of the same clone settles.
+func seedPushCause(what string, board bool, cause error) error {
+	switch {
+	case seedRefusedByOrigin(cause):
+		return fmt.Errorf("origin refused the seed push of the %s: %w; way forward: use a host that accepts refs outside refs/heads/ and refs/tags/, "+
+			"or make a two-repository hub with `lym fabric clone <records-url> <code-url>`", what, cause)
+	case board && errors.Is(cause, gitrepo.ErrLeaseRejected):
+		return fmt.Errorf("origin now holds another hub's board, so the seed push of the %s lost its lease: %w; "+
+			"way forward: run `lym fabric clone <url>` to join that hub, or use another origin to seed a separate one", what, cause)
+	default:
+		return fmt.Errorf("the seed push of the %s failed: %w; way forward: run the same clone again", what, cause)
+	}
+}
+
+// seedRefusedByOrigin reports whether cause is a push origin rejected with a reason that no rerun clears.
+// A transient reason, a failed update, a ref lock held by another process or a ref that already exists, is not one.
+func seedRefusedByOrigin(cause error) bool {
+	var gitErr *gitexec.GitError
+	if !errors.As(cause, &gitErr) || !strings.Contains(gitErr.Stderr, "[remote rejected]") {
+		return false
+	}
+	for _, transient := range []string{"(failed)", "cannot lock ref", "reference already exists"} {
+		if strings.Contains(gitErr.Stderr, transient) {
+			return false
+		}
+	}
+	return true
 }
 
 // createExclusiveDir creates path as a new directory and returns the createdToken proving this call created it.

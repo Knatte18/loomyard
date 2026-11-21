@@ -320,13 +320,17 @@ func (r *Repo) UpstreamSHA() (string, error) {
 			return "", fmt.Errorf("gitrepo: read config: %w", err)
 		}
 		branch, ok := cfg.Branches[head.Name().Short()]
-		if !ok || branch.Remote == "" || !branch.Merge.IsBranch() {
+		if !ok || branch.Remote == "" || branch.Merge == "" {
+			return "", ErrNoUpstream
+		}
+		trackingRef, mapped := remoteTrackingRef(cfg, branch.Remote, branch.Merge)
+		if !mapped {
 			return "", ErrNoUpstream
 		}
 
-		tracking, err := repo.Reference(plumbing.NewRemoteReferenceName(branch.Remote, branch.Merge.Short()), true)
+		tracking, err := repo.Reference(trackingRef, true)
 		if err != nil {
-			return "", fmt.Errorf("gitrepo: resolve upstream %s/%s: %w", branch.Remote, branch.Merge.Short(), err)
+			return "", fmt.Errorf("gitrepo: resolve upstream %s: %w", trackingRef, err)
 		}
 		return tracking.Hash().String(), nil
 	})

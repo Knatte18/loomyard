@@ -35,7 +35,7 @@ func TestUpstreamSHA(t *testing.T) {
 		t.Fatalf("UpstreamSHA() with no upstream error = %v; want gitrepo.ErrNoUpstream bare", err)
 	}
 
-	if err := repo.Push(); err != nil {
+	if err := repo.Push(gitrepo.RefNamespace{}); err != nil {
 		t.Fatalf("Push() error = %v; want nil", err)
 	}
 	pushed := requireCurrentSHA(t, repo)
@@ -61,6 +61,50 @@ func TestUpstreamSHA(t *testing.T) {
 	}
 	if got != moved {
 		t.Errorf("UpstreamSHA() after a fetch = %q; want the moved remote tip %q", got, moved)
+	}
+
+	// Each row builds a store whose origin tracking ref exists and varies the fetch refspecs and the merge ref.
+	refspecRows := []struct {
+		name      string
+		fetchSpec string
+		merge     string
+		wantNoUp  bool
+	}{
+		{"a namespaced merge ref reads the tracking ref its fetch refspec maps", "+refs/lym/heads/*:refs/remotes/origin/*", "refs/lym/heads/main", false},
+		{"a merge ref no fetch refspec maps is no upstream", "+refs/lym/heads/*:refs/remotes/origin/*", "refs/heads/main", true},
+		{"a remote with no fetch refspec keeps the default tracking ref", "", "refs/heads/main", false},
+	}
+	for _, tt := range refspecRows {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rowContainer := t.TempDir()
+			rowRemote := newBareRemote(t, rowContainer)
+			rowPath, rowRepo := newRepoWithRemote(t, rowContainer, "clone", rowRemote)
+			writeFile(t, rowPath, "a.txt", "one")
+			commitAll(t, rowPath, "first")
+			gitkit.Git(t, rowPath, "config", "--unset-all", "remote.origin.fetch")
+			if tt.fetchSpec != "" {
+				gitkit.Git(t, rowPath, "config", "remote.origin.fetch", tt.fetchSpec)
+			}
+			gitkit.Git(t, rowPath, "update-ref", "refs/remotes/origin/main", "HEAD")
+			gitkit.Git(t, rowPath, "config", "branch.main.remote", "origin")
+			gitkit.Git(t, rowPath, "config", "branch.main.merge", tt.merge)
+
+			got, err := rowRepo.UpstreamSHA()
+			if tt.wantNoUp {
+				if err != gitrepo.ErrNoUpstream {
+					t.Fatalf("UpstreamSHA() error = %v; want gitrepo.ErrNoUpstream bare", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("UpstreamSHA() error = %v; want nil", err)
+			}
+			if want := requireCurrentSHA(t, rowRepo); got != want {
+				t.Errorf("UpstreamSHA() = %q; want the tracking ref's %q", got, want)
+			}
+		})
 	}
 }
 

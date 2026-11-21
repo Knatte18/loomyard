@@ -471,13 +471,9 @@ func TestLinkedWorktree_Parity(t *testing.T) {
 	// Measured, `git worktree remove` exits 0 with KeepDescriptors at its default (false).
 	// A regression here would break fabricengine's topology verbs for reasons unrelated to their own code.
 	//
-	// go-git's commondir resolution (repository.go's dotGitCommonDirectory) opens the linked worktree's "commondir" file.
-	// It reads the common-dir path from that file and never explicitly closes it.
-	// This is a real, narrow go-git resource leak.
-	// It is distinct from, and much smaller than, the packfile hazard of `KeepDescriptors:true`.
-	// That file object is unreachable the instant goGit's open call returns, since nothing retains it.
-	// On Windows, an unclosed *os.File blocks deletion of the same path,
-	// so the object is released as soon as Go's garbage collector finalizes it, exactly like any other abandoned *os.File.
+	// goGit's commondir resolution closes the file it reads.
+	// A file go-git itself opens and abandons stays open until Go's garbage collector finalizes it.
+	// On Windows an unclosed *os.File blocks deletion of the same path.
 	// This step forces that collection before removing the worktree:
 	// it calls runtime.GC and gives the finalizer goroutine a moment to run.
 	// An ordinarily-busy long-lived process (fabricengine) gets that collection "for free" from its own memory churn.

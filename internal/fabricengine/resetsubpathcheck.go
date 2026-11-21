@@ -23,7 +23,8 @@ import (
 // or it is refused with the create-path error.
 // The staged clones live under cwd and are removed before it returns.
 // requestedAnchor is the validated form of the explicit --subpath.
-func checkSubpathBeforeReset(cwd, weftURL, warpURL, requestedAnchor string) error {
+// ns is the origin ref namespace of the records branches, the zero value for a two-repository hub.
+func checkSubpathBeforeReset(cwd, weftURL, warpURL, requestedAnchor string, ns gitrepo.RefNamespace) error {
 	stageDir, err := os.MkdirTemp(cwd, warpProbeDirPrefix)
 	if err != nil {
 		return fmt.Errorf("create staging directory in %s: %w", cwd, err)
@@ -47,7 +48,7 @@ func checkSubpathBeforeReset(cwd, weftURL, warpURL, requestedAnchor string) erro
 		return err
 	}
 
-	markerData, source, found, err := recordedAnchorOnWeft(weftURL, weftStage, warpBranch)
+	markerData, source, found, err := recordedAnchorOnWeft(weftURL, weftStage, warpBranch, ns)
 	if err != nil {
 		return err
 	}
@@ -72,18 +73,25 @@ func checkSubpathBeforeReset(cwd, weftURL, warpURL, requestedAnchor string) erro
 // Failing both, the default HEAD supplies the legacy board marker only when the default branch is warpBranch itself;
 // the board checkout adopts a local branch of that name and is orphan-created otherwise.
 // source names where the marker was read, in adoptRecordedAnchor's wording.
-func recordedAnchorOnWeft(weftURL, weftStage, warpBranch string) (data []byte, source string, found bool, err error) {
+// Under a non-identity ns the staged clone is the code repository, whose HEAD is the code default branch.
+// The records branch is then read from the namespace alone, and an absent branch records no marker.
+// Neither HEAD nor the checked-out branch is consulted, since a one-repository board carries no legacy marker.
+func recordedAnchorOnWeft(weftURL, weftStage, warpBranch string, ns gitrepo.RefNamespace) (data []byte, source string, found bool, err error) {
 	primeBranch := RecordsBranchName(warpBranch)
 	primeRef := "HEAD"
-	onRemote, err := fetchWeftBranchTip(weftURL, weftStage, primeBranch)
+	onRemote, err := fetchWeftBranchTip(weftURL, weftStage, primeBranch, ns)
 	if err != nil {
 		return nil, "", false, err
 	}
 	if onRemote {
 		primeRef = "FETCH_HEAD"
 	}
+	namespaced := ns != (gitrepo.RefNamespace{})
+	if namespaced && !onRemote {
+		return nil, "", false, nil
+	}
 	data, found, err = readAnchorMarkerAt(weftURL, weftStage, primeRef)
-	if err != nil || found {
+	if err != nil || found || namespaced {
 		return data, "on " + primeBranch, found, err
 	}
 

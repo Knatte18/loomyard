@@ -55,12 +55,36 @@ func TestRetryablePushRefusal_ClassifiesByTheReasonOnThePushedRefsLine(t *testin
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			line, got := retryablePushRefusal(tc.err, tc.ref, tc.extra)
+			line, got := retryablePushRefusal(tc.err, tc.ref, RefNamespace{}, tc.extra)
 			if got != tc.want {
 				t.Errorf("retryable = %v; want %v", got, tc.want)
 			}
 			if got && line == "" {
 				t.Errorf("a retryable refusal returned no stderr line")
+			}
+		})
+	}
+
+	namespaced := RefNamespace{Heads: "refs/lym/heads/", Tags: "refs/lym/tags/"}
+	namespacedLine := pushRejection(" ! [remote rejected] main -> refs/lym/heads/main (failed)\n")
+	namespacedTagLine := pushRejection(" ! [remote rejected] refs/tags/archive/s/abc -> refs/lym/tags/archive/s/abc (failed)\n")
+	for _, tc := range []struct {
+		name string
+		line error
+		ref  string
+		ns   RefNamespace
+		want bool
+	}{
+		{"a namespaced destination is retryable under its namespace", namespacedLine, "main", namespaced, true},
+		{"a namespaced destination is not retryable under the identity namespace", namespacedLine, "main", RefNamespace{}, false},
+		{"a namespaced tag destination is retryable under its namespace", namespacedTagLine, "refs/tags/archive/s/abc", namespaced, true},
+		{"a namespaced tag destination is not retryable under the identity namespace", namespacedTagLine, "refs/tags/archive/s/abc", RefNamespace{}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if _, got := retryablePushRefusal(tc.line, tc.ref, tc.ns, nil); got != tc.want {
+				t.Errorf("retryable = %v; want %v", got, tc.want)
 			}
 		})
 	}
@@ -112,9 +136,9 @@ func TestPushWithRetry_RetriesOnlyRetryableRefusalsUpToTheBound(t *testing.T) {
 			recordSleep := func(delay time.Duration) { sleeps = append(sleeps, delay) }
 			var err error
 			if tc.plain {
-				err = PushWithRetry(push, tc.ref, tc.delays, recordSleep)
+				err = PushWithRetry(push, tc.ref, RefNamespace{}, tc.delays, recordSleep)
 			} else {
-				err = PushWithRetryReasons(push, tc.ref, tc.delays, recordSleep, tc.extra)
+				err = PushWithRetryReasons(push, tc.ref, RefNamespace{}, tc.delays, recordSleep, tc.extra)
 			}
 
 			if pushes != tc.wantPushes {

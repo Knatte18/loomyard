@@ -343,8 +343,12 @@ func (f *Fabric) PushWeft(opts SyncOptions) (res PushResult, err error) {
 		return PushResult{}, nil
 	}
 
+	ns, err := originNamespaceAt(f.weftPath)
+	if err != nil {
+		return PushResult{}, err
+	}
 	hadUnpushed, hadUnpushedErr := f.records.HasUnpushed()
-	if err := f.records.PushCoalesced(); err != nil {
+	if err := f.records.PushCoalesced(ns); err != nil {
 		return PushResult{}, err
 	}
 	recordPushIfAdvanced(rec, f.records, "records", f.weftPath, hadUnpushed, hadUnpushedErr)

@@ -43,6 +43,15 @@ func SetScratchBeforeLinkHookForTest(t *testing.T, hook func()) {
 	t.Cleanup(func() { scratchBeforeLinkHook = nil })
 }
 
+// SetSeedPushHookForTest sets seedPushHook until the test ends.
+// The hook receives the origin ref about to be pushed, so a test can move origin before either seed push.
+// It changes process-global state, so the calling test must not be parallel.
+func SetSeedPushHookForTest(t *testing.T, hook func(ref string)) {
+	t.Helper()
+	seedPushHook = hook
+	t.Cleanup(func() { seedPushHook = nil })
+}
+
 // SetAnchorFailHookForTest makes every anchor change t begins afterwards call hook around its weft commit or branch move.
 // hook is called with afterCommit false before the step and true after it.
 // An error it returns fails the change there.

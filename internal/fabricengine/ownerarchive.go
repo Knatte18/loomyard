@@ -314,7 +314,11 @@ func readSideOwnerArchives(side, dir string, keep func(slug string) bool, branch
 		if err != nil {
 			return nil, err
 		}
-		fetch := []string{originRemoteName, "refs/tags/" + tag}
+		ns, err := originNamespaceAt(dir)
+		if err != nil {
+			return nil, err
+		}
+		fetch := []string{originRemoteName, ns.Tag(tag)}
 		if branchTip != "" {
 			fetch = append(fetch, branchTip)
 		}

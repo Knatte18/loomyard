@@ -19,6 +19,13 @@
 // A hub itself cannot be copied the same way its bares are:
 // its junctions carry absolute targets that a plain directory copy would leave pointing at the wrong tree.
 //
+// CopyCodeBare copies the cached code bare alone, optionally with another default branch,
+// so a test can seed, hook or clone an origin itself.
+// NewOneRepoHub builds a one-repository hub over such a copy, through the clone behind `lym fabric clone --single-repo`.
+// Its Hub names the one origin in both CodeBare and RecordsBare.
+// The one-repository layout is not copied as a template.
+// CloneSecond of such a hub is a plain one-URL clone, the second machine's join of the origin's board.
+//
 // The same template-and-copy model extends to the hub.
 // A Shape is an anchor plus an ordered list of pair slugs, and Shapes is the closed set:
 // the "." and "backend" anchors, each with no pair and with the one pair TemplatePairSlug.

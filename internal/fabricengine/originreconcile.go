@@ -523,7 +523,11 @@ func lsRemoteOnce(warpDir, recordsDir string, opts ReconcileOptions) (warp, reco
 
 // lsRemoteHeads returns origin's branch heads of the repository at dir by branch name, under opts' attempt deadline.
 func lsRemoteHeads(side, dir string, opts ReconcileOptions) (map[string]string, error) {
-	args := []string{"ls-remote", "--heads", originRemote}
+	ns, err := originNamespaceAt(dir)
+	if err != nil {
+		return nil, err
+	}
+	args := []string{"ls-remote", originRemote, ns.Branch("*")}
 	opts.callHook(args)
 	out, err := gitexec.RunWithin(args, dir, opts.deadline())
 	if err != nil {
@@ -532,9 +536,13 @@ func lsRemoteHeads(side, dir string, opts ReconcileOptions) (map[string]string, 
 	heads := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {
 		sha, ref, found := strings.Cut(strings.TrimSpace(line), "\t")
-		name, isBranch := strings.CutPrefix(ref, "refs/heads/")
-		if found && isBranch {
-			heads[name] = sha
+		if !found {
+			continue
+		}
+		if local, mapped := ns.LocalRef(ref); mapped {
+			if name, isBranch := strings.CutPrefix(local, "refs/heads/"); isBranch {
+				heads[name] = sha
+			}
 		}
 	}
 	return heads, nil
@@ -565,9 +573,13 @@ func fetchMovedHeads(dir string, heads map[string]string, judgeOnly bool, opts R
 			args = append(args, heads[branch])
 		}
 	} else {
+		ns, err := originNamespaceAt(dir)
+		if err != nil {
+			return err
+		}
 		args = append(args, originRemote)
 		for _, branch := range branches {
-			args = append(args, fmt.Sprintf("+refs/heads/%s:%s", branch, trackingRefOf(branch)))
+			args = append(args, fmt.Sprintf("+%s:%s", ns.Branch(branch), trackingRefOf(branch)))
 		}
 	}
 	opts.callHook(args)

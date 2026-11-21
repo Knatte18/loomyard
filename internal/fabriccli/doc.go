@@ -42,6 +42,16 @@
 // The Bolt checkout is a second weft worktree on the warp's unsuffixed default branch.
 // It is adopted when the remote carries board history and orphan-created otherwise.
 //
+// `--single-repo` takes one URL, the code repository, and seeds a one-repository hub:
+// its records and board live under origin's `refs/lym/`.
+// A plain one-URL clone of an origin holding that board joins it.
+// The clone's board push is `fabricengine.PushCloneBoard`.
+// It pushes a two-repository clone's and a join's board as any board.
+// It pushes a seeded clone's by the leased, ordered seed push.
+// Every failure between the clone and that push returns through `fabricengine.AbandonSeededClone`.
+// That verb removes a seeded hub and names the same clone as the way forward.
+// The CLI reads no layout; the engine's result carries the mark.
+//
 // # Add
 //
 // A `lym fabric push` that meets the pair's teardown lock held exclusive pushes nothing.

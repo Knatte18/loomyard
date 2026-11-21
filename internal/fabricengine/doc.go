@@ -822,6 +822,11 @@
 // a held lock skips the slug whole (`Skipped`, `SkippedReason`);
 // another lock error fills the entry's `Error`;
 // an orphan a worktree turned live since the enumeration gets no entry.
+// The sweep never takes the primary weft branch.
+// A two-repository hub names it from the board's branch.
+// A one-repository hub names it from the records store's `lym.primeRecordsBranch` key.
+// `lym fabric checkout` never writes that key.
+// A key that is unset or unreadable refuses the sweep.
 // `CleanupRemoteWarp` takes the same one try per candidate before its leased delete.
 // It keeps the candidate with a `Reason` when the lock is held or a hub worktree has the branch checked out.
 // A skipped slug is swept by a later run, and the try never waits.
@@ -2485,4 +2490,61 @@
 // Test git plumbing goes through `internal/gitkit` only, never a private helper.
 // A new test file prefers the external `fabricengine_test` package plus `export_test.go` accessors;
 // an internal-package test file states its reason in its header comment.
+//
+// # The one-repository layout
+//
+// A one-repository hub keeps its records store's branches and tags on the code store's origin, under `refs/lym/`.
+// Its only spelling is the constants `RecordsNamespaceRoot`, `RecordsNamespaceHeads` and `RecordsNamespaceTags`.
+// `OneRepositoryBoardBranch` names the board's fixed branch inside it.
+// `PrimeRecordsBranchKey` is the config key of the prime's records branch.
+// The layout is the records store's origin fetch refspec, which git itself obeys.
+// A refspec whose source starts under the namespace's branches makes the store a one-repository records store.
+// Git's default refspecs make a store, a code store included, read as the identity namespace.
+// `originNamespaceAt(dir)` reads that namespace per repository,
+// so a helper that serves both sides reads at its own directory.
+// The read spawns no git and logs nothing, and an existing store's answer is cached for the process.
+// A directory with no repository answers identity without caching.
+// A failed config read is an error and is not cached.
+//
+// Every push of the records side reads the namespace of the repository it pushes from and hands it to gitrepo.
+// Those pushes are the pair's records push, the board push and its replay, and the takeover entry's push.
+// They also include the weft-branch push before an archive, `Fabric.PushWeft`, and the archive tag and branch deletes.
+// A push from a code store passes the zero namespace.
+// A board push in a one-repository hub whose board branch has no upstream is refused with no failed-push record:
+// that board was never seeded onto origin, and pushing it unleased could replace another hub's board.
+//
+// Every listing and fetch of the records side names origin refs through the same namespace.
+// A listing selects by a namespaced pattern, never by `--heads` or `--tags`, and maps each line back to its local name,
+// so a one-repository records store sees its namespaced branches and tags and no code branch.
+// A fetch source is the namespaced origin ref, whose destination stays the local ref.
+// The read is per repository, so a code store and a two-repository store send the refs they always did.
+//
+// # The one-repository clone
+//
+// A one-URL `CloneHub` first runs one `ls-remote` against origin.
+// That read comes before the hub-exists check, `--reset` and anything created.
+// It reads origin's default branch, the branches under the records namespace and the earlier layout's board branch.
+// An origin left by that earlier layout is refused with or without `--single-repo`.
+// With the flag, an origin holding a board is refused too.
+// So is one whose default branch holds the warp binding.
+// So is one whose default branch tracks the anchor marker or the lym directory.
+// The checks run in that order, and each refusal names its way forward.
+// A two-URL clone runs no check.
+//
+// Past the check the one URL is the code repository.
+// The code store is cloned from it as the prime, and the records store is a `git init` of its own.
+// Its fetch refspecs are set before any fetch, so it never fetches or holds a code ref.
+// An origin holding the board is joined: the board adopts origin's, and the binding and shortname are read from it.
+// An origin holding none is seeded: the records branch is created fresh, the board is orphan-created on its fixed branch,
+// and no commit is written to any code branch.
+// The result of a seeded clone carries a mark, which `PushCloneBoard` and `AbandonSeededClone` read.
+//
+// `PushCloneBoard` pushes a two-repository clone's board and a join's as any board is pushed.
+// For a seeded clone it pushes the prime's records branch, leased on the tip the check observed or on its absence.
+// It then pushes the board's branch, leased on absence.
+// Both pushes run behind the destructive gate's checks.
+// A failed push removes the hub.
+// A records push that had landed is first returned to the observed tip under its lease.
+// `AbandonSeededClone` removes a seeded hub that fails before the push.
+// No hub is then left for a reconcile to push unleased.
 package fabricengine

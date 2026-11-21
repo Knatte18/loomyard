@@ -125,6 +125,12 @@ Every run since late September 2026 can be read artifact by artifact:
   [`archive/driver-arbiter`](https://github.com/Knatte18/loomyard-weft/tree/archive/driver-arbiter/c1dbcb49a0f5) is one.
 - **Runs in flight.** A [records branch](https://github.com/Knatte18/loomyard-weft/branches) per running task.
 
+### One repository or two
+
+A hub's records can live in a second repository, as above, or in the project's own repository.
+In that one-repository layout, the records and the board sit under origin's `refs/lym/`, which GitHub's branch and tag lists do not show.
+[`docs/getting-started.md`](docs/getting-started.md) tells how to make one and lists its hazards.
+
 ## Names at a glance
 
 | Name | Meaning |

@@ -133,6 +133,9 @@ func TestAdd_LiveLocalWeftAgainstOrigin(t *testing.T) {
 					t.Fatalf("Add succeeded; want a leftover refusal")
 				}
 				requireRemoteLeftover(t, err, weftBranch)
+				if want := `"git push origin --delete refs/heads/` + weftBranch + `"`; !strings.Contains(err.Error(), want) {
+					t.Errorf("message %q does not hold the delete command %s", err.Error(), want)
+				}
 				if n := res.Mutations.Len(); n != 0 {
 					t.Errorf("record has %d entries; want empty", n)
 				}

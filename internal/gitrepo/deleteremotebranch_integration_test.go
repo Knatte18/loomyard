@@ -44,10 +44,12 @@ func TestDeleteRemoteBranch(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)
 
+	namespace := gitrepo.RefNamespace{Heads: "refs/lym/heads/", Tags: "refs/lym/tags/"}
+
 	cloneAPath, repoA := newRepoWithRemote(t, container, "cloneA", bareRemote)
 	writeFile(t, cloneAPath, "a.txt", "from A")
 	commitAll(t, cloneAPath, "commit from A")
-	if err := repoA.Push(); err != nil {
+	if err := repoA.Push(gitrepo.RefNamespace{}); err != nil {
 		t.Fatalf("Push() (establish upstream) error = %v; want nil", err)
 	}
 
@@ -66,7 +68,7 @@ func TestDeleteRemoteBranch(t *testing.T) {
 				t.Fatalf("bare remote heads before delete = %q; want it to contain refs/heads/%s", lsOut, branch)
 			}
 
-			deleted, err := repoA.DeleteRemoteBranch("origin", branch)
+			deleted, err := repoA.DeleteRemoteBranch("origin", branch, gitrepo.RefNamespace{})
 			if err != nil {
 				t.Fatalf("DeleteRemoteBranch(%q) error = %v; want nil", branch, err)
 			}
@@ -79,25 +81,72 @@ func TestDeleteRemoteBranch(t *testing.T) {
 			}
 		}},
 		// Deleting a branch that is already absent from the remote returns (false, nil): the call is idempotent.
-		// The step runs a real `git push --delete` against a ref that is not there,
-		// so it observes git's own stderr rather than a fixture.
-		// It is the tripwire on the pinned substring "remote ref does not exist":
-		// a git rewording fails this step loudly instead of silently classifying the common case as an error.
-		{"an absent branch is reported false with a nil error", func(t *testing.T) {
+		// The call lists the exact ref first and pushes nothing for an absent one:
+		// origin's refs stay as they were and no tracking ref is written.
+		{"an absent branch is reported false with a nil error and pushes nothing", func(t *testing.T) {
 			const branch = "gone-branch"
-			deleted, err := repoA.DeleteRemoteBranch("origin", branch)
+			refsBefore := gitkit.Git(t, container, "ls-remote", bareRemote)
+			deleted, err := repoA.DeleteRemoteBranch("origin", branch, gitrepo.RefNamespace{})
 			if err != nil {
 				t.Fatalf("DeleteRemoteBranch(%q) error = %v; want nil (absent ref is idempotent success)", branch, err)
 			}
 			if deleted {
 				t.Errorf("DeleteRemoteBranch(%q) deleted = true; want false (nothing was there to delete)", branch)
 			}
+			if refsAfter := gitkit.Git(t, container, "ls-remote", bareRemote); refsAfter != refsBefore {
+				t.Errorf("origin's refs after the call = %q; want them unchanged at %q", refsAfter, refsBefore)
+			}
+			if tracking := branchSHA(t, cloneAPath, "refs/remotes/origin/"+branch); tracking != "" {
+				t.Errorf("tracking ref origin/%s = %q; want none written", branch, tracking)
+			}
+		}},
+		// The namespaced rows read the bare with a refs/lym/heads/ pattern, since remoteHeads lists only refs/heads/.
+		{"a namespaced branch is deleted by its full ref name", func(t *testing.T) {
+			const branch = "ns-doomed"
+			gitkit.Git(t, cloneAPath, "push", "origin", "HEAD:refs/lym/heads/"+branch)
+
+			deleted, err := repoA.DeleteRemoteBranch("origin", branch, namespace)
+			if err != nil || !deleted {
+				t.Fatalf("DeleteRemoteBranch(%q) = (%v, %v); want (true, nil)", branch, deleted, err)
+			}
+			if listed := gitkit.Git(t, container, "ls-remote", bareRemote, "refs/lym/heads/*"); strings.Contains(listed, "refs/lym/heads/"+branch) {
+				t.Errorf("origin's namespaced refs after the delete = %q; want no refs/lym/heads/%s", listed, branch)
+			}
+		}},
+		{"an absent namespaced branch is reported false and a ref sharing its tail stays", func(t *testing.T) {
+			gitkit.Git(t, cloneAPath, "push", "origin", "HEAD:refs/lym/heads/y/x-records")
+
+			deleted, err := repoA.DeleteRemoteBranch("origin", "x-records", namespace)
+			if err != nil || deleted {
+				t.Fatalf("DeleteRemoteBranch(x-records) = (%v, %v); want (false, nil)", deleted, err)
+			}
+			if listed := gitkit.Git(t, container, "ls-remote", bareRemote, "refs/lym/heads/*"); !strings.Contains(listed, "refs/lym/heads/y/x-records") {
+				t.Errorf("origin's namespaced refs = %q; want refs/lym/heads/y/x-records kept", listed)
+			}
+		}},
+		{"a namespaced lease deletes at the observed tip and fails once the ref moved", func(t *testing.T) {
+			const branch = "ns-leased"
+			observed := gitkit.RevParse(t, cloneAPath, "HEAD")
+			gitkit.Git(t, cloneAPath, "push", "origin", "HEAD:refs/lym/heads/"+branch)
+			moved := gitkit.CommitFile(t, cloneAPath, "ns-moved.txt", "moved", "move the namespaced ref")
+			gitkit.Git(t, cloneAPath, "push", "origin", "HEAD:refs/lym/heads/"+branch)
+
+			err := repoA.DeleteRemoteBranchLeased("origin", branch, observed, namespace)
+			if !errors.Is(err, gitrepo.ErrLeaseRejected) {
+				t.Fatalf("DeleteRemoteBranchLeased() at a stale tip error = %v; want ErrLeaseRejected", err)
+			}
+			if err := repoA.DeleteRemoteBranchLeased("origin", branch, moved, namespace); err != nil {
+				t.Fatalf("DeleteRemoteBranchLeased() at the observed tip error = %v; want nil", err)
+			}
+			if listed := gitkit.Git(t, container, "ls-remote", bareRemote, "refs/lym/heads/*"); strings.Contains(listed, "refs/lym/heads/"+branch) {
+				t.Errorf("origin's namespaced refs after the leased delete = %q; want no refs/lym/heads/%s", listed, branch)
+			}
 		}},
 		{"a lease at the remote tip deletes the branch", func(t *testing.T) {
 			const branch = "leased-tip"
 			tip := pushFeatureBranch(t, cloneAPath, branch)
 
-			if err := repoA.DeleteRemoteBranchLeased("origin", branch, tip); err != nil {
+			if err := repoA.DeleteRemoteBranchLeased("origin", branch, tip, gitrepo.RefNamespace{}); err != nil {
 				t.Fatalf("DeleteRemoteBranchLeased(%q, %s) error = %v; want nil", branch, tip, err)
 			}
 			if heads := remoteHeads(t, container, bareRemote); strings.Contains(heads, "refs/heads/"+branch) {
@@ -115,7 +164,7 @@ func TestDeleteRemoteBranch(t *testing.T) {
 			advanced := gitkit.CommitFile(t, cloneBPath, "advance.txt", "advanced", "advance "+branch)
 			gitkit.Git(t, cloneBPath, "push", "origin", branch)
 
-			err := repoA.DeleteRemoteBranchLeased("origin", branch, staleTip)
+			err := repoA.DeleteRemoteBranchLeased("origin", branch, staleTip, gitrepo.RefNamespace{})
 			if !errors.Is(err, gitrepo.ErrLeaseRejected) {
 				t.Fatalf("DeleteRemoteBranchLeased() with a stale lease error = %v; want it to match ErrLeaseRejected", err)
 			}
@@ -131,7 +180,7 @@ func TestDeleteRemoteBranch(t *testing.T) {
 		{"a leased delete of an absent branch errors", func(t *testing.T) {
 			tip := gitkit.RevParse(t, cloneAPath, "HEAD")
 
-			if err := repoA.DeleteRemoteBranchLeased("origin", "gone-leased-branch", tip); err == nil {
+			if err := repoA.DeleteRemoteBranchLeased("origin", "gone-leased-branch", tip, gitrepo.RefNamespace{}); err == nil {
 				t.Fatal("DeleteRemoteBranchLeased() against an absent branch error = nil; want an error")
 			}
 		}},
@@ -140,7 +189,7 @@ func TestDeleteRemoteBranch(t *testing.T) {
 			const branch = "leased-malformed"
 			pushFeatureBranch(t, cloneAPath, branch)
 
-			err := repoA.DeleteRemoteBranchLeased("origin", branch, "not-a-sha")
+			err := repoA.DeleteRemoteBranchLeased("origin", branch, "not-a-sha", gitrepo.RefNamespace{})
 			if !errors.Is(err, gitrepo.ErrInvalidSHA) {
 				t.Fatalf("DeleteRemoteBranchLeased() error = %v; want ErrInvalidSHA", err)
 			}
@@ -156,7 +205,7 @@ func TestDeleteRemoteBranch(t *testing.T) {
 			missing := filepath.Join(container, "does-not-exist.git")
 			gitkit.Git(t, cloneAPath, "remote", "set-url", "origin", missing)
 
-			deleted, err := repoA.DeleteRemoteBranch("origin", "feature-x")
+			deleted, err := repoA.DeleteRemoteBranch("origin", "feature-x", gitrepo.RefNamespace{})
 			if err == nil {
 				t.Fatal("DeleteRemoteBranch() against an unreachable remote error = nil; want an error")
 			}

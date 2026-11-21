@@ -75,6 +75,12 @@ monorepo; a re-clone adopts the recorded subpath. --into names the directory
 the hub is created in. --force-bootstrap admits a brand-new weft remote that
 is neither empty nor lym-anchored, such as one created with a README.
 
+With one URL, that URL is the code repository. --single-repo seeds a
+one-repository hub whose records and board live under origin's ` + fabricengine.RecordsNamespaceRoot + `, and a
+plain one-URL clone of an origin holding that board joins it. The flag is
+refused for an origin that already holds one, a records repository, a second
+URL, and an origin left by an earlier one-repository layout.
+
 Example:
   lym fabric clone --shortname mono --subpath backend https://github.com/user/mono-weft https://github.com/user/mono
   lym fabric clone https://github.com/user/repo-weft
@@ -85,7 +91,8 @@ Example:
 			forceBootstrap, _ := cloneCmd.Flags().GetBool("force-bootstrap")
 			into, _ := cloneCmd.Flags().GetString("into")
 			shortname, _ := cloneCmd.Flags().GetString("shortname")
-			return runCloneWithReset(ctx, out, args, reset, subpath, forceBootstrap, into, shortname)
+			singleRepo, _ := cloneCmd.Flags().GetBool("single-repo")
+			return runCloneWithReset(ctx, out, args, reset, subpath, forceBootstrap, into, shortname, singleRepo)
 		}),
 	}
 	cloneCmd.Flags().String("shortname", "", "the repo's shortname, 2-6 characters matching [a-z][a-z0-9]{1,5}; required when the weft is bound for the first time, recorded as "+fabricengine.ShortnameFileName)
@@ -96,6 +103,7 @@ Example:
 	cloneCmd.Flags().String("subpath", "", `anchor lym at this subdirectory of the warp repo (default ".", the repo root)`)
 	cloneCmd.Flags().String("into", "", "directory the new hub is created in; a relative value resolves against the current working directory (default: the current working directory)")
 	cloneCmd.Flags().Bool("force-bootstrap", false, "bypass the weft-candidate guard when bootstrapping a brand-new weft remote")
+	cloneCmd.Flags().Bool("single-repo", false, "seed a one-repository hub from one URL, the code repository, with its records and board under origin's "+fabricengine.RecordsNamespaceRoot)
 	cmd.AddCommand(cloneCmd)
 
 	var addCmd *cobra.Command

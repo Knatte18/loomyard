@@ -21,7 +21,7 @@ func newPushedMainClone(t *testing.T) (container, bareRemote, clonePath string, 
 	clonePath, repo = newRepoWithRemote(t, container, "cloneA", bareRemote)
 	writeFile(t, clonePath, "a.txt", "from A")
 	commitAll(t, clonePath, "commit from A")
-	if err := repo.Push(); err != nil {
+	if err := repo.Push(gitrepo.RefNamespace{}); err != nil {
 		t.Fatalf("Push() (establish main) error = %v; want nil", err)
 	}
 	return container, bareRemote, clonePath, repo
@@ -47,7 +47,7 @@ func TestPushBranch(t *testing.T) {
 		_, bareRemote, clonePath, repo := newPushedMainClone(t)
 		tip := commitOnUncheckedBranch(t, clonePath, "feat")
 
-		if err := repo.PushBranch("origin", "feat"); err != nil {
+		if err := repo.PushBranch("origin", "feat", gitrepo.RefNamespace{}); err != nil {
 			t.Fatalf("PushBranch() error = %v; want nil", err)
 		}
 		if got := remoteBranchSHA(t, bareRemote, "feat"); got != tip {
@@ -63,7 +63,7 @@ func TestPushBranch(t *testing.T) {
 
 		container, bareRemote, clonePath, repo := newPushedMainClone(t)
 		commitOnUncheckedBranch(t, clonePath, "feat")
-		if err := repo.PushBranch("origin", "feat"); err != nil {
+		if err := repo.PushBranch("origin", "feat", gitrepo.RefNamespace{}); err != nil {
 			t.Fatalf("PushBranch() (first push) error = %v; want nil", err)
 		}
 
@@ -75,7 +75,7 @@ func TestPushBranch(t *testing.T) {
 		gitkit.CommitFileOnBranch(t, clonePath, "feat", "local.txt", "local", "local commit on feat")
 		gitkit.Git(t, clonePath, "checkout", "main")
 
-		err := repo.PushBranch("origin", "feat")
+		err := repo.PushBranch("origin", "feat", gitrepo.RefNamespace{})
 		if !errors.Is(err, gitrepo.ErrPushRejected) {
 			t.Fatalf("PushBranch() error = %v; want it to match ErrPushRejected", err)
 		}

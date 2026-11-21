@@ -177,6 +177,7 @@ func rerunWayForward(job remoteTeardownJob) string {
 // A step that stopped the job leaves the later steps unrun, so their outcome fields are empty.
 // weftRoot is the records repository's root, empty when it could not be found.
 // In that case no manual tag push is named for the records archive.
+// The same holds when that repository's origin layout cannot be read.
 func failedRemoteSteps(job remoteTeardownJob, out remoteOutcome, weftRoot string) []remoteStepFailure {
 	var failures []remoteStepFailure
 	switch {
@@ -196,7 +197,11 @@ func failedRemoteSteps(job remoteTeardownJob, out remoteOutcome, weftRoot string
 				wayForward = "when origin still holds a branch of the pair, " + wayForward
 			}
 			if weftRoot != "" {
-				wayForward = fmt.Sprintf("push the archive tag with `git -C %s push %s refs/tags/%s`, then %s", weftRoot, originRemoteName, ArchiveTagName(job.Slug, job.WeftTip), wayForward)
+				// The destination is spelled out: a push with no destination bypasses the store's push refspec.
+				if ns, nsErr := originNamespaceAt(weftRoot); nsErr == nil {
+					tag := ArchiveTagName(job.Slug, job.WeftTip)
+					wayForward = fmt.Sprintf("push the archive tag with `git -C %s push %s refs/tags/%s:%s`, then %s", weftRoot, originRemoteName, tag, ns.Tag(tag), wayForward)
+				}
 			}
 		}
 		failures = append(failures, remoteStepFailure{"the archive of its records", out.err.Error(), wayForward})

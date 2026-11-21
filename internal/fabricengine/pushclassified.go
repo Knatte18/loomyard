@@ -128,6 +128,11 @@ func pushClassified(rec *Mutations, hubPath, side, path string, opts SyncOptions
 	if side == failedPushSideCode {
 		job.prime = job.isPrimeWorktree()
 	}
+	if side == failedPushSideBolt {
+		if err := job.refuseUnseededBoard(); err != nil {
+			return err
+		}
+	}
 
 	if side != failedPushSideBolt {
 		proceed, err := job.checkOrigin()
@@ -167,9 +172,33 @@ func pushClassified(rec *Mutations, hubPath, side, path string, opts SyncOptions
 	return job.fail(PushFailureOther, pushErr, nil, nil, "")
 }
 
-// push runs the side's rebase-free push.
+// push runs the side's rebase-free push, under the namespace of the repository it pushes from.
 func (j *pushJob) push() error {
-	return j.repo.PushRebaseFree()
+	ns, err := originNamespaceAt(j.path)
+	if err != nil {
+		return err
+	}
+	return j.repo.PushRebaseFree(ns)
+}
+
+// refuseUnseededBoard refuses a board push for a board with no upstream in a one-repository records store.
+// The only such board is a --single-repo seed that was never pushed.
+// A seeded board takes its upstream at the seed push, and a joined board adopts origin's board branch.
+// The refusal is returned as it is, with no failed-push record, so no later push or reconcile retries it;
+// a push here would put an unseeded board onto origin unleased.
+func (j *pushJob) refuseUnseededBoard() error {
+	ns, err := originNamespaceAt(j.path)
+	if err != nil {
+		return err
+	}
+	if ns == (gitrepo.RefNamespace{}) {
+		return nil
+	}
+	if _, upstreamErr := j.repo.UpstreamSHA(); !errors.Is(upstreamErr, gitrepo.ErrNoUpstream) {
+		return nil
+	}
+	return fmt.Errorf("fabricengine: the board at %s has no upstream in a one-repository hub, so it was never seeded onto origin and is not pushed; "+
+		"way forward: run the same `lym fabric clone --single-repo` again with `--reset`", j.path)
 }
 
 // errOriginAhead is returned by a code-side retry that found origin holding commits the local branch lacks, a divergence no retry settles.
@@ -262,7 +291,7 @@ func (j *pushJob) repushOverOriginContained() (deferred bool, err error) {
 			return false, err
 		}
 	}
-	return false, j.repo.PushRebaseFree()
+	return false, j.push()
 }
 
 // resetUnnamedTip resets origin's code branch to the code tip the run's last transition on origin names.
@@ -620,8 +649,12 @@ func (j *pushJob) holdBackRewound(originHead string) (proceed bool, err error) {
 // originBranchHead returns the commit origin holds for branch, and whether origin has the branch.
 // It asks with one ls-remote run in path.
 func originBranchHead(path, branch string) (head string, found bool, err error) {
-	ref := "refs/heads/" + branch
-	out, err := gitexec.Run([]string{"ls-remote", "--heads", originRemoteName, ref}, path)
+	ns, err := originNamespaceAt(path)
+	if err != nil {
+		return "", false, err
+	}
+	ref := ns.Branch(branch)
+	out, err := gitexec.Run([]string{"ls-remote", originRemoteName, ref}, path)
 	if err != nil {
 		return "", false, fmt.Errorf("fabricengine: ls-remote of %s in %s: %w", branch, path, err)
 	}
@@ -794,7 +827,11 @@ func retryWeftPush(rec *Mutations, hubPath, weftPath, runSlug string, here Machi
 		}
 		logWeftReplay(weftPath, outcome)
 	}
-	return false, repo.PushRebaseFree()
+	ns, err := originNamespaceAt(weftPath)
+	if err != nil {
+		return false, err
+	}
+	return false, repo.PushRebaseFree(ns)
 }
 
 // fetchBoltBranch fetches origin's Bolt branch into the hub's board checkout.
@@ -875,5 +912,9 @@ func retryBoltPush(rec *Mutations, boardDir string) (deferred bool, err error) {
 		return false, err
 	}
 	bolt.logReplay(outcome)
-	return false, repo.PushRebaseFree()
+	ns, err := originNamespaceAt(boardDir)
+	if err != nil {
+		return false, err
+	}
+	return false, repo.PushRebaseFree(ns)
 }

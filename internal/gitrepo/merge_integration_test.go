@@ -524,7 +524,7 @@ func TestMergeResolveSHA(t *testing.T) {
 	seedPath, seedRepo := newRepoWithRemote(t, container, "seed", bareRemote)
 	writeFile(t, seedPath, "a.txt", "content")
 	commitAll(t, seedPath, "init")
-	if err := seedRepo.Push(); err != nil {
+	if err := seedRepo.Push(gitrepo.RefNamespace{}); err != nil {
 		t.Fatalf("Push() error = %v; want nil", err)
 	}
 

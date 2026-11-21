@@ -1,4 +1,4 @@
-// remote.go implements RemoteURL, a go-git-backed local config read of a named remote's configured URL.
+// remote.go implements RemoteURL and RemoteFetchRefspecs, go-git-backed local config reads of a named remote.
 
 package gitrepo
 
@@ -17,6 +17,28 @@ var errRemoteHasNoURLs = errors.New("remote has no configured URL")
 // The remote is absent, or it carries no URL.
 // Any other RemoteURL error is a failure to read the repository's configuration.
 var ErrRemoteNotConfigured = errors.New("remote is not configured")
+
+// RemoteFetchRefspecs returns the remote.<name>.fetch refspecs of the remote named name, read via go-git's local config.
+// It spawns no git process.
+// A remote that is not configured returns an error wrapping ErrRemoteNotConfigured;
+// any other config read failure is returned as it is.
+func (r *Repo) RemoteFetchRefspecs(name string) ([]string, error) {
+	return readGoGit(r, func(repo *git.Repository) ([]string, error) {
+		remote, err := repo.Remote(name)
+		if errors.Is(err, git.ErrRemoteNotFound) {
+			return nil, fmt.Errorf("gitrepo: read remote %q fetch refspecs in %s: %w: %w", name, r.path, ErrRemoteNotConfigured, err)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: read remote %q fetch refspecs in %s: %w", name, r.path, err)
+		}
+
+		var refspecs []string
+		for _, spec := range remote.Config().Fetch {
+			refspecs = append(refspecs, spec.String())
+		}
+		return refspecs, nil
+	})
+}
 
 // RemoteURL returns the configured URL of the remote named name, read via go-git's local config.
 // It resolves state already on disk and spawns no git process,

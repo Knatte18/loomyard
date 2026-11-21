@@ -97,7 +97,7 @@ func (t *Topology) cleanupRemoteWarp(l *lymcwd.Location, apply bool, openPRHeads
 	if err != nil {
 		return res, err
 	}
-	archiveTagRefs, err := remoteTagRefs(weftRoot, "refs/tags/archive/*")
+	archiveTagRefs, err := remoteTagRefs(weftRoot, ArchiveTagPrefix+"*")
 	if err != nil {
 		return res, err
 	}
@@ -273,33 +273,50 @@ func unlandedReason(repoDir, branch, tip, parent string) string {
 	return err.Error()
 }
 
-// remoteBranchTips maps every branch on originRemoteName, as seen from dir, to its tip SHA.
+// remoteBranchTips maps every branch of dir's records namespace on originRemoteName to its tip SHA.
+// A branch outside the namespace, such as a code branch in a one-repository hub, is not listed.
 func remoteBranchTips(dir string) (map[string]string, error) {
-	out, err := gitexec.Run([]string{"ls-remote", "--heads", originRemoteName}, dir)
+	ns, err := originNamespaceAt(dir)
+	if err != nil {
+		return nil, err
+	}
+	out, err := gitexec.Run([]string{"ls-remote", originRemoteName, ns.Branch("*")}, dir)
 	if err != nil {
 		return nil, fmt.Errorf("list branches on %q: %w", originRemoteName, err)
 	}
 	tips := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {
 		sha, ref, ok := strings.Cut(strings.TrimSpace(line), "\t")
-		if ok && strings.HasPrefix(ref, "refs/heads/") {
-			tips[strings.TrimPrefix(ref, "refs/heads/")] = sha
+		if !ok {
+			continue
+		}
+		if local, mapped := ns.LocalRef(ref); mapped && strings.HasPrefix(local, "refs/heads/") {
+			tips[strings.TrimPrefix(local, "refs/heads/")] = sha
 		}
 	}
 	return tips, nil
 }
 
-// remoteTagRefs lists the full ref names on originRemoteName matching pattern.
+// remoteTagRefs lists the local refs/tags/ names of the tags on originRemoteName that match pattern.
+// pattern is relative to the tags prefix, so the same pattern serves a code store and a one-repository records store.
 func remoteTagRefs(dir, pattern string) ([]string, error) {
-	out, err := gitexec.Run([]string{"ls-remote", "--tags", originRemoteName, pattern}, dir)
+	ns, err := originNamespaceAt(dir)
+	if err != nil {
+		return nil, err
+	}
+	out, err := gitexec.Run([]string{"ls-remote", originRemoteName, ns.Tag(pattern)}, dir)
 	if err != nil {
 		return nil, fmt.Errorf("list tags on %q: %w", originRemoteName, err)
 	}
 	var refs []string
 	for _, line := range strings.Split(out, "\n") {
 		_, ref, ok := strings.Cut(strings.TrimSpace(line), "\t")
-		if ok {
-			refs = append(refs, ref)
+		if !ok {
+			continue
+		}
+		name, _ := strings.CutSuffix(ref, "^{}")
+		if local, mapped := ns.LocalRef(name); mapped && strings.HasPrefix(local, "refs/tags/") {
+			refs = append(refs, local+strings.TrimPrefix(ref, name))
 		}
 	}
 	return refs, nil

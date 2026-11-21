@@ -12,16 +12,36 @@ The [README](../README.md) explains the concepts this page uses.
 
 ## Build and make a hub
 
-You need two empty-or-existing repositories on a remote: your project, and a records repository for LoomYard's files.
+A hub needs your project's repository on a remote, and a home for LoomYard's records.
+The records go in a second empty-or-existing repository, or in the project's own repository.
 
 ```bash
 ./update-plugins.sh                  # builds lym into your Go bin dir and installs the plugins
 lym fabric clone --shortname <short> <records-url> <project-url>
 ```
 
+That is the two-repository hub.
+For one repository, seed the hub from the project's URL alone:
+
+```bash
+lym fabric clone --single-repo --shortname <short> <project-url>
+```
+
+The records and the board then live in the project's repository under `refs/lym/heads/` and `refs/lym/tags/`, and the board is the branch `main` there.
+On another machine, a plain `lym fabric clone <project-url>` joins such a hub.
+
 `update-plugins.sh` refuses a dirty tree and is the route to production.
 `./deploy-dev` builds the working tree into `.dev-bin` instead, to try a change without touching production.
-`lym fabric clone --help` describes `--shortname`, `--subpath` for a monorepo and `--reset`.
+`lym fabric clone --help` describes `--shortname`, `--subpath` for a monorepo, `--reset` and `--single-repo`.
+
+### Hazards of one repository
+
+- GitHub's branch and tag lists do not show `refs/lym/`.
+- Branch protection and rulesets do not cover `refs/lym/`.
+- A `git push --mirror` from either store deletes the other's refs on origin.
+- A `git clone --mirror` carries the records along with the code.
+- A bare `git push` in the records store pushes every local tag into the namespace.
+- `--single-repo` over the code repository of an existing two-repository hub starts a separate hub.
 
 ## Work
 

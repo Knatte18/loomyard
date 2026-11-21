@@ -247,21 +247,27 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
+	// seedBoltMarker commits the marker on the weft remote's main, where a two-repository hub's board once kept it.
+	seedBoltMarker := func(t *testing.T, fixtures, weftBare string) {
+		seedWeftBranchFromMain(t, fixtures, weftBare, "main-weft")
+		commitFileOnBranch(t, fixtures, weftBare, "main", lymcwd.AnchorFileName, "backend\n")
+	}
+
 	tests := []struct {
 		name string
 		// seed commits the marker on the branch under test of the weft remote.
 		seed func(t *testing.T, fixtures, weftBare string)
 		// wantBoardMarker reports whether the board is expected to hold the marker on the weft remote's main.
 		wantBoardMarker bool
+		// oneURL clones from the weft alone: its main also records the warp binding, which a two-URL clone is given instead.
+		oneURL bool
 	}{
 		{"MainWeftMarker", func(t *testing.T, fixtures, weftBare string) {
 			seedWeftBranchFromMain(t, fixtures, weftBare, "main-weft")
 			commitFileOnBranch(t, fixtures, weftBare, "main-weft", lymcwd.AnchorFileName, "backend\n")
-		}, false},
-		{"BoltMarker", func(t *testing.T, fixtures, weftBare string) {
-			seedWeftBranchFromMain(t, fixtures, weftBare, "main-weft")
-			commitFileOnBranch(t, fixtures, weftBare, "main", lymcwd.AnchorFileName, "backend\n")
-		}, true},
+		}, false, false},
+		{"BoltMarker", seedBoltMarker, true, false},
+		{"BoltMarkerOneURL", seedBoltMarker, true, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -272,6 +278,11 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 			warpBare := makeBareRemoteWithSubdir(t, fixtures, "anchor-adopt-warp", "backend")
 			weftBare := makeBareRemote(t, fixtures, "anchor-adopt-weft")
 			tt.seed(t, fixtures, weftBare)
+			warpURL := filepath.ToSlash(warpBare)
+			if tt.oneURL {
+				commitFileOnBranch(t, fixtures, weftBare, "main", fabricengine.WarpBindingFileName, warpURL+"\n")
+				warpURL = ""
+			}
 
 			// With no --subpath, the recorded anchor is read and returned as-is.
 			// ForceBootstrap is not needed; the weft already carries the .lym-anchor marker seeded above,
@@ -279,7 +290,7 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 			cloneParent := t.TempDir()
 			res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 				WeftURL: filepath.ToSlash(weftBare),
-				WarpURL: filepath.ToSlash(warpBare),
+				WarpURL: warpURL,
 				Subpath: "",
 			})
 			if err != nil {
@@ -299,7 +310,7 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 			conflictParent := t.TempDir()
 			_, err = fabricengine.CloneHub(conflictParent, fabricengine.CloneOptions{
 				WeftURL: filepath.ToSlash(weftBare),
-				WarpURL: filepath.ToSlash(warpBare),
+				WarpURL: warpURL,
 				Subpath: "frontend",
 			})
 			if err == nil {
@@ -310,7 +321,7 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 			matchParent := t.TempDir()
 			matchRes, err := fabricengine.CloneHub(matchParent, fabricengine.CloneOptions{
 				WeftURL: filepath.ToSlash(weftBare),
-				WarpURL: filepath.ToSlash(warpBare),
+				WarpURL: warpURL,
 				Subpath: "backend",
 			})
 			if err != nil {

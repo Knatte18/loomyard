@@ -63,14 +63,32 @@
 //     MergeBase returns two commits' best common ancestor, read through go-git.
 //   - UpdateRemoteBranchLeased moves a remote branch to a SHA, backwards included.
 //     It does so only while the remote branch still sits at the SHA the caller read.
+//     An empty expected SHA leases on absence.
 //     DeleteRemoteBranchLeased deletes it under the same lease.
 //     A moved branch is ErrLeaseRejected in both, distinct from any other push failure.
+//     DeleteRemoteBranch deletes a remote branch with no lease.
+//     It first lists the exact ref with `git ls-remote` and pushes nothing for an absent ref.
+//   - RefNamespace maps local branch and tag names to the ref names they take on the remote.
+//     Every operation that sends or writes an origin ref name takes one:
+//     the pushes, the leased updates and deletes, the plain delete and the push-refusal retry.
+//     Its zero value is the identity namespace, refs/heads/ and refs/tags/.
+//     gitrepo holds no other layout: the caller builds the value that matches the remote's refspecs.
+//     The tracking ref of a push is the one the remote's fetch refspecs map the namespaced ref to,
+//     and a first push writes branch.<name>.merge as the namespaced ref.
+//     RemoteFetchRefspecs reads a remote's configured fetch refspecs for a caller that derives its namespace from them.
 //   - ResetHard is the SHA-validated hard-reset surface (see below).
 //   - ResetKeep moves HEAD and the index to a SHA and carries uncommitted changes across.
 //     It refuses, changing nothing, when an uncommitted change sits in a path the move would rewrite.
 //   - CurrentBranch reads the branch HEAD points to, and it errors on a detached HEAD.
 //   - UpstreamSHA resolves the current branch's configured upstream to its remote-tracking SHA as last fetched.
 //     It returns ErrNoUpstream when there is none.
+//     Upstream reads the same for any branch.
+//     Both map the branch's merge ref through the remote's fetch refspecs, as git does for @{upstream},
+//     so a merge ref outside refs/heads/ reads its tracking ref when a refspec maps it.
+//     A merge ref no refspec maps is no upstream, and a remote with no fetch refspec keeps refs/remotes/<remote>/<name>.
+//     gitrepo learns no layout: it follows whatever refspecs the store configures.
+//     go-git's config read refuses a whole config holding a merge ref outside refs/heads/, and its open reads the config.
+//     goGit therefore opens every handle over a storer that decodes the config without that check.
 //   - CommitDetail returns one commit's full message and the paths its tree changes against its first parent.
 //     It reads through go-git.
 //   - TagRefs lists the tags under a name prefix, each peeled to its commit and sorted by the commit's date.
@@ -263,11 +281,10 @@
 // internal/fslink reaches them through junctions.
 // From the second probe, which measured that topology:
 //
-//   - git.PlainOpenWithOptions with EnableDotGitCommonDir: true is mandatory.
+//   - goGit (gogit.go) must resolve a linked worktree's common dir itself, so it never calls the convenience open.
 //     Against a linked worktree, git.PlainOpen defaults EnableDotGitCommonDir to false and returns no error.
 //     The handle it returns cannot read HEAD or any object.
 //     It reports every ref stored in the shared common dir as absent, with no error anywhere.
-//     This is why goGit (gogit.go) opens with the option explicitly set rather than the convenience call.
 //   - DetectDotGit is banned.
 //     Given a path that is not itself a repository, it walks up the directory tree.
 //     It silently opens an ancestor repository.

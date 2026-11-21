@@ -31,7 +31,10 @@ func CloneAndWireFromLocalBares(container, codeBare, recordsBare, shortname stri
 }
 
 // CloneAndWire clones a hub and wires it, so that a successful clone needs no reconcile.
-// It materializes the hub-wide config, then commits it on weft:main and pushes it.
+// It materializes the hub-wide config, then commits it on weft:main and pushes it through `fabricengine.PushCloneBoard`.
+// That verb pushes a two-repository clone's and a join's board as any board is pushed.
+// It seeds a `--single-repo` clone's.
+// A failure before that push returns through `fabricengine.AbandonSeededClone`, which removes a seeded hub.
 // It then wires the warp junctions and reconciles the per-worktree configs.
 // It commits the resulting per-worktree module configs on the weft primary branch, with no push.
 // It then tells the worktree seam that the prime was made.
@@ -57,7 +60,7 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	boardSeededFromNothing := !anyBaseFilePresent(res.BoardDir)
 	hubWideResults, err := configsync.ReconcileHubWideAt(res.BoardDir, res.WeftBase, configsync.HubWideOptions{Apply: true})
 	if err != nil {
-		return fabricengine.CloneResult{}, err
+		return fabricengine.CloneResult{}, fabricengine.AbandonSeededClone(res, rec, err)
 	}
 	for _, hubWideResult := range hubWideResults {
 		if hubWideResult.Applied {
@@ -74,7 +77,7 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	markerPath := configengine.BaseSparseMarker(res.BoardDir)
 	if boardSeededFromNothing {
 		if err := configsync.WriteBaseSparseMarker(res.BoardDir); err != nil {
-			return fabricengine.CloneResult{}, err
+			return fabricengine.CloneResult{}, fabricengine.AbandonSeededClone(res, rec, err)
 		}
 		rec.Append(fabricengine.KindFileWritten, markerPath, "")
 	}
@@ -86,7 +89,7 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 		if boardSeededFromNothing {
 			_ = os.Remove(markerPath)
 		}
-		return fabricengine.CloneResult{}, err
+		return fabricengine.CloneResult{}, fabricengine.AbandonSeededClone(res, rec, err)
 	}
 	if committed {
 		rec.Append(fabricengine.KindCommitCreated, res.BoardDir, sha)
@@ -96,7 +99,7 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	// Such an entry would claim a push this call did not observe.
 	// The commit above is already recorded.
 	// A seed-commit drop behind the push is recorded in rec as commits_dropped.
-	if err := b.PushRecorded(fabricengine.SyncOptions{}, rec); err != nil {
+	if err := fabricengine.PushCloneBoard(res, rec); err != nil {
 		return fabricengine.CloneResult{}, err
 	}
 
@@ -214,7 +217,7 @@ func absentRepoDefaults(boardDir string) []string {
 // "warning" is empty when there is none.
 // "seam_warning" is the warning of a failed render into the prime, naming `lym heddle render` there; empty when none.
 // Every field is always present, so a consumer never has to tell an absent field from a false one.
-func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset bool, subpath string, forceBootstrap bool, into string, shortname string) int {
+func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset bool, subpath string, forceBootstrap bool, into string, shortname string, singleRepo bool) int {
 	// Nothing has been mutated yet at cwd resolution: a bare output.Err carries no record.
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
@@ -222,7 +225,7 @@ func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset 
 	}
 
 	if len(args) != 1 && len(args) != 2 {
-		return output.Err(out, "usage: lym fabric clone [--shortname <shortname>] [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]")
+		return output.Err(out, "usage: lym fabric clone [--shortname <shortname>] [--reset] [--subpath <rel>] [--force-bootstrap] [--single-repo] [--into <dir>] <weft-url> [<warp-url>]")
 	}
 	weftURL := args[0]
 	warpURL := ""
@@ -252,6 +255,7 @@ func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset 
 		Reset:          reset,
 		ForceBootstrap: forceBootstrap,
 		Shortname:      shortname,
+		SingleRepo:     singleRepo,
 	})
 	if err != nil {
 		// CloneAndWire's defer sets res.Mutations before it returns,
