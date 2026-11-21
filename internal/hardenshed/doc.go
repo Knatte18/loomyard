@@ -61,6 +61,8 @@
 // It stops each recorded hub's reed server whether or not the hub's directory is still there.
 // It prunes the hub's list entry once the server is stopped or none was live.
 // Only a process that names the root and that no record names is ended as an orphan, never the caller or its ancestors.
+// A process names the root through its working directory, executable or command line,
+// and the root counts both as written and with its links resolved, the form the kernel reports a working directory in.
 // It returns one StrayEntry per server and process it found.
 // A ReapStart entry is marked as left by an interrupted row.
 // Off Linux the process scan is skipped and only the servers are stopped.

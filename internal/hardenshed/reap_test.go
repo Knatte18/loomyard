@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -107,6 +109,50 @@ func TestReap(t *testing.T) {
 		}
 		if !reflect.DeepEqual(strays, want) {
 			t.Errorf("Reap() strays = %+v; want %+v", strays, want)
+		}
+	})
+
+	t.Run("EndsAnOrphanNamingTheRootByItsLinkTargetOrItsWrittenPath", func(t *testing.T) {
+		t.Parallel()
+		worktree, linkTarget := t.TempDir(), t.TempDir()
+		if err := fslink.CreateDirLink(filepath.Join(worktree, lymdirs.DotLymDirName), linkTarget); err != nil {
+			t.Fatal(err)
+		}
+		root := SandboxRoot(worktree)
+		if err := os.MkdirAll(filepath.Join(root, "hub-one"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		resolved, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fake := &reapFake{processes: []proc.Process{
+			{PID: 12, Cwd: filepath.Join(resolved, "hub-one")},
+			{PID: 13, Argv: []string{"lym", filepath.Join(root, "hub-one")}, Cwd: "/elsewhere"},
+			{PID: 14, Cwd: "/elsewhere"},
+		}}
+
+		if _, err := Reap(fake.deps(root, ReapEnd)); err != nil {
+			t.Fatalf("Reap() error = %v", err)
+		}
+		if want := []int{12, 13}; !reflect.DeepEqual(fake.endedProcess, want) {
+			t.Errorf("EndProcess pids = %v; want %v", fake.endedProcess, want)
+		}
+	})
+
+	t.Run("EndsAnOrphanUnderTheWrittenRootWhenTheRootDoesNotResolve", func(t *testing.T) {
+		t.Parallel()
+		root := SandboxRoot(t.TempDir())
+		fake := &reapFake{processes: []proc.Process{
+			{PID: 12, Cwd: filepath.Join(root, "hub-one")},
+			{PID: 13, Cwd: "/elsewhere"},
+		}}
+
+		if _, err := Reap(fake.deps(root, ReapEnd)); err != nil {
+			t.Fatalf("Reap() error = %v", err)
+		}
+		if want := []int{12}; !reflect.DeepEqual(fake.endedProcess, want) {
+			t.Errorf("EndProcess pids = %v; want %v", fake.endedProcess, want)
 		}
 	})
 
