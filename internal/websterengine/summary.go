@@ -43,15 +43,18 @@ func ArchiveStaleSummary(websterDir string, now func() time.Time) (archivedTo st
 	return target, nil
 }
 
-// AppendIntegrationTriage appends a section listing the flaky identities the verify gate passed on rerun.
-// It lists identities only, and is a no-op when flaky is empty.
-func AppendIntegrationTriage(websterDir string, flaky []string) error {
-	if len(flaky) == 0 {
+// AppendIntegrationTriage appends a section listing what the verify gate passed on rerun.
+// flaky holds the failing test and package identities;
+// commandLogs holds the first-run logs of verify command failures that named no failing test.
+// It is a no-op when both are empty.
+func AppendIntegrationTriage(websterDir string, flaky, commandLogs []string) error {
+	if len(flaky) == 0 && len(commandLogs) == 0 {
 		return nil
 	}
 	var b strings.Builder
 	b.WriteString("\n\n## Integration suite triage\n\nThe `final` gate failed, but webster's triage did not attribute the failure to this run.\n")
 	writeTriageList(&b, "Flaky (passed on rerun)", flaky)
+	writeTriageList(&b, "Verify command failed naming no failing test (passed on rerun), first run's log", commandLogs)
 	return appendToSummary(websterDir, "integration triage", b.String())
 }
 

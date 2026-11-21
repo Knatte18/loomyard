@@ -89,4 +89,4 @@ The contract makes no distinction between the heading-adjacent prose and anythin
 
 ## See also
 
-- [webster-spec.md](webster-spec.md) — webster's own writer-side additions: when the artifact is required, its archive-never-refuse discipline, the flaky-failure section the verify gate appends for identities that passed on rerun, and the "Verify gate fixes" section Merriam writes after a verify-gate fixer.
+- [webster-spec.md](webster-spec.md) — webster's own writer-side additions: when the artifact is required, its archive-never-refuse discipline, the flaky-failure section the verify gate appends for identities, and verify command failures, that passed on rerun, and the "Verify gate fixes" section Merriam writes after a verify-gate fixer.
