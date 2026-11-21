@@ -398,8 +398,9 @@ func startGate(t *testing.T, run gateRun) *runningGate {
 	t.Cleanup(cancel)
 	g.cmd = exec.CommandContext(ctx, os.Args[0], run.args...)
 	// The outer environment's slot, enclosing gate or strand, must not make the gate think it is nested or an agent's.
+	// Its GOFLAGS is dropped too: a session value differing from the tier's would add an env line to every run.
 	g.cmd.Env = slices.DeleteFunc(os.Environ(), func(entry string) bool {
-		return strings.HasPrefix(entry, gateslot.InheritEnv+"=") || strings.HasPrefix(entry, enclosingGateEnv+"=") || strings.HasPrefix(entry, agentname.StrandNameEnv+"=")
+		return strings.HasPrefix(entry, gateslot.InheritEnv+"=") || strings.HasPrefix(entry, enclosingGateEnv+"=") || strings.HasPrefix(entry, agentname.StrandNameEnv+"=") || strings.HasPrefix(entry, "GOFLAGS=")
 	})
 	g.cmd.Env = append(g.cmd.Env, helperEnv+"="+helperRoleGate, helperCwdEnv+"="+run.cwd, helperRecordEnv+"="+g.record)
 	if !run.realGo {
@@ -1140,16 +1141,34 @@ func TestGateTest_Scenario(t *testing.T) {
 
 	t.Run("a tier's own env overrides the MSBuild variables the gate sets", func(t *testing.T) {
 		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
-			cfg["tiers"].(map[string]any)["tier6"].(map[string]any)["env"] = map[string]string{"MSBUILDDISABLENODEREUSE": "0"}
+			cfg["tiers"].(map[string]any)["tier6"].(map[string]any)["env"] = map[string]string{"MSBUILDDISABLENODEREUSE": "0", "ENV_LINE_MARK": "tier"}
 		}))
 		defer writeConfig(t, gateConfig)
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "./pkg"}})
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "./pkg"}, env: []string{"ENV_LINE_MARK=session"}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
 		}
 		if record := g.standIn(t); record.NodeReuse != "0" || record.MSBuildServer != "0" {
 			t.Errorf("tier environment MSBUILDDISABLENODEREUSE = %q, DOTNET_CLI_USE_MSBUILD_SERVER = %q; want the tier's 0 and the gate's 0", record.NodeReuse, record.MSBuildServer)
+		}
+		// The gate's own session environment holds a value of the mark that the tier's env overrides.
+		const envLineOpening = "gate test: tier6 runs with env values that differ from this session's environment: "
+		_, log := runRecordOf(t, g.stdout.String(), 6)
+		// The gate helper hands the verb's stderr lines to its stdout.
+		for name, text := range map[string]string{"gate output": g.stdout.String(), "tier log": log} {
+			if !strings.Contains(text, envLineOpening) || !strings.Contains(text, "ENV_LINE_MARK=tier") || strings.Contains(text, "ENV_LINE_MARK=session") {
+				t.Errorf("%s = %q; want the env line naming ENV_LINE_MARK=tier and not the session's value", name, text)
+			}
+		}
+		requireFree(t)
+
+		equal := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "./pkg"}, env: []string{"ENV_LINE_MARK=tier"}})
+		if code := equal.wait(t); code != 0 {
+			t.Fatalf("exit code with an equal session value = %d, stdout %q; want 0", code, equal.stdout.String())
+		}
+		if strings.Contains(equal.stdout.String(), "ENV_LINE_MARK") {
+			t.Errorf("gate output with an equal session value = %q; want no env line naming ENV_LINE_MARK", equal.stdout.String())
 		}
 		requireFree(t)
 	})

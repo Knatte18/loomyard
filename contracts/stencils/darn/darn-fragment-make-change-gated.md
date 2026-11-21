@@ -4,6 +4,7 @@
      The writer asks its parent for the single run of the test a task's reported failure names, before it diagnoses it.
      internal/darnengine's DarnTable reads it for the writer's engine,
      fills the {{.subagent_model}} marker its Claude engine block declares from loom.yaml's subagent_model,
+     fills the {{.measure_call}} marker with the measuring call the hub's gate config can run,
      then fills the result whole into darn-template-write's make_change marker. -->
 
 1. When the task starts from a reported test failure, ask your parent before you diagnose it or make any edit:
@@ -22,9 +23,9 @@
    Keep in this session the work that needs the overview: the design, a change that spans packages, the commits and the change description.
 3. Run no `lym gate test` yourself.
    The one exception is a value the change needs that only a test run shows, such as a golden test's output:
-   run that one test class once through `lym gate test --gate darn-write <its package or test project> -- <args>`,
+   run that one test class once through `{{.measure_call}}`,
    with the args by which the tier's runner selects one class.
-   The args reach every tier the key lists, so they must suit each of them.
+   The args reach every tier the call runs, so they must suit each of them.
    Never run a raw test command for it: a raw run can exit 0 with no output when no test ran, and only the gate's report says so.
    When that report says a project ran no test, the property that makes it run is the one its project file's `IsTestProject` condition names.
    When the tier's command holds `{args}`, run the same gate call once more with `-p:<property>=true` among the args after `--`,

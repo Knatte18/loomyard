@@ -1218,7 +1218,7 @@ func TestWire_LanguageSkills(t *testing.T) {
 			wantTools:     []string{"gopls rename"},
 		},
 		{
-			name:          "no gate.yaml wires and renders the gate tiers as none",
+			name:          "no gate.yaml wires and renders the gate tiers as none, and an ungated darn table still builds",
 			content:       "skills: []\n",
 			wantSkills:    []string{},
 			wantGateTiers: "none",

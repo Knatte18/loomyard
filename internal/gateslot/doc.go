@@ -134,6 +134,8 @@
 // `build` is an open map, so its sub-keys travel whole through the layer stack and reconcile never prunes a hub's build.
 // A tier may also hold `filter`, its own test-filter expression.
 // It may hold `shared_build: true`, which makes the tier depend on the build step.
+// A tier with counter `vstest` and `{args}` in its command may hold `results: trx`, ResultsTRX.
+// The gate then asks each invocation for a TRX results file, and the file decides the run's counts and failures.
 // It may hold `carry: false`, which keeps a green run from being carried over an unchanged tree.
 // Tier.NoCarry is the negative form, so a zero Tier carries.
 // A tier whose command holds TestTimeoutPlaceholder may hold `test_timeout_min`.
@@ -173,6 +175,7 @@
 // `manual: true` on `tier0`, the tier a call with no tier flag runs;
 // `parallel`, `timeout_min` or `memory_mb` below 1, `slots` neither `all` nor at least 1;
 // a counter other than `go-json` or `vstest`, a scoper other than `go`, `none` or `dotnet`;
+// a `results` other than `trx`, or `trx` on a tier whose counter is not `vstest` or whose command holds no `{args}`;
 // a tier `filter` whose command holds no `{filter}`;
 // a `test_timeout_min` below 1 or on a command that holds no `{test_timeout}`;
 // a non-empty `build` lacking `command` or `timeout_min`, a build `timeout_min` below 1;
@@ -226,7 +229,7 @@
 // The template and a hub whose gate keys name an undeclared tier therefore both load.
 //
 // At use, Config.Gate returns a key's tiers and scope.
-// It refuses a key the config does not hold; an empty tier list;
+// It refuses a key the config does not hold, naming the keys it holds; an empty tier list;
 // a hub that declares tiers but no `tier0`; and a listed tier the hub does not declare.
 // A hub that declares no tier at all, as the template does, gets the key with no tiers and no refusal,
 // so the gate calls of a fresh hub with no tests yet run the key's lints and no tier.
@@ -237,6 +240,12 @@
 // Its `--wait` form is for a call Go runs.
 // Config.AgentGateCall renders the same call without `--wait`, the form for a call an agent runs.
 // Config.AgentGateCallWithMainPackages renders the agent call with `--main-packages` last.
+// Config.MeasureCall renders the call an agent runs to measure one test class through a key:
+// `lym gate test --gate <key>`, a target word only when a tier the call runs takes targets, and `-- <args>`.
+// A tier that a higher tier of the key covers is not run by the call,
+// so it counts for neither the target word nor `{args}`.
+// It refuses what Gate refuses, a key of scope `card`, and a key that runs a tier whose command holds no `{args}`,
+// so a prompt names only a form the hub's config can run.
 // StopOnFailCall adds `--stop-on-fail` to a call, which ends it at its first failed run.
 // FailedTestsCall renders the command that runs a failure report's failed tests alone:
 // one `--wait` call per tier, joined by `&&`, each over the tier's packages with a `-run` pattern of its test names.

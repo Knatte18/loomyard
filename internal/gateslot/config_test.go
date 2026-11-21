@@ -409,6 +409,15 @@ inert_paths: ["*.md", "docs/*"]
 		},
 		{"test_timeout_min on a command with no {test_timeout}", baseKeys + `tiers: {tier0: {command: x, test_timeout_min: 25, timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.test_timeout_min": set, but the command holds no {test_timeout}; want {test_timeout} in the command or no test_timeout_min` + fixIt},
 		{"test_timeout_min 0", baseKeys + `tiers: {tier0: {command: "t {test_timeout}", test_timeout_min: 0, timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.test_timeout_min": 0; want at least 1` + fixIt},
+		{
+			"results trx loads on a vstest tier whose command holds {args}", baseKeys + `tiers: {tier0: {command: "dotnet test {args}", results: trx, timeout_min: 5, counter: vstest}}`,
+			hubWith(func(c *Config) {
+				c.Tiers["tier0"] = Tier{Command: "dotnet test {args}", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1, Results: ResultsTRX}
+			}), "",
+		},
+		{"results other than trx", baseKeys + `tiers: {tier0: {command: "dotnet test {args}", results: xml, timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.results": "xml"; want trx or no results` + fixIt},
+		{"results trx on a go-json tier", baseKeys + `tiers: {tier0: {command: "go test {args}", results: trx, timeout_min: 5, counter: go-json}}`, Config{}, `gate config key "tiers.tier0.results": "trx", but the counter is "go-json"; want counter vstest or no results` + fixIt},
+		{"results trx on a command with no {args}", baseKeys + `tiers: {tier0: {command: "dotnet test", results: trx, timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.results": "trx", but the command holds no {args}; want {args} in the command, where the gate puts the options that write the results file, or no results` + fixIt},
 		{"build without command", baseKeys + "build: {dir: x, timeout_min: 5}\n", Config{}, `gate config key "build.command": missing; want the shell command the build runs` + fixIt},
 		{"build without timeout_min", baseKeys + "build: {command: b}\n", Config{}, `gate config key "build.timeout_min": missing; want at least 1` + fixIt},
 		{"build with timeout_min 0", baseKeys + "build: {command: b, timeout_min: 0}\n", Config{}, `gate config key "build.timeout_min": 0; want at least 1` + fixIt},
@@ -971,8 +980,66 @@ func TestConfig_TierUse(t *testing.T) {
 		if err != nil || !slices.Equal(got.Tiers, []int{0, 1}) || got.Scope != "diff" {
 			t.Errorf("Gate(push) = (%+v, %v); want tiers [0 1] and scope diff", got, err)
 		}
-		if _, err := twoTier.Gate("nope"); err == nil || !strings.Contains(err.Error(), `gates holds no key "nope"`) {
-			t.Errorf("Gate(nope) error = %v; want the no-such-key refusal", err)
+		wantHeld := `gates holds no key "nope"; the keys it holds are batch, card, dangling, empty, finalize, push, webster, webster-fix`
+		if _, err := twoTier.Gate("nope"); err == nil || !strings.Contains(err.Error(), wantHeld) {
+			t.Errorf("Gate(nope) error = %v; want the no-such-key refusal naming the keys the config holds, %q", err, wantHeld)
+		}
+		if _, err := (Config{}).Gate("nope"); err == nil || !strings.Contains(err.Error(), `gates holds no key "nope"; it holds no key at all`) {
+			t.Errorf("Config{}.Gate(nope) error = %v; want the no-such-key refusal saying the config holds no key", err)
+		}
+	})
+
+	t.Run("MeasureCall", func(t *testing.T) {
+		t.Parallel()
+		cfg := Config{
+			Tiers: map[string]Tier{
+				"tier0": {Command: "dotnet test {targets} {args}"}, "tier1": {Command: "dotnet test All.sln {args}"}, "tier2": {Command: "dotnet test All.sln"},
+				"tier4": {Command: "dotnet test All.sln {args}", Covers: []int{0, 2}},
+			},
+			Gates: map[string]GateKey{
+				"covered": {Tiers: []int{0, 4}, Scope: "diff"}, "coverednoargs": {Tiers: []int{2, 4}, Scope: "diff"},
+				"darn-write": {Tiers: []int{0}, Scope: "diff"}, "whole": {Tiers: []int{1}, Scope: "diff"}, "mixed": {Tiers: []int{0, 1}, Scope: "diff"},
+				"noargs": {Tiers: []int{2}, Scope: "diff"}, "cardkey": {Tiers: []int{0}, Scope: "card"}, "dangling": {Tiers: []int{3}, Scope: "diff"},
+			},
+		}
+		withoutTier0 := Config{
+			Tiers: map[string]Tier{"tier1": {Command: "dotnet test All.sln {args}"}},
+			Gates: map[string]GateKey{"darn-write": {Tiers: []int{1}, Scope: "diff"}},
+		}
+		tests := []struct {
+			name string
+			cfg  Config
+			key  string
+			want string
+			// wantErr is a part of the refusal, empty for a key the call can name.
+			wantErr string
+		}{
+			{name: "a key whose tier takes targets names the target", cfg: cfg, key: "darn-write", want: "lym gate test --gate darn-write <its package or test project> -- <args>"},
+			{name: "a key whose tiers take no targets names none", cfg: cfg, key: "whole", want: "lym gate test --gate whole -- <args>"},
+			{name: "a key mixing a tier that takes targets with one that does not names the target", cfg: cfg, key: "mixed", want: "lym gate test --gate mixed <its package or test project> -- <args>"},
+			{name: "a covered tier that takes targets adds no target word", cfg: cfg, key: "covered", want: "lym gate test --gate covered -- <args>"},
+			{name: "a covered tier whose command holds no {args} is not refused", cfg: cfg, key: "coverednoargs", want: "lym gate test --gate coverednoargs -- <args>"},
+			{name: "a hub that declares no tier keeps the key with no target", cfg: Config{Gates: cfg.Gates}, key: "darn-write", want: "lym gate test --gate darn-write -- <args>"},
+			{name: "a key the config does not hold is refused", cfg: cfg, key: "nope", wantErr: `gates holds no key "nope"`},
+			{name: "a key naming an undeclared tier is refused", cfg: cfg, key: "dangling", wantErr: "gates.dangling lists tier3, which the hub does not declare"},
+			{name: "a hub that declares tiers but no tier0 is refused", cfg: withoutTier0, key: "darn-write", wantErr: "the hub declares no tier0"},
+			{name: "a key of scope card is refused", cfg: cfg, key: "cardkey", wantErr: "gates.cardkey has scope card"},
+			{name: "a key whose tier takes no {args} is refused", cfg: cfg, key: "noargs", wantErr: "gates.noargs lists tier2, whose command holds no {args}"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				got, err := tt.cfg.MeasureCall(tt.key)
+				if tt.wantErr != "" {
+					if err == nil || !strings.Contains(err.Error(), tt.wantErr) || got != "" {
+						t.Errorf("MeasureCall(%q) = %q, %v; want no call and a refusal holding %q", tt.key, got, err, tt.wantErr)
+					}
+					return
+				}
+				if err != nil || got != tt.want {
+					t.Errorf("MeasureCall(%q) = %q, %v; want %q, nil", tt.key, got, err, tt.want)
+				}
+			})
 		}
 	})
 

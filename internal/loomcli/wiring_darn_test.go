@@ -315,6 +315,100 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 	})
 
+	t.Run("the writer's measuring call follows the hub's gate config", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name       string
+			gateConfig string
+			// fixerOff turns darn.yaml's gate_fixer off, so the writer is ungated and names no measuring call.
+			fixerOff bool
+			// omitGateConfig leaves the hub with no gate.yaml.
+			omitGateConfig bool
+			wantCall       string
+			// wantErr is a part of the error the table build fails with, empty for a table that builds.
+			wantErr string
+		}{
+			{
+				name:       "a darn-write tier that takes no {args} still builds the table of an ungated writer",
+				gateConfig: strings.Replace(gateConfigWithTwoTiers(), `  tier0: {command: "go test -json {targets} {args}"`, `  tier0: {command: "go test -json {targets}"`, 1),
+				fixerOff:   true,
+			},
+			{
+				name:           "an absent gate.yaml fails the table of a gated writer",
+				omitGateConfig: true,
+				wantErr:        "gate config absent",
+			},
+			{
+				name:       "a darn-write tier that takes no {args} fails the table of a gated writer",
+				gateConfig: strings.Replace(gateConfigWithTwoTiers(), `  tier0: {command: "go test -json {targets} {args}"`, `  tier0: {command: "go test -json {targets}"`, 1),
+				wantErr:    "gates.darn-write lists tier0, whose command holds no {args}",
+			},
+			{
+				name:       "a darn-write tier that takes targets names the target",
+				gateConfig: gateConfigWithTwoTiers(),
+				wantCall:   "lym gate test --gate darn-write <its package or test project> -- <args>",
+			},
+			{
+				name:       "a darn-write tier that takes no targets names none",
+				gateConfig: strings.Replace(gateConfigWithTwoTiers(), `  tier0: {command: "go test -json {targets} {args}"`, `  tier0: {command: "dotnet test All.sln {args}"`, 1),
+				wantCall:   "lym gate test --gate darn-write -- <args>",
+			},
+			{
+				name:       "a darn-write key that lists an undeclared tier fails the table",
+				gateConfig: strings.Replace(gateConfigWithTwoTiers(), "  darn-write: {tiers: [0], scope: diff,", "  darn-write: {tiers: [0, 7], scope: diff,", 1),
+				wantErr:    "gates.darn-write lists tier7, which the hub does not declare",
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				loc := hubLocation(t, "pair", ".")
+				var replacements []string
+				if tt.fixerOff {
+					replacements = []string{"gate_fixer: sonnet[medium]", `gate_fixer: ""`}
+				}
+				seedDarnHubConfig(t, loc.HubPath, "3", replacements...)
+				if !tt.omitGateConfig {
+					writeHubGateConfig(t, loc.HubPath, tt.gateConfig)
+				}
+				recordPath := fabricengine.OriginRecordPath(loc)
+				if err := os.MkdirAll(filepath.Dir(recordPath), 0o755); err != nil {
+					t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(recordPath), err)
+				}
+				if err := os.WriteFile(recordPath, []byte("{}"), 0o644); err != nil {
+					t.Fatalf("WriteFile(%q) = %v; want nil", recordPath, err)
+				}
+				c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
+				if err := c.wire(loc, loc.AnchorPath()); err != nil {
+					t.Fatalf("wire() = %v; want nil", err)
+				}
+
+				table, err := c.env.DarnTable(loomshed.DarnTold{})
+
+				if tt.wantErr != "" {
+					if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+						t.Errorf("c.env.DarnTable() = _, %v; want an error holding %q", err, tt.wantErr)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatalf("c.env.DarnTable() = _, %v; want nil", err)
+				}
+				step := table.Values["make_change"]
+				if tt.fixerOff {
+					if !strings.Contains(step, "3. Test with `lym gate test` after the last edit of each commit") {
+						t.Errorf("Step 4 list = %q; want the ungated test step", step)
+					}
+					return
+				}
+				if !strings.Contains(step, "`"+tt.wantCall+"`") {
+					t.Errorf("Step 4 list = %q; want it to run the measuring call `%s`", step, tt.wantCall)
+				}
+			})
+		}
+	})
+
 	t.Run("a local loom override sets a darn run's perch budget and hard cap", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")

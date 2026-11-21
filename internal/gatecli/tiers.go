@@ -116,6 +116,10 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 		if len(request.args) > 0 && !strings.Contains(tier.Command, "{args}") {
 			return nil, configRefusal("words after \"--\" were given, but the command of %s holds no {args}", tierName(number))
 		}
+		// The call fails here, before the tier takes its slots and the shared build runs.
+		if refusal := resultsArgsRefusal(number, tier, request.args); refusal != "" {
+			return nil, errors.New(refusal)
+		}
 		share := sc.forTier(number)
 		if share.noTests && !tier.SharedBuild {
 			printLine(request.stderr, fmt.Sprintf("gate test: the scope selected no test class, so %s runs whole", tierName(number)))

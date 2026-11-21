@@ -87,8 +87,11 @@
 // The writer asks its parent for the single run of the test a task's reported failure names.
 // That run comes before the writer diagnoses the failure, so a failure that no longer reproduces costs no diagnosis.
 // Without one, the step has them run the gate after each commit.
+// With a cold fixer the caller also tells DarnTable the measuring run's gate call, rendered from the hub's gate config,
+// so the prompt never names a gate key or target form that config cannot run.
 // The seat engine renders the parent and edit directives, so DarnTable reads no parent name.
 // DarnTable refuses an empty required field by name and a writer model-spec the registry cannot resolve.
+// The measuring call is required only with a cold fixer.
 //
 // The package is told every path it reads and imports no resolver.
 package darnengine

@@ -65,7 +65,7 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"loom-fragment-self-check-discussion", LoomFragmentSelfCheckDiscussion, nil},
 		{"loom-fragment-self-check-discussion-gated", LoomFragmentSelfCheckDiscussionGated, nil},
 		{"darn-fragment-make-change", DarnFragmentMakeChange, nil},
-		{"darn-fragment-make-change-gated", DarnFragmentMakeChangeGated, nil},
+		{"darn-fragment-make-change-gated", DarnFragmentMakeChangeGated, []string{"measure_call"}},
 		{"twill-judge-critical", TwillJudgeCritical, []string{"disposition_place", "dispute_evidence", "governing_input"}},
 		{"twill-judge-plain", TwillJudgePlain, []string{"disposition_place", "rejection_rule"}},
 		{"twill-writer-fork", TwillWriterFork, []string{"disposition_place", "explore_step", "files_dir", "format_step", "input_record", "last_file", "reviewed_files", "self_check_command", "self_check_step"}},

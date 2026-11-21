@@ -37,6 +37,10 @@ type Tier struct {
 	TestTimeoutMin int
 	// Counter names how the command's output is counted: go-json or vstest.
 	Counter string
+	// Results is ResultsTRX or empty.
+	// ResultsTRX makes the gate ask the command for a TRX results file, which then decides the run's counts and failures.
+	// It fits only a vstest tier whose command holds {args}, where the gate puts the options that write the file.
+	Results string
 	// Covers lists lower tier numbers this tier's command runs anyway.
 	Covers []int
 	// Slots is how many gate slots the tier holds; 0 means every slot.
@@ -71,6 +75,7 @@ type tierFile struct {
 	TimeoutMin     *int              `yaml:"timeout_min"`
 	TestTimeoutMin *int              `yaml:"test_timeout_min"`
 	Counter        string            `yaml:"counter"`
+	Results        string            `yaml:"results"`
 	Covers         []int             `yaml:"covers"`
 	Slots          yaml.Node         `yaml:"slots"`
 	PrebuiltLym    bool              `yaml:"prebuilt_lym"`
@@ -89,6 +94,9 @@ const TestTimeoutPlaceholder = "{test_timeout}"
 // They are the packages that hold a test of the tier.
 // It stands where the targets reach `go test`, so a run starts no test binary that would find no test to run.
 const TestTargetsPlaceholder = "{test_targets}"
+
+// ResultsTRX is the Tier.Results value that makes the gate ask a vstest tier for a TRX results file.
+const ResultsTRX = "trx"
 
 // HoldsTargets reports whether command takes a run's targets, through {targets} or TestTargetsPlaceholder.
 func HoldsTargets(command string) bool {
@@ -204,6 +212,7 @@ func decodeTier(key string, number int, file tierFile) (Tier, error) {
 		AllTargets:  file.AllTargets,
 		Parallel:    1,
 		Counter:     file.Counter,
+		Results:     file.Results,
 		Covers:      file.Covers,
 		Slots:       1,
 		PrebuiltLym: file.PrebuiltLym,
@@ -264,6 +273,18 @@ func decodeTier(key string, number int, file tierFile) (Tier, error) {
 		return Tier{}, refuse("counter", "missing; want go-json or vstest")
 	default:
 		return Tier{}, refuse("counter", fmt.Sprintf("%q; want go-json or vstest", tier.Counter))
+	}
+	switch tier.Results {
+	case "":
+	case ResultsTRX:
+		if tier.Counter != "vstest" {
+			return Tier{}, refuse("results", fmt.Sprintf("%q, but the counter is %q; want counter vstest or no results", tier.Results, tier.Counter))
+		}
+		if !strings.Contains(tier.Command, "{args}") {
+			return Tier{}, refuse("results", fmt.Sprintf("%q, but the command holds no {args}; want {args} in the command, where the gate puts the options that write the results file, or no results", tier.Results))
+		}
+	default:
+		return Tier{}, refuse("results", fmt.Sprintf("%q; want %s or no results", tier.Results, ResultsTRX))
 	}
 	for _, covered := range tier.Covers {
 		if covered < 0 || covered >= number {
@@ -372,12 +393,17 @@ func (c Config) Tier(number int) (Tier, error) {
 // Gate returns the named gate key's tiers and scope.
 // A hub that declares no tier at all gets the key with no tiers.
 // A fresh hub with no tests yet then runs its gates with the key's lints and no tier.
-// It refuses a missing key, an empty list, a hub that declares tiers but no tier0, or an undeclared tier.
+// It refuses a missing key, naming the keys the config holds;
+// an empty list, a hub that declares tiers but no tier0, or an undeclared tier.
 // Each refusal names lym config gate.
 func (c Config) Gate(key string) (GateKey, error) {
 	gate, ok := c.Gates[key]
 	if !ok {
-		return GateKey{}, useRefusal("gates holds no key %q", key)
+		held := "it holds no key at all"
+		if len(c.Gates) > 0 {
+			held = "the keys it holds are " + strings.Join(sortedKeys(c.Gates), ", ")
+		}
+		return GateKey{}, useRefusal("gates holds no key %q; %s", key, held)
 	}
 	if len(gate.Tiers) == 0 {
 		return GateKey{}, useRefusal("gates.%s is empty, and every gate verifies at least one tier", key)
@@ -420,6 +446,53 @@ func (c Config) GateCall(key string, cards ...string) (string, error) {
 // It refuses, with the refusals Gate gives, a key the config cannot run.
 func (c Config) AgentGateCall(key string, cards ...string) (string, error) {
 	return c.renderGateCall(key, false, cards)
+}
+
+// MeasureCall renders the call an agent runs to measure one test class through the named gate key.
+// It is `lym gate test --gate <key>`.
+// A tier the call runs that takes targets adds `<its package or test project>`.
+// Then comes `-- <args>` for the words by which the tier's runner selects the class.
+// A tier that a higher tier of the key covers is not run by the call, so it counts for neither check below.
+// It refuses, with the refusals Gate gives, a key the config cannot run.
+// It also refuses a key of scope card, which a call runs only with a card or targets it carries,
+// and a key that runs a tier whose command holds no {args}, which refuses the words after `--`.
+// The call it returns is therefore one the hub's gate config can run.
+func (c Config) MeasureCall(key string) (string, error) {
+	gate, err := c.Gate(key)
+	if err != nil {
+		return "", err
+	}
+	if gate.Scope == scopeCard {
+		return "", useRefusal("gates.%s has scope card, which a call runs only over the cards or targets it names, so no measuring call can name it", key)
+	}
+	ran := c.tiersRunBy(gate.Tiers)
+	for _, number := range ran {
+		if !strings.Contains(c.Tiers[tierKey(number)].Command, "{args}") {
+			return "", useRefusal("gates.%s lists %s, whose command holds no {args}, so the words after \"--\" that select a test class reach no command", key, tierKey(number))
+		}
+	}
+	words := []string{"lym", "gate", "test", "--gate", key}
+	if slices.ContainsFunc(ran, func(number int) bool { return HoldsTargets(c.Tiers[tierKey(number)].Command) }) {
+		words = append(words, "<its package or test project>")
+	}
+	return strings.Join(append(words, "--", "<args>"), " "), nil
+}
+
+// tiersRunBy returns numbers sorted ascending and without repeats, minus each tier a higher listed tier covers.
+// A covered tier runs inside the tier that covers it, never on its own.
+func (c Config) tiersRunBy(numbers []int) []int {
+	listed := slices.Clone(numbers)
+	slices.Sort(listed)
+	listed = slices.Compact(listed)
+	var kept []int
+	for i := len(listed) - 1; i >= 0; i-- {
+		number := listed[i]
+		if !slices.ContainsFunc(kept, func(higher int) bool { return slices.Contains(c.Tiers[tierKey(higher)].Covers, number) }) {
+			kept = append(kept, number)
+		}
+	}
+	slices.Reverse(kept)
+	return kept
 }
 
 // MainPackagesFlag is the `lym gate test` flag, without its dashes, that adds the main packages to a --card scope.

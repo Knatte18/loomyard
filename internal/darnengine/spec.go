@@ -73,6 +73,9 @@ type DarnInputs struct {
 	// so the writer and its subagents run no gate, except the writer's single measuring run of one test class,
 	// and the writer asks its parent for a reported failure's single run.
 	GateFixed bool
+	// MeasureCall is the gate call the writer runs to measure one test class, in a form the hub's gate config can run.
+	// Only the Step 4 list of a writer whose verify gate has a cold fixer names it, so only a GateFixed writer needs it.
+	MeasureCall string
 }
 
 // DarnTable builds the seatengine.Table of one darn writer spawn: one lead that writes the change description.
@@ -101,6 +104,9 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 		{"ConditionStopMarkerPath", in.ConditionStopMarkerPath},
 		{"SubagentModel", in.SubagentModel},
 	}
+	if in.GateFixed {
+		required = append(required, struct{ field, value string }{"MeasureCall", in.MeasureCall})
+	}
 	for _, r := range required {
 		if r.value == "" {
 			return seatengine.Table{}, fmt.Errorf("darn: DarnTable: %s must not be empty", r.field)
@@ -126,7 +132,7 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 		frictionDirective = ""
 	}
 	engine := shuttleengine.NewModelChoice(resolved).Engine
-	makeChange, err := makeChangeList(in.StencilsDir, engine, in.GateFixed, in.SubagentModel)
+	makeChange, err := makeChangeList(in.StencilsDir, engine, in.GateFixed, in.SubagentModel, in.MeasureCall)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("darn: DarnTable: Step 4 list: %w", err)
 	}
@@ -164,10 +170,10 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 }
 
 // makeChangeList returns the writer prompt's Step 4 list, worded for engine, the engine the writer launches on.
-// It reads the list at call time from stencilsDir and fills subagentModel into it;
-// only the Claude wording names that model.
+// It reads the list at call time from stencilsDir and fills subagentModel and measureCall into it;
+// only the Claude wording names that model, and only the gated fragment names the call.
 // It uses the gated fragment when gateFixed is set, and the ungated one otherwise.
-func makeChangeList(stencilsDir, engine string, gateFixed bool, subagentModel string) (string, error) {
+func makeChangeList(stencilsDir, engine string, gateFixed bool, subagentModel, measureCall string) (string, error) {
 	name := makeChangeStencil
 	if gateFixed {
 		name = makeChangeGatedStencil
@@ -176,7 +182,7 @@ func makeChangeList(stencilsDir, engine string, gateFixed bool, subagentModel st
 	if err != nil {
 		return "", err
 	}
-	filled, err := stencil.Fill(content, map[string]string{"subagent_model": subagentModel})
+	filled, err := stencil.Fill(content, map[string]string{"subagent_model": subagentModel, "measure_call": measureCall})
 	if err != nil {
 		return "", fmt.Errorf("fill stencil %s: %w", name, err)
 	}

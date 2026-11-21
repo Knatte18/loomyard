@@ -312,6 +312,19 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 		if err != nil {
 			return seatengine.Table{}, err
 		}
+		// Only a writer whose gate has a cold fixer names the measuring call, so only its table needs one.
+		// The call follows the hub's gate config, so the prompt names only a form that config can run.
+		var measureCall string
+		if gateFixed {
+			gateCfg, err := gateslot.LoadConfig(dirs)
+			if err != nil {
+				return seatengine.Table{}, err
+			}
+			measureCall, err = gateCfg.MeasureCall(darnWriteGateKey)
+			if err != nil {
+				return seatengine.Table{}, err
+			}
+		}
 		table, err := darnengine.DarnTable(darnengine.DarnInputs{
 			StencilsDir:        stencilsDir,
 			SpecsDir:           specsDir,
@@ -325,6 +338,7 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 			LanguageSkills:     c.languageSkills,
 			SubagentModel:      subagentModel,
 			GateFixed:          gateFixed,
+			MeasureCall:        measureCall,
 
 			ConditionStopMarkerPath: shedrun.ConditionStopMarker(location, c.runID),
 		}, cfg, registry)

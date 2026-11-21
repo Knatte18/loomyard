@@ -35,9 +35,10 @@ A tier's command holds `{targets}`, `{filter}` and optionally `{args}`:
 tiers:
   tier0:
     about: fast tests of the whole solution
-    command: dotnet test {targets} --no-build {filter}
+    command: dotnet test {targets} --no-build {filter} {args}
     all_targets: NORCE.Models.Tests/NORCE.Models.Tests.csproj NORCE.Models.Gated/NORCE.Models.Gated.csproj
     counter: vstest
+    results: trx
     shared_build: true
     filter: "Category!=Slow"
     timeout_min: 30
@@ -52,6 +53,14 @@ A `filter` is allowed only when the command holds `{filter}`.
 A landing tier uses its `filter` only to exclude categories, such as `Category!=Slow`.
 The filter applies at whole scope too,
 and a filter that matches no test passes the tier vacuously and writes a green entry that later gates carry.
+
+`results: trx` makes the gate read the run from a TRX results file instead of the console text.
+It fits only a `vstest` tier whose command holds `{args}`,
+since the gate puts `--results-directory <dir> --logger trx;LogFilePrefix=gate --blame` at the front of the `{args}` words.
+The file then decides the counts and failed tests, whatever console logger the call's own words after `--` choose,
+and a crashed test host's cause reaches the gate log.
+A call whose own words hold a results directory or a `trx` logger is refused, since the gate owns them.
+A tier without `results` keeps counting the console summary and logs no crash cause.
 
 `shared_build: true` makes the tier depend on the hub's `build` step, which lym runs once per call before it,
 so the tier's command carries `--no-build`.
@@ -150,6 +159,7 @@ tiers:
     timeout_min: 120
 ```
 
+The tier sets no `results`, so the gate adds no result words to the benchmark program's `{args}`.
 `slots: all` waits for every running holder to finish.
 It then blocks every new gate run of the hub until the tier ends,
 so other worktrees' gate runs wait while their agents keep working.

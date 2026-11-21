@@ -544,6 +544,16 @@ func TestPlanTierRuns(t *testing.T) {
 			request: testRequest{guards: true},
 			exact:   `gate test: --guards needs the go scoper to find the guard tests, but gate.yaml's scoper is "dotnet"; way forward: drop --guards, then re-run the same command`,
 		},
+		{
+			name: "words after -- that set the results directory of a tier with results trx",
+			mutate: func(cfg *gateslot.Config) {
+				t0 := cfg.Tiers["tier0"]
+				t0.Command, t0.Counter, t0.Results = "dotnet test {targets} {args}", "vstest", gateslot.ResultsTRX
+				cfg.Tiers["tier0"] = t0
+			},
+			request: testRequest{args: []string{"--results-directory", "/elsewhere"}},
+			exact:   `gate test: the words after "--" hold --results-directory, which the gate sets itself because tier0 reads its results file; way forward: drop --results-directory from the words after "--", then re-run the same command`,
+		},
 	}
 	for _, tc := range refusals {
 		t.Run("refuses "+tc.name, func(t *testing.T) {

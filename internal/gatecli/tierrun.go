@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
@@ -70,6 +71,8 @@ type tierResult struct {
 // A run with an invocation lists the worktree's untracked, non-ignored files before and after it.
 // It fails when the run left a file the first listing lacked.
 // A worktree git cannot list is not checked.
+// A run with an invocation first prints envOverrideLine for the tier's env against the session's.
+// The line is printed once, whatever the copies, and heads the result's log.
 func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, request testRequest) tierResult {
 	before, listed := untrackedBeforeRun(run, request.root)
 	return runTierChecked(ctx, out, run, env, request, before, listed)
@@ -81,11 +84,21 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 // A caller that reruns the tier passes the same listing to every attempt,
 // so a file an earlier attempt left still fails the run.
 func runTierChecked(ctx context.Context, out io.Writer, run tierRun, env []string, request testRequest, before map[string]bool, listed bool) tierResult {
+	envLine := ""
+	if len(run.invocations) > 0 {
+		envLine = envOverrideLine(tierName(run.number), renderTierEnv(run.tier), request.sessionEnv)
+	}
+	if envLine != "" {
+		printLine(request.stderr, envLine)
+	}
 	var result tierResult
 	if request.copiesRun > 0 {
 		result = runTierCopies(ctx, run, env, request)
 	} else {
 		result = runTierCommands(ctx, out, run, env, request)
+	}
+	if envLine != "" && result.refusal == "" {
+		result.log = append([]byte(envLine+"\n"), result.log...)
 	}
 	if !listed || result.refusal != "" {
 		return result
@@ -104,6 +117,8 @@ func runTierChecked(ctx context.Context, out io.Writer, run tierRun, env []strin
 // and it returns that line for the caller to print.
 // Every command's GOFLAGS then opens with gateslot.TestCacheOffFlag, so `go test` keeps no test result cache.
 // A passing `vstest` invocation that reported no test prints the line naming it to stderr and the log.
+// A failed run prints and logs each run-level message its test results files report, such as a test host crash.
+// It counts each among the causes.
 // A run with no invocation passes at once with nothing discovered.
 func runTierCommands(ctx context.Context, out io.Writer, run tierRun, env []string, request testRequest) tierResult {
 	started := time.Now()
@@ -140,6 +155,14 @@ func runTierCommands(ctx context.Context, out io.Writer, run tierRun, env []stri
 	}
 
 	var causes []string
+	if exit != 0 {
+		// A crashed test host fails the run with no failed test, so its results file's message is the only cause.
+		for _, line := range resultsFileLines(counter, tierName(run.number)) {
+			logBuffer.WriteString(line + "\n")
+			printLine(request.stderr, line)
+			causes = append(causes, line)
+		}
+	}
 	timedOut := ctx.Err() == nil && errors.Is(tierCtx.Err(), context.DeadlineExceeded) && exit != 0
 	if timedOut {
 		exit = 1
@@ -205,6 +228,42 @@ func runTierCommands(ctx context.Context, out io.Writer, run tierRun, env []stri
 		processCapped: stops.processCap != "", memoryStopped: len(stops.memoryLines()) > 0,
 		failures: failures, causes: causes, unparsed: counter.Unparsed(),
 	}
+}
+
+// envOverrideLine returns the line naming each entry of tierEnv whose variable session sets to another value.
+// tierEnv holds the tier's own env entries, and session the environment of the session that started the call.
+// A result the tier gives reflects the tier's values, so a session that measures through the gate must know them.
+// The line names each variable with the tier's value only, since the session's value may be a secret the tier overrides.
+// A variable the session leaves unset is not named, since the session reads no value of its own for it.
+// Variable names compare without case on Windows, where the environment does.
+// It returns "" when no entry differs.
+func envOverrideLine(tier string, tierEnv, session []string) string {
+	envName := func(name string) string {
+		if runtime.GOOS == "windows" {
+			return strings.ToUpper(name)
+		}
+		return name
+	}
+	sessionValues := make(map[string]string, len(session))
+	for _, entry := range session {
+		if name, value, ok := strings.Cut(entry, "="); ok {
+			sessionValues[envName(name)] = value
+		}
+	}
+	var differing []string
+	for _, entry := range tierEnv {
+		name, value, _ := strings.Cut(entry, "=")
+		if held, set := sessionValues[envName(name)]; set && held != value {
+			differing = append(differing, name+"="+value)
+		}
+	}
+	if len(differing) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("gate test: %s runs with env values that differ from this session's environment: %s; "+
+		"a result of %s reflects the tier's values, not the session's; "+
+		"way forward: read the result under those values, or change tiers.%s.env with \"lym config gate\" from the prime",
+		tier, strings.Join(differing, ", "), tier, tier)
 }
 
 // runStops is what the guards over a tier's commands stopped.
@@ -393,12 +452,19 @@ func retryTier(ctx context.Context, stderr io.Writer, tier string, delay time.Du
 // While a command runs, the process cap watches every process carrying env's run marker, when env sets one,
 // and the memory guard watches its test binaries, when the request turns it on.
 // A tier with memory_mb runs each command under that cap, and a command that cannot be started under it is a refusal.
+// A tier with `results: trx` opens each invocation's {args} with vstestResultsArgs over a fresh temp directory.
+// It refuses a call whose own args hold a results directory or a trx logger, since the gate owns those words.
+// Once the command ends, the counter reads its whole output.
+// The results files there then replace the counts and failures its console output gave, and the directory is removed.
 // After each passing invocation it hands notice the line of noTestNotice, when that line is not empty.
 // It returns that exit code, the commands it rendered, what the guards stopped,
 // and a refusal when a command could not be run at all.
 func runInvocations(ctx context.Context, run tierRun, counter counter, env []string, request testRequest, notice func(string)) (exit int, commands []string, stops runStops, refusal string) {
 	if len(run.invocations) == 0 {
 		return 0, nil, runStops{}, ""
+	}
+	if refusal := resultsArgsRefusal(run.number, run.tier, run.args); refusal != "" {
+		return 0, nil, runStops{}, refusal
 	}
 	if run.tier.PrebuiltLym {
 		bin, cleanup, err := prebuildLym(ctx, request.goBinary, request.root, run.tier.Parallel, request.prebuiltStore, request.pipeWaitDelay, nil)
@@ -434,8 +500,21 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 				continue
 			}
 		}
-		command, err := renderTierCommand(run.number, run.tier, invocation.targets, testTargets, invocation.terms, run.args)
+		args, resultsDir := run.args, ""
+		var vstest *vstestCounter
+		if run.tier.Results == gateslot.ResultsTRX {
+			vstest = counter.(*vstestCounter)
+			if dir, err := lymtemp.MkdirTemp("gate-vstest-"); err != nil {
+				logger.Warn("gate test: could not make the vstest results directory; the console counts stand", "tier", tierName(run.number), "cause", err)
+			} else {
+				resultsDir = dir
+				args = append(vstestResultsArgs(dir), run.args...)
+				vstest.startInvocation()
+			}
+		}
+		command, err := renderTierCommand(run.number, run.tier, invocation.targets, testTargets, invocation.terms, args)
 		if err != nil {
+			removeResultsDir(resultsDir)
 			return 0, commands, runStops{}, err.Error()
 		}
 		commands = append(commands, command)
@@ -480,6 +559,16 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 		}
 		exit = tierExitCodeOf(runErr)
 		logger.Info("gate test: tier command ended", "tier", tierName(run.number), "exit", exit, "error", runErr, "memory_cap_kill", capKilled)
+		if resultsDir != "" {
+			// A last console line without a newline is still pending, and would count on top of the file's results.
+			if err := counter.Flush(); err != nil {
+				logger.Warn("gate test: could not flush the tier's output", "tier", tierName(run.number), "cause", err)
+			}
+			if results, read := readTRXResults(resultsDir); read {
+				vstest.replaceInvocation(results)
+			}
+			removeResultsDir(resultsDir)
+		}
 		if errors.Is(runErr, proc.ErrMemoryCap) && ctx.Err() == nil {
 			return 0, commands, runStops{}, tierMemoryCapRefusal(tierName(run.number), run.tier.MemoryMB, dir, runErr)
 		}
@@ -494,6 +583,16 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 		}
 	}
 	return 0, commands, runStops{}, ""
+}
+
+// removeResultsDir removes a vstest invocation's results directory, doing nothing for an empty dir.
+func removeResultsDir(dir string) {
+	if dir == "" {
+		return
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		logger.Warn("gate test: could not remove the vstest results directory", "dir", dir, "cause", err)
+	}
 }
 
 // noTestNotice returns the line of a passing `vstest` invocation whose output reported no test, or "" for any other.
