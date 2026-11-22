@@ -317,7 +317,7 @@ func TestComposePrompt_RendersEngineBlocksForTheHalfsEngine(t *testing.T) {
 			if err != nil {
 				t.Fatalf("composeReviewPrompt(%s) = %v; want nil error", tt.engine, err)
 			}
-			fix, err := composeFixPrompt(stencilsDir, testSpecsDir, tt.engine, &p, "", fixWork(p.ReviewPath, "", false), testFixFiles)
+			fix, err := composeFixPrompt(stencilsDir, testSpecsDir, tt.engine, &p, "", fixWork(p.ReviewPath, "", false, FixRerun{}), testFixFiles)
 			if err != nil {
 				t.Fatalf("composeFixPrompt(%s) = %v; want nil error", tt.engine, err)
 			}

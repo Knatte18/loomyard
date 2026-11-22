@@ -139,6 +139,9 @@
 // A finished fix whose gate failed archives the round's files and returns a counted Stuck with an empty path,
 // so the Bouncer's next round reviews afresh.
 // Any other fix failure archives the fixer report alone, so a resume re-spawns the fixer without the reviewer.
+// The round's snapshot record keeps why the report was set aside, under the accepted review's digest.
+// The next fixer over that review is told it runs again, why, and where the report went;
+// so is a retry that finds a report its died or timed-out first attempt left.
 //
 // Reviewer and fixer fans are recorded in the round's usage record before the first attempt, via `fans_recorded`.
 // A later edit of the per-round fan lists therefore changes only rounds spawned after the edit.

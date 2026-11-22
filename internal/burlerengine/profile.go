@@ -140,6 +140,8 @@ type RunOpts struct {
 	// DecisionsRouted marks a fix whose caller sends the review's decision-class findings to the run's parent.
 	// Those findings are then not fixer work; false keeps every finding as fixer work.
 	DecisionsRouted bool
+	// Rerun, when its Reason is set, tells the fixer why it runs again over a review an earlier fixer session worked.
+	Rerun FixRerun
 	// Assist is the review half's assistant reviewer's model choice; a choice with no model runs no assistant.
 	// AssistFan names the assistant's fan, empty for a solo assistant, and AssistKey the config key its model came from.
 	Assist    shuttleengine.ModelChoice

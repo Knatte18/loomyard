@@ -387,6 +387,9 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 		if archErr := archiveStaleOutputs(paths, p.now); archErr != nil {
 			logger.Warn("shedadapters: archive round outputs on exit failed", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", archErr)
 		}
+		if clearErr := clearFixerRerun(p.runDir, round); clearErr != nil {
+			logger.Warn("shedadapters: burler review could not drop the rerun record of a retired round", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", clearErr)
+		}
 	}
 	failureExit := func(primaryErr error) (shedengine.Outcome, shedengine.OutputPointer, error) {
 		archiveRound()

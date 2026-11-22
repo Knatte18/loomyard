@@ -69,6 +69,9 @@
 // The fixer's write surface is the fixer-report alone beyond the target scope (see FixScope).
 // Its gate is RunOpts.Gate, then the fixer-report entry.
 //
+// RunOpts.Rerun marks a fix that runs again over a review an earlier fixer session worked.
+// The fixer's work then says it runs again, not for new work, why, and where the earlier report was archived.
+//
 // RunOpts.DecisionsRouted marks a caller that sends decision-class findings to the run's parent.
 // Fix then counts those findings as no work until the parent rules on one.
 // A ruling that reaches the fixer makes the ruled finding its work, and the fixer-report records it under Rulings.
@@ -94,6 +97,7 @@
 // A done twill fixer is audited by `auditFixRound` before its gate is looked at.
 // A fork that wrote, ran a mutating git command, called the Agent tool or was spawned with a name is a hard error,
 // whether or not the gate passed.
+// Its way forward says when the audit found no target change: no fork wrote a file or changed the target's repository.
 // A wrong fork count or a fork that returned no report is a warning only, since the fix is on disk.
 // Subagents the fixer starts to make its fixes are not audited; only the self-check forks are held to the read-only rule.
 //
@@ -250,9 +254,12 @@
 // A Bash command is git-mutating when the subcommand word of one of its git invocations mutates.
 // A mutating verb named as an argument passes, and so does a -h or --help request.
 // Bare or list-mode `git tag` and read-only `git branch` forms pass too.
-// A mutating invocation also passes inside a repository the fork itself created,
-// so a fork may experiment on a throwaway repository in its scratchpad.
-// `git push`, --git-dir, --work-tree and an unresolvable directory never pass that way.
+// A mutating invocation also passes inside a repository the fork created by git init, git clone or git worktree add.
+// So a fork may experiment on a throwaway repository in its scratchpad.
+// --git-dir, --work-tree and an unresolvable directory never pass that way.
+// A `git push` passes when its destination leads into such a repository:
+// a remote that git remote add, git remote set-url or git clone pointed into one, or a path into one.
+// A push with no destination or after a config key that may redirect it, a remote., url. or branch. key, never passes.
 //
 // Forks run in the handler's own session under the handler's own model; there is no model-per-fork axis.
 // Named forks silently lose their inherited context in Claude Code releases up to and including 2.1.206.

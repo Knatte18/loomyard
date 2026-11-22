@@ -231,16 +231,36 @@ func composeFixPrompt(stencilsDir, specsDir, engine string, p *Profile, friction
 // With no gate-findings path the review's findings are the work;
 // with one, the review holds no findings but the round's gates failed, so the work is what that file names.
 // With decisionsRouted set, the review's decision-class findings went to the run's parent, not the fixer.
-func fixWork(reviewPath, gateFindingsPath string, decisionsRouted bool) string {
+// A rerun with a reason adds a paragraph saying the fix runs again, not for new work, and why.
+func fixWork(reviewPath, gateFindingsPath string, decisionsRouted bool, rerun FixRerun) string {
+	var work string
 	switch {
 	case gateFindingsPath == "" && !decisionsRouted:
-		return fmt.Sprintf("Fix every finding of the review at `%s`.", reviewPath)
+		work = fmt.Sprintf("Fix every finding of the review at `%s`.", reviewPath)
 	case gateFindingsPath == "":
-		return fmt.Sprintf("Fix every finding of the review at `%s` but its `decision`-class findings. %s", reviewPath, routedDecisionsLine)
+		work = fmt.Sprintf("Fix every finding of the review at `%s` but its `decision`-class findings. %s", reviewPath, routedDecisionsLine)
 	case !decisionsRouted:
-		return fmt.Sprintf("The review at `%s` holds no findings, but the round's gates failed on the target as it stands. Fix what the gate findings in `%s` name.", reviewPath, gateFindingsPath)
+		work = fmt.Sprintf("The review at `%s` holds no findings, but the round's gates failed on the target as it stands. Fix what the gate findings in `%s` name.", reviewPath, gateFindingsPath)
+	default:
+		work = fmt.Sprintf("The review at `%s` holds no findings but `decision`-class ones, and the round's gates failed on the target as it stands. Fix what the gate findings in `%s` name. %s", reviewPath, gateFindingsPath, routedDecisionsLine)
 	}
-	return fmt.Sprintf("The review at `%s` holds no findings but `decision`-class ones, and the round's gates failed on the target as it stands. Fix what the gate findings in `%s` name. %s", reviewPath, gateFindingsPath, routedDecisionsLine)
+	if rerun.Reason == "" {
+		return work
+	}
+	return work + "\n\n" + fixRerunStatement(rerun)
+}
+
+// fixRerunStatement tells a fixer it runs again over a review an earlier fixer session worked, and why.
+// It names the earlier session's archived report when there is one, so the fixer can carry its dispositions over.
+func fixRerunStatement(rerun FixRerun) string {
+	earlier, carryOver := "An earlier fixer session over this review ended without a fixer-report", "."
+	if rerun.Report != "" {
+		earlier = fmt.Sprintf("An earlier fixer session over this review wrote a fixer-report, now set aside as `%s`", rerun.Report)
+		carryOver = ", carrying over each of its dispositions that still applies."
+	}
+	return fmt.Sprintf("This fix runs again, not for new work. %s; the reason: %s. "+
+		"The target may already hold that session's changes: check each finding against the target as it stands, "+
+		"keep each change that holds, and write the fixer-report afresh%s", earlier, rerun.Reason, carryOver)
 }
 
 // routedDecisionsLine tells a fixer the review's decision-class findings went to the run's parent, not to it.
