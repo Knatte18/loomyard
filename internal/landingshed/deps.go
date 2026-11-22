@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -406,8 +407,9 @@ type Deps struct {
 }
 
 // PullRequestDeps carries the told seams the PR-Review row decides and opens the run's pull request through.
-// The row treats every field but `ParentReviewWanted`, `AskParent`, `BeamRecord` and `DropBeamRecord` as required.
+// The row treats every field as required but the ones `optionalPullRequestSeams` names.
 // It returns an error naming the first one left unset.
+// A review recorded under autonomy also requires `AskPRReview` and `PRReviewStanding`.
 type PullRequestDeps struct {
 	// RecordPath is the run's pull-request record file, tracked with the run's records.
 	// RecordLockPath is the advisory lock that guards it.
@@ -467,6 +469,17 @@ type PullRequestDeps struct {
 	// DropBeamRecord drops the pull request from the beam's landing record and commits the landing directory.
 	// It is nil on every run but a beam's.
 	DropBeamRecord func() error
+	// Autonomy reads the run's autonomy at the moment of the call.
+	// The review reads it once, when it first starts a session, and records the value in the pull request record.
+	// A nil Autonomy reads as false.
+	Autonomy func() bool
+	// AskPRReview records a PR-Review ask to the run's parent orch for the pull request at prURL at head, and posts it.
+	// It returns the ask as it then stands.
+	// A review recorded under autonomy needs it.
+	AskPRReview func(head, prURL string) (burlerengine.ParentAsk, error)
+	// PRReviewStanding reads where the run's newest PR-Review ask stands at head.
+	// A review recorded under autonomy needs it.
+	PRReviewStanding func(head string) (PRReviewStanding, error)
 }
 
 // ParentOwnership is who owns the parent a run lands on.

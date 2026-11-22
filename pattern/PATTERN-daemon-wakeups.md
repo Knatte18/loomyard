@@ -35,6 +35,9 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 - the current capture's lock wait in `internal/driftengine/capture.go`:
   it polls the capture lock from one second and takes it once free,
   and it doubles to thirty seconds while the lock stays held,
+- the autonomous judge's wait for the parent's answer in `internal/driftengine/verify.go`:
+  it waits from one second and doubles to a minute while the ask record is unchanged,
+  and returns to one second when it changes,
 - the pause hold in `internal/pauserecord/hold.go`:
   it polls from one second and doubles to five seconds while the covering entry is unchanged,
 - shuttle's `Wait`,

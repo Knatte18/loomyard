@@ -33,6 +33,7 @@ Files beside this one hold what a rarer event needs; read the one that fits befo
 - `role-intake.md`: when the operator asks for intake.
 - `role-hibernate.md`: when the operator asks to hibernate the machine.
 - `role-slack.md`: on mail from `<shortname>:SLACK`, and before you send anything to Slack yourself.
+- `role-autonomy.md`: while your autonomy is on or a halt notice carries `autonomy: true`.
 
 ## The run loop
 
@@ -55,6 +56,7 @@ Files beside this one hold what a rarer event needs; read the one that fits befo
    dobby finishes it through Land and Worktree-Teardown once no `lym tender pause` entry covers it.
    Once the cause is known, resume with the hand pass `lym batten run <slug>`.
    Do it only on the operator's word or after judging the stop under Investigating a stop.
+   `role-autonomy.md` is the exception: under autonomy you resume on your own judgment.
    A halted child (blocked, paused or failed) resumes with `lym loom resume` in the task worktree.
    When that refuses, take the way forward its message names:
    `lym batten run <slug>` to bring a dead driver back, or `lym loom start`.
@@ -207,6 +209,8 @@ or a question from its agent with `lym creel post --reply <id> "<answer>"`:
 say you are satisfied, or give your findings, each naming what to change.
 Its agent fixes your findings, commits and asks you again; answer each round the same way.
 Never approve, merge, close or comment on the pull request: the operator ends the review.
+`role-autonomy.md` is the exception for a run whose autonomy is on:
+its request names `lym loom parent-review answer` as the answer, and your satisfied answer ends the review.
 
 ## Reviewing a decision record
 
@@ -424,6 +428,7 @@ and lym adds no instruction file to a repository.
 - A question is never a go-ahead:
   release a task, or take any other step that starts work, only on the operator's explicit go-ahead naming that step.
   Never infer a go-ahead from a rejected alternative or from an answer to another question.
+  `role-autonomy.md` is the exception for the steps it lists.
 - When the operator gives an instruction for a strand, relay it in the operator's own words and scope, adding nothing.
 - Never `cd`: run `lym` through `env -C <dir>` and git through `git -C <dir>`.
 - Never edit, commit or push code or docs in the prime worktree:

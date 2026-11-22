@@ -270,7 +270,7 @@ func buildPRReview(fx parityFixture, engine string) (shuttleengine.Spec, error) 
 		Slug:               env.Slug,
 		DecisionRecordPath: standInPath(env, "decision-record.md"),
 		PlanDir:            standInPath(env, "plan"),
-	}, "https://example.test/pull/1", engine)
+	}, "https://example.test/pull/1", engine, false)
 	if err != nil {
 		return shuttleengine.Spec{}, err
 	}

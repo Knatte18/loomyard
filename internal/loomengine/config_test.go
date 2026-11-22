@@ -138,6 +138,7 @@ var templateDefaults = map[string]any{
 	"CodeAutoAccept":                true,
 
 	"PRReviewSmallMax":                 3,
+	"PRReviewParentTimeoutMin":         60,
 	"DiscussionReviewAskParent":        false,
 	"DiscussionReviewParentTimeoutMin": 30,
 	"CodeReviewAskParent":              false,
@@ -227,6 +228,11 @@ review_timeout_min: 240
 			name:   "pr_review_small_max overridden",
 			values: map[string]string{"pr_review_small_max": "5"},
 			mutate: func(c *Config) { c.PRReviewSmallMax = 5 },
+		},
+		{
+			name:   "pr_review_parent_timeout_min overridden",
+			values: map[string]string{"pr_review_parent_timeout_min": "5"},
+			mutate: func(c *Config) { c.PRReviewParentTimeoutMin = 5 },
 		},
 		{
 			name:   "Discussion-Review parent-review keys overridden",
@@ -732,6 +738,8 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"zero discussion_review_parent_timeout_min", "discussion_review_parent_timeout_min", "0", []string{"must be at least 1", positiveIntegerForward}, ""},
 		{"negative discussion_review_parent_timeout_min", "discussion_review_parent_timeout_min", "-1", []string{"must be at least 1", positiveIntegerForward}, ""},
 		{"zero code_review_parent_timeout_min", "code_review_parent_timeout_min", "0", []string{"must be at least 1", positiveIntegerForward}, ""},
+		{"zero pr_review_parent_timeout_min", "pr_review_parent_timeout_min", "0", []string{"must be at least 1", positiveIntegerForward}, ""},
+		{"negative pr_review_parent_timeout_min", "pr_review_parent_timeout_min", "-1", []string{"must be at least 1", positiveIntegerForward}, ""},
 		{"negative review_max_bounces", "review_max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, or to a positive integer"}, ""},
 		{"negative discussion_max_bounces", "discussion_max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, to a positive integer, or to null to take review_max_bounces"}, ""},
 		{"negative code_max_bounces", "code_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
@@ -1017,6 +1025,43 @@ func TestLandingAndApprovalAccessors(t *testing.T) {
 	for _, subject := range []string{"loom: run records checkpoint for landing ", "batten: Land -> running"} {
 		if slug, ok := LandingCheckpointSlug(subject); ok || slug != "" {
 			t.Errorf("LandingCheckpointSlug(%q) = %q, %v; want empty, false", subject, slug, ok)
+		}
+	}
+}
+
+// TestApplyAutonomy pins what the run's autonomy forces on the resolved config.
+// It also pins what the setting lookup answers for it.
+// Autonomy on forces three keys from their layered values and keeps the two review ask keys as layered.
+// Autonomy off keeps every layered value.
+func TestApplyAutonomy(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	layered := Config{PRReviewAskParent: false, DiscussionInteractive: true, RaddleAutoApprove: false, CodeReviewAskParent: true, DiscussionReviewAskParent: false}
+
+	want := layered
+	want.PRReviewAskParent, want.DiscussionInteractive, want.RaddleAutoApprove = true, false, true
+	if got := ApplyAutonomy(layered, true); !reflect.DeepEqual(got, want) {
+		t.Errorf("ApplyAutonomy(layered, true) = %+v; want %+v", got, want)
+	}
+	if got := ApplyAutonomy(layered, false); !reflect.DeepEqual(got, layered) {
+		t.Errorf("ApplyAutonomy(layered, false) = %+v; want %+v", got, layered)
+	}
+
+	settings := []struct {
+		key        string
+		wantValue  bool
+		wantForced bool
+	}{
+		{"pr_review_ask_parent", true, true},
+		{"discussion_interactive", false, true},
+		{"raddle_auto_approve", true, true},
+		{"code_review_ask_parent", false, false},
+		{"discussion_review_ask_parent", false, false},
+		{"raddle", false, false},
+	}
+	for _, setting := range settings {
+		if value, forced := AutonomyForcedSetting(setting.key); value != setting.wantValue || forced != setting.wantForced {
+			t.Errorf("AutonomyForcedSetting(%q) = %v, %v; want %v, %v", setting.key, value, forced, setting.wantValue, setting.wantForced)
 		}
 	}
 }

@@ -149,7 +149,37 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 		StampWake: func(at time.Time) error {
 			return shedrun.WriteWakeStamp(shedrun.WakeRecord(location, shedrun.SelfRunID), pawlengine.NameBeamAwait, at)
 		},
-		Notify: notifyPosted,
+		Notify:     notifyPosted,
+		Autonomous: func() bool { return hubgeom.Autonomy(location, slug) },
+		HoldsCommits: func() (bool, error) {
+			hub, err := prime()
+			if err != nil {
+				return false, err
+			}
+			origin, found, err := fabricengine.ReadOriginFor(hub, slug)
+			if err != nil {
+				return false, err
+			}
+			if !found {
+				return false, fmt.Errorf("the beam %s records no origin", slug)
+			}
+			beam, err := fabricengine.Open(location)
+			if err != nil {
+				return false, err
+			}
+			return beam.HeadHoldsCommitsNotIn("refs/heads/" + origin.ParentBranch)
+		},
+		WorkRemains: func() (bool, error) {
+			hub, err := prime()
+			if err != nil {
+				return false, err
+			}
+			blockers, err := battencli.ReadBeamLandBlockers(hub, slug)
+			if err != nil {
+				return false, err
+			}
+			return !blockers.Empty(), nil
+		},
 		Down: func() error {
 			_, err := orchcli.BeamDown(location)
 			return err

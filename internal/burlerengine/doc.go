@@ -51,6 +51,7 @@
 // RunOpts.ParentAsk names the round's ask to its parent orch.
 // Asks live in a never-tracked record that ParentReviewFilesOf locates.
 // An ask moves only from pending-post to open and from either to an end state: done, timeout, no-parent or not-sent.
+// An ended ask may be cleared (ClearParentAsk): a cleared ask answers nothing, and the seat that made it asks again.
 // Every move takes the record's one lock, so an answer and a timeout never both land.
 // The chair keeps every finding of a done parent report, tagged `origin: parent` (ParentOrigin).
 // It lists the report ids it covers in `parent_ids` (Finding.ParentIDs).

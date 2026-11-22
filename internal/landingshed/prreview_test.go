@@ -21,6 +21,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-github/v75/github"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
@@ -552,8 +553,9 @@ func TestPRReview_Call(t *testing.T) {
 			if !found {
 				t.Fatalf("Call() left no record; want %+v", *tt.wantRecord)
 			}
-			got = withSessionOf(got, *tt.wantRecord)
-			if diff := cmp.Diff(*tt.wantRecord, got); diff != "" {
+			want := withRecordedAutonomyOfStartedSession(*tt.wantRecord, fx.deps)
+			got = withSessionOf(got, want)
+			if diff := cmp.Diff(want, got); diff != "" {
 				t.Errorf("record mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -739,6 +741,7 @@ const testVerdict = "## Regression check\n\n- Scope: full.\n- Compare: passed at
 // Its change description is titled "Change title", and its body is "\nChange body\n".
 // The credit is on, and claude is the one engine that ran.
 // Every PullRequest seam is filled.
+// Autonomy reads false, AskPRReview answers an ask numbered 1, and PRReviewStanding answers ask-again.
 // The origin is a GitHub one, beam.yaml's pull_request is on, the task head is "head-new", and the worktree is clean.
 // No pause covers the run, and the clock moves only when the wait sleeps.
 // A test replaces the seams it scripts.
@@ -795,6 +798,11 @@ func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
 			ShedStatus:         func() (shedengine.Status, error) { return shedengine.Status{}, nil },
 			ParentReviewWanted: func() (bool, error) { return false, nil },
 			AskParent:          func(string) (bool, error) { return true, nil },
+			Autonomy:           func() bool { return false },
+			AskPRReview: func(string, string) (burlerengine.ParentAsk, error) {
+				return burlerengine.ParentAsk{Number: 1}, nil
+			},
+			PRReviewStanding: func(string) (PRReviewStanding, error) { return PRReviewAskAgain, nil },
 		},
 	}
 }

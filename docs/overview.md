@@ -837,6 +837,7 @@ User-facing modules each get one `lym <module>` namespace:
   The pawl recipe is a loom recipe whose rows are Preflight, Record-Write, Beam-Up, Beam-Await, Finalize and Beam-Down, with Beam-Await as its build row and no review round of its own.
   At Beam-Await the beam's orch works the landing with the operator through `lym beam describe`, which records the change description the orch writes, the end result and every member pull request, never the record's added entries, and updates a recorded pull request, `lym beam pr open`, `update`, `status` and `close`, and `lym beam ready`, which is final;
   Finalize then merges the beam into its parent, through the pull request the beam's landing record names when one is recorded, and keeps that pull request's text.
+  An autonomous beam's Beam-Await row posts one `[beam drained]` line to its orch once the beam holds commits beyond its parent and no member, child pair or ready record stands.
   Land starts a short batten run over the `beam` recipe, after a refusal that stops it while members or forked pairs remain under the beam.
   Start brings up a beam's dobby and orch, the one the acting worktree is or the one a slug names, or with `--all` the prime and every beam this machine owns, each part only when it is not live.
   Stop takes a beam's orch and dobby down.
@@ -946,6 +947,7 @@ User-facing modules each get one `lym <module>` namespace:
   The presence is the machine's, beside its credential file, so away holds for every hub and orch on the machine.
   The operator's message in Slack sets the presence to `slack`, and a line the operator types in an orch's pane sets it back to `terminal`, through the orch's prompt hook (`lym slack hook`), which tells those lines from the ones lym types.
   While the presence is `slack`, the turn-end hook of an orch whose button is on posts each turn's final reply to its channel.
+  While the orch's autonomy is on, the hook posts only a reply that opens with `[operator]`.
   reed's status bar shows the session orch's button and the presence as the `slack` and `away` toggles; a click on `slack` flips that orch's button, and on `away` switches the presence.
   While the presence is `slack`, each worktree's dobby leaves `SLACK` one line for a run waiting at PR-Review or Sampler-Session, every `remind_after_min` minutes of the wait.
   ✅ Implemented. See the `internal/slackengine` and `internal/slackcli` package documentation.
@@ -1086,7 +1088,7 @@ User-facing modules each get one `lym <module>` namespace:
   The list is `contracts/recipes/tapestry-recipe.yaml`, assembled by `internal/loomrecipe`.
   The packages are `internal/loomcli` + `internal/loomengine` + `internal/loomshed`.
   Two more packages serve it: `internal/loomrecipe` and `internal/shedverbs`.
-  The verbs are `lym loom start|resume|run|step|status|pause|commit-records|validate-discussion|validate-plan|validate-parts|join-parts|insert-card|remove-card|restore-renumber|validate-description|lint-comments|lint-pattern|fmt|circling accept|continue|decision add|decision replace|decision store|parent-review answer|parent-review await|peers|peers show|raddle-propose|raddle-approve`.
+  The verbs are `lym loom start|resume|run|step|status|pause|commit-records|validate-discussion|validate-plan|validate-parts|join-parts|insert-card|remove-card|restore-renumber|validate-description|lint-comments|lint-pattern|fmt|circling accept|continue|decision add|decision replace|decision store|parent-review ask|parent-review answer|parent-review await|peers|peers show|raddle-propose|raddle-approve`.
   `lym loom raddle-propose` checks the raddle agent's proposal against the format checks.
   `lym loom raddle-approve` records the operator's approval of a proposal that passed.
   `internal/shedverbs` owns the generic `run`/`step`/`status`/`pause` verb bodies that `loomcli` arms;
@@ -1382,10 +1384,14 @@ User-facing modules each get one `lym <module>` namespace:
   When the resolver does not say so, the row passes.
   The wait takes no parent lock.
   It gates and pushes the agent's commits through the `pr-review` gate key, never onto a merged pull request.
-  It mails a failure to the agent once per head, and the agent's `lym loom pr-continue` makes it gate that head again.
+  It mails a failure to the agent once per head, and a failure outside the change, such as a file another process held open,
+  is retried with the agent's `lym loom pr-continue`, which makes the wait gate that head again.
   It reads the pull request at most once a minute and before each gate.
   It ends Done when the pull request is merged or approved at the gated head.
   It also ends Done when the operator's `lym loom pr-continue` ends the review.
+  Under a recorded autonomy of true, only the parent's satisfied answer at the gated head ends the review on the continue flag.
+  Any other standing clears the flag and mails the session that the review stays open, and the wait goes on.
+  A pull request closed on GitHub without a merge halts the row under that autonomy, and halts Finalize too.
   With `loom.yaml`'s `pr_review_ask_parent` on, the row asks the parent orch to review the open pull request.
   It asks once per pull request until a send-back clears the ask, and the orch answers the row's session, whose agent fixes the findings.
   `pr_review_small_max` bounds how many findings that agent fixes in place between two send-backs, or before the first, when none is BLOCKING.
@@ -1477,6 +1483,7 @@ User-facing modules each get one `lym <module>` namespace:
   `raddle_auto_approve` files a raddle proposal once its gate passes, with no operator approval; a run whose recipe rows hold a split perch never reads it.
   `pr_review_ask_parent` has PR-Review ask the parent orch to review the open pull request.
   It is open to the local layer, so a task's `run_settings` sets it for one run.
+  `pr_review_parent_timeout_min` sets the minutes from a PR-Review ask to its deadline, 60 by default, and is open to `run_settings`.
   `pr_review_small_max` is the most findings PR-Review fixes in place between two send-backs to Code-Review, or before the first, when none is BLOCKING; the default is 3.
   It is open to the local layer too.
   `discussion_review_ask_parent` has each Discussion-Review round ask the parent orch to review the decision record.

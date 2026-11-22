@@ -183,7 +183,8 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 	underHold := orchcli.UnderOwnHold(prime)
 	runNotices := battencli.DobbyRunNotices(prime, pause.RecordPath, quiet)
 	runNotices.Post = func(_ context.Context, slug, line string) error {
-		return requirePosted(orchcli.NotifyRunFrom(worktree, geom.Slug, dobbyProgram, runNoticeTags(slug), line))
+		stamped := orchcli.WithRunAutonomy(worktree, slug, line)
+		return requirePosted(orchcli.NotifyRunFrom(worktree, geom.Slug, dobbyProgram, runNoticeTags(slug), stamped))
 	}
 	deps := dobbyengine.Deps{
 		Now:   time.Now,

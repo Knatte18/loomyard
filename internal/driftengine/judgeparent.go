@@ -102,6 +102,7 @@ func (s *JudgeParentSeat) heldJudgeAsk(spawnID string) (bool, error) {
 // an open ask is set timeout, and a new ask naming the new rulings goes out in its place.
 // A satisfied answer to the current rulings passes, and so does an ask that never reached the parent:
 // the judge goes on without it.
+// A held ask that was cleared answers nothing, so a new ask of the next round goes out in its place.
 func ParentAgreementGateEntry(seat *JudgeParentSeat, want JudgementWant, judgementPath string, wait time.Duration, limit time.Time, now func() time.Time) shuttleengine.GateEntry {
 	return shuttleengine.GateEntry{Name: ParentAgreementEntryName, Gate: seat.agreementGate(want, judgementPath, wait, limit, now), Attempts: parentAgreementAttempts}
 }
@@ -133,6 +134,9 @@ func (s *JudgeParentSeat) agreementGate(want JudgementWant, judgementPath string
 		}
 		ask, held := record.LatestOfSeed(seed)
 		round := judgeAskRound
+		if held && ask.Cleared {
+			held, round = false, ask.Round+1
+		}
 		if held && ask.Digest != digest {
 			switch {
 			case !ask.State.Ended():

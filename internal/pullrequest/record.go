@@ -28,7 +28,10 @@ type Record struct {
 	// MailedHead is the head whose gate failure was mailed, so one failure is mailed once and the head is not gated again.
 	// `lym loom pr-continue` clears it, so the PR-Review row gates that head again.
 	MailedHead string `json:"mailed_head,omitempty"`
-	// StrandGUID, StrandName, SessionID and Engine name the interactive PR-Review session, so a later pass resumes it.
+	// Autonomy is the run's autonomy as the review recorded it, true or false for the rest of the review.
+	// It is nil until PR-Review records it, which a record written before the key existed also reads as.
+	Autonomy *bool `json:"autonomy,omitempty"`
+	// StrandGUID, StrandName, SessionID and Engine name the PR-Review session, so a later pass resumes it.
 	StrandGUID string `json:"strand_guid,omitempty"`
 	StrandName string `json:"strand_name,omitempty"`
 	SessionID  string `json:"session_id,omitempty"`
@@ -83,6 +86,25 @@ func UpdateRecord(path, lockPath string, mutate func(rec *Record) error) error {
 		}
 		return cur, nil
 	})
+}
+
+// ClearReviewSession clears the record's Autonomy and ParentReviewAsked under its lock.
+// It also clears StrandGUID, StrandName, SessionID and Engine.
+// Every other field is kept.
+// A re-entry of the review then records its autonomy anew.
+// It sends its first ask to the parent again and starts a new session.
+// A missing record is no error and creates no file.
+func ClearReviewSession(recordPath, lockPath string) error {
+	err := UpdateRecord(recordPath, lockPath, func(rec *Record) error {
+		rec.Autonomy = nil
+		rec.ParentReviewAsked = false
+		rec.StrandGUID, rec.StrandName, rec.SessionID, rec.Engine = "", "", "", ""
+		return nil
+	})
+	if errors.Is(err, ErrNoRecord) {
+		return nil
+	}
+	return err
 }
 
 // RemoveRecord deletes the record's file under the lock at lockPath; a file already absent is no error.

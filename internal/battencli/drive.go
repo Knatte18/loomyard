@@ -575,6 +575,8 @@ func (c *battenCLI) loadedArbiterDeps() (shedarbiter.Deps, error) {
 // haltedRowGuard returns the arbiter's goto guard, which admits only the row the run is halted at.
 // The guard reads the halted row from the status on each call.
 // A goto to an earlier row would re-run Seed-Child over a live pair's local config layer and seed, or Worktree-Create.
+// The batten recipe has no PR-Review row, so no batten goto or relaunch moves a run onto that row:
+// the goto and relaunch requests built here pass no hook that resets a PR-Review review.
 func (c *battenCLI) haltedRowGuard() shedengine.GotoGuard {
 	return func(target string) (string, error) {
 		status, found, err := c.readRunStatus()

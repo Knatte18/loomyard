@@ -38,7 +38,8 @@ const (
 // Otherwise the row pushes the task branch and finds or opens the pull request.
 // The pull request's title comes from the change description.
 // Its body comes from the description's body, the regression check and the credit block.
-// The row records it, keeps one interactive session for the operator to discuss it in, and waits on it.
+// The row records it, keeps one session to review it in, and waits on it.
+// That session is interactive for the operator, and non-interactive when the run's autonomy is recorded true.
 // With the parent review setting on, it asks the parent orch to review the open pull request before it waits.
 // The wait gates and pushes the agent's commits.
 // The text is built from the change description, the regression check and the credit block.
@@ -201,7 +202,29 @@ func (p *PRReview) decide(ctx context.Context) *ending {
 }
 
 // optionalPullRequestSeams names the PullRequestDeps fields the row runs without.
-var optionalPullRequestSeams = []string{"ParentReviewWanted", "AskParent", "BeamRecord", "DropBeamRecord"}
+var optionalPullRequestSeams = []string{"ParentReviewWanted", "AskParent", "BeamRecord", "DropBeamRecord", "Autonomy", "AskPRReview", "PRReviewStanding"}
+
+// recordedAutonomy reports whether rec records the run's autonomy as true.
+// A record that holds none reads as false.
+func recordedAutonomy(rec pullrequest.Record) bool {
+	return rec.Autonomy != nil && *rec.Autonomy
+}
+
+// checkAutonomySeams returns an error naming the first seam that Deps leaves unset and a review under autonomy needs.
+// A review not recorded under autonomy needs none.
+func (p *PRReview) checkAutonomySeams(rec pullrequest.Record) error {
+	if !recordedAutonomy(rec) {
+		return nil
+	}
+	pr := p.deps.PullRequest
+	switch {
+	case pr.AskPRReview == nil:
+		return fmt.Errorf("landingshed: %s: Deps.PullRequest.AskPRReview is not set, and the review is recorded under autonomy", p.name)
+	case pr.PRReviewStanding == nil:
+		return fmt.Errorf("landingshed: %s: Deps.PullRequest.PRReviewStanding is not set, and the review is recorded under autonomy", p.name)
+	}
+	return nil
+}
 
 // checkWiring returns an error naming the first value the row needs that Deps leaves unset:
 // a PullRequestDeps field that optionalPullRequestSeams does not name, or TaskHead.
@@ -346,17 +369,26 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) *ending {
 	return p.wait(ctx, api, rec, entryStatus, entryReadAt, text)
 }
 
-// parentReviewRequestPrefix opens the request the row mails the parent orch, so the orch knows the line for one.
-const parentReviewRequestPrefix = "[pr-review request]"
-
-// askParentReview asks the parent orch to review the open pull request rec records, when the setting is on.
-// It asks once per record until a send-back clears the ask, and the request names the PR-Review session the orch answers.
+// askParentReview asks the parent orch to review the open pull request rec records.
+// It asks once per record until a send-back clears the ask.
+// A review recorded under autonomy asks through a recorded PR-Review ask at the task head, whatever the setting says.
+// An ask recorded in any state, a no-parent one included, marks the record asked.
+// The session asks again as its prompt says.
+// A failed ask and a failed write of the mark are logged, and the row's next entry asks again.
+// Otherwise it asks when the setting is on, and the request names the PR-Review session the orch answers.
 // An unreadable setting, a failed post, an orch no record names and a failed write of the ask into the record are logged,
 // and the row's next entry asks again.
-// The row asks and does not gate: the orch's answer reaches the session's agent as creel mail, which the row never reads.
+// That ask is not gated: the orch's answer reaches the session's agent as creel mail, which the row never reads.
 func (p *PRReview) askParentReview(rec pullrequest.Record) {
 	pr := p.deps.PullRequest
-	if rec.ParentReviewAsked || pr.ParentReviewWanted == nil || pr.AskParent == nil {
+	if rec.ParentReviewAsked {
+		return
+	}
+	if recordedAutonomy(rec) {
+		p.askPRReview(rec)
+		return
+	}
+	if pr.ParentReviewWanted == nil || pr.AskParent == nil {
 		return
 	}
 	wanted, err := pr.ParentReviewWanted()
@@ -382,10 +414,27 @@ func (p *PRReview) askParentReview(rec pullrequest.Record) {
 	}
 }
 
+// askPRReview records and posts the PR-Review ask for the pull request rec records at the task head, and marks rec asked.
+// A failed ask and a failed write of the mark are logged and leave the row's next entry to ask again.
+func (p *PRReview) askPRReview(rec pullrequest.Record) {
+	head, err := p.deps.TaskHead()
+	if err != nil {
+		logger.Warn("landingshed: could not read the task head, so the parent orch is not asked to review the pull request", "row", p.name, "cause", err)
+		return
+	}
+	if _, err := p.deps.PullRequest.AskPRReview(head, rec.URL); err != nil {
+		logger.Warn("landingshed: could not ask the parent orch to review the pull request", "row", p.name, "cause", err)
+		return
+	}
+	if err := p.updateRecord(func(r *pullrequest.Record) { r.ParentReviewAsked = true }); err != nil {
+		logger.Warn("landingshed: could not record that the parent orch was asked to review the pull request", "row", p.name, "cause", err)
+	}
+}
+
 // parentReviewRequest is the line that asks the parent orch to review the pull request rec records.
 func (p *PRReview) parentReviewRequest(rec pullrequest.Record) string {
 	return fmt.Sprintf("%s %s: pull request %s, from branch %s into %s, is open for your review; answer the PR-Review session with lym creel post %s \"<answer>\", saying you are satisfied or giving your findings, which its agent fixes before it asks you again",
-		parentReviewRequestPrefix, p.deps.Slug, rec.URL, p.deps.TaskBranch, p.deps.ParentBranch, rec.StrandName)
+		PRReviewAskLineTag, p.deps.Slug, rec.URL, p.deps.TaskBranch, p.deps.ParentBranch, rec.StrandName)
 }
 
 // prText is a pull request's title and body.
@@ -667,13 +716,34 @@ func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitS
 			return &ending{err: err}
 		}
 	}
-	end = p.judge(ctx, status, rec, head, dirty)
-	if end == nil && stopped {
+	end, stayOpenMail := p.judge(ctx, status, rec, head, dirty)
+	if end != nil {
+		return end
+	}
+	if stopped {
 		if err = p.resumeSession(ctx); err != nil {
 			return &ending{err: err}
 		}
 	}
-	return end
+	if stayOpenMail != "" {
+		p.mailStayOpen(stayOpenMail)
+	}
+	return nil
+}
+
+// mailStayOpen posts line to the PR-Review session's strand as the record names it now.
+// The resume that followed a stop may have given the session a new strand name, so the name is read at the post.
+// A missing record, a record naming no session and a failed post are logged and not retried.
+func (p *PRReview) mailStayOpen(line string) {
+	pr := p.deps.PullRequest
+	rec, found, err := pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath)
+	if err != nil || !found || rec.StrandName == "" {
+		logger.Warn("landingshed: no PR-Review session is recorded to tell the review stays open", "row", p.name, "found", found, "cause", err)
+		return
+	}
+	if err := pr.MailAgent(rec.StrandName, line); err != nil {
+		logger.Warn("landingshed: could not tell the PR-Review session the review stays open", "row", p.name, "strand", rec.StrandName, "cause", err)
+	}
 }
 
 // sessionStopWanted reports whether the read of status against rec may end the review or act on the operator's ending,
@@ -709,7 +779,7 @@ func (p *PRReview) readTree() (string, []string, error) {
 }
 
 // gateRetryHint closes the mail of a gate failure, naming the agent's way to gate the same head again.
-const gateRetryHint = "; when the failure lies outside the change, such as a file another process held open, and the operator has asked you to continue, run lym loom pr-continue, which gates this head again"
+const gateRetryHint = "; when the failure lies outside the change, such as a file another process held open, run lym loom pr-continue, which gates this head again"
 
 // gateHead runs the pr-review gate over head, a clean tree whose head the record has not gated.
 // A pass pushes head and records it as gated,
@@ -833,57 +903,89 @@ func (p *PRReview) pollFailure(ctx context.Context, warned *bool, action string,
 // A merged pull request takes the merged verdicts whatever the continue flag says, since nothing is left to merge.
 // The operator's ending leaves the pull request as GitHub has it, for Finalize to merge on GitHub.
 // Ending the review therefore never lands the run by a direct push to the parent.
-func (p *PRReview) judge(ctx context.Context, status pullrequest.Status, rec pullrequest.Record, head string, dirty []string) *ending {
+// A review recorded under autonomy ends on the continue flag only on the parent's satisfied answer at the gated head.
+// Any other standing returns the mail that tells the session the review stays open.
+// Its closed pull request never takes the continue branches, so a close without a merge halts.
+// The second result is that mail, empty when the call needs none.
+func (p *PRReview) judge(ctx context.Context, status pullrequest.Status, rec pullrequest.Record, head string, dirty []string) (*ending, string) {
 	clean := len(dirty) == 0
 	gated := head == rec.GatedHead
+	autonomous := recordedAutonomy(rec)
 
 	switch status.State {
 	case pullrequest.StateMerged:
 		missing, err := p.deps.PullRequest.CommitsMissing(status.HeadSHA, head)
 		if err != nil {
-			return &ending{err: fmt.Errorf("landingshed: %s: list the task commits the merged pull request lacks: %w", p.name, err)}
+			return &ending{err: fmt.Errorf("landingshed: %s: list the task commits the merged pull request lacks: %w", p.name, err)}, ""
 		}
 		switch {
 		case len(missing) > 0:
-			return halt(ctx, p.name, fmt.Sprintf("pull request #%d was merged on GitHub without these task commits: %s; way forward: file them as a board note, then run lym batten cancel %s, then lym board set-status %s done, since the pull request's work is on the parent and the cancel leaves the entry cleared", rec.Number, listShown(missing), p.deps.Slug, p.deps.Slug))
+			return halt(ctx, p.name, fmt.Sprintf("pull request #%d was merged on GitHub without these task commits: %s; way forward: file them as a board note, then run lym batten cancel %s, then lym board set-status %s done, since the pull request's work is on the parent and the cancel leaves the entry cleared", rec.Number, listShown(missing), p.deps.Slug, p.deps.Slug)), ""
 		case status.HeadSHA != rec.GatedHead:
-			return halt(ctx, p.name, fmt.Sprintf("pull request #%d was merged on GitHub at %s, but the head this row gated is %s; way forward: run lym loom goto Finalize, which fast-forwards the local parent to the merge under the lock and lands through the already-landed path, marking the task done, then run the gate over the parent branch in its worktree and file a board note for any fix it needs", rec.Number, status.HeadSHA, rec.GatedHead))
+			return halt(ctx, p.name, fmt.Sprintf("pull request #%d was merged on GitHub at %s, but the head this row gated is %s; way forward: run lym loom goto Finalize, which fast-forwards the local parent to the merge under the lock and lands through the already-landed path, marking the task done, then run the gate over the parent branch in its worktree and file a board note for any fix it needs", rec.Number, status.HeadSHA, rec.GatedHead)), ""
 		case !clean:
-			return halt(ctx, p.name, p.dirtyEndReason(rec.Number, dirty))
+			return halt(ctx, p.name, p.dirtyEndReason(rec.Number, dirty)), ""
 		}
-		return done()
+		return done(), ""
 
 	case pullrequest.StateClosed:
 		switch {
 		case rec.ReviewEnded && clean:
-			return done()
+			return done(), ""
 		case rec.ReviewEnded:
-			return halt(ctx, p.name, p.dirtyEndReason(rec.Number, dirty))
-		case rec.Continue && clean && gated:
-			return p.endReview(rec)
-		case rec.Continue:
-			return nil
+			return halt(ctx, p.name, p.dirtyEndReason(rec.Number, dirty)), ""
+		case !autonomous && rec.Continue && clean && gated:
+			return p.endReview(rec), ""
+		case !autonomous && rec.Continue:
+			return nil, ""
 		}
-		return halt(ctx, p.name, fmt.Sprintf("pull request #%d was closed on GitHub without being merged; way forward: reopen it on GitHub and run lym loom resume, or run lym batten cancel %s", rec.Number, p.deps.Slug))
+		return halt(ctx, p.name, fmt.Sprintf("pull request #%d was closed on GitHub without being merged; way forward: reopen it on GitHub and run lym loom resume, or run lym batten cancel %s", rec.Number, p.deps.Slug)), ""
 
 	case pullrequest.StateOpen:
 		if rec.ReviewEnded {
 			if clean {
-				return done()
+				return done(), ""
 			}
-			return halt(ctx, p.name, p.dirtyEndReason(rec.Number, dirty))
+			return halt(ctx, p.name, p.dirtyEndReason(rec.Number, dirty)), ""
 		}
 		if rec.Continue {
 			if !clean || !gated {
-				return nil
+				return nil, ""
 			}
-			return p.endReview(rec)
+			if autonomous {
+				return p.judgeParentAnswer(rec, head)
+			}
+			return p.endReview(rec), ""
 		}
 		if status.Approved && !status.ChangesRequested && status.HeadSHA == rec.GatedHead && status.HeadSHA == head && clean {
-			return done()
+			return done(), ""
 		}
 	}
-	return nil
+	return nil, ""
+}
+
+// judgeParentAnswer judges the continue flag of a review recorded under autonomy against the parent's answer at head.
+// A satisfied answer ends the review.
+// Any other standing clears the continue flag and returns the mail that tells the session the review stays open at head.
+// The mail names the await verb when the parent has not answered yet and the ask verb otherwise.
+func (p *PRReview) judgeParentAnswer(rec pullrequest.Record, head string) (*ending, string) {
+	if err := p.checkAutonomySeams(rec); err != nil {
+		return &ending{err: err}, ""
+	}
+	standing, err := p.deps.PullRequest.PRReviewStanding(head)
+	if err != nil {
+		return &ending{err: fmt.Errorf("landingshed: %s: read the parent's PR-Review answer: %w", p.name, err)}, ""
+	}
+	if standing == PRReviewSatisfied {
+		return p.endReview(rec), ""
+	}
+	if err := p.updateRecord(func(r *pullrequest.Record) { r.Continue = false }); err != nil {
+		return &ending{err: err}, ""
+	}
+	if standing == PRReviewAwaiting {
+		return nil, fmt.Sprintf("the review stays open at %s: your parent has not answered its ask yet; wait for the answer with lym loom parent-review await %s", head, p.deps.Slug)
+	}
+	return nil, fmt.Sprintf("the review stays open at %s: no satisfied answer from your parent stands at it; ask your parent again with lym loom parent-review ask %s", head, p.deps.Slug)
 }
 
 // endReview records the operator's ending in the record, unless rec already carries it, and ends the call Done.

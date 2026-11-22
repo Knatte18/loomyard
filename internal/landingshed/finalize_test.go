@@ -1019,6 +1019,18 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 			"loom.yaml": {Base: []byte("a: 1\n"), Tip: []byte("a: [1\n"), Parent: []byte("a: 1\n")},
 		},
 	}
+	autonomyOnly := fabricengine.ConfigChanges{
+		Files: []string{"beam.yaml"}, Base: "base111", Tip: "tip222", ParentTip: "parent333",
+		Contents: map[string]fabricengine.ConfigFileContents{
+			"beam.yaml": {Base: []byte("autonomy: false\n"), Tip: []byte("autonomy: true\n"), Parent: []byte("autonomy: false\n")},
+		},
+	}
+	autonomyAndMaxRuns := fabricengine.ConfigChanges{
+		Files: []string{"beam.yaml"}, Base: "base111", Tip: "tip222", ParentTip: "parent333",
+		Contents: map[string]fabricengine.ConfigFileContents{
+			"beam.yaml": {Base: []byte("autonomy: false\nmax_runs: 3\n"), Tip: []byte("autonomy: true\nmax_runs: 5\n"), Parent: []byte("autonomy: false\nmax_runs: 3\n")},
+		},
+	}
 	tests := []struct {
 		name        string
 		changes     fabricengine.ConfigChanges
@@ -1029,6 +1041,8 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 		wantOutcome shedengine.Outcome
 		// wantInNotice is empty when no notice may be queued.
 		wantInNotice []string
+		// wantNotInNotice names text the queued notice must not carry.
+		wantNotInNotice []string
 	}{
 		{
 			name:         "changed keys queue one notice naming the branch, each file and module, each key with its base, tip and parent values, absent included, and the re-apply instruction",
@@ -1044,6 +1058,18 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 			name:        "a comments-only change queues none",
 			changes:     commentsOnly,
 			wantOutcome: shedengine.Done,
+		},
+		{
+			name:        "a beam.yaml whose only changed key is autonomy queues none",
+			changes:     autonomyOnly,
+			wantOutcome: shedengine.Done,
+		},
+		{
+			name:            "a beam.yaml changing autonomy and max_runs names only max_runs",
+			changes:         autonomyAndMaxRuns,
+			wantOutcome:     shedengine.Done,
+			wantInNotice:    []string{"beam.max_runs: base 3, tip 5, parent 3"},
+			wantNotInNotice: []string{"autonomy"},
 		},
 		{
 			name:         "a file that does not parse is reported as not compared and still reaches Done",
@@ -1108,6 +1134,11 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 			for _, want := range tt.wantInNotice {
 				if !strings.Contains(notices[0], want) {
 					t.Errorf("notice %q does not carry %q", notices[0], want)
+				}
+			}
+			for _, unwanted := range tt.wantNotInNotice {
+				if strings.Contains(notices[0], unwanted) {
+					t.Errorf("notice %q carries %q; want it left out", notices[0], unwanted)
 				}
 			}
 			if strings.ContainsAny(notices[0], "\r\n") {

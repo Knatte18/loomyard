@@ -18,6 +18,8 @@
 // and it tells that line from what lym puts in the pane itself.
 // On the end of a main-thread turn while away it posts the turn's final reply to `<shortname>:SLACK` as the orch.
 // It does so only when the orch's slack button is on.
+// While the orch's autonomy is on, read at each turn's end, it posts only a reply that opens with `[operator]`.
+// The pane shows every reply, and the orch's own creel posts to `<shortname>:SLACK` are not filtered.
 // `bar` prints the Slack state for reed's status bar:
 // the button of the orch whose worktree `--dir` names, and the presence.
 // It prints no button word for a worktree whose orch has none, so the bar draws no slack button there.

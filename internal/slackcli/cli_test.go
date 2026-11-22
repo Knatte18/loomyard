@@ -194,6 +194,8 @@ type harness struct {
 	// orch and orchErr are what the worktree-orch seam answers; the empty orch is a worktree that runs no orch with a button.
 	orch    string
 	orchErr error
+	// autonomous is what the orch-autonomy seam answers.
+	autonomous bool
 	// ensureOutcome is what the ensure seam reports; the zero value reports a started relay.
 	ensureOutcome slackengine.StartOutcome
 	// locationOK makes the location resolver succeed, and wireErr is what the wire seam fails with.
@@ -283,8 +285,9 @@ func newHarness(t *testing.T, answers map[string]string) *harness {
 			h.wired = append(h.wired, location == nil)
 			return h.wireErr
 		},
-		worktreeOrch: func() (string, error) { return h.orch, h.orchErr },
-		pane:         func() paneCaller { return h.caller },
+		worktreeOrch:   func() (string, error) { return h.orch, h.orchErr },
+		orchAutonomous: func() bool { return h.autonomous },
+		pane:           func() paneCaller { return h.caller },
 		readHiddenLine: func(_ io.Reader, prompt string) (string, bool, error) {
 			if !h.onTerminal {
 				return "", false, nil

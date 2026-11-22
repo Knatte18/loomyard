@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -1832,6 +1833,164 @@ func TestDriftVerify(t *testing.T) {
 		})
 	})
 
+	t.Run("under autonomy a judge ask that ends unanswered halts the pass, and a resume asks the parent again", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("an ask that ends unanswered halts before the rulings are stored, and passes without autonomy", func(t *testing.T) {
+			t.Parallel()
+			tests := []struct {
+				name     string
+				state    burlerengine.ParentAskState
+				noParent bool
+				arrive   func(a *autonomousJudge)
+			}{
+				{"Timeout", burlerengine.ParentAskTimeout, false, func(a *autonomousJudge) { a.atArrival[2] = a.moveClockPastTheWait }},
+				{"NotSent", burlerengine.ParentAskNotSent, false, func(a *autonomousJudge) {
+					a.atArrival[1] = func() { a.clock = a.clock.Add(judgeTimeout) }
+				}},
+				{"NoParent", burlerengine.ParentAskNoParent, true, func(*autonomousJudge) {}},
+			}
+			for _, tt := range tests {
+				for _, autonomous := range []bool{true, false} {
+					t.Run(fmt.Sprintf("%s_Autonomous%v", tt.name, autonomous), func(t *testing.T) {
+						t.Parallel()
+						a := newAutonomousJudge(t, autonomous, tt.noParent)
+						a.seedChanged(expectsY)
+						tt.arrive(a)
+
+						outcome, pointer, err := a.call()
+
+						if asks := a.asks(); len(asks) != 1 || asks[0].State != tt.state {
+							t.Fatalf("asks = %+v; want one ask in state %s", asks, tt.state)
+						}
+						if autonomous {
+							requireAutonomyHalt(t, a.verifyFixture, outcome, pointer, err, tt.state)
+							return
+						}
+						if err != nil || outcome != shedengine.Done || len(a.records().Judged.Tuples) != 1 {
+							t.Errorf("Call() = %q, %v (%s) with %d stored tuples; want Done with the rulings stored", outcome, err, pointer.Reason, len(a.records().Judged.Tuples))
+						}
+					})
+				}
+			}
+		})
+
+		t.Run("a satisfied answer to the ask stores the rulings", func(t *testing.T) {
+			t.Parallel()
+			a := newAutonomousJudge(t, true, false)
+			a.seedChanged(expectsY)
+			a.atArrival[2] = a.answerLatestSatisfied
+
+			requireDone(a.verifyFixture)
+
+			if asks := a.asks(); len(asks) != 1 || asks[0].State != burlerengine.ParentAskDone || len(a.records().Judged.Tuples) != 1 {
+				t.Errorf("asks = %+v and %d stored tuples; want one done ask and the rulings stored", asks, len(a.records().Judged.Tuples))
+			}
+		})
+
+		t.Run("a resume clears the ended ask, asks again over the same rulings and stores them on the answer", func(t *testing.T) {
+			t.Parallel()
+			a := newAutonomousJudge(t, true, false)
+			a.seedChanged(expectsY)
+			a.haltOnTimeout()
+			runsBefore := a.runs()
+			a.onSleep(a.answerLatestSatisfied)
+
+			requireDone(a.verifyFixture)
+
+			asks := a.asks()
+			if len(asks) != 2 || !asks[0].Cleared || asks[0].State != burlerengine.ParentAskTimeout ||
+				asks[1].Round != 2 || asks[1].Digest != asks[0].Digest || asks[1].State != burlerengine.ParentAskDone || asks[1].Cleared {
+				t.Errorf("asks = %+v; want the timed-out ask cleared and a done ask of round 2 over the same digest", asks)
+			}
+			if a.runs() != runsBefore || a.sleeps != 1 {
+				t.Errorf("%d runs after %d before and %d waits; want no seat started and one wait", a.runs(), runsBefore, a.sleeps)
+			}
+			if scope := a.scope(); len(a.records().Judged.Tuples) != 1 || scope.JudgeSession.Open || !a.judgementGone() {
+				t.Errorf("tuples %d, mark %+v, judgement gone %v; want the rulings stored, the mark closed and judgement.yaml removed", len(a.records().Judged.Tuples), scope.JudgeSession, a.judgementGone())
+			}
+		})
+
+		t.Run("a resume whose new ask ends unanswered halts again", func(t *testing.T) {
+			t.Parallel()
+			a := newAutonomousJudge(t, true, false)
+			a.seedChanged(expectsY)
+			a.haltOnTimeout()
+			a.onSleep(a.moveClockPastTheWait)
+
+			outcome, pointer, err := a.call()
+
+			requireAutonomyHalt(t, a.verifyFixture, outcome, pointer, err, burlerengine.ParentAskTimeout)
+			if asks := a.asks(); len(asks) != 2 || asks[1].State != burlerengine.ParentAskTimeout || asks[1].Cleared {
+				t.Errorf("asks = %+v; want the new ask timed out and not cleared", asks)
+			}
+		})
+
+		t.Run("a resume after a kill mid-wait continues the open ask and records no further one", func(t *testing.T) {
+			t.Parallel()
+			a := newAutonomousJudge(t, true, false)
+			a.seedChanged(expectsY)
+			a.haltOnTimeout()
+			first := a.asks()[0]
+			if err := burlerengine.ClearParentAsk(a.files, first.Number); err != nil {
+				t.Fatalf("ClearParentAsk() error = %v; want nil", err)
+			}
+			open := burlerengine.ParentAsk{Round: 2, Seed: first.Seed, Tag: first.Tag, Digest: first.Digest, State: burlerengine.ParentAskOpen, Strand: first.Strand, AskedAt: a.clock, Deadline: a.clock.Add(autonomyWait)}
+			if _, err := burlerengine.RecordParentAsk(a.files, open); err != nil {
+				t.Fatalf("RecordParentAsk() error = %v; want nil", err)
+			}
+			runsBefore := a.runs()
+			a.onSleep(a.answerLatestSatisfied)
+
+			requireDone(a.verifyFixture)
+
+			if asks := a.asks(); len(asks) != 2 || asks[1].State != burlerengine.ParentAskDone || a.runs() != runsBefore || len(a.records().Judged.Tuples) != 1 {
+				t.Errorf("asks = %+v, %d runs after %d before and %d stored tuples; want no further ask, no seat and the rulings stored", asks, a.runs(), runsBefore, len(a.records().Judged.Tuples))
+			}
+		})
+
+		t.Run("a resume over a lost snapshot starts the judge as today", func(t *testing.T) {
+			t.Parallel()
+			a := newAutonomousJudge(t, true, false)
+			a.seedChanged(expectsY)
+			a.haltOnTimeout()
+			runsBefore := a.seats.Calls
+			err := WriteRecords(a.deps, func(scope *ScopeRecord, _ *JudgedRecord) error {
+				scope.SnapshotLost = true
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("WriteRecords() error = %v; want nil", err)
+			}
+
+			if _, _, err := a.call(); err != nil {
+				t.Fatalf("Call() error = %v; want nil", err)
+			}
+
+			if a.seats.Calls != runsBefore+1 {
+				t.Errorf("%d judge runs after %d before; want the judge started once more", a.seats.Calls, runsBefore)
+			}
+		})
+
+		t.Run("under diff command an ask that ends unanswered halts, and a resume asks again", func(t *testing.T) {
+			t.Parallel()
+			a := newAutonomousJudge(t, true, false)
+			a.seedCommand()
+			a.caseRulings = map[string]Ruling{"a.txt": RulingNoMatch}
+			a.haltOnTimeout()
+			runsBefore := a.runs()
+			a.onSleep(a.answerLatestSatisfied)
+
+			outcome, pointer, err := a.call()
+
+			requireStuck(t, outcome, pointer, err, true, "does not match")
+			asks := a.asks()
+			if len(asks) != 2 || !asks[0].Cleared || asks[1].Round != 2 || asks[1].State != burlerengine.ParentAskDone || a.runs() != runsBefore || len(a.records().Judged.Cases) != 1 {
+				t.Errorf("asks = %+v, %d runs after %d before and %d stored cases; want a new done ask, no seat and the case ruling stored", asks, a.runs(), runsBefore, len(a.records().Judged.Cases))
+			}
+		})
+	})
+
 	t.Run("a judgement entry that fails every attempt ends Stuck and the next entry respawns the judge", func(t *testing.T) {
 		t.Parallel()
 		f := newVerifyFixture(t)
@@ -1854,6 +2013,99 @@ func TestDriftVerify(t *testing.T) {
 			t.Errorf("%d runs, spawn ids %q and %q; want a respawn under the same spawn id", f.seats.Calls, f.requests[0].SpawnID, f.requests[len(f.requests)-1].SpawnID)
 		}
 	})
+}
+
+// autonomyWait is the judge_parent_timeout_min of the autonomy rows' config.
+const autonomyWait = 30 * time.Minute
+
+// autonomousJudge is a verifyFixture whose judge asks the run's parent orch under autonomy, over a clock the rows move.
+type autonomousJudge struct {
+	*verifyFixture
+	files burlerengine.ParentReviewFiles
+	// clock is the time the pass and the parent seat read.
+	clock time.Time
+	// arrivals counts the judge's arrivals from 1, and atArrival holds the action to run at an arrival by that number.
+	arrivals  int
+	atArrival map[int]func()
+	// sleeps counts the waits of a resume.
+	sleeps int
+}
+
+// newAutonomousJudge returns a fixture whose parent seat records no orch strand when noParent is set.
+// Its config asks the parent and sets autonomy to autonomous.
+func newAutonomousJudge(t *testing.T, autonomous, noParent bool) *autonomousJudge {
+	t.Helper()
+	f := newVerifyFixture(t)
+	a := &autonomousJudge{verifyFixture: f, files: burlerengine.ParentReviewFilesOf(t.TempDir()), clock: f.deps.Now(), atArrival: map[int]func(){}}
+	f.config.Autonomous, f.config.JudgeAskParent, f.config.JudgeParentTimeoutMin = autonomous, true, int(autonomyWait/time.Minute)
+	f.deps.Now = func() time.Time { return a.clock }
+	f.deps.JudgeParent = &JudgeParentSeat{
+		Files:   a.files,
+		Slug:    judgeParentSlug,
+		Resolve: func() (string, bool, error) { return judgeParentStrand, !noParent, nil },
+		Post:    func(string, string) error { return nil },
+	}
+	f.onArrival = func() {
+		a.arrivals++
+		if action := a.atArrival[a.arrivals]; action != nil {
+			action()
+		}
+	}
+	return a
+}
+
+// asks reads the asks the run recorded, oldest first.
+func (a *autonomousJudge) asks() []burlerengine.ParentAsk {
+	a.t.Helper()
+	record, _, err := burlerengine.ReadParentAsks(a.files)
+	if err != nil {
+		a.t.Fatalf("ReadParentAsks() error = %v; want nil", err)
+	}
+	return record.Asks
+}
+
+// answerLatestSatisfied answers the latest ask with a satisfied report at the clock's time.
+func (a *autonomousJudge) answerLatestSatisfied() {
+	a.t.Helper()
+	asks := a.asks()
+	if _, err := burlerengine.AnswerParentAsk(a.files, asks[len(asks)-1].Number, a.clock, nil); err != nil {
+		a.t.Fatalf("AnswerParentAsk() error = %v; want nil", err)
+	}
+}
+
+// onSleep sets the resume's wait to run action and return at once.
+func (a *autonomousJudge) onSleep(action func()) {
+	a.deps.Sleep = func(context.Context, time.Duration) error {
+		a.sleeps++
+		action()
+		return nil
+	}
+}
+
+// moveClockPastTheWait moves the clock past the ask's deadline.
+func (a *autonomousJudge) moveClockPastTheWait() { a.clock = a.clock.Add(autonomyWait + time.Minute) }
+
+// haltOnTimeout runs a pass whose first ask times out before any answer, and requires its halt.
+func (a *autonomousJudge) haltOnTimeout() {
+	a.t.Helper()
+	a.atArrival[2] = a.moveClockPastTheWait
+	outcome, pointer, err := a.call()
+	requireAutonomyHalt(a.t, a.verifyFixture, outcome, pointer, err, burlerengine.ParentAskTimeout)
+}
+
+// runs counts the seat runner's runs and resumes.
+func (a *autonomousJudge) runs() int { return a.seats.Calls + a.seats.ResumeCalls }
+
+// requireAutonomyHalt checks the pass is the Stuck of a judge ask that ended in state:
+// no ruling stored, judgement.yaml kept and the session mark open.
+func requireAutonomyHalt(t *testing.T, f *verifyFixture, outcome shedengine.Outcome, pointer shedengine.OutputPointer, err error, state burlerengine.ParentAskState) {
+	t.Helper()
+	requireStuck(t, outcome, pointer, err, true, "under autonomy", "ended "+string(state), "lym loom resume")
+	records := f.records()
+	if len(records.Judged.Tuples) != 0 || len(records.Judged.Cases) != 0 || f.judgementGone() || !records.Scope.JudgeSession.Open {
+		t.Errorf("tuples %d, cases %d, judgement gone %v, mark %+v; want no ruling stored, judgement.yaml kept and the mark open",
+			len(records.Judged.Tuples), len(records.Judged.Cases), f.judgementGone(), records.Scope.JudgeSession)
+	}
 }
 
 // ptr returns a pointer to a copy of value.

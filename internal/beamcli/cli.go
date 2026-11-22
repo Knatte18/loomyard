@@ -57,7 +57,8 @@ func prCmd() *cobra.Command {
 		Use:   "pr",
 		Short: "open, update, check and close the pull request from a beam's branch into its parent",
 		Long: `The pull request verbs of a beam. The beam's orch runs them when the operator
-says so, so it never runs gh by hand. They act only on the pull request from the
+says so, so it never runs gh by hand; under autonomy, the steps of role-autonomy.md
+beside the orch's role are the exception. They act only on the pull request from the
 beam's own branch into its parent, read a GitHub token only through lym's own
 client, and never merge a pull request: Finalize merges it on GitHub when the beam
 lands. All but "status", which changes nothing, refuse once "lym beam ready" has
@@ -222,7 +223,8 @@ func describeCmdOver(run func(cmd *cobra.Command, slug string, draft bool) (*map
 		Short:       "record the change description the orch wrote for a beam, which its pull request carries",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Records the change description of the beam <slug>: summary.md in the beam
-worktree's _lym/landing directory, which the beam's orch writes. A heading line is
+worktree's _lym/landing directory, which the beam's orch writes. Under autonomy the
+orch runs it as role-autonomy.md says. A heading line is
 the pull request's title and the text under it its body. The verb validates the
 file, stamps the landing record and commits the two together. When a pull request
 is recorded it then runs "lym beam pr update <slug>", so the pull request carries

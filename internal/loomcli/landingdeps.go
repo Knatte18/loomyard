@@ -16,9 +16,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/creelcli"
+	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -455,12 +457,32 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 			return err
 		},
 		// ParentReviewWanted reads loom.yaml's pr_review_ask_parent over the pair's layers, the task's run_settings included.
+		// The run's autonomy, read at each call, forces it on.
 		ParentReviewWanted: func() (bool, error) {
 			cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(l), "loom")
-			return cfg.PRReviewAskParent, err
+			return loomengine.ApplyAutonomy(cfg, runAutonomy(l)).PRReviewAskParent, err
 		},
 		AskParent: func(line string) (bool, error) {
 			return orchcli.NotifyParent(l, loomProgram, line)
+		},
+		Autonomy: func() bool { return runAutonomy(l) },
+		// AskPRReview reads the record at the call, so the ask names the pull request the record holds now.
+		AskPRReview: func(head, _ string) (burlerengine.ParentAsk, error) {
+			rec, found, err := pullrequest.ReadRecord(shedrun.PullRequestRecord(l, shedrun.SelfRunID), shedrun.PullRequestRecordLock(l, shedrun.SelfRunID))
+			if err != nil {
+				return burlerengine.ParentAsk{}, err
+			}
+			if !found {
+				return burlerengine.ParentAsk{}, errors.New("loomcli: the run has no pull request record to ask the parent orch about")
+			}
+			asker, err := prReviewAsker(l, rec)
+			if err != nil {
+				return burlerengine.ParentAsk{}, err
+			}
+			return asker.Ask(head, time.Now())
+		},
+		PRReviewStanding: func(head string) (landingshed.PRReviewStanding, error) {
+			return landingshed.ReadPRReviewStanding(burlerengine.ParentReviewFilesOf(l.AnchorPath()), head, time.Now())
 		},
 		// PauseCovered reports whether the pause record covers the slug; an unreadable record covers nothing.
 		PauseCovered: func() (bool, error) { return pauseCovered(l)(slug), nil },
@@ -470,6 +492,28 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 			return watchFileChanges(shedrun.PullRequestRecord(l, shedrun.SelfRunID), "the PR-Review wait")
 		},
 	}
+}
+
+// prReviewAsker builds the asker of the PR-Review ask for the run at l and the pull request rec records.
+// The wait from an ask to its deadline is loom.yaml's pr_review_parent_timeout_min over l's layers.
+// The ask goes to the orch the run's parent resolves to, signed as lym's loom program and tagged with the run.
+func prReviewAsker(l *lymcwd.Location, rec pullrequest.Record) (landingshed.PRReviewAsker, error) {
+	cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(l), "loom")
+	if err != nil {
+		return landingshed.PRReviewAsker{}, err
+	}
+	return landingshed.PRReviewAsker{
+		Files:        burlerengine.ParentReviewFilesOf(l.AnchorPath()),
+		Slug:         seedSlug(l.WorktreeName),
+		URL:          rec.URL,
+		TaskBranch:   rec.Head,
+		ParentBranch: rec.Base,
+		Wait:         time.Duration(cfg.PRReviewParentTimeoutMin) * time.Minute,
+		Resolve:      func() (string, bool, error) { return orchcli.ParentStrand(l) },
+		Post: func(strand, line string) error {
+			return orchcli.PostAsProgram(l, strand, loomProgram, line, creelengine.PostTags{Run: l.WorktreeName})
+		},
+	}, nil
 }
 
 // pullRequestRecordCommitter returns the seam that commits the run's pull request record to the pair's records.

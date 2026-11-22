@@ -74,6 +74,18 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
+			name:     "a beam autonomy boolean is admitted into a beam local document",
+			settings: map[string]any{"beam": map[string]any{"autonomy": true}},
+			wantDocs: map[string]string{"beam": "autonomy: true\n"},
+		},
+		{
+			name:        "a beam autonomy the lookup refuses is refused at the run settings",
+			settings:    map[string]any{"beam": map[string]any{"autonomy": "yes"}},
+			wantRefusal: "autonomy",
+			wantModule:  "beam",
+			wantInvalid: true,
+		},
+		{
 			name:     "hardener packages and llm_driving pass",
 			settings: map[string]any{"hardener": map[string]any{"packages": []any{"internal/foo"}, "llm_driving": true}},
 			wantDocs: map[string]string{"hardener": "llm_driving: true\npackages:\n    - internal/foo\n"},

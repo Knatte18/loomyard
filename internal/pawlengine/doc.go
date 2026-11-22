@@ -26,12 +26,17 @@
 // A re-entry after a crash settles an accepted landing it finds with no land request before it writes any status.
 // A failed read of the ready record decides nothing and is retried at the next wake.
 // A beam another machine owns removes any request and yields, deciding nothing.
+// While the beam's orch is autonomous, a wake that finds no land request posts one `[beam drained]` line to the orch.
+// It does so when the beam holds commits beyond its parent, no member or child pair remains and no ready record stands.
+// The drain marker records the posted line, so a re-entry posts no second one;
+// work that opens again removes the marker, so the next drain posts again.
+// The line only informs: it opens, merges or readies nothing.
 //
 // Beam-Down stops the beam's dobby and orch through the told Down seam.
 // A failure is logged and the row is Done, since Worktree-Teardown ends what is left.
 //
 // The beam worktree's `.lym/beam/` holds these files:
-// the land request, the dobby-stop marker, the await marker and the hand-off marker.
+// the land request, the dobby-stop marker, the await marker, the hand-off marker and the drain marker.
 // The hub wiring composes their paths and tells them through Paths.
 //
 // The ready record, ReadyRecord, flags a beam ready to be merged into its parent.

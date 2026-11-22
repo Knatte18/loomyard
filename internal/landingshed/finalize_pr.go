@@ -324,6 +324,8 @@ func (fz *Finalize) pullRequestLanding(ctx context.Context) (prLanding, *ending)
 // A no closes a recorded pull request GitHub reports open and lands locally.
 // A yes needs the recorded pull request, unless it is marked MergeAtOnce;
 // a MergeAtOnce yes has the pull request opened, or reopened if closed, when it merges.
+// A closed pull request whose record holds autonomy true halts whatever the operator's ending and MergeAtOnce say.
+// It is neither reopened nor merged.
 // A non-nil ending ends the call at once.
 func (fz *Finalize) landingForDecision(ctx context.Context, decision PullRequestDecision, origin Origin, rec pullrequest.Record, found bool) (prLanding, *ending) {
 	pr := fz.deps.PullRequest
@@ -352,7 +354,7 @@ func (fz *Finalize) landingForDecision(ctx context.Context, decision PullRequest
 	case pullrequest.StateOpen:
 		return prLanding{merge: true, atOnce: decision.MergeAtOnce, api: api, record: rec}, nil
 	case pullrequest.StateClosed:
-		if !rec.ReviewEnded && !decision.MergeAtOnce {
+		if recordedAutonomy(rec) || (!rec.ReviewEnded && !decision.MergeAtOnce) {
 			return prLanding{}, halt(ctx, finalizeName, LandingStopPrefix+fmt.Sprintf("the run's pull request %s was closed without a merge; way forward: reopen it on GitHub, then lym loom goto PR-Review, or lym batten cancel %s", rec.URL, fz.deps.Slug))
 		}
 		if decision.MergeAtOnce {

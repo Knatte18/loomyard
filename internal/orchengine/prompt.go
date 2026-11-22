@@ -7,6 +7,7 @@
 // Every other render is one creel text line or a shuttle launch pointer, so it must render to one line;
 // an operator override that breaks that fails here, naming the stencil to fix.
 // WithPresence appends the presence line to a pointer while the machine's presence is slack.
+// WithLaunchFacts adds the orch's autonomy line to it.
 
 package orchengine
 
@@ -46,6 +47,25 @@ func WithPresence(p Paths, pointer string) string {
 		return pointer
 	}
 	return pointer + presenceLine
+}
+
+const (
+	// autonomyOnLine is appended to a pointer's own line while the orch's autonomy is on.
+	autonomyOnLine = " Autonomy is on: settle every halt yourself and reach the operator only for a severe halt or a merge-ready beam, as role-autonomy.md beside your role says."
+	// autonomyOffLine is appended to a pointer's own line while the orch's autonomy is off.
+	autonomyOffLine = " Autonomy is off."
+)
+
+// WithLaunchFacts returns WithPresence(p, pointer) with the orch's autonomy line appended to the same line.
+// The autonomy is read from p.Autonomy each time, and a nil seam reads off.
+// The line informs only.
+// It stands beside the presence step, never inside it, and appears under any presence.
+func WithLaunchFacts(p Paths, pointer string) string {
+	line := autonomyOffLine
+	if p.Autonomy != nil && p.Autonomy() {
+		line = autonomyOnLine
+	}
+	return WithPresence(p, pointer) + line
 }
 
 const (

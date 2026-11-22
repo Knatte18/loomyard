@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
@@ -274,6 +275,13 @@ func LandingDeps(dir string) landingshed.Deps {
 				return landingshed.BeamPullRequest{}, false, nil
 			},
 			DropBeamRecord: func() error { return nil },
+			Autonomy:       func() bool { return false },
+			AskPRReview: func(string, string) (burlerengine.ParentAsk, error) {
+				return burlerengine.ParentAsk{}, nil
+			},
+			PRReviewStanding: func(string) (landingshed.PRReviewStanding, error) {
+				return landingshed.PRReviewAskAgain, nil
+			},
 		},
 	}
 }
@@ -499,6 +507,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				DobbyStopMarker: filepath.Join(dir, "dobby-stop"),
 				AwaitMarker:     filepath.Join(dir, "await-entered"),
 				HandOffMarker:   filepath.Join(dir, pawlengine.HandOffMarkerName),
+				DrainMarker:     filepath.Join(dir, pawlengine.DrainMarkerName),
 			},
 			SetStatus:           func(string) error { return nil },
 			EntryProducer:       func() (string, error) { return "", nil },
@@ -515,6 +524,9 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			ReadyStands:         func() (bool, error) { return false, nil },
 			StampWake:           func(time.Time) error { return nil },
 			Notify:              func(string) (bool, error) { return true, nil },
+			Autonomous:          func() bool { return false },
+			HoldsCommits:        func() (bool, error) { return false, nil },
+			WorkRemains:         func() (bool, error) { return false, nil },
 			Down:                func() error { return nil },
 			Now:                 time.Now,
 			Sleep:               func(context.Context, time.Duration) error { return nil },

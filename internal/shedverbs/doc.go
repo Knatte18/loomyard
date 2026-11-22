@@ -15,6 +15,7 @@
 // --by shed is refused before any write, since shed is the label of lym's own automatic steps.
 // status's idle_gaps name every stretch of the history of at least idleGapFloor in which no step ran.
 // Spec.GotoGuard checks a goto target, and nil admits every target.
+// Spec.GotoAdmitted is called with the target once a goto is written, and nil calls nothing.
 // Spec.HandBack marks a blocked stop that goes to the orch, which keeps the package recipe-generic;
 // the loop's stop envelope and lym shed status report its answer as hand_back.
 //

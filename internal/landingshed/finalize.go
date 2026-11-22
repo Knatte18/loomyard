@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/beamsetting"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -615,6 +616,8 @@ func (fz *Finalize) parkedMergeWayForward(checkout string) string {
 // Per changed file and its module it names each key whose tip value differs from both the fork point and the parent.
 // Each named key comes with its base, tip and parent values;
 // a file that changes no key, such as a comments-only edit, and a key the parent already holds are not named.
+// beam.yaml's autonomy is never named either:
+// it is the worktree's own per-task setting, so a child's value is never meant for its parent.
 // Finalize never carries those files to the parent,
 // so the notice tells the orchestrator to re-apply each change meant for the parent.
 // A read or parse failure is logged and reported in the notice instead of stopping the landing.
@@ -642,6 +645,9 @@ func (fz *Finalize) configChangeNotice() string {
 		}
 		var named []string
 		for _, key := range keys {
+			if module == beamsetting.Module && key.Key == beamsetting.AutonomyKey {
+				continue
+			}
 			named = append(named, fmt.Sprintf("%s.%s: base %s, tip %s, parent %s", module, key.Key, key.Base, key.Tip, key.Parent))
 		}
 		if len(named) > 0 {

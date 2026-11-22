@@ -51,6 +51,10 @@ func NewBeamAwait(name string, deps Deps) (*BeamAwait, error) {
 		seam{"ReadyStands", deps.ReadyStands != nil},
 		seam{"StampWake", deps.StampWake != nil},
 		seam{"Notify", deps.Notify != nil},
+		seam{"Autonomous", deps.Autonomous != nil},
+		seam{"HoldsCommits", deps.HoldsCommits != nil},
+		seam{"WorkRemains", deps.WorkRemains != nil},
+		seam{"Paths.DrainMarker", deps.Paths.DrainMarker != ""},
 		seam{"Now", deps.Now != nil},
 		seam{"Sleep", deps.Sleep != nil},
 	)
@@ -150,6 +154,7 @@ type awaitWake struct {
 
 // wake runs one wake: it reads the beam's owner and settles an accepted landing the entry finds.
 // It retries the entry's writes while they are pending, and then it handles the land request.
+// A wake that finds no land request goes on to the drain notice.
 func (r *awaitRun) wake(ctx context.Context) (awaitWake, error) {
 	r.lastWake = r.deps.Now()
 	if err := cancelErr(ctx, r.name); err != nil {
@@ -184,6 +189,7 @@ func (r *awaitRun) wake(ctx context.Context) (awaitWake, error) {
 		return awaitWake{}, nil
 	}
 	if !found {
+		r.noticeDrain()
 		return awaitWake{}, nil
 	}
 	if req.RunID != r.deps.RunID {
@@ -262,6 +268,65 @@ func (r *awaitRun) noticeDownDobby() {
 	}
 	if err := recordDownNotice(r.deps.Paths.AwaitMarker, r.deps.Now()); err != nil {
 		logger.Warn("pawlengine: the sent dobby-down notice could not be recorded", "producer", r.name, "error", err)
+	}
+}
+
+// noticeDrain posts one `[beam drained]` line when the beam's work is done while its orch is autonomous.
+// The work is done when the beam holds commits beyond its parent and no member or child pair remains.
+// A standing ready record also keeps the work from counting as done.
+// Remaining work removes the drain marker, so a member that opens again lets the next drain post again.
+// The marker is written once the post reached an orch, and a standing marker posts nothing.
+// A seam that fails is logged and decides nothing on that wake.
+func (r *awaitRun) noticeDrain() {
+	if !r.deps.Autonomous() {
+		return
+	}
+	remains, err := r.deps.WorkRemains()
+	if err != nil {
+		logger.Warn("pawlengine: whether work remains under the beam could not be read, so no drain notice is decided", "producer", r.name, "error", err)
+		return
+	}
+	if remains {
+		if err := removeFile(r.deps.Paths.DrainMarker); err != nil {
+			logger.Warn("pawlengine: the drain marker could not be removed", "producer", r.name, "error", err)
+		}
+		return
+	}
+	holds, err := r.deps.HoldsCommits()
+	if err != nil {
+		logger.Warn("pawlengine: whether the beam holds commits could not be read, so no drain notice is decided", "producer", r.name, "error", err)
+		return
+	}
+	if !holds {
+		return
+	}
+	ready, err := r.deps.ReadyStands()
+	if err != nil {
+		logger.Warn("pawlengine: the ready record could not be read, so no drain notice is decided", "producer", r.name, "error", err)
+		return
+	}
+	if ready {
+		return
+	}
+	posted, err := markerStands(r.deps.Paths.DrainMarker)
+	if err != nil {
+		logger.Warn("pawlengine: the drain marker could not be read, so no drain notice is decided", "producer", r.name, "error", err)
+		return
+	}
+	if posted {
+		return
+	}
+	line := "[beam drained] " + r.deps.Slug
+	reached, err := r.deps.Notify(line)
+	if err != nil {
+		logger.Warn("pawlengine: the drain notice to the beam's orch failed", "producer", r.name, "error", err, "notice", line)
+		return
+	}
+	if !reached {
+		return
+	}
+	if err := writeMarker(r.deps.Paths.DrainMarker, r.deps.Now()); err != nil {
+		logger.Warn("pawlengine: the drain marker could not be written", "producer", r.name, "error", err)
 	}
 }
 

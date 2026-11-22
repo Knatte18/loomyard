@@ -57,6 +57,9 @@ type world struct {
 	handOffErr   error
 	// notifyUnposted makes Notify report a post that reached no orch.
 	notifyUnposted bool
+	// autonomous, holdsCommits and workRemains are what the drain seams answer; the error fields fail them.
+	autonomous, holdsCommits, workRemains bool
+	holdsErr, remainsErr                  error
 
 	events  []string
 	notices []string
@@ -80,6 +83,7 @@ func newWorld(t *testing.T) *world {
 			DobbyStopMarker: filepath.Join(dir, pawlengine.DobbyStopMarkerName),
 			AwaitMarker:     filepath.Join(dir, pawlengine.AwaitMarkerName),
 			HandOffMarker:   filepath.Join(dir, pawlengine.HandOffMarkerName),
+			DrainMarker:     filepath.Join(dir, pawlengine.DrainMarkerName),
 		},
 		now:         time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		status:      "Beam-Up",
@@ -218,10 +222,13 @@ func (w *world) deps() pawlengine.Deps {
 			w.notices = append(w.notices, line)
 			return !w.notifyUnposted && w.notifyErr == nil, w.notifyErr
 		},
-		Down:  func() error { w.record("down"); return nil },
-		Watch: watchOf(w.watch),
-		Now:   func() time.Time { return w.now },
-		Sleep: w.sleep,
+		Autonomous:   func() bool { return w.autonomous },
+		HoldsCommits: func() (bool, error) { return w.holdsCommits, w.holdsErr },
+		WorkRemains:  func() (bool, error) { return w.workRemains, w.remainsErr },
+		Down:         func() error { w.record("down"); return nil },
+		Watch:        watchOf(w.watch),
+		Now:          func() time.Time { return w.now },
+		Sleep:        w.sleep,
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -450,6 +451,8 @@ func (p *DriftVerify) now() time.Time {
 // It then takes the snapshot of both checkouts and opens the session mark.
 // A session an earlier entry left open keeps its spawn id and snapshot.
 // It takes a new snapshot only when the records say the old one was lost.
+// Under the run's autonomy, a judge ask that ended unanswered halts it before the rulings are stored,
+// and a session left open over such an ask asks the parent again instead of spawning a judge.
 func (p *DriftVerify) judge(ctx context.Context, rec Records, report CheckReport, cells []ClassifiedCell, listed listedFiles, reused int, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	mark := rec.Scope.JudgeSession
 	spawnID := mark.SpawnID
@@ -464,16 +467,7 @@ func (p *DriftVerify) judge(ctx context.Context, rec Records, report CheckReport
 		return "", shedengine.OutputPointer{}, err
 	}
 
-	if mark.Open {
-		err = p.resumeJudgeSession(rec, request, report.Capture.Dir)
-	} else {
-		err = p.openJudgeSession(request, report.Capture.Dir)
-	}
-	if err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-
-	outcome, pointer, session, err := p.runAgent(ctx, request)
+	outcome, pointer, session, err := p.runJudgeSession(ctx, rec, request, report.Capture.Dir)
 	if session == nil {
 		return outcome, pointer, err
 	}
@@ -845,6 +839,225 @@ func (p *DriftVerify) parentAgreement(request JudgeRequest) (shuttleengine.GateE
 	return ParentAgreementGateEntry(seat, request.want(), p.deps.Paths.Judgement, wait, judgeAskLimit(p.judgeStartedAt), p.now), true, nil
 }
 
+const (
+	// reaskWaitBase is the first wait of the resume's wait for the parent's answer.
+	// The wait returns to it when the ask record changes.
+	reaskWaitBase = time.Second
+	// reaskWaitCeiling is the longest single wait of the resume's wait for the parent's answer.
+	reaskWaitCeiling = time.Minute
+)
+
+// askStanding is the part of a judge ask that the resume's wait watches for a change.
+type askStanding struct {
+	number int
+	state  burlerengine.ParentAskState
+}
+
+// judgeAsks returns the asks the judge spawn spawnID made, oldest first.
+// It returns none when the row is told no parent seat.
+func (p *DriftVerify) judgeAsks(spawnID string) ([]burlerengine.ParentAsk, error) {
+	seat := p.deps.JudgeParent
+	if seat == nil {
+		return nil, nil
+	}
+	record, _, err := burlerengine.ReadParentAsks(seat.Files)
+	if err != nil {
+		return nil, err
+	}
+	seed := judgeAskSeed(spawnID)
+	var asks []burlerengine.ParentAsk
+	for _, ask := range record.Asks {
+		if ask.Seed == seed {
+			asks = append(asks, ask)
+		}
+	}
+	return asks, nil
+}
+
+// endedUnanswered answers the spawn's latest ask when it is not cleared and ended without the parent's answer:
+// timeout, not-sent or no-parent.
+// Otherwise, and for a row with no parent seat, it answers false.
+func (p *DriftVerify) endedUnanswered(spawnID string) (burlerengine.ParentAsk, bool, error) {
+	asks, err := p.judgeAsks(spawnID)
+	if err != nil || len(asks) == 0 {
+		return burlerengine.ParentAsk{}, false, err
+	}
+	latest := asks[len(asks)-1]
+	switch latest.State {
+	case burlerengine.ParentAskTimeout, burlerengine.ParentAskNotSent, burlerengine.ParentAskNoParent:
+		if !latest.Cleared {
+			return latest, true, nil
+		}
+	}
+	return burlerengine.ParentAsk{}, false, nil
+}
+
+// reaskWaiting answers the spawn's latest ask when it is open and an earlier ask of the same spawn is cleared:
+// the ask an earlier resume sent and was still waiting on.
+func (p *DriftVerify) reaskWaiting(spawnID string) (burlerengine.ParentAsk, bool, error) {
+	asks, err := p.judgeAsks(spawnID)
+	if err != nil || len(asks) < 2 {
+		return burlerengine.ParentAsk{}, false, err
+	}
+	latest := asks[len(asks)-1]
+	cleared := slices.ContainsFunc(asks[:len(asks)-1], func(ask burlerengine.ParentAsk) bool { return ask.Cleared })
+	if latest.State.Ended() || !cleared {
+		return burlerengine.ParentAsk{}, false, nil
+	}
+	return latest, true, nil
+}
+
+// haltOnEndedAsk returns the Stuck for a judge ask that ended without the parent's answer under the run's autonomy.
+// Its way forward is the resume, which asks the parent again over the same rulings.
+func haltOnEndedAsk(ask burlerengine.ParentAsk) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	ended := string(ask.State)
+	if ask.Reason != "" {
+		ended += ": " + ask.Reason
+	}
+	return haltForParent(fmt.Sprintf("under autonomy the judge's ask %d to the parent ended %s, and the rulings stand only with the parent's agreement; way forward: lym loom resume, which asks the parent again over the same rulings", ask.Number, ended))
+}
+
+// askToRepeat answers the ask of the spawn spawnID that a session left open makes the resume ask the parent about again.
+// It answers one only under the run's autonomy.
+// The session must be open, its snapshot not lost, and its judgement.yaml present.
+// The ask is the spawn's ended unanswered ask, or its open ask that an earlier resume followed a cleared one with.
+func (p *DriftVerify) askToRepeat(rec Records, cfg Config, spawnID string) (burlerengine.ParentAsk, bool, error) {
+	if !cfg.Autonomous || !rec.Scope.JudgeSession.Open || rec.Scope.SnapshotLost {
+		return burlerengine.ParentAsk{}, false, nil
+	}
+	if _, present, err := readRecordFile(p.deps.Paths.Judgement); err != nil || !present {
+		return burlerengine.ParentAsk{}, false, err
+	}
+	if ask, ended, err := p.endedUnanswered(spawnID); err != nil || ended {
+		return ask, ended, err
+	}
+	return p.reaskWaiting(spawnID)
+}
+
+// runJudgeSession opens or resumes the judge session of request and runs the judge.
+// scratchDir is the capture directory it guards.
+// It returns the session only when the judge's rulings may be stored.
+// Under the run's autonomy a session left open over an ask the parent has not answered asks the parent again.
+// It spawns no judge then.
+// A judge that ends Done with its latest ask ended unanswered halts instead, so the rulings stay unstored.
+func (p *DriftVerify) runJudgeSession(ctx context.Context, rec Records, request JudgeRequest, scratchDir string) (shedengine.Outcome, shedengine.OutputPointer, *judgeSession, error) {
+	cfg, err := p.deps.Config()
+	if err != nil {
+		return "", shedengine.OutputPointer{}, nil, err
+	}
+	held, repeat, err := p.askToRepeat(rec, cfg, request.SpawnID)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, nil, err
+	}
+	if repeat {
+		outcome, pointer, session, err := p.reaskParent(ctx, request, held)
+		if session != nil || outcome != "" || err != nil {
+			return outcome, pointer, session, err
+		}
+	}
+
+	if rec.Scope.JudgeSession.Open {
+		err = p.resumeJudgeSession(rec, request, scratchDir)
+	} else {
+		err = p.openJudgeSession(request, scratchDir)
+	}
+	if err != nil {
+		return "", shedengine.OutputPointer{}, nil, err
+	}
+	outcome, pointer, session, err := p.runAgent(ctx, request)
+	if session == nil || !cfg.Autonomous {
+		return outcome, pointer, session, err
+	}
+	ask, ended, err := p.endedUnanswered(request.SpawnID)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, nil, err
+	}
+	if ended {
+		outcome, pointer, err := haltOnEndedAsk(ask)
+		return outcome, pointer, nil, err
+	}
+	return outcome, pointer, session, nil
+}
+
+// reaskParent asks the parent about the stored rulings of the open session of request and waits for the answer.
+// No judge is spawned.
+// held is the spawn's ask that askToRepeat answered.
+// An ended one is cleared.
+// The agreement entry then sends a new ask of the next round over the unchanged rulings, with no limit.
+// An open one is waited on as it stands.
+// The wait goes through Deps.Sleep from one second and doubles to a minute while the ask record is unchanged.
+// A cancelled context ends it with the context's error.
+// A satisfied answer returns the stored rulings as a session with no strand, since no judge ran.
+// An ask that ends unanswered again returns the same halt as a judge run would.
+// Findings in the parent's report return no session, no outcome and no error: the judge has to rewrite its rulings.
+func (p *DriftVerify) reaskParent(ctx context.Context, request JudgeRequest, held burlerengine.ParentAsk) (shedengine.Outcome, shedengine.OutputPointer, *judgeSession, error) {
+	if err := requireSeams(p.name, seam{"Sleep", p.deps.Sleep != nil}); err != nil {
+		return "", shedengine.OutputPointer{}, nil, err
+	}
+	// No judge ran in this pass, so the ask has no judge run to end before.
+	p.judgeStartedAt = time.Time{}
+	entry, asks, err := p.parentAgreement(request)
+	if err != nil || !asks {
+		return "", shedengine.OutputPointer{}, nil, err
+	}
+	if held.State.Ended() {
+		if err := burlerengine.ClearParentAsk(p.deps.JudgeParent.Files, held.Number); err != nil {
+			return "", shedengine.OutputPointer{}, nil, err
+		}
+	}
+
+	delay, seen := reaskWaitBase, askStanding{}
+	for {
+		result, err := entry.Gate()
+		if err != nil {
+			return "", shedengine.OutputPointer{}, nil, err
+		}
+		spawnAsks, err := p.judgeAsks(request.SpawnID)
+		if err != nil {
+			return "", shedengine.OutputPointer{}, nil, err
+		}
+		latest := spawnAsks[len(spawnAsks)-1]
+		switch {
+		case result.Passed && latest.State == burlerengine.ParentAskDone:
+			judgement, err := p.storedJudgement(request)
+			if err != nil {
+				return "", shedengine.OutputPointer{}, nil, err
+			}
+			return shedengine.Done, shedengine.OutputPointer{}, &judgeSession{Judgement: judgement}, nil
+		case result.Passed:
+			outcome, pointer, err := haltOnEndedAsk(latest)
+			return outcome, pointer, nil, err
+		case latest.State == burlerengine.ParentAskDone:
+			return "", shedengine.OutputPointer{}, nil, nil
+		}
+
+		if standing := (askStanding{latest.Number, latest.State}); standing == seen {
+			delay = min(2*delay, reaskWaitCeiling)
+		} else {
+			delay, seen = reaskWaitBase, standing
+		}
+		if err := p.deps.Sleep(ctx, delay); err != nil {
+			return "", shedengine.OutputPointer{}, nil, err
+		}
+	}
+}
+
+// storedJudgement reads the rulings in judgement.yaml against request.
+func (p *DriftVerify) storedJudgement(request JudgeRequest) (Judgement, error) {
+	data, present, err := readRecordFile(p.deps.Paths.Judgement)
+	if err != nil {
+		return Judgement{}, err
+	}
+	if !present {
+		return Judgement{}, fmt.Errorf("drift: %s: the parent agreed with rulings that have no judgement file at %s", p.name, p.deps.Paths.Judgement)
+	}
+	judgement, err := ParseJudgement(data, request.want())
+	if err != nil {
+		return Judgement{}, fmt.Errorf("drift: %s: read the stored rulings: %w", p.name, err)
+	}
+	return judgement, nil
+}
+
 // judgeSession is the rulings a judge session wrote and the strand that gave them.
 type judgeSession struct {
 	// Judgement is the parsed judgement.yaml.
@@ -1016,6 +1229,8 @@ func (p *DriftVerify) storeRulings(report CheckReport, cells []ClassifiedCell, r
 // otherwise one judge, spawned under a snapshot guard, rules on the cases, and its rulings are stored.
 // The review range's files are listed before the exit is read:
 // an exit 0 with a file no stored ruling covers spawns the judge for the files alone.
+// Under the run's autonomy, a judge ask that ended unanswered halts the pass before the rulings are stored,
+// and a session left open over such an ask asks the parent again instead of spawning a judge.
 func (p *DriftVerify) passCommand(ctx context.Context, rec Records, report CheckReport) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
 	head, err := d.Head()
@@ -1061,15 +1276,7 @@ func (p *DriftVerify) passCommand(ctx context.Context, rec Records, report Check
 		request.CompareLog = report.Compare.Log
 	}
 
-	if mark.Open {
-		err = p.resumeJudgeSession(rec, request, "")
-	} else {
-		err = p.openJudgeSession(request, "")
-	}
-	if err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	outcome, pointer, session, err := p.runAgent(ctx, request)
+	outcome, pointer, session, err := p.runJudgeSession(ctx, rec, request, "")
 	if session == nil {
 		return outcome, pointer, err
 	}

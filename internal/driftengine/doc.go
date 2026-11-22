@@ -93,6 +93,13 @@
 // A judgement changed after the ask gets a new ask.
 // Bound: the entry checks that the judge changed its rulings after the parent's findings, not that it took each one.
 //
+// Under the run's autonomy, Config.Autonomous, ApplyAutonomy forces `judge_ask_parent` on and `judge_interactive` off.
+// It writes no layer file, so autonomy off restores each key's layered value at the next load.
+// Under it, a judge ask that ended timeout, not-sent or no-parent halts Drift-Verify.
+// The parent agreement entry does not pass, and the rulings are not stored.
+// The resume asks the parent again over the same rulings, with no judge spawned:
+// it clears the ended ask, and the entry sends a new one over the unchanged digest.
+//
 // TakeJudgeSnapshot records the state of both checkouts, the decision record and the capture's scratch directory.
 // JudgeSnapshot.Changes names what the judge session changed since the snapshot, judged by content.
 // The snapshot and every comparison with it hold the run's decision lock, Deps.LockDecisionRecord.

@@ -23,6 +23,10 @@ func requirePawl(entry string, deps pawlengine.Deps, fields ...string) error {
 		"Paths.DobbyStopMarker": deps.Paths.DobbyStopMarker,
 		"Paths.AwaitMarker":     deps.Paths.AwaitMarker,
 		"Paths.HandOffMarker":   deps.Paths.HandOffMarker,
+		"Paths.DrainMarker":     deps.Paths.DrainMarker,
+		"Autonomous":            deps.Autonomous,
+		"HoldsCommits":          deps.HoldsCommits,
+		"WorkRemains":           deps.WorkRemains,
 		"HandOff":               deps.HandOff,
 		"SetStatus":             deps.SetStatus,
 		"EntryProducer":         deps.EntryProducer,
@@ -86,7 +90,7 @@ func beamAwaitEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	}
 	fields := append(append([]string{}, pawlPathFields...),
 		"Slug", "RunID", "SetStatus", "EntryProducer", "OwnedElsewhere", "StopDobby", "StartDobby",
-		"DobbyLive", "Recheck", "ReadyStands", "StampWake", "Notify", "Now", "Sleep")
+		"DobbyLive", "Recheck", "ReadyStands", "StampWake", "Notify", "Autonomous", "HoldsCommits", "WorkRemains", "Paths.DrainMarker", "Now", "Sleep")
 	if err := requirePawl("BeamAwait", env.Pawl, fields...); err != nil {
 		return nil, err
 	}

@@ -75,7 +75,7 @@ func DobbyBeamDir(worktree *lymcwd.Location) string {
 }
 
 // PawlPaths returns the paths the pawl producers use for the beam whose pair is at beam.
-// They are the land request, dobby-stop, await and hand-off markers.
+// They are the land request, dobby-stop, await, hand-off and drain markers.
 // They all lie directly in the `.lym/beam/` directory of the beam worktree, at its own anchor.
 // That is the directory the dobby's files use, so the dobby, `lym beam land` and Beam-Await read one directory.
 func PawlPaths(beam *lymcwd.Location) pawlengine.Paths {
@@ -85,6 +85,7 @@ func PawlPaths(beam *lymcwd.Location) pawlengine.Paths {
 		DobbyStopMarker: filepath.Join(beamDir, pawlengine.DobbyStopMarkerName),
 		AwaitMarker:     filepath.Join(beamDir, pawlengine.AwaitMarkerName),
 		HandOffMarker:   filepath.Join(beamDir, pawlengine.HandOffMarkerName),
+		DrainMarker:     filepath.Join(beamDir, pawlengine.DrainMarkerName),
 	}
 }
 

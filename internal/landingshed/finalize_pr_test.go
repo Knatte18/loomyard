@@ -56,6 +56,10 @@ func TestFinalize_PullRequest(t *testing.T) {
 	// openedRecord is the record Finalize writes for a pull request it opens itself under a merge parent.
 	openedRecord := &pullrequest.Record{Number: 7, URL: recordedURL, Base: "main", Head: "task-branch", GatedHead: "task-head", ReviewEnded: true}
 	withContinue := func(r *pullrequest.Record) { r.Continue = true }
+	autonomous := func(r *pullrequest.Record) {
+		on := true
+		r.Autonomy = &on
+	}
 	refusal := func(kind pullrequest.RefusalKind, message string) scriptedCall {
 		return scriptedCall{err: &pullrequest.MergeRefusal{Kind: kind, Message: message}}
 	}
@@ -200,6 +204,14 @@ func TestFinalize_PullRequest(t *testing.T) {
 		{
 			name: "AContinueFlagWithoutTheRecordedEndingHaltsAsWell", mode: "on", record: recorded(withContinue), scripts: statusScript(closed),
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"closed without a merge"}, wantCalls: []string{"Status 7"},
+		},
+		{
+			name: "AClosedPullRequestOfAnAutonomousReviewHaltsEvenWithTheEndingRecordedAndReopensNothing", mode: "on", record: recorded(autonomous, reviewEnded), scripts: statusScript(closed),
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"closed without a merge", "lym loom goto PR-Review"}, wantCalls: []string{"Status 7"},
+		},
+		{
+			name: "AClosedPullRequestOfAnAutonomousReviewUnderAMergeParentHaltsAndReopensAndMergesNothing", mode: "merge", record: recorded(autonomous), scripts: statusScript(closed),
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"closed without a merge", "lym loom goto PR-Review"}, wantCalls: []string{"Status 7"},
 		},
 		{
 			name: "TheOperatorsEndingOnAClosedPullRequestReopensItAndMergesOnGitHub", mode: "on", record: recorded(reviewEnded),

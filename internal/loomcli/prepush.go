@@ -76,7 +76,7 @@ func newPrePushCheck(location *lymcwd.Location, runID string) prePushCheck {
 		},
 		pause: func() error { return tendercli.PausePair(location, slug) },
 		notify: func(line string) error {
-			_, err := orchcli.NotifyParent(location, loomProgram, line)
+			_, err := orchcli.NotifyParentHalt(location, loomProgram, line)
 			return err
 		},
 	}

@@ -5,6 +5,7 @@ package dobbyengine
 import (
 	_ "embed"
 	"fmt"
+	"strconv"
 
 	"gopkg.in/yaml.v3"
 
@@ -27,6 +28,9 @@ const (
 	PullRequestKey = beamsetting.PullRequestKey
 	// LandNoticeKey decides whether dobby posts a line to the orch once a task's run lands or ends without landing.
 	LandNoticeKey = beamsetting.LandNoticeKey
+	// AutonomyKey decides whether the orch settles every halt of a task's runs.
+	// Under it the orch reaches the operator only for a severe halt or a merge-ready beam.
+	AutonomyKey = beamsetting.AutonomyKey
 )
 
 // The values of beam.yaml's pull_request, declared once in beamsetting.
@@ -50,7 +54,8 @@ const (
 )
 
 // Config is the resolved beam.yaml's worktree-wide keys.
-// The per-task keys, pull_request and land_notice, are read through LookupPullRequest and LookupLandNotice alone.
+// The per-task keys are pull_request, land_notice and autonomy.
+// They are read through LookupPullRequest, LookupLandNotice and LookupAutonomy alone.
 type Config struct {
 	// MaxRuns is the most runs dobby drives at once; 0 starts none.
 	MaxRuns int `yaml:"max_runs"`
@@ -79,6 +84,7 @@ func ConfigSpec() configengine.Spec {
 			"task_headroom":          configengine.CategoryNone,
 			PullRequestKey:           configengine.CategoryNone,
 			LandNoticeKey:            configengine.CategoryNone,
+			AutonomyKey:              configengine.CategoryNone,
 			"adopt_fix_tries":        configengine.CategoryNone,
 		},
 		RetiredKeys: map[string]configengine.Category{
@@ -91,7 +97,8 @@ func ConfigSpec() configengine.Spec {
 
 // LoadConfig resolves beam.yaml strictly from the layer stack under dirs, since dobby only ever runs inside a hub.
 // A negative value is refused, naming its key.
-// So is a resolved pull_request other than on, off, merge or merge-in, and a land_notice other than on or off,
+// So is a resolved pull_request other than on, off, merge or merge-in, a land_notice other than on or off,
+// and an autonomy that is no YAML boolean,
 // so a write the per-task lookup would refuse is refused when it is made.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.Load(dirs, ConfigSpec())
@@ -120,7 +127,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	if err := yaml.Unmarshal(resolved, &perTask); err != nil {
 		return Config{}, configengine.MarkInvalid(fmt.Errorf("unmarshal beam config: %w", err))
 	}
-	for _, key := range []string{PullRequestKey, LandNoticeKey} {
+	for _, key := range []string{PullRequestKey, LandNoticeKey, AutonomyKey} {
 		if _, err := checkTaskSetting(key, perTask[key], "the resolved beam.yaml"); err != nil {
 			return Config{}, err
 		}
@@ -129,14 +136,14 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 }
 
 // CheckLocalValues refuses a local-layer beam document holding a value its key does not take.
-// It checks only pull_request and land_notice.
+// It checks only pull_request, land_notice and autonomy.
 // The refusal is marked [configengine.ErrInvalid] and names the key, the values it takes and the way forward.
 func CheckLocalValues(document []byte) error {
 	var keys map[string]any
 	if err := yaml.Unmarshal(document, &keys); err != nil {
 		return configengine.MarkInvalid(fmt.Errorf("unmarshal beam run settings: %w", err))
 	}
-	for _, key := range []string{PullRequestKey, LandNoticeKey} {
+	for _, key := range []string{PullRequestKey, LandNoticeKey, AutonomyKey} {
 		value, set := keys[key]
 		if !set {
 			continue
@@ -151,7 +158,14 @@ func CheckLocalValues(document []byte) error {
 // checkTaskSetting returns the per-task key's value as text, or refuses a value its key does not take.
 // where names the file or layer the value was read from, for the refusal.
 // A refusal is marked [configengine.ErrInvalid] and names the key, the values it takes and the way forward.
+// autonomy takes a YAML boolean and answers "true" or "false".
 func checkTaskSetting(key string, value any, where string) (string, error) {
+	if key == AutonomyKey {
+		if flag, isBool := value.(bool); isBool {
+			return strconv.FormatBool(flag), nil
+		}
+		return "", configengine.MarkInvalid(fmt.Errorf("beam config key %q in %s is %v: must be true or false; way forward: fix it with `lym config beam --set %s=<true|false>` in that worktree, or in the task's run_settings for its next run", key, where, value, key))
+	}
 	allowed := beamsetting.LandNoticeValues()
 	if key == PullRequestKey {
 		allowed = beamsetting.PullRequestValues()

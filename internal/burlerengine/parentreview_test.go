@@ -51,6 +51,30 @@ func parentAskStates(t *testing.T, files burlerengine.ParentReviewFiles) []burle
 	return states
 }
 
+// TestClearParentAsk verifies a cleared ask keeps its end state and reason, and clearing it again is no error.
+func TestClearParentAsk(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	files := recordParentAsks(t, liveParentAsk)
+	if _, _, err := burlerengine.EndParentAsk(files, 1, burlerengine.ParentAskTimeout, "no answer"); err != nil {
+		t.Fatalf("EndParentAsk() error = %v", err)
+	}
+
+	for clearing := 1; clearing <= 2; clearing++ {
+		if err := burlerengine.ClearParentAsk(files, 1); err != nil {
+			t.Fatalf("ClearParentAsk() call %d error = %v; want nil", clearing, err)
+		}
+		record, _, err := burlerengine.ReadParentAsks(files)
+		if err != nil {
+			t.Fatalf("ReadParentAsks() error = %v", err)
+		}
+		ask, found := record.Ask(1)
+		if !found || !ask.Cleared || ask.State != burlerengine.ParentAskTimeout || ask.Reason != "no answer" {
+			t.Errorf("ask 1 after clear %d = %+v, %v; want cleared, state %q, reason %q", clearing, ask, found, burlerengine.ParentAskTimeout, "no answer")
+		}
+	}
+}
+
 // TestParentAsks_RecordAndMoveForward verifies asks are numbered in order and move only forward.
 // MarkParentAskPosted opens only a pending-post ask;
 // ExpireParentAsk sets an active latest ask timeout only at or past its deadline and never moves an ended one.

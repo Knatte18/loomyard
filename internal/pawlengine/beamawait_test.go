@@ -68,7 +68,8 @@ func TestBeamAwait(t *testing.T) {
 		wantEvents    []string
 		// wantNotices holds, per posted notice in order, the substrings it carries.
 		wantNotices [][]string
-		// wantFiles maps request, stop and await to whether that file stands afterwards, and record to whether the await marker carries the posted dobby-down notice.
+		// wantFiles maps request, stop, await and drain to whether that file stands afterwards.
+		// It maps record to whether the await marker carries the posted dobby-down notice.
 		wantFiles      map[string]bool
 		wantDobbyReads int
 		// wantStamps is the number of stamped wakes, checked when non-zero.
@@ -417,6 +418,148 @@ func TestBeamAwait(t *testing.T) {
 			wantSleeps:  seconds(1),
 		},
 		{
+			name: "AnAutonomousBeamThatHoldsCommitsWithNoWorkPostsExactlyOneDrainedLineAndWritesTheMarker",
+			setup: func(t *testing.T, w *world) {
+				w.autonomous, w.holdsCommits = true, true
+				cancelAfter(w, 3)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait},
+			wantNotices: [][]string{{"[beam drained] my-beam"}},
+			wantFiles:   map[string]bool{"drain": true},
+		},
+		{
+			name: "AReentryAfterTheDrainPostedPostsNoFurtherLine",
+			setup: func(t *testing.T, w *world) {
+				w.status = "Beam-Await"
+				w.autonomous, w.holdsCommits = true, true
+				touch(t, w.paths.AwaitMarker)
+				touch(t, w.paths.DrainMarker)
+				cancelAfter(w, 1)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait}, wantDobbyReads: 1,
+			wantFiles: map[string]bool{"drain": true},
+		},
+		{
+			name: "ADobbyDownNoticeOnAReentryPostsNoFurtherDrainLine",
+			setup: func(t *testing.T, w *world) {
+				w.status = "Beam-Await"
+				w.dobbyLive = false
+				w.autonomous, w.holdsCommits = true, true
+				touch(t, w.paths.AwaitMarker)
+				touch(t, w.paths.DrainMarker)
+				cancelAfter(w, 2)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait}, wantDobbyReads: 1,
+			wantNotices: [][]string{{"dobby is down"}},
+			wantFiles:   map[string]bool{"drain": true},
+		},
+		{
+			name: "WorkThatOpensAgainRemovesTheMarkerAndTheNextDrainPostsASecondLine",
+			setup: func(t *testing.T, w *world) {
+				w.autonomous, w.holdsCommits = true, true
+				w.onSleep = func(n int) {
+					switch n {
+					case 1:
+						w.workRemains = true
+					case 2:
+						if exists(w.paths.DrainMarker) {
+							t.Error("drain marker stands while work remains; want it removed")
+						}
+						w.workRemains = false
+					case 3:
+						w.cancel()
+					}
+				}
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait},
+			wantNotices: [][]string{{"[beam drained] my-beam"}, {"[beam drained] my-beam"}},
+			wantFiles:   map[string]bool{"drain": true},
+		},
+		{
+			name: "NoCommitsBeyondTheParentPostsNoDrainedLine",
+			setup: func(t *testing.T, w *world) {
+				w.autonomous = true
+				cancelAfter(w, 1)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait},
+			wantFiles: map[string]bool{"drain": false},
+		},
+		{
+			name: "AStandingReadyRecordPostsNoDrainedLine",
+			setup: func(t *testing.T, w *world) {
+				w.status = "Beam-Await"
+				w.ready = true
+				w.autonomous, w.holdsCommits = true, true
+				touch(t, w.paths.AwaitMarker)
+				cancelAfter(w, 1)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait}, wantDobbyReads: 1,
+			wantFiles: map[string]bool{"drain": false},
+		},
+		{
+			name: "RemainingWorkPostsNoDrainedLine",
+			setup: func(t *testing.T, w *world) {
+				w.autonomous, w.holdsCommits, w.workRemains = true, true, true
+				cancelAfter(w, 1)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait},
+			wantFiles: map[string]bool{"drain": false},
+		},
+		{
+			name: "AutonomyOffPostsNoDrainedLine",
+			setup: func(t *testing.T, w *world) {
+				w.holdsCommits = true
+				cancelAfter(w, 1)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait},
+			wantFiles: map[string]bool{"drain": false},
+		},
+		{
+			name: "AFailedDrainPostWritesNoMarkerSoTheNextWakePostsAgain",
+			setup: func(t *testing.T, w *world) {
+				w.autonomous, w.holdsCommits = true, true
+				w.notifyErr = errors.New("no orch strand")
+				cancelAfter(w, 2)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait},
+			wantNotices: [][]string{{"[beam drained] my-beam"}, {"[beam drained] my-beam"}},
+			wantFiles:   map[string]bool{"drain": false},
+		},
+		{
+			name: "APostThatReachedNoOrchWritesNoMarker",
+			setup: func(t *testing.T, w *world) {
+				w.autonomous, w.holdsCommits = true, true
+				w.notifyUnposted = true
+				cancelAfter(w, 1)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait},
+			wantNotices: [][]string{{"[beam drained] my-beam"}},
+			wantFiles:   map[string]bool{"drain": false},
+		},
+		{
+			name: "AFailingHoldsCommitsPostsNothingAndLeavesAbsentTheMarker",
+			setup: func(t *testing.T, w *world) {
+				w.autonomous = true
+				w.holdsErr = errors.New("ref unreadable")
+				cancelAfter(w, 1)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait},
+			wantFiles: map[string]bool{"drain": false},
+		},
+		{
+			name: "AFailingWorkRemainsPostsNothingAndLeavesTheMarkerStanding",
+			setup: func(t *testing.T, w *world) {
+				w.status = "Beam-Await"
+				w.autonomous, w.holdsCommits = true, true
+				w.remainsErr = errors.New("board unreadable")
+				touch(t, w.paths.AwaitMarker)
+				touch(t, w.paths.DrainMarker)
+				cancelAfter(w, 1)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait}, wantDobbyReads: 1,
+			wantFiles: map[string]bool{"drain": true},
+		},
+		{
 			name:          "IdleTimerDoublesToTheCeilingWithNoWatch",
 			setup:         func(t *testing.T, w *world) { cancelAfter(w, 8) },
 			wantCancelled: true, wantEvents: []string{beamAwait},
@@ -456,7 +599,7 @@ func TestBeamAwait(t *testing.T) {
 					}
 				}
 			}
-			paths := map[string]string{"request": w.paths.LandRequest, "stop": w.paths.DobbyStopMarker, "await": w.paths.AwaitMarker}
+			paths := map[string]string{"request": w.paths.LandRequest, "stop": w.paths.DobbyStopMarker, "await": w.paths.AwaitMarker, "drain": w.paths.DrainMarker}
 			for key, want := range tt.wantFiles {
 				got := exists(paths[key])
 				if key == "record" {

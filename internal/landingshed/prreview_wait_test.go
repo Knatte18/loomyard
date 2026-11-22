@@ -169,6 +169,32 @@ func TestPRReview_Wait(t *testing.T) {
 	withReviewEnded := func(r *pullrequest.Record) { r.ReviewEnded = true }
 	withStrand := func(r *pullrequest.Record) { r.StrandName = "pr-strand" }
 	withLiveStrand := func(r *pullrequest.Record) { r.StrandGUID = "guid-1" }
+	withAutonomy := func(r *pullrequest.Record) {
+		on := true
+		r.Autonomy = &on
+	}
+	// withAsked is the mark a review recorded under autonomy leaves once its session start asked the parent.
+	withAsked := func(r *pullrequest.Record) { r.ParentReviewAsked = true }
+	// standingReads counts the reads of the PR-Review standing seam, which standingOf resets.
+	// The test and its subtests run serially, so the rows share it.
+	standingReads := 0
+	// standingOf returns a setup that makes the world's PR-Review standing seam answer standing and count its reads.
+	standingOf := func(standing PRReviewStanding) func(w *waitWorld) {
+		return func(w *waitWorld) {
+			standingReads = 0
+			w.deps.PullRequest.PRReviewStanding = func(string) (PRReviewStanding, error) {
+				standingReads++
+				return standing, nil
+			}
+		}
+	}
+	// stayOpenAfterOneWake returns a setup that makes the standing answer standing and cancels the wait at the first sleep.
+	stayOpenAfterOneWake := func(standing PRReviewStanding) func(w *waitWorld) {
+		return func(w *waitWorld) {
+			standingOf(standing)(w)
+			w.cancelAfter(1)
+		}
+	}
 	writeContinue := func(w *waitWorld) {
 		err := pullrequest.UpdateRecord(w.deps.PullRequest.RecordPath, w.deps.PullRequest.RecordLockPath, func(r *pullrequest.Record) error {
 			r.Continue = true
@@ -178,6 +204,7 @@ func TestPRReview_Wait(t *testing.T) {
 			t.Errorf("write the continue flag: %v", err)
 		}
 	}
+	errStandingRead := errors.New("standing unreadable")
 	const sendBackFile = "/run/pr-findings-1.md"
 	// markSendBackAtFirstSleep is a setup that has the session live and writes the send-back mark at the first sleep.
 	markSendBackAtFirstSleep := func(w *waitWorld) {
@@ -282,6 +309,8 @@ func TestPRReview_Wait(t *testing.T) {
 		// wantReroute is the output of the reroute the verdict asks for, empty when it asks for none.
 		wantReroute string
 		wantErr     error
+		// wantErrText is a text the call's error holds, for an error with no sentinel to match.
+		wantErrText string
 		wantCalls   []string
 		wantRecord  *pullrequest.Record
 		// gatePushes counts the pushes the wait makes after Call's own.
@@ -445,6 +474,138 @@ func TestPRReview_Wait(t *testing.T) {
 			},
 		},
 		{
+			name: "AutonomyContinueWithASatisfiedStandingAtTheGatedHeadEndsTheReview", record: seed("h1", withContinue, withAutonomy), scripts: statusScript(open),
+			setup:       standingOf(PRReviewSatisfied),
+			wantOutcome: shedengine.Done, wantCalls: []string{"Status 7", editSeven},
+			wantRecord: recorded("h1", withContinue, withReviewEnded, withAutonomy, withAsked),
+			check: func(t *testing.T, _ *waitWorld, _ string) {
+				if standingReads != 1 {
+					t.Errorf("standing reads = %d; want one", standingReads)
+				}
+			},
+		},
+		{
+			name: "AutonomyContinueWithAnAskAgainStandingClearsTheFlagMailsTheAskVerbAndKeepsWaiting", record: seed("h1", withContinue, withAutonomy), scripts: statusScript(open),
+			setup:   stayOpenAfterOneWake(PRReviewAskAgain),
+			wantErr: context.Canceled, wantCalls: []string{"Status 7", editSeven},
+			wantRecord: recorded("h1", withAutonomy, withAsked),
+			check: func(t *testing.T, w *waitWorld, _ string) {
+				if len(w.mails) != 1 || !strings.HasPrefix(w.mails[0], "pr-strand|") || !strings.Contains(w.mails[0], "lym loom parent-review ask the-slug") {
+					t.Errorf("mails = %q; want one to pr-strand naming lym loom parent-review ask the-slug", w.mails)
+				}
+				assertSessionCounts(t, w.deps, 2, 1)
+			},
+		},
+		{
+			name: "AutonomyContinueWithAnAskAgainStandingMailsTheStrandNameTheResumeGaveTheSession", record: seed("h1", withContinue, withAutonomy), scripts: statusScript(open),
+			setup: func(w *waitWorld) {
+				stayOpenAfterOneWake(PRReviewAskAgain)(w)
+				sessions := sessionsOf(w.deps)
+				// The re-read of the tree after the stop comes before the resume, so the resumed session starts under the new name.
+				w.deps.PullRequest.DirtyPaths = func() ([]string, error) {
+					if len(sessions.stops) > 0 {
+						sessions.result.StrandName = "pr-strand-2"
+					}
+					return w.dirty, nil
+				}
+			},
+			wantErr: context.Canceled,
+			check: func(t *testing.T, w *waitWorld, _ string) {
+				if len(w.mails) != 1 || !strings.HasPrefix(w.mails[0], "pr-strand-2|") {
+					t.Errorf("mails = %q; want one to pr-strand-2, the resumed session's name", w.mails)
+				}
+				starts := sessionsOf(w.deps).starts
+				if len(starts) != 2 || starts[1].Interactive {
+					t.Errorf("session starts = %d with a restart Interactive %v; want 2 and a non-interactive restart", len(starts), len(starts) == 2 && starts[1].Interactive)
+				}
+			},
+		},
+		{
+			name: "AutonomyContinueWithAnAwaitingStandingClearsTheFlagAndMailsTheAwaitVerb", record: seed("h1", withContinue, withAutonomy), scripts: statusScript(open),
+			setup:   stayOpenAfterOneWake(PRReviewAwaiting),
+			wantErr: context.Canceled, wantRecord: recorded("h1", withAutonomy, withAsked),
+			check: func(t *testing.T, w *waitWorld, _ string) {
+				if len(w.mails) != 1 || !strings.Contains(w.mails[0], "lym loom parent-review await the-slug") {
+					t.Errorf("mails = %q; want one naming lym loom parent-review await the-slug", w.mails)
+				}
+			},
+		},
+		{
+			name: "ACommitAfterTheReviewWasContinuedIsGatedAndTheReviewStaysOpenWithAnAskAgainStanding", record: seed("h1", withContinue, withAutonomy), scripts: statusScript(open), head: "h2",
+			setup: func(w *waitWorld) {
+				w.withGateCommand()
+				stayOpenAfterOneWake(PRReviewAskAgain)(w)
+			},
+			wantErr: context.Canceled, gatePushes: 1, wantCalls: []string{"Status 7", editSeven},
+			wantRecord: recorded("h2", withAutonomy, withAsked),
+			check: func(t *testing.T, w *waitWorld, _ string) {
+				if w.tree.verifyCalls != 1 || len(w.mails) != 1 || !strings.Contains(w.mails[0], "lym loom parent-review ask the-slug") {
+					t.Errorf("gate runs = %d, mails = %q; want one gate run and one mail naming the ask verb", w.tree.verifyCalls, w.mails)
+				}
+			},
+		},
+		{
+			name:   "AMailedHeadClearedByPrContinueAtAnUngatedCleanHeadIsGatedAtTheNextWakeAndTheReviewStaysOpen",
+			record: seed("h1", withContinue, withAutonomy, func(r *pullrequest.Record) { r.MailedHead = "h2" }), scripts: statusScript(open), head: "h2",
+			setup: func(w *waitWorld) {
+				w.withGateCommand()
+				standingOf(PRReviewAskAgain)(w)
+				w.onSleep = func(w *waitWorld, n int) {
+					if n == 1 {
+						err := pullrequest.UpdateRecord(w.deps.PullRequest.RecordPath, w.deps.PullRequest.RecordLockPath, func(r *pullrequest.Record) error {
+							r.MailedHead = ""
+							return nil
+						})
+						if err != nil {
+							t.Errorf("clear the mailed head: %v", err)
+						}
+					}
+					if n >= 2 {
+						w.cancel()
+					}
+				}
+			},
+			wantErr: context.Canceled, gatePushes: 1, wantCalls: []string{"Status 7", editSeven, "Status 7"},
+			check: func(t *testing.T, w *waitWorld, _ string) {
+				if w.tree.verifyCalls != 1 {
+					t.Errorf("the gate ran %d times; want once, after the mailed head was cleared", w.tree.verifyCalls)
+				}
+			},
+		},
+		{
+			name: "AutonomyContinueOnAClosedPullRequestHaltsAndLeavesTheReviewUnended", record: seed("h1", withContinue, withAutonomy), scripts: statusScript(closed),
+			setup:       standingOf(PRReviewSatisfied),
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"closed on GitHub without being merged"},
+			wantRecord: seed("h1", withContinue, withAutonomy),
+			check: func(t *testing.T, _ *waitWorld, _ string) {
+				if standingReads != 0 {
+					t.Errorf("standing reads = %d; want none on a closed pull request", standingReads)
+				}
+			},
+		},
+		{
+			name: "AutonomyContinueWhoseStandingReadFailsReturnsTheError", record: seed("h1", withContinue, withAutonomy), scripts: statusScript(open),
+			setup: func(w *waitWorld) {
+				w.deps.PullRequest.PRReviewStanding = func(string) (PRReviewStanding, error) { return "", errStandingRead }
+			},
+			wantErr: errStandingRead, wantCalls: []string{"Status 7", editSeven},
+		},
+		{
+			name: "AutonomyContinueWithNoStandingSeamReturnsTheMissingSeamError", record: seed("h1", withContinue, withAutonomy), scripts: statusScript(open),
+			setup:       func(w *waitWorld) { w.deps.PullRequest.PRReviewStanding = nil },
+			wantErrText: "PRReviewStanding is not set", wantCalls: []string{"Status 7", editSeven},
+		},
+		{
+			name: "AutonomyApprovalAtTheGatedHeadEndsTheReviewWithNoStandingRead", record: seed("h1", withAutonomy), scripts: statusScript(approvedAt("h1", false)),
+			setup:       standingOf(PRReviewSatisfied),
+			wantOutcome: shedengine.Done, wantCalls: []string{"Status 7", editSeven}, wantRecord: recorded("h1", withAutonomy, withAsked),
+			check: func(t *testing.T, _ *waitWorld, _ string) {
+				if standingReads != 0 {
+					t.Errorf("standing reads = %d; want none for an approval", standingReads)
+				}
+			},
+		},
+		{
 			name: "ApprovalAtTheGatedAndTaskHeadIsDone", record: seed("h1"), scripts: statusScript(approvedAt("h1", false)),
 			wantOutcome: shedengine.Done, wantCalls: []string{"Status 7", editSeven}, wantRecord: recorded("h1"),
 		},
@@ -516,7 +677,7 @@ func TestPRReview_Wait(t *testing.T) {
 						t.Errorf("mail %q lacks %q", w.mails[0], want)
 					}
 				}
-				for _, banned := range []string{"merging parent branch", "resume"} {
+				for _, banned := range []string{"merging parent branch", "resume", "operator"} {
 					if strings.Contains(w.mails[0], banned) {
 						t.Errorf("mail %q holds %q, which does not fit a mail to the agent", w.mails[0], banned)
 					}
@@ -863,11 +1024,16 @@ func TestPRReview_Wait(t *testing.T) {
 
 			outcome, pointer, err := row.Call(ctx)
 
-			if tt.wantErr != nil {
+			switch {
+			case tt.wantErr != nil:
 				if !errors.Is(err, tt.wantErr) {
 					t.Fatalf("Call() error = %v; want one wrapping %v", err, tt.wantErr)
 				}
-			} else {
+			case tt.wantErrText != "":
+				if err == nil || !strings.Contains(err.Error(), tt.wantErrText) {
+					t.Fatalf("Call() error = %v; want one containing %q", err, tt.wantErrText)
+				}
+			default:
 				if err != nil {
 					t.Fatalf("Call() error = %v; want none", err)
 				}
@@ -896,7 +1062,8 @@ func TestPRReview_Wait(t *testing.T) {
 				if rerr != nil || !found {
 					t.Fatalf("ReadRecord() = %+v, %v, %v; want the record", got, found, rerr)
 				}
-				if diff := cmp.Diff(*tt.wantRecord, withSessionOf(got, *tt.wantRecord)); diff != "" {
+				want := withRecordedAutonomyOfStartedSession(*tt.wantRecord, w.deps)
+				if diff := cmp.Diff(want, withSessionOf(got, want)); diff != "" {
 					t.Errorf("record mismatch (-want +got):\n%s", diff)
 				}
 			}
@@ -909,7 +1076,8 @@ func TestPRReview_Wait(t *testing.T) {
 					t.Errorf("slept %v; want every wait between a second and a minute", d)
 				}
 			}
-			if len(w.marks) < 2 || w.marks[0] != "PR #7" || w.marks[len(w.marks)-1] != "" {
+			// A wiring error ends the call before the wait sets its mark.
+			if tt.wantErrText == "" && (len(w.marks) < 2 || w.marks[0] != "PR #7" || w.marks[len(w.marks)-1] != "") {
 				t.Errorf("wait marks = %q; want the mark set at the start and cleared on the way out", w.marks)
 			}
 			held, lerr := w.deps.Lock.Store.List()

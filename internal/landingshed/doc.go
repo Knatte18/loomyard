@@ -14,7 +14,11 @@
 // So does branch protection set outside repository rules.
 //
 // PR-Review takes no parent lock and never lands a run by a direct push.
-// It keeps one interactive agent session per run for the operator to discuss the pull request in.
+// It keeps one agent session per run to review the pull request in.
+// The first session start of a review records the run's autonomy in the pull request record.
+// The review keeps that value.
+// Under a recorded autonomy of false the session is interactive, for the operator to discuss the pull request in.
+// Under a recorded autonomy of true it is non-interactive, and the parent orch reviews through recorded asks.
 // The session runs under the publish shell guard: it cannot push, merge, close or open a pull request.
 // A wait on the pull request has no timeout.
 // The agent records the operator's ending and a send-back to Code-Review.

@@ -57,6 +57,7 @@ func TestLoadConfig(t *testing.T) {
 		{name: "an unknown pull_request is refused naming the key and the way forward", worktree: "pull_request: maybe\n", wantErr: []string{"pull_request", "maybe", "lym config beam --set pull_request="}},
 		{name: "a retired land_notice of all is refused naming the key and the way forward", worktree: "land_notice: all\n", wantErr: []string{"land_notice", "all", "lym config beam --set land_notice="}},
 		{name: "a retired land_notice of per-task is refused naming the key and the way forward", local: "land_notice: per-task\n", wantErr: []string{"land_notice", "per-task", "lym config beam --set land_notice="}},
+		{name: "a non-boolean autonomy is refused naming the key and the way forward", worktree: "autonomy: maybe\n", wantErr: []string{"autonomy", "true or false", "lym config beam --set autonomy="}},
 		{name: "a negative board_tidy_every is refused naming the key", worktree: "board_tidy_every: -1\n", wantErr: []string{"board_tidy_every", "lym config beam --set"}},
 		{name: "a negative task_headroom is refused naming the key", worktree: "task_headroom: -1\n", wantErr: []string{"task_headroom", "lym config beam --set"}},
 		{name: "a worktree layer's adopt_fix_tries resolves as set", worktree: "adopt_fix_tries: 1\n", want: defaultsWith(func(c *Config) { c.AdoptFixTries = 1 })},

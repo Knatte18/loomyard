@@ -15,7 +15,9 @@ import (
 )
 
 // RunGoto is the body of `goto` once the target is known, the entry an in-process driver calls and the cobra verb runs.
-// It runs the PreGoto hook, makes the status-lock directory when the spec asks, and moves the run onto target through shedengine.Goto over the spec's paths, passing the spec's told GotoGuard.
+// It runs the PreGoto hook and makes the status-lock directory when the spec asks.
+// It then moves the run onto target through shedengine.Goto over the spec's paths.
+// It passes the spec's told GotoGuard and GotoAdmitted.
 // by is the caller label recorded on the goto entry; the empty string records none.
 // It returns the moved status, or the first error, which wraps shedengine.ErrShedBusy when another holder has the run.
 func RunGoto(ctx context.Context, spec *Spec, target, by string) (shedengine.Status, error) {
@@ -43,6 +45,7 @@ func RunGoto(ctx context.Context, spec *Spec, target, by string) (shedengine.Sta
 		MissingStatusWayForward: spec.MissingStatusWayForward,
 		PauseWayForward:         spec.PauseWayForward,
 		Guard:                   spec.GotoGuard,
+		Admitted:                spec.GotoAdmitted,
 	})
 }
 

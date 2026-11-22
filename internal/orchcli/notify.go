@@ -74,6 +74,30 @@ func NotifyRunFrom(from *lymcwd.Location, slug, program string, tags creelengine
 	return postNotice(from, slug, program, line, tags, func() (string, bool, error) { return nearestOrchStrand(from, OrchLive) })
 }
 
+// NotifyParentHalt sends line, stamped with the pair's autonomy, as creel mail.
+// It goes to the nearest live orch up the pair's beam chain.
+// It serves a run's halt notices, and routes, tags and signs as NotifyParent does.
+// The stamp is the autonomy the pair reads when the notice is built,
+// so the orch the notice reaches handles it under the run's value, never its own worktree's.
+func NotifyParentHalt(pair *lymcwd.Location, program, line string) (posted bool, err error) {
+	return NotifyParent(pair, program, WithRunAutonomy(pair, pair.WorktreeName, line))
+}
+
+// NotifyRunFromHalt sends line, stamped with the autonomy of the run slug, as creel mail carrying tags.
+// It goes to the nearest live orch on the beam chain at or above from.
+// It serves a run's halt notices for a run whose pair is absent, and routes and tags as NotifyRunFrom does.
+// It is signed as the unscoped program: slug names the run whose autonomy stamps the line, never a scope of the signer.
+func NotifyRunFromHalt(from *lymcwd.Location, slug, program string, tags creelengine.PostTags, line string) (posted bool, err error) {
+	return NotifyRunFrom(from, "", program, tags, WithRunAutonomy(from, slug, line))
+}
+
+// WithRunAutonomy returns line followed by "; autonomy: true" or "; autonomy: false".
+// The value is the autonomy the worktree slug reads at the call.
+// It stamps a notice a caller posts through NotifyRunFrom with its own signer scope.
+func WithRunAutonomy(location *lymcwd.Location, slug, line string) string {
+	return fmt.Sprintf("%s; autonomy: %t", line, hubgeom.Autonomy(location, slug))
+}
+
 // NotifyAsker sends line as creel mail to the orch the agents of location reach as their parent.
 // It is signed as program, and it reports whether the notice was posted.
 // It serves a hold notice.

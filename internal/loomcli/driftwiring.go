@@ -95,15 +95,25 @@ func driftJudgeSessionOpen(location *lymcwd.Location) func() (bool, error) {
 	}
 }
 
+// runAutonomy reports whether autonomy is on for the run of l's worktree, read at the moment of the call.
+func runAutonomy(l *lymcwd.Location) bool {
+	return hubgeom.Autonomy(l, l.WorktreeName)
+}
+
 // driftDeps builds the seams the Drift rows read over location's worktree.
 // statusPath and statusLockPath locate the run status.
+// The config seam answers the loaded config with the run's autonomy applied, read at each call.
 // The seat runner, clock, gate findings file and review base are left unset.
 // The registry entries fill them from the recipe's environment.
 func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tables driftTables) driftengine.Deps {
 	paths := driftengine.NewPaths(location.AnchorPath())
 	pool, waitDir := hubgeom.GateSlots(location), gateslot.WaitDir(location.AnchorPath())
 	config := func() (driftengine.Config, error) {
-		return driftengine.LoadConfig(fabricengine.ConfigDirs(location))
+		cfg, err := driftengine.LoadConfig(fabricengine.ConfigDirs(location))
+		if err != nil {
+			return driftengine.Config{}, err
+		}
+		return driftengine.ApplyAutonomy(cfg, runAutonomy(location)), nil
 	}
 	status := func() (shedengine.Status, error) {
 		st, found, err := state.ReadJSON[shedengine.Status](statusPath, statusLockPath)

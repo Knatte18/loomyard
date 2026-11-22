@@ -13,6 +13,8 @@ import _ "embed"
 var Role []byte
 
 var (
+	//go:embed role-autonomy.md
+	autonomy []byte
 	//go:embed role-beams.md
 	beams []byte
 	//go:embed role-hibernate.md
@@ -29,6 +31,7 @@ var (
 // Each key is the file name its text renders to beside the role, the name the role calls it by.
 // Each text is a leading comment, then a body with no marker.
 var OnDemand = map[string][]byte{
+	"role-autonomy.md":      autonomy,
 	"role-beams.md":         beams,
 	"role-hibernate.md":     hibernate,
 	"role-intake.md":        intake,

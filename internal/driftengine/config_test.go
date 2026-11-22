@@ -17,6 +17,38 @@ import (
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
+// TestApplyAutonomy pins what the run's autonomy forces on the resolved config.
+// It also pins what the setting lookup answers for it.
+// Autonomy on forces the judge to ask the parent and to run with no operator, whatever the layers hold.
+// Autonomy off keeps every layered value.
+func TestApplyAutonomy(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	layered := Config{JudgeModel: "claude", JudgeAskParent: false, JudgeInteractive: true}
+
+	if got, want := ApplyAutonomy(layered, true), (Config{JudgeModel: "claude", JudgeAskParent: true, JudgeInteractive: false, Autonomous: true}); !reflect.DeepEqual(got, want) {
+		t.Errorf("ApplyAutonomy(layered, true) = %+v; want %+v", got, want)
+	}
+	if got, want := ApplyAutonomy(layered, false), layered; !reflect.DeepEqual(got, want) {
+		t.Errorf("ApplyAutonomy(layered, false) = %+v; want %+v", got, want)
+	}
+
+	settings := []struct {
+		key        string
+		wantValue  bool
+		wantForced bool
+	}{
+		{"judge_ask_parent", true, true},
+		{"judge_interactive", false, true},
+		{"judge_model", false, false},
+	}
+	for _, setting := range settings {
+		if value, forced := AutonomyForcedSetting(setting.key); value != setting.wantValue || forced != setting.wantForced {
+			t.Errorf("AutonomyForcedSetting(%q) = %v, %v; want %v, %v", setting.key, value, forced, setting.wantValue, setting.wantForced)
+		}
+	}
+}
+
 // TestConfigSpec_SetNestedKeys pins that a --set reaches one key inside capture or compare.
 // A number decodes as a number and an env value as a string, so the file still loads.
 // It also pins that a key a step lacks is refused naming it, leaving the file byte for byte.

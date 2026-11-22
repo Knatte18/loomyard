@@ -91,6 +91,9 @@ type slackCLI struct {
 	worktreeOrch func() (string, error)
 	// machine returns the paths of the machine's own Slack files, which `bar` reads with no hub.
 	machine func() (slackengine.MachinePaths, error)
+	// orchAutonomous reports whether the autonomy of the orch that runs in the verb's worktree is on, read at each call.
+	// A nil seam reads false, which forwards every reply.
+	orchAutonomous func() bool
 	// strandName returns the name of the strand whose pane the process runs in, empty when it names none.
 	strandName func() string
 	// newStrandClient builds the creel client of the strand named strand, which `hook` reads the log and posts as.

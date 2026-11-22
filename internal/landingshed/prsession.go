@@ -28,6 +28,13 @@ const prReviewerRole = "pr-reviewer"
 // prReviewStencilName is the registered name of the PR-Review session's opening prompt.
 const prReviewStencilName = "landing-template-pr-review"
 
+const (
+	// prReviewOperatorBlockName is the registered name of the review-mode block for a run whose autonomy is off.
+	prReviewOperatorBlockName = "landing-block-pr-review-operator"
+	// prReviewAutonomousBlockName is the registered name of the review-mode block for a run whose autonomy is on.
+	prReviewAutonomousBlockName = "landing-block-pr-review-autonomous"
+)
+
 // prSessions is the seam the PR-Review row starts and stops its interactive session through.
 type prSessions interface {
 	shuttleengine.EngineNamer
@@ -59,10 +66,16 @@ func (h *sessionStartHalt) haltReason() string {
 // A recorded strand that is live is reused;
 // a recorded session id whose strand is not live is resumed;
 // with none recorded, a new session starts.
+// A session that starts or resumes under a record holding no autonomy records the run's autonomy as it reads then.
+// The write of the session's identity carries it, and a recorded value never changes.
+// So every later start of the same review builds its session from the recorded value.
 // A transient start failure is returned as an error, and any other is returned as a start halt.
 // A failed registration is logged, since the registration only lets a teardown end the pane process.
 func (p *PRReview) ensureSession(ctx context.Context, rec pullrequest.Record) (pullrequest.Record, error) {
 	pr := p.deps.PullRequest
+	if err := p.checkAutonomySeams(rec); err != nil {
+		return rec, err
+	}
 	if rec.StrandGUID != "" {
 		live, err := pr.SessionLive(rec.StrandGUID)
 		if err != nil {
@@ -70,6 +83,14 @@ func (p *PRReview) ensureSession(ctx context.Context, rec pullrequest.Record) (p
 		}
 		if live {
 			return rec, nil
+		}
+	}
+
+	if rec.Autonomy == nil {
+		autonomy := pr.Autonomy != nil && pr.Autonomy()
+		rec.Autonomy = &autonomy
+		if err := p.checkAutonomySeams(rec); err != nil {
+			return rec, err
 		}
 	}
 
@@ -91,6 +112,10 @@ func (p *PRReview) ensureSession(ctx context.Context, rec pullrequest.Record) (p
 	rec.StrandGUID, rec.StrandName, rec.SessionID, rec.Engine = result.StrandGUID, result.StrandName, result.SessionID, result.Engine
 	err = p.updateRecord(func(r *pullrequest.Record) {
 		r.StrandGUID, r.StrandName, r.SessionID, r.Engine = rec.StrandGUID, rec.StrandName, rec.SessionID, rec.Engine
+		if r.Autonomy == nil {
+			autonomy := *rec.Autonomy
+			r.Autonomy = &autonomy
+		}
 	})
 	if err != nil {
 		// A session the record does not name could never be found again, and the re-entry would start a second one.
@@ -104,8 +129,14 @@ func (p *PRReview) ensureSession(ctx context.Context, rec pullrequest.Record) (p
 // RenderPRReviewPrompt renders the PR-Review session's opening prompt for the pull request at prURL.
 // The edit directive in it is the copy for the named engine, so the prompt suits the engine the session runs on.
 // The prompt carries paths only, never file content, except the drift verdict, which no file holds.
-func RenderPRReviewPrompt(deps Deps, prURL, engine string) (string, error) {
+// An autonomous prompt says the parent orch reviews with no operator in the pane,
+// and any other says the operator reviews in the pane.
+func RenderPRReviewPrompt(deps Deps, prURL, engine string, autonomous bool) (string, error) {
 	template, err := stencilstore.ReadForEngine(deps.StencilsDir, engine, prReviewStencilName)
+	if err != nil {
+		return "", err
+	}
+	reviewMode, err := renderReviewMode(deps, engine, autonomous)
 	if err != nil {
 		return "", err
 	}
@@ -126,6 +157,7 @@ func RenderPRReviewPrompt(deps Deps, prURL, engine string) (string, error) {
 	}
 	prompt, err := stencil.Fill(template, map[string]string{
 		"drift_verdict":            verdict,
+		"review_mode":              reviewMode,
 		"slug":                     deps.Slug,
 		"pr_url":                   prURL,
 		"task_worktree":            deps.WorktreeRoot,
@@ -142,8 +174,27 @@ func RenderPRReviewPrompt(deps Deps, prURL, engine string) (string, error) {
 	return string(prompt), nil
 }
 
+// renderReviewMode returns the review-mode block of the PR-Review prompt, filled with the run's slug.
+// It is the autonomous block when autonomous is set, and the operator block otherwise.
+func renderReviewMode(deps Deps, engine string, autonomous bool) (string, error) {
+	name := prReviewOperatorBlockName
+	if autonomous {
+		name = prReviewAutonomousBlockName
+	}
+	block, err := stencilstore.ReadForEngine(deps.StencilsDir, engine, name)
+	if err != nil {
+		return "", err
+	}
+	filled, err := stencil.Fill(block, map[string]string{"slug": deps.Slug})
+	if err != nil {
+		return "", fmt.Errorf("fill the PR-Review block %s: %w", name, err)
+	}
+	return strings.TrimSpace(string(filled)), nil
+}
+
 // sessionSpec builds the spec the PR-Review session starts under for the pull request rec records.
 // The prompt is rendered for the engine the session's model choice resolves to.
+// A review recorded under autonomy gets a non-interactive session, since the parent orch reviews it.
 func (p *PRReview) sessionSpec(rec pullrequest.Record) (shuttleengine.Spec, error) {
 	choice, err := resolveModelChoice(p.deps.Config.PRReviewer, p.deps.Registry)
 	if err != nil {
@@ -151,7 +202,8 @@ func (p *PRReview) sessionSpec(rec pullrequest.Record) (shuttleengine.Spec, erro
 	}
 	engine := p.deps.PullRequest.Sessions.EngineName(choice)
 
-	prompt, err := RenderPRReviewPrompt(p.deps, rec.URL, engine)
+	autonomous := recordedAutonomy(rec)
+	prompt, err := RenderPRReviewPrompt(p.deps, rec.URL, engine, autonomous)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
 	}
@@ -160,7 +212,7 @@ func (p *PRReview) sessionSpec(rec pullrequest.Record) (shuttleengine.Spec, erro
 		Prompt:       prompt,
 		PromptEngine: engine,
 		ModelChoice:  choice,
-		Interactive:  true,
+		Interactive:  !autonomous,
 		Unawaited:    true,
 		DenyPublish:  true,
 		Role:         prReviewerRole,

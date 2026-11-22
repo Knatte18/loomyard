@@ -45,6 +45,9 @@
 // `parent-review answer` records the parent orch's answer to the run's latest ask.
 // It admits the operator's unnamed shell, the run's parent orch and the strand the ask went to.
 // `parent-review await` is the asking agent's capped wait on the same ask, and it writes nothing but a timeout.
+// `parent-review ask` records and posts a PR-Review ask at the task head for the review's session.
+// Only that session runs it.
+// It admits only a review recorded under autonomy, and it refuses an ask that already awaits an answer at the head.
 // The Discussion-Review and Code-Review parent seats read `discussion_review_ask_parent` and `code_review_ask_parent`.
 // They read them on each call, and an unreadable value reads as false.
 //
@@ -202,6 +205,9 @@
 //
 // `lym loom pr-continue` sets the continue flag in the run's pull-request record when the operator ends a review.
 // It is refused until the PR-Review row has opened the pull request.
+// Under a review whose record holds autonomy true, it sets the flag only on the parent's satisfied answer.
+// That answer must stand at the current head.
+// A record whose autonomy is false or absent takes no parent answer.
 // `lym loom pr-findings <file>` takes findings in burler's review format.
 // It sends the set back to Code-Review when the reroute edge can fire.
 // That needs a BLOCKING finding or findings exceeding `pr_review_small_max`; otherwise it only counts them.

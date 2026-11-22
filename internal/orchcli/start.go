@@ -833,7 +833,7 @@ func (c *orchCLI) launchOrch(st orchengine.State, note, remoteControlName string
 	if err != nil {
 		return startedSession{}, "", abandoned, err
 	}
-	prompt = orchengine.WithPresence(c.paths, prompt)
+	prompt = orchengine.WithLaunchFacts(c.paths, prompt)
 	if note != "" {
 		prompt += "\n\n" + note
 	}
@@ -851,7 +851,7 @@ func (c *orchCLI) resumeOrch(sessionID, remoteControlName string) (startedSessio
 	if err != nil {
 		return startedSession{}, err
 	}
-	spec := c.orchSpec(orchengine.WithPresence(c.paths, reload), time.Now(), remoteControlName)
+	spec := c.orchSpec(orchengine.WithLaunchFacts(c.paths, reload), time.Now(), remoteControlName)
 	spec.ResumeSessionID = sessionID
 	started, err := c.starter.StartSession(spec)
 	var held *shuttleengine.SessionHeldError

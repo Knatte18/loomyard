@@ -1,5 +1,5 @@
 // Package beamsetting names the module, keys and values of beam.yaml's per-task settings.
-// Those settings are pull_request and land_notice.
+// Those settings are pull_request, land_notice and autonomy.
 // Every package that reads, writes or refuses one of them takes its name from here, so each is declared once.
 package beamsetting
 
@@ -12,6 +12,9 @@ const (
 	PullRequestKey = "pull_request"
 	// LandNoticeKey decides whether dobby posts a line to the orch once a task's run lands or ends without landing.
 	LandNoticeKey = "land_notice"
+	// AutonomyKey decides whether the orch settles every halt of a task's runs.
+	// Under it the orch reaches the operator only for a severe halt or a merge-ready beam.
+	AutonomyKey = "autonomy"
 )
 
 // The values of beam.yaml's pull_request.

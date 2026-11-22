@@ -44,6 +44,28 @@ func TestRecord_RoundTripAndUpdate(t *testing.T) {
 		t.Fatalf("ReadRecord() = %+v, %v, %v; want %+v, true, nil", got, found, err, want)
 	}
 
+	// An autonomy recorded false is an explicit false, and a nil one writes no key.
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read record file: %v", err)
+	}
+	if strings.Contains(string(raw), "autonomy") {
+		t.Errorf("record file = %s; want no autonomy key while Autonomy is nil", raw)
+	}
+	off := false
+	recorded := want
+	recorded.Autonomy = &off
+	if err := WriteRecord(path, lockPath, recorded); err != nil {
+		t.Fatalf("WriteRecord(autonomy false) error: %v", err)
+	}
+	got, _, err = ReadRecord(path, lockPath)
+	if err != nil || got.Autonomy == nil || *got.Autonomy {
+		t.Fatalf("ReadRecord() = %+v, %v; want Autonomy pointing at false", got, err)
+	}
+	if err := WriteRecord(path, lockPath, want); err != nil {
+		t.Fatalf("WriteRecord() error: %v", err)
+	}
+
 	// A record from an older run, without the send-back keys, reads them as zero.
 	if err := os.WriteFile(path, []byte(`{"number": 7, "parent_review_asked": true}`), 0o644); err != nil {
 		t.Fatalf("write older record file: %v", err)
@@ -57,7 +79,7 @@ func TestRecord_RoundTripAndUpdate(t *testing.T) {
 	}
 
 	// A key a newer binary wrote is kept across the rewrite.
-	raw, err := os.ReadFile(path)
+	raw, err = os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read record file: %v", err)
 	}
@@ -87,6 +109,43 @@ func TestRecord_RoundTripAndUpdate(t *testing.T) {
 	}
 	if _, found, _ := ReadRecord(path, lockPath); found {
 		t.Errorf("ReadRecord() after RemoveRecord found a record; want none")
+	}
+}
+
+// TestClearReviewSession pins that the clear drops the autonomy, the parent-review ask mark and the session fields.
+// It keeps every other field.
+// A missing record returns nil and creates no file.
+func TestClearReviewSession(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pull-request.json")
+	lockPath := path + ".lock"
+
+	if err := ClearReviewSession(path, lockPath); err != nil {
+		t.Errorf("ClearReviewSession(absent) error = %v; want nil", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("ClearReviewSession(absent) left a file at %s (stat error %v); want none", path, err)
+	}
+
+	on := true
+	held := Record{
+		Number: 7, Autonomy: &on, ParentReviewAsked: true, StrandGUID: "g", StrandName: "n", SessionID: "s", Engine: "claude",
+		GatedHead: "abc", Continue: true, SendBacks: 2,
+	}
+	if err := WriteRecord(path, lockPath, held); err != nil {
+		t.Fatalf("WriteRecord() error: %v", err)
+	}
+
+	if err := ClearReviewSession(path, lockPath); err != nil {
+		t.Fatalf("ClearReviewSession() error = %v; want nil", err)
+	}
+
+	got, _, err := ReadRecord(path, lockPath)
+	want := Record{Number: 7, GatedHead: "abc", Continue: true, SendBacks: 2}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("ReadRecord() = %+v, %v; want %+v", got, err, want)
 	}
 }
 

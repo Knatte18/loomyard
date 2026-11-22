@@ -58,6 +58,10 @@ type GotoRequest struct {
 	// Guard is the recipe's check of a target, run after the engine's own checks and before anything is written.
 	// A nil Guard admits every target.
 	Guard GotoGuard
+	// Admitted is called with Target once the move is written, still under the run lock.
+	// An error it returns comes back as the call's error with the move already written.
+	// A nil Admitted calls nothing.
+	Admitted func(target string) error
 }
 
 // Goto moves a halted run onto the Target row and leaves it paused.
@@ -69,6 +73,8 @@ type GotoRequest struct {
 // so every refusal leaves the status file unchanged.
 // It sets no transient mark and commits nothing;
 // the next step's persist commits the file, as a pause write does.
+// The one exception is the Admitted hook a recipe passes.
+// It may reset and commit the records of the row the move entered, which the move restarts.
 func Goto(req GotoRequest) (Status, error) {
 	if err := os.MkdirAll(filepath.Dir(req.LockPath), 0o755); err != nil {
 		return Status{}, fmt.Errorf("shedengine: create run lock parent dir: %w", err)
@@ -145,6 +151,11 @@ func Goto(req GotoRequest) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
+	if req.Admitted != nil {
+		if err := req.Admitted(req.Target); err != nil {
+			return Status{}, err
+		}
+	}
 	return written, nil
 }
 
@@ -193,6 +204,11 @@ type RelaunchRequest struct {
 	// Guard is the recipe's check of a non-empty Target, run after the engine's own checks and before Admit.
 	// A nil Guard admits every target.
 	Guard GotoGuard
+	// Admitted is called with Target once a move is written, still under the run lock.
+	// It is not called without a Target, nor when Admit reports the move in effect.
+	// An error it returns comes back as the call's error with the move already written.
+	// A nil Admitted calls nothing.
+	Admitted func(target string) error
 }
 
 // Relaunch is the status-file mutation behind a driver's re-launch of a halted run.
@@ -206,6 +222,7 @@ type RelaunchRequest struct {
 // When Admit reports the target already in effect, no goto is performed and the status is written unchanged, so the history gains no entry.
 // A held run lock returns ErrShedBusy and Admit is never called.
 // It commits nothing, as a goto does not.
+// The one exception is the Admitted hook a recipe passes, which runs after a move is written.
 func Relaunch(req RelaunchRequest) (Status, error) {
 	if err := os.MkdirAll(filepath.Dir(req.LockPath), 0o755); err != nil {
 		return Status{}, fmt.Errorf("shedengine: create run lock parent dir: %w", err)
@@ -224,6 +241,7 @@ func Relaunch(req RelaunchRequest) (Status, error) {
 	defer runLock.Release()
 
 	var written Status
+	moved := false
 	err = state.UpdateJSON(req.StatusPath, req.StatusLockPath, func(cur Status, found bool) (Status, error) {
 		if !found {
 			return Status{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one; %s", req.StatusPath, MissingStatusClause(req.MissingStatusWayForward))
@@ -262,12 +280,18 @@ func Relaunch(req RelaunchRequest) (Status, error) {
 			cur.PendingBy = ""
 			cur.History = append(cur.History, HistoryEntry{Producer: req.Target, Outcome: OutcomeGoto, At: nowRFC3339(), Block: target.Block})
 			cur.Activity = composeActivity(req.Target, cur.History, StatePaused, "", "")
+			moved = true
 		}
 		written = cur
 		return cur, nil
 	})
 	if err != nil {
 		return Status{}, err
+	}
+	if moved && req.Admitted != nil {
+		if err := req.Admitted(req.Target); err != nil {
+			return Status{}, err
+		}
 	}
 	return written, nil
 }

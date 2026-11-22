@@ -564,6 +564,7 @@ func TestCompact_HookDeliveredPointerIsSkippedAndAStaleMarkIsTyped(t *testing.T)
 			if err != nil {
 				t.Fatal(err)
 			}
+			pointer += autonomyOffLine
 			if err := WriteResumeMark(e.paths, ResumeMark{At: tt.markAt(baseline, boundary), Text: pointer}); err != nil {
 				t.Fatal(err)
 			}

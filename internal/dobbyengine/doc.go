@@ -135,7 +135,8 @@
 //
 // The landing notice:
 //
-//   - `pull_request` and `land_notice` are per-task settings, read only through LookupPullRequest and LookupLandNotice.
+//   - `pull_request`, `land_notice` and `autonomy` are per-task settings,
+//     read only through LookupPullRequest, LookupLandNotice and LookupAutonomy.
 //     A task's value is the one its own worktree's files set, else each parent worktree's own value up to the prime,
 //     else the hub's default layer's, else the template's.
 //   - Each tick reads Deps.LandNotice for each listed run ahead of its Land row and remembers the reading.

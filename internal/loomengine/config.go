@@ -534,6 +534,9 @@ type Config struct {
 	// PRReviewAskParent makes the PR-Review row ask the parent orch for a review of the run's open pull request.
 	// It is open to the local layer, so a task's run_settings turns it on or off for one run.
 	PRReviewAskParent bool `yaml:"pr_review_ask_parent"`
+	// PRReviewParentTimeoutMin is the minutes from a PR-Review ask to the parent orch to its deadline.
+	// It is a positive integer, and a task's run_settings sets it for one run.
+	PRReviewParentTimeoutMin int `yaml:"pr_review_parent_timeout_min"`
 	// PRReviewSmallMax is the most findings PR-Review fixes in place when none is BLOCKING.
 	// The count runs between two send-backs, or before the first.
 	// It is open to the local layer, so a task's run_settings sets it for one run.
@@ -561,6 +564,36 @@ type Config struct {
 	// lym mails once each time the run reaches a row, and again on a re-call after an escalation's answer or a resumed halt.
 	// It is open to the local layer, so a task's run_settings sets it for one run.
 	NotifyParentOn []string `yaml:"notify_parent_on"`
+}
+
+// The loom keys the run's autonomy forces.
+const (
+	keyPRReviewAskParent     = "pr_review_ask_parent"
+	keyDiscussionInteractive = "discussion_interactive"
+	keyRaddleAutoApprove     = "raddle_auto_approve"
+)
+
+// ApplyAutonomy returns cfg with the keys the run's autonomy forces, when autonomous is true:
+// PRReviewAskParent and RaddleAutoApprove on, and DiscussionInteractive off.
+// code_review_ask_parent and discussion_review_ask_parent keep their own values.
+// It rewrites no layer file, so autonomy off restores each key's layered value at the next load.
+func ApplyAutonomy(cfg Config, autonomous bool) Config {
+	if autonomous {
+		cfg.PRReviewAskParent, cfg.DiscussionInteractive, cfg.RaddleAutoApprove = true, false, true
+	}
+	return cfg
+}
+
+// AutonomyForcedSetting answers the value the run's autonomy forces on the loom key, and whether it forces one.
+// It forces the three keys ApplyAutonomy forces and no other.
+func AutonomyForcedSetting(key string) (value bool, forced bool) {
+	switch key {
+	case keyPRReviewAskParent, keyRaddleAutoApprove:
+		return true, true
+	case keyDiscussionInteractive:
+		return false, true
+	}
+	return false, false
 }
 
 // DiscussionAdvisor is one Discussion-Write advisor: Name is its seat name and Model its model-spec.
@@ -686,6 +719,7 @@ func ConfigSpec() configengine.Spec {
 			"review_circling_checkpoint":       none,
 			"review_stalemate_rounds":          none,
 			"pr_review_ask_parent":             none,
+			"pr_review_parent_timeout_min":     none,
 			"pr_review_small_max":              none,
 
 			"discussion_review_ask_parent":         none,
@@ -1004,6 +1038,9 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	}
 	if cfg.CodeReviewParentTimeoutMin < 1 {
 		return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; set it to a positive integer in loom.yaml", "code_review_parent_timeout_min", cfg.CodeReviewParentTimeoutMin)
+	}
+	if cfg.PRReviewParentTimeoutMin < 1 {
+		return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; set it to a positive integer in loom.yaml", "pr_review_parent_timeout_min", cfg.PRReviewParentTimeoutMin)
 	}
 
 	if err := reviewbudget.CheckResolved(dirs, spec, reviewbudget.Values{

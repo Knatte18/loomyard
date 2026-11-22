@@ -52,6 +52,10 @@
 // So does an empty parent worktree, a parent worktree that is gone, and a cycle.
 // An error from the predicate is returned.
 //
+// Autonomy is the reader of beam.yaml's `autonomy` for runs and orchs.
+// It answers for the worktree it is named, through TaskSettingChain and the per-task lookup, at the moment of the call.
+// A failed read answers false and warns once per episode.
+//
 // A pair reads as a beam when its origin record carries the beam mark or its board entry is a project with the beam flag.
 // So a beam reads as one before its pawl run marks the pair.
 // A failed prime read is taken as the prime and a failed beam read as a task, each logged at Warn.

@@ -41,6 +41,8 @@
 // Every refusal leaves the status file unchanged.
 // Shed knows no review state, so the recipe owner tells a GotoGuard on GotoRequest.Guard and RelaunchRequest.Guard;
 // a nil guard admits every target.
+// GotoRequest.Admitted and RelaunchRequest.Admitted are the recipe's optional hook.
+// It is called with the target once a move is written, still under the run lock.
 //
 // Relaunch is the status write a driver's re-launch performs.
 // Under the run lock it refuses a missing file, a done run and a running run.

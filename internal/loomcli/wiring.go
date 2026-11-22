@@ -627,6 +627,8 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
+	// The run's autonomy is applied before any reader uses a field of loomCfg.
+	loomCfg = loomengine.ApplyAutonomy(loomCfg, runAutonomy(location))
 	reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
 	if err != nil {
 		return err
@@ -839,7 +841,8 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	}
 	planDir := planparser.PlanDir(anchorPath)
 	// Setting is one lookup per wiring, so every row of a recipe build reads one snapshot of each module's stack.
-	settingLookup := configreg.SettingLookup(fabricengine.ConfigDirs(location))
+	// A key the run's autonomy forces answers its forced value while autonomy reads true.
+	settingLookup := autonomySettingLookup(configreg.SettingLookup(fabricengine.ConfigDirs(location)), func() bool { return runAutonomy(location) })
 
 	weaverGeom.Index = planglyph.NewSlottedIndex(fabricengine.NewReferenceRule(), weaverGeom.GateSlots, weaverGeom.GateWaitDir)
 	weaverGeom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
@@ -1402,6 +1405,25 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	c.driverDirectory = newReedDriverDirectory(reedEngine)
 	c.bouncerSubdir = loomrecipe.BouncerRunSubdir
 	return nil
+}
+
+// autonomySettingLookup wraps lookup so a loom or drift key the run's autonomy forces answers its forced value.
+// It does so while autonomous reads true; autonomous is read on each forced key's call, never captured.
+// Every other call goes to lookup.
+func autonomySettingLookup(lookup func(module, key string) (any, error), autonomous func() bool) func(module, key string) (any, error) {
+	return func(module, key string) (any, error) {
+		var value, forced bool
+		switch module {
+		case "loom":
+			value, forced = loomengine.AutonomyForcedSetting(key)
+		case "drift":
+			value, forced = driftengine.AutonomyForcedSetting(key)
+		}
+		if forced && autonomous() {
+			return value, nil
+		}
+		return lookup(module, key)
+	}
 }
 
 // planReviewSegment is the name of the recipe segment whose rows read tapestry.yaml's plan perch keys.

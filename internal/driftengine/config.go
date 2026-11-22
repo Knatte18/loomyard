@@ -95,6 +95,38 @@ type Config struct {
 	// Scope is the task's regression scope, ScopeOff or ScopeFull, which Drift-Baseline records with no agent.
 	// An empty scope records full.
 	Scope string
+	// Autonomous is the run's autonomy, which no layer spells; ApplyAutonomy sets it.
+	Autonomous bool
+}
+
+// The drift keys the run's autonomy forces.
+const (
+	keyJudgeAskParent   = "judge_ask_parent"
+	keyJudgeInteractive = "judge_interactive"
+)
+
+// ApplyAutonomy returns cfg with Autonomous set to autonomous.
+// With autonomous true it also forces JudgeAskParent on and JudgeInteractive off,
+// so the judge asks the run's parent and never waits on an operator.
+// It rewrites no layer file, so autonomy off restores each key's layered value at the next load.
+func ApplyAutonomy(cfg Config, autonomous bool) Config {
+	cfg.Autonomous = autonomous
+	if autonomous {
+		cfg.JudgeAskParent, cfg.JudgeInteractive = true, false
+	}
+	return cfg
+}
+
+// AutonomyForcedSetting answers the value the run's autonomy forces on the drift key, and whether it forces one.
+// Every key but judge_ask_parent and judge_interactive is not forced.
+func AutonomyForcedSetting(key string) (value bool, forced bool) {
+	switch key {
+	case keyJudgeAskParent:
+		return true, true
+	case keyJudgeInteractive:
+		return false, true
+	}
+	return false, false
 }
 
 // configFile is drift.yaml as it is spelled, before defaults and validation.

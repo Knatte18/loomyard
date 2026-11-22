@@ -22,6 +22,9 @@ const (
 	AwaitMarkerName = "await-entered"
 	// HandOffMarkerName is the file name of the marker that says Beam-Up settled the beam's hand-off, which it never removes.
 	HandOffMarkerName = "handoff-sent"
+	// DrainMarkerName is the file name of the marker that says Beam-Await posted its `[beam drained]` line.
+	// The marker covers the current drain only.
+	DrainMarkerName = "drain-posted"
 )
 
 // Paths holds the absolute paths of the pawl run's files, which the hub wiring composes and tells.
@@ -34,6 +37,8 @@ type Paths struct {
 	AwaitMarker string
 	// HandOffMarker is the marker file Beam-Up writes once the beam's hand-off is settled, beside the land request; Beam-Up never removes it.
 	HandOffMarker string
+	// DrainMarker is the marker file only Beam-Await writes and removes, on the drain notice it posts.
+	DrainMarker string
 }
 
 // LandRequest asks the pawl run to land its beam.

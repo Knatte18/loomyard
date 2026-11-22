@@ -21,7 +21,7 @@ type Step struct {
 type Deps struct {
 	// Slug is the beam's slug, which names its landing and start in a notice.
 	Slug string
-	// Paths holds the run's land request, dobby-stop marker, await marker and hand-off marker.
+	// Paths holds the run's land request, dobby-stop marker, await marker, hand-off marker and drain marker.
 	Paths Paths
 	// RunID is the pawl run's seed id, which a land request names.
 	RunID string
@@ -57,6 +57,12 @@ type Deps struct {
 	Notify func(line string) (posted bool, err error)
 	// Down takes the beam's dobby and orch down.
 	Down func() error
+	// Autonomous reports whether the beam's orch is autonomous, read at call time.
+	Autonomous func() bool
+	// HoldsCommits reports whether the beam holds commits beyond its parent.
+	HoldsCommits func() (bool, error)
+	// WorkRemains reports whether any member task of the beam is open, drafts included, or any child pair of the beam exists.
+	WorkRemains func() (bool, error)
 	// Watch delivers a value whenever the land request's directory changes; nil leaves the timer alone.
 	Watch <-chan struct{}
 	// Now reads the clock.

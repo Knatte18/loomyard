@@ -38,6 +38,9 @@ type Paths struct {
 
 	// SlackPresencePath is the machine's presence record, which every rendered pointer reads; empty means no presence line.
 	SlackPresencePath string
+
+	// Autonomy reports whether the orch's autonomy is on, read each time a pointer is built; nil reads off.
+	Autonomy func() bool
 }
 
 // PendingStep is one post or inject the watcher persisted before sending it to creel.

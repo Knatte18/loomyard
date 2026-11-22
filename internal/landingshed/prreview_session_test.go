@@ -19,6 +19,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -108,6 +109,17 @@ func withSessionOf(got, want pullrequest.Record) pullrequest.Record {
 	return got
 }
 
+// withRecordedAutonomyOfStartedSession returns want with autonomy false recorded.
+// It does so only when deps started a session and want holds no autonomy.
+// A session start records the run's autonomy into a record that holds none, and these worlds read it as false.
+func withRecordedAutonomyOfStartedSession(want pullrequest.Record, deps Deps) pullrequest.Record {
+	if want.Autonomy == nil && len(sessionsOf(deps).starts) > 0 {
+		recordedFalse := false
+		want.Autonomy = &recordedFalse
+	}
+	return want
+}
+
 // assertSessionCounts fails the test unless the fake session runner of deps saw the given number of starts and stops.
 func assertSessionCounts(t *testing.T, deps Deps, starts, stops int) {
 	t.Helper()
@@ -150,6 +162,28 @@ func TestPRReview_Session(t *testing.T) {
 		got, found, err := pullrequest.ReadRecord(fx.deps.PullRequest.RecordPath, fx.deps.PullRequest.RecordLockPath)
 		if err != nil || !found || got.ParentReviewAsked != wantAsked {
 			t.Errorf("ReadRecord() = %+v, %v, %v; want the record with ParentReviewAsked %v", got, found, err, wantAsked)
+		}
+	}
+
+	// autonomyOn makes the run's autonomy read true and the PR-Review ask seam append the head it asks at to fx.asks.
+	autonomyOn := func(_ *testing.T, fx *prReviewFixture, _ *fakePRSessions) {
+		pr := &fx.deps.PullRequest
+		pr.Autonomy = func() bool { return true }
+		pr.AskPRReview = func(head, _ string) (burlerengine.ParentAsk, error) {
+			fx.asks = append(fx.asks, head)
+			return burlerengine.ParentAsk{Number: len(fx.asks)}, fx.askErr
+		}
+	}
+	// recordingAutonomy makes a record hold the autonomy on.
+	recordingAutonomy := func(on bool) func(*pullrequest.Record) {
+		return func(r *pullrequest.Record) { r.Autonomy = &on }
+	}
+	// assertRecordedAutonomy fails the test unless the record holds the autonomy want.
+	assertRecordedAutonomy := func(t *testing.T, fx *prReviewFixture, want bool) {
+		t.Helper()
+		got, found, err := pullrequest.ReadRecord(fx.deps.PullRequest.RecordPath, fx.deps.PullRequest.RecordLockPath)
+		if err != nil || !found || got.Autonomy == nil || *got.Autonomy != want {
+			t.Errorf("ReadRecord() = %+v, %v, %v; want the record holding autonomy %v", got, found, err, want)
 		}
 	}
 
@@ -236,7 +270,7 @@ func TestPRReview_Session(t *testing.T) {
 				if len(fx.asks) != 1 {
 					return
 				}
-				for _, want := range []string{parentReviewRequestPrefix + " the-slug:", recordedURL, "branch task into main", "lym creel post pr-strand"} {
+				for _, want := range []string{PRReviewAskLineTag + " the-slug:", recordedURL, "branch task into main", "lym creel post pr-strand"} {
 					if !strings.Contains(fx.asks[0], want) {
 						t.Errorf("parent ask %q lacks %q", fx.asks[0], want)
 					}
@@ -298,6 +332,67 @@ func TestPRReview_Session(t *testing.T) {
 			setup: func(t *testing.T, fx *prReviewFixture, s *fakePRSessions) {
 				parentReviewOn(t, fx, s)
 				fx.askUnrecorded = true
+			},
+			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
+			check: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) { assertAsks(t, fx, 1, false) },
+		},
+		{
+			name: "AutonomyOnRecordsItStartsANonInteractiveSessionAndAsksTheParentAtTheHead", record: recordedAtHead(), scripts: map[string][]scriptedCall{"Status": {open}},
+			setup:         autonomyOn,
+			cancelAtSleep: cancelAtFirstSleep, wantCanceled: true, wantStarts: 1,
+			check: func(t *testing.T, fx *prReviewFixture, s *fakePRSessions) {
+				if s.starts[0].Interactive {
+					t.Errorf("spec Interactive = true; want false under a recorded autonomy")
+				}
+				if !strings.Contains(s.starts[0].Prompt, "lym loom parent-review ask the-slug") {
+					t.Errorf("prompt lacks the parent-review ask command for the slug:\n%s", s.starts[0].Prompt)
+				}
+				assertRecordedAutonomy(t, fx, true)
+				assertAsks(t, fx, 1, true)
+				if diff := cmp.Diff([]string{"head-new"}, fx.asks); diff != "" {
+					t.Errorf("PR-Review ask heads mismatch (-want +got):\n%s", diff)
+				}
+			},
+		},
+		{
+			name: "AutonomyOffRecordsFalseAndStartsAnInteractiveSessionAndAsksNone", record: recordedAtHead(), scripts: map[string][]scriptedCall{"Status": {open}},
+			cancelAtSleep: cancelAtFirstSleep, wantCanceled: true, wantStarts: 1,
+			check: func(t *testing.T, fx *prReviewFixture, s *fakePRSessions) {
+				if !s.starts[0].Interactive {
+					t.Errorf("spec Interactive = false; want true with no autonomy")
+				}
+				if strings.Contains(s.starts[0].Prompt, "lym loom parent-review ask") {
+					t.Errorf("prompt holds the parent-review ask command; want the operator's block:\n%s", s.starts[0].Prompt)
+				}
+				assertRecordedAutonomy(t, fx, false)
+				assertAsks(t, fx, 0, false)
+			},
+		},
+		{
+			name: "ARecordedAutonomyOutlivesTheLayersAfterAPauseStoppedTheSession", record: recordedAtHead(recordingAutonomy(true)), scripts: map[string][]scriptedCall{"Status": {open}},
+			// Autonomy now reads false, and read 1 of the pause record is the entry's and read 2 the first wake's.
+			coveredAt:     func(n int) bool { return n == 2 },
+			cancelAtSleep: 2, wantCanceled: true, wantStarts: 2, wantStops: 1,
+			check: func(t *testing.T, fx *prReviewFixture, s *fakePRSessions) {
+				for i, spec := range s.starts {
+					if spec.Interactive {
+						t.Errorf("start %d Interactive = true; want false from the recorded autonomy", i+1)
+					}
+				}
+				assertRecordedAutonomy(t, fx, true)
+			},
+		},
+		{
+			name: "AutonomyOnWithTheRecordAlreadyAskedAsksNone", record: recordedAtHead(recordingAutonomy(true), func(r *pullrequest.Record) { r.ParentReviewAsked = true }), scripts: map[string][]scriptedCall{"Status": {open}},
+			setup:         autonomyOn,
+			cancelAtSleep: cancelAtFirstSleep, wantCanceled: true, wantStarts: 1,
+			check: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) { assertAsks(t, fx, 0, true) },
+		},
+		{
+			name: "AFailedPRReviewAskLeavesTheRecordUnaskedForTheNextEntry", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
+			setup: func(t *testing.T, fx *prReviewFixture, s *fakePRSessions) {
+				autonomyOn(t, fx, s)
+				fx.askErr = errors.New("creel down")
 			},
 			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
 			check: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) { assertAsks(t, fx, 1, false) },

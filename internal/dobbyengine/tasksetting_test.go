@@ -1,4 +1,4 @@
-// tasksetting_test.go pins the per-task lookup of beam.yaml's pull_request and land_notice.
+// tasksetting_test.go pins the per-task lookup of beam.yaml's pull_request, land_notice and autonomy.
 // It pins which of a task's own files, its parents' files, the hub default and the template decides.
 // It also pins the refusal of a bad value.
 
@@ -28,8 +28,12 @@ func writeBeamLocalLayer(t *testing.T, anchor, document string) {
 
 // lookupAsText runs the lookup of key and returns its answer as on or off text where the key is a switch.
 func lookupAsText(key string, chain TaskSettingChain) (string, error) {
-	if key == LandNoticeKey {
-		on, err := LookupLandNotice(chain)
+	if key == LandNoticeKey || key == AutonomyKey {
+		lookup := LookupLandNotice
+		if key == AutonomyKey {
+			lookup = LookupAutonomy
+		}
+		on, err := lookup(chain)
 		if err != nil {
 			return "", err
 		}
@@ -42,9 +46,19 @@ func lookupAsText(key string, chain TaskSettingChain) (string, error) {
 }
 
 // settingDocument returns a beam document setting key to value, or "" when value is empty.
+// autonomy's value is written unquoted, on as true and off as false, any other value as given.
 func settingDocument(key, value string) string {
 	if value == "" {
 		return ""
+	}
+	if key == AutonomyKey {
+		switch value {
+		case "on":
+			value = "true"
+		case "off":
+			value = "false"
+		}
+		return key + ": " + value + "\n"
 	}
 	return key + ": \"" + value + "\"\n"
 }
@@ -75,7 +89,7 @@ func TestLookupTaskSettings(t *testing.T) {
 		{name: "a hub default that is off applies when no anchor sets the key", hub: "off", want: "off"},
 		{name: "a hub default never counts as the prime's own setting", prime: "on", hub: "off", want: "on"},
 	}
-	for _, key := range []string{PullRequestKey, LandNoticeKey} {
+	for _, key := range []string{PullRequestKey, LandNoticeKey, AutonomyKey} {
 		for _, tt := range tests {
 			t.Run(key+"/"+tt.name, func(t *testing.T) {
 				t.Parallel()
@@ -120,6 +134,9 @@ func TestLookupTaskSettings(t *testing.T) {
 		}
 		if got, err := LookupLandNotice(chain); err != nil || got {
 			t.Errorf("LookupLandNotice() = %v, %v; want false", got, err)
+		}
+		if got, err := LookupAutonomy(chain); err != nil || got {
+			t.Errorf("LookupAutonomy() = %v, %v; want false", got, err)
 		}
 	})
 
@@ -186,21 +203,25 @@ func TestLookupTaskSettings_RefusesAValueTheKeyDoesNotTake(t *testing.T) {
 		{name: "land_notice per-task in a worktree file", key: LandNoticeKey, value: "per-task", place: "worktree"},
 		{name: "pull_request unknown in a local file", key: PullRequestKey, value: "maybe", place: "local"},
 		{name: "land_notice merge in the hub default", key: LandNoticeKey, value: "merge", place: "hub"},
+		{name: "autonomy yes in a worktree file", key: AutonomyKey, value: "yes", place: "worktree"},
+		{name: "autonomy on in a local file", key: AutonomyKey, value: "on", place: "local"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			anchor, board := t.TempDir(), t.TempDir()
+			// Quoted, so autonomy's on is written as the text "on" the key refuses, not as the boolean settingDocument maps it to.
+			document := tt.key + ": \"" + tt.value + "\"\n"
 			var wantPath string
 			switch tt.place {
 			case "worktree":
-				writeBeamLayer(t, anchor, settingDocument(tt.key, tt.value))
+				writeBeamLayer(t, anchor, document)
 				wantPath = configengine.ConfigFile(anchor, "beam")
 			case "local":
-				writeBeamLocalLayer(t, anchor, settingDocument(tt.key, tt.value))
+				writeBeamLocalLayer(t, anchor, document)
 				wantPath = configengine.LocalFile(anchor, "beam")
 			case "hub":
-				writeBeamLayer(t, board, settingDocument(tt.key, tt.value))
+				writeBeamLayer(t, board, document)
 				wantPath = configengine.ConfigFile(board, "beam")
 			}
 
