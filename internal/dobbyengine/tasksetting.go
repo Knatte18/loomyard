@@ -1,0 +1,115 @@
+// tasksetting.go is the one reader of beam.yaml's per-task settings, pull_request and land_notice.
+// A task's value is the one its own worktree's files set.
+// Failing that, it is the value of the nearest worktree above it that sets one, up to the prime.
+// Failing all of those, it is the hub's default layer's, else the template's.
+
+package dobbyengine
+
+import (
+	"fmt"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/envsource"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
+)
+
+// TaskSettingChain is the geometry a per-task beam setting is looked up through, told by the caller.
+type TaskSettingChain struct {
+	// Anchors are the anchor directories of the task's worktree and of each worktree above it, nearest first.
+	// The last is the prime's.
+	// A worktree absent on this machine is left out, so its parent's value applies.
+	Anchors []string
+	// Board is the hub's board directory, whose default layer applies when no worktree of Anchors sets the key.
+	// Empty means no default layer.
+	Board string
+}
+
+// LookupPullRequest returns the pull_request the task at the chain's head lands by:
+// on, off, merge or merge-in.
+// A value the key does not take is refused, naming the file that set it.
+func LookupPullRequest(chain TaskSettingChain) (string, error) {
+	return lookupTaskSetting(chain, PullRequestKey)
+}
+
+// LookupLandNotice reports whether land_notice is on for the task at the chain's head.
+// A task with it on asks dobby for a line to the orch once its run lands or ends without landing.
+// A value the key does not take is refused, naming the file that set it.
+func LookupLandNotice(chain TaskSettingChain) (bool, error) {
+	value, err := lookupTaskSetting(chain, LandNoticeKey)
+	return value == LandNoticeOn, err
+}
+
+// ownTaskSetting returns the value the files of the one place dirs names set for the per-task key.
+// It returns the setting file's path with it.
+// It never checks the value, and set is false when none of that place's own files sets the key.
+// A merged value from a place below never counts as this place's own.
+func ownTaskSetting(dirs configengine.Dirs, key string) (value any, path string, set bool, err error) {
+	return configengine.TopLevelValue(dirs, ConfigSpec(), key)
+}
+
+// lookupTaskSetting returns the value of the per-task key for the task at the chain's head.
+// Each anchor's own files, its worktree file and its local file, are read in chain order,
+// and the first that sets the key decides.
+// With none set, the board's default layer decides, and then the template.
+// An envsource marker in the winning value is expanded the way a load of beam.yaml expands it.
+func lookupTaskSetting(chain TaskSettingChain, key string) (string, error) {
+	places := make([]configengine.Dirs, 0, len(chain.Anchors)+1)
+	for _, anchor := range chain.Anchors {
+		places = append(places, configengine.Dirs{Anchor: anchor})
+	}
+	if chain.Board != "" {
+		places = append(places, configengine.Dirs{Board: chain.Board})
+	}
+	for _, dirs := range places {
+		value, path, set, err := ownTaskSetting(dirs, key)
+		if err != nil {
+			return "", fmt.Errorf("look up beam.yaml's %s: %w", key, err)
+		}
+		if !set {
+			continue
+		}
+		expanded, err := expandEnvMarkers(dirs, key, value)
+		if err != nil {
+			return "", fmt.Errorf("expand beam.yaml's %s in %s: %w", key, path, err)
+		}
+		return checkTaskSetting(key, expanded, path)
+	}
+	var template map[string]any
+	if err := yaml.Unmarshal([]byte(ConfigTemplate()), &template); err != nil {
+		return "", fmt.Errorf("decode beam.yaml's template: %w", err)
+	}
+	return checkTaskSetting(key, template[key], "beam.yaml's template")
+}
+
+// expandEnvMarkers expands the envsource markers of a text value, with the environment of the place dirs names.
+// A value that is no text, or holds no marker, comes back as it is.
+func expandEnvMarkers(dirs configengine.Dirs, key string, value any) (any, error) {
+	text, isText := value.(string)
+	if !isText || !strings.Contains(text, "${") {
+		return value, nil
+	}
+	baseDir := dirs.Anchor
+	if baseDir == "" {
+		baseDir = dirs.Board
+	}
+	env, err := envsource.Build(baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("build environment: %w", err)
+	}
+	document, err := yaml.Marshal(map[string]any{key: text})
+	if err != nil {
+		return nil, fmt.Errorf("encode value: %w", err)
+	}
+	resolved, err := yamlengine.Resolve(document, env)
+	if err != nil {
+		return nil, err
+	}
+	var expanded map[string]any
+	if err := yaml.Unmarshal(resolved, &expanded); err != nil {
+		return nil, fmt.Errorf("decode expanded value: %w", err)
+	}
+	return expanded[key], nil
+}

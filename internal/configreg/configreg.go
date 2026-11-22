@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/beamsetting"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelconfig"
@@ -99,9 +100,13 @@ type Module struct {
 type Reinterpretation struct {
 	// ID names the change; once applied, the hub-wide reconcile records it as a board marker, so each hub applies it once.
 	ID string
-	// Rewrite receives the hub base file's bytes and the prime's worktree root and anchored directory.
+	// Rewrite receives the hub base file's bytes, nil when the file is absent and RunsWithoutFile is set,
+	// and the hub's code worktrees, the prime first.
 	// It returns the bytes, rewritten only if a value changed; one line per change or unsettled value, naming a way forward.
-	Rewrite func(existing []byte, worktreeRoot, anchorDir string) (rewritten []byte, rewrote, flagged []string, err error)
+	Rewrite func(existing []byte, worktrees []configengine.HubWorktree) (rewritten []byte, rewrote, flagged []string, err error)
+	// RunsWithoutFile marks a change that also reads the hub beyond its base file, such as the worktrees' own files.
+	// The walk then runs Rewrite with no bytes when the base file is absent, instead of writing only the marker.
+	RunsWithoutFile bool
 }
 
 // withLocalBounds fills the module's LocalKeys or LocalDenied from its Spec, so the registry never restates a key.
@@ -139,7 +144,7 @@ func Modules() []Module {
 		{Name: agentconfig.ModuleName, Template: agentconfig.ConfigTemplate, OpenMaps: agentconfig.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoad(agentconfig.Load), Spec: agentconfig.ConfigSpec},
 		{Name: "batcher", Template: batcher.ConfigTemplate, PerNameMaps: batcher.ConfigPerNameMaps(), CheckLoad: checkLoad(batcher.Active), Spec: batcher.ConfigSpec},
 		{Name: "batten", Template: battenshed.ConfigTemplate, CheckValues: battenshed.ValidateLocalValues, CheckLoad: checkLoad(battenshed.LoadConfig), Spec: battenshed.ConfigSpec},
-		{Name: "beam", Template: dobbyengine.ConfigTemplate, CheckLoad: checkLoad(dobbyengine.LoadConfig), Spec: dobbyengine.ConfigSpec},
+		{Name: beamsetting.Module, Template: dobbyengine.ConfigTemplate, CheckValues: dobbyengine.CheckLocalValues, CheckLoad: checkLoad(dobbyengine.LoadConfig), Reinterpretations: []Reinterpretation{{ID: dobbyengine.PerTaskSettingsReinterpretationID, Rewrite: dobbyengine.ReinterpretPerTaskSettings, RunsWithoutFile: true}}, Spec: dobbyengine.ConfigSpec},
 		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoadNamed(boardengine.LoadConfig, "board"), Spec: boardengine.ConfigSpec},
 		{Name: "creel", Template: creelconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(creelconfig.LoadConfig), Spec: creelconfig.ConfigSpec},
 		{Name: "darn", Template: darnengine.ConfigTemplate, OpenMaps: darnengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoadNamed(darnengine.LoadConfig, "darn"), Spec: darnengine.ConfigSpec},

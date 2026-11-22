@@ -62,7 +62,7 @@ func fakeMarkerRel() string {
 
 // fakeRewrite is the test-only reinterpretation of slack.yaml.
 // It rewrites a remind_after_min of 10 to 600 and flags a remind_after_min of 0, which it leaves as it is.
-func fakeRewrite(existing []byte, _, _ string) (rewritten []byte, rewrote, flagged []string, err error) {
+func fakeRewrite(existing []byte, _ []configengine.HubWorktree) (rewritten []byte, rewrote, flagged []string, err error) {
 	switch {
 	case bytes.Contains(existing, []byte("remind_after_min: 10\n")):
 		rewritten = bytes.ReplaceAll(existing, []byte("remind_after_min: 10\n"), []byte("remind_after_min: 600\n"))

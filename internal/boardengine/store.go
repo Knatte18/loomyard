@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/beamsetting"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -185,6 +186,10 @@ func NewStore(boardDir string) *Store {
 // Load populates the store from boardDir and never writes.
 // An absent board.json leaves the store empty.
 // An entry without a handle of its own letter gets one in memory, persisted on the next Save.
+// A task written with a retired pull_request or notify_on_land key has the setting it carries folded.
+// The fold goes into its beam run settings.
+// A pull_request of off is dropped with nothing folded, and a project keeps both keys as kept keys.
+// The fold is in memory, persisted on the next Save.
 func (s *Store) Load() error {
 	s.tasks = []Task{}
 	s.primeOwner = ""
@@ -235,6 +240,7 @@ func (s *Store) Load() error {
 		if entries[i].Labels == nil {
 			entries[i].Labels = []string{}
 		}
+		foldLegacyBeamFields(&entries[i])
 	}
 	assignHandles(entries, s.vocab)
 	s.tasks = entries
@@ -245,6 +251,85 @@ func (s *Store) Load() error {
 	return nil
 }
 
+// The retired board.json entry keys that foldLegacyBeamFields and BeamSettingsByEntry read.
+const (
+	legacyPullRequestKey  = "pull_request"
+	legacyNotifyOnLandKey = "notify_on_land"
+)
+
+// legacyBeamSettings returns the beam settings that the retired entry keys in unknown carry, by beam key.
+// A non-empty pull_request becomes beam.pull_request, and a true notify_on_land becomes beam.land_notice on.
+// A pull_request of off carries nothing:
+// the old resolver still opened a pull request for it under a required or merge parent,
+// so a fold drops it rather than land such a task with none.
+func legacyBeamSettings(unknown map[string]json.RawMessage) map[string]string {
+	settings := map[string]string{}
+	if pullRequest := legacyPullRequest(unknown); pullRequest != "" && pullRequest != beamsetting.PullRequestOff {
+		settings[beamsetting.PullRequestKey] = pullRequest
+	}
+	var notify bool
+	if json.Unmarshal(unknown[legacyNotifyOnLandKey], &notify) == nil && notify {
+		settings[beamsetting.LandNoticeKey] = beamsetting.LandNoticeOn
+	}
+	return settings
+}
+
+// legacyPullRequest returns the retired pull_request entry key in unknown, empty when it is absent or not text.
+func legacyPullRequest(unknown map[string]json.RawMessage) string {
+	var pullRequest string
+	if json.Unmarshal(unknown[legacyPullRequestKey], &pullRequest) != nil {
+		return ""
+	}
+	return pullRequest
+}
+
+// foldLegacyBeamFields moves the retired pull_request and notify_on_land keys of t onto its beam run settings.
+// A board.json written by an older binary holds them as entry keys, which now decode into Unknown,
+// and the per-task beam settings read only run_settings.
+// The settings legacyBeamSettings returns are set under beam, and a value t's run settings already set there wins.
+// Both keys are dropped from Unknown, which becomes nil when nothing else is left.
+// A project carries no run settings, so its keys stay in Unknown, which a save writes back;
+// BeamSettingsByEntry still reads them, so the hub reconcile can carry them into the project's worktree after any save.
+func foldLegacyBeamFields(t *Task) {
+	if t.Kind == KindProject {
+		return
+	}
+	_, hasPullRequest := t.Unknown[legacyPullRequestKey]
+	_, hasNotify := t.Unknown[legacyNotifyOnLandKey]
+	if !hasPullRequest && !hasNotify {
+		return
+	}
+	settings := legacyBeamSettings(t.Unknown)
+	delete(t.Unknown, legacyPullRequestKey)
+	delete(t.Unknown, legacyNotifyOnLandKey)
+	if len(t.Unknown) == 0 {
+		t.Unknown = nil
+	}
+	for _, key := range slices.Sorted(maps.Keys(settings)) {
+		setBeamSettingIfAbsent(t, key, settings[key])
+	}
+}
+
+// setBeamSettingIfAbsent sets key under the beam module of t's run settings unless it is already set there.
+// A beam entry that is not a mapping is left untouched.
+func setBeamSettingIfAbsent(t *Task, key, value string) {
+	beam, isMapping := t.RunSettings[beamsetting.Module].(map[string]any)
+	if t.RunSettings[beamsetting.Module] != nil && !isMapping {
+		return
+	}
+	if _, set := beam[key]; set {
+		return
+	}
+	if beam == nil {
+		beam = map[string]any{}
+		if t.RunSettings == nil {
+			t.RunSettings = map[string]any{}
+		}
+		t.RunSettings[beamsetting.Module] = beam
+	}
+	beam[key] = value
+}
+
 // BoardFileRel returns the board file's name relative to the board directory, the board checkout's root.
 func BoardFileRel() string {
 	return boardFile
@@ -252,8 +337,22 @@ func BoardFileRel() string {
 
 // ParseBoardTasks decodes board.json bytes read from a board commit.
 // It takes no lock, and an unknown key is ignored.
+// Each task's retired pull_request and notify_on_land keys are folded as a load folds them.
 // A version other than the one this binary reads is an error.
 func ParseBoardTasks(data []byte) ([]Task, error) {
+	entries, err := decodeBoardEntries(data)
+	if err != nil {
+		return nil, err
+	}
+	for i := range entries {
+		foldLegacyBeamFields(&entries[i])
+	}
+	return entries, nil
+}
+
+// decodeBoardEntries decodes the entries of board.json bytes with their unknown keys kept and nothing folded.
+// A version other than the one this binary reads is an error.
+func decodeBoardEntries(data []byte) ([]Task, error) {
 	var file loadedStoreFile
 	if err := json.Unmarshal(data, &file); err != nil {
 		return nil, fmt.Errorf("load store: %w: unmarshal state: %w", state.ErrDecode, err)
@@ -262,6 +361,57 @@ func ParseBoardTasks(data []byte) ([]Task, error) {
 		return nil, fmt.Errorf("load store: %s has version %d; this binary reads only version %d", boardFile, file.Version, storeVersion)
 	}
 	return file.Entries, nil
+}
+
+// EntryBeamSettings is the beam settings one board entry holds.
+type EntryBeamSettings struct {
+	// Set holds the entry's pull_request and land_notice by beam key.
+	Set map[string]string
+	// RetiredOff reports that the entry's retired pull_request is off, which carries no setting.
+	// It is false when the entry's run settings set a pull_request.
+	RetiredOff bool
+}
+
+// BeamSettingsByEntry returns the beam settings that each board entry of boardDir's board.json holds, by entry slug.
+// An entry's settings are the pull_request and land_notice of its beam run settings,
+// and its retired pull_request and notify_on_land keys while they remain; a run setting wins.
+// A save drops a task's retired keys after folding them into its run settings, a pull_request of off apart,
+// and a project keeps its retired keys.
+// An entry that holds no setting is left out, and an absent board.json gives none.
+// It reads the file as it is on disk, with nothing folded.
+func BeamSettingsByEntry(boardDir string) (map[string]EntryBeamSettings, error) {
+	path := filepath.Join(boardDir, boardFile)
+	if !fileExists(path) {
+		return nil, nil
+	}
+	raw, found, err := state.ReadJSON[json.RawMessage](path, swapLockPath(path))
+	if err != nil {
+		return nil, fmt.Errorf("read legacy beam settings: %w", err)
+	}
+	if !found {
+		return nil, nil
+	}
+	entries, err := decodeBoardEntries(raw)
+	if err != nil {
+		return nil, err
+	}
+	settings := map[string]EntryBeamSettings{}
+	for _, entry := range entries {
+		held := EntryBeamSettings{Set: legacyBeamSettings(entry.Unknown)}
+		if beam, isMapping := entry.RunSettings[beamsetting.Module].(map[string]any); isMapping {
+			for _, key := range []string{beamsetting.PullRequestKey, beamsetting.LandNoticeKey} {
+				if value, isText := beam[key].(string); isText && value != "" {
+					held.Set[key] = value
+				}
+			}
+		}
+		_, setPullRequest := held.Set[beamsetting.PullRequestKey]
+		held.RetiredOff = !setPullRequest && legacyPullRequest(entry.Unknown) == beamsetting.PullRequestOff
+		if len(held.Set) > 0 || held.RetiredOff {
+			settings[entry.Slug] = held
+		}
+	}
+	return settings, nil
 }
 
 // fileExists reports whether path names an existing file.
@@ -473,7 +623,7 @@ type MergeStatusUpdate struct {
 // and an upsert naming it is refused as an unknown field.
 // "record_body_sha256" is output only in the same way: a write that stores the entry's decision record stamps it.
 func UpsertPayloadKeys() (required, optional []string) {
-	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", pullRequestKey, "notify_on_land", "owner_machine", "project", "order", "beam", "front", onLandKey, "discussed"}
+	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", "owner_machine", "project", "order", "beam", "front", onLandKey, "discussed"}
 }
 
 // upsertAllowedKeys is the set of field names every upsert path accepts, enforced at the store boundary.
@@ -505,6 +655,14 @@ func validateUpsertFields(fields map[string]any) error {
 			}
 			if k == "handle" {
 				return fmt.Errorf("unknown field: %q (the board assigns an entry's handle; drop it from the payload)", k)
+			}
+			if k == legacyPullRequestKey {
+				return fmt.Errorf("unknown field: %q (%s moved to run_settings: set \"run_settings\": {%q: {%q: \"<%s>\"}})",
+					k, k, beamsetting.Module, beamsetting.PullRequestKey, strings.Join(beamsetting.PullRequestValues(), "|"))
+			}
+			if k == legacyNotifyOnLandKey {
+				return fmt.Errorf("unknown field: %q (%s moved to run_settings: set \"run_settings\": {%q: {%q: %q}})",
+					k, k, beamsetting.Module, beamsetting.LandNoticeKey, beamsetting.LandNoticeOn)
 			}
 			return fmt.Errorf("unknown field: %q", k)
 		}
@@ -814,12 +972,10 @@ func (s *Store) promoteTo(idOrSlug any, recipe string, dependsOn []string, recor
 // Prune removes every done entry except the survivors described here, and returns the removed slugs in store order.
 // It strips the removed slugs from the depends_on and order of the surviving entries.
 // An abandoned entry survives, and so does a done project that a surviving entry names as its project.
-// A done entry carrying notify_on_land survives too,
-// so its request outlives the landing until the dobby has sent its line and cleared it.
 func (s *Store) Prune() []string {
 	gone := make(map[string]bool)
 	for _, t := range s.tasks {
-		if isDone(t) && !t.NotifyOnLand {
+		if isDone(t) {
 			gone[t.Slug] = true
 		}
 	}

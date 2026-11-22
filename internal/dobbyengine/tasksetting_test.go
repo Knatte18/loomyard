@@ -1,0 +1,218 @@
+// tasksetting_test.go pins the per-task lookup of beam.yaml's pull_request and land_notice.
+// It pins which of a task's own files, its parents' files, the hub default and the template decides.
+// It also pins the refusal of a bad value.
+
+package dobbyengine
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+)
+
+// writeBeamLocalLayer writes document as the local beam override under anchor's .lym.
+func writeBeamLocalLayer(t *testing.T, anchor, document string) {
+	t.Helper()
+	path := configengine.LocalFile(anchor, "beam")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(document), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+	}
+}
+
+// lookupAsText runs the lookup of key and returns its answer as on or off text where the key is a switch.
+func lookupAsText(key string, chain TaskSettingChain) (string, error) {
+	if key == LandNoticeKey {
+		on, err := LookupLandNotice(chain)
+		if err != nil {
+			return "", err
+		}
+		if on {
+			return LandNoticeOn, nil
+		}
+		return LandNoticeOff, nil
+	}
+	return LookupPullRequest(chain)
+}
+
+// settingDocument returns a beam document setting key to value, or "" when value is empty.
+func settingDocument(key, value string) string {
+	if value == "" {
+		return ""
+	}
+	return key + ": \"" + value + "\"\n"
+}
+
+func TestLookupTaskSettings(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	// Each row sets on or off at some places, empty meaning the place sets nothing, and runs under both keys.
+	tests := []struct {
+		name string
+		// task, parent and prime are the worktree files of the chain's anchors, nearest first.
+		task, parent, prime string
+		// taskLocal is the task's local file.
+		taskLocal string
+		// hub is the board's default layer.
+		hub  string
+		want string
+	}{
+		{name: "the task's local file wins over its worktree file and over the parent", task: "off", taskLocal: "on", parent: "off", want: "on"},
+		{name: "the task's local file turns a worktree on off", task: "on", taskLocal: "off", parent: "on", want: "off"},
+		{name: "a task that sets nothing takes the parent's value over the prime's", parent: "off", prime: "on", want: "off"},
+		{name: "a task that sets nothing takes the parent's on over the hub default", parent: "on", hub: "off", want: "on"},
+		{name: "a lower value overrides a parent's on", task: "off", parent: "on", want: "off"},
+		{name: "a lower value overrides a parent's off", task: "on", parent: "off", want: "on"},
+		{name: "the prime's own file applies when nothing nearer sets the key", prime: "off", hub: "on", want: "off"},
+		{name: "a hub default that is on applies when no anchor sets the key", hub: "on", want: "on"},
+		{name: "a hub default that is off applies when no anchor sets the key", hub: "off", want: "off"},
+		{name: "a hub default never counts as the prime's own setting", prime: "on", hub: "off", want: "on"},
+	}
+	for _, key := range []string{PullRequestKey, LandNoticeKey} {
+		for _, tt := range tests {
+			t.Run(key+"/"+tt.name, func(t *testing.T) {
+				t.Parallel()
+				taskDir, parentDir, primeDir, board := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+				for dir, value := range map[string]string{taskDir: tt.task, parentDir: tt.parent, primeDir: tt.prime} {
+					if value != "" {
+						writeBeamLayer(t, dir, settingDocument(key, value))
+					}
+				}
+				if tt.taskLocal != "" {
+					writeBeamLocalLayer(t, taskDir, settingDocument(key, tt.taskLocal))
+				}
+				if tt.hub != "" {
+					writeBeamLayer(t, board, settingDocument(key, tt.hub))
+				}
+
+				got, err := lookupAsText(key, TaskSettingChain{Anchors: []string{taskDir, parentDir, primeDir}, Board: board})
+				if err != nil || got != tt.want {
+					t.Errorf("lookup of %s = %q, %v; want %q", key, got, err, tt.want)
+				}
+			})
+		}
+	}
+
+	t.Run("pull_request merge-in and merge pass through as set", func(t *testing.T) {
+		t.Parallel()
+		for _, value := range []string{PullRequestMergeIn, PullRequestMerge} {
+			anchor := t.TempDir()
+			writeBeamLayer(t, anchor, settingDocument(PullRequestKey, value))
+			got, err := LookupPullRequest(TaskSettingChain{Anchors: []string{anchor}})
+			if err != nil || got != value {
+				t.Errorf("LookupPullRequest with %q set = %q, %v; want %q", value, got, err, value)
+			}
+		}
+	})
+
+	t.Run("nothing set anywhere takes the template's values", func(t *testing.T) {
+		t.Parallel()
+		chain := TaskSettingChain{Anchors: []string{t.TempDir(), t.TempDir()}, Board: t.TempDir()}
+		if got, err := LookupPullRequest(chain); err != nil || got != "on" {
+			t.Errorf("LookupPullRequest() = %q, %v; want on", got, err)
+		}
+		if got, err := LookupLandNotice(chain); err != nil || got {
+			t.Errorf("LookupLandNotice() = %v, %v; want false", got, err)
+		}
+	})
+
+	t.Run("a chain with no board dir skips the hub default", func(t *testing.T) {
+		t.Parallel()
+		got, err := LookupPullRequest(TaskSettingChain{Anchors: []string{t.TempDir()}})
+		if err != nil || got != "on" {
+			t.Errorf("LookupPullRequest() = %q, %v; want on", got, err)
+		}
+	})
+}
+
+func TestLookupTaskSettings_ExpandsAnEnvMarkerAsLoadConfigDoes(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// env is the place's .env file.
+		env string
+		// want is the lookup's answer; wantRefusal names a substring of its refusal instead.
+		want, wantRefusal string
+	}{
+		{name: "a marker the place's .env resolves reads as its value", env: "LYM_TEST_PULL_REQUEST_MODE=merge\n", want: PullRequestMerge},
+		{name: "a marker that resolves to a value the key does not take is refused", env: "LYM_TEST_PULL_REQUEST_MODE=required\n", wantRefusal: "required"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			anchor := t.TempDir()
+			writeBeamLayer(t, anchor, "pull_request: \"${env:LYM_TEST_PULL_REQUEST_MODE}\"\n")
+			if err := os.WriteFile(filepath.Join(anchor, ".env"), []byte(tt.env), 0o644); err != nil {
+				t.Fatalf("WriteFile(.env) = %v; want nil", err)
+			}
+
+			got, err := LookupPullRequest(TaskSettingChain{Anchors: []string{anchor}})
+			if tt.wantRefusal != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantRefusal) {
+					t.Errorf("LookupPullRequest() = %q, %v; want a refusal containing %q", got, err, tt.wantRefusal)
+				}
+				return
+			}
+			if err != nil || got != tt.want {
+				t.Errorf("LookupPullRequest() = %q, %v; want %q", got, err, tt.want)
+			}
+		})
+	}
+}
+
+//testtiming:keep pins the lookup refusal naming the setting file, the value and the way forward, which the lookup rows never read
+func TestLookupTaskSettings_RefusesAValueTheKeyDoesNotTake(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		key   string
+		value string
+		// place is where the bad value is written: worktree, local or hub.
+		place string
+	}{
+		{name: "pull_request required in a worktree file", key: PullRequestKey, value: "required", place: "worktree"},
+		{name: "land_notice all in a worktree file", key: LandNoticeKey, value: "all", place: "worktree"},
+		{name: "land_notice per-task in a worktree file", key: LandNoticeKey, value: "per-task", place: "worktree"},
+		{name: "pull_request unknown in a local file", key: PullRequestKey, value: "maybe", place: "local"},
+		{name: "land_notice merge in the hub default", key: LandNoticeKey, value: "merge", place: "hub"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			anchor, board := t.TempDir(), t.TempDir()
+			var wantPath string
+			switch tt.place {
+			case "worktree":
+				writeBeamLayer(t, anchor, settingDocument(tt.key, tt.value))
+				wantPath = configengine.ConfigFile(anchor, "beam")
+			case "local":
+				writeBeamLocalLayer(t, anchor, settingDocument(tt.key, tt.value))
+				wantPath = configengine.LocalFile(anchor, "beam")
+			case "hub":
+				writeBeamLayer(t, board, settingDocument(tt.key, tt.value))
+				wantPath = configengine.ConfigFile(board, "beam")
+			}
+
+			_, err := lookupAsText(tt.key, TaskSettingChain{Anchors: []string{anchor}, Board: board})
+			if err == nil {
+				t.Fatalf("lookup of %s = _, nil; want a refusal", tt.key)
+			}
+			for _, want := range []string{wantPath, tt.key, tt.value, "lym config beam --set " + tt.key + "="} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("lookup error = %q; want it to contain %q", err.Error(), want)
+				}
+			}
+		})
+	}
+}

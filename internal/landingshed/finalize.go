@@ -216,15 +216,15 @@ func (fz *Finalize) flakySection() string {
 // A rules read that fails for a reason other than a transient or token one halts when a pull request is recorded.
 // Such a failed read closes nothing.
 // A yes needs the recorded pull request and halts without one.
-// A yes halts on a recorded pull request closed without the operator's ending, unless the parent takes it at once.
-// That parent reopens a closed pull request only after the owner checks, just before the merge.
+// A yes halts on a recorded pull request closed without the operator's ending, unless the landing takes it at once.
+// That landing reopens a closed pull request only after the owner checks, just before the merge.
 // A closed pull request whose record carries the operator's ending is reopened and merged on GitHub like an open one,
 // and a merged one lands through the already-landed path.
 // An open pull request is merged on GitHub just before the parent-side merge.
 // The merge takes the pushed task head as its expected head.
 // Then the parent pair is fast-forwarded to that merge,
 // so the parent-side merge finds the parent holding the task's work.
-// A parent whose beam.yaml pull_request is merge needs no record:
+// A landing whose beam.yaml pull_request is merge needs no record:
 // Finalize opens the pull request itself at that point and squash-merges it with no review.
 // A no marked TrueMerge never squashes the parent-side merge,
 // so the parent's history keeps the task branch's merge commits.
@@ -873,7 +873,9 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, n
 
 // protectedParentWayForward is the way forward of a parent push refused as a protected branch.
 // It applies to a task landing on its parent.
-// It names beam.yaml's `pull_request=merge` at the parent's worktree or the hub's default layer.
+// It names beam.yaml's `pull_request=merge`.
+// The way forward sets it at the parent's worktree, at the hub's default layer or in the task's run_settings.
+// A parent marked merge takes effect through the per-task lookup.
 // It leaves that setting out when `parentMerges` is true, since it would change nothing.
 // It also names the hand landing of the work the local parent alone holds.
 func protectedParentWayForward(task, parent string, parentMerges bool) string {
@@ -881,7 +883,7 @@ func protectedParentWayForward(task, parent string, parentMerges bool) string {
 	if parentMerges {
 		return "way forward: " + handLanding
 	}
-	return `way forward: mark the parent to land through a pull request lym squash-merges on GitHub at once, with "lym config beam --set pull_request=merge" in the parent's worktree, or for every branch of the hub with "lym config beam --layer default --set pull_request=merge" from the prime; ` + handLanding
+	return `way forward: mark the parent to land through a pull request lym squash-merges on GitHub at once, with "lym config beam --set pull_request=merge" in the parent's worktree, or for every branch of the hub with "lym config beam --layer default --set pull_request=merge" from the prime, or by setting beam's pull_request to merge in the task's run_settings; ` + handLanding
 }
 
 // recheckLock re-reads the parent lock record immediately before a landing attempt.

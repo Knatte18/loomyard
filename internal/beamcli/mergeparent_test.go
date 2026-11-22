@@ -116,12 +116,15 @@ func TestMergeParent(t *testing.T) {
 			if len(tt.wantTask) > boardengine.MaxSlugLength {
 				t.Fatalf("want slug %q is longer than the board's slug length", tt.wantTask)
 			}
-			wantSettings := map[string]any{"loom": map[string]any{"code_max_bounces": tt.wantRounds, "code_hard_max_bounces": tt.wantHard}}
+			wantSettings := map[string]any{
+				"loom": map[string]any{"code_max_bounces": tt.wantRounds, "code_hard_max_bounces": tt.wantHard},
+				"beam": map[string]any{"pull_request": "merge-in"},
+			}
 			if fields["slug"] != tt.wantTask || fields["kind"] != boardengine.KindTask || fields["project"] != tt.slug || fields["recipe"] != "darn" || !reflect.DeepEqual(fields["run_settings"], wantSettings) {
 				t.Errorf("mergeParent(%q) filed %v; want slug %q, a darn task in project %q with run settings %v", tt.slug, fields, tt.wantTask, tt.slug, wantSettings)
 			}
-			if fields["pull_request"] != boardengine.PullRequestMergeIn {
-				t.Errorf("mergeParent(%q) pull_request = %v; want %q", tt.slug, fields["pull_request"], boardengine.PullRequestMergeIn)
+			if _, set := fields["pull_request"]; set {
+				t.Errorf("mergeParent(%q) filed the board field pull_request = %v; want it in run_settings alone", tt.slug, fields["pull_request"])
 			}
 			if body, _ := fields["body"].(string); !strings.Contains(body, "lym fabric merge-in main") || !strings.Contains(body, "reviews the merge alone") {
 				t.Errorf("mergeParent(%q) body = %q; want it to name `lym fabric merge-in main` and the perch's review of the merge alone", tt.slug, body)

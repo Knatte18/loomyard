@@ -62,8 +62,6 @@ func withoutRunFields(t Task) Task {
 	t.Recipe = ""
 	t.Profile = ""
 	t.RunSettings = nil
-	t.PullRequest = ""
-	t.NotifyOnLand = false
 	return t
 }
 

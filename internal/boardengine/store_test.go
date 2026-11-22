@@ -90,7 +90,8 @@ func TestUpsertKindAndRetiredKeys(t *testing.T) {
 		t.Errorf("expected batch kind error")
 	}
 
-	for key, wantHint := range map[string]string{"tier": `"kind"`, "type": `"labels"`, "deferred": `"kind": "note"`} {
+	for key, wantHint := range map[string]string{"tier": `"kind"`, "type": `"labels"`, "deferred": `"kind": "note"`,
+		"pull_request": `"pull_request": "<on|off|merge|merge-in>"`, "notify_on_land": `"land_notice": "on"`} {
 		_, err = s.UpsertTask(map[string]any{"slug": "a", key: 1})
 		if err == nil || !stringContains(err.Error(), "unknown field") || !stringContains(err.Error(), wantHint) {
 			t.Errorf("key %q: expected unknown-field refusal naming %s, got %v", key, wantHint, err)
@@ -1702,6 +1703,73 @@ func TestLoad(t *testing.T) {
 			save:         true,
 			saveContains: []string{`"title":"A"`},
 			saveAbsent:   []string{`"Title"`},
+		},
+		{
+			name: "a legacy pull_request becomes beam.pull_request and the key is dropped",
+			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","kind":"task","pull_request":"merge"}]}`,
+			check: func(t *testing.T, tasks []boardengine.Task) {
+				if tasks[0].Unknown != nil {
+					t.Errorf("Unknown = %v; want nil once both legacy keys are folded", tasks[0].Unknown)
+				}
+			},
+			wantKeys: [][3]string{
+				{"a", "run_settings", `{"beam":{"pull_request":"merge"}}`},
+				{"a", "pull_request", ""},
+				{"a", "notify_on_land", ""},
+			},
+		},
+		{
+			name: "a legacy notify_on_land of true becomes beam.land_notice on",
+			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","kind":"task","notify_on_land":true}]}`,
+			wantKeys: [][3]string{
+				{"a", "run_settings", `{"beam":{"land_notice":"on"}}`},
+				{"a", "pull_request", ""},
+				{"a", "notify_on_land", ""},
+			},
+		},
+		{
+			name: "a legacy notify_on_land of false is dropped and folds nothing",
+			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","kind":"task","notify_on_land":false}]}`,
+			wantKeys: [][3]string{
+				{"a", "run_settings", ""},
+				{"a", "notify_on_land", ""},
+			},
+		},
+		{
+			name: "a beam value the run settings already set wins over a legacy key",
+			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","kind":"task","pull_request":"on","notify_on_land":true,` +
+				`"run_settings":{"beam":{"pull_request":"off"},"loom":{"x":1}}}]}`,
+			wantKeys: [][3]string{
+				{"a", "run_settings", `{"beam":{"land_notice":"on","pull_request":"off"},"loom":{"x":1}}`},
+				{"a", "pull_request", ""},
+				{"a", "notify_on_land", ""},
+			},
+		},
+		{
+			name: "a beam run setting that is not a mapping is left as it is and the legacy key is dropped",
+			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","kind":"task","pull_request":"on","run_settings":{"beam":"x"}}]}`,
+			wantKeys: [][3]string{
+				{"a", "run_settings", `{"beam":"x"}`},
+				{"a", "pull_request", ""},
+			},
+		},
+		{
+			name: "a legacy pull_request of off is dropped and folds nothing beside a carried notify_on_land",
+			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","kind":"task","pull_request":"off","notify_on_land":true}]}`,
+			wantKeys: [][3]string{
+				{"a", "run_settings", `{"beam":{"land_notice":"on"}}`},
+				{"a", "pull_request", ""},
+			},
+		},
+		{
+			name: "a project's legacy keys stay with its other kept keys, folding nothing",
+			body: `{"version":1,"entries":[{"id":0,"slug":"p","title":"P","kind":"project","pull_request":"on","notify_on_land":true,"zz_keep":1}]}`,
+			wantKeys: [][3]string{
+				{"p", "run_settings", ""},
+				{"p", "pull_request", `"on"`},
+				{"p", "notify_on_land", "true"},
+				{"p", "zz_keep", "1"},
+			},
 		},
 		{
 			name:    "an unknown version is refused naming it",

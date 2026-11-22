@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/beamsetting"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -16,12 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/shedtransient"
-)
-
-// The pull_request modes a beam's parent reports its follow-up by.
-const (
-	parentModeRequired = "required"
-	parentModeMerge    = "merge"
 )
 
 // The comments left on a pull request when a beam closes it.
@@ -328,7 +323,7 @@ func prStatus(ctx context.Context, deps landDeps, slug string) (map[string]any, 
 		if err != nil {
 			return nil, rerunRefusal(verb, slug, "read the pawl run", err)
 		}
-		wayForward := fmt.Sprintf("Finalize decides the landing's pull request by the parent's rules; run `lym batten status %s` to follow the landing", slug)
+		wayForward := fmt.Sprintf("Finalize decides the landing's pull request by the beam's pull_request and the parent's rules; run `lym batten status %s` to follow the landing", slug)
 		if runFound && status.CurrentProducer == pawlengine.NameBeamAwait {
 			wayForward = fmt.Sprintf("no pull request is recorded; run `lym beam pr open %s` when the operator wants one", slug)
 		}
@@ -383,7 +378,7 @@ func prStatus(ctx context.Context, deps landDeps, slug string) (map[string]any, 
 // The landing decision for a beam with no pull request chooses the comment.
 // When it is no, the comment says the operator chose to land without a pull request;
 // otherwise it is the close-only comment.
-// A failed read of the parent's mode or of the beam's commits still closes and drops, with the close-only comment.
+// A failed read of the beam's pull_request or of the beam's commits still closes and drops, with the close-only comment.
 // The read's error is named in the way forward.
 func prClose(ctx context.Context, deps landDeps, slug string) (map[string]any, error) {
 	const verb = "lym beam pr close"
@@ -418,13 +413,13 @@ func prClose(ctx context.Context, deps landDeps, slug string) (map[string]any, e
 	comment := closeOnlyComment
 	wayForward := ""
 	if readErr == nil {
-		decision := landingshed.ResolvePullRequest(slug, mode, "", landingshed.BeamWithoutPullRequest, rulesRequired, side.Origin, hasCommits)
+		decision := landingshed.ResolvePullRequest(mode, landingshed.BeamWithoutPullRequest, rulesRequired, side.Origin, hasCommits)
 		if !decision.Open {
 			comment = landWithoutPullRequestComment
 		}
 		wayForward = closeFollowUp(slug, mode, decision.Open)
 	} else {
-		wayForward = fmt.Sprintf("the parent's pull request mode or the beam's commits could not be read: %v; fix the cause, then run `lym beam ready %s`, which refuses what a pull request is still owed", readErr, slug)
+		wayForward = fmt.Sprintf("the beam's pull_request or the beam's commits could not be read: %v; fix the cause, then run `lym beam ready %s`, which refuses what a pull request is still owed", readErr, slug)
 	}
 
 	closed := status.State == pullrequest.StateOpen
@@ -452,22 +447,18 @@ func prClose(ctx context.Context, deps landDeps, slug string) (map[string]any, e
 
 // closeFollowUp names what follows a dropped pull request.
 // The caller passes whether the beam's landing decision, with no pull request recorded, still wants one.
-// It also passes the parent's pull request mode.
-// A merge parent's Finalize opens its own pull request.
-// Any other wanted pull request comes from a required parent or GitHub's rules,
+// It also passes the beam's pull_request.
+// When that is merge, Finalize opens its own pull request.
+// Any other wanted pull request comes from GitHub's rules,
 // and `lym beam ready` refuses until one is recorded again.
 func closeFollowUp(slug, mode string, wantsPullRequest bool) string {
 	switch {
 	case !wantsPullRequest:
 		return fmt.Sprintf("the pull request is dropped from the landing record; run `lym beam ready %s` when the operator says so, after which Finalize lands the beam without a pull request", slug)
-	case mode == parentModeMerge:
-		return fmt.Sprintf("the pull request is dropped, but the parent's pull_request is merge, so Finalize still lands through a pull request it finds or opens; run `lym beam ready %s` when the operator says so", slug)
+	case mode == beamsetting.PullRequestMerge:
+		return fmt.Sprintf("the pull request is dropped, but the beam's pull_request is merge, so Finalize still lands through a pull request it finds or opens; run `lym beam ready %s` when the operator says so", slug)
 	default:
-		demand := "GitHub's rules for the parent branch require one"
-		if mode == parentModeRequired {
-			demand = "the parent's pull_request is required"
-		}
-		return fmt.Sprintf("the pull request is dropped, but %s, so `lym beam ready %s` refuses until one is recorded again; run `lym beam pr open %s`", demand, slug, slug)
+		return fmt.Sprintf("the pull request is dropped, but GitHub's rules for the parent branch require one, so `lym beam ready %s` refuses until one is recorded again; run `lym beam pr open %s`", slug, slug)
 	}
 }
 
@@ -476,7 +467,7 @@ func closeFollowUp(slug, mode string, wantsPullRequest bool) string {
 // An origin missing a fact that a pull request needs reads as no rule, with no call made.
 // A cancelled context and a transient failure are returned.
 // An unusable token and any other failure read as no rule, with one warning,
-// so every parent mode is then decided by beam.yaml alone.
+// so every pull_request value is then decided by beam.yaml alone.
 func parentRuleRequired(ctx context.Context, origin landingshed.Origin, parentBranch string, open func(originURL string) (pullrequest.API, error)) (bool, error) {
 	if landingshed.OriginMissing(origin) != "" {
 		return false, nil
@@ -492,6 +483,6 @@ func parentRuleRequired(ctx context.Context, origin landingshed.Origin, parentBr
 	if !tokenFailure && (ctx.Err() != nil || shedtransient.Class(err) != "") {
 		return false, err
 	}
-	logger.Warn("beamcli: GitHub's rules for the parent branch are unreadable, so the parent's beam.yaml decides alone", "branch", parentBranch, "cause", err)
+	logger.Warn("beamcli: GitHub's rules for the parent branch are unreadable, so the beam's pull_request decides alone", "branch", parentBranch, "cause", err)
 	return false, nil
 }

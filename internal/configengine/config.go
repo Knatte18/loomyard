@@ -121,6 +121,16 @@ func ReinterpretedMarkerRel(id string) string {
 	return filepath.Join(lymdirs.LymDirName, configDirName, reinterpretedMarkerPrefix+id)
 }
 
+// HubWorktree is one code worktree of a hub, as a reinterpretation is told it.
+type HubWorktree struct {
+	// Name is the worktree's name in the hub, which is its board entry's slug.
+	Name string
+	// Anchor is the worktree's anchor directory, where its _lym/config lives.
+	Anchor string
+	// Main marks the hub's main worktree, the prime, which has no board entry.
+	Main bool
+}
+
 // templateBaseSuffix ends the name of a seed-only module's template base file.
 // The name has no .yaml suffix, so no module reader takes it for a module file.
 const templateBaseSuffix = ".template-base"

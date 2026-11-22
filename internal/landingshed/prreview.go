@@ -29,11 +29,11 @@ const (
 )
 
 // PRReview is the ShedProducer that lands a run through a GitHub pull request when the landing goes through one.
-// That is decided from the parent's mode, the beam's settings, the landing entry and GitHub's rules for the parent.
+// That is decided from beam.yaml's pull_request for the landing and GitHub's rules for the parent.
 // When the landing does not go through one, the row closes any recorded pull request GitHub reports open, and passes.
 // With a pull request recorded, a failed read of GitHub's rules is Stuck and closes nothing.
-// A transient failure is an error the driver re-steps; a token failure falls back to the beam and the entry.
-// When the parent merges its pull request at once, the row passes at once,
+// A transient failure is an error the driver re-steps; a token failure falls back to beam.yaml.
+// When the landing merges its pull request at once, the row passes at once,
 // and the landing's merge step opens and merges it with no review.
 // Otherwise the row pushes the task branch and finds or opens the pull request.
 // The pull request's title comes from the change description.
@@ -166,13 +166,9 @@ func (p *PRReview) sendBack(ctx context.Context, rec pullrequest.Record) *ending
 func (p *PRReview) decide(ctx context.Context) *ending {
 	pr := p.deps.PullRequest
 
-	mode, worktree, err := pr.ParentMode()
+	mode, err := pr.Mode()
 	if err != nil {
-		return halt(ctx, p.name, beamModeUnreadableReason(worktree, err))
-	}
-	field, err := pr.EntryField()
-	if err != nil {
-		return &ending{err: fmt.Errorf("landingshed: %s: read the landing entry's pull_request: %w", p.name, err)}
+		return halt(ctx, p.name, beamModeUnreadableReason(err))
 	}
 	origin, err := pr.Origin()
 	if err != nil {
@@ -187,7 +183,7 @@ func (p *PRReview) decide(ctx context.Context) *ending {
 	if err != nil {
 		return &ending{err: fmt.Errorf("landingshed: %s: read the pull request record: %w", p.name, err)}
 	}
-	decision, err := resolveWithParentRule(ctx, p.name, p.deps, mode, field, NotABeam, origin, hasCommits, recordFound)
+	decision, err := resolveWithParentRule(ctx, p.name, p.deps, mode, NotABeam, origin, hasCommits, recordFound)
 	if err != nil {
 		return &ending{err: err}
 	}
@@ -198,7 +194,7 @@ func (p *PRReview) decide(ctx context.Context) *ending {
 		return p.closeRecordedPullRequest(ctx, origin, decision.Reason)
 	}
 	if decision.MergeAtOnce {
-		logger.Info("landingshed: the parent merges its pull request at once, so Finalize opens and merges it with no review", "row", p.name, "reason", decision.Reason)
+		logger.Info("landingshed: this landing merges its pull request at once, so Finalize opens and merges it with no review", "row", p.name, "reason", decision.Reason)
 		return done()
 	}
 	return p.openPullRequest(ctx, origin)

@@ -514,12 +514,6 @@ func TestMarkReady(t *testing.T) {
 			wantErr: []string{"empty-body: body is empty", "lym beam describe b"},
 		},
 		{
-			name:    "RequiredParentWithNoneRecordedRefusedNamingOpen",
-			slug:    "b",
-			setup:   unflagged(func(w *landWorld) { w.mode = "required" }),
-			wantErr: []string{"lym beam pr open b"},
-		},
-		{
 			name: "RulesRequiredOnParentWithNoneRecordedRefusedNamingOpen",
 			slug: "b",
 			setup: unflagged(func(w *landWorld) {
@@ -529,23 +523,24 @@ func TestMarkReady(t *testing.T) {
 			wantErr: []string{"lym beam pr open b"},
 		},
 		{
-			name: "RequiredParentWithNoUpstreamRefusedNamingTheFactAndReady",
+			name: "RulesRequiredWithNoUpstreamRefusedNamingTheFactAndReady",
 			slug: "b",
 			setup: unflagged(func(w *landWorld) {
-				w.mode = "required"
+				w.mode = "on"
+				w.rulesRequired = true
 				w.origin = landingshed.Origin{URL: "https://github.com/o/r.git"}
 			}),
 			wantErr:   []string{"no upstream", "lym beam ready b"},
 			wantNoErr: []string{"lym loom resume"},
 		},
 		{
-			name: "MergeParentWithTheSameMissingFactRefused",
+			name: "MergeWithTheSameMissingFactRefused",
 			slug: "b",
 			setup: unflagged(func(w *landWorld) {
 				w.mode = "merge"
 				w.origin = landingshed.Origin{URL: "https://github.com/o/r.git"}
 			}),
-			wantErr:   []string{"no upstream", "lym beam ready b"},
+			wantErr:   []string{"no upstream", "lym beam ready b", "the beam's pull_request is merge"},
 			wantNoErr: []string{"lym loom resume"},
 		},
 		{
@@ -641,16 +636,17 @@ func TestMarkReady(t *testing.T) {
 			wantMarkCalls: 1,
 		},
 		{
-			name:          "MergeParentWithNoneRecordedWritesTheRecord",
+			name:          "MergeWithNoneRecordedWritesTheRecord",
 			slug:          "b",
 			setup:         unflagged(func(w *landWorld) { w.mode = "merge" }),
 			wantMarkCalls: 1,
 		},
 		{
-			name: "RequiredParentWithNoCommitsBeyondItsParentWritesTheRecord",
+			name: "RulesRequiredWithNoCommitsBeyondItsParentWritesTheRecord",
 			slug: "b",
 			setup: unflagged(func(w *landWorld) {
-				w.mode = "required"
+				w.mode = "on"
+				w.rulesRequired = true
 				w.hasCommits = false
 			}),
 			wantMarkCalls: 1,

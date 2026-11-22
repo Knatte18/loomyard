@@ -18,24 +18,24 @@ const (
 	dobbyIndent = "  "
 	// dobbyNoRuns is the line of a dobby that drives no run.
 	dobbyNoRuns = "no runs driven"
-	// dobbyNotifyOnLand ends the line of a run or task whose board entry asks for a landing notice.
-	dobbyNotifyOnLand = "notify_on_land"
+	// dobbyLandNotice ends the line of a run that asks for a landing notice.
+	dobbyLandNotice = dobbyengine.LandNoticeKey
 	// dobbyUnreadableFormat is the one line of a dobby whose view does not read, filled with its label.
 	dobbyUnreadableFormat = "dobby %s: unreadable"
 )
 
 // DobbyLines renders the dobby labeled label as lines at now.
 // It takes the dobby's state from view and the cells of its runs from runCells.
-// The header gives max_runs and land_notice while the dobby is alive, else says it is not running and how to start it.
+// The header gives max_runs while the dobby is alive, else says it is not running and how to start it.
 // Each run it drives takes one line, with its cells and its last pass.
 // What a run's cells say it owes ends its pass cell.
 // Each released task it has not started takes one line, naming everything that holds it back.
-// A run or task whose board entry asks for a landing notice ends its line with notify_on_land.
+// A run that asks for a landing notice ends its line with land_notice.
 // Each pair a cancel kept takes one line with its age and the verb that removes it.
 // A run whose cells are unreadable draws `status unreadable` in their place and takes no part in their column widths.
 // A duration still growing renders in whole minutes, so the lines change at most once a minute.
 func DobbyLines(label string, view dobbyengine.View, runCells map[string]RunCells, now time.Time) []string {
-	header := fmt.Sprintf("dobby %s: alive, max_runs %d, land_notice %s", label, view.MaxRuns, view.LandNotice)
+	header := fmt.Sprintf("dobby %s: alive, max_runs %d", label, view.MaxRuns)
 	if !view.Alive {
 		header = fmt.Sprintf("dobby %s: not running; way forward: lym beam start", label)
 	}
@@ -81,11 +81,7 @@ func DobbyLines(label string, view dobbyengine.View, runCells map[string]RunCell
 		lines = append(lines, dobbyIndent+strings.Join(drawn, overviewColumnGap))
 	}
 	for _, task := range view.Waiting {
-		wait := dobbyTaskWait(task, view.MaxRuns, now)
-		if task.NotifyOnLand {
-			wait += ", " + dobbyNotifyOnLand
-		}
-		lines = append(lines, dobbyIndent+padRight(task.Slug, slugWidth)+overviewColumnGap+wait)
+		lines = append(lines, dobbyIndent+padRight(task.Slug, slugWidth)+overviewColumnGap+dobbyTaskWait(task, view.MaxRuns, now))
 	}
 	for _, kept := range view.Kept {
 		age := "kept pair, age unknown"
@@ -128,8 +124,8 @@ func dobbyRunPass(run dobbyengine.ViewRun, now time.Time) string {
 	if run.FailingPassCount > 0 {
 		notes = append(notes, fmt.Sprintf("failing %d× in a row: %s", run.FailingPassCount, firstLine(run.FailingPassError)))
 	}
-	if run.NotifyOnLand {
-		notes = append(notes, dobbyNotifyOnLand)
+	if run.LandNotice {
+		notes = append(notes, dobbyLandNotice)
 	}
 	return strings.Join(notes, ", ")
 }

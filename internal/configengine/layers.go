@@ -499,6 +499,28 @@ func StackLayers(dirs Dirs, spec Spec) (Stack, error) {
 	return stackLayers(dirs, spec, true)
 }
 
+// TopLevelValue returns the value of the top-level key that the highest present file layer under dirs sets.
+// The value is as yaml.v3 decodes it, returned with that layer's file path.
+// set is false when no present file layer sets the key.
+// The template is never read, so a caller reads what one place's own files set by telling only that place's dir.
+// A present layer that is unreadable or invalid is an error, as for [Layers].
+func TopLevelValue(dirs Dirs, spec Spec, key string) (value any, path string, set bool, err error) {
+	layers, err := Layers(dirs, spec)
+	if err != nil {
+		return nil, "", false, err
+	}
+	for i := len(layers) - 1; i >= 0; i-- {
+		var document map[string]any
+		if err := yaml.Unmarshal(layers[i].Bytes, &document); err != nil {
+			return nil, "", false, MarkInvalid(fmt.Errorf("config file %s: %w", layers[i].Path, err))
+		}
+		if value, set := document[key]; set {
+			return value, layers[i].Path, true, nil
+		}
+	}
+	return nil, "", false, nil
+}
+
 // stackLayers merges a module's layers in stack order, reading them through readLayers with the given anchorLayers.
 func stackLayers(dirs Dirs, spec Spec, anchorLayers bool) (Stack, error) {
 	layers, err := readLayers(dirs, spec, anchorLayers)

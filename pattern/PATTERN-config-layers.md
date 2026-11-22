@@ -1,10 +1,10 @@
 # PATTERN-config-layers
 
-Loading, writing or changing the meaning of config: layers only through `configengine`; a hub base file holds only tuned units; a meaning change ships a reinterpretation `hubreconcile` applies.
+Loading, writing or changing the meaning of config: layers only through `configengine`; a hub base file holds only tuned units; a meaning change ships a reinterpretation `hubreconcile` applies; a per-task beam setting is read only through `dobbyengine`'s one lookup.
 
 ## Layers
 
-Rule: Loading config: only `configengine` reads, stacks, locates and judges layers against the template; callers use `Load` or `LoadOrTemplate`, bar `runprofile`; only `hubreconcile.Ensure` reconciles on a binary change; no step removes an unknown base-layer key but the operator's `lym config reconcile` or `lym config <module> --unset <key>`.
+Rule: Loading config: only `configengine` reads, stacks, locates and judges layers against the template; callers use `Load` or `LoadOrTemplate`, bar `runprofile` and the per-task lookup; only `hubreconcile.Ensure` reconciles on a binary change; no step removes an unknown base-layer key but the operator's `lym config reconcile` or `lym config <module> --unset <key>`.
 
 Only `internal/configengine` reads or stacks a module's layer files and forms their paths.
 Every category but None closes a key to the local override layer.
@@ -91,7 +91,7 @@ and the newer binary's next walk adds the key back, since the older one wrote it
 ### Strictness
 
 `internal/configengine` offers `Load` (strict) and `LoadOrTemplate` (degrades to the embedded template);
-a caller adopts exactly one, except `runprofile`.
+a caller adopts exactly one, except `runprofile` and the per-task lookup.
 
 - Degrading callers: `{shuttleengine, claudeengine, reedengine, websterengine, weaverengine, batcher, orchengine, loggerconfig, battenshed, languageconfig, agentconfig, lenses, desktophook, heddleengine, hibernateconfig, ideconfig, envconfig, reportconfig, creelconfig, slackengine}`.
 - Strict callers: `{fabricengine, boardengine, loomengine, landingshed, gateslot, hardenshed, configcli, configreg}`.
@@ -101,6 +101,9 @@ a caller adopts exactly one, except `runprofile`.
   It reads the stacked layers through `configengine.StackLayers` with no template fill.
   It reads the template only when no layer file exists.
   A removed starting profile must stay removed, which a template fill would undo.
+- The per-task lookup is a further stance.
+  It reads each place's own file layers through `configengine.TopLevelValue` with no template fill.
+  It reads the template only when no file sets the key.
 - Strictness applies to the base layer: the repo default or hub file when a board dir is told, else the worktree file.
   The layers above it are sparse, and an absent upper file adds nothing under either policy.
 - A template list is a default, not a minimum length.
@@ -110,6 +113,19 @@ a caller adopts exactly one, except `runprofile`.
   A key a sparse upper layer inherits from a file layer below it is not logged.
 - A local file refuses keys the template lacks, besides the other rules of the local layer.
 - `Load` and `LoadOrTemplate` differ only on an absent base-layer `_lym/` or file.
+
+## Per-task beam settings
+
+Rule: Reading a per-task beam setting, `beam.pull_request` or `beam.land_notice`: only `dobbyengine`'s one lookup, at call time, over the chain `hubgeom.TaskSettingChain` tells it.
+
+- The value the task's own worktree sets applies.
+  A task sets it through its board `run_settings`, which batten copies into the worktree's local layer.
+- A worktree that does not set it takes its parent worktree's value, up through the beams to the prime.
+- With no worktree in the chain setting it, the hub's default layer applies, else the template.
+- "Sets" means written in that worktree's own files, its worktree file or its local file, read through `configengine.TopLevelValue`.
+  A merged value never counts, so a hub default is never a worktree's own setting.
+- A value set lower down overrides the one above in both directions; absence means the parent's value.
+- No board field carries a per-task beam setting.
 
 ## Sparse hub base
 

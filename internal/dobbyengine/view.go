@@ -9,16 +9,14 @@ import (
 	"time"
 )
 
-// View is one reading of a dobby: whether it is alive, its max_runs and land_notice.
+// View is one reading of a dobby: whether it is alive and its max_runs.
 // It also lists the runs it drives and the released tasks it has not started.
-// Each run and waiting task says whether it asks for a landing notice.
+// Each run says whether it asks for a landing notice.
 type View struct {
 	// Alive reports whether the dobby's lock is held.
 	Alive bool `json:"alive"`
 	// MaxRuns is beam.yaml's cap on the runs in flight.
 	MaxRuns int `json:"max_runs"`
-	// LandNotice is beam.yaml's land_notice: which runs get a landing notice.
-	LandNotice string `json:"land_notice"`
 	// Runs are the runs the dobby drives that are not done, by slug.
 	Runs []ViewRun `json:"runs"`
 	// Waiting are the released tasks not yet started, in board order.
@@ -49,8 +47,8 @@ type ViewRun struct {
 	OwnedElsewhere   bool      `json:"owned_elsewhere,omitempty"`
 	FailingPassError string    `json:"failing_pass_error,omitempty"`
 	FailingPassCount int       `json:"failing_pass_count,omitempty"`
-	// NotifyOnLand reports whether the run's board entry asks for a landing notice, or asked for it while the dobby saw the run ahead of its Land row.
-	NotifyOnLand bool `json:"notify_on_land,omitempty"`
+	// LandNotice reports whether land_notice read on for the run while the dobby saw it ahead of its Land row.
+	LandNotice bool `json:"land_notice,omitempty"`
 }
 
 // WaitingTask is one released task a dobby has not started, with everything that holds it back.
@@ -72,8 +70,6 @@ type WaitingTask struct {
 	NextTry time.Time `json:"next_try,omitzero"`
 	// AtMaxRuns reports whether the runs in flight fill max_runs before this task's turn.
 	AtMaxRuns bool `json:"at_max_runs,omitempty"`
-	// NotifyOnLand reports whether the task's board entry asks for a landing notice.
-	NotifyOnLand bool `json:"notify_on_land,omitempty"`
 	// FrontFirst is the slug of the worktree's open front task; while it stands, no other task starts.
 	FrontFirst string `json:"front_first,omitempty"`
 	// ReadyHold reports whether the beam is flagged ready, which holds every start of the worktree back.
@@ -109,11 +105,7 @@ type ViewInput struct {
 // An open front task of the worktree holds every other waiting task back and takes no slot under max_runs.
 // While the record carries the ready hold, every waiting task is held and none takes a slot.
 func BuildView(in ViewInput) View {
-	view := View{Alive: in.Alive, MaxRuns: in.Config.MaxRuns, LandNotice: in.Config.LandNotice, Runs: []ViewRun{}, Waiting: []WaitingTask{}, CatchUp: in.Record.CatchUp}
-	requested := make(map[string]bool, len(in.Tasks))
-	for _, task := range in.Tasks {
-		requested[task.Slug] = task.NotifyOnLand
-	}
+	view := View{Alive: in.Alive, MaxRuns: in.Config.MaxRuns, Runs: []ViewRun{}, Waiting: []WaitingTask{}, CatchUp: in.Record.CatchUp}
 	// A done run whose driver lock is held has a pass in flight, which keeps it in the scheduler's list and so in its slot count.
 	// A reader outside the dobby's process cannot tell the dobby's own pass from a hand-run driver, so the count is the closest the held lock gives.
 	slotRuns := slices.DeleteFunc(slices.Clone(in.Runs), func(run RunView) bool { return run.State == runStateDone && !run.DriverLockHeld })
@@ -126,7 +118,7 @@ func BuildView(in ViewInput) View {
 			PassInFlight: run.DriverLockHeld, LastPassExit: rs.LastPassExit,
 			FullPassOwed: rs.FullPassOwed, OwnedElsewhere: rs.OwnedElsewhere,
 			FailingPassError: rs.FailingPassError, FailingPassCount: rs.FailingPassCount,
-			NotifyOnLand: requested[run.Slug] || in.Record.LandNotices[run.Slug].Requested,
+			LandNotice: in.Record.LandNotices[run.Slug].Requested,
 		})
 		if keptPair(run) {
 			view.Kept = append(view.Kept, KeptPair{Slug: run.Slug, Since: run.KeptSince})
@@ -140,7 +132,7 @@ func BuildView(in ViewInput) View {
 			continue
 		}
 		covered := in.Covers(task.Slug)
-		waiting := WaitingTask{Slug: task.Slug, Dependencies: task.PendingDependencies, OwnedElsewhere: task.OwnedElsewhere, Paused: covered, HeldBy: task.HeldBy, StartRefusal: task.StartRefusal, NotifyOnLand: task.NotifyOnLand, ReadyHold: in.Record.ReadyHold != nil}
+		waiting := WaitingTask{Slug: task.Slug, Dependencies: task.PendingDependencies, OwnedElsewhere: task.OwnedElsewhere, Paused: covered, HeldBy: task.HeldBy, StartRefusal: task.StartRefusal, ReadyHold: in.Record.ReadyHold != nil}
 		if frontOpen && task.Slug != front.Slug {
 			waiting.FrontFirst = front.Slug
 		}

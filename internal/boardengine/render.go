@@ -857,14 +857,10 @@ func entryCell(t Task) string {
 
 // runFieldLines is one `<key>: <value>` line per field of t that changes how its run goes, in a fixed order.
 // It leaves out the run settings and the Recipe cell.
-// pull_request decides whether the landing opens a pull request.
 // on_land names the action that runs once the task lands.
 // A field left empty gives no line.
 func runFieldLines(t Task) []string {
 	var lines []string
-	if t.PullRequest != "" {
-		lines = append(lines, pullRequestKey+": "+t.PullRequest)
-	}
 	if t.OnLand != "" {
 		lines = append(lines, onLandKey+": "+t.OnLand)
 	}

@@ -126,7 +126,7 @@ func walkHub(geom Geometry, revision string, hooks walkHooks) (skipped bool, err
 		return false, fmt.Errorf("hubreconcile: no main code worktree among the hub's worktrees listed from %s", geom.WorktreePath)
 	}
 
-	hubWideSkipped, err := reconcileHubWide(geom.BoardDir, prime, fabricengine.BinaryLabel(), hooks)
+	hubWideSkipped, err := reconcileHubWide(geom.BoardDir, prime, worktrees, fabricengine.BinaryLabel(), hooks)
 	if err != nil {
 		return false, err
 	}
@@ -159,6 +159,9 @@ func walkHub(geom Geometry, revision string, hooks walkHooks) (skipped bool, err
 			skipped = skipped || pairSkipped
 		}
 		if !foundNew {
+			if !skipped {
+				carryBeamTaskSettings(geom, worktrees, fabricengine.BinaryLabel())
+			}
 			return skipped, nil
 		}
 	}
@@ -195,7 +198,7 @@ var spawnBoardSync = boardengine.SpawnSync
 
 // reconcileHubWide reconciles the board's hub-wide config, seeded from the prime's anchor, and commits what it wrote.
 // A seed-only module's template base that the pass wrote joins the commit beside its file.
-// A registered reinterpretation whose board marker is absent is judged against the prime and applied.
+// A registered reinterpretation whose board marker is absent is judged against the hub's worktrees and applied.
 // Its marker joins the commit.
 // The heddle overview is rendered afresh from what heddle holds, and joins the commit when its bytes changed.
 // The board is pulled first: when it cannot be brought up to date, nothing is written and skipped is true.
@@ -207,7 +210,7 @@ var spawnBoardSync = boardengine.SpawnSync
 // So a hub-wide commit an earlier run left unpushed is pushed too.
 // The walk never waits on that push.
 // A refusal of it reaches the orch as a failed-push record; a spawn failure is only logged.
-func reconcileHubWide(boardDir string, prime fabricengine.CodeWorktree, label string, hooks walkHooks) (skipped bool, err error) {
+func reconcileHubWide(boardDir string, prime fabricengine.CodeWorktree, worktrees []fabricengine.CodeWorktree, label string, hooks walkHooks) (skipped bool, err error) {
 	bolt := fabricengine.NewBolt(boardDir)
 	var prior map[string][]byte
 	var notices, followed []string
@@ -237,7 +240,7 @@ func reconcileHubWide(boardDir string, prime fabricengine.CodeWorktree, label st
 				logResult(boardDir, result)
 				written = append(written, files...)
 			}
-			reinterpreted, lines, err := applyReinterpretations(reinterpretationModules(), boardDir, prime.Path, prime.Anchor)
+			reinterpreted, lines, err := applyReinterpretations(reinterpretationModules(), boardDir, hubWorktrees(worktrees))
 			if err != nil {
 				return nil, err
 			}

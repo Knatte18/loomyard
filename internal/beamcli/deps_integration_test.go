@@ -26,7 +26,7 @@ import (
 )
 
 // TestHubLandDeps_ReadyReads drives the seams that `ready` judges a beam by over a real hub pair.
-// It reads the parent's pull request mode.
+// It reads the beam's pull_request through the per-task lookup, the beam's own worktree first and its parents' after.
 // It reads whether the beam holds the parent's commits and whether it conflicts with them.
 // It also reads which beam commits a merged pull request lacks and the change description's findings.
 func TestHubLandDeps_ReadyReads(t *testing.T) {
@@ -62,6 +62,16 @@ func TestHubLandDeps_ReadyReads(t *testing.T) {
 	mode, rulesRequired, err := deps.PullRequestMode("b")
 	if mode != "off" || rulesRequired || err != nil {
 		t.Errorf("PullRequestMode(b) = %q, %t, %v; want off, no rule and no error", mode, rulesRequired, err)
+	}
+	beamLayer := configengine.ConfigFile(beam.AnchorPath(), "beam")
+	if err := os.MkdirAll(filepath.Dir(beamLayer), 0o755); err != nil {
+		t.Fatalf("create %s: %v", filepath.Dir(beamLayer), err)
+	}
+	if err := os.WriteFile(beamLayer, []byte("pull_request: \"merge\"\n"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", beamLayer, err)
+	}
+	if mode, _, err := deps.PullRequestMode("b"); mode != "merge" || err != nil {
+		t.Errorf("PullRequestMode(b) with the beam's own beam.yaml = %q, %v; want merge and no error", mode, err)
 	}
 
 	gitkit.CommitFile(t, worktree, "widgets.txt", "widgets\n", "Add widgets")

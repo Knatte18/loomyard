@@ -60,6 +60,20 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
+			name:        "a beam pull_request the lookup refuses is refused at the run settings",
+			settings:    map[string]any{"beam": map[string]any{"pull_request": "required"}},
+			wantRefusal: "pull_request",
+			wantModule:  "beam",
+			wantInvalid: true,
+		},
+		{
+			name:        "a beam land_notice the lookup refuses is refused at the run settings",
+			settings:    map[string]any{"beam": map[string]any{"land_notice": "per-task"}},
+			wantRefusal: "land_notice",
+			wantModule:  "beam",
+			wantInvalid: true,
+		},
+		{
 			name:     "hardener packages and llm_driving pass",
 			settings: map[string]any{"hardener": map[string]any{"packages": []any{"internal/foo"}, "llm_driving": true}},
 			wantDocs: map[string]string{"hardener": "llm_driving: true\npackages:\n    - internal/foo\n"},
@@ -183,6 +197,11 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantRefusal: "discussion_advisors",
 			wantModule:  "loom",
 			wantInvalid: true,
+		},
+		{
+			name:     "a task's beam pull_request and land_notice prepare into a beam local document",
+			settings: map[string]any{"beam": map[string]any{"pull_request": "merge-in", "land_notice": "on"}},
+			wantDocs: map[string]string{"beam": "land_notice: \"on\"\npull_request: merge-in\n"},
 		},
 		{
 			name:     "a task's retired drift skip and verify_max_runs are admitted as retired keys of category none",

@@ -99,7 +99,7 @@ func TestRetireHardenLiveCopies(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, rewrote, flagged, err := gateslot.RetireHardenLiveCopies([]byte(tt.input), "", "")
+			got, rewrote, flagged, err := gateslot.RetireHardenLiveCopies([]byte(tt.input), nil)
 			if err != nil {
 				t.Fatalf("RetireHardenLiveCopies() error = %v; want nil", err)
 			}

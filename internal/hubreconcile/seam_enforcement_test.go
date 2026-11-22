@@ -17,6 +17,7 @@ var hubreconcileAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/configengine",
 	"github.com/Knatte18/loomyard/internal/configreg",
 	"github.com/Knatte18/loomyard/internal/configsync",
+	"github.com/Knatte18/loomyard/internal/dobbyengine",
 	"github.com/Knatte18/loomyard/internal/fabricengine",
 	"github.com/Knatte18/loomyard/internal/fsx",
 	"github.com/Knatte18/loomyard/internal/heddleengine",

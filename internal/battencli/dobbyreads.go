@@ -344,10 +344,6 @@ func DobbyLandings(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *D
 	return landed, nil
 }
 
-// unreadableNoticeEntry tracks failure episodes of entries carrying notify_on_land whose parent or owner does not read.
-// It keeps one episode per slug, so a persistent failure logs one Warn, not one line per dobby tick.
-var unreadableNoticeEntry logger.EpisodeSet
-
 // unreadableDoneRunStart tracks failure episodes of released tasks whose done run record's start judgment does not read.
 // It keeps one episode per slug, so a persistent failure logs one Warn, not one line per dobby tick.
 var unreadableDoneRunStart logger.EpisodeSet
@@ -371,12 +367,10 @@ func readTaskPlacement(prime *lymcwd.Location, parents *DobbyParents, owners boa
 
 // DobbyTasks reads the local board under boardDir as TaskViews.
 // A released task is a task with an empty status.
-// Released tasks and entries carrying notify_on_land get their parent worktree and owner read.
+// Released tasks get their parent worktree and owner read.
 // The other entries carry neither.
 // A released task also carries the machine of the adopt hold that holds it, none for the fix task of an adopt-fix hold.
-// A parent or owner that does not read fails the whole read for a released task.
-// For an entry carrying notify_on_land, that failure leaves both unset and logs once per episode.
-// Such an entry therefore never blocks the starts of the others.
+// A parent or owner that does not read fails the whole read.
 // A released task whose run record under the prime is done carries a start refusal.
 // The exception is a done motif run of a task whose recipe the board resolves to raddle.
 // Its start clears the run.
@@ -401,22 +395,15 @@ func DobbyTasks(prime *lymcwd.Location, boardDir string, parents *DobbyParents) 
 	dependencies := boardengine.NewDependencies(tasks)
 	views := make([]dobbyengine.TaskView, 0, len(tasks))
 	for _, task := range tasks {
-		view := dobbyengine.TaskView{Slug: task.Slug, Kind: task.Kind, Status: task.Status, NotifyOnLand: task.NotifyOnLand, Front: task.Front, Project: task.Project}
+		view := dobbyengine.TaskView{Slug: task.Slug, Kind: task.Kind, Status: task.Status, Front: task.Front, Project: task.Project}
 		view.PendingDependencies = dependencies.Pending(task)
 		released := task.Kind == boardengine.KindTask && boardengine.IsEmptyStatus(task.Status)
-		if released || task.NotifyOnLand {
-			parent, ownedElsewhere, err := readTaskPlacement(prime, parents, owners, here, task.Slug)
-			switch {
-			case err != nil && released:
-				return nil, err
-			case err != nil:
-				unreadableNoticeEntry.Fail(task.Slug, "battencli: the parent or owner of an entry carrying notify_on_land is unreadable, so its landing notice waits", "slug", task.Slug, "error", err)
-			default:
-				unreadableNoticeEntry.Recover(task.Slug, "battencli: the parent and owner of an entry carrying notify_on_land read again", "slug", task.Slug)
-				view.Parent, view.OwnedElsewhere = parent, ownedElsewhere
-			}
-		}
 		if released {
+			parent, ownedElsewhere, err := readTaskPlacement(prime, parents, owners, here, task.Slug)
+			if err != nil {
+				return nil, err
+			}
+			view.Parent, view.OwnedElsewhere = parent, ownedElsewhere
 			if hold, held := owners.HoldOf(task.Slug); held {
 				view.HeldBy = hold.Machine
 			}

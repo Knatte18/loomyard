@@ -120,6 +120,18 @@
 // They are kept as raw JSON and written back after the known fields, in key order, on every write.
 // This binary adds, changes or merges none, and a kept value is trusted exactly as far as an entry's body is.
 //
+// The one exception is a pair of retired entry keys.
+// A load folds a task's `pull_request` and `notify_on_land` into the task's `beam` run settings.
+// They become `pull_request` and `land_notice` there, and both keys are dropped.
+// A `pull_request` of `off` carries no value.
+// The old resolver still opened a pull request for it under a required or merge parent.
+// A value the run settings already hold wins, and the next save writes the fold.
+// A project has no run settings, so its two keys stay among its kept keys and every save writes them back.
+// `BeamSettingsByEntry` reads each entry's beam settings from the file as it is:
+// the run settings' `pull_request` and `land_notice`, and the retired keys while they remain.
+// The hub reconcile uses it to carry them into the worktrees of runs already past their seeding, a project's included.
+// It also reports a retired `pull_request` of `off`, which the reconcile flags with its way forward instead of carrying.
+//
 // # README
 //
 // The root, the entries whose project is empty, is a project like the others.
@@ -152,19 +164,6 @@
 // The caller converts a fetched issue into InboxIssue and makes every network call outside the board lock.
 // ImportResult reports an issue with a blank body and an issue naming paths under a worktree's `.lym` directory,
 // so the caller can flag them.
-//
-// # Pull request
-//
-// A task or project may carry a `pull_request` override of "on", "off" or "merge-in".
-// Any other non-empty value is refused.
-// The field is scope for the run lock, so a held entry takes no change to it.
-//
-// # Landing notice
-//
-// A task or project may carry `notify_on_land`, which asks the dobby that drives its run for a creel line.
-// The field is not scope, so a run-held entry takes it, and a note carrying it is refused.
-// Prune keeps a done entry while it carries the field, so the request outlives the landing until the line is sent.
-// SetNotifyOnLand and ClearNotifyOnLand write it.
 //
 // # Run lock
 //
@@ -299,7 +298,7 @@
 // A family filing, whose project is the run's own entry, turns that entry into the project instead of adding one.
 // Every filing moves each open entry's dependency on the run's entry onto the filed parts no other part depends on,
 // and a refusal of that move is wrapped in ErrRaddleRepointRefused.
-// EndRaddleEntry marks the run's entry done and clears its notify_on_land.
+// EndRaddleEntry marks the run's entry done.
 // ClearProjectRunStatus clears a run status from a family's project and releases no member.
 //
 // # Siblings

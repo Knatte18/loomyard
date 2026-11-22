@@ -371,7 +371,7 @@ func beamLandingRecordSeams(l *lymcwd.Location, slug string) (read func() (landi
 }
 
 // pullRequestDeps assembles the PR-Review row's seams for the run of the worktree l.
-// Each seam reads at call time, so a beam.yaml, board entry or origin changed after bootstrap is read as it stands.
+// Each seam reads at call time, so a beam.yaml, run_settings or origin changed after bootstrap is read as it stands.
 // SessionLive and RegisterSession read reed's strand table, which only the run's wiring holds, so the wiring fills them.
 func pullRequestDeps(l *lymcwd.Location, parentBranch string, pushSkipped bool, runner *shuttleengine.Runner) landingshed.PullRequestDeps {
 	return pullRequestDepsGuardedBy(newPrePushCheck(l, shedrun.SelfRunID), l, parentBranch, pushSkipped, runner)
@@ -392,19 +392,8 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 			}
 			return status, err
 		},
-		ParentMode: parentPullRequestMode(l),
-		Sessions:   runner,
-		EntryField: func() (string, error) {
-			board, err := boardengine.OpenHub(l.HubPath)
-			if err != nil {
-				return "", err
-			}
-			task, found, err := board.GetTask(slug)
-			if err != nil || !found {
-				return "", err
-			}
-			return task.PullRequest, nil
-		},
+		Mode:     pullRequestModeSeam(l),
+		Sessions: runner,
 		Origin: func() (landingshed.Origin, error) {
 			f, err := fabricengine.Open(l)
 			if err != nil {
@@ -585,27 +574,21 @@ func watchFileChanges(path, waiter string) (<-chan struct{}, func()) {
 	return changed, stop
 }
 
-// parentPullRequestMode returns the seam that reads the pull_request mode of the branch the run lands on.
-// The parent pair is the one the run's origin record names, and the prime when it names none,
-// so the receiving branch's own beam.yaml decides and the task worktree's is never read.
-// The worktree name is returned with any error, so a halt can say where to fix the file.
-func parentPullRequestMode(l *lymcwd.Location) func() (mode, worktree string, err error) {
-	return func() (string, string, error) {
-		parent, err := hubgeom.ResolveParent(l)
+// pullRequestModeSeam returns the seam that reads beam.yaml's pull_request for the run of l, at call time.
+// The lookup starts at the run's own worktree, whose beam.yaml files and run_settings apply first.
+// Then come the nearest parent worktree's own value up to the prime, the hub's default layer and the template.
+// A failed lookup's error names the file to fix.
+func pullRequestModeSeam(l *lymcwd.Location) func() (string, error) {
+	return func() (string, error) {
+		prime, err := primeOfHub(l)
 		if err != nil {
-			return "", "", fmt.Errorf("resolve the parent pair: %w", err)
+			return "", err
 		}
-		var parentLocation *lymcwd.Location
-		if parent.Worktree == "" {
-			parentLocation, err = primeOfHub(l)
-		} else {
-			parentLocation, err = lymcwd.ResolveWorktree(fabricengine.WorktreePath(l, parent.Worktree))
-		}
+		chain, err := hubgeom.TaskSettingChain(prime, seedSlug(l.WorktreeName))
 		if err != nil {
-			return "", parent.Worktree, err
+			return "", err
 		}
-		cfg, err := dobbyengine.LoadConfig(fabricengine.ConfigDirs(parentLocation))
-		return cfg.PullRequest, parentLocation.WorktreeName, err
+		return dobbyengine.LookupPullRequest(chain)
 	}
 }
 

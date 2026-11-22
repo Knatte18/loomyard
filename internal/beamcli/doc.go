@@ -53,10 +53,11 @@
 //  2. open members and child pairs;
 //  3. a parent that holds commits the beam lacks, naming `lym beam merge-parent <slug>`;
 //  4. a missing or invalid change description, naming `lym beam describe <slug>`;
-//  5. a pull request the origin or the parent's rules demand and none recorded, naming `lym beam pr open <slug>`;
+//  5. a pull request GitHub's rules for the parent branch demand and none recorded, naming `lym beam pr open <slug>`;
 //  6. a recorded pull request that is closed, open at another head, unmergeable or merged without every beam commit.
 //
-// A `merge` parent passes with none recorded, since Finalize opens its own.
+// A beam whose `pull_request` is `merge` passes with none recorded, since Finalize opens its own.
+// That value is found by the per-task lookup from the beam's own worktree up, as for any run.
 // A beam with no commits beyond its parent also passes, since Finalize lands it with no pull request.
 // The record names its beam because a pair forked from the beam inherits the beam's `_lym` records.
 // The beam's orch or the operator runs it; dobby never does.
@@ -153,7 +154,7 @@
 // and a beam that holds an open merge task.
 // A merge task is found by its project and its slug's `-merge-in` suffix.
 // The new one takes the first such slug that no board entry, batten run directory or task branch holds.
-// Its `pull_request` is `merge-in`, so it lands with no pull request by a true merge.
+// Its run_settings set beam's `pull_request` to `merge-in`, so it lands with no pull request by a true merge.
 // The beam's dobby starts it as any member, and the orch runs it before `ready`, which refuses while the parent is ahead.
 // Finalize brings the parent in again at the landing.
 //

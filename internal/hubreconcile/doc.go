@@ -42,6 +42,10 @@
 // Once the commit landed, a `[reconcile notice]` line goes to the hub's orch through the InstallNotifier notifier.
 // A machine-local override file is not rewritten, since the marker is shared by every machine of the hub.
 //
+// The beam settings the board's entries hold are carried into this machine's worktrees by a separate step of the walk.
+// It runs once per machine, guarded by the untracked marker `.lym/config/carried-<id>` beside the build stamp,
+// and a walk that skips leaves it for the next walk.
+//
 // # The pair call
 //
 // Options.Pair reconciles that one pair unconditionally.

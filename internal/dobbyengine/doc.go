@@ -135,18 +135,20 @@
 //
 // The landing notice:
 //
-//   - A run seen past its Land row that dobby remembered ahead of it owes one line through Deps.Notice
-//     to the nearest live orch, as beam.yaml's `land_notice` and the entry's `notify_on_land` decide.
-//     Under `land_notice: off` none is owed.
+//   - `pull_request` and `land_notice` are per-task settings, read only through LookupPullRequest and LookupLandNotice.
+//     A task's value is the one its own worktree's files set, else each parent worktree's own value up to the prime,
+//     else the hub's default layer's, else the template's.
+//   - Each tick reads Deps.LandNotice for each listed run ahead of its Land row and remembers the reading.
+//     A failed read keeps the last reading and is logged once per episode; a nil LandNotice reads every run as off.
+//   - A run seen past its Land row that dobby remembered ahead of it with `land_notice` on owes one line
+//     through Deps.Notice to the nearest live orch.
+//     A run whose `land_notice` read off owes none.
 //   - While Deps.PullRequestRecorded reads a pull request recorded for the beam,
-//     the landing notice is the one land notice its members get,
-//     and each landed line ends with the beam's follow-up `lym beam describe <slug>`.
-//     A nil PullRequestRecorded and the prime's dobby flag nothing.
-//   - A done board entry that has no memory, belongs to this dobby, is owned here and carries `notify_on_land`
-//     owes the line as well, and reads as landed whatever set its status.
-//   - Deps.ClearNotifyOnLand clears the entry's field once its line went out, so board prune can drop the entry.
+//     each member of the beam gets its landed line whatever `land_notice` says,
+//     and the line ends with the beam's follow-up `lym beam describe <slug>`.
+//     A nil PullRequestRecorded and the prime's dobby have no such line.
 //   - An owed line stays in the state record and is posted every tick until a post succeeds.
-//   - A run first seen past its Land row whose entry asks nothing gets no line.
+//   - A run first seen past its Land row gets no line, and a done board entry owes none by itself.
 //
 // The board tidy:
 //
@@ -191,8 +193,9 @@
 //
 // The view:
 //
-//   - BuildView carries beam.yaml's `max_runs` and `land_notice`, the listed runs that are not done,
-//     the kept pairs of cancelled runs, and the tasks waiting with the reason each waits.
+//   - BuildView carries beam.yaml's `max_runs` and the tasks waiting with the reason each waits.
+//     It also carries the kept pairs of cancelled runs and the listed runs that are not done.
+//     Each listed run says whether it asks for a landing notice.
 //   - The view does not read the task-limit hold, and the dobby log records it.
 //
 // Told-geometry tier: the package takes every absolute path from its caller and imports neither internal/lymcwd nor any CLI package, per PATTERN-cwd-resolution.

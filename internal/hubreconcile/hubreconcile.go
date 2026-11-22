@@ -28,6 +28,12 @@ func (g Geometry) StampPath() string {
 	return filepath.Join(configengine.ScratchDir(g.BoardDir), "build-stamp.json")
 }
 
+// carriedMarker returns the untracked marker, beside the build stamp.
+// It records that this machine carried the change named id.
+func (g Geometry) carriedMarker(id string) string {
+	return filepath.Join(configengine.ScratchDir(g.BoardDir), "carried-"+id)
+}
+
 // LockPath returns the hub lock file, beside the build stamp.
 func (g Geometry) LockPath() string {
 	return filepath.Join(configengine.ScratchDir(g.BoardDir), "reconcile.lock")

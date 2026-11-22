@@ -27,9 +27,9 @@ type TaskView struct {
 	Status *string
 	// PendingDependencies holds the slugs of the entries the task depends on that are not done.
 	PendingDependencies []string
-	// Parent names the parent worktree, the prime's name for the prime; read for released tasks and NotifyOnLand entries.
+	// Parent names the parent worktree, the prime's name for the prime; read for released tasks.
 	Parent string
-	// OwnedElsewhere reports whether another machine owns the entry; read for released tasks and NotifyOnLand entries.
+	// OwnedElsewhere reports whether another machine owns the entry; read for released tasks.
 	OwnedElsewhere bool
 	// StartRefusal is the refusal every start of the slug gets now, such as a finished run record; empty when none.
 	// Dobby spawns no pass for it and starts it on the first tick after the refusal is gone; read for released tasks.
@@ -37,8 +37,6 @@ type TaskView struct {
 	// HeldBy names the machine of the adopt hold that holds the task, empty when none does; read for released tasks.
 	// A hold holds every queued task but the fix task of an adopt-fix hold.
 	HeldBy string
-	// NotifyOnLand reports whether the entry carries notify_on_land, a request for a landing notice.
-	NotifyOnLand bool
 	// Front reports whether the entry is a front task, filed ahead of its worktree's other starts; read for every entry.
 	Front bool
 	// Project is the slug of the beam project the entry belongs to, empty for the prime's own; read for every entry.

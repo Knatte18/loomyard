@@ -30,7 +30,7 @@ func writeBeamLayer(t *testing.T, baseDir, document string) {
 func defaultsWith(change func(*Config)) Config {
 	cfg := Config{
 		MaxRuns: 3, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30,
-		TaskHeadroom: 500, PullRequest: "on", LandNotice: "per-task", AdoptFixTries: 3,
+		TaskHeadroom: 500, AdoptFixTries: 3,
 	}
 	change(&cfg)
 	return cfg
@@ -49,13 +49,14 @@ func TestLoadConfig(t *testing.T) {
 	}{
 		{name: "the template defaults", want: defaultsWith(func(*Config) {})},
 		{name: "a worktree layer's max_runs of 0 starts none", worktree: "max_runs: 0\n", want: defaultsWith(func(c *Config) { c.MaxRuns = 0 })},
-		{name: "a worktree layer's pull_request of required resolves as set", worktree: "pull_request: required\n", want: defaultsWith(func(c *Config) { c.PullRequest = "required" })},
-		{name: "a worktree layer's pull_request of off resolves as set", worktree: "pull_request: \"off\"\n", want: defaultsWith(func(c *Config) { c.PullRequest = "off" })},
-		{name: "a worktree layer's pull_request of merge resolves as set", worktree: "pull_request: merge\n", want: defaultsWith(func(c *Config) { c.PullRequest = "merge" })},
-		{name: "an unknown pull_request is refused naming the key and the way forward", worktree: "pull_request: maybe\n", wantErr: []string{"pull_request", "must be on, off, required or merge", "lym config beam --set pull_request="}},
-		{name: "a worktree layer's land_notice of all resolves as set", worktree: "land_notice: all\n", want: defaultsWith(func(c *Config) { c.LandNotice = "all" })},
-		{name: "a worktree layer's land_notice of off resolves as set", worktree: "land_notice: \"off\"\n", want: defaultsWith(func(c *Config) { c.LandNotice = "off" })},
-		{name: "an unknown land_notice is refused naming the key and the way forward", worktree: "land_notice: some\n", wantErr: []string{"land_notice", "must be all, per-task or off", "lym config beam --set land_notice="}},
+		{name: "a worktree layer's pull_request of merge-in loads", worktree: "pull_request: merge-in\n", want: defaultsWith(func(*Config) {})},
+		{name: "a local layer's pull_request of merge-in loads", local: "pull_request: merge-in\n", want: defaultsWith(func(*Config) {})},
+		{name: "a worktree layer's land_notice of on loads", worktree: "land_notice: \"on\"\n", want: defaultsWith(func(*Config) {})},
+		{name: "a local layer's land_notice of on loads", local: "land_notice: \"on\"\n", want: defaultsWith(func(*Config) {})},
+		{name: "a retired pull_request of required is refused naming the key and the way forward", worktree: "pull_request: required\n", wantErr: []string{"pull_request", "required", "lym config beam --set pull_request="}},
+		{name: "an unknown pull_request is refused naming the key and the way forward", worktree: "pull_request: maybe\n", wantErr: []string{"pull_request", "maybe", "lym config beam --set pull_request="}},
+		{name: "a retired land_notice of all is refused naming the key and the way forward", worktree: "land_notice: all\n", wantErr: []string{"land_notice", "all", "lym config beam --set land_notice="}},
+		{name: "a retired land_notice of per-task is refused naming the key and the way forward", local: "land_notice: per-task\n", wantErr: []string{"land_notice", "per-task", "lym config beam --set land_notice="}},
 		{name: "a negative board_tidy_every is refused naming the key", worktree: "board_tidy_every: -1\n", wantErr: []string{"board_tidy_every", "lym config beam --set"}},
 		{name: "a negative task_headroom is refused naming the key", worktree: "task_headroom: -1\n", wantErr: []string{"task_headroom", "lym config beam --set"}},
 		{name: "a worktree layer's adopt_fix_tries resolves as set", worktree: "adopt_fix_tries: 1\n", want: defaultsWith(func(c *Config) { c.AdoptFixTries = 1 })},

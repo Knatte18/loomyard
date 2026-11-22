@@ -443,7 +443,7 @@ func TestPRReview_Session(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			fx := newPRReviewFixture(t, "on", nil, "", githubOrigin, tt.record, tt.scripts, nil)
+			fx := newPRReviewFixture(t, "on", nil, githubOrigin, tt.record, tt.scripts, nil)
 			sessions := sessionsOf(fx.deps)
 			if tt.setup != nil {
 				tt.setup(t, fx, sessions)
@@ -499,13 +499,14 @@ func TestPRReview_Session(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the session stop before the record drop on a no, which the tests covering its blocks never order
 func TestPRReview_NoStopsTheRecordedSessionBeforeDroppingTheRecord(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	record := &pullrequest.Record{Number: 7, StrandGUID: "g-live", SessionID: "sess-old"}
 	merged := scriptedCall{status: pullrequest.Status{State: pullrequest.StateMerged}}
-	fx := newPRReviewFixture(t, "off", nil, "", Origin{URL: "https://github.com/acme/widgets.git", Upstream: true}, record, map[string][]scriptedCall{"Status": {merged}}, nil)
+	fx := newPRReviewFixture(t, "off", nil, Origin{URL: "https://github.com/acme/widgets.git", Upstream: true}, record, map[string][]scriptedCall{"Status": {merged}}, nil)
 	sessionsOf(fx.deps).live["g-live"] = true
 
 	outcome, pointer, err := NewPRReview("PR-Review", fx.deps).Call(context.Background())

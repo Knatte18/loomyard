@@ -1,7 +1,7 @@
 // landingdeps_integration_test.go drives landingDeps' seams over a real hub.
 // ConfigChanges reads a pair's committed config files through real branches.
 // Notify posts creel mail to the prime's orch.
-// The PullRequest seams read the receiving branch's mode, the run's board entry and the task branch's commits.
+// The PullRequest seams read the run's beam.yaml pull_request through the per-task lookup and the task branch's commits.
 // This package's own testmain_test.go arms the hermetic git test environment for the whole binary,
 // so this file adds no TestMain.
 
@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -166,11 +165,9 @@ func TestParentRecordsCommitter_CommitsTheRecordedParent(t *testing.T) {
 	}
 }
 
-// TestLandingDeps_PullRequestModeReadsTheParent asserts that ParentMode reads the receiving branch's beam.yaml.
-// It never reads the task worktree's own beam.yaml.
-// A task under the prime reads the prime's, a member under a beam reads the beam's, and the beam reads the prime's.
-// It also asserts EntryField reads the run's own board entry.
-func TestLandingDeps_PullRequestModeReadsTheParent(t *testing.T) {
+// TestLandingDeps_PullRequestModeReadsThePerTaskLookup pins the Mode seam's per-task lookup of pull_request.
+// The run's own worktree's value applies first, else the nearest parent's up to the prime.
+func TestLandingDeps_PullRequestModeReadsThePerTaskLookup(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -185,6 +182,7 @@ func TestLandingDeps_PullRequestModeReadsTheParent(t *testing.T) {
 	hubforge.AddPair(t, h, "task")
 	hubforge.AddPairWith(t, h, "beam", fabricengine.AddOptions{Beam: true})
 	hubforge.AddPairWith(t, h, "member", fabricengine.AddOptions{Parent: "beam"})
+	hubforge.AddPairWith(t, h, "plainbeam", fabricengine.AddOptions{Beam: true})
 
 	locate := func(codeWorktree string) *lymcwd.Location {
 		t.Helper()
@@ -209,47 +207,29 @@ func TestLandingDeps_PullRequestModeReadsTheParent(t *testing.T) {
 			true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(location), parentLockDeps(location, shedrun.SelfRunID, "", ""))
 	}
 
-	prime, task, beam, member := h.Location, locate(h.PairCodeWorktree("task")), locate(h.PairCodeWorktree("beam")), locate(h.PairCodeWorktree("member"))
+	prime, task, beam, member, plainBeam := h.Location, locate(h.PairCodeWorktree("task")), locate(h.PairCodeWorktree("beam")), locate(h.PairCodeWorktree("member")), locate(h.PairCodeWorktree("plainbeam"))
 	setMode(prime, "off")
-	setMode(task, "required")
-	setMode(beam, "required")
-	board, err := boardengine.OpenHub(h.Location.HubPath)
-	if err != nil {
-		t.Fatalf("boardengine.OpenHub() error = %v; want nil", err)
-	}
-	if _, err := board.UpsertTask(map[string]any{"slug": "beam", "title": "Beam", "kind": "project", "labels": []string{"bug"}, "pull_request": "on"}); err != nil {
-		t.Fatalf("UpsertTask(beam) error = %v; want nil", err)
-	}
+	setMode(task, "merge")
+	setMode(beam, "on")
 
 	tests := []struct {
-		name         string
-		location     *lymcwd.Location
-		wantMode     string
-		wantWorktree string
+		name     string
+		location *lymcwd.Location
+		wantMode string
 	}{
-		{"TaskUnderThePrimeReadsThePrimesNotItsOwn", task, "off", prime.WorktreeName},
-		{"MemberUnderABeamReadsTheBeams", member, "required", "beam"},
-		{"BeamReadsThePrimes", beam, "off", prime.WorktreeName},
+		{"TaskReadsItsOwnValueNotThePrimes", task, "merge"},
+		{"MemberWithNoValueReadsItsParentBeams", member, "on"},
+		{"BeamWithNoValueReadsThePrimes", plainBeam, "off"},
+		{"BeamReadsItsOwnValue", beam, "on"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mode, worktree, err := depsOf(tt.location).PullRequest.ParentMode()
-			if err != nil || mode != tt.wantMode || worktree != tt.wantWorktree {
-				t.Errorf("ParentMode() = %q, %q, %v; want %q, %q, nil", mode, worktree, err, tt.wantMode, tt.wantWorktree)
+			mode, err := depsOf(tt.location).PullRequest.Mode()
+			if err != nil || mode != tt.wantMode {
+				t.Errorf("Mode() = %q, %v; want %q, nil", mode, err, tt.wantMode)
 			}
 		})
 	}
-
-	t.Run("EntryFieldReadsTheRunsOwnEntry", func(t *testing.T) {
-		field, err := depsOf(beam).PullRequest.EntryField()
-		if err != nil || field != "on" {
-			t.Errorf("beam EntryField() = %q, %v; want \"on\", nil", field, err)
-		}
-		field, err = depsOf(member).PullRequest.EntryField()
-		if err != nil || field != "" {
-			t.Errorf("member EntryField() = %q, %v; want an empty field for an absent entry, nil", field, err)
-		}
-	})
 }
 
 // TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent asserts the TaskHasCommits seam.

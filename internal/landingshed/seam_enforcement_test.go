@@ -19,7 +19,7 @@ import (
 
 // landingshedAllowedImports lists the only non-stdlib import paths that production code in this package may use.
 var landingshedAllowedImports = []string{
-	"github.com/Knatte18/loomyard/internal/boardengine", // names the merge-in pull_request value
+	"github.com/Knatte18/loomyard/internal/beamsetting",
 	"github.com/Knatte18/loomyard/internal/fabricengine",
 	"github.com/Knatte18/loomyard/internal/gateslot",
 	"github.com/Knatte18/loomyard/internal/githubclient",

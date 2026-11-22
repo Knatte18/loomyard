@@ -52,6 +52,8 @@
 // [LoadOrTemplate] takes the template as the base and still stacks the upper layers present.
 //
 // [Layers] is the one reader of layer files, and [StackLayers] the one place layers are merged.
+// [TopLevelValue] answers the one top-level key the highest present layer under the told dirs sets.
+// Told one anchor alone, it reads what that worktree's own files set and no layer below them.
 // The merged document is expanded through envsource's markers once.
 //
 // [Provenance] returns the resolved document of [Load], with strictness and refusals unchanged.

@@ -8,23 +8,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/beamsetting"
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // githubHost is the one host a landing opens a pull request on.
 const githubHost = "github.com"
-
-// Pull-request modes of the receiving branch's beam.yaml and the landing entry's field;
-// merge is beam.yaml's alone, and merge-in the field's alone.
-const (
-	pullRequestOn       = "on"
-	pullRequestOff      = "off"
-	pullRequestRequired = "required"
-	pullRequestMerge    = "merge"
-	pullRequestMergeIn  = boardengine.PullRequestMergeIn
-)
 
 // Origin holds the facts about the origin a pull request needs.
 type Origin struct {
@@ -41,7 +31,7 @@ type PullRequestDecision struct {
 	// Open reports whether the landing goes through a pull request.
 	Open bool
 	// MergeAtOnce reports whether the landing opens a pull request and squash-merges it on GitHub at once, with no review.
-	// A parent whose beam.yaml pull_request is merge asks for it, and so does every beam.
+	// A landing whose beam.yaml pull_request is merge asks for it, and so does every beam.
 	MergeAtOnce bool
 	// TrueMerge reports whether the landing keeps the task branch's history.
 	// It lands as a fast-forward or a merge commit, never a squash,
@@ -58,7 +48,7 @@ type PullRequestDecision struct {
 type BeamRecord int
 
 const (
-	// NotABeam marks a landing that is no beam's, which is decided from the entry's field and the parent's mode.
+	// NotABeam marks a landing that is no beam's, which is decided from beam.yaml's pull_request alone.
 	NotABeam BeamRecord = iota
 	// BeamWithoutPullRequest marks a beam whose landing record holds no pull request.
 	BeamWithoutPullRequest BeamRecord = 1
@@ -75,73 +65,58 @@ type BeamPullRequest struct {
 }
 
 // ResolvePullRequest decides whether a landing goes through a pull request.
-// parentMode is the receiving branch's beam.yaml pull_request, one of on, off, required or merge.
-// entryField is the landing entry's pull_request, one of empty, on, off or merge-in.
-// slug is the landing run's slug.
-// A merge-in field wants no pull request, whatever the parent's mode and GitHub's rules say, and marks TrueMerge:
+// mode is beam.yaml's pull_request for this landing, found by the per-task lookup:
+// one of on, off, merge or merge-in.
+// A merge-in mode on a landing that is no beam's wants no pull request, whatever GitHub's rules say, and marks TrueMerge:
 // a pull request squashes away the merged commit, and the merge is reviewed again in the beam's own pull request.
+// On a beam, merge-in reads as off.
 // parentRuleRequired reports whether GitHub's rules for the parent branch require a pull request.
-// Such a parent counts as required whatever beam.yaml says.
 // A landing without a pull request ends in a direct push, and GitHub refuses that push.
-// A required or merge parent wants one whatever the field says.
-// An on parent wants one unless the field is off, and an off parent wants one only when the field is on.
-// A merge parent's pull request is marked MergeAtOnce.
-// An off field under a required or merge parent logs one warning and still wants one.
-// A beam never reads the entry's field.
-// A beam wants a pull request when its landing record holds one.
-// It also wants one when the parent is required or merge, or when GitHub's rules require one.
-// Under an on or off parent, a beam whose record holds none wants none.
-// A beam's pull request is marked MergeAtOnce, since a beam always lands by squash on GitHub with no review.
+// A pull request is required when the mode is merge or GitHub's rules require one.
+// A pull request is wanted when the beam's landing record holds one or when it is required.
+// It is also wanted when the mode is on and the landing is no beam's.
+// Under on or off, a beam whose record holds none wants none.
+// A pull request is marked MergeAtOnce when the mode is merge or the landing is a beam's.
+// A beam always lands by squash on GitHub with no review.
 // A wanted pull request needs, in this order:
 // an origin on github.com, an origin whose URL names owner and repository, an upstream for the parent and no push skip.
-// A missing fact is a Halt when the parent is required, the field is on, or the beam's record holds a pull request.
+// A missing fact is a Halt when a pull request is required or the beam's record holds one.
 // An origin on github.com whose URL names no owner and repository is always a Halt.
-// Any other missing fact under an on parent alone gives no pull request, and the reason names that fact.
+// Any other missing fact gives no pull request, and the reason names that fact.
 // A task branch with no commit beyond its parent gets no pull request, even when one is wanted.
 // That is decided before any origin fact is judged, since GitHub opens no pull request on an empty branch.
 // It reads no file: the caller reads these and passes their values in.
-// These are the parent's beam.yaml, the entry, the beam's landing record, the parent's GitHub rules and the task branch.
-func ResolvePullRequest(slug, parentMode, entryField string, beam BeamRecord, parentRuleRequired bool, origin Origin, taskHasCommits bool) PullRequestDecision {
+// These are beam.yaml's pull_request, the beam's landing record, the parent's GitHub rules and the task branch.
+func ResolvePullRequest(mode string, beam BeamRecord, parentRuleRequired bool, origin Origin, taskHasCommits bool) PullRequestDecision {
 	isBeam := beam != NotABeam
-	if isBeam {
-		entryField = ""
+	modeClause := fmt.Sprintf("beam.yaml's pull_request for this landing is %s", mode)
+	if !isBeam && mode == beamsetting.PullRequestMergeIn {
+		return PullRequestDecision{TrueMerge: true, Reason: fmt.Sprintf("no pull request: %s, so the task lands by a true merge whatever GitHub's rules say", modeClause)}
 	}
-	if entryField == pullRequestMergeIn {
-		return PullRequestDecision{TrueMerge: true, Reason: fmt.Sprintf("no pull request: the entry's pull_request is %s, so the task lands by a true merge whatever the parent's beam.yaml pull_request, %s, says", pullRequestMergeIn, parentMode)}
-	}
-	mergeAtOnce := parentMode == pullRequestMerge || isBeam
-	required := parentMode == pullRequestRequired || parentMode == pullRequestMerge || parentRuleRequired
-	if required && entryField == pullRequestOff {
-		logger.Warn("landingshed: the entry's pull_request is off but the parent's beam.yaml pull_request is required or merge, or GitHub's rules for the parent branch require a pull request, so a pull request is still required", "slug", slug)
-	}
+	mergeAtOnce := mode == beamsetting.PullRequestMerge || isBeam
+	required := mode == beamsetting.PullRequestMerge || parentRuleRequired
 
-	field := entryField
-	if field == "" {
-		field = "empty"
-	}
-	entryClause := fmt.Sprintf("the entry's pull_request is %s", field)
+	beamClause := ""
 	switch beam {
 	case BeamWithPullRequest:
-		entryClause = "the beam's landing record holds a pull request"
+		beamClause = ", and the beam's landing record holds a pull request"
 	case BeamWithoutPullRequest:
-		entryClause = "the beam's landing record holds no pull request"
+		beamClause = ", and the beam's landing record holds no pull request"
 	}
 	wanted := false
 	demand := ""
 	switch {
 	case beam == BeamWithPullRequest:
 		wanted, demand = true, "the beam's landing record holds a pull request"
-	case parentMode == pullRequestRequired, parentMode == pullRequestMerge:
-		wanted, demand = true, fmt.Sprintf("the parent's beam.yaml pull_request is %s", parentMode)
+	case mode == beamsetting.PullRequestMerge:
+		wanted, demand = true, modeClause
 	case parentRuleRequired:
 		wanted, demand = true, "GitHub's rules for the parent branch require a pull request"
-	case entryField == pullRequestOn:
-		wanted, demand = true, "the entry's pull_request is on"
-	case parentMode == pullRequestOn && entryField != pullRequestOff && !isBeam:
-		wanted, demand = true, "the parent's beam.yaml pull_request is on"
+	case mode == beamsetting.PullRequestOn && !isBeam:
+		wanted, demand = true, modeClause
 	}
 	if !wanted {
-		return PullRequestDecision{Reason: fmt.Sprintf("pull request off: the parent's beam.yaml pull_request is %s and %s", parentMode, entryClause)}
+		return PullRequestDecision{Reason: fmt.Sprintf("pull request off: %s%s", modeClause, beamClause)}
 	}
 	if !taskHasCommits {
 		return PullRequestDecision{Reason: fmt.Sprintf("no pull request: %s, but the task branch has no commits beyond its parent, so the landing is empty", demand)}
@@ -153,18 +128,14 @@ func ResolvePullRequest(slug, parentMode, entryField string, beam BeamRecord, pa
 		if parentRuleRequired {
 			rule = ", GitHub's rules for the parent branch require one"
 		}
-		return PullRequestDecision{Open: true, MergeAtOnce: mergeAtOnce, Reason: fmt.Sprintf("pull request on: the parent's beam.yaml pull_request is %s%s, %s and the origin is %s/%s", parentMode, rule, entryClause, owner, repo)}
+		return PullRequestDecision{Open: true, MergeAtOnce: mergeAtOnce, Reason: fmt.Sprintf("pull request on: %s%s%s, and the origin is %s/%s", modeClause, rule, beamClause, owner, repo)}
 	}
 
-	demanded := required || entryField == pullRequestOn || beam == BeamWithPullRequest
+	demanded := required || beam == BeamWithPullRequest
 	if !demanded && !alwaysHalt {
-		return PullRequestDecision{Reason: fmt.Sprintf("no pull request: the parent's beam.yaml pull_request is on and %s", missing)}
+		return PullRequestDecision{Reason: fmt.Sprintf("no pull request: %s and %s", modeClause, missing)}
 	}
-	halt := fmt.Sprintf("a pull request is required here (%s) but %s; way forward: give the hub a GitHub origin, an upstream for the parent branch and no push skip, then run lym loom resume", demand, missing)
-	if entryField == pullRequestOn && !required {
-		halt += fmt.Sprintf(", or run lym batten cancel %s and start a new run with the entry's pull_request changed", slug)
-	}
-	return PullRequestDecision{Halt: halt}
+	return PullRequestDecision{Halt: fmt.Sprintf("a pull request is required here (%s) but %s; way forward: give the hub a GitHub origin, an upstream for the parent branch and no push skip, then run lym loom resume", demand, missing)}
 }
 
 // resolveWithParentRule decides whether a landing goes through a pull request.
@@ -180,9 +151,9 @@ func ResolvePullRequest(slug, parentMode, entryField string, beam BeamRecord, pa
 // When recordFound is set, any other failure of the read except an unusable token is a Halt.
 // Reading it as no rule would close the recorded pull request and land by a direct push that GitHub refuses.
 // Otherwise any failure of the read, an unusable token included, logs one warning and reads as no rule,
-// so the landing goes as beam.yaml and the entry say.
-func resolveWithParentRule(ctx context.Context, name string, deps Deps, parentMode, entryField string, beam BeamRecord, origin Origin, taskHasCommits, recordFound bool) (PullRequestDecision, error) {
-	decision := ResolvePullRequest(deps.Slug, parentMode, entryField, beam, false, origin, taskHasCommits)
+// so the landing goes as beam.yaml says.
+func resolveWithParentRule(ctx context.Context, name string, deps Deps, mode string, beam BeamRecord, origin Origin, taskHasCommits, recordFound bool) (PullRequestDecision, error) {
+	decision := ResolvePullRequest(mode, beam, false, origin, taskHasCommits)
 	if decision.Open || decision.TrueMerge || decision.Halt != "" || !taskHasCommits {
 		return decision, nil
 	}
@@ -200,13 +171,13 @@ func resolveWithParentRule(ctx context.Context, name string, deps Deps, parentMo
 				return PullRequestDecision{Halt: githubHaltReason(action, err)}, nil
 			}
 		}
-		logger.Warn("landingshed: GitHub's rules for the parent branch are unreadable, so the landing goes as beam.yaml and the entry say", "row", name, "branch", deps.ParentBranch, "cause", err)
+		logger.Warn("landingshed: GitHub's rules for the parent branch are unreadable, so the landing goes as beam.yaml says", "row", name, "branch", deps.ParentBranch, "cause", err)
 		return decision, nil
 	}
 	if !required {
 		return decision, nil
 	}
-	return ResolvePullRequest(deps.Slug, parentMode, entryField, beam, true, origin, taskHasCommits), nil
+	return ResolvePullRequest(mode, beam, true, origin, taskHasCommits), nil
 }
 
 // readParentRule reports whether GitHub's rules for deps.ParentBranch require a pull request.

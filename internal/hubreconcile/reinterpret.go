@@ -1,5 +1,6 @@
 // reinterpret.go applies each registered reinterpretation once to the board's base files.
 // It mails the values each one rewrote or flagged to the hub's orch through the installed notifier.
+// It also carries the board entries' beam settings into this machine's worktrees once per machine.
 
 package hubreconcile
 
@@ -9,12 +10,15 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
@@ -40,11 +44,12 @@ var reinterpretationModules = configreg.Modules
 
 // applyReinterpretations applies every reinterpretation of modules whose board marker is absent.
 // It applies each one to its module's hub base file at boardDir.
-// It judges the file's values against the prime's root and anchored directory.
+// It judges the file's values against the hub's code worktrees, the prime first.
 // It writes each marker after the file.
 // An absent base file holds no value to carry across, so only its marker is written.
+// A change that reads beyond that file runs Rewrite with no bytes instead.
 // It returns the board-relative paths it wrote and one line per value rewritten or flagged, naming the module's file.
-func applyReinterpretations(modules []configreg.Module, boardDir, primeRoot, primeAnchor string) (written, lines []string, err error) {
+func applyReinterpretations(modules []configreg.Module, boardDir string, worktrees []configengine.HubWorktree) (written, lines []string, err error) {
 	for _, module := range modules {
 		for _, change := range module.Reinterpretations {
 			marker := configengine.ReinterpretedMarker(boardDir, change.ID)
@@ -54,12 +59,13 @@ func applyReinterpretations(modules []configreg.Module, boardDir, primeRoot, pri
 			path := configengine.ConfigFile(boardDir, module.Name)
 			fileError := func(err error) error { return &configsync.FileError{Module: module.Name, Path: path, Err: err} }
 			existing, err := os.ReadFile(path)
+			absent := errors.Is(err, fs.ErrNotExist)
 			switch {
-			case errors.Is(err, fs.ErrNotExist):
-			case err != nil:
+			case absent && !change.RunsWithoutFile:
+			case err != nil && !absent:
 				return nil, nil, fileError(err)
 			default:
-				rewritten, rewrote, flagged, err := change.Rewrite(existing, primeRoot, primeAnchor)
+				rewritten, rewrote, flagged, err := change.Rewrite(existing, worktrees)
 				if err != nil {
 					return nil, nil, fileError(fmt.Errorf("reinterpretation %s: %w", change.ID, err))
 				}
@@ -91,6 +97,48 @@ func notifyReinterpretations(boardDir, label string, lines []string) {
 	}
 	line := fmt.Sprintf("%s lym build %s changed what a value in the hub's config means, and the reconcile carried the hub's files across: %s", noticePrefix, label, strings.Join(lines, "; "))
 	logger.Warn("hubreconcile: a reinterpretation rewrote or flagged a hub config value", "board", boardDir, "lines", lines)
+	mailOrch(boardDir, line)
+}
+
+// hubWorktrees tells a reinterpretation the hub's code worktrees: each one's name in the hub and its anchor directory.
+func hubWorktrees(worktrees []fabricengine.CodeWorktree) []configengine.HubWorktree {
+	told := make([]configengine.HubWorktree, 0, len(worktrees))
+	for _, w := range worktrees {
+		told = append(told, configengine.HubWorktree{Name: filepath.Base(w.Path), Anchor: w.Anchor, Main: w.Main})
+	}
+	return told
+}
+
+// carryBeamTaskSettings writes the board entries' beam settings into this machine's worktrees, once per machine.
+// The local layers it writes are untracked, so the board's shared reinterpretation marker cannot guard it:
+// another machine's walk would mark the hub done while this machine's worktrees still lack the settings.
+// A marker beside the build stamp guards it instead.
+// A board that cannot be read leaves that marker unwritten, so the next walk tries again.
+// What it carried or flagged goes to the hub's orch.
+func carryBeamTaskSettings(geom Geometry, worktrees []fabricengine.CodeWorktree, label string) {
+	marker := geom.carriedMarker(dobbyengine.PerTaskSettingsReinterpretationID)
+	if fileExists(marker) {
+		return
+	}
+	carried, flagged, err := dobbyengine.CarryBeamTaskSettings(geom.BoardDir, hubWorktrees(worktrees))
+	if err != nil {
+		logger.Warn("hubreconcile: the beam settings of the board's entries were not carried, and the next walk tries again", "board", geom.BoardDir, "error", err)
+		return
+	}
+	if err := fsx.AtomicWriteBytes(marker, nil); err != nil {
+		logger.Warn("hubreconcile: the marker of the carried beam settings was not written, so the next walk carries them again", "marker", marker, "error", err)
+	}
+	notifyCarriedSettings(geom.BoardDir, label, append(carried, flagged...))
+}
+
+// notifyCarriedSettings logs what the carry of the board entries' beam settings wrote or flagged.
+// It mails that as one line to the hub's orch through the installed notifier; with no lines, it sends nothing.
+func notifyCarriedSettings(boardDir, label string, lines []string) {
+	if len(lines) == 0 {
+		return
+	}
+	line := fmt.Sprintf("%s lym build %s carried the beam settings of the board's entries into this machine's worktrees: %s", noticePrefix, label, strings.Join(lines, "; "))
+	logger.Info("hubreconcile: the beam settings of the board's entries were carried into this machine's worktrees", "board", boardDir, "lines", lines)
 	mailOrch(boardDir, line)
 }
 

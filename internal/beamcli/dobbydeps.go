@@ -253,12 +253,12 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		},
 		RunNotices:    runNotices,
 		WaitReminders: waitReminderDeps(prime, worktree, geom.Slug, pause.RecordPath, dirs),
-		ClearNotifyOnLand: func(slug string) error {
-			board, err := boardengine.OpenHub(prime.HubPath)
+		LandNotice: func(slug string) (bool, error) {
+			chain, err := hubgeom.TaskSettingChain(prime, slug)
 			if err != nil {
-				return err
+				return false, err
 			}
-			return board.ClearNotifyOnLand(slug)
+			return dobbyengine.LookupLandNotice(chain)
 		},
 		SettleFronts: func() error { return fronttask.Settle(settleFronts) },
 		Landings: machineLandings(func() (string, []string, error) {
@@ -303,13 +303,6 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		deps.PullRequestRecorded = func() (bool, error) {
 			record, found, err := pawlengine.ReadLanding(loomengine.BeamLandingPath(worktree), loomengine.BeamLandingLockPath(worktree), geom.Slug)
 			return found && record.PullRequest != nil, err
-		}
-		deps.SetNotifyOnLand = func(slug string) error {
-			board, err := boardengine.OpenHub(prime.HubPath)
-			if err != nil {
-				return err
-			}
-			return board.SetNotifyOnLand(slug)
 		}
 	}
 	if choice, err := resolveTidyModel(dirs); err != nil {

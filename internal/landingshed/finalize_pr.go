@@ -47,9 +47,10 @@ type prLanding struct {
 	record pullrequest.Record
 }
 
-// beamModeUnreadableReason is the Stuck reason of a receiving branch's beam.yaml that could not be read in worktree.
-func beamModeUnreadableReason(worktree string, err error) string {
-	return fmt.Sprintf("the receiving branch's beam.yaml could not be read in worktree %s: %v; way forward: fix it with lym config beam --set pull_request=<on|off|required|merge> in that worktree, then run lym loom resume", worktree, err)
+// beamModeUnreadableReason is the Stuck reason of a failed lookup of beam.yaml's pull_request for a landing.
+// err is the lookup's error.
+func beamModeUnreadableReason(err error) string {
+	return fmt.Sprintf("beam.yaml's pull_request for this landing could not be read: %v; way forward: fix the beam.yaml file the error names, with lym config beam --set pull_request=<on|off|merge|merge-in> run in that worktree, or for the hub's default file with lym config beam --layer default --set pull_request=<on|off|merge|merge-in> from the prime, then run lym loom resume; a run_settings change applies from the next run", err)
 }
 
 // pushHaltReason is the Stuck reason of a push of the task branch that failed for a reason other than a transient one.
@@ -237,7 +238,8 @@ func removePRRecord(pr PullRequestDeps, producer string) error {
 }
 
 // pullRequestLanding decides, under the parent lock, how the landing relates to the run's pull request.
-// The decision reads the parent's mode and GitHub's rules for the parent branch, never the record alone.
+// The decision reads beam.yaml's pull_request for the landing and GitHub's rules for the parent branch.
+// It never reads the record alone.
 // A no closes a recorded pull request that GitHub reports open, removes the record, and lands locally.
 // A yes halts without the recorded pull request, or with a closed one the operator did not end the review of.
 // A yes marked MergeAtOnce has no review to end.
@@ -247,29 +249,23 @@ func removePRRecord(pr PullRequestDeps, producer string) error {
 // A merged pull request lands through the parent-side merge's already-landed path;
 // an open one is marked to merge on GitHub;
 // a closed one whose review the operator ended is reopened and marked to merge, since GitHub merges only open ones.
-// Without the ParentMode seam, the step is skipped and the landing is local.
-// A beam's landing reads the beam's landing record beside the run's record, and never the entry's field.
+// Without the Mode seam, the step is skipped and the landing is local.
+// A beam's landing reads the beam's landing record beside the run's record.
 // In a beam with no pull request recorded, an open pull request in the run's record is merged as it stands;
 // the parent rule is not consulted for it, and a closed or merged one is decided as any other record is.
 // A non-nil ending ends the call at once.
 func (fz *Finalize) pullRequestLanding(ctx context.Context) (prLanding, *ending) {
 	pr := fz.deps.PullRequest
-	if pr.ParentMode == nil {
+	if pr.Mode == nil {
 		return prLanding{}, nil
 	}
 	failed := func(what string, err error) (prLanding, *ending) {
 		return prLanding{}, fail(ctx, finalizeName, fmt.Errorf("landingshed: %s: %s: %w", finalizeName, what, err))
 	}
 
-	mode, worktree, err := pr.ParentMode()
+	mode, err := pr.Mode()
 	if err != nil {
-		return prLanding{}, halt(ctx, finalizeName, LandingStopPrefix+beamModeUnreadableReason(worktree, err))
-	}
-	field := ""
-	if pr.BeamRecord == nil {
-		if field, err = pr.EntryField(); err != nil {
-			return failed("read the landing entry's pull_request", err)
-		}
+		return prLanding{}, halt(ctx, finalizeName, LandingStopPrefix+beamModeUnreadableReason(err))
 	}
 	origin, err := pr.Origin()
 	if err != nil {
@@ -308,7 +304,7 @@ func (fz *Finalize) pullRequestLanding(ctx context.Context) (prLanding, *ending)
 			return prLanding{merge: true, atOnce: true, api: api, record: rec}, nil
 		}
 	}
-	decision, err := resolveWithParentRule(ctx, finalizeName, fz.deps, mode, field, beam, origin, hasCommits, found)
+	decision, err := resolveWithParentRule(ctx, finalizeName, fz.deps, mode, beam, origin, hasCommits, found)
 	if err != nil {
 		return prLanding{}, fail(ctx, finalizeName, err)
 	}
@@ -407,7 +403,7 @@ func (fz *Finalize) recordedBeamLanding(ctx context.Context, mode string, record
 			return prLanding{}, fail(ctx, finalizeName, fmt.Errorf("landingshed: %s: list the task commits the merged pull request lacks: %w", finalizeName, err))
 		}
 		if len(missing) > 0 {
-			again, err := resolveWithParentRule(ctx, finalizeName, fz.deps, mode, "", BeamWithoutPullRequest, origin, hasCommits, found)
+			again, err := resolveWithParentRule(ctx, finalizeName, fz.deps, mode, BeamWithoutPullRequest, origin, hasCommits, found)
 			if err != nil {
 				return prLanding{}, fail(ctx, finalizeName, err)
 			}
@@ -606,7 +602,7 @@ func (fz *Finalize) mergeRefusalReason(landing prLanding, refusal *pullrequest.M
 		return fmt.Sprintf("GitHub refused to merge pull request %s: %s%s; way forward: settle on GitHub what the message names, then %s", rec.URL, refusal.Message, reported, check)
 	}
 	if refusal.Kind == pullrequest.RefusalMethod && landing.atOnce {
-		return fmt.Sprintf("GitHub refused the squash merge of pull request %s: %s; way forward: allow squash merging in the repository's settings on GitHub, since a parent whose beam.yaml pull_request is merge always squashes, then run lym loom resume", rec.URL, refusal.Message)
+		return fmt.Sprintf("GitHub refused the squash merge of pull request %s: %s; way forward: allow squash merging in the repository's settings on GitHub, since a landing whose beam.yaml pull_request is merge always squashes, then run lym loom resume", rec.URL, refusal.Message)
 	}
 	if refusal.Kind == pullrequest.RefusalMethod {
 		return fmt.Sprintf("GitHub refused the merge method for pull request %s: %s; way forward: set landing.yaml's squash to the method the repository allows with lym config landing --set squash=<true|false> in the prime worktree, or allow the method in the repository's settings, then run lym loom resume", rec.URL, refusal.Message)

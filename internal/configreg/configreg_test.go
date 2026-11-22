@@ -14,11 +14,32 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
+
+// TestLookup_BeamCarriesThePerTaskSettingsReinterpretation pins that the beam module registers its reinterpretation.
+// It carries a hub's retired pull_request and land_notice values.
+// Dropping it leaves such a hub's beam.yaml unloadable.
+//
+//testtiming:keep pins the beam module's registration of the beam-per-task-settings reinterpretation, with a Rewrite and RunsWithoutFile set, which TestPrepareRunSettings never asserts
+func TestLookup_BeamCarriesThePerTaskSettingsReinterpretation(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	module, ok := Lookup("beam")
+	if !ok {
+		t.Fatal("Lookup(beam) found = false; want true")
+	}
+	carries := slices.ContainsFunc(module.Reinterpretations, func(change Reinterpretation) bool {
+		return change.ID == dobbyengine.PerTaskSettingsReinterpretationID && change.Rewrite != nil && change.RunsWithoutFile
+	})
+	if !carries {
+		t.Errorf("Lookup(beam).Reinterpretations = %v; want one with ID %q, a Rewrite and RunsWithoutFile set", module.Reinterpretations, dobbyengine.PerTaskSettingsReinterpretationID)
+	}
+}
 
 // TestNames pins the registry's ORDER and shape: every `lym config` surface renders it in registry order,
 // so an out-of-sort or repeated entry is user-visible, and every module carries a template and a load check.
@@ -124,7 +145,6 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	}
 	wantLocalDenied := map[string][]string{
 		"batten":   {"open_ide_command", "open_window_command", "seed_ide_command"},
-		"beam":     {"pull_request"},
 		"claude":   {"account_pins", "accounts", "binary", "deny_ask_user_question"},
 		"codex":    {"binary", "sandbox_mode", "writable_roots"},
 		"reed":     {"buttons", "debug_log", "mouse", "shell", "tmux", "tmux_conf"},

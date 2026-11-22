@@ -33,7 +33,7 @@ func TestFlagRemoteControlDefault(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			rewritten, rewrote, flagged, err := orchengine.FlagRemoteControlDefault([]byte(tt.input), "", "")
+			rewritten, rewrote, flagged, err := orchengine.FlagRemoteControlDefault([]byte(tt.input), nil)
 			if tt.wantError {
 				if err == nil {
 					t.Errorf("FlagRemoteControlDefault(%q) = nil error; want a parse error", tt.input)

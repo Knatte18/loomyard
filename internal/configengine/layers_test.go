@@ -903,6 +903,117 @@ func TestLayers(t *testing.T) {
 	}
 }
 
+// TestTopLevelValue pins the one-key reader over the file layers:
+// the highest present layer setting the key decides and its file is named;
+// a key no file sets reads unset though the template holds it;
+// telling the board dir alone reads the default layer alone; an invalid layer file is an error.
+func TestTopLevelValue(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name  string
+		geo   geometry
+		files map[configengine.Layer]string
+		key   string
+		// wantLayer is the layer whose file must be named; ignored when wantSet is false.
+		wantLayer configengine.Layer
+		wantValue any
+		wantSet   bool
+		wantErr   bool
+	}{
+		{
+			name: "the local layer wins over the worktree file",
+			geo:  geometryHub,
+			files: map[configengine.Layer]string{
+				configengine.LayerDefault:  "name: d\n",
+				configengine.LayerWorktree: "name: w\n",
+				configengine.LayerLocal:    "name: l\n",
+			},
+			key:       "name",
+			wantLayer: configengine.LayerLocal,
+			wantValue: "l",
+			wantSet:   true,
+		},
+		{
+			name: "a key only the worktree file sets reads from it",
+			geo:  geometryHub,
+			files: map[configengine.Layer]string{
+				configengine.LayerDefault:  "name: d\n",
+				configengine.LayerWorktree: "port: 5\n",
+			},
+			key:       "port",
+			wantLayer: configengine.LayerWorktree,
+			wantValue: 5,
+			wantSet:   true,
+		},
+		{
+			name:  "a key no file sets reads unset though the template holds it",
+			geo:   geometryHub,
+			files: map[configengine.Layer]string{configengine.LayerDefault: "name: d\n"},
+			key:   "port",
+		},
+		{
+			name: "the board dir alone reads the default layer alone",
+			geo:  geometryBoardOnly,
+			files: map[configengine.Layer]string{
+				configengine.LayerDefault:  "name: d\n",
+				configengine.LayerWorktree: "name: w\n",
+				configengine.LayerLocal:    "name: l\n",
+			},
+			key:       "name",
+			wantLayer: configengine.LayerDefault,
+			wantValue: "d",
+			wantSet:   true,
+		},
+		{
+			name: "an invalid local file is an error",
+			geo:  geometryHub,
+			files: map[configengine.Layer]string{
+				configengine.LayerDefault: "name: d\n",
+				configengine.LayerLocal:   "run: evil\n",
+			},
+			key:     "name",
+			wantErr: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newLayerFixture(t, tc.geo, tc.files)
+			wantPaths := map[configengine.Layer]string{
+				configengine.LayerDefault:  configengine.ConfigFile(fx.board, layerModule),
+				configengine.LayerWorktree: configengine.ConfigFile(fx.anchor, layerModule),
+				configengine.LayerLocal:    configengine.LocalFile(fx.anchor, layerModule),
+			}
+			value, path, set, err := configengine.TopLevelValue(fx.dirs, layerSpec(), tc.key)
+			if tc.wantErr {
+				if err == nil || !errors.Is(err, configengine.ErrInvalid) {
+					t.Fatalf("TopLevelValue(%q) error = %v; want one marked ErrInvalid", tc.key, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("TopLevelValue(%q): %v", tc.key, err)
+			}
+			if set != tc.wantSet {
+				t.Fatalf("TopLevelValue(%q) set = %v; want %v", tc.key, set, tc.wantSet)
+			}
+			if !set {
+				if value != nil || path != "" {
+					t.Errorf("TopLevelValue(%q) = (%v, %q); want neither value nor path when unset", tc.key, value, path)
+				}
+				return
+			}
+			if value != tc.wantValue {
+				t.Errorf("TopLevelValue(%q) value = %v; want %v", tc.key, value, tc.wantValue)
+			}
+			if want := wantPaths[tc.wantLayer]; path != want {
+				t.Errorf("TopLevelValue(%q) path = %q; want %q", tc.key, path, want)
+			}
+		})
+	}
+}
+
 func mapsEqual(a, b map[string]string) bool {
 	if len(a) != len(b) {
 		return false

@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/Knatte18/loomyard/internal/beamsetting"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -24,7 +26,7 @@ const mergeParentMinRounds = 1
 // so the beam's dobby starts it as any member.
 // Its run settings set the Code-Review budget to the hub's, or to one round when the hub's is lower.
 // A hard cap sits above it.
-// Its pull_request field lands it with no pull request, by a true merge,
+// Its run settings also set beam's pull_request to merge-in, which lands it with no pull request, by a true merge,
 // so the beam keeps the parent's commit as an ancestor.
 func mergeParent(deps landDeps, slug string) (map[string]any, error) {
 	const verb = "lym beam merge-parent"
@@ -69,18 +71,20 @@ func mergeParent(deps landDeps, slug string) (map[string]any, error) {
 	}
 	taskSlug := freeMergeTaskSlug(tasks, held, slug)
 	fields := map[string]any{
-		"slug":         taskSlug,
-		"title":        fmt.Sprintf("Merge %s into the beam %s", origin.ParentBranch, slug),
-		"kind":         boardengine.KindTask,
-		"project":      slug,
-		"recipe":       shedrun.RecipeDarn,
-		"labels":       labels,
-		"body":         mergeParentBody(slug, origin.ParentBranch),
-		"pull_request": boardengine.PullRequestMergeIn,
+		"slug":    taskSlug,
+		"title":   fmt.Sprintf("Merge %s into the beam %s", origin.ParentBranch, slug),
+		"kind":    boardengine.KindTask,
+		"project": slug,
+		"recipe":  shedrun.RecipeDarn,
+		"labels":  labels,
+		"body":    mergeParentBody(slug, origin.ParentBranch),
 		"run_settings": map[string]any{
 			"loom": map[string]any{
 				reviewbudget.SoftKey(perch): rounds,
 				reviewbudget.HardKey(perch): max(caps.Hard, rounds+1),
+			},
+			beamsetting.Module: map[string]any{
+				dobbyengine.PullRequestKey: dobbyengine.PullRequestMergeIn,
 			},
 		},
 	}

@@ -276,9 +276,10 @@ func mergeParentCmd() *cobra.Command {
 parent branch into the beam: its writer runs "lym fabric merge-in <parent branch>"
 in the task's own worktree, settles the conflicts and the gate failures, and its
 Code-Review perch, turned on through the task's run_settings, reviews the merge
-alone. The task's landing brings the merge into the beam as a true merge, with no
-pull request, whatever the beam's pull_request mode, so the beam keeps the parent's
-commit as an ancestor; the beam's own pull request reviews the merge again. The
+alone. The task's run_settings set beam's pull_request to merge-in, so its landing
+brings the merge into the beam as a true merge, with no pull request, whatever
+the beam's own pull_request, so the beam keeps the parent's commit as an
+ancestor; the beam's own pull request reviews the merge again. The
 beam's dobby starts it as any member, at any time. The orch runs it before
 "lym beam ready", which refuses while the parent holds commits the beam lacks;
 Finalize merges the parent in again at landing.
@@ -333,8 +334,9 @@ func statusCmd() *cobra.Command {
 		Short:       "show the dobby and the orch of the prime and of every local beam",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Prints, once, what a beam's window draws for a dobby, for the hub's prime and
-for every local beam: whether the dobby is alive with its max_runs and
-land_notice, each run it drives with its state, stage, time in the stage and last pass, and each released task it has not
+for every local beam: whether the dobby is alive with its max_runs, each run it
+drives with its state, stage, time in the stage, last pass and whether it owes a
+landing notice, and each released task it has not
 started with what the task waits on -- open dependencies, another machine's
 ownership, a pause, a start batten refuses, a refused start and its retry, or max_runs.
 A ready task shows its last refused start when one is recorded. Each entry
@@ -934,7 +936,7 @@ way forward:
   - a parent branch that holds commits the beam lacks, "lym beam merge-parent <slug>"
     brings them in
   - a change description that is not written or fails validation
-  - a required parent, or GitHub's rules, with no pull request recorded
+  - a pull request that GitHub's rules demand, with none recorded
   - a recorded pull request that is closed, at a head other than the beam's, in a
     state that cannot merge now, or merged without a beam commit
 

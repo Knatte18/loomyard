@@ -138,7 +138,7 @@ func TestPRReview_Call(t *testing.T) {
 	const (
 		wantCreateCall  = "Create task main|Change title|" + wantPRBody
 		wantEditSeven   = "Edit 7|Change title|" + wantPRBody
-		localNoReason   = "no pull request: the parent's beam.yaml pull_request is on and the task pair has no origin remote"
+		localNoReason   = "no pull request: beam.yaml's pull_request for this landing is on and the task pair has no origin remote"
 		taskHead        = "head-new"
 		recordedGated   = "head-old"
 		recordedURLSeen = "https://github.com/acme/widgets/pull/7"
@@ -159,15 +159,16 @@ func TestPRReview_Call(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		parentMode string
-		parentErr  error
-		field      string
-		origin     Origin
-		record     *pullrequest.Record
-		dirty      []string
-		scripts    map[string][]scriptedCall
-		pushErr    error
+		name string
+		// mode is beam.yaml's pull_request for the landing run, as the Mode seam reads it.
+		mode string
+		// modeErr makes the Mode seam fail.
+		modeErr error
+		origin  Origin
+		record  *pullrequest.Record
+		dirty   []string
+		scripts map[string][]scriptedCall
+		pushErr error
 		// taskEmpty makes the task branch hold no commit beyond its parent.
 		taskEmpty bool
 		// taskErr makes the TaskHasCommits seam fail.
@@ -201,25 +202,25 @@ func TestPRReview_Call(t *testing.T) {
 		check func(t *testing.T, fx *prReviewFixture)
 	}{
 		{
-			name: "OffWithNoFieldReadsTheParentRulesAndIsDone", parentMode: "off", origin: githubOrigin,
+			name: "OffReadsTheParentRulesAndIsDone", mode: "off", origin: githubOrigin,
 			wantOutcome: shedengine.Done,
 			wantCalls:   []string{"RequiresPullRequest main"},
 		},
 		{
-			name: "OffWithAParentRuleRequiringAPullRequestOpensOne", parentMode: "off", origin: githubOrigin, wantCommits: 2,
+			name: "OffWithAParentRuleRequiringAPullRequestOpensOne", mode: "off", origin: githubOrigin, wantCommits: 2,
 			scripts:     map[string][]scriptedCall{"RequiresPullRequest": {{found: true}}, "Create": {created}, "Status": {mergedAtHead}},
 			wantOutcome: shedengine.Done, wantPushes: 1,
 			wantCalls:  []string{"RequiresPullRequest main", "FindOpen task main", wantCreateCall, "Status 7"},
 			wantRecord: &pullrequest.Record{Number: 7, URL: recordedURLSeen, Base: "main", Head: "task", GatedHead: taskHead},
 		},
 		{
-			name: "AnUnreadableParentRuleReadsAsNoRuleAndIsDone", parentMode: "off", origin: githubOrigin,
+			name: "AnUnreadableParentRuleReadsAsNoRuleAndIsDone", mode: "off", origin: githubOrigin,
 			scripts:     map[string][]scriptedCall{"RequiresPullRequest": {{err: githubErrorResponse(http.StatusNotFound, "Not Found")}}},
 			wantOutcome: shedengine.Done,
 			wantCalls:   []string{"RequiresPullRequest main"},
 		},
 		{
-			name: "AnUnreadableParentRuleWithARecordedPullRequestHaltsAndKeepsThePullRequest", parentMode: "off", origin: githubOrigin,
+			name: "AnUnreadableParentRuleWithARecordedPullRequestHaltsAndKeepsThePullRequest", mode: "off", origin: githubOrigin,
 			record:      &pullrequest.Record{Number: 7},
 			scripts:     map[string][]scriptedCall{"RequiresPullRequest": {{err: githubErrorResponse(http.StatusNotFound, "Not Found")}}},
 			wantOutcome: shedengine.Stuck, wantHalt: true,
@@ -228,62 +229,63 @@ func TestPRReview_Call(t *testing.T) {
 			wantRecord: &pullrequest.Record{Number: 7},
 		},
 		{
-			name: "AnUnresolvableTokenOnTheParentRuleReadReadsAsNoRuleAndIsDone", parentMode: "off", origin: githubOrigin,
+			name: "AnUnresolvableTokenOnTheParentRuleReadReadsAsNoRuleAndIsDone", mode: "off", origin: githubOrigin,
 			scripts:     map[string][]scriptedCall{"RequiresPullRequest": {{err: &url.Error{Op: "Get", URL: "https://api.github.com", Err: githubclient.ErrTokenUnresolvable}}}},
 			wantOutcome: shedengine.Done,
 			wantCalls:   []string{"RequiresPullRequest main"},
 		},
 		{
-			name: "ATransientParentRuleReadIsAnError", parentMode: "off", origin: githubOrigin,
+			name: "ATransientParentRuleReadIsAnError", mode: "off", origin: githubOrigin,
 			scripts: map[string][]scriptedCall{"RequiresPullRequest": {{err: context.DeadlineExceeded}}},
 			wantErr: true, wantErrText: "read GitHub's rules for the parent branch",
 			wantCalls: []string{"RequiresPullRequest main"},
 		},
 		{
-			name: "AnEmptyTaskBranchUnderOffDoesNotReadTheParentRules", parentMode: "off", origin: githubOrigin, taskEmpty: true,
+			name: "AnEmptyTaskBranchUnderOffDoesNotReadTheParentRules", mode: "off", origin: githubOrigin, taskEmpty: true,
 			wantOutcome: shedengine.Done,
 		},
 		{
-			name: "ALocalOriginUnderOffDoesNotReadTheParentRules", parentMode: "off", origin: localOrigin,
+			name: "ALocalOriginUnderOffDoesNotReadTheParentRules", mode: "off", origin: localOrigin,
 			wantOutcome: shedengine.Done,
 		},
 		{
-			name: "NoClosesTheRecordedOpenPullRequestAndRemovesTheRecord", parentMode: "on", origin: localOrigin, wantCommits: 1,
+			name: "NoClosesTheRecordedOpenPullRequestAndRemovesTheRecord", mode: "on", origin: localOrigin, wantCommits: 1,
 			record:      &pullrequest.Record{Number: 7},
 			scripts:     map[string][]scriptedCall{"Status": {open}},
 			wantOutcome: shedengine.Done, wantNoRecord: true,
 			wantCalls: []string{"Status 7", "Close 7 lym closed this pull request: " + localNoReason},
 		},
 		{
-			name: "NoLeavesAMergedPullRequestAndRemovesTheRecord", parentMode: "off", origin: githubOrigin, wantCommits: 1,
+			name: "NoLeavesAMergedPullRequestAndRemovesTheRecord", mode: "off", origin: githubOrigin, wantCommits: 1,
 			record:      &pullrequest.Record{Number: 7},
 			scripts:     map[string][]scriptedCall{"Status": {{status: pullrequest.Status{State: pullrequest.StateMerged}}}},
 			wantOutcome: shedengine.Done, wantNoRecord: true,
 			wantCalls: []string{"RequiresPullRequest main", "Status 7"},
 		},
 		{
-			name: "UnreadableParentModeHaltsNamingTheWorktree", parentErr: errors.New("bad yaml"), origin: githubOrigin,
+			name: "AFailedModeLookupHaltsNamingTheErrorAndTheFix", modeErr: errors.New("bad yaml"), origin: githubOrigin,
 			wantOutcome: shedengine.Stuck, wantHalt: true,
-			wantReason: []string{"worktree wt-parent", "bad yaml", "lym config beam --set pull_request=", "lym loom resume"},
+			wantReason: []string{"beam.yaml's pull_request for this landing could not be read", "bad yaml", "lym config beam --set pull_request=", "--layer default", "run_settings", "lym loom resume"},
 		},
 		{
-			name: "FieldOnWithALocalOriginHaltsWithBothWaysForward", parentMode: "off", field: "on", origin: localOrigin,
+			name: "MergeWithALocalOriginHaltsWithItsWayForward", mode: "merge", origin: localOrigin,
 			wantOutcome: shedengine.Stuck, wantHalt: true,
-			wantReason: []string{"lym loom resume", "lym batten cancel the-slug"},
+			wantReason:      []string{"lym loom resume"},
+			wantNotInReason: []string{"lym batten cancel"},
 		},
 		{
-			name: "AMergeParentLeavesThePullRequestToFinalizeWithNoPushOrGitHubCall", parentMode: "merge", origin: githubOrigin,
+			name: "AMergeModeLeavesThePullRequestToFinalizeWithNoPushOrGitHubCall", mode: "merge", origin: githubOrigin,
 			wantOutcome: shedengine.Done, wantNoRecord: true,
 		},
 		{
-			name: "FirstYesPushesCreatesAndRecordsThePullRequest", parentMode: "on", origin: githubOrigin, wantCommits: 2,
+			name: "FirstYesPushesCreatesAndRecordsThePullRequest", mode: "on", origin: githubOrigin, wantCommits: 2,
 			scripts:     map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
 			wantOutcome: shedengine.Done, wantPushes: 1,
 			wantCalls:  []string{"FindOpen task main", wantCreateCall, "Status 7"},
 			wantRecord: &pullrequest.Record{Number: 7, URL: recordedURLSeen, Base: "main", Head: "task", GatedHead: taskHead},
 		},
 		{
-			name: "ReentryEditsTheRecordedPullRequestKeepsItsGatedHeadAndTheContinueFlag", parentMode: "on", origin: githubOrigin, wantCommits: 2,
+			name: "ReentryEditsTheRecordedPullRequestKeepsItsGatedHeadAndTheContinueFlag", mode: "on", origin: githubOrigin, wantCommits: 2,
 			record:      &pullrequest.Record{Number: 7, URL: recordedURLSeen, GatedHead: recordedGated, Continue: true},
 			dirty:       []string{"wip.go"},
 			scripts:     map[string][]scriptedCall{"Status": {open, {status: pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: recordedGated}}}},
@@ -293,7 +295,7 @@ func TestPRReview_Call(t *testing.T) {
 			wantRecord: &pullrequest.Record{Number: 7, URL: recordedURLSeen, Base: "main", Head: "task", GatedHead: recordedGated, Continue: true},
 		},
 		{
-			name: "ReentryOnADraftMarksItReadyForReviewBeforeTheEdit", parentMode: "on", origin: githubOrigin, wantCommits: 2,
+			name: "ReentryOnADraftMarksItReadyForReviewBeforeTheEdit", mode: "on", origin: githubOrigin, wantCommits: 2,
 			record:      &pullrequest.Record{Number: 7, URL: recordedURLSeen, GatedHead: recordedGated},
 			dirty:       []string{"wip.go"},
 			scripts:     map[string][]scriptedCall{"Status": {{status: pullrequest.Status{State: pullrequest.StateOpen, Draft: true}}, {status: pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: recordedGated}}}},
@@ -302,7 +304,7 @@ func TestPRReview_Call(t *testing.T) {
 			wantCalls:  []string{"Status 7", "SetDraft 7 false", wantEditSeven, "Status 7"},
 		},
 		{
-			name: "ReentryRefreshesTheBodyWithTheRegressionCheckOnce", parentMode: "on", origin: githubOrigin, verdict: testVerdict, wantCommits: 2,
+			name: "ReentryRefreshesTheBodyWithTheRegressionCheckOnce", mode: "on", origin: githubOrigin, verdict: testVerdict, wantCommits: 2,
 			record:      &pullrequest.Record{Number: 7, URL: recordedURLSeen, GatedHead: recordedGated},
 			dirty:       []string{"wip.go"},
 			scripts:     map[string][]scriptedCall{"Status": {open, {status: pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: recordedGated}}}},
@@ -311,14 +313,14 @@ func TestPRReview_Call(t *testing.T) {
 			wantCalls:  []string{"Status 7", "Edit 7|Change title|" + wantPRBodyWithVerdict, "Status 7"},
 		},
 		{
-			name: "YesWithNoneRecordedButOneOpenReusesIt", parentMode: "on", origin: githubOrigin, wantCommits: 2,
+			name: "YesWithNoneRecordedButOneOpenReusesIt", mode: "on", origin: githubOrigin, wantCommits: 2,
 			scripts:     map[string][]scriptedCall{"FindOpen": {{ref: pullrequest.Ref{Number: 9, URL: "u9"}, found: true}}, "Status": {mergedAtHead}},
 			wantOutcome: shedengine.Done, wantPushes: 1,
 			wantCalls:  []string{"FindOpen task main", "Edit 9|Change title|" + wantPRBody, "Status 9"},
 			wantRecord: &pullrequest.Record{Number: 9, URL: "u9", Base: "main", Head: "task", GatedHead: taskHead},
 		},
 		{
-			name: "ReviewEndedAtTheGatedHeadKeepsTheRecordAndWaitsOnlyToJudgeIt", parentMode: "on", origin: githubOrigin,
+			name: "ReviewEndedAtTheGatedHeadKeepsTheRecordAndWaitsOnlyToJudgeIt", mode: "on", origin: githubOrigin,
 			record:      &pullrequest.Record{Number: 7, ReviewEnded: true, GatedHead: taskHead},
 			scripts:     map[string][]scriptedCall{"Status": {closed}},
 			wantOutcome: shedengine.Done, wantPushes: 1,
@@ -326,7 +328,7 @@ func TestPRReview_Call(t *testing.T) {
 			wantRecord: &pullrequest.Record{Number: 7, ReviewEnded: true, GatedHead: taskHead},
 		},
 		{
-			name: "ReviewEndedPastTheGatedHeadOpensANewPullRequest", parentMode: "on", origin: githubOrigin, wantCommits: 3,
+			name: "ReviewEndedPastTheGatedHeadOpensANewPullRequest", mode: "on", origin: githubOrigin, wantCommits: 3,
 			record:      &pullrequest.Record{Number: 7, ReviewEnded: true, GatedHead: recordedGated},
 			scripts:     map[string][]scriptedCall{"Create": {{ref: pullrequest.Ref{Number: 8, URL: "u8"}}}, "Status": {mergedAtHead}},
 			wantOutcome: shedengine.Done, wantPushes: 1,
@@ -334,62 +336,62 @@ func TestPRReview_Call(t *testing.T) {
 			wantRecord: &pullrequest.Record{Number: 8, URL: "u8", Base: "main", Head: "task", GatedHead: taskHead},
 		},
 		{
-			name: "NonTransientPushFailureHaltsNamingFabricPush", parentMode: "on", origin: githubOrigin,
+			name: "NonTransientPushFailureHaltsNamingFabricPush", mode: "on", origin: githubOrigin,
 			pushErr:     errors.New("rejected"),
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantPushes: 1,
 			wantReason: []string{"rejected", "lym fabric push", "lym loom resume"},
 		},
 		{
-			name: "TransientPushFailureIsAnError", parentMode: "on", origin: githubOrigin,
+			name: "TransientPushFailureIsAnError", mode: "on", origin: githubOrigin,
 			pushErr: context.DeadlineExceeded,
 			wantErr: true, wantPushes: 1,
 		},
 		{
-			name: "UnresolvableTokenWrappedInAURLErrorHaltsNamingGhAuthLogin", parentMode: "on", origin: githubOrigin,
+			name: "UnresolvableTokenWrappedInAURLErrorHaltsNamingGhAuthLogin", mode: "on", origin: githubOrigin,
 			scripts:     map[string][]scriptedCall{"FindOpen": {{err: &url.Error{Op: "Get", URL: "https://api.github.com", Err: githubclient.ErrTokenUnresolvable}}}},
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantPushes: 1,
 			wantCalls:  []string{"FindOpen task main"},
 			wantReason: []string{"gh auth login --hostname github.com", "lym loom resume"},
 		},
 		{
-			name: "EmptyTaskBranchUnderOnIsDoneWithNoPushAndNoGitHubCall", parentMode: "on", origin: githubOrigin, taskEmpty: true,
+			name: "EmptyTaskBranchUnderOnIsDoneWithNoPushAndNoGitHubCall", mode: "on", origin: githubOrigin, taskEmpty: true,
 			wantOutcome: shedengine.Done, wantNoRecord: true,
 		},
 		{
-			name: "EmptyTaskBranchClosesTheRecordedOpenPullRequestAndRemovesTheRecord", parentMode: "on", origin: githubOrigin, taskEmpty: true, wantCommits: 1,
+			name: "EmptyTaskBranchClosesTheRecordedOpenPullRequestAndRemovesTheRecord", mode: "on", origin: githubOrigin, taskEmpty: true, wantCommits: 1,
 			record:      &pullrequest.Record{Number: 7},
 			scripts:     map[string][]scriptedCall{"Status": {open}},
 			wantOutcome: shedengine.Done, wantNoRecord: true,
 			wantCalls: []string{"Status 7", "Close 7 lym closed this pull request: " + emptyBranchReason},
 		},
 		{
-			name: "FailingTaskCommitReadIsAnErrorNamingItWithNoPushAndNoGitHubCall", parentMode: "on", origin: githubOrigin,
+			name: "FailingTaskCommitReadIsAnErrorNamingItWithNoPushAndNoGitHubCall", mode: "on", origin: githubOrigin,
 			taskErr: errors.New("rev-list failed"),
 			wantErr: true, wantErrText: "read whether the task branch has commits beyond its parent",
 		},
 		{
-			name: "RejectedTokenWrappedInAURLErrorHaltsNamingTheToken", parentMode: "on", origin: githubOrigin,
+			name: "RejectedTokenWrappedInAURLErrorHaltsNamingTheToken", mode: "on", origin: githubOrigin,
 			scripts:     map[string][]scriptedCall{"FindOpen": {{err: &url.Error{Op: "Get", URL: "https://api.github.com", Err: fmt.Errorf("%w: the token from GH_TOKEN (401)", githubclient.ErrTokenRejected)}}}},
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantPushes: 1,
 			wantCalls:  []string{"FindOpen task main"},
 			wantReason: []string{"GH_TOKEN, GITHUB_TOKEN", "lym loom resume"},
 		},
 		{
-			name: "UnauthorizedResponseHaltsNamingTheToken", parentMode: "on", origin: githubOrigin,
+			name: "UnauthorizedResponseHaltsNamingTheToken", mode: "on", origin: githubOrigin,
 			scripts:     map[string][]scriptedCall{"FindOpen": {{err: githubErrorResponse(http.StatusUnauthorized, "Bad credentials")}}},
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantPushes: 1,
 			wantCalls:  []string{"FindOpen task main"},
 			wantReason: []string{"Bad credentials", "GH_TOKEN", "can reach the repository", "lym loom resume"},
 		},
 		{
-			name: "ForbiddenResponseHaltsNamingTheToken", parentMode: "on", origin: githubOrigin,
+			name: "ForbiddenResponseHaltsNamingTheToken", mode: "on", origin: githubOrigin,
 			scripts:     map[string][]scriptedCall{"FindOpen": {{err: githubErrorResponse(http.StatusForbidden, "Resource not accessible")}}},
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantPushes: 1,
 			wantCalls:  []string{"FindOpen task main"},
 			wantReason: []string{"Resource not accessible", "GH_TOKEN", "lym loom resume"},
 		},
 		{
-			name: "UnprocessableResponseHaltsSayingWhatA422MeansAndNotNamingTheToken", parentMode: "on", origin: githubOrigin,
+			name: "UnprocessableResponseHaltsSayingWhatA422MeansAndNotNamingTheToken", mode: "on", origin: githubOrigin,
 			scripts:     map[string][]scriptedCall{"Create": {{err: githubErrorResponse(http.StatusUnprocessableEntity, "No commits between main and task")}}},
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantPushes: 1,
 			wantCalls:       []string{"FindOpen task main", wantCreateCall},
@@ -397,7 +399,7 @@ func TestPRReview_Call(t *testing.T) {
 			wantNotInReason: []string{"GH_TOKEN"},
 		},
 		{
-			name: "NotFoundHaltsNamingGitHubsMessageAndNotTheToken", parentMode: "on", origin: githubOrigin,
+			name: "NotFoundHaltsNamingGitHubsMessageAndNotTheToken", mode: "on", origin: githubOrigin,
 			scripts:     map[string][]scriptedCall{"FindOpen": {{err: githubErrorResponse(http.StatusNotFound, "Not Found")}}},
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantPushes: 1,
 			wantCalls:       []string{"FindOpen task main"},
@@ -405,20 +407,20 @@ func TestPRReview_Call(t *testing.T) {
 			wantNotInReason: []string{"GH_TOKEN"},
 		},
 		{
-			name: "TransientGitHubErrorIsAnError", parentMode: "on", origin: githubOrigin,
+			name: "TransientGitHubErrorIsAnError", mode: "on", origin: githubOrigin,
 			scripts: map[string][]scriptedCall{"FindOpen": {{err: context.DeadlineExceeded}}},
 			wantErr: true, wantPushes: 1,
 			wantCalls: []string{"FindOpen task main"},
 		},
 		{
-			name: "AFailingCommitOfTheNewRecordIsAnErrorNamingIt", parentMode: "on", origin: githubOrigin,
+			name: "AFailingCommitOfTheNewRecordIsAnErrorNamingIt", mode: "on", origin: githubOrigin,
 			scripts:   map[string][]scriptedCall{"Create": {created}},
 			commitErr: errors.New("push stopped"),
 			wantErr:   true, wantErrText: "commit the pull request record", wantPushes: 1, wantCommits: 1,
 			wantCalls: []string{"FindOpen task main", wantCreateCall},
 		},
 		{
-			name: "AFailingCommitOfTheRecordRemovalIsAnErrorNamingIt", parentMode: "on", origin: localOrigin,
+			name: "AFailingCommitOfTheRecordRemovalIsAnErrorNamingIt", mode: "on", origin: localOrigin,
 			record:    &pullrequest.Record{Number: 7},
 			scripts:   map[string][]scriptedCall{"Status": {open}},
 			commitErr: errors.New("push stopped"),
@@ -426,7 +428,7 @@ func TestPRReview_Call(t *testing.T) {
 			wantCalls: []string{"Status 7", "Close 7 lym closed this pull request: " + localNoReason},
 		},
 		{
-			name: "NewestEntryTheMarkedFilesRerouteStartsWithNoMarkNoCountAndNoSessionId", parentMode: "on", origin: githubOrigin, wantCommits: 3,
+			name: "NewestEntryTheMarkedFilesRerouteStartsWithNoMarkNoCountAndNoSessionId", mode: "on", origin: githubOrigin, wantCommits: 3,
 			record:      marked(),
 			history:     []shedengine.HistoryEntry{ownReroute(sendBackFile), {Producer: "Code-Bouncer", Outcome: shedengine.Done}},
 			scripts:     map[string][]scriptedCall{"Status": {open, mergedAtHead}},
@@ -444,14 +446,14 @@ func TestPRReview_Call(t *testing.T) {
 			},
 		},
 		{
-			name: "AReStepAfterTheRowsOwnStuckKeepsTheCountAndReroutesWithTheFileAsOutput", parentMode: "on", origin: githubOrigin,
+			name: "AReStepAfterTheRowsOwnStuckKeepsTheCountAndReroutesWithTheFileAsOutput", mode: "on", origin: githubOrigin,
 			record:      marked(),
 			history:     []shedengine.HistoryEntry{{Producer: "PR-Review", Outcome: shedengine.Stuck}},
 			wantOutcome: shedengine.Stuck, wantReroute: sendBackFile, wantReason: []string{"findings sent back to Code-Review", sendBackFile},
 			wantRecord: marked(),
 		},
 		{
-			name: "AReStepWithNoMarkAndAFixedInPlaceCountKeepsTheCount", parentMode: "on", origin: githubOrigin, wantCommits: 2,
+			name: "AReStepWithNoMarkAndAFixedInPlaceCountKeepsTheCount", mode: "on", origin: githubOrigin, wantCommits: 2,
 			record:      &pullrequest.Record{Number: 7, URL: recordedURLSeen, GatedHead: taskHead, FixHereCount: 2},
 			scripts:     map[string][]scriptedCall{"Status": {open, mergedAtHead}},
 			wantOutcome: shedengine.Done, wantPushes: 1,
@@ -459,28 +461,28 @@ func TestPRReview_Call(t *testing.T) {
 			wantRecord: &pullrequest.Record{Number: 7, URL: recordedURLSeen, Base: "main", Head: "task", GatedHead: taskHead, FixHereCount: 2},
 		},
 		{
-			name: "AMarkWithNoHistoryEntryOfTheRowsOwnKeepsTheMarkAndTheCountAndReroutes", parentMode: "on", origin: githubOrigin,
+			name: "AMarkWithNoHistoryEntryOfTheRowsOwnKeepsTheMarkAndTheCountAndReroutes", mode: "on", origin: githubOrigin,
 			record:      marked(),
 			history:     []shedengine.HistoryEntry{{Producer: "Code-Bouncer", Outcome: shedengine.Done}},
 			wantOutcome: shedengine.Stuck, wantReroute: sendBackFile,
 			wantRecord: marked(),
 		},
 		{
-			name: "NewestEntryARerouteOfAnotherFileKeepsTheMarkAndTheCountAndReroutes", parentMode: "on", origin: githubOrigin,
+			name: "NewestEntryARerouteOfAnotherFileKeepsTheMarkAndTheCountAndReroutes", mode: "on", origin: githubOrigin,
 			record:      marked(),
 			history:     []shedengine.HistoryEntry{ownReroute("/run/pr-findings-0.md")},
 			wantOutcome: shedengine.Stuck, wantReroute: sendBackFile,
 			wantRecord: marked(),
 		},
 		{
-			name: "NewestEntryARerouteCappedStuckKeepsTheMarkAndTheCountAndReroutes", parentMode: "on", origin: githubOrigin,
+			name: "NewestEntryARerouteCappedStuckKeepsTheMarkAndTheCountAndReroutes", mode: "on", origin: githubOrigin,
 			record:      marked(),
 			history:     []shedengine.HistoryEntry{{Producer: "PR-Review", Outcome: shedengine.Stuck, Output: sendBackFile, RerouteCapped: true, BudgetExempt: true}},
 			wantOutcome: shedengine.Stuck, wantReroute: sendBackFile,
 			wantRecord: marked(),
 		},
 		{
-			name: "ADirtyTreeHaltsNamingThePathsAndKeepsTheMark", parentMode: "on", origin: githubOrigin,
+			name: "ADirtyTreeHaltsNamingThePathsAndKeepsTheMark", mode: "on", origin: githubOrigin,
 			record: marked(), dirty: []string{"wip.go"},
 			wantOutcome: shedengine.Stuck, wantHalt: true,
 			wantReason: []string{"findings sent back to Code-Review, but the task worktree has uncommitted changes: wip.go", "way forward: commit or discard them in the task worktree, then run lym loom resume"},
@@ -490,7 +492,7 @@ func TestPRReview_Call(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			fx := newPRReviewFixture(t, tt.parentMode, tt.parentErr, tt.field, tt.origin, tt.record, tt.scripts, tt.pushErr)
+			fx := newPRReviewFixture(t, tt.mode, tt.modeErr, tt.origin, tt.record, tt.scripts, tt.pushErr)
 			fx.dirty = tt.dirty
 			fx.status.History = tt.history
 			fx.commits.err = tt.commitErr
@@ -562,8 +564,7 @@ func TestPRReview_Call(t *testing.T) {
 		unsetters := map[string]func(d *Deps){
 			"PullRequest.RecordPath":      func(d *Deps) { d.PullRequest.RecordPath = "" },
 			"PullRequest.RecordLockPath":  func(d *Deps) { d.PullRequest.RecordLockPath = "" },
-			"PullRequest.ParentMode":      func(d *Deps) { d.PullRequest.ParentMode = nil },
-			"PullRequest.EntryField":      func(d *Deps) { d.PullRequest.EntryField = nil },
+			"PullRequest.Mode":            func(d *Deps) { d.PullRequest.Mode = nil },
 			"PullRequest.Origin":          func(d *Deps) { d.PullRequest.Origin = nil },
 			"PullRequest.API":             func(d *Deps) { d.PullRequest.API = nil },
 			"PullRequest.PushTask":        func(d *Deps) { d.PullRequest.PushTask = nil },
@@ -583,7 +584,7 @@ func TestPRReview_Call(t *testing.T) {
 			"TaskHead":                    func(d *Deps) { d.TaskHead = nil },
 		}
 		for field, unset := range unsetters {
-			fx := newPRReviewFixture(t, "on", nil, "", githubOrigin, nil, nil, nil)
+			fx := newPRReviewFixture(t, "on", nil, githubOrigin, nil, nil, nil)
 			unset(&fx.deps)
 
 			_, _, err := NewPRReview("PR-Review", fx.deps).Call(context.Background())
@@ -599,7 +600,7 @@ func TestPRReview_Call(t *testing.T) {
 		for _, name := range []string{"ParentReviewWanted", "AskParent", "BeamRecord", "DropBeamRecord"} {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
-				fx := newPRReviewFixture(t, "on", nil, "", githubOrigin, nil, map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}}, nil)
+				fx := newPRReviewFixture(t, "on", nil, githubOrigin, nil, map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}}, nil)
 				reflect.ValueOf(&fx.deps.PullRequest).Elem().FieldByName(name).SetZero()
 
 				if _, _, err := NewPRReview("PR-Review", fx.deps).Call(context.Background()); err != nil {
@@ -611,7 +612,7 @@ func TestPRReview_Call(t *testing.T) {
 
 	t.Run("CreditOffOpensThePullRequestWithTheDescriptionBodyAlone", func(t *testing.T) {
 		t.Parallel()
-		fx := newPRReviewFixture(t, "on", nil, "", githubOrigin, nil, map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}}, nil)
+		fx := newPRReviewFixture(t, "on", nil, githubOrigin, nil, map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}}, nil)
 		fx.deps.Config.Credit = false
 
 		if _, _, err := NewPRReview("PR-Review", fx.deps).Call(context.Background()); err != nil {
@@ -626,7 +627,7 @@ func TestPRReview_Call(t *testing.T) {
 
 	t.Run("RegressionCheckFollowsTheDescriptionBodyBeforeTheCredit", func(t *testing.T) {
 		t.Parallel()
-		fx := newPRReviewFixture(t, "on", nil, "", githubOrigin, nil, map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}}, nil)
+		fx := newPRReviewFixture(t, "on", nil, githubOrigin, nil, map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}}, nil)
 		fx.deps.DriftVerdict = func() (string, error) { return testVerdict, nil }
 
 		if _, _, err := NewPRReview("PR-Review", fx.deps).Call(context.Background()); err != nil {
@@ -647,7 +648,7 @@ func TestPRReview_Call(t *testing.T) {
 			"DriftVerdict": func(d *Deps) { d.DriftVerdict = func() (string, error) { return "", readErr } },
 		}
 		for seam, breakSeam := range breaks {
-			fx := newPRReviewFixture(t, "on", nil, "", githubOrigin, nil, nil, nil)
+			fx := newPRReviewFixture(t, "on", nil, githubOrigin, nil, nil, nil)
 			breakSeam(&fx.deps)
 
 			_, _, err := NewPRReview("PR-Review", fx.deps).Call(context.Background())
@@ -663,7 +664,7 @@ func TestPRReview_Call(t *testing.T) {
 
 	t.Run("ContextCancelledBeforeTheParentRuleReadIsAnErrorWrappingTheCancel", func(t *testing.T) {
 		t.Parallel()
-		fx := newPRReviewFixture(t, "off", nil, "", githubOrigin, nil, map[string][]scriptedCall{"RequiresPullRequest": {{err: errors.New("rules unreadable")}}}, nil)
+		fx := newPRReviewFixture(t, "off", nil, githubOrigin, nil, map[string][]scriptedCall{"RequiresPullRequest": {{err: errors.New("rules unreadable")}}}, nil)
 		ctx, cancel := context.WithCancel(context.Background())
 		fx.deps.PullRequest.Origin = func() (Origin, error) {
 			cancel()
@@ -682,7 +683,7 @@ func TestPRReview_Call(t *testing.T) {
 
 	t.Run("CancelledContextIsAnError", func(t *testing.T) {
 		t.Parallel()
-		fx := newPRReviewFixture(t, "on", nil, "", githubOrigin, nil, nil, nil)
+		fx := newPRReviewFixture(t, "on", nil, githubOrigin, nil, nil, nil)
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
@@ -694,8 +695,8 @@ func TestPRReview_Call(t *testing.T) {
 	})
 }
 
-// emptyBranchReason is the resolver's reason for an on parent whose task branch holds no commit beyond it.
-const emptyBranchReason = "no pull request: the parent's beam.yaml pull_request is on, but the task branch has no commits beyond its parent, so the landing is empty"
+// emptyBranchReason is the resolver's reason for an on landing whose task branch holds no commit beyond its parent.
+const emptyBranchReason = "no pull request: beam.yaml's pull_request for this landing is on, but the task branch has no commits beyond its parent, so the landing is empty"
 
 // githubErrorResponse is the error go-github returns for a response GitHub answered with status and message.
 func githubErrorResponse(status int, message string) *github.ErrorResponse {
@@ -738,7 +739,7 @@ const testVerdict = "## Regression check\n\n- Scope: full.\n- Compare: passed at
 // Its change description is titled "Change title", and its body is "\nChange body\n".
 // The credit is on, and claude is the one engine that ran.
 // Every PullRequest seam is filled.
-// The origin is a GitHub one, the parent's mode is on, the task head is "head-new", and the worktree is clean.
+// The origin is a GitHub one, beam.yaml's pull_request is on, the task head is "head-new", and the worktree is clean.
 // No pause covers the run, and the clock moves only when the wait sleeps.
 // A test replaces the seams it scripts.
 func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
@@ -775,8 +776,7 @@ func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
 			RegisterSession: sessions.register,
 			RecordPath:      filepath.Join(dir, "pull-request.json"),
 			RecordLockPath:  filepath.Join(dir, "pull-request.lock"),
-			ParentMode:      func() (string, string, error) { return "on", "wt-parent", nil },
-			EntryField:      func() (string, error) { return "", nil },
+			Mode:            func() (string, error) { return "on", nil },
 			Origin:          func() (Origin, error) { return Origin{URL: "https://github.com/acme/widgets.git", Upstream: true}, nil },
 			API:             func(string) (pullrequest.API, error) { return api, nil },
 			PushTask:        func() error { return nil },
@@ -799,16 +799,15 @@ func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
 	}
 }
 
-// newPRReviewFixture builds a prReviewTestDeps Deps with the given mode, field, origin and push result.
+// newPRReviewFixture builds a prReviewTestDeps Deps with the given mode, mode error, origin and push result.
 // record, when set, is written before the row runs; the task head reads "head-new".
-func newPRReviewFixture(t *testing.T, parentMode string, parentErr error, field string, origin Origin, record *pullrequest.Record, scripts map[string][]scriptedCall, pushErr error) *prReviewFixture {
+func newPRReviewFixture(t *testing.T, mode string, modeErr error, origin Origin, record *pullrequest.Record, scripts map[string][]scriptedCall, pushErr error) *prReviewFixture {
 	t.Helper()
 	fx := &prReviewFixture{api: &fakePullRequestAPI{scripts: scripts}, commits: &commitRecorder{}}
 	fx.deps = prReviewTestDeps(t, fx.api)
 	pr := &fx.deps.PullRequest
 	pr.CommitRecord = fx.commits.commit
-	pr.ParentMode = func() (string, string, error) { return parentMode, "wt-parent", parentErr }
-	pr.EntryField = func() (string, error) { return field, nil }
+	pr.Mode = func() (string, error) { return mode, modeErr }
 	pr.Origin = func() (Origin, error) { return origin, nil }
 	pr.DirtyPaths = func() ([]string, error) { return fx.dirty, nil }
 	pr.ShedStatus = func() (shedengine.Status, error) { return fx.status, nil }

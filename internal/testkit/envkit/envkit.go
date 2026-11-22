@@ -245,14 +245,13 @@ func LandingDeps(dir string) landingshed.Deps {
 		RowEntry:           func(string) (int, error) { return 1, nil },
 		TaskRemoteTip:      func() (string, error) { return "", nil },
 		CodeReviewOff:      func() (bool, error) { return false, nil },
-		// ParentMode answers off and Origin is empty, so a landing through this deps takes the local path and calls no GitHub.
+		// Mode answers off and Origin is empty, so a landing through this deps takes the local path and calls no GitHub.
 		PullRequest: landingshed.PullRequestDeps{
 			RecordPath:     filepath.Join(dir, "landing-scratch", "pull-request.json"),
 			RecordLockPath: filepath.Join(dir, "landing-scratch", "pull-request.lock"),
 			CommitRecord:   func() error { return nil },
 			ShedStatus:     func() (shedengine.Status, error) { return shedengine.Status{}, nil },
-			ParentMode:     func() (string, string, error) { return "off", "fixture-parent", nil },
-			EntryField:     func() (string, error) { return "", nil },
+			Mode:           func() (string, error) { return "off", nil },
 			Origin:         func() (landingshed.Origin, error) { return landingshed.Origin{}, nil },
 			API: func(string) (pullrequest.API, error) {
 				return nil, errors.New("envkit: the fixture's landing reaches no GitHub")

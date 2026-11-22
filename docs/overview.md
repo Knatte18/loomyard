@@ -1375,7 +1375,8 @@ User-facing modules each get one `lym <module>` namespace:
   The fixer settles a conflict or a failing tree and aligns the task to what the parent brought in.
   It writes the merge record with the aligned tip, and the Code-Perch then reviews the task's code against that.
   `PR-Review` lands the task through a GitHub pull request when the resolver says so.
-  The resolver decides from the parent's `beam.yaml`, the entry and GitHub's rules for the parent branch.
+  The resolver decides from the landing run's `beam.yaml` `pull_request`, which the per-task lookup reads from the run's worktree up,
+  and from GitHub's rules for the parent branch.
   The row pushes the task branch and opens or finds the pull request.
   It sets the pull request's title and body from the change description, records it and waits on it.
   When the resolver does not say so, the row passes.
@@ -1786,11 +1787,10 @@ User-facing modules each get one `lym <module>` namespace:
   `Land` runs between `Run-Shed` and `Worktree-Teardown`, once the child run is done, under a hub-level land lock.
   A child that landed no code only has the done entries pruned off the board, with no pull, deploy or notice.
   Such a child is one whose status history holds no finished `Finalize`, such as a motif run.
-  An entry still carrying `notify_on_land` stays until its dobby has sent the line and cleared the field.
   Otherwise `Land` pulls the prime when the child's parent branch is the prime's branch.
   It waits up to 10 min for the prime's tracked files to be clean.
   It runs the landing config's hub-wide `deploy` command in the prime when that parent branch is in `deploy_branches`.
-  It prunes the done entries off the board, again keeping one that still carries `notify_on_land`.
+  It prunes the done entries off the board.
   It notices the orch only when the pull's records side stopped, the one notice of a successful landing.
   A failed `Land` step halts batten `blocked` at `Land` with the pair intact and one failure notice per episode.
   A `lym batten pause` seen while `Land` waits does the same with no notice.

@@ -257,4 +257,4 @@ A relation between notes has no `depends_on`, so it is a sentence in a body.
 A body holds an entry's design while it is unbuilt.
 The task that builds it documents the result in the repository and never rewrites its own entry's body or scope:
 the landing marks the entry done, and `lym board prune` removes it.
-Prune keeps an entry that still carries `notify_on_land` until its dobby has sent the line and cleared the field.
+A landing notice is asked for through `run_settings` `{"beam": {"land_notice": "on"}}`, and prune removes every done entry.

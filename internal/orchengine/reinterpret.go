@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
 // RemoteControlOffReinterpretationID names the change that turned remote_control's default from on to off.
@@ -19,8 +21,8 @@ const remoteControlKey = "remote_control"
 // The operator decides when an orch session gets remote control.
 // Such a file is flagged with the way forward that turns it back on, and left unchanged.
 // A file that sets remote_control keeps its value and is neither changed nor flagged.
-// The worktree root and anchored directory arguments are unused, as the check judges the file alone.
-func FlagRemoteControlDefault(existing []byte, _, _ string) (rewritten []byte, rewrote, flagged []string, err error) {
+// The worktrees argument is unused, as the check judges the file alone.
+func FlagRemoteControlDefault(existing []byte, _ []configengine.HubWorktree) (rewritten []byte, rewrote, flagged []string, err error) {
 	var keys map[string]yaml.Node
 	if err := yaml.Unmarshal(existing, &keys); err != nil {
 		return nil, nil, nil, fmt.Errorf("parse the orch config: %w", err)

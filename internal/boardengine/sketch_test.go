@@ -57,7 +57,7 @@ func TestMakeSketch(t *testing.T) {
 		mustUpsertEntry(t, b, map[string]any{"slug": "base", "title": "Base", "kind": "task", "labels": bugLabels})
 		mustUpsertEntry(t, b, map[string]any{"slug": "grouping", "title": "Grouping", "kind": "project", "labels": bugLabels})
 		mustUpsertEntry(t, b, map[string]any{"slug": "motif", "title": "Motif", "kind": "task", "labels": []string{"bug", "board"}, "recipe": "motif", "depends_on": []string{"base"}, "run_settings": map[string]any{"loom": map[string]any{"code_max_bounces": 1}},
-			"isolated": true, "profile": "light", "pull_request": "on", "notify_on_land": true,
+			"isolated": true, "profile": "light",
 			"brief": "short", "body": "The body.", "issues": []int{3}})
 		mustUpsertEntry(t, b, map[string]any{"slug": "motif", "project": "grouping"})
 		if err := b.SetRunStatus("motif", boardengine.RunStatus("running", "Discussion-Review")); err != nil {
@@ -86,8 +86,8 @@ func TestMakeSketch(t *testing.T) {
 		if !got.Discussed || got.Title != "Motif" {
 			t.Errorf("entry discussed, title = %t, %q; want true, Motif", got.Discussed, got.Title)
 		}
-		if got.Isolated || got.Profile != "" || got.PullRequest != "" || got.NotifyOnLand {
-			t.Errorf("entry isolated, profile, pull_request, notify_on_land = %t, %q, %q, %t; want all cleared", got.Isolated, got.Profile, got.PullRequest, got.NotifyOnLand)
+		if got.Isolated || got.Profile != "" {
+			t.Errorf("entry isolated, profile = %t, %q; want both cleared", got.Isolated, got.Profile)
 		}
 		if got.Project != "grouping" || got.Brief != "short" || got.Body != "The body." || !slices.Equal(got.Issues, []int{3}) {
 			t.Errorf("entry project, brief, body, issues = %q, %q, %q, %v; want grouping, short, The body., [3]", got.Project, got.Brief, got.Body, got.Issues)

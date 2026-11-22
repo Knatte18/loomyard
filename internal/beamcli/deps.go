@@ -387,19 +387,13 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			}
 			return pair.HeadSHA()
 		},
-		// The origin record names the parent pair, so the receiving branch's own beam.yaml decides, as for a run landing on it.
+		// The beam's own worktree's beam.yaml files apply first and its parents' after, as for a run landing the beam.
 		PullRequestMode: func(slug string) (string, bool, error) {
-			_, origin, err := beamOrigin(slug)
+			chain, err := hubgeom.TaskSettingChain(prime, slug)
 			if err != nil {
 				return "", false, err
 			}
-			parent := prime
-			if origin.ParentWorktree != "" {
-				if parent, err = lymcwd.ResolveWorktree(fabricengine.WorktreePath(prime, origin.ParentWorktree)); err != nil {
-					return "", false, err
-				}
-			}
-			cfg, err := dobbyengine.LoadConfig(fabricengine.ConfigDirs(parent))
+			mode, err := dobbyengine.LookupPullRequest(chain)
 			if err != nil {
 				return "", false, err
 			}
@@ -408,7 +402,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 				return "", false, err
 			}
 			required, err := parentRuleRequired(context.Background(), side.Origin, side.ParentBranch, openAPI)
-			return cfg.PullRequest, required, err
+			return mode, required, err
 		},
 		Sleep: func(ctx context.Context, d time.Duration) error {
 			timer := time.NewTimer(d)

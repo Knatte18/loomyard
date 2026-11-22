@@ -163,14 +163,13 @@ type Deps struct {
 	// A nil BeamReady, as on the prime, holds nothing.
 	BeamReady func() (bool, error)
 	// PullRequestRecorded reads whether the beam's landing record holds a pull request.
-	// While it does, the dobby flags the beam's open members and their landed line carries the beam's follow-up.
+	// While it does, the landed line of each member of the beam goes out and carries the beam's follow-up.
 	// A nil PullRequestRecorded, as on the prime, reads none.
 	PullRequestRecorded func() (bool, error)
-	// SetNotifyOnLand sets notify_on_land on the entry slug, a member of a beam whose pull request is recorded.
-	// A nil SetNotifyOnLand sets nothing.
-	SetNotifyOnLand func(slug string) error
-	// ClearNotifyOnLand clears notify_on_land after the notice; nil clears nothing, and flagged entries recur each tick.
-	ClearNotifyOnLand func(slug string) error
+	// LandNotice reports whether land_notice is on for the run slug.
+	// It reads through the per-task lookup from the run's worktree up.
+	// A nil LandNotice reads every run as off.
+	LandNotice func(slug string) (bool, error)
 	// SettleFronts settles the front tasks of this dobby's worktree, running the land action of each one that landed.
 	// It runs each tick before the start step, so an unrecorded front entry is recorded before it starts; nil does nothing.
 	SettleFronts func() error
@@ -370,13 +369,12 @@ type daemon struct {
 	// readyRead and readyPost are the failure episodes of the ready record's read and of the member notices a beam owes.
 	readyRead logger.Episode
 	readyPost logger.Episode
-	// landNoticeConfig, landNoticeBoard and landNoticePullRequest are the failure episodes of the landing notices' reads:
-	// beam.yaml, the board and the beam's landing record.
-	landNoticeConfig      logger.Episode
+	// landNoticeBoard and landNoticePullRequest are the failure episodes of the landing notices' reads:
+	// the board and the beam's landing record.
 	landNoticeBoard       logger.Episode
 	landNoticePullRequest logger.Episode
-	// landNoticeFlag is the failure episode of the writes that flag a beam's members for the landing notice.
-	landNoticeFlag logger.Episode
+	// landNoticeLookup guards each run's land_notice lookup by its slug.
+	landNoticeLookup logger.EpisodeSet
 	// landNoticePosts guards each owed landing notice's post by its slug.
 	landNoticePosts logger.EpisodeSet
 	// listedRuns is the run listing of the tick's pass step, done runs included.

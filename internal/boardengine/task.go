@@ -44,12 +44,6 @@ type Task struct {
 	RunSettings map[string]any `json:"run_settings,omitempty"`
 	// Profile names the hub run profile whose settings lie under RunSettings at seeding; empty means none.
 	Profile string `json:"profile,omitempty"`
-	// PullRequest overrides the receiving branch's beam.yaml pull_request mode for this entry's landing:
-	// "on", "off" or PullRequestMergeIn; empty means no override.
-	PullRequest string `json:"pull_request,omitempty"`
-	// NotifyOnLand asks the dobby driving the entry's run for a creel line once the run lands or ends without landing;
-	// the dobby clears it once the line went out, and a note never carries it.
-	NotifyOnLand bool `json:"notify_on_land,omitempty"`
 	// OwnerMachine names the machine that owns the entry; empty means none is recorded, and a note never carries one.
 	OwnerMachine string `json:"owner_machine,omitempty"`
 	// Project names the project entry this entry belongs to; empty means it belongs to none.
@@ -79,12 +73,8 @@ type Task struct {
 	Unknown map[string]json.RawMessage `json:"-"`
 }
 
-const (
-	// pullRequestKey is the board.json key of Task.PullRequest.
-	pullRequestKey = "pull_request"
-	// onLandKey is the board.json key of Task.OnLand.
-	onLandKey = "on_land"
-)
+// onLandKey is the board.json key of Task.OnLand.
+const onLandKey = "on_land"
 
 // taskKeys is the set of lower-cased JSON keys Task declares; a decoded key outside it is kept in Unknown.
 var taskKeys = jsonKeySet(reflect.TypeFor[Task]())
@@ -296,16 +286,10 @@ const (
 	PriorityLow    = "low"
 )
 
-// PullRequestMergeIn is the pull_request value of an entry that merges its parent's parent branch into its parent.
-// Such an entry lands with no pull request, whatever the parent's mode.
-// It lands by a true merge that keeps the merged commit as a parent.
-const PullRequestMergeIn = "merge-in"
-
 // normalizeTask puts t into its stored form, or refuses it when its fields do not fit its kind.
 // A normal priority and empty run settings are stored as the empty value,
 // and the dates are stored in whole UTC seconds.
 // The owner and beam color are cleared unless t is a beam project.
-// A pull_request other than empty, on, off and PullRequestMergeIn is refused, and so is a note with notify_on_land.
 // Only a project carries order or beam, and a task's recipe is never the project recipe.
 // A project carries none of depends_on, profile, run_settings or priority.
 func normalizeTask(t *Task) error {
@@ -331,12 +315,6 @@ func normalizeTask(t *Task) error {
 	if t.Kind == KindTask && t.Priority != "" {
 		return fmt.Errorf("task %q has priority %q, and only a note carries a priority: set %q to clear it, or make a note a task with \"lym board promote\", which clears it",
 			t.Slug, t.Priority, PriorityNormal)
-	}
-	if t.PullRequest != "" && t.PullRequest != "on" && t.PullRequest != "off" && t.PullRequest != PullRequestMergeIn {
-		return fmt.Errorf("entry %q has pull_request %q, and pull_request is on, off, %s or empty: correct it, or set \"\" to clear it", t.Slug, t.PullRequest, PullRequestMergeIn)
-	}
-	if t.Kind == KindNote && t.NotifyOnLand {
-		return fmt.Errorf("note %q has notify_on_land, and only a task or a project runs and lands: set it to false, or make the note a task with \"lym board promote\"", t.Slug)
 	}
 	if t.Kind == KindProject {
 		return checkProjectFields(*t)

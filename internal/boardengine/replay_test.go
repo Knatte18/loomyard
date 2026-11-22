@@ -83,8 +83,6 @@ func withOrder(slugs ...string) func(*Task) {
 
 func asBeam(task *Task) { task.Beam = true }
 
-func asNotifyOnLand(task *Task) { task.NotifyOnLand = true }
-
 func asDiscussed(task *Task) { task.Discussed = true }
 
 func withRecordStamp(stamp string) func(*Task) {
@@ -104,6 +102,11 @@ func wantOriginFile(name, want string) func(t *testing.T, dir string, got map[st
 			t.Errorf("%s = %q, %v; want %q", name, got, err, want)
 		}
 	}
+}
+
+// withUnknownKey gives the entry one board.json key this binary does not declare, with raw as its JSON value.
+func withUnknownKey(key, raw string) func(*Task) {
+	return func(task *Task) { task.Unknown = map[string]json.RawMessage{key: json.RawMessage(raw)} }
 }
 
 func withBeamColor(color string) func(*Task) {
@@ -226,7 +229,31 @@ func TestFabricReplay(t *testing.T) {
 	}
 	oneEntry := []Task{replayEntry("a")}
 	beamEntry := []Task{replayEntry("a", asProject, asBeam)}
+	legacyPullRequest := []Task{replayEntry("a", withUnknownKey("pull_request", `"merge"`))}
 	rows := []replayRow{
+		{
+			name:        "ACommitThatSetsOnlyALegacyNotifyOnLandLandsAsBeamLandNotice",
+			base:        oneEntry,
+			origin:      oneEntry,
+			parent:      oneEntry,
+			commit:      []Task{replayEntry("a", withUnknownKey("notify_on_land", "true"))},
+			wantEntries: map[string]string{"a": "a"},
+			check: func(t *testing.T, _ string, got map[string]Task) {
+				t.Helper()
+				want := map[string]any{"beam": map[string]any{"land_notice": "on"}}
+				if !reflect.DeepEqual(got["a"].RunSettings, want) {
+					t.Errorf("entry a run_settings = %v; want %v", got["a"].RunSettings, want)
+				}
+			},
+		},
+		{
+			name:        "RemovingAnUnchangedEntryThatCarriesALegacyPullRequestMakesNoConflict",
+			base:        legacyPullRequest,
+			origin:      legacyPullRequest,
+			parent:      legacyPullRequest,
+			commit:      nil,
+			wantEntries: map[string]string{"a": ""},
+		},
 		{
 			name:        "AHoldTheCommitAddedLandsOnOrigin",
 			base:        oneEntry,
@@ -606,19 +633,6 @@ func TestFabricReplay(t *testing.T) {
 			commit:      []Task{replayEntry("b", withTitle("B2")), replayEntry("task-order", withOrder("b")), replayEntry("note-order", asNote, withOrder("b")), replayEntry("task-beam", asBeam), replayEntry("note-beam", asNote, asBeam)},
 			wantRefused: map[string]string{"task-order": "order", "note-order": "order", "task-beam": "beam", "note-beam": "beam"},
 			wantEntries: map[string]string{"b": "B2", "task-order": "", "note-order": "", "task-beam": "", "note-beam": ""},
-		},
-		{
-			name:        "NotifyOnLandSetByTheCommitLandsOnTheEntry",
-			base:        []Task{replayEntry("a")},
-			origin:      []Task{replayEntry("a")},
-			parent:      []Task{replayEntry("a")},
-			commit:      []Task{replayEntry("a", asNotifyOnLand)},
-			wantEntries: map[string]string{"a": "a"},
-			check: func(t *testing.T, _ string, got map[string]Task) {
-				if !got["a"].NotifyOnLand {
-					t.Errorf("a.notify_on_land = false; want true")
-				}
-			},
 		},
 		{
 			name:        "PrimeOwnerChangedOnBothSidesKeepsOriginsAndReportsItLost",

@@ -648,34 +648,28 @@ func TestHubDobbyDeps_PullRequestRecordedReadsTheBeamLandingRecord(t *testing.T)
 	}
 }
 
-func TestHubDobbyDeps_NotifyOnLandSeamsWriteTheHubBoardEntry(t *testing.T) {
+func TestHubDobbyDeps_LandNoticeReadsTheRunsWorktreeLayer(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, deps := landingHub(t)
-	cfg, err := boardengine.LoadConfig(configengine.Dirs{Board: h.BoardDir()}, "board")
+	beam, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(h.Location, "b"))
 	if err != nil {
-		t.Fatalf("load board config: %v", err)
-	}
-	cfg.Path = h.BoardDir()
-	board := boardengine.New(cfg)
-
-	if err := deps.SetNotifyOnLand("b"); err != nil {
-		t.Fatalf("SetNotifyOnLand(b) = %v; want nil", err)
-	}
-	if task, found, err := board.GetTask("b"); err != nil || !found || !task.NotifyOnLand {
-		t.Fatalf("GetTask(b) = NotifyOnLand %v, found %v, err %v; want it set", task.NotifyOnLand, found, err)
+		t.Fatalf("resolve the beam worktree: %v", err)
 	}
 
-	if err := deps.ClearNotifyOnLand("b"); err != nil {
-		t.Fatalf("ClearNotifyOnLand(b) = %v; want nil", err)
+	if on, err := deps.LandNotice("b"); on || err != nil {
+		t.Fatalf("LandNotice(b) with no layer setting it = %v, %v; want false, nil", on, err)
 	}
 
-	task, found, err := board.GetTask("b")
-	if err != nil || !found {
-		t.Fatalf("GetTask(b) = found %v, err %v; want found", found, err)
+	beamYAML := filepath.Join(beam.AnchorPath(), lymdirs.LymDirName, "config", "beam.yaml")
+	if err := os.MkdirAll(filepath.Dir(beamYAML), 0o755); err != nil {
+		t.Fatalf("create the worktree config directory: %v", err)
 	}
-	if task.NotifyOnLand {
-		t.Errorf("b.NotifyOnLand = true; want it cleared")
+	if err := os.WriteFile(beamYAML, []byte("land_notice: \"on\"\n"), 0o644); err != nil {
+		t.Fatalf("write the worktree beam.yaml: %v", err)
+	}
+	if on, err := deps.LandNotice("b"); !on || err != nil {
+		t.Errorf("LandNotice(b) with its worktree's beam.yaml setting on = %v, %v; want true, nil", on, err)
 	}
 }

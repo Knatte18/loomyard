@@ -8,6 +8,8 @@ import (
 	"slices"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
 // RetiredCopiesReinterpretationID names the change that retired the harden-live-copies gate key.
@@ -21,8 +23,8 @@ const RetiredCopiesReinterpretationID = "gate-harden-live-copies-retired"
 // when its tiers differ from harden-live's one tier, the removal is also flagged with the way forward for harden-live.
 // Any other entry that differs is left in place, as harden-live keeps its own value, and is flagged with the way forward.
 // A file with no such entry is returned unchanged.
-// The worktree root and anchored directory arguments are unused, as the rewrite judges the file alone.
-func RetireHardenLiveCopies(existing []byte, _, _ string) (rewritten []byte, rewrote, flagged []string, err error) {
+// The worktrees argument is unused, as the rewrite judges the file alone.
+func RetireHardenLiveCopies(existing []byte, _ []configengine.HubWorktree) (rewritten []byte, rewrote, flagged []string, err error) {
 	var document yaml.Node
 	if err := yaml.Unmarshal(existing, &document); err != nil {
 		return nil, nil, nil, fmt.Errorf("parse the gate config: %w", err)

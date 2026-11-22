@@ -321,7 +321,6 @@ The copy includes the timeout value, since only a fork inherits that prompt.
 A task run lands with no orch turn,
 and a landing that succeeds sends nothing, bar one records-stop line when the prime's records side did not pull.
 Batten's Land row pulls the prime, runs the hub's landing `deploy` command and prunes the board.
-A done entry still carrying `notify_on_land` stays until its dobby has sent the line and cleared the field.
 Worktree-Teardown then removes the pair.
 
 - After a run lands, amend the board entries it superseded.

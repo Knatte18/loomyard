@@ -419,12 +419,11 @@ type PullRequestDeps struct {
 	// ShedStatus reads the run's shed status, whose history shows whether shed persisted the row's last reroute.
 	// A producer's call receives no history, so the row reads it through this seam.
 	ShedStatus func() (shedengine.Status, error)
-	// ParentMode reads the receiving branch's beam.yaml `pull_request`.
-	// It returns that value with the name of the worktree it was read in.
-	// On an error the worktree name is still returned, so the halt names where to fix the file.
-	ParentMode func() (mode, worktree string, err error)
-	// EntryField reads the landing entry's `pull_request` field, empty when the entry has none.
-	EntryField func() (string, error)
+	// Mode reads beam.yaml's `pull_request` for the landing run through the per-task lookup.
+	// The run's own worktree's files apply first, then the nearest parent worktree's value.
+	// After those come the hub's default layer and the template.
+	// A returned error is a lookup that failed, and it names the file to fix.
+	Mode func() (string, error)
 	// Origin reads the facts about the task pair's origin that a pull request needs.
 	Origin func() (Origin, error)
 	// API opens the GitHub calls for the repository the origin URL names.

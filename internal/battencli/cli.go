@@ -48,7 +48,7 @@
 // each run shows once, in the dobby section.
 // The dobby section lists the dobby's lines for the worktree the pane runs in (overviewdobby.go).
 // `DobbyLines` renders them from the `dobbyengine.View` that a `DobbyViewReader` reads.
-// Its first line is a header that says whether the dobby is alive, with its `max_runs` and `land_notice`;
+// Its first line is a header that says whether the dobby is alive, with its `max_runs`;
 // or, when it is not running, `lym beam start` as the way forward.
 // It then has one line per run it drives that is not done, in slug order.
 // Each run line carries the run's cells that `DobbyRunCells` reads, then its pass cell.
@@ -59,7 +59,7 @@
 // or it reads `waits on`, followed by each of these:
 // open dependencies; another machine's ownership; a pause; a start batten refuses, with its text;
 // a refused start, with its text and the minutes to its retry; and `max_runs`.
-// A run or task whose board entry asks for a landing notice ends its line with `notify_on_land`.
+// A run that asks for a landing notice ends its line with `land_notice`.
 // A dobby view that does not read shows `dobby <label>: unreadable`.
 // A run's cells are batten's state, the stage and the time in that stage.
 // A run with a seed and no status shows as `starting`.
