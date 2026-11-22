@@ -966,8 +966,8 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 	}
 
 	// The refuse list comes from the gate config under the engine's dirs:
-	// a seeded list reaches settings.json and the notice, an absent file adds no row,
-	// and an unparsable file refuses the spawn before any artifact.
+	// a seeded list reaches settings.json and the notice, also when a gate key the launch does not read fails to load;
+	// an absent file adds no row, and an unparsable file refuses the spawn before any artifact.
 	var refuseRow shellguard.Row
 	for _, row := range shellguard.Rows(bashForegroundPhrase, []string{"go test"}) {
 		if row.Name == "refuse-raw" {
@@ -982,9 +982,10 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 		wantErr     bool
 	}{
 		{"SeededRefuseRawReachesSettingsAndNotice", "slots: 2\nrefuse_raw: [\"go test\"]\n", 8, true, false},
+		{"ScopelessGateKeyStillLaunchesWithRefuseRaw", "slots: 2\nrefuse_raw: [\"go test\"]\ngates:\n  harden-live-copies:\n    tiers: [1]\n", 8, true, false},
 		{"AbsentGateConfigRendersNoRefuseRawRow", "", 7, false, false},
 		{"UnparsableGateConfigRefusesBeforeArtifacts", "slots: [\n", 0, false, true},
-	}
+		{"InvalidRefuseRawBesideAScopelessGateKeyRefusesBeforeArtifacts", "slots: 2\nrefuse_raw: [\"go  test\"]\ngates:\n  harden-live-copies:\n    tiers: [1]\n", 0, false, true}}
 	for _, tt := range gateTests {
 		t.Run(tt.name, func(t *testing.T) {
 			engine, anchor := engineWithAnchor(t)

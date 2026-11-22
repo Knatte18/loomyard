@@ -511,7 +511,9 @@ User-facing modules each get one `lym <module>` namespace:
   Loom's `reviewer_model` and tapestry's `plan_reviewer_model` are such keys.
   For example, `lym config tapestry --set 'plan_reviewer_model=["opus[medium]", "sonnet[high]"]'`.
   A bracketed value that is not a list of scalars is refused.
-  Every `--set` write is loaded through the module's own loader.
+  `lym config <module> --unset key` (repeatable) removes a key, or one entry of a map, from the layer's file the same way.
+  For example, `lym config gate --unset gates.harden-live-copies` removes a retired gate key.
+  Every `--set` and `--unset` write is loaded through the module's own loader.
   A value the loader refuses, such as a list given to loom's single-model `plan`, is refused with the key named.
   The file is left as it was.
   A module resolves key by key through its layers.

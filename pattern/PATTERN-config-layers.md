@@ -4,7 +4,7 @@ Loading, writing or changing the meaning of config: layers only through `confige
 
 ## Layers
 
-Rule: Loading config: only `configengine` reads, stacks, locates and judges layers against the template; callers use `Load` or `LoadOrTemplate`, bar `runprofile`; only `hubreconcile.Ensure` reconciles on a binary change; only `lym config reconcile` prunes unknown base-layer keys.
+Rule: Loading config: only `configengine` reads, stacks, locates and judges layers against the template; callers use `Load` or `LoadOrTemplate`, bar `runprofile`; only `hubreconcile.Ensure` reconciles on a binary change; no step removes an unknown base-layer key but the operator's `lym config reconcile` or `lym config <module> --unset <key>`.
 
 Only `internal/configengine` reads or stacks a module's layer files and forms their paths.
 Every category but None closes a key to the local override layer.
@@ -70,9 +70,10 @@ Reconciling a hub's config after a binary change goes only through `hubreconcile
 
 ### Keys the template lacks
 
-Only the operator's `lym config reconcile` removes a key the running template lacks, from a hub base or worktree file.
+Only the operator removes a key the running template lacks, from a hub base or worktree file.
+`lym config reconcile` prunes every such key, and `lym config <module> --unset <key>`, through `configengine.Unset`, removes one by name.
 A key a module retired is such a key like any other: the load warns of it and no loader reads it.
-The command alone sets `configsync`'s `PruneUnknown`.
+The reconcile command alone sets `configsync`'s `PruneUnknown`.
 Every other reconcile keeps such a key and carries it in `configsync`'s `Result.Preserved`.
 That covers the binary-change walk, a clone and `lym fabric reconcile`.
 The walk logs it when it writes the file.

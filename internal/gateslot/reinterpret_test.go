@@ -3,6 +3,7 @@
 package gateslot_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -14,14 +15,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRetireHardenLiveCopies pins the three outcomes of the rewrite.
+// TestRetireHardenLiveCopies pins the outcomes of the rewrite.
 // An entry equal to harden-live's one tier is removed.
-// A differing entry is flagged and left.
+// A differing entry that stops the gate config loading is removed and flagged.
+// Such an entry has no scope, an invalid scope, or tiers that do not decode.
+// Any other differing entry is flagged and left, with the step that removes it.
 // A file with no entry is unchanged.
 func TestRetireHardenLiveCopies(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	const wayForward = "`lym config gate --set 'gates.harden-live={tiers: [<live tier>], scope: diff}'`"
+	billedTierClause := fmt.Sprintf("one tier below tier%d", gateslot.BilledTier)
+	const unsetStep = "`lym config gate --unset gates.harden-live-copies`"
 	tests := []struct {
 		name          string
 		input         string
@@ -29,6 +34,8 @@ func TestRetireHardenLiveCopies(t *testing.T) {
 		wantGates     map[string]gateslot.GateKey
 		wantRewrote   []string
 		wantFlagged   []string
+		// wantUnsetStep says whether every flagged line names the step that removes the left entry.
+		wantUnsetStep bool
 	}{
 		{
 			name:  "EqualOneTierIsRemoved",
@@ -45,16 +52,43 @@ func TestRetireHardenLiveCopies(t *testing.T) {
 			wantRewrote: []string{"removed gates.harden-live-copies, which names the tier harden-live already names, tier 0"},
 		},
 		{
+			name:  "ScopelessDifferingEntryIsRemovedAndFlagged",
+			input: "gates:\n  harden-live:\n    tiers: [0, 1]\n  harden-live-copies:\n    tiers: [1]\n",
+			wantGates: map[string]gateslot.GateKey{
+				"harden-live": {Tiers: []int{0, 1}},
+			},
+			wantRewrote: []string{"removed gates.harden-live-copies, which stopped the gate config loading"},
+			wantFlagged: []string{"the removed gates.harden-live-copies named the tiers [1] and gates.harden-live names the tiers [0 1]"},
+		},
+		{
+			name:  "UndecodableTiersWithAScopeAreRemovedAndFlagged",
+			input: "gates:\n  harden-live: {tiers: [0, 1], scope: diff}\n  harden-live-copies: {tiers: [oops], scope: diff}\n",
+			wantGates: map[string]gateslot.GateKey{
+				"harden-live": {Tiers: []int{0, 1}, Scope: "diff"},
+			},
+			wantRewrote: []string{"removed gates.harden-live-copies, which stopped the gate config loading"},
+			wantFlagged: []string{"the removed gates.harden-live-copies did not decode and gates.harden-live names the tiers [0 1]"},
+		},
+		{
+			name:        "RetiredScopeIsRemovedAndFlagged",
+			input:       "gates:\n  harden-live-copies: {tiers: [1], scope: coverage}\n",
+			wantGates:   map[string]gateslot.GateKey{},
+			wantRewrote: []string{"removed gates.harden-live-copies, which stopped the gate config loading"},
+			wantFlagged: []string{"the removed gates.harden-live-copies named the tiers [1] and gates.harden-live names the tiers [0]"},
+		},
+		{
 			name:          "SeveralLiveTiersAreFlaggedAndLeft",
 			input:         "gates:\n  harden-live: {tiers: [0, 1], scope: diff}\n  harden-live-copies: {tiers: [1], scope: diff}\n",
 			wantUnchanged: true,
 			wantFlagged:   []string{"gates.harden-live-copies is retired and gates.harden-live names the tiers [0 1]"},
+			wantUnsetStep: true,
 		},
 		{
 			name:          "BilledTierIsFlaggedAndLeft",
 			input:         "gates:\n  harden-live: {tiers: [3], scope: diff}\n  harden-live-copies: {tiers: [3], scope: diff}\n",
 			wantUnchanged: true,
 			wantFlagged:   []string{"gates.harden-live-copies is retired and gates.harden-live names the tiers [3]"},
+			wantUnsetStep: true,
 		},
 		{
 			name:          "NoCopiesKeyIsUnchanged",
@@ -93,6 +127,12 @@ func TestRetireHardenLiveCopies(t *testing.T) {
 			for i, want := range tt.wantFlagged {
 				if !strings.Contains(flagged[i], want) || !strings.Contains(flagged[i], wayForward) {
 					t.Errorf("flagged line = %q; want it to hold %q and %q", flagged[i], want, wayForward)
+				}
+				if !strings.Contains(flagged[i], billedTierClause) {
+					t.Errorf("flagged line = %q; want it to hold %q", flagged[i], billedTierClause)
+				}
+				if got := strings.Contains(flagged[i], unsetStep); got != tt.wantUnsetStep {
+					t.Errorf("flagged line = %q; names the unset step = %v; want %v", flagged[i], got, tt.wantUnsetStep)
 				}
 			}
 		})

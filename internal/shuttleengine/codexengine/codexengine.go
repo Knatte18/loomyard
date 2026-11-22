@@ -6,7 +6,6 @@
 package codexengine
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -124,8 +123,10 @@ func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, cod
 
 // Prepare readies a Codex launch for the run in runDir and returns it.
 // It first refuses a spec whose prompt was not rendered for Codex, unless the prompt is marked hand-written.
-// Before anything is written, it validates the spec and loads the hub's gate config.
-// A gate config that fails to load refuses the launch, and so does a checkout that Codex rules refuse.
+// Before anything is written, it validates the spec and reads the hub gate config's refuse_raw list.
+// A gate key the launch does not read never refuses it.
+// A gate config that does not merge or holds an invalid refuse_raw refuses the launch.
+// So does a checkout that Codex rules refuse.
 // It readies the lym home, settles the sandbox and writes prompt.md into runDir.
 // Under codex.yaml's workspace-write, a sandbox that cannot start on the machine refuses the launch, naming the cause.
 // The prompt file holds the spec's prompt alone.
@@ -167,8 +168,8 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 		return shuttleengine.Launch{}, err
 	}
 	// The refuse list lives in the hub's gate config; an absent file means the hub refuses nothing.
-	gate, err := gateslot.LoadConfig(c.dirs)
-	if err != nil && !errors.Is(err, gateslot.ErrConfigAbsent) {
+	refuseRaw, err := gateslot.LoadRefuseRaw(c.dirs)
+	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("codexengine: %w", err)
 	}
 	// The python guard hook runs this binary by path, so a lym of another version on PATH never answers it.
@@ -178,7 +179,7 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 	}
 	guardIn := guardInputs{denyPython: cfg.DenyPython, denyPublish: spec.DenyPublish}
 	tools := toolHooks{
-		guards:       installedGuards(gate.RefuseRaw, guardIn),
+		guards:       installedGuards(refuseRaw, guardIn),
 		lymPath:      lymPath,
 		questionDeny: !spec.Interactive,
 	}
@@ -288,7 +289,7 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 	err = writeLaunchManifest(launchFacts{
 		spec:            spec,
 		codex:           codex,
-		refuseRaw:       gate.RefuseRaw,
+		refuseRaw:       refuseRaw,
 		lymPath:         lymPath,
 		setup:           setup,
 		standing:        standing,

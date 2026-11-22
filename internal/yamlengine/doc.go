@@ -14,6 +14,7 @@
 //   - [Strip] removes from an upper layer every unit equal to the lower layer's, and reports the removed paths.
 //   - [SetSparse] writes only the set keys into a sparse layer, never scaffolding from the template.
 //   - [Prune] removes from a sparse layer every unit the template does not know, and adds nothing.
+//   - [RemoveKeys] removes the named dotted keys from a layer, whatever the template holds.
 //   - [DropTemplateEqualNames] removes from a sparse layer every per-name entry whose value equals the template's.
 //     It reports the removed P.<name> paths, adds nothing, and leaves an untouched layer byte for byte.
 //   - [LeafPaths] lists the sorted dotted paths of every unit of a document.

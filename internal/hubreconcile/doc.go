@@ -19,7 +19,8 @@
 // A failed render of heddle targets or of the overview is logged and never fails the walk.
 //
 // The walk removes no key the running binary's template lacks, so an older binary never strips a newer one's settings.
-// `lym config reconcile --apply` is the one way to remove such a key; a local override file is pruned of every one.
+// The operator removes such a key with `lym config reconcile --apply` or `lym config <module> --unset <key>`;
+// a local override file is pruned of every one.
 // Every non-seed-only base file stays sparse over the template (PATTERN-config-layers).
 // A seed-only file follows its template changes and keeps every value the operator set.
 //

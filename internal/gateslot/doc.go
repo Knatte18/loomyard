@@ -67,6 +67,8 @@
 // LoadConfig reads the file strictly and refuses a retired key naming it.
 // It also refuses an invalid or inconsistent tier, build, gate key or bound naming the key and `lym config gate`.
 // An absent hub file is ErrConfigAbsent with the way forward `lym fabric reconcile`.
+// LoadRefuseRaw is the session launch's read: it needs `refuse_raw` alone,
+// so a failure in any other key is logged as a warning and the list is read from the merged stack.
 //
 // `tiers` and `build` are executable keys, since a tier or build command runs any shell command in a task worktree.
 // `gates`, `scoper`, `refuse_raw` and `inert_paths` are guard keys.

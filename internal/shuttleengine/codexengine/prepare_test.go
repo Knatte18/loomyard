@@ -313,8 +313,9 @@ func TestPrepare_ExpandsHomeInWritableRoots(t *testing.T) {
 // TestPrepare_InstallsGuardsFromItsInputs pins which inputs reach the installed guard rows.
 // The python switch decides only whether the deny notice names the python row, which every launch installs;
 // the publish guard installs its own row alone;
-// a seeded refuse_raw list of the hub's gate config reaches the hook and the developer instructions' deny notice;
-// and a gate config that is present but does not load refuses the launch before the prompt file is written.
+// a seeded refuse_raw list of the hub's gate config reaches the hook and the developer instructions' deny notice.
+// It does so also when a gate key the launch does not read fails to load;
+// and a gate config that does not parse refuses the launch before the prompt file is written.
 func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -332,8 +333,9 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 		{name: "PythonSwitchAlone", denyPython: true, wantInputs: guardInputs{denyPython: true}},
 		{name: "PublishGuardAlone", denyPublish: true, wantInputs: guardInputs{denyPublish: true}},
 		{name: "SeededRefuseRaw", gate: "slots: 2\nrefuse_raw: [\"go test\", \"dotnet test\"]\n", wantRefuse: []string{"go test", "dotnet test"}},
-		{name: "GateConfigThatDoesNotLoad", gate: "slots: [\n", wantErr: true},
-	}
+		{name: "ScopelessGateKeyStillLaunches", gate: "slots: 2\nrefuse_raw: [\"go test\"]\ngates:\n  harden-live-copies:\n    tiers: [1]\n", wantRefuse: []string{"go test"}},
+		{name: "GateConfigThatDoesNotParse", gate: "slots: [\n", wantErr: true},
+		{name: "InvalidRefuseRawBesideAScopelessGateKeyStillRefuses", gate: "slots: 2\nrefuse_raw: [\"go  test\"]\ngates:\n  harden-live-copies:\n    tiers: [1]\n", wantErr: true}}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()

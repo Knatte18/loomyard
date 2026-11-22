@@ -480,7 +480,7 @@ func TestPrint(t *testing.T) {
 			}
 
 			var out bytes.Buffer
-			code := dispatch(makeLayoutAt(baseDir), &out, tt.args, makeNeverCalledEditor(t), nil, nil, true, nil, "", nil, true)
+			code := dispatch(makeLayoutAt(baseDir), &out, tt.args, makeNeverCalledEditor(t), nil, nil, true, nil, nil, "", nil, true)
 
 			if code != tt.wantCode {
 				t.Errorf("dispatch(print=true, %v) = %d; want %d; output: %q", tt.args, code, tt.wantCode, out.String())
@@ -503,26 +503,30 @@ func TestPrint(t *testing.T) {
 	}
 }
 
-// TestDispatchSet pins the --set path on a per-worktree module.
-// It never opens the editor, and it syncs once for a successful write but never for a refused one.
-// It keeps an orphan key of a sparse worktree file and omits the "preserved" field.
+// TestDispatchSet pins the --set and --unset paths on a per-worktree module.
+// They never open the editor, and they sync once for a successful write but never for a refused one.
+// --set keeps an orphan key of a sparse worktree file and omits the "preserved" field.
 // It refuses an unknown key, a --print/--set pair, a missing module, and a value without '='.
+// --unset is refused beside --set or --print.
 func TestDispatchSet(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
 		// seed is the loom.yaml content; empty seeds nothing.
-		seed      string
-		args      []string
-		printOnly bool
-		setFlags  []string
-		wantCode  int
-		wantSyncs int
+		seed       string
+		args       []string
+		printOnly  bool
+		setFlags   []string
+		unsetFlags []string
+		wantCode   int
+		wantSyncs  int
 		// wantErr is a substring of the error envelope; empty means a success envelope naming loom.
 		wantErr string
 		// wantPreserved is the "preserved" field; nil means the field must be absent.
 		wantPreserved []string
+		// wantGone is a key the loom.yaml must no longer hold after a successful write.
+		wantGone string
 	}{
 		{
 			name:      "set on a clean file syncs once and reports nothing preserved",
@@ -567,6 +571,44 @@ func TestDispatchSet(t *testing.T) {
 			wantCode: 1,
 			wantErr:  "expected key=value",
 		},
+		{
+			name:       "unset on a worktree file syncs once",
+			seed:       "discussion_timeout_min: 480\n",
+			args:       []string{"loom"},
+			unsetFlags: []string{"discussion_timeout_min"},
+			wantSyncs:  1,
+			wantGone:   "discussion_timeout_min",
+		},
+		{
+			name:       "unset with no module is refused",
+			unsetFlags: []string{"discussion_timeout_min"},
+			wantCode:   1,
+			wantErr:    "module required with --unset",
+		},
+		{
+			name:       "unset of a key the worktree file does not hold is refused",
+			seed:       "# no units\n",
+			args:       []string{"loom"},
+			unsetFlags: []string{"discussion_timeout_min"},
+			wantCode:   1,
+			wantErr:    "no key discussion_timeout_min",
+		},
+		{
+			name:       "set and unset are mutually exclusive",
+			args:       []string{"loom"},
+			setFlags:   []string{"discussion_timeout_min=60"},
+			unsetFlags: []string{"discussion_timeout_min"},
+			wantCode:   1,
+			wantErr:    "--set and --unset are mutually exclusive",
+		},
+		{
+			name:       "print and unset are mutually exclusive",
+			args:       []string{"loom"},
+			printOnly:  true,
+			unsetFlags: []string{"discussion_timeout_min"},
+			wantCode:   1,
+			wantErr:    "--print and --unset are mutually exclusive",
+		},
 	}
 
 	for _, tt := range tests {
@@ -591,7 +633,7 @@ func TestDispatchSet(t *testing.T) {
 				syncCalls++
 				return 0
 			}
-			code := dispatch(layout, &out, tt.args, countingEditor(&editorCalls), sync, nil, tt.printOnly, tt.setFlags, "", nil, true)
+			code := dispatch(layout, &out, tt.args, countingEditor(&editorCalls), sync, nil, tt.printOnly, tt.setFlags, tt.unsetFlags, "", nil, true)
 
 			if code != tt.wantCode {
 				t.Fatalf("dispatch(--set) = %d; want %d; output: %q", code, tt.wantCode, out.String())
@@ -607,6 +649,15 @@ func TestDispatchSet(t *testing.T) {
 				return
 			}
 			assertJSONOkContains(t, out.String(), map[string]any{"module": "loom"})
+			if tt.wantGone != "" {
+				data, err := os.ReadFile(configengine.ConfigFile(baseDir, "loom"))
+				if err != nil && !os.IsNotExist(err) {
+					t.Fatalf("read loom.yaml: %v", err)
+				}
+				if strings.Contains(string(data), tt.wantGone) {
+					t.Errorf("loom.yaml = %q; want %q removed", data, tt.wantGone)
+				}
+			}
 
 			var env map[string]any
 			if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
@@ -666,11 +717,12 @@ func TestDispatchHubWideBoard(t *testing.T) {
 		// absent leaves the board dir file unwritten before the dispatch.
 		absent bool
 		// layer is the --layer value the row dispatches with.
-		layer     string
-		printOnly bool
-		setFlags  []string
-		editor    func(fx hubFixture) configengine.EditorFunc
-		commitErr error
+		layer      string
+		printOnly  bool
+		setFlags   []string
+		unsetFlags []string
+		editor     func(fx hubFixture) configengine.EditorFunc
+		commitErr  error
 		// guard is the hub-wide write guard; nil allows the write.
 		guard       func() (string, error)
 		wantCode    int
@@ -901,7 +953,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 					t.Errorf("hub file = %q; want the header alone %q", hubFile, configengine.SparseBaseHeader)
 				}
 				var printed bytes.Buffer
-				code := dispatch(fx.layout, &printed, []string{"loom"}, makeNeverCalledEditor(t), (&fakeSyncTracker{}).syncFunc(), (&fakeHubCommit{}).commitFunc(), true, nil, "default", nil, true)
+				code := dispatch(fx.layout, &printed, []string{"loom"}, makeNeverCalledEditor(t), (&fakeSyncTracker{}).syncFunc(), (&fakeHubCommit{}).commitFunc(), true, nil, nil, "default", nil, true)
 				if code != 0 || printed.String() != configengine.SparseBaseHeader {
 					t.Errorf("print --layer default = %d, %q; want 0, %q", code, printed.String(), configengine.SparseBaseHeader)
 				}
@@ -983,6 +1035,65 @@ func TestDispatchHubWideBoard(t *testing.T) {
 				}
 				assertJSONErrContains(t, out, `key "build.dir"`)
 				assertJSONErrContains(t, out, filepath.Join(fx.layout.WorktreePath(), "gone"))
+			},
+		},
+		{
+			name:        "unset of a scope-less gate key the load refuses writes a file that loads",
+			module:      "gate",
+			seed:        "gates:\n  harden-live-copies:\n    tiers: [1]\n  darn-write: {tiers: [0], scope: diff}\n",
+			unsetFlags:  []string{"gates.harden-live-copies"},
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if strings.Contains(hubFile, "harden-live-copies") || !strings.Contains(hubFile, "darn-write: {tiers: [0], scope: diff}") {
+					t.Errorf("hub file = %q; want darn-write alone", hubFile)
+				}
+				if _, err := gateslot.LoadConfig(configengine.Dirs{Board: fx.board}); err != nil {
+					t.Errorf("LoadConfig() after the unset error = %v; want nil", err)
+				}
+			},
+		},
+		{
+			name:        "unset of the last entry of a map drops the emptied map",
+			unsetFlags:  []string{"labels.old"},
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if strings.Contains(hubFile, "labels") || !strings.Contains(hubFile, "readme: Home.md") {
+					t.Errorf("hub file = %q; want readme kept and labels gone", hubFile)
+				}
+			},
+		},
+		{
+			name:        "unset of a key the file does not hold is refused and leaves the file",
+			unsetFlags:  []string{"labels.absent"},
+			wantCode:    1,
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if hubFile != seeded {
+					t.Errorf("hub file changed on a refused unset; got %q", hubFile)
+				}
+				assertJSONErrContains(t, out, "no key labels.absent")
+			},
+		},
+		{
+			name:        "unset of a present key beside an absent one removes nothing",
+			unsetFlags:  []string{"labels.old", "labels.absent"},
+			wantCode:    1,
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if hubFile != seeded {
+					t.Errorf("hub file changed on a refused unset; got %q", hubFile)
+				}
+				assertJSONErrContains(t, out, "no key labels.absent")
+			},
+		},
+		{
+			name:        "unset of a key named twice removes it once",
+			unsetFlags:  []string{"labels.old", "labels.old"},
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if strings.Contains(hubFile, "labels") || !strings.Contains(hubFile, "readme: Home.md") {
+					t.Errorf("hub file = %q; want readme kept and labels gone", hubFile)
+				}
 			},
 		},
 		{
@@ -1092,7 +1203,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 			sync := &fakeSyncTracker{}
 			var out bytes.Buffer
 
-			code := dispatch(fx.layout, &out, []string{module}, edit, sync.syncFunc(), commit.commitFunc(), row.printOnly, row.setFlags, row.layer, row.guard, true)
+			code := dispatch(fx.layout, &out, []string{module}, edit, sync.syncFunc(), commit.commitFunc(), row.printOnly, row.setFlags, row.unsetFlags, row.layer, row.guard, true)
 
 			if code != row.wantCode {
 				t.Errorf("dispatch = %d; want %d; output: %q", code, row.wantCode, out.String())
@@ -1172,6 +1283,8 @@ func assertDarnSaveWritten(t *testing.T, fx hubFixture, hubFile, saved string) {
 // A JSON object adds a profile or replaces one whole, leaving the others,
 // and an absent hub file starts from the template's profiles.
 // A value that is not an object, or a profile no module takes, is refused with the file left as it was.
+//
+//testtiming:keep pins the profiles module's written bytes and its profile validation refusals, which TestDispatchLayers does not assert
 func TestDispatchSetProfiles(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1258,7 +1371,7 @@ func TestDispatchSetProfiles(t *testing.T) {
 			sync := &fakeSyncTracker{}
 			var out bytes.Buffer
 
-			code := dispatch(fx.layout, &out, []string{"profiles"}, makeNeverCalledEditor(t), sync.syncFunc(), commit.commitFunc(), false, []string{row.setFlag}, row.layer, nil, true)
+			code := dispatch(fx.layout, &out, []string{"profiles"}, makeNeverCalledEditor(t), sync.syncFunc(), commit.commitFunc(), false, []string{row.setFlag}, nil, row.layer, nil, true)
 
 			if code != row.wantCode {
 				t.Errorf("dispatch = %d; want %d; output: %q", code, row.wantCode, out.String())
@@ -1305,7 +1418,7 @@ func TestDispatchLayers(t *testing.T) {
 		t.Fatalf("agentname.Format: %v", err)
 	}
 	const refused = "refused: write from the prime"
-	const loadWayForward = "way forward: --set the key to a value it takes"
+	const loadWayForward = "way forward: --set the keys it leaves invalid to values the loader takes, or leave the key as it is"
 	refusingGuard := func(hubFixture) func() (string, error) {
 		return func() (string, error) { return refused, nil }
 	}
@@ -1539,7 +1652,7 @@ func TestDispatchLayers(t *testing.T) {
 			setFlags: []string{"tree_scope.tools/=x"}, seedBoard: darnWithTreeScope("\n  tools: ./tools/..."), wantCode: 1, wantCommits: 1,
 			wantErr: `"tools" and "tools/"`,
 			check: func(t *testing.T, fx hubFixture, out string) {
-				assertJSONErrContains(t, out, "way forward: --set the key to a value it takes")
+				assertJSONErrContains(t, out, loadWayForward)
 				if data, _ := os.ReadFile(configengine.ConfigFile(fx.board, "darn")); string(data) != darnWithTreeScope("\n  tools: ./tools/...") {
 					t.Errorf("board darn.yaml = %q; want it unchanged", data)
 				}
@@ -1860,7 +1973,7 @@ func TestDispatchLayers(t *testing.T) {
 			sync := func(io.Writer) int { syncs++; return 0 }
 			var out bytes.Buffer
 
-			code := dispatch(fx.layout, &out, []string{row.module}, editor, sync, commit.commitFunc(), row.printOnly, row.setFlags, row.layer, guard, !row.noTerminal)
+			code := dispatch(fx.layout, &out, []string{row.module}, editor, sync, commit.commitFunc(), row.printOnly, row.setFlags, nil, row.layer, guard, !row.noTerminal)
 
 			if code != row.wantCode {
 				t.Errorf("dispatch = %d; want %d; output: %q", code, row.wantCode, out.String())
@@ -1884,7 +1997,7 @@ func TestDispatchLayers(t *testing.T) {
 // TestPrintResolved pins that --resolved prints a module's resolved configuration.
 // Each unit is annotated by the layer it came from.
 // It refuses an unknown module and an absent base layer with an error envelope,
-// and it refuses --resolved beside --print, --set or --layer, or without a module.
+// and it refuses --resolved beside --print, --set, --unset or --layer, or without a module.
 func TestPrintResolved(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1953,6 +2066,7 @@ func TestPrintResolved(t *testing.T) {
 		wantErr string
 	}{
 		{name: "beside --set", args: []string{"loom", "--resolved", "--set", "review_max_bounces=2"}, wantErr: "--resolved and --set are mutually exclusive"},
+		{name: "beside --unset", args: []string{"loom", "--resolved", "--unset", "review_max_bounces"}, wantErr: "--resolved and --unset are mutually exclusive"},
 		{name: "beside --print", args: []string{"loom", "--resolved", "--print"}, wantErr: "--resolved and --print are mutually exclusive"},
 		{name: "beside --layer", args: []string{"loom", "--resolved", "--layer", "local"}, wantErr: "--resolved and --layer are mutually exclusive"},
 		{name: "without a module", args: []string{"--resolved"}, wantErr: "module required with --resolved"},

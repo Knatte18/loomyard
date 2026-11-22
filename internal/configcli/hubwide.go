@@ -23,7 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
 // configDirs holds what a config verb addresses:
@@ -358,11 +357,11 @@ func reportHubWrite(out io.Writer, module, path string, commitErr, writeErr erro
 	return output.Ok(out, fields)
 }
 
-// setHubWide writes pairs into a hub-wide module's file at the board dir and commits it in the Bolt checkout.
+// setHubWide applies write to a hub-wide module's file at the board dir and commits it in the Bolt checkout.
 // The file is validated strictly before the commit, then loaded alone through the module's own loader.
 // Its command dirs are checked against the prime, and the file is restored on any failure.
 // The check refuses the write only with a failure the file did not already have.
-func setHubWide(dirs configDirs, out io.Writer, module configreg.Module, pairs []yamlengine.KV, commit hubCommitFunc) int {
+func setHubWide(dirs configDirs, out io.Writer, module configreg.Module, write layerWrite, commit hubCommitFunc) int {
 	path := configengine.ConfigFile(dirs.board, module.Name)
 	boardDirs := configengine.Dirs{Board: dirs.board}
 	var preserved []string
@@ -371,7 +370,7 @@ func setHubWide(dirs configDirs, out io.Writer, module configreg.Module, pairs [
 		snap, err := snapshotFile(path)
 		if err == nil {
 			before := checkHubModule(dirs, module)
-			preserved, err = configengine.Set(boardDirs, module.Spec(), configengine.LayerDefault, pairs)
+			preserved, err = write(boardDirs, module.Spec(), configengine.LayerDefault)
 			if err == nil {
 				err = validateHubFile(dirs.board, module)
 			}

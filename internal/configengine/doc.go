@@ -15,6 +15,7 @@
 //
 // [Set] writes dotted key=value pairs into a module's file with no editor and no validation loop.
 // It scaffolds an absent standalone or seed-only base from the template and writes a hub's base sparse.
+// [Unset] removes dotted keys from a module's file the same way, so their values resolve from the layers below.
 // [Edit] is the interactive counterpart.
 // An editor that leaves the file empty or whitespace-only aborts the edit with [ErrAborted],
 // so a layer cannot be emptied through the editor.
@@ -67,7 +68,8 @@
 // A [Spec]'s `RetiredKeys` map keys the module no longer reads to the category they held;
 // such a unit is judged by that category alone, with its value shape unchecked.
 // `RetiredWayForward` and `HubOnlyWayForward` texts end the matching refusal.
-// In a default or worktree layer a retired key is an unknown key: only `lym config reconcile --apply` removes it.
+// In a default or worktree layer a retired key is an unknown key:
+// only `lym config reconcile --apply` or [Unset] removes it.
 //
 // # Open maps
 //

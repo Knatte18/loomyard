@@ -256,11 +256,13 @@
 // The publish row is installed only for a run whose spec sets `DenyPublish`.
 // The refuse-raw row denies a Bash command starting with a prefix the hub lists in `gate.yaml`'s `refuse_raw`,
 // so every test run in an agent session goes through `lym gate test`.
-// Prepare loads `gate.yaml` over the engine's dirs.
+// Prepare reads `gate.yaml`'s `refuse_raw` over the engine's dirs through `gateslot.LoadRefuseRaw`.
 // It fills `shuttleengine.Config.RefuseRaw` on its copy of the config.
 // It renders `standingDeniesFor(cfg.RefuseRaw, lymPath)`.
-// An absent file leaves the list empty and renders no row;
-// any other load failure refuses the spawn with the loader's way forward before an artifact is written.
+// An absent file leaves the list empty and renders no row.
+// A failure in a key the launch does not read is logged as a warning and the launch goes on.
+// A file that does not merge refuses the spawn with the loader's way forward before an artifact is written.
+// So does an invalid `refuse_raw`.
 // Settings render at spawn, so a running session keeps the list it started with.
 //
 // The open launch (Claude.OpenLaunch) starts a named interactive session with no prompt.

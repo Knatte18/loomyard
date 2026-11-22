@@ -248,6 +248,19 @@ and a nil error.
 This list is nil/empty when no such orphaned key was present.
 On any error return, the returned `[]string` is always nil.
 
+### `Unset(dirs Dirs, spec Spec, layer Layer, keys []string) error`
+
+Removes dotted keys from one layer's file of a module, through `yamlengine.RemoveKeys`.
+It is the non-interactive path of `lym config <module> --unset key`, so a removed key's value resolves from the layers below and the template.
+A key the template lacks, a retired key included, is removed like any other.
+A mapping the removal leaves empty is removed with its key.
+
+**Error cases:**
+
+- **Not initialized:** Propagates `FindBaseDir`'s error.
+- **Layer does not apply:** Returns an error saying the layer of the module's config does not apply here.
+- **Absent file or key:** Returns an error naming the file and `lym config <module> --resolved`, and writes nothing.
+
 ### `Edit(dirs Dirs, spec Spec, layer Layer, edit EditorFunc) error`
 
 Opens one layer's file of a module in an editor, validates the YAML syntax, and loops on a validation failure.

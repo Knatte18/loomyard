@@ -1,5 +1,5 @@
-// set.go implements the non-interactive `lym config <module> --set key=value` write path.
-// It writes one layer's file with a single mutation, without opening an editor or looping on validation.
+// set.go implements the non-interactive `lym config <module> --set key=value` and `--unset key` write paths.
+// Each writes one layer's file with a single mutation, without opening an editor or looping on validation.
 // A standalone or seed-only base is scaffolded from the template when absent,
 // and a freshly scaffolded file is removed when the write fails.
 // A hub's base and every layer above it are sparse and hold only the keys set.
@@ -104,6 +104,33 @@ func Set(dirs Dirs, spec Spec, layer Layer, pairs []yamlengine.KV) ([]string, er
 	}
 
 	return result.Preserved, nil
+}
+
+// Unset removes each dotted key from the layer's file of spec under dirs, with no editor,
+// so the key's value resolves from the layers below and the template.
+// It removes a key the template lacks, a retired key included, as it removes any other.
+// A mapping the removal leaves empty is removed with its key.
+// An absent file, or a key the file does not hold, is an error naming the file, and nothing is written.
+func Unset(dirs Dirs, spec Spec, layer Layer, keys []string) error {
+	path, owner, err := layerPath(dirs, spec, layer)
+	if err != nil {
+		return err
+	}
+	if _, err := FindBaseDir(owner); err != nil {
+		return err
+	}
+	existing, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return fmt.Errorf("%s does not exist, so it holds no key to remove; way forward: \"lym config %s --resolved\" names the layer holding each value", path, spec.Name)
+	}
+	if err != nil {
+		return err
+	}
+	removed, err := yamlengine.RemoveKeys(existing, keys)
+	if err != nil {
+		return fmt.Errorf("%s: %w; way forward: \"lym config %s --resolved\" names the layer holding each value", path, err, spec.Name)
+	}
+	return os.WriteFile(path, removed, 0o644)
 }
 
 // setEntries writes each pair into the layer file at path:

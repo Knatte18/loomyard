@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
@@ -255,6 +256,38 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 		return Config{}, withConfigWayForward(err, files, local)
 	}
 	return cfg, nil
+}
+
+// LoadRefuseRaw returns the refuse_raw list of the gate config under dirs, for a session launch's shell guard.
+// A launch runs no gate, so a key it does not read never refuses it:
+// when the full load fails past the layer merge, the list is read from the merged stack alone,
+// and the failure is logged as a warning naming its way forward.
+// An absent hub file yields an empty list.
+// A stack that does not merge returns the full load's error.
+// A refuse_raw list that is itself invalid returns that list's error with the gate config's way forward.
+func LoadRefuseRaw(dirs configengine.Dirs) ([]string, error) {
+	cfg, loadErr := LoadConfig(dirs)
+	if loadErr == nil {
+		return cfg.RefuseRaw, nil
+	}
+	if errors.Is(loadErr, ErrConfigAbsent) {
+		return nil, nil
+	}
+	resolved, err := configengine.Load(dirs, ConfigSpec())
+	if err != nil {
+		return nil, loadErr
+	}
+	var file struct {
+		RefuseRaw []string `yaml:"refuse_raw"`
+	}
+	if err := yaml.Unmarshal(resolved, &file); err != nil {
+		return nil, loadErr
+	}
+	if err := decodeRefuseRaw(file.RefuseRaw); err != nil {
+		return nil, withConfigWayForward(err, ConfigFiles(dirs), "")
+	}
+	logger.Warn("gate config: the config does not load, so the launch reads its refuse_raw list alone; every gate call refuses until it is fixed", "error", loadErr)
+	return file.RefuseRaw, nil
 }
 
 // holdsUnits reports whether the layer file at path is readable and holds at least one config unit.

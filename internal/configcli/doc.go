@@ -29,7 +29,7 @@
 // Under a board every file layer of a module that is not seed-only is sparse, so `--set` writes only the keys set.
 // `--print --layer <name>` prints that layer's file verbatim.
 // `lym config <module> --resolved` prints the merged result through `configengine.Provenance`.
-// It is read-only and refused beside `--print`, `--set` or `--layer` and without a module.
+// It is read-only and refused beside `--print`, `--set`, `--unset` or `--layer` and without a module.
 //
 // Every write path to the default or the machine layer is guarded.
 // A write is refused from any worktree that is not the hub's prime.
@@ -50,21 +50,24 @@
 // `--set key=value` (repeatable) writes values through `configengine.Set` with no editor and syncs once.
 // Keys under a declared open map (`configreg.Module.OpenMaps`) add or rewrite one entry.
 // A value whose first non-blank character is `{` or `[` writes the entry as a YAML flow mapping or list.
-// Removing an entry stays an editor edit.
 // Any other key must exist in the template; pre-existing keys the template lacks are preserved and reported.
 // A spec that sets `configengine.Spec.JSONEntries` takes a top-level name and a JSON object, or a dotted key below one.
 // A dot in a key always separates levels.
 // A hub worktree write that picks a template overlay layer the base does not pick is refused.
 // The refusal names `--layer default` from the prime.
 //
-// A `--set` write on any layer and a hub-wide editor save are then checked by the module's own loader.
+// `--unset key` (repeatable) removes a key, or one entry of a map, from the layer's file through `configengine.Unset`,
+// so its value resolves from the layers below; a key the template lacks, a retired key included, is removed the same way.
+// It takes the guard, the commit or sync and the load check `--set` takes, and is refused beside `--set` or `--print`.
+//
+// A `--set` or `--unset` write on any layer and a hub-wide editor save are then checked by the module's own loader.
 // This is `configreg.Module.CheckLoad`, and the written file is put back when the load fails.
 // A write is refused only when the load after it fails with a different error than the load before it.
 // A refused hub-wide editor save keeps the staging copy, and its refusal names the copy's path.
 //
 // `lym config reconcile` drops or fills keys across every module against its template.
 // It is a dry run unless applied.
-// A key the template lacks, a retired key included, is pruned only by this verb.
+// A key the template lacks, a retired key included, is pruned only by this verb or removed by `--unset`.
 // With no `--layer` it reconciles the worktree's own and local files;
 // `--layer default` reconciles every file under the Bolt checkout's `_lym/config/` instead.
 // A seed-only file, such as `profiles`, is never pruned down to the template.
