@@ -528,12 +528,15 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 		logger.Info("gate test: spawning tier command", "tier", tierName(run.number), "dir", dir, "command", command)
 		watchCtx, stopWatching := context.WithCancel(ctx)
 		var watchdogDone sync.WaitGroup
+		commandPID := 0
 		capKilled, runErr := runTiedChild(cmd, request.pipeWaitDelay, run.tier.MemoryLimit(), func(pid int) {
+			commandPID = pid
+			request.commands.add(pid)
 			if marker != "" && request.samplePeriod > 0 {
 				watchdogDone.Add(1)
 				go func() {
 					defer watchdogDone.Done()
-					stops.processCap = capFor(marker, request.samplePeriod).run(watchCtx)
+					stops.processCap = capFor(marker, request.samplePeriod, request.commands).run(watchCtx)
 				}()
 			}
 			if request.memoryGuarding {
@@ -552,6 +555,7 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 				newWatchdog(request.busyQuit, request.samplePeriod, request.stderr).run(watchCtx, pid)
 			}()
 		})
+		request.commands.remove(commandPID)
 		stopWatching()
 		watchdogDone.Wait()
 		if capKilled {

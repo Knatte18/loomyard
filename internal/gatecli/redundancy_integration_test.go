@@ -258,7 +258,7 @@ func TestRedundancyStep(t *testing.T) {
 	runStep := func(t *testing.T) RedundancyReport {
 		t.Helper()
 		step, _ := stepAt(t, pairLocation, environ, time.Minute)
-		step.run(false, true)
+		step.writeReport(step.judgeReport(false, true))
 		return readReport(t, pairLocation)
 	}
 	notJudged := func(pkg, name, reason string) RedundancyTest {
@@ -340,7 +340,7 @@ func TestRedundancyStep(t *testing.T) {
 		}
 		builds := filepath.Join(t.TempDir(), "builds")
 		step, stderr := stepAt(t, pairLocation, append(slices.Clone(environ), testMapCoverBuildsEnv+"="+builds), time.Minute)
-		step.run(false, true)
+		step.writeReport(step.judgeReport(false, true))
 		if again := readReport(t, pairLocation); !again.Written.Equal(kept.Written) {
 			t.Errorf("report written %v; want the report of %v kept", again.Written, kept.Written)
 		}
@@ -385,7 +385,7 @@ func TestRedundancyStep(t *testing.T) {
 		writeGate(t, 1, "")
 		builds := filepath.Join(t.TempDir(), "builds")
 		step, _ := stepAt(t, pairLocation, append(slices.Clone(environ), testMapCoverBuildsEnv+"="+builds), time.Nanosecond)
-		step.run(false, true)
+		step.writeReport(step.judgeReport(false, true))
 		report := readReport(t, pairLocation)
 		for _, test := range report.Tests {
 			if test.Package == "alpha" || test.Package == "beta" || test.Package == "broken" {
@@ -407,7 +407,7 @@ func TestRedundancyStep(t *testing.T) {
 		writeGate(t, 1, "")
 		step, _ := stepAt(t, pairLocation, environ, 3*time.Second)
 		step.secondUnit = 250 * time.Millisecond
-		step.run(false, true)
+		step.writeReport(step.judgeReport(false, true))
 		report := readReport(t, pairLocation)
 		i := slices.IndexFunc(report.Tests, func(test RedundancyTest) bool { return test.Name == "TestDropsLate" })
 		if i < 0 {
@@ -430,7 +430,7 @@ func TestRedundancyStep(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
-			step.run(false, true)
+			step.writeReport(step.judgeReport(false, true))
 		}()
 		waitDone := func() {
 			t.Helper()
@@ -507,7 +507,7 @@ func TestRedundancyStep(t *testing.T) {
 		step, _ := stepAt(t, pairLocation, append(slices.Clone(environ), testMapLymBuildsEnv+"="+builds, testMapFailLymBuildEnv+"=1"), time.Minute)
 		// A test past 20 seconds times out, so no load on the machine times out TestBetaNewOne.
 		step.secondUnit = time.Second
-		step.run(false, true)
+		step.writeReport(step.judgeReport(false, true))
 		report := readReport(t, pairLocation)
 
 		var lymErrors, mapErrors int
@@ -554,7 +554,7 @@ func TestRedundancyStep(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = lease.Release() })
-		step.run(false, true)
+		step.writeReport(step.judgeReport(false, true))
 		report := readReport(t, pairLocation)
 		i := slices.IndexFunc(report.Tests, func(test RedundancyTest) bool { return test.Name == "TestAlphaNewOne" })
 		if len(report.Errors) != 0 || i < 0 || report.Tests[i].Verdict != RedundancyContained {
@@ -580,7 +580,7 @@ func TestRedundancyStep(t *testing.T) {
 				if tt.scoper != "" {
 					step.cfg.Scoper = tt.scoper
 				}
-				step.run(tt.red, true)
+				step.writeReport(step.judgeReport(tt.red, true))
 				report := readReport(t, tt.location)
 				if report.Note != tt.want || report.RedGate != tt.red || len(report.Tests) != 0 || len(report.Packages) != 0 {
 					t.Errorf("report = note %q, red gate %v, %d tests, %d packages; want note %q, red gate %v, nothing judged",
@@ -601,7 +601,7 @@ func TestRedundancyStep(t *testing.T) {
 		}
 		t.Cleanup(func() { _ = os.Remove(path) })
 		step, stderr := stepAt(t, pairLocation, environ, time.Minute)
-		step.run(true, true)
+		step.writeReport(step.judgeReport(true, true))
 		if info, err := os.Stat(path); err != nil || !info.IsDir() {
 			t.Errorf("report path = %v, %v; want the directory the test made, since the write failed", info, err)
 		}

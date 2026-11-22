@@ -115,7 +115,7 @@ type GateKey struct {
 	Scope string `yaml:"scope"`
 	// Lints are the lint steps the key's call runs after its tiers, in order, each LintComments or LintPattern; empty runs none.
 	Lints []string `yaml:"lints"`
-	// Reports are the advisory report steps the key's call runs after its lints.
+	// Reports are the advisory report steps the key's call judges beside its last tier and writes after its lints.
 	// Each is ReportReach, ReportRedundancy or ReportMutation; empty runs none.
 	// A report step never changes the call's result.
 	Reports []string `yaml:"reports"`

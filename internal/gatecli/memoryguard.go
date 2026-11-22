@@ -54,7 +54,9 @@ type memoryGuard struct {
 	// onKill, when set, is called with the pid of each test binary the guard is about to kill.
 	// It is also called with the pid of each test binary that holds a killed one, before any SIGKILL goes out.
 	onKill func(pid int)
-	after  func(time.Duration) <-chan time.Time
+	// foreign, when set, names the processes another guard watches; a test binary below one is left to that guard.
+	foreign func(pid int) bool
+	after   func(time.Duration) <-chan time.Time
 	// out receives the line of each kill as it happens; nil prints none.
 	out io.Writer
 }
@@ -97,7 +99,7 @@ type memoryKill struct {
 // A test binary whose tree, itself and every process it started, holds more than limit is killed whole.
 // When none does, the memory limit the calling process sits under is checked.
 // With less than a tenth of its Max left, the largest tree holding at least floor is killed whole.
-// Each binary is killed once.
+// Each binary is killed once, and a binary below a process foreign names is never killed.
 // A platform that cannot sample ends run after one log line.
 func (g memoryGuard) run(ctx context.Context, root int) []string {
 	logger.Info("gate: memory guard started", "limit_mb", g.limit>>20, "period", g.period)
@@ -118,13 +120,40 @@ func (g memoryGuard) run(ctx context.Context, root int) []string {
 			logger.Warn("gate: the memory guard could not sample the process tree", "cause", err)
 			continue
 		}
-		for _, kill := range g.kills(testTrees(tree), killed) {
+		trees := testTrees(tree)
+		if g.foreign != nil {
+			trees = withoutForeign(trees, tree, g.foreign)
+		}
+		for _, kill := range g.kills(trees, killed) {
 			killed[kill.tree.binary.PID] = true
 			kill.enclosing = enclosingTestBinaries(tree, kill.tree.binary)
 			lines = append(lines, g.killTree(kill))
 		}
 	}
 	return lines
+}
+
+// withoutForeign returns trees without each tree whose binary has an ancestor in sample that foreign names.
+func withoutForeign(trees []testTree, sample []proc.ProcessSample, foreign func(pid int) bool) []testTree {
+	parents := make(map[int]int, len(sample))
+	for _, process := range sample {
+		parents[process.PID] = process.Parent
+	}
+	return slices.DeleteFunc(trees, func(tree testTree) bool {
+		seen := map[int]bool{tree.binary.PID: true}
+		for pid := tree.binary.Parent; !seen[pid]; {
+			if foreign(pid) {
+				return true
+			}
+			seen[pid] = true
+			parent, sampled := parents[pid]
+			if !sampled {
+				return false
+			}
+			pid = parent
+		}
+		return false
+	})
 }
 
 // enclosingTestBinaries returns the pids of the Go test binaries of tree that are ancestors of binary.

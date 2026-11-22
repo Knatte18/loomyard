@@ -357,8 +357,14 @@
 // # Report steps
 //
 // A `--gate` key's `reports` may list `gateslot.ReportRedundancy`, `gateslot.ReportReach` or `gateslot.ReportMutation`.
-// The key runs each listed step after its lints in an uncancelled call, whatever the key's scope.
+// The key runs each listed step in an uncancelled call, whatever the key's scope.
 // The reach step runs before the redundancy step.
+// The steps start beside the first run of the plan's highest tier when no earlier run failed.
+// They judge in the background while the rest of the plan and the lints run.
+// A run that fails after they started cancels them, and the call judges red-gate reports instead.
+// A halted call cancels them and writes no report.
+// The call writes the reports after its lints.
+// The steps' lines, and those of their memory guard, are held until then, and print in step order before each report's.
 // Each step is advisory: every failure it meets is a line of its report, and it never changes the exit code.
 // It writes its report through `internal/state` into the worktree's gate directory.
 // The file is `redundancy.json`, `reach.json` or `mutation.json`, and a report it cannot write is logged at Warn.
@@ -367,7 +373,8 @@
 // Each such report carries a note.
 // A report never matches a later commit when it judged nothing, is a red-gate report or a prime report,
 // so a later call on a matching tree reruns nothing and keeps it.
-// Each step takes one gate slot where it builds, after the call's tiers released theirs.
+// Each step takes one gate slot where it builds, beside the slots the last tier holds,
+// so a pool too small for both makes the step wait for the tier's release.
 // It takes none inside an enclosing gate run's slot.
 // The memory guard and the build and test bounds bound the steps.
 // So do the `redundancy_*`, `reach_budget_min` and `mutation_*` budgets in `gate.yaml`.
@@ -554,6 +561,7 @@
 // Each kill prints a line naming the binary, its package directory and the reason;
 // the tier's log and failure report carry it, and the tier is never rerun.
 // `lym gate redundant`, `lym gate mutate`, `lym gate test --map` and the report steps run the same guard.
+// The report steps' guard leaves alone a test binary below a running tier command, which the tier's own guard watches.
 // A test run the guard kills there is not judged, a mutant run it kills counts as no kill,
 // and `--map` records the entry as failed.
 // The guard is off when `memory_quit_mb` is 0 or when `LYM_GATE_TEST_PID` names a live ancestor.
@@ -576,6 +584,9 @@
 // The tier then fails with a line naming the cap and the way forward, and is never rerun as a resource shortage.
 // The cap guards against a test binary that a pinned tmux job or child runs again, re-running its own suite.
 // A nested `lym gate test` sets its own entry and counts once toward the outer cap.
+// A marked process below the verb but below no running tier command is not counted.
+// A report step beside the last tier is one, so an advisory step never fails a tier.
+// A marked process whose parentage the process sample lost still counts.
 // It is unsupported where `proc.PIDsWithEnv` is, and the cap then ends.
 //
 // # Detached run

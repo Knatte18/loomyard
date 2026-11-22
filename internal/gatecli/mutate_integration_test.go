@@ -595,7 +595,7 @@ func TestGateMutate(t *testing.T) {
 			if tt.scoper != "" {
 				step.reach.cfg.Scoper = tt.scoper
 			}
-			step.run(tt.red, tt.inHub)
+			step.writeReport(step.judgeReport(tt.red, tt.inHub))
 			report, found, err := ReadMutationReport(location)
 			if err != nil || !found {
 				t.Fatalf("ReadMutationReport = found %v, error %v; want a report", found, err)
@@ -662,7 +662,7 @@ func TestGateMutate(t *testing.T) {
 		if err := os.Remove(fabricengine.OriginRecordPath(location)); err != nil {
 			t.Fatal(err)
 		}
-		step.run(false, true)
+		step.writeReport(step.judgeReport(false, true))
 		report, found, err := ReadMutationReport(location)
 		if err != nil || !found {
 			t.Fatalf("ReadMutationReport = found %v, error %v; want a report", found, err)

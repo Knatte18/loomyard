@@ -225,7 +225,7 @@ func TestGateTestReachStep(t *testing.T) {
 
 	t.Run("APrimeCallInAHubWithNoSharedMapsJudgesNothingAndNamesTheMapRun", func(t *testing.T) {
 		step, _ := stepAt(t, primeLocation, environ, time.Minute)
-		step.run(false, true)
+		step.writeReport(step.judgeReport(false, true))
 		report := readReport(t, primeLocation)
 		if !report.Prime || report.Base != primeHead || !strings.Contains(report.Note, "lym gate test --map") || len(report.Functions) != 0 {
 			t.Errorf("report = prime %v, base %q, note %q, functions %+v; want a prime report on %s judging nothing and naming lym gate test --map",
@@ -250,7 +250,7 @@ func TestGateTestReachStep(t *testing.T) {
 	t.Run("RefreshesTheStaleAndMissingMapsOfTheChangedPackagesAndAnswersFromThem", func(t *testing.T) {
 		builtFile, env := buildsEnv(t)
 		step, stderr := stepAt(t, pairLocation, env, time.Minute)
-		step.run(false, true)
+		step.writeReport(step.judgeReport(false, true))
 		report := readReport(t, pairLocation)
 
 		// nomap and tiered have no map and stale's is stale, so each is built.
@@ -349,7 +349,7 @@ func TestGateTestReachStep(t *testing.T) {
 				if tt.scoper != "" {
 					step.cfg.Scoper = tt.scoper
 				}
-				step.run(tt.red, tt.inHub)
+				step.writeReport(step.judgeReport(tt.red, tt.inHub))
 				report := readReport(t, pairLocation)
 				if report.Note != tt.want || report.RedGate != tt.red || len(report.Functions) != 0 || len(report.Maps) != 0 || len(builds(t, builtFile)) != 0 {
 					t.Errorf("report = note %q, red gate %v, %d functions, %d maps; want note %q, red gate %v and no lookup",
@@ -362,7 +362,7 @@ func TestGateTestReachStep(t *testing.T) {
 	t.Run("APrimeCallRefreshesNothingAndAnswersFromTheSharedMaps", func(t *testing.T) {
 		builtFile, env := buildsEnv(t)
 		step, _ := stepAt(t, primeLocation, env, time.Minute)
-		step.run(false, true)
+		step.writeReport(step.judgeReport(false, true))
 		report := readReport(t, primeLocation)
 		wantUnrefreshed := []string{"alpha: not refreshed, " + reasonPrimeKeepsNoMaps}
 		if diff := cmp.Diff(wantUnrefreshed, report.Unrefreshed); diff != "" {
@@ -384,7 +384,7 @@ func TestGateTestReachStep(t *testing.T) {
 		writeMap(t, anchorDir, "stale", staleMapOf(t))
 		builtFile, env := buildsEnv(t)
 		step, _ := stepAt(t, pairLocation, env, time.Nanosecond)
-		step.run(false, true)
+		step.writeReport(step.judgeReport(false, true))
 		report := readReport(t, pairLocation)
 		want := "stale: not refreshed, " + mapBudgetReason
 		if !slices.Contains(report.Unrefreshed, want) || len(builds(t, builtFile)) != 0 {
@@ -410,7 +410,7 @@ func TestGateTestReachStep(t *testing.T) {
 	t.Run("AReportHoldsForHeadUntilACommitChangesWhatItNamed", func(t *testing.T) {
 		_, env := buildsEnv(t)
 		step, _ := stepAt(t, pairLocation, env, time.Minute)
-		step.run(false, true)
+		step.writeReport(step.judgeReport(false, true))
 		report := readReport(t, pairLocation)
 		head := gitkit.RevParse(t, pair, "HEAD")
 		appendTo := func(t *testing.T, rel, text string) {
@@ -458,7 +458,7 @@ func TestGateTestReachStep(t *testing.T) {
 	t.Run("ReachPendingOfAnswersTheUnreachedFunctionsOfAReportThatHoldsForHead", func(t *testing.T) {
 		_, env := buildsEnv(t)
 		step, _ := stepAt(t, pairLocation, env, time.Minute)
-		step.run(false, true)
+		step.writeReport(step.judgeReport(false, true))
 		report := readReport(t, pairLocation)
 		reportFile := reachReportPath(pairLocation)
 		original, err := os.ReadFile(reportFile)
@@ -538,7 +538,7 @@ func TestGateTestReachStep(t *testing.T) {
 		}
 		builtFile, env := buildsEnv(t)
 		step, _ := stepAt(t, pairLocation, env, time.Minute)
-		step.run(false, true)
+		step.writeReport(step.judgeReport(false, true))
 		report := readReport(t, pairLocation)
 		if report.Note != noteNoParent || report.Prime || len(report.Functions) != 0 || len(builds(t, builtFile)) != 0 {
 			t.Errorf("report = note %q, prime %v, %d functions; want note %q and no lookup", report.Note, report.Prime, len(report.Functions), noteNoParent)

@@ -42,7 +42,7 @@
 // The non-tier holders hold one slot and set their own Go flags through HolderEnv.
 // Each passes the `-p` value it reads from the pool's Limits.Tier0Parallel at its acquire,
 // so a hub that declares `tier0` bounds them by its parallel and a hub that declares none adds no `-p`.
-// The redundancy report step of `lym gate test` is one: it takes one slot after the call's tiers released theirs.
+// The redundancy report step of `lym gate test` is one: it takes one slot beside the slots the call's last tier holds.
 // The reach report step holds a slot only for its refresh of a task worktree's own maps.
 // `lym gate redundant` is another.
 // It waits for its slot once it has a candidate to check by mutation, and holds it to its end.
@@ -76,7 +76,8 @@
 // `tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier.
 // `gates` is a per-name map from a gate key to a GateKey,
 // so a hub file that sets one key keeps the template's value for every other.
-// A GateKey may hold `lints` and `reports`, the steps its call runs after its tiers.
+// A GateKey may hold `lints` and `reports`: its lints run after its tiers,
+// and its reports judge beside its last tier and are written after its lints.
 // It may also hold a `fixer` on the `card` key only.
 // Config load fills a template key a tuned `gates` entry lacks into that entry, and `reports: []` turns the reports off.
 // A Tier's `manual: true` keeps it out of a `lym gate test --upto` range.

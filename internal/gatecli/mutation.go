@@ -33,22 +33,24 @@ func (e *execution) mutationStep() mutationStep {
 	return mutationStep{reach: e.reachStep(), hubEnv: e.request.hubEnv}
 }
 
-// run writes the step's report into the worktree's gate directory and prints its summary line to stderr.
+// judgeReport returns the step's report.
 // red tells a call one of whose runs failed, and inHub a call inside a hub; either way the report then judges nothing.
-// A report the step cannot write is logged at Warn, and the call's result stands.
-func (s mutationStep) run(red, inHub bool) {
-	path := mutationReportPath(s.reach.location)
-	var report MutationReport
+func (s mutationStep) judgeReport(red, inHub bool) MutationReport {
 	switch {
 	case red:
-		report = MutationReport{RedGate: true, Note: noteRedGate}
+		return MutationReport{RedGate: true, Note: noteRedGate}
 	case !inHub:
-		report = MutationReport{Note: noteNoHub}
+		return MutationReport{Note: noteNoHub}
 	case !s.reach.cfg.HasGoCoverageMaps():
-		report = MutationReport{Note: fmt.Sprintf(noteScoper, s.reach.cfg.Scoper)}
-	default:
-		report = s.answer()
+		return MutationReport{Note: fmt.Sprintf(noteScoper, s.reach.cfg.Scoper)}
 	}
+	return s.answer()
+}
+
+// writeReport writes report into the worktree's gate directory and prints its summary line to stderr.
+// A report the step cannot write is logged at Warn, and the call's result stands.
+func (s mutationStep) writeReport(report MutationReport) {
+	path := mutationReportPath(s.reach.location)
 	report.GateKey = s.reach.gateKey
 	report.Written = time.Now()
 	if err := state.WriteJSON(path, lock.TrackedFileLockPath(path, ".lock"), report); err != nil {

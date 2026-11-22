@@ -1534,7 +1534,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		requireFree(t)
 	})
 
-	t.Run("a gate key's redundancy report step runs after its tiers and leaves the call's exit code to them", func(t *testing.T) {
+	t.Run("a gate key's redundancy report step judges beside its last tier and leaves the call's exit code to it", func(t *testing.T) {
 		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
 			cfg["gates"] = map[string]any{"reported": map[string]any{"tiers": []int{6}, "scope": "all", "reports": []string{gateslot.ReportRedundancy}}}
 		}))
@@ -1569,6 +1569,31 @@ func TestGateTest_Scenario(t *testing.T) {
 				requireFree(t)
 			})
 		}
+	})
+
+	t.Run("a halted call whose key lists reports writes no report", func(t *testing.T) {
+		if err := os.MkdirAll(filepath.Join(prime, "cmd", "lym"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(prime, "cmd")) })
+		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+			cfg["gates"] = map[string]any{"halting": map[string]any{"tiers": []int{0, 3}, "scope": "all", "reports": []string{gateslot.ReportRedundancy}}}
+		}))
+		defer writeConfig(t, gateConfig)
+		reportPath := filepath.Join(waitDir, redundancyReportFileName)
+		if err := os.Remove(reportPath); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+
+		// Tier0 passes, so the report steps start beside tier3, whose failed prebuild then halts the call.
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "halting"}, env: []string{helperBuildExitEnv + "=1"}})
+		if code := g.wait(t); code != 1 {
+			t.Errorf("exit code = %d, stdout %q; want the refusal's 1", code, g.stdout.String())
+		}
+		if report, found, err := readRedundancyReport(reportPath); err != nil || found {
+			t.Errorf("readRedundancyReport() = %+v, found %v, err %v; want no report from a halted call", report, found, err)
+		}
+		requireFree(t)
 	})
 
 	// A stand-in exiting 134 with no test event is a tier whose test runner crashed on SIGABRT, as a shell reports one.

@@ -102,6 +102,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	request.memoryQuit = cfg.MemoryQuit()
 	request.hubEnv = hubEnv
 	request.sessionEnv = os.Environ()
+	request.commands = &runningCommands{}
 
 	green := openGreen(gateslot.WaitDir(location.AnchorPath()), request.root, request.goBinary, cfg)
 	sc, err := computeScope(preCtx, cfg, location, request.root, request, green)
@@ -177,7 +178,23 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	// The call closes with the runner crash line only when no failure judged the code.
 	var crashed []string
 	judged := false
+	// The report steps judge in the background beside the plan's last tier, once every earlier run passed.
+	// A failed run cancels them, and every return waits for their end.
+	var reports reportSteps
+	if request.gate != "" {
+		reports = reportStepsOf(cfg.Gates[request.gate].Reports)
+	}
+	reportsStart := lastTierStart(plan)
+	var chain *reportChain
+	defer func() {
+		if chain != nil {
+			chain.stop()
+		}
+	}()
 	for i, run := range plan {
+		if i == reportsStart && reports.any() && code == 0 && runCtx.Err() == nil {
+			chain = exe.startReports(runCtx, reports, inHub)
+		}
 		var end runEnd
 		if run.guardStep {
 			end = exe.runGuard(run)
@@ -205,6 +222,9 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 			if code == 0 {
 				code, firstFailed = end.code, runLabel(run)
 			}
+		}
+		if chain != nil && code != 0 {
+			chain.cancel()
 		}
 		if end.halt {
 			if end.ran && code == 0 {
@@ -234,29 +254,21 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 				code, firstFailed = 1, lint.label
 			}
 		}
-		// The report steps run last and never change the code.
-		// The reach step runs first, and the mutation step after the redundancy step.
-		reports := cfg.Gates[request.gate].Reports
-		runsReach, runsRedundancy := slices.Contains(reports, gateslot.ReportReach), slices.Contains(reports, gateslot.ReportRedundancy)
-		runsMutation := slices.Contains(reports, gateslot.ReportMutation)
-		if runsReach || runsRedundancy || runsMutation {
-			stopGuard, guardKilled := startMemoryGuard(runCtx, newMemoryGuard(request.memoryQuit, request.stderr), os.Getpid(), exe.request.memoryGuarding)
-			if runsReach {
-				reach := exe.reachStep()
-				reach.guardKilled = guardKilled
-				reach.run(red, inHub)
+		// The reports are written last and never change the code.
+		// Steps that judged beside the last tier hand over their reports when no run failed;
+		// otherwise the steps judge now, as red-gate reports when a run failed.
+		if reports.any() {
+			var judged *judgedReports
+			if chain != nil && !red {
+				judged = chain.wait()
+			} else {
+				if chain != nil {
+					chain.stop()
+				}
+				judged = exe.newJudgedReports(reports)
+				judged.judge(runCtx, red, inHub)
 			}
-			if runsRedundancy {
-				step := exe.redundancyStep()
-				step.guardKilled = guardKilled
-				step.run(red, inHub)
-			}
-			if runsMutation {
-				step := exe.mutationStep()
-				step.reach.guardKilled = guardKilled
-				step.run(red, inHub)
-			}
-			stopGuard()
+			judged.write(request.stderr)
 		}
 	}
 	exe.printReport(inHub)

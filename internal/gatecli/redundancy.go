@@ -1,4 +1,4 @@
-// redundancy.go runs the redundancy report step a `--gate` key's reports list names, after the call's lints.
+// redundancy.go runs the redundancy report step a `--gate` key's reports list names.
 // It judges the diff's new and changed tests against the coverage maps inside one gate slot and a time budget.
 // It writes its report; nothing it meets changes the call's result.
 
@@ -95,26 +95,28 @@ func (e *execution) redundancyStep() redundancyStep {
 	}
 }
 
-// run writes the step's report into the worktree's gate directory and prints its summary line.
+// judgeReport returns the step's report, and true when it is the report the gate directory already holds.
 // red tells a call one of whose runs failed, and inHub a call inside a hub; either way the report then judges nothing.
-// A report the step cannot write is logged at Warn, and the call's result stands.
-func (s redundancyStep) run(red, inHub bool) {
-	path := redundancyReportPath(s.location)
-	var report RedundancyReport
+func (s redundancyStep) judgeReport(red, inHub bool) (RedundancyReport, bool) {
 	switch {
 	case red:
-		report = RedundancyReport{RedGate: true, Note: noteRedGate}
+		return RedundancyReport{RedGate: true, Note: noteRedGate}, false
 	case !inHub:
-		report = RedundancyReport{Note: noteNoHub}
+		return RedundancyReport{Note: noteNoHub}, false
 	case !s.cfg.HasGoCoverageMaps():
-		report = RedundancyReport{Note: fmt.Sprintf(noteScoper, s.cfg.Scoper)}
-	default:
-		judged, kept := s.judge(path)
-		if kept {
-			printLine(s.stderr, "gate test: redundancy report: the tree matches the report already written, so the step ran no build and no test; "+path)
-			return
-		}
-		report = judged
+		return RedundancyReport{Note: fmt.Sprintf(noteScoper, s.cfg.Scoper)}, false
+	}
+	return s.judge(redundancyReportPath(s.location))
+}
+
+// writeReport writes report into the worktree's gate directory and prints its summary line.
+// A kept report is the one the directory already holds, so it is not written again and its own line prints.
+// A report the step cannot write is logged at Warn, and the call's result stands.
+func (s redundancyStep) writeReport(report RedundancyReport, kept bool) {
+	path := redundancyReportPath(s.location)
+	if kept {
+		printLine(s.stderr, "gate test: redundancy report: the tree matches the report already written, so the step ran no build and no test; "+path)
+		return
 	}
 	report.GateKey = s.gateKey
 	report.Written = time.Now()

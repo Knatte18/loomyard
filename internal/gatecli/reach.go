@@ -1,4 +1,4 @@
-// reach.go runs the reach report step a `--gate` key's reports list names, after the call's lints.
+// reach.go runs the reach report step a `--gate` key's reports list names.
 // It finds the functions the worktree's diff changes and refreshes the worktree's own coverage maps of their packages.
 // It records the tests that reach each function, or the caveats of a function none reaches.
 // It writes its report and prints its note; nothing it meets changes the call's result.
@@ -70,22 +70,24 @@ func (e *execution) reachStep() reachStep {
 	}
 }
 
-// run writes the step's report into the worktree's gate directory and prints its note to stderr.
+// judgeReport returns the step's report.
 // red tells a call one of whose runs failed, and inHub a call inside a hub; either way the report then judges nothing.
-// A report the step cannot write is logged at Warn, and the call's result stands.
-func (s reachStep) run(red, inHub bool) {
-	path := reachReportPath(s.location)
-	var report ReachReport
+func (s reachStep) judgeReport(red, inHub bool) ReachReport {
 	switch {
 	case red:
-		report = ReachReport{RedGate: true, Note: noteRedGate}
+		return ReachReport{RedGate: true, Note: noteRedGate}
 	case !inHub:
-		report = ReachReport{Note: noteNoHub}
+		return ReachReport{Note: noteNoHub}
 	case !s.cfg.HasGoCoverageMaps():
-		report = ReachReport{Note: fmt.Sprintf(noteScoper, s.cfg.Scoper)}
-	default:
-		report = s.answer()
+		return ReachReport{Note: fmt.Sprintf(noteScoper, s.cfg.Scoper)}
 	}
+	return s.answer()
+}
+
+// writeReport writes report into the worktree's gate directory and prints its note to stderr.
+// A report the step cannot write is logged at Warn, and the call's result stands.
+func (s reachStep) writeReport(report ReachReport) {
+	path := reachReportPath(s.location)
 	report.GateKey = s.gateKey
 	report.Written = time.Now()
 	if err := state.WriteJSON(path, lock.TrackedFileLockPath(path, ".lock"), report); err != nil {

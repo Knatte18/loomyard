@@ -221,10 +221,13 @@ type testRequest struct {
 	phase func(runPhase)
 	// processCapFor builds the process cap over a tier run's marker; nil means newProcessCap.
 	// A test replaces it so the cap trips without a runaway.
-	processCapFor func(marker string, period time.Duration) processCap
+	processCapFor func(marker string, period time.Duration, commands *runningCommands) processCap
 	// memoryGuardFor builds the memory guard over a tier run's command; nil means newMemoryGuard.
 	// A test replaces it so the guard kills without a runaway.
 	memoryGuardFor func(limit int64, out io.Writer) memoryGuard
+	// commands are the tier commands the call is running, which the report steps' memory guard leaves alone;
+	// nil records none.
+	commands *runningCommands
 }
 
 // absoluteDir returns the directory a request runs in: dir made absolute against cwd, or cwd when dir is empty.

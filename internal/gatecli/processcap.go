@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -30,19 +32,65 @@ type processCap struct {
 	// kill sends SIGKILL to pid.
 	kill  func(pid int) error
 	after func(time.Duration) <-chan time.Time
+	// commands, when set, are the tier commands the call is running.
+	// The cap then leaves out a marked process that sits below root but below none of them.
+	// A report step judging beside the tier is one.
+	commands *runningCommands
+	// root is the pid of the process that starts the tier commands.
+	root int
+	// sample returns the process tree under root.
+	sample func(root int) ([]proc.ProcessSample, error)
 }
 
 // newProcessCap returns the production cap over the processes carrying marker.
+// A marked process below this process but below none of commands is not counted.
 // It scans /proc, kills with SIGKILL and waits on the real clock.
-func newProcessCap(marker string, period time.Duration) processCap {
+func newProcessCap(marker string, period time.Duration, commands *runningCommands) processCap {
 	return processCap{
-		limit:  runProcessCap,
-		period: period,
-		marker: marker,
-		list:   proc.PIDsWithEnv,
-		kill:   func(pid int) error { return proc.SignalProcess(pid, true) },
-		after:  time.After,
+		limit:    runProcessCap,
+		period:   period,
+		marker:   marker,
+		list:     proc.PIDsWithEnv,
+		kill:     func(pid int) error { return proc.SignalProcess(pid, true) },
+		after:    time.After,
+		commands: commands,
+		root:     os.Getpid(),
+		sample:   proc.TreeSample,
 	}
+}
+
+// countable returns pids without each one whose sampled ancestry reaches root without passing a running tier command.
+// A pid whose ancestry the sample lost, such as a tmux server that left the tree, stays counted.
+// It returns pids whole when no commands are set or the sample fails.
+func (c processCap) countable(pids []int) []int {
+	if c.commands == nil {
+		return pids
+	}
+	tree, err := c.sample(c.root)
+	if err != nil {
+		return pids
+	}
+	parents := make(map[int]int, len(tree))
+	for _, process := range tree {
+		parents[process.PID] = process.Parent
+	}
+	return slices.DeleteFunc(slices.Clone(pids), func(pid int) bool {
+		for seen := map[int]bool{}; !seen[pid]; {
+			if c.commands.holds(pid) {
+				return false
+			}
+			if pid == c.root {
+				return true
+			}
+			seen[pid] = true
+			parent, sampled := parents[pid]
+			if !sampled {
+				return false
+			}
+			pid = parent
+		}
+		return false
+	})
 }
 
 // run lists the run's processes once per period until ctx ends, and returns processCapLine once the cap tripped.
@@ -67,6 +115,7 @@ func (c processCap) run(ctx context.Context) string {
 			logger.Debug("gate test: the process cap could not list the run's processes", "cause", err)
 			continue
 		}
+		pids = c.countable(pids)
 		if line == "" && len(pids) <= c.limit {
 			continue
 		}

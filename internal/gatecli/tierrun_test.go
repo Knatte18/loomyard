@@ -172,7 +172,7 @@ func TestRunTierProcessCap(t *testing.T) {
 			var stderr bytes.Buffer
 			request := testRequest{
 				root: dir, stderr: &stderr, samplePeriod: time.Millisecond, timeoutUnit: 30 * time.Second, pipeWaitDelay: defaultPipeWaitDelay,
-				processCapFor: func(marker string, period time.Duration) processCap {
+				processCapFor: func(marker string, period time.Duration, _ *runningCommands) processCap {
 					starts.Add(1)
 					return processCap{
 						limit:  1,
@@ -232,6 +232,7 @@ func TestRunTierProcessCap(t *testing.T) {
 // It puts the kill's line and the tests it left running in the log and the causes.
 // It also marks the result so no rerun follows.
 // A request that turns the guard off builds none.
+// The tier command is recorded in the request's running commands while it runs and removed once it ends.
 func TestRunTierMemoryGuard(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -263,15 +264,27 @@ func TestRunTierMemoryGuard(t *testing.T) {
 			}
 			var starts atomic.Int32
 			var stderr bytes.Buffer
+			commands := &runningCommands{}
+			// commandPID is the tier command's pid, which the guard receives as its root.
+			// registered is whether the command was in commands when the guard sampled it.
+			var commandPID atomic.Int64
+			var registered atomic.Bool
 			request := testRequest{
 				root: dir, stderr: &stderr, timeoutUnit: 30 * time.Second, pipeWaitDelay: defaultPipeWaitDelay, memoryGuarding: tt.guarding,
+				commands: commands,
 				memoryGuardFor: func(limit int64, out io.Writer) memoryGuard {
 					starts.Add(1)
 					return memoryGuard{
 						limit:  guardLimit,
 						floor:  guardFloor,
 						period: time.Millisecond,
-						sample: func(int) ([]proc.ProcessSample, error) { return guardTree(3000<<20, 2000<<20), nil },
+						sample: func(root int) ([]proc.ProcessSample, error) {
+							commandPID.Store(int64(root))
+							if commands.holds(root) {
+								registered.Store(true)
+							}
+							return guardTree(3000<<20, 2000<<20), nil
+						},
 						pressure: func() (proc.MemoryLimit, bool) {
 							return proc.MemoryLimit{}, false
 						},
@@ -295,6 +308,14 @@ func TestRunTierMemoryGuard(t *testing.T) {
 
 			if got := starts.Load(); got != tt.wantStarts {
 				t.Errorf("runTier() built the memory guard %d times; want %d", got, tt.wantStarts)
+			}
+			if tt.guarding {
+				if !registered.Load() {
+					t.Errorf("runTier() ran the tier command %d with commands not holding it; want it held while it runs", commandPID.Load())
+				}
+				if commands.holds(int(commandPID.Load())) {
+					t.Errorf("commands.holds(%d) = true after runTier() returned; want the ended command removed", commandPID.Load())
+				}
 			}
 			if result.memoryStopped != tt.wantKilled {
 				t.Errorf("runTier() memoryStopped = %v; want %v", result.memoryStopped, tt.wantKilled)

@@ -222,7 +222,8 @@ so every run takes its slots, its timeout and its log.
 - The redundancy runs take a tier's `env` and a gate slot as a tier run does.
   `lym gate test --map` rebuilds the per-package coverage maps over its scope at the HEAD of the worktree it runs in,
   into the hub's shared maps from the prime and into the worktree's anchor `.lym` elsewhere.
-  The `redundancy` report step a gate key's `reports` lists runs after the key's tiers released their slots.
+  The `redundancy` report step a gate key's `reports` lists judges beside the first run of the key's highest tier,
+  takes its own gate slot beside the slots that tier holds, and writes its report after the lints.
   The `reach` report step refreshes a task worktree's own anchor maps by the same measurement, in the map run's slot ask.
   The map run, the refresh and the `redundancy` step run every test alone under a coverage binary, since coverage counters are process-wide.
   `lym gate redundant` runs each test alone under a binary holding the mutants of its package, one mutant on per run.
@@ -326,7 +327,7 @@ this section keeps only what is project-specific or stricter here.
   It lists the candidates with their seconds, covering tests and kills, and the refuted, unconfirmed, keep-marked and unjudged tests.
   Bound: a mutant changes the package's own code only,
   so a candidate whose check differs from its covers only in another package's result is confirmed falsely.
-- A gate key whose `reports` lists `reach` runs the report step after its lints and before the redundancy step.
+- A gate key whose `reports` lists `reach` judges the report step beside its last tier and before the redundancy step, and writes its report after the lints.
   It finds the functions the diff changes against the merge base with the parent branch, or against HEAD in the prime,
   and writes `reach.json` in the worktree's gate directory with the tests of the maps that reach each one.
   It prints a note of the report.
@@ -341,7 +342,7 @@ this section keeps only what is project-specific or stricter here.
   The report lists every survivor, unjudged mutant, uncovered changed block and package not judged.
   The step prints one summary line of their counts, and it never changes the gate's result.
   Bound: a survivor is a check the diff's tests lack or a line no test can reasonably check, and review tells them apart.
-- A gate key whose `reports` lists `redundancy` runs the report step after its tiers and lints.
+- A gate key whose `reports` lists `redundancy` judges the report step beside its last tier, and writes its report after the lints.
   It takes the diff's new and changed top-level tests against the merge base with the parent branch,
   leaving out tier2 and tier3 tests, tests marked `//testtiming:keep` and tests that may run module code in another process.
   It judges each against its package's map, package-scoped like `cmd/testtiming`'s verdict,
