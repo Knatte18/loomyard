@@ -172,6 +172,84 @@ func TestPreDriveCheck(t *testing.T) {
 	})
 }
 
+// TestFreshStartCommitsWorktreeCreateThroughTheSeam pins that seeding an absent status makes the run's one start push.
+// Both pre-run hooks seed through the same call: the Worktree-Create commit pushes,
+// and the Seed-Child row that follows commits without a push.
+func TestFreshStartCommitsWorktreeCreateThroughTheSeam(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	hooks := map[string]func(*battenCLI) error{
+		"battenPreRun":  func(c *battenCLI) error { return c.battenPreRun(context.Background()) },
+		"battenPreStep": func(c *battenCLI) error { _, err := c.battenPreStep(context.Background()); return err },
+	}
+	for name, hook := range hooks {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			c := newPreDriveReceiver(t)
+			writeBattenSeed(t, c)
+			markerPath := filepath.Join(t.TempDir(), "last-commit")
+			var commits, pushes int
+			c.commitStatus = newCommitStatusSeam(commitStatusDeps{
+				MergeActive: func() (bool, error) { return false, nil },
+				Commit:      func(string) (bool, error) { commits++; return true, nil },
+				Push:        func() error { pushes++; return nil },
+			}, markerPath, markerPath+".lock")
+
+			if err := hook(c); err != nil {
+				t.Fatalf("%s() = %v; want nil", name, err)
+			}
+			if commits != 1 || pushes != 1 {
+				t.Fatalf("after the fresh start, commits = %d, pushes = %d; want 1 and 1", commits, pushes)
+			}
+			if err := c.commitStatus(battenrecipe.NameSeedChild, "running"); err != nil {
+				t.Fatalf("commitStatus(Seed-Child, running) = %v; want nil", err)
+			}
+
+			if commits != 2 || pushes != 1 {
+				t.Errorf("after Seed-Child, commits = %d, pushes = %d; want 2 and 1", commits, pushes)
+			}
+		})
+	}
+}
+
+// TestFreshStartSeedCommitFailure pins that a failed commit of the seeded status is returned with its cause intact.
+// The step hook reports it as a bootstrap failure rather than an unseeded run, since the status is already durable;
+// the run hook returns an error that still matches the seam's failure.
+func TestFreshStartSeedCommitFailure(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	boom := errors.New("push rejected")
+	failing := func(c *battenCLI) {
+		c.commitStatus = func(string, string) error { return boom }
+	}
+
+	t.Run("StepReportsBootstrap", func(t *testing.T) {
+		t.Parallel()
+		c := newPreDriveReceiver(t)
+		writeBattenSeed(t, c)
+		failing(c)
+
+		kind, err := c.battenPreStep(context.Background())
+
+		if kind != shedverbs.KindBootstrap || !errors.Is(err, boom) {
+			t.Errorf("battenPreStep() = (%q, %v); want (%q, the seam failure)", kind, err, shedverbs.KindBootstrap)
+		}
+	})
+
+	t.Run("RunReturnsTheSeamFailure", func(t *testing.T) {
+		t.Parallel()
+		c := newPreDriveReceiver(t)
+		writeBattenSeed(t, c)
+		failing(c)
+
+		if err := c.battenPreRun(context.Background()); !errors.Is(err, boom) {
+			t.Errorf("battenPreRun() = %v; want an error matching the seam failure", err)
+		}
+	})
+}
+
 func TestBuildShed_TellsTheMachine(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

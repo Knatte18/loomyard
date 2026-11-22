@@ -1711,13 +1711,14 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 	}
 
 	c.env = env
+	c.commitStatus = battenCommitStatusSeam(location, slug)
 	c.shedPaths = shedbuild.ShedPaths{
 		StatusPath:     StatusFile(location, slug),
 		LockPath:       RunLock(location, slug),
 		StatusLockPath: StatusLock(location, slug),
 		// CommitStatus commits prime's batten status onto prime's fabric pair on every non-no-op transition.
 		// The status file is durable, fabric-synced state, so the seam is required here rather than nil.
-		CommitStatus: battenCommitStatusSeam(location, slug),
+		CommitStatus: c.commitStatus,
 
 		RunID:                   slug,
 		MissingStatusWayForward: fmt.Sprintf("way forward: \"lym batten run %s\" creates the lifecycle's status file", slug),

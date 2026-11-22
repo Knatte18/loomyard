@@ -291,6 +291,9 @@ type battenCLI struct {
 	// preDrive re-reads the cancel's lock and the seed when an absent status is seeded, under the shed's run lock.
 	// Nil checks nothing, which only a hand-populated receiver has.
 	preDrive func() error
+	// commitStatus is the run's status-commit seam, which the fresh start calls for the Worktree-Create row it seeds.
+	// Nil commits nothing, which only a hand-populated receiver has.
+	commitStatus func(producer, st string) error
 	// runVerdict reads the act rule's verdict for the slug's run, with a shed pause set aside:
 	// batten's own verbs resume that pause themselves.
 	// The arm fills it over the run's records.

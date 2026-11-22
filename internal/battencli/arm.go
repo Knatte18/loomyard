@@ -790,8 +790,36 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 	// it leaves an already-present status untouched rather than overwriting it.
 	// The pre-drive check and the marker clear run inside it, under the status lock,
 	// so a refused seeding writes no status and clears no marker.
-	return state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, c.seedAbsentStatus)
+	return c.seedFreshStatus()
 }
+
+// seedFreshStatus seeds the absent status.
+// Once it seeded one, it commits the Worktree-Create running row through the seam.
+// The seeding writes that row without a shed transition, so no seam call would otherwise carry it:
+// this call is the push that the run's following start rows leave to, and a run that found its status makes none.
+// The commit runs after the status lock is released.
+func (c *battenCLI) seedFreshStatus() error {
+	seeded := false
+	err := state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
+		next, err := c.seedAbsentStatus(cur, found)
+		seeded = err == nil && !found
+		return next, err
+	})
+	if err != nil || !seeded || c.commitStatus == nil {
+		return err
+	}
+	if err := c.commitStatus(battenrecipe.NameWorktreeCreate, string(shedengine.StateRunning)); err != nil {
+		return seedCommitFailure{err}
+	}
+	return nil
+}
+
+// seedCommitFailure marks a failed commit of the seeded status, so a caller can tell it from a failed seeding:
+// the status is durable, and the next run resumes it.
+type seedCommitFailure struct{ error }
+
+// Unwrap returns the seam's failure.
+func (e seedCommitFailure) Unwrap() error { return e.error }
 
 // preDriveRefusal marks the refusal of the pre-drive check inside seedAbsentStatus,
 // so a caller can tell it from a failed marker clear or write.
@@ -986,10 +1014,14 @@ func (c *battenCLI) battenPreStepUnmarked(ctx context.Context) (string, error) {
 		return "", nil
 	}
 
-	if err := state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, c.seedAbsentStatus); err != nil {
+	if err := c.seedFreshStatus(); err != nil {
 		var refused preDriveRefusal
 		if errors.As(err, &refused) {
 			return shedverbs.KindBusy, refused.error
+		}
+		var commitFailed seedCommitFailure
+		if errors.As(err, &commitFailed) {
+			return shedverbs.KindBootstrap, commitFailed.error
 		}
 		return shedverbs.KindUnseeded, err
 	}

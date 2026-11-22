@@ -1,6 +1,6 @@
 # PATTERN-pair-remote
 
-Pushing run records or tearing down a pair: the code branch goes along after the records side, both before the run acts;
+Pushing run records or tearing down a pair: the code branch goes along after the records side, both before the run acts, bar a batten run's uninterrupted start from Seed-Child to Run-Shed;
 a pair's remote steps hold the slug's teardown lock;
 teardown only via `internal/pairteardown`.
 
@@ -17,6 +17,7 @@ Go pushes a run's records side, and in a task pair the code branch goes after it
   a failed or rejected records side pushes no code.
 - The push is never left to an agent.
 - A transition's push is synchronous through `statuscommit`, before the next producer starts.
+  A batten run's uninterrupted start from Seed-Child to Run-Shed commits without a push, as `PATTERN-run-fsm` states.
   A push owed on an unreachable origin or a held teardown lock holds the run at its transition and retries behind the gate.
 - The detached pushes that stay keep that order in `coalescePushSides`:
   the anchor change, fabric's commit spawn, `lym fabric sync` and `add`, and a lift's deferred push.

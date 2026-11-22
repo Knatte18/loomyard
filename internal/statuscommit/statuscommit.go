@@ -1,6 +1,8 @@
 // Package statuscommit is the shared core of a shed module's per-transition status commit.
 // It commits the run's status file onto the fabric sibling and pushes it synchronously,
 // so the transition's records are on origin before the run's next producer starts.
+// A caller that defers a transition's publication passes a Push that does nothing.
+// Its own next push then carries the commit.
 //
 // A caller wraps the closure with the steps that are its own.
 // It passes its commit-message prefix and log prefix, so the texts stay its own.
@@ -30,7 +32,7 @@ type Deps struct {
 	// Commit commits the module's own status file with msg and reports whether it made a commit.
 	Commit func(msg string) (committed bool, err error)
 	// Push pushes the module's run records synchronously, and whatever else its caller's push publishes with them.
-	// It is required: New panics on a nil Push, since a seam that pushes nothing leaves its transitions unpublished.
+	// It is required: New panics on a nil Push.
 	Push func() error
 	// Admit takes the network gate's admission and returns the function that releases it.
 	// A nil Admit takes none.

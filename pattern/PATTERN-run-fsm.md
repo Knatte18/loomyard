@@ -1,7 +1,7 @@
 # PATTERN-run-fsm
 
 Reading or acting on a run's lifecycle state: only `internal/runfsm`'s states and act rule;
-a transition commits and pushes before the run acts;
+a transition commits and pushes before the run acts, bar a run's uninterrupted start from Seed-Child to Run-Shed;
 a run whose record holds another machine's takeover hands over, never replays.
 
 ## States and the act rule
@@ -34,6 +34,17 @@ It holds the run at its transition, and the transition's seam retries it behind 
 The act rule's refusal names the owed record's own way forward, as `FailedPushWayForward` gives it.
 
 Held by `TestNew_OwedPushRetriesBehindTheGate` in `internal/statuscommit`.
+
+### The start rows commit only
+
+A batten run's uninterrupted start commits each transition from Seed-Child to Run-Shed and pushes none of them.
+A start transition enters such a row running right after a running row before Run-Shed.
+The first later transition's push carries the start's commits;
+a resumed or halted start row, and one after a push that failed or was cut off, pushes as any transition does.
+A machine that adopts the run before that push reads it at its last pushed row and runs the start rows again,
+and the starting machine's next push meets the takeover and hands the run over.
+
+Held by `TestNewCommitStatusSeam` in `internal/battencli`.
 
 ## A takeover hands over
 
