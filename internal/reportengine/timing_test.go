@@ -1593,6 +1593,36 @@ func TestComputeTiming(t *testing.T) {
 	}
 }
 
+// TestComputeTiming_WalksTheRecordsBranchOnce pins that landed and in-flight runs share one records walk.
+func TestComputeTiming_WalksTheRecordsBranchOnce(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	w := newWorld(t)
+	w.battenStatus("bl", 1, "landed", battenrecipe.NameWorktreeCreate)
+	w.finishedRun("landed", "t1", 2)
+	w.battenStatus("bf", 190, "flight", battenrecipe.NameWorktreeCreate)
+	status := statusJSON(t, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: loomshed.NamePreflight})
+	w.pairBranch("flight", "pf1", at(199), seedStartedAt(at(190)), status, nil)
+
+	got, err := ComputeTiming(w.sources(), TimingOptions{Since: at(0), By: BucketDay, Live: []string{"flight"}})
+	if err != nil {
+		t.Fatalf("ComputeTiming error = %v", err)
+	}
+
+	if len(got.Runs) != 2 {
+		t.Fatalf("runs = %+v; want the landed and the in-flight run", got.Runs)
+	}
+	walks := 0
+	for _, query := range w.repo.logQueries {
+		if query.PathPrefix != "" {
+			walks++
+		}
+	}
+	if walks != 1 {
+		t.Errorf("walks of the records branch = %d; want 1", walks)
+	}
+}
+
 // markdownSection returns the text of the section under heading, up to the next section heading or the end.
 func markdownSection(t *testing.T, document, heading string) string {
 	t.Helper()

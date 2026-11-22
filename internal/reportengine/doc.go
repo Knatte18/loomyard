@@ -43,6 +43,17 @@
 // The run keeps every snapshot of that span, the last being its batten record.
 // No fresh seed in that interval leaves the batten source absent.
 //
+// A report walks the records branch's first-parent line for the commits touching a run's directory.
+// The walk opens a week before the start of the parent-branch walk.
+// That start lies FreshDays before the window for the convergence report and at the window for the timing report.
+// The walk widens, doubling its lookback, only while a run's fresh seed may lie before it.
+// It never widens past the slug's previous tag, or a week before the run's seed stamp when there is no previous tag.
+// The landing checkpoints come from a walk of their own that no run's seed changes.
+// It opens at the parent walk's start.
+// It opens at the opening of the oldest pair a tag found no task commit for when that is older.
+// A run's status file is read once at each commit of its span and at the commit before its seed,
+// and no parsed status is kept beyond the run's own snapshots.
+//
 // # Wakes, stops and repairs
 //
 // RunRow.Wakes counts a run's wakes per source and kind; a source the run lacks is nil under its name.
@@ -75,10 +86,19 @@
 // The landing is the first-parent commit that is the task commit, has it as a parent or holds its tree.
 // The time join serves a tag the exact join found no task commit for,
 // and a slug whose pair has checkpoints after its newest tag.
+// A pair's checkpoints are read back to the checkpoint walk's start,
+// so a pair with no archive tag whose checkpoints all lie before it opens no window.
 // Two runs claiming one commit within a join are both left unmapped, and the clash is a finding.
 // A landing no join maps is of kind unmapped.
 // Any other takes its kind from the slug's labels on the board: bug is fix, feature and enhancement are feature.
 // A full run landed by hand counts one landing LLM step.
+//
+// The board's history is read once, together with the board in effect at its start.
+// It starts at the parent walk's start or the oldest time-join window's opening, whichever is older.
+// Each board commit is read at most once.
+// A landing's slug that the board in effect at the start lacks takes its labels from older commits.
+// Those are read newest first until its entry is found.
+// Only each slug's done spans and labels are kept from it, never a parsed board.
 //
 // # Fresh-code fixes
 //

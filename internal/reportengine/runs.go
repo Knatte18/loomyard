@@ -128,12 +128,8 @@ func isoWeekLabel(at time.Time) string {
 
 // selectRuns adds a run, a partial run or a finding to report for each archive tag of src.
 // A tag committed before opts.Since is skipped.
-func selectRuns(src Sources, opts Options, report *Report) error {
-	batten, err := newBattenIndex(src)
-	if err != nil {
-		return err
-	}
-
+// Each run's batten source comes from batten.
+func selectRuns(src Sources, opts Options, report *Report, batten *battenIndex) error {
 	previousTag := map[string]gitrepo.TagRef{}
 	for _, tag := range src.Tags {
 		slug, named := fabricengine.ArchiveTagSlug(tag.Name)
@@ -181,7 +177,7 @@ func selectRuns(src Sources, opts Options, report *Report) error {
 			childHistory: status.History,
 			startedAt:    seed.StartedAt,
 		}
-		snapshots, recordCommit, battenFindings, err := batten.snapshotsOfRun(slug, tag.Name, earlierCommitted, tag.Committed)
+		snapshots, recordCommit, battenFindings, err := batten.snapshotsOfRun(slug, tag.Name, earlierCommitted, seed.StartedAt, tag.Committed)
 		if err != nil {
 			return err
 		}
@@ -211,7 +207,6 @@ func selectRuns(src Sources, opts Options, report *Report) error {
 		report.Runs = append(report.Runs, row)
 	}
 
-	report.inputs.checkpoints = batten.checkpoints
 	report.inputs.newestTag = map[string]time.Time{}
 	for slug, tag := range previousTag {
 		report.inputs.newestTag[slug] = tag.Committed
@@ -237,11 +232,10 @@ type selectedTag struct {
 }
 
 // landingInputs are what run selection hands the landing join:
-// the tags it read, each slug's landing checkpoints oldest first, and each slug's newest archive tag time.
+// the tags it read and each slug's newest archive tag time.
 type landingInputs struct {
-	selected    []selectedTag
-	checkpoints map[string][]time.Time
-	newestTag   map[string]time.Time
+	selected  []selectedTag
+	newestTag map[string]time.Time
 }
 
 // readLoomRecords reads the seed and status of the tapestry run directory at the tag's commit;
