@@ -1714,8 +1714,10 @@ func checkSeedPush(seed *cloneSeed, branch, lease, pushedTip string) error {
 // Once the board lands, both branches take their upstreams, so their later pushes are default pushes.
 // A failed push removes the hub, and a records push that had landed is first returned to what the check observed.
 // A push that ended without origin's answer may still land, so origin's ref is read before anything is rolled back.
-// A ref at the seed's tip is withdrawn first, a landed board before the records branch is restored.
+// A ref at the seed's tip is withdrawn first, a landed board before the records branch is restored,
+// and the failure names what origin took and what was withdrawn.
 // A ref origin does not hold at that tip yet keeps the hub, with an error naming the refs origin may hold.
+// A board origin holds at another tip is another hub's, so it is left alone and the failure names a join.
 func pushCloneSeed(rec *Mutations, seed *cloneSeed) error {
 	ns := oneRepositoryNamespace()
 	records := gitrepo.New(seed.recordsPath)
@@ -1724,6 +1726,8 @@ func pushCloneSeed(rec *Mutations, seed *cloneSeed) error {
 		if recordsTip != "" {
 			if restoreErr := restoreSeededRecordsBranch(seed, recordsTip); restoreErr != nil {
 				cause = fmt.Errorf("%w; restoring the records branch %s on origin also failed: %v", cause, seed.recordsBranch, restoreErr)
+			} else {
+				cause = fmt.Errorf("the records branch was returned to what origin held before; %w", cause)
 			}
 		}
 		return teardownHub(rec, seed.container, seed.hubPath, seed.hubTok, cause)
@@ -1754,8 +1758,12 @@ func pushCloneSeed(rec *Mutations, seed *cloneSeed) error {
 	if err := records.UpdateRemoteBranchLeased(originRemoteName, seed.recordsBranch, recordsTip, seed.observedTip, ns); err != nil {
 		if seedPushOutcomeUnknown(err) {
 			restoreRecords := func() error { return restoreSeededRecordsBranch(seed, recordsTip) }
-			if keepErr := withdrawUnansweredSeedPush(seed, seed.recordsBranch, recordsTip, restoreRecords, err); keepErr != nil {
+			withdrawn, keepErr := withdrawUnansweredSeedPush(seed, seed.recordsBranch, recordsTip, restoreRecords, err)
+			if keepErr != nil {
 				return keepErr
+			}
+			if withdrawn {
+				err = fmt.Errorf("origin took the records branch after its push ended without an answer, and the seed withdrew it: %w", err)
 			}
 		}
 		return fail(seedPushCause("records branch", false, err), "")
@@ -1771,8 +1779,15 @@ func pushCloneSeed(rec *Mutations, seed *cloneSeed) error {
 	if err := records.UpdateRemoteBranchLeased(originRemoteName, OneRepositoryBoardBranch, boardTip, "", ns); err != nil {
 		if seedPushOutcomeUnknown(err) {
 			deleteBoard := func() error { return deleteSeededBoard(seed, boardTip) }
-			if keepErr := withdrawUnansweredSeedPush(seed, OneRepositoryBoardBranch, boardTip, deleteBoard, err); keepErr != nil {
+			withdrawn, keepErr := withdrawUnansweredSeedPush(seed, OneRepositoryBoardBranch, boardTip, deleteBoard, err)
+			if keepErr != nil {
 				return keepErr
+			}
+			if withdrawn {
+				err = fmt.Errorf("origin took the records branch and, after its push ended without an answer, the board; the seed deleted the board: %w", err)
+			} else {
+				// With the board leased on absence, an answerless push that left no pushed tip means another clone's board stands.
+				err = fmt.Errorf("%w: origin's board stands at another tip after the board's push ended without an answer (%v)", gitrepo.ErrLeaseRejected, err)
 			}
 		}
 		return fail(seedPushCause("board", true, err), recordsTip)
@@ -1816,14 +1831,15 @@ func seedPushOutcomeUnknown(cause error) bool {
 // withdrawUnansweredSeedPush takes one seed push off origin again after it ended without origin's answer.
 // branch is the pushed branch, the board's or the prime's records branch.
 // pushedTip is the tip the seed pushed to it, and withdraw is the act that removes that tip from origin.
-// It returns nil once origin holds no pushedTip on branch, and the caller may then roll back and remove the hub.
+// It returns a nil error once origin holds no pushedTip on branch, and the caller may then roll back and remove the hub;
+// withdrawn reports whether origin had taken pushedTip and withdraw removed it.
 // A branch at a tip that is neither pushedTip nor the push's lease is another clone's, and is left alone.
 // It returns the error to stop on, with the hub kept, when origin's branch cannot be read or withdrawn.
 // It returns that error too while origin's branch still stands as the push was leased on it.
 // A push origin is still applying can land after the read.
 // Rolling back before it lands would leave origin a ref of this seed with no hub.
 // cause is the failed push's error.
-func withdrawUnansweredSeedPush(seed *cloneSeed, branch, pushedTip string, withdraw func() error, cause error) error {
+func withdrawUnansweredSeedPush(seed *cloneSeed, branch, pushedTip string, withdraw func() error, cause error) (withdrawn bool, err error) {
 	ns := oneRepositoryNamespace()
 	ref := ns.Branch(branch)
 	what, leasedTip, mayHold := "records branch", seed.observedTip, []string{ref}
@@ -1840,7 +1856,7 @@ func withdrawUnansweredSeedPush(seed *cloneSeed, branch, pushedTip string, withd
 
 	listing, err := gitexec.Run([]string{"ls-remote", originRemoteName, ref}, seed.recordsPath)
 	if err != nil {
-		return keep(fmt.Sprintf("origin's %s could not be read afterwards (%v)", what, err))
+		return false, keep(fmt.Sprintf("origin's %s could not be read afterwards (%v)", what, err))
 	}
 	listedTip := ""
 	for _, line := range strings.Split(listing, "\n") {
@@ -1851,13 +1867,13 @@ func withdrawUnansweredSeedPush(seed *cloneSeed, branch, pushedTip string, withd
 	switch listedTip {
 	case pushedTip:
 		if err := withdraw(); err != nil {
-			return keep(fmt.Sprintf("origin took the %s, and withdrawing it failed (%v)", what, err))
+			return false, keep(fmt.Sprintf("origin took the %s, and withdrawing it failed (%v)", what, err))
 		}
-		return nil
+		return true, nil
 	case leasedTip:
-		return keep(fmt.Sprintf("origin does not hold the pushed %s yet, and may still take it", what))
+		return false, keep(fmt.Sprintf("origin does not hold the pushed %s yet, and may still take it", what))
 	default:
-		return nil
+		return false, nil
 	}
 }
 

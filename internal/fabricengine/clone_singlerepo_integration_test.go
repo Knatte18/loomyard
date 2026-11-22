@@ -576,26 +576,156 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 		}
 	})
 
-	t.Run("UnseededBoardIsNeverPushed", func(t *testing.T) {
-		bare := hubforge.CopyCodeBare(t, "")
-		res, err := fabricengine.CloneHub(t.TempDir(), fabricengine.CloneOptions{
-			WeftURL:    filepath.ToSlash(bare),
-			SingleRepo: true,
-			Shortname:  hubforge.TestShortname,
-		})
-		if err != nil {
-			t.Fatalf("CloneHub --single-repo: %v", err)
+	t.Run("BoardWithNoUpstreamIsNeverPushed", func(t *testing.T) {
+		const resetWayForward = "run the same `lym fabric clone --single-repo` again with `--reset`"
+		tests := []struct {
+			name string
+			// originHoldsSeed seeds origin through a whole clone.
+			// The row then drops the upstreams, as a clone killed after its seed push leaves them.
+			originHoldsSeed bool
+			// commitOnBoard commits on the board after the clone, so the board holds a commit origin lacks.
+			commitOnBoard bool
+			// originAdvances puts a commit made in another clone on top of origin's board, which this store does not hold.
+			originAdvances bool
+			// anotherBoard puts a board this hub never held onto origin.
+			anotherBoard bool
+			// originUnreadable points the records store's origin at a path that holds no repository.
+			originUnreadable bool
+			// wantErrorHas are substrings of the push's error.
+			// {board}, {hub} and {records} stand for the board directory, the hub and the prime's records branch.
+			wantErrorHas []string
+			// wantReset reports whether the error names the --reset clone.
+			wantReset bool
+			// wantPushLands reports whether a push after the named upstream settings must succeed.
+			wantPushLands bool
+		}{
+			{
+				name:         "OriginHoldsNoBoard",
+				wantErrorHas: []string{"origin holds no board under " + fabricengine.RecordsNamespaceRoot + ", so it was never seeded onto origin"},
+				wantReset:    true,
+			},
+			{
+				name:            "OriginHoldsTheSeed",
+				originHoldsSeed: true,
+				wantErrorHas: []string{
+					"so the seed landed and its clone stopped before it set the upstreams",
+					"`git -C {board} config branch." + fabricengine.OneRepositoryBoardBranch + ".remote origin`",
+					"`git -C {board} config branch." + fabricengine.OneRepositoryBoardBranch + ".merge " + namespaceBoardRef + "`",
+					"`git -C {board} config branch.{records}.remote origin`",
+					"`git -C {board} config branch.{records}.merge " + namespaceHeadsPrefix + "{records}`",
+				},
+				wantPushLands: true,
+			},
+			{
+				name:            "OriginHoldsAnAncestorOfTheCommittedBoard",
+				originHoldsSeed: true,
+				commitOnBoard:   true,
+				wantErrorHas:    []string{"so the seed landed and its clone stopped before it set the upstreams"},
+				wantPushLands:   true,
+			},
+			{
+				name:            "OriginHoldsADescendantOfTheSeed",
+				originHoldsSeed: true,
+				commitOnBoard:   true,
+				originAdvances:  true,
+				wantErrorHas:    []string{"so the seed landed and its clone stopped before it set the upstreams"},
+			},
+			{
+				name:         "OriginHoldsAnotherBoard",
+				anotherBoard: true,
+				wantErrorHas: []string{
+					"while this board holds no commits, so another clone seeded origin",
+					"remove the hub at {hub} and run `lym fabric clone <url>` without `--single-repo` to join that hub",
+				},
+			},
+			{
+				name:          "OriginHoldsAnUnrelatedBoardToACommittedBoard",
+				commitOnBoard: true,
+				anotherBoard:  true,
+				wantErrorHas: []string{
+					"which shares no history with this board",
+					"remove the hub at {hub} and run `lym fabric clone <url>` without `--single-repo` to join that hub",
+				},
+			},
+			{
+				name:             "OriginCannotBeRead",
+				originUnreadable: true,
+				wantErrorHas: []string{
+					"origin's board could not be read to tell whether its seed landed",
+					"run the same command again once origin answers",
+				},
+			},
 		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				bare := hubforge.CopyCodeBare(t, "")
+				var res fabricengine.CloneResult
+				var err error
+				if tt.originHoldsSeed {
+					res, err = cloneSingleRepo(t, t.TempDir(), bare, "")
+				} else {
+					res, err = fabricengine.CloneHub(t.TempDir(), fabricengine.CloneOptions{
+						WeftURL:    filepath.ToSlash(bare),
+						SingleRepo: true,
+						Shortname:  hubforge.TestShortname,
+					})
+				}
+				if err != nil {
+					t.Fatalf("clone --single-repo: %v", err)
+				}
+				recordsBranch := gitkit.Git(t, res.BoardDir, "config", "--get", fabricengine.PrimeRecordsBranchKey)
+				if tt.originHoldsSeed {
+					for _, branch := range []string{fabricengine.OneRepositoryBoardBranch, recordsBranch} {
+						gitkit.Git(t, res.BoardDir, "config", "--unset", "branch."+branch+".remote")
+						gitkit.Git(t, res.BoardDir, "config", "--unset", "branch."+branch+".merge")
+					}
+				}
+				if tt.commitOnBoard {
+					gitkit.Git(t, res.BoardDir, "commit", "--allow-empty", "-m", "board commit after the clone")
+				}
+				if tt.originAdvances {
+					seedTip := gitkit.Git(t, bare, "rev-parse", namespaceBoardRef)
+					advanced := gitkit.Git(t, bare, "commit-tree", "-p", seedTip, "-m", "board commit from another clone", seedTip+"^{tree}")
+					gitkit.Git(t, bare, "update-ref", namespaceBoardRef, advanced)
+				}
+				if tt.anotherBoard {
+					gitkit.Git(t, bare, "update-ref", namespaceBoardRef, gitkit.Git(t, bare, "rev-parse", "HEAD"))
+				}
+				if tt.originUnreadable {
+					gitkit.Git(t, res.BoardDir, "config", "remote.origin.url", filepath.Join(t.TempDir(), "no-such-repository"))
+				}
+				originBefore := refLines(t, bare, "%(refname) %(objectname)", fabricengine.RecordsNamespaceRoot)
 
-		err = fabricengine.NewBolt(res.BoardDir).Push(fabricengine.SyncOptions{})
-		if err == nil || !strings.Contains(err.Error(), "run the same `lym fabric clone --single-repo` again with `--reset`") {
-			t.Errorf("Push of an unseeded board error = %v; want the rerun-with-reset way forward", err)
-		}
-		if got := refLines(t, bare, "%(refname)", fabricengine.RecordsNamespaceRoot); len(got) != 0 {
-			t.Errorf("origin's records namespace = %v; want it empty", got)
-		}
-		if records, err := fabricengine.ListFailedPushes(res.HubPath); err != nil || len(records) != 0 {
-			t.Errorf("ListFailedPushes() = %v, %v; want no failed-push record", records, err)
+				err = fabricengine.NewBolt(res.BoardDir).Push(fabricengine.SyncOptions{})
+				if err == nil {
+					t.Fatal("Push of a board with no upstream = nil error; want a refusal")
+				}
+				placeholders := strings.NewReplacer("{board}", res.BoardDir, "{hub}", res.HubPath, "{records}", recordsBranch)
+				for _, want := range tt.wantErrorHas {
+					if want = placeholders.Replace(want); !strings.Contains(err.Error(), want) {
+						t.Errorf("Push error = %q; want it to contain %q", err.Error(), want)
+					}
+				}
+				if got := strings.Contains(err.Error(), resetWayForward); got != tt.wantReset {
+					t.Errorf("Push error = %q; naming the --reset clone = %v, want %v", err.Error(), got, tt.wantReset)
+				}
+				if got := refLines(t, bare, "%(refname) %(objectname)", fabricengine.RecordsNamespaceRoot); !slices.Equal(got, originBefore) {
+					t.Errorf("origin's records namespace = %v; want it unchanged at %v", got, originBefore)
+				}
+				if records, err := fabricengine.ListFailedPushes(res.HubPath); err != nil || len(records) != 0 {
+					t.Errorf("ListFailedPushes() = %v, %v; want no failed-push record", records, err)
+				}
+
+				if tt.wantPushLands {
+					for _, branch := range []string{fabricengine.OneRepositoryBoardBranch, recordsBranch} {
+						gitkit.Git(t, res.BoardDir, "config", "branch."+branch+".remote", "origin")
+						gitkit.Git(t, res.BoardDir, "config", "branch."+branch+".merge", namespaceHeadsPrefix+branch)
+					}
+					if err := fabricengine.NewBolt(res.BoardDir).Push(fabricengine.SyncOptions{}); err != nil {
+						t.Errorf("Push after setting the named upstreams = %v; want nil", err)
+					}
+				}
+			})
 		}
 	})
 }

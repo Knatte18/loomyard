@@ -182,8 +182,16 @@ func (j *pushJob) push() error {
 }
 
 // refuseUnseededBoard refuses a board push for a board with no upstream in a one-repository records store.
-// The only such board is a --single-repo seed that was never pushed.
+// Such a board is a --single-repo seed whose clone stopped before it set the upstreams.
 // A seeded board takes its upstream at the seed push, and a joined board adopts origin's board branch.
+// A clone killed mid-seed can leave origin holding the whole seed,
+// so the refusal reads origin's board to pick its way forward.
+// It fetches origin's board first, so the comparison holds even for a commit another clone pushed after the seed.
+// Origin holding no board names a --reset clone.
+// Origin holding a board that shares history with this board is this hub's own seed,
+// and it names the upstream settings the clone never wrote.
+// Origin holding a board with no history in common with this one names a join of the hub that seeded it.
+// So does origin holding a board while this one holds no commits.
 // The refusal is returned as it is, with no failed-push record, so no later push or reconcile retries it;
 // a push here would put an unseeded board onto origin unleased.
 func (j *pushJob) refuseUnseededBoard() error {
@@ -197,8 +205,70 @@ func (j *pushJob) refuseUnseededBoard() error {
 	if _, upstreamErr := j.repo.UpstreamSHA(); !errors.Is(upstreamErr, gitrepo.ErrNoUpstream) {
 		return nil
 	}
-	return fmt.Errorf("fabricengine: the board at %s has no upstream in a one-repository hub, so it was never seeded onto origin and is not pushed; "+
-		"way forward: run the same `lym fabric clone --single-repo` again with `--reset`", j.path)
+	refused := fmt.Sprintf("fabricengine: the board at %s has no upstream in a one-repository hub, so it is not pushed", j.path)
+	originTip, found, err := originBranchHead(j.path, j.branch)
+	if err != nil {
+		return fmt.Errorf("%s, and origin's board could not be read to tell whether its seed landed: %w; "+
+			"way forward: run the same command again once origin answers", refused, err)
+	}
+	if !found {
+		return fmt.Errorf("%s, and origin holds no board under %s, so it was never seeded onto origin; "+
+			"way forward: run the same `lym fabric clone --single-repo` again with `--reset`", refused, RecordsNamespaceRoot)
+	}
+	cannotCompare := func(err error) error {
+		return fmt.Errorf("%s, and origin's board could not be compared with this board: %w; "+
+			"way forward: run the same command again once the records store at %s reads", refused, err, j.path)
+	}
+	if err := j.repo.Fetch(); err != nil {
+		return fmt.Errorf("%s, and origin's board could not be fetched to compare it with this board: %w; "+
+			"way forward: run the same command again once origin answers", refused, err)
+	}
+	join := fmt.Sprintf("way forward: remove the hub at %s and run `lym fabric clone <url>` without `--single-repo` to join that hub", j.hubPath)
+	localTip, err := j.repo.CurrentSHA()
+	switch {
+	case errors.Is(err, gitrepo.ErrNoCommits):
+		return fmt.Errorf("%s, and origin holds another board at %s while this board holds no commits, so another clone seeded origin; %s",
+			refused, originTip, join)
+	case err != nil:
+		return cannotCompare(err)
+	}
+	shared, err := sharesHistory(j.path, originTip, localTip)
+	if err != nil {
+		return cannotCompare(err)
+	}
+	if !shared {
+		return fmt.Errorf("%s, and origin holds another board at %s, which shares no history with this board at %s, so another clone seeded origin; %s",
+			refused, originTip, localTip, join)
+	}
+	recordsBranch, err := gitexec.Run([]string{"config", "--get", PrimeRecordsBranchKey}, j.path)
+	if err != nil {
+		return fmt.Errorf("%s, and %s could not be read from the records store at %s to name the upstream settings: %w; "+
+			"way forward: set %s there to the prime's records branch, then run the same command again",
+			refused, PrimeRecordsBranchKey, j.path, err, PrimeRecordsBranchKey)
+	}
+	var settings []string
+	for _, branch := range []string{j.branch, strings.TrimSpace(recordsBranch)} {
+		settings = append(settings,
+			fmt.Sprintf("`git -C %s config branch.%s.remote %s`", j.path, branch, originRemoteName),
+			fmt.Sprintf("`git -C %s config branch.%s.merge %s`", j.path, branch, ns.Branch(branch)))
+	}
+	return fmt.Errorf("%s, but origin holds this hub's board at %s, so the seed landed and its clone stopped before it set the upstreams; "+
+		"way forward: set them with %s, then run the same command again", refused, originTip, strings.Join(settings, ", "))
+}
+
+// sharesHistory reports whether the commits a and b have a common ancestor in the repository at dir.
+// Both commits must exist in that repository.
+func sharesHistory(dir, a, b string) (bool, error) {
+	_, err := gitexec.Run([]string{"merge-base", a, b}, dir)
+	var gitErr *gitexec.GitError
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.As(err, &gitErr) && gitErr.ExitCode == 1:
+		return false, nil
+	default:
+		return false, err
+	}
 }
 
 // errOriginAhead is returned by a code-side retry that found origin holding commits the local branch lacks, a divergence no retry settles.

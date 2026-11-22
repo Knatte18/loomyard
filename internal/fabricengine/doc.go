@@ -522,6 +522,11 @@
 // Every push, listing and fetch of the records side names origin refs through that namespace.
 // A board push whose board branch has no upstream is refused with no failed-push record.
 // Pushing it unleased could replace another hub's board.
+// A clone killed after its seed push leaves origin holding the seed.
+// The refusal therefore fetches and reads origin's board first.
+// Origin holding no board names a `--reset` clone.
+// Origin holding a board that shares history with this one names the upstream settings.
+// Origin holding an unrelated board, or this board holding no commits, names a join.
 //
 // A one-URL `CloneHub` first runs one `ls-remote`, before anything is created.
 // It refuses an origin left by the earlier layout.
@@ -534,7 +539,9 @@
 // so the ref on origin is read before any rollback.
 // A ref at the seed's tip is withdrawn first: the board is deleted,
 // and the records branch returns to the tip the clone's check observed.
+// The failure names what origin took and what the seed withdrew.
 // A ref origin does not hold at that tip yet keeps the hub, with a way forward naming the refs origin may hold.
+// A board origin holds at another tip is another hub's: it is left alone and the way forward is a join.
 //
 // **Platform verification: Linux only.**
 // Fabric is written cross-platform,
