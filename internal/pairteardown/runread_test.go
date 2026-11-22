@@ -323,8 +323,14 @@ func TestReadRun(t *testing.T) {
 		{
 			name:      "AMissingCodeTipSetsTheThreeCodeTipInputs",
 			fakes:     runFakes{codeTip: fabricengine.CodeTipReading{Tip: "abc123", Missing: true, Machine: "oslo"}},
-			wantIn:    runfsm.Inputs{CodeTipMissing: true, CodeTip: "abc123", CodeTipMachine: "oslo"},
+			wantIn:    runfsm.Inputs{CodeTipMissing: true, CodeTip: "abc123", CodeTipMachine: "oslo", CodeTipPairAbsent: true},
 			wantCalls: []string{"child-origin"},
+		},
+		{
+			name:      "AMissingCodeTipWithAPairHereLeavesThePairAbsentInputClear",
+			fakes:     runFakes{pairHere: true, codeTip: fabricengine.CodeTipReading{Tip: "abc123", Missing: true, Machine: "oslo"}},
+			wantIn:    runfsm.Inputs{CodeTipMissing: true, CodeTip: "abc123", CodeTipMachine: "oslo"},
+			wantCalls: []string{"child-here"},
 		},
 		{
 			name:      "ACodeTipOriginHoldsSetsNoCodeTipInput",

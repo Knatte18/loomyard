@@ -246,6 +246,7 @@ func (r runReader) read(slug string) (runfsm.Records, runfsm.Inputs, error) {
 		inputs.CodeTipMissing = true
 		inputs.CodeTip = tip.Tip
 		inputs.CodeTipMachine = tip.Machine
+		inputs.CodeTipPairAbsent = !pairHere
 	}
 
 	switch {

@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -628,17 +629,46 @@ func (c *battenCLI) refuseContinuePass() error {
 // They resume a shed pause themselves, so a shed state of paused never makes them wait.
 var runAside = runfsm.Aside{ShedPause: true}
 
-// hubRunVerdict returns a reader of the act rule's verdict for slug's run over the hub of location.
+// hubRunVerdict returns a reader of the act rule's verdict for slug's run over the hub of the prime location.
 // The verdict is judged over the run's tracked records and this machine's inputs, with runAside set aside.
+// A code-tip wait fetches the run's records and code refs from origin and is judged again.
 func hubRunVerdict(location *lymcwd.Location, slug string) func() (runfsm.Verdict, error) {
-	return func() (runfsm.Verdict, error) {
-		records, inputs, err := pairteardown.ReadRun(location, slug)
+	read := func() (runfsm.Records, runfsm.Inputs, error) { return pairteardown.ReadRun(location, slug) }
+	fetch := func() error {
+		if err := fetchRunForCatchUp(location, slug); err != nil {
+			return err
+		}
+		if err := gitrepo.New(location.WorktreePath()).Fetch(); err != nil {
+			return fmt.Errorf("%w: %v", dobbyengine.ErrOriginUnreachable, err)
+		}
+		return nil
+	}
+	return func() (runfsm.Verdict, error) { return judgeAfterCodeTipFetch(read, fetch) }
+}
+
+// judgeAfterCodeTipFetch judges the run read returns, with runAside set aside.
+// A code-tip wait is read from the refs the last fetch left, which can keep a records branch origin has deleted,
+// so it calls fetch and judges a fresh read; the fetch prunes such a branch's ref.
+// A failed fetch keeps the first verdict, whose refusal names the way forward.
+// It returns the error of a failed read.
+func judgeAfterCodeTipFetch(read func() (runfsm.Records, runfsm.Inputs, error), fetch func() error) (runfsm.Verdict, error) {
+	judge := func() (runfsm.Verdict, error) {
+		records, inputs, err := read()
 		if err != nil {
 			return runfsm.Verdict{}, err
 		}
 		_, verdict := runfsm.Judge(records, inputs, runAside)
 		return verdict, nil
 	}
+	verdict, err := judge()
+	if err != nil || verdict.Reason != runfsm.ReasonCodeTip {
+		return verdict, err
+	}
+	if err := fetch(); err != nil {
+		logger.Debug("battencli: the fetch before judging a code-tip wait again failed, so the wait stands", "error", err)
+		return verdict, nil
+	}
+	return judge()
 }
 
 // refuseByAct asks the act rule whether this run may act and returns its refusal when it may not.

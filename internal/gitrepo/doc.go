@@ -39,6 +39,7 @@
 // It does not create, clone, or manage repo topology.
 //
 //   - Fetch refreshes remote-tracking refs without merging, so it never moves the local branch.
+//     It prunes the tracking ref of every branch the remote deleted, and never a local tag.
 //   - HoldRemoteRefs takes the remote-refs lock, a file in the common git dir that every worktree shares.
 //     Fetch, FetchWithArgs, Pull and DropRemoteTracking run under it and wait while it is held.
 //     Push methods transfer outside the lock and take it only to write the tracking ref or upstream afterwards.
