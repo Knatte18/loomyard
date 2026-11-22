@@ -230,6 +230,10 @@ func buildMerriam(fx parityFixture, engine string) (shuttleengine.Spec, error) {
 
 func buildSampler(fx parityFixture, engine string) (shuttleengine.Spec, error) {
 	env := fx.env
+	skills, err := languageSkillsOf(env)
+	if err != nil {
+		return shuttleengine.Spec{}, err
+	}
 	prompt, err := samplerengine.RenderSessionPrompt(samplerengine.SessionInputs{
 		StencilsDir:        env.StencilsDir,
 		ParentName:         env.ParentName,
@@ -245,6 +249,7 @@ func buildSampler(fx parityFixture, engine string) (shuttleengine.Spec, error) {
 		Unawaited:   true,
 		DenyPublish: true,
 		ConfigRole:  agentconfig.RoleSampler,
+		Skills:      skills,
 		Role:        samplerengine.Role,
 	}), nil
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/samplerengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -1190,7 +1191,8 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 }
 
 // TestWire_LanguageSkills asserts wire loads the hub's language.yaml once.
-// It tells the list to the Webster deps and the darn writer's table.
+// It tells the list to the Webster deps and the darn writer's table,
+// and the sampler session over the same hub carries the darn writer's skills.
 // An unusable file halts wire with the module's way forward.
 func TestWire_LanguageSkills(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -1283,8 +1285,21 @@ func TestWire_LanguageSkills(t *testing.T) {
 			if err != nil {
 				t.Fatalf("DarnTable() = %v; want nil", err)
 			}
-			if chair := table.Chair(); chair.ConfigRole != agentconfig.RoleDarn || !slices.Equal(chair.Skills, tt.wantSkills) {
+			chair := table.Chair()
+			if chair.ConfigRole != agentconfig.RoleDarn || !slices.Equal(chair.Skills, tt.wantSkills) {
 				t.Errorf("darn writer config role/skills = %q/%v; want %q/%v", chair.ConfigRole, chair.Skills, agentconfig.RoleDarn, tt.wantSkills)
+			}
+			writeSamplerConfig(t, loc.HubPath, samplerengine.ConfigTemplate())
+			sampler := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeSampler}
+			if err := sampler.wire(loc, loc.AnchorPath()); err != nil {
+				t.Fatalf("wire() of a sampler seed = %v; want nil", err)
+			}
+			samplerSpec, err := sampler.env.Sampler.Spec()
+			if err != nil {
+				t.Fatalf("Sampler.Spec() = _, %v; want nil error", err)
+			}
+			if !slices.Equal(samplerSpec.Skills, chair.Skills) {
+				t.Errorf("sampler session skills = %v; want the darn writer's %v", samplerSpec.Skills, chair.Skills)
 			}
 			// The plan table reads the plan perch's values, and only a recipe with a Plan-Review row applies them,
 			// so the tapestry wiring over the same hub builds it.

@@ -4,6 +4,7 @@ package samplerengine
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -36,6 +37,7 @@ func TestSessionSpec(t *testing.T) {
 		Slug:               "try-the-thing",
 		WorktreeRoot:       "/work/try-the-thing",
 		DecisionRecordPath: "/work/try-the-thing/decision.md",
+		LanguageSkills:     []string{"scribe:golang-comments", "scribe:golang-testing"},
 		Engines:            fixedEngineNamer{},
 	}
 	cfg := Config{Agent: "opus[high]"}
@@ -56,8 +58,8 @@ func TestSessionSpec(t *testing.T) {
 			t.Errorf("SessionSpec() PromptEngine = %q; want %q", spec.PromptEngine, "claude")
 		}
 		stencilkit.RequireEditDirectiveOf(t, stencilsDir, spec.Prompt, "claude", "codex")
-		if spec.ConfigRole != agentconfig.RoleSampler || len(spec.Skills) != 0 {
-			t.Errorf("SessionSpec() ConfigRole, Skills = %q, %v; want %q and no skills", spec.ConfigRole, spec.Skills, agentconfig.RoleSampler)
+		if spec.ConfigRole != agentconfig.RoleSampler || !slices.Equal(spec.Skills, valid.LanguageSkills) {
+			t.Errorf("SessionSpec() ConfigRole, Skills = %q, %v; want %q, %v", spec.ConfigRole, spec.Skills, agentconfig.RoleSampler, valid.LanguageSkills)
 		}
 		directive, err := parentdirective.Directive(stencilsDir, "hub:orch", true)
 		if err != nil {

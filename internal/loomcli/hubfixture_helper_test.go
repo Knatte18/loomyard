@@ -127,6 +127,15 @@ func seedDarnHubConfig(t *testing.T, hub, verifyAttempts string, replacements ..
 	}
 }
 
+// writeSamplerConfig writes contents as the hub-wide sampler.yaml in hub's board config directory.
+func writeSamplerConfig(t *testing.T, hub, contents string) {
+	t.Helper()
+	path := configengine.ConfigFile(fabricengine.BoardDir(hub), "sampler")
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+	}
+}
+
 // writeHubGateConfig writes contents as the hub-wide gate.yaml in hub's board directory.
 func writeHubGateConfig(t *testing.T, hub, contents string) {
 	t.Helper()

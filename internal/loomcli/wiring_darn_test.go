@@ -569,14 +569,6 @@ func TestWire_SamplerRecipe(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	writeSamplerConfig := func(t *testing.T, hubPath, contents string) {
-		t.Helper()
-		path := configengine.ConfigFile(fabricengine.BoardDir(hubPath), "sampler")
-		if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
-		}
-	}
-
 	t.Run("a sampler seed fills the sampler seams, the tree scope and the attempts", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")

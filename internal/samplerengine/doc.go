@@ -22,6 +22,7 @@
 // The agent reads the decision record as the task's brief and works with the operator in the task worktree.
 // The agent writes and commits code, so the spec also renders the implementer PATTERN directive.
 // The spec renders it from the task worktree's PATTERN overview.
+// It also carries the hub's language skills the caller passes, which the agent loads before it edits code.
 //
 // The package is told every path it reads and imports no resolver.
 package samplerengine
