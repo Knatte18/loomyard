@@ -170,7 +170,7 @@ func TestBouncer_Escalation_AwaitsWithTheRecordAndLeavesItUntouched(t *testing.T
 			} else if !strings.Contains(string(brief), "lym loom circling continue my-task") {
 				t.Errorf("escalation brief = %q; want it to offer the continue verb", brief)
 			}
-			if _, err := os.Stat(focusPath(cfg.RunDir, 3)); err != nil {
+			if _, err := os.Stat(FocusPath(cfg.RunDir, 3)); err != nil {
 				t.Errorf("round-3 focus file = %v; want ensureFocus to have written it", err)
 			}
 			if shuttle.Called {

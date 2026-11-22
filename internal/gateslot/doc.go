@@ -74,7 +74,6 @@
 // `tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier.
 // `gates` is a per-name map from a gate key to a GateKey,
 // so a hub file that sets one key keeps the template's value for every other.
-// HubSetsGate reports whether the hub's own gate.yaml, its base layer alone, sets `gates.<key>`.
 // A GateKey may hold `lints` and `reports`, the steps its call runs after its tiers.
 // It may also hold a `fixer` on the `card` key only.
 // Config load fills a template key a tuned `gates` entry lacks into that entry, and `reports: []` turns the reports off.

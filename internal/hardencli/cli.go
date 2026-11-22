@@ -37,6 +37,9 @@ const (
 // sandboxShortname is the repository short name a sandbox hub is cloned under.
 const sandboxShortname = "sbx"
 
+// singleRepoFlag is the flag of `lym harden sandbox new` that builds a one-repository hub.
+const singleRepoFlag = "single-repo"
+
 // notHardenerWayForward closes the refusal of a verb run outside a hardener run's worktree.
 const notHardenerWayForward = "way forward: run lym harden sandbox in a hardener run's worktree"
 
@@ -129,16 +132,20 @@ func resolveTarget(cmd *cobra.Command, clear bool) (sandboxTarget, bool) {
 
 // newVerb builds `lym harden sandbox new`.
 func newVerb(deps cliDeps) *cobra.Command {
-	return &cobra.Command{
+	var singleRepo bool
+	cmd := &cobra.Command{
 		Use:         "new",
 		Short:       "build a throwaway sandbox hub under the worktree's sandbox root",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `new builds a throwaway hub from two local bare repositories under the
-worktree's sandbox root, with no GitHub remote, and records it in the root's hub
-list. Its prime records commit a loom.yaml with Tier 2 self-reporting off. The
-worktree's .dev-bin lym is rebuilt only when it is not built
-from the worktree's HEAD or is modified. It prints the hub's path and the
-absolute path of the .dev-bin lym.`,
+		Long: `new builds a throwaway hub under the worktree's sandbox root, with no GitHub
+remote, and records it in the root's hub list. By default the hub is a
+two-repository hub cloned from two local bare repositories; with --single-repo
+it is a one-repository hub cloned from one local bare repository, which then
+holds the code on its branches and the records and board under refs/lym/. Its
+prime records commit a loom.yaml with Tier 2 self-reporting off. The worktree's
+.dev-bin lym is rebuilt only when it is not built from the worktree's HEAD or is
+modified. It prints the hub's path, the absolute path of the .dev-bin lym and
+whether the hub is a one-repository hub.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -148,16 +155,18 @@ absolute path of the .dev-bin lym.`,
 			if !ok {
 				return nil
 			}
-			hub, err := hardenshed.NewSandbox(sandboxDeps(target, deps))
+			hub, err := hardenshed.NewSandbox(sandboxDeps(target, deps, singleRepo))
 			if err != nil {
 				output.Err(cmd.OutOrStdout(), err.Error())
 				clihelp.Abort(cmd.Context(), 1)
 				return nil
 			}
-			output.Ok(cmd.OutOrStdout(), map[string]any{"hub": hub.Hub, "lym": hub.Lym})
+			output.Ok(cmd.OutOrStdout(), map[string]any{"hub": hub.Hub, "lym": hub.Lym, "single_repo": singleRepo})
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&singleRepo, singleRepoFlag, false, "build a one-repository hub from one local bare repository, its records under refs/lym/")
+	return cmd
 }
 
 // listVerb builds `lym harden sandbox list`.
@@ -223,8 +232,9 @@ prints what it ended.`,
 }
 
 // sandboxDeps builds the seams NewSandbox needs for the worktree of target.
-// The hub is cloned over local bares, and its prime records commit the sandbox config override.
-func sandboxDeps(target sandboxTarget, deps cliDeps) hardenshed.SandboxDeps {
+// The hub is cloned over two local bares, or over one with singleRepo.
+// Its prime records commit the sandbox config override.
+func sandboxDeps(target sandboxTarget, deps cliDeps, singleRepo bool) hardenshed.SandboxDeps {
 	worktreeRoot := target.location.WorktreePath()
 	lymName := devBinLymName
 	if runtime.GOOS == "windows" {
@@ -232,7 +242,7 @@ func sandboxDeps(target sandboxTarget, deps cliDeps) hardenshed.SandboxDeps {
 	}
 	devBinLym := filepath.Join(worktreeRoot, devBinDirName, lymName)
 	var primeCwd string
-	return hardenshed.SandboxDeps{
+	sandbox := hardenshed.SandboxDeps{
 		Root: target.root,
 		Seed: fabricengine.SeedLocalBares,
 		Clone: func(codeBare, recordsBare, container string) (string, error) {
@@ -258,6 +268,18 @@ func sandboxDeps(target sandboxTarget, deps cliDeps) hardenshed.SandboxDeps {
 		},
 		Deploy: func() error { return deps.Deploy(worktreeRoot) },
 	}
+	if singleRepo {
+		sandbox.Seed = func(dir string) (string, string, error) {
+			origin, err := fabricengine.SeedLocalOrigin(dir)
+			return origin, "", err
+		}
+		sandbox.Clone = func(origin, _, container string) (string, error) {
+			hubPath, cloneCwd, err := fabriccli.CloneAndWireFromLocalOrigin(container, origin, sandboxShortname)
+			primeCwd = cloneCwd
+			return hubPath, err
+		}
+	}
+	return sandbox
 }
 
 // commitSandboxConfig writes the sandbox's loom.yaml override into the prime at primeCwd and commits it on its records.

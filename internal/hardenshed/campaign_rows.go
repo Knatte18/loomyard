@@ -1,5 +1,6 @@
 // campaign_rows.go holds Campaign, the bundle of one run's config and seams that the Harden rows are built from.
-// It also renders the facts the Harden-Bouncer judge reads about a round and answers whether a round's live gate is red.
+// It also renders the module brief of the Harden-Bouncer's seed and the facts its judge reads about a round.
+// It answers whether a round's live gate is red.
 
 package hardenshed
 
@@ -29,6 +30,8 @@ type Campaign struct {
 	WorktreeRoot string
 	// AnchorPath is the absolute anchor path of the run's worktree, which the round archive lands under.
 	AnchorPath string
+	// DecisionRecordPath is the absolute path of the run's decision record, which holds the operator's ask.
+	DecisionRecordPath string
 	// RunDir is the run directory the Harden rows share, which a halt writes its strays into.
 	RunDir string
 	// RunLive makes one `lym gate test` call of the live gate key, with the copies and packages, in its own slots.
@@ -41,6 +44,38 @@ type Campaign struct {
 	Commits func(from string) ([]string, error)
 	// Commit commits the anchor-relative paths of a round archive.
 	Commit func(relPaths []string, message string) error
+	// Entry reads the title and labels of the run's board entry, which name the module when the config names no package.
+	Entry func() (title string, labels []string, err error)
+}
+
+// SeedBrief renders the module brief of the Harden-Bouncer's seed: which modules the campaign hardens.
+// A config naming packages lists them as module directories under the worktree root.
+// A config naming none gives the board entry's title and labels instead, for the seed to find the modules from.
+// An error reading the board entry is returned.
+func (c *Campaign) SeedBrief() (string, error) {
+	if len(c.Config.Packages) > 0 {
+		return fmt.Sprintf("The hardener config names the module directories the campaign hardens, relative to the worktree root `%s`: %s.",
+			c.WorktreeRoot, backtickList(c.Config.Packages)), nil
+	}
+	title, labels, err := c.Entry()
+	if err != nil {
+		return "", fmt.Errorf("read the run's board entry: %w", err)
+	}
+	labelText := "none"
+	if len(labels) > 0 {
+		labelText = backtickList(labels)
+	}
+	return fmt.Sprintf("The hardener config names no module directory. The task's title is %q and its labels are %s: find the module or modules they name under the worktree root `%s`.",
+		title, labelText, c.WorktreeRoot), nil
+}
+
+// backtickList returns items as a comma-separated list, each in backticks.
+func backtickList(items []string) string {
+	quoted := make([]string, len(items))
+	for i, item := range items {
+		quoted[i] = "`" + item + "`"
+	}
+	return strings.Join(quoted, ", ")
 }
 
 // LiveGate returns the live gate of the fix row that works in runDir.
@@ -130,10 +165,18 @@ func (c *Campaign) ArchiveFinal(runDir string) error {
 }
 
 // RoundFacts renders the Hardener section of round's facts, one bullet per fact.
+// It opens with the path of the round's focus file, which holds the charter.
+// It then names the decision record, which holds the operator's ask.
+// The judge so carries the charter forward and keeps to the operator's focus.
 // A file the round lacks is named as absent.
 // A live report that is absent is also named red when LiveRed reads it red.
 func (c *Campaign) RoundFacts(runDir string, round int) (string, error) {
 	var facts strings.Builder
+
+	fmt.Fprintf(&facts, "- Charter: `%s`, the focus file this round ran under; the next focus file restates its standing sections.\n",
+		shedadapters.FocusPath(runDir, round))
+	fmt.Fprintf(&facts, "- Operator's ask: `%s`; the focus its `## Goal` states, as its `Added after Discussion` entries amend it, binds the next focus file.\n",
+		c.DecisionRecordPath)
 
 	models, found, err := readRoundRecord[RoundModels](runDir, "models", round)
 	if err != nil {

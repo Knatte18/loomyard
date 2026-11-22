@@ -548,7 +548,8 @@
 // `internal/fslink` and `PATTERN-lym-files` currently assert the opposite.
 //
 // **Local bares.** `SeedLocalBares` creates a bare warp with one commit on `main` and an empty bare weft.
-// It is the shape `CloneHub` clones a hub from, so a throwaway hub needs no remote and no work tree.
+// `SeedLocalOrigin` creates the one bare of a one-repository hub, holding the same commit.
+// They are the shapes `CloneHub` clones a hub from, so a throwaway hub of either layout needs no remote and no work tree.
 //
 // **Test layout.**
 // A test builds its hub through `internal/hubforge` only, never a package-local fixture type.

@@ -83,9 +83,8 @@ var templateDefaults = Config{
 		"code-burler-fix": {Tiers: []int{0}, Scope: "diff", Reports: []string{"reach", "redundancy", "mutation"}},
 		"pr-review":       {Tiers: []int{0}, Scope: "diff", Reports: []string{"mutation"}},
 
-		"harden-live":        {Tiers: []int{0}, Scope: "diff"},
-		"harden-live-copies": {Tiers: []int{0}, Scope: "diff"},
-		"harden-burler-fix":  {Tiers: []int{0}, Scope: "diff", Reports: []string{"reach", "redundancy", "mutation"}},
+		"harden-live":       {Tiers: []int{0}, Scope: "diff"},
+		"harden-burler-fix": {Tiers: []int{0}, Scope: "diff", Reports: []string{"reach", "redundancy", "mutation"}},
 	},
 	Scoper: "none",
 }

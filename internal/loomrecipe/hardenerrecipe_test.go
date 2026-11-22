@@ -65,7 +65,7 @@ func TestHardenerRecipe(t *testing.T) {
 		}
 	})
 
-	t.Run("the review row reads source with tools and the harden rubric, and the fix row declares no gates", func(t *testing.T) {
+	t.Run("the review row reads source with tools and the harden rubric, the fix row declares no gates, and the Bouncer seeds the charter", func(t *testing.T) {
 		profile, _ := rows[loomshed.NameHardenBurlerReview].Config["profile"].(map[string]any)
 		if got := profile["tool-use"]; got != true {
 			t.Errorf("review profile tool-use = %v; want true", got)
@@ -78,6 +78,9 @@ func TestHardenerRecipe(t *testing.T) {
 		}
 		if _, present := rows[loomshed.NameHardenBurlerFix].Config["gates"]; present {
 			t.Errorf("%s config has a gates key; want none, the engine fixes its gates", loomshed.NameHardenBurlerFix)
+		}
+		if got := rows[loomshed.NameHardenBouncer].Config["seed_stencil"]; got != "harden-template-seed" {
+			t.Errorf("%s config seed_stencil = %v; want harden-template-seed, the seed that writes the charter", loomshed.NameHardenBouncer, got)
 		}
 	})
 

@@ -1,4 +1,5 @@
-// cli_integration_test.go drives the sandbox verbs over a hub fixture: it builds a real sandbox hub through the verbs.
+// cli_integration_test.go drives the sandbox verbs over a hub fixture.
+// It builds a real sandbox hub of each layout through the verbs.
 
 package hardencli
 
@@ -17,6 +18,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hardenshed"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -46,11 +48,11 @@ func TestSandboxVerbs(t *testing.T) {
 		}
 		return location
 	}
-	// run executes `lym harden sandbox <verb>` in the worktree and returns the exit code and the last JSON line.
-	run := func(t *testing.T, location *lymcwd.Location, verb string) (int, map[string]any) {
+	// run executes `lym harden sandbox <verb> <flags>` in the worktree and returns the exit code and the last JSON line.
+	run := func(t *testing.T, location *lymcwd.Location, verb string, flags ...string) (int, map[string]any) {
 		t.Helper()
 		var out bytes.Buffer
-		code := clihelp.ExecuteIn(newCommand(deps), location.AnchorPath(), &out, []string{"sandbox", verb})
+		code := clihelp.ExecuteIn(newCommand(deps), location.AnchorPath(), &out, append([]string{"sandbox", verb}, flags...))
 		lines := strings.Split(strings.TrimSpace(out.String()), "\n")
 		var answer map[string]any
 		if err := json.Unmarshal([]byte(lines[len(lines)-1]), &answer); err != nil {
@@ -108,15 +110,47 @@ func TestSandboxVerbs(t *testing.T) {
 		if !holdsOverride {
 			t.Errorf("none of %v holds the friction key empty; want the committed override", overrides)
 		}
+		if answer["single_repo"] != false {
+			t.Errorf("single_repo = %v; want false for a hub made without --single-repo", answer["single_repo"])
+		}
+		bares, err := filepath.Glob(filepath.Join(filepath.Dir(hubPath), "*-bare"))
+		if err != nil || len(bares) != 2 {
+			t.Errorf("Glob(the container's bares) = %v, %v; want exactly two, the code bare and the records bare", bares, err)
+		}
 	}) {
 		return
 	}
 
-	if !t.Run("list shows the hub a second command made", func(t *testing.T) {
+	var singleRepoHub string
+	if !t.Run("new --single-repo builds a one-repository hub whose one bare holds the records under refs/lym/", func(t *testing.T) {
+		code, answer := run(t, hardener, "new", "--"+singleRepoFlag)
+		if code != 0 {
+			t.Fatalf("`harden sandbox new --%s` = exit %d, %v; want 0", singleRepoFlag, code, answer)
+		}
+		singleRepoHub, _ = answer["hub"].(string)
+		if answer["single_repo"] != true {
+			t.Errorf("single_repo = %v; want true", answer["single_repo"])
+		}
+		container := filepath.Dir(singleRepoHub)
+		if filepath.Dir(container) != root {
+			t.Fatalf("hub = %q; want a hub in a container directly under the sandbox root %q", singleRepoHub, root)
+		}
+		bares, err := filepath.Glob(filepath.Join(container, "*-bare"))
+		if err != nil || len(bares) != 1 {
+			t.Fatalf("Glob(the container's bares) = %v, %v; want exactly one bare", bares, err)
+		}
+		if refs := gitkit.Git(t, bares[0], "for-each-ref", "--format=%(refname)", "refs/lym/"); strings.TrimSpace(refs) == "" {
+			t.Errorf("git for-each-ref refs/lym/ in %s = %q; want the hub's records under refs/lym/", bares[0], refs)
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("list shows the hubs later commands made, in the order they were made", func(t *testing.T) {
 		code, answer := run(t, hardener, "list")
 		hubs, _ := answer["hubs"].([]any)
-		if code != 0 || len(hubs) != 1 || hubs[0] != hubPath {
-			t.Errorf("`harden sandbox list` = exit %d, %v; want exit 0 listing %q", code, answer, hubPath)
+		if code != 0 || len(hubs) != 2 || hubs[0] != hubPath || hubs[1] != singleRepoHub {
+			t.Errorf("`harden sandbox list` = exit %d, %v; want exit 0 listing %q then %q", code, answer, hubPath, singleRepoHub)
 		}
 	}) {
 		return
@@ -159,8 +193,10 @@ func TestSandboxVerbs(t *testing.T) {
 				t.Errorf("`harden sandbox clear` ended %v; want it to report process %d", ended, orphan.Process.Pid)
 			}
 		}
-		if _, err := os.Stat(hubPath); !os.IsNotExist(err) {
-			t.Errorf("Stat(%q) = %v; want the hub removed", hubPath, err)
+		for _, hub := range []string{hubPath, singleRepoHub} {
+			if _, err := os.Stat(hub); !os.IsNotExist(err) {
+				t.Errorf("Stat(%q) = %v; want the hub removed", hub, err)
+			}
 		}
 		if hubs, err := hardenshed.ListSandbox(root); err != nil || len(hubs) != 0 {
 			t.Errorf("ListSandbox() = %v, %v; want no hub", hubs, err)

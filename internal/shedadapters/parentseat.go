@@ -61,7 +61,7 @@ const parentDeadlineLayout = "2006-01-02 15:04:05 MST"
 // The time is in RFC 3339 with nanoseconds.
 // A fresh start, a new generation and a clear each write that file anew; a goto, a resume and a restarted row keep it.
 func roundSeed(runDir string) (string, error) {
-	info, err := os.Stat(focusPath(runDir, 1))
+	info, err := os.Stat(FocusPath(runDir, 1))
 	if err != nil {
 		return "", err
 	}

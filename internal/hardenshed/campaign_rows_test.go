@@ -1,9 +1,10 @@
-// campaign_rows_test.go covers the facts a Campaign renders for a round, its live-red answer and its halt.
+// campaign_rows_test.go covers the seed brief and the round facts a Campaign renders, its live-red answer and its halt.
 
 package hardenshed
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -119,6 +120,29 @@ func TestCampaignRoundFacts(t *testing.T) {
 	}
 }
 
+func TestCampaignRoundFactsNameTheCharterAndTheOperatorsAsk(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	for _, round := range []int{1, 2} {
+		t.Run(fmt.Sprintf("Round%d", round), func(t *testing.T) {
+			t.Parallel()
+			runDir := t.TempDir()
+			campaign := &Campaign{DecisionRecordPath: "/anchor/_lym/discussion/decision-record.md"}
+
+			got, err := campaign.RoundFacts(runDir, round)
+			if err != nil {
+				t.Fatalf("RoundFacts() error = %v; want nil", err)
+			}
+			for _, want := range []string{filepath.Join(runDir, fmt.Sprintf("round-%d-focus.md", round)), campaign.DecisionRecordPath} {
+				if !strings.Contains(got, want) {
+					t.Errorf("RoundFacts(round %d) = %q; want it to name %q", round, got, want)
+				}
+			}
+		})
+	}
+}
+
 // fullRound writes every file one round of a campaign leaves in runDir.
 func fullRound(t *testing.T, runDir string) {
 	t.Helper()
@@ -144,6 +168,58 @@ func fullRound(t *testing.T, runDir string) {
 	report := "---\ndispositions:\n  - id: f1\n    disposition: deferred\n    reason: needs a refactor outside the module\nspawned: true\n---\nbody\n"
 	if err := os.WriteFile(filepath.Join(runDir, "round-1-fixer-report.md"), []byte(report), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCampaignSeedBrief(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	entryErr := errors.New("board unreadable")
+	entry := func(title string, labels []string, err error) func() (string, []string, error) {
+		return func() (string, []string, error) { return title, labels, err }
+	}
+	tests := []struct {
+		name     string
+		packages []string
+		entry    func() (string, []string, error)
+		want     string
+		wantErr  error
+	}{
+		{
+			name:     "PackagesAreListedAsModuleDirectories",
+			packages: []string{"internal/a", "internal/b"},
+			want:     "The hardener config names the module directories the campaign hardens, relative to the worktree root `/wt`: `internal/a`, `internal/b`.",
+		},
+		{
+			name:  "NoPackageNamesTheTitleAndLabels",
+			entry: entry("Hardener campaign on fabricengine", []string{"bug", "fabric"}, nil),
+			want:  "The hardener config names no module directory. The task's title is \"Hardener campaign on fabricengine\" and its labels are `bug`, `fabric`: find the module or modules they name under the worktree root `/wt`.",
+		},
+		{
+			name:  "NoPackageAndNoLabelsNamesNone",
+			entry: entry("Harden fabric", nil, nil),
+			want:  "The hardener config names no module directory. The task's title is \"Harden fabric\" and its labels are none: find the module or modules they name under the worktree root `/wt`.",
+		},
+		{name: "AnEntryErrorIsReturned", entry: entry("", nil, entryErr), wantErr: entryErr},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			campaign := &Campaign{Config: Config{Packages: tt.packages}, WorktreeRoot: "/wt", Entry: tt.entry}
+
+			got, err := campaign.SeedBrief()
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Errorf("SeedBrief() error = %v; want it to wrap %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil || got != tt.want {
+				t.Errorf("SeedBrief() = %q, %v; want %q, nil", got, err, tt.want)
+			}
+		})
 	}
 }
 

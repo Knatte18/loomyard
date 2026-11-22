@@ -21,6 +21,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
@@ -130,15 +131,16 @@ func resolveHardenModel(key shuttleengine.ModelKey, raw string, registry modelsp
 }
 
 // hardenCampaign builds the run's campaign over cfg.
-// Its seams are the live gate's spawn, the reap, the head and commit reads, and the archive commit.
+// Its seams are the live gate's spawn, the reap, the head and commit reads, the archive commit and the board entry read.
 // runDir is the run directory the Harden rows share.
 func hardenCampaign(location *lymcwd.Location, cfg hardenshed.Config, runDir string) *hardenshed.Campaign {
 	return &hardenshed.Campaign{
-		Config:       cfg,
-		WorktreeRoot: location.WorktreePath(),
-		AnchorPath:   location.AnchorPath(),
-		RunDir:       runDir,
-		RunLive:      hardenLiveRunner(location),
+		Config:             cfg,
+		WorktreeRoot:       location.WorktreePath(),
+		AnchorPath:         location.AnchorPath(),
+		RunDir:             runDir,
+		RunLive:            hardenLiveRunner(location),
+		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
 		Reap: func(row string, point hardenshed.ReapPoint) ([]hardenshed.StrayEntry, error) {
 			deps, err := HardenReapDeps(location, row, point)
 			if err != nil {
@@ -164,6 +166,37 @@ func hardenCampaign(location *lymcwd.Location, cfg hardenshed.Config, runDir str
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, relPaths, message, fabricengine.EnvSyncOptions())
 			return err
 		},
+		Entry: hardenBoardEntry(location),
+	}
+}
+
+// boardTaskReader is the one board read the campaign's entry seam makes.
+type boardTaskReader interface {
+	GetTask(idOrSlug any) (boardengine.Task, bool, error)
+}
+
+// readBoardEntry returns the title and labels of the board entry slug, read through the board that open returns.
+// An entry the board lacks is refused with a way forward that names the modules through hardener.packages.
+func readBoardEntry(open func() (boardTaskReader, error), slug string) (string, []string, error) {
+	board, err := open()
+	if err != nil {
+		return "", nil, fmt.Errorf("open the board: %w", err)
+	}
+	task, found, err := board.GetTask(slug)
+	if err != nil {
+		return "", nil, fmt.Errorf("read the board entry %q: %w", slug, err)
+	}
+	if !found {
+		return "", nil, fmt.Errorf("the board holds no entry %q; way forward: name the modules in the task's run_settings with hardener.packages, then run \"lym loom resume\"", slug)
+	}
+	return task.Title, task.Labels, nil
+}
+
+// hardenBoardEntry returns the campaign's entry seam.
+// It reads the title and labels of the worktree's own entry on the hub's board.
+func hardenBoardEntry(location *lymcwd.Location) func() (string, []string, error) {
+	return func() (string, []string, error) {
+		return readBoardEntry(func() (boardTaskReader, error) { return boardengine.OpenHub(location.HubPath) }, seedSlug(location.WorktreeName))
 	}
 }
 
@@ -276,26 +309,25 @@ func hardenLiveRunner(location *lymcwd.Location) func(key string, copies int, pa
 
 // hardenPreflight returns the campaign check Preflight runs for a hardener run over cfg.
 // It reads the hub's gate config at each call, so a gate.yaml edit between two steps takes effect.
-func hardenPreflight(location *lymcwd.Location, cfg hardenshed.Config) func() error {
+// A hub with no gate.yaml is refused with the config's own way forward, since the live gate could not run.
+// A config naming no package reads the run's board entry through entry.
+// A missing one is so refused before any agent spends tokens.
+func hardenPreflight(location *lymcwd.Location, cfg hardenshed.Config, entry func() (string, []string, error)) func() error {
 	return func() error {
 		dirs := fabricengine.ConfigDirs(location)
 		gateCfg, err := gateslot.LoadConfig(dirs)
-		if err != nil && !errors.Is(err, gateslot.ErrConfigAbsent) {
-			return err
-		}
-		live, err := hardenLiveKey(dirs, gateCfg, hardenshed.LiveGateKey)
 		if err != nil {
 			return err
 		}
-		copies, err := hardenLiveKey(dirs, gateCfg, hardenshed.LiveCopiesGateKey)
-		if err != nil {
-			return err
+		if len(cfg.Packages) == 0 {
+			if _, _, err := entry(); err != nil {
+				return err
+			}
 		}
 		return hardenshed.CheckCampaign(hardenshed.CampaignCheck{
 			Config:        cfg,
 			WorktreeRoot:  location.WorktreePath(),
-			Live:          live,
-			Copies:        copies,
+			Live:          hardenLiveKey(gateCfg, hardenshed.LiveGateKey),
 			HoldsTierTest: impactset.HoldsTierTest,
 			Route: func(key string) (string, error) {
 				return reviewbudget.Route(dirs, hardenshed.ConfigSpec(), key)
@@ -304,26 +336,19 @@ func hardenPreflight(location *lymcwd.Location, cfg hardenshed.Config) func() er
 	}
 }
 
-// hardenLiveKey reads what the campaign check needs of the gate key name:
-// whether the hub's own gate.yaml sets it, its tiers, and the tiers a run of it tests, each tier's covers included.
-func hardenLiveKey(dirs configengine.Dirs, gateCfg gateslot.Config, name string) (hardenshed.LiveKey, error) {
-	set, err := gateslot.HubSetsGate(dirs, name)
-	if err != nil {
-		return hardenshed.LiveKey{}, fmt.Errorf("read the hub's gates.%s key: %w; way forward: fix the hub's gate.yaml with lym config gate from the prime, %s", name, err, hardenResumeClause)
-	}
-	key := hardenshed.LiveKey{Set: set}
+// hardenLiveKey reads what the campaign check needs of the gate key name as gateCfg resolves it, template included:
+// its tiers, and the tiers a run of it tests, each tier's covers included.
+func hardenLiveKey(gateCfg gateslot.Config, name string) hardenshed.LiveKey {
 	gate, found := gateCfg.Gates[name]
 	if !found {
-		return key, nil
+		return hardenshed.LiveKey{}
 	}
-	key.Tiers = gate.Tiers
 	tested := slices.Clone(gate.Tiers)
 	for _, tier := range gate.Tiers {
 		tested = append(tested, gateCfg.Tiers[fmt.Sprintf("tier%d", tier)].Covers...)
 	}
 	slices.Sort(tested)
-	key.Tested = slices.Compact(tested)
-	return key, nil
+	return hardenshed.LiveKey{Tiers: gate.Tiers, Tested: slices.Compact(tested)}
 }
 
 // wireHarden fills the Env fields a hardener run reads: the Harden-Review segment, the campaign and Preflight's check.
@@ -349,8 +374,9 @@ func (c *loomCLI) wireHarden(location *lymcwd.Location, loomCfg loomengine.Confi
 		return fmt.Errorf("loomcli: the hardener recipe's %s row has no run_subdir, so this lym build is broken", loomshed.NameHardenBouncer)
 	}
 	c.env.Segments[hardenReviewSegment] = settings
-	c.env.Harden = hardenCampaign(location, cfg, filepath.Join(loomengine.LoomReviewsDir(location), subdir))
-	c.env.PreflightHarden = hardenPreflight(location, cfg)
+	campaign := hardenCampaign(location, cfg, filepath.Join(loomengine.LoomReviewsDir(location), subdir))
+	c.env.Harden = campaign
+	c.env.PreflightHarden = hardenPreflight(location, cfg, campaign.Entry)
 	return nil
 }
 

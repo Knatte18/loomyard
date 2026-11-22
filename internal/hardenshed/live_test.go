@@ -22,16 +22,21 @@ func TestLiveGate(t *testing.T) {
 	green := LiveRun{Passed: true, Output: started("tier2", 2)}
 	clamp := "gate test: --copies asked for 3 copies of tier2 and 2 ran, as the pool's slots hold no more"
 	noFailingLine := "the `harden-live` run failed or started no test binary and its output names no failing test; read {report}"
+	// copiesCall names a `harden-live` call made with the concurrent copies.
+	// It runs under the same key as the merge-bar call.
+	const copiesCall = LiveGateKey + " with copies"
 
 	tests := []struct {
 		name        string
 		llmDriving  bool
 		concurrency int
-		live        LiveRun
-		liveErr     error
-		copies      LiveRun
-		copiesErr   error
-		withMain    bool
+		// noPackages runs the campaign with no package named; otherwise it names the package pkg.
+		noPackages bool
+		live       LiveRun
+		liveErr    error
+		copies     LiveRun
+		copiesErr  error
+		withMain   bool
 
 		wantPassed     bool
 		wantErr        []string
@@ -78,13 +83,13 @@ func TestLiveGate(t *testing.T) {
 		{
 			name: "RedCopiesStaysGreenAndIsRecorded", concurrency: 3, withMain: true, live: green,
 			copies:     LiveRun{Passed: false, Output: started("tier2 copy 1", 1) + started("tier2 copy 2", 1) + "--- FAIL: TestB\n" + clamp + "\n"},
-			wantPassed: true, wantMark: MarkGreen, wantCallKeys: []string{LiveGateKey, LiveCopiesGateKey},
+			wantPassed: true, wantMark: MarkGreen, wantCallKeys: []string{LiveGateKey, copiesCall},
 			wantCopies: &LiveRunReport{Started: 2, FailingLines: []string{"--- FAIL: TestB"}, Clamp: clamp},
 		},
 		{
 			name: "CopiesStartingNoneStaysGreenAndIsRecorded", concurrency: 3, withMain: true, live: green,
 			copies:     LiveRun{Passed: true, Output: started("tier2 copy 1", 0)},
-			wantPassed: true, wantMark: MarkGreen, wantCallKeys: []string{LiveGateKey, LiveCopiesGateKey},
+			wantPassed: true, wantMark: MarkGreen, wantCallKeys: []string{LiveGateKey, copiesCall},
 			wantCopies: &LiveRunReport{Passed: true},
 		},
 		{
@@ -94,8 +99,19 @@ func TestLiveGate(t *testing.T) {
 		{
 			name: "RefusedCopiesIsRecordedNotFailed", concurrency: 3, withMain: true, live: green,
 			copies:     LiveRun{Refused: "gate test: refused; way forward: lower the copies"},
-			wantPassed: true, wantMark: MarkGreen, wantCallKeys: []string{LiveGateKey, LiveCopiesGateKey},
+			wantPassed: true, wantMark: MarkGreen, wantCallKeys: []string{LiveGateKey, copiesCall},
 			wantCopies: &LiveRunReport{Refused: "gate test: refused; way forward: lower the copies"},
+		},
+		{
+			name: "NoPackageRunsNoCopiesAndAPassStartingNoBinaryIsGreen", noPackages: true, concurrency: 3,
+			live:       LiveRun{Passed: true, Output: started("tier0", 0)},
+			wantPassed: true, wantMark: MarkGreen, wantCallKeys: []string{LiveGateKey},
+		},
+		{
+			name: "NoPackageFailedRunIsRed", noPackages: true, concurrency: 3,
+			live:     LiveRun{Passed: false, Output: started("tier0", 1) + "--- FAIL: TestA (0.1s)\n"},
+			wantMark: MarkRed, wantCallKeys: []string{LiveGateKey},
+			wantDeferred: []string{"--- FAIL: TestA (0.1s)"},
 		},
 		{
 			name: "PackageWithoutTmuxkitMainIsOutsideTheCover", concurrency: 1, live: green,
@@ -114,7 +130,7 @@ func TestLiveGate(t *testing.T) {
 		},
 		{
 			name: "CopiesRunErrorCarriesItsWayForwardAndWritesNoReport", concurrency: 3, withMain: true, live: green,
-			copiesErr: errors.New("wait failed"), wantNoReport: true, wantCallKeys: []string{LiveGateKey, LiveCopiesGateKey},
+			copiesErr: errors.New("wait failed"), wantNoReport: true, wantCallKeys: []string{LiveGateKey, copiesCall},
 			wantErr: []string{"wait failed", "way forward:"},
 		},
 	}
@@ -134,22 +150,27 @@ func TestLiveGate(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			named := []string{"pkg"}
+			if tt.noPackages {
+				named = nil
+			}
 			var keys []string
 			gate := NewLiveGate(LiveDeps{
-				RunDir: runDir, WorktreeRoot: root, Packages: []string{"pkg"},
+				RunDir: runDir, WorktreeRoot: root, Packages: named,
 				Round:      func() (int, error) { return 1, nil },
 				LLMDriving: tt.llmDriving, Concurrency: tt.concurrency,
 				Run: func(key string, copies int, packages []string) (LiveRun, error) {
-					keys = append(keys, key)
-					if !reflect.DeepEqual(packages, []string{"pkg"}) {
-						t.Errorf("Run(%s) packages = %v; want [pkg]", key, packages)
+					if !reflect.DeepEqual(packages, named) {
+						t.Errorf("Run(%s) packages = %v; want %v", key, packages, named)
 					}
-					if wantCopies := map[string]int{LiveGateKey: 0, LiveCopiesGateKey: tt.concurrency}[key]; copies != wantCopies {
-						t.Errorf("Run(%s) copies = %d; want %d", key, copies, wantCopies)
-					}
-					if key == LiveCopiesGateKey {
+					if copies > 0 {
+						keys = append(keys, key+" with copies")
+						if copies != tt.concurrency {
+							t.Errorf("Run(%s) copies = %d; want %d", key, copies, tt.concurrency)
+						}
 						return tt.copies, tt.copiesErr
 					}
+					keys = append(keys, key)
 					return tt.live, tt.liveErr
 				},
 			})

@@ -259,6 +259,24 @@ func TestComposePrompt_FocusDirective(t *testing.T) {
 	})
 }
 
+// TestComposeFixPrompt_TargetInstructions proves the profile's target instructions follow the fix step's work statement.
+func TestComposeFixPrompt_TargetInstructions(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const instructions = "Leave a live regression test for a defect found live."
+	p := newComposableProfile(t)
+	p.Target.Instructions = instructions
+
+	fix := composeFix(t, newTestStencilsDir(t), &p, "")
+
+	content := fix.Files[fixStepFile].Content
+	work, at := fixWork(p.ReviewPath, "", false, FixRerun{}), strings.Index(content, instructions)
+	if at < 0 || at < strings.Index(content, work) {
+		t.Errorf("fix step = %q; want the instructions %q after the work statement %q", content, instructions, work)
+	}
+}
+
 // TestComposePrompt_MinimalProfile proves a minimal valid profile composes both halves cleanly through stencil:
 // no unfilled-marker error is raised.
 // The review half's combined prompt carries the profile's content: the review path and the verbatim rubric text.

@@ -30,14 +30,12 @@ func TestCheckCampaign(t *testing.T) {
 				Reviewer: []string{"opus", "fable", "sonnet"}, Fixer: []string{"sonnet", "opus"}, Concurrency: 3,
 			},
 			WorktreeRoot:  root,
-			Live:          LiveKey{Set: true, Tiers: []int{2}, Tested: []int{2}},
-			Copies:        LiveKey{Set: true, Tiers: []int{2}, Tested: []int{2}},
+			Live:          LiveKey{Tiers: []int{2}, Tested: []int{2}},
 			HoldsTierTest: func(string, []int) bool { return true },
 			Route:         func(key string) (string, error) { return "ROUTE(" + key + ")", nil },
 		}
 	}
 	liveWrite := "gates." + LiveGateKey + "={tiers: [<live tier>], scope: diff}"
-	copiesWrite := "gates." + LiveCopiesGateKey + "={tiers: [<live tier>], scope: diff}"
 
 	tests := []struct {
 		name     string
@@ -46,9 +44,12 @@ func TestCheckCampaign(t *testing.T) {
 	}{
 		{name: "PassingCampaign", mutate: func(*CampaignCheck) {}},
 		{
-			name:     "NoPackage",
-			mutate:   func(in *CampaignCheck) { in.Config.Packages = nil },
-			wantSubs: []string{"names no package", "ROUTE(packages)"},
+			name: "NoPackagePassesAndRunsNoCopiesOrTierTestCheck",
+			mutate: func(in *CampaignCheck) {
+				in.Config.Packages = nil
+				in.Live.Tiers = []int{1, 2}
+				in.HoldsTierTest = func(string, []int) bool { return false }
+			},
 		},
 		{
 			name:     "PackageDirectoryMissing",
@@ -56,22 +57,8 @@ func TestCheckCampaign(t *testing.T) {
 			wantSubs: []string{`package "absent"`, "ROUTE(packages)"},
 		},
 		{
-			name:     "LiveKeyNotSetByTheHub",
-			mutate:   func(in *CampaignCheck) { in.Live.Set = false },
-			wantSubs: []string{"sets no gates." + LiveGateKey, liveWrite, "from the prime"},
-		},
-		{
-			name:     "CopiesKeyNotSetByTheHubWhenCopiesRun",
-			mutate:   func(in *CampaignCheck) { in.Copies.Set = false },
-			wantSubs: []string{"sets no gates." + LiveCopiesGateKey, copiesWrite},
-		},
-		{
-			name:   "CopiesKeyNotSetWhenTheTestsDriveAnLLM",
-			mutate: func(in *CampaignCheck) { in.Copies.Set = false; in.Config.LLMDriving = true },
-		},
-		{
-			name:   "CopiesKeyNotSetWhenConcurrencyIsOne",
-			mutate: func(in *CampaignCheck) { in.Copies.Set = false; in.Config.Concurrency = 1 },
+			name:   "TemplateLiveKeyPassesAndTheCopiesRunOnItsTier",
+			mutate: func(in *CampaignCheck) { in.Live = LiveKey{Tiers: []int{0}, Tested: []int{0}} },
 		},
 		{
 			name:     "LiveKeyNamesTheBilledTier",
@@ -79,18 +66,17 @@ func TestCheckCampaign(t *testing.T) {
 			wantSubs: []string{"gates." + LiveGateKey + " names tier3", liveWrite},
 		},
 		{
-			name:     "CopiesKeyNamesTheBilledTier",
-			mutate:   func(in *CampaignCheck) { in.Copies.Tiers = []int{3} },
-			wantSubs: []string{"gates." + LiveCopiesGateKey + " names tier3", copiesWrite},
+			name:     "LiveKeyNamesTwoTiersWhenCopiesRun",
+			mutate:   func(in *CampaignCheck) { in.Live.Tiers = []int{1, 2} },
+			wantSubs: []string{"gates." + LiveGateKey + " names the tiers [1 2]", liveWrite},
 		},
 		{
-			name:     "CopiesKeyNamesTwoTiersWhenCopiesRun",
-			mutate:   func(in *CampaignCheck) { in.Copies.Tiers = []int{1, 2} },
-			wantSubs: []string{"gates." + LiveCopiesGateKey + " names the tiers [1 2]", copiesWrite},
+			name:   "LiveKeyNamesTwoTiersWhenTheTestsDriveAnLLM",
+			mutate: func(in *CampaignCheck) { in.Live.Tiers = []int{1, 2}; in.Config.LLMDriving = true },
 		},
 		{
-			name:   "CopiesKeyNamesTwoTiersWhenTheTestsDriveAnLLM",
-			mutate: func(in *CampaignCheck) { in.Copies.Tiers = []int{1, 2}; in.Config.LLMDriving = true },
+			name:   "LiveKeyNamesTwoTiersWhenConcurrencyIsOne",
+			mutate: func(in *CampaignCheck) { in.Live.Tiers = []int{1, 2}; in.Config.Concurrency = 1 },
 		},
 		{
 			name: "PackageHoldsNoTestOfTheLiveTier",
@@ -100,18 +86,9 @@ func TestCheckCampaign(t *testing.T) {
 			wantSubs: []string{`package "pkg"`, "gates." + LiveGateKey, "ROUTE(packages)", liveWrite},
 		},
 		{
-			name: "PackageHoldsNoTestOfTheCopiesTier",
-			mutate: func(in *CampaignCheck) {
-				in.Copies.Tested = []int{1}
-				in.HoldsTierTest = func(_ string, tiers []int) bool { return !slices.Contains(tiers, 1) }
-			},
-			wantSubs: []string{`package "pkg"`, "gates." + LiveCopiesGateKey, "ROUTE(packages)", copiesWrite},
-		},
-		{
 			name: "PackageTestedOnlyThroughACoveredTier",
 			mutate: func(in *CampaignCheck) {
 				in.Live.Tested = []int{2, 1}
-				in.Copies.Tested = []int{2, 1}
 				in.HoldsTierTest = func(_ string, tiers []int) bool { return slices.Contains(tiers, 1) }
 			},
 		},

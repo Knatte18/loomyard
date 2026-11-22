@@ -29,9 +29,11 @@ func SandboxRoot(worktreeRoot string) string {
 type SandboxDeps struct {
 	// Root is the sandbox root; NewSandbox writes only under it.
 	Root string
-	// Seed creates the code bare and the records bare a hub is cloned from under dir.
+	// Seed creates the bares a hub is cloned from under dir:
+	// the code bare, and the records bare a two-repository hub has beside it.
+	// The records bare is empty for a one-repository hub, whose code bare is its one origin.
 	Seed func(dir string) (codeBare, recordsBare string, err error)
-	// Clone clones a hub from the two bares into container, with no GitHub remote, and returns the hub's path.
+	// Clone clones a hub from the bares Seed made into container, with no GitHub remote, and returns the hub's path.
 	Clone func(codeBare, recordsBare, container string) (hubPath string, err error)
 	// CommitOverride commits the hub's sandbox config onto its prime records before any pair exists.
 	CommitOverride func(hubPath string) error
@@ -66,7 +68,7 @@ func hubListPaths(root string) (path, lockPath string) {
 }
 
 // NewSandbox makes a fresh throwaway hub under deps.Root, records it in the root's hub list, and returns it with its lym.
-// It seeds the two bares and clones the hub in a container of its own, then has the sandbox config committed.
+// It seeds the hub's bares and clones the hub in a container of its own, then has the sandbox config committed.
 // It rebuilds the `.dev-bin` lym only when its revision is not the worktree HEAD's or it is marked modified.
 // The hub list is written under a lock, so another process lists the hub.
 // A failure after the container is made removes the container, the seeded bares included, before the error returns.

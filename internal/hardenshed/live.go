@@ -17,9 +17,9 @@ import (
 
 // The marks a live report carries.
 const (
-	// MarkRed says the round's `harden-live` run failed or started no test binary.
+	// MarkRed says the round's `harden-live` run failed, or started no test binary for a campaign that names packages.
 	MarkRed = "red"
-	// MarkGreen says the round's `harden-live` run passed and started a test binary.
+	// MarkGreen says the round's `harden-live` run passed, and started a test binary when the campaign names packages.
 	MarkGreen = "green"
 )
 
@@ -83,7 +83,7 @@ type LiveReport struct {
 	Mark string `json:"mark"`
 	// Live is the `harden-live` call.
 	Live LiveRunReport `json:"live"`
-	// Copies is the `harden-live-copies` call, nil when none was made.
+	// Copies is the `harden-live` call run with the concurrent copies, nil when none was made.
 	Copies *LiveRunReport `json:"copies,omitempty"`
 	// OutsideStrayCover are the packages whose test files hold no `tmuxkit.Main(` call.
 	OutsideStrayCover []string `json:"outside_stray_cover,omitempty"`
@@ -154,10 +154,14 @@ func packagesOutsideStrayCover(root string, packages []string) ([]string, error)
 }
 
 // NewLiveGate returns the live gate, which runs the campaign's live tests after a fix round and reports the round.
-// Each call runs `harden-live` once.
-// It then runs `harden-live-copies` when the tests drive no LLM session and concurrency is above 1.
+// Each call runs `harden-live` once, over the campaign's packages, or over the key's own scope when it names none.
+// It then runs `harden-live` again with the concurrent copies when copies run,
+// so the copies run on the tier the key names:
+// the tests drive no LLM session, concurrency is above 1 and the campaign names packages.
 // It writes the round's live report and fails when the mark is red.
-// The mark is red when the `harden-live` run failed or started no test binary.
+// The mark is red when the `harden-live` run failed.
+// It is also red when the run started no test binary for a campaign that names packages;
+// with none named, a scope that holds no test starts none.
 // A refused `harden-live` call, or a call that could not run, returns an error and writes no report.
 // A refused copies call is recorded as refused and leaves the mark alone.
 func NewLiveGate(deps LiveDeps) shuttleengine.Gate {
@@ -174,10 +178,10 @@ func NewLiveGate(deps LiveDeps) shuttleengine.Gate {
 			return shuttleengine.GateResult{}, fmt.Errorf("live gate: %w", errors.New(live.Refused))
 		}
 		report := LiveReport{Round: round, Live: reportRun(live)}
-		if !deps.LLMDriving && deps.Concurrency > 1 {
-			copies, err := deps.Run(LiveCopiesGateKey, deps.Concurrency, deps.Packages)
+		if copiesRun(deps.LLMDriving, deps.Concurrency, deps.Packages) {
+			copies, err := deps.Run(LiveGateKey, deps.Concurrency, deps.Packages)
 			if err != nil {
-				return shuttleengine.GateResult{}, fmt.Errorf("live gate: run %s: %w; %s", LiveCopiesGateKey, err, liveWayForward)
+				return shuttleengine.GateResult{}, fmt.Errorf("live gate: run %s with %d copies: %w; %s", LiveGateKey, deps.Concurrency, err, liveWayForward)
 			}
 			copiesReport := reportRun(copies)
 			report.Copies = &copiesReport
@@ -188,7 +192,7 @@ func NewLiveGate(deps LiveDeps) shuttleengine.Gate {
 
 		path := liveReportPath(deps.RunDir, round)
 		report.Mark = MarkGreen
-		if !report.Live.Passed || report.Live.Started == 0 {
+		if !report.Live.Passed || (report.Live.Started == 0 && len(deps.Packages) > 0) {
 			report.Mark = MarkRed
 			report.Deferred = report.Live.FailingLines
 			if len(report.Deferred) == 0 {

@@ -30,6 +30,18 @@ func CloneAndWireFromLocalBares(container, codeBare, recordsBare, shortname stri
 	return res.HubPath, res.PrimeCwd, err
 }
 
+// CloneAndWireFromLocalOrigin clones a one-repository hub named shortname under container from one local bare repository.
+// It wires the hub as CloneAndWire does, and the clone seeds the hub's records and board into origin under refs/lym/.
+// It returns the hub's path and its prime's cwd; the clone is left intact on error, as CloneAndWire leaves it.
+func CloneAndWireFromLocalOrigin(container, origin, shortname string) (hubPath, primeCwd string, err error) {
+	res, err := CloneAndWire(container, fabricengine.CloneOptions{
+		WeftURL:    origin,
+		Shortname:  shortname,
+		SingleRepo: true,
+	})
+	return res.HubPath, res.PrimeCwd, err
+}
+
 // CloneAndWire clones a hub and wires it, so that a successful clone needs no reconcile.
 // It materializes the hub-wide config, then commits it on weft:main and pushes it through `fabricengine.PushCloneBoard`.
 // That verb pushes a two-repository clone's and a join's board as any board is pushed.

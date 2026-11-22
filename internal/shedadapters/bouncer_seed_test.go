@@ -83,7 +83,7 @@ func TestBouncer_SeedCall_HappyPath(t *testing.T) {
 		}
 	}
 
-	focusRaw, err := os.ReadFile(focusPath(cfg.RunDir, 1))
+	focusRaw, err := os.ReadFile(FocusPath(cfg.RunDir, 1))
 	if err != nil {
 		t.Fatalf("ReadFile(round-1-focus.md) = %v; want nil", err)
 	}
@@ -103,6 +103,66 @@ func TestBouncer_SeedCall_HappyPath(t *testing.T) {
 	}
 }
 
+// TestBouncer_RenderSeedPrompt_NamedSeedStencil pins that a named SeedStencil replaces the shared seed template.
+// It also pins that SeedBrief fills its seed_brief marker, and that a SeedStencil no stencil answers fails construction.
+func TestBouncer_RenderSeedPrompt_NamedSeedStencil(t *testing.T) {
+	tiergate.Require(t, 0)
+	const ownSeed = "harden-template-seed"
+	const focus = "/abs/round-1-focus.md"
+	brief := func() (string, error) { return "BRIEF TEXT", nil }
+
+	tests := []struct {
+		name string
+		// override replaces the shipped seed template's body; empty renders the shipped one.
+		override  string
+		brief     func() (string, error)
+		wantSubs  []string
+		wantError string
+	}{
+		{name: "TheBriefFillsTheNamedTemplate", override: "own seed: {{.seed_brief}} {{.focus_path}}\n", brief: brief, wantSubs: []string{"own seed: BRIEF TEXT " + focus}},
+		{name: "TheShippedHardenSeedFills", brief: brief, wantSubs: []string{"BRIEF TEXT", focus}},
+		{name: "ABriefErrorFailsThePrompt", override: "{{.seed_brief}}\n", brief: func() (string, error) { return "", errors.New("board unreadable") }, wantError: "board unreadable"},
+		{name: "NoBriefLeavesTheMarkerUnfilled", override: "{{.seed_brief}}\n", wantError: "bouncer seed prompt fill failed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := []bouncerFixtureOpt{withShuttle(&shedfake.Shuttle{})}
+			if tt.override != "" {
+				opts = append(opts, withStencilOverrides(map[string]string{ownSeed: tt.override}))
+			}
+			fx := newBouncerFixture(t, opts...)
+			fx.Config.SeedStencil = ownSeed
+			fx.Config.SeedBrief = tt.brief
+			b, _ := fx.Build()
+
+			prompt, err := b.RenderSeedPrompt("s", focus)
+
+			if tt.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+					t.Errorf("RenderSeedPrompt() error = %v; want one holding %q", err, tt.wantError)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("RenderSeedPrompt() error = %v; want nil", err)
+			}
+			for _, want := range tt.wantSubs {
+				if !strings.Contains(prompt, want) {
+					t.Errorf("RenderSeedPrompt() = %q; want it to hold %q", prompt, want)
+				}
+			}
+		})
+	}
+
+	t.Run("AnUnknownSeedStencilFailsConstruction", func(t *testing.T) {
+		fx := newBouncerFixture(t, withShuttle(&shedfake.Shuttle{}))
+		fx.Config.SeedStencil = "harden-template-absent"
+		if _, err := NewBouncer(fx.Config); err == nil || !strings.Contains(err.Error(), `SeedStencil "harden-template-absent"`) {
+			t.Errorf("NewBouncer() error = %v; want one naming the SeedStencil", err)
+		}
+	})
+}
+
 //testtiming:keep pins that a present but unparseable focus file is archived and re-seeded rather than treated as a re-bounce
 func TestBouncer_SeedDiscriminator_ParsesRatherThanStats(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -110,7 +170,7 @@ func TestBouncer_SeedDiscriminator_ParsesRatherThanStats(t *testing.T) {
 	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
 	// round-1-focus.md present but unparseable, with no report on disk.
-	if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte("not frontmatter at all"), 0o644); err != nil {
+	if err := os.WriteFile(FocusPath(cfg.RunDir, 1), []byte("not frontmatter at all"), 0o644); err != nil {
 		t.Fatalf("WriteFile(...) = %v; want nil", err)
 	}
 
@@ -224,7 +284,7 @@ func TestBouncer_SeedCall_SpawnProducedNothingUsable(t *testing.T) {
 				t.Errorf("Call() pointer = %+v; want empty", ptr)
 			}
 
-			focusRaw, err := os.ReadFile(focusPath(cfg.RunDir, 1))
+			focusRaw, err := os.ReadFile(FocusPath(cfg.RunDir, 1))
 			if err != nil {
 				t.Fatalf("ReadFile(round-1-focus.md) = %v; want nil (ensureFocus must synthesize a fallback)", err)
 			}
@@ -273,7 +333,7 @@ func TestBouncer_SeedSideHarvest_SurvivesALateFailure(t *testing.T) {
 
 			shedfake.RequireOutcome(t, b, shedengine.Stuck)
 
-			got, err := os.ReadFile(focusPath(cfg.RunDir, 1))
+			got, err := os.ReadFile(FocusPath(cfg.RunDir, 1))
 			if err != nil {
 				t.Fatalf("ReadFile(round-1-focus.md) = %v; want nil", err)
 			}
@@ -316,7 +376,7 @@ func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
 			fx.Config.RolePrefix = tt.rolePrefix
 			b, cfg := fx.Build()
 
-			if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
+			if err := os.WriteFile(FocusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
 				t.Fatalf("WriteFile(...) = %v; want nil", err)
 			}
 
@@ -325,7 +385,7 @@ func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
 			if !shuttle.AttachCalled {
 				t.Fatal("Call() returned from the re-bounce without probing for a live seed; a live seed agent would be abandoned in its pane")
 			}
-			wantOutputs := []string{focusPath(cfg.RunDir, 1)}
+			wantOutputs := []string{FocusPath(cfg.RunDir, 1)}
 			if !slices.Equal(shuttle.GotAttachSpec.OutputFiles, wantOutputs) {
 				t.Errorf("re-bounce probe OutputFiles = %v; want %v -- Attach matches on this set alone, so it must equal the seed spawn's own", shuttle.GotAttachSpec.OutputFiles, wantOutputs)
 			}
@@ -346,7 +406,7 @@ func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
 			if want := "bouncer segment already seeded; round producer returned no report"; ptr.Reason != want {
 				t.Errorf("Call() Reason = %q; want %q", ptr.Reason, want)
 			}
-			got, err := os.ReadFile(focusPath(cfg.RunDir, 1))
+			got, err := os.ReadFile(FocusPath(cfg.RunDir, 1))
 			if err != nil {
 				t.Fatalf("ReadFile(round-1-focus.md) = %v; want nil", err)
 			}
@@ -369,7 +429,7 @@ func TestBouncer_ReBounceDegradesOnAnUndeterminableProbe(t *testing.T) {
 	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
 	seeded := "---\nround: 1\nexclude_lenses: []\nfocus: [\"already seeded\"]\n---\n"
-	if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
+	if err := os.WriteFile(FocusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
 		t.Fatalf("WriteFile(...) = %v; want nil", err)
 	}
 

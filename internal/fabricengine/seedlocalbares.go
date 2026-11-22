@@ -1,4 +1,4 @@
-// seedlocalbares.go builds the local bare repositories a throwaway hub is cloned from.
+// seedlocalbares.go builds the local bare repositories a throwaway hub is cloned from, for either hub layout.
 
 package fabricengine
 
@@ -9,33 +9,53 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
-// The directory names of the two bares SeedLocalBares creates, and the one file the warp bare's commit holds.
+// The directory names of the bares the seeders create, and the one file a seeded code bare's commit holds.
 const (
-	seededWarpDirName  = "warp-bare"
-	seededWeftDirName  = "weft-bare"
-	seededReadmeName   = "README"
-	seededReadmeText   = "a seeded local warp\n"
-	seededCommitAuthor = "lym"
-	seededCommitEmail  = "lym@localhost"
-	seededBranch       = "main"
+	seededWarpDirName   = "warp-bare"
+	seededWeftDirName   = "weft-bare"
+	seededOriginDirName = "origin-bare"
+	seededReadmeName    = "README"
+	seededReadmeText    = "a seeded local warp\n"
+	seededCommitAuthor  = "lym"
+	seededCommitEmail   = "lym@localhost"
+	seededBranch        = "main"
 )
 
-// SeedLocalBares creates the bare repositories a hub is cloned from under dir, which must exist, and returns their paths.
+// SeedLocalBares creates the bare repositories a two-repository hub is cloned from under dir, which must exist.
+// It returns their paths.
 // The warp bare holds one commit with a root README on main, and its HEAD names main.
 // The weft bare is empty and holds no ref.
 // It is the shape CloneHub clones a hub from, built with no remote and no work tree.
 func SeedLocalBares(dir string) (warp, weft string, err error) {
 	warp = filepath.Join(dir, seededWarpDirName)
 	weft = filepath.Join(dir, seededWeftDirName)
-	for _, bare := range []string{warp, weft} {
-		if err := initQuietBare(dir, bare); err != nil {
-			return "", "", err
-		}
+	if err := seedReadmeBare(dir, warp); err != nil {
+		return "", "", err
 	}
-	if err := commitReadmeOnMain(warp); err != nil {
+	if err := initQuietBare(dir, weft); err != nil {
 		return "", "", err
 	}
 	return warp, weft, nil
+}
+
+// SeedLocalOrigin creates the one bare repository a one-repository hub is cloned from under dir, which must exist.
+// It returns its path.
+// The bare holds one commit with a root README on main, and its HEAD names main.
+// It is the origin a SingleRepo CloneHub seeds a hub's records into, built with no remote and no work tree.
+func SeedLocalOrigin(dir string) (string, error) {
+	origin := filepath.Join(dir, seededOriginDirName)
+	if err := seedReadmeBare(dir, origin); err != nil {
+		return "", err
+	}
+	return origin, nil
+}
+
+// seedReadmeBare creates a bare repository at bare holding one commit with a root README on main.
+func seedReadmeBare(cwd, bare string) error {
+	if err := initQuietBare(cwd, bare); err != nil {
+		return err
+	}
+	return commitReadmeOnMain(bare)
 }
 
 // initQuietBare creates a bare repository at bare on main, with background maintenance off.

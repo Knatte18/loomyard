@@ -22,8 +22,8 @@ mutation_budget_min: 20  # minutes lym gate mutate or the mutation report step m
 tiers: {}
 
 # Gate key to the tiers that site runs and the scope it runs them over, written {tiers: [<n>...], scope: card|diff|all}.
-# The keys lym reads: card and batch (scope card, the card's own packages), webster, parent-align, finalize and adopt (scope all, the whole tree, or no tier once inert_paths is set and every changed file matches it), and webster-fix, darn-write, code-burler-fix, harden-burler-fix, harden-live, harden-live-copies and pr-review (scope diff, the diff from the merge base).
-# The two harden live keys name tier 0, the tier a key may name before the hub declares more; a hub that runs the hardener recipe sets both to its live tier.
+# The keys lym reads: card and batch (scope card, the card's own packages), webster, parent-align, finalize and adopt (scope all, the whole tree, or no tier once inert_paths is set and every changed file matches it), and webster-fix, darn-write, code-burler-fix, harden-burler-fix, harden-live and pr-review (scope diff, the diff from the merge base).
+# The two harden keys name tier 0, the tier a key may name before the hub declares more, so a hardener run needs no gate write; a hub whose live tests sit in a higher tier may point harden-live at one tier below tier3, since the run's concurrent copies call runs that same key.
 # The scope card is only for the card and batch keys.
 # The darn-write key's scope is not card and its tiers all hold {args} in their command, since the darn writer's measuring call passes the words that select one test class there.
 # A key may also hold lints, the lint steps its call runs after the tiers against HEAD: comments (fixed-column-wrapped breaks and over-long lines in // comments) and pattern (PATTERN.md grown past its headroom line).
@@ -42,7 +42,6 @@ gates:
   darn-write: {tiers: [0], scope: diff, reports: [reach, redundancy, mutation]}
   code-burler-fix: {tiers: [0], scope: diff, reports: [reach, redundancy, mutation]}
   harden-live: {tiers: [0], scope: diff}
-  harden-live-copies: {tiers: [0], scope: diff}
   harden-burler-fix: {tiers: [0], scope: diff, reports: [reach, redundancy, mutation]}
   pr-review: {tiers: [0], scope: diff, reports: [mutation]}
 

@@ -19,17 +19,30 @@
 //
 // CheckCampaign is Preflight's check of a campaign, and returns the first refusal in a fixed order.
 // Each refusal names its way forward and ends with `lym loom resume`.
-// Copies run when the live tests drive no LLM session and the concurrency is above 1.
+// A campaign needs no config of the hub's: a config naming no package passes, and so does the template's live gate key.
+// Copies run when the live tests drive no LLM session, the concurrency is above 1 and the config names packages.
+// They run through the `harden-live` key, so a hub that points the key at its live tier runs the copies there too,
+// and the key then names one tier.
 // Rotate expands a per-round model list cyclically, so a round past the list's length never clamps to its last entry.
+//
+// # Charter
+//
+// The Harden-Bouncer's seed pass writes the campaign's charter into round 1's focus file.
+// Campaign.SeedBrief tells it which modules to read.
+// Those are the config's packages, or the board entry's title and labels to find them from when the config names none.
+// Each judge carries the charter forward into the next round's focus file.
+// Campaign.RoundFacts names the round's focus file and the decision record.
+// The judge so reads the charter and the operator's focus.
 //
 // # Live gate
 //
 // NewLiveGate is Go's independent check of each fix round, run through `lym gate test` calls that take their own slots.
-// Each call runs the `harden-live` key once, then the `harden-live-copies` key when copies run.
-// The gate names keys only, never a tier.
+// Each call runs the `harden-live` key once, then again with the concurrent copies when copies run.
+// The gate names keys only, never a tier, and the config's packages as targets; with none, the key's own scope applies.
 // It writes the round's live report, `harden-live-<round>.json` in the run directory.
 // ReadLiveReport is the report's sole reader.
-// The report's mark is red when the `harden-live` run failed or started no test binary, and green otherwise.
+// The report's mark is red when the `harden-live` run failed, or started no test binary for a config naming packages.
+// It is green otherwise.
 // A copies run never changes the mark: a red copies run, one that started none and a refused one are recorded beside it.
 // A refused `harden-live` call, or a call that could not run, is returned as an error and writes no report.
 //
@@ -37,7 +50,9 @@
 //
 // NewSandbox makes a throwaway hub for the live tests, writing only under the run's sandbox root.
 // SandboxRoot derives that root from the worktree root, so every process of a run names the same directory.
-// The package names the hub's two bares by role, the code bare and the records bare, and never by side name.
+// The package names a hub's bares by role, never by side name:
+// the code bare, and the records bare a two-repository hub has beside it.
+// A one-repository hub's code bare is its one origin.
 // The root's hub list, `hubs.json`, records every hub made, and ListSandbox reads it alone.
 // A failure after the container is made removes the container before the error returns.
 //

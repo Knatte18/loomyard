@@ -87,6 +87,7 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"bouncer-fragment-decide-capped", BouncerFragmentDecideCapped, []string{"slug"}},
 		{"bouncer-fragment-parent-review", BouncerFragmentParentReview, nil},
 		{"bouncer-fragment-decision", BouncerFragmentDecision, []string{"blocking_findings", "decide_verbs", "decision_findings", "refusal", "slug"}},
+		{"harden-template-seed", HardenTemplateSeed, []string{"artifacts", "edit_directive", "focus_example_lists", "focus_list_rules", "focus_path", "parent_directive", "round", "rubric", "seed_brief"}},
 		{"pattern-fragment-changes", PatternFragmentChanges, []string{"pattern_change_list"}},
 		{"loom-directive-project-record", LoomDirectiveProjectRecord, []string{"project_records"}},
 	}

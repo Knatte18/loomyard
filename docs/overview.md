@@ -1670,6 +1670,8 @@ User-facing modules each get one `lym <module>` namespace:
 - **hardener** — the `hardener` loom recipe, an autonomous behaviour-review campaign.
   It *runs* a live-substrate module against throwaway sandbox hubs round after round,
   through the Bouncer, the `burler` review row and a fix row gated by a Go-run live gate, and lands the fixes through Finalize.
+  The Bouncer's seed pass reads the modules and writes the campaign's charter, so a task needs only the modules and an optional focus.
+  `lym harden sandbox new` builds the sandbox hubs, two-repository or, with `--single-repo`, one-repository.
   See the `internal/hardenshed` package documentation, which also holds the campaign's method.
 - **batten** — drives one task worktree's whole lifecycle as a single Shed run from the hub's prime worktree.
   The lifecycle is to create the worktree, seed the child's own inner run from the Board task's own `recipe`,

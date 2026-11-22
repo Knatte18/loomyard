@@ -192,6 +192,35 @@ func TestHardenRoundKey(t *testing.T) {
 		assertErrContains(t, err, "Env.Harden")
 	})
 
+	t.Run("BouncerRowSeedsFromTheNamedStencilFilledWithTheCampaignsBrief", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.Harden, _ = newTestCampaign(t, env)
+		writeStencil(t, env.StencilsDir, "harden-seed-stub", "{{.seed_brief}} {{.focus_path}}\n")
+		cfg := minimalBouncerConfig(t, env)
+		cfg["harden_round"] = true
+		cfg["seed_stencil"] = "harden-seed-stub"
+
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+		if _, _, err := producer.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+
+		fake := env.Shuttle.(*shedfake.Shuttle)
+		if len(fake.Specs) != 1 {
+			t.Fatalf("len(fake.Specs) = %d; want 1, the seed spawn from the named stencil", len(fake.Specs))
+		}
+		brief, err := env.Harden.SeedBrief()
+		if err != nil {
+			t.Fatalf("SeedBrief() error = %v; want nil", err)
+		}
+		if !strings.Contains(fake.Specs[0].Prompt, brief) {
+			t.Errorf("seed prompt = %q; want it to hold the campaign's brief %q", fake.Specs[0].Prompt, brief)
+		}
+	})
+
 	t.Run("BouncerRowCarriesTheCampaignsFactsInItsFactsFile", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.Shuttle = judgeSeamShuttle()

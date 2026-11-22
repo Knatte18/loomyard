@@ -109,15 +109,15 @@ func judgeOutputs(runDir string, round int) []string {
 	return []string{
 		verdictPath(runDir, round),
 		ledgerPath(runDir, round),
-		focusPath(runDir, round+1),
+		FocusPath(runDir, round+1),
 	}
 }
 
-// focusPath returns the path of the focus file for round inside runDir.
+// FocusPath returns the path of the focus file for round inside runDir.
 // round is the round the file targets, not the round that wrote it.
 // A judge call for round N writes round-<N+1>-focus.md,
 // so the round producer reads its own round's focus file with no off-by-one reasoning.
-func focusPath(runDir string, round int) string {
+func FocusPath(runDir string, round int) string {
 	return filepath.Join(runDir, fmt.Sprintf("round-%d-focus.md", round))
 }
 

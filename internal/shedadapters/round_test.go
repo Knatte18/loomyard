@@ -124,7 +124,7 @@ func TestRoundPathHelpers_PinExactFilenameSpellings(t *testing.T) {
 	}{
 		{name: "verdictPath", fn: verdictPath, want: "round-5-bouncer-verdict.md"},
 		{name: "ledgerPath", fn: ledgerPath, want: "round-5-bouncer-ledger.md"},
-		{name: "focusPath", fn: focusPath, want: "round-5-focus.md"},
+		{name: "FocusPath", fn: FocusPath, want: "round-5-focus.md"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

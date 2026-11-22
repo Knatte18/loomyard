@@ -55,7 +55,7 @@ No site spells a tier list, a scope or a test command.
 | `adopt` | `lym adopt check <subject>`, in-process through `gatecli.RunGate` in the subject's worktree | `all` |
 | `darn-write`, `code-burler-fix` | darn's writer and the Code-Burler-Fix rows | `diff` |
 | `harden-burler-fix` | Harden-Burler-Fix's `verify` gate | `diff` |
-| `harden-live`, `harden-live-copies` | Harden-Burler-Fix's `live` gate: its merge-bar run and its concurrent copies | `diff` |
+| `harden-live` | Harden-Burler-Fix's `live` gate: its merge-bar run and its concurrent copies | `diff` |
 | `pr-review` | PR-Review's gate over the agent's commits | `diff` |
 | By hand | the `tier3` tier | |
 

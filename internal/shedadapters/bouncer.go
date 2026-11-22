@@ -99,6 +99,12 @@ type BouncerConfig struct {
 	MutationReport func() string
 	// RubricStencil is the stencilstore name of the rubric this Bouncer's judge applies.
 	RubricStencil string
+	// SeedStencil is the stencilstore name of the seed pass's prompt template; empty takes the shared seed template.
+	SeedStencil string
+	// SeedBrief returns the value of the seed template's seed_brief marker, which only a recipe's own seed template carries.
+	// An error fails the seed prompt with it.
+	// Nil is the absent value and fills no seed_brief marker.
+	SeedBrief func() (string, error)
 	// Models holds the already-resolved seed and judge pairs, threaded verbatim into the shuttleengine.Spec of each pass.
 	// They are resolved at the caller's own config-load time.
 	Models BouncerModels
@@ -261,7 +267,7 @@ type Bouncer struct {
 }
 
 // NewBouncer returns a Bouncer built from cfg.
-// It validates every field before returning, and it probes cfg.RubricStencil eagerly,
+// It validates every field before returning, and it probes cfg.RubricStencil and a named cfg.SeedStencil eagerly,
 // so a wiring typo fails at construction rather than mid-run.
 //
 // Budget rule: a Bouncer whose segment MaxBounces is N gets N judged rounds,
@@ -353,15 +359,20 @@ func NewBouncer(cfg BouncerConfig) (*Bouncer, error) {
 	// The once-per-process seed pass only seeds registry-registered names.
 	// So an unregistered or mistyped rubric name would degrade every judge call to Stuck.
 	// The whole segment's bounce budget is then spent on those Stucks.
-	// Probing only the rubric is enough.
+	// Probing the rubric and a named seed template is enough.
 	// The two generic templates are registry-guaranteed and covered by contracts/stencils/registry_test.go,
-	// so the caller-supplied rubric name is the only one that can be wrong.
+	// so the caller-supplied names are the only ones that can be wrong.
 	// This stays a bare stencilstore.Read rather than a ReadRubric call.
 	// It is a construction-time readability check that discards the bytes, so it needs no fill.
 	// Converting it would make construction fail on an empty SpecsDir for a rubric with no marker at all.
 	// That would be a new failure mode rather than a tightening.
 	if _, err := stencilstore.Read(cfg.StencilsDir, cfg.RubricStencil); err != nil {
 		return nil, fmt.Errorf("shedadapters: NewBouncer: RubricStencil %q: %w", cfg.RubricStencil, err)
+	}
+	if cfg.SeedStencil != "" {
+		if _, err := stencilstore.Read(cfg.StencilsDir, cfg.SeedStencil); err != nil {
+			return nil, fmt.Errorf("shedadapters: NewBouncer: SeedStencil %q: %w", cfg.SeedStencil, err)
+		}
 	}
 
 	return &Bouncer{cfg: cfg}, nil
@@ -863,7 +874,7 @@ func (b *Bouncer) settledEntry() (action int, settled settleRecord, base string,
 // Parsing is required, not mere presence.
 // A present but unparseable focus file with no report on disk is still a seed call.
 func (b *Bouncer) round1FocusSeeded() bool {
-	content, err := os.ReadFile(focusPath(b.cfg.RunDir, 1))
+	content, err := os.ReadFile(FocusPath(b.cfg.RunDir, 1))
 	if err != nil {
 		return false
 	}
@@ -968,7 +979,7 @@ func (b *Bouncer) awaitLiveJudge(round int) (shuttleengine.Result, bool, error) 
 // otherwise a logged attach could become unattributable.
 func (b *Bouncer) awaitLiveSeed() (shuttleengine.Result, bool, error) {
 	spec := shuttleengine.Spec{
-		OutputFiles: []string{focusPath(b.cfg.RunDir, 1)},
+		OutputFiles: []string{FocusPath(b.cfg.RunDir, 1)},
 		Role:        b.role(bouncerSeedRole),
 		Segment:     b.colorSegment(),
 		Round:       "1",
@@ -1031,7 +1042,7 @@ func (b *Bouncer) degrade(ctx context.Context, msg string, args ...any) (shedeng
 // A failure to write the next round's targeting hint must not retract a verdict already decided,
 // so it never reaches the caller.
 func (b *Bouncer) ensureFocus(round int) {
-	path := focusPath(b.cfg.RunDir, round)
+	path := FocusPath(b.cfg.RunDir, round)
 	content, err := os.ReadFile(path)
 	if err == nil {
 		if _, perr := parseFocus(content); perr == nil {
@@ -1731,7 +1742,7 @@ func (b *Bouncer) escalationReason(round int, cause EscalationCause, briefPath s
 // That mark restarts the row's bounce count.
 // A degraded seed returns before that point and never carries the mark.
 func (b *Bouncer) seedCall(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	path := focusPath(b.cfg.RunDir, 1)
+	path := FocusPath(b.cfg.RunDir, 1)
 
 	// A Bouncer told a Subject seam that answers keeps a generation record from its first seed on, generation 1 included.
 	generationStart := false
@@ -1867,12 +1878,23 @@ func renderFailureCause(err error) error {
 	return err
 }
 
-// RenderSeedPrompt fills the seed pass's prompt for the named engine.
-// The prompt names focusPath as the file the seed writes and carries the rubric, the artifacts and the directives.
+// defaultSeedStencil is the seed template of a Bouncer told no SeedStencil.
+const defaultSeedStencil = "bouncer-template-seed"
+
+// seedBriefMarker is the marker a recipe's own seed template carries the told SeedBrief in.
+const seedBriefMarker = "seed_brief"
+
+// RenderSeedPrompt fills the seed pass's prompt for the named engine, from SeedStencil or the shared seed template.
+// The prompt names focusPath as the file the seed writes and carries the rubric, the artifacts and the directives,
+// and the seed brief when SeedBrief is set.
 // The edit directive is the engine's own copy.
-// It fails when the template, rubric or a directive cannot be read or filled.
+// It fails when the template, rubric, seed brief or a directive cannot be read or filled.
 func (b *Bouncer) RenderSeedPrompt(engine, focusPath string) (string, error) {
-	seedTemplate, err := stencilstore.Read(b.cfg.StencilsDir, "bouncer-template-seed")
+	seedStencil := b.cfg.SeedStencil
+	if seedStencil == "" {
+		seedStencil = defaultSeedStencil
+	}
+	seedTemplate, err := stencilstore.Read(b.cfg.StencilsDir, seedStencil)
 	if err != nil {
 		return "", &promptRenderError{"shedadapters: bouncer seed template unreadable", err}
 	}
@@ -1899,6 +1921,13 @@ func (b *Bouncer) RenderSeedPrompt(engine, focusPath string) (string, error) {
 		"focus_path":               focusPath,
 		parentdirective.MarkerName: parentDirective,
 		editdirective.MarkerName:   editDirective,
+	}
+	if b.cfg.SeedBrief != nil {
+		brief, err := b.cfg.SeedBrief()
+		if err != nil {
+			return "", &promptRenderError{"shedadapters: bouncer seed brief unreadable", err}
+		}
+		seedValues[seedBriefMarker] = brief
 	}
 	// The seed judges no round, so there is nothing settled for it to exclude;
 	// only the judge call is asked for exclude_lenses.

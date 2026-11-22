@@ -234,6 +234,12 @@ var LoomRubricCodeReview []byte
 //go:embed harden/harden-rubric-review.md
 var HardenRubricReview []byte
 
+// HardenTemplateSeed is the Harden-Bouncer's shipped-default seed prompt:
+// the pass that reads the campaign's modules and writes its charter into round 1's focus file.
+//
+//go:embed harden/harden-template-seed.md
+var HardenTemplateSeed []byte
+
 // LoomTemplatePriorPlan is the prior-plan block appended to the end of the Plan prompt on a respawn.
 //
 //go:embed loom/loom-template-prior-plan.md
@@ -932,6 +938,7 @@ var entries = []registryEntry{
 	{"loom-rubric-raddle-review", &LoomRubricRaddleReview},
 	{"loom-rubric-code-review", &LoomRubricCodeReview},
 	{"harden-rubric-review", &HardenRubricReview},
+	{"harden-template-seed", &HardenTemplateSeed},
 	{"loom-template-prior-plan", &LoomTemplatePriorPlan},
 	{"burler-step-1-explore", &BurlerStep1Explore},
 	{"burler-template-reviewer", &BurlerTemplateReviewer},
@@ -1070,7 +1077,7 @@ var roleOpeningStencils = map[string][]string{
 	"fix-reviewer":         {"landing-template-fix-review"},
 	"pr-reviewer":          {"landing-template-pr-review"},
 	"bouncer-judge":        {"bouncer-template-judge"},
-	"bouncer-seed":         {"bouncer-template-seed"},
+	"bouncer-seed":         {"bouncer-template-seed", "harden-template-seed"},
 	"friction":             {"friction-template-reflection"},
 	"describe":             {"landing-template-describe"},
 	"darn":                 {"darn-template-write"},

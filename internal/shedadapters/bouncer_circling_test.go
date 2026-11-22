@@ -183,7 +183,7 @@ func TestBouncer_Circling_RecordedDecision(t *testing.T) {
 				if shuttle.Called {
 					t.Error("Call() spawned a run; want none")
 				}
-				if _, err := os.Stat(focusPath(cfg.RunDir, 3)); err != nil {
+				if _, err := os.Stat(FocusPath(cfg.RunDir, 3)); err != nil {
 					t.Errorf("round-3 focus file = %v; want ensureFocus to have written it", err)
 				}
 				return
@@ -400,7 +400,7 @@ func TestBouncer_CirclingGuard(t *testing.T) {
 				t.Errorf("readCirclingDecision exists = %v, err = %v; want the guard to record no decision", exists, err)
 			}
 			if tt.want == shedengine.Stuck {
-				if _, err := os.Stat(focusPath(cfg.RunDir, tt.round+1)); err != nil {
+				if _, err := os.Stat(FocusPath(cfg.RunDir, tt.round+1)); err != nil {
 					t.Errorf("next-round focus file = %v; want ensureFocus to have written it", err)
 				}
 			}

@@ -5,6 +5,7 @@
 package loomcli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,6 +14,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -50,10 +52,10 @@ func TestHardenLiveArgs(t *testing.T) {
 	})
 	t.Run("the copies call carries --copies before the packages", func(t *testing.T) {
 		t.Parallel()
-		got := hardenLiveArgs(hardenshed.LiveCopiesGateKey, 3, packages)
-		want := []string{"gate", "test", "--wait", "--gate", "harden-live-copies", "--copies", "3", "internal/a", "internal/b"}
+		got := hardenLiveArgs(hardenshed.LiveGateKey, 3, packages)
+		want := []string{"gate", "test", "--wait", "--gate", "harden-live", "--copies", "3", "internal/a", "internal/b"}
 		if !slices.Equal(got, want) {
-			t.Errorf("hardenLiveArgs(%q, 3, packages) = %v; want %v", hardenshed.LiveCopiesGateKey, got, want)
+			t.Errorf("hardenLiveArgs(%q, 3, packages) = %v; want %v", hardenshed.LiveGateKey, got, want)
 		}
 	})
 	t.Run("the environment drops the held slot and keeps every other variable", func(t *testing.T) {
@@ -122,17 +124,153 @@ func TestHardenLiveKey(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			loc := hubLocation(t, "pair", ".")
 
-			key, err := hardenLiveKey(fabricengine.ConfigDirs(loc), tt.gateCfg, hardenshed.LiveGateKey)
+			key := hardenLiveKey(tt.gateCfg, hardenshed.LiveGateKey)
 
-			if err != nil {
-				t.Fatalf("hardenLiveKey() error = %v; want nil", err)
-			}
-			if key.Set || !slices.Equal(key.Tiers, tt.wantTiers) || !slices.Equal(key.Tested, tt.wantTested) {
-				t.Errorf("hardenLiveKey() = %+v; want unset, tiers %v and tested %v", key, tt.wantTiers, tt.wantTested)
+			if !slices.Equal(key.Tiers, tt.wantTiers) || !slices.Equal(key.Tested, tt.wantTested) {
+				t.Errorf("hardenLiveKey() = %+v; want tiers %v and tested %v", key, tt.wantTiers, tt.wantTested)
 			}
 		})
+	}
+}
+
+// TestHardenPreflight pins that a hub whose sparse gate.yaml sets no harden key passes the campaign check.
+// It passes with the template's harden keys, which the sparse file leaves to the template.
+// A package the worktree lacks, a board entry that cannot be read and a hub with no gate.yaml are each refused.
+func TestHardenPreflight(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	var template hardenshed.Config
+	if err := yaml.Unmarshal([]byte(hardenshed.ConfigTemplate()), &template); err != nil {
+		t.Fatalf("unmarshal the hardener template = %v; want nil", err)
+	}
+	const sparseGateConfig = "slots: 2\ngates:\n  card: {tiers: [0], scope: card}\n"
+	tests := []struct {
+		name         string
+		packages     []string
+		noGateConfig bool
+		entryErr     error
+		wantErr      string
+	}{
+		{name: "TheTemplateWithNoPackagePasses"},
+		{name: "APackageTheWorktreeLacksIsRefused", packages: []string{"internal/absent"}, wantErr: `package "internal/absent"`},
+		{name: "ANoPackageCampaignWhoseBoardEntryCannotBeReadIsRefused", entryErr: errors.New("the board holds no entry"), wantErr: "the board holds no entry"},
+		{name: "AHubWithNoGateConfigIsRefused", noGateConfig: true, wantErr: "lym fabric reconcile"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			loc := hubLocation(t, "pair", ".")
+			if !tt.noGateConfig {
+				writeHubGateConfig(t, loc.HubPath, sparseGateConfig)
+			}
+			cfg := template
+			cfg.Packages = tt.packages
+			entry := func() (string, []string, error) { return "Harden fabric", nil, tt.entryErr }
+
+			err := hardenPreflight(loc, cfg, entry)()
+
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("hardenPreflight() = %v; want nil", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("hardenPreflight() = %v; want a refusal holding %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// fakeBoardReader answers a board entry read with fixed values.
+type fakeBoardReader struct {
+	task  boardengine.Task
+	found bool
+	err   error
+}
+
+func (f fakeBoardReader) GetTask(any) (boardengine.Task, bool, error) { return f.task, f.found, f.err }
+
+func TestReadBoardEntry(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		open       func() (boardTaskReader, error)
+		wantTitle  string
+		wantLabels []string
+		wantErr    []string
+	}{
+		{
+			name: "AnEntryTheBoardHoldsGivesItsTitleAndLabels",
+			open: func() (boardTaskReader, error) {
+				return fakeBoardReader{task: boardengine.Task{Title: "Harden fabric", Labels: []string{"fabric"}}, found: true}, nil
+			},
+			wantTitle:  "Harden fabric",
+			wantLabels: []string{"fabric"},
+		},
+		{
+			name:    "AnEntryTheBoardLacksIsRefusedWithItsWayForward",
+			open:    func() (boardTaskReader, error) { return fakeBoardReader{}, nil },
+			wantErr: []string{`"pair"`, "hardener.packages", `then run "lym loom resume"`},
+		},
+		{
+			name:    "AReadFailureIsRefusedNamingTheEntry",
+			open:    func() (boardTaskReader, error) { return fakeBoardReader{err: errors.New("store unreadable")}, nil },
+			wantErr: []string{`read the board entry "pair"`, "store unreadable"},
+		},
+		{
+			name:    "ABoardThatDoesNotOpenIsRefused",
+			open:    func() (boardTaskReader, error) { return nil, errors.New("no board config") },
+			wantErr: []string{"open the board", "no board config"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			title, labels, err := readBoardEntry(tt.open, "pair")
+
+			if len(tt.wantErr) > 0 {
+				if err == nil {
+					t.Fatalf("readBoardEntry() error = nil; want one holding %v", tt.wantErr)
+				}
+				for _, want := range tt.wantErr {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("readBoardEntry() error = %q; want it to hold %q", err, want)
+					}
+				}
+				return
+			}
+			if err != nil || title != tt.wantTitle || !slices.Equal(labels, tt.wantLabels) {
+				t.Errorf("readBoardEntry() = %q, %v, %v; want %q, %v, nil", title, labels, err, tt.wantTitle, tt.wantLabels)
+			}
+		})
+	}
+}
+
+func TestHardenCampaign_EntryRefusesAnEntryTheHubsBoardLacks(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	loc := hubLocation(t, "pair", ".")
+	boardConfig := configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "board")
+	if err := os.WriteFile(boardConfig, []byte(boardengine.ConfigTemplate()), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", boardConfig, err)
+	}
+
+	_, _, err := hardenCampaign(loc, hardenshed.Config{}, t.TempDir()).Entry()
+
+	if err == nil {
+		t.Fatal("Entry() error = nil; want a refusal")
+	}
+	for _, want := range []string{`"pair"`, "hardener.packages", `then run "lym loom resume"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Entry() error = %q; want it to hold %q", err, want)
+		}
 	}
 }
 

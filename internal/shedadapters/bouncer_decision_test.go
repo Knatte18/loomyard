@@ -385,7 +385,7 @@ func TestBouncer_DecisionEscalation(t *testing.T) {
 				if ptr.BudgetExempt != tt.wantExempt {
 					t.Errorf("BudgetExempt = %v; want %v", ptr.BudgetExempt, tt.wantExempt)
 				}
-				if _, err := os.Stat(focusPath(cfg.RunDir, 3)); err != nil {
+				if _, err := os.Stat(FocusPath(cfg.RunDir, 3)); err != nil {
 					t.Errorf("round-3 focus file = %v; want it present", err)
 				}
 				assertNoArchivedRunDirSibling(t, cfg.RunDir)
@@ -453,7 +453,7 @@ func TestBouncer_DecisionEscalation(t *testing.T) {
 			t.Error("the re-judge Stuck is BudgetExempt; want a counted bounce unit")
 		}
 		requireReasonContains(t, ptr.Reason, `review finding "F1" is BLOCKING`)
-		for _, path := range []string{verdictPath(cfg.RunDir, 2), ledgerPath(cfg.RunDir, 2), focusPath(cfg.RunDir, 3)} {
+		for _, path := range []string{verdictPath(cfg.RunDir, 2), ledgerPath(cfg.RunDir, 2), FocusPath(cfg.RunDir, 3)} {
 			requireFileAbsent(t, path)
 		}
 		for _, path := range []string{escalationPath(cfg.RunDir, 2), circlingDecisionPath(cfg.RunDir, 2)} {
@@ -536,7 +536,7 @@ func TestBouncer_DecisionEscalation(t *testing.T) {
 					return
 				}
 				shedfake.RequireOutcome(t, b, shedengine.Stuck)
-				focus, err := os.ReadFile(focusPath(cfg.RunDir, 3))
+				focus, err := os.ReadFile(FocusPath(cfg.RunDir, 3))
 				if err != nil {
 					t.Fatalf("ReadFile(round-3 focus) = %v; want nil", err)
 				}

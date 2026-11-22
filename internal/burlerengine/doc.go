@@ -87,6 +87,7 @@
 //
 // The fixer carries no rubric, fasit, PATTERN directive, focus file or prior rounds,
 // so `premise false` means false against the code it reads.
+// The profile's target instructions are the one row-specific text it does carry, after the fix step's work statement.
 // The fixer is the round's only friction-note writer.
 //
 // # The fixer fan (twill fixer)

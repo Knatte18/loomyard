@@ -60,7 +60,7 @@ func layoutBouncerRun(t *testing.T, cfg BouncerConfig, fixtures []bouncerJudgeFi
 			}
 		}
 		if f.focus != "" {
-			if err := os.WriteFile(focusPath(cfg.RunDir, f.round), []byte(f.focus), 0o644); err != nil {
+			if err := os.WriteFile(FocusPath(cfg.RunDir, f.round), []byte(f.focus), 0o644); err != nil {
 				t.Fatalf("WriteFile(focus round %d) = %v; want nil", f.round, err)
 			}
 		}
@@ -353,13 +353,13 @@ func TestBouncer_JudgeCall_Verdicts(t *testing.T) {
 			if judge == cfg.Models.Seed {
 				t.Errorf("fixture judge pair equals the seed pair %+v; want them distinct", judge)
 			}
-			for _, path := range []string{verdictPath(cfg.RunDir, 1), ledgerPath(cfg.RunDir, 1), focusPath(cfg.RunDir, 2)} {
+			for _, path := range []string{verdictPath(cfg.RunDir, 1), ledgerPath(cfg.RunDir, 1), FocusPath(cfg.RunDir, 2)} {
 				if _, err := os.Stat(path); err != nil {
 					t.Errorf("os.Stat(%q) = %v; want nil (all three files exist)", path, err)
 				}
 			}
 
-			raw, err := os.ReadFile(focusPath(cfg.RunDir, 2))
+			raw, err := os.ReadFile(FocusPath(cfg.RunDir, 2))
 			if err != nil {
 				t.Fatalf("ReadFile(round-2-focus.md) = %v; want nil", err)
 			}
@@ -854,7 +854,7 @@ func TestBouncer_JudgeCall_Harvest(t *testing.T) {
 		if ptr.Path != wantPointer {
 			t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
 		}
-		if _, err := os.Stat(focusPath(cfg.RunDir, 2)); err != nil {
+		if _, err := os.Stat(FocusPath(cfg.RunDir, 2)); err != nil {
 			t.Errorf("os.Stat(round-2-focus.md) = %v; want nil (synthesized on the CONTINUE branch)", err)
 		}
 	})
@@ -934,7 +934,7 @@ func TestBouncer_JudgeCall_DebrisIsNotJudged(t *testing.T) {
 				return map[string]string{
 					verdictPath(cfg.RunDir, 1): "garbage, not frontmatter (stale verdict)",
 					ledgerPath(cfg.RunDir, 1):  "garbage, not frontmatter (stale ledger)",
-					focusPath(cfg.RunDir, 2):   "garbage, not frontmatter (stale focus)",
+					FocusPath(cfg.RunDir, 2):   "garbage, not frontmatter (stale focus)",
 				}
 			},
 		},

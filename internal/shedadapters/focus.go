@@ -34,7 +34,7 @@ type RoundFocus struct {
 // readRoundFocus reads round's focus file in runDir and returns the RoundFocus it names,
 // identifying itself as name in every warning it logs.
 //
-// It reads focusPath(runDir, round) through parseFocus.
+// It reads FocusPath(runDir, round) through parseFocus.
 // The Bouncer writes the file with the same builder and parser, so reader and writer agree on its name and shape.
 //
 // It is fail-safe end to end and never returns an error: an absent file, a read failure, or a file
@@ -49,7 +49,7 @@ type RoundFocus struct {
 // delivering it would hand the next round an empty document asserting nothing,
 // so an empty directive stays empty.
 func readRoundFocus(name, runDir string, round int) RoundFocus {
-	path := focusPath(runDir, round)
+	path := FocusPath(runDir, round)
 
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -66,7 +66,7 @@ func readRoundFocus(name, runDir string, round int) RoundFocus {
 		logger.Warn("shedadapters: focus file malformed", "producer", name, "engine", burlerEngineLabel, "path", path, "reason", err.Error())
 		return RoundFocus{}
 	}
-	// The frontmatter round must agree with the round the filename encodes, focusPath(runDir, round).
+	// The frontmatter round must agree with the round the filename encodes, FocusPath(runDir, round).
 	// A file that disagrees with itself about which round it targets is malformed, so it fails safe like any other.
 	if parsed.Round != round {
 		logger.Warn("shedadapters: focus file's own round does not match its filename", "producer", name, "engine", burlerEngineLabel, "path", path, "fileRound", round, "frontmatterRound", parsed.Round)

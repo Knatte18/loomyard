@@ -93,7 +93,7 @@ func TestBouncer_Verdict_CirclingWithLiveJudgeAttachesAndHarvests(t *testing.T) 
 	})
 	realFocus := "---\nround: 3\nexclude_lenses: []\nfocus: [\"the judge's own targeting\"]\n---\n"
 	attach.DuringAttach = func() {
-		_ = os.WriteFile(focusPath(cfg.RunDir, 3), []byte(realFocus), 0o644)
+		_ = os.WriteFile(FocusPath(cfg.RunDir, 3), []byte(realFocus), 0o644)
 	}
 
 	shedfake.RequireOutcome(t, b, shedengine.Awaiting)
@@ -103,7 +103,7 @@ func TestBouncer_Verdict_CirclingWithLiveJudgeAttachesAndHarvests(t *testing.T) 
 	if attach.Called {
 		t.Error("Run was called; want a live judge attached to, never respawned over")
 	}
-	got, err := os.ReadFile(focusPath(cfg.RunDir, 3))
+	got, err := os.ReadFile(FocusPath(cfg.RunDir, 3))
 	if err != nil {
 		t.Fatalf("ReadFile(round-3-focus.md) = %v; want nil", err)
 	}

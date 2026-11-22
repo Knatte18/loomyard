@@ -188,7 +188,7 @@ func composeReviewPrompt(stencilsDir, specsDir, engine string, p *Profile, patte
 // composeFixPrompt builds the fix half's prompt for p, rendered for the fixer's engine:
 // the review-file format and the fix step.
 // frictionDirective is the caller-resolved Tier 2 note directive, empty when Tier 2 is off.
-// work is the fix step's statement of what to fix.
+// work is the fix step's statement of what to fix, followed by the target's instructions when p sets any.
 // specsDir holds the deployed lens report spec a fixer fan's fixer saves its fork reports in the format of.
 // The fixer's files hold no rubric, fasit, PATTERN directive, focus file, prior rounds or explore step;
 // p is assumed already validated by validateFix.
@@ -204,7 +204,7 @@ func composeFixPrompt(stencilsDir, specsDir, engine string, p *Profile, friction
 	}
 	fix, err := stencil.FillWith(fixTemplate, fixBlocks, map[string]string{
 		friction.MarkerName: frictionDirective,
-		"work":              work,
+		"work":              workWithInstructions(work, p.Target.Instructions),
 		"fix_scope_rules":   fixScopeRules(p),
 		"review_path":       p.ReviewPath,
 		"fixer_report_path": p.FixerReportPath,
@@ -225,6 +225,15 @@ func composeFixPrompt(stencilsDir, specsDir, engine string, p *Profile, friction
 			{Path: paths.Fix, Content: string(fix)},
 		},
 	}, nil
+}
+
+// workWithInstructions returns work followed by instructions, the row's own rules for the fixer.
+// Blank instructions leave work unchanged.
+func workWithInstructions(work, instructions string) string {
+	if strings.TrimSpace(instructions) == "" {
+		return work
+	}
+	return work + "\n\n" + strings.TrimSpace(instructions)
 }
 
 // fixWork returns the fix step's required work statement.
