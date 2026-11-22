@@ -259,18 +259,18 @@ func timeText(t time.Time) string {
 func (b boardView) sectionOf(twl TaskWithLayer) string {
 	switch {
 	case isDone(twl.Task):
-		return doneSection.name
+		return doneHeading
 	case twl.Kind == KindNote:
 		return noteSectionName(noteType(twl.Task, b.out.Types))
 	case twl.Layer == runningLayer:
-		return runningSection.name
+		return runningHeading
 	case twl.Layer == readyLayer:
-		return readySection.name
+		return readyHeading
 	}
-	return layerSection(twl.Layer).name
+	return layerHeading(twl.Layer)
 }
 
-// noteSectionName is the Notes subsection name of a note type label, Other for none.
+// noteSectionName is the section heading of a note type label, Other for none.
 func noteSectionName(typeLabel string) string {
 	if typeLabel == "" {
 		return otherNotesHeading
@@ -281,15 +281,15 @@ func noteSectionName(typeLabel string) string {
 // sectionsOccupiedBy lists the section names entries stand under, in the README's order:
 // Running, Ready, the dependency layers, Independent, Draft, the note sections, Done.
 func (b boardView) sectionsOccupiedBy(entries []ViewEntry) []string {
-	order := []string{runningSection.name, readySection.name}
+	order := []string{runningHeading, readyHeading}
 	for letter := 'A'; letter <= 'Y'; letter++ {
-		order = append(order, layerSection(string(letter)).name)
+		order = append(order, layerHeading(string(letter)))
 	}
-	order = append(order, layerSection(isolatedLayer).name, layerSection(draftLayer).name)
+	order = append(order, layerHeading(isolatedLayer), layerHeading(draftLayer))
 	for _, typeLabel := range notesTypeOrder(b.out.Types) {
 		order = append(order, noteSectionName(typeLabel))
 	}
-	order = append(order, doneSection.name)
+	order = append(order, doneHeading)
 
 	occupied := make(map[string]bool, len(entries))
 	for _, entry := range entries {

@@ -2,7 +2,7 @@
 //
 // README and design-doc goldens over the kind-and-label layout.
 // They cover tasks in layers; notes grouped by type with an Other group;
-// done and abandoned entries; dependencies; bodies; and the omitted Done section and empty Notes subsections.
+// done and abandoned entries; dependencies; bodies; and the omitted empty sections.
 // It also covers the manifest-based cleanup in RenderToDisk:
 // renamed outputs are removed across consecutive renders, and a missing or corrupt manifest degrades gracefully.
 
@@ -341,67 +341,9 @@ func readmeFixture() []boardengine.Task {
 	}
 }
 
-// TestRenderReadmeGolden pins the README tables for readmeFixture.
-// Notes are grouped by type, with research first under the heading Research and the other types in Outputs.Types order;
-// the golden also pins an Other group, a done entry, an abandoned note, and a slug linked to its design doc;
-// labels that are not types; an After cell naming the open dependency by handle and leaving out a done one;
-// an isolated task; and a Ready task with one in Layer A after it.
-// Every row opens with the entry's handle, and each group is one table sorted by handle,
-// so a note with a lower handle and a higher ID comes first.
-// Among the root's tables only the Notes tables carry the priority column:
-// headed Prio, with H for high, L for low, and blank for normal.
-// It pins that a pipe in a title is escaped and a line break in a brief becomes a space;
-// so each row stays one table row.
-// It pins that each run setting stacks as a sorted code-span bullet in the entry cell after any brief;
-// a nested key appears as its dotted path, a non-string value as JSON, a pipe is escaped, and no column is added.
-// It pins that a pull_request and an on_land the task sets stack as code-span bullets in that order.
-// Both bullets sit between the brief and the settings.
-// Every Tasks table pins a Recipe column after the slug, when the task names one.
-// The column holds the fixture's default recipe for an empty recipe and the stored name otherwise;
-// it is followed by ` · ` and the profile, with a pipe escaped.
-// The Notes and Done tables pin its absence.
-// Every README pins the root's own sections in the root project's collapsible section.
-// Its summary reads P0, linked to project-root.md, and counts its open entries.
-// Its facts line names only the prime owner.
-// Every README pins the render time at its top and the prime owner under it, the machine in a code span;
-// it reads none recorded when the board records no prime owner.
-// Every table pins the one column before Labels, holding the age above the time since revision;
-// the age is as of that time, and the cell is blank for unknown dates.
-// A second row pins that Ready renders _None._ when empty.
-// It also pins that the Done section is omitted when no entry is done,
-// and that every empty Notes subsection is omitted when no note exists for it.
-// Neither row has a run status, the first only the hand-set word "running", so neither renders a Running subsection.
-// A third row pins that a task with a run status renders under Running, before Ready and in no layer.
-// Those tasks are ordered by handle over ID; each At cell drops the state `running` and keeps any other.
-// Each Owner cell holds the prime owner for a task outside every beam.
-// The same row pins that a task waiting on a running one lands in Layer A, not Ready.
-// That task still names its handle under After, and a task after it lands in Layer B.
-// A fourth row pins that README.md renders each open project with no open parent by handle.
-// Each is in a details block open by default, its summary an HTML link standing in for a heading at level two.
-// It pins that sub-projects nest as headings one level per depth, in their parent's order and then by handle.
-// Each summary or heading links the project and counts its open members.
-// Under it come its facts, with the slug linked to its design file only for a project with a body;
-// then its brief, its sub-projects, and its own Tasks, Notes and Done split as the root's.
-// The same row pins that the root's section comes last, in its own details block.
-// It holds only the entries under no project, and its projects are not counted as its members;
-// a done project is a linked Done row there.
-// A project with sub-projects holds its own entries under an Own entries heading after them;
-// a project without sub-projects holds them directly.
-// Every project, open or done, renders to project-<slug>.md, and the root to project-root.md.
-// A project file opens with its handle and title, a link up to its parent's file, and the brief;
-// for a beam only, it also names the beam and its recorded owner.
-// It renders its nested projects as sections in its order and then by handle;
-// it holds its own entries under Own entries after them.
-// The root's file opens the same way with a link up to README.md and its facts line, and holds only its own entries.
-// A task there waiting on a running member, and a root task, stands in Layer A;
-// its After cell holds one handle per line, and the running member shows the beam's recorded owner.
-// A dependency naming no board entry shows in the After cell as a code span of its slug;
-// a draft task in a project file stands in its own Draft subsection after Ready.
-// A fifth row pins that a beam with a recorded owner on a board with no prime owner shows that owner in its own file.
-// The same row pins that a summary escapes HTML in a project's title.
-// A row pins that a chain of nested projects stops deepening its headings at level six.
-// A row pins that a task depending on an open project shows the project's handle under After.
-// One depending on a plain project whose every landing member is done leaves After empty and stands in Ready.
+// TestRenderReadmeGolden pins README.md, and for some rows other board files, rendered from each row's board.
+// Each row's name says what its board adds;
+// together they cover every section kind, project nesting, beams, owners and the escaping of table cells.
 func TestRenderReadmeGolden(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -427,65 +369,46 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"Tasks are grouped by dependency layer and notes by type.\n" +
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 				"\n" +
-				rootProjectSummary(8, "`neve`") +
-				"### Tasks (3)\n" +
+				rootProjectOpening(8, "`neve`") +
 				"\n" +
-				"Concrete and claimable; only a task can run.\n" +
-				"\n" +
-				"#### Ready (0)\n" +
-				"\n" +
-				"Waits on nothing open; can start now.\n" +
-				"\n" +
-				"_None._\n" +
-				"\n" +
-				"#### Layer A (1)\n" +
-				"\n" +
-				"Waits only on Running, Ready or Draft entries.\n" +
+				"### Layer A (1)\n" +
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T2 | **Top \\| work**<br>• Builds on base. Second brief line.<br>• `darn: models.writer opus\\|fast`<br>• `` darn: note use `x` ``<br>• `darn: skip [\"a&b\",\"<c>\"]` | [`top`](design-top.md) | tapestry · a\\|b | T1 |  | area |\n" +
 				"\n" +
-				"#### Independent (1)\n" +
-				"\n" +
-				"Depends on nothing and nothing depends on it, by design.\n" +
+				"### Independent (1)\n" +
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T3 | **Alone work**<br>• `pull_request: on`<br>• `darn: review_max_bounces 1` | `alone` | darn · docs |  |  |  |\n" +
 				"\n" +
-				"#### Draft (1)\n" +
-				"\n" +
-				"Not released; nothing starts it until its status is cleared.\n" +
+				"### Draft (1)\n" +
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T1 | `draft` **Base work**<br>• The foundation.<br>• `pull_request: merge-in`<br>• `on_land: refresh`<br>• `loom: review_hard_max_bounces 3`<br>• `loom: review_max_bounces 2` | `base` | tapestry |  | 5w<br>3d |  |\n" +
 				"\n" +
-				"### Notes (5)\n" +
-				"\n" +
-				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
-				"\n" +
-				"#### Research (1)\n" +
+				"### Research (1)\n" +
 				"\n" +
 				"| # | Prio | Note | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- |\n" +
 				"| R1 |  | **A measurement** | `measure` |  |  |\n" +
 				"\n" +
-				"#### Bugs (1)\n" +
+				"### Bugs (1)\n" +
 				"\n" +
 				"| # | Prio | Note | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- |\n" +
 				"| B1 | H | **Dropped idea**<br>• No longer wanted. | `dropped` |  |  |\n" +
 				"\n" +
-				"#### Enhancements (2)\n" +
+				"### Enhancements (2)\n" +
 				"\n" +
 				"| # | Prio | Note | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- |\n" +
 				"| E1 |  | **Plain idea** | `plain` |  |  |\n" +
 				"| E2 | L | **An idea** | `idea` |  | undecided |\n" +
 				"\n" +
-				"#### Other (1)\n" +
+				"### Other (1)\n" +
 				"\n" +
 				"| # | Prio | Note | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- |\n" +
@@ -493,15 +416,12 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"### Done (1)\n" +
 				"\n" +
-				"Finished, awaiting `lym board prune --apply`.\n" +
-				"\n" +
 				"| # | Entry | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- |\n" +
-				"| T5 | **Shipped work** | `shipped` | 1y<br>5mo |  |\n" +
-				readmeSectionEnd,
+				"| T5 | **Shipped work** | `shipped` | 1y<br>5mo |  |\n",
 		},
 		{
-			name:  "no done section and no empty notes subsections",
+			name:  "every section with no entry is left out",
 			tasks: []boardengine.Task{{ID: 1, Handle: "E1", Slug: "a", Title: "A", Kind: boardengine.KindNote, Labels: []string{"enhancement"}}},
 			want: "# Board\n" +
 				"\n" +
@@ -511,27 +431,13 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"Tasks are grouped by dependency layer and notes by type.\n" +
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 				"\n" +
-				rootProjectSummary(1, "none recorded") +
-				"### Tasks (0)\n" +
+				rootProjectOpening(1, "none recorded") +
 				"\n" +
-				"Concrete and claimable; only a task can run.\n" +
-				"\n" +
-				"#### Ready (0)\n" +
-				"\n" +
-				"Waits on nothing open; can start now.\n" +
-				"\n" +
-				"_None._\n" +
-				"\n" +
-				"### Notes (1)\n" +
-				"\n" +
-				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
-				"\n" +
-				"#### Enhancements (1)\n" +
+				"### Enhancements (1)\n" +
 				"\n" +
 				"| # | Prio | Note | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- |\n" +
-				"| E1 |  | **A** | `a` |  |  |\n" +
-				readmeSectionEnd,
+				"| E1 |  | **A** | `a` |  |  |\n",
 		},
 		{
 			name: "running task under Running before Ready and in no layer",
@@ -551,48 +457,32 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"Tasks are grouped by dependency layer and notes by type.\n" +
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 				"\n" +
-				rootProjectSummary(5, "`neve`") +
-				"### Tasks (5)\n" +
+				rootProjectOpening(5, "`neve`") +
 				"\n" +
-				"Concrete and claimable; only a task can run.\n" +
-				"\n" +
-				"#### Running (2)\n" +
-				"\n" +
-				"Held by a run; its scope is locked until the run ends.\n" +
+				"### Running (2)\n" +
 				"\n" +
 				"| # | Task | Slug | Recipe | At | Owner | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T2 | **Halted work** | `halted` | darn | paused · Plan-Write | neve |  |  |\n" +
 				"| T5 | **Held work** | `held` | tapestry | Webster | neve |  | area |\n" +
 				"\n" +
-				"#### Ready (1)\n" +
-				"\n" +
-				"Waits on nothing open; can start now.\n" +
+				"### Ready (1)\n" +
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T1 | **Base work** | `base` | tapestry |  |  |  |\n" +
 				"\n" +
-				"#### Layer A (1)\n" +
-				"\n" +
-				"Waits only on Running, Ready or Draft entries.\n" +
+				"### Layer A (1)\n" +
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T3 | **Next work** | `next` | tapestry | T5 |  |  |\n" +
 				"\n" +
-				"#### Layer B (1)\n" +
-				"\n" +
-				"Starts when every entry it names under After is done.\n" +
+				"### Layer B (1)\n" +
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| T4 | **Last work** | `last` | tapestry | T3 |  |  |\n" +
-				"\n" +
-				"### Notes (0)\n" +
-				"\n" +
-				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
-				readmeSectionEnd,
+				"| T4 | **Last work** | `last` | tapestry | T3 |  |  |\n",
 		},
 		{
 			name: "each project renders to its own file under its parent",
@@ -620,7 +510,8 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"Tasks are grouped by dependency layer and notes by type.\n" +
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 				"\n" +
-				projectSummary("P1 Ship it", "project-ship.md", 6) +
+				"## [P1 Ship it](project-ship.md) (6) · BEAM\n" +
+				"\n" +
 				"[`ship`](design-ship.md) · Age 3d · Owner `box`\n" +
 				"\n" +
 				"Ships the thing.\n" +
@@ -629,50 +520,32 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"`later` · Owner `box`\n" +
 				"\n" +
-				emptyProjectEntries(4) +
-				"\n" +
 				"### [P4 Inner](project-inner.md) (0)\n" +
 				"\n" +
 				"`inner` · Owner `box`\n" +
 				"\n" +
 				"Nested work.\n" +
 				"\n" +
-				emptyProjectEntries(4) +
-				"\n" +
 				ownEntriesHeading(3) +
-				"#### Tasks (3)\n" +
-				"\n" +
-				"Concrete and claimable; only a task can run.\n" +
-				"\n" +
-				"##### Running (1)\n" +
-				"\n" +
-				"Held by a run; its scope is locked until the run ends.\n" +
+				"#### Running (1)\n" +
 				"\n" +
 				"| # | Task | Slug | Recipe | At | Owner | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T2 | **Second step** | [`second`](design-second.md) | tapestry | Webster | box |  |  |\n" +
 				"\n" +
-				"##### Ready (1)\n" +
-				"\n" +
-				"Waits on nothing open; can start now.\n" +
+				"#### Ready (1)\n" +
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T1 | **First step** | `first` | tapestry |  |  |  |\n" +
 				"\n" +
-				"##### Layer A (1)\n" +
-				"\n" +
-				"Waits only on Running, Ready or Draft entries.\n" +
+				"#### Layer A (1)\n" +
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T3 | **Third step** | `third` | tapestry | T2<br>T7<br>`ghost` |  |  |\n" +
 				"\n" +
-				"#### Notes (1)\n" +
-				"\n" +
-				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
-				"\n" +
-				"##### Other (1)\n" +
+				"#### Other (1)\n" +
 				"\n" +
 				"| # | Prio | Note | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- |\n" +
@@ -680,52 +553,29 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"#### Done (1)\n" +
 				"\n" +
-				"Finished, awaiting `lym board prune --apply`.\n" +
-				"\n" +
 				"| # | Entry | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- |\n" +
 				"| T4 | **Shipped step** | `shipped` |  |  |\n" +
-				readmeSectionEnd +
 				"\n" +
-				projectSummary("P2 Tidy up", "project-tidy.md", 1) +
+				readmeProjectHeading("P2 Tidy up", "project-tidy.md", 1) +
 				"`tidy` · Owner `neve`\n" +
 				"\n" +
 				"Loose ends.\n" +
 				"\n" +
-				"### Tasks (1)\n" +
-				"\n" +
-				"Concrete and claimable; only a task can run.\n" +
-				"\n" +
-				"#### Ready (0)\n" +
-				"\n" +
-				"Waits on nothing open; can start now.\n" +
-				"\n" +
-				"_None._\n" +
-				"\n" +
-				"#### Draft (1)\n" +
-				"\n" +
-				"Not released; nothing starts it until its status is cleared.\n" +
+				"### Draft (1)\n" +
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T5 | `draft` **Chore** | `chore` | tapestry |  |  |  |\n" +
 				"\n" +
-				"### Notes (0)\n" +
-				"\n" +
-				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
-				readmeSectionEnd +
-				"\n" +
-				projectSummary("P6 Orphan", "project-orphan.md", 0) +
+				readmeProjectHeading("P6 Orphan", "project-orphan.md", 0) +
 				"`orphan` · Owner `neve`\n" +
 				"\n" +
 				"Outlived its parent.\n" +
 				"\n" +
-				emptyProjectEntries(3) +
-				readmeSectionEnd +
+				rootProjectOpening(1, "`neve`") +
 				"\n" +
-				rootProjectSummary(1, "`neve`") +
-				rootEntriesWithProjects(3) +
-				readmeSectionEnd,
+				rootEntriesWithProjects(3),
 			files: map[string]string{
 				"project-root.md": "# P0 Root: entries under no project\n" +
 					"\n" +
@@ -738,7 +588,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 					"\n" +
 					rootEntriesWithProjects(2),
-				"project-ship.md": "# P1 Ship it\n" +
+				"project-ship.md": "# P1 Ship it · BEAM\n" +
 					"\n" +
 					"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
 					"Under: [Board](README.md).\n" +
@@ -746,8 +596,6 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"[`ship`](design-ship.md) · Age 3d · Owner `box`\n" +
 					"\n" +
 					"Ships the thing.\n" +
-					"\n" +
-					"beam\n" +
 					"\n" +
 					"Ship design.\n" +
 					"\n" +
@@ -758,58 +606,38 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"\n" +
 					"`later` · Owner `box`\n" +
 					"\n" +
-					emptyProjectEntries(3) +
-					"\n" +
 					"## [P4 Inner](project-inner.md) (0)\n" +
 					"\n" +
 					"`inner` · Owner `box`\n" +
 					"\n" +
 					"Nested work.\n" +
 					"\n" +
-					emptyProjectEntries(3) +
-					"\n" +
 					ownEntriesHeading(2) +
-					"### Tasks (3)\n" +
-					"\n" +
-					"Concrete and claimable; only a task can run.\n" +
-					"\n" +
-					"#### Running (1)\n" +
-					"\n" +
-					"Held by a run; its scope is locked until the run ends.\n" +
+					"### Running (1)\n" +
 					"\n" +
 					"| # | Task | Slug | Recipe | At | Owner | Age<br>Revised | Labels |\n" +
 					"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
 					"| T2 | **Second step** | [`second`](design-second.md) | tapestry | Webster | box |  |  |\n" +
 					"\n" +
-					"#### Ready (1)\n" +
-					"\n" +
-					"Waits on nothing open; can start now.\n" +
+					"### Ready (1)\n" +
 					"\n" +
 					"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 					"| --- | --- | --- | --- | --- | --- | --- |\n" +
 					"| T1 | **First step** | `first` | tapestry |  |  |  |\n" +
 					"\n" +
-					"#### Layer A (1)\n" +
-					"\n" +
-					"Waits only on Running, Ready or Draft entries.\n" +
+					"### Layer A (1)\n" +
 					"\n" +
 					"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 					"| --- | --- | --- | --- | --- | --- | --- |\n" +
 					"| T3 | **Third step** | `third` | tapestry | T2<br>T7<br>`ghost` |  |  |\n" +
 					"\n" +
-					"### Notes (1)\n" +
-					"\n" +
-					"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
-					"\n" +
-					"#### Other (1)\n" +
+					"### Other (1)\n" +
 					"\n" +
 					"| # | Prio | Note | Slug | Age<br>Revised | Labels |\n" +
 					"| --- | --- | --- | --- | --- | --- |\n" +
 					"| E1 |  | **A thought** | `thought` |  |  |\n" +
 					"\n" +
 					"### Done (1)\n" +
-					"\n" +
-					"Finished, awaiting `lym board prune --apply`.\n" +
 					"\n" +
 					"| # | Entry | Slug | Age<br>Revised | Labels |\n" +
 					"| --- | --- | --- | --- | --- |\n" +
@@ -824,21 +652,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"Nested work.\n" +
 					"\n" +
 					"Tasks are grouped by dependency layer and notes by type.\n" +
-					"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
-					"\n" +
-					"## Tasks (0)\n" +
-					"\n" +
-					"Concrete and claimable; only a task can run.\n" +
-					"\n" +
-					"### Ready (0)\n" +
-					"\n" +
-					"Waits on nothing open; can start now.\n" +
-					"\n" +
-					"_None._\n" +
-					"\n" +
-					"## Notes (0)\n" +
-					"\n" +
-					"Not tasks: ideas and observations, merged into a task when one is promoted.\n",
+					"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n",
 				"project-tidy.md": "# P2 Tidy up\n" +
 					"\n" +
 					"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
@@ -851,35 +665,20 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"Tasks are grouped by dependency layer and notes by type.\n" +
 					"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 					"\n" +
-					"## Tasks (1)\n" +
-					"\n" +
-					"Concrete and claimable; only a task can run.\n" +
-					"\n" +
-					"### Ready (0)\n" +
-					"\n" +
-					"Waits on nothing open; can start now.\n" +
-					"\n" +
-					"_None._\n" +
-					"\n" +
-					"### Draft (1)\n" +
-					"\n" +
-					"Not released; nothing starts it until its status is cleared.\n" +
+					"## Draft (1)\n" +
 					"\n" +
 					"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 					"| --- | --- | --- | --- | --- | --- | --- |\n" +
-					"| T5 | `draft` **Chore** | `chore` | tapestry |  |  |  |\n" +
-					"\n" +
-					"## Notes (0)\n" +
-					"\n" +
-					"Not tasks: ideas and observations, merged into a task when one is promoted.\n",
+					"| T5 | `draft` **Chore** | `chore` | tapestry |  |  |  |\n",
 			},
 			projectFiles: []string{"project-inner.md", "project-later.md", "project-old.md", "project-orphan.md", "project-root.md", "project-ship.md", "project-tidy.md"},
 		},
 		{
-			name: "on a board with no prime owner a beam shows its recorded owner and a plain project none",
+			name: "on a board with no prime owner a beam shows its recorded owner, a plain project none, and a done beam its marker",
 			tasks: []boardengine.Task{
 				{ID: 1, Handle: "P1", Slug: "lone", Title: "Lone beam", Kind: boardengine.KindProject, Beam: true, OwnerMachine: "box"},
 				{ID: 2, Handle: "P2", Slug: "loose", Title: "Loose & <odd> | pipe", Kind: boardengine.KindProject},
+				{ID: 3, Handle: "P3", Slug: "spent", Title: "Spent beam", Kind: boardengine.KindProject, Beam: true, Status: stringPtr("done")},
 			},
 			want: "# Board\n" +
 				"\n" +
@@ -889,57 +688,41 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"Tasks are grouped by dependency layer and notes by type.\n" +
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 				"\n" +
-				projectSummary("P1 Lone beam", "project-lone.md", 0) +
+				"## [P1 Lone beam](project-lone.md) (0) · BEAM\n" +
+				"\n" +
 				"`lone` · Owner `box`\n" +
 				"\n" +
-				emptyProjectEntries(3) +
-				readmeSectionEnd +
-				"\n" +
-				projectSummary("P2 Loose &amp; &lt;odd&gt; | pipe", "project-loose.md", 0) +
+				readmeProjectHeading("P2 Loose & <odd> \\| pipe", "project-loose.md", 0) +
 				"`loose` · Owner none recorded\n" +
 				"\n" +
-				emptyProjectEntries(3) +
-				readmeSectionEnd +
+				rootProjectOpening(0, "none recorded") +
 				"\n" +
-				rootProjectSummary(0, "none recorded") +
-				emptyProjectEntries(3) +
-				readmeSectionEnd,
+				"### Done (1)\n" +
+				"\n" +
+				"| # | Entry | Slug | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- |\n" +
+				"| P3 | **[Spent beam](project-spent.md)** · BEAM | `spent` |  |  |\n",
 			files: map[string]string{
-				"project-lone.md": "# P1 Lone beam\n" +
+				"project-lone.md": "# P1 Lone beam · BEAM\n" +
 					"\n" +
 					"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
 					"Under: [Board](README.md).\n" +
 					"\n" +
 					"`lone` · Owner `box`\n" +
 					"\n" +
-					"beam\n" +
-					"\n" +
 					"Tasks are grouped by dependency layer and notes by type.\n" +
-					"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
-					"\n" +
-					"## Tasks (0)\n" +
-					"\n" +
-					"Concrete and claimable; only a task can run.\n" +
-					"\n" +
-					"### Ready (0)\n" +
-					"\n" +
-					"Waits on nothing open; can start now.\n" +
-					"\n" +
-					"_None._\n" +
-					"\n" +
-					"## Notes (0)\n" +
-					"\n" +
-					"Not tasks: ideas and observations, merged into a task when one is promoted.\n",
+					"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n",
 			},
 		},
 		{
-			name: "nested projects stop deepening their headings at level six",
+			name: "nested projects stop deepening their headings at level six and show no empty Own entries",
 			tasks: []boardengine.Task{
 				{ID: 1, Handle: "P1", Slug: "one", Title: "One", Kind: boardengine.KindProject},
 				{ID: 2, Handle: "P2", Slug: "two", Title: "Two", Kind: boardengine.KindProject, Project: "one"},
 				{ID: 3, Handle: "P3", Slug: "three", Title: "Three", Kind: boardengine.KindProject, Project: "two"},
 				{ID: 4, Handle: "P4", Slug: "four", Title: "Four", Kind: boardengine.KindProject, Project: "three"},
 				{ID: 5, Handle: "P5", Slug: "five", Title: "Five", Kind: boardengine.KindProject, Project: "four"},
+				{ID: 6, Handle: "E1", Slug: "deep", Title: "Deep", Kind: boardengine.KindNote, Project: "five"},
 			},
 			want: "# Board\n" +
 				"\n" +
@@ -949,7 +732,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"Tasks are grouped by dependency layer and notes by type.\n" +
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 				"\n" +
-				projectSummary("P1 One", "project-one.md", 1) +
+				readmeProjectHeading("P1 One", "project-one.md", 1) +
 				"`one` · Owner none recorded\n" +
 				"\n" +
 				"### [P2 Two](project-two.md) (1)\n" +
@@ -964,28 +747,17 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"`four` · Owner none recorded\n" +
 				"\n" +
-				"###### [P5 Five](project-five.md) (0)\n" +
+				"###### [P5 Five](project-five.md) (1)\n" +
 				"\n" +
 				"`five` · Owner none recorded\n" +
 				"\n" +
-				emptyEntriesAtLevelSix +
+				"###### Other (1)\n" +
 				"\n" +
-				ownEntriesHeading(6) +
-				emptyEntriesAtLevelSix +
+				"| # | Prio | Note | Slug | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- |\n" +
+				"| E1 |  | **Deep** | `deep` |  |  |\n" +
 				"\n" +
-				ownEntriesHeading(5) +
-				emptyEntriesAtLevelSix +
-				"\n" +
-				ownEntriesHeading(4) +
-				emptyProjectEntries(5) +
-				"\n" +
-				ownEntriesHeading(3) +
-				emptyProjectEntries(4) +
-				readmeSectionEnd +
-				"\n" +
-				rootProjectSummary(0, "none recorded") +
-				emptyProjectEntries(3) +
-				readmeSectionEnd,
+				rootProjectOpening(0, "none recorded"),
 		},
 		{
 			name: "a project dependency shows by handle while the project is open and drops once every landing member is done",
@@ -1004,63 +776,31 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"Tasks are grouped by dependency layer and notes by type.\n" +
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 				"\n" +
-				projectSummary("P1 Open", "project-open.md", 0) +
+				readmeProjectHeading("P1 Open", "project-open.md", 0) +
 				"`open` · Owner none recorded\n" +
 				"\n" +
-				emptyProjectEntries(3) +
-				readmeSectionEnd +
-				"\n" +
-				projectSummary("P2 Finished", "project-finished.md", 0) +
+				readmeProjectHeading("P2 Finished", "project-finished.md", 0) +
 				"`finished` · Owner none recorded\n" +
 				"\n" +
-				"### Tasks (0)\n" +
-				"\n" +
-				"Concrete and claimable; only a task can run.\n" +
-				"\n" +
-				"#### Ready (0)\n" +
-				"\n" +
-				"Waits on nothing open; can start now.\n" +
-				"\n" +
-				"_None._\n" +
-				"\n" +
-				"### Notes (0)\n" +
-				"\n" +
-				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
-				"\n" +
 				"### Done (1)\n" +
-				"\n" +
-				"Finished, awaiting `lym board prune --apply`.\n" +
 				"\n" +
 				"| # | Entry | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- |\n" +
 				"| T1 | **Member** | `member` |  |  |\n" +
-				readmeSectionEnd +
 				"\n" +
-				rootProjectSummary(2, "none recorded") +
-				"### Tasks (2)\n" +
+				rootProjectOpening(2, "none recorded") +
 				"\n" +
-				"Concrete and claimable; only a task can run.\n" +
-				"\n" +
-				"#### Ready (1)\n" +
-				"\n" +
-				"Waits on nothing open; can start now.\n" +
+				"### Ready (1)\n" +
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T3 | **After finished** | `after-finished` | tapestry |  |  |  |\n" +
 				"\n" +
-				"#### Layer A (1)\n" +
-				"\n" +
-				"Waits only on Running, Ready or Draft entries.\n" +
+				"### Layer A (1)\n" +
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| T2 | **After open** | `after-open` | tapestry | P1 |  |  |\n" +
-				"\n" +
-				"### Notes (0)\n" +
-				"\n" +
-				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
-				readmeSectionEnd,
+				"| T2 | **After open** | `after-open` | tapestry | P1 |  |  |\n",
 		},
 	}
 	for _, tt := range tests {
@@ -1286,94 +1026,38 @@ func TestRenderSketchSection(t *testing.T) {
 	}
 }
 
-// emptyProjectEntries renders the own entries of a project holding none.
-// Its Tasks and Notes headings sit at heading level level, and its Ready heading one level below.
-func emptyProjectEntries(level int) string {
-	return strings.Repeat("#", level) + " Tasks (0)\n" +
-		"\n" +
-		"Concrete and claimable; only a task can run.\n" +
-		"\n" +
-		strings.Repeat("#", level+1) + " Ready (0)\n" +
-		"\n" +
-		"Waits on nothing open; can start now.\n" +
-		"\n" +
-		"_None._\n" +
-		"\n" +
-		strings.Repeat("#", level) + " Notes (0)\n" +
-		"\n" +
-		"Not tasks: ideas and observations, merged into a task when one is promoted.\n"
-}
-
-// emptyEntriesAtLevelSix renders the own entries of a project holding none.
-// The project is nested so deep that its Tasks, Ready and Notes headings all stop at level six.
-const emptyEntriesAtLevelSix = "###### Tasks (0)\n" +
-	"\n" +
-	"Concrete and claimable; only a task can run.\n" +
-	"\n" +
-	"###### Ready (0)\n" +
-	"\n" +
-	"Waits on nothing open; can start now.\n" +
-	"\n" +
-	"_None._\n" +
-	"\n" +
-	"###### Notes (0)\n" +
-	"\n" +
-	"Not tasks: ideas and observations, merged into a task when one is promoted.\n"
-
-// projectSummary renders the opening of a README project section:
-// the details block and its summary linking handleTitle to file and counting members.
-func projectSummary(handleTitle, file string, members int) string {
-	return "<details open>\n" +
-		"<summary><strong><a href=\"" + file + "\">" + handleTitle + "</a> (" + strconv.Itoa(members) + ")</strong></summary>\n" +
+// readmeProjectHeading renders the heading of a README project section, linking handleTitle to file and counting members.
+func readmeProjectHeading(handleTitle, file string, members int) string {
+	return "## [" + handleTitle + "](" + file + ") (" + strconv.Itoa(members) + ")\n" +
 		"\n"
 }
 
-// readmeSectionEnd closes a README project section after the blank line its contents end in.
-const readmeSectionEnd = "\n</details>\n"
-
-// rootProjectSummary renders the opening of the root's README section and its facts line, counting its open members.
-// The facts line under it names the owner.
-func rootProjectSummary(members int, owner string) string {
-	return projectSummary("P0 Root: entries under no project", "project-root.md", members) +
-		"Owner " + owner + "\n" +
-		"\n"
+// rootProjectOpening renders the heading of the root's README section, counting members, and its facts line naming owner.
+func rootProjectOpening(members int, owner string) string {
+	return readmeProjectHeading("P0 Root: entries under no project", "project-root.md", members) +
+		"Owner " + owner + "\n"
 }
 
-// rootEntriesWithProjects renders the own entries of the root in the fixture with projects.
-// Its Tasks, Notes and Done headings sit at heading level level, with one Ready task and one done project.
+// rootEntriesWithProjects renders the root's own entries in the fixture with projects, at heading level level:
+// one Ready task and one done project.
 func rootEntriesWithProjects(level int) string {
-	section, subsection := strings.Repeat("#", level), strings.Repeat("#", level+1)
-	return section + " Tasks (1)\n" +
-		"\n" +
-		"Concrete and claimable; only a task can run.\n" +
-		"\n" +
-		subsection + " Ready (1)\n" +
-		"\n" +
-		"Waits on nothing open; can start now.\n" +
+	section := strings.Repeat("#", level)
+	return section + " Ready (1)\n" +
 		"\n" +
 		"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 		"| --- | --- | --- | --- | --- | --- | --- |\n" +
 		"| T7 | **Base** | `base` | tapestry |  |  |  |\n" +
 		"\n" +
-		section + " Notes (0)\n" +
-		"\n" +
-		"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
-		"\n" +
 		section + " Done (1)\n" +
-		"\n" +
-		"Finished, awaiting `lym board prune --apply`.\n" +
 		"\n" +
 		"| # | Entry | Slug | Age<br>Revised | Labels |\n" +
 		"| --- | --- | --- | --- | --- |\n" +
 		"| P3 | **[Old project](project-old.md)** | `old` |  |  |\n"
 }
 
-// ownEntriesHeading renders the heading and meaning line over a project's own entries, at level level.
-// It applies when the project has open sub-projects.
+// ownEntriesHeading renders the heading over a project's own entries at heading level level.
 func ownEntriesHeading(level int) string {
 	return strings.Repeat("#", level) + " Own entries\n" +
-		"\n" +
-		"The entries directly under this project and under none of its sub-projects.\n" +
 		"\n"
 }
 

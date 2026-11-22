@@ -132,16 +132,15 @@
 // Each entry in it carries a revision, the SHA-256 of its stored encoding, which Board.View and the render both take.
 // BoardRevision is the SHA-256 of board.json, and "" while the file is absent.
 //
-// A project's own entries are a Tasks section, a Notes section grouped by type label, and a Done section.
-// ComputeLayers names each task's subsection, and the same name is the layer field of `lym board list`.
-// Tasks splits into Running, Ready, the dependency layers A, B and on, Independent, and Draft.
+// ComputeLayers names each task's section, and the same name is the layer field of `lym board list`:
+// Running, Ready, the dependency layers A, B and on, Independent, or Draft.
 // A task a run holds, by RunHolds, goes under Running and in no layer.
 // An open draft task a run does not hold goes under Draft, and nothing starts it until it is released.
 // Ready holds the open, released tasks with no open dependency.
 // A dependency on a running task counts, so a task waiting on a run is not Ready.
 // A dependency on a project that is not done weighs as one on its deepest open landing member.
-// An open project is in none of the Tasks layers; ComputeLayers puts it in its own Project layer.
-// RenderOrder is the order of every subsection, and `lym board list` and `find` follow it.
+// An open project is in none of the task layers; ComputeLayers puts it in its own Project layer.
+// RenderOrder is the order of every section, and `lym board list` and `find` follow it.
 // A pipe in a cell is escaped and a line break becomes a space, so an entry is always one row.
 //
 // # Intake

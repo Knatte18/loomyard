@@ -83,7 +83,6 @@ type readmePlacement struct {
 }
 
 var (
-	projectSummaryPattern = regexp.MustCompile(`^<summary><strong><a href="[^"]*">(P\d+) `)
 	projectHeadingPattern = regexp.MustCompile(`^(#+) \[(P\d+) `)
 	ownEntriesPattern     = regexp.MustCompile(`^(#+) Own entries$`)
 	sectionHeadingPattern = regexp.MustCompile(`^#+ (.+) \(\d+\)$`)
@@ -115,9 +114,7 @@ func readmePlacements(readme string) map[string]readmePlacement {
 	placements := map[string]readmePlacement{}
 	section, afterColumn := "", -1
 	for _, line := range strings.Split(readme, "\n") {
-		if m := projectSummaryPattern.FindStringSubmatch(line); m != nil {
-			stack = []frame{{2, m[1]}}
-		} else if m := projectHeadingPattern.FindStringSubmatch(line); m != nil {
+		if m := projectHeadingPattern.FindStringSubmatch(line); m != nil {
 			popTo(len(m[1]))
 			stack = append(stack, frame{len(m[1]), m[2]})
 		} else if m := ownEntriesPattern.FindStringSubmatch(line); m != nil {
@@ -144,13 +141,13 @@ func readmePlacements(readme string) map[string]readmePlacement {
 // rootSectionNames lists the section headings of the root's README block, which holds a section of every kind.
 func rootSectionNames(t *testing.T, readme string) []string {
 	t.Helper()
-	_, rootBlock, found := strings.Cut(readme, `<a href="project-root.md">`)
+	_, rootBlock, found := strings.Cut(readme, "](project-root.md)")
 	if !found {
 		t.Fatalf("README has no root section")
 	}
 	var names []string
 	for _, line := range strings.Split(rootBlock, "\n") {
-		if m := sectionHeadingPattern.FindStringSubmatch(line); m != nil && m[1] != "Tasks" && m[1] != "Notes" {
+		if m := sectionHeadingPattern.FindStringSubmatch(line); m != nil {
 			names = append(names, m[1])
 		}
 	}

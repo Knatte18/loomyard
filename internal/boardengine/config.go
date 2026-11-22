@@ -86,7 +86,7 @@ type Outputs struct {
 	DesignPrefix string
 	// DefaultRecipe is the recipe a task with no recipe field runs.
 	DefaultRecipe string
-	// Types is the configured type-label order, which the renderer sorts Notes sections by.
+	// Types is the configured type-label order, which the renderer sorts note sections by.
 	Types []string
 	// Labels is the configured area-label order, which the view projection lists as the board's areas.
 	Labels []string

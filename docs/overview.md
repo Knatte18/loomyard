@@ -474,18 +474,18 @@ User-facing modules each get one `lym <module>` namespace:
   The hub's repository is the one its recorded binding names, else its origin remote,
   so only the loomyard hub's intake reads LoomYard's issues.
   Intake never goes through selfreport.
-  The README renders Tasks split into Running, Ready (waiting on nothing open) and dependency layers.
+  The README renders tasks in sections by Running, Ready (waiting on nothing open) and dependency layer.
   The entries of one dependency layer can run in parallel.
-  It then renders Notes grouped by type label, Sketches first.
-  Each subsection is one numbered table that links each slug to its design doc.
+  It then renders one section per note type label, Sketches first, and leaves out every section with no entry.
+  Each section is one numbered table that links each slug to its design doc.
   A discussed entry's row also carries a `Sketch` link to the decision record `decision-<slug>.md`.
   Every project, the root included as `P0` with its file `project-root.md`, renders through one project section.
-  A section nests the projects under it, each with its own slug, age, owner, Tasks, Notes and Done.
+  A section nests the projects under it, each with its own slug, age, owner and entries.
   The README therefore shows every open project's entries split the same way, with the root's section last.
-  Each of its top-level sections, the root's included, is a `<details open>` block the reader can collapse.
+  A beam project's heading ends in `BEAM`.
   A project file shows its project and the projects under it.
   An entry may carry a priority, `high` or `low`, absent meaning normal.
-  The priority orders the entry first or last within its subsection.
+  The priority orders the entry first or last within its section.
   A task may name a run profile in its `profile` field,
   and `lym board profiles` prints the hub's profiles with their settings and each recipe's default profile.
   Agents use the board through the `ly:board` skill.

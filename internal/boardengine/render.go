@@ -1,26 +1,12 @@
-// render.go turns the entry list into the board's output files.
-// Those are README.md, a project-<slug>.md for each project and the root, and a design-*.md for each entry with a body.
-// Render is a pure function from the entries to a map of filename to content; the caller writes the files.
-// README.md is the overview of every top-level project, each in a collapsible section, with the root's own section last.
-// A project file holds its heading, its facts and brief, and its own entries.
-// Each open sub-project gets a section one heading level below the project's heading.
-// The root project P0 renders the same way, but its projects stand beside it rather than under it.
-// A project's own entries split into Tasks, Notes and Done;
-// Tasks split by Running, Ready, dependency layers, Independent and Draft.
-// The design files are built by renderDesigns;
-// each opens with a header naming the entry's slug, kind, labels and status, then the stored body unchanged.
-// A discussed entry's header and Slug cells link its decision record.
-// board-data.js is the view projection of the board as a script, built beside the README.
-// board.html is the embedded viewer page, written verbatim.
-// RenderToDisk writes the files and maintains the manifest sidecar .board-rendered.json;
-// so renamed or removed outputs are cleaned up on the next render.
+// render.go turns the entry list into the board's output files:
+// README.md, a board file per project and the root, a design file per entry with a body, board-data.js and board.html.
+// RenderToDisk writes them and removes the files the previous render produced and this one does not.
 
 package boardengine
 
 import (
 	"encoding/json"
 	"fmt"
-	"html"
 	"os"
 	"path/filepath"
 	"slices"
@@ -161,12 +147,6 @@ func renderFiles(stored, rendered []Task, primeOwner string, out Outputs, now ti
 	return result, nil
 }
 
-// readmeSection is one section of a board file: its heading name and the one-line meaning under it.
-type readmeSection struct {
-	name    string
-	meaning string
-}
-
 // boardIntro is the paragraph every board file holds under its header.
 var boardIntro = []string{
 	"Tasks are grouped by dependency layer and notes by type.",
@@ -174,30 +154,26 @@ var boardIntro = []string{
 	"",
 }
 
-// The section headings of the board files, declared here alone:
-// the heading over a project's own entries beside its sub-projects; the Tasks, Notes and Done sections;
-// and the Running and Ready subsections of Tasks.
-var (
-	ownEntriesSection = readmeSection{"Own entries", "The entries directly under this project and under none of its sub-projects."}
-	tasksSection      = readmeSection{"Tasks", "Concrete and claimable; only a task can run."}
-	runningSection    = readmeSection{"Running", "Held by a run; its scope is locked until the run ends."}
-	readySection      = readmeSection{"Ready", "Waits on nothing open; can start now."}
-	notesSection      = readmeSection{"Notes", "Not tasks: ideas and observations, merged into a task when one is promoted."}
-	doneSection       = readmeSection{"Done", "Finished, awaiting `lym board prune --apply`."}
+// The fixed section headings of the board files.
+const (
+	ownEntriesHeading = "Own entries"
+	runningHeading    = "Running"
+	readyHeading      = "Ready"
+	doneHeading       = "Done"
 )
 
-// otherNotesHeading is the Notes subsection for a note whose type label is no longer configured.
+// otherNotesHeading is the section heading for a note whose type label is no longer configured.
 const otherNotesHeading = "Other"
 
 // researchType is the type label of a measurement, bench or study.
-// Its Notes subsection follows the leading note types.
+// Its section follows the leading note types.
 const researchType = "research"
 
-// leadingNoteTypes are the type labels whose Notes subsections lead the others, in this order:
+// leadingNoteTypes are the type labels whose sections lead the other note sections, in this order:
 // Sketches wait for the operator's triage, and research follows them.
 var leadingNoteTypes = []string{SketchType, researchType}
 
-// typeHeadings gives the Notes subsection heading of each type label that does not follow the default.
+// typeHeadings gives the section heading of each note type label that does not follow the default.
 // The default is the label capitalised with an s appended.
 var typeHeadings = map[string]string{researchType: "Research", SketchType: "Sketches"}
 
@@ -223,9 +199,6 @@ func RootProjectBrief() BriefTask {
 // rootProjectFile is the name of the root project's own board file.
 var rootProjectFile = projectFileName(RootSubject)
 
-// emptySectionLine stands in for the table of a subsection that is always rendered and has no entry.
-const emptySectionLine = "_None._"
-
 // The column headings of the board's tables, one constant per heading.
 const (
 	columnHandle     = "#"
@@ -242,8 +215,16 @@ const (
 	columnLabels     = "Labels"
 )
 
-// projectBeamText is the line under a beam project's brief that says it is a beam.
-const projectBeamText = "beam"
+// beamMarker ends a beam project's heading and its Done row, so a reader tells a beam from a plain project.
+const beamMarker = " · BEAM"
+
+// beamSuffix is the marker that ends a beam's heading and Done row, and empty for any other entry.
+func beamSuffix(t Task) string {
+	if t.Beam {
+		return beamMarker
+	}
+	return ""
+}
 
 // cellBreak stacks two lines inside one table cell, where a newline would end the row.
 const cellBreak = "<br>"
@@ -285,7 +266,7 @@ func kindName(kind string) string {
 	return "Note"
 }
 
-// typeHeading is the Notes subsection heading of a type label.
+// typeHeading is the section heading of a note type label.
 // It is the label's entry in `typeHeadings` when it has one.
 // Otherwise it is the label capitalised with an s appended, and an empty label gives "s".
 func typeHeading(typeLabel string) string {
@@ -298,7 +279,7 @@ func typeHeading(typeLabel string) string {
 	return strings.ToUpper(typeLabel[:1]) + typeLabel[1:] + "s"
 }
 
-// notesTypeOrder is the order of the Notes subsections.
+// notesTypeOrder is the order of the note sections.
 // The leading note types come first, in their configured order.
 // The other types follow in configured order, and "" for Other comes last.
 func notesTypeOrder(types []string) []string {
@@ -427,15 +408,12 @@ func (b boardView) renderedLine() string {
 }
 
 // fileHeader is the opening of project's board file.
-// It holds the handle and title, the render time, a link up to the file above, the facts line and the brief.
-// For a beam it adds the beam text, and when the project has a body it adds the body.
+// It holds the heading, the render time, a link up to the file above, the facts line, the brief and the body.
 func (b boardView) fileHeader(project Task) []string {
-	lines := []string{"# " + cellText(project.Handle+" "+project.Title), "", b.renderedLine(), "Under: " + b.upLink(project) + ".", "", b.projectFacts(project), ""}
+	title := "# " + cellText(project.Handle+" "+project.Title) + beamSuffix(project)
+	lines := []string{title, "", b.renderedLine(), "Under: " + b.upLink(project) + ".", "", b.projectFacts(project), ""}
 	if project.Brief != "" {
 		lines = append(lines, project.Brief, "")
-	}
-	if project.Beam {
-		lines = append(lines, projectBeamText, "")
 	}
 	if strings.TrimSpace(project.Body) == "" {
 		return lines
@@ -541,33 +519,19 @@ func (b boardView) projectFacts(project Task) string {
 
 // renderReadme builds README.md, the overview of every project.
 // Its header names the render time and the prime owner, then comes the intro.
-// Each open project directly under the root gets a collapsible section, and the root's own section comes last.
+// Each open project directly under the root gets a section, and the root's own section comes last.
 func (b boardView) renderReadme() string {
 	lines := []string{"# " + rootTitle, "", b.renderedLine(), "Prime owner: " + primeOwnerText(b.primeOwner) + ".", ""}
 	lines = append(lines, boardIntro...)
 	for _, child := range b.childProjects(rootProject) {
-		lines = append(lines, b.collapsibleProjectSection(child.Task)...)
+		lines = append(lines, b.projectSection(child.Task, readmeSectionLevel)...)
 	}
-	lines = append(lines, b.collapsibleProjectSection(rootProject)...)
+	lines = append(lines, b.projectSection(rootProject, readmeSectionLevel)...)
 	return joinLines(lines)
 }
 
-// readmeSectionLevel is the heading level a README section's summary stands in for;
-// the section's own headings sit one level below it.
+// readmeSectionLevel is the heading level of each project section of README.md.
 const readmeSectionLevel = 2
-
-// collapsibleProjectSection renders project as one README section the reader can collapse, open by default.
-// Its summary links the project's handle and title to its file and counts its open members.
-// The summary is HTML, since markdown does not render inside it.
-// Blank lines around the section's contents let the markdown there render.
-func (b boardView) collapsibleProjectSection(project Task) []string {
-	title := html.EscapeString(strings.Join(strings.Fields(project.Handle+" "+project.Title), " "))
-	summary := fmt.Sprintf(`<summary><strong><a href="%s">%s</a> (%d)</strong></summary>`,
-		html.EscapeString(projectFile(project)), title, b.openMembers(project))
-	lines := append([]string{"<details open>", summary, ""}, b.projectSectionContent(project, readmeSectionLevel)...)
-	// The contents end in a blank line, as every section of a board file does.
-	return append(lines, "</details>", "")
-}
 
 // renderProjectFile builds the board file of project.
 // Its header stands as the project's level-one heading; the intro follows, then the project's sub-projects and own entries.
@@ -580,7 +544,7 @@ func (b boardView) renderProjectFile(project Task) string {
 // projectSection renders project as one section at the heading level given.
 // Its heading links the project's handle and title to its file and counts its open members.
 func (b boardView) projectSection(project Task, level int) []string {
-	heading := countedHeading(level, projectLink(project), b.openMembers(project))
+	heading := countedHeading(level, projectLink(project), b.openMembers(project)) + beamSuffix(project)
 	return append([]string{heading, ""}, b.projectSectionContent(project, level)...)
 }
 
@@ -608,26 +572,23 @@ func (b boardView) projectSectionContent(project Task, level int) []string {
 }
 
 // projectBody renders what sits under the heading of project at heading level level.
-// Each open sub-project directly under project gets a section one level down, holding its own sub-projects in turn;
-// project's own Tasks, Notes and Done follow.
-// With no open sub-project the own entries sit one level down;
-// with any, they sit under an Own entries heading at the sub-projects' level,
-// so a reader sees where the last sub-project ends.
+// Each open sub-project directly under project gets a section one level down;
+// with any, project's own entries follow under an Own entries heading, so a reader sees where the last sub-project ends.
 // The root's body is its own entries alone, since its projects stand beside it in README.md.
 func (b boardView) projectBody(project Task, level int) []string {
-	if project.Slug == "" {
-		return b.entrySections(project, level+1)
-	}
 	children := b.childProjects(project)
-	if len(children) == 0 {
+	if project.Slug == "" || len(children) == 0 {
 		return b.entrySections(project, level+1)
 	}
 	var lines []string
 	for _, child := range children {
 		lines = append(lines, b.projectSection(child.Task, level+1)...)
 	}
-	lines = append(lines, heading(level+1, ownEntriesSection.name), "", ownEntriesSection.meaning, "")
-	return append(lines, b.entrySections(project, level+2)...)
+	if own := b.entrySections(project, level+2); len(own) > 0 {
+		lines = append(lines, heading(level+1, ownEntriesHeading), "")
+		lines = append(lines, own...)
+	}
+	return lines
 }
 
 // joinLines joins a board file's lines into its content, ending in exactly one newline.
@@ -656,23 +617,24 @@ func (b boardView) table(entries []TaskWithLayer, table readmeTable) []string {
 	return append(lines, "")
 }
 
-// entrySections builds the Tasks, Notes and Done sections of project.
-// level is the heading level of their headings, and their subsections sit one level down.
-// Tasks split into Running, Ready, dependency layers, Independent and Draft;
-// Notes split by type label; Done appears when any of its entries is done.
-// Every section holds only the entries whose project is project, while layers, After cells and owners read the whole board.
+// entrySections renders the entries whose project is project as sections at heading level level,
+// leaving out a section with no entry.
+// Layers, After cells and owners read the whole board.
 func (b boardView) entrySections(project Task, level int) []string {
-	sublevel := level + 1
 	var own []TaskWithLayer
 	for _, twl := range b.ordered {
 		if twl.Project == project.Slug {
 			own = append(own, twl)
 		}
 	}
-	types := b.out.Types
-	waitTable := readmeTable{columns: []string{columnTask, columnRecipe, columnAfter}, cells: func(t Task) []string {
-		return []string{entryCell(t), recipeCell(t, b.out), b.afterCell(t)}
-	}}
+	var lines []string
+	section := func(name string, entries []TaskWithLayer, table readmeTable) {
+		if len(entries) == 0 {
+			return
+		}
+		lines = append(lines, countedHeading(level, name, len(entries)), "")
+		lines = append(lines, b.table(entries, table)...)
+	}
 
 	var tasks []TaskWithLayer
 	for _, twl := range own {
@@ -680,7 +642,6 @@ func (b boardView) entrySections(project Task, level int) []string {
 			tasks = append(tasks, twl)
 		}
 	}
-	lines := []string{countedHeading(level, tasksSection.name, len(tasks)), "", tasksSection.meaning, ""}
 	byLayer := func(layer string) []TaskWithLayer {
 		var entries []TaskWithLayer
 		for _, twl := range tasks {
@@ -690,19 +651,13 @@ func (b boardView) entrySections(project Task, level int) []string {
 		}
 		return entries
 	}
-	if running := byLayer(runningLayer); len(running) > 0 {
-		lines = append(lines, countedHeading(sublevel, runningSection.name, len(running)), "", runningSection.meaning, "")
-		lines = append(lines, b.table(running, readmeTable{columns: []string{columnTask, columnRecipe, columnAt, columnOwner}, cells: func(t Task) []string {
-			return []string{entryCell(t), recipeCell(t, b.out), atCell(*t.Status), cellText(b.ownerOf(t.Slug))}
-		}})...)
-	}
-	ready := byLayer(readyLayer)
-	lines = append(lines, countedHeading(sublevel, readySection.name, len(ready)), "", readySection.meaning, "")
-	if len(ready) > 0 {
-		lines = append(lines, b.table(ready, waitTable)...)
-	} else {
-		lines = append(lines, emptySectionLine, "")
-	}
+	waitTable := readmeTable{columns: []string{columnTask, columnRecipe, columnAfter}, cells: func(t Task) []string {
+		return []string{entryCell(t), recipeCell(t, b.out), b.afterCell(t)}
+	}}
+	section(runningHeading, byLayer(runningLayer), readmeTable{columns: []string{columnTask, columnRecipe, columnAt, columnOwner}, cells: func(t Task) []string {
+		return []string{entryCell(t), recipeCell(t, b.out), atCell(*t.Status), cellText(b.ownerOf(t.Slug))}
+	}})
+	section(readyHeading, byLayer(readyLayer), waitTable)
 	// Tasks are ordered by layer, so each dependency layer, Independent and Draft, is one contiguous run.
 	for start := 0; start < len(tasks); {
 		end := start
@@ -710,35 +665,22 @@ func (b boardView) entrySections(project Task, level int) []string {
 			end++
 		}
 		if layer := tasks[start].Layer; layer != runningLayer && layer != readyLayer {
-			section := layerSection(layer)
-			lines = append(lines, countedHeading(sublevel, section.name, end-start), "", section.meaning, "")
-			lines = append(lines, b.table(tasks[start:end], waitTable)...)
+			section(layerHeading(layer), tasks[start:end], waitTable)
 		}
 		start = end
 	}
 
+	types := b.out.Types
 	byType := make(map[string][]TaskWithLayer)
-	noteCount := 0
 	for _, twl := range own {
 		if !isDone(twl.Task) && twl.Kind == KindNote {
 			typeLabel := noteType(twl.Task, types)
 			byType[typeLabel] = append(byType[typeLabel], twl)
-			noteCount++
 		}
 	}
-	lines = append(lines, countedHeading(level, notesSection.name, noteCount), "", notesSection.meaning, "")
 	noteTable := readmeTable{columns: []string{columnNote}, cells: func(t Task) []string { return []string{entryCell(t)} }, priority: true}
 	for _, typeLabel := range notesTypeOrder(types) {
-		entries := byType[typeLabel]
-		if len(entries) == 0 {
-			continue
-		}
-		sectionName := otherNotesHeading
-		if typeLabel != "" {
-			sectionName = typeHeading(typeLabel)
-		}
-		lines = append(lines, countedHeading(sublevel, sectionName, len(entries)), "")
-		lines = append(lines, b.table(entries, noteTable)...)
+		section(noteSectionName(typeLabel), byType[typeLabel], noteTable)
 	}
 
 	var done []TaskWithLayer
@@ -747,15 +689,12 @@ func (b boardView) entrySections(project Task, level int) []string {
 			done = append(done, twl)
 		}
 	}
-	if len(done) > 0 {
-		lines = append(lines, countedHeading(level, doneSection.name, len(done)), "", doneSection.meaning, "")
-		lines = append(lines, b.table(done, readmeTable{columns: []string{columnEntry}, cells: func(t Task) []string {
-			if t.Kind == KindProject {
-				return []string{"**[" + cellText(t.Title) + "](" + projectFileName(t.Slug) + ")**"}
-			}
-			return []string{entryCell(t)}
-		}})...)
-	}
+	section(doneHeading, done, readmeTable{columns: []string{columnEntry}, cells: func(t Task) []string {
+		if t.Kind == KindProject {
+			return []string{"**[" + cellText(t.Title) + "](" + projectFileName(t.Slug) + ")**" + beamSuffix(t)}
+		}
+		return []string{entryCell(t)}
+	}})
 	return lines
 }
 
@@ -827,18 +766,15 @@ func primeOwnerText(primeOwner string) string {
 	return codeSpan(primeOwner)
 }
 
-// layerSection names a computed dependency layer and says when its entries can start.
-func layerSection(layer string) readmeSection {
+// layerHeading is the section heading of a computed dependency layer.
+func layerHeading(layer string) string {
 	switch layer {
-	case "A":
-		return readmeSection{"Layer A", "Waits only on Running, Ready or Draft entries."}
 	case isolatedLayer:
-		return readmeSection{"Independent", "Depends on nothing and nothing depends on it, by design."}
+		return "Independent"
 	case draftLayer:
-		return readmeSection{"Draft", "Not released; nothing starts it until its status is cleared."}
-	default:
-		return readmeSection{"Layer " + layer, "Starts when every entry it names under After is done."}
+		return "Draft"
 	}
+	return "Layer " + layer
 }
 
 // tableRow joins cells into one markdown table row.
