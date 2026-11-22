@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go/build"
 	"maps"
 	"os"
 	"os/exec"
@@ -238,13 +239,21 @@ func HardenReapDeps(location *lymcwd.Location, row string, point hardenshed.Reap
 
 // hardenLiveArgs returns the arguments of a live gate call.
 // They are `gate test --wait --gate <key>`, then `--copies <n>` when copies is above 0, then the packages.
+// A package path go would read as an import path, such as `internal/x`, gets a `./` prefix.
+// Go resolves a bare path in the standard library, and the call fails before any test runs.
 // It names no tier, so the hub's gate key alone says what the call runs.
 func hardenLiveArgs(key string, copies int, packages []string) []string {
 	args := []string{"gate", "test", "--wait", "--gate", key}
 	if copies > 0 {
 		args = append(args, "--copies", fmt.Sprint(copies))
 	}
-	return append(args, packages...)
+	for _, pkg := range packages {
+		if !build.IsLocalImport(pkg) {
+			pkg = "./" + pkg
+		}
+		args = append(args, pkg)
+	}
+	return args
 }
 
 // hardenLiveEnv returns env without the held gate slot's variable,
