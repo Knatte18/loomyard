@@ -80,6 +80,28 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 	}
 }
 
+// TestModules_OrchRegistersRemoteControlReinterpretation pins the orch module's remote-control reinterpretation.
+// Every hub gets the notice that its orch's remote control is now off only while the orch row declares it.
+//
+//testtiming:keep pins the orch row's Reinterpretations entry, which no walk test reads
+func TestModules_OrchRegistersRemoteControlReinterpretation(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	orch, found := Lookup("orch")
+	if !found {
+		t.Fatal("Lookup(\"orch\") found no module; want the orch module registered")
+	}
+	if len(orch.Reinterpretations) != 1 {
+		t.Fatalf("orch Reinterpretations = %d entries; want 1", len(orch.Reinterpretations))
+	}
+	if got := orch.Reinterpretations[0].ID; got != "orch-remote-control-off-by-default" {
+		t.Errorf("orch Reinterpretations[0].ID = %q; want %q", got, "orch-remote-control-off-by-default")
+	}
+	if orch.Reinterpretations[0].Rewrite == nil {
+		t.Error("orch Reinterpretations[0].Rewrite is nil; want the rewrite function")
+	}
+}
+
 // TestModules_EveryTemplateKeyClassified pins that each module's Categories classify every template unit.
 // It also pins that Categories name only paths the template holds.
 // The derived LocalKeys, LocalDenied and MachineKeys must match the record.

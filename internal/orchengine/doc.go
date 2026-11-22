@@ -66,6 +66,10 @@
 //
 // While `remote_control` in orch.yaml is on, every orch session starts with the provider's remote control on.
 // This covers every launch and resume lym makes.
+// It is off unless the operator sets it, so lym never turns remote control on by itself;
+// the RC button of a pane turns it on for one agent.
+// The reinterpretation FlagRemoteControlDefault flags a hub file that set no value before the default turned off.
+// The hub's orch hears of it once.
 // Config.RemoteControlSessionName fills the `remote_control_name` template;
 // `{machine}::{name}` is the cross-machine address creel uses.
 // orchengine records no remote-control state.

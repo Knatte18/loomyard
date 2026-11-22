@@ -43,6 +43,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -1418,6 +1419,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 					return err
 				}
 				reedEngine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
+				reedEngine.SetRevivalFilter(orchengine.RevivalFilter(fabricengine.ConfigDirs(taskLocation)))
 				rows, err := reedEngine.Directory()
 				if err != nil {
 					return err

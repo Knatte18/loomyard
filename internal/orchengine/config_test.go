@@ -220,9 +220,10 @@ func TestLoadConfig_RemoteControl(t *testing.T) {
 		wantName  string
 		wantError string
 	}{
-		{"the template is on with the cross-machine address", "model: opus\n", true, "{machine}::{name}", ""},
-		{"switched off with an empty name loads", "remote_control: false\nremote_control_name: \"\"\n", false, "", ""},
-		{"on with an empty name is refused", "remote_control_name: \" \"\n", false, "", "remote_control_name is empty"},
+		{"the template is off with the cross-machine address", "model: opus\n", false, "{machine}::{name}", ""},
+		{"switched on keeps the template's name", "remote_control: true\n", true, "{machine}::{name}", ""},
+		{"off with an empty name loads", "remote_control_name: \"\"\n", false, "", ""},
+		{"on with an empty name is refused", "remote_control: true\nremote_control_name: \" \"\n", false, "", "remote_control_name is empty"},
 		{"a control character is refused", "remote_control_name: \"a\\tb\"\n", false, "", "control character"},
 	}
 	for _, tt := range tests {

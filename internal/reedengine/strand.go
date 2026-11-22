@@ -612,13 +612,9 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 				return nil
 			case ifAbsentRelaunch:
 				strand := &st.Strands[idx]
-				// Launch with the stored ResumeCmd, falling back to Cmd: the same fallback a resume applies.
+				// Launch with the stored ResumeCmd, falling back to Cmd: the same line a resume replays.
 				// A relaunch matched by name therefore does what resuming that strand does.
-				launchCmd := strand.ResumeCmd
-				if launchCmd == "" {
-					launchCmd = strand.Cmd
-				}
-				if err := e.launchStrandLocked(st, strand, launchCmd); err != nil {
+				if err := e.launchStrandLocked(st, strand, e.revivalCmd(*strand)); err != nil {
 					return fmt.Errorf("launch strand: %w", err)
 				}
 				// Persist after the launch succeeds and before the layout apply.
