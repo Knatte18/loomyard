@@ -1,12 +1,16 @@
 // roleguard_test.go pins the sandboxed-role guard of the fabric command tree:
-// which subcommands a task-session role may run, and which strand names the guard lets through.
-// It drives the built command tree against an empty directory,
-// so a passing verb stops at its own worktree-resolution error and spawns nothing.
+// which subcommands a task-session role may run.
+// It also pins which strand names the guard lets through.
+// It pins which directories a task role may run a mutating verb in.
+// It drives the built command tree against directories that hold no hub.
+// A passing verb stops at its own worktree-resolution error and spawns nothing.
 
 package fabriccli_test
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -14,7 +18,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/weftname"
 	"github.com/spf13/cobra"
 )
 
@@ -57,11 +64,73 @@ const refusalMarker = "from the task session"
 // runUnderParent mounts the fabric command under a bare parent as main.go does and runs args from an empty directory.
 func runUnderParent(t *testing.T, args ...string) (code int, out string) {
 	t.Helper()
+	return runUnderParentIn(t, t.TempDir(), args...)
+}
+
+// runUnderParentIn mounts the fabric command under a bare parent as main.go does and runs args from dir.
+func runUnderParentIn(t *testing.T, dir string, args ...string) (code int, out string) {
+	t.Helper()
 	root := &cobra.Command{Use: "lym"}
 	root.AddCommand(fabriccli.Command())
 	var buf bytes.Buffer
-	code = clihelp.ExecuteIn(root, t.TempDir(), &buf, append([]string{"fabric"}, args...))
+	code = clihelp.ExecuteIn(root, dir, &buf, append([]string{"fabric"}, args...))
 	return code, buf.String()
+}
+
+// fakeWorktree makes a directory named name under parent that resolves as a worktree root:
+// its `.git` holds HEAD, objects and refs, written with no git process.
+func fakeWorktree(t *testing.T, parent, name string) string {
+	t.Helper()
+	worktree := filepath.Join(parent, name)
+	for _, dir := range []string{"objects", "refs"} {
+		if err := os.MkdirAll(filepath.Join(worktree, ".git", dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(worktree, ".git", "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return worktree
+}
+
+// sandboxHubDir makes a hub directory under the sandbox root of worktree and returns it as written through the worktree.
+// The worktree's `.lym` is a directory link into its records sibling, as fabric wires it,
+// so the directory itself lives under the sibling.
+func sandboxHubDir(t *testing.T, worktree string) string {
+	t.Helper()
+	sibling := worktree + weftname.Suffix
+	if err := os.MkdirAll(filepath.Join(sibling, lymdirs.DotLymDirName, lymdirs.HardenSandboxDirName, "hub-1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(worktree, lymdirs.DotLymDirName)
+	if _, err := os.Lstat(link); err != nil {
+		if err := fslink.CreateDirLink(link, filepath.Join(sibling, lymdirs.DotLymDirName)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return filepath.Join(link, lymdirs.HardenSandboxDirName, "hub-1")
+}
+
+// recordShortname writes the repo shortname record of the hub directory hub.
+func recordShortname(t *testing.T, hub, shortname string) {
+	t.Helper()
+	boltDir := fabricengine.BoltDir(hub)
+	if err := os.MkdirAll(boltDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(boltDir, fabricengine.ShortnameFileName), []byte(shortname+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// linkTo makes a directory link in a new temp directory that points at target, and returns the link.
+func linkTo(t *testing.T, target string) string {
+	t.Helper()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := fslink.CreateDirLink(link, target); err != nil {
+		t.Fatal(err)
+	}
+	return link
 }
 
 // TestSandboxedRoleGuard sets the strand-name environment variable with t.Setenv.
@@ -195,6 +264,101 @@ func TestSandboxedRoleGuard(t *testing.T) {
 			if code, out := runUnderParent(t, args...); code != 1 || !strings.Contains(out, refusalMarker) {
 				t.Errorf("%v under %s = %d, output %s; want a guard refusal", args, webster, code, out)
 			}
+		}
+	})
+
+	t.Run("a task role runs mutating verbs only in a hub under its own worktree's sandbox root", func(t *testing.T) {
+		t.Setenv(agentname.StrandNameEnv, webster)
+		hubs := t.TempDir()
+		recordShortname(t, hubs, "ly")
+		own := fakeWorktree(t, hubs, "slug")
+		other := fakeWorktree(t, hubs, "other")
+		notWorktree := filepath.Join(t.TempDir(), "slug")
+		ownSandboxHub := sandboxHubDir(t, own)
+		ownSandboxRoot := filepath.Dir(ownSandboxHub)
+		otherHubs := t.TempDir()
+		recordShortname(t, otherHubs, "zz")
+		sameSlugInOtherHub := fakeWorktree(t, otherHubs, "slug")
+
+		nestedHub := filepath.Join(own, "sub", lymdirs.DotLymDirName, lymdirs.HardenSandboxDirName, "hub-1")
+		if err := os.MkdirAll(nestedHub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		escape := filepath.Join(ownSandboxRoot, "escape")
+		if err := fslink.CreateDirLink(escape, t.TempDir()); err != nil {
+			t.Fatal(err)
+		}
+		dangling := filepath.Join(ownSandboxRoot, "dangling")
+		if err := fslink.CreateDirLink(dangling, filepath.Join(t.TempDir(), "absent")); err != nil {
+			t.Fatal(err)
+		}
+
+		// A worktree whose records sibling holds a `.lym` with no sandbox root yet.
+		freshHubs := t.TempDir()
+		recordShortname(t, freshHubs, "ly")
+		fresh := fakeWorktree(t, freshHubs, "slug")
+		if err := os.MkdirAll(filepath.Join(fresh+weftname.Suffix, lymdirs.DotLymDirName), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := fslink.CreateDirLink(filepath.Join(fresh, lymdirs.DotLymDirName), filepath.Join(fresh+weftname.Suffix, lymdirs.DotLymDirName)); err != nil {
+			t.Fatal(err)
+		}
+
+		// Each form fails at its own worktree resolution once the guard lets it through, so none spawns;
+		// clone's three URLs stop it at its usage check.
+		mutatingForms := [][]string{
+			{"add", "slug"}, {"push"}, {"pull"}, {"sync"}, {"reconcile"}, {"checkout"},
+			{"remove", "slug"}, {"cleanup", "--apply"}, {"clone", "a", "b", "c"},
+		}
+		tests := []struct {
+			name    string
+			cwd     string
+			refused bool
+		}{
+			{"OwnSandboxHub", ownSandboxHub, false},
+			{"OwnSandboxHubInItsRecordsSiblingForm", filepath.Join(own+weftname.Suffix, lymdirs.DotLymDirName, lymdirs.HardenSandboxDirName, "hub-1"), false},
+			{"LinkIntoOwnSandboxHub", linkTo(t, ownSandboxHub), false},
+			{"OtherWorktreesSandboxHub", sandboxHubDir(t, other), true},
+			{"SandboxRootOfADirectoryNoWorktree", sandboxHubDir(t, notWorktree), true},
+			{"SameSlugWorktreeInAnotherHub", sandboxHubDir(t, sameSlugInOtherHub), true},
+			{"OwnWorktreeOutsideItsSandboxRoot", own, true},
+			{"SandboxRootBelowASubdirectoryOfOwnWorktree", nestedHub, true},
+			{"LinkInsideOwnSandboxRootPointingOut", escape, true},
+		}
+		for _, tt := range tests {
+			for _, args := range mutatingForms {
+				code, out := runUnderParentIn(t, tt.cwd, args...)
+				if refused := strings.Contains(out, refusalMarker); refused != tt.refused {
+					t.Errorf("%s: %v under %s refused = %v; want %v; output: %s", tt.name, args, webster, refused, tt.refused, out)
+				}
+				if tt.refused && code != 1 {
+					t.Errorf("%s: %v under %s = %d; want exit 1", tt.name, args, webster, code)
+				}
+			}
+		}
+
+		cloneTests := []struct {
+			name    string
+			cwd     string
+			into    string
+			refused bool
+		}{
+			{"IntoOwnSandboxRootFromItsWorktree", own, filepath.Join(own, lymdirs.DotLymDirName, lymdirs.HardenSandboxDirName, "hub-2"), false},
+			{"RelativeIntoOwnSandboxRootFromItsWorktree", own, filepath.Join(lymdirs.DotLymDirName, lymdirs.HardenSandboxDirName, "hub-3"), false},
+			{"IntoAnotherDirectoryFromOwnSandboxHub", ownSandboxHub, hubs, true},
+			{"IntoBelowALinkPointingOutOfOwnSandboxRoot", own, filepath.Join(escape, "new"), true},
+			{"IntoADanglingLinkInOwnSandboxRoot", own, dangling, true},
+			{"IntoOwnSandboxRootThatDoesNotExistYet", fresh, filepath.Join(fresh, lymdirs.DotLymDirName, lymdirs.HardenSandboxDirName, "hub-1"), false},
+		}
+		for _, tt := range cloneTests {
+			_, out := runUnderParentIn(t, tt.cwd, "clone", "--into", tt.into, "a", "b", "c")
+			if refused := strings.Contains(out, refusalMarker); refused != tt.refused {
+				t.Errorf("%s: clone --into %s refused = %v; want %v; output: %s", tt.name, tt.into, refused, tt.refused, out)
+			}
+		}
+
+		if code, out := runUnderParentIn(t, ownSandboxHub, "pull", "--weft-path", "/x"); code != 1 || !strings.Contains(out, "refuses the path flags") {
+			t.Errorf("pull --weft-path from the own sandbox hub = %d, output %s; want the path-flag refusal", code, out)
 		}
 	})
 

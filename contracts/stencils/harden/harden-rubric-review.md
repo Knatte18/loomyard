@@ -44,6 +44,7 @@ and the paths of the round's focus file, the charter, and of the decision record
   Run the modules' own verbs against a sandbox hub, in the foreground, waiting for each to return, and read what they did, rather than tracing the code to guess it.
   Handing the scenarios to another agent session is not driving them.
   A finding rests on an observed result.
+  `lym fabric` runs its mutating verbs from this session only in a hub under the sandbox root, and refuses them anywhere else.
 - **Drive every charted layout.**
   Make a hub of each layout the charter names:
   `lym harden sandbox new` builds a two-repository hub, and `lym harden sandbox new --single-repo` a one-repository hub.

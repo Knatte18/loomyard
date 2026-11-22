@@ -179,6 +179,19 @@ func absentRepoDefaults(boardDir string) []string {
 	return absent
 }
 
+// cloneDestination returns the directory a clone creates its hub in, from the seam cwd and the --into value.
+// An empty into yields cwd unchanged, an absolute into is cleaned as given, and a relative into resolves against cwd.
+// The process cwd is never read: cwd is a destination here rather than a lookup anchor.
+func cloneDestination(cwd, into string) string {
+	switch {
+	case into == "":
+		return cwd
+	case filepath.IsAbs(into):
+		return filepath.Clean(into)
+	}
+	return filepath.Join(cwd, into)
+}
+
 // runCloneWithReset executes the clone subcommand.
 // The hub teardown of an idempotent re-clone is driven through CloneOptions.Reset inside CloneHub.
 // CloneHub can derive the hub path in either the one- or two-argument form.
@@ -206,22 +219,7 @@ func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset 
 		warpURL = args[1]
 	}
 
-	// The new hub is created in this directory, never the process cwd.
-	// An empty --into yields the seam cwd unchanged, an absolute --into is cleaned as given,
-	// and a relative --into resolves against the seam cwd.
-	// Resolving against the process cwd would reintroduce the dependency lymcwd exists to remove.
-	// Here cwd is a destination rather than a lookup anchor.
-	dest := cwd
-	switch {
-	case into == "":
-		// dest already equals cwd.
-	case filepath.IsAbs(into):
-		dest = filepath.Clean(into)
-	default:
-		dest = filepath.Join(cwd, into)
-	}
-
-	res, err := CloneAndWire(dest, fabricengine.CloneOptions{
+	res, err := CloneAndWire(cloneDestination(cwd, into), fabricengine.CloneOptions{
 		WeftURL:        weftURL,
 		WarpURL:        warpURL,
 		Subpath:        subpath,

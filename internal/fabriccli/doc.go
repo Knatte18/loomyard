@@ -121,10 +121,18 @@
 // so a script tells a conflict result from a hard failure by the `conflicts` key alone.
 // Only `merge-in` resolves conflicts in its own worktree;
 // `merge` self-aborts on a conflict with `fabricengine.ErrMergeInRequired` naming the source branch.
-// The sandboxed-role guard refuses these verbs from a task session.
+// The sandboxed-role guard refuses these verbs from a task session outside a hub under its own sandbox root.
 // A merge task's darn writer may run these verbs in its own worktree:
 // `merge-in`, `merge-stage`, `merge --continue` and `merge --abort`.
 // `merge <branch>` stays refused.
 // The in-flight warning on `merge-in` names the active implementer's run.
 // An already-up-to-date `merge-in` and a hard failure carry no `warnings` key.
+//
+// # Sandboxed-role guard
+//
+// A task session's strand, any role but the driver and the orch, runs only the reader verbs on the real hub.
+// It runs every verb in a hub under its own worktree's sandbox root, `.lym/harden-sandbox`.
+// A hardener round builds its throwaway hubs there.
+// The guard judges the directory the verb acts in: the cwd or a clone's `--into` destination.
+// The same verb aimed at any other hub is refused.
 package fabriccli

@@ -4,7 +4,8 @@
 // The weft-git content-sync verbs are wired in by weft_verbs.go.
 // That file extends the Command() build with the hidden --weft-path and --warp-path flags and a PersistentPreRunE.
 // That pre-run opens with the sandboxed-role guard of roleguard.go.
-// The guard refuses every mutating verb from a task session's strand name before the verb runs.
+// The guard refuses a task session's mutating verbs before they run.
+// It lets one pass when the directory the verb acts in lies under its own worktree's sandbox root.
 
 package fabriccli
 
