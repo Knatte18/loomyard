@@ -516,6 +516,9 @@
 // A one-repository hub keeps its records store's branches and tags on the code store's origin, under `refs/lym/`.
 // Its only spelling is the constants `RecordsNamespaceRoot`, `RecordsNamespaceHeads` and `RecordsNamespaceTags`.
 // The layout is the records store's origin fetch refspec, read per repository by `originNamespaceAt(dir)`.
+// A store whose prime key, push refspecs or a branch's merge setting names the namespace is a records store.
+// Its layout read fails when no fetch refspec maps the namespace or when it has no origin.
+// The error names the refspecs to restore; read as the identity layout, its board would push to the code branches.
 // Every push, listing and fetch of the records side names origin refs through that namespace.
 // A board push whose board branch has no upstream is refused with no failed-push record.
 // Pushing it unleased could replace another hub's board.
@@ -525,8 +528,13 @@
 // With `--single-repo` it also refuses one that already holds a board, the warp binding or the anchor marker.
 // The one URL is the code repository, cloned as the prime, and the records store is a `git init` of its own.
 // An origin holding the board is joined; one holding none is seeded, with no commit written to any code branch.
-// `PushCloneBoard` pushes a seeded clone's records branch and board under leases,
-// and a failed push removes the hub, as `AbandonSeededClone` does for a failure before it.
+// `PushCloneBoard` pushes a seeded clone's records branch and board under leases, then gives both their upstreams.
+// A failed push removes the hub, as `AbandonSeededClone` does for a failure before it.
+// A push of either ref that ended without origin's answer may still land,
+// so the ref on origin is read before any rollback.
+// A ref at the seed's tip is withdrawn first: the board is deleted,
+// and the records branch returns to the tip the clone's check observed.
+// A ref origin does not hold at that tip yet keeps the hub, with a way forward naming the refs origin may hold.
 //
 // **Platform verification: Linux only.**
 // Fabric is written cross-platform,

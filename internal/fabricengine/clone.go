@@ -890,7 +890,8 @@ func readJoinedBoardRecords(recordsPath, url string) (warp string, warpFound boo
 // A two-repository clone and a join push it as any board is pushed.
 // A SingleRepo clone's result carries the seed mark.
 // Its push is the leased, ordered seed of origin's records namespace.
-// A failed seed push has already removed the hub, and its error names the way forward.
+// A failed seed push has already removed the hub, or kept it while origin may still take a pushed ref.
+// Its error names the way forward.
 func PushCloneBoard(res CloneResult, rec *Mutations) error {
 	if res.seed == nil {
 		return NewBolt(res.BoardDir).PushRecorded(SyncOptions{}, rec)

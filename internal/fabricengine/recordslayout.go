@@ -51,7 +51,11 @@ var namespaceAnswers sync.Map
 // A dir that does not exist or holds no .git entry answers identity and is not cached,
 // so a store created there later is read then.
 // A repository with no origin remote answers identity, and a read of an existing store is cached for the process.
-// A failed config read is returned as an error and not cached.
+// A store that holds the prime's records branch key or a push refspec into the namespace is a records store.
+// So is one with a branch whose merge setting names a ref under the namespace.
+// For such a store a missing namespaced fetch refspec or a missing origin is an error naming the way forward:
+// read as identity, its board would push to origin's code branches.
+// A failed config read is returned as an error, and no error is cached.
 func originNamespaceAt(dir string) (gitrepo.RefNamespace, error) {
 	key := filepath.Clean(dir)
 	if cached, found := namespaceAnswers.Load(key); found {
@@ -64,20 +68,72 @@ func originNamespaceAt(dir string) (gitrepo.RefNamespace, error) {
 	}
 
 	refspecs, err := gitrepo.New(key).RemoteFetchRefspecs(originRemoteName)
-	if err != nil && !errors.Is(err, gitrepo.ErrRemoteNotConfigured) {
+	originMissing := errors.Is(err, gitrepo.ErrRemoteNotConfigured)
+	if err != nil && !originMissing {
 		return gitrepo.RefNamespace{}, fmt.Errorf("fabricengine: read the layout of the repository at %s: %w", key, err)
 	}
 
+	ns := oneRepositoryNamespace()
 	answer := gitrepo.RefNamespace{}
 	for _, refspec := range refspecs {
 		source, _, _ := strings.Cut(strings.TrimPrefix(refspec, "+"), ":")
-		if strings.HasPrefix(source, RecordsNamespaceRoot+RecordsNamespaceHeads) {
-			answer = oneRepositoryNamespace()
+		if strings.HasPrefix(source, ns.Heads) {
+			answer = ns
 			break
+		}
+	}
+	if answer == (gitrepo.RefNamespace{}) {
+		claim, err := recordsStoreClaim(key)
+		if err != nil {
+			return gitrepo.RefNamespace{}, fmt.Errorf("fabricengine: read the layout of the repository at %s: %w", key, err)
+		}
+		if claim != "" {
+			restoreFetch := fmt.Sprintf("`git -C %s config --replace-all remote.%s.fetch '+%s*:refs/remotes/%s/*'` and `git -C %s config --add remote.%s.fetch '+%s*:refs/tags/*'`",
+				key, originRemoteName, ns.Heads, originRemoteName, key, originRemoteName, ns.Tags)
+			if originMissing {
+				return gitrepo.RefNamespace{}, fmt.Errorf("fabricengine: the repository at %s holds %s, so it is a one-repository records store, but it has no %s remote; "+
+					"way forward: add it with `git -C %s remote add --no-tags %s <code-url>`, restore its fetch refspecs with %s, "+
+					"and its push refspecs `refs/heads/*:%s*` and `refs/tags/*:%s*`",
+					key, claim, originRemoteName, key, originRemoteName, restoreFetch, ns.Heads, ns.Tags)
+			}
+			return gitrepo.RefNamespace{}, fmt.Errorf("fabricengine: the repository at %s holds %s, so it is a one-repository records store, "+
+				"but no %s fetch refspec maps %s; way forward: restore its fetch refspecs with %s",
+				key, claim, originRemoteName, ns.Heads, restoreFetch)
 		}
 	}
 	namespaceAnswers.Store(key, answer)
 	return answer, nil
+}
+
+// recordsStoreClaim names the setting that marks the repository at dir a one-repository records store.
+// It returns empty when no setting does.
+// A non-empty prime's records branch key marks it, and so does an origin push refspec into the records namespace.
+// A branch whose merge setting names a ref under that namespace marks it too.
+func recordsStoreClaim(dir string) (string, error) {
+	pushKey := "remote." + originRemoteName + ".push"
+	pattern := "^(" + strings.ReplaceAll(pushKey, ".", `\.`) + "|" + strings.ReplaceAll(strings.ToLower(PrimeRecordsBranchKey), ".", `\.`) + `|branch\..+\.merge)$`
+	listing, err := gitexec.Run([]string{"config", "--get-regexp", pattern}, dir)
+	var gitErr *gitexec.GitError
+	if errors.As(err, &gitErr) && gitErr.ExitCode == 1 {
+		// git config exits 1 when no key matches.
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(listing, "\n") {
+		name, value, _ := strings.Cut(strings.TrimSpace(line), " ")
+		value = strings.TrimSpace(value)
+		switch {
+		case name == strings.ToLower(PrimeRecordsBranchKey) && value != "":
+			return fmt.Sprintf("%s %s", PrimeRecordsBranchKey, value), nil
+		case name == pushKey && strings.Contains(value, RecordsNamespaceRoot):
+			return fmt.Sprintf("the push refspec %s", value), nil
+		case strings.HasPrefix(name, "branch.") && strings.HasSuffix(name, ".merge") && strings.HasPrefix(value, RecordsNamespaceRoot):
+			return fmt.Sprintf("the upstream setting %s %s", name, value), nil
+		}
+	}
+	return "", nil
 }
 
 // OriginRefNamesAt returns the origin ref names of branch and of the tag under the layout of the repository at dir.

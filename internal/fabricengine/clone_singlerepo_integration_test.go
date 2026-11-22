@@ -152,7 +152,12 @@ func TestCloneSingleRepo_SeedsTheNamespace(t *testing.T) {
 			if err != nil {
 				t.Fatalf("resolve the prime: %v", err)
 			}
-			requireOneRepositoryLayout(t, res.BoardDir, fabricengine.RecordsWorktree(l), res.PrimeCwd, bare, tt.recordsBranch)
+			recordsDir := fabricengine.RecordsWorktree(l)
+			requireOneRepositoryLayout(t, res.BoardDir, recordsDir, res.PrimeCwd, bare, tt.recordsBranch)
+			wantUpstream := "refs/remotes/origin/" + tt.recordsBranch
+			if got := gitkit.Git(t, recordsDir, "rev-parse", "--symbolic-full-name", tt.recordsBranch+"@{u}"); got != wantUpstream {
+				t.Errorf("the seeded records branch's upstream = %q; want %q", got, wantUpstream)
+			}
 			if unpushed, err := board.HasUnpushed(); err != nil || unpushed {
 				t.Errorf("HasUnpushed() = %v, %v; want false after the board's push", unpushed, err)
 			}
@@ -339,8 +344,11 @@ func TestCloneSingleRepo_FailedSeedPushLeavesNothing(t *testing.T) {
 		container := t.TempDir()
 
 		_, err := cloneSingleRepo(t, container, bare, "")
-		if err == nil || !strings.Contains(err.Error(), "use a host that accepts refs outside refs/heads/ and refs/tags/") {
-			t.Fatalf("clone over a host refusing the board error = %v; want the refused-host way forward", err)
+		if err == nil || !strings.Contains(err.Error(), "its hooks or rules declined the board ref "+namespaceBoardRef) {
+			t.Fatalf("clone over a hook declining the board error = %v; want the declined-board way forward", err)
+		}
+		if strings.Contains(err.Error(), "use a host that accepts refs") {
+			t.Errorf("clone error = %q; a host that took the records branch must not be named as refusing refs outside refs/heads/", err.Error())
 		}
 		requireEmptyDirectory(t, container)
 		if got := refLines(t, bare, "%(refname)", fabricengine.RecordsNamespaceRoot); len(got) != 0 {

@@ -21,6 +21,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+// checkoutPrimePairOnAlt moves h's prime pair off its default branch, onto a new branch alt.
+func checkoutPrimePairOnAlt(t *testing.T, h *hubforge.Hub) {
+	t.Helper()
+
+	gitkit.MustRun(t, h.Location.WorktreePath(), "git", "branch", "alt")
+	if _, err := h.Topology.Checkout(h.Location, "alt"); err != nil {
+		t.Fatalf("Checkout(alt) error = %v", err)
+	}
+}
+
 // TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout moves the prime pair off the default branch.
 // The test starts from a real hub whose primary weft branch is the default branch plus "-weft".
 // It asserts cleanup reports the primary weft branch as protected and leaves it on disk, even under --apply --force.
@@ -53,13 +63,8 @@ func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 			build: func(t *testing.T) *hubforge.Hub {
 				return hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{DefaultBranch: "master"})
 			},
-			defaultBranch: "master",
-			moveOffDefault: func(t *testing.T, h *hubforge.Hub) {
-				gitkit.MustRun(t, h.Location.WorktreePath(), "git", "branch", "alt")
-				if _, err := h.Topology.Checkout(h.Location, "alt"); err != nil {
-					t.Fatalf("Checkout(alt) error = %v", err)
-				}
-			},
+			defaultBranch:  "master",
+			moveOffDefault: checkoutPrimePairOnAlt,
 		},
 	}
 	for _, tt := range tests {
@@ -103,7 +108,8 @@ func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 
 // TestCleanup_RefusesWhenPrimaryWeftBranchIsUndeterminable asserts that a hub gets no orphan sweep at all.
 // The cases covered are a two-repository hub whose board worktree is not a readable git checkout,
-// and a one-repository hub whose records store holds no prime key or cannot be read.
+// and a one-repository hub whose records store cannot be read or holds no usable prime key.
+// An unusable key is unset, names no branch, or names the board's branch.
 // Cleanup's deletions are irreversible, so an undeterminable primary branch must fail closed.
 func TestCleanup_RefusesWhenPrimaryWeftBranchIsUndeterminable(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -133,6 +139,32 @@ func TestCleanup_RefusesWhenPrimaryWeftBranchIsUndeterminable(t *testing.T) {
 				gitkit.Git(t, recordsDir, "config", "--unset", fabricengine.PrimeRecordsBranchKey)
 			},
 			wantErrorFormats: []string{"git -C %s config " + fabricengine.PrimeRecordsBranchKey},
+		},
+		{
+			name:  "OneRepositoryKeyNamesNoBranch",
+			build: func(t *testing.T) *hubforge.Hub { return hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{}) },
+			spoil: func(t *testing.T, h *hubforge.Hub, recordsDir string) {
+				// With the prime pair off main, the key is the prime records branch's only protection.
+				checkoutPrimePairOnAlt(t, h)
+				gitkit.Git(t, recordsDir, "config", fabricengine.PrimeRecordsBranchKey, "nosuch-weft")
+			},
+			wantErrorFormats: []string{
+				`the records store at %s names "nosuch-weft"`,
+				"git -C %s config " + fabricengine.PrimeRecordsBranchKey,
+			},
+		},
+		{
+			name:  "OneRepositoryKeyNamesTheBoardBranch",
+			build: func(t *testing.T) *hubforge.Hub { return hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{}) },
+			spoil: func(t *testing.T, h *hubforge.Hub, recordsDir string) {
+				// The board's branch exists in the records store, and no records branch can carry its name.
+				checkoutPrimePairOnAlt(t, h)
+				gitkit.Git(t, recordsDir, "config", fabricengine.PrimeRecordsBranchKey, fabricengine.OneRepositoryBoardBranch)
+			},
+			wantErrorFormats: []string{
+				`the records store at %s names "main" in ` + fabricengine.PrimeRecordsBranchKey + ", which is not a records branch name",
+				"git -C %s config " + fabricengine.PrimeRecordsBranchKey,
+			},
 		},
 		{
 			name:  "OneRepositoryConfigUnparsable",

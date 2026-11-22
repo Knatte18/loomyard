@@ -339,6 +339,10 @@ func (t *Topology) cleanupOrphan(rec *Mutations, l *lymcwd.Location, warpBranch 
 //
 // A hub whose primary cannot be read is refused rather than swept:
 // deletions are irreversible, so an unreadable board branch, layout or key must fail closed.
+// A key naming a branch the records store does not hold fails closed too: it would leave the real prime unprotected.
+// So does a key whose value is not a records branch name, such as the board's branch.
+// A key naming another pair's records branch cannot be told from the right one,
+// so each refusal says which branch to name.
 func primaryWeftBranch(l *lymcwd.Location) (string, error) {
 	recordsDir, err := RecordsRepoRoot(l)
 	if err != nil {
@@ -349,15 +353,31 @@ func primaryWeftBranch(l *lymcwd.Location) (string, error) {
 		return "", fmt.Errorf("cannot read the records store at %s (%w); refusing to enumerate orphan weft branches", recordsDir, err)
 	}
 	if namespace != (gitrepo.RefNamespace{}) {
+		wayForward := fmt.Sprintf("way forward: set it with `git -C %s config %s %s`, naming the prime pair's own records branch: "+
+			"the one of the code branch this hub was cloned on, never of the branch the prime pair is on now; "+
+			"fabric cannot tell a wrong records branch from the right one, and a wrong one leaves the right one open to the sweep",
+			recordsDir, PrimeRecordsBranchKey, RecordsBranchName("<clone-time-code-branch>"))
+
 		out, err := gitexec.Run([]string{"config", "--default", "", "--get", PrimeRecordsBranchKey}, recordsDir)
 		if err != nil {
 			return "", fmt.Errorf("cannot read the records store at %s (%w); refusing to enumerate orphan weft branches", recordsDir, err)
 		}
 		primeRecordsBranch := strings.TrimSpace(out)
 		if primeRecordsBranch == "" {
-			return "", fmt.Errorf(
-				"the records store at %s has no %s; refusing to enumerate orphan weft branches — set it with `git -C %s config %s` to <prime-branch>-weft",
-				recordsDir, PrimeRecordsBranchKey, recordsDir, PrimeRecordsBranchKey)
+			return "", fmt.Errorf("the records store at %s has no %s; refusing to enumerate orphan weft branches; %s",
+				recordsDir, PrimeRecordsBranchKey, wayForward)
+		}
+		exists, err := gitrepo.New(recordsDir).BranchExists(primeRecordsBranch)
+		if err != nil {
+			return "", fmt.Errorf("cannot read the records store at %s (%w); refusing to enumerate orphan weft branches", recordsDir, err)
+		}
+		if !exists {
+			return "", fmt.Errorf("the records store at %s names %q in %s, but holds no branch of that name; refusing to enumerate orphan weft branches; %s",
+				recordsDir, primeRecordsBranch, PrimeRecordsBranchKey, wayForward)
+		}
+		if _, isRecordsBranch := WeftWarpSlug(primeRecordsBranch); !isRecordsBranch {
+			return "", fmt.Errorf("the records store at %s names %q in %s, which is not a records branch name; refusing to enumerate orphan weft branches; %s",
+				recordsDir, primeRecordsBranch, PrimeRecordsBranchKey, wayForward)
 		}
 		return primeRecordsBranch, nil
 	}

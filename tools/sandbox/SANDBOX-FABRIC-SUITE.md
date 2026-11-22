@@ -914,6 +914,42 @@ The real-provider drive between them stays a manual exercise by design.
 
 ---
 
+### F23 -- One-repository seed and records-store faults (`clone --single-repo`, `cleanup`, `board upsert`)
+
+**Covers:** fabric
+
+**Goal:** "Confirm a `--single-repo` seed leaves origin either whole or empty,
+and that a faulted records store fails closed instead of being read as a two-repository hub."
+
+**Watch:** Seed a fresh one-repository hub from a local bare with `lym fabric clone --single-repo <bare>`.
+On the records store's prime records branch, `git rev-parse --symbolic-full-name <branch>@{u}` must answer `refs/remotes/origin/<branch>`,
+and `git status -sb` must show its ahead count against origin.
+
+Seed a second bare whose `pre-receive` declines `refs/lym/heads/main` only.
+The clone must fail naming origin's hooks or rules declining `refs/lym/heads/main`, never a host that refuses refs outside `refs/heads/`,
+and `git ls-remote <bare>` must list nothing under `refs/lym/`.
+Seed a third bare whose `post-receive` SIGKILLs the client `git push` once `refs/lym/heads/main` is updated.
+The clone must fail with the rerun way forward, leave no hub, and leave nothing under `refs/lym/` on origin.
+Seed a fourth bare whose `post-receive` kills the client the same way once the prime's records ref `refs/lym/heads/<branch>` is updated.
+The outcome must be the same: the rerun way forward, no hub, and nothing under `refs/lym/`.
+Seed a fifth bare whose `pre-receive` SIGKILLs the client `git push` on `refs/lym/heads/main` and then exits non-zero, so origin never takes the board.
+The clone must fail naming `refs/lym/heads/main` and the prime's records ref, keep the hub, and leave the records ref on origin.
+The `git ls-remote` and `git push origin --delete` commands its way forward names must then leave nothing under `refs/lym/`.
+
+On the first hub, run each fault below in the records store, restoring its config between rows, then run `lym fabric cleanup --remote`:
+`remote.origin.fetch` unset; `remote.origin.fetch` set to `+refs/heads/*:refs/remotes/origin/*`; the `origin` remote removed;
+`remote.origin.fetch` set to that code refspec with both `remote.origin.push` values and `lym.primeRecordsBranch` removed,
+so that `branch.main.merge refs/lym/heads/main` is the one setting left that names `refs/lym/`;
+`lym.primeRecordsBranch` naming a branch that does not exist, with the prime pair checked out on another branch;
+`lym.primeRecordsBranch` set to `main`, the board's branch, with the prime pair checked out on another branch.
+Each must refuse with `ok: false`, name the setting at fault and give the `git -C <store> config` or `git remote add` way forward.
+With `remote.origin.fetch` unset, run `lym board upsert` on a new slug: origin's `refs/heads/main` must not move,
+and the board's push must not reach any ref under plain `refs/heads/`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -944,6 +980,7 @@ F19: <OK|WARN|FAIL> -- <one-line note if not OK>
 F20: <OK|WARN|FAIL> -- <one-line note if not OK>
 F21: <OK|WARN|FAIL> -- <one-line note if not OK>
 F22: <OK|WARN|FAIL> -- <one-line note if not OK>
+F23: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

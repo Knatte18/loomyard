@@ -1,5 +1,6 @@
 // recordslayout_integration_test.go covers originNamespaceAt against real repositories:
-// the namespace it reads from the origin fetch refspecs, its quiet answer for a missing store, and its cache.
+// the namespace it reads from the origin fetch refspecs, its quiet answer for a missing store, its cache,
+// and its error for a records store whose origin config no longer maps the namespace.
 // It is an internal-package test because the read and its process-wide cache are unexported.
 
 package fabricengine
@@ -8,6 +9,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -93,6 +95,57 @@ func TestOriginNamespaceAt(t *testing.T) {
 		gitkit.Git(t, dir, "remote", "add", "origin", bare)
 		gitkit.Git(t, dir, "config", "--replace-all", "remote.origin.fetch", "+refs/lym/heads/*:refs/remotes/origin/*")
 		requireNamespace(t, dir, identity)
+	})
+
+	t.Run("a records store without its namespaced fetch refspec or its origin is an error", func(t *testing.T) {
+		tests := []struct {
+			name string
+			// spoil faults the store's config and leaves a setting that marks it a records store.
+			spoil func(t *testing.T, dir string)
+			// wantErrorHas is the way forward the error must name.
+			wantErrorHas string
+		}{
+			{
+				name:         "FetchRefspecUnset",
+				spoil:        func(t *testing.T, dir string) { gitkit.Git(t, dir, "config", "--unset-all", "remote.origin.fetch") },
+				wantErrorHas: "config --replace-all remote.origin.fetch '+refs/lym/heads/*:refs/remotes/origin/*'",
+			},
+			{
+				name: "CodeFetchRefspec",
+				spoil: func(t *testing.T, dir string) {
+					gitkit.Git(t, dir, "config", "--replace-all", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
+				},
+				wantErrorHas: "config --replace-all remote.origin.fetch '+refs/lym/heads/*:refs/remotes/origin/*'",
+			},
+			{
+				name:         "OriginRemoved",
+				spoil:        func(t *testing.T, dir string) { gitkit.Git(t, dir, "remote", "remove", "origin") },
+				wantErrorHas: "remote add --no-tags origin <code-url>",
+			},
+			{
+				name: "OnlyABranchMergeSettingLeft",
+				spoil: func(t *testing.T, dir string) {
+					gitkit.Git(t, dir, "config", "--replace-all", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
+					gitkit.Git(t, dir, "config", "--unset", PrimeRecordsBranchKey)
+					gitkit.Git(t, dir, "config", "branch.main.merge", "refs/lym/heads/main")
+				},
+				wantErrorHas: "holds the upstream setting branch.main.merge refs/lym/heads/main, so it is a one-repository records store, " +
+					"but no origin fetch refspec maps refs/lym/heads/; way forward: restore its fetch refspecs with ",
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				dir := filepath.Join(t.TempDir(), "records")
+				newLayoutStore(t, dir, bare, true)
+				gitkit.Git(t, dir, "config", PrimeRecordsBranchKey, "main-weft")
+				tt.spoil(t, dir)
+
+				got, err := originNamespaceAt(dir)
+				if err == nil || !strings.Contains(err.Error(), tt.wantErrorHas) {
+					t.Errorf("originNamespaceAt(%s) = (%+v, %v); want an error naming %q", dir, got, err, tt.wantErrorHas)
+				}
+			})
+		}
 	})
 
 	t.Run("a failed read is an error and is not cached", func(t *testing.T) {
