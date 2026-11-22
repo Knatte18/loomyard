@@ -27,7 +27,8 @@ and a soft request may be declined with `defer`, as the message says.
 
 Files beside this one hold what a rarer event needs; read the one that fits before you act:
 
-- `role-beams.md`: before you make a beam or work its landing, and when a project ran as a task run.
+- `role-beams.md`: before you make a beam or work its landing, when a project ran as a task run,
+  and before you move a running task to another parent.
 - `role-landing-halts.md`: on any halt at Parent-Align or Finalize.
 - `role-intake.md`: when the operator asks for intake.
 - `role-hibernate.md`: when the operator asks to hibernate the machine.
@@ -64,6 +65,8 @@ Files beside this one hold what a rarer event needs; read the one that fits befo
    When the operator asks to give a run up for good, end it with `lym batten cancel <slug>` from the prime.
    Add `--remove` to discard its pair.
    A kept pair needs `lym batten cancel <slug> --remove` before the slug runs again.
+   When the operator asks to move a running task to another parent,
+   follow `role-beams.md`'s section Moving a running task to another parent.
 4. Watch runs through their notices and mail only:
    keep no polling shell, start no Monitor for a run, and never read `lym batten status` on your own to check on runs.
    A command's own output says what it did.
