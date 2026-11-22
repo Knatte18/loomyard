@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -169,6 +170,7 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 
 	t.Run("ARemovedPairBeforeLandFailsTheRunNamingTheCancel", func(t *testing.T) {
 		t.Parallel()
+		boardkit.InstallReplay(t)
 
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		const slug = "removed-pair"

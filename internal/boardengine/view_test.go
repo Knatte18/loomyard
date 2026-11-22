@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -75,87 +74,15 @@ func decodeBoardData(t *testing.T, script string) boardengine.BoardView {
 	return view
 }
 
-// readmePlacement is where the README shows one entry: its project, its section and the After cell's references.
-type readmePlacement struct {
+// placement is where board.html shows one entry: its project, its section and the handles it waits on.
+type placement struct {
 	project string
 	section string
 	waitsOn []string
 }
 
-var (
-	projectHeadingPattern = regexp.MustCompile(`^(#+) \[(P\d+) `)
-	ownEntriesPattern     = regexp.MustCompile(`^(#+) Own entries$`)
-	sectionHeadingPattern = regexp.MustCompile(`^#+ (.+) \(\d+\)$`)
-	entryRowPattern       = regexp.MustCompile(`^\| ([A-Z]\d+) \|`)
-)
-
-// tableCells splits one markdown table row into its trimmed cells.
-func tableCells(row string) []string {
-	cells := strings.Split(strings.TrimSuffix(strings.TrimPrefix(row, "| "), " |"), " | ")
-	for i := range cells {
-		cells[i] = strings.TrimSpace(cells[i])
-	}
-	return cells
-}
-
-// readmePlacements reads, from the README alone, where each entry row stands.
-// A placement is the entry's project, its section and its After cell.
-func readmePlacements(readme string) map[string]readmePlacement {
-	type frame struct {
-		level  int
-		handle string
-	}
-	var stack []frame
-	popTo := func(level int) {
-		for len(stack) > 0 && stack[len(stack)-1].level >= level {
-			stack = stack[:len(stack)-1]
-		}
-	}
-	placements := map[string]readmePlacement{}
-	section, afterColumn := "", -1
-	for _, line := range strings.Split(readme, "\n") {
-		if m := projectHeadingPattern.FindStringSubmatch(line); m != nil {
-			popTo(len(m[1]))
-			stack = append(stack, frame{len(m[1]), m[2]})
-		} else if m := ownEntriesPattern.FindStringSubmatch(line); m != nil {
-			popTo(len(m[1]))
-		} else if m := sectionHeadingPattern.FindStringSubmatch(line); m != nil {
-			section = m[1]
-		} else if strings.HasPrefix(line, "| # |") {
-			afterColumn = slices.Index(tableCells(line), "After")
-		} else if m := entryRowPattern.FindStringSubmatch(line); m != nil {
-			placement := readmePlacement{project: stack[len(stack)-1].handle, section: section}
-			if afterColumn >= 0 {
-				for _, ref := range strings.Split(tableCells(line)[afterColumn], "<br>") {
-					if ref = strings.Trim(ref, "`"); ref != "" {
-						placement.waitsOn = append(placement.waitsOn, ref)
-					}
-				}
-			}
-			placements[m[1]] = placement
-		}
-	}
-	return placements
-}
-
-// rootSectionNames lists the section headings of the root's README block, which holds a section of every kind.
-func rootSectionNames(t *testing.T, readme string) []string {
-	t.Helper()
-	_, rootBlock, found := strings.Cut(readme, "](project-root.md)")
-	if !found {
-		t.Fatalf("README has no root section")
-	}
-	var names []string
-	for _, line := range strings.Split(rootBlock, "\n") {
-		if m := sectionHeadingPattern.FindStringSubmatch(line); m != nil {
-			names = append(names, m[1])
-		}
-	}
-	return names
-}
-
-// TestRenderBoardData pins board-data.js, the view projection Render writes beside the README.
-// It covers every entry's placement as the README shows it and the project tree.
+// TestRenderBoardData pins board-data.js, the view projection Render writes beside the README for board.html.
+// It covers every entry's placement and the project tree.
 // It also covers the sections, the escaping and the revisions.
 // It also covers the render-to-disk copy that clears a missing decision record, BoardRevision and Board.View.
 func TestRenderBoardData(t *testing.T) {
@@ -177,28 +104,34 @@ func TestRenderBoardData(t *testing.T) {
 		stored[task.Slug] = task
 	}
 
-	t.Run("EntriesStandWhereTheReadmeShowsThem", func(t *testing.T) {
+	t.Run("EntriesStandInTheirProjectAndSection", func(t *testing.T) {
 		t.Parallel()
-		placements := readmePlacements(files["README.md"])
-		if len(view.Entries) != len(tasks)-4 {
-			t.Errorf("entries = %d; want every task and note, %d", len(view.Entries), len(tasks)-4)
+		want := map[string]placement{
+			"T1":  {project: "P0", section: "Ready"},
+			"T2":  {project: "P0", section: "Layer A", waitsOn: []string{"T1"}},
+			"T3":  {project: "P0", section: "Layer B", waitsOn: []string{"T2", "ghost"}},
+			"T4":  {project: "P0", section: "Independent"},
+			"T5":  {project: "P0", section: "Running"},
+			"T6":  {project: "P0", section: "Draft"},
+			"T7":  {project: "P0", section: "Done"},
+			"T8":  {project: "P0", section: "Ready"},
+			"T9":  {project: "P1", section: "Layer A", waitsOn: []string{"T1"}},
+			"T10": {project: "P3", section: "Ready"},
+			"B1":  {project: "P0", section: "Bugs"},
+			"E1":  {project: "P0", section: "Enhancements"},
+		}
+		if len(view.Entries) != len(want) {
+			t.Errorf("entries = %d; want every task and note, %d", len(view.Entries), len(want))
 		}
 		for _, entry := range view.Entries {
-			if entry.Slug == "gtask" {
-				// A done project has no README section, so its task has no row to compare.
-				if entry.Project != "P3" {
-					t.Errorf("gtask project = %q; want the done project's handle P3", entry.Project)
-				}
+			w, found := want[entry.Handle]
+			if !found {
+				t.Errorf("entries hold %s; want only the fixture's tasks and notes", entry.Handle)
 				continue
 			}
-			want, shown := placements[entry.Handle]
-			if !shown {
-				t.Errorf("%s has no row in the README", entry.Handle)
-				continue
-			}
-			if entry.Project != want.project || entry.Section != want.section || !slices.Equal(entry.WaitsOn, want.waitsOn) {
-				t.Errorf("%s = project %q, section %q, waits_on %v; want the README's %q, %q, %v",
-					entry.Handle, entry.Project, entry.Section, entry.WaitsOn, want.project, want.section, want.waitsOn)
+			if entry.Project != w.project || entry.Section != w.section || !slices.Equal(entry.WaitsOn, w.waitsOn) {
+				t.Errorf("%s = project %q, section %q, waits_on %v; want %q, %q, %v",
+					entry.Handle, entry.Project, entry.Section, entry.WaitsOn, w.project, w.section, w.waitsOn)
 			}
 		}
 	})
@@ -228,8 +161,9 @@ func TestRenderBoardData(t *testing.T) {
 		if !reflect.DeepEqual(view.Types, viewOutputs.Types) || !reflect.DeepEqual(view.Areas, viewOutputs.Labels) {
 			t.Errorf("types, areas = %v, %v; want %v, %v", view.Types, view.Areas, viewOutputs.Types, viewOutputs.Labels)
 		}
-		if want := rootSectionNames(t, files["README.md"]); !slices.Equal(view.Sections, want) {
-			t.Errorf("sections = %v; want the README's %v", view.Sections, want)
+		want := []string{"Running", "Ready", "Layer A", "Layer B", "Independent", "Draft", "Bugs", "Enhancements", "Done"}
+		if !slices.Equal(view.Sections, want) {
+			t.Errorf("sections = %v; want %v", view.Sections, want)
 		}
 	})
 
@@ -283,8 +217,12 @@ func TestRenderBoardData(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
 		discussed := stored["decided"]
-		if err := boardengine.RenderToDisk(dir, []boardengine.Task{discussed}, viewPrimeOwner, viewOutputs, renderTime); err != nil {
+		given := []boardengine.Task{discussed}
+		if err := boardengine.RenderToDisk(dir, given, viewPrimeOwner, viewOutputs, renderTime); err != nil {
 			t.Fatalf("RenderToDisk: %v", err)
+		}
+		if !given[0].Discussed {
+			t.Errorf("given[0].Discussed = false after RenderToDisk; want the caller's entry left flagged")
 		}
 		script, err := os.ReadFile(filepath.Join(dir, boardengine.BoardDataFile))
 		if err != nil {

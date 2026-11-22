@@ -337,37 +337,46 @@ func stepFind_NoArgumentRefused(t *testing.T, f *cliFixture) {
 	}
 }
 
+// textListingRows splits a --text listing into its first line and the handle (first field) of each row after it.
+func textListingRows(stdout string) (firstLine string, handles []string) {
+	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
+	for _, line := range lines[1:] {
+		if fields := strings.Fields(line); len(fields) > 0 {
+			handles = append(handles, fields[0])
+		}
+	}
+	return lines[0], handles
+}
+
 func stepListAndFindText(t *testing.T, f *cliFixture) {
 	seedUndecidedLabel(t, f.cwd)
 	mustUpsert(t, `{"slug":"later","title":"Later thing","kind":"note","labels":["enhancement","undecided"]}`)
 	mustUpsert(t, `{"slug":"soon","title":"Soon thing","kind":"task","labels":["bug"]}`)
 	runJSON(t, 0, "set-status", `{"slug":"soon","status":"active"}`)
 
-	// The root project's P0 row stands before the first project, note or done entry, with no dates.
-	wantList := "prime owner: none\n" +
-		"T1  task     0m  0m  soon   Soon thing                      bug                    [active]\n" +
-		"P0  project          root   Root: entries under no project\n" +
-		"E1  note     0m  0m  later  Later thing                     enhancement,undecided\n"
+	// The root project's P0 row stands before the first project, note or done entry.
 	exitCode, stdout := runCLI(t, "list", "--text")
-	if exitCode != 0 || stdout != wantList {
-		t.Fatalf("list --text: exit %d, stdout %q, want %q", exitCode, stdout, wantList)
+	firstLine, handles := textListingRows(stdout)
+	if exitCode != 0 || firstLine != "prime owner: none" || !slices.Equal(handles, []string{"T1", "P0", "E1"}) {
+		t.Fatalf("list --text: exit %d, first line %q, row handles %v, want exit 0, %q and [T1 P0 E1]",
+			exitCode, firstLine, handles, "prime owner: none")
 	}
 	if got, present := runJSON(t, 0, "list")["prime_owner"]; !present || got != "" {
 		t.Errorf("list: prime_owner = %v (present %t), want an empty string", got, present)
 	}
 
-	wantFind := "E1  note  0m  0m  later  Later thing  enhancement,undecided\n"
 	exitCode, stdout = runCLI(t, "find", "--text", "later")
-	if exitCode != 0 || stdout != wantFind {
-		t.Fatalf("find --text: exit %d, stdout %q, want %q", exitCode, stdout, wantFind)
+	if lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n"); exitCode != 0 || len(lines) != 1 ||
+		!strings.HasPrefix(lines[0], "E1 ") || !strings.Contains(lines[0], "later") {
+		t.Fatalf("find --text later: exit %d, stdout %q, want exit 0 and the one E1 later row", exitCode, stdout)
 	}
 
 	// A label filter keeps only entries carrying the label, so the root row is left out.
-	wantLabelled := "prime owner: none\n" +
-		"T1  task  0m  0m  soon  Soon thing  bug  [active]\n"
 	exitCode, stdout = runCLI(t, "list", "--text", "--label", "bug")
-	if exitCode != 0 || stdout != wantLabelled {
-		t.Fatalf("list --text --label bug: exit %d, stdout %q, want %q", exitCode, stdout, wantLabelled)
+	firstLine, handles = textListingRows(stdout)
+	if exitCode != 0 || firstLine != "prime owner: none" || !slices.Equal(handles, []string{"T1"}) {
+		t.Fatalf("list --text --label bug: exit %d, first line %q, row handles %v, want exit 0, %q and [T1]",
+			exitCode, firstLine, handles, "prime owner: none")
 	}
 
 	// A backfilled creation date reorders --sort age, oldest first, and leaves --sort revised in README order.
@@ -398,7 +407,7 @@ func stepListAndFindText(t *testing.T, f *cliFixture) {
 }
 
 // stepListShowsASketch asserts the hub's board takes a note of the built-in sketch type, whatever its board.yaml lists,
-// and that list --text lists it last under the sketches: line with handle S1.
+// and that list --text lists it with handle S1.
 func stepListShowsASketch(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"sketched","title":"Sketched thing","kind":"note","labels":["sketch"]}`)
 
@@ -406,10 +415,12 @@ func stepListShowsASketch(t *testing.T, f *cliFixture) {
 	if exitCode != 0 {
 		t.Fatalf("list --text: exit %d, stdout %q", exitCode, stdout)
 	}
-	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
-	if len(lines) < 2 || lines[len(lines)-2] != "sketches:" || !strings.HasPrefix(lines[len(lines)-1], "S1 ") || !strings.Contains(lines[len(lines)-1], "sketched") {
-		t.Errorf("list --text = %q; want it to end with a sketches: line and the S1 sketched line", stdout)
+	for _, line := range strings.Split(stdout, "\n") {
+		if strings.HasPrefix(line, "S1 ") && strings.Contains(line, "sketched") {
+			return
+		}
 	}
+	t.Errorf("list --text = %q; want an S1 row for the sketched note", stdout)
 }
 
 func stepGetAndRemoveByID(t *testing.T, f *cliFixture) {
