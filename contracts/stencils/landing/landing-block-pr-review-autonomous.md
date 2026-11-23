@@ -18,7 +18,10 @@ Your parent answers that it is satisfied, or with findings.
 On findings, run `lym loom pr-findings <file>` first, as the section above says, then fix them, commit, and ask again as above.
 Run `lym loom pr-continue` only once your parent's answer is satisfied at your current head.
 It ends the review, and the ordinary landing then merges the pull request on GitHub, after its gate.
+A satisfied answer at your head stands even when a later ask at that head failed or still awaits an answer.
 
+When a satisfied answer from your parent already stands at your head,
+run `lym loom pr-continue` instead of asking again, whatever `await` reports of a later ask.
 When `await` reports an ask ended timeout, no-parent or not-sent, or reports that no ask stands at your head,
 ask again with `lym loom parent-review ask {{.slug}}`.
 After a no-parent end, end your turn first and ask again only on the next mail you receive,

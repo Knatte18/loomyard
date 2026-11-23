@@ -393,9 +393,11 @@ func TestParentReviewAskVerb(t *testing.T) {
 	autonomyOn := true
 	later := parentReviewNow.Add(2 * time.Hour)
 	tests := []struct {
-		name  string
-		asks  []burlerengine.ParentAsk
-		setup func(*parentReviewDeps)
+		name string
+		asks []burlerengine.ParentAsk
+		// satisfiedThen, when set, is recorded after the latest of asks is answered satisfied.
+		satisfiedThen []burlerengine.ParentAsk
+		setup         func(*parentReviewDeps)
 		// want lists text the refusal must hold; empty wants an answer.
 		want       []string
 		wantStates []burlerengine.ParentAskState
@@ -445,6 +447,14 @@ func TestParentReviewAskVerb(t *testing.T) {
 			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskOpen},
 		},
 		{
+			name:          "a satisfied answer at the head is refused naming pr-continue while a later ask is open",
+			asks:          []burlerengine.ParentAsk{prAsk(burlerengine.ParentAskOpen, time.Hour)},
+			satisfiedThen: []burlerengine.ParentAsk{prAsk(burlerengine.ParentAskOpen, time.Hour)},
+			setup:         asSession,
+			want:          []string{"a satisfied answer from your parent stands at this head", "lym loom pr-continue"},
+			wantStates:    []burlerengine.ParentAskState{burlerengine.ParentAskDone, burlerengine.ParentAskOpen},
+		},
+		{
 			name:       "the session records a PR-Review ask at the head after an earlier review ask",
 			asks:       []burlerengine.ParentAsk{{Tag: "[code-review request]", State: burlerengine.ParentAskTimeout}},
 			setup:      asSession,
@@ -482,6 +492,23 @@ func TestParentReviewAskVerb(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			deps := parentReviewFixture(t, tt.asks...)
+			if len(tt.satisfiedThen) > 0 {
+				latest, _ := func() (burlerengine.ParentAsk, bool) {
+					record, _, err := burlerengine.ReadParentAsks(deps.files)
+					if err != nil {
+						t.Fatalf("ReadParentAsks() error = %v", err)
+					}
+					return record.Latest()
+				}()
+				if _, err := burlerengine.AnswerParentAskOrUnreached(deps.files, latest.Number, "", parentReviewNow, nil); err != nil {
+					t.Fatalf("AnswerParentAskOrUnreached() error = %v", err)
+				}
+				for _, ask := range tt.satisfiedThen {
+					if _, err := burlerengine.RecordParentAsk(deps.files, ask); err != nil {
+						t.Fatalf("RecordParentAsk() error = %v", err)
+					}
+				}
+			}
 			if tt.setup != nil {
 				tt.setup(&deps)
 			}

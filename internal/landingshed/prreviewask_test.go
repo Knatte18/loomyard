@@ -137,6 +137,48 @@ func TestReadPRReviewStanding(t *testing.T) {
 		{"AClearedAskAsksAgain", []standingAsk{{tag: tag, digest: "h", state: burlerengine.ParentAskTimeout, deadline: earlier, cleared: true}}, landingshed.PRReviewAskAgain},
 		{"ACodeReviewAskIsNeverReadAsAPRReviewAsk", []standingAsk{{tag: "[code-review request]", digest: "h", state: burlerengine.ParentAskOpen, deadline: later, answer: "satisfied"}}, landingshed.PRReviewAskAgain},
 		{
+			name: "AFailedLaterAskAtTheHeadLeavesASatisfiedAnswerStanding",
+			asks: []standingAsk{
+				{tag: tag, digest: "h", state: burlerengine.ParentAskOpen, deadline: later, answer: "satisfied"},
+				{tag: tag, digest: "h", state: burlerengine.ParentAskUndelivered},
+				{tag: tag, digest: "h", state: burlerengine.ParentAskNoParent},
+				{tag: tag, digest: "h", state: burlerengine.ParentAskTimeout, deadline: earlier},
+			},
+			want: landingshed.PRReviewSatisfied,
+		},
+		{
+			name: "AnOpenLaterAskAtTheHeadLeavesASatisfiedAnswerStanding",
+			asks: []standingAsk{
+				{tag: tag, digest: "h", state: burlerengine.ParentAskOpen, deadline: later, answer: "satisfied"},
+				{tag: tag, digest: "h", state: burlerengine.ParentAskOpen, deadline: later},
+			},
+			want: landingshed.PRReviewSatisfied,
+		},
+		{
+			name: "ALaterAnswerWithFindingsAtTheHeadReplacesASatisfiedAnswer",
+			asks: []standingAsk{
+				{tag: tag, digest: "h", state: burlerengine.ParentAskOpen, deadline: later, answer: "satisfied"},
+				{tag: tag, digest: "h", state: burlerengine.ParentAskOpen, deadline: later, answer: "findings"},
+			},
+			want: landingshed.PRReviewAskAgain,
+		},
+		{
+			name: "AnOpenAskAfterAnAnswerWithFindingsAtTheHeadAwaits",
+			asks: []standingAsk{
+				{tag: tag, digest: "h", state: burlerengine.ParentAskOpen, deadline: later, answer: "findings"},
+				{tag: tag, digest: "h", state: burlerengine.ParentAskOpen, deadline: later},
+			},
+			want: landingshed.PRReviewAwaiting,
+		},
+		{
+			name: "AClearedSatisfiedAnswerAtTheHeadAsksAgain",
+			asks: []standingAsk{
+				{tag: tag, digest: "h", state: burlerengine.ParentAskOpen, deadline: later, answer: "satisfied", cleared: true},
+				{tag: tag, digest: "h", state: burlerengine.ParentAskUndelivered},
+			},
+			want: landingshed.PRReviewAskAgain,
+		},
+		{
 			name: "ANewerCodeReviewAskAfterASatisfiedAskAtTheHeadLeavesItSatisfied",
 			asks: []standingAsk{
 				{tag: tag, digest: "h", state: burlerengine.ParentAskOpen, deadline: later, answer: "satisfied"},

@@ -19,6 +19,8 @@
 // The review keeps that value.
 // Under a recorded autonomy of false the session is interactive, for the operator to discuss the pull request in.
 // Under a recorded autonomy of true it is non-interactive, and the parent orch reviews through recorded asks.
+// The parent's latest answer at a head stands there until the parent answers again at that head;
+// a later ask at that head that awaits or ended unanswered does not hide it.
 // The session runs under the publish shell guard: it cannot push, merge, close or open a pull request.
 // A wait on the pull request has no timeout.
 // A session that ends while the review is open halts the row, and `lym loom resume` resumes it.

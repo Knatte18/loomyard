@@ -88,29 +88,33 @@ const (
 	// PRReviewSatisfied is an ask sent at the head that the parent answered with no findings.
 	PRReviewSatisfied PRReviewStanding = "satisfied"
 	// PRReviewAwaiting is an ask sent at the head that the parent has not answered, before its deadline.
+	// No satisfied answer stands at the head.
 	PRReviewAwaiting PRReviewStanding = "awaiting"
 	// PRReviewAskAgain is any other standing: no PR-Review ask at the head, or one that does not stand.
 	PRReviewAskAgain PRReviewStanding = "ask-again"
 )
 
-// ReadPRReviewStanding reads the standing at head of the run's latest ask made under PRReviewAskLineTag, at now.
+// ReadPRReviewStanding reads the standing at head of the run's asks made under PRReviewAskLineTag, at now.
 // An ask of another tag is never read as one, a review round's or the drift judge's among them.
-// It is satisfied when the ask was sent at head and is done with a report that holds no findings.
-// It is awaiting when the ask was sent at head and is pending-post or open before its deadline.
+// It is satisfied when the latest answered ask sent at head, not cleared, has a report that holds no findings.
+// Asks at head after that answer leave it standing, whether they await an answer or ended unanswered:
+// the parent's answer at a head holds until the parent answers again there.
+// It is awaiting when no such answer stands,
+// and the latest ask was sent at head and is pending-post or open before its deadline.
 // Otherwise it is ask-again.
-// That covers no ask, one sent at another head, one with findings, and one ended timeout, no-parent or undelivered.
-// It also covers one cleared, and one open past its deadline.
+// That covers no ask, one sent at another head, a latest answer at head with findings,
+// and a latest ask ended timeout, no-parent or undelivered with no satisfied answer before it.
+// It also covers a cleared ask, and one open past its deadline.
 func ReadPRReviewStanding(files burlerengine.ParentReviewFiles, head string, now time.Time) (PRReviewStanding, error) {
 	record, _, err := burlerengine.ReadParentAsks(files)
 	if err != nil {
 		return "", err
 	}
-	ask, found := record.LatestTagged(PRReviewAskLineTag)
-	if !found || ask.Digest != head || ask.Cleared {
-		return PRReviewAskAgain, nil
-	}
-	switch ask.State {
-	case burlerengine.ParentAskDone:
+	for i := len(record.Asks) - 1; i >= 0; i-- {
+		ask := record.Asks[i]
+		if ask.Tag != PRReviewAskLineTag || ask.Digest != head || ask.Cleared || ask.State != burlerengine.ParentAskDone {
+			continue
+		}
 		report, err := burlerengine.ReadParentReport(ask.Report)
 		if err != nil {
 			return "", err
@@ -118,10 +122,14 @@ func ReadPRReviewStanding(files burlerengine.ParentReviewFiles, head string, now
 		if len(report.Findings) == 0 {
 			return PRReviewSatisfied, nil
 		}
-	case burlerengine.ParentAskPendingPost, burlerengine.ParentAskOpen:
-		if now.Before(ask.Deadline) {
-			return PRReviewAwaiting, nil
-		}
+		break
+	}
+	ask, found := record.LatestTagged(PRReviewAskLineTag)
+	if !found || ask.Digest != head || ask.Cleared {
+		return PRReviewAskAgain, nil
+	}
+	if (ask.State == burlerengine.ParentAskPendingPost || ask.State == burlerengine.ParentAskOpen) && now.Before(ask.Deadline) {
+		return PRReviewAwaiting, nil
 	}
 	return PRReviewAskAgain, nil
 }

@@ -55,6 +55,7 @@
 // It signs the post as the session's own strand, where the PR-Review row's own ask signs as the loom program.
 // Only that session runs it.
 // It admits only a review recorded under autonomy, and it refuses an ask that already awaits an answer at the head.
+// It also refuses an ask at a head where a satisfied answer stands.
 // The Discussion-Review and Code-Review parent seats read `discussion_review_ask_parent` and `code_review_ask_parent`.
 // They read them on each call, and an unreadable value reads as false.
 //

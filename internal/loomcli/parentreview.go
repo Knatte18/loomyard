@@ -58,6 +58,7 @@ const (
 	parentReviewWayAskOperator = "way forward: the operator ends this review, so follow the operator's ending in the session's prompt"
 	parentReviewWayAskPane     = "way forward: run the verb from the PR-Review session's pane"
 	parentReviewWayAskRetry    = "way forward: run the verb again"
+	parentReviewWayAskContinue = "way forward: run lym loom pr-continue"
 )
 
 // parentReviewDeps holds every side effect of a parent-review verb, injected so that tests can supply fakes.
@@ -300,6 +301,7 @@ func parentReviewAwaitVerb(ctx context.Context, out io.Writer, deps parentReview
 // It refuses a run with no pull request record and a review not recorded under autonomy.
 // It also refuses a caller that is not the record's PR-Review session.
 // It refuses an ask still awaiting its answer at the head.
+// It refuses an ask at a head where a satisfied answer stands.
 // It answers the ask's number, state, head and deadline.
 // It ends nothing: only `pr-continue` and the PR-Review row end the review.
 func parentReviewAskVerb(out io.Writer, slug string, deps parentReviewDeps) int {
@@ -326,6 +328,9 @@ func parentReviewAskVerb(out io.Writer, slug string, deps parentReviewDeps) int 
 	standing, err := landingshed.ReadPRReviewStanding(deps.files, head, deps.now())
 	if err != nil {
 		return refuse("read the run's PR-Review asks: %s; %s", err, parentReviewWayAskRetry)
+	}
+	if standing == landingshed.PRReviewSatisfied {
+		return refuse("a satisfied answer from your parent stands at this head; %s", parentReviewWayAskContinue)
 	}
 	if standing == landingshed.PRReviewAwaiting {
 		record, _, err := burlerengine.ReadParentAsks(deps.files)
