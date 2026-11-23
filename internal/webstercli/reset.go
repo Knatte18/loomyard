@@ -3,6 +3,7 @@
 // It plans the reset with websterengine.PlanReset and performs it through fabricengine's pair-checkout reset.
 // In standalone mode it performs it through gitrepo's keep-reset instead.
 // It then clears the persisted pre-fix head and fabric-syncs state.json.
+// That records commit marks the run's transition at the new tip.
 // A reset to start ends by archiving the run record, or archives alone when the start cannot be moved to.
 // The verb runs no git of its own, so an agent that is denied `git reset --hard` still has a way to recover.
 package webstercli
@@ -173,7 +174,13 @@ Example:
 			_ = mutateLock.Release()
 			mutateHeld = false
 
-			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "reset"); syncErr != nil {
+			// The run's last transition names the code tip a resume and a hand-over check against origin;
+			// left naming a tip the reset dropped, it would refuse the resume and send the run back to that transition.
+			var transition []fabricengine.Trailer
+			if c.runID != "" {
+				transition = append(transition, fabricengine.Trailer{Key: fabricengine.TransitionTrailerKey, Value: c.runID})
+			}
+			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, "reset", transition...); syncErr != nil {
 				return fail(fmt.Sprintf("webster: the branch was reset but the fabric sync failed: %v; %s", syncErr, fabricSyncWayForward))
 			}
 

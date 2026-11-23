@@ -32,6 +32,7 @@ type driveAttemptNote struct {
 // driveHandBack describes one hand-back.
 // Question is the parent question, and Relay the parent notice to relay verbatim.
 // DoneFrictionFailed is set when a done run reported friction: failed, which notifies without parking.
+// Judged is set when the tackler or the arbiter was asked to judge the stop, whatever it answered.
 type driveHandBack struct {
 	RunID              string
 	ReportPath         string
@@ -41,12 +42,15 @@ type driveHandBack struct {
 	Question           string
 	Relay              string
 	DoneFrictionFailed bool
+	Judged             bool
 }
 
 // driveNotices returns the messages a hand-back sends its parent, each ending in driveNoticeTail.
 // Watched, a batten announces the run and retries a matching verify halt itself.
 // Only the parent notice, a question and a friction-failed done are sent.
-// Unwatched, the same are sent, plus one line naming the run-id and the stop report at every other hand-back;
+// So is the line naming the run-id and the stop report at a blocked stop the tackler or the arbiter was asked to judge.
+// Batten still sends its own state-changed notice once the run parks, so the parent hears both at such a stop.
+// Unwatched, the same are sent, plus that run-id line at every other hand-back;
 // a done stop sends nothing else.
 func driveNotices(h driveHandBack, watched bool) []string {
 	var notices []string
@@ -60,7 +64,8 @@ func driveNotices(h driveHandBack, watched bool) []string {
 		notices = append(notices, fmt.Sprintf("Run %s is done but reported friction: failed; stop report %s. %s", h.RunID, h.ReportPath, driveNoticeTail))
 	}
 	done := h.Stop.Key().State == string(shedengine.StateDone)
-	if !watched && len(notices) == 0 && !done {
+	judgedBlocked := h.Judged && h.Stop.Key().State == string(shedengine.StateBlocked)
+	if (!watched || judgedBlocked) && len(notices) == 0 && !done {
 		notices = append(notices, fmt.Sprintf("Run %s stopped; stop report %s. %s", h.RunID, h.ReportPath, driveNoticeTail))
 	}
 	return notices

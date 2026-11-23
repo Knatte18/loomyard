@@ -21,6 +21,8 @@
 // A done card is also frozen:
 // ValidatePlan appends a blocking `done-card-edited` finding when its file's hash differs from the one its batch stored.
 // An unreadable card file is a returned error.
+// Once a batch has begun, 00-overview.md outside its Card Index is frozen as well.
+// An overview whose frame differs from the one the run recorded gets a blocking `overview-frame-edited` finding.
 //
 // A split plan has checks of its own.
 // NewPartsGate maps partsparser.Validate onto the gate contract for the Parts-Write row.

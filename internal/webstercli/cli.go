@@ -95,6 +95,8 @@ type websterCLI struct {
 	// Fabric sync needs it to scope its pathspec with fabricengine.ScopedPathspec.
 	// No other field supplies that path.
 	anchorRel string
+	// runID is the worktree's own run, whose transition a reset's records commit marks; it is empty in standalone.
+	runID string
 
 	// geom is the websterengine.Geometry that every verb's Deps construction reads.
 	// It is hubgeom.WebsterGeometry(loc) in hub mode and standalonegeom.WebsterGeometry(target, stateDir) in standalone.

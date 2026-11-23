@@ -24,7 +24,15 @@ It commits its records, naming the code tip through the `Warp-SHA` trailer and m
 It pushes the records and then the code before the next producer starts.
 The tracked intents, the pull-request record and the landing's board `done` push the same way.
 
-Held by `TestNew_OrdinaryPath` in `internal/statuscommit` and by `TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide` in `internal/fabricengine`.
+`webster reset` marks a transition too, outside `statuscommit`, and is the one writer whose code push goes first:
+the reset moves the code branch on origin, and only then does its records commit, which carries `Run-Transition` and names that tip.
+Fabric's detached push sends that commit.
+Until it lands, the run's last transition on origin names a code tip origin no longer holds, so the run waits as below;
+a push that fails is owed and holds the run at its transition.
+
+Held by `TestNew_OrdinaryPath` in `internal/statuscommit`,
+by `TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide` in `internal/fabricengine`
+and by `TestResetCmd_RecordsTheRunTransitionAtTheNewTip` in `internal/webstercli`.
 
 ### An owed push holds the run
 

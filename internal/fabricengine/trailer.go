@@ -16,7 +16,7 @@ const WarpSHATrailerKey = "Warp-SHA"
 
 // TransitionTrailerKey is the git-trailer key of a records commit marking a run's transition.
 // It is written as "Run-Transition: <run id>".
-// Only a run's transition commits and its code-tip give-up write it.
+// Only a run's transition commits, its code-tip give-up and webster's reset of the code branch write it.
 // The newest commit carrying it thus names the run's last transition.
 // Fabric's other records commits carry a Warp-SHA trailer too, but never this one.
 const TransitionTrailerKey = "Run-Transition"

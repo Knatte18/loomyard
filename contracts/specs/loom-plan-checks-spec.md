@@ -288,6 +288,12 @@ The overview is read at the task branch's merge base with its parent, or at `HEA
   a card that webster's run record holds done no longer hashes to what its batch recorded at begin.
   Way forward: restore the card file.
   A fix to its work is a follow-up card after the last begun batch, with its Card Index line.
+- `overview-frame-edited` *(loomshed)* — an edited overview frame:
+  webster's run record holds a begun batch and a recorded overview frame,
+  and `00-overview.md` outside its Card Index no longer hashes to that frame.
+  A record with no recorded frame, or with no begun batch, raises nothing.
+  Way forward: restore the overview.
+  Carry the change in a follow-up card after the last begun batch, with its Card Index line.
 - `part-spot-target` — under a part scope: a card's target is a shared spot's path.
   Way forward: drop the target and say in the card's `**Intent:**` what it needs from the spot.
 - `part-export-missing` *(loomshed, `--part` only)* — an export of the part's contract that no part card creates.

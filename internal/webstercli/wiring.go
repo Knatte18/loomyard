@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/secretpath"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
@@ -213,6 +214,7 @@ func (c *websterCLI) wireHub(loc *lymcwd.Location, stencilsDir, planDir, targetD
 	geom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
 	c.geom = geom
 	c.anchorRel = loc.AnchorRel
+	c.runID = shedrun.ResolveRunID(loc, shedrun.SelfRunID)
 	// The matcher is built eagerly because NewRefScanner only compiles a regexp and cannot fail.
 	// The fabric handle stays a closure and must not be opened here.
 	// fabricengine.Open stat-checks the paired sibling, and a healthy location can lack one.
@@ -349,6 +351,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	geom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
 	c.geom = geom
 	c.anchorRel = ""
+	c.runID = ""
 	// standalone has no fabric repo by construction: the matcher never sees a fabric reference
 	// because there is nothing to reference, and the opener is left nil rather than a closure that
 	// would panic or stat-fail if ever called.

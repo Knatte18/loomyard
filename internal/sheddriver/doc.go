@@ -71,6 +71,9 @@
 //
 // A hand-back writes a markdown stop report, sends the parent its notices and parks the run.
 // No notice is queued when no orch strand is recorded.
+// While a batten watches the run, the batten announces a plain stop.
+// The driver still names a blocked stop the tackler or the arbiter was asked to judge.
+// Batten still sends its own notice once the run parks, so the parent hears both at such a stop.
 // A done run that reported friction `failed` is reported but never parked.
 //
 // # The tackler

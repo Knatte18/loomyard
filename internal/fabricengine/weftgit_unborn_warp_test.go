@@ -27,6 +27,33 @@ func newUnbornWarpRepo(t *testing.T) string {
 	return dir
 }
 
+// TestCommitWeft_UnbornWarpHEAD_WritesTheCallersTrailers checks the weft message on an unborn warp.
+// The caller's trailers end it.
+// The message holds no Warp-SHA line, since there is no warp SHA yet.
+func TestCommitWeft_UnbornWarpHEAD_WritesTheCallersTrailers(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	warpPath := newUnbornWarpRepo(t)
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change, unborn warp")
+
+	trailers := []fabricengine.Trailer{{Key: fabricengine.TransitionTrailerKey, Value: "run-1"}}
+	sha, committed, err := fabricengine.CommitWeftWithTrailersForTest(f, []string{"_lym"}, fabricengine.DefaultCommitMessage, trailers, fabricengine.SyncOptions{})
+	if err != nil || !committed {
+		t.Fatalf("commitWeft() = (%q, %v, %v); want a landed commit", sha, committed, err)
+	}
+
+	message := strings.TrimSpace(fabricengine.CommitMessageAtForTest(t, weftFixture.PrimeRecords(), sha))
+	if wantTail := fabricengine.TransitionTrailerKey + ": run-1"; !strings.HasSuffix(message, wantTail) {
+		t.Errorf("commit message = %q; want it to end with %q", message, wantTail)
+	}
+	if strings.Contains(message, fabricengine.WarpSHATrailerKey+":") {
+		t.Errorf("commit message = %q; want no %s trailer (warp has no HEAD yet)", message, fabricengine.WarpSHATrailerKey)
+	}
+}
+
 // TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord checks CommitWeft on an unborn warp HEAD.
 // The commit still happens, with no Warp-SHA trailer, since there is no warp SHA yet.
 // It records no correspondence entry.

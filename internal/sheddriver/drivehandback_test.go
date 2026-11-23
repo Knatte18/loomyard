@@ -15,6 +15,8 @@ import (
 )
 
 // TestDriveNotices pins what a hand-back tells its parent under each notify rule: the notice verbatim, the question line, the friction-failed done line and the run-id line, each ending in the tail.
+//
+//testtiming:keep exact hand-back notice text and the judged-by-state matrix
 func TestDriveNotices(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -22,6 +24,7 @@ func TestDriveNotices(t *testing.T) {
 	const tail = " Answer briefly, then continue your task."
 	awaiting := Stop{OK: true, State: "awaiting", LoopState: "awaiting"}
 	done := Stop{OK: true, State: "done", LoopState: "done"}
+	blocked := Stop{OK: true, State: "blocked", LoopState: "blocked"}
 	generic := "Run run-1 stopped; stop report /r.md." + tail
 	question := "Run run-1 stopped with a question; stop report /r.md. Question: widen the task?" + tail
 	friction := "Run run-1 is done but reported friction: failed; stop report /r.md." + tail
@@ -41,6 +44,9 @@ func TestDriveNotices(t *testing.T) {
 		{name: "watched awaiting without a notice sends nothing", h: driveHandBack{Stop: awaiting}, watched: true},
 		{name: "unwatched awaiting without a notice sends the run-id line", h: driveHandBack{Stop: awaiting}, want: []string{generic}},
 		{name: "unwatched done without friction sends nothing", h: driveHandBack{Stop: done}},
+		{name: "watched blocked stop an agent judged sends the run-id line", h: driveHandBack{Stop: blocked, Judged: true}, watched: true, want: []string{generic}},
+		{name: "watched blocked stop no agent judged sends nothing", h: driveHandBack{Stop: blocked}, watched: true},
+		{name: "watched awaiting stop an agent judged sends nothing", h: driveHandBack{Stop: awaiting, Judged: true}, watched: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

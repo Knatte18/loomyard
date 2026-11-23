@@ -442,7 +442,28 @@ func CommitWeftForTest(f *Fabric, pathspec []string, message string, opts SyncOp
 	}
 	defer func() { _ = l.Release() }()
 
-	return f.commitWeftLocked(pathspec, message, opts, snapshotTags...)
+	return f.commitWeftLocked(pathspec, message, nil, opts, snapshotTags...)
+}
+
+// CommitWeftWithTrailersForTest stages the pathspec in f's weft and commits it with trailers.
+// It holds the weft write lock.
+// Tests call it to reach the weft commit's trailer handling without the warp-side classification in front of it.
+func CommitWeftWithTrailersForTest(f *Fabric, pathspec []string, message string, trailers []Trailer, opts SyncOptions) (sha string, committed bool, err error) {
+	if opts.SkipGit {
+		return "", false, nil
+	}
+
+	lockDir, err := f.ensureWeftLockDir()
+	if err != nil {
+		return "", false, err
+	}
+	l, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
+	if err != nil {
+		return "", false, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
+	}
+	defer func() { _ = l.Release() }()
+
+	return f.commitWeftLocked(pathspec, message, trailers, opts)
 }
 
 // SnapshotWarpSHAForTest returns the warp SHA recorded under tag by the newest weft commit on f's current branch.

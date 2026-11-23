@@ -66,6 +66,7 @@ func newResetFixture(t *testing.T, h *hubforge.Hub, slug string) *resetFixture {
 		reed:       reed,
 		runner:     runner,
 		anchorRel:  loc.AnchorRel,
+		runID:      loc.WorktreeName,
 		geom:       hubgeom.WebsterGeometry(loc),
 		openFabric: func() (*fabricengine.Fabric, error) { return fabricengine.Open(loc) },
 		// Reset runs on a recorded state and prices no partition, so a lister that fails proves it is never called.
@@ -154,6 +155,61 @@ func (fx *resetFixture) wantRefusal(t *testing.T, args []string, parts ...string
 	}
 	if got := gitkit.RevParse(t, fx.checkout, "HEAD"); got != head {
 		t.Errorf("a refused reset moved HEAD from %s to %s", head, got)
+	}
+}
+
+// TestResetCmd_RecordsTheRunTransitionAtTheNewTip pins the run transition a reset's records commit marks.
+// The commit names the tip the reset moved to, so the run's last transition no longer names the dropped tip.
+//
+// The run record is committed to the records side before the reset, with no recovery and no pre-fix head to clear,
+// so the reset leaves its bytes as they were and only an empty records commit can carry the transition.
+func TestResetCmd_RecordsTheRunTransitionAtTheNewTip(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+	tests := []struct {
+		name string
+		args []string
+		// wantEmptyCommit is whether the records commit holds no file, because the reset changes none.
+		wantEmptyCommit bool
+	}{
+		{"BatchStartWithNothingToClear", []string{"--to", "batch-start", "--batch", "1"}, true},
+		{"Start", []string{"--to", "start"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			fx := newResetFixture(t, h, "rst-transition")
+			st := startedAt(fx.base)
+			st.Batches[1].Terminal, st.Batches[1].Status, st.Batches[1].Digest = true, "done", &websterengine.Digest{HeadSHA: fx.base}
+			fx.saveState(t, st)
+
+			loc, err := lymcwd.ResolveWorktree(fx.checkout)
+			if err != nil {
+				t.Fatalf("ResolveWorktree(%s): %v", fx.checkout, err)
+			}
+			records := fabricengine.RecordsWorktree(loc)
+			gitkit.Git(t, records, "add", "-A")
+			gitkit.Git(t, records, "commit", "-q", "-m", "seed the run record")
+
+			code, envelope := fx.reset(t, tt.args...)
+			if code != 0 || envelope["ok"] != true {
+				t.Fatalf("reset %v = %d, %v; want ok", tt.args, code, envelope)
+			}
+
+			message := gitkit.Git(t, records, "log", "-1", "--format=%B")
+			for _, want := range []string{"webster: reset", "Run-Transition: " + loc.WorktreeName} {
+				if !strings.Contains(message, want) {
+					t.Errorf("the records HEAD message = %q; want it to hold %q", message, want)
+				}
+			}
+			if tip, ok := fabricengine.TaskCommitOf(message); !ok || tip != fx.base {
+				t.Errorf("TaskCommitOf(records HEAD message) = %q, %v; want %q, true", tip, ok, fx.base)
+			}
+			if files := strings.TrimSpace(gitkit.Git(t, records, "show", "--format=", "--name-only", "HEAD")); (files == "") != tt.wantEmptyCommit {
+				t.Errorf("the records HEAD commit holds files %q; want an empty commit: %v", files, tt.wantEmptyCommit)
+			}
+		})
 	}
 }
 

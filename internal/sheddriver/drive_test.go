@@ -193,7 +193,9 @@ func TestGoDriver_Settle(t *testing.T) {
 		// wake, when set, wires CompletedWake to answer with the reading.
 		wake        *wakeReading
 		runLockHeld bool
-		escalation  bool
+		// watched wires Watched to report a live batten watching the run.
+		watched    bool
+		escalation bool
 		// judgesFirst, when set, is the one row the arbiter seam judges before the tackler.
 		judgesFirst string
 		// judgesFirstReason, when set, limits the judgesFirst row to a stop whose reason opens with it.
@@ -452,6 +454,36 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantCalls:   []string{"step", "arbiter:"},
 			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerParent},
 			wantReports: 2, wantParked: true, wantNotifies: 1, wantHandBack: true, wantExit: ExitHandBack, wantReportHas: map[int][]string{2: {"a row the arbiter judges first", "which way?"}},
+		},
+		{
+			name:  "a watched blocked stop the arbiter hands on with no question tells the parent the run stopped",
+			steps: []func(*testing.T) []byte{blocked}, judgesFirst: "Build", watched: true, orchRecorded: true,
+			arbiterReturns: func() ArbiterOutcome {
+				outcome := arbiterOutcome("hand-on", 1)
+				outcome.Question = ""
+				return outcome
+			}(),
+			wantCalls:   []string{"step", "arbiter:"},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerParent},
+			wantReports: 2, wantParked: true, wantNotifies: 1, wantNoNotice: "with a question", wantHandBack: true, wantExit: ExitHandBack,
+		},
+		{
+			name:  "a watched blocked stop the arbiter refuses tells the parent the run stopped",
+			steps: []func(*testing.T) []byte{blocked}, judgesFirst: "Build", watched: true, orchRecorded: true, arbiterErr: errors.New("arbiter: arbiter_max_spawns spent"),
+			wantCalls:   []string{"step", "arbiter:"},
+			wantActions: []string{shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerParent},
+			wantReports: 2, wantParked: true, wantNotifies: 1, wantHandBack: true, wantExit: ExitHandBack,
+		},
+		{
+			name: "a watched blocked stop that hands back by rule after the arbiter judged an earlier stop tells the parent nothing",
+			steps: []func(*testing.T) []byte{blocked, func(t *testing.T) []byte {
+				return driveEnvelopeJSON(t, map[string]any{"ok": true, "state": "blocked", "reason": shedengine.ReasonBounceBudgetExhausted + " for Build; way forward: the parent resumes"},
+					map[string]any{"state": "blocked", "current_producer": "Build", "history_length": 3})
+			}},
+			judgesFirst: "Build", watched: true, orchRecorded: true, arbiterReturns: arbiterOutcome("resume", 1),
+			wantCalls:   []string{"step", "arbiter:", "step:1"},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleRestep, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerArbiter, shedrun.SettlerParent},
+			wantReports: 2, wantParked: true, wantNotifies: 0, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name:  "an arbiter hand-on after its own commits names them in the stop report's attempt line",
@@ -934,6 +966,9 @@ func TestGoDriver_Settle(t *testing.T) {
 				deps.Arbiter.JudgesFirst = func(producer, reason string) bool {
 					return producer == tt.judgesFirst && strings.HasPrefix(reason, tt.judgesFirstReason)
 				}
+			}
+			if tt.watched {
+				deps.Watched = func() bool { return true }
 			}
 			if tt.noArbiter {
 				deps.Arbiter = nil

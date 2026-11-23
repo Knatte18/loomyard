@@ -107,6 +107,12 @@
 // The `Snapshot:` trailer tag grammar is restricted so a tag cannot inject a trailer line.
 // Reads of it match byte-exact; a tag never recorded reads as `("", nil)`.
 //
+// `CommitWithTrailers` commits as `Commit` does with no tags.
+// It ends the weft message with the caller's trailers after `Warp-SHA`;
+// the warp commit carries none of them.
+// With a born warp the weft commit always lands.
+// It is empty when the files are unchanged, so the trailers have a commit to sit on.
+//
 // fabric never calls gitrepo's `StageAllAndCommit`; all staging is an explicit-list `StageAndCommit`.
 // The one exception is `commitWeftAt`, which seeds the weft artifact excludes before every stage.
 //

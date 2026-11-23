@@ -253,6 +253,11 @@ func NewPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.In
 // A done card is frozen, so any change to its file is reported.
 // It reads the record and the card bytes alone; an unreadable card file is a returned error.
 //
+// Once a batch has begun, 00-overview.md outside its Card Index is frozen too.
+// That part carries the plan's integration verify.
+// An overview whose frame no longer hashes to the frame the record holds is one blocking overview-frame-edited finding,
+// so the plan gate refuses what the implementer's rebaseline would refuse later.
+//
 // The findings of the plan context checks over pc follow.
 // They cover only the cards not recorded done, since a done card's rename already ran.
 func ValidatePlan(plan *planparser.Plan, anchorPath, worktreeRoot string, index planindex.Index, pc PlanContext) ([]planindex.Finding, error) {
@@ -276,6 +281,11 @@ func ValidatePlan(plan *planparser.Plan, anchorPath, worktreeRoot string, index 
 			Severity: planindex.SeverityBlocking,
 		})
 	}
+	frameFindings, err := overviewFrameEditedFindings(plan.Dir, st)
+	if err != nil {
+		return nil, err
+	}
+	findings = append(findings, frameFindings...)
 
 	done := make(map[int]bool)
 	for _, c := range runplan.DoneCards(plan, st) {
@@ -296,6 +306,34 @@ func ValidatePlan(plan *planparser.Plan, anchorPath, worktreeRoot string, index 
 
 // doneCardEditedCheck names the finding ValidatePlan appends for an edited done card.
 const doneCardEditedCheck = "done-card-edited"
+
+// overviewFrameEditedCheck names the finding for an overview edited outside its Card Index after a batch began.
+const overviewFrameEditedCheck = "overview-frame-edited"
+
+// overviewFrameEditedFindings returns one blocking overview-frame-edited finding, or none.
+// The finding comes when st holds a begun batch and a recorded overview frame.
+// It also needs planDir's 00-overview.md to no longer have that frame.
+// It returns none otherwise, a nil st and a record with no recorded frame included.
+// A record with no recorded frame is left to the rebaseline.
+// The rebaseline falls back to the frame of the run's baseline overview copy, or refuses the overview change.
+// An unreadable overview is a returned error.
+func overviewFrameEditedFindings(planDir string, st *runplan.State) ([]planindex.Finding, error) {
+	if st == nil || len(st.Batches) == 0 || st.PlanOverviewFrameHash == "" {
+		return nil, nil
+	}
+	frame, err := runplan.OverviewFrameHash(planDir)
+	if err != nil {
+		return nil, err
+	}
+	if frame == st.PlanOverviewFrameHash {
+		return nil, nil
+	}
+	return []planindex.Finding{{
+		Check:    overviewFrameEditedCheck,
+		Detail:   runplan.PlanOverviewFile + " changed outside its Card Index after a batch began: the rest of the overview carries the plan's integration verify and is frozen once a batch begins, so restore it and carry the change in a follow-up card placed after the last begun batch, with its Card Index line",
+		Severity: planindex.SeverityBlocking,
+	}}, nil
+}
 
 // NewLensReviewPlanGate returns the plan gate closure for a twill-spawned Plan-Write run.
 // Shuttle chooses it from the run's recorded fork authorization.

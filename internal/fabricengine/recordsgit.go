@@ -217,8 +217,10 @@ func CommitEmptyWithTrailers(rec *Mutations, l *lymcwd.Location, relPath, msg st
 // The weft write lock must already be held.
 // When warp has a HEAD, the commit carries a Warp-SHA trailer and Snapshot trailers.
 // On an unborn warp, with zero commits, the tags are dropped.
-// With snapshotTags set and warp past its first commit, a no-op commit still records the tags.
-func (f *Fabric) commitWeftLocked(pathspec []string, message string, opts SyncOptions, snapshotTags ...string) (sha string, committed bool, err error) {
+// With snapshotTags or trailers set and warp past its first commit, a no-op commit still lands, empty,
+// so the tags and the trailers have a commit to sit on.
+// The already-validated trailers end the message, one line each in order, on a born and an unborn warp alike.
+func (f *Fabric) commitWeftLocked(pathspec []string, message string, trailers []Trailer, opts SyncOptions, snapshotTags ...string) (sha string, committed bool, err error) {
 	warpSHA, unborn, err := f.warpHeadSHA()
 	if err != nil {
 		return "", false, fmt.Errorf("fabricengine: warp CurrentSHA: %w", err)
@@ -232,8 +234,11 @@ func (f *Fabric) commitWeftLocked(pathspec []string, message string, opts SyncOp
 			return "", false, err
 		}
 	}
+	for _, trailer := range trailers {
+		commitMessage = appendTrailerLine(commitMessage, trailer.Key, trailer.Value)
+	}
 
-	forceEmptyCommit := len(snapshotTags) > 0 && !unborn
+	forceEmptyCommit := (len(snapshotTags) > 0 || len(trailers) > 0) && !unborn
 
 	filteredPathspec, positive, err := weftPathspecFilter(f.weftPath, pathspec)
 	if err != nil {

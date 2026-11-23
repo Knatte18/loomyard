@@ -29,6 +29,8 @@
 // With a start that cannot be moved to, start archives the run record without moving.
 // The archive refuses, with the move already made, on a pending finding that names its clearing step;
 // re-running converges.
+// In hub mode the reset's records commit carries a `Run-Transition` trailer naming the worktree's run,
+// so the run's last transition names the code tip the reset moved to, not the tip it dropped.
 //
 // In standalone mode reset moves HEAD with git's keep form and touches no remote.
 // If the checkout rewrite fails after the remote moved, the error envelope carries `partial` true;

@@ -133,6 +133,9 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 			if c.refMatcher == nil {
 				t.Error("refMatcher = nil; want a non-nil matcher in hub mode")
 			}
+			if c.runID != loc.WorktreeName {
+				t.Errorf("runID = %q; want the worktree's own run %q", c.runID, loc.WorktreeName)
+			}
 			if !c.runner.HasReplyProbe() {
 				t.Error("runner.HasReplyProbe() = false; want the reply probe wired in hub mode")
 			}

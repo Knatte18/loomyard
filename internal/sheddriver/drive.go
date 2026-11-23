@@ -167,6 +167,9 @@ type TamperSeam struct {
 // rules and attempts are what the stop report quotes for the stop in hand.
 // pendingAttempt is the arbiter attempt the next step consumes;
 // pendingNotice is the outcome line held until that step consumes it.
+// judged is whether the tackler or the arbiter was asked to judge a stop.
+// judgedKey is the key of the stop it was asked about.
+// A stop other than that one is not a judged stop, whatever judged says.
 // exit is how the run ended.
 type goDriver struct {
 	deps           Deps
@@ -174,6 +177,8 @@ type goDriver struct {
 	attempts       []driveAttemptNote
 	pendingAttempt string
 	pendingNotice  *arbiterSettledNotice
+	judged         bool
+	judgedKey      StopKey
 	exit           Exit
 }
 
@@ -247,7 +252,7 @@ func (d *goDriver) run(ctx context.Context) error {
 			}
 		}
 		if attempt == "" {
-			d.rules, d.attempts = nil, nil
+			d.rules, d.attempts, d.judged = nil, nil, false
 		}
 		resumed = false
 
@@ -316,6 +321,7 @@ func (d *goDriver) settleStop(ctx context.Context, stop Stop) (attempt string, e
 			d.settle(stop, shedrun.SettlerGoRule, shedrun.SettleRestep, decision.Rule, "")
 			return "", false, nil
 		case driveActionTackler, driveActionArbiter:
+			d.judged, d.judgedKey = true, stop.Key()
 			var moved Stop
 			if decision.Action == driveActionTackler {
 				moved, exit, err = d.tackle(ctx, stop)
@@ -1031,6 +1037,7 @@ func (d *goDriver) handBack(stop Stop, h driveHandBack) error {
 	h.RunID = d.deps.RunID
 	h.ReportPath = reportPath
 	h.Stop = stop
+	h.Judged = d.judged && stop.Key() == d.judgedKey
 	h.Rules = append(slices.Clone(d.rules), h.Rules...)
 	h.Attempts = append(slices.Clone(d.attempts), h.Attempts...)
 	return handBackRun(park, h, d.reportFor(stop, h, reportPath), d.watched())
