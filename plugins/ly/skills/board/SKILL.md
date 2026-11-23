@@ -229,6 +229,7 @@ lym board intake list --full
 lym board intake import '{"issue":12,"slug":"retry-backoff"}'
 lym board intake import '{"issue":13,"into":"retry-backoff"}'
 lym board intake close '{"issue":14,"reason":"Duplicate of #12."}'
+lym board intake close '{"issue":15,"reason":"Already fixed by 6fa7f1740 on main: it guards the nil fabric.","completed":true}'
 ```
 
 - `list` prints the number and title of each open issue no entry records;
@@ -244,6 +245,7 @@ lym board intake close '{"issue":14,"reason":"Duplicate of #12."}'
   only what the entry body quotes or attaches of them is available.
   A label `upsert` on a folded entry carries the entry's whole label list, since `labels` replaces it.
 - `close` ends a noise issue with a stated `reason` and writes nothing to the board.
+  An issue the main branch already fixed is closed with `"completed":true`, its `reason` naming the fixing commit.
 
 ## Writing a body
 
