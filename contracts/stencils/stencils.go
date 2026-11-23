@@ -350,6 +350,12 @@ var BouncerTemplateSeed []byte
 //go:embed bouncer/bouncer-template-judge.md
 var BouncerTemplateJudge []byte
 
+// BouncerTemplateVerify is the Bouncer's shipped-default verify prompt:
+// the check, at a spent budget, of the BLOCKING findings a round's fixer reported fixed.
+//
+//go:embed bouncer/bouncer-template-verify.md
+var BouncerTemplateVerify []byte
+
 // BouncerTemplateEscalation is the Bouncer's shipped-default escalation brief.
 // A one-shot fork of the run's parent session reads it.
 //
@@ -983,6 +989,7 @@ var entries = []registryEntry{
 	{"burler-fix-check-rubric", &BurlerFixCheckRubric},
 	{"bouncer-template-seed", &BouncerTemplateSeed},
 	{"bouncer-template-judge", &BouncerTemplateJudge},
+	{"bouncer-template-verify", &BouncerTemplateVerify},
 	{"bouncer-template-escalation", &BouncerTemplateEscalation},
 	{"bouncer-fragment-decide-open", &BouncerFragmentDecideOpen},
 	{"bouncer-fragment-decide-capped", &BouncerFragmentDecideCapped},
@@ -1100,6 +1107,7 @@ var roleOpeningStencils = map[string][]string{
 	"fix-reviewer":         {"landing-template-fix-review"},
 	"pr-reviewer":          {"landing-template-pr-review"},
 	"bouncer-judge":        {"bouncer-template-judge"},
+	"bouncer-verify":       {"bouncer-template-verify"},
 	"bouncer-seed":         {"bouncer-template-seed", "harden-template-seed"},
 	"friction":             {"friction-template-reflection"},
 	"describe":             {"landing-template-describe"},

@@ -187,8 +187,8 @@ func (b *Bouncer) settleDecisionContinue(ctx context.Context, round int, verdict
 // Inside it the accept is retired and the round escalates with cause budget, which only the parent accepts.
 // A refused accept is re-judged while budget is left;
 // at the budget below the hard cap it is retired and the round escalates again.
-// At the budget at or past the hard cap the judge outputs are archived and the run halts,
-// so a resume re-judges the round under the recorded accept.
+// At the budget at or past the hard cap the judge outputs and the round's fix verification are archived,
+// and the run halts, so a resume re-judges the round under the recorded accept.
 func (b *Bouncer) settleDecisionAccept(ctx context.Context, round int, verdict bouncerVerdict, ledger ledgerFile, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	refusal := b.decisionRefusal(round, verdict, ledger, CirclingAccept)
 	if refusal == "" && verdict != verdictConverged {
@@ -207,7 +207,8 @@ func (b *Bouncer) settleDecisionAccept(ctx context.Context, round int, verdict b
 		}
 		return b.escalateDecision(round, refusal, true, ptr)
 	}
-	if err := archiveStaleOutputs(judgeOutputs(b.cfg.RunDir, round), b.cfg.Now); err != nil {
+	retired := append(judgeOutputs(b.cfg.RunDir, round), verificationPath(b.cfg.RunDir, round))
+	if err := archiveStaleOutputs(retired, b.cfg.Now); err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer failed to archive a held accept's judge outputs", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
 	}
 	reason := fmt.Sprintf("%sbouncer %s: round %d's recorded accept is held by a refusal at the budget and the perch's hard cap (%s); way forward: run `lym loom resume`, whose next Call re-judges the round under the recorded accept", DecisionHaltPrefix, b.cfg.Name, round, refusal)

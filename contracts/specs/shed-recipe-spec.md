@@ -127,6 +127,9 @@ A `Bouncer` row's optional boolean `blocking_escalates` key defaults to false.
 When true, a round in the soft-cap window whose ledger holds an open BLOCKING entry, or cannot be read,
 escalates with cause `budget` to the run's parent, which accepts it or orders another round;
 neither the auto-accept nor the soft-cap rule's accept passes such a round.
+Before it escalates, a verifier pass on the judge's model checks the open BLOCKING entries
+whose findings the round's fixer reported fixed against the fix commits;
+each entry it confirms fixed is resolved in the ledger, and only the entries left open reach the parent.
 A round whose review holds a `decision`-class finding is handed over the same way under `escalate_decisions`,
 unless every open BLOCKING entry is of class `decision`.
 The shipped Code-Review rows set it.

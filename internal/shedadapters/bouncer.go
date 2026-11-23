@@ -173,6 +173,9 @@ type BouncerConfig struct {
 	// the parent accepts it or orders another round.
 	// A round that EscalateDecisions would escalate with cause decision is handed over the same way.
 	// The exception is a round whose open BLOCKING entries are all of class decision, which the arbiter may rule on.
+	// Before handing the round over, a verifier pass on the judge's model checks the fix commits.
+	// It checks the open BLOCKING entries whose findings the round's fixer reported fixed.
+	// Each entry it confirms fixed is resolved in the ledger, so only the entries left open reach the parent.
 	BlockingEscalates bool
 	// EscalateDecisions makes a judged round escalate with cause decision, whatever the judge ruled.
 	// It does so when its accepted review holds a finding of class decision; false, the default, changes nothing.
@@ -294,7 +297,8 @@ type Bouncer struct {
 // The soft-cap rule's automatic continue is exempt as well.
 // With cfg.AutoAccept set, a spent budget turns a freshly judged CONTINUE or CIRCLING round into an automatic accept.
 // Such a round returns Done instead of running the soft-cap rule.
-// With cfg.BlockingEscalates set, a spent budget over an open BLOCKING ledger entry escalates to the parent instead.
+// With cfg.BlockingEscalates set, a spent budget over an open BLOCKING ledger entry escalates to the parent instead,
+// unless a verifier pass confirms the round's fix closed it.
 // A judge that never recovers halts within MaxBounces counted Stucks.
 // A continue past the soft cap buys exactly one judged round.
 //
@@ -1206,13 +1210,15 @@ func (b *Bouncer) droppedKeyRefusal(round int, ledger ledgerFile) string {
 }
 
 // rejudge retires a refused judgment: it archives the round's three judge outputs, so the round reads as unjudged.
+// It archives the round's fix verification too, since that ruled on the retired ledger's keys.
 // It then degrades with a Reason naming the verdict and the cause, and the next call re-judges the round.
-// The judge stays the only writer of those files.
+// rejudge itself writes none of those files.
 // The Stuck spends one counted bounce unit, is never BudgetExempt and never escalates,
 // so a segment at its budget halts on it.
 // A failed archive degrades naming that failure instead.
 func (b *Bouncer) rejudge(ctx context.Context, round int, verdict bouncerVerdict, cause string) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	if err := archiveStaleOutputs(judgeOutputs(b.cfg.RunDir, round), b.cfg.Now); err != nil {
+	retired := append(judgeOutputs(b.cfg.RunDir, round), verificationPath(b.cfg.RunDir, round))
+	if err := archiveStaleOutputs(retired, b.cfg.Now); err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer failed to archive a refused judgment's outputs", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
 	}
 	return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer refused round %d's %s judgment: %s; way forward: the round is re-judged", round, verdict, cause), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "verdict", verdict)
@@ -1412,7 +1418,8 @@ func (b *Bouncer) acceptRound(round int, ptr shedengine.OutputPointer) (shedengi
 // so a round past a new generation that reset Shed's count is still settled by the rule.
 // In order:
 // first, in an open window, BlockingEscalates applies.
-// A round whose ledger holds an open BLOCKING entry or cannot be read escalates with cause budget.
+// A round escalates with cause budget when its ledger cannot be read.
+// It does so too when the ledger holds an open BLOCKING entry that the fix verification leaves open.
 // The detail names the open keys, and an escalation already recorded for the round is returned as recorded.
 // Second, AutoAccept applies with the soft cap reached, a harvest (spawned) and no escalation record.
 // The round then records an automatic accept and passes through acceptRound.
@@ -1541,11 +1548,13 @@ func (b *Bouncer) softCapRule(round int, verdict bouncerVerdict, ptr shedengine.
 }
 
 // blockingEscalationDetail returns the budget escalation detail of a round that BlockingEscalates hands to the parent.
-// That is a round whose ledger holds an open BLOCKING entry, and the detail names each such key,
-// or a round whose ledger cannot be read.
+// That is a round whose ledger cannot be read.
+// It is also a round whose ledger holds an open BLOCKING entry that the fix verification leaves open.
+// The detail names each such key.
+// The verification first closes each entry whose finding the fixer reported fixed and a verifier pass confirms.
 // An entry of class leftOut is not counted.
 // An empty leftOut counts every class, and an entry with no class always counts.
-// It returns "" when BlockingEscalates is off or the ledger holds no counted entry.
+// It returns "" when BlockingEscalates is off or no counted entry stays open.
 func (b *Bouncer) blockingEscalationDetail(round int, leftOut burlerengine.Class) string {
 	if !b.cfg.BlockingEscalates {
 		return ""
@@ -1557,7 +1566,15 @@ func (b *Bouncer) blockingEscalationDetail(round int, leftOut burlerengine.Class
 	if len(keys) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("the spent budget leaves BLOCKING findings open (%s), which only the parent may accept: accept them, or continue for another round", strings.Join(keys, ", "))
+	keys, note := b.closeVerifiedBlocking(round, keys)
+	if len(keys) == 0 {
+		return ""
+	}
+	detail := fmt.Sprintf("the spent budget leaves BLOCKING findings open (%s), which only the parent may accept: accept them, or continue for another round", strings.Join(keys, ", "))
+	if note != "" {
+		detail += "; " + note
+	}
+	return detail
 }
 
 // openBlockingKeys returns the keys of round's ledger entries that are open at severity BLOCKING, in ledger order.

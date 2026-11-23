@@ -15,6 +15,7 @@ Each on-disk format has one parser; consumers read only its model.
 - The lens report's outcome: `internal/lensreport`.
 - The burler review file and the fixer-report frontmatter: `internal/burlerengine`.
 - Bridge envelope: `internal/slackengine`.
+- The Bouncer's verification file: `internal/shedadapters`, through `parseVerification`.
 
 A format another task adds joins this list with its sole parser.
 

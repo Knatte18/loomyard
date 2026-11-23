@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
@@ -108,6 +109,7 @@ func producers(t *testing.T, fx parityFixture) []producer {
 		{"internal/weaverengine#attemptSpec", buildWeaverAttempt},
 		{"internal/shedadapters#Bouncer.runSeedSpawn", buildBouncerSeed},
 		{"internal/shedadapters#Bouncer.judgeCall", buildBouncerJudge},
+		{"internal/shedadapters#Bouncer.runVerifier", buildBouncerVerify},
 		{"internal/gatefixer#SpawnOrAttach", buildGateFixer},
 		{"internal/frictionengine#buildReflectionSpec", buildReflection},
 	}
@@ -461,6 +463,22 @@ func buildBouncerJudge(fx parityFixture, engine string) (shuttleengine.Spec, err
 	return promptSpec(engine, prompt, shuttleengine.Spec{
 		ConfigRole: agentconfig.RoleBouncerJudge,
 		Role:       string(agentconfig.RoleBouncerJudge),
+	}), nil
+}
+
+func buildBouncerVerify(fx parityFixture, engine string) (shuttleengine.Spec, error) {
+	bouncer, err := standInBouncer(fx.env)
+	if err != nil {
+		return shuttleengine.Spec{}, err
+	}
+	fixed := []burlerengine.Finding{{ID: "F1", Severity: burlerengine.SeverityBlocking, Summary: "stand-in finding", Fix: "stand-in fix"}}
+	prompt, err := bouncer.RenderVerifyPrompt(engine, 1, []string{"stand-in-key"}, fixed)
+	if err != nil {
+		return shuttleengine.Spec{}, err
+	}
+	return promptSpec(engine, prompt, shuttleengine.Spec{
+		ConfigRole: agentconfig.RoleBouncerJudge,
+		Role:       "bouncer-verify",
 	}), nil
 }
 

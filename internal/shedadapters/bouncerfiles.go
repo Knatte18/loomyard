@@ -1,4 +1,5 @@
-// bouncerfiles.go holds the strict parsers for the Bouncer's three file contracts: verdict, ledger and focus.
+// bouncerfiles.go holds the strict parsers for the Bouncer's three file contracts: verdict, ledger and focus,
+// and the renderers of the ledger and focus files the Bouncer itself writes.
 // Parsers fail loud on a malformed file;
 // the Bouncer's Call turns that error into a logger warning and shedengine.Stuck.
 
@@ -143,9 +144,9 @@ type ledgerEntryYAML struct {
 	Key      string `yaml:"key"`
 	Rounds   []int  `yaml:"rounds"`
 	Status   string `yaml:"status"`
-	Class    string `yaml:"class"`
-	Severity string `yaml:"severity"`
-	Fix      string `yaml:"fix"`
+	Class    string `yaml:"class,omitempty"`
+	Severity string `yaml:"severity,omitempty"`
+	Fix      string `yaml:"fix,omitempty"`
 }
 
 // parseLedger parses a bouncer ledger file into a ledgerFile.
@@ -211,6 +212,35 @@ func parseLedger(content []byte) (ledgerFile, error) {
 		Entries: entries,
 		Prose:   frontmatterProse(content),
 	}, nil
+}
+
+// renderLedger marshals ledger into a ledger file's bytes: the YAML frontmatter, then the prose when there is any.
+// An entry's empty class, severity and fix are left out.
+func renderLedger(ledger ledgerFile) ([]byte, error) {
+	header := ledgerHeader{Round: ledger.Round, Ledger: make([]ledgerEntryYAML, len(ledger.Entries))}
+	for i, entry := range ledger.Entries {
+		header.Ledger[i] = ledgerEntryYAML{
+			Key:      entry.Key,
+			Rounds:   entry.Rounds,
+			Status:   entry.Status,
+			Class:    string(entry.Class),
+			Severity: string(entry.Severity),
+			Fix:      entry.Fix,
+		}
+	}
+	headerBytes, err := yaml.Marshal(header)
+	if err != nil {
+		return nil, fmt.Errorf("bouncer: render ledger file frontmatter: %w", err)
+	}
+	var out strings.Builder
+	out.WriteString("---\n")
+	out.Write(headerBytes)
+	out.WriteString("---\n")
+	if ledger.Prose != "" {
+		out.WriteString(ledger.Prose)
+		out.WriteString("\n")
+	}
+	return []byte(out.String()), nil
 }
 
 // readLedger reads and parses round's ledger file inside runDir, wrapping either failure with the round.

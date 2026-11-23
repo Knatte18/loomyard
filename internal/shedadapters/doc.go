@@ -166,6 +166,10 @@
 // A continue below the hard cap maps to Stuck, BudgetExempt when the cause is budget or the budget is reached.
 // With BouncerConfig.BlockingEscalates, a spent budget over an open BLOCKING ledger entry escalates with cause budget,
 // so no accept passes such a round without the parent.
+// Before it does, a verifier pass checks the fix commits.
+// It covers the entries whose findings the round's fixer reported fixed.
+// It writes round-<N>-verification.md, and each entry it closes is resolved in the ledger.
+// The parent hears only of the rest.
 // The escalation rules read only files in the run directory, so a harvest and a replay settle alike.
 // A pass that settles a judged round calls the CarryOver seam, which only writes the segment's `## Open risks` entry:
 // it approves nothing, and a failure is the settle's own error, so neither Approve nor Commit runs.

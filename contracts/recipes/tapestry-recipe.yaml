@@ -390,7 +390,8 @@ producers:
       # given none and posts no notice of its own.
       escalate_decisions: true
       # blocking_escalates sends a spent budget with an open BLOCKING finding to the run's parent,
-      # which accepts it or orders another round, instead of to the auto-accept.
+      # which accepts it or orders another round, instead of to the auto-accept; a finding the fixer
+      # reported fixed is first checked against its fix commit, and closed when the check confirms it.
       blocking_escalates: true
       # No model/effort/version key: the row refuses them as unknown keys, and loom.yaml's judge,
       # seed and per-segment judge and seed keys are the only source of this row's passes' models.
