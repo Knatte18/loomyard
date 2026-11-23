@@ -65,6 +65,13 @@ func TestRedFirstGate_VerdictPerLabelRecordAndExitCode(t *testing.T) {
 			wantPassed: true,
 		},
 		{
+			name:       "a record whose added entry opens No bug fixed passes and runs nothing",
+			labels:     bugLabels,
+			record:     noBugFixedRecord,
+			command:    "exit 3",
+			wantPassed: true,
+		},
+		{
 			name:    "a bug entry whose decision record cannot be read is the gate's error",
 			labels:  bugLabels,
 			command: "exit 0",
@@ -79,14 +86,17 @@ func TestRedFirstGate_VerdictPerLabelRecordAndExitCode(t *testing.T) {
 			wantRan:    true,
 		},
 		{
-			name:    "a check that exits 3 fails with the green way forward",
+			name:    "a check that exits 3 fails with the green way forward for a bug and for a change that fixes none",
 			labels:  bugLabels,
 			record:  validDecisionRecord,
 			command: "echo green-marker; exit 3",
 			wantRan: true,
 			wantFindings: []string{
-				"Every test the diff adds or changes passed on the merge base, so none of them shows the bug the fix fixes.",
-				"Way forward: make a test fail on the merge base and pass with the fix, reaching the bug through code the base already has, and commit it.",
+				"Every test the diff adds or changes passed on the merge base, so none of them fails before the change.",
+				"Way forward: when the change fixes a bug, make a test fail on the merge base and pass with the fix, reaching the bug through code the base already has, and commit it.",
+				"When the change fixes no bug, as one that only adds tests pinning existing behaviour, invent no bug and keep the tests:",
+				"lym creel post --parent --expect-reply",
+				`under a title opening "No bug fixed"`,
 				"Full log: ", "green-marker",
 			},
 		},
@@ -264,6 +274,10 @@ func TestRedFirstGate_VerdictPerLabelRecordAndExitCode(t *testing.T) {
 // noTestSeamRecord is a decision record whose added entry records the bug as having no test seam.
 const noTestSeamRecord = validDecisionRecord +
 	"\n### Added after Discussion (parent, 2026-11-19): No test seam: the bug lives in a tmux race\n\nDecision text.\n"
+
+// noBugFixedRecord is a decision record whose added entry records that the bug-labelled entry fixes no bug.
+const noBugFixedRecord = validDecisionRecord +
+	"\n### Added after Discussion (parent, 2026-11-23): No bug fixed: the task only adds golden tests\n\nDecision text.\n"
 
 // TestRedFirstGate_FinalOnTheHeldTreeFailsFromTheHoldWithoutRunningTheCheck pins the final evaluation of a held tree.
 // It answers the hold's refusal as a failure with its findings.

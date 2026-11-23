@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -314,6 +315,63 @@ func TestJudgeRedFirst_ReadsTheRunsExitCodeAndFailureReport(t *testing.T) {
 			got := judgeRedFirst(tt.exitCode, tt.captured, tests)
 			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(redFirstVerdict{})); diff != "" {
 				t.Errorf("judgeRedFirst(%d, ...) mismatch (-want +got):\n%s", tt.exitCode, diff)
+			}
+		})
+	}
+}
+
+func TestRedFirstCallRun_JudgesTheTierRunsOfTheChangedTestsOnTheBase(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const pkg = "example.com/m/calc"
+	clamp := testreach.ChangedTest{Package: pkg, File: "calc_test.go", Name: "TestClamp", New: true}
+	redReport := gateslot.FailureReportHeader + "\ntier0 (exit 1), log /l/tier0.log:\n  " + pkg + " TestClamp:\n"
+
+	rows := []struct {
+		name         string
+		tierExit     int
+		tierOutput   string
+		wantExit     int
+		wantContains []string
+	}{
+		{
+			name: "ATestThatFailedOnTheBaseExitsZeroNamingIt", tierExit: 1, tierOutput: redReport,
+			wantExit: 0, wantContains: []string{`"ok":true`, pkg + ".TestClamp"},
+		},
+		{
+			name: "ATestThatPassedOnTheBaseExitsWithTheGreenCodeNamingBothWaysForward", tierExit: 0, tierOutput: "ok\n",
+			wantExit: gateslot.RedFirstGreenExit,
+			wantContains: []string{
+				"does not show the bug", "when the change fixes a bug", "when it fixes no bug",
+				"under a title opening", gateslot.NoBugFixedTitle,
+			},
+		},
+		{
+			name: "ARunThatJudgedNoneExitsOne", tierExit: 1, tierOutput: "timeout\n",
+			wantExit: 1, wantContains: []string{"judged none of"},
+		},
+	}
+	for _, tt := range rows {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			call := redFirstCall{
+				module: goModule{dir: t.TempDir(), rel: ".", path: "example.com/m"}, root: t.TempDir(), base: "abc123",
+				tests: []testreach.ChangedTest{clamp}, baseTree: memoryTree{},
+				runTiers: func(_ context.Context, out io.Writer, _ testRequest) int {
+					_, _ = io.WriteString(out, tt.tierOutput)
+					return tt.tierExit
+				},
+			}
+			var out bytes.Buffer
+			code := call.run(context.Background(), &out)
+			if code != tt.wantExit {
+				t.Errorf("run() = exit %d, output %q; want exit %d", code, out.String(), tt.wantExit)
+			}
+			for _, want := range tt.wantContains {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("run() output = %q; want it to contain %q", out.String(), want)
+				}
 			}
 		})
 	}

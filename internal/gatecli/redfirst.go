@@ -166,6 +166,7 @@ func runRedFirst(ctx context.Context, out io.Writer, request redFirstRequest) in
 	}
 	return redFirstCall{
 		request: request, tiers: tiers, root: root, module: module, base: base, changed: changed, tests: tests, baseTree: baseTree,
+		runTiers: runTest,
 	}.run(ctx, out)
 }
 
@@ -185,6 +186,9 @@ type redFirstCall struct {
 	tests []testreach.ChangedTest
 	// baseTree reads the files of the base commit.
 	baseTree redundancyTree
+	// runTiers runs one package's tests through the gate key's tiers and returns the exit code.
+	// A test replaces it to stand in for the real tier runs.
+	runTiers func(ctx context.Context, out io.Writer, request testRequest) int
 }
 
 // run lays the base's production files and the non-Go files they embed over the working tree.
@@ -227,7 +231,7 @@ func (c redFirstCall) run(ctx context.Context, out io.Writer) int {
 		run.targets = testTargetsOf(c.module, group)
 		run.args = []string{"-overlay=" + overlayPath, "-run=^(" + strings.Join(testNamesOf(group), "|") + ")$"}
 		run.stderr = sink
-		code := runTest(runCtx, sink, run)
+		code := c.runTiers(runCtx, sink, run)
 		if caught.Load() != 0 {
 			output.Err(out, redFirstVerb+": the call was cancelled; way forward: re-run the same command")
 			return exitAfterSignal(caught, 1)
@@ -245,8 +249,11 @@ func (c redFirstCall) run(ctx context.Context, out io.Writer) int {
 	case unjudgedCode == 0:
 		output.Err(out, fmt.Sprintf("%s: every test the diff adds or changes passed on the base %s: %s; "+
 			"a test that passes before the fix does not show the bug; "+
-			"way forward: make a test reach the bug through code the base already has, so it fails there, and commit it, then re-run the same command",
-			redFirstVerb, c.base, strings.Join(labels, ", ")))
+			"way forward: when the change fixes a bug, make a test reach the bug through code the base already has, so it fails there, "+
+			"and commit it, then re-run the same command; "+
+			"when it fixes no bug, as a change that only adds tests pinning existing behaviour, "+
+			"the run's parent records that with `lym loom decision add` under a title opening %q",
+			redFirstVerb, c.base, strings.Join(labels, ", "), gateslot.NoBugFixedTitle))
 		return gateslot.RedFirstGreenExit
 	}
 	return output.Err(out, fmt.Sprintf("%s: the tiers exited %d on the base %s and judged none of %s; "+

@@ -47,7 +47,7 @@ Do not flag any of the following as a finding:
 - **A bug entry's record without its fault, cause or test.**
   For a board entry labelled `bug`, the record states the observed fault and how to reproduce it,
   the root cause or what is still unknown about it,
-  and the test that fails on the merge base or why no test seam exists.
+  and the test that fails on the merge base, why no test seam exists, or that the entry fixes no bug.
   A record that omits one of them is a finding.
 - **A Decision that edits the task's own board entry.**
   A Decision that asks the run to change this task's own board entry's body or scope, through `lym board` or otherwise, is a finding, because the run's board lock refuses such a change.

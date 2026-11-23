@@ -490,6 +490,9 @@
 // - 1 for a refusal, and for a run that judged none of the tests, such as a timeout or a crash.
 // - 128 plus the signal number after a terminating signal.
 //
+// The green exit's way forward names a second path, for a change that fixes no bug.
+// That path is a recorded decision whose title opens `gateslot.NoBugFixedTitle`.
+//
 // A test is red when `gateslot.NamedFailedTests` names its package and name in the output,
 // or `gateslot.PackagesFailedOutsideTests` names its package, so a test that does not build on the base counts as red.
 // Bound: `go.mod` and `go.sum` are not put back.

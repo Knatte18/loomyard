@@ -129,11 +129,13 @@ The Discussion-Write lead's record for a `bug` entry states up front what the re
 - `## Goal` names the observed fault and the steps that reproduce it.
 - `## Constraints` states the root cause and the evidence it rests on, or names what is still unknown about it.
 - An `## Acceptance criteria` bullet names the test that fails on the merge base and passes after the fix,
-  or states why no test seam exists.
+  states why no test seam exists, or states that the entry fixes no bug.
   The test reaches the bug through code the merge base already has.
 
 A record's statement that no test seam exists does not lift the red-first gate;
 only the parent's `### Added after Discussion` entry whose title opens `No test seam` does.
+A `bug` entry that fixes no bug, such as one that only adds tests pinning existing behaviour,
+is lifted the same way by the parent's added entry whose title opens `No bug fixed`.
 
 ### Parts no writer authors
 

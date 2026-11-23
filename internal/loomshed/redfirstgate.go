@@ -29,7 +29,7 @@ type RedFirstGate struct {
 // NewRedFirstGate returns the closures of a must-pass gate entry that proves a bug fix's test was red before the fix.
 // Each call reads the entry's labels, and an entry without gateslot.BugLabel passes at once and runs nothing.
 // It then reads the decision record at recordPath.
-// An added entry whose title opens with gateslot.NoTestSeamTitle passes at once and runs nothing.
+// An added entry there whose title opens with gateslot.NoTestSeamTitle or gateslot.NoBugFixedTitle passes the same way.
 // The title is compared case-insensitively.
 // Otherwise it runs command through verifytree.Verify over worktreeRoot, keeping its record, marker and log in verifyDir.
 // command is the site's own `lym gate red-first --gate <key>` call.
@@ -167,7 +167,7 @@ func (g *redFirstGate) final() (shuttleengine.GateResult, error) {
 }
 
 // exempt reports whether the entry needs no red-first check:
-// it is not labelled a bug, or the parent recorded that the bug has no test seam.
+// it is not labelled a bug, or the parent recorded that the bug has no test seam or that the change fixes no bug.
 func (g *redFirstGate) exempt() (bool, error) {
 	entryLabels, err := g.labels()
 	if err != nil {
@@ -185,9 +185,11 @@ func (g *redFirstGate) exempt() (bool, error) {
 		return false, fmt.Errorf("loomshed: red-first gate: parse the decision record's added entries: %w", err)
 	}
 	for _, entry := range added {
-		if strings.HasPrefix(strings.ToLower(entry.Title), strings.ToLower(gateslot.NoTestSeamTitle)) {
-			logger.Info("loomshed: red-first gate ran nothing, the decision record names a bug no test can reach", "gate", g.siteLabel, "attempt", g.attempt, "title", entry.Title)
-			return true, nil
+		for _, title := range []string{gateslot.NoTestSeamTitle, gateslot.NoBugFixedTitle} {
+			if strings.HasPrefix(strings.ToLower(entry.Title), strings.ToLower(title)) {
+				logger.Info("loomshed: red-first gate ran nothing, the decision record lifts the check", "gate", g.siteLabel, "attempt", g.attempt, "title", entry.Title)
+				return true, nil
+			}
 		}
 	}
 	return false, nil
@@ -214,8 +216,8 @@ func (g *redFirstGate) verify() (verifytree.Result, *shuttleengine.GateResult, e
 }
 
 // holdsForCommitOrRecord reports whether a failed red-first run is a refusal the writer's next turn may not lift.
-// Only a commit that adds a failing test, or the parent's no-test-seam record, lifts a diff with no test;
-// only that record lifts a check that cannot judge the tests.
+// Only a commit that adds a failing test, or the parent's record that lifts the gate, lifts a diff with no test;
+// only such a record lifts a check that cannot judge the tests.
 func holdsForCommitOrRecord(res verifytree.Result) bool {
 	if res.TimedOut || res.RunnerCrash {
 		return false
@@ -228,10 +230,10 @@ func redFirstHoldLine(res verifytree.Result) string {
 	if res.ExitCode == gateslot.RedFirstNoTestExit {
 		return fmt.Sprintf("The red-first gate holds your handoff, spending no attempt, since the diff adds or changes no test (log: %s): "+
 			"add and commit a test that fails on the merge base and passes with the fix, then end your turn; "+
-			"when the bug has no seam a test can reach, %s", res.Log, noSeamAsk())
+			"when the bug has no seam a test can reach, %s", res.Log, parentRecordAsk(gateslot.NoTestSeamTitle))
 	}
 	return fmt.Sprintf("The red-first gate holds your handoff, spending no attempt, since it cannot judge the diff's tests on the merge base: "+
-		"the hub's scoper is not go (log: %s); %s", res.Log, noSeamAsk())
+		"the hub's scoper is not go (log: %s); %s", res.Log, parentRecordAsk(gateslot.NoTestSeamTitle))
 }
 
 // redFirstHoldSendFailed is the way forward the wait loop logs when the hold's line cannot reach the writer.
@@ -254,16 +256,18 @@ func redFirstFailure(res verifytree.Result) shuttleengine.GateResult {
 		terminal = true
 		fmt.Fprintf(&b, "The red-first check's test runner crashed, so it judged none of the diff's tests: %s. %s", res.Detail, redFirstNoMend)
 	case res.ExitCode == gateslot.RedFirstGreenExit:
-		b.WriteString("Every test the diff adds or changes passed on the merge base, so none of them shows the bug the fix fixes.\n\n" +
-			"Way forward: make a test fail on the merge base and pass with the fix, " +
-			"reaching the bug through code the base already has, and commit it.")
+		fmt.Fprintf(&b, "Every test the diff adds or changes passed on the merge base, so none of them fails before the change.\n\n"+
+			"Way forward: when the change fixes a bug, make a test fail on the merge base and pass with the fix, "+
+			"reaching the bug through code the base already has, and commit it. "+
+			"When the change fixes no bug, as one that only adds tests pinning existing behaviour, invent no bug and keep the tests: %s",
+			parentRecordAsk(gateslot.NoBugFixedTitle))
 	case res.ExitCode == gateslot.RedFirstNoTestExit:
 		fmt.Fprintf(&b, "The diff adds or changes no test, so nothing shows the bug the fix fixes.\n\n"+
 			"Way forward: add and commit a test that fails on the merge base and passes with the fix. "+
-			"When the bug has no seam a test can reach, %s", noSeamAsk())
+			"When the bug has no seam a test can reach, %s", parentRecordAsk(gateslot.NoTestSeamTitle))
 	case res.ExitCode == gateslot.RedFirstUnjudgedExit:
 		fmt.Fprintf(&b, "The red-first check cannot judge the diff's tests on the merge base: "+
-			"the hub's scoper is not go. The log tail names it.\n\nWay forward: %s", noSeamAsk())
+			"the hub's scoper is not go. The log tail names it.\n\nWay forward: %s", parentRecordAsk(gateslot.NoTestSeamTitle))
 	default:
 		terminal = true
 		fmt.Fprintf(&b, "The red-first check failed with exit code %d, so it judged none of the diff's tests. %s", res.ExitCode, redFirstNoMend)
@@ -278,11 +282,11 @@ func redFirstFailure(res verifytree.Result) shuttleengine.GateResult {
 	return shuttleengine.GateResult{Passed: false, Findings: b.String(), Terminal: terminal}
 }
 
-// noSeamAsk is the way forward that only the run's parent can take.
-// The parent records the bug as having no seam a test can reach.
-func noSeamAsk() string {
+// parentRecordAsk is a way forward that only the run's parent can take:
+// it records, under an added decision whose title opens title, why the red-first check does not apply.
+func parentRecordAsk(title string) string {
 	return fmt.Sprintf("send your parent `lym creel post --parent --expect-reply \"<text>\"` asking it to record that with "+
-		"`lym loom decision add` under a title opening %q and naming why, then end your turn.", gateslot.NoTestSeamTitle)
+		"`lym loom decision add` under a title opening %q and naming why, then end your turn.", title)
 }
 
 // redFirstNoMend closes the findings of a red-first run that judged none of the diff's tests.

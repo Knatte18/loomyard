@@ -112,6 +112,8 @@ When the diff adds or changes no test, or the check cannot judge them, as on a h
 it holds your handoff without spending an attempt until a new commit or your parent's record lands.
 When the bug has no seam a test can reach, or the check cannot judge it, send your parent `lym creel post --parent --expect-reply "<text>"` naming why,
 and ask it to record that with `lym loom decision add` under a title opening `No test seam`; then end your turn to wait.
+When the entry fixes no bug, as one that only adds tests pinning existing behaviour, its tests pass on the merge base by design:
+invent no bug, and before you write code ask your parent the same way to record that under a title opening `No bug fixed`.
 
 The commit that fixes the bug records the cause its test confirmed as a trailer line in the last paragraph of its commit message:
 

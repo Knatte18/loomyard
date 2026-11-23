@@ -101,7 +101,8 @@ Cover:
 
 When the entry is labelled `bug`, the design also settles the observed fault and how to reproduce it,
 its root cause or what is still unknown about it,
-and the test that will fail on the merge base and pass after the fix, or why no test seam exists.
+and the test that will fail on the merge base and pass after the fix,
+why no test seam exists, or that the entry fixes no bug.
 The fault and its cause are facts Step 2 researches, never interview questions;
 the record states all three as the discussion spec's bug-entry rule says.
 

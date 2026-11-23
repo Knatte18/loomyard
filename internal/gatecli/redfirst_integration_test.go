@@ -100,8 +100,8 @@ func TestGateRedFirst(t *testing.T) {
 	t.Run("ATestThatPassesOnTheBaseExitsWithTheGreenCode", func(t *testing.T) {
 		writeTest("TestTwoIsTwo", "\tif Two() != 2 {\n\t\tt.Fatal(\"Two() != 2\")\n\t}\n")
 		code, _, message := run()
-		if code != gateslot.RedFirstGreenExit || !strings.Contains(message, "does not show the bug") {
-			t.Errorf("red-first = exit %d, error %q; want exit %d saying the test does not show the bug", code, message, gateslot.RedFirstGreenExit)
+		if code != gateslot.RedFirstGreenExit || !strings.Contains(message, "does not show the bug") || !strings.Contains(message, `under a title opening "No bug fixed"`) {
+			t.Errorf("red-first = exit %d, error %q; want exit %d saying the test does not show the bug and naming the No bug fixed way forward", code, message, gateslot.RedFirstGreenExit)
 		}
 	})
 	t.Run("AChangedTestDoesNotRunUnderItsNameInAnotherTargetPackage", func(t *testing.T) {
