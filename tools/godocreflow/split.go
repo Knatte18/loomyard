@@ -1,13 +1,16 @@
 // split.go holds the splitter that decides where a semantic line break goes.
-// It breaks at sentence ends, semicolons, and independent-clause conjunctions.
+// It breaks at sentence ends, semicolons, and independent-clause conjunctions,
+// and it keeps only the breaks the comment line rules accept, splitting a line that reaches the length limit.
 // The docstring structure handling is not here; reflow.go does that part.
 
 package main
 
 import (
 	"regexp"
+	"slices"
 	"strings"
-	"unicode/utf8"
+
+	"github.com/Knatte18/loomyard/internal/commentlint"
 )
 
 // abbreviations lists lowercase words whose trailing period must never be treated as a sentence end.
@@ -228,37 +231,127 @@ func reflowText(text string) []string {
 	return lines
 }
 
-// wrapLongLine is a last-resort fallback for a line that no sentence, semicolon or conjunction split can shorten.
-// prefixLen is the visual width of everything before the content on its rendered line: indentation plus "// ".
-// The content is returned unchanged as a single-element slice when the line fits.
-// It fits when prefixLen plus the content's width is at most maxWidth, or when maxWidth is non-positive (disabled).
-//
-// This is a targeted exception to semantic line breaks, not general fixed-column wrapping.
-// It fires only on a line the boundary splitting could not shorten,
-// and it greedily packs words up to the column budget rather than breaking mid-phrase at an arbitrary column.
-func wrapLongLine(content string, prefixLen, maxWidth int) []string {
-	if maxWidth <= 0 || prefixLen+utf8.RuneCountInString(content) <= maxWidth {
-		return []string{content}
-	}
-	budget := maxWidth - prefixLen
-	words := strings.Fields(content)
-	if budget < 1 || len(words) == 0 {
-		return []string{content} // pathological config or nothing to wrap -- leave as-is
+// layoutParagraph lays the text of one prose paragraph out as semantic lines, given the paragraph's lines as written.
+// It starts from the sentence and clause splits and the written breaks the comment line rules accept.
+// It keeps a break only where those rules accept it or the paragraph as written already breaks there.
+// A line whose text reaches limit is split at such a break, as late as keeps each piece under limit.
+// It returns nil when the layout holds a line that reaches limit and that the paragraph does not hold as written:
+// such a line is new to the lint, so the paragraph is better left as written.
+func layoutParagraph(written []string, limit int) []string {
+	writtenBreaks := map[int]bool{}
+	acceptedWrittenBreaks := map[int]bool{}
+	wordsBefore := 0
+	for i, line := range written[:len(written)-1] {
+		wordsBefore += len(strings.Fields(line))
+		writtenBreaks[wordsBefore] = true
+		if commentlint.IsSemanticBreak(line, written[i+1]) {
+			acceptedWrittenBreaks[wordsBefore] = true
+		}
 	}
 
-	var lines []string
-	cur := words[0]
-	curLen := utf8.RuneCountInString(cur)
-	for _, w := range words[1:] {
-		wLen := utf8.RuneCountInString(w)
-		if curLen+1+wLen <= budget {
-			cur += " " + w
-			curLen += 1 + wLen
-			continue
-		}
-		lines = append(lines, cur)
-		cur, curLen = w, wLen
+	var lines [][]string
+	for _, line := range reflowText(strings.Join(written, " ")) {
+		lines = append(lines, strings.Fields(line))
 	}
-	lines = append(lines, cur)
-	return lines
+	lines = splitAtBreaks(lines, acceptedWrittenBreaks)
+	lines = joinRejectedBreaks(lines, writtenBreaks)
+	var split [][]string
+	wordsBefore = 0
+	for _, line := range lines {
+		split = append(split, splitLongLine(line, wordsBefore, writtenBreaks, limit)...)
+		wordsBefore += len(line)
+	}
+	lines = joinRejectedBreaks(split, writtenBreaks)
+
+	writtenTexts := map[string]bool{}
+	for _, line := range written {
+		writtenTexts[strings.TrimSpace(line)] = true
+	}
+	result := make([]string, len(lines))
+	for i, line := range lines {
+		text := strings.Join(line, " ")
+		if commentlint.TextReachesLimit(text, limit) && !writtenTexts[text] {
+			return nil
+		}
+		result[i] = text
+	}
+	return result
+}
+
+// splitAtBreaks splits lines, each given as its words, at every break that falls inside a line.
+// breaks holds the paragraph's word counts before each break.
+func splitAtBreaks(lines [][]string, breaks map[int]bool) [][]string {
+	var result [][]string
+	wordsBefore := 0
+	for _, line := range lines {
+		start := 0
+		for n := 1; n < len(line); n++ {
+			if breaks[wordsBefore+n] {
+				result = append(result, line[start:n])
+				start = n
+			}
+		}
+		result = append(result, line[start:])
+		wordsBefore += len(line)
+	}
+	return result
+}
+
+// joinRejectedBreaks joins each line, given as its words, onto the line before it across a rejected break.
+// A break is rejected when the comment line rules do not accept it and writtenBreaks does not hold it.
+// writtenBreaks holds the paragraph's word counts before each break as written.
+func joinRejectedBreaks(lines [][]string, writtenBreaks map[int]bool) [][]string {
+	joined := [][]string{lines[0]}
+	wordsBefore := len(lines[0])
+	for _, line := range lines[1:] {
+		last := len(joined) - 1
+		if writtenBreaks[wordsBefore] || commentlint.IsSemanticBreak(strings.Join(joined[last], " "), strings.Join(line, " ")) {
+			joined = append(joined, line)
+		} else {
+			joined[last] = slices.Concat(joined[last], line)
+		}
+		wordsBefore += len(line)
+	}
+	return joined
+}
+
+// splitLongLine splits a line, given as its words, whose text reaches limit.
+// It splits only where the comment line rules accept a break or where writtenBreaks holds one.
+// At each split it takes the latest such break that keeps the piece under limit, or the earliest when none does.
+// wordsBefore is the paragraph's word count before the line, the offset into writtenBreaks.
+func splitLongLine(words []string, wordsBefore int, writtenBreaks map[int]bool, limit int) [][]string {
+	reachesLimit := func(piece []string) bool {
+		return commentlint.TextReachesLimit(strings.Join(piece, " "), limit)
+	}
+	var pieces [][]string
+	start := 0
+	for start < len(words) {
+		rest := words[start:]
+		if !reachesLimit(rest) {
+			pieces = append(pieces, rest)
+			break
+		}
+		cut := 0
+		for n := 1; n < len(rest); n++ {
+			breakAccepted := writtenBreaks[wordsBefore+start+n] ||
+				commentlint.IsSemanticBreak(strings.Join(rest[:n], " "), strings.Join(rest[n:], " "))
+			if !breakAccepted {
+				continue
+			}
+			if reachesLimit(rest[:n]) {
+				if cut == 0 {
+					cut = n
+				}
+				break
+			}
+			cut = n
+		}
+		if cut == 0 {
+			pieces = append(pieces, rest)
+			break
+		}
+		pieces = append(pieces, rest[:cut])
+		start += cut
+	}
+	return pieces
 }

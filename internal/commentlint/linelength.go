@@ -19,30 +19,39 @@ var (
 	anyLevelHeadingPattern = regexp.MustCompile(`^#{1,6}(\s|$)`)
 )
 
-// countedText returns the text of a comment line that its length is measured on:
-// the text after `//`, without its indentation or a list item's marker.
-func countedText(line commentLine) string {
-	return listItemPattern.ReplaceAllString(strings.TrimLeft(line.raw(), " \t"), "")
+// countedText returns the text a comment line's length is measured on, given the line's text after `//`:
+// that text without its indentation or a list item's marker.
+func countedText(raw string) string {
+	return listItemPattern.ReplaceAllString(strings.TrimLeft(raw, " \t"), "")
 }
 
-// isExemptFromLength reports whether a line's counted text may run past the limit:
+// isExemptFromLength reports whether a line's counted text may run past limit:
 // it is a heading, a blockquote or a table row,
-// or it holds a URL, code span or other unbroken word that alone reaches the limit.
-func isExemptFromLength(text string) bool {
+// or it holds a URL, code span or other unbroken word that alone reaches limit.
+func isExemptFromLength(text string, limit int) bool {
 	if anyLevelHeadingPattern.MatchString(text) || strings.HasPrefix(text, ">") || strings.HasPrefix(text, "|") {
 		return true
 	}
 	for _, span := range codeSpanPattern.FindAllString(text, -1) {
-		if utf8.RuneCountInString(span) >= LineLengthLimit {
+		if utf8.RuneCountInString(span) >= limit {
 			return true
 		}
 	}
 	for _, word := range strings.Fields(text) {
-		if utf8.RuneCountInString(word) >= LineLengthLimit {
+		if utf8.RuneCountInString(word) >= limit {
 			return true
 		}
 	}
 	return false
+}
+
+// TextReachesLimit reports whether a `//` comment line, given as its text after `//`, breaks a line-length limit:
+// its text without indentation or a list item's marker counts limit characters or more,
+// and the line is no heading, blockquote or table row,
+// and it holds no URL, code span or unbroken word that alone reaches limit.
+func TextReachesLimit(raw string, limit int) bool {
+	text := countedText(raw)
+	return utf8.RuneCountInString(text) >= limit && !isExemptFromLength(text, limit)
 }
 
 // findNewLongLines returns the comment lines of path's new text whose counted text reaches LineLengthLimit.
@@ -58,13 +67,12 @@ func findNewLongLines(path, baseText, newText string) []Finding {
 	var findings []Finding
 	for _, block := range commentBlocks(newText) {
 		for _, line := range block {
-			text := countedText(line)
 			literal := strings.TrimSpace(line.literal)
 			if known[literal] > 0 {
 				known[literal]--
 				continue
 			}
-			if utf8.RuneCountInString(text) < LineLengthLimit || isExemptFromLength(text) {
+			if !TextReachesLimit(line.raw(), LineLengthLimit) {
 				continue
 			}
 			findings = append(findings, Finding{File: path, Line: line.number, Rule: RuleLineLength, Text: literal})

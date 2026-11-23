@@ -30,8 +30,8 @@
 // A paragraph is the lines of a block between blank comment lines.
 // It is skipped whole when any of its lines is indented code, a doc-comment list item or a heading.
 // A generated file is skipped whole.
-// The kinds of line skipped follow `tools/godocreflow`.
-// This package re-implements them, since `tools/` is not importable.
+// The line classifiers, the break rule and the length rule are exported,
+// so a tool that rewrites comments lays its lines out by the rules this package checks.
 //
 // Bound: the clause check is a word-list heuristic, not a parser.
 // A plural noun read as a verb (`, and the gate tests`) passes.

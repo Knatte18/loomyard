@@ -7,59 +7,76 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"regexp"
+	"slices"
 	"sort"
 	"strings"
-	"unicode/utf8"
-)
 
-var (
-	generatedRE = regexp.MustCompile(`^// Code generated .* DO NOT EDIT\.?\s*$`)
-	directiveRE = regexp.MustCompile(`^(go:|nolint\b)`)
-	headingRE   = regexp.MustCompile(`^#(\s|$)`)
-	listItemRE  = regexp.MustCompile(`^([-*]\s|[0-9]{1,3}[.)]\s)`)
+	"github.com/Knatte18/loomyard/internal/commentlint"
 )
-
-// isGenerated reports whether src carries a "Code generated ... DO NOT EDIT" marker anywhere in the file.
-// The marker is the convention documented at https://go.dev/s/generatedcode.
-// Such files are left alone entirely.
-func isGenerated(src string) bool {
-	for _, line := range strings.Split(src, "\n") {
-		if generatedRE.MatchString(strings.TrimRight(line, "\r")) {
-			return true
-		}
-	}
-	return false
-}
 
 // edit is a byte-offset replacement span into the original source.
 type edit struct {
 	start, end int
-	line       int    // 1-based source line of the comment group, for -check display
-	old        string // the text being replaced, for -check display
-	text       string
-	wrapped    int // number of semantic lines that needed the last-resort width fallback
+	// line is the 1-based source line of the comment group.
+	line int
+	// old is the text being replaced, for -check display.
+	old  string
+	text string
 }
 
-// collectEdits parses src and returns every reflow edit it qualifies for.
-// maxWidth is the last-resort word-wrap column budget, counting indentation, "// ", and content; 0 disables it.
+// lineShift returns how many lines the edit adds to the file.
+func (e edit) lineShift() int {
+	return strings.Count(e.text, "\n") - strings.Count(e.old, "\n")
+}
+
+// groupLongLines holds the prose lines of one comment group that reach the length limit.
+type groupLongLines struct {
+	// line is the 1-based source line of the comment group.
+	line int
+	// indexes are the 0-based indexes, within the group's final text, of those lines.
+	indexes []int
+}
+
+// collectEdits parses src and returns every reflow edit it qualifies for,
+// and the line numbers, in the reflowed file, of the prose lines that still reach the length limit.
+// Those lines are in comment groups the tool may reflow, whether or not the group needs an edit.
+// limit is the comment line-length limit, in characters of the text after "//".
 // err is non-nil only on a parse failure; a generated file yields no edits and no error.
-func collectEdits(fset *token.FileSet, filename, src string, maxWidth int) ([]edit, error) {
-	if isGenerated(src) {
-		return nil, nil
+func collectEdits(fset *token.FileSet, filename, src string, limit int) ([]edit, []int, error) {
+	if commentlint.IsGenerated(src) {
+		return nil, nil, nil
 	}
 	file, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var edits []edit
+	var longGroups []groupLongLines
 	for _, cg := range collectGroups(file) {
-		if e := planEdit(fset, src, cg, maxWidth); e != nil {
+		e, long := planEdit(fset, src, cg, limit)
+		if e != nil {
 			edits = append(edits, *e)
 		}
+		if len(long.indexes) > 0 {
+			longGroups = append(longGroups, long)
+		}
 	}
-	return edits, nil
+
+	var longLines []int
+	for _, group := range longGroups {
+		lineShift := 0
+		for _, e := range edits {
+			if e.line < group.line {
+				lineShift += e.lineShift()
+			}
+		}
+		for _, index := range group.indexes {
+			longLines = append(longLines, group.line+lineShift+index)
+		}
+	}
+	slices.Sort(longLines)
+	return edits, longLines, nil
 }
 
 // collectGroups returns every comment group eligible for reflow consideration.
@@ -137,137 +154,109 @@ func specExported(spec ast.Spec) bool {
 	return false
 }
 
-// planEdit builds the replacement edit for one comment group, or returns nil when the group stays as written.
-// A group stays as written when it is a directive, an indented code example, a heading or list, or already reflowed.
-// A one-line comment is reflowed only when it is wider than maxWidth.
-// maxWidth (0 disables it) is the last-resort word-wrap fallback.
-// It applies to a semantic line still too wide after sentence and clause splitting.
-func planEdit(fset *token.FileSet, src string, cg *ast.CommentGroup, maxWidth int) *edit {
+// planEdit builds the replacement edit for one comment group, or returns a nil edit when the group stays as written.
+// A group holding a /* */ comment or a directive stays as written.
+// So does a one-line group whose text is under limit.
+// Every other group has its prose paragraphs laid out anew.
+// The second result names the prose lines of the group's final text that reach limit;
+// it is empty for a group the tool does not consider.
+func planEdit(fset *token.FileSet, src string, cg *ast.CommentGroup, limit int) (*edit, groupLongLines) {
 	// Reuse the indentation bytes that precede the comment, which may be tabs.
 	// Spaces rebuilt from the column number would misindent every continuation line of a tab-indented block.
 	firstPos := fset.Position(cg.List[0].Pos())
 	lineStartOffset := fset.Position(fset.File(cg.List[0].Pos()).LineStart(firstPos.Line)).Offset
 	indent := src[lineStartOffset:firstPos.Offset]
-	prefixLen := utf8.RuneCountInString(indent) + len("// ")
 
-	type line struct {
-		raw     string // comment text with the leading "//" stripped
-		content string // raw with the mandatory single gofmt space stripped too
-	}
-	lines := make([]line, len(cg.List))
+	raws := make([]string, len(cg.List))
 	for i, c := range cg.List {
-		if !strings.HasPrefix(c.Text, "//") {
-			return nil // /* */ block comment -- leave alone, not the doc-comment convention here
+		raw, isLineComment := strings.CutPrefix(c.Text, "//")
+		if !isLineComment || commentlint.IsDirective(raw) {
+			return nil, groupLongLines{}
 		}
-		raw := strings.TrimPrefix(c.Text, "//")
-		if directiveRE.MatchString(strings.TrimSpace(raw)) {
-			return nil // build/tool directive comment mixed into the group -- leave the whole block alone
-		}
-		content := raw
-		indented := strings.HasPrefix(content, "\t")
-		if strings.HasPrefix(content, " ") {
-			content = content[1:]
-			if strings.HasPrefix(content, " ") || strings.HasPrefix(content, "\t") {
-				indented = true
-			}
-		}
-		if indented {
-			return nil // indented example code inside the doc comment -- must stay verbatim
-		}
-		if headingRE.MatchString(content) || listItemRE.MatchString(content) {
-			return nil // Go doc comment heading/list structure -- not flat prose, leave alone
-		}
-		lines[i] = line{raw: raw, content: content}
+		raws[i] = raw
+	}
+	if len(raws) == 1 && !commentlint.TextReachesLimit(raws[0], limit) {
+		// A one-line comment has no hard wrap to reflow, so it is reflowed only to bring it under the limit.
+		return nil, groupLongLines{}
 	}
 
-	if len(cg.List) < 2 {
-		// A one-line comment has no hard wrap to reflow.
-		// It goes through the multi-line pipeline only when it is wider than maxWidth:
-		// sentence and clause splitting may bring it under, and the word wrap below catches what remains.
-		if maxWidth <= 0 || prefixLen+utf8.RuneCountInString(lines[0].content) <= maxWidth {
-			return nil
+	line := fset.Position(cg.Pos()).Line
+	newRaws := reflowGroupLines(raws, limit)
+	var longIndexes []int
+	for i, raw := range newRaws {
+		if commentlint.IsProseLine(raw) && commentlint.TextReachesLimit(raw, limit) {
+			longIndexes = append(longIndexes, i)
 		}
 	}
-
-	// Split into blank-line-delimited paragraphs and reflow each one on its own.
-	// The bare "//" lines between them stay, since godoc treats them as paragraph separators.
-	var paragraphs [][]string
-	var current []string
-	for _, l := range lines {
-		if l.content == "" {
-			if current != nil {
-				paragraphs = append(paragraphs, current)
-				current = nil
-			}
-			paragraphs = append(paragraphs, nil) // nil marks a blank separator line
-			continue
-		}
-		current = append(current, l.content)
+	long := groupLongLines{line: line, indexes: longIndexes}
+	if slices.Equal(raws, newRaws) {
+		return nil, long
 	}
-	if current != nil {
-		paragraphs = append(paragraphs, current)
-	}
-
-	var newContentLines []string
-	wrapped := 0
-	for _, p := range paragraphs {
-		if p == nil {
-			newContentLines = append(newContentLines, "")
-			continue
-		}
-		for _, semantic := range reflowText(strings.Join(p, " ")) {
-			pieces := wrapLongLine(semantic, prefixLen, maxWidth)
-			if len(pieces) > 1 {
-				wrapped++
-			}
-			newContentLines = append(newContentLines, pieces...)
-		}
-	}
-
-	origContentLines := make([]string, len(lines))
-	for i, l := range lines {
-		origContentLines[i] = l.content
-	}
-	if equalLines(origContentLines, newContentLines) {
-		return nil // already correctly reflowed
-	}
-
-	build := func(contentLines []string) string {
-		var b strings.Builder
-		for i, c := range contentLines {
-			if i > 0 {
-				b.WriteString("\n")
-				b.WriteString(indent)
-			}
-			b.WriteString("//")
-			if c != "" {
-				b.WriteString(" ")
-				b.WriteString(c)
-			}
-		}
-		return b.String()
-	}
-
 	return &edit{
-		start:   fset.Position(cg.Pos()).Offset,
-		end:     fset.Position(cg.End()).Offset,
-		line:    fset.Position(cg.Pos()).Line,
-		old:     build(origContentLines),
-		text:    build(newContentLines),
-		wrapped: wrapped,
-	}
+		start: fset.Position(cg.Pos()).Offset,
+		end:   fset.Position(cg.End()).Offset,
+		line:  line,
+		old:   joinCommentLines(raws, indent),
+		text:  joinCommentLines(newRaws, indent),
+	}, long
 }
 
-func equalLines(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
+// reflowGroupLines reflows the lines of one comment group, each given as its text after "//".
+// Blank lines split the group into paragraphs and stay as written.
+// A paragraph holding indented code, a heading or a list item stays as written too;
+// every other paragraph is laid out anew.
+func reflowGroupLines(raws []string, limit int) []string {
+	var result, paragraph []string
+	flushParagraph := func() {
+		if len(paragraph) == 0 {
+			return
+		}
+		result = append(result, reflowParagraph(paragraph, limit)...)
+		paragraph = nil
 	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
+	for _, raw := range raws {
+		if strings.TrimSpace(raw) == "" {
+			flushParagraph()
+			result = append(result, raw)
+			continue
+		}
+		paragraph = append(paragraph, raw)
+	}
+	flushParagraph()
+	return result
+}
+
+// reflowParagraph lays one paragraph out as semantic lines, each given as its text after "//".
+// It returns the paragraph as written when any of its lines is not prose.
+func reflowParagraph(raws []string, limit int) []string {
+	for _, raw := range raws {
+		if !commentlint.IsProseLine(raw) {
+			return raws
 		}
 	}
-	return true
+	lines := layoutParagraph(raws, limit)
+	if lines == nil {
+		return raws
+	}
+	for i, line := range lines {
+		lines[i] = " " + line
+	}
+	return lines
+}
+
+// joinCommentLines renders comment lines, each given as its text after "//", as source text.
+// Every line after the first starts with indent.
+func joinCommentLines(raws []string, indent string) string {
+	var b strings.Builder
+	for i, raw := range raws {
+		if i > 0 {
+			b.WriteString("\n")
+			b.WriteString(indent)
+		}
+		b.WriteString("//")
+		b.WriteString(raw)
+	}
+	return b.String()
 }
 
 // applyEdits splices non-overlapping edits into src, applied last-to-first so earlier offsets stay valid.

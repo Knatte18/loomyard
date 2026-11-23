@@ -7,19 +7,20 @@
 // It finds comments with go/parser and go/ast, not with a regex over raw text;
 // so a "//" inside a string literal is never taken for a comment.
 //
-// A semantic line still wider than -max-width after splitting gets one last-resort greedy word wrap.
-// The wrap is a narrow exception for the rare over-wide outlier, which reads badly in a side-by-side diff;
-// it does not return to fixed-column wrapping.
-// -max-width is a flag rather than a constant so the column budget can be tuned per run without a rebuild.
+// It lays lines out by the rules `lym loom lint-comments` checks, so it adds no wrapped-break finding there.
+// Each break it makes is one those rules accept, or one the comment already had between the same two words.
+// A line whose text reaches the rules' length limit is split at such a break.
+// A paragraph that no such break brings under the limit stays as written.
+// The run names every prose line that still reaches the limit for a hand rewrite.
 //
-// Single-line comments that already fit, end-of-line comments, and directive comments stay unchanged.
-// Comment blocks with indented example code or a Go 1.19 heading or list stay unchanged too.
-// So do struct-field and interface-method doc comments, and generated files.
+// Single-line comments under the limit, end-of-line comments, and generated files stay unchanged.
+// So do comment groups holding a directive, and struct-field and interface-method doc comments.
+// Paragraphs of indented example code, headings or lists stay as written;
+// the prose paragraphs around them are reflowed.
 //
-//	go run ./tools/godocreflow [-check] [-max-width N] <file_or_dir> ...
+//	go run ./tools/godocreflow [-check] <file_or_dir> ...
 //
-//	-check		print before/after blocks instead of writing files (dry run)
-//	-max-width	last-resort word-wrap column budget, 0 disables it (default 100)
+//	-check	print before/after blocks instead of writing files (dry run)
 package main
 
 import (
@@ -29,15 +30,16 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/Knatte18/loomyard/internal/commentlint"
 )
 
 func main() {
 	check := flag.Bool("check", false, "print before/after blocks instead of writing files (dry run)")
-	maxWidth := flag.Int("max-width", 100, "last-resort word-wrap column budget (indent + \"// \" + content); 0 disables it")
 	flag.Parse()
 	args := flag.Args()
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: godocreflow [-check] [-max-width N] <file_or_dir> ...")
+		fmt.Fprintln(os.Stderr, "usage: godocreflow [-check] <file_or_dir> ...")
 		os.Exit(2)
 	}
 
@@ -48,7 +50,7 @@ func main() {
 	}
 
 	changed := 0
-	wrapped := 0
+	longLines := 0
 	for _, path := range files {
 		srcBytes, err := os.ReadFile(path)
 		if err != nil {
@@ -58,18 +60,17 @@ func main() {
 		src := string(srcBytes)
 
 		fset := token.NewFileSet()
-		edits, err := collectEdits(fset, path, src, *maxWidth)
+		edits, longLineNumbers, err := collectEdits(fset, path, src, commentlint.LineLengthLimit)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "SKIP (parse error) %s: %v\n", path, err)
 			continue
 		}
+		reportLongLines(path, longLineNumbers)
+		longLines += len(longLineNumbers)
 		if len(edits) == 0 {
 			continue
 		}
 		changed++
-		for _, e := range edits {
-			wrapped += e.wrapped
-		}
 		if *check {
 			printEdits(path, edits)
 			continue
@@ -86,8 +87,8 @@ func main() {
 		verb = "would change"
 	}
 	fmt.Fprintf(os.Stderr, "%d file(s) %s\n", changed, verb)
-	if wrapped > 0 {
-		fmt.Fprintf(os.Stderr, "%d line(s) needed the %d-char last-resort width fallback\n", wrapped, *maxWidth)
+	if longLines > 0 {
+		fmt.Fprintf(os.Stderr, "%d prose line(s) reach %d characters; rewrite them by hand\n", longLines, commentlint.LineLengthLimit)
 	}
 }
 
@@ -123,6 +124,13 @@ func collectGoFiles(args []string) ([]string, error) {
 	}
 	sort.Strings(files)
 	return files, nil
+}
+
+// reportLongLines prints each given line number of path as a prose line that reaches the length limit.
+func reportLongLines(path string, lineNumbers []int) {
+	for _, lineNumber := range lineNumbers {
+		fmt.Fprintf(os.Stderr, "%s:%d: line reaches %d characters\n", path, lineNumber, commentlint.LineLengthLimit)
+	}
 }
 
 // printEdits prints each edit as a labeled before/after block, in source order, for hand-checking.
