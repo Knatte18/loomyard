@@ -150,7 +150,7 @@ func TestGateRedFirst_AHubWhoseScoperIsNotGoExitsUnjudged(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &answer); err != nil {
 		t.Fatalf("red-first printed %q; want one JSON envelope: %v", out.String(), err)
 	}
-	if code != gateslot.RedFirstUnjudgedExit || answer.OK || !strings.Contains(answer.Error, "scoper is none") || !strings.Contains(answer.Error, "No test seam") {
-		t.Errorf("red-first = exit %d, ok %v, error %q; want exit %d naming the scoper and the No test seam way forward", code, answer.OK, answer.Error, gateslot.RedFirstUnjudgedExit)
+	if code != gateslot.RedFirstUnjudgedExit || answer.OK || !strings.Contains(answer.Error, "scoper is none") || !strings.Contains(answer.Error, "a red-first gate passes this exit") {
+		t.Errorf("red-first = exit %d, ok %v, error %q; want exit %d naming the scoper and that a red-first gate passes it", code, answer.OK, answer.Error, gateslot.RedFirstUnjudgedExit)
 	}
 }

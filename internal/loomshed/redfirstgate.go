@@ -38,7 +38,9 @@ type RedFirstGate struct {
 //
 // `StatusPassed` and `StatusSkipped` pass, and `StatusDirty` fails with the dirty paths.
 // A `StatusFailed` run whose exit code is gateslot.RedFirstGreenExit fails with the way forward of a green test.
-// An exit of gateslot.RedFirstNoTestExit or gateslot.RedFirstUnjudgedExit waits on a new commit or the parent's record.
+// An exit of gateslot.RedFirstUnjudgedExit passes:
+// on a hub whose scoper is not go no check can show the test red, so holding would halt every bug fix there.
+// An exit of gateslot.RedFirstNoTestExit waits on a new commit or the parent's record.
 // Gate answers it pending, so the run holds without spending an attempt.
 // A hold's pending answers carry one line telling the writer its way forward until the loop reports it delivered;
 // later ones send nothing.
@@ -196,7 +198,7 @@ func (g *redFirstGate) exempt() (bool, error) {
 }
 
 // verify runs the red-first command.
-// It returns the verdict of a run that passed, was skipped or found the tree dirty,
+// It returns the verdict of a run that passed, was skipped, found the tree dirty or could not judge the tests,
 // and a nil verdict with the result of a run that failed.
 func (g *redFirstGate) verify() (verifytree.Result, *shuttleengine.GateResult, error) {
 	site := verifytree.Site{Label: g.siteLabel, Attempt: g.attempt, BaseCommand: g.command, Hold: g.hold}
@@ -211,29 +213,28 @@ func (g *redFirstGate) verify() (verifytree.Result, *shuttleengine.GateResult, e
 		dirty := dirtyResult(res, g.siteLabel, g.attempt)
 		return res, &dirty, nil
 	}
+	if res.ExitCode == gateslot.RedFirstUnjudgedExit && !res.TimedOut && !res.RunnerCrash {
+		logger.Info("loomshed: red-first gate passed unjudged, the hub's scoper is not go", "gate", g.siteLabel, "attempt", g.attempt, "log", res.Log)
+		return res, &shuttleengine.GateResult{Passed: true}, nil
+	}
 	logger.Warn("loomshed: red-first gate failed", "gate", g.siteLabel, "attempt", g.attempt, "exitCode", res.ExitCode, "timedOut", res.TimedOut, "runnerCrash", res.RunnerCrash, "log", res.Log)
 	return res, nil, nil
 }
 
 // holdsForCommitOrRecord reports whether a failed red-first run is a refusal the writer's next turn may not lift.
-// Only a commit that adds a failing test, or the parent's record that lifts the gate, lifts a diff with no test;
-// only such a record lifts a check that cannot judge the tests.
+// Only a commit that adds a failing test, or the parent's record that lifts the gate, lifts a diff with no test.
 func holdsForCommitOrRecord(res verifytree.Result) bool {
 	if res.TimedOut || res.RunnerCrash {
 		return false
 	}
-	return res.ExitCode == gateslot.RedFirstNoTestExit || res.ExitCode == gateslot.RedFirstUnjudgedExit
+	return res.ExitCode == gateslot.RedFirstNoTestExit
 }
 
 // redFirstHoldLine is the one line a hold's first arrival sends the writer, naming the way forward of res's refusal.
 func redFirstHoldLine(res verifytree.Result) string {
-	if res.ExitCode == gateslot.RedFirstNoTestExit {
-		return fmt.Sprintf("The red-first gate holds your handoff, spending no attempt, since the diff adds or changes no test (log: %s): "+
-			"add and commit a test that fails on the merge base and passes with the fix, then end your turn; "+
-			"when the bug has no seam a test can reach, %s", res.Log, parentRecordAsk(gateslot.NoTestSeamTitle))
-	}
-	return fmt.Sprintf("The red-first gate holds your handoff, spending no attempt, since it cannot judge the diff's tests on the merge base: "+
-		"the hub's scoper is not go (log: %s); %s", res.Log, parentRecordAsk(gateslot.NoTestSeamTitle))
+	return fmt.Sprintf("The red-first gate holds your handoff, spending no attempt, since the diff adds or changes no test (log: %s): "+
+		"add and commit a test that fails on the merge base and passes with the fix, then end your turn; "+
+		"when the bug has no seam a test can reach, %s", res.Log, parentRecordAsk(gateslot.NoTestSeamTitle))
 }
 
 // redFirstHoldSendFailed is the way forward the wait loop logs when the hold's line cannot reach the writer.
@@ -265,9 +266,6 @@ func redFirstFailure(res verifytree.Result) shuttleengine.GateResult {
 		fmt.Fprintf(&b, "The diff adds or changes no test, so nothing shows the bug the fix fixes.\n\n"+
 			"Way forward: add and commit a test that fails on the merge base and passes with the fix. "+
 			"When the bug has no seam a test can reach, %s", parentRecordAsk(gateslot.NoTestSeamTitle))
-	case res.ExitCode == gateslot.RedFirstUnjudgedExit:
-		fmt.Fprintf(&b, "The red-first check cannot judge the diff's tests on the merge base: "+
-			"the hub's scoper is not go. The log tail names it.\n\nWay forward: %s", parentRecordAsk(gateslot.NoTestSeamTitle))
 	default:
 		terminal = true
 		fmt.Fprintf(&b, "The red-first check failed with exit code %d, so it judged none of the diff's tests. %s", res.ExitCode, redFirstNoMend)

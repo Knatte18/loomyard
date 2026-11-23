@@ -108,9 +108,9 @@ When the task's board entry is labelled `bug`, the fix's test must fail before t
 Write a test that reaches the bug through code the merge base already has, so it fails on the merge base and passes with the fix.
 Once you end your turn, the row's red-first gate runs the tests your diff adds or changes once on the merge base's code.
 It fails when every one of them passes there.
-When the diff adds or changes no test, or the check cannot judge them, as on a hub whose scoper is not go,
-it holds your handoff without spending an attempt until a new commit or your parent's record lands.
-When the bug has no seam a test can reach, or the check cannot judge it, send your parent `lym creel post --parent --expect-reply "<text>"` naming why,
+On a hub whose scoper is not go the check cannot judge the tests, and the gate passes.
+When the diff adds or changes no test, it holds your handoff without spending an attempt until a new commit or your parent's record lands.
+When the bug has no seam a test can reach, send your parent `lym creel post --parent --expect-reply "<text>"` naming why,
 and ask it to record that with `lym loom decision add` under a title opening `No test seam`; then end your turn to wait.
 When the entry fixes no bug, as one that only adds tests pinning existing behaviour, its tests pass on the merge base by design:
 invent no bug, and before you write code ask your parent the same way to record that under a title opening `No bug fixed`.

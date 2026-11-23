@@ -470,8 +470,8 @@
 // The base is `--base`, else the merge base with the parent branch, refused as the Mutate verb refuses it.
 // `--gate` is required, and its refusal comes before hub resolution.
 // A diff with no added or changed test is refused with exit `gateslot.RedFirstNoTestExit`,
-// and a hub whose scoper is not `go` with exit `gateslot.RedFirstUnjudgedExit`.
-// The way forward of both is a recorded decision whose title opens `gateslot.NoTestSeamTitle`.
+// whose way forward is a recorded decision whose title opens `gateslot.NoTestSeamTitle`.
+// A hub whose scoper is not `go` exits `gateslot.RedFirstUnjudgedExit`, which a red-first gate passes.
 //
 // The verb puts the base's production code back with a Go build overlay.
 // It runs the key's tiers once in this process, once per package that holds a changed test.

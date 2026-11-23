@@ -126,7 +126,7 @@ func runRedFirst(ctx context.Context, out io.Writer, request redFirstRequest) in
 	}
 	cfg = cfg.WithDefaultDir(location.AnchorRel)
 	if !cfg.HasGoCoverageMaps() {
-		output.Err(out, fmt.Sprintf("%s: "+noteScoper+"; way forward: %s", redFirstVerb, cfg.Scoper, noSeamWayForward()))
+		output.Err(out, fmt.Sprintf("%s: "+noteScoper+"; way forward: none needed, a red-first gate passes this exit", redFirstVerb, cfg.Scoper))
 		return gateslot.RedFirstUnjudgedExit
 	}
 	tiers, err := cfg.TierList(request.gate)

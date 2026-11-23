@@ -28,6 +28,11 @@ func TestRedFirstGate_VerdictPerLabelRecordAndExitCode(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	crashLog := filepath.Join(t.TempDir(), "crash.txt")
+	if err := os.WriteFile(crashLog, []byte(gateslot.RunnerCrashLine("tier1 (exit 134, SIGABRT)")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	tests := []struct {
 		name         string
 		labels       func() ([]string, error)
@@ -115,18 +120,12 @@ func TestRedFirstGate_VerdictPerLabelRecordAndExitCode(t *testing.T) {
 			},
 		},
 		{
-			name:        "a check that exits 5 holds the run and tells the writer to ask for the No test seam record",
-			labels:      bugLabels,
-			record:      validDecisionRecord,
-			command:     "exit 5",
-			wantPending: true,
-			wantRan:     true,
-			wantSend: []string{
-				"cannot judge the diff's tests on the merge base: the hub's scoper is not go",
-				"`lym loom decision add`",
-				`under a title opening "No test seam"`,
-				"then end your turn.",
-			},
+			name:       "a check that exits 5, on a hub whose scoper is not go, passes with no record",
+			labels:     bugLabels,
+			record:     validDecisionRecord,
+			command:    "exit 5",
+			wantPassed: true,
+			wantRan:    true,
 		},
 		{
 			name:    "a final evaluation of a check that exits 4 fails naming the No test seam record",
@@ -145,20 +144,13 @@ func TestRedFirstGate_VerdictPerLabelRecordAndExitCode(t *testing.T) {
 			},
 		},
 		{
-			name:    "a final evaluation of a check that exits 5 fails naming the scoper it cannot judge under and the No test seam record",
-			labels:  bugLabels,
-			record:  validDecisionRecord,
-			command: "exit 5",
-			final:   true,
-			wantRan: true,
-			wantFindings: []string{
-				"The red-first check cannot judge the diff's tests on the merge base: the hub's scoper is not go.",
-				"lym creel post --parent --expect-reply",
-				"`lym loom decision add`",
-				`under a title opening "No test seam"`,
-				"then end your turn.",
-				"Full log: ",
-			},
+			name:       "a final evaluation of a check that exits 5, on a hub whose scoper is not go, passes with no record",
+			labels:     bugLabels,
+			record:     validDecisionRecord,
+			command:    "exit 5",
+			final:      true,
+			wantPassed: true,
+			wantRan:    true,
 		},
 		{
 			name:         "a check that exits 4 after a tier timeout fails terminally instead of holding",
@@ -177,6 +169,15 @@ func TestRedFirstGate_VerdictPerLabelRecordAndExitCode(t *testing.T) {
 			wantTerminal: true,
 			wantRan:      true,
 			wantFindings: []string{"The red-first check timed out"},
+		},
+		{
+			name:         "a check that exits 5 after a runner crash fails terminally instead of passing",
+			labels:       bugLabels,
+			record:       validDecisionRecord,
+			command:      "cat " + crashLog + "; exit 5",
+			wantTerminal: true,
+			wantRan:      true,
+			wantFindings: []string{"The red-first check's test runner crashed"},
 		},
 		{
 			name:       "a final evaluation of an entry without the bug label passes and runs nothing",
@@ -345,7 +346,7 @@ func TestRedFirstGate_HoldRunsNothingUntilACommitOrTheRecordLands(t *testing.T) 
 			t.Fatal(err)
 		}
 	}
-	writeExitCode("5")
+	writeExitCode("4")
 	gate := NewRedFirstGate(worktree, verifyDir, "Darn-Write red-first gate", "exit $(cat "+exitCodePath+")", bugLabels, recordPath, nil).Gate
 
 	steps := []struct {
@@ -375,7 +376,7 @@ func TestRedFirstGate_HoldRunsNothingUntilACommitOrTheRecordLands(t *testing.T) 
 		},
 		{
 			name:        "a refusal after the passing run holds afresh and offers the line again",
-			before:      func() { writeExitCode("5"); gitkit.CommitFile(t, worktree, "d.txt", "d\n", "regress") },
+			before:      func() { writeExitCode("4"); gitkit.CommitFile(t, worktree, "d.txt", "d\n", "regress") },
 			wantPending: true,
 			wantSend:    true,
 			deliver:     true,

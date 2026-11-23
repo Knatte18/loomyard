@@ -66,7 +66,8 @@
 // An entry without the `bug` label (gateslot.BugLabel) passes at once and runs nothing.
 // So does a decision record holding an added entry whose title opens gateslot.NoTestSeamTitle.
 // So does one whose title opens gateslot.NoBugFixedTitle, for a change that only adds tests pinning existing behaviour.
-// A diff that adds or changes no test, or a hub whose scoper is not go, holds the run without spending an attempt.
+// A hub whose scoper is not go passes too, since no check can show the test red there.
+// A diff that adds or changes no test holds the run without spending an attempt.
 // The hold lasts until a new commit or the parent's record.
 // Failing exits name their way forward, and any other exit code, a timeout or a runner crash fails terminally.
 // A labels or record read error is the gate's returned error.

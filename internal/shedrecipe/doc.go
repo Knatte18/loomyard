@@ -60,10 +60,10 @@
 //
 // The `red-first` gate holds the handoff of a run whose board entry is labelled `bug`.
 // It holds until a test the diff adds or changes fails on the merge base.
-// The parent may instead record a decision titled `No test seam`.
-// That fits a bug no test can reach or a check that cannot judge the tests.
+// The parent may instead record a decision titled `No test seam`, for a bug no test can reach.
 // A decision titled `No bug fixed` passes it too, for a change that only adds tests pinning existing behaviour.
-// A diff that adds no test, and a check that cannot judge the tests, hold the run without spending an attempt.
+// A hub whose scoper is not go passes it, since the check cannot judge the tests there.
+// A diff that adds no test holds the run without spending an attempt.
 // The hold lasts until a new commit or that record, so its entry is MayHold.
 // An entry without the label passes at once.
 //
