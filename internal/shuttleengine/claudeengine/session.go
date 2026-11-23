@@ -328,23 +328,25 @@ func inputBoxInterior(capture string) (interior []string, ok bool) {
 	return lines[top+1 : bottom], true
 }
 
-// cutLabelRuleEnd ends a top rule whose label is too long for the pane:
-// the label is cut with an ellipsis and only one rule glyph follows it.
-const cutLabelRuleEnd = "… ─"
+// labelledRuleEnd ends a top rule whose label leaves room for one rule glyph only:
+// the label, a space and that glyph.
+const labelledRuleEnd = " ─"
 
 // isTopBoxRule reports whether line is the input box's top rule: a plain rule, or a labelled one.
 // A named session labels its top rule at the right (`──── tst:orch ─`).
-// A line that starts with three rule glyphs and ends with one counts as a top rule, whatever its label says.
-// A label too long for the pane is cut with an ellipsis and leaves no rule glyph before it (` ly:run:code-burler… ─`),
-// so a line ending in a cut label and one rule glyph counts as a top rule too.
+// A label that nearly fills the pane leaves one rule glyph on each side of it (`─ ly:run:plan-burler-review ─`),
+// so a line that starts and ends with a rule glyph counts as a top rule, whatever its label says.
+// A label that fills the pane leaves no rule glyph before it (` ly:run:code-burler-review ─`),
+// and a label too long for the pane is cut with an ellipsis first (` ly:run:code-burler… ─`),
+// so a line ending in a label and one rule glyph counts as a top rule too.
 // Only the top rule carries a label, so the bottom rule must be a plain rule.
 // A draft line shaped like a labelled rule below the caret therefore never closes the box.
 func isTopBoxRule(line string) bool {
 	trimmed := strings.TrimSpace(line)
-	if strings.HasPrefix(trimmed, "───") && strings.HasSuffix(trimmed, "─") {
+	if strings.HasPrefix(trimmed, "─") && strings.HasSuffix(trimmed, "─") {
 		return true
 	}
-	if strings.HasSuffix(trimmed, cutLabelRuleEnd) {
+	if strings.HasSuffix(trimmed, labelledRuleEnd) {
 		return true
 	}
 	return isBoxRule(line)

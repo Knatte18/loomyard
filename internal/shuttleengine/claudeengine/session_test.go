@@ -218,6 +218,21 @@ func TestInputBoxText(t *testing.T) {
 			"",
 			true,
 		},
+		{
+			"a label filling the top rule but for one glyph on each side",
+			"● ok scribe:prose, scribe:code-quality,\n  scribe:testing\n✻ Sautéed for 5s · done 11.08\n" +
+				"─ dop:models-torque-drag-adapter:plan-burler-review ─\n❯ \n" +
+				"─────────────────────────────────────────────────────\n  ⏵⏵ bypass permissions on (shift+tab to cycle) · …\n",
+			"",
+			true,
+		},
+		{
+			"a label filling the pane exactly leaves one rule glyph after it and none before",
+			"● ok\n ly:verify-budget-notice-no-slug:code-burler-review ─\n❯ \n" +
+				"─────────────────────────────────────────────────────\n  ⏵⏵ bypass permissions on (shift+tab to cycle) · …\n",
+			"",
+			true,
+		},
 		{"a cut label with no rule glyph after it is no top rule", " ly:creel-slack-post-silent-when-off:code-burler…\n❯ \n" + rule + "\n", "", false},
 	}
 	c := &Claude{}

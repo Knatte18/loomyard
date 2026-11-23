@@ -2261,19 +2261,27 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 		wantDiedRecord bool
 		// wantOneTail asserts the pane's last lines appear once in the error: the cause carries them and the teardown adds none.
 		wantOneTail bool
+		// wantHeldNotice is true when the start prompt stays held busy, so the parent gets one notice naming the strand;
+		// every other row sends no notice.
+		wantHeldNotice bool
+		// wantHeldReason is the literal delimited reason the held-start notice carries, checked when wantHeldNotice is set.
+		wantHeldReason string
+		// interactive sets Spec.Interactive.
+		interactive bool
 	}{
 		{name: "a skill-load send that stays busy", skill: true, reports: skillMissing, idle: false, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantOneTail: true},
 		{name: "a prompt delivery that does not land", idle: true, box: prompt, wantIs: []error{ErrNotStarted, ErrSubmissionNotLanded}, wantDiedRecord: true, wantCaptureHolds: prompt},
 		{name: "a skill load held past the send window by an active operator", skill: true, reports: skillMissing, idle: true, active: []bool{true}, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
-		{name: "a prompt delivery held past the send window by an active operator", idle: true, active: []bool{true}, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true},
+		{name: "a prompt delivery held past the send window by an active operator", idle: true, active: []bool{true}, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantHeldNotice: true, wantHeldReason: "because «the operator typed in this pane within the last "},
 		{name: "a prompt delivery that finds a foreign box", idle: true, box: "somebody else's draft", paste: true, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantPastes: 1},
 		{name: "a prompt-offset persist that fails", skill: true, reports: skillMissing, idle: true, breakRecord: true, wantIs: []error{ErrNotStarted}},
 		{name: "an unlanded prompt followed by a turn start landed late", idle: true, box: prompt, startOnWindowClose: true, wantStarted: true},
 		{name: "a prompt held busy for one send window is sent again", busyFor: sendReadyTimeout(fastConfig) + time.Second, wantStarted: true, wantPromptTypings: 1, wantWaits: 2},
-		{name: "a prompt that stays busy is sent again up to the retry cap", wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantWaits: startPromptBusyRetries + 1, wantNoSend: true},
-		{name: "a busy prompt send past the run's deadline is not sent again", timeout: sendReadyTimeout(fastConfig) / 2, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantWaits: 1, wantNoSend: true},
+		{name: "a prompt that stays busy is sent again up to the retry cap", wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantWaits: startPromptBusyRetries + 1, wantNoSend: true, wantHeldNotice: true, wantHeldReason: "because «the pane is not idle»."},
+		{name: "an interactive run whose prompt stays busy sends no notice", interactive: true, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantWaits: startPromptBusyRetries + 1, wantNoSend: true},
+		{name: "a busy prompt send past the run's deadline is not sent again", timeout: sendReadyTimeout(fastConfig) / 2, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantWaits: 1, wantNoSend: true, wantHeldNotice: true, wantHeldReason: "because «the pane is not idle»."},
 		{name: "a failed prompt delivery saves the styled pane for an engine that reads one", idle: true, box: prompt, styled: "STYLED PANE", wantIs: []error{ErrNotStarted, ErrSubmissionNotLanded}, wantDiedRecord: true, wantCaptureHolds: "STYLED PANE", wantCaptureLacks: prompt},
-		{name: "a failure capture that fails keeps the boot capture", failCaptureAfter: time.Second, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantCaptureHolds: bootScreen},
+		{name: "a failure capture that fails keeps the boot capture", failCaptureAfter: time.Second, wantIs: []error{ErrNotStarted, ErrSessionBusy}, wantDiedRecord: true, wantCaptureHolds: bootScreen, wantHeldNotice: true, wantHeldReason: "because «the pane could not be captured: pane gone"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2334,6 +2342,11 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 				runEngine = &styledStartSendEngine{engine}
 			}
 			fx := newFixture(t, reed, runEngine, withConfig(fastConfig), withClock(clock))
+			var notices []string
+			fx.Runner.SetNotifier(func(line string) error {
+				notices = append(notices, line)
+				return nil
+			})
 			skills.EventsPath = func() string { return filepath.Join(soleStartupRunDir(t, fastConfig, fx.Anchor), eventsFileName) }
 			if tt.startOnWindowClose {
 				start := clock.Now()
@@ -2354,7 +2367,7 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 					}
 				}
 			}
-			spec := Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}, Timeout: tt.timeout}
+			spec := Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}, Timeout: tt.timeout, Interactive: tt.interactive}
 			if tt.skill {
 				spec.Skills = []string{"a"}
 			}
@@ -2363,6 +2376,22 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 
 			if tt.wantWaits > 0 && waits != tt.wantWaits {
 				t.Errorf("idle waits = %d; want %d", waits, tt.wantWaits)
+			}
+			heldNotices := 0
+			for _, notice := range notices {
+				if strings.Contains(notice, "Agent strand-1 never took its start prompt") {
+					heldNotices++
+				}
+			}
+			wantNotices := 0
+			if tt.wantHeldNotice {
+				wantNotices = 1
+			}
+			if heldNotices != wantNotices || len(notices) != wantNotices {
+				t.Errorf("notices = %q; want %d naming strand-1's held start prompt", notices, wantNotices)
+			}
+			if tt.wantHeldNotice && len(notices) == 1 && !strings.Contains(notices[0], tt.wantHeldReason) {
+				t.Errorf("notice = %q; want it to hold %q", notices[0], tt.wantHeldReason)
 			}
 			if tt.wantStarted {
 				if err != nil || run == nil {

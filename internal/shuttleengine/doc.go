@@ -71,6 +71,7 @@
 // Runner.SetNotifier gives a Runner an optional one-line notifier; nil, the default, holds silently.
 // An autonomous run (Spec.Interactive false) sends the parent a notice per held turn end;
 // a second for a permission or input dialog lym cannot answer, and a third for an edit loop.
+// A start whose prompt is still held busy after its last send notices the parent once, naming the strand.
 // An interactive run, a runner with no notifier and Spec.QuietHold hold the turn end silently.
 // Agent-written text in a notice is delimited, cut, and stripped of control characters.
 // A notice is never typed into a pane.
