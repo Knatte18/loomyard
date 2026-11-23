@@ -177,7 +177,7 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("codexengine: resolve the lym binary the python guard hook runs: %w", err)
 	}
-	guardIn := guardInputs{denyPython: cfg.DenyPython, denyPublish: spec.DenyPublish}
+	guardIn := guardInputs{denyPython: cfg.DenyPython, denyPublish: spec.DenyPublish, allowRawTmux: spec.AllowRawTmux}
 	tools := toolHooks{
 		guards:       installedGuards(refuseRaw, guardIn),
 		lymPath:      lymPath,

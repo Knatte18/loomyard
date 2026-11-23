@@ -43,6 +43,8 @@ Never run `git` in any form — resolving a path means editing its file content,
 Edit a file outside the listed paths only when the merged tree would otherwise stop building or its tests would fail, and only to keep it building and passing.
 Create no new file: a file you add is never part of the merge, and it halts the merge as stuck.
 
+Never start a background or detached process from the shell: such a process outlives your command and runs outside every memory cap lym sets.
+
 ## The report — your terminal act
 
 Once every listed path above has been resolved, write a short report to:

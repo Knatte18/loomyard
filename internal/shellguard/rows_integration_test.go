@@ -281,6 +281,19 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"adopt-take-hold", "in_a_shell_script", "bash -c 'lym adopt --take-hold b'", true},
 		{"adopt-take-hold", "flag_of_a_later_command_after_a_shell_script", "bash -c 'lym adopt b' && echo 'x --take-hold'", false},
 
+		{"tmux-script", "script_attaching_a_tmux_client_in_a_detached_subshell", `(script -qfc "tmux -S s attach -t a" /dev/null </dev/zero >/dev/null 2>&1 &)`, true},
+		{"tmux-script", "tmux_attach", "tmux -S .scratch/tm/sock attach -t beta", true},
+		{"tmux-script", "tmux_new_server_after_a_separator", "mkdir -p .scratch/tm && tmux -S .scratch/tm/sock new -d -s alpha", true},
+		{"tmux-script", "path_prefixed_tmux", "/usr/bin/tmux ls", true},
+		{"tmux-script", "script_behind_exec", "exec script -q /dev/null", true},
+		{"tmux-script", "tmux_in_a_shell_script", "bash -c 'tmux list-clients'", true},
+		{"tmux-script", "tmux_as_an_argument", "grep -rn tmux internal/reedengine", false},
+		{"tmux-script", "script_file_run_by_a_shell", "bash script.sh", false},
+		{"tmux-script", "relative_script_file", "./script.sh", false},
+		{"tmux-script", "longer_command_word", "tmuxinator start x", false},
+		{"tmux-script", "tmux_inside_a_double_quoted_argument", `git commit -m "tmux attach is refused"`, false},
+		{"tmux-script", "reed_attach", "lym reed attach", false},
+
 		{"publish", "git_push", "git push", true},
 		{"publish", "git_push_after_dash_c", "git -C x push origin b", true},
 		{"publish", "gh_pr_merge", "gh pr merge 3", true},
@@ -363,6 +376,7 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"shell-edit", "x; sed -i s/a/b/ f > g.go"},
 		{"headless-claude", "x; claude -p hi"},
 		{"adopt-take-hold", "x; lym adopt --take-hold b"},
+		{"tmux-script", "x; tmux attach -t a"},
 		{"publish", "x; gh pr merge 3"},
 	}
 	for _, tt := range tests {

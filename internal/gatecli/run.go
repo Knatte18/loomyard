@@ -446,7 +446,21 @@ func flagShapeRefusal(request testRequest) string {
 	if request.mainPackages && len(request.cards) == 0 {
 		return fmt.Sprintf("gate test: --%s adds to a --card scope, and the call names no card; way forward: pass --card <id> once per card, or drop --%s, then re-run the same command", gateslot.MainPackagesFlag, gateslot.MainPackagesFlag)
 	}
+	if request.runAgent && runsTmuxTier(request) && !namesPackage(request) {
+		return fmt.Sprintf("gate test: a run agent's call of tier%d, the tmux tier, names no package, so it would start every tmux test of its scope; way forward: run one test with lym gate test --tier %d <the package that holds the test> -- <a filter selecting one test>", gateslot.TmuxTier, gateslot.TmuxTier)
+	}
 	return ""
+}
+
+// runsTmuxTier reports whether the call's flags list the tmux tier, through --tier or an --upto range that reaches it.
+func runsTmuxTier(request testRequest) bool {
+	return slices.Contains(request.tiers, gateslot.TmuxTier) || (request.uptoGiven && request.upto >= gateslot.TmuxTier)
+}
+
+// namesPackage reports whether the call's explicit targets include one that is no wildcard.
+// A wildcard such as ./... stands for many packages, so it names none.
+func namesPackage(request testRequest) bool {
+	return slices.ContainsFunc(request.targets, func(target string) bool { return !strings.Contains(target, "...") })
 }
 
 // gateKeyRefusal returns the refusal for a --gate key the config cannot run, or "" for a runnable key or none.

@@ -25,8 +25,10 @@ func rowNames(rows []shellguard.Row) []string {
 }
 
 // TestInstalledGuards_CoverEveryRow pins that a launch with every switch on installs every row, in table order.
-// The refuse-raw row is included for a non-empty refuse list, the python row under every input,
-// and the publish row follows its switch.
+// The refuse-raw row is included for a non-empty refuse list.
+// The python row is installed under every input.
+// The publish row follows its switch.
+// The tmux-script row is installed unless the launch exempts itself.
 //
 //testtiming:keep pins the literal installed row names per input, which TestPrepare_InstallsGuardsFromItsInputs derives from installedGuards itself
 func TestInstalledGuards_CoverEveryRow(t *testing.T) {
@@ -42,6 +44,7 @@ func TestInstalledGuards_CoverEveryRow(t *testing.T) {
 	}{
 		{"EverySwitchOn", sampleRefuseRaw, guardInputs{denyPython: true, denyPublish: true}, every},
 		{"SwitchesOff", sampleRefuseRaw, guardInputs{}, slices.DeleteFunc(slices.Clone(every), func(name string) bool { return name == "publish" })},
+		{"RawTmuxAllowed", sampleRefuseRaw, guardInputs{denyPython: true, denyPublish: true, allowRawTmux: true}, slices.DeleteFunc(slices.Clone(every), func(name string) bool { return name == "tmux-script" })},
 		{"NoRefuseList", nil, guardInputs{denyPython: true, denyPublish: true}, slices.DeleteFunc(slices.Clone(every), func(name string) bool { return name == "refuse-raw" })},
 	}
 	for _, tt := range tests {

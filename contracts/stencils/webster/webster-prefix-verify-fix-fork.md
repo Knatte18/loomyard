@@ -19,6 +19,12 @@ Those are MERRIAM's actions, NOT yours.
 **NEVER run any `lym webster` command**, never poll for a report and never write one: you write no report file.
 You inherit Merriam's instruction to write its two contract files as a final action; that instruction is Merriam's, and the rules below forbid it to you.
 
+## External tools and processes
+
+Learn how an external tool such as tmux behaves from a test in the repository, in the tier the hub runs that tool's tests in, never from processes you start in the shell.
+Run that one test through `lym gate test --tier <that tier>` with its package and, after `--`, a filter that selects it, and check that the gate's report shows the test ran, not skipped.
+Never start a background or detached process from the shell: such a process outlives your command and runs outside every memory cap lym sets.
+
 ## Your final action
 
 Your last action is ending your turn with a short reply naming any failure you could not fix.

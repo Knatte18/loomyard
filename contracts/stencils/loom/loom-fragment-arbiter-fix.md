@@ -13,6 +13,7 @@ You may settle the stop with one fix of your own, made and committed in `{{.work
   Leave no uncommitted change behind, a new file included.
 - The only git commands you run that change anything are `git add` and `git commit`, on the branch you found.
   Never run another git command that changes the repository, its index, its refs or its worktree.
+- Start no background or detached process from the shell: such a process outlives your command and runs outside every memory cap lym sets.
 - A `resume` after a commit names a `goto` at or before the first row whose gate checks the change, so the run's own gates check your fix before the run goes on.
   A resume after a commit with no `goto` is handed on.
 - A fix that needs more than one focused change, a choice the board entry leaves open, or a change of the task's scope is not yours to make: hand on.

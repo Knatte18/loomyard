@@ -57,6 +57,9 @@ type Spec struct {
 	// DenyPublish, when true, makes the engine install a shell guard for this one run and announce it.
 	// The guard refuses git push and gh calls beyond reads, comments, and title and body edits.
 	DenyPublish bool
+	// AllowRawTmux, when true, exempts this one run from the shell guard that refuses a raw tmux or script command.
+	// Only a session whose task is to start tmux servers of its own, such as the sampler's trials, sets it.
+	AllowRawTmux bool
 	// Advisor, when non-empty, names the model the session consults through its provider's advisor tool, for this run alone.
 	// The value is provider vocabulary and is passed through as given; Spec validation does not check it.
 	// An engine whose provider has no advisor refuses a non-empty value before it writes anything.

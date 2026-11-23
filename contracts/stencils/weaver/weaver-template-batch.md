@@ -91,6 +91,12 @@ A call that ends with `--main-packages` also runs the module's main packages, wh
 A failure in them is yours to fix even when an earlier batch caused it.
 A gate call that exits with code `75` and answers `done: false` is not a failure: run the same command again.
 
+## External tools and processes
+
+Learn how an external tool such as tmux behaves from a test in the repository, in the tier the hub runs that tool's tests in, never from processes you start in the shell.
+Run that one test through `lym gate test --tier <that tier>` with its package and, after `--`, a filter that selects it, and check that the gate's report shows the test ran, not skipped.
+Never start a background or detached process from the shell: such a process outlives your command and runs outside every memory cap lym sets.
+
 ## Never touch Weaver's own records
 
 Never write, create or delete anything under `_lym/weaver` except your own report, and never touch the plan directory `_lym/plan`.

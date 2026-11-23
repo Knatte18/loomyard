@@ -257,6 +257,7 @@
 // so a change of `shuttle.yaml`'s `deny_python` reaches running sessions with no restart;
 // a lym that is missing or fails keeps the deny.
 // The publish row is installed only for a run whose spec sets `DenyPublish`.
+// The tmux and script row is installed in every run whose spec does not set `AllowRawTmux`, interactive runs included.
 // The refuse-raw row denies a Bash command starting with a prefix the hub lists in `gate.yaml`'s `refuse_raw`,
 // so every test run in an agent session goes through `lym gate test`.
 // Prepare reads `gate.yaml`'s `refuse_raw` over the engine's dirs through `gateslot.LoadRefuseRaw`.

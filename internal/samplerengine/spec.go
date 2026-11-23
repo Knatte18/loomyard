@@ -90,6 +90,7 @@ func SessionSpec(in SessionInputs, cfg Config, reg modelspec.Registry) (shuttlee
 		Interactive:  true,
 		Unawaited:    true,
 		DenyPublish:  true,
+		AllowRawTmux: true,
 		Role:         Role,
 		Segment:      segmentcolor.Darn,
 		ConfigRole:   agentconfig.RoleSampler,

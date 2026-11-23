@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/envconfig"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -102,7 +103,7 @@ Examples:
 				goBinary: goBinary, samplePeriod: samplePeriod, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit, secondUnit: time.Second, rerunDelay: rerunDelay, pipeWaitDelay: pipeWaitDelay,
 				stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, gate: gate, tiers: tiers, cards: cards, mainPackages: mainPackages, base: base, all: all, guards: guards, targets: args,
 				upto: upto, uptoGiven: cmd.Flags().Changed("upto"), stopOnFail: stopOnFail, mapMode: mapMode, copies: copies, noCarry: noCarry,
-				phase: phaseFrom(cmd.Context()),
+				phase: phaseFrom(cmd.Context()), runAgent: os.Getenv(agentname.StrandNameEnv) != "",
 			}
 			if dash := cmd.ArgsLenAtDash(); dash >= 0 {
 				request.targets, request.args = args[:dash], args[dash:]
@@ -195,6 +196,9 @@ type testRequest struct {
 	// copiesRun is how many copies the tier run in progress runs; 0 runs the tier once.
 	// runWithSlots sets it once the lease is held.
 	copiesRun int
+	// runAgent is true when the call comes from a run agent's session, which the strand name in its environment shows.
+	// Only the verb's flag parsing sets it.
+	runAgent bool
 	// targets are the arguments before `--`.
 	targets []string
 	// args are the arguments after `--`, which fill each tier's {args}.

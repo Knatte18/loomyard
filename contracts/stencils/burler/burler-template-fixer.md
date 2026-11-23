@@ -36,6 +36,12 @@ The review is already written and accepted on disk; you hold none of the reviewe
 
 Read the fix step only when its step is reached, never early.
 
+## External tools and processes
+
+Learn how an external tool such as tmux behaves from a test in the repository, in the tier the hub runs that tool's tests in, never from processes you start in the shell.
+Run that one test through `lym gate test --tier <that tier>` with its package and, after `--`, a filter that selects it, and check that the gate's report shows the test ran, not skipped.
+Never start a background or detached process from the shell: such a process outlives your command and runs outside every memory cap lym sets.
+
 ## What you may write (BLOCKING)
 
 You never write the review file `{{.review_path}}`.

@@ -86,7 +86,8 @@ type DarnInputs struct {
 // and the seat engine renders the parent and edit directives from its geometry.
 // The table carries no gate; the producer entry sets it.
 // With in.GateFixed, the prompt's Step 4 has the writer and its subagents run no gate.
-// The one exception is the writer's single measuring run of one test class for a value only a test run shows.
+// The exceptions are the writer's single measuring run of one test class.
+// It serves a value only a test run shows, or a fact about how an external tool behaves.
 // They act only on what the verify gate's fixer leaves.
 // The writer asks its parent for the single run of the test a task's reported failure names.
 // Otherwise the step has them run the gate after each commit.

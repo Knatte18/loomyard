@@ -326,14 +326,17 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 		gate        string
 		denyPython  bool
 		denyPublish bool
-		wantRefuse  []string
-		wantInputs  guardInputs
-		wantErr     bool
+		// allowRawTmux is the spec's exemption from the tmux and script row.
+		allowRawTmux bool
+		wantRefuse   []string
+		wantInputs   guardInputs
+		wantErr      bool
 	}{
 		{name: "PythonSwitchAlone", denyPython: true, wantInputs: guardInputs{denyPython: true}},
 		{name: "PublishGuardAlone", denyPublish: true, wantInputs: guardInputs{denyPublish: true}},
-		{name: "SeededRefuseRaw", gate: "slots: 2\nrefuse_raw: [\"go test\", \"dotnet test\"]\n", wantRefuse: []string{"go test", "dotnet test"}},
-		{name: "ScopelessGateKeyStillLaunches", gate: "slots: 2\nrefuse_raw: [\"go test\"]\ngates:\n  harden-live-copies:\n    tiers: [1]\n", wantRefuse: []string{"go test"}},
+		{name: "RawTmuxExemption", allowRawTmux: true, wantInputs: guardInputs{allowRawTmux: true}},
+		{name: "SeededRefuseRaw", gate: "slots: 2\nrefuse_raw: [\"go test\", \"dotnet test\"]\n", wantRefuse: []string{"go test", "dotnet test"}, wantInputs: guardInputs{}},
+		{name: "ScopelessGateKeyStillLaunches", gate: "slots: 2\nrefuse_raw: [\"go test\"]\ngates:\n  harden-live-copies:\n    tiers: [1]\n", wantRefuse: []string{"go test"}, wantInputs: guardInputs{}},
 		{name: "GateConfigThatDoesNotParse", gate: "slots: [\n", wantErr: true},
 		{name: "InvalidRefuseRawBesideAScopelessGateKeyStillRefuses", gate: "slots: 2\nrefuse_raw: [\"go  test\"]\ngates:\n  harden-live-copies:\n    tiers: [1]\n", wantErr: true}}
 	for _, tt := range tests {
@@ -349,7 +352,7 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 			engine, _ := newEngine(anchor)
 			runDir := t.TempDir()
 
-			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", PromptEngine: engineName, DenyPublish: tt.denyPublish}, shuttleengine.Config{DenyPython: tt.denyPython})
+			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", PromptEngine: engineName, DenyPublish: tt.denyPublish, AllowRawTmux: tt.allowRawTmux}, shuttleengine.Config{DenyPython: tt.denyPython})
 			promptPath := filepath.Join(runDir, "prompt.md")
 			if tt.wantErr {
 				if err == nil || !strings.HasPrefix(err.Error(), "codexengine:") {
@@ -553,7 +556,8 @@ func TestPrepare_SwitchedToolHooks(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Prepare() error: %v", err)
 			}
-			guards := installedGuards(nil, guardInputs{})
+			guardIn := guardInputs{}
+			guards := installedGuards(nil, guardIn)
 			tools := toolHooks{guards: guards, lymPath: testLymPath, questionDeny: tt.wantDeny}
 			statePath := filepath.Join(runDir, batchingNudgeStateFileName)
 			if tt.wantBatching {
@@ -567,7 +571,7 @@ func TestPrepare_SwitchedToolHooks(t *testing.T) {
 					t.Errorf("Prepare() launch line = %q; want it to hold the setting %s", launch.Cmd, quoted)
 				}
 			}
-			notice := shell.ForGOOS().Quote(developerInstructionsKey + "=" + tomlString(denyNotice(tt.wantDeny, guards, guardInputs{})+" "+shuttleengine.CreelTrustSentence))
+			notice := shell.ForGOOS().Quote(developerInstructionsKey + "=" + tomlString(denyNotice(tt.wantDeny, guards, guardIn)+" "+shuttleengine.CreelTrustSentence))
 			if !strings.Contains(launch.Cmd, notice) {
 				t.Errorf("Prepare() launch line = %q; want developer instructions opening %s", launch.Cmd, notice)
 			}

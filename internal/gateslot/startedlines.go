@@ -1,5 +1,5 @@
 // startedlines.go renders and parses the stderr line a gate tier run prints to say how many test binaries it started.
-// It also names the one tier a copies call may never run.
+// It also names the one tier a copies call may never run and the tier whose tests drive a tmux server.
 
 package gateslot
 
@@ -13,6 +13,9 @@ import (
 // BilledTier is the number of the tier that drives a billed LLM session.
 // A `lym gate test --copies` call never runs it.
 const BilledTier = 3
+
+// TmuxTier is the number of the tier whose tests drive a real tmux server and start no LLM session.
+const TmuxTier = 2
 
 // startedLinePattern matches the line FormatStartedLine renders.
 var startedLinePattern = regexp.MustCompile(`^gate test: started (\d+) test binaries in (.+)$`)

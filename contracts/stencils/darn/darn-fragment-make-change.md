@@ -14,6 +14,11 @@
    A gate line saying a tier ran no test of a project means the project skipped its own tests, and the gate's pass covers none of them.
    When your change needs those tests and the hub's `refuse_raw` does not list `dotnet test`, run them by hand as that line's way forward names, and check that the run's summary line reports them: this is the one raw test command you run.
    When `refuse_raw` lists it, report the skipped tests to your parent, or with no parent name them in the change description.
+   Learn how an external tool such as tmux behaves from a test you write in the repository, in the tier the hub runs that tool's tests in,
+   and run that one test through `lym gate test --tier <that tier>` with its package and, after `--`, a filter that selects it;
+   then check that the gate's report shows the test ran, not skipped.
+   Never learn it from processes you start in the shell, and never start a background or detached process from it:
+   such a process outlives your command and runs outside every memory cap lym sets.
 4. Update, in the same commits as the code, the docs the change makes stale: the package doc of each package whose behavior changes, `doc.go` for a Go package;
    the repository's overview doc when a module table or execution stack it shows changes;
    and, when the repository has a `PATTERN.md`, its entry for a cross-cutting invariant the change adds or changes.

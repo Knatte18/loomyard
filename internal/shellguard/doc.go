@@ -61,6 +61,10 @@
 // Only the session that sets it cannot run git push or a gh call outside what the row's table lets through:
 // reads, comments, and title and body edits.
 // A generated pattern matches any word but the listed ones, so a new gh subcommand is refused until listed.
+// A SwitchDenyRawTmux row is installed and announced for every run whose launch spec does not set `AllowRawTmux`.
+// The tmux and script row hangs on it, so an interactive session carries it too.
+// A tmux server or a script an agent starts outlives the command and every memory cap,
+// and the row's way forward is a tmux-tier test run through `lym gate test --tier`.
 //
 // It imports the standard library and the packages that own the environment variables the raw go row's pattern names.
 package shellguard

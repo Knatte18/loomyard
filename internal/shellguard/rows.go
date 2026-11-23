@@ -24,6 +24,9 @@ const (
 	SwitchDenyPython Switch = "deny_python"
 	// SwitchDenyPublish marks the row a launch spec turns on to keep a session from publishing: git push and the gh calls beyond reads, comments and title and body edits.
 	SwitchDenyPublish Switch = "deny_publish"
+	// SwitchDenyRawTmux marks a row installed and announced for every run whose launch spec does not exempt itself.
+	// A spec exempts itself when its session's task is to start tmux servers of its own.
+	SwitchDenyRawTmux Switch = "deny_raw_tmux"
 )
 
 // Row is one guard against shell commands.
@@ -381,6 +384,18 @@ const noticeAdoptTakeHoldDeny = steerAdoptTakeHoldDeny + "."
 var adoptTakeHoldCommandPattern = commandRowPattern(func(scope shellScope) string {
 	return `lym[[:space:]]+adopt([[:space:]]+` + scope.argument() + `)*[[:space:]]+--take-hold` + wordEndPattern
 })
+
+// steerTmuxScriptDeny refuses a raw tmux or script command and names a tmux-tier test under the gate as the way forward.
+// It must contain no single/double quote or backslash (checked at init).
+const steerTmuxScriptDeny = "a raw tmux or script command is refused in this session: a tmux server or a script it starts outlives the command and runs outside every memory cap lym sets. To learn how tmux behaves, write a tmux-tier test in the repository and run that one test through lym gate test with --tier naming the tier the hub runs tmux tests in, the package that holds the test, and after -- a filter that selects it"
+
+// noticeTmuxScriptDeny announces the tmux and script deny in the same wording as its steer.
+const noticeTmuxScriptDeny = steerTmuxScriptDeny + "."
+
+// tmuxScriptCommandPattern is the grep -E pattern the tmux and script deny matches.
+// It is matched against the raw PreToolUse payload JSON.
+// It matches tmux or script, optionally path-prefixed, as a whole word in command position.
+var tmuxScriptCommandPattern = commandPositionPattern + `(tmux|script)` + wordEndPattern
 
 // githubAllowed maps each gh command the publish row lets through to the subcommands of it the row lets through, nil for every subcommand.
 // They read GitHub, comment on a pull request or edit its title and body; every other gh command and subcommand is refused.
@@ -771,6 +786,23 @@ func rowsAfterRawGo() []Row {
 			Notice:   noticeAdoptTakeHoldDeny,
 			Switch:   SwitchNone,
 			Forms:    [][]string{{"lym", "adopt", "--take-hold"}},
+		},
+		{
+			// Installed for every run on every engine and for every role, interactive sessions included.
+			// Only a launch spec that sets AllowRawTmux leaves it out.
+			// A tmux server or a script started from the shell outlives the command.
+			// It runs outside the memory scope lym gives each test binary.
+			// A script with its input on an endless stream queues that input in memory without bound.
+			// The sampler's spec sets AllowRawTmux, since its trials start tmux servers of their own.
+			// A guardrail, not a barrier.
+			// A launch behind a script file, eval, nohup, setsid or timeout passes, and so does one spelled through a variable.
+			// A program named script or tmux under another directory, such as tools/script, is falsely denied.
+			// So is a matching spelling after a separator inside a quote commandPositionPattern misreads.
+			Name:     "tmux-script",
+			Patterns: []string{tmuxScriptCommandPattern},
+			Steer:    steerTmuxScriptDeny,
+			Notice:   noticeTmuxScriptDeny,
+			Switch:   SwitchDenyRawTmux,
 		},
 		{
 			// Installed only for a launch spec that sets DenyPublish, such as the PR-Review session's, which reads the pull request, comments on it and edits its title and body through gh.

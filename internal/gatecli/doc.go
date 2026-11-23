@@ -110,6 +110,11 @@
 // Flag-shape refusals need no config and run before hub resolution:
 // `--tags`; a negative `--upto`; `-C` without explicit targets; `--gate` beside `--tier`, `--upto`, `--all` or `--base`;
 // more than one scope form; and `--main-packages` without `--card`.
+// A run agent is a call whose environment names a strand through `agentname.StrandNameEnv`.
+// Its call is refused too when `--tier` or a reaching `--upto` lists `gateslot.TmuxTier`,
+// and the call names no explicit target free of `...`; a filter after `--` alone does not open the call.
+// The refusal names `lym gate test --tier <n> <package> -- <filter>` as the way forward.
+// A `--gate` key that lists the tier is not refused, since `gate.yaml` sets its scope.
 //
 // # Scoper
 //

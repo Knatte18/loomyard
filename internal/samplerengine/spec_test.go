@@ -48,8 +48,8 @@ func TestSessionSpec(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SessionSpec() = _, %v; want nil error", err)
 		}
-		if !spec.Interactive || !spec.Unawaited || !spec.DenyPublish {
-			t.Errorf("SessionSpec() Interactive, Unawaited, DenyPublish = %v, %v, %v; want all true", spec.Interactive, spec.Unawaited, spec.DenyPublish)
+		if !spec.Interactive || !spec.Unawaited || !spec.DenyPublish || !spec.AllowRawTmux {
+			t.Errorf("SessionSpec() Interactive, Unawaited, DenyPublish, AllowRawTmux = %v, %v, %v, %v; want all true", spec.Interactive, spec.Unawaited, spec.DenyPublish, spec.AllowRawTmux)
 		}
 		if spec.Role != Role || spec.Segment != segmentcolor.Darn {
 			t.Errorf("SessionSpec() Role, Segment = %q, %q; want %q, %q", spec.Role, spec.Segment, Role, segmentcolor.Darn)
