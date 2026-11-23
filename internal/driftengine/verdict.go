@@ -55,7 +55,7 @@ func renderVerdict(rec Records, baseHead string) string {
 			mode = scope.Diff
 		}
 		if baseHead != "" {
-			lines = append(lines, fmt.Sprintf("- Baseline: captured at `%s`, the task's branch point.", baseHead))
+			lines = append(lines, fmt.Sprintf("- Baseline: captured at `%s`, the base of this branch.", baseHead))
 		}
 		lines = append(lines, "- Diff: "+diffText(mode))
 		lines = append(lines, checkLines(scope.LastCheck)...)
@@ -97,9 +97,9 @@ func scopeText(scope ScopeRecord) string {
 		return "full."
 	}
 	if scope.ScopeSource != "" {
-		return fmt.Sprintf("off, set by `%s`; the task is not regression-checked.", scope.ScopeSource)
+		return fmt.Sprintf("off, set by `%s`; this change is not regression-checked.", scope.ScopeSource)
 	}
-	return "off; the task is not regression-checked."
+	return "off; this change is not regression-checked."
 }
 
 // diffText renders the diff line's value.

@@ -42,7 +42,7 @@ func TestVerdict(t *testing.T) {
 			"ScopeOffNamesItsSource",
 			&ScopeRecord{Scope: ScopeOff, ScopeSource: "drift.scope"},
 			JudgedRecord{},
-			join("## Regression check", "", "- Scope: off, set by `drift.scope`; the task is not regression-checked."),
+			join("## Regression check", "", "- Scope: off, set by `drift.scope`; this change is not regression-checked."),
 		},
 		{
 			"DeferredSaysNoCompareRan",
@@ -144,7 +144,7 @@ func TestVerdict(t *testing.T) {
 		}
 		writeVerdictRecords(t, d, scope, JudgedRecord{}, fabricengine.Trailer{Key: BaselineTrailerKey, Value: "digest"})
 		want := strings.Join([]string{"## Regression check", "", "- Scope: full.",
-			"- Baseline: captured at `code-head-0`, the task's branch point.",
+			"- Baseline: captured at `code-head-0`, the base of this branch.",
 			"- Diff: lines.",
 			"- Last check: passed at `head2`. 0 changed cells, 0 expected, 0 judged as matching, 0 reused from stored rulings, 0 unexpected.",
 			"- Left out as capture metadata, not results: files `_source.txt`, `b.txt`; keys `captured_at`."}, "\n")
