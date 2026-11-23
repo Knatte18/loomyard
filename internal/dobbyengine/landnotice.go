@@ -1,8 +1,7 @@
 // landnotice.go implements the landing notice: one creel line to the nearest live orch.
 // It goes out once a run seen ahead of its Land row lands or ends without landing.
 // It goes only when the run's land_notice setting read on, as read ahead of Land or, when that never read, after it.
-// While a beam's pull request is recorded, the beam's members get the line whatever land_notice says.
-// Their landed line then carries the beam's follow-up.
+// While a beam's pull request is recorded, a landed line carries the beam's follow-up.
 
 package dobbyengine
 
@@ -13,7 +12,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
@@ -28,9 +26,6 @@ type LandNoticeState struct {
 	// Read reports whether land_notice was read for the run at least once.
 	// A run past Land that was never read is read again at each tick, and its notice stays undecided until a read succeeds.
 	Read bool `json:"read,omitempty"`
-	// Member reports whether the run's entry was a member of the beam at the last tick that saw it ahead of Land.
-	// A member's landed line goes out once the beam's pull request is recorded, whatever Requested reads.
-	Member bool `json:"member,omitempty"`
 	// Line is the notice decided and not yet posted, posted again at each tick until a post succeeds.
 	Line string `json:"line,omitempty"`
 	// ClearOwed is set only by a state record an older binary wrote, once it had posted the run's line.
@@ -49,30 +44,22 @@ func (s LandNoticeState) read() bool {
 	return s.Read || s.Requested
 }
 
-// landNotices remembers each listed run ahead of its Land row.
-// It remembers whether land_notice reads on for the run and whether its board entry is a member of this dobby's beam.
+// landNotices remembers each listed run ahead of its Land row with whether land_notice reads on for it.
 // It decides the notice of each remembered run now past its Land row, then posts every owed line.
 // What fails to post is kept for the next tick.
 // The reading of land_notice comes from Deps.LandNotice.
 // A failed read keeps the run's last reading and is logged once per episode.
 // A run past Land that was never read is read again at each tick, and its notice waits for a read to succeed.
-// A landed line it decides carries the beam's follow-up while the beam's pull request is recorded,
-// and a member remembered ahead of Land gets that line whatever land_notice read.
-// A failed read of the board keeps each remembered membership as it was.
+// A landed line it decides carries the beam's follow-up while the beam's pull request is recorded.
 // A failed read of the landing record decides nothing this tick and is logged once per episode.
 func (d *daemon) landNotices(ctx context.Context, now time.Time, runs []RunView) {
-	tasks, _ := d.landNoticeTasks()
 	followUp, followUpRead := d.pullRequestFollowUp()
 	requests := d.readLandNoticeRequests(runs, d.unreadLandNoticeRuns(runs))
-	members := make(map[string]bool, len(tasks))
-	for _, task := range tasks {
-		members[task.Slug] = isBeamMember(task, d.geom.Slug)
-	}
 	err := UpdateState(d.geom.StatePath, func(s *State) error {
 		if s.LandNotices == nil {
 			s.LandNotices = map[string]LandNoticeState{}
 		}
-		rememberRuns(s.LandNotices, runs, requests, members, followUpRead, followUp)
+		rememberRuns(s.LandNotices, runs, requests, followUpRead, followUp)
 		return nil
 	})
 	if err != nil {
@@ -127,27 +114,22 @@ func (d *daemon) unreadLandNoticeRuns(runs []RunView) map[string]bool {
 
 // rememberRuns refreshes memory from the runs listed this tick.
 // A run is remembered with the land_notice reading in requests, when it has one.
-// Ahead of its Land row it is also remembered with its entry's membership in members, when the entry is on the board.
-// While decides is set, a remembered run past its Land row that was read at least once gets its notice decided.
-// It gets a line when its remembered reading is on, or when followUp is set and it is a member of the beam.
+// While decides is set, a remembered run past its Land row that was read at least once gets its notice decided:
+// a line when its remembered reading is on, and none when it is off.
 // A remembered run past Land that was never read stays undecided until a read succeeds.
 // A landed line ends with followUp, empty for none.
 // A run that owes nothing after this is forgotten, and so is one whose line an older binary had already posted.
 // A run first seen past its Land row is never remembered.
 // The memory of a run not listed this tick is dropped unless it owes something.
-func rememberRuns(memory map[string]LandNoticeState, runs []RunView, requests, members map[string]bool, decides bool, followUp string) {
+func rememberRuns(memory map[string]LandNoticeState, runs []RunView, requests map[string]bool, decides bool, followUp string) {
 	listed := make(map[string]bool, len(runs))
 	for _, run := range runs {
 		listed[run.Slug] = true
 		note, remembered := memory[run.Slug]
-		member, onBoard := members[run.Slug]
 		if requested, read := requests[run.Slug]; read {
 			note.Requested, note.Read = requested, true
 		}
 		if !run.PastLand {
-			if onBoard {
-				note.Member = member
-			}
 			memory[run.Slug] = note
 			continue
 		}
@@ -162,7 +144,7 @@ func rememberRuns(memory map[string]LandNoticeState, runs []RunView, requests, m
 		if !note.read() || !decides {
 			continue
 		}
-		if note.Requested || (followUp != "" && (note.Member || (onBoard && member))) {
+		if note.Requested {
 			note.Line = landNoticeLine(run, followUp)
 		}
 		if !note.owed() {
@@ -178,7 +160,7 @@ func rememberRuns(memory map[string]LandNoticeState, runs []RunView, requests, m
 	}
 }
 
-// pullRequestFollowUp returns the follow-up a member's landed line carries.
+// pullRequestFollowUp returns the follow-up a landed line carries.
 // It is set while the beam's landing record holds a pull request.
 // The follow-up asks the orch to add the landing to the change description and to run `lym beam describe <slug>`.
 // It is empty while no pull request is recorded, for the prime's dobby, and for a dobby with no PullRequestRecorded seam.
@@ -197,23 +179,6 @@ func (d *daemon) pullRequestFollowUp() (string, bool) {
 		return "", true
 	}
 	return fmt.Sprintf("; add it to the change description, then run `lym beam describe %s`, which updates the pull request", d.geom.Slug), true
-}
-
-// isBeamMember reports whether task is a task or project entry whose project is the beam slug.
-// The prime's dobby has no beam slug, so it has no members.
-func isBeamMember(task TaskView, slug string) bool {
-	return slug != "" && task.Project == slug && (task.Kind == boardengine.KindTask || task.Kind == boardengine.KindProject)
-}
-
-// landNoticeTasks reads the board for the landing notices, and reports whether the read succeeded.
-func (d *daemon) landNoticeTasks() ([]TaskView, bool) {
-	tasks, err := d.deps.Tasks()
-	if err != nil {
-		d.landNoticeBoard.Fail("dobbyengine: the board is unreadable; the landing-notice memberships keep their last reading", "worktree", d.geom.WorktreeName, "error", err)
-		return nil, false
-	}
-	d.landNoticeBoard.Recover("dobbyengine: the board reads again for the landing-notice memberships", "worktree", d.geom.WorktreeName)
-	return tasks, true
 }
 
 // settleLandNotices posts each owed line through Deps.Notice and drops a memory once it owes nothing.

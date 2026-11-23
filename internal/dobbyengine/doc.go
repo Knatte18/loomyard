@@ -145,9 +145,8 @@
 //     through Deps.Notice to the nearest live orch.
 //     A run whose `land_notice` read off owes none.
 //   - While Deps.PullRequestRecorded reads a pull request recorded for the beam,
-//     each member of the beam gets its landed line whatever `land_notice` says,
-//     and the line ends with the beam's follow-up `lym beam describe <slug>`.
-//     A nil PullRequestRecorded and the prime's dobby have no such line.
+//     a landed line ends with the beam's follow-up `lym beam describe <slug>`.
+//     A nil PullRequestRecorded and the prime's dobby add no follow-up.
 //   - An owed line stays in the state record and is posted every tick until a post succeeds.
 //   - A run first seen past its Land row gets no line, and a done board entry owes none by itself.
 //

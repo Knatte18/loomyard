@@ -163,7 +163,7 @@ type Deps struct {
 	// A nil BeamReady, as on the prime, holds nothing.
 	BeamReady func() (bool, error)
 	// PullRequestRecorded reads whether the beam's landing record holds a pull request.
-	// While it does, the landed line of each member of the beam goes out and carries the beam's follow-up.
+	// While it does, a landed line carries the beam's follow-up.
 	// A nil PullRequestRecorded, as on the prime, reads none.
 	PullRequestRecorded func() (bool, error)
 	// LandNotice reports whether land_notice is on for the run slug.
@@ -369,9 +369,7 @@ type daemon struct {
 	// readyRead and readyPost are the failure episodes of the ready record's read and of the member notices a beam owes.
 	readyRead logger.Episode
 	readyPost logger.Episode
-	// landNoticeBoard and landNoticePullRequest are the failure episodes of the landing notices' reads:
-	// the board and the beam's landing record.
-	landNoticeBoard       logger.Episode
+	// landNoticePullRequest is the failure episode of the landing notices' read of the beam's landing record.
 	landNoticePullRequest logger.Episode
 	// landNoticeLookup guards each run's land_notice lookup by its slug.
 	landNoticeLookup logger.EpisodeSet

@@ -1,6 +1,6 @@
 // landnotice_test.go pins the landing notice over a pass harness.
 // It covers which runs get a line under each reading of land_notice and the line's text.
-// It covers a beam with a recorded pull request adding its follow-up to its members' landed line.
+// It covers a beam with a recorded pull request adding its follow-up to a landed line.
 // It covers the owed line's posts until one succeeds, and the memory's upkeep.
 
 package dobbyengine
@@ -44,21 +44,15 @@ func TestLandNotices(t *testing.T) {
 		failLookupThroughTick int
 		// seed is the memory the state record holds for the run before the first tick, nil leaving none.
 		seed *LandNoticeState
-		// failBoardOnTick is the one-based tick whose board read fails; zero fails none.
-		failBoardOnTick int
 		// rebuildBeforeTick is the one-based tick that a new daemon over the same state record runs; zero rebuilds none.
 		rebuildBeforeTick int
-		// beam makes the dobby the one of beam b, with the run's entry a member of b.
+		// beam makes the dobby the one of beam b, with the run's board entry a member of b while the run is ahead of Land.
 		beam bool
 		// pullRequest is what b's landing record reads as holding, and failPullRequestOnTick the one-based tick whose read fails.
 		pullRequest           bool
 		failPullRequestOnTick int
 		// pullRequestFromTick, when set, makes b's landing record hold a pull request from that one-based tick on.
 		pullRequestFromTick int
-		// entryProject, when set, replaces b as the project of the run's entry.
-		entryProject string
-		// entryDone makes the run's entry read done while the run is ahead of Land.
-		entryDone bool
 		// ticks are the run listings of successive ticks.
 		ticks [][]RunView
 		// failPosts is how many posts fail before the Notice seam succeeds.
@@ -81,18 +75,14 @@ func TestLandNotices(t *testing.T) {
 		{name: "TheLookupFollowsARequestWithdrawnBetweenTicks", requestedByTick: []bool{true, false}, ticks: [][]RunView{{running}, {running}, {landed}}},
 		{name: "TheLookupFollowsARequestRaisedBetweenTicks", requestedByTick: []bool{false, true}, ticks: [][]RunView{{running}, {running}, {landed}}, want: []string{landedLine}},
 		{name: "AFailedLookupKeepsTheLastReading", requestedByTick: []bool{true, false}, failLookupOnTick: 2, ticks: [][]RunView{{running}, {running}, {landed}}, want: []string{landedLine}},
-		{name: "AFailedBoardReadKeepsTheMembership", beam: true, pullRequest: true, failBoardOnTick: 2, ticks: [][]RunView{{running}, {running}, {landed}}, want: []string{memberLandedLine}},
-		{name: "AMemberUnderAPullRequestGetsItsLineWhateverTheLookupReads", beam: true, pullRequest: true, ticks: [][]RunView{{running}, {landed}}, want: []string{memberLandedLine}},
-		{name: "AMemberWhoseLookupReadsOnGetsTheSameOneLine", beam: true, pullRequest: true, requested: true, ticks: [][]RunView{{running}, {landed}}, want: []string{memberLandedLine}},
-		{name: "ABeamWithNoPullRequestSendsNothingForAnUnrequestedMember", beam: true, ticks: [][]RunView{{running}, {landed}}},
+		{name: "AMemberWhoseLookupReadsOffGetsNoLineUnderAPullRequest", beam: true, pullRequest: true, ticks: [][]RunView{{running}, {landed}}},
+		{name: "AMemberWhoseLookupReadsOnGetsTheFollowUpUnderAPullRequest", beam: true, pullRequest: true, requested: true, ticks: [][]RunView{{running}, {landed}}, want: []string{memberLandedLine}},
 		{name: "ABeamWithNoPullRequestSendsARequestedMemberNoFollowUp", beam: true, requested: true, ticks: [][]RunView{{running}, {landed}}, want: []string{landedLine}},
-		{name: "AnUnlandedMemberLineCarriesNoFollowUp", beam: true, pullRequest: true, ticks: [][]RunView{{running}, {unlanded}}, want: []string{unlandedLine}},
+		{name: "AnUnlandedMemberLineCarriesNoFollowUp", beam: true, pullRequest: true, requested: true, ticks: [][]RunView{{running}, {unlanded}}, want: []string{unlandedLine}},
 		{name: "AFailedLandingRecordReadDecidesNothingUntilItReads", beam: true, pullRequest: true, requested: true, failPullRequestOnTick: 2, ticks: [][]RunView{{running}, {landed}, {landed}}, want: []string{memberLandedLine}},
-		{name: "AMemberLandingInTheTickThePullRequestIsRecordedGetsTheLine", beam: true, pullRequestFromTick: 2, ticks: [][]RunView{{running}, {landed}}, want: []string{memberLandedLine}},
-		{name: "ANonMemberEntryGetsNoLineUnderAPullRequest", beam: true, pullRequest: true, entryProject: "other", ticks: [][]RunView{{running}, {landed}}},
-		{name: "ADoneMemberEntryStillGetsTheLine", beam: true, pullRequest: true, entryDone: true, ticks: [][]RunView{{running}, {landed}}, want: []string{memberLandedLine}},
-		{name: "AMemberLandedWithNoCommitCarriesTheFollowUp", beam: true, pullRequest: true, ticks: [][]RunView{{running}, {landedNoCommit}}, want: []string{unknownCommitLine + memberFollowUp}},
-		{name: "AMemberLandedWithAnEmptyDiffCarriesTheFollowUp", beam: true, pullRequest: true, ticks: [][]RunView{{running}, {landedEmpty}}, want: []string{emptyLandingLine + memberFollowUp}},
+		{name: "AMemberLandingInTheTickThePullRequestIsRecordedGetsTheFollowUp", beam: true, requested: true, pullRequestFromTick: 2, ticks: [][]RunView{{running}, {landed}}, want: []string{memberLandedLine}},
+		{name: "AMemberLandedWithNoCommitCarriesTheFollowUp", beam: true, pullRequest: true, requested: true, ticks: [][]RunView{{running}, {landedNoCommit}}, want: []string{unknownCommitLine + memberFollowUp}},
+		{name: "AMemberLandedWithAnEmptyDiffCarriesTheFollowUp", beam: true, pullRequest: true, requested: true, ticks: [][]RunView{{running}, {landedEmpty}}, want: []string{emptyLandingLine + memberFollowUp}},
 		{name: "ARunNeverReadAheadOfLandWaitsPastLandForARead", requested: true, failLookupThroughTick: 3, ticks: [][]RunView{{running}, {running}, {landed}, {landed}, {landed}}, want: []string{landedLine}},
 		{name: "AnOlderMemoryHoldingARequestIsNotReadAgainPastLand", seed: &LandNoticeState{Requested: true}, ticks: [][]RunView{{landed}, {landed}}, want: []string{landedLine}},
 		{name: "AClearOnlyMemoryOfAnOlderBinaryGetsNoSecondNotice", requested: true, seed: &LandNoticeState{Requested: true, ClearOwed: true}, ticks: [][]RunView{{landed}, {landed}}},
@@ -119,23 +109,14 @@ func TestLandNotices(t *testing.T) {
 				sent = append(sent, line)
 				return nil
 			}
-			project := ""
 			if tt.beam {
-				project = "b"
-				h.d.geom.Slug = project
+				h.d.geom.Slug = "b"
 				h.d.deps.PullRequestRecorded = func() (bool, error) {
 					if tickNumber == tt.failPullRequestOnTick {
 						return false, errors.New("the landing record is unreadable")
 					}
 					return tt.pullRequest || (tt.pullRequestFromTick != 0 && tickNumber >= tt.pullRequestFromTick), nil
 				}
-			}
-			status, done := "running · Run-Shed", "done"
-			h.d.deps.Tasks = func() ([]TaskView, error) {
-				if tickNumber == tt.failBoardOnTick {
-					return nil, errors.New("the board is unreadable")
-				}
-				return append([]TaskView(nil), h.fake.tasks...), nil
 			}
 			if tt.seed != nil {
 				err := UpdateState(h.d.geom.StatePath, func(s *State) error {
@@ -156,28 +137,13 @@ func TestLandNotices(t *testing.T) {
 				}
 				h.fake.runs = runs
 				h.fake.tasks = nil
+				if tt.beam && slices.ContainsFunc(runs, func(run RunView) bool { return !run.PastLand }) {
+					status := "running · Run-Shed"
+					h.fake.tasks = []TaskView{{Slug: "task", Kind: "task", Status: &status, Project: "b"}}
+				}
 				requested = tt.requested
 				if i < len(tt.requestedByTick) {
 					requested = tt.requestedByTick[i]
-				}
-				if slices.ContainsFunc(runs, func(run RunView) bool { return !run.PastLand }) {
-					entryStatus, entryProject := &status, project
-					if tt.entryDone {
-						entryStatus = &done
-					}
-					if tt.entryProject != "" {
-						entryProject = tt.entryProject
-					}
-					h.fake.tasks = []TaskView{{Slug: "task", Kind: "task", Status: entryStatus, Project: entryProject}}
-				}
-				if tickNumber == tt.failBoardOnTick {
-					// The tick's own start step reads the board after the notice step, so a failed read fails the tick;
-					// the notice step has run by then.
-					h.clock.sleep(context.Background(), 10*time.Second)
-					if err := h.d.tick(context.Background(), h.clock.now()); err == nil {
-						t.Fatalf("tick() = nil on a failed board read; want the start step's error")
-					}
-					continue
 				}
 				h.tick(false)
 			}
