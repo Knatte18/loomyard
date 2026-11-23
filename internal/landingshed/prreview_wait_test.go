@@ -992,6 +992,57 @@ func TestPRReview_Wait(t *testing.T) {
 			},
 		},
 		{
+			name: "ASessionThatEndsWhileTheReviewIsOpenHaltsNamingTheResume", record: seed("h1"), scripts: statusScript(open, open),
+			setup: func(w *waitWorld) {
+				w.onSleep = func(w *waitWorld, n int) {
+					if n == 1 {
+						sessionsOf(w.deps).live["guid-1"] = false
+						// The next wake is a poll away, so it reads the status and halts after judging it.
+						w.now = w.now.Add(prPollInterval)
+					}
+					// A wait that misses the ended session is cancelled, so the row fails instead of hanging.
+					if n >= 3 {
+						w.cancel()
+					}
+				}
+			},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"PR-Review session of pull request #7 ended", "lym loom resume"},
+			check: func(t *testing.T, w *waitWorld, _ string) {
+				assertSessionCounts(t, w.deps, 1, 0)
+			},
+		},
+		{
+			name: "AFailedLivenessReadKeepsWaitingAndLogsOnce", record: seed("h1"), scripts: statusScript(open),
+			setup: func(w *waitWorld) {
+				w.onSleep = func(w *waitWorld, n int) {
+					if n == 1 {
+						sessionsOf(w.deps).liveErr = errors.New("reed down")
+					}
+					// Every wake from here is a poll away, so each reads the status and then the liveness.
+					w.now = w.now.Add(prPollInterval)
+					if n >= 3 {
+						w.cancel()
+					}
+				}
+			},
+			wantErr: context.Canceled,
+			check: func(t *testing.T, w *waitWorld, logs string) {
+				if got := strings.Count(logs, "could not read whether the PR-Review session is live"); got != 1 {
+					t.Errorf("liveness warnings = %d; want one for the whole episode of failed reads", got)
+				}
+				assertSessionCounts(t, w.deps, 1, 0)
+			},
+		},
+		{
+			name: "AWaitEnteredOnAnEndedReviewKeepsWaitingThroughATransientPollFailure", record: seed("h1", withReviewEnded, withLiveStrand),
+			scripts: statusScript(scriptedCall{err: context.DeadlineExceeded}),
+			setup:   func(w *waitWorld) { w.cancelAfter(2) },
+			wantErr: context.Canceled,
+			check: func(t *testing.T, w *waitWorld, _ string) {
+				assertSessionCounts(t, w.deps, 0, 0)
+			},
+		},
+		{
 			name: "TheMarkIsSetAtTheStartAndAfterAGateAndClearedOnDone", record: seed("h1"), scripts: statusScript(approvedAt("h2", false)), head: "h2",
 			setup:       func(w *waitWorld) { w.withGateCommand() },
 			wantOutcome: shedengine.Done, gatePushes: 1,
@@ -1101,7 +1152,7 @@ func TestPRReview_WaitWithNoLastSetTextTakesTheDescriptionAsTheBaselineAndEditsN
 	row := NewPRReview("PR-Review", w.deps)
 	row.gate.verify = w.tree.verify
 
-	err := row.wait(ctx, w.api, rec, nil, time.Time{}, prText{}).err
+	err := row.wait(ctx, w.api, rec, nil, time.Time{}, prText{}, false).err
 
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("wait() error = %v; want one wrapping %v", err, context.Canceled)

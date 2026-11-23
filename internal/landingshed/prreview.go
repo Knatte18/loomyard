@@ -46,6 +46,7 @@ const (
 // When it changes, the wait sets the title and body again.
 // The wait ends when the pull request is merged or approved, or closed or continued by the operator.
 // It also ends when the agent has sent findings back: the row reroutes to Code-Bouncer with the findings file as output.
+// A session that ends while the review is open halts the row, and the resume resumes the session.
 // It takes no parent lock.
 type PRReview struct {
 	name string
@@ -302,7 +303,7 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) *ending {
 		// The operator already ended this review.
 		// A head other than the gated head means commits were added that need review, so the review starts afresh.
 		if head == rec.GatedHead {
-			return p.wait(ctx, api, rec, nil, time.Time{}, prText{})
+			return p.wait(ctx, api, rec, nil, time.Time{}, prText{}, false)
 		}
 		if err := removePRRecord(pr, p.name); err != nil {
 			return &ending{err: err}
@@ -336,12 +337,13 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) *ending {
 		if status.State != pullrequest.StateOpen {
 			// A merged pull request has nothing left to discuss, so only a closed one gets a session.
 			// The session is for the agent to clean the tree under a continue flag.
-			if status.State != pullrequest.StateMerged {
+			keepsSession := status.State != pullrequest.StateMerged
+			if keepsSession {
 				if rec, err = p.ensureSession(ctx, rec); err != nil {
 					return &ending{err: err}
 				}
 			}
-			return p.wait(ctx, api, rec, entryStatus, entryReadAt, prText{})
+			return p.wait(ctx, api, rec, entryStatus, entryReadAt, prText{}, keepsSession)
 		}
 		ref = pullrequest.Ref{Number: rec.Number, URL: rec.URL}
 	} else {
@@ -366,7 +368,7 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) *ending {
 		return &ending{err: err}
 	}
 	p.askParentReview(rec)
-	return p.wait(ctx, api, rec, entryStatus, entryReadAt, text)
+	return p.wait(ctx, api, rec, entryStatus, entryReadAt, text, true)
 }
 
 // askParentReview asks the parent orch to review the open pull request rec records.
@@ -591,6 +593,11 @@ type prWaitState struct {
 	// editWarned is set after a transient failure of the title and body edit logged its Warn.
 	// The next edit that succeeds clears it.
 	editWarned bool
+	// keepsSession is set when the call started or reused the review's session, so a wake halts once it is gone.
+	keepsSession bool
+	// liveWarned is set after a failed read of whether the session is live logged its Warn.
+	// The next read that succeeds clears it.
+	liveWarned bool
 }
 
 // wait holds the call on the pull request until the review ends.
@@ -607,15 +614,18 @@ type prWaitState struct {
 // rec is the record the wait starts from.
 // entryStatus and entryReadAt are the status read before the wait and its time, nil and zero when none was read.
 // synced is the title and body set before the wait, zero when none was set.
+// keepsSession is set when the call started or reused the review's session.
+// A wake that reads the status and leaves the review open halts once that session is no longer live.
+// Nothing else would end a review whose agent is gone.
 // A cancelled context is an error.
-func (p *PRReview) wait(ctx context.Context, api pullrequest.API, rec pullrequest.Record, entryStatus *pullrequest.Status, entryReadAt time.Time, synced prText) *ending {
+func (p *PRReview) wait(ctx context.Context, api pullrequest.API, rec pullrequest.Record, entryStatus *pullrequest.Status, entryReadAt time.Time, synced prText, keepsSession bool) *ending {
 	label := fmt.Sprintf("PR #%d", rec.Number)
 	p.gate.markWait(label)
 	defer p.gate.markWait("")
 	changes, stopWatch := p.deps.PullRequest.RecordChanges()
 	defer stopWatch()
 
-	state := prWaitState{continueSeen: rec.Continue, pending: entryStatus, lastPoll: entryReadAt, synced: synced}
+	state := prWaitState{continueSeen: rec.Continue, pending: entryStatus, lastPoll: entryReadAt, synced: synced, keepsSession: keepsSession}
 	for {
 		if end := p.wake(ctx, api, &state, label); end != nil {
 			return end
@@ -650,6 +660,7 @@ func (p *PRReview) pause(ctx context.Context, interval time.Duration, wokeAt tim
 
 // wake runs one wake of the review:
 // it reads the task head and the pull request record, gates the head when one is due, and judges the review.
+// A wake that reads the status and leaves the review open checks that the session the call keeps is still live.
 // It returns nil when the wait goes on, and otherwise how the call ends.
 func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitState, label string) *ending {
 	pr := p.deps.PullRequest
@@ -724,11 +735,37 @@ func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitS
 		if err = p.resumeSession(ctx); err != nil {
 			return &ending{err: err}
 		}
+	} else if end := p.haltOnEndedSession(ctx, state, rec); end != nil {
+		return end
 	}
 	if stayOpenMail != "" {
 		p.mailStayOpen(stayOpenMail)
 	}
 	return nil
+}
+
+// haltOnEndedSession halts the call when the call keeps a session for an open review and that session is no longer live.
+// Its agent is the one that commits fixes and ends the review, so a wait without it would never end.
+// The resume re-enters the row, which resumes the recorded session.
+// A failed read of whether the session is live logs one Warn per episode and lets the wait go on.
+// It returns nil while the wait goes on.
+func (p *PRReview) haltOnEndedSession(ctx context.Context, state *prWaitState, rec pullrequest.Record) *ending {
+	if !state.keepsSession {
+		return nil
+	}
+	live, err := p.deps.PullRequest.SessionLive(rec.StrandGUID)
+	if err != nil {
+		if !state.liveWarned {
+			logger.Warn("landingshed: could not read whether the PR-Review session is live, the wait goes on", "row", p.name, "cause", err)
+			state.liveWarned = true
+		}
+		return nil
+	}
+	state.liveWarned = false
+	if live {
+		return nil
+	}
+	return halt(ctx, p.name, fmt.Sprintf("the PR-Review session of pull request #%d ended while the review was open; way forward: run lym loom resume, which resumes the recorded session", rec.Number))
 }
 
 // mailStayOpen posts line to the PR-Review session's strand as the record names it now.

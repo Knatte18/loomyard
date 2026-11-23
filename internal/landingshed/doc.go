@@ -21,6 +21,7 @@
 // Under a recorded autonomy of true it is non-interactive, and the parent orch reviews through recorded asks.
 // The session runs under the publish shell guard: it cannot push, merge, close or open a pull request.
 // A wait on the pull request has no timeout.
+// A session that ends while the review is open halts the row, and `lym loom resume` resumes it.
 // The agent records the operator's ending and a send-back to Code-Review.
 // It does so with `lym loom pr-continue` and `lym loom pr-findings`.
 // A transient push or GitHub failure is an error the driver re-steps.
