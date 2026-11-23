@@ -62,6 +62,7 @@ func DobbyGeometry(prime *lymcwd.Location, worktree string) (dobbyengine.Geometr
 		OutPath:       filepath.Join(beamDir, dobbyengine.OutFileName),
 		PrimeLogPath:  filepath.Join(DobbyBeamDir(prime), dobbyengine.LogFileName),
 		TidyDir:       filepath.Join(beamDir, dobbyengine.TidyDirName),
+		DescribeDir:   filepath.Join(beamDir, dobbyengine.DescribeDirName),
 		PrimeRunsDir:  shedrun.RunsRoot(prime),
 		LymExecutable: executable,
 		MoveRecords:   moveRecords,

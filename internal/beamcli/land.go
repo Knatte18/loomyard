@@ -39,9 +39,12 @@ import (
 // Only the `merge-parent` verb calls these four.
 // DraftDescription writes a starting point for the beam's change description and returns its path.
 // It refuses when a description already stands.
-// RecordDescription validates the change description the orch wrote and stamps the landing record's DescribedAt with at.
+// RecordDescription validates the change description and stamps the landing record's DescribedAt with at.
+// With from empty it records the description the orch wrote in place.
+// Otherwise it first writes the draft at from over the description.
+// The description stands as it was when the draft is refused or the commit fails.
 // It commits the landing directory and returns the description's path.
-// Only the `describe` verb calls these two.
+// Only the `describe` verb and the description rewrite after a member landing call these two.
 // PullRequestSide reads the beam pair's origin facts: its branch and its parent branch.
 // It uses the pull request API when the origin allows one.
 // PushBeam pushes the beam branch and returns the head it pushed.
@@ -84,7 +87,7 @@ type landDeps struct {
 	HeldSlugs      func() ([]string, error)
 
 	DraftDescription  func(slug string) (path string, err error)
-	RecordDescription func(slug string, at time.Time) (path string, err error)
+	RecordDescription func(slug, from string, at time.Time) (path string, err error)
 
 	PullRequestSide func(slug string) (beamPullRequestSide, error)
 	PushBeam        func(slug string) (head string, err error)

@@ -15,8 +15,8 @@ import (
 )
 
 // TestRun_NoPassWhileAMoveStands drives ticks with a move record present and then removed.
-// While the record stands, no pass, task or tidy agent starts, though a landing is still counted.
-// The next tick starts the due pass, the ready task and the tidy agent.
+// While the record stands, no pass, task, tidy agent or describer agent starts, though a landing is still counted.
+// The next tick starts the due pass, the ready task, the tidy agent and the describer agent.
 func TestRun_NoPassWhileAMoveStands(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -30,9 +30,14 @@ func TestRun_NoPassWhileAMoveStands(t *testing.T) {
 	stencilkit.SeedInto(t, stencils)
 	h.geom.MoveRecords = []string{record}
 	h.geom.TidyDir = filepath.Join(filepath.Dir(h.geom.StatePath), TidyDirName)
+	h.geom.DescribeDir = filepath.Join(filepath.Dir(h.geom.StatePath), DescribeDirName)
+	h.geom.Slug, h.geom.WorktreeRoot = "beam", beamWorktreeRoot(t)
 
 	passes, fullPasses := map[string]int{}, map[string]int{}
 	shuttle := &tidyShuttleFake{}
+	describeShuttle := &tidyShuttleFake{}
+	h.deps.PullRequestRecorded = func() (bool, error) { return true, nil }
+	h.deps.BeamDescribe = fakeBeamDescribeDeps(describeShuttle)
 	landingReads := 0
 	h.deps.Runs = func() ([]RunView, error) { return []RunView{runningRun("due")}, nil }
 	h.deps.SpawnPass = func(slug string, continuePass, _ bool) (<-chan PassExit, error) {
@@ -68,8 +73,8 @@ func TestRun_NoPassWhileAMoveStands(t *testing.T) {
 	h.perTick = func(n int) error {
 		switch n {
 		case 1, 2:
-			if len(passes) != 0 || len(shuttle.started) != 0 {
-				t.Errorf("after tick %d with the record standing, passes = %v and tidy agents = %d; want none", n, passes, len(shuttle.started))
+			if len(passes) != 0 || len(shuttle.started) != 0 || len(describeShuttle.started) != 0 {
+				t.Errorf("after tick %d with the record standing, passes = %v, tidy agents = %d and describer agents = %d; want none", n, passes, len(shuttle.started), len(describeShuttle.started))
 			}
 			if n == 2 {
 				if err := os.Remove(record); err != nil {
@@ -77,8 +82,8 @@ func TestRun_NoPassWhileAMoveStands(t *testing.T) {
 				}
 			}
 		case 3:
-			if passes["due"] != 1 || passes["fresh"] != 1 || len(shuttle.started) != 1 {
-				t.Errorf("after tick 3 with the record gone, passes = %v and tidy agents = %d; want one pass of the due run, one first pass of the ready task and one tidy agent", passes, len(shuttle.started))
+			if passes["due"] != 1 || passes["fresh"] != 1 || len(shuttle.started) != 1 || len(describeShuttle.started) != 1 {
+				t.Errorf("after tick 3 with the record gone, passes = %v, tidy agents = %d and describer agents = %d; want one pass of the due run, one first pass of the ready task, one tidy agent and one describer agent", passes, len(shuttle.started), len(describeShuttle.started))
 			}
 		}
 		return nil

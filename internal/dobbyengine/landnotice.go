@@ -1,7 +1,6 @@
 // landnotice.go implements the landing notice: one creel line to the nearest live orch.
 // It goes out once a run seen ahead of its Land row lands or ends without landing.
 // It goes only when the run's land_notice setting read on, as read ahead of Land or, when that never read, after it.
-// While a beam's pull request is recorded, a landed line carries the beam's follow-up.
 
 package dobbyengine
 
@@ -50,16 +49,13 @@ func (s LandNoticeState) read() bool {
 // The reading of land_notice comes from Deps.LandNotice.
 // A failed read keeps the run's last reading and is logged once per episode.
 // A run past Land that was never read is read again at each tick, and its notice waits for a read to succeed.
-// A landed line it decides carries the beam's follow-up while the beam's pull request is recorded.
-// A failed read of the landing record decides nothing this tick and is logged once per episode.
 func (d *daemon) landNotices(ctx context.Context, now time.Time, runs []RunView) {
-	followUp, followUpRead := d.pullRequestFollowUp()
 	requests := d.readLandNoticeRequests(runs, d.unreadLandNoticeRuns(runs))
 	err := UpdateState(d.geom.StatePath, func(s *State) error {
 		if s.LandNotices == nil {
 			s.LandNotices = map[string]LandNoticeState{}
 		}
-		rememberRuns(s.LandNotices, runs, requests, followUpRead, followUp)
+		rememberRuns(s.LandNotices, runs, requests)
 		return nil
 	})
 	if err != nil {
@@ -114,14 +110,13 @@ func (d *daemon) unreadLandNoticeRuns(runs []RunView) map[string]bool {
 
 // rememberRuns refreshes memory from the runs listed this tick.
 // A run is remembered with the land_notice reading in requests, when it has one.
-// While decides is set, a remembered run past its Land row that was read at least once gets its notice decided:
+// A remembered run past its Land row that was read at least once gets its notice decided:
 // a line when its remembered reading is on, and none when it is off.
 // A remembered run past Land that was never read stays undecided until a read succeeds.
-// A landed line ends with followUp, empty for none.
 // A run that owes nothing after this is forgotten, and so is one whose line an older binary had already posted.
 // A run first seen past its Land row is never remembered.
 // The memory of a run not listed this tick is dropped unless it owes something.
-func rememberRuns(memory map[string]LandNoticeState, runs []RunView, requests map[string]bool, decides bool, followUp string) {
+func rememberRuns(memory map[string]LandNoticeState, runs []RunView, requests map[string]bool) {
 	listed := make(map[string]bool, len(runs))
 	for _, run := range runs {
 		listed[run.Slug] = true
@@ -141,11 +136,11 @@ func rememberRuns(memory map[string]LandNoticeState, runs []RunView, requests ma
 			continue
 		}
 		memory[run.Slug] = note
-		if !note.read() || !decides {
+		if !note.read() {
 			continue
 		}
 		if note.Requested {
-			note.Line = landNoticeLine(run, followUp)
+			note.Line = landNoticeLine(run)
 		}
 		if !note.owed() {
 			delete(memory, run.Slug)
@@ -158,27 +153,6 @@ func rememberRuns(memory map[string]LandNoticeState, runs []RunView, requests ma
 			delete(memory, slug)
 		}
 	}
-}
-
-// pullRequestFollowUp returns the follow-up a landed line carries.
-// It is set while the beam's landing record holds a pull request.
-// The follow-up asks the orch to add the landing to the change description and to run `lym beam describe <slug>`.
-// It is empty while no pull request is recorded, for the prime's dobby, and for a dobby with no PullRequestRecorded seam.
-// It also reports whether the read succeeded; a failed read is logged once per episode.
-func (d *daemon) pullRequestFollowUp() (string, bool) {
-	if d.deps.PullRequestRecorded == nil || d.geom.Slug == "" {
-		return "", true
-	}
-	recorded, err := d.deps.PullRequestRecorded()
-	if err != nil {
-		d.landNoticePullRequest.Fail("dobbyengine: the beam's landing record is unreadable; no landing notice is decided", "worktree", d.geom.WorktreeName, "error", err)
-		return "", false
-	}
-	d.landNoticePullRequest.Recover("dobbyengine: the beam's landing record reads again; landing notices are decided", "worktree", d.geom.WorktreeName)
-	if !recorded {
-		return "", true
-	}
-	return fmt.Sprintf("; add it to the change description, then run `lym beam describe %s`, which updates the pull request", d.geom.Slug), true
 }
 
 // settleLandNotices posts each owed line through Deps.Notice and drops a memory once it owes nothing.
@@ -216,20 +190,20 @@ func (d *daemon) dropLandNotice(slug string) {
 }
 
 // landNoticeLine is the line a run's landing notice posts.
-// It names the slug and the outcome, and for a landing the head of its landing commit followed by followUp.
+// It names the slug and the outcome, and for a landing the head of its landing commit.
 // A landing that changed no code path on the parent branch says so in place of naming its commit as the landing.
-func landNoticeLine(run RunView, followUp string) string {
+func landNoticeLine(run RunView) string {
 	if !run.Landed {
 		return fmt.Sprintf("%s %s: %s; lym batten status %s shows the run", runNoticePrefix, run.Slug, landNoticeOutcome(run), run.Slug)
 	}
 	if run.LandingCommit == "" {
-		return fmt.Sprintf("%s %s: landed, commit unknown%s", runNoticePrefix, run.Slug, followUp)
+		return fmt.Sprintf("%s %s: landed, commit unknown", runNoticePrefix, run.Slug)
 	}
 	commit := run.LandingCommit[:min(len(run.LandingCommit), landingCommitWidth)]
 	if run.EmptyLanding {
-		return fmt.Sprintf("%s %s: landed with an empty diff: no file of its parent branch changed, which stays at %s%s", runNoticePrefix, run.Slug, commit, followUp)
+		return fmt.Sprintf("%s %s: landed with an empty diff: no file of its parent branch changed, which stays at %s", runNoticePrefix, run.Slug, commit)
 	}
-	return fmt.Sprintf("%s %s: landed as %s%s", runNoticePrefix, run.Slug, commit, followUp)
+	return fmt.Sprintf("%s %s: landed as %s", runNoticePrefix, run.Slug, commit)
 }
 
 // landNoticeOutcome names how a run past its Land row ended.

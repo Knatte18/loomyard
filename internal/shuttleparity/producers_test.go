@@ -102,6 +102,7 @@ func producers(t *testing.T, fx parityFixture) []producer {
 		{"internal/landingshed#PRReview.sessionSpec", buildPRReview},
 		{"internal/loomcli#driverSpec", buildDriver},
 		{"internal/dobbyengine#TidySpec", buildBoardTidy},
+		{"internal/dobbyengine#BeamDescribeSpec", buildBeamDescribe},
 		{"internal/mergeresolve#buildConflictSpec", buildConflict},
 		{"internal/shedarbiter#Spec", buildArbiter},
 		{"internal/weaverengine#attemptSpec", buildWeaverAttempt},
@@ -311,6 +312,28 @@ func buildBoardTidy(fx parityFixture, engine string) (shuttleengine.Spec, error)
 	return promptSpec(engine, prompt, shuttleengine.Spec{
 		ConfigRole: agentconfig.RoleBoardTidy,
 		Role:       dobbyengine.BoardTidyRole,
+	}), nil
+}
+
+func buildBeamDescribe(fx parityFixture, engine string) (shuttleengine.Spec, error) {
+	env := fx.env
+	prompt, err := dobbyengine.BeamDescribePrompt(env.StencilsDir, engine, dobbyengine.BeamDescribePromptInput{
+		Slug:      env.Slug,
+		DraftPath: standInPath(env, "describe-draft.md"),
+		Parent:    env.ParentName,
+		Facts: dobbyengine.BeamDescribeFacts{
+			DescriptionPath: standInPath(env, "summary.md"),
+			Branch:          "beam-stand-in",
+			ParentBranch:    "main",
+			Changes:         "- stand-in change",
+		},
+	})
+	if err != nil {
+		return shuttleengine.Spec{}, err
+	}
+	return promptSpec(engine, prompt, shuttleengine.Spec{
+		ConfigRole: agentconfig.RoleDescriber,
+		Role:       dobbyengine.BeamDescribeRole,
 	}), nil
 }
 

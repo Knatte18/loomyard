@@ -631,6 +631,13 @@ var TwillJudgePlain []byte
 //go:embed beam/beam-template-board-tidy.md
 var BeamTemplateBoardTidy []byte
 
+// BeamTemplateDescribe is the beam describer agent's shipped-default opening prompt.
+// It opens the cold session a beam's dobby spawns after a member landing under a recorded pull request.
+// The session rewrites the beam's change description as it now stands.
+//
+//go:embed beam/beam-template-describe.md
+var BeamTemplateDescribe []byte
+
 // RetroTemplateTask is the retro task's shipped-default board body.
 // It is the goal of the darn task `lym retro` files: the scripts to run, the reading cap, the questions and the report.
 //
@@ -1059,6 +1066,7 @@ var entries = []registryEntry{
 	{"engine/claude/question-tool", &EngineClaudeQuestionTool},
 	{"engine/codex/question-tool", &EngineCodexQuestionTool},
 	{"beam-template-board-tidy", &BeamTemplateBoardTidy},
+	{"beam-template-describe", &BeamTemplateDescribe},
 	{"retro-template-task", &RetroTemplateTask},
 	{"gatefix-frame-cold", &GatefixFrameCold},
 	{"gatefix-body-darn", &GatefixBodyDarn},
@@ -1101,6 +1109,7 @@ var roleOpeningStencils = map[string][]string{
 	"drift-expect":         {"drift-template-expect"},
 	"drift-judge":          {"drift-template-judge"},
 	"board-tidy":           {"beam-template-board-tidy"},
+	"beam-describe":        {"beam-template-describe"},
 }
 
 // askOperatorPhrases is the closed list of phrases that tell an agent to put a question to the operator in its pane.

@@ -1,6 +1,6 @@
 // dobbydeps.go fills the seams of dobbyengine.Run over a hub.
 // It covers the runs and tasks it reads, the pass it spawns, and the notices it sends.
-// It also covers the board tidy it sends, and the teardown of the leftover pairs it starts.
+// It also covers the board tidy it sends, a beam's description rewrite, and the teardown of the leftover pairs it starts.
 // It also covers the hibernate request the prime's dobby carries, and the registration of the dobby process itself.
 
 package beamcli
@@ -33,6 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fronttask"
 	"github.com/Knatte18/loomyard/internal/hibernatecli"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -51,6 +52,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/slackengine"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/tendercli"
 	"github.com/Knatte18/loomyard/internal/tenderengine"
 )
@@ -66,6 +68,10 @@ const (
 	defaultNoticeQuiet = 30 * time.Minute
 	// tidyModelSpec is the model spec the board-tidy agent runs on.
 	tidyModelSpec = "sonnet[medium]"
+	// describeGateName labels the gate over the describer agent's draft.
+	describeGateName = "Beam-Describe-Gate"
+	// describeGateAttempts is how many times the gate re-prompts the describer agent over a draft with a finding.
+	describeGateAttempts = 3
 	// passErrorTailBytes bounds how much of a pass's output dobby keeps to read its error text from.
 	passErrorTailBytes = 16 << 10
 	// passErrorTextRunes bounds the error text of a pass that printed no envelope.
@@ -294,7 +300,7 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 	}
 	if geom.Slug != "" {
 		// The removed worktree's config is gone by the time this stops a strand, so the runner is built over the prime.
-		deps.PrimeTidyShuttle = &runnerTidyShuttle{worktree: prime}
+		deps.PrimeTidyShuttle = &runnerAgentShuttle{worktree: prime}
 		deps.CanLand = func() (dobbyengine.LandReading, error) { return beamLandReading(prime, geom.Slug) }
 		deps.Land = func() error {
 			_, err := land(hubLandDeps(prime), geom.Slug)
@@ -305,14 +311,83 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 			record, found, err := pawlengine.ReadLanding(loomengine.BeamLandingPath(worktree), loomengine.BeamLandingLockPath(worktree), geom.Slug)
 			return found && record.PullRequest != nil, err
 		}
+		if describe, err := beamDescribeDeps(prime, worktree, geom.Slug, dirs); err != nil {
+			logger.Warn("beamcli: the describer agent's model or timeout does not resolve; the beam's description rewrite is off", "beam", geom.Slug, "error", err)
+		} else {
+			deps.BeamDescribe = describe
+		}
 	}
-	if choice, err := resolveTidyModel(dirs); err != nil {
+	if choice, err := resolveModel(dirs, tidyModelSpec); err != nil {
 		logger.Warn("beamcli: the board-tidy model does not resolve; the board tidy is off", "spec", tidyModelSpec, "error", err)
 	} else {
 		deps.TidyModel = choice
-		deps.TidyShuttle = &runnerTidyShuttle{worktree: worktree}
+		deps.TidyShuttle = &runnerAgentShuttle{worktree: worktree}
 	}
 	return deps, nil
+}
+
+// beamDescribeDeps fills the description rewrite's seams for the beam slug over the hub of prime.
+// beam is the beam's worktree.
+// The describer agent runs on landing.yaml's describe model for its describe_timeout_min.
+// The Describe row's session runs on the same two keys.
+// Its shuttle run is gated on its draft passing as a change description, so a draft with a finding re-prompts it.
+func beamDescribeDeps(prime, beam *lymcwd.Location, slug string, dirs configengine.Dirs) (dobbyengine.BeamDescribeDeps, error) {
+	cfg, err := landingshed.LoadConfig(dirs, "landing")
+	if err != nil {
+		return dobbyengine.BeamDescribeDeps{}, err
+	}
+	choice, err := resolveModel(dirs, cfg.Describe)
+	if err != nil {
+		return dobbyengine.BeamDescribeDeps{}, err
+	}
+	return dobbyengine.BeamDescribeDeps{
+		Shuttle:  &runnerAgentShuttle{worktree: beam, gate: describeGate},
+		Model:    choice,
+		Timeout:  time.Duration(cfg.DescribeTimeoutMin) * time.Minute,
+		Facts:    func() (dobbyengine.BeamDescribeFacts, error) { return beamDescribeFacts(prime, beam, slug) },
+		Findings: descriptionFindings,
+		Record: func(ctx context.Context, draftPath string) (bool, error) {
+			_, err := rewriteDescription(ctx, hubLandDeps(prime), slug, draftPath)
+			var afterRecord afterRecordError
+			return errors.As(err, &afterRecord), err
+		},
+	}, nil
+}
+
+// beamDescribeFacts reads what the describer agent's prompt names about the beam slug, whose worktree is beam:
+// its recorded description, its branch, its parent branch and the commits on its line that the parent lacks.
+// The commits leave out the records-only ones, as the beam's draft does.
+func beamDescribeFacts(prime, beam *lymcwd.Location, slug string) (dobbyengine.BeamDescribeFacts, error) {
+	origin, found, err := fabricengine.ReadOriginFor(prime, slug)
+	if err != nil {
+		return dobbyengine.BeamDescribeFacts{}, err
+	}
+	if !found {
+		return dobbyengine.BeamDescribeFacts{}, fmt.Errorf("the pair of the beam %s has no readable origin record; way forward: run `lym fabric reconcile` to restore its records worktree", slug)
+	}
+	pair, err := fabricengine.Open(beam)
+	if err != nil {
+		return dobbyengine.BeamDescribeFacts{}, err
+	}
+	branch, err := pair.CurrentBranch()
+	if err != nil {
+		return dobbyengine.BeamDescribeFacts{}, err
+	}
+	commits, err := beamDraftDeps(beam, slug, origin.ParentBranch).Commits()
+	if err != nil {
+		return dobbyengine.BeamDescribeFacts{}, err
+	}
+	return dobbyengine.BeamDescribeFacts{
+		DescriptionPath: summaryparser.Path(loomengine.LandingDir(beam)),
+		Branch:          branch,
+		ParentBranch:    origin.ParentBranch,
+		Changes:         landingshed.RenderBeamChanges(commits),
+	}, nil
+}
+
+// describeGate is the gate the describer agent's run carries over its one output file, the draft.
+func describeGate(spec shuttleengine.Spec) shuttleengine.GateSpec {
+	return shuttleengine.GateSpec{{Name: describeGateName, Gate: landingshed.NewDescriptionGate(spec.OutputFiles[0]), Attempts: describeGateAttempts}}
 }
 
 // tearDownLeftovers tears down each of pairs by its kind in a goroutine of its own.
@@ -712,9 +787,9 @@ func passErrorText(printed []byte, waitErr error) string {
 	return ""
 }
 
-// resolveTidyModel resolves the board-tidy agent's model spec through the hub's model registry.
-func resolveTidyModel(dirs configengine.Dirs) (shuttleengine.ModelChoice, error) {
-	spec, err := modelspec.Parse(tidyModelSpec)
+// resolveModel resolves the model spec through the hub's model registry.
+func resolveModel(dirs configengine.Dirs, spec string) (shuttleengine.ModelChoice, error) {
+	parsed, err := modelspec.Parse(spec)
 	if err != nil {
 		return shuttleengine.ModelChoice{}, err
 	}
@@ -722,43 +797,49 @@ func resolveTidyModel(dirs configengine.Dirs) (shuttleengine.ModelChoice, error)
 	if err != nil {
 		return shuttleengine.ModelChoice{}, err
 	}
-	resolved, err := registry.Resolve(spec)
+	resolved, err := registry.Resolve(parsed)
 	if err != nil {
 		return shuttleengine.ModelChoice{}, err
 	}
 	return shuttleengine.NewModelChoice(resolved), nil
 }
 
-// runnerTidyShuttle adapts the shuttle runner over the dobby's worktree to dobbyengine.TidyShuttle.
-// The runner is built on the first start, so a config that does not load fails the tidy and never the dobby.
-type runnerTidyShuttle struct {
+// runnerAgentShuttle adapts the shuttle runner over a worktree to dobbyengine.AgentShuttle, for the agents dobby spawns.
+// The runner is built on the first start, so a config that does not load fails the agent's step and never the dobby.
+type runnerAgentShuttle struct {
 	worktree *lymcwd.Location
-	once     sync.Once
-	runner   *shuttleengine.Runner
-	err      error
+	// gate builds the gate a started run carries from its spec; nil starts the run ungated.
+	gate   func(spec shuttleengine.Spec) shuttleengine.GateSpec
+	once   sync.Once
+	runner *shuttleengine.Runner
+	err    error
 }
 
 // Start launches spec in a fresh window and returns its strand's GUID once the agent is running.
-// The run is waited on in the background, so shuttle enforces the spec's timeout and settles the run.
-func (s *runnerTidyShuttle) Start(spec shuttleengine.Spec) (string, error) {
+// The run is waited on in the background, so shuttle enforces the spec's timeout and gate and settles the run.
+func (s *runnerAgentShuttle) Start(spec shuttleengine.Spec) (string, error) {
 	s.once.Do(func() { s.runner, s.err = battencli.ShuttleRunner(s.worktree) })
 	if s.err != nil {
 		return "", s.err
 	}
-	run, err := s.runner.StartGated(spec, nil)
+	var gate shuttleengine.GateSpec
+	if s.gate != nil {
+		gate = s.gate(spec)
+	}
+	run, err := s.runner.StartGated(spec, gate)
 	if err != nil {
 		return "", err
 	}
 	go func() {
 		result, err := run.Wait()
-		logger.Debug("beamcli: the board-tidy agent's run ended", "outcome", result.Outcome, "error", err)
+		logger.Debug("beamcli: a dobby agent's run ended", "role", spec.Role, "outcome", result.Outcome, "error", err)
 	}()
 	return run.StrandGUID(), nil
 }
 
 // EngineName names the engine choice launches on under the runner's engine set.
-// A runner that cannot be built returns the build's error, so the tidy reports it instead of rendering a prompt.
-func (s *runnerTidyShuttle) EngineName(choice shuttleengine.ModelChoice) (string, error) {
+// A runner that cannot be built returns the build's error, so the step reports it instead of rendering a prompt.
+func (s *runnerAgentShuttle) EngineName(choice shuttleengine.ModelChoice) (string, error) {
 	s.once.Do(func() { s.runner, s.err = battencli.ShuttleRunner(s.worktree) })
 	if s.err != nil {
 		return "", s.err
@@ -767,7 +848,7 @@ func (s *runnerTidyShuttle) EngineName(choice shuttleengine.ModelChoice) (string
 }
 
 // StopStrand ends the strand guid names through shuttle's stop verb.
-func (s *runnerTidyShuttle) StopStrand(guid string) error {
+func (s *runnerAgentShuttle) StopStrand(guid string) error {
 	s.once.Do(func() { s.runner, s.err = battencli.ShuttleRunner(s.worktree) })
 	if s.err != nil {
 		return s.err

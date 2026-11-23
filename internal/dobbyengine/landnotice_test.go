@@ -1,6 +1,6 @@
 // landnotice_test.go pins the landing notice over a pass harness.
 // It covers which runs get a line under each reading of land_notice and the line's text.
-// It covers a beam with a recorded pull request adding its follow-up to a landed line.
+// It covers a member landing under a recorded pull request, whose line carries no follow-up.
 // It covers the owed line's posts until one succeeds, and the memory's upkeep.
 
 package dobbyengine
@@ -28,8 +28,6 @@ func TestLandNotices(t *testing.T) {
 	const landedLine = "[dobby notice] task: landed as 0123456789ab"
 	const emptyLandingLine = "[dobby notice] task: landed with an empty diff: no file of its parent branch changed, which stays at 0123456789ab"
 	const unknownCommitLine = "[dobby notice] task: landed, commit unknown"
-	const memberFollowUp = "; add it to the change description, then run `lym beam describe b`, which updates the pull request"
-	const memberLandedLine = landedLine + memberFollowUp
 	const unlandedLine = "[dobby notice] task: ended without landing; lym batten status task shows the run"
 
 	tests := []struct {
@@ -48,11 +46,8 @@ func TestLandNotices(t *testing.T) {
 		rebuildBeforeTick int
 		// beam makes the dobby the one of beam b, with the run's board entry a member of b while the run is ahead of Land.
 		beam bool
-		// pullRequest is what b's landing record reads as holding, and failPullRequestOnTick the one-based tick whose read fails.
-		pullRequest           bool
-		failPullRequestOnTick int
-		// pullRequestFromTick, when set, makes b's landing record hold a pull request from that one-based tick on.
-		pullRequestFromTick int
+		// pullRequest is what b's landing record reads as holding.
+		pullRequest bool
 		// ticks are the run listings of successive ticks.
 		ticks [][]RunView
 		// failPosts is how many posts fail before the Notice seam succeeds.
@@ -76,13 +71,7 @@ func TestLandNotices(t *testing.T) {
 		{name: "TheLookupFollowsARequestRaisedBetweenTicks", requestedByTick: []bool{false, true}, ticks: [][]RunView{{running}, {running}, {landed}}, want: []string{landedLine}},
 		{name: "AFailedLookupKeepsTheLastReading", requestedByTick: []bool{true, false}, failLookupOnTick: 2, ticks: [][]RunView{{running}, {running}, {landed}}, want: []string{landedLine}},
 		{name: "AMemberWhoseLookupReadsOffGetsNoLineUnderAPullRequest", beam: true, pullRequest: true, ticks: [][]RunView{{running}, {landed}}},
-		{name: "AMemberWhoseLookupReadsOnGetsTheFollowUpUnderAPullRequest", beam: true, pullRequest: true, requested: true, ticks: [][]RunView{{running}, {landed}}, want: []string{memberLandedLine}},
-		{name: "ABeamWithNoPullRequestSendsARequestedMemberNoFollowUp", beam: true, requested: true, ticks: [][]RunView{{running}, {landed}}, want: []string{landedLine}},
-		{name: "AnUnlandedMemberLineCarriesNoFollowUp", beam: true, pullRequest: true, requested: true, ticks: [][]RunView{{running}, {unlanded}}, want: []string{unlandedLine}},
-		{name: "AFailedLandingRecordReadDecidesNothingUntilItReads", beam: true, pullRequest: true, requested: true, failPullRequestOnTick: 2, ticks: [][]RunView{{running}, {landed}, {landed}}, want: []string{memberLandedLine}},
-		{name: "AMemberLandingInTheTickThePullRequestIsRecordedGetsTheFollowUp", beam: true, requested: true, pullRequestFromTick: 2, ticks: [][]RunView{{running}, {landed}}, want: []string{memberLandedLine}},
-		{name: "AMemberLandedWithNoCommitCarriesTheFollowUp", beam: true, pullRequest: true, requested: true, ticks: [][]RunView{{running}, {landedNoCommit}}, want: []string{unknownCommitLine + memberFollowUp}},
-		{name: "AMemberLandedWithAnEmptyDiffCarriesTheFollowUp", beam: true, pullRequest: true, requested: true, ticks: [][]RunView{{running}, {landedEmpty}}, want: []string{emptyLandingLine + memberFollowUp}},
+		{name: "AMemberLandingUnderAPullRequestCarriesNoFollowUp", beam: true, pullRequest: true, requested: true, ticks: [][]RunView{{running}, {landed}}, want: []string{landedLine}},
 		{name: "ARunNeverReadAheadOfLandWaitsPastLandForARead", requested: true, failLookupThroughTick: 3, ticks: [][]RunView{{running}, {running}, {landed}, {landed}, {landed}}, want: []string{landedLine}},
 		{name: "AnOlderMemoryHoldingARequestIsNotReadAgainPastLand", seed: &LandNoticeState{Requested: true}, ticks: [][]RunView{{landed}, {landed}}, want: []string{landedLine}},
 		{name: "AClearOnlyMemoryOfAnOlderBinaryGetsNoSecondNotice", requested: true, seed: &LandNoticeState{Requested: true, ClearOwed: true}, ticks: [][]RunView{{landed}, {landed}}},
@@ -111,12 +100,7 @@ func TestLandNotices(t *testing.T) {
 			}
 			if tt.beam {
 				h.d.geom.Slug = "b"
-				h.d.deps.PullRequestRecorded = func() (bool, error) {
-					if tickNumber == tt.failPullRequestOnTick {
-						return false, errors.New("the landing record is unreadable")
-					}
-					return tt.pullRequest || (tt.pullRequestFromTick != 0 && tickNumber >= tt.pullRequestFromTick), nil
-				}
+				h.d.deps.PullRequestRecorded = func() (bool, error) { return tt.pullRequest, nil }
 			}
 			if tt.seed != nil {
 				err := UpdateState(h.d.geom.StatePath, func(s *State) error {

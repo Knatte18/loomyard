@@ -291,7 +291,7 @@ github.com/Knatte18/loomyard/
 ├── internal/agentconfig/         the hub-wide `agents.yaml` config: the skills each role lym starts loads, and the effort of its Claude sessions and their subagents by role and model, a leaf
 ├── internal/agentname/           the sole former, parser and validator of agent names (`<shortname>:<slug>:<role>`), a stdlib-only leaf
 ├── internal/beamcli/             the beam CLI command (`lym beam`, the making and starting of beams from board project entries, and the wiring of their dobby, the prime's carrying the hibernate request and bringing back the Slack relay)
-├── internal/dobbyengine/         dobby, the daemon of a beam worktree: it starts released tasks, drives their batten runs in passes and spawns the board-tidy agent
+├── internal/dobbyengine/         dobby, the daemon of a beam worktree: it starts released tasks, drives their batten runs in passes and spawns the board-tidy agent and a beam's describer agent
 ├── internal/boardcli/            the board CLI command
 ├── internal/boardengine/         the board domain kernel
 ├── internal/boardserve/          the board's loopback server: the viewer page, the board's view projection, its live changes and the page's writes
@@ -837,13 +837,15 @@ User-facing modules each get one `lym <module>` namespace:
   The pawl recipe is a loom recipe whose rows are Preflight, Record-Write, Beam-Up, Beam-Await, Finalize and Beam-Down, with Beam-Await as its build row and no review round of its own.
   At Beam-Await the beam's orch works the landing with the operator through `lym beam describe`, which records the change description the orch writes, the end result and every member pull request, never the record's added entries, and updates a recorded pull request, `lym beam pr open`, `update`, `status` and `close`, and `lym beam ready`, which is final;
   Finalize then merges the beam into its parent, through the pull request the beam's landing record names when one is recorded, and keeps that pull request's text.
+  While a pull request is recorded, a describer agent rewrites the description after each member landing.
+  The beam's dobby spawns it and records its draft as `lym beam describe` records the orch's text.
   An autonomous beam's Beam-Await row posts one `[beam drained]` line to its orch once the beam holds commits beyond its parent and no member, child pair or ready record stands.
   Land starts a short batten run over the `beam` recipe, after a refusal that stops it while members or forked pairs remain under the beam.
   Start brings up a beam's dobby and orch, the one the acting worktree is or the one a slug names, or with `--all` the prime and every beam this machine owns, each part only when it is not live.
   Stop takes a beam's orch and dobby down.
   Status prints, once, the dobby section a beam's window draws, for the prime and for each local beam:
   alive or not, the runs it drives with their state, stage, time in stage and last pass, and each released task it has not started with what the task waits on, and the beam's orch: strand live, watcher live and the recorded session, then one adopt check item per subject, shown only when the hub holds a record of it: the subject, its state, the tier in flight, the tiers done and the paths of its log and output.
-  Dobby starts the beam's released tasks from an empty status, drives their batten runs in short passes, sends the nearest live orch its own notices and the `[dobby notice]` lines of a running child (a dead driver, an API-error stall, a usage limit, idle agents), and spawns the board-tidy agent every few landings.
+  Dobby starts the beam's released tasks from an empty status, drives their batten runs in short passes, sends the nearest live orch its own notices and the `[dobby notice]` lines of a running child (a dead driver, an API-error stall, a usage limit, idle agents), spawns the board-tidy agent every few landings, and, while a beam's pull request is recorded, spawns a describer agent after each member landing to rewrite the beam's change description.
   No dobby builds the shared coverage maps: the operator builds them on command with `lym gate test --map`, and the gate's `reach` and `mutation` steps refresh only a task worktree's own.
   It logs to its `dobby.log` the changes it sees, such as a task start, a run changing state and a failing pass episode, plus a heartbeat line every ten minutes.
   A front task, filed through `internal/fronttask`, is the one open task of its worktree that dobby starts first, past `max_runs`, while no other task of that worktree starts.

@@ -313,7 +313,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 		// The stamp runs inside the description's own commit, after the description validated.
 		// One commit then holds both files, and a refused description stamps nothing.
 		// A repeat commit over an unchanged directory is a no-op.
-		RecordDescription: func(slug string, at time.Time) (string, error) {
+		RecordDescription: func(slug, from string, at time.Time) (string, error) {
 			beam, err := beamOf(slug)
 			if err != nil {
 				return "", err
@@ -330,7 +330,11 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 				_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), beam, []string{loomengine.LandingDirRel()}, fmt.Sprintf("beam: change description for %s", slug), fabricengine.EnvSyncOptions())
 				return err
 			}
-			if err := landingshed.RecordBeamDescription(slug, path, commit); err != nil {
+			record := func() error { return landingshed.RecordBeamDescription(slug, path, commit) }
+			if from != "" {
+				record = func() error { return landingshed.ReplaceBeamDescription(slug, from, path, commit) }
+			}
+			if err := record(); err != nil {
 				return "", err
 			}
 			return path, nil
@@ -451,15 +455,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			if err != nil {
 				return nil, err
 			}
-			findings, err := summaryparser.ValidateDescription(summaryparser.Path(loomengine.LandingDir(beam)))
-			if err != nil {
-				return nil, err
-			}
-			var lines []string
-			for _, finding := range findings {
-				lines = append(lines, finding.Error())
-			}
-			return lines, nil
+			return descriptionFindings(summaryparser.Path(loomengine.LandingDir(beam)))
 		},
 		// A pawl run's Finalize reads merged pull requests through this list, so ready and Finalize agree on what one lacks.
 		MergedLacks: func(slug, mergedHead string) ([]string, error) {
@@ -539,6 +535,20 @@ func beamDraftDeps(location *lymcwd.Location, slug, parentBranch string) landing
 			return commits, nil
 		},
 	}
+}
+
+// descriptionFindings lists the findings of the change description at path as their error texts, none when it is valid.
+// A missing file is a finding.
+func descriptionFindings(path string) ([]string, error) {
+	findings, err := summaryparser.ValidateDescription(path)
+	if err != nil {
+		return nil, err
+	}
+	var lines []string
+	for _, finding := range findings {
+		lines = append(lines, finding.Error())
+	}
+	return lines, nil
 }
 
 // pairWorktreePresent reports whether this machine holds the worktree of slug's pair.

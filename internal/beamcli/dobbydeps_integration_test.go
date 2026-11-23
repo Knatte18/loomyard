@@ -60,9 +60,29 @@ func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hubDobbyDeps(beam) = %v; want nil", err)
 	}
-	stopper, ok := beamDeps.PrimeTidyShuttle.(*runnerTidyShuttle)
+	stopper, ok := beamDeps.PrimeTidyShuttle.(*runnerAgentShuttle)
 	if !ok || stopper.worktree != prime {
-		t.Errorf("beam PrimeTidyShuttle = %#v; want a *runnerTidyShuttle over the prime's location", beamDeps.PrimeTidyShuttle)
+		t.Errorf("beam PrimeTidyShuttle = %#v; want a *runnerAgentShuttle over the prime's location", beamDeps.PrimeTidyShuttle)
+	}
+	if beamDeps.BeamDescribe.Record == nil {
+		t.Errorf("beam BeamDescribe.Record = nil; want the description rewrite wired")
+	}
+	if beamDeps.BeamDescribe.Timeout != 30*time.Minute {
+		t.Errorf("beam BeamDescribe.Timeout = %v; want the landing config's describe_timeout_min, 30 minutes", beamDeps.BeamDescribe.Timeout)
+	}
+	wantModel, err := resolveModel(fabricengine.ConfigDirs(prime), "sonnet[medium]")
+	if err != nil {
+		t.Fatalf("resolveModel(sonnet[medium]) = %v; want nil", err)
+	}
+	if got := beamDeps.BeamDescribe.Model; got.Engine != wantModel.Engine || got.Model != wantModel.Model || got.Effort != wantModel.Effort {
+		t.Errorf("beam BeamDescribe.Model = %+v; want the landing config's describe model %+v", got, wantModel)
+	}
+	describeShuttle, ok := beamDeps.BeamDescribe.Shuttle.(*runnerAgentShuttle)
+	if !ok || describeShuttle.gate == nil {
+		t.Errorf("beam BeamDescribe.Shuttle = %#v; want a *runnerAgentShuttle carrying the describe gate", beamDeps.BeamDescribe.Shuttle)
+	}
+	if tidyShuttle, ok := beamDeps.TidyShuttle.(*runnerAgentShuttle); !ok || tidyShuttle.gate != nil {
+		t.Errorf("beam TidyShuttle = %#v; want a *runnerAgentShuttle with no gate", beamDeps.TidyShuttle)
 	}
 
 	primeGeom, err := hubgeom.DobbyGeometry(prime, prime.WorktreeName)
@@ -75,6 +95,9 @@ func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
 	}
 	if primeDeps.PrimeTidyShuttle != nil {
 		t.Errorf("prime PrimeTidyShuttle = %#v; want nil", primeDeps.PrimeTidyShuttle)
+	}
+	if primeDeps.BeamDescribe.Record != nil {
+		t.Errorf("prime BeamDescribe.Record is set; want the prime's dobby to rewrite no description")
 	}
 
 	// The watch opens only a directory that exists, and a tick creates it as a side effect.

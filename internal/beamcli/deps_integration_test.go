@@ -201,6 +201,7 @@ func TestHubLandDeps_ParentUnmergedReadsTheUpstreamTip(t *testing.T) {
 // TestHubLandDeps_DraftThenRecordStampsAndCommits asserts the DraftDescription seam lists a member's landing.
 // It also asserts that the draft skips a records-only commit.
 // Recording the draft stamps the landing record with the beam's slug and the time, and both files go in one commit.
+// The describer agent's facts list the same landing, and a draft recorded from its own path replaces the description.
 func TestHubLandDeps_DraftThenRecordStampsAndCommits(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -252,7 +253,7 @@ func TestHubLandDeps_DraftThenRecordStampsAndCommits(t *testing.T) {
 	if err := os.WriteFile(path, []byte(called), 0o644); err != nil {
 		t.Fatalf("write the orch's merge danger call: %v", err)
 	}
-	if recorded, err := deps.RecordDescription("b", at); err != nil || recorded != path {
+	if recorded, err := deps.RecordDescription("b", "", at); err != nil || recorded != path {
 		t.Fatalf("RecordDescription() = %q, %v; want %q, nil", recorded, err, path)
 	}
 
@@ -272,5 +273,32 @@ func TestHubLandDeps_DraftThenRecordStampsAndCommits(t *testing.T) {
 		if !strings.Contains(committed, file) {
 			t.Errorf("HEAD of the records worktree changes %q; want it to hold %s", committed, file)
 		}
+	}
+
+	facts, err := beamDescribeFacts(prime, beam, "b")
+	if err != nil {
+		t.Fatalf("beamDescribeFacts() = _, %v; want nil", err)
+	}
+	origin, _, err := deps.OriginRecord("b")
+	if err != nil {
+		t.Fatalf("OriginRecord(b) = _, _, %v; want nil", err)
+	}
+	if facts.DescriptionPath != path || facts.ParentBranch != origin.ParentBranch || facts.Branch != gitkit.CurrentBranch(t, worktree) {
+		t.Errorf("beamDescribeFacts() = %+v; want the description %s, the beam's branch and the parent %s", facts, path, origin.ParentBranch)
+	}
+	if !strings.Contains(facts.Changes, "#12 Add widgets") || strings.Contains(facts.Changes, "bookkeeping") {
+		t.Errorf("beamDescribeFacts().Changes = %q; want the landing listed and not the records-only commit", facts.Changes)
+	}
+
+	rewritten := "# Ship the beam\n\nGroups the work and its widgets.\n\n- #12 Add widgets\n\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** widgets\n"
+	draftPath := filepath.Join(t.TempDir(), "draft.md")
+	if err := os.WriteFile(draftPath, []byte(rewritten), 0o644); err != nil {
+		t.Fatalf("write the describer's draft: %v", err)
+	}
+	if recorded, err := deps.RecordDescription("b", draftPath, at.Add(time.Hour)); err != nil || recorded != path {
+		t.Fatalf("RecordDescription(from the draft) = %q, %v; want %q, nil", recorded, err, path)
+	}
+	if description, err := os.ReadFile(path); err != nil || string(description) != rewritten {
+		t.Errorf("description after the rewrite = %q, %v; want the draft %q", description, err, rewritten)
 	}
 }

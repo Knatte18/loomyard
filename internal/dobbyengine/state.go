@@ -38,6 +38,10 @@ type State struct {
 	LandingsMachineOnly bool `json:"landings_machine_only,omitempty"`
 	// Tidy is the board-tidy agent in flight, nil when none is.
 	Tidy *TidyState `json:"tidy,omitempty"`
+	// LandedSinceDescribe holds the slugs of the member landings the beam's description is not yet rewritten after.
+	LandedSinceDescribe []string `json:"landed_since_describe,omitempty"`
+	// Describe is the describer agent in flight, nil when none is.
+	Describe *DescribeState `json:"describe,omitempty"`
 	// LandNotices is the memory of the landing notices of the runs seen ahead of their Land row, keyed by slug.
 	LandNotices map[string]LandNoticeState `json:"land_notices,omitempty"`
 	// Land is the landing step taken in the current episode: a land request asked for or a notice posted.
@@ -104,6 +108,19 @@ type TidyState struct {
 	StrandGUID string    `json:"strand_guid"`
 	ReportPath string    `json:"report_path"`
 	Deadline   time.Time `json:"deadline"`
+}
+
+// DescribeState is the describer agent in flight.
+// Landings are the member landings its draft covers, which leave the landings to describe once the agent settles.
+// OwedLine is the line for the nearest live orch that the settled agent still owes, empty when none is owed.
+// It is set once the draft is recorded or the deadline has passed.
+// A post that fails is then retried without recording again.
+type DescribeState struct {
+	StrandGUID string    `json:"strand_guid"`
+	DraftPath  string    `json:"draft_path"`
+	Deadline   time.Time `json:"deadline"`
+	Landings   []string  `json:"landings,omitempty"`
+	OwedLine   string    `json:"owed_line,omitempty"`
 }
 
 // ReadState reads the record at path under its lock and reports whether it was found.

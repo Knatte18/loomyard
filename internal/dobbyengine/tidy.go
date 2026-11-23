@@ -30,8 +30,8 @@ const (
 	tidyStencilName = "beam-template-board-tidy"
 )
 
-// TidyShuttle is the part of shuttle the board-tidy agent runs through.
-type TidyShuttle interface {
+// AgentShuttle is the part of shuttle the agents dobby spawns run through: the board-tidy agent and the describer agent.
+type AgentShuttle interface {
 	// EngineName names the engine a launch with choice resolves to, which the prompt is rendered for.
 	// It returns an error when the shuttle behind the launch cannot be built, so no prompt is rendered for it.
 	EngineName(choice shuttleengine.ModelChoice) (string, error)
@@ -109,6 +109,7 @@ func TidySpec(prompt, reportPath, engine string, model shuttleengine.ModelChoice
 // So run records left from before the dobby, or a record rewritten fresh, trigger no tidy.
 // While a board-tidy agent is in flight nothing is counted,
 // so the record's slugs since the last tidy are exactly the agent's.
+// A dobby that rewrites its beam's description also records each landing it counts as one to describe.
 // A baselined record not yet marked machine-only has its landed-since-tidy list emptied once, ahead of the count.
 // The list may hold other machines' landings.
 func (d *daemon) countLandings(now time.Time) error {
@@ -144,6 +145,9 @@ func (d *daemon) countLandings(now time.Time) error {
 		for _, slug := range fresh {
 			s.CountedLandings[slug] = true
 			s.LandedSinceTidy = append(s.LandedSinceTidy, slug)
+			if d.describes() {
+				s.LandedSinceDescribe = append(s.LandedSinceDescribe, slug)
+			}
 		}
 		return nil
 	})

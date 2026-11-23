@@ -69,6 +69,14 @@ func (r *goneRig) setTidy(t *testing.T, tidy *TidyState) {
 	}
 }
 
+// setDescribe rewrites the state record's describer in flight.
+func (r *goneRig) setDescribe(t *testing.T, describe *DescribeState) {
+	t.Helper()
+	if err := UpdateState(r.h.geom.StatePath, func(s *State) error { s.Describe = describe; return nil }); err != nil {
+		t.Fatalf("UpdateState() = %v; want nil", err)
+	}
+}
+
 // removeWorktree removes the whole worktree, as a teardown does.
 func (r *goneRig) removeWorktree(t *testing.T) {
 	t.Helper()
@@ -132,6 +140,27 @@ func TestRun_WorktreeGoneExits(t *testing.T) {
 		}
 		if r.checks != 0 {
 			t.Errorf("CheckBinary calls = %d; want 0", r.checks)
+		}
+	})
+
+	t.Run("a describer in flight is stopped beside the tidy and both lines land in the prime's log", func(t *testing.T) {
+		t.Parallel()
+		r := newGoneRig(t, "beam-a", tidy)
+		r.setDescribe(t, &DescribeState{StrandGUID: "d1"})
+		r.h.perTick = func(n int) error {
+			if n == 1 {
+				r.removeWorktree(t)
+			}
+			return nil
+		}
+		if err := r.h.run(t); err != nil {
+			t.Fatalf("Run() = %v; want nil", err)
+		}
+		if !slices.Equal(r.shuttle.stopped, []string{"s1", "d1"}) {
+			t.Errorf("stopped = %v; want [s1 d1]", r.shuttle.stopped)
+		}
+		if text := r.primeLogText(t); !strings.Contains(text, "stopped the describer agent d1 of beam beam-a") {
+			t.Errorf("prime log = %q; want the describer's stop line", text)
 		}
 	})
 

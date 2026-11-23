@@ -26,7 +26,7 @@
 //
 //   - The lock at Geometry.LockPath is the one decision whether this process is the dobby.
 //     A lock that stays held returns ErrDobbyRunning.
-//   - A beam dobby ends when its worktree is gone.
+//   - A beam dobby ends when its worktree is gone, after it stops the tidy and describer agents it last saw in flight.
 //     The test is the absence of the worktree's `.git` and never of its root,
 //     because every state write recreates the record's directory.
 //     The prime's dobby never takes the exit.
@@ -144,9 +144,8 @@
 //   - A run seen past its Land row that dobby remembered ahead of it with `land_notice` on owes one line
 //     through Deps.Notice to the nearest live orch.
 //     A run whose `land_notice` read off owes none.
-//   - While Deps.PullRequestRecorded reads a pull request recorded for the beam,
-//     a landed line ends with the beam's follow-up `lym beam describe <slug>`.
-//     A nil PullRequestRecorded and the prime's dobby add no follow-up.
+//   - A landed line asks the orch for nothing:
+//     a member landing under a recorded pull request gets the description rewrite.
 //   - An owed line stays in the state record and is posted every tick until a post succeeds.
 //   - A run first seen past its Land row gets no line, and a done board entry owes none by itself.
 //
@@ -159,6 +158,28 @@
 //     The agent's one output is the report `.lym/beam/tidy/<UTC timestamp>.md`, which dobby posts to the nearest live orch.
 //     Past `board_tidy_timeout_min` dobby ends the agent and posts a no-report line.
 //   - A landing whose run records `lym batten cleanup --apply` removed before dobby read them is not counted.
+//
+// The description rewrite:
+//
+//   - A beam's dobby whose Deps.BeamDescribe.Record is set records each landing it counts as one to describe.
+//     A landing that waits on a board-tidy agent in flight is described once the tidy settles.
+//   - While Deps.PullRequestRecorded reads a pull request recorded for the beam,
+//     dobby spawns the describer agent over the landings to describe, unless one is in flight.
+//     The agent rewrites the beam's description whole.
+//     It reads the recorded one, the beam's commits and every member pull request.
+//     Its one output is a draft under `.lym/beam/describe/`, named by its UTC timestamp.
+//   - Landings counted while no pull request is recorded are dropped;
+//     an unreadable landing record keeps them until it reads, logged once per episode.
+//   - Once the draft passes Deps.BeamDescribe.Findings, dobby ends the agent.
+//     It records the draft through Deps.BeamDescribe.Record,
+//     which replaces the beam's description, commits it and updates the pull request.
+//   - A spawn that fails, a record that fails, and an agent with no passing draft by its timeout
+//     leave the recorded description standing.
+//     Dobby posts one line to the nearest live orch naming why,
+//     and the next member landing rewrites the description again.
+//     A record that committed the description but not the pull request update posts the way forward `lym beam pr update`.
+//   - An error of the description step is logged once per episode and holds no other step of the tick.
+//   - The prime's dobby rewrites nothing.
 //
 // The done-run clear:
 //

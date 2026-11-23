@@ -51,12 +51,14 @@ type landWorld struct {
 	// held and heldErr are what HeldSlugs answers: the slugs run directories and task branches hold.
 	held    []string
 	heldErr error
-	// drafted and recorded hold the slug of each DraftDescription and RecordDescription call;
+	// drafted and recorded hold the slug of each DraftDescription and RecordDescription call,
+	// and recordedFrom the draft path each RecordDescription call names;
 	// draftErr and recordErr are what those seams fail with.
-	drafted   []string
-	draftErr  error
-	recorded  []string
-	recordErr error
+	drafted      []string
+	draftErr     error
+	recorded     []string
+	recordedFrom []string
+	recordErr    error
 	// api is the fake GitHub every pull request side holds; origin and sideErr are what PullRequestSide answers with.
 	api     *prkit.API
 	origin  landingshed.Origin
@@ -181,8 +183,9 @@ func (w *landWorld) deps() landDeps {
 			}
 			return "/hub/" + slug + "/_lym/landing/summary.md", nil
 		},
-		RecordDescription: func(slug string, _ time.Time) (string, error) {
+		RecordDescription: func(slug, from string, _ time.Time) (string, error) {
 			w.recorded = append(w.recorded, slug)
+			w.recordedFrom = append(w.recordedFrom, from)
 			if w.recordErr != nil {
 				return "", w.recordErr
 			}

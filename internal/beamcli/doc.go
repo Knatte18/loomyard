@@ -65,8 +65,10 @@
 // # describe
 //
 // `describe <slug>` records the beam's change description and returns its path.
-// The beam's orch writes the description, `summary.md` in the beam's landing directory;
-// lym never assembles or rewrites it.
+// The beam's orch writes the description, `summary.md` in the beam's landing directory.
+// Under a recorded pull request the beam's dobby also rewrites it after each member landing:
+// its describer agent writes a draft, and the same sequence records the draft in place of the description.
+// A refused draft leaves the recorded description standing.
 // It runs anywhere in the hub and refuses what `land`'s entry check refuses.
 // It refuses a beam with no pawl run, a run not at Beam-Await, and a beam whose ready record stands.
 // A run at Beam-Await passes in every state, so a halted run is served.
