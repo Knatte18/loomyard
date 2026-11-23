@@ -2238,7 +2238,8 @@ type dropLocalPlan struct {
 // It also refuses a records branch whose anchor marker is empty.
 // It refuses one whose anchor differs from the anchor of the origin tip it would move to, ancestry ignored.
 // The refusal wraps ErrAnchorChange and names the commands that settle it.
-// Each move is a `reset --keep` in the branch's own worktree; nothing is fetched or pushed, and the tags stay local.
+// Each move is a `reset --keep` in the branch's own worktree, and nothing is fetched or pushed.
+// The tags may leave the machine: a later remote teardown of the slug pushes each one origin lacks.
 // Before a records branch moves, each untracked, unignored file of its worktree that the origin tip tracks is removed.
 // Such a file is one lym wrote in the weft, and `reset --keep` would refuse to overwrite it.
 // A code branch's untracked files are never removed.

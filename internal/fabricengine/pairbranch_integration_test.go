@@ -105,7 +105,7 @@ func TestBranchPrefixChange_PairWithNothingLeftLocally(t *testing.T) {
 		const slug = "pn-discard"
 		h, top := pairOnOriginOnly(t, slug)
 
-		res, err := top.DiscardTaskBranch(h.Location, slug)
+		res, err := top.DiscardTaskBranch(h.Location, slug, "")
 		if err != nil {
 			t.Fatalf("DiscardTaskBranch(%q) error = %v", slug, err)
 		}

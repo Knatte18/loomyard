@@ -222,6 +222,7 @@
 // So does a child whose remote step failed, and its record holds that step's way forward.
 // `PendingTeardowns` lists each with what finishes it, for `lym fabric status` and `lym fabric prune` to print:
 // the hand push of the archive tag of a tip the record carries, then the re-run.
+// A discard's job and record carry the command its caller names for that re-run.
 // A remote branch delete is leased and a branch origin moved since is kept, never a failure.
 // A pair already half removed is finished rather than refused, and `ErrPairNotFound` means nothing is left.
 // `RemoveLocal` is the same removal with no origin step and no waiting.
@@ -524,10 +525,13 @@
 // The layout is the records store's origin fetch refspec, read per repository by `originNamespaceAt(dir)`.
 // A store whose prime key, push refspecs or a branch's merge setting names the namespace is a records store.
 // Its layout read fails when no fetch refspec maps the namespace or when it has no origin.
-// The error names the refspecs to restore; read as the identity layout, its board would push to the code branches.
+// The error names the refspecs to restore and matches `ErrRecordsLayout`;
+// read as the identity layout, its board would push to the code branches.
+// A caller that wraps a fetch failure as an unreachable origin returns this error as it is.
 // Each call that fetches or pushes the records side or the board reads the layout first, so such a store moves nothing.
 // Every push, listing and fetch of the records side names origin refs through that namespace.
 // Every archive tag the hub pushes lives under that root too, so none lands under origin's plain `refs/tags/`.
+// An earlier binary pushed archive tags there; `PlainArchiveTagsOnOrigin` lists each with the commands that move it.
 // The records store's tags are under `RecordsNamespaceTags`, which its fetch refspec maps.
 // The code store's are under `RecordsNamespaceCodeTags`, which no refspec maps.
 // Neither store therefore lists or fetches the other's tags and commits.
@@ -557,6 +561,11 @@
 // The failure names what origin took and what the seed withdrew.
 // A ref origin does not hold at that tip yet keeps the hub, with a way forward naming the refs origin may hold.
 // A board origin holds at another tip is another hub's: it is left alone and the way forward is a join.
+// A clone killed after its records store and before its Bolt checkout leaves a hub no verb finishes.
+// `RefuseHubWithoutBolt` refuses it naming the `--reset` clone that replaces it.
+// For a one-repository hub it names the join, for an origin holding the board, and the seed, for an origin holding none.
+// A records store whose layout cannot be read is named as one-repository, and the refusal carries that error.
+// `CloneHub` names the same re-clone when the hub already exists; for a one-repository hub that is the join alone.
 //
 // **Platform verification: Linux only.**
 // Fabric is written cross-platform,

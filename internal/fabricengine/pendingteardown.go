@@ -38,6 +38,8 @@ type PendingTeardown struct {
 	WeftTip string `json:"weft_tip,omitempty"`
 	// TaskTip is the local task tip a discard tagged before it deleted the branch, empty when it found none.
 	TaskTip string `json:"task_tip,omitempty"`
+	// Rerun is the command whose re-run retries a discard, empty when its caller named none.
+	Rerun string `json:"rerun,omitempty"`
 	// WayForward is what finishes the teardown.
 	// A record on disk holds one only once a remote step failed; a listed record always holds one.
 	WayForward string `json:"way_forward,omitempty"`
@@ -48,9 +50,12 @@ func pendingTeardownPath(hubPath, slug string) string {
 	return filepath.Join(filepath.Dir(TeardownLockPath(hubPath, slug)), slug+pendingTeardownSuffix)
 }
 
-// pendingTeardownOf returns the record of job, handed over at handedAt, with the tips job tagged locally.
+// pendingTeardownOf returns the record of job, handed over at handedAt, with the tips job tagged locally and its re-run.
 func pendingTeardownOf(job remoteTeardownJob, handedAt time.Time) PendingTeardown {
-	return PendingTeardown{Slug: job.Slug, Kind: job.Kind, HandedAt: handedAt.UTC(), Worktree: job.Worktree, WeftTip: job.WeftTip, TaskTip: job.TaskTip}
+	return PendingTeardown{
+		Slug: job.Slug, Kind: job.Kind, HandedAt: handedAt.UTC(), Worktree: job.Worktree,
+		WeftTip: job.WeftTip, TaskTip: job.TaskTip, Rerun: job.Rerun,
+	}
 }
 
 // writePendingTeardown records job, handed to a detached child at handedAt, as pending.
@@ -142,7 +147,10 @@ func PendingTeardowns(hubPath string) ([]PendingTeardown, error) {
 // so the hand push of its archive tag comes before the re-run.
 // A records tip whose records repository cannot be found from the record's worktree names the re-run alone.
 func pendingTeardownWayForward(record PendingTeardown) string {
-	job := remoteTeardownJob{Kind: record.Kind, Slug: record.Slug, Worktree: record.Worktree, WeftTip: record.WeftTip, TaskTip: record.TaskTip}
+	job := remoteTeardownJob{
+		Kind: record.Kind, Slug: record.Slug, Worktree: record.Worktree,
+		WeftTip: record.WeftTip, TaskTip: record.TaskTip, Rerun: record.Rerun,
+	}
 	switch record.Kind {
 	case remoteTeardownRemove, remoteTeardownCleanup:
 		weftRoot := ""

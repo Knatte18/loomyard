@@ -31,7 +31,8 @@ func CloneAndWireFromLocalBares(container, codeBare, recordsBare, shortname stri
 }
 
 // CloneAndWireFromLocalOrigin clones a one-repository hub named shortname under container from one local bare repository.
-// It wires the hub as CloneAndWire does, and the clone seeds the hub's records and board into origin under refs/lym/.
+// It wires the hub as CloneAndWire does.
+// The clone seeds the hub's records and board into origin under its records namespace.
 // It returns the hub's path and its prime's cwd; the clone is left intact on error, as CloneAndWire leaves it.
 func CloneAndWireFromLocalOrigin(container, origin, shortname string) (hubPath, primeCwd string, err error) {
 	res, err := CloneAndWire(container, fabricengine.CloneOptions{

@@ -183,7 +183,8 @@ func discardTaskBranchIfPresent(location *lymcwd.Location, topology *fabricengin
 	if !parts.TaskBranch && !onOrigin {
 		return nil
 	}
-	if _, err := topology.DiscardTaskBranch(location, slug); err != nil {
+	// The dobby's next tick runs this discard again, so no command is named for its re-run.
+	if _, err := topology.DiscardTaskBranch(location, slug, ""); err != nil {
 		return err
 	}
 	stillOnOrigin, err := topology.TaskBranchOnOrigin(location, slug)

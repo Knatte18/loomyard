@@ -34,6 +34,77 @@ const (
 	namespaceCodeTagsPrefix = fabricengine.RecordsNamespaceRoot + fabricengine.RecordsNamespaceCodeTags
 )
 
+// TestOneRepositoryMerge_RefusesARecordsStoreThatLostItsFetchRefspecs asserts a merge reads the records layout first.
+// With the records store's origin fetch refspecs unset, a fetch moves no tracking ref of the records side.
+// The merge refuses naming the refspecs to restore, and the prime's code branch stays where it was.
+func TestOneRepositoryMerge_RefusesARecordsStoreThatLostItsFetchRefspecs(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	const slug = "ns-merge-layout"
+	h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
+	added := hubforge.AddPair(t, h, slug)
+	gitkit.CommitFile(t, h.PairCodeWorktree(slug), "pair-work.txt", "pair\n", "the pair's work")
+	before := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
+	gitkit.Git(t, h.PrimeRecords(), "config", "--unset-all", "remote.origin.fetch")
+	fabricengine.ForgetOriginNamespaceForTest(h.PrimeRecords())
+
+	_, err := hubforge.OpenFabric(t, h).MergeIn(added.Branch)
+
+	const wantErrorHas = "config --replace-all remote.origin.fetch '+refs/lym/heads/*:refs/remotes/origin/*'"
+	if err == nil || !strings.Contains(err.Error(), wantErrorHas) {
+		t.Fatalf("MergeIn(%s) error = %v; want one naming %q", added.Branch, err, wantErrorHas)
+	}
+	if got := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD"); got != before {
+		t.Errorf("the prime's HEAD = %s after the refused merge; want it still at %s", got, before)
+	}
+}
+
+// TestOneRepositoryOrigin_PlainArchiveTagsAreListedWithTheirMove pins the listing of origin's plain archive tags.
+// An earlier binary pushed archive and owner archive tags under origin's plain refs/tags/;
+// each is listed with the commands that move it.
+// Those commands leave origin holding the tag under the code store's prefix and no plain ref.
+// A tag already under that prefix is not listed.
+func TestOneRepositoryOrigin_PlainArchiveTagsAreListedWithTheirMove(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
+	bare, prime := h.CodeBare, h.PrimeWorktree()
+	tip := gitkit.RevParse(t, bare, "main")
+	archiveName := fabricengine.ArchiveTagName("t5", tip)
+	ownerName := fabricengine.OwnerArchiveTagName("t6", tip)
+	for _, ref := range []string{"refs/tags/" + archiveName, "refs/tags/" + ownerName, namespaceCodeTagsPrefix + fabricengine.ArchiveTagName("t7", tip)} {
+		gitkit.Git(t, bare, "update-ref", ref, tip)
+	}
+	move := func(name string) string {
+		return "move it under " + namespaceCodeTagsPrefix + " with `git -C " + prime + " fetch --no-tags origin refs/tags/" + name +
+			"`, then `git -C " + prime + " push --atomic origin " + tip + ":" + namespaceCodeTagsPrefix + name + " :refs/tags/" + name + "`"
+	}
+
+	got, err := fabricengine.PlainArchiveTagsOnOrigin(h.Location)
+
+	if err != nil {
+		t.Fatalf("PlainArchiveTagsOnOrigin() error = %v", err)
+	}
+	want := []fabricengine.PlainArchiveTag{
+		{Ref: "refs/tags/" + ownerName, SHA: tip, WayForward: move(ownerName)},
+		{Ref: "refs/tags/" + archiveName, SHA: tip, WayForward: move(archiveName)},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("PlainArchiveTagsOnOrigin() = %+v; want %+v", got, want)
+	}
+
+	gitkit.Git(t, prime, "fetch", "--no-tags", "origin", "refs/tags/"+archiveName)
+	gitkit.Git(t, prime, "push", "--atomic", "origin", tip+":"+namespaceCodeTagsPrefix+archiveName, ":refs/tags/"+archiveName)
+	if moved := refLines(t, bare, "%(objectname)", namespaceCodeTagsPrefix+archiveName); !slices.Equal(moved, []string{tip}) {
+		t.Errorf("origin's %s%s = %v; want one at %s", namespaceCodeTagsPrefix, archiveName, moved, tip)
+	}
+	if plain := refLines(t, bare, "%(refname)", "refs/tags/"+archiveName); len(plain) != 0 {
+		t.Errorf("origin still holds %v after the move; want no plain ref", plain)
+	}
+}
+
 // oneRepoPairFabric opens the fabric handle on the pair slug of h.
 func oneRepoPairFabric(t *testing.T, h *hubforge.Hub, slug string) *fabricengine.Fabric {
 	t.Helper()

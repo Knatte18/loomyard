@@ -17,8 +17,13 @@ import (
 
 // FetchPairTips fetches the code branch and the records branch of the pair at pair from origin.
 // A reader of origin's fetched refs, such as OriginCodeTip, then sees what origin holds now.
+// A records store whose origin layout cannot be read is an error naming the refspecs to restore, with nothing fetched.
 func FetchPairTips(pair *lymcwd.Location) error {
-	if err := gitrepo.New(RecordsWorktree(pair)).Fetch(); err != nil {
+	recordsDir := RecordsWorktree(pair)
+	if _, err := originNamespaceAt(recordsDir); err != nil {
+		return err
+	}
+	if err := gitrepo.New(recordsDir).Fetch(); err != nil {
 		return fmt.Errorf("fetch the records branch of the pair at %s: %w", pair.WorktreePath(), err)
 	}
 	if err := gitrepo.New(pair.WorktreePath()).Fetch(); err != nil {
@@ -37,8 +42,12 @@ func FetchPairTips(pair *lymcwd.Location) error {
 // It reports false, committing nothing, when origin's records branch holds fewer than two transitions of slug:
 // the first transition names the tip the pair was made at, so nothing earlier can stand in.
 // It pushes nothing.
+// A records store whose origin layout cannot be read is an error naming the refspecs to restore, with nothing fetched.
 func ReturnToPreviousTransition(pair *lymcwd.Location, slug string) (returned bool, err error) {
 	recordsDir := RecordsWorktree(pair)
+	if _, err := originNamespaceAt(recordsDir); err != nil {
+		return false, err
+	}
 	repo := gitrepo.New(recordsDir)
 	if err := repo.Fetch(); err != nil {
 		return false, fmt.Errorf("fetch the records branch of %q: %w", slug, err)

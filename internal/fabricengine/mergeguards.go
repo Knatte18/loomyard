@@ -25,6 +25,8 @@ type mergeSources struct {
 // resolveMergeSources resolves the SHA each side of f merges, applying the freshness rule independently per side.
 // The warp side resolves source itself.
 // The weft side resolves RecordsBranchName(source), the sole "-weft" composition (branchname.go).
+// It first reads the records store's origin layout, and a layout it cannot read is the returned error:
+// a records store that lost its fetch refspecs fetches no tracking ref, so its weft SHA would come from stale ones.
 // Both sides run a best-effort Fetch first; a fetch failure is logged via logger.Warn and is never fatal.
 // Each side then resolves its local branch and its origin/<branch> remote-tracking ref via gitrepo.ResolveSHA.
 // A warp source resolvable on neither local nor remote appends mergeReasonSourceNotFound.
@@ -40,7 +42,10 @@ type mergeSources struct {
 // Every reason is collected rather than returned early, so each guard runs regardless of an earlier failure.
 // newMergeGuardError deduplicates, so a source missing on both sides reports one mergeReasonSourceNotFound.
 // It does not disclose that both sides were checked.
-func resolveMergeSources(f *Fabric, source string) (mergeSources, []string) {
+func resolveMergeSources(f *Fabric, source string) (mergeSources, []string, error) {
+	if _, err := originNamespaceAt(f.weftPath); err != nil {
+		return mergeSources{}, nil, err
+	}
 	var reasons []string
 	weftBranch := RecordsBranchName(source)
 
@@ -61,7 +66,7 @@ func resolveMergeSources(f *Fabric, source string) (mergeSources, []string) {
 	weftRemoteSHA, weftRemoteErr := f.records.ResolveSHA("origin/" + weftBranch)
 	weftSHA, _ := pickMergeSourceSHA(f.records, weftLocalSHA, weftLocalErr == nil, weftRemoteSHA, weftRemoteErr == nil)
 
-	return mergeSources{warpSHA: warpSHA, weftSHA: weftSHA}, reasons
+	return mergeSources{warpSHA: warpSHA, weftSHA: weftSHA}, reasons, nil
 }
 
 // pickMergeSourceSHA implements the freshness rule for one side.

@@ -87,7 +87,7 @@ func TestDiscardTaskBranch(t *testing.T) {
 			const slug = "discard"
 			h, wantTipped := tt.setup(t, slug)
 
-			res, err := h.Topology.DiscardTaskBranch(h.Location, slug)
+			res, err := h.Topology.DiscardTaskBranch(h.Location, slug, "")
 			if err != nil {
 				t.Fatalf("DiscardTaskBranch: %v", err)
 			}
@@ -120,7 +120,7 @@ func TestDiscardTaskBranch(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
-		res, err := h.Topology.DiscardTaskBranch(h.Location, "never-added")
+		res, err := h.Topology.DiscardTaskBranch(h.Location, "never-added", "")
 		if err != nil {
 			t.Fatalf("DiscardTaskBranch: %v", err)
 		}
@@ -139,7 +139,7 @@ func TestDiscardTaskBranch(t *testing.T) {
 		}
 		localTip := gitkit.RevParse(t, h.PrimeWorktree(), slug)
 
-		_, err := h.Topology.DiscardTaskBranch(h.Location, slug)
+		_, err := h.Topology.DiscardTaskBranch(h.Location, slug, "")
 		if !errors.Is(err, fabricengine.ErrArchiveFailed) {
 			t.Fatalf("DiscardTaskBranch error = %v; want one wrapping ErrArchiveFailed", err)
 		}
@@ -183,7 +183,7 @@ func TestDiscardTaskBranch_OneRepositoryHubArchivesUnderTheCodeStoresPrefix(t *t
 			tip := gitkit.RevParse(t, h.PrimeWorktree(), branch)
 			gitkit.Git(t, h.PrimeWorktree(), "remote", "set-url", "origin", tt.originURL(h.CodeBare))
 
-			res, err := h.Topology.DiscardTaskBranch(h.Location, slug)
+			res, err := h.Topology.DiscardTaskBranch(h.Location, slug, "")
 
 			if err != nil {
 				t.Fatalf("DiscardTaskBranch: %v", err)

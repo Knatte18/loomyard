@@ -284,7 +284,9 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 		},
 		RemovePair:         teardown.RemovePair,
 		TaskBranchOnOrigin: func() (bool, error) { return topology.TaskBranchOnOrigin(location, slug) },
-		DiscardTaskBranch:  func() (fabricengine.DiscardResult, error) { return topology.DiscardTaskBranch(location, slug) },
+		DiscardTaskBranch: func() (fabricengine.DiscardResult, error) {
+			return topology.DiscardTaskBranch(location, slug, "lym batten cancel "+slug+" --remove")
+		},
 		Verdict: func() (runfsm.Verdict, error) {
 			records, inputs, err := pairteardown.ReadRun(location, slug)
 			if err != nil {

@@ -313,7 +313,7 @@ func TestTeardownLock_SerialisesAddDiscardAndPairPush(t *testing.T) {
 		}
 		done := make(chan outcome, 1)
 		go func() {
-			res, err := h.Topology.DiscardTaskBranch(h.Location, slug)
+			res, err := h.Topology.DiscardTaskBranch(h.Location, slug, "")
 			done <- outcome{res, err}
 		}()
 		release()
@@ -334,7 +334,7 @@ func TestTeardownLock_SerialisesAddDiscardAndPairPush(t *testing.T) {
 		fabricengine.SetTeardownWaitForTest(h.Topology, teardownTestWait)
 		holdTeardownLock(t, h, slug)
 
-		_, err := h.Topology.DiscardTaskBranch(h.Location, slug)
+		_, err := h.Topology.DiscardTaskBranch(h.Location, slug, "")
 		if !errors.Is(err, fabricengine.ErrPairPushRunning) {
 			t.Fatalf("DiscardTaskBranch beside an exclusive holder = %v; want an error wrapping ErrPairPushRunning", err)
 		}
@@ -349,6 +349,23 @@ func TestTeardownLock_SerialisesAddDiscardAndPairPush(t *testing.T) {
 		}
 		if tags := archiveTagsOnOrigin(t, h, slug); len(tags) != 0 {
 			t.Errorf("archive tags on origin = %v; want none after a refused discard", tags)
+		}
+	})
+
+	t.Run("DiscardWhoseWaitRunsOutNamesTheGivenRerun", func(t *testing.T) {
+		t.Parallel()
+		const slug = "lock-discard-given-rerun"
+		const rerun = "lym batten cancel lock-discard-given-rerun --remove"
+		h, _ := discardHub(t, slug)
+		fabricengine.SetTeardownWaitForTest(h.Topology, teardownTestWait)
+		holdTeardownLock(t, h, slug)
+
+		_, err := h.Topology.DiscardTaskBranch(h.Location, slug, rerun)
+		if !errors.Is(err, fabricengine.ErrPairPushRunning) {
+			t.Fatalf("DiscardTaskBranch beside an exclusive holder = %v; want an error wrapping ErrPairPushRunning", err)
+		}
+		if want := "re-run `" + rerun + "`"; !strings.Contains(err.Error(), want) {
+			t.Errorf("DiscardTaskBranch error = %q; want it to name %q", err.Error(), want)
 		}
 	})
 

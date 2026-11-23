@@ -32,20 +32,27 @@ type DiscardResult struct {
 // When one tip holds the other, it archives only the containing tip.
 // It then deletes the branch on origin with a lease on the tip it read.
 // A failure there is logged and mailed to the hub's orch with its way forward.
+// rerun is the command that runs the discard again, such as `lym batten cancel <slug> --remove`;
+// that way forward, the pending-teardown record and the refusal of a held lock name it.
+// An empty rerun names that command by description.
 // A failed local tag deletes nothing and wraps ErrArchiveFailed,
 // and a refused gate is returned as an error naming the branch.
 // ArchiveTags names the local tip's tag, or, when the remote half ran in process, the tags it pushed.
 // Before its first tip read, it takes the slug's teardown lock exclusive, waiting at most the topology's teardown wait.
 // The lock is held until the remote half ends.
 // When the wait runs out, it returns an error wrapping ErrPairPushRunning.
-// The error names re-running the command that discarded the task branch, with nothing archived or deleted.
-func (t *Topology) DiscardTaskBranch(l *lymcwd.Location, slug string) (res DiscardResult, err error) {
+// The error names re-running the discard, with nothing archived or deleted.
+func (t *Topology) DiscardTaskBranch(l *lymcwd.Location, slug, rerun string) (res DiscardResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
+	lockRerun := "re-run the command that discarded the task branch"
+	if rerun != "" {
+		lockRerun = "re-run `" + rerun + "`"
+	}
 	// The lock file is hub scratch and outlives the call, not a change to the pair,
 	// so it goes to a record of its own, and a slug with no branch keeps a zero result.
-	hold, err := t.holdTeardown(NewMutations(l.HubPath), rec, l, slug, false, "re-run the command that discarded the task branch", true)
+	hold, err := t.holdTeardown(NewMutations(l.HubPath), rec, l, slug, false, lockRerun, true)
 	if err != nil {
 		return DiscardResult{}, err
 	}
@@ -88,7 +95,7 @@ func (t *Topology) DiscardTaskBranch(l *lymcwd.Location, slug string) (res Disca
 		res.ArchiveTags = []string{localTag}
 	}
 
-	job = &remoteTeardownJob{Kind: remoteTeardownDiscard, Slug: slug, Worktree: repoDir, WarpBranch: warpBranch, TaskTip: localTip}
+	job = &remoteTeardownJob{Kind: remoteTeardownDiscard, Slug: slug, Worktree: repoDir, WarpBranch: warpBranch, TaskTip: localTip, Rerun: rerun}
 	out := hold.finish(job)
 	if out.ran {
 		res.ArchiveTags, res.OriginDeleted = out.discard.ArchiveTags, out.discard.OriginDeleted

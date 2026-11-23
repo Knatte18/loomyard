@@ -202,7 +202,9 @@ under any pause.
 A pair with uncommitted changes on either side is refused; --force removes it
 anyway, and never overrides the task branch check. --remote also deletes the
 weft branch on the weft remote, and the landed task branch on the warp origin:
-irreversible, and visible to every other clone.
+irreversible, and visible to every other clone. Before it deletes a branch,
+--remote pushes each local archive/<slug>/* tag that origin lacks, including a
+tag a takeover kept when it dropped the pair's local commits.
 
 Example:
   lym fabric remove my-task
@@ -365,7 +367,16 @@ remote, irreversibly and visibly to every other clone, and sweeps leftover
 task branches on the warp origin: a fabric-managed branch that is not the
 default branch, not checked out in the hub, has no open pull request and
 carries no work the default branch lacks. Without --apply, --remote reports
-what it would delete. --force answers no cleanup gate.
+what it would delete. --force answers no cleanup gate. Before it deletes a
+weft branch on the remote, --apply --remote pushes each local
+archive/<slug>/* tag of that branch's slug that origin lacks, including a tag
+a takeover kept when it dropped the pair's local commits.
+
+On a one-repository hub, --remote also lists in plain_archive_tags each
+archive tag an earlier binary left under origin's plain refs/tags/, with the
+commands that move it under ` + fabricengine.RecordsNamespaceRoot + ` and delete the plain ref.
+A listing that fails is named in plain_archive_tags_error, which replaces
+plain_archive_tags, and leaves the exit code alone.
 
 Example:
   lym fabric cleanup
@@ -640,6 +651,11 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
+	// A hub a killed clone left without its Bolt repository fails the pull below with a raw git error;
+	// the refusal names the re-clone that replaces the hub.
+	if err := fabricengine.RefuseHubWithoutBolt(l); err != nil {
+		return output.Err(out, err.Error())
+	}
 
 	// Build the recorder here, as soon as l resolves, not after top.Reconcile(l) returns.
 	// ReconcileHubWideAt runs before top.Reconcile and may already have written a file by then.
@@ -886,6 +902,13 @@ func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force, remot
 		}
 		fields["warp_entries"] = warp.Entries
 		fields["warp_skipped_reason"] = warp.SkippedReason
+		// The listing only reports, so its failure is named in the envelope and never fails a verb whose deletions have run.
+		plainTags, plainErr := fabricengine.PlainArchiveTagsOnOrigin(l)
+		if plainErr != nil {
+			fields["plain_archive_tags_error"] = plainErr.Error()
+		} else {
+			fields["plain_archive_tags"] = plainTags
+		}
 		for _, entry := range warp.Entries {
 			if entry.Error != "" {
 				warpFailedBranches = append(warpFailedBranches, entry.Branch)

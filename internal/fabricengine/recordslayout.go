@@ -44,6 +44,10 @@ func oneRepositoryNamespace() gitrepo.RefNamespace {
 	}
 }
 
+// ErrRecordsLayout is matched by the error of a one-repository records store whose origin layout cannot be read.
+// The error's message names the git config that restores the layout.
+var ErrRecordsLayout = errors.New("the records store's origin layout cannot be read")
+
 // namespaceAnswers caches originNamespaceAt's answers for the process, keyed by the cleaned store path.
 var namespaceAnswers sync.Map
 
@@ -58,6 +62,7 @@ var namespaceAnswers sync.Map
 // So is one with a branch whose merge setting names a ref under the namespace.
 // For such a store a missing namespaced fetch refspec or a missing origin is an error naming the way forward:
 // read as identity, its board would push to origin's code branches.
+// That error matches ErrRecordsLayout.
 // A failed config read is returned as an error, and no error is cached.
 func originNamespaceAt(dir string) (gitrepo.RefNamespace, error) {
 	key := filepath.Clean(dir)
@@ -93,15 +98,16 @@ func originNamespaceAt(dir string) (gitrepo.RefNamespace, error) {
 		if claim != "" {
 			restoreFetch := fmt.Sprintf("`git -C %s config --replace-all remote.%s.fetch '+%s*:refs/remotes/%s/*'` and `git -C %s config --add remote.%s.fetch '+%s*:refs/tags/*'`",
 				key, originRemoteName, ns.Heads, originRemoteName, key, originRemoteName, ns.Tags)
+			layoutMessage := fmt.Sprintf("fabricengine: the repository at %s holds %s, so it is a one-repository records store, "+
+				"but no %s fetch refspec maps %s; way forward: restore its fetch refspecs with %s",
+				key, claim, originRemoteName, ns.Heads, restoreFetch)
 			if originMissing {
-				return gitrepo.RefNamespace{}, fmt.Errorf("fabricengine: the repository at %s holds %s, so it is a one-repository records store, but it has no %s remote; "+
+				layoutMessage = fmt.Sprintf("fabricengine: the repository at %s holds %s, so it is a one-repository records store, but it has no %s remote; "+
 					"way forward: add it with `git -C %s remote add --no-tags %s <code-url>`, restore its fetch refspecs with %s, "+
 					"and its push refspecs `refs/heads/*:%s*` and `refs/tags/*:%s*`",
 					key, claim, originRemoteName, key, originRemoteName, restoreFetch, ns.Heads, ns.Tags)
 			}
-			return gitrepo.RefNamespace{}, fmt.Errorf("fabricengine: the repository at %s holds %s, so it is a one-repository records store, "+
-				"but no %s fetch refspec maps %s; way forward: restore its fetch refspecs with %s",
-				key, claim, originRemoteName, ns.Heads, restoreFetch)
+			return gitrepo.RefNamespace{}, &sentinelError{sentinel: ErrRecordsLayout, msg: layoutMessage}
 		}
 	}
 	namespaceAnswers.Store(key, answer)

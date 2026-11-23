@@ -73,7 +73,7 @@ func TestRemove_RerunAfterItsTeardownChildEndedArchivesTheLocalRecordsTip(t *tes
 // TestDiscardTaskBranch_RerunAfterItsTeardownChildEndedArchivesTheTaskTip covers a discard's re-run.
 // The first run's child ended before its first push.
 // The task branch held a commit origin lacks, which the discard tagged locally before it deleted the branch.
-// The pending record names the hand push of that tag before the re-run.
+// The pending record names the hand push of that tag before the re-run of the command the discard was given.
 // The re-run is the removal and then the discard, as the command that discards a task branch makes them.
 // It deletes the task branch on origin only with the tag of the local tip on origin.
 func TestDiscardTaskBranch_RerunAfterItsTeardownChildEndedArchivesTheTaskTip(t *testing.T) {
@@ -81,6 +81,7 @@ func TestDiscardTaskBranch_RerunAfterItsTeardownChildEndedArchivesTheTaskTip(t *
 	t.Parallel()
 
 	const slug = "ended-discard"
+	const rerun = "lym batten cancel " + slug + " --remove"
 	h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
 	bare := h.CodeBare
 	branch := hubforge.AddPair(t, h, slug).Branch
@@ -96,17 +97,17 @@ func TestDiscardTaskBranch_RerunAfterItsTeardownChildEndedArchivesTheTaskTip(t *
 	}
 
 	fabricengine.SetTeardownChildEndsForTest(h.Topology, true)
-	if _, err := h.Topology.DiscardTaskBranch(h.Location, slug); err != nil {
+	if _, err := h.Topology.DiscardTaskBranch(h.Location, slug, rerun); err != nil {
 		t.Fatalf("DiscardTaskBranch(%s) with its teardown child ended: %v", slug, err)
 	}
 	requireOnePendingTeardown(t, h, slug, "push the archive tag with `git -C "+h.PrimeWorktree()+" push origin refs/tags/"+localTag+":"+namespaceCodeTagsPrefix+localTag+
-		"`, then run the command that discarded the task branch again")
+		"`, then run `"+rerun+"` again")
 
 	fabricengine.SetTeardownChildEndsForTest(h.Topology, false)
 	if _, err := h.Topology.Remove(h.Location, slug, false, true); err != nil {
 		t.Fatalf("re-run Remove(%s): %v", slug, err)
 	}
-	if _, err := h.Topology.DiscardTaskBranch(h.Location, slug); err != nil {
+	if _, err := h.Topology.DiscardTaskBranch(h.Location, slug, rerun); err != nil {
 		t.Fatalf("re-run DiscardTaskBranch(%s): %v", slug, err)
 	}
 

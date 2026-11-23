@@ -401,7 +401,14 @@ func (f *Fabric) FastForwardPair(opts SyncOptions) (res FastForwardResult, err e
 // A weft that carries a move record or an empty own anchor marker is not pulled.
 // Neither is a weft whose upstream carries another anchor marker.
 // For such a weft, the warning names the way forward.
+// A records store whose origin layout cannot be read is not pulled either,
+// and the warning names the refspecs to restore:
+// with no fetch refspec mapping origin's namespace, its upstream would read as missing and the skip would go unsaid.
 func (f *Fabric) fastForwardWeft(rec *Mutations, opts SyncOptions) {
+	if _, err := originNamespaceAt(f.weftPath); err != nil {
+		logger.Warn("fabricengine: fast-forward: the records store's layout cannot be read, continuing to the code side", "weft", f.weftPath, "err", err)
+		return
+	}
 	hasUpstream, err := f.weftHasUpstream()
 	if err != nil {
 		logger.Warn("fabricengine: fast-forward: resolve weft upstream failed, continuing to the code side", "weft", f.weftPath, "err", err)

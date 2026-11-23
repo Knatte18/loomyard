@@ -18,10 +18,15 @@
 // It does so only for a new weft remote that is neither empty nor lym-anchored.
 //
 // `--single-repo` takes one URL, the code repository, and seeds a one-repository hub:
-// its records and board live under origin's `refs/lym/`.
+// its records and board live under origin's records namespace.
 // A plain one-URL clone of an origin holding that board joins it.
 // Every failure between a seeded clone and its board push returns through `fabricengine.AbandonSeededClone`.
 // That function removes the seeded hub and names the same clone as the way forward.
+//
+// A clone killed before its Bolt checkout leaves a hub `lym fabric reconcile` refuses, before its first pull.
+// The refusal names the `--reset` clone that replaces the hub.
+// A plain re-clone into the same directory names it too.
+// For a one-repository hub that is the join, and the refusal adds the seed.
 //
 // # Add
 //
@@ -80,6 +85,11 @@
 // a failed deletion exits non-zero with its reason in `warp_entries[].error`.
 // When GitHub cannot be reached, every task branch is kept and `warp_skipped_reason` names the cause.
 // The weft sweep still runs and the exit code is unaffected.
+// On a one-repository hub, `plain_archive_tags` lists each archive tag under origin's plain `refs/tags/`.
+// An earlier binary pushed those tags there.
+// Each entry carries the commands that move it under the records namespace.
+// A listing that fails is named in `plain_archive_tags_error`, which replaces `plain_archive_tags`.
+// It leaves the exit code alone.
 //
 // # Anchor
 //

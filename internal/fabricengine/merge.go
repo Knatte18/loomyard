@@ -187,7 +187,10 @@ func (f *Fabric) mergeIn(source, warpSHA string) (res MergeResult, err error) {
 	}
 	reasons = append(reasons, detachedReasons...)
 
-	sources, sourceReasons := resolveMergeSources(f, source)
+	sources, sourceReasons, err := resolveMergeSources(f, source)
+	if err != nil {
+		return MergeResult{}, err
+	}
 	if warpSHA != "" {
 		sourceReasons = nil
 		if _, err := f.code.CommitTree(warpSHA); err != nil {
@@ -403,7 +406,10 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 	}
 	reasons = append(reasons, syncReasons...)
 
-	sources, sourceReasons := resolveMergeSources(f, source)
+	sources, sourceReasons, err := resolveMergeSources(f, source)
+	if err != nil {
+		return MergeResult{}, err
+	}
 	reasons = append(reasons, sourceReasons...)
 
 	if len(reasons) > 0 {

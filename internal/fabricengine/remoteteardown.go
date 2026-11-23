@@ -80,6 +80,8 @@ type remoteTeardownJob struct {
 	DeleteTaskOnOrigin bool   `json:"delete_task_on_origin,omitempty"`
 	// TaskTip is the local task tip a discard tagged and deleted, empty when no local task branch existed.
 	TaskTip string `json:"task_tip,omitempty"`
+	// Rerun is the command whose re-run retries a discard, empty when its caller named none.
+	Rerun string `json:"rerun,omitempty"`
 	// ExemptPause is set when the command that wrote the job runs exempt from every pause;
 	// so the child's remote steps pass under a pause as the command's own did.
 	ExemptPause bool `json:"exempt_pause,omitempty"`
@@ -183,8 +185,14 @@ type remoteStepFailure struct {
 	wayForward string
 }
 
-// discardRerunWayForward is the way forward of a discard's failed remote step, whose command has no fixed spelling.
-const discardRerunWayForward = "run the command that discarded the task branch again"
+// discardRerunWayForward returns the re-run that retries the remote steps of a discard job: the command the job names.
+// A job that names none, as one an earlier binary wrote, gets that command described.
+func discardRerunWayForward(job remoteTeardownJob) string {
+	if job.Rerun == "" {
+		return "run the command that discarded the task branch again"
+	}
+	return fmt.Sprintf("run `%s` again", job.Rerun)
+}
 
 // unknownKindWayForward returns the way forward for a remote teardown of slug whose job kind is not known:
 // the re-run of each command that starts one.
@@ -219,9 +227,9 @@ func withArchiveTagPush(dir, slug, tip, wayForward string) string {
 // When job carries the local task tip, the hand push of that tip's archive tag comes first, then the discard's re-run.
 func discardWayForward(job remoteTeardownJob) string {
 	if job.TaskTip == "" {
-		return discardRerunWayForward
+		return discardRerunWayForward(job)
 	}
-	return withArchiveTagPush(job.Worktree, job.Slug, job.TaskTip, discardRerunWayForward)
+	return withArchiveTagPush(job.Worktree, job.Slug, job.TaskTip, discardRerunWayForward(job))
 }
 
 // recordsArchiveWayForward returns the way forward of a removal or cleanup whose records archive did not finish.

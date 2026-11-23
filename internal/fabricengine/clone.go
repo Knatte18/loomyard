@@ -1,4 +1,5 @@
 // clone.go implements CloneHub, the clone orchestration that tears the hub down when any step fails.
+// It also holds the refusal of a hub a killed clone left without its Bolt checkout, which names the re-clone.
 //
 // After the weft clone succeeds, the weft primary is checked out onto a "-weft"-suffixed branch.
 // For the default branch "main", that branch is "main-weft".
@@ -31,6 +32,86 @@ import (
 // CloneHub looks for it only to refuse a hub that carries it, rather than silently re-anchoring at the wrong subpath.
 // The refusal applies only when the prime's weft root carries no marker.
 const staleFabricAnchorName = lymcwd.StaleAnchorFileName
+
+// existingHubError refuses a clone into hubPath, which already exists.
+// A clone killed partway leaves such a hub, which no other verb finishes,
+// so the way forward is the same clone with --reset, which replaces the hub.
+func existingHubError(cwd, hubPath string, opts CloneOptions) error {
+	return fmt.Errorf("hub already exists at %s; way forward: replace it with `%s`", hubPath, cloneResetCommand(cwd, opts))
+}
+
+// cloneResetCommand spells the clone opts asks for into the directory cwd, with --reset added.
+func cloneResetCommand(cwd string, opts CloneOptions) string {
+	args := []string{"lym", "fabric", "clone"}
+	if opts.SingleRepo {
+		args = append(args, "--single-repo")
+	}
+	if opts.Shortname != "" {
+		args = append(args, "--shortname", opts.Shortname)
+	}
+	if opts.Subpath != "" {
+		args = append(args, "--subpath", opts.Subpath)
+	}
+	if opts.ForceBootstrap {
+		args = append(args, "--force-bootstrap")
+	}
+	args = append(args, opts.WeftURL)
+	if opts.WarpURL != "" {
+		args = append(args, opts.WarpURL)
+	}
+	return strings.Join(append(args, "--into", cwd, "--reset"), " ")
+}
+
+// RefuseHubWithoutBolt refuses the hub of l when its Bolt checkout holds no repository.
+// A clone killed after it made the records store and before the Bolt checkout leaves such a hub,
+// and every pull or write of the board fails on it with a raw git error.
+// The refusal names the clone that replaces the hub: its own origin URLs, re-cloned into its parent with --reset.
+// A one-repository hub's clone takes the code store's URL alone.
+// Its refusal names the join, for an origin that holds the hub's board, and the seed, for an origin that holds none.
+// A records store whose layout is lost is named as a one-repository hub.
+// Any layout read failure is carried on the refusal.
+// A URL that cannot be read is named by a placeholder, and so is the seed's shortname.
+func RefuseHubWithoutBolt(l *lymcwd.Location) error {
+	boltDir := BoltDir(l.HubPath)
+	if _, err := os.Lstat(filepath.Join(boltDir, ".git")); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("fabricengine: look for the repository of the %s checkout at %s: %w", BoltDirName, boltDir, err)
+	}
+
+	codeURL := "<code-url>"
+	if url, err := gitrepo.New(l.WorktreePath()).RemoteURL(originRemoteName); err == nil {
+		codeURL = url
+	}
+	recordsURL := "<records-url>"
+	oneRepository := false
+	var layoutErr error
+	if recordsRoot, err := RecordsRepoRoot(l); err == nil {
+		ns, nsErr := originNamespaceAt(recordsRoot)
+		layoutErr = nsErr
+		oneRepository = errors.Is(nsErr, ErrRecordsLayout) || ns != (gitrepo.RefNamespace{})
+		if !oneRepository {
+			if url, err := gitrepo.New(recordsRoot).RemoteURL(originRemoteName); err == nil {
+				recordsURL = url
+			}
+		}
+	}
+
+	parent := filepath.Dir(l.HubPath)
+	replacement := "`" + cloneResetCommand(parent, CloneOptions{WeftURL: recordsURL, WarpURL: codeURL}) + "`"
+	if oneRepository {
+		join := cloneResetCommand(parent, CloneOptions{WeftURL: codeURL})
+		seed := cloneResetCommand(parent, CloneOptions{SingleRepo: true, Shortname: "<shortname>", WeftURL: codeURL})
+		replacement = fmt.Sprintf("`%s` when origin holds the hub's board, or `%s` when it holds none", join, seed)
+	}
+	refusal := fmt.Sprintf("the hub at %s has no repository at its %s checkout %s, as a clone that stopped before making it leaves; "+
+		"way forward: replace the hub with %s",
+		l.HubPath, BoltDirName, boltDir, replacement)
+	if layoutErr != nil {
+		return fmt.Errorf("%s; the records store's layout also cannot be read: %w", refusal, layoutErr)
+	}
+	return errors.New(refusal)
+}
 
 // CloneOptions carries the parameters of CloneHub as named fields.
 // Named fields keep two adjacent string parameters, one of them optional, from being passed in the wrong order.
@@ -222,7 +303,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 				return CloneResult{}, err
 			}
 		} else if _, err := os.Stat(hubPath); err == nil {
-			return CloneResult{}, fmt.Errorf("hub already exists at %s", hubPath)
+			return CloneResult{}, existingHubError(cwd, hubPath, opts)
 		}
 
 		// The pre-hub probe touches the network only after the offline checks have passed.
@@ -261,7 +342,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 				return CloneResult{}, err
 			}
 		} else if _, err := os.Stat(hubPath); err == nil {
-			return CloneResult{}, fmt.Errorf("hub already exists at %s", hubPath)
+			return CloneResult{}, existingHubError(cwd, hubPath, opts)
 		}
 	} else {
 		// One-argument form: the hub name is unknowable until the binding is read, so the probe
@@ -314,7 +395,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 			return CloneResult{}, err
 		}
 	} else if _, err := os.Stat(hubPath); err == nil {
-		return CloneResult{}, fmt.Errorf("hub already exists at %s", hubPath)
+		return CloneResult{}, existingHubError(cwd, hubPath, opts)
 	}
 
 	warpURL := effective
