@@ -104,6 +104,8 @@ type pushJob struct {
 // A task branch origin rewound is not pushed either, since a plain push would restore the commits the rewind dropped.
 // A gone branch whose entry is not ended and an unreachable origin are retried by one backoff before they are recorded.
 //
+// A push that fails in transit is pushed again once per delay of the push backoff before it is recorded.
+//
 // A rejection is retried before it is recorded, over the push backoff.
 // Retries continue while each fails with a bare rejection or an unnamed error such as a failed fetch,
 // so a push that lost a race with another push of the branch lands instead of reporting a divergence.
@@ -150,7 +152,7 @@ func pushClassified(rec *Mutations, hubPath, side, path string, opts SyncOptions
 	if side == failedPushSideBolt && hadUnpushedErr == nil && !hadUnpushed {
 		return job.clear()
 	}
-	pushErr := job.push()
+	pushErr := job.retryTransportPush(job.push())
 	if pushErr == nil {
 		return job.landed(hadUnpushed, hadUnpushedErr)
 	}
@@ -184,6 +186,25 @@ func (j *pushJob) push() error {
 		return err
 	}
 	return j.repo.PushRebaseFree(ns)
+}
+
+// retryTransportPush pushes again after each delay of the push backoff while pushErr is a transport failure.
+// It returns the first push that did not fail in transit, or the last transport failure once the backoff is spent.
+// A connection that drops mid-push leaves no refusal to classify, so only another push of the branch settles it.
+func (j *pushJob) retryTransportPush(pushErr error) error {
+	sleep := j.opts.BackoffSleep
+	if sleep == nil {
+		sleep = time.Sleep
+	}
+	for attempt, delay := range gitrepo.PushBackoffDelays() {
+		if !gitexec.IsTransportFailure(pushErr) {
+			return pushErr
+		}
+		logger.Warn("fabricengine: push failed in transit, retrying", "side", j.side, "branch", j.branch, "attempt", attempt+1, "error", pushErr)
+		sleep(delay)
+		pushErr = j.push()
+	}
+	return pushErr
 }
 
 // refuseUnseededBoard refuses a board push for a board with no upstream in a one-repository records store.

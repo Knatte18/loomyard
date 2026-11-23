@@ -87,6 +87,20 @@ func (o ReconcileOptions) attempts() int {
 	return 1 + int(o.RetryBound/o.RetryInterval)
 }
 
+// The retry bound and interval of a reconcile that a run's start, resume or leftover teardown performs.
+const (
+	runStartRetryBound    = time.Minute
+	runStartRetryInterval = 10 * time.Second
+)
+
+// RunStartReconcileOptions returns the options of an origin reconcile that a run performs.
+// That covers a run's start, its resume and its leftover teardown.
+// An unreachable origin is retried every ten seconds for a minute before the reconcile reports it unreachable.
+// The retries run under the hub's remote-refs locks, so the bound is the shortest that still waits out a brief drop.
+func RunStartReconcileOptions() ReconcileOptions {
+	return ReconcileOptions{RetryBound: runStartRetryBound, RetryInterval: runStartRetryInterval}
+}
+
 // deadline returns the bound of one remote call.
 func (o ReconcileOptions) deadline() time.Duration {
 	if o.AttemptDeadline <= 0 {

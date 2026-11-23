@@ -345,7 +345,7 @@ func (c *battenCLI) armAt(location *lymcwd.Location, runID string, explicit bool
 		c.runVerdict = hubRunVerdict(location, runID)
 	}
 	if verb == "run" && c.readopt.Add == nil {
-		c.readopt = hubReadoptSeams(location)
+		c.readopt = hubReadoptSeams(location, c.reconcileOptions)
 	}
 	c.preDrive = c.preDriveCheck
 
@@ -517,7 +517,7 @@ func battenInterruptPolicy(row string) string {
 // The caller needs the location before it can read the seed that picks the recipe;
 // resolving the location again here would cost a second `git rev-parse` on every call.
 func ArmAt(location *lymcwd.Location, verb string, runID string) (shedverbs.Spec, error) {
-	c := &battenCLI{}
+	c := &battenCLI{reconcileOptions: fabricengine.RunStartReconcileOptions()}
 	return c.armAt(location, runID, true, verb)
 }
 

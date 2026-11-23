@@ -201,8 +201,10 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 		},
 		ExemptGate:          func() (func(), error) { return pauserecord.SetGateExemptAll(), nil },
 		TaskWorktreePresent: func() (bool, error) { return taskWorktreePresent(location, slug) },
-		Reconcile:           func() (fabricengine.OriginReport, error) { return reconcileRun(location, slug, true) },
-		PullBolt:            func() error { return boardengine.PullBolt(boltDir) },
+		Reconcile: func() (fabricengine.OriginReport, error) {
+			return reconcileRun(location, slug, true, fabricengine.ReconcileOptions{})
+		},
+		PullBolt: func() error { return boardengine.PullBolt(boltDir) },
 		Owner: func() (string, string, bool, error) {
 			identity, err := machinename.ReadIdentity()
 			if err != nil {

@@ -38,13 +38,18 @@
 //     hand over to a fresh driver of the on-disk build, once per build;
 //   - a stop an applied tackler resume returned to: the arbiter decides;
 //   - a blocked stop the told `ArbiterSeam.JudgesFirst` marks: the arbiter decides, with no tackler call;
-//   - a transient error that outlived its re-step: the tackler decides;
+//   - a git transport or GitHub API failure below its re-step cap: wait for the remote, then re-step;
+//   - such a failure past that cap: hand back with a notice naming the failing remote operation, with no tackler call;
+//   - any other transient error that outlived its re-step: the tackler decides;
 //   - an interrupted step under the re-invoke policy, below the repair cap: re-step;
 //   - an interrupted step under the hand-back policy: hand back;
 //   - a producer, bootstrap or unseeded error, an interrupted step over the repair cap, or a blocked stop:
 //     the tackler decides;
 //   - anything else: hand back.
 //
+// The network-failure waits grow with each re-step.
+// A remote that drops for a minute or two is waited out.
+// Only a failure that outlasts the waits reaches the parent, as a notice rather than a question.
 // The landing-halt, budget-exhausted and precondition-unmet rows only hand back; they never resume a run.
 // A recipe's told `GotoGuard` rejects a tackler verdict whose goto it refuses or cannot decide.
 //
@@ -55,9 +60,10 @@
 // # Seams a recipe fills
 //
 // The step, status, run-lock, envelope, report, pause, hand-back, tackler, open-attempts and clock seams are required.
-// The rest are optional, and an unwired one only removes rows or agents from the table:
+// The rest are optional, and an unwired one only removes rows or agents from the table, `Wait` excepted:
 // `Arbiter`, `Arbiter.JudgesFirst`, `HandOver`, `Tamper`, `StartCheck`, `HandsBack` and `Watched`;
 // also `CommitRecords` and `WriteFrictionNote`.
+// An unwired `Wait` removes no row: the driver then waits on the real clock before a re-step.
 // A stop a removed row would have caught meets the later rows unchanged.
 // No unwired seam adds a resume path: a tackler escalation with no arbiter hands back.
 //

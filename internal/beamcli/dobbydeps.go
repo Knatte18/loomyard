@@ -233,7 +233,9 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		SpawnPass: func(slug string, continuePass, noReopen bool) (<-chan dobbyengine.PassExit, error) {
 			return spawnPass(geom, slug, continuePass, noReopen)
 		},
-		TearDownLeftovers: func(pairs []dobbyengine.LeftoverPair) <-chan map[string]error { return tearDownLeftovers(prime, pairs) },
+		TearDownLeftovers: func(pairs []dobbyengine.LeftoverPair) <-chan map[string]error {
+			return tearDownLeftovers(prime, pairs, fabricengine.RunStartReconcileOptions())
+		},
 		Notice: func(_ context.Context, line string) error {
 			return requirePosted(orchcli.NotifyFromScoped(worktree, geom.Slug, dobbyProgram, line))
 		},
@@ -391,9 +393,10 @@ func describeGate(spec shuttleengine.Spec) shuttleengine.GateSpec {
 }
 
 // tearDownLeftovers tears down each of pairs by its kind in a goroutine of its own.
+// opts bounds the origin reconcile that tears down the ended runs' pairs.
 // It then regenerates the hub workspace file once, so it no longer lists a removed pair.
 // The channel delivers once, mapping each slug to nil when its pair was removed and to the reason otherwise.
-func tearDownLeftovers(prime *lymcwd.Location, pairs []dobbyengine.LeftoverPair) <-chan map[string]error {
+func tearDownLeftovers(prime *lymcwd.Location, pairs []dobbyengine.LeftoverPair, opts fabricengine.ReconcileOptions) <-chan map[string]error {
 	result := make(chan map[string]error, 1)
 	go func() {
 		results := make(map[string]error, len(pairs))
@@ -406,7 +409,7 @@ func tearDownLeftovers(prime *lymcwd.Location, pairs []dobbyengine.LeftoverPair)
 			results[pair.Slug] = tearDownLeftover(prime, pair)
 		}
 		if len(ended) > 0 {
-			maps.Copy(results, reconcileEnded(prime, ended))
+			maps.Copy(results, reconcileEnded(prime, ended, opts))
 		}
 		if _, err := fabricengine.RegenerateHubWorkspace(fabricengine.NewMutations(prime.HubPath), prime); err != nil {
 			logger.Warn(`beamcli: the hub workspace file was not regenerated after a leftover teardown; run "lym fabric reconcile" once the cause is fixed`, "error", err)
@@ -448,12 +451,13 @@ func tearDownLeftover(prime *lymcwd.Location, pair dobbyengine.LeftoverPair) err
 // That reconcile tears down the local pair of every run origin has ended, and moves the hub's branches behind origin.
 // Each entry of its mutation record is logged at Info.
 // It maps each of slugs to nil when the reconcile removed its pair, and to the reason otherwise.
-func reconcileEnded(prime *lymcwd.Location, slugs []string) map[string]error {
+// opts bounds the reconcile's remote calls and its retries of an unreachable origin.
+func reconcileEnded(prime *lymcwd.Location, slugs []string, opts fabricengine.ReconcileOptions) map[string]error {
 	teardown, err := pairteardown.New(prime)
 	if err != nil {
 		return endedTeardownResults(slugs, fabricengine.OriginReport{}, err)
 	}
-	report, err := fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
+	report, err := fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), opts)
 	for _, mutation := range report.Mutations.Entries() {
 		logger.Info("beamcli: origin reconcile mutation", "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
 	}

@@ -18,6 +18,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
@@ -111,6 +112,8 @@ func TestFinalize_PullRequest(t *testing.T) {
 		beamPR *BeamPullRequest
 		// beamReadErr makes the read of the beam's landing record fail.
 		beamReadErr error
+		// tipsErr makes the parent tips read fail once the GitHub merge has been called, leaving every earlier read as it was.
+		tipsErr error
 		// commitsMissing lists the task commits the merged pull request lacks.
 		commitsMissing []string
 
@@ -388,6 +391,16 @@ func TestFinalize_PullRequest(t *testing.T) {
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"merged on GitHub", "not fast-forward", "lym loom resume"}, wantOrder: "task-push,fast-forward", wantCalls: []string{"Status 7", wantGitHubMerge},
 		},
 		{
+			name: "ATransientParentFetchAfterTheMergeIsAnErrorTheDriverResteps", mode: "on", record: recorded(), scripts: mergeScript(open, scriptedCall{}),
+			tipsErr: &gitexec.GitError{Args: []string{"fetch", "origin"}, ExitCode: 128, Stderr: "fatal: unable to access 'x': Connection refused"},
+			wantErr: true, wantErrText: "fetch the parent's upstream after the merge", wantOrder: "task-push", wantCalls: []string{"Status 7", wantGitHubMerge},
+		},
+		{
+			name: "AParentFetchRefusedAfterTheMergeHaltsNamingLoomResume", mode: "on", record: recorded(), scripts: mergeScript(open, scriptedCall{}),
+			tipsErr:     errors.New("fatal: couldn't find remote ref main"),
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"merged on GitHub", "the parent's upstream could not be fetched", "lym loom resume"}, wantOrder: "task-push", wantCalls: []string{"Status 7", wantGitHubMerge},
+		},
+		{
 			name: "ABeamsRecordedOpenPullRequestIsSquashMergedOnGitHubWithNoEditAndTheRecordDropsAfterTheParentPush", mode: "off", squashOff: true,
 			beam: true, beamPR: recordedBeam, scripts: mergeScript(open, scriptedCall{}),
 			wantOutcome: shedengine.Done, wantMerges: 1, wantSquashedMerges: true, wantOrder: "task-push,fast-forward,merge,push,mark,drop-record",
@@ -518,7 +531,11 @@ func TestFinalize_PullRequest(t *testing.T) {
 			t.Parallel()
 			var order []string
 			api := &fakePullRequestAPI{scripts: tt.scripts}
+			merged := false
 			api.onCall = func(method string) {
+				if method == "Merge" {
+					merged = true
+				}
 				if method == "Reopen" {
 					order = append(order, "reopen")
 				}
@@ -526,6 +543,15 @@ func TestFinalize_PullRequest(t *testing.T) {
 			deps := newTestDeps(t)
 			deps.Slug = "me"
 			deps.Config.Squash = !tt.squashOff
+			if tt.tipsErr != nil {
+				readTips := deps.ReadParentTips
+				deps.ReadParentTips = func(fetch bool) (fabricengine.ParentTips, error) {
+					if merged {
+						return fabricengine.ParentTips{}, tt.tipsErr
+					}
+					return readTips(fetch)
+				}
+			}
 			if tt.parentOwnedElsewhere {
 				deps.ParentOwner = func() (ParentOwnership, error) { return ParentOwnership{Owner: "other-machine"}, nil }
 			}

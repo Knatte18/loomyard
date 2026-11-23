@@ -29,9 +29,10 @@ That second clause is review discipline, not a scan, as the verb set's first cla
 The arming module fills `Deps` and `TacklerDeps`; the optional groups are the recipe-specific part.
 
 - `Arbiter`, `Verify`, `HandOver` and `Tamper` are optional groups on `Deps`.
-  `Watched`, `CommitRecords` and `WriteFrictionNote` are optional closures.
+  `Watched`, `CommitRecords`, `WriteFrictionNote` and `Wait` are optional closures.
 - `TacklerDeps.Snapshot` and `GotoRoutedFrom` shape the tackler's tamper comparison and the rows its resume may name.
-- A nil group or closure only removes rows or agents from the rule table.
+- A nil group or closure, `Wait` excepted, only removes rows or agents from the rule table.
+  A nil `Wait` removes no row: the driver waits on the real clock before a re-step.
   A stop a removed row would have caught meets the later rows unchanged.
   It ends in the tackler under its spawn budget, a re-step under the repair cap, or a hand-back.
   No unwired seam adds a resume path.

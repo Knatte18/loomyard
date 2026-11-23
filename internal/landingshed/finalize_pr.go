@@ -464,6 +464,8 @@ func pullRequestCommitTitle(title string, number int) string {
 // So Finalize halts within about two and a half windows.
 // It then fetches the parent's upstream and fast-forwards the parent pair to it,
 // so the parent-side merge that follows finds the parent holding the task's work.
+// A transient failure of that fetch is an error the driver re-steps over its network waits;
+// the re-entry finds the pull request merged and lands through the already-landed path.
 // It returns nil when the landing goes on; each halt opens with LandingStopPrefix.
 func (fz *Finalize) mergeOnGitHub(ctx context.Context, parentHandle parentMerger, landing prLanding, title, message string) *ending {
 	pr := fz.deps.PullRequest
@@ -522,6 +524,9 @@ func (fz *Finalize) mergeOnGitHub(ctx context.Context, parentHandle parentMerger
 	}
 
 	if _, err := fz.deps.ReadParentTips(true); err != nil {
+		if terr := transientFailure(ctx, finalizeName, "fetch the parent's upstream after the merge", err); terr != nil {
+			return &ending{err: terr}
+		}
 		return halt(ctx, finalizeName, LandingStopPrefix+fz.mergedButNotPulledReason(landing.record, fmt.Sprintf("the parent's upstream could not be fetched: %v", err)))
 	}
 	result, err := parentHandle.FastForwardPair(fabricengine.SyncOptions{SkipPush: fz.deps.PushSkipped})

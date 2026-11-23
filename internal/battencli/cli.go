@@ -258,6 +258,9 @@ type battenCLI struct {
 	// readopt carries the seams that re-make a live pair whose task worktree is gone.
 	// A receiver that skips the arm leaves it zero, which reads as no re-adoption.
 	readopt readoptSeams
+	// reconcileOptions bounds the run-scope origin reconcile of a resume and of a gone pair's re-adoption.
+	// The zero value makes one attempt, which a hand-populated receiver keeps.
+	reconcileOptions fabricengine.ReconcileOptions
 	// continuePass carries the hidden --continue-pass value of "run".
 	// The pass is one that dobby schedules into a run it already drives,
 	// so the pre-run skips the resume's origin reconcile, the Open-Window re-run and the pause refusal.
@@ -442,8 +445,10 @@ Example:
 
 // Command returns the cobra command tree for the batten module.
 func Command() *cobra.Command {
-	c := &battenCLI{spec: &shedverbs.Spec{}}
-	c.reconcile = func(slug string) (fabricengine.OriginReport, error) { return reconcileRun(c.location, slug, false) }
+	c := &battenCLI{spec: &shedverbs.Spec{}, reconcileOptions: fabricengine.RunStartReconcileOptions()}
+	c.reconcile = func(slug string) (fabricengine.OriginReport, error) {
+		return reconcileRun(c.location, slug, false, c.reconcileOptions)
+	}
 
 	parent := &cobra.Command{
 		Use:   "batten",
@@ -777,8 +782,10 @@ type FirstPassOptions struct {
 // The returned error is reserved for a failure to arm the run or to read the envelope back.
 // The run's own driver lock, inside the pass, refuses a second driver.
 func StartFirstPass(location *lymcwd.Location, slug string, opts FirstPassOptions) (map[string]any, error) {
-	c := &battenCLI{spec: &shedverbs.Spec{}, firstPassAnchor: opts.Anchor}
-	c.reconcile = func(slug string) (fabricengine.OriginReport, error) { return reconcileRun(c.location, slug, false) }
+	c := &battenCLI{spec: &shedverbs.Spec{}, firstPassAnchor: opts.Anchor, reconcileOptions: fabricengine.RunStartReconcileOptions()}
+	c.reconcile = func(slug string) (fabricengine.OriginReport, error) {
+		return reconcileRun(c.location, slug, false, c.reconcileOptions)
+	}
 	armed, err := c.armAt(location, slug, true, "run")
 	if err != nil {
 		return nil, err

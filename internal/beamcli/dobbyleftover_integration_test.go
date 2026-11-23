@@ -94,7 +94,7 @@ func TestTearDownLeftovers_RemovesALandedAndACancelledPairAndTheirWorkspaceFolde
 	got := <-tearDownLeftovers(prime, []dobbyengine.LeftoverPair{
 		{Slug: landed, Kind: dobbyengine.LeftoverLanded},
 		{Slug: cancelled, Kind: dobbyengine.LeftoverCancelled},
-	})
+	}, fabricengine.ReconcileOptions{})
 
 	if want := map[string]error{landed: nil, cancelled: nil}; !reflect.DeepEqual(got, want) {
 		t.Errorf("tearDownLeftovers() = %v; want %v", got, want)
