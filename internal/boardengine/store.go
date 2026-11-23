@@ -35,13 +35,15 @@ func swapLockPath(path string) string {
 	return lock.TrackedLockPath(filepath.Dir(path), filepath.Base(path)+swapLockSuffix)
 }
 
-// BriefTask is an entry's enriched read-only view, with Layer and HasProposal computed at read time.
+// BriefTask is an entry's enriched read-only view, with Layer, Pending and HasProposal computed at read time.
 type BriefTask struct {
-	ID          int       `json:"id"`
-	Handle      string    `json:"handle,omitempty"`
-	Slug        string    `json:"slug"`
-	Title       string    `json:"title"`
-	DependsOn   []string  `json:"depends_on"`
+	ID        int      `json:"id"`
+	Handle    string   `json:"handle,omitempty"`
+	Slug      string   `json:"slug"`
+	Title     string   `json:"title"`
+	DependsOn []string `json:"depends_on"`
+	// Pending lists the dependencies that are not yet met, in depends_on order; empty when the entry waits on nothing.
+	Pending     []string  `json:"pending,omitempty"`
 	Kind        string    `json:"kind"`
 	Labels      []string  `json:"labels"`
 	Isolated    bool      `json:"isolated"`
@@ -503,27 +505,6 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 		}
 	}
 
-	if incoming.Kind == KindNote && len(incoming.DependsOn) > 0 {
-		return fmt.Errorf("note %q has depends_on, and only a task can depend on another entry: clear it with \"lym board set-deps\", or make the entry a task with \"lym board promote\"", incoming.Slug)
-	}
-	for _, dep := range incoming.DependsOn {
-		if snapshotIndex[dep].Kind == KindNote {
-			rest, _ := json.Marshal(slices.DeleteFunc(slices.Clone(incoming.DependsOn), func(other string) bool { return other == dep }))
-			return fmt.Errorf("%q depends on note %q, and a note cannot be depended on: promote the note with lym board promote '{\"slug\":\"%s\"}', or drop the dependency with lym board set-deps '{\"slug\":\"%s\",\"depends_on\":%s}'", incoming.Slug, dep, dep, incoming.Slug, rest)
-		}
-	}
-	if incoming.Kind == KindNote {
-		var dependents []string
-		for _, t := range snapshot {
-			if t.Slug != incoming.Slug && slices.Contains(t.DependsOn, incoming.Slug) {
-				dependents = append(dependents, t.Slug)
-			}
-		}
-		if len(dependents) > 0 {
-			return fmt.Errorf("note %q cannot be a note: %s depend on it; clear their depends_on with \"lym board set-deps\", or keep the entry a task", incoming.Slug, strings.Join(dependents, ", "))
-		}
-	}
-
 	projected := slices.Clone(snapshot)
 	if index := slices.IndexFunc(projected, func(t Task) bool { return t.Slug == incoming.Slug }); index >= 0 {
 		projected[index] = incoming
@@ -774,13 +755,30 @@ func (s *Store) GetTask(selector any) (Task, bool) {
 }
 
 // RemoveTask deletes the entry that selector identifies: a slug string, a numeric id or a Handle.
+// It strips the entry's slug from the depends_on of every remaining entry.
 // It returns an error when no entry matches.
 func (s *Store) RemoveTask(selector any) error {
+	return s.removeEntry(selector, true)
+}
+
+// removeEntry deletes the entry that selector identifies.
+// When stripDependencies is set, it also strips that entry's slug from the depends_on of every remaining entry.
+// A caller that puts an entry of the same slug back in the same write passes false, so its dependents keep waiting.
+func (s *Store) removeEntry(selector any, stripDependencies bool) error {
 	i, found := s.index(selector)
 	if !found {
 		return fmt.Errorf("task not found: %v", selector)
 	}
+	slug := s.tasks[i].Slug
 	s.tasks = append(s.tasks[:i], s.tasks[i+1:]...)
+	if !stripDependencies {
+		return nil
+	}
+	for j := range s.tasks {
+		if slices.Contains(s.tasks[j].DependsOn, slug) {
+			s.tasks[j].DependsOn = slices.DeleteFunc(slices.Clone(s.tasks[j].DependsOn), func(dep string) bool { return dep == slug })
+		}
+	}
 	return nil
 }
 
@@ -868,6 +866,7 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 
 	owners := ownersOf(s.primeOwner, s.tasks)
 	parentOf := parentOfOrPrime(s.parentOf)
+	dependencies := NewDependencies(s.tasks)
 	result := make([]BriefTask, 0, len(s.tasks))
 	for _, t := range ordered {
 		if !hasAllLabels(t, labels) {
@@ -897,6 +896,7 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 			Slug:         t.Slug,
 			Title:        t.Title,
 			DependsOn:    t.DependsOn,
+			Pending:      dependencies.Pending(t),
 			Kind:         t.Kind,
 			Labels:       t.Labels,
 			Isolated:     t.Isolated,
@@ -917,7 +917,7 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 
 // promoteTo makes the entry identified by idOrSlug a task and clears its priority.
 // When recipe is not empty, it is set in the same write.
-// A non-nil dependsOn replaces the task's depends_on in the same write,
+// The task keeps the note's depends_on, and a non-nil dependsOn replaces it in the same write,
 // so a write that also releases the task never lets a run start ahead of them.
 // An entry that is already a task takes no write, so a non-nil dependsOn that differs from its depends_on is refused.
 // A discussed note takes recipe raddle when recipe is empty and its record is stored, or it carries the sketch label.
@@ -1311,7 +1311,7 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 	keepDiscussed := upsertedAgain && removedEntry.Discussed && slices.Contains(removeSlugs, slugStr)
 
 	for _, slug := range removeSlugs {
-		s.RemoveTask(slug)
+		s.removeEntry(slug, slug != slugStr)
 	}
 
 	upserted, err := s.UpsertTask(upsert)

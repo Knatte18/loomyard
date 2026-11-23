@@ -27,7 +27,8 @@
 // A finished run writes nothing when its recipe has a Finalize row, whose landing marked the entry done;
 // it writes nothing with a RaddleFile row, whose filing ended the entry or turned it into its project.
 // A finished motif run makes its entry a Sketch, a note of the built-in type `sketch`, with its record stored.
-// When the board refuses that, the run warns, leaves the entry draft and mails its parent the refusal.
+// The board can refuse that as an invalid write.
+// In that case the run warns, leaves the entry draft and mails its parent the refusal.
 //
 // A run seeded with the recipe `pawl` is a beam's life.
 // It has no plan, no review round and no reroute edge.

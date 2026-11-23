@@ -1,5 +1,5 @@
 // sketch_test.go pins the Sketch end of a Discussion-only run.
-// It covers MakeSketch's one write on a run-held task and the entries it leaves alone or refuses.
+// It covers MakeSketch's one write on a run-held task and the entries it leaves alone.
 // It also covers the migration of a task an older binary left discussed.
 
 package boardengine_test
@@ -46,7 +46,7 @@ func mustGetEntry(t *testing.T, b *boardengine.Board, slug string) boardengine.T
 }
 
 // TestMakeSketch asserts MakeSketch turns a run-held task into a Sketch in one write.
-// It also asserts MakeSketch leaves an absent or done entry alone and refuses an entry another depends on.
+// It also asserts MakeSketch leaves an absent or done entry alone and keeps the dependents of an entry it makes a Sketch.
 func TestMakeSketch(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -116,18 +116,20 @@ func TestMakeSketch(t *testing.T) {
 		}
 	})
 
-	t.Run("DependedOnEntryIsRefused", func(t *testing.T) {
+	t.Run("DependedOnEntryBecomesASketchAndItsDependentKeepsWaiting", func(t *testing.T) {
 		t.Parallel()
 		b := newSketchBoard(t)
 		mustUpsertEntry(t, b, map[string]any{"slug": "motif", "title": "Motif", "kind": "task", "labels": bugLabels})
 		mustUpsertEntry(t, b, map[string]any{"slug": "after", "title": "After", "kind": "task", "labels": bugLabels, "depends_on": []string{"motif"}})
 
-		err := b.MakeSketch("motif")
-		if !errors.Is(err, boardengine.ErrSketchRefused) || !strings.Contains(err.Error(), "after") || !strings.Contains(err.Error(), "set-deps") {
-			t.Errorf("MakeSketch() error = %v; want an ErrSketchRefused refusal naming the dependent and set-deps", err)
+		if err := b.MakeSketch("motif"); err != nil {
+			t.Fatalf("MakeSketch() error = %v; want nil", err)
 		}
-		if got := mustGetEntry(t, b, "motif"); got.Kind != boardengine.KindTask {
-			t.Errorf("refused entry kind = %q; want task", got.Kind)
+		if got := mustGetEntry(t, b, "motif"); got.Kind != boardengine.KindNote {
+			t.Errorf("entry kind = %q; want note", got.Kind)
+		}
+		if got := mustGetEntry(t, b, "after"); !slices.Equal(got.DependsOn, []string{"motif"}) {
+			t.Errorf("dependent depends_on = %v; want [motif]", got.DependsOn)
 		}
 	})
 }

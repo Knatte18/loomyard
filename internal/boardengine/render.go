@@ -678,9 +678,8 @@ func (b boardView) entrySections(project Task, level int) []string {
 			byType[typeLabel] = append(byType[typeLabel], twl)
 		}
 	}
-	noteTable := readmeTable{columns: []string{columnNote}, cells: func(t Task) []string { return []string{entryCell(t)} }, priority: true}
 	for _, typeLabel := range notesTypeOrder(types) {
-		section(noteSectionName(typeLabel), byType[typeLabel], noteTable)
+		section(noteSectionName(typeLabel), byType[typeLabel], b.noteTable(byType[typeLabel]))
 	}
 
 	var done []TaskWithLayer
@@ -696,6 +695,18 @@ func (b boardView) entrySections(project Task, level int) []string {
 		return []string{entryCell(t)}
 	}})
 	return lines
+}
+
+// noteTable returns the table of one note section holding notes.
+// It carries the After column only when one of the notes waits on a dependency that is not met.
+func (b boardView) noteTable(notes []TaskWithLayer) readmeTable {
+	waits := slices.ContainsFunc(notes, func(twl TaskWithLayer) bool { return len(b.unmetDependencies(twl.Task)) > 0 })
+	if !waits {
+		return readmeTable{columns: []string{columnNote}, cells: func(t Task) []string { return []string{entryCell(t)} }, priority: true}
+	}
+	return readmeTable{columns: []string{columnNote, columnAfter}, cells: func(t Task) []string {
+		return []string{entryCell(t), b.afterCell(t)}
+	}, priority: true}
 }
 
 // childProjects returns the open projects directly under project, in project's order, then by handle.

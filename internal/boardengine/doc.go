@@ -5,17 +5,21 @@
 // # Entries
 //
 // Board holds one store, board.json, and every entry in it is a task, a note or a project, named by its kind.
-// Only a task is claimable, bar a project that is a beam, and only a task carries depends_on.
+// Only a task is claimable, bar a project that is a beam, and a task or a note carries depends_on.
 // A note is an idea or observation that is not yet work to run; Promote turns it into a task once the operator decides.
+// A note's depends_on says what it waits for: the board shows it as a task's, and the promoted task keeps it.
+// It never makes a sibling, since a note never runs.
 // Promote refuses a project, which is made a beam with `lym beam create`.
 //
 // A project groups entries.
 // It carries a type label, and no depends_on, profile, run_settings or priority; its only recipe is `pawl`.
 // A write giving it any of those fields, or another recipe, is refused naming the entry and the field to drop.
-// A task may depend on any entry that lands, a project included.
+// A task or a note may depend on any other entry: a task, a note or a project.
 // Dependencies judges a dependency met once that entry is done:
 // a task or a beam when its status is done, and a plain project when its status is done or every landing member is done.
+// A dependency on a note is met only once the note is promoted and lands, or is removed or pruned, whatever its status.
 // A landing member is a task or project under the project; a note never lands and holds no project open.
+// Removing an entry, like pruning a done one, strips its slug from every other entry's depends_on.
 //
 // Membership is the project key on a task or note and the order key on a project.
 // A write that sets or changes one is judged, and each refusal names the entry, the field and the slug at fault.
@@ -260,7 +264,7 @@
 // It keeps its title, brief, body, project, issues, Created date and discussed flag.
 // It drops its run and recipe fields.
 // It writes nothing for an absent, done or already sketched entry.
-// It refuses while another entry depends on the entry, since a note cannot be depended on.
+// An entry that another depends on stays depended on: the dependent waits until the Sketch is promoted and lands.
 //
 // A Sketch becomes a task only as a raddle run's entry:
 // Board.PromoteTo with recipe `raddle`, or with no recipe, makes the task in one write.

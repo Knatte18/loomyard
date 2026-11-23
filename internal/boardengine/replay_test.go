@@ -479,13 +479,12 @@ func TestFabricReplay(t *testing.T) {
 			wantEntries: map[string]string{"b": "B2", "x": ""},
 		},
 		{
-			name:        "NoteWithDependsOnIsRefused",
+			name:        "NoteWithDependsOnLands",
 			base:        []Task{replayEntry("a"), replayEntry("b", withTitle("B"))},
 			origin:      []Task{replayEntry("a"), replayEntry("b", withTitle("B"))},
 			parent:      []Task{replayEntry("a"), replayEntry("b", withTitle("B"))},
 			commit:      []Task{replayEntry("a"), replayEntry("b", withTitle("B2")), replayEntry("x", asNote, withDependsOn("a"))},
-			wantRefused: map[string]string{"x": "only a task can depend"},
-			wantEntries: map[string]string{"b": "B2", "x": ""},
+			wantEntries: map[string]string{"b": "B2", "x": "x"},
 		},
 		{
 			name:        "InvalidIssueNumberIsRefused",

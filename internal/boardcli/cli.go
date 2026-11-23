@@ -185,7 +185,8 @@ available subcommands without requiring a git repo.
 		Long: `Turn a note into a task. A task is returned unchanged, and nothing is written.
 The promoted entry loses its priority, which only a note carries, and its note handle: it takes
 the lowest free T handle.
---recipe <name> sets the task's recipe in the same write, and "depends_on" sets its dependencies.
+--recipe <name> sets the task's recipe in the same write.
+The task keeps the note's own depends_on, and a "depends_on" in the payload replaces it.
 A Sketch, or any discussed note whose decision record is stored, becomes a task only with recipe
 raddle, which keeps its record and releases the task so its raddle run starts: a promote with no
 --recipe gives it raddle, --recipe raddle is accepted, and any other recipe is refused.
@@ -202,7 +203,7 @@ Fields:
   "slug"       string  — entry slug (one of slug, id or handle)
   "id"         integer — entry id (one of slug, id or handle)
   "handle"     string  — entry handle, such as B4 (one of slug, id or handle)
-  "depends_on" array   — dependency slugs the promoted task waits on (optional)
+  "depends_on" array   — dependency slugs the promoted task waits on, replacing the note's own (optional)
 
 Examples:
   lym board promote '{"slug":"my-note"}'
@@ -570,7 +571,7 @@ Optional fields:
   "title"      string — display title
   "brief"      string — one-line summary
   "body"       string — markdown body
-  "depends_on" array  — slugs this task depends on
+  "depends_on" array  — slugs this task or note waits on
   "isolated"   bool   — no dependencies by design
   "status"     string — lifecycle status
   "kind"       string — "task", "note" or "project", default "note"
@@ -898,8 +899,9 @@ Examples:
 beside "prime_owner", the machine that owns the hub's prime ("" when none is recorded).
 A task's "owner_machine" is its effective owner, its beam's or root's; only a beam project records one.
 With --text, print a "prime owner: <machine>" line ("none" when none is recorded),
-then the compact one-line-per-task listing (handle, kind, priority, age, time since last revision, slug, title, labels, [status])
-instead of JSON; errors stay JSON.
+then the compact one-line-per-task listing (handle, kind, priority, age, time since last revision, slug, title, labels,
+"after <slugs>" naming the dependencies not yet met, [status]) instead of JSON; errors stay JSON.
+An entry's "pending" lists its dependencies not yet met, a note's included.
 Without --label, the --text listing shows the root project, the prime, as a P0 row with slug root
 before the first project, note or done entry, and last under --sort; the JSON "tasks" array holds no root row.
 An entry's "parent_beam" is the slug of the beam above it, "root" when the prime is its parent.
@@ -1080,14 +1082,15 @@ Example:
 	}
 	mergeCmd.Flags().StringVar(&mergeBodyFile, "body-file", "", `read the upsert's "body" from this file, or from stdin when "-"`)
 
-	// set-deps subcommand: replace the depends_on list for a task.
+	// set-deps subcommand: replace the depends_on list for a task or a note.
 	// depends_on is required: an absent key is an error, while an explicit [] clears the list.
 	// That separates an intentional clear from a typo that would otherwise silently wipe the list.
 	setDepsCmd := &cobra.Command{
 		Use:         "set-deps {slug|id|handle, depends_on}",
-		Short:       "replace a task's depends_on list",
+		Short:       "replace a task's or note's depends_on list",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Replace the full depends_on list for a task wholesale.
+		Long: `Replace the full depends_on list for a task or a note wholesale.
+A note's depends_on names what it waits for on the board; promote keeps it.
 An absent "depends_on" is an error; an explicit [] clears the list.
 The "notice" names siblings sharing a new depends_on and a label.
 

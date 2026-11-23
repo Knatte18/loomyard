@@ -10,6 +10,8 @@ import "slices"
 // A plain project is done when its status is done, or when it has a landing member and every landing member is done.
 // A landing member is a task or a project whose project key names the project;
 // a note never lands, so it holds no project open.
+// A dependency on a note is not met whatever the note's status:
+// it is met once the note has been promoted and landed, or removed.
 type Dependencies struct {
 	bySlug  map[string]Task
 	members map[string][]string
@@ -49,7 +51,11 @@ func (d Dependencies) met(slug string) bool {
 func (d Dependencies) metBelow(slug string, judging map[string]bool) bool {
 	entry, found := d.bySlug[slug]
 	switch {
-	case !found || isDone(entry):
+	case !found:
+		return true
+	case entry.Kind == KindNote:
+		return false
+	case isDone(entry):
 		return true
 	case entry.Kind != KindProject || entry.Beam || judging[slug]:
 		return false

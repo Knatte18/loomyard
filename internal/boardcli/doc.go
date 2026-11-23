@@ -44,6 +44,8 @@
 // The guard stops a mistaken write, not a determined one.
 //
 // `promote` takes `--recipe <name>` and an optional `depends_on`, both set in the promotion's write.
+// The promoted task keeps the note's own `depends_on` unless the payload gives one.
+// `list --text` ends the row of an entry, task or note, that waits on an unmet dependency with `after` and those slugs.
 // A Sketch, or any discussed note whose decision record is stored, becomes a task only with recipe raddle.
 // `set-status` with a null status on a draft project releases its draft member tasks in the same write.
 //

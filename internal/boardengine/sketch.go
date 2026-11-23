@@ -19,8 +19,7 @@ const SketchType = "sketch"
 // sketchTypeDescription is the description of the built-in sketch type label when board.yaml does not list it.
 const sketchTypeDescription = "a note whose Discussion was approved and whose decision record is stored, waiting for triage into tasks or a project"
 
-// ErrSketchRefused matches, through errors.Is, a MakeSketch the board refused as an invalid write:
-// such as while another entry depends on the entry.
+// ErrSketchRefused matches, through errors.Is, a MakeSketch the board refused as an invalid write.
 // Any other MakeSketch error is a failure of the write itself, after which the entry may or may not be a Sketch.
 var ErrSketchRefused = errors.New("board refuses the entry as a Sketch")
 
@@ -81,8 +80,8 @@ func endsAsSketch(before, now Task, vocab Vocabulary, removedDone map[string]boo
 // It writes nothing when the entry is absent, done or already a Sketch.
 // It ends a Discussion-only run: the entry leaves its run status in the same write.
 // The run lock lets that write through, so the entry never reads as a released task.
-// Like any write that makes an entry a note, it refuses while another entry depends on it, naming those entries.
-// The refusal matches ErrSketchRefused.
+// An entry that another depends on becomes a Sketch too, and its dependents keep waiting.
+// A refusal of the write matches ErrSketchRefused.
 func (b *Board) MakeSketch(slug string) error {
 	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
 		i, found := store.index(slug)

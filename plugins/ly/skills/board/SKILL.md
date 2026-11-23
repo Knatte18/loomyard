@@ -16,8 +16,9 @@ Every verb prints JSON, except where `--text` asks for the compact listing.
 
 Every entry carries a `kind`:
 
-- `task`: concrete and claimable; only a task can run, and only a task carries `depends_on`.
+- `task`: concrete and claimable; only a task can run.
 - `note`: an idea or observation that is not yet a task, one note per entry.
+  A note may carry `depends_on` naming the entries it waits for; `promote` keeps it, and a `depends_on` in the promote payload replaces it.
 - `project`: a group of entries, with the handle letter `P`.
   A task or note joins one through its `project` field, naming the project's slug,
   and a project lists the order of its members in `order`.
@@ -247,13 +248,15 @@ lym board intake close '{"issue":14,"reason":"Duplicate of #12."}'
 
 A `body` renders as ordinary markdown with semantic line breaks.
 A single newline is a soft break, so structure a body with headings and lists rather than relying on line breaks for layout.
-Never name another task as a dependency in a task's brief or body: put it in `depends_on` with `lym board set-deps`.
-The README computes each task's After column and its Ready or layer subsection from `depends_on`.
+Never name another task as a dependency in an entry's brief or body: put it in `depends_on` with `lym board set-deps`, on a note as on a task.
+The README computes each task's After column and its Ready or layer subsection from `depends_on`,
+and a note's After column from its own; `lym board list --text` ends a waiting entry's row with `after` and the slugs.
 It drops a finished entry from After, and `prune` strips it;
 a dependency written as prose goes stale once that entry lands.
 Whenever you set `depends_on`, check the other tasks waiting on the same entry for overlap, not only the running ones.
 Act on the `notice` that `set-deps` and the upsert verbs print: chain overlapping tasks with `lym board set-deps`.
-A relation between notes has no `depends_on`, so it is a sentence in a body.
+A note may depend on another note, set with `lym board set-deps`.
+A task waiting on a note waits until the note becomes a task and lands, or is removed.
 A body holds an entry's design while it is unbuilt.
 The task that builds it documents the result in the repository and never rewrites its own entry's body or scope:
 the landing marks the entry done, and `lym board prune` removes it.

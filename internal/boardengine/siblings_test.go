@@ -88,6 +88,16 @@ func TestWriteSiblings(t *testing.T) {
 			act:  promote("X", "D"), want: []boardengine.Sibling{pair}, stored: map[string][]string{"X": {"D"}},
 		},
 		{
+			name: "promote of a note keeping a dependency an open sibling waits on",
+			seed: []map[string]any{siblingEntry("D", nil, nil), siblingEntry("X", board, map[string]any{"kind": "note", "depends_on": []string{"D"}}), siblingEntry("Y", board, waitsOnD)},
+			act:  promote("X"), want: []boardengine.Sibling{pair}, stored: map[string][]string{"X": {"D"}},
+		},
+		{
+			name: "a note waiting on the dependency is no sibling",
+			seed: []map[string]any{siblingEntry("D", nil, nil), siblingEntry("X", board, nil), siblingEntry("Y", board, map[string]any{"kind": "note", "depends_on": []string{"D"}})},
+			act:  setDeps("X", "D"),
+		},
+		{
 			name: "two siblings come in board order",
 			seed: []map[string]any{siblingEntry("D", nil, nil), siblingEntry("X", board, nil), siblingEntry("Y1", board, waitsOnD), siblingEntry("Y2", board, waitsOnD)},
 			act:  setDeps("X", "D"),
@@ -209,9 +219,9 @@ func TestWriteSiblings(t *testing.T) {
 			act:  setDeps("X", "P"),
 		},
 		{
-			name: "note refused a dependency",
-			seed: []map[string]any{siblingEntry("D", nil, nil), siblingEntry("Y", board, waitsOnD), siblingEntry("N", nil, map[string]any{"kind": "note"})},
-			act:  setDeps("N", "D"), refused: true,
+			name: "note takes a dependency and makes no sibling",
+			seed: []map[string]any{siblingEntry("D", nil, nil), siblingEntry("Y", board, waitsOnD), siblingEntry("N", board, map[string]any{"kind": "note"})},
+			act:  setDeps("N", "D"), stored: map[string][]string{"N": {"D"}},
 		},
 		{
 			name: "unknown dependency refused",

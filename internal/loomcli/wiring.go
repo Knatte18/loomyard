@@ -297,7 +297,7 @@ func raddleFilingMarked(location *lymcwd.Location, runID string) (bool, error) {
 }
 
 // sketchFinish returns the Finish that makes the board entry of the run at location a Sketch.
-// The board refuses the Sketch while another entry depends on the entry.
+// The board can refuse the Sketch as an invalid write.
 // In that case it warns naming the refusal and leaves the entry draft instead,
 // so the run still lets go of the entry and nothing starts it.
 // It then tells the run's parent through notify, since only the parent can settle such an entry;
@@ -326,9 +326,9 @@ func sketchFinish(location *lymcwd.Location, runID string, notify func(line stri
 }
 
 // sketchRefusedNotice renders the line that tells the parent the finished run's entry slug stays a draft task.
-// The line names the board's refusal, which names the dependent entries, and it gives the ways forward.
+// The line names the board's refusal and gives the ways forward.
 func sketchRefusedNotice(slug string, refusal error) string {
-	return fmt.Sprintf("loom %s: the finished run's entry stays a draft task with its decision record stored: %v; way forward: drop or move those dependencies with `lym board set-deps '{\"slug\":\"<dependent>\",\"depends_on\":[...]}'` for each entry the refusal names, keeping its other dependencies, and make the entry a Sketch with `lym board upsert '{\"slug\":\"%s\",\"kind\":\"note\",\"labels\":[\"sketch\"],\"status\":null,\"depends_on\":[],\"isolated\":false,\"recipe\":\"\",\"profile\":\"\",\"run_settings\":null}'`, listing after `sketch` in `labels` the entry's labels that are not type labels, or give the task recipe raddle with `lym board upsert '{\"slug\":\"%s\",\"recipe\":\"raddle\"}'` and release it with `lym board set-status '{\"slug\":\"%s\",\"status\":null}'`", slug, refusal, slug, slug, slug)
+	return fmt.Sprintf("loom %s: the finished run's entry stays a draft task with its decision record stored: %v; way forward: correct what the refusal names, then make the entry a Sketch with `lym board upsert '{\"slug\":\"%s\",\"kind\":\"note\",\"labels\":[\"sketch\"],\"status\":null,\"depends_on\":[],\"isolated\":false,\"recipe\":\"\",\"profile\":\"\",\"run_settings\":null}'`, listing after `sketch` in `labels` the entry's labels that are not type labels, or give the task recipe raddle with `lym board upsert '{\"slug\":\"%s\",\"recipe\":\"raddle\"}'` and release it with `lym board set-status '{\"slug\":\"%s\",\"status\":null}'`", slug, refusal, slug, slug, slug)
 }
 
 // newCommitStatusSeam builds the shedengine.Shed.CommitStatus closure from deps.

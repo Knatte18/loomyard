@@ -74,17 +74,11 @@ func TestCheck(t *testing.T) {
 		}, []string{CheckBoardUnchecked}},
 		{"DependsOnCycle", func(p *Proposal, _ *BoardContext) { p.Parts[0].DependsOn = []string{"part-b"} }, []string{CheckDependsCycle}},
 		{"DependsOnUnknown", func(p *Proposal, _ *BoardContext) { p.Parts[1].DependsOn = append(p.Parts[1].DependsOn, "ghost") }, []string{CheckDependsUnknown}},
-		{"DependsOnNote", func(p *Proposal, b *BoardContext) {
+		{"DependsOnANoteOnTheBoardPasses", func(p *Proposal, b *BoardContext) {
 			b.Entries = append(b.Entries, BoardEntry{Slug: "idea", Kind: KindNote, Open: true})
 			p.Parts[1].DependsOn = append(p.Parts[1].DependsOn, "idea")
-		}, []string{CheckDependsNote}},
-		{"DependsOnNoteWhileFiling", func(p *Proposal, b *BoardContext) {
-			b.Entries = append(b.Entries, BoardEntry{Slug: "idea", Kind: KindNote, Open: true})
-			p.BoardChecked = append(p.BoardChecked, BoardCheck{Slug: "idea"})
-			p.Parts[1].DependsOn = append(p.Parts[1].DependsOn, "idea")
-			b.Filing = true
-		}, []string{CheckDependsNote}},
-		{"DependsOnPartThatIsAlsoANoteIsNoNoteDependency", func(_ *Proposal, b *BoardContext) {
+		}, nil},
+		{"DependsOnPartThatIsAlsoANoteIsASlugClash", func(_ *Proposal, b *BoardContext) {
 			b.Entries = append(b.Entries, BoardEntry{Slug: "part-a", Kind: KindNote, Open: true})
 		}, []string{CheckSlugTaken}},
 		{"DependsOnCheckedEntryGoneFromTheBoardPasses", func(p *Proposal, _ *BoardContext) { dependOnGoneEntry(p) }, nil},
@@ -195,10 +189,6 @@ func TestCheck_DetailNamesTheWayForward(t *testing.T) {
 		mutate func(p *Proposal, b *BoardContext)
 		want   []string
 	}{
-		{"DependsOnNote", CheckDependsNote, func(p *Proposal, b *BoardContext) {
-			b.Entries = append(b.Entries, BoardEntry{Slug: "idea", Kind: KindNote, Open: true})
-			p.Parts[1].DependsOn = append(p.Parts[1].DependsOn, "idea")
-		}, []string{`the note "idea"`, "drop the dependency", `lym board promote '{"slug":"idea"}'`}},
 		{"SlugInvalid", CheckSlugInvalid, func(p *Proposal, _ *BoardContext) { p.Parts[1].Slug = refusedSlug }, []string{
 			`slug "refused-slug" is refused`, "pick a slug the board admits", "lym loom raddle-propose",
 		}},

@@ -121,48 +121,79 @@ func TestKindDependencyRules(t *testing.T) {
 		return s
 	}
 
-	t.Run("a note with depends_on refused", func(t *testing.T) {
+	t.Run("a note carries depends_on through upsert, set-deps and a demotion", func(t *testing.T) {
 		s := seed(t)
-		_, err := s.UpsertTask(map[string]any{"slug": "n", "kind": "note", "depends_on": []string{"dep"}})
-		if err == nil || !stringContains(err.Error(), "set-deps") || !stringContains(err.Error(), "promote") {
-			t.Errorf("expected refusal naming set-deps and promote, got %v", err)
+		if _, err := s.UpsertTask(map[string]any{"slug": "n", "kind": "note", "depends_on": []string{"dep"}}); err != nil {
+			t.Fatalf("UpsertTask(note n depending on dep) error = %v; want nil", err)
+		}
+		if err := s.SetDeps("idea", []string{"dep"}); err != nil {
+			t.Fatalf("SetDeps(idea, [dep]) error = %v; want nil", err)
 		}
 		if _, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "task", "depends_on": []string{"dep"}}); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "note"}); err == nil {
-			t.Errorf("demoting a task that has depends_on should be refused")
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "note"}); err != nil {
+			t.Fatalf("demoting task x that has depends_on: error = %v; want nil", err)
+		}
+		for _, slug := range []string{"n", "idea", "x"} {
+			if got, _ := s.GetTask(slug); got.Kind != boardengine.KindNote || !slices.Equal(got.DependsOn, []string{"dep"}) {
+				t.Errorf("GetTask(%s) = kind %q, depends_on %v; want a note depending on [dep]", slug, got.Kind, got.DependsOn)
+			}
 		}
 	})
 
-	t.Run("depending on an open note refused", func(t *testing.T) {
+	t.Run("a task and a note each take a note as a dependency", func(t *testing.T) {
 		s := seed(t)
-		_, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "task", "depends_on": []string{"dep", "idea"}})
-		want := `"x" depends on note "idea", and a note cannot be depended on: promote the note with lym board promote '{"slug":"idea"}', or drop the dependency with lym board set-deps '{"slug":"x","depends_on":["dep"]}'`
-		if err == nil || err.Error() != want {
-			t.Errorf("UpsertTask() error = %v; want %q", err, want)
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "task", "depends_on": []string{"dep", "idea"}}); err != nil {
+			t.Fatalf("UpsertTask(task x depending on note idea) error = %v; want nil", err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "n", "kind": "note", "depends_on": []string{"idea"}}); err != nil {
+			t.Fatalf("UpsertTask(note n depending on note idea) error = %v; want nil", err)
+		}
+		if got, _ := s.GetTask("x"); !slices.Equal(got.DependsOn, []string{"dep", "idea"}) {
+			t.Errorf("GetTask(x) depends_on = %v; want [dep idea]", got.DependsOn)
+		}
+		if got, _ := s.GetTask("n"); !slices.Equal(got.DependsOn, []string{"idea"}) {
+			t.Errorf("GetTask(n) depends_on = %v; want [idea]", got.DependsOn)
 		}
 	})
 
-	t.Run("depending on a done note refused", func(t *testing.T) {
+	t.Run("a cycle through a note is refused", func(t *testing.T) {
 		s := seed(t)
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "task", "depends_on": []string{"idea"}}); err != nil {
+			t.Fatal(err)
+		}
+		err := s.SetDeps("idea", []string{"x"})
+		if err == nil || !stringContains(err.Error(), "cycle detected") {
+			t.Errorf("SetDeps(idea, [x]) error = %v; want a cycle refusal", err)
+		}
+	})
+
+	t.Run("demoting a task another entry depends on is allowed", func(t *testing.T) {
+		s := seed(t)
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "task", "depends_on": []string{"dep"}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "dep", "kind": "note"}); err != nil {
+			t.Fatalf("demoting dep to a note error = %v; want nil", err)
+		}
+		if got, _ := s.GetTask("dep"); got.Kind != boardengine.KindNote {
+			t.Errorf("GetTask(dep) kind = %q; want note", got.Kind)
+		}
+	})
+
+	t.Run("a dependency on a note stays pending even when the note is done", func(t *testing.T) {
+		s := seed(t)
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "task", "depends_on": []string{"idea"}}); err != nil {
+			t.Fatal(err)
+		}
 		if err := s.SetStatus("idea", stringPtr("done")); err != nil {
 			t.Fatal(err)
 		}
-		_, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "task", "depends_on": []string{"idea"}})
-		if err == nil || !stringContains(err.Error(), `"idea"`) {
-			t.Errorf("expected refusal naming idea, got %v", err)
-		}
-	})
-
-	t.Run("demoting a task another entry depends on refused", func(t *testing.T) {
-		s := seed(t)
-		if _, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "task", "depends_on": []string{"dep"}}); err != nil {
-			t.Fatal(err)
-		}
-		_, err := s.UpsertTask(map[string]any{"slug": "dep", "kind": "note"})
-		if err == nil || !stringContains(err.Error(), "x") || !stringContains(err.Error(), "set-deps") {
-			t.Errorf("expected refusal naming the dependent x and set-deps, got %v", err)
+		for _, brief := range s.ListTasksBrief(nil) {
+			if brief.Slug == "x" && !slices.Equal(brief.Pending, []string{"idea"}) {
+				t.Errorf("ListTasksBrief() x pending = %v; want [idea]", brief.Pending)
+			}
 		}
 	})
 
@@ -195,11 +226,47 @@ func TestKindDependencyRules(t *testing.T) {
 			}
 		}
 	})
+}
 
-	t.Run("set-deps on a note refused", func(t *testing.T) {
+func TestRemoveTaskStripsTheSlugFromDependsOn(t *testing.T) {
+	tiergate.Require(t, 0)
+	seed := func(t *testing.T) *boardengine.Store {
+		t.Helper()
+		s := boardengine.NewStore("")
+		for _, fields := range []map[string]any{
+			{"slug": "gone", "kind": "task"},
+			{"slug": "stays", "kind": "task"},
+			{"slug": "waiting-task", "kind": "task", "depends_on": []string{"gone", "stays"}},
+			{"slug": "waiting-note", "kind": "note", "depends_on": []string{"stays", "gone"}},
+		} {
+			if _, err := s.UpsertTask(fields); err != nil {
+				t.Fatalf("seed %v: %v", fields["slug"], err)
+			}
+		}
+		return s
+	}
+
+	t.Run("a removed entry leaves the depends_on of a task and a note and their other dependencies stay", func(t *testing.T) {
 		s := seed(t)
-		if err := s.SetDeps("idea", []string{"dep"}); err == nil {
-			t.Errorf("a note must not take depends_on")
+		if err := s.RemoveTask("gone"); err != nil {
+			t.Fatalf("RemoveTask(gone) error = %v; want nil", err)
+		}
+		for _, slug := range []string{"waiting-task", "waiting-note"} {
+			if got, _ := s.GetTask(slug); !slices.Equal(got.DependsOn, []string{"stays"}) {
+				t.Errorf("GetTask(%s) depends_on = %v; want [stays]", slug, got.DependsOn)
+			}
+		}
+	})
+
+	t.Run("a merge that upserts a removed slug again keeps the dependencies on it", func(t *testing.T) {
+		s := seed(t)
+		if _, err := s.MergeTasks([]string{"gone", "stays"}, map[string]any{"slug": "gone", "kind": "task"}, nil); err != nil {
+			t.Fatalf("MergeTasks() error = %v; want nil", err)
+		}
+		for slug, want := range map[string][]string{"waiting-task": {"gone"}, "waiting-note": {"gone"}} {
+			if got, _ := s.GetTask(slug); !slices.Equal(got.DependsOn, want) {
+				t.Errorf("GetTask(%s) depends_on = %v; want %v, the merged-away stays stripped", slug, got.DependsOn, want)
+			}
 		}
 	})
 }
@@ -1017,6 +1084,28 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 	}
 	if want := map[string]string{"proj": "Project", "work": "Ready"}; !maps.Equal(layers, want) {
 		t.Errorf("listed layers = %v; want %v", layers, want)
+	}
+
+	// An entry lists its dependencies not yet met as pending, a note's included, and leaves out a done one.
+	waiting := boardengine.NewStore("")
+	for _, fields := range []map[string]any{
+		{"slug": "open", "kind": "task"},
+		{"slug": "landed", "kind": "task", "status": "done"},
+		{"slug": "after-both", "kind": "task", "depends_on": []string{"landed", "open"}},
+		{"slug": "waits", "kind": "note", "depends_on": []string{"open", "landed"}},
+	} {
+		if _, err := waiting.UpsertTask(fields); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+	pending := map[string][]string{}
+	for _, b := range waiting.ListTasksBrief(nil) {
+		if b.Pending != nil {
+			pending[b.Slug] = b.Pending
+		}
+	}
+	if want := map[string][]string{"after-both": {"open"}, "waits": {"open"}}; !maps.EqualFunc(pending, want, slices.Equal[[]string]) {
+		t.Errorf("listed pending = %v; want %v", pending, want)
 	}
 
 	// With no parent seam, each listed entry's parent beam is computed from the store's own entries,
@@ -1958,6 +2047,33 @@ func TestPromote(t *testing.T) {
 		}
 	})
 
+	t.Run("a note keeps its depends_on, and a given depends_on replaces it", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			given []string
+			want  []string
+		}{
+			{"NoneGiven", nil, []string{"c"}},
+			{"Given", []string{"d"}, []string{"d"}},
+			{"EmptyGiven", []string{}, []string{}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				s := seed(t)
+				for _, fields := range []map[string]any{{"slug": "d", "kind": "task"}, {"slug": "a", "depends_on": []string{"c"}}} {
+					if _, err := s.UpsertTask(fields); err != nil {
+						t.Fatal(err)
+					}
+				}
+				got, changed, err := s.PromoteWithDeps("a", tt.given)
+				if err != nil || !changed || got.Kind != boardengine.KindTask || !slices.Equal(got.DependsOn, tt.want) {
+					t.Errorf("PromoteWithDeps(a, %v) = kind %q, depends_on %v, changed %v, err %v; want a task depending on %v",
+						tt.given, got.Kind, got.DependsOn, changed, err, tt.want)
+				}
+			})
+		}
+	})
+
 	t.Run("a project refused naming lym beam create", func(t *testing.T) {
 		s := seed(t)
 		if _, err := s.UpsertTask(map[string]any{"slug": "proj", "kind": "project"}); err != nil {
@@ -1987,6 +2103,9 @@ func TestPrune(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := s.UpsertTask(map[string]any{"slug": "live", "kind": "task", "depends_on": []string{"d1"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UpsertTask(map[string]any{"slug": "waiting", "kind": "note", "depends_on": []string{"d1", "live"}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.UpsertTask(map[string]any{"slug": "d2"}); err != nil {
@@ -2019,6 +2138,9 @@ func TestPrune(t *testing.T) {
 	live, _ := s.GetTask("live")
 	if len(live.DependsOn) != 0 {
 		t.Errorf("depends_on not stripped: %v", live.DependsOn)
+	}
+	if waiting, _ := s.GetTask("waiting"); !slices.Equal(waiting.DependsOn, []string{"live"}) {
+		t.Errorf("depends_on of note waiting = %v; want [live], the pruned d1 stripped", waiting.DependsOn)
 	}
 	if again := s.Prune(); len(again) != 0 {
 		t.Errorf("second prune removed %v", again)

@@ -17,6 +17,8 @@ The commands that read and write the board are in the `ly:board` skill.
 - A finding essentially the same as an existing note, or a correction to its subject, goes into that note;
   any other finding stays its own note, even when its work overlaps another entry.
   Notes are bundled only when the operator promotes them into a task.
+- A note that must wait for another entry, such as a running task, carries that entry in its `depends_on`, set with `lym board set-deps`;
+  the board then shows what it waits for, and the promoted task keeps it.
 - A board body holds the current design only.
   When a newer design, decision or answer replaces part of an entry's body, rewrite the body so it holds only what stands now.
   Remove the replaced drafts, recommendations and open questions in the same write, never keeping them under a "this replaces everything above" line.
