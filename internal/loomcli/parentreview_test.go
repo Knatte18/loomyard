@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -37,8 +38,8 @@ const (
 
 // parentReviewPRAsker returns the askPR seam that records through a real PRReviewAsker over files.
 // It asks at now() and its post succeeds.
-func parentReviewPRAsker(files burlerengine.ParentReviewFiles, now func() time.Time) func(pullrequest.Record, string) (burlerengine.ParentAsk, error) {
-	return func(rec pullrequest.Record, head string) (burlerengine.ParentAsk, error) {
+func parentReviewPRAsker(files burlerengine.ParentReviewFiles, now func() time.Time) func(pullrequest.Record, string, string) (burlerengine.ParentAsk, error) {
+	return func(rec pullrequest.Record, head, _ string) (burlerengine.ParentAsk, error) {
 		asker := landingshed.PRReviewAsker{
 			Files:        files,
 			Slug:         "task-a",
@@ -446,7 +447,7 @@ func TestParentReviewAskVerb(t *testing.T) {
 			name: "a failed ask is an error naming the cause and running the verb again",
 			setup: func(d *parentReviewDeps) {
 				asSession(d)
-				d.askPR = func(pullrequest.Record, string) (burlerengine.ParentAsk, error) {
+				d.askPR = func(pullrequest.Record, string, string) (burlerengine.ParentAsk, error) {
 					return burlerengine.ParentAsk{}, errors.New("disk full")
 				}
 			},
@@ -462,6 +463,12 @@ func TestParentReviewAskVerb(t *testing.T) {
 				tt.setup(&deps)
 			}
 			var out bytes.Buffer
+			var gotClaim string
+			recordAsk := deps.askPR
+			deps.askPR = func(rec pullrequest.Record, head, strandClaim string) (burlerengine.ParentAsk, error) {
+				gotClaim = strandClaim
+				return recordAsk(rec, head, strandClaim)
+			}
 			code := parentReviewAskVerb(&out, "task-a", deps)
 			record, _, err := burlerengine.ReadParentAsks(deps.files)
 			if err != nil {
@@ -490,6 +497,9 @@ func TestParentReviewAskVerb(t *testing.T) {
 			if !reflect.DeepEqual(env.Raw, tt.wantOK) {
 				t.Errorf("envelope = %v; want %v", env.Raw, tt.wantOK)
 			}
+			if gotClaim != parentReviewSession {
+				t.Errorf("the ask was signed as %q; want the session's strand %q", gotClaim, parentReviewSession)
+			}
 			if latest, _ := record.Latest(); latest.Tag != landingshed.PRReviewAskLineTag || latest.Digest != parentReviewHead {
 				t.Errorf("latest ask tag %q, digest %q; want the PR-Review tag and the head %q", latest.Tag, latest.Digest, parentReviewHead)
 			}
@@ -497,8 +507,25 @@ func TestParentReviewAskVerb(t *testing.T) {
 	}
 }
 
+// TestParentReviewPRAskFunc_ReturnsTheErrorOfAHubItCannotResolveTheParentIn drives the ask seam over a run's location.
+// A hub with no parent orch resolvable returns that error and records no ask.
+func TestParentReviewPRAskFunc_ReturnsTheErrorOfAHubItCannotResolveTheParentIn(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "task-a", AnchorRel: "."}
+
+	ask, err := parentReviewPRAskFunc(location)(pullrequest.Record{URL: "https://example.test/pull/7", Head: "task-a", Base: "main"}, parentReviewHead, parentReviewSession)
+
+	if err == nil || !strings.Contains(err.Error(), "not initialized here") {
+		t.Errorf("ask seam error = %v; want the hub's not-initialized refusal", err)
+	}
+	if ask.Number != 0 {
+		t.Errorf("ask = %+v; want no ask recorded", ask)
+	}
+}
+
 // TestParentReviewAwaitVerb verifies the await answers ready once the latest ask has ended or reaches its deadline.
-// The answer names the state, a not-sent ask's reason and a done ask's report.
+// The answer names the state, a not-sent or undelivered ask's reason and a done ask's report.
 // The await answers not ready once its cap runs out first.
 func TestParentReviewAwaitVerb(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -534,6 +561,12 @@ func TestParentReviewAwaitVerb(t *testing.T) {
 			asks:     []burlerengine.ParentAsk{{State: burlerengine.ParentAskNotSent, Reason: "raise review_timeout_min"}},
 			awaitCap: time.Minute,
 			want:     map[string]any{"ready": true, "ask": float64(1), "state": "not-sent", "reason": "raise review_timeout_min"},
+		},
+		{
+			name:     "an undelivered ask answers ready with its reason",
+			asks:     []burlerengine.ParentAsk{{State: burlerengine.ParentAskUndelivered, Reason: "the request was not delivered: refused"}},
+			awaitCap: time.Minute,
+			want:     map[string]any{"ready": true, "ask": float64(1), "state": "undelivered", "reason": "the request was not delivered: refused"},
 		},
 		{
 			name:      "the deadline reached during the wait sets the ask timeout and answers ready",

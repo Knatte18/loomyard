@@ -35,6 +35,8 @@ const (
 	ParentAskTimeout ParentAskState = "timeout"
 	// ParentAskNoParent is an ask that never went out because no parent orch resolved.
 	ParentAskNoParent ParentAskState = "no-parent"
+	// ParentAskUndelivered is an ask whose post to a resolved parent orch creel refused or failed; Reason carries the error.
+	ParentAskUndelivered ParentAskState = "undelivered"
 	// ParentAskNotSent is an ask that never went out because its deadline cap left no room; Reason says why.
 	ParentAskNotSent ParentAskState = "not-sent"
 )

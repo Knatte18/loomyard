@@ -475,7 +475,7 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 			if !found {
 				return burlerengine.ParentAsk{}, errors.New("loomcli: the run has no pull request record to ask the parent orch about")
 			}
-			asker, err := prReviewAsker(l, rec)
+			asker, err := prReviewAsker(l, rec, "")
 			if err != nil {
 				return burlerengine.ParentAsk{}, err
 			}
@@ -496,8 +496,10 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 
 // prReviewAsker builds the asker of the PR-Review ask for the run at l and the pull request rec records.
 // The wait from an ask to its deadline is loom.yaml's pr_review_parent_timeout_min over l's layers.
-// The ask goes to the orch the run's parent resolves to, signed as lym's loom program and tagged with the run.
-func prReviewAsker(l *lymcwd.Location, rec pullrequest.Record) (landingshed.PRReviewAsker, error) {
+// The ask goes to the orch the run's parent resolves to, tagged with the run.
+// It is signed as strandClaim when that names a strand that is not an orch, and as lym's loom program otherwise.
+// The PR-Review session's own ask passes its strand; the row's ask passes none.
+func prReviewAsker(l *lymcwd.Location, rec pullrequest.Record, strandClaim string) (landingshed.PRReviewAsker, error) {
 	cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(l), "loom")
 	if err != nil {
 		return landingshed.PRReviewAsker{}, err
@@ -511,7 +513,7 @@ func prReviewAsker(l *lymcwd.Location, rec pullrequest.Record) (landingshed.PRRe
 		Wait:         time.Duration(cfg.PRReviewParentTimeoutMin) * time.Minute,
 		Resolve:      func() (string, bool, error) { return orchcli.ParentStrand(l) },
 		Post: func(strand, line string) error {
-			return orchcli.PostAsProgram(l, strand, loomProgram, line, creelengine.PostTags{Run: l.WorktreeName})
+			return orchcli.PostAsCaller(l, strand, loomProgram, strandClaim, line, creelengine.PostTags{Run: l.WorktreeName})
 		},
 	}, nil
 }

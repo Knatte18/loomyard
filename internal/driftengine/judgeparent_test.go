@@ -147,7 +147,7 @@ func TestParentAgreementGate(t *testing.T) {
 		},
 		{name: "no recorded orch strand records no-parent and passes", unrecorded: true, wantPassed: true, wantState: burlerengine.ParentAskNoParent},
 		{name: "a resolve error records no-parent, posts nothing and passes", resolveErr: errors.New("boom"), wantPassed: true, wantState: burlerengine.ParentAskNoParent, wantReason: "could not be resolved: boom"},
-		{name: "a failed post records no-parent and passes", postErr: errors.New("boom"), wantPassed: true, wantState: burlerengine.ParentAskNoParent, wantPosts: 1},
+		{name: "a failed post records undelivered and passes", postErr: errors.New("boom"), wantPassed: true, wantState: "undelivered", wantReason: "the request was not delivered: boom", wantPosts: 1},
 		{
 			name:         "a held ask ended timeout and cleared is no ask, so a new one of the next round goes out",
 			prior:        &burlerengine.ParentAsk{State: burlerengine.ParentAskTimeout, Cleared: true, Deadline: judgeParentNow.Add(-time.Minute)},

@@ -134,6 +134,16 @@ func PostAsProgram(location *lymcwd.Location, receiver, program, line string, ta
 	})
 }
 
+// PostAsCaller sends line as creel mail carrying tags to the strand receiver, signed as the calling agent may sign.
+// It signs as strandClaim when that names a strand that is not an orch, and as program otherwise.
+// It serves a post from an agent's own pane.
+// Creel refuses a program claim from the pane of a strand that is not an orch.
+// A strand claim creel refuses as coming from outside that strand's pane is posted once more as program.
+// A refusal or failure comes back as an error carrying the full line.
+func PostAsCaller(location *lymcwd.Location, receiver, program, strandClaim, line string, tags creelengine.PostTags) error {
+	return postSigned(receiver, line, tags, strandClaim, notifyClientsOf(location, "", program))
+}
+
 // postAsProgram posts line carrying tags to receiver once through the client program builds.
 func postAsProgram(receiver, line string, tags creelengine.PostTags, program func() (notifyPoster, error)) error {
 	poster, err := program()
@@ -156,7 +166,13 @@ func ParentOrchRecorded(pair *lymcwd.Location) (bool, error) {
 // postNotice posts line carrying tags through creel to the orch strand orch answers.
 // It signs the call as program scoped to slug from location, and an empty slug signs as the unscoped program.
 func postNotice(location *lymcwd.Location, slug, program, line string, tags creelengine.PostTags, orch func() (string, bool, error)) (bool, error) {
-	clients := notifyClients{
+	return notifyPrime(orch, line, tags, os.Getenv(agentname.StrandNameEnv), notifyClientsOf(location, slug, program))
+}
+
+// notifyClientsOf returns the creel clients of location's worktree a notice posts through.
+// The program client signs as program scoped to slug, and an empty slug signs as the unscoped program.
+func notifyClientsOf(location *lymcwd.Location, slug, program string) notifyClients {
+	return notifyClients{
 		strand: func(strandClaim string) (notifyPoster, error) {
 			return creelcli.NewStrandClient(location, strandClaim)
 		},
@@ -164,7 +180,6 @@ func postNotice(location *lymcwd.Location, slug, program, line string, tags cree
 			return creelcli.NewScopedProgramClient(location, slug, program)
 		},
 	}
-	return notifyPrime(orch, line, tags, os.Getenv(agentname.StrandNameEnv), clients)
 }
 
 // NearestLiveParent answers the orch a notice of pair goes to, as the orch's agent name and worktree.
@@ -249,27 +264,30 @@ func notifyPrime(orch func() (string, bool, error), line string, tags creelengin
 		logger.Info("orch: notice not posted, no orch strand recorded", "line", line)
 		return false, nil
 	}
+	if err := postSigned(receiver, line, tags, strandClaim, clients); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// postSigned posts line carrying tags to receiver.
+// A strand claim naming a strand that is not an orch is tried first.
+// A claim creel refuses as coming from outside that strand's pane falls back to posting once as the program.
+func postSigned(receiver, line string, tags creelengine.PostTags, strandClaim string, clients notifyClients) error {
 	if claimsNonOrchStrand(strandClaim) {
 		poster, err := clients.strand(strandClaim)
 		if err != nil {
-			return false, noticeError(line, err)
+			return noticeError(line, err)
 		}
 		_, err = poster.PostTagged(receiver, line, tags)
 		switch {
 		case err == nil:
-			return true, nil
+			return nil
 		case !errors.Is(err, creelengine.ErrStrandClaimOutsidePane):
-			return false, noticeError(line, err)
+			return noticeError(line, err)
 		}
 	}
-	poster, err := clients.program()
-	if err != nil {
-		return false, noticeError(line, err)
-	}
-	if _, err := poster.PostTagged(receiver, line, tags); err != nil {
-		return false, noticeError(line, err)
-	}
-	return true, nil
+	return postAsProgram(receiver, line, tags, clients.program)
 }
 
 // claimsNonOrchStrand reports whether strandClaim names a strand whose role is not an orch's.

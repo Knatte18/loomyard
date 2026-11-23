@@ -31,8 +31,10 @@ import (
 )
 
 // startNoticeOrch records a prime orch strand for the hub and runs creel's daemon in process with that strand live.
+// The daemon also lists each of others.
 // The notice clients then connect to the daemon and spawn none of their own.
-func startNoticeOrch(t *testing.T, h *hubforge.Hub) {
+// It returns the daemon's fake delivery and the orch strand's name.
+func startNoticeOrch(t *testing.T, h *hubforge.Hub, others ...creelengine.Strand) (*creelfake.Delivery, string) {
 	t.Helper()
 	root, err := lymtemp.ProcessRoot()
 	if err != nil {
@@ -51,7 +53,7 @@ func startNoticeOrch(t *testing.T, h *hubforge.Hub) {
 		t.Fatalf("reedengine.SaveState() = %v; want nil", err)
 	}
 	delivery := creelfake.NewDelivery()
-	delivery.SetStrands(creelfake.LiveStrand(receiver))
+	delivery.SetStrands(append([]creelengine.Strand{creelfake.LiveStrand(receiver)}, others...)...)
 	// Busy, so a posted mail is not carried into the pane before the test reads the log.
 	delivery.SetIdle(receiver, false)
 	epoch := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
@@ -76,10 +78,11 @@ func startNoticeOrch(t *testing.T, h *hubforge.Hub) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the creel daemon did not listen")
 	}
+	return delivery, receiver
 }
 
-// postedSubjects returns the subject of each mail the hub's creel daemon logged as posted, oldest first.
-func postedSubjects(t *testing.T, h *hubforge.Hub) []string {
+// postedEntries returns the log entry of each mail the hub's creel daemon logged as posted, oldest first.
+func postedEntries(t *testing.T, h *hubforge.Hub) []creelengine.LogEntry {
 	t.Helper()
 	reader, err := creelcli.NewProgramClient(h.Location, "CHECK")
 	if err != nil {
@@ -89,11 +92,21 @@ func postedSubjects(t *testing.T, h *hubforge.Hub) []string {
 	if err != nil {
 		t.Fatalf("Log() = %v; want nil", err)
 	}
-	var subjects []string
+	var posted []creelengine.LogEntry
 	for _, entry := range entries {
 		if entry.Event == "posted" {
-			subjects = append(subjects, entry.Subject)
+			posted = append(posted, entry)
 		}
+	}
+	return posted
+}
+
+// postedSubjects returns the subject of each mail the hub's creel daemon logged as posted, oldest first.
+func postedSubjects(t *testing.T, h *hubforge.Hub) []string {
+	t.Helper()
+	var subjects []string
+	for _, entry := range postedEntries(t, h) {
+		subjects = append(subjects, entry.Subject)
 	}
 	return subjects
 }

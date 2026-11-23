@@ -40,7 +40,8 @@ func TestPRReviewAsker_Ask(t *testing.T) {
 		{name: "an earlier Code-Review ask numbers the new ask 2", earlier: true, wantNumber: 2, wantState: burlerengine.ParentAskOpen, wantPosts: 1},
 		{name: "a parent with no strand records no-parent and posts nothing", unrecorded: true, wantNumber: 1, wantState: burlerengine.ParentAskNoParent, wantReason: "no orch strand"},
 		{name: "a resolve error records no-parent and posts nothing", resolveErr: errors.New("boom"), wantNumber: 1, wantState: burlerengine.ParentAskNoParent, wantReason: "could not be resolved: boom"},
-		{name: "a failing post records no-parent with its reason", postErr: errors.New("boom"), wantNumber: 1, wantState: burlerengine.ParentAskNoParent, wantReason: "boom", wantPosts: 1},
+		// A refused post reaches a parent that resolved, so it records a delivery failure, never no-parent.
+		{name: "a refused post records undelivered with its reason", postErr: errors.New("creel: may not sign as the program"), wantNumber: 1, wantState: "undelivered", wantReason: "the request was not delivered: creel: may not sign as the program", wantPosts: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

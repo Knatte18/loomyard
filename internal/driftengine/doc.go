@@ -95,7 +95,7 @@
 //
 // Under the run's autonomy, Config.Autonomous, ApplyAutonomy forces `judge_ask_parent` on and `judge_interactive` off.
 // It writes no layer file, so autonomy off restores each key's layered value at the next load.
-// Under it, a judge ask that ended timeout, not-sent or no-parent halts Drift-Verify.
+// Under it, a judge ask that ended timeout, not-sent, no-parent or undelivered halts Drift-Verify.
 // The parent agreement entry does not pass, and the rulings are not stored.
 // The resume asks the parent again over the same rulings, with no judge spawned:
 // it clears the ended ask, and the entry sends a new one over the unchanged digest.

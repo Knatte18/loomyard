@@ -50,6 +50,7 @@
 // It admits the operator's unnamed shell, the run's parent orch and the strand the ask went to.
 // `parent-review await` is the asking agent's capped wait on the same ask, and it writes nothing but a timeout.
 // `parent-review ask` records and posts a PR-Review ask at the task head for the review's session.
+// It signs the post as the session's own strand, where the PR-Review row's own ask signs as the loom program.
 // Only that session runs it.
 // It admits only a review recorded under autonomy, and it refuses an ask that already awaits an answer at the head.
 // The Discussion-Review and Code-Review parent seats read `discussion_review_ask_parent` and `code_review_ask_parent`.

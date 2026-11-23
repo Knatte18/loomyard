@@ -1849,6 +1849,9 @@ func TestDriftVerify(t *testing.T) {
 					a.atArrival[1] = func() { a.clock = a.clock.Add(judgeTimeout) }
 				}},
 				{"NoParent", burlerengine.ParentAskNoParent, true, func(*autonomousJudge) {}},
+				{"Undelivered", burlerengine.ParentAskUndelivered, false, func(a *autonomousJudge) {
+					a.deps.JudgeParent.Post = func(string, string) error { return errors.New("creel: may not sign as the program") }
+				}},
 			}
 			for _, tt := range tests {
 				for _, autonomous := range []bool{true, false} {

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/creelengine"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -86,6 +87,65 @@ func TestPostAsProgram_PostsOnceThroughTheProgramClient(t *testing.T) {
 				if err == nil || !strings.Contains(err.Error(), part) {
 					t.Errorf("postAsProgram() error = %v; want it to hold %q", err, part)
 				}
+			}
+		})
+	}
+}
+
+// TestPostAsCaller_BuildsTheClientOfTheIdentityItSignsAs proves which client PostAsCaller builds.
+// A non-orch strand claim builds the strand client first and the program client for an empty claim.
+// Outside a hub neither client builds, so the error carries the line and the hub refusal.
+func TestPostAsCaller_BuildsTheClientOfTheIdentityItSignsAs(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const line = "[pr-review request] a-slug ask 1: review the pull request"
+	tests := []struct {
+		name        string
+		strandClaim string
+	}{
+		{"NonOrchStrandClaimBuildsTheStrandClient", "tst:a-slug:pr-reviewer"},
+		{"EmptyClaimBuildsTheProgramClient", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := PostAsCaller(&lymcwd.Location{}, "tst:orch", "LOOM", tt.strandClaim, line, creelengine.PostTags{Run: "a-slug"})
+
+			if err == nil || !strings.Contains(err.Error(), line) || !strings.Contains(err.Error(), "not in one") {
+				t.Errorf("PostAsCaller() error = %v; want it to hold the line and the hub refusal", err)
+			}
+		})
+	}
+}
+
+// TestPostNotice_PostsOnlyWhenTheOrchIsRecorded proves postNotice posts nothing for an orch with no recorded strand.
+// With a recorded strand it builds its clients from the location, so outside a hub it returns the line with the cause.
+func TestPostNotice_PostsOnlyWhenTheOrchIsRecorded(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const line = "[batten notice] a-slug: blocked"
+	tests := []struct {
+		name     string
+		recorded bool
+		wantErr  bool
+	}{
+		{"NoOrchStrandRecordedPostsNothing", false, false},
+		{"RecordedOrchStrandOutsideAHubReturnsTheLineWithTheCause", true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			posted, err := postNotice(&lymcwd.Location{}, "", "BATTEN", line, creelengine.PostTags{}, func() (string, bool, error) { return "tst:orch", tt.recorded, nil })
+
+			if posted {
+				t.Errorf("postNotice() posted = true; want false")
+			}
+			if tt.wantErr != (err != nil && strings.Contains(err.Error(), line)) {
+				t.Errorf("postNotice() error = %v; want an error holding the line = %v", err, tt.wantErr)
 			}
 		})
 	}

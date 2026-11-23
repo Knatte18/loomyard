@@ -41,7 +41,7 @@ type PRReviewAsker struct {
 // Ask records an ask for the pull request at head as the run's next ask and posts its line, asked at now.
 // A parent that resolves gets the ask pending-post with its strand and a deadline Wait after now;
 // it is posted and then open.
-// A post that fails ends the ask no-parent, with the error as its reason.
+// A post that fails ends the ask undelivered, with the error as its reason.
 // A parent that fails to resolve, or records no orch strand, makes the ask no-parent, and nothing is posted.
 // It returns the ask as it then stands.
 func (a PRReviewAsker) Ask(head string, now time.Time) (burlerengine.ParentAsk, error) {
@@ -61,7 +61,7 @@ func (a PRReviewAsker) Ask(head string, now time.Time) (burlerengine.ParentAsk, 
 	}
 
 	if err := a.Post(ask.Strand, PRReviewAskLine(a.Slug, a.URL, a.TaskBranch, a.ParentBranch, ask)); err != nil {
-		ended, _, endErr := burlerengine.EndParentAsk(a.Files, ask.Number, burlerengine.ParentAskNoParent, fmt.Sprintf("the request was not delivered: %s", err))
+		ended, _, endErr := burlerengine.EndParentAsk(a.Files, ask.Number, burlerengine.ParentAskUndelivered, fmt.Sprintf("the request was not delivered: %s", err))
 		return ended, endErr
 	}
 	if err := burlerengine.MarkParentAskPosted(a.Files, ask.Number); err != nil {
@@ -98,7 +98,7 @@ const (
 // It is satisfied when the ask was sent at head and is done with a report that holds no findings.
 // It is awaiting when the ask was sent at head and is pending-post or open before its deadline.
 // Otherwise it is ask-again.
-// That covers no ask, one sent at another head, one with findings, and one ended timeout or no-parent.
+// That covers no ask, one sent at another head, one with findings, and one ended timeout, no-parent or undelivered.
 // It also covers one cleared, and one open past its deadline.
 func ReadPRReviewStanding(files burlerengine.ParentReviewFiles, head string, now time.Time) (PRReviewStanding, error) {
 	record, _, err := burlerengine.ReadParentAsks(files)

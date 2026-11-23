@@ -547,7 +547,7 @@ func TestBurlerReviewProducer_Call_ParentAskThatDoesNotGoOut(t *testing.T) {
 		},
 		{
 			name: "a post error", postErr: errors.New("boom"), wantResolve: 1, wantPosts: 1,
-			wantState: burlerengine.ParentAskNoParent, wantReason: "the request was not delivered: boom", wantStrand: resolvedStrand,
+			wantState: "undelivered", wantReason: "the request was not delivered: boom", wantStrand: resolvedStrand,
 		},
 		{
 			name: "a wait the chair's timeout leaves no room for", skipReason: "the chair's timeout leaves no room",

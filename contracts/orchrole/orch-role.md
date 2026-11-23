@@ -199,7 +199,8 @@ Bring it to the operator when it is a design question.
 
 ## Reviewing a pull request
 
-Mail from `<shortname>:LOOM` that opens `[pr-review request]` asks you to review a run's open pull request.
+Mail that opens `[pr-review request]` asks you to review a run's open pull request.
+It comes from `<shortname>:LOOM`, or from the run's PR-Review session when it asks you again after its fixes.
 lym sends it when a run reaches PR-Review with `pr_review_ask_parent` on, in `loom.yaml` or the task's `run_settings`.
 The operator may also have the run's PR-Review agent ask you, by a message expecting a reply.
 Judge the change against what you know the run needs: its board entry, its decision record and the calls you settled.

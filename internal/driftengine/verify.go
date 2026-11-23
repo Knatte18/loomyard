@@ -875,7 +875,7 @@ func (p *DriftVerify) judgeAsks(spawnID string) ([]burlerengine.ParentAsk, error
 }
 
 // endedUnanswered answers the spawn's latest ask when it is not cleared and ended without the parent's answer:
-// timeout, not-sent or no-parent.
+// timeout, not-sent, no-parent or undelivered.
 // Otherwise, and for a row with no parent seat, it answers false.
 func (p *DriftVerify) endedUnanswered(spawnID string) (burlerengine.ParentAsk, bool, error) {
 	asks, err := p.judgeAsks(spawnID)
@@ -884,7 +884,7 @@ func (p *DriftVerify) endedUnanswered(spawnID string) (burlerengine.ParentAsk, b
 	}
 	latest := asks[len(asks)-1]
 	switch latest.State {
-	case burlerengine.ParentAskTimeout, burlerengine.ParentAskNotSent, burlerengine.ParentAskNoParent:
+	case burlerengine.ParentAskTimeout, burlerengine.ParentAskNotSent, burlerengine.ParentAskNoParent, burlerengine.ParentAskUndelivered:
 		if !latest.Cleared {
 			return latest, true, nil
 		}

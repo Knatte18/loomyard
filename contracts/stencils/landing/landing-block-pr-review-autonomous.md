@@ -23,6 +23,9 @@ When `await` reports an ask ended timeout, no-parent or not-sent, or reports tha
 ask again with `lym loom parent-review ask {{.slug}}`.
 After a no-parent end, end your turn first and ask again only on the next mail you receive,
 so a parent that is down raises hold notices and not a loop of asks.
+An undelivered end means creel refused or failed to deliver the ask, not that your parent is down: its `reason` names why.
+Send your parent that reason and the ask's number with `lym creel post --parent`,
+then end your turn and ask again on the next mail you receive.
 
 When lym mails a gate failure from outside the change, such as a file another process held open,
 run `lym loom pr-continue` again once your parent's answer stands: it gates the same head again.

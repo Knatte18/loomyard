@@ -78,8 +78,8 @@ type parentReviewDeps struct {
 	prRecord func() (pullrequest.Record, bool, error)
 	// head reads the task branch's current head.
 	head func() (string, error)
-	// askPR records and posts a PR-Review ask for the pull request rec records at head.
-	askPR func(rec pullrequest.Record, head string) (burlerengine.ParentAsk, error)
+	// askPR records and posts a PR-Review ask for the pull request rec records at head, signed as strandClaim.
+	askPR func(rec pullrequest.Record, head, strandClaim string) (burlerengine.ParentAsk, error)
 }
 
 // parentAnswerInput holds the flag values of one `parent-review answer` call.
@@ -251,7 +251,7 @@ func parentReviewAnswerVerb(out io.Writer, slug string, deps parentReviewDeps, i
 // It reads the ask record once per poll interval.
 // An ask still pending-post or open at or past its deadline is set timeout, which ends it.
 // It answers ready true with the ask's state once the ask has ended.
-// That answer carries the reason of a not-sent ask and the report of a done one.
+// That answer carries the reason of a not-sent or undelivered ask and the report of a done one.
 // It answers ready false once the cap runs out first, and the caller runs it again.
 // A run with no ask is refused.
 func parentReviewAwaitVerb(ctx context.Context, out io.Writer, deps parentReviewDeps) int {
@@ -269,7 +269,7 @@ func parentReviewAwaitVerb(ctx context.Context, out io.Writer, deps parentReview
 		}
 		if ask.State.Ended() {
 			result := map[string]any{"ready": true, "ask": ask.Number, "state": string(ask.State)}
-			if ask.State == burlerengine.ParentAskNotSent {
+			if ask.State == burlerengine.ParentAskNotSent || ask.State == burlerengine.ParentAskUndelivered {
 				result["reason"] = ask.Reason
 			}
 			if ask.State == burlerengine.ParentAskDone {
@@ -333,7 +333,7 @@ func parentReviewAskVerb(out io.Writer, slug string, deps parentReviewDeps) int 
 		pending, _ := record.LatestTagged(landingshed.PRReviewAskLineTag)
 		return refuse("ask %d, sent at this head, awaits an answer; way forward: wait for ask %d's answer with lym loom %s %s %s", pending.Number, pending.Number, parentReviewGroup, parentReviewAwaitName, slug)
 	}
-	ask, err := deps.askPR(rec, head)
+	ask, err := deps.askPR(rec, head, deps.strandName)
 	if err != nil {
 		return refuse("record and send the ask: %s; %s", err, parentReviewWayAskRetry)
 	}
@@ -404,15 +404,21 @@ func (s *parentReviewState) preRun(cmd *cobra.Command, args []string) error {
 			}
 			return fabric.HeadSHA()
 		},
-		askPR: func(rec pullrequest.Record, head string) (burlerengine.ParentAsk, error) {
-			asker, err := prReviewAsker(target, rec)
-			if err != nil {
-				return burlerengine.ParentAsk{}, err
-			}
-			return asker.Ask(head, time.Now())
-		},
+		askPR: parentReviewPRAskFunc(target),
 	}
 	return nil
+}
+
+// parentReviewPRAskFunc returns the seam that records and posts a PR-Review ask for the run at target.
+// The seam signs each ask as the strandClaim it is called with, the strand of the session that runs the verb.
+func parentReviewPRAskFunc(target *lymcwd.Location) func(pullrequest.Record, string, string) (burlerengine.ParentAsk, error) {
+	return func(rec pullrequest.Record, head, strandClaim string) (burlerengine.ParentAsk, error) {
+		asker, err := prReviewAsker(target, rec, strandClaim)
+		if err != nil {
+			return burlerengine.ParentAsk{}, err
+		}
+		return asker.Ask(head, time.Now())
+	}
 }
 
 // parentReviewCmd builds the `parent-review` subtree.
@@ -484,8 +490,8 @@ Example:
 		Short:       "wait, capped, until the run's latest parent-review ask has ended",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `await waits until the run's latest parent-review ask has ended, and prints ok
-with ready true, the ask's state, the reason of a not-sent ask and the report
-of a done one. An ask still pending-post or open at or past its deadline is set
+with ready true, the ask's state, the reason of a not-sent or undelivered ask
+and the report of a done one. An ask still pending-post or open at or past its deadline is set
 timeout, which ends it. When the calling session's keep-warm cap elapses first
 it prints ok with ready false and exits 0: run it again, in a turn that does
 nothing else, with a shell command timeout above the cap. A run with no ask is
@@ -511,7 +517,9 @@ Example:
 		Long: `ask records a PR-Review ask to the run's parent orch for the run's pull
 request at the task branch's current head, and sends it. It prints ok with the
 ask's number, state, head and deadline. Run it after each set of fixes, then
-wait for the answer with "parent-review await".
+wait for the answer with "parent-review await". The ask is signed as the
+session's own strand, since creel lets only an orch's pane sign as a program.
+An ask creel refuses or fails to deliver ends undelivered, with the error as its reason.
 
 Only the PR-Review session of a review recorded under autonomy may run it, from
 its own pane, and at most one ask stands open per head. The verb ends nothing:
