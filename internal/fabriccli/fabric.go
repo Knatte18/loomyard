@@ -322,6 +322,12 @@ A dry run computes the same protected and unowned verdicts the matching --apply
 run would act on, so "protected": false with no "unowned" in a dry run means
 "--apply would remove this".
 
+prune also reports pending_teardowns: every remote teardown whose detached
+child ended before its job did, such as one killed outright, or whose remote
+step failed. Either can leave the pair's branches on origin. Each names what
+finishes it: the push of an archive tag this machine alone holds, where one is
+owed, and then the re-run. prune itself never runs it.
+
 Example:
   lym fabric prune
   lym fabric prune --apply
@@ -830,8 +836,13 @@ func runPruneWithFlags(ctx context.Context, out io.Writer, apply, force bool) in
 	if err != nil {
 		return errWithRecord(out, r.Mutated(), err)
 	}
+	pendingTeardowns, err := fabricengine.PendingTeardowns(l.HubPath)
+	if err != nil {
+		return errWithRecord(out, r.Mutated(), err)
+	}
 	return okWithRecord(out, r.Mutated(), map[string]any{
-		"entries": r.Entries,
+		"entries":           r.Entries,
+		"pending_teardowns": pendingTeardowns,
 	})
 }
 

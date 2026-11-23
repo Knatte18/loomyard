@@ -26,8 +26,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// namespaceTagsPrefix is the origin ref prefix of the records namespace's tags.
-const namespaceTagsPrefix = fabricengine.RecordsNamespaceRoot + fabricengine.RecordsNamespaceTags
+// The origin ref prefixes of a one-repository hub's tags, below the records namespace root.
+const (
+	// namespaceTagsPrefix holds the records store's tags.
+	namespaceTagsPrefix = fabricengine.RecordsNamespaceRoot + fabricengine.RecordsNamespaceTags
+	// namespaceCodeTagsPrefix holds the code store's archive tags.
+	namespaceCodeTagsPrefix = fabricengine.RecordsNamespaceRoot + fabricengine.RecordsNamespaceCodeTags
+)
 
 // oneRepoPairFabric opens the fabric handle on the pair slug of h.
 func oneRepoPairFabric(t *testing.T, h *hubforge.Hub, slug string) *fabricengine.Fabric {

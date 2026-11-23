@@ -192,7 +192,7 @@ func TestSandboxedRoleGuard(t *testing.T) {
 					t.Errorf("%s under %s = %d, output %s; want a guard refusal", verb, strand, code, out)
 				}
 				if verb == "add" && strand == webster {
-					for _, want := range []string{"hubforge", "status: FAILED"} {
+					for _, want := range []string{"hubforge", "status: FAILED", "`lym harden sandbox new` under "} {
 						if !strings.Contains(out, want) {
 							t.Errorf("add refusal under %s lacks %q: %s", strand, want, out)
 						}
@@ -255,11 +255,48 @@ func TestSandboxedRoleGuard(t *testing.T) {
 		}
 	})
 
-	t.Run("a bypass flag passes only on push", func(t *testing.T) {
+	t.Run("a push's path flags pass only for the role's own pair or a pair under its own sandbox root", func(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, webster)
-		if _, out := runUnderParent(t, "push", "--weft-path", t.TempDir()); strings.Contains(out, refusalMarker) {
-			t.Errorf("push with --weft-path was refused: %s", out)
+		hubs := t.TempDir()
+		recordShortname(t, hubs, "ly")
+		own := fakeWorktree(t, hubs, "slug")
+		ownSandboxHub := sandboxHubDir(t, own)
+		other := fakeWorktree(t, hubs, "other")
+		otherHubs := t.TempDir()
+		recordShortname(t, otherHubs, "zz")
+		sameSlugInOtherHub := fakeWorktree(t, otherHubs, "slug")
+
+		tests := []struct {
+			name     string
+			weftPath string
+			warpPath string
+			refused  bool
+		}{
+			{"OwnPair", own + weftname.Suffix, own, false},
+			{"OwnRecordsSiblingAlone", own + weftname.Suffix, "", false},
+			{"PairUnderOwnSandboxRoot", filepath.Join(ownSandboxHub, "t1"+weftname.Suffix), filepath.Join(ownSandboxHub, "t1"), false},
+			{"AnotherWorktreesPair", other + weftname.Suffix, other, true},
+			{"OwnRecordsSiblingWithAnotherWorktree", own + weftname.Suffix, other, true},
+			{"SameSlugPairInAnotherHub", sameSlugInOtherHub + weftname.Suffix, sameSlugInOtherHub, true},
+			{"PathsOutsideAnyHub", t.TempDir(), t.TempDir(), true},
 		}
+		for _, tt := range tests {
+			args := []string{"push"}
+			if tt.weftPath != "" {
+				args = append(args, "--weft-path", tt.weftPath)
+			}
+			if tt.warpPath != "" {
+				args = append(args, "--warp-path", tt.warpPath)
+			}
+			code, out := runUnderParent(t, args...)
+			if refused := strings.Contains(out, refusalMarker); refused != tt.refused {
+				t.Errorf("%s: %v under %s refused = %v; want %v; output: %s", tt.name, args, webster, refused, tt.refused, out)
+			}
+			if tt.refused && code != 1 {
+				t.Errorf("%s: %v under %s = %d; want exit 1", tt.name, args, webster, code)
+			}
+		}
+
 		for _, args := range [][]string{{"add", "slug", "--warp-path", "x"}, {"clone", "u", "--warp-path", "x"}, {"status", "--weft-path", "x"}} {
 			if code, out := runUnderParent(t, args...); code != 1 || !strings.Contains(out, refusalMarker) {
 				t.Errorf("%v under %s = %d, output %s; want a guard refusal", args, webster, code, out)

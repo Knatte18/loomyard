@@ -144,6 +144,7 @@ type cloneSeed struct {
 // A one-URL clone first reads origin's layout with one ls-remote.
 // That read comes before the hub-exists check, --reset and anything created.
 // An origin left by the earlier one-repository layout is refused.
+// Without opts.SingleRepo, so is an origin holding records branches and no board, which a seed that stopped leaves.
 // With opts.SingleRepo, an origin that already holds a board is refused too.
 // So is one whose default branch is a records repository.
 // So is one whose default branch tracks the earlier layout's directories.
@@ -154,11 +155,19 @@ type cloneSeed struct {
 //
 // Any clone or worktree-add failure triggers teardownHub, which removes the entire hub directory.
 // If removal also fails, the error names both the original failure and the residual hub path.
+//
+// A cwd that is not an existing directory is refused by name before any git runs.
 func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	var rec *Mutations
 	defer func() { res.Mutations = rec.Snapshot() }()
 
 	cwd = filepath.Clean(cwd)
+	// git started in a directory that is not there fails as if git itself were missing, so the directory is named here.
+	if info, statErr := os.Stat(cwd); statErr != nil {
+		return CloneResult{}, fmt.Errorf("the directory the hub is created in cannot be read: %w; way forward: create it, or pass --into an existing directory", statErr)
+	} else if !info.IsDir() {
+		return CloneResult{}, fmt.Errorf("%s, where the hub is created, is not a directory; way forward: pass --into an existing directory", cwd)
+	}
 
 	if opts.WeftURL == "" {
 		return CloneResult{}, fmt.Errorf("weft URL is required")

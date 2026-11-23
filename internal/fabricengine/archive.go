@@ -8,6 +8,8 @@ package fabricengine
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // ArchiveTagSHALen is how many leading hex digits of the tip SHA the archive tag name carries.
@@ -217,13 +220,50 @@ func tagAndPushArchiveTip(rec *Mutations, repoDir, slug, tip, side string, sleep
 	return tag, nil
 }
 
+// archiveTagNamespaceAt returns the origin namespace the archive tags of the repository at dir live under.
+// A store that reads the one-repository namespace keeps its tags there.
+// A code store whose hub's records store reads that namespace has a prefix of its own below the namespace root.
+// So no archive tag of a one-repository hub lands under origin's plain refs/tags/.
+// Neither store lists or fetches the other's tags and commits.
+// The hub's records store is the records sibling of the code store's prime worktree.
+// How either store spells origin's URL plays no part.
+// Any other repository, and a dir that holds no repository, keeps its tags under refs/tags/.
+// A records store whose layout cannot be read is an error, so no tag is pushed to a namespace guessed past it.
+func archiveTagNamespaceAt(dir string) (gitrepo.RefNamespace, error) {
+	identity := gitrepo.RefNamespace{}
+	ns, err := originNamespaceAt(dir)
+	if err != nil || ns != identity {
+		return ns, err
+	}
+	if _, err := os.Lstat(filepath.Join(dir, ".git")); err != nil {
+		return identity, nil
+	}
+	commonDir, err := gitrepo.New(dir).CommonDir()
+	if err != nil {
+		return identity, fmt.Errorf("fabricengine: find the hub of the repository at %s: %w", dir, err)
+	}
+	if filepath.Base(commonDir) != ".git" {
+		return identity, nil
+	}
+	prime := filepath.Dir(commonDir)
+	recordsRoot := weftname.SiblingPath(filepath.Dir(prime), filepath.Base(prime))
+	recordsNamespace, err := originNamespaceAt(recordsRoot)
+	if err != nil || recordsNamespace == identity {
+		return identity, err
+	}
+	return gitrepo.RefNamespace{Tags: RecordsNamespaceRoot + RecordsNamespaceCodeTags}, nil
+}
+
 // pushArchiveTag pushes the tag named tag in the repo at repoDir to origin.
+// The tag lands under the store's own archive prefix on origin:
+// a one-repository hub gives each of its stores one below the records namespace root;
+// any other repository pushes to refs/tags/.
 // A push refused with a bare "(failed)", "cannot lock ref" or "missing necessary objects" is retried.
 // The retries follow the archive push's delay schedule and sleep through sleep; a nil sleep sleeps for real.
 // KindTagPushed is recorded on rec only after the push observably succeeded.
 func pushArchiveTag(rec *Mutations, repoDir, tag string, sleep func(time.Duration)) error {
 	tagRef := "refs/tags/" + tag
-	ns, err := originNamespaceAt(repoDir)
+	ns, err := archiveTagNamespaceAt(repoDir)
 	if err != nil {
 		return fmt.Errorf("push archive tag %q to %q: %w", tag, originRemoteName, err)
 	}
@@ -241,6 +281,54 @@ func pushArchiveTag(rec *Mutations, repoDir, tag string, sleep func(time.Duratio
 		return fmt.Errorf("push archive tag %q to %q: %w", tag, originRemoteName, err)
 	}
 	rec.Append(KindTagPushed, repoDir, tag)
+	return nil
+}
+
+// pushLocalArchiveTags pushes each archive/<slug>/* tag of the repository at dir that origin lacks.
+// A teardown that ended before its tag push leaves such a tag on this machine alone,
+// and its re-run finds no local branch to archive that tip from.
+// The tag of ownTip is left out, since the caller's own archive step settles that tip; an empty ownTip leaves none out.
+// A repository with no origin remote, and one holding no such tag, is left alone with no read of origin.
+// A push refused retryably is retried on the archive push's delay schedule, sleeping through sleep.
+// Every returned error wraps ErrArchiveFailed.
+func pushLocalArchiveTags(rec *Mutations, dir, slug, ownTip string, sleep func(time.Duration)) error {
+	if _, urlErr := gitrepo.New(dir).RemoteURL(originRemoteName); urlErr != nil {
+		return nil
+	}
+	fail := func(err error) error {
+		return fmt.Errorf("%w: push the archive tags of %q that only %s holds: %w", ErrArchiveFailed, slug, dir, err)
+	}
+
+	listed, err := gitexec.Run([]string{"for-each-ref", "--format=%(refname)", "refs/tags/" + ArchiveTagPrefix + slug}, dir)
+	if err != nil {
+		return fail(fmt.Errorf("list the local archive tags: %w", err))
+	}
+	ownTag := ""
+	if ownTip != "" {
+		ownTag = ArchiveTagName(slug, ownTip)
+	}
+	var local []string
+	for _, ref := range strings.Fields(listed) {
+		if tag := strings.TrimPrefix(ref, "refs/tags/"); tag != ownTag {
+			local = append(local, tag)
+		}
+	}
+	if len(local) == 0 {
+		return nil
+	}
+
+	onOrigin, err := remoteTagsUnder(dir, ArchiveTagPrefix+slug+"/")
+	if err != nil {
+		return fail(fmt.Errorf("list the archive tags on %q: %w", originRemoteName, err))
+	}
+	for _, tag := range local {
+		if _, held := onOrigin[tag]; held {
+			continue
+		}
+		if err := pushArchiveTag(rec, dir, tag, sleep); err != nil {
+			return fail(err)
+		}
+	}
 	return nil
 }
 

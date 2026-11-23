@@ -26,6 +26,9 @@ const (
 	RecordsNamespaceHeads = "heads/"
 	// RecordsNamespaceTags is the part of the namespace under RecordsNamespaceRoot that holds tags.
 	RecordsNamespaceTags = "tags/"
+	// RecordsNamespaceCodeTags is the part under RecordsNamespaceRoot that holds the code store's archive tags.
+	// No fetch refspec of either store maps it, so the records store never lists or fetches a code commit through it.
+	RecordsNamespaceCodeTags = "code-tags/"
 	// OneRepositoryBoardBranch is the fixed branch of the board in a one-repository hub.
 	// It is a branch lym owns inside its records namespace, never read from git.
 	OneRepositoryBoardBranch = "main"
@@ -203,6 +206,8 @@ func readOriginLayout(cwd, url string) (originLayout, error) {
 
 // refuseOneURLClone refuses a one-URL clone that origin's layout rules out, each refusal naming its way forward.
 // A board branch of the earlier one-repository layout is refused with or without opts.SingleRepo.
+// Without opts.SingleRepo it refuses an origin that holds records branches and no board:
+// a seed that stopped before its board landed leaves that, and the way forward is the seed.
 // With opts.SingleRepo it also refuses an origin that already holds a board.
 // It refuses one whose default branch is a records repository.
 // It refuses one whose default branch tracks the earlier layout's directories.
@@ -215,6 +220,11 @@ func refuseOneURLClone(cwd string, layout originLayout, opts CloneOptions) error
 		return legacyRefusal
 	}
 	if !opts.SingleRepo {
+		if len(layout.heads) > 0 && layout.boardTip == "" {
+			return fmt.Errorf("%s holds records under %s and no board, so a one-repository seed stopped before its board landed; "+
+				"way forward: run `lym fabric clone --single-repo --shortname <shortname> %s` to seed it",
+				opts.WeftURL, RecordsNamespaceRoot, opts.WeftURL)
+		}
 		return nil
 	}
 	if layout.boardTip != "" {

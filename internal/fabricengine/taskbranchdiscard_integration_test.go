@@ -155,6 +155,56 @@ func TestDiscardTaskBranch(t *testing.T) {
 	})
 }
 
+// TestDiscardTaskBranch_OneRepositoryHubArchivesUnderTheCodeStoresPrefix pins where a discard archives.
+// The hub is a one-repository hub.
+// The task branch's archive tag lands under the code store's own prefix below origin's records namespace root.
+// Nothing lands under origin's plain refs/tags/ or among the records store's tags.
+// That holds however the code store spells origin's URL.
+func TestDiscardTaskBranch_OneRepositoryHubArchivesUnderTheCodeStoresPrefix(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// originURL returns the URL the code store names origin by, given the path of origin's bare repository.
+		originURL func(bare string) string
+	}{
+		{"TheCodeStoreSpellsOriginAsTheRecordsStoreDoes", func(bare string) string { return bare }},
+		{"TheCodeStoreSpellsOriginAsAFileURL", func(bare string) string { return "file://" + filepath.ToSlash(bare) }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			const slug = "ns-discard"
+			h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
+			branch := hubforge.AddPair(t, h, slug).Branch
+			warpBranchCommit(t, h.Location, slug, "local-work.txt")
+			removePairWorktreesByHand(t, h, slug)
+			tip := gitkit.RevParse(t, h.PrimeWorktree(), branch)
+			gitkit.Git(t, h.PrimeWorktree(), "remote", "set-url", "origin", tt.originURL(h.CodeBare))
+
+			res, err := h.Topology.DiscardTaskBranch(h.Location, slug)
+
+			if err != nil {
+				t.Fatalf("DiscardTaskBranch: %v", err)
+			}
+			tag := fabricengine.ArchiveTagName(slug, tip)
+			if !slices.Equal(res.ArchiveTags, []string{tag}) {
+				t.Errorf("ArchiveTags = %v; want [%s]", res.ArchiveTags, tag)
+			}
+			if got := refLines(t, h.CodeBare, "%(objectname)", namespaceCodeTagsPrefix+tag); !slices.Equal(got, []string{tip}) {
+				t.Errorf("origin's archive tag under %s = %v; want one at %s", namespaceCodeTagsPrefix, got, tip)
+			}
+			if got := refLines(t, h.CodeBare, "%(refname)", "refs/tags/", namespaceTagsPrefix); len(got) != 0 {
+				t.Errorf("origin holds tags %v under refs/tags/ or %s; want none", got, namespaceTagsPrefix)
+			}
+			if gitkit.BranchExists(t, h.CodeBare, branch) {
+				t.Errorf("task branch %q still on origin", branch)
+			}
+		})
+	}
+}
+
 // TestDeleteArchivedTaskBranch pins the gates of the deletion half.
 // A local tag that does not hold the tip refuses the local delete.
 // The remote gate refuses the local-only archived-tip kind.

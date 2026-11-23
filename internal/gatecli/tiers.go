@@ -98,6 +98,7 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 		if err != nil {
 			return nil, fmt.Errorf("gate test: %w", err)
 		}
+		tier.NoCarry = tier.NoCarry || request.noCarry
 		tiers[number] = tier
 		for _, covered := range tier.Covers {
 			if _, err := cfg.Tier(covered); err != nil {

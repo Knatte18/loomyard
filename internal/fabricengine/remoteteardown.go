@@ -114,11 +114,16 @@ type remoteOutcome struct {
 
 // runRemoteTeardown runs job's remote steps from the location l of job.Worktree, recording on rec.
 // The sleep function is called between archive-tag push attempts.
+// Every job first pushes the slug's archive tags that an earlier teardown made locally and origin lacks.
+// A failed push there stops the job before any delete on origin.
 // A removal and a cleanup archive the weft tips and then delete the weft branch on origin when asked.
 // A removal pushes the weft tip first and then deletes the landed task branch on origin when asked.
 // A discard archives the task branch's tips and deletes it on origin.
 func runRemoteTeardown(rec *Mutations, l *lymcwd.Location, job remoteTeardownJob, sleep func(time.Duration)) remoteOutcome {
 	out := remoteOutcome{ran: true, weft: CleanupBranchEntry{Branch: job.WeftBranch}}
+	if out.err = pushOwedArchiveTags(rec, l, job, sleep); out.err != nil {
+		return out
+	}
 	if job.Kind == remoteTeardownDiscard {
 		out.discard, out.err = discardTaskBranchOnOrigin(rec, l, job, sleep)
 		return out
@@ -147,6 +152,30 @@ func runRemoteTeardown(rec *Mutations, l *lymcwd.Location, job remoteTeardownJob
 	return out
 }
 
+// pushOwedArchiveTags pushes the archive tags of job's slug that an earlier teardown made locally and origin lacks.
+// A teardown child that ended before its tag push leaves such a tag,
+// and the re-run would otherwise delete a branch on origin whose tip this machine's tag alone holds.
+// A discard reads the code store.
+// A removal and a cleanup read the records store, and a removal that deletes the task branch on origin reads both.
+// The tag of the tip job itself carries is left to the job's own archive step.
+// Every returned error wraps ErrArchiveFailed.
+func pushOwedArchiveTags(rec *Mutations, l *lymcwd.Location, job remoteTeardownJob, sleep func(time.Duration)) error {
+	if job.Kind == remoteTeardownDiscard {
+		return pushLocalArchiveTags(rec, l.WorktreePath(), job.Slug, job.TaskTip, sleep)
+	}
+	weftRoot, err := RecordsRepoRoot(l)
+	if err != nil {
+		return fmt.Errorf("%w: resolve weft repo: %w", ErrArchiveFailed, err)
+	}
+	if err := pushLocalArchiveTags(rec, weftRoot, job.Slug, job.WeftTip, sleep); err != nil {
+		return err
+	}
+	if !job.DeleteTaskOnOrigin {
+		return nil
+	}
+	return pushLocalArchiveTags(rec, l.WorktreePath(), job.Slug, "", sleep)
+}
+
 // remoteStepFailure is one failed remote step of a teardown job and the way forward that settles it.
 type remoteStepFailure struct {
 	operation  string
@@ -173,6 +202,46 @@ func rerunWayForward(job remoteTeardownJob) string {
 	return fmt.Sprintf("run `lym fabric remove %s --remote` again", job.Slug)
 }
 
+// withArchiveTagPush returns wayForward preceded by the hand push of slug's archive tag at tip from the store at dir.
+// The push spells its destination out: a push with no destination bypasses a records store's push refspec,
+// and a one-repository hub keeps the code store's archive tags under their own prefix.
+// A store whose archive prefix cannot be read gets wayForward alone.
+func withArchiveTagPush(dir, slug, tip, wayForward string) string {
+	ns, err := archiveTagNamespaceAt(dir)
+	if err != nil {
+		return wayForward
+	}
+	tag := ArchiveTagName(slug, tip)
+	return fmt.Sprintf("push the archive tag with `git -C %s push %s refs/tags/%s:%s`, then %s", dir, originRemoteName, tag, ns.Tag(tag), wayForward)
+}
+
+// discardWayForward returns the way forward of a discard whose remote half did not finish.
+// When job carries the local task tip, the hand push of that tip's archive tag comes first, then the discard's re-run.
+func discardWayForward(job remoteTeardownJob) string {
+	if job.TaskTip == "" {
+		return discardRerunWayForward
+	}
+	return withArchiveTagPush(job.Worktree, job.Slug, job.TaskTip, discardRerunWayForward)
+}
+
+// recordsArchiveWayForward returns the way forward of a removal or cleanup whose records archive did not finish.
+// When job carries the local records tip, the hand push of that tip's archive tag comes first, then the re-run.
+// weftRoot is the records repository's root; when it is empty, no hand push is named.
+func recordsArchiveWayForward(job remoteTeardownJob, weftRoot string) string {
+	wayForward := rerunWayForward(job)
+	if job.WeftTip == "" {
+		return wayForward
+	}
+	if job.Kind == remoteTeardownRemove {
+		// A removal whose branches never reached origin leaves its re-run nothing to find.
+		wayForward = "when origin still holds a branch of the pair, " + wayForward
+	}
+	if weftRoot == "" {
+		return wayForward
+	}
+	return withArchiveTagPush(weftRoot, job.Slug, job.WeftTip, wayForward)
+}
+
 // failedRemoteSteps returns every failed remote step of job's outcome, in the order the steps ran.
 // A step that stopped the job leaves the later steps unrun, so their outcome fields are empty.
 // weftRoot is the records repository's root, empty when it could not be found.
@@ -182,29 +251,11 @@ func failedRemoteSteps(job remoteTeardownJob, out remoteOutcome, weftRoot string
 	var failures []remoteStepFailure
 	switch {
 	case out.err != nil && job.Kind == remoteTeardownDiscard:
-		wayForward := discardRerunWayForward
-		if job.TaskTip != "" {
-			wayForward = fmt.Sprintf("push the archive tag with `git -C %s push %s refs/tags/%s`, then %s", job.Worktree, originRemoteName, ArchiveTagName(job.Slug, job.TaskTip), wayForward)
-		}
-		failures = append(failures, remoteStepFailure{"the archive and origin delete of its task branch", out.err.Error(), wayForward})
+		failures = append(failures, remoteStepFailure{"the archive and origin delete of its task branch", out.err.Error(), discardWayForward(job)})
 	case out.weftRootErr != nil:
 		failures = append(failures, remoteStepFailure{"the lookup of its records repository", out.weftRootErr.Error(), rerunWayForward(job)})
 	case out.err != nil:
-		wayForward := rerunWayForward(job)
-		if job.WeftTip != "" {
-			if job.Kind == remoteTeardownRemove {
-				// A removal whose branches never reached origin leaves its re-run nothing to find.
-				wayForward = "when origin still holds a branch of the pair, " + wayForward
-			}
-			if weftRoot != "" {
-				// The destination is spelled out: a push with no destination bypasses the store's push refspec.
-				if ns, nsErr := originNamespaceAt(weftRoot); nsErr == nil {
-					tag := ArchiveTagName(job.Slug, job.WeftTip)
-					wayForward = fmt.Sprintf("push the archive tag with `git -C %s push %s refs/tags/%s:%s`, then %s", weftRoot, originRemoteName, tag, ns.Tag(tag), wayForward)
-				}
-			}
-		}
-		failures = append(failures, remoteStepFailure{"the archive of its records", out.err.Error(), wayForward})
+		failures = append(failures, remoteStepFailure{"the archive of its records", out.err.Error(), recordsArchiveWayForward(job, weftRoot)})
 	}
 	if out.weft.RemoteError != "" {
 		failures = append(failures, remoteStepFailure{"the delete of its records branch on origin", out.weft.RemoteError, rerunWayForward(job)})
@@ -219,17 +270,19 @@ func failedRemoteSteps(job remoteTeardownJob, out remoteOutcome, weftRoot string
 // The line names the slug and, for each failed step, the operation and the way forward.
 // A kept branch is no failure and mails nothing.
 // The weftRoot argument is the records repository's root, empty when it could not be found.
-func noticeRemoteTeardown(hubPath string, job remoteTeardownJob, out remoteOutcome, weftRoot string) {
+// It returns the failed steps it named, none for a job whose every step succeeded.
+func noticeRemoteTeardown(hubPath string, job remoteTeardownJob, out remoteOutcome, weftRoot string) []remoteStepFailure {
 	failures := failedRemoteSteps(job, out, weftRoot)
 	if len(failures) == 0 {
 		logger.Info("fabricengine: remote teardown done", "slug", job.Slug, "kind", job.Kind, "weft_kept", out.weft.RemoteKeptReason, "task_kept", out.taskKept)
-		return
+		return nil
 	}
 	clauses := make([]string, len(failures))
 	for i, failure := range failures {
 		clauses[i] = fmt.Sprintf("at %s: %s; way forward: %s", failure.operation, failure.reason, failure.wayForward)
 	}
 	postRemoteTeardownNotice(hubPath, job.Slug, fmt.Sprintf("the remote teardown of %s failed %s", job.Slug, strings.Join(clauses, "; and ")))
+	return failures
 }
 
 // noticeUnreadRemoteTeardown logs and mails that the remote steps of slug's teardown never ran, because their job could not be read.
@@ -277,7 +330,7 @@ func (t *Topology) holdTeardown(lockRec, rec *Mutations, l *lymcwd.Location, slu
 		if err != nil {
 			return nil, err
 		}
-		return &inProcessHold{rec: rec, location: l, release: release, sleep: t.archiveSleep}, nil
+		return &inProcessHold{rec: rec, location: l, release: release, sleep: t.archiveSleep, childEnds: t.teardownChildEnds}, nil
 	}
 	exe, err := selfexec.LymBinary()
 	if err != nil {
@@ -292,13 +345,22 @@ type inProcessHold struct {
 	location *lymcwd.Location
 	release  func()
 	sleep    func(time.Duration)
+	// childEnds makes finish leave a job as a detached child that ended before its first remote step leaves it.
+	childEnds bool
 }
 
 // finish runs job in process, then releases the lock.
+// With childEnds set, it records job as a pending teardown and drops it unrun.
 func (h *inProcessHold) finish(job *remoteTeardownJob) remoteOutcome {
 	defer h.release()
 	if job == nil {
 		return remoteOutcome{}
+	}
+	if h.childEnds {
+		if err := writePendingTeardown(h.location.HubPath, *job, time.Now()); err != nil {
+			logger.Warn("fabricengine: pending teardown record not written", "slug", job.Slug, "error", err)
+		}
+		return remoteOutcome{handedOff: true}
 	}
 	return runRemoteTeardown(h.rec, h.location, *job, h.sleep)
 }
@@ -313,6 +375,7 @@ type childHold struct {
 
 // finish writes job to the child and returns at once, leaving the child to run it.
 // The job is marked with whether this process runs exempt from every pause.
+// It records the teardown as pending first, so a child that ends before the job does leaves a record that names it.
 // A nil job closes the child's input and waits for it to release the lock.
 // A job that cannot be written is logged and mailed with its way forward.
 // The child then reads no job and releases the lock.
@@ -324,6 +387,9 @@ func (h *childHold) finish(job *remoteTeardownJob) remoteOutcome {
 	}
 	handed := *job
 	handed.ExemptPause = pauserecord.GateExemptsAll()
+	if err := writePendingTeardown(h.hubPath, handed, time.Now()); err != nil {
+		logger.Warn("fabricengine: pending teardown record not written", "slug", h.slug, "error", err)
+	}
 	if err := json.NewEncoder(h.stdin).Encode(handed); err != nil {
 		NoticeRemoteTeardownEnded(h.hubPath, h.slug, fmt.Sprintf("its job could not be handed to the child: %v", err))
 	}
@@ -399,6 +465,8 @@ func spawnTeardownHold(rec *Mutations, l *lymcwd.Location, slug string, try bool
 // An empty input means the parent ended its teardown without remote steps; the child then releases the lock at once.
 // A failed remote step, or a job it cannot read, is logged and mailed to the hub's orch as one line.
 // The line names the slug, the operation and the way forward.
+// Once the job has run with no failed step, or on an empty input, it removes the slug's pending-teardown record.
+// A failed step keeps the record and writes that step's way forward into it.
 func RunTeardownChild(hubPath, slug string, try bool, wait time.Duration, jobIn io.Reader, signal io.Writer) error {
 	lockPath := TeardownLockPath(hubPath, slug)
 	held, acquired, err := takeTeardownChildLock(hubPath, slug, lockPath, try, wait)
@@ -425,6 +493,7 @@ func RunTeardownChild(hubPath, slug string, try bool, wait time.Duration, jobIn 
 	}
 	if len(bytes.TrimSpace(raw)) == 0 {
 		logger.Info("fabricengine: the teardown ended with no remote steps", "slug", slug)
+		clearPendingTeardown(hubPath, slug)
 		return nil
 	}
 	var job remoteTeardownJob
@@ -439,7 +508,7 @@ func RunTeardownChild(hubPath, slug string, try bool, wait time.Duration, jobIn 
 	l, err := lymcwd.ResolveWorktree(job.Worktree)
 	if err != nil {
 		out := remoteOutcome{err: fmt.Errorf("resolve the worktree %s: %w", job.Worktree, err)}
-		noticeRemoteTeardown(hubPath, job, out, "")
+		keepFailedTeardown(hubPath, job, noticeRemoteTeardown(hubPath, job, out, ""))
 		return out.err
 	}
 	out := runRemoteTeardown(NewMutations(hubPath), l, job, nil)
@@ -449,7 +518,12 @@ func RunTeardownChild(hubPath, slug string, try bool, wait time.Duration, jobIn 
 			weftRoot = root
 		}
 	}
-	noticeRemoteTeardown(hubPath, job, out, weftRoot)
+	failures := noticeRemoteTeardown(hubPath, job, out, weftRoot)
+	if len(failures) == 0 {
+		clearPendingTeardown(hubPath, slug)
+		return nil
+	}
+	keepFailedTeardown(hubPath, job, failures)
 	return nil
 }
 

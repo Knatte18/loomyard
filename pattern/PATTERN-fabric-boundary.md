@@ -82,6 +82,8 @@ The entry binds lym's own code only.
   The child pushes the weft branch first when origin lacks the local tip, then the tag,
   and a diverged or ahead origin tip gets a tag of its own;
   only then does it delete on origin.
+  Before those steps it pushes every `archive/<slug>/*` tag an earlier teardown left on this machine alone,
+  so the re-run after a child that died deletes no branch on origin whose tip only a local tag holds.
   A rolled-back `Add` also deletes the warp branch it created, locally only:
   `Add` pushes nothing, so no origin branch is its to delete.
 - `Add` leaves the new pair's branches committed locally;

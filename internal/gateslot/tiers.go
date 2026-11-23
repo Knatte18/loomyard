@@ -509,6 +509,10 @@ func (c Config) AgentGateCallWithMainPackages(key string, cards ...string) (stri
 	return call + " --" + MainPackagesFlag, nil
 }
 
+// NoCarryFlag is the `lym gate test` flag, without its dashes, that keeps a green run from being carried for one call.
+// A call with it runs its tests even over an unchanged tree.
+const NoCarryFlag = "no-carry"
+
 // StopOnFailFlag is the `lym gate test` flag, without its dashes, that ends a call at its first failed run.
 const StopOnFailFlag = "stop-on-fail"
 

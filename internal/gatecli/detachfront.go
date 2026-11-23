@@ -370,6 +370,9 @@ func (r testRequest) words() []string {
 	if r.guards {
 		words = append(words, "--guards")
 	}
+	if r.noCarry {
+		words = append(words, "--"+gateslot.NoCarryFlag)
+	}
 	if r.mapMode {
 		words = append(words, "--"+mapFlag)
 	}

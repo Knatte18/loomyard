@@ -238,12 +238,13 @@ func HardenReapDeps(location *lymcwd.Location, row string, point hardenshed.Reap
 }
 
 // hardenLiveArgs returns the arguments of a live gate call.
-// They are `gate test --wait --gate <key>`, then `--copies <n>` when copies is above 0, then the packages.
+// They are `gate test --wait --no-carry --gate <key>`, then `--copies <n>` when copies is above 0, then the packages.
 // A package path go would read as an import path, such as `internal/x`, gets a `./` prefix.
 // Go resolves a bare path in the standard library, and the call fails before any test runs.
 // It names no tier, so the hub's gate key alone says what the call runs.
+// It carries `--no-carry`: a live run that a carried green record replaced would start no test binary and prove nothing.
 func hardenLiveArgs(key string, copies int, packages []string) []string {
-	args := []string{"gate", "test", "--wait", "--gate", key}
+	args := []string{"gate", "test", "--wait", "--" + gateslot.NoCarryFlag, "--gate", key}
 	if copies > 0 {
 		args = append(args, "--copies", fmt.Sprint(copies))
 	}

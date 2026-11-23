@@ -363,6 +363,12 @@ func TestPlanTierRuns(t *testing.T) {
 			want:    []string{"tier0 computed none buildonly", "tier1 computed dir=sub ./... ./x/..."},
 		},
 		{
+			name:    "a --no-carry call runs a carrying tier whole under a narrowed computed scope",
+			request: testRequest{noCarry: true},
+			scope:   narrower,
+			want:    []string{"tier0 computed dir=. ./...", "tier1 guard dir=. guard"},
+		},
+		{
 			name:   "a carry: false tier runs whole under a narrowed computed scope",
 			mutate: noCarry,
 			scope:  narrower,

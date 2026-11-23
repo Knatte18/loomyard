@@ -117,6 +117,8 @@ type pushJob struct {
 // otherwise it records as other.
 // Every other failure is recorded and returned as a *PushFailedError holding the push's own error;
 // under the "other" class when it matches none.
+// A code or records side whose origin layout cannot be read is recorded under the other class before origin is read.
+// The layout's error names the config that restores it.
 // A push that lands removes the record of its side and branch.
 func pushClassified(rec *Mutations, hubPath, side, path string, opts SyncOptions, retryRecords func() (deferred bool, err error)) error {
 	job := &pushJob{rec: rec, hubPath: hubPath, side: side, path: path, opts: opts, repo: gitrepo.New(path)}
@@ -135,6 +137,9 @@ func pushClassified(rec *Mutations, hubPath, side, path string, opts SyncOptions
 	}
 
 	if side != failedPushSideBolt {
+		if _, err := originNamespaceAt(path); err != nil {
+			return job.fail(PushFailureOther, err, nil, nil, "")
+		}
 		proceed, err := job.checkOrigin()
 		if !proceed {
 			return err
@@ -569,9 +574,13 @@ func (j *pushJob) failRejection(rejected error) error {
 	}
 }
 
-// unpushedCommits returns the local commits the upstream, as last fetched, lacks, newest first.
+// unpushedCommits returns the local commits origin's tip, as last fetched, lacks, newest first.
+// Origin's tip is the branch's upstream, or origin's branch of the same name for a branch never given one.
 func (j *pushJob) unpushedCommits() []string {
 	upstream, err := j.repo.UpstreamSHA()
+	if errors.Is(err, gitrepo.ErrNoUpstream) {
+		upstream, err = j.repo.ResolveSHA("refs/remotes/" + originRemoteName + "/" + j.branch)
+	}
 	if err != nil {
 		return nil
 	}

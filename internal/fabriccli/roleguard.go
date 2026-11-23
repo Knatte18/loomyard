@@ -2,6 +2,7 @@
 // It classifies each subcommand as a reader that a sandboxed role may run, or as a verb it may not.
 // A merge task's writer may also run the merge verbs,
 // and any sandboxed role may run every verb in a hub under its own worktree's sandbox root.
+// A detached push passes only for the role's own pair or a pair under that root.
 // The refusal text is built here as well.
 
 package fabriccli
@@ -95,12 +96,7 @@ func inOwnSandboxRoot(dir string, name agentname.Name) bool {
 		container := filepath.Dir(filepath.Dir(current))
 		if filepath.Join(container, sandboxRootRel) == current {
 			worktree := worktreeOwningRecordsDir(container)
-			location, err := lymcwd.ResolveWorktree(worktree)
-			if err != nil || location.WorktreeName != name.Slug || location.WorktreePath() != worktree {
-				return false
-			}
-			shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(location.HubPath))
-			if !found || shortname != name.Shortname {
+			if !isOwnWorktree(worktree, name) {
 				return false
 			}
 			root, ok := resolveThroughExistingAncestor(filepath.Join(worktree, sandboxRootRel))
@@ -112,6 +108,57 @@ func inOwnSandboxRoot(dir string, name agentname.Name) bool {
 		}
 		current = parent
 	}
+}
+
+// isOwnWorktree reports whether worktree is the root of the worktree the strand name identifies.
+// That worktree is named by the name's slug and sits in the hub whose recorded shortname is the name's shortname.
+func isOwnWorktree(worktree string, name agentname.Name) bool {
+	location, err := lymcwd.ResolveWorktree(worktree)
+	if err != nil || location.WorktreeName != name.Slug || location.WorktreePath() != worktree {
+		return false
+	}
+	shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(location.HubPath))
+	return found && shortname == name.Shortname
+}
+
+// isOwnPairPath reports whether dir is the worktree the strand name identifies, or that worktree's records sibling.
+// dir is judged where it lands, with the symlinks of its deepest existing ancestor resolved.
+func isOwnPairPath(dir string, name agentname.Name) bool {
+	current, ok := resolveThroughExistingAncestor(dir)
+	if !ok {
+		return false
+	}
+	return isOwnWorktree(worktreeOwningRecordsDir(current), name)
+}
+
+// injectedPathsAreOwn reports whether every non-empty path a detached push of cmd names is one the strand may push:
+// the strand's own worktree, its records sibling, or a path under its own worktree's sandbox root.
+// A relative path is read against the directory the invocation acts in.
+func injectedPathsAreOwn(cmd *cobra.Command, name agentname.Name, paths ...string) bool {
+	cwd, err := lymcwd.CwdFrom(cmd.Context())
+	if err != nil {
+		return false
+	}
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(cwd, path)
+		}
+		if !isOwnPairPath(path, name) && !inOwnSandboxRoot(path, name) {
+			return false
+		}
+	}
+	return true
+}
+
+// taskSessionRefusal is the refusal of `lym fabric <verb>` from the task session strandName, naming its ways forward.
+func taskSessionRefusal(verb, strandName string) string {
+	return fmt.Sprintf("lym fabric %s is refused from the task session %s outside a hub under its worktree's %s; "+
+		"build a scratch hub as a hubforge test fixture instead, or run it in a hub made with `lym harden sandbox new` under <worktree>/%s, "+
+		"and when the work itself needs this verb, stop and report status: FAILED so the run ends stuck and the orch runs it",
+		verb, strandName, sandboxRootRel, sandboxRootRel)
 }
 
 // mergeTaskVerb reports whether this invocation of cmd is one a merge task's writer needs in its own worktree:
@@ -151,8 +198,9 @@ func readerVerb(cmd *cobra.Command) bool {
 // It returns "" when the invocation may go on.
 // A sandboxed role is a name that parses with a slug and a role other than the driver and the orch.
 // An unset, empty, unparseable or slug-free name passes.
-// The detached push child every commit spawns inherits the strand name and carries a hidden bypass flag,
-// so a push with a bypass flag passes; a bypass flag on any other subcommand is refused.
+// The detached push child every commit spawns inherits the strand name and carries the hidden path flags.
+// So a push passes when every path it names is the role's own worktree, that worktree's records sibling,
+// or a path under the role's own sandbox root; a path flag on any other subcommand is refused.
 // The hidden teardown child a removal spawns inherits the strand name the same way, so it passes too.
 // A merge task's writer passes on the verbs its work is, since the merge of the parent branch is that task.
 // Any verb passes when the directory it acts in lies under the sandbox root of the role's own worktree,
@@ -173,10 +221,13 @@ func sandboxedRoleRefusal(cmd *cobra.Command, strandName string) string {
 	injectedWeft, _ := cmd.Flags().GetString("weft-path")
 	injectedWarp, _ := cmd.Flags().GetString("warp-path")
 	if injectedWeft != "" || injectedWarp != "" {
-		if cmd.Name() == "push" {
+		if cmd.Name() != "push" {
+			return fmt.Sprintf("lym fabric %s refuses the path flags that only a detached push passes, from the task session %s", cmd.Name(), strandName)
+		}
+		if injectedPathsAreOwn(cmd, name, injectedWeft, injectedWarp) {
 			return ""
 		}
-		return fmt.Sprintf("lym fabric %s refuses the path flags that only a detached push passes, from the task session %s", cmd.Name(), strandName)
+		return taskSessionRefusal(cmd.Name(), strandName)
 	}
 	if readerVerb(cmd) || (darnengine.IsMergeTaskWriter(name) && mergeTaskVerb(cmd)) {
 		return ""
@@ -184,5 +235,5 @@ func sandboxedRoleRefusal(cmd *cobra.Command, strandName string) string {
 	if target, err := verbTargetDir(cmd); err == nil && inOwnSandboxRoot(target, name) {
 		return ""
 	}
-	return fmt.Sprintf("lym fabric %s is refused from the task session %s outside a hub under its worktree's %s; build a scratch hub as a hubforge test fixture instead, and when the work itself needs this verb, stop and report status: FAILED so the run ends stuck and the orch runs it", cmd.Name(), strandName, sandboxRootRel)
+	return taskSessionRefusal(cmd.Name(), strandName)
 }

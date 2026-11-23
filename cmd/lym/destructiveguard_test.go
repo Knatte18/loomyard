@@ -108,6 +108,8 @@ var destructiveGuardAllowlist = []scankit.Entry{
 		"source subdirectory the recursive merge has just drained — whole-file allowlist for exactly these two, not a blanket exemption"},
 	{Key: "internal/fabricengine/failedpush.go", Why: "ClearPushFailure's os.Remove(path) deletes fabric's own failed-push record under the hub's machine-local " +
 		"scratch directory, a fabric-internal marker of a push origin refused, never operator content"},
+	{Key: "internal/fabricengine/pendingteardown.go", Why: "clearPendingTeardown's os.Remove deletes fabric's own pending-teardown record beside the teardown lock " +
+		"under the hub's machine-local scratch directory, fabric-internal metadata, never operator content"},
 	{Key: "internal/fabricengine/moverecord.go", Why: "RemoveMoveRecord's os.Remove deletes fabric's own move record in the records worktree's lock directory, " +
 		"fabric-internal metadata, never operator content"},
 	{Key: "internal/fabricengine/hook.go", Why: "chainUserHook's os.Remove(userHookPath) removes the user-hook backup that same function wrote " +

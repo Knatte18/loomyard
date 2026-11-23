@@ -14,13 +14,15 @@
 //
 // # Verb
 //
-// The form is `lym gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--main-packages] [--base <rev>] [--all] [--guards] [--stop-on-fail] [--copies N] [--map] [--wait] [<targets>...] [-- <args>]`.
+// The form is `lym gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--main-packages] [--base <rev>] [--all] [--guards] [--stop-on-fail] [--no-carry] [--copies N] [--map] [--wait] [<targets>...] [-- <args>]`.
 // It runs the tiers the hub declares in gate.yaml in ascending tier number.
 // It then runs the vet step and the guard step below when they are planned.
 // A run that fails does not stop the call: every later tier, vet and guard run still runs,
 // so a failure the change under test did not cause hides no later check.
 // `--stop-on-fail` ends the call at its first failed run instead, naming the failed run and every run it skipped.
 // A run that crashed its test runner in its run and its rerun judged no code, so it stops nothing.
+// `--no-carry` treats every tier of the call as a `carry: false` tier.
+// A call over an unchanged tree then still runs its tests.
 // When a run failed, the call prints the failure report, then closes with one stderr line naming each failed run.
 // The line names a vet run as `vet tierN`, a guard run as `guard tierN` and a lint step as `lint <name>`.
 //

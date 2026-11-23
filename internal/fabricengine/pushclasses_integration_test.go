@@ -366,13 +366,49 @@ func TestPushFailureClasses(t *testing.T) {
 		gitkit.Git(t, other, "checkout", "-B", branch)
 		gitkit.CommitFile(t, other, "other.txt", "other\n", "other machine")
 		gitkit.Git(t, other, "push", "origin", branch)
-		gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
+		local := gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
 
 		if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, fake.options(countingBackoff(new(int), nil)), fabricengine.MachineNames{}); err != nil {
 			t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
 		}
 
-		requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabricengine.PushFailureNotFastForward)
+		record := requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabricengine.PushFailureNotFastForward)
+		if !slices.Contains(record.Commits, local) {
+			t.Errorf("record commits = %v; want the local commit %s the reset in its way forward would drop", record.Commits, local)
+		}
+		if len(fake.lines) != 1 {
+			t.Errorf("mails = %q; want one", fake.lines)
+		}
+	})
+
+	t.Run("APairPushFromARecordsStoreWithNoNamespacedFetchRefspecRecordsTheRestoreCommands", func(t *testing.T) {
+		const slug = "ns-norefspec"
+		h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
+		fake := &fakePushNotifier{hub: h.Location.HubPath, posted: true}
+		hubforge.AddPair(t, h, slug)
+		sibling := h.PairRecordsSibling(slug)
+		gitkit.CommitFile(t, sibling, "local.txt", "local\n", "local")
+		gitkit.Git(t, sibling, "config", "--unset-all", "remote.origin.fetch")
+		fabricengine.ForgetOriginNamespaceForTest(sibling)
+		location, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
+		if err != nil {
+			t.Fatalf("ResolveWorktree: %v", err)
+		}
+
+		_, err = fabricengine.PushPairAnchored(location, fake.options(nil), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
+
+		var failed *fabricengine.PushFailedError
+		if !errors.As(err, &failed) || failed.Record.Class != fabricengine.PushFailureOther {
+			t.Fatalf("PushPairAnchored() error = %v; want an other-class *PushFailedError", err)
+		}
+		want := "`git -C " + sibling + " config --replace-all remote.origin.fetch"
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("PushPairAnchored() error = %q; want it to name %q", err, want)
+		}
+		record := requireOneFailedPush(t, h.Location.HubPath, "records", fabricengine.PushFailureOther)
+		if !strings.Contains(record.Error, want) {
+			t.Errorf("record error = %q; want it to name %q", record.Error, want)
+		}
 		if len(fake.lines) != 1 {
 			t.Errorf("mails = %q; want one", fake.lines)
 		}

@@ -635,6 +635,12 @@ func ResetMergeSidesForTest(f *Fabric, rec *Mutations, warpSHA string) error {
 	return f.resetMergeSides(rec, warpSHA)
 }
 
+// ForgetOriginNamespaceForTest drops the cached origin layout of the store at dir, as a new process starts without it.
+// A test that rewrites a store's origin config after a verb read it calls it, so the next verb reads the config again.
+func ForgetOriginNamespaceForTest(dir string) {
+	namespaceAnswers.Delete(filepath.Clean(dir))
+}
+
 // ArchiveWeftTipForTest runs `archiveWeftTip` without a branch push or a sleep seam.
 // It returns the local tip's tag, the skipped reason and the error.
 // Tests in the external test package use it, since they cannot read the unexported fields of `weftArchive`.
@@ -737,6 +743,14 @@ func SetLeftoverRefillForTest(t *Topology, refill func(target string)) {
 // It sets the wait on the one Topology, so parallel tests inject per instance.
 func SetTeardownWaitForTest(t *Topology, wait time.Duration) {
 	t.teardownWait = wait
+}
+
+// SetTeardownChildEndsForTest makes t's teardowns leave their remote half as a detached child that ended early does.
+// The job is recorded as a pending teardown and none of its remote steps runs.
+// Passing false restores the in-process run.
+// It sets the seam on the one Topology, so parallel tests inject per instance.
+func SetTeardownChildEndsForTest(t *Topology, ends bool) {
+	t.teardownChildEnds = ends
 }
 
 // SetCleanupAfterEnumerateForTest makes t's Cleanup call hook once per orphan.

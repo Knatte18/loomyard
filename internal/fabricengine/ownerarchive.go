@@ -314,7 +314,7 @@ func readSideOwnerArchives(side, dir string, keep func(slug string) bool, branch
 		if err != nil {
 			return nil, err
 		}
-		ns, err := originNamespaceAt(dir)
+		ns, err := archiveTagNamespaceAt(dir)
 		if err != nil {
 			return nil, err
 		}

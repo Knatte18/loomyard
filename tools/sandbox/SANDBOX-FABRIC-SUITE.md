@@ -935,6 +935,9 @@ The outcome must be the same: the rerun way forward, no hub, and nothing under `
 Seed a fifth bare whose `pre-receive` SIGKILLs the client `git push` on `refs/lym/heads/main` and then exits non-zero, so origin never takes the board.
 The clone must fail naming `refs/lym/heads/main` and the prime's records ref, keep the hub, and leave the records ref on origin.
 The `git ls-remote` and `git push origin --delete` commands its way forward names must then leave nothing under `refs/lym/`.
+Before those commands are run, a plain `lym fabric clone <bare>` of that fifth bare into another directory must refuse,
+naming a seed that stopped before its board landed and `lym fabric clone --single-repo` as the way forward.
+`lym fabric clone --into <a directory that does not exist> <bare>` must refuse naming that directory, never a failed start of git.
 
 On the first hub, run each fault below in the records store, restoring its config between rows, then run `lym fabric cleanup --remote`:
 `remote.origin.fetch` unset; `remote.origin.fetch` set to `+refs/heads/*:refs/remotes/origin/*`; the `origin` remote removed;
@@ -945,6 +948,26 @@ so that `branch.main.merge refs/lym/heads/main` is the one setting left that nam
 Each must refuse with `ok: false`, name the setting at fault and give the `git -C <store> config` or `git remote add` way forward.
 With `remote.origin.fetch` unset, run `lym board upsert` on a new slug: origin's `refs/heads/main` must not move,
 and the board's push must not reach any ref under plain `refs/heads/`.
+With it still unset, `lym fabric push` in a pair must fail naming that `git -C <store> config --replace-all remote.origin.fetch` command,
+and `lym fabric status` must list the push under `failed_pushes`.
+`lym fabric pull` there must fail the same way, with no `weft_pulled: true`, while origin's records branch is ahead.
+`lym fabric reconcile` must fail naming the same command, and its error must hold no `resolve upstream` text.
+
+On a fresh one-repository hub, add a pair, commit and push a code change on it, then run `lym batten cancel <slug> --remove` from the prime.
+Origin must hold the pair's records archive tag under `refs/lym/tags/archive/<slug>/`,
+its code archive tag under `refs/lym/code-tags/archive/<slug>/`, and no ref under plain `refs/tags/`.
+Run `git remote set-url origin file://<bare>` in the code store and repeat with a second pair:
+its code archive tag must land under `refs/lym/code-tags/` again.
+A second clone of that origin must hold none of those code commits in its records store.
+Then add a pair and push it, commit one more records file in its records worktree without pushing it,
+and install a `pre-receive` hook on origin that sleeps on that pair's `refs/lym/heads/<slug>-weft` and then declines it.
+Run `lym fabric remove <slug> --remote`, and `kill -9` its `lym fabric remote-teardown` child once the hook runs.
+`lym fabric status` and `lym fabric prune` must list the slug under `pending_teardowns`;
+its way forward must name the `git push` of the pair's archive tag and then `lym fabric remove <slug> --remote`.
+With the hook removed, that re-run must leave the archive tag of the unpushed records commit on origin,
+delete both of the pair's branches there and leave `pending_teardowns` empty.
+Then make the hook decline `refs/lym/tags/archive/*` and remove one more pushed pair with `--remote`:
+`pending_teardowns` must keep that slug, with the archive tag push in its way forward, until a re-run succeeds with the hook removed.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

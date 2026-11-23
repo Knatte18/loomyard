@@ -271,10 +271,13 @@ func remoteArchiveTags(weftRoot, slug string) (map[string]string, error) {
 	return tags, nil
 }
 
-// remoteTagsUnder maps each tag on dir's origin whose name starts with namePrefix to its commit.
+// remoteTagsUnder maps each archive tag on dir's origin whose name starts with namePrefix to its commit.
+// It reads the store's own archive prefix on origin:
+// a one-repository hub gives each of its stores one below the records namespace root;
+// any other repository reads refs/tags/.
 // It prefers a peeled ^{} line, so an annotated tag maps to the commit it names.
 func remoteTagsUnder(dir, namePrefix string) (map[string]string, error) {
-	ns, err := originNamespaceAt(dir)
+	ns, err := archiveTagNamespaceAt(dir)
 	if err != nil {
 		return nil, err
 	}

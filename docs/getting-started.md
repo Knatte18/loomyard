@@ -28,6 +28,7 @@ lym fabric clone --single-repo --shortname <short> <project-url>
 ```
 
 The records and the board then live in the project's repository under `refs/lym/heads/` and `refs/lym/tags/`, and the board is the branch `main` there.
+The archive tags of removed code branches live beside them, under `refs/lym/code-tags/`.
 On another machine, a plain `lym fabric clone <project-url>` joins such a hub.
 
 `update-plugins.sh` refuses a dirty tree and is the route to production.

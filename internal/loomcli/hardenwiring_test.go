@@ -45,7 +45,7 @@ func TestHardenLiveArgs(t *testing.T) {
 	t.Run("the live call names its key and the packages as directories go resolves, and no copies and no tier", func(t *testing.T) {
 		t.Parallel()
 		got := hardenLiveArgs(hardenshed.LiveGateKey, 0, packages)
-		want := []string{"gate", "test", "--wait", "--gate", "harden-live", "./internal/a", "./internal/b"}
+		want := []string{"gate", "test", "--wait", "--no-carry", "--gate", "harden-live", "./internal/a", "./internal/b"}
 		if !slices.Equal(got, want) {
 			t.Errorf("hardenLiveArgs(%q, 0, packages) = %v; want %v", hardenshed.LiveGateKey, got, want)
 		}
@@ -53,7 +53,7 @@ func TestHardenLiveArgs(t *testing.T) {
 	t.Run("the copies call carries --copies before the packages", func(t *testing.T) {
 		t.Parallel()
 		got := hardenLiveArgs(hardenshed.LiveGateKey, 3, packages)
-		want := []string{"gate", "test", "--wait", "--gate", "harden-live", "--copies", "3", "./internal/a", "./internal/b"}
+		want := []string{"gate", "test", "--wait", "--no-carry", "--gate", "harden-live", "--copies", "3", "./internal/a", "./internal/b"}
 		if !slices.Equal(got, want) {
 			t.Errorf("hardenLiveArgs(%q, 3, packages) = %v; want %v", hardenshed.LiveGateKey, got, want)
 		}

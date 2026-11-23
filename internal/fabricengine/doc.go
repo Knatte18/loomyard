@@ -216,6 +216,12 @@
 // `Remove` tags the local weft tip `archive/<slug>/<tip>` before its first mutation, after its refusals,
 // so the run records stay reachable once the branch is deleted; a failed tag leaves everything in place.
 // Remote steps go to a detached teardown child, and a failure is logged and mailed to the hub's orch.
+// The child first pushes each `archive/<slug>/*` tag an earlier teardown made locally and origin lacks,
+// so a re-run deletes no branch on origin while this machine's tag alone holds a tip of it.
+// A child that ends before its job does, killed outright included, leaves a pending-teardown record.
+// So does a child whose remote step failed, and its record holds that step's way forward.
+// `PendingTeardowns` lists each with what finishes it, for `lym fabric status` and `lym fabric prune` to print:
+// the hand push of the archive tag of a tip the record carries, then the re-run.
 // A remote branch delete is leased and a branch origin moved since is kept, never a failure.
 // A pair already half removed is finished rather than refused, and `ErrPairNotFound` means nothing is left.
 // `RemoveLocal` is the same removal with no origin step and no waiting.
@@ -514,12 +520,19 @@
 // # The one-repository layout
 //
 // A one-repository hub keeps its records store's branches and tags on the code store's origin, under `refs/lym/`.
-// Its only spelling is the constants `RecordsNamespaceRoot`, `RecordsNamespaceHeads` and `RecordsNamespaceTags`.
+// Its only spelling is the constants whose names open with `RecordsNamespace`.
 // The layout is the records store's origin fetch refspec, read per repository by `originNamespaceAt(dir)`.
 // A store whose prime key, push refspecs or a branch's merge setting names the namespace is a records store.
 // Its layout read fails when no fetch refspec maps the namespace or when it has no origin.
 // The error names the refspecs to restore; read as the identity layout, its board would push to the code branches.
+// Each call that fetches or pushes the records side or the board reads the layout first, so such a store moves nothing.
 // Every push, listing and fetch of the records side names origin refs through that namespace.
+// Every archive tag the hub pushes lives under that root too, so none lands under origin's plain `refs/tags/`.
+// The records store's tags are under `RecordsNamespaceTags`, which its fetch refspec maps.
+// The code store's are under `RecordsNamespaceCodeTags`, which no refspec maps.
+// Neither store therefore lists or fetches the other's tags and commits.
+// A code store takes that prefix when its prime's records sibling reads the namespace;
+// how either store spells origin's URL plays no part.
 // A board push whose board branch has no upstream is refused with no failed-push record.
 // Pushing it unleased could replace another hub's board.
 // A clone killed after its seed push leaves origin holding the seed.
@@ -530,6 +543,8 @@
 //
 // A one-URL `CloneHub` first runs one `ls-remote`, before anything is created.
 // It refuses an origin left by the earlier layout.
+// Without `--single-repo` it refuses an origin holding records branches and no board, which a seed that stopped leaves;
+// the way forward is the seed.
 // With `--single-repo` it also refuses one that already holds a board, the warp binding or the anchor marker.
 // The one URL is the code repository, cloned as the prime, and the records store is a `git init` of its own.
 // An origin holding the board is joined; one holding none is seeded, with no commit written to any code branch.

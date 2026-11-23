@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -247,6 +248,58 @@ func TestReadOwnerArchives(t *testing.T) {
 				t.Errorf("local teardown archive tags after the read = %q; want none fetched", local)
 			}
 		})
+	}
+}
+
+// TestReadOwnerArchives_OneRepositoryHubKeepsEachStoresTagsApart covers a hub whose two stores share one origin.
+// Each side's owner archive tag is listed once, under its own side.
+// Neither store is handed the other's tag or commit, by the read or by a fetch of the records store's own refspecs.
+func TestReadOwnerArchives_OneRepositoryHubKeepsEachStoresTagsApart(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
+	l := h.Location
+	codeDir, recordsDir := l.WorktreePath(), fabricengine.RecordsWorktree(l)
+	// Push the prime's records tip first, so the archive tags only the commits made here.
+	if _, err := hubforge.OpenFabric(t, h).PushWeft(fabricengine.SyncOptions{}); err != nil {
+		t.Fatalf("push the prime's records: %v", err)
+	}
+	codeTip := gitkit.CommitFile(t, codeDir, "owner-archive.txt", "local", "local code commit")
+	recordsTip := gitkit.CommitFile(t, recordsDir, "owner-archive.txt", "local", "local records commit")
+	pairs := []fabricengine.OwnerArchivePair{{Slug: "root", Pair: l}}
+	if tags, err := fabricengine.ArchiveOwnerTips(l.HubPath, pairs); err != nil || len(tags) != 2 {
+		t.Fatalf("ArchiveOwnerTips() = %v, %v; want two tags", tags, err)
+	}
+	codeTag := fabricengine.OwnerArchiveTagName("root", codeTip)
+	recordsTag := fabricengine.OwnerArchiveTagName("root", recordsTip)
+	// The new owner holds no local tag, so the read must fetch each.
+	gitkit.Git(t, codeDir, "tag", "-d", codeTag)
+	gitkit.Git(t, recordsDir, "tag", "-d", recordsTag)
+
+	got, err := h.Topology.ReadOwnerArchives(l, "root", func(string) bool { return true })
+
+	if err != nil {
+		t.Fatalf("ReadOwnerArchives() error = %v", err)
+	}
+	want := []fabricengine.OwnerArchive{
+		{Slug: "root", Side: fabricengine.OwnerArchiveSideCode, Tag: codeTag, Commit: codeTip, Branch: gitkit.CurrentBranch(t, codeDir), Dir: codeDir},
+		{Slug: "root", Side: fabricengine.OwnerArchiveSideRecords, Tag: recordsTag, Commit: recordsTip, Branch: gitkit.CurrentBranch(t, recordsDir), Dir: recordsDir},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ReadOwnerArchives() = %+v; want %+v", got, want)
+	}
+	gitkit.Git(t, recordsDir, "fetch", "origin")
+	for _, store := range []struct{ name, dir, ownTag, otherCommit string }{
+		{"code", codeDir, codeTag, recordsTip},
+		{"records", recordsDir, recordsTag, codeTip},
+	} {
+		if local := gitkit.Git(t, store.dir, "tag", "--list", fabricengine.OwnerArchiveTagPrefix+"*"); local != store.ownTag {
+			t.Errorf("owner archive tags of the %s store = %q; want its own %s alone", store.name, local, store.ownTag)
+		}
+		if gitrepo.New(store.dir).SHAExists(store.otherCommit) {
+			t.Errorf("the %s store holds the other store's commit %s; want it never fetched", store.name, store.otherCommit)
+		}
 	}
 }
 

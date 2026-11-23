@@ -645,6 +645,37 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 	})
 }
 
+// TestBolt_PullThenCommitWritten_RefusesARecordsStoreWithNoNamespacedFetchRefspec covers a one-repository hub's board.
+// Its records store has lost its fetch refspecs.
+// The pull fails with the command that restores them, in place of an upstream that does not resolve, and no write runs.
+func TestBolt_PullThenCommitWritten_RefusesARecordsStoreWithNoNamespacedFetchRefspec(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
+	board := h.BoardDir()
+	gitkit.Git(t, board, "config", "--unset-all", "remote.origin.fetch")
+	fabricengine.ForgetOriginNamespaceForTest(board)
+	runs := 0
+	write := fabricengine.BoltWrite{Message: "write a", Write: func() ([]string, error) {
+		runs++
+		return nil, nil
+	}}
+
+	_, err := fabricengine.NewBolt(board).PullThenCommitWritten([]fabricengine.BoltWrite{write}, fabricengine.NewMutations(h.Path))
+
+	want := "`git -C " + board + " config --replace-all remote.origin.fetch"
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("PullThenCommitWritten() error = %v; want one naming %q", err, want)
+	}
+	if strings.Contains(err.Error(), "resolve upstream") {
+		t.Errorf("PullThenCommitWritten() error = %q; want no unresolved-upstream text", err)
+	}
+	if runs != 0 {
+		t.Errorf("write runs = %d; want none on a store whose layout cannot be read", runs)
+	}
+}
+
 func TestBolt_PushRecorded_DropsSeedCommitsOnRebaseConflict(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

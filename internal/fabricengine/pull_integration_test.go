@@ -685,6 +685,39 @@ func TestPull_WeftUpstreamUnreadableIsAnError(t *testing.T) {
 	}
 }
 
+// TestPull_RecordsStoreWithNoNamespacedFetchRefspecFails covers a one-repository pair.
+// Its records store lost its fetch refspecs.
+// Origin's records branch is ahead, yet the store maps nothing from origin's namespace.
+// The pull fails naming the commands that restore the refspecs.
+// It reports no weft pull and leaves the records branch where it was.
+func TestPull_RecordsStoreWithNoNamespacedFetchRefspecFails(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+	const slug = "ns-pull-norefspec"
+	h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
+	recordsBranch := fabricengine.RecordsBranchName(hubforge.AddPair(t, h, slug).Branch)
+	sibling := h.PairRecordsSibling(slug)
+	before := gitkit.RevParse(t, sibling, "HEAD")
+	gitkit.CommitFile(t, sibling, "ahead.txt", "ahead\n", "origin's next records commit")
+	oneRepoPushNamespaced(t, sibling, recordsBranch)
+	gitkit.Git(t, sibling, "reset", "--hard", before)
+	gitkit.Git(t, sibling, "config", "--unset-all", "remote.origin.fetch")
+	fabricengine.ForgetOriginNamespaceForTest(sibling)
+
+	result, err := oneRepoPairFabric(t, h, slug).Pull(fabricengine.SyncOptions{})
+
+	want := "`git -C " + sibling + " config --replace-all remote.origin.fetch"
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("Pull() = %+v, %v; want an error naming %q", result, err, want)
+	}
+	if result.WeftPulled {
+		t.Errorf("Pull() WeftPulled = true; want false beside the error")
+	}
+	if got := gitkit.RevParse(t, sibling, "HEAD"); got != before {
+		t.Errorf("records branch = %s after the pull; want it left at %s", got, before)
+	}
+}
+
 // TestPull_ReflogJudgesUnpushedAndRewinds covers the pull decisions that rest on the reflog.
 // A branch fetched but never pushed from this clone is not unpushed and takes the anchor walk.
 // A task branch origin rewound is refused with ErrWarpRewound before and after its tracking ref was fetched.

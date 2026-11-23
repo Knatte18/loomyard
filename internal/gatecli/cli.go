@@ -63,7 +63,7 @@ func newCommand(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, reru
 	var tiers []int
 	var upto, copies int
 	var cards []string
-	var all, guards, wait, mainPackages, stopOnFail, mapMode bool
+	var all, guards, wait, mainPackages, stopOnFail, mapMode, noCarry bool
 	testCmd := &cobra.Command{
 		Use:         "test [<targets>...]",
 		Short:       "run the hub's test tiers once their gate slots are free",
@@ -101,7 +101,7 @@ Examples:
 			request := testRequest{
 				goBinary: goBinary, samplePeriod: samplePeriod, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit, secondUnit: time.Second, rerunDelay: rerunDelay, pipeWaitDelay: pipeWaitDelay,
 				stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, gate: gate, tiers: tiers, cards: cards, mainPackages: mainPackages, base: base, all: all, guards: guards, targets: args,
-				upto: upto, uptoGiven: cmd.Flags().Changed("upto"), stopOnFail: stopOnFail, mapMode: mapMode, copies: copies,
+				upto: upto, uptoGiven: cmd.Flags().Changed("upto"), stopOnFail: stopOnFail, mapMode: mapMode, copies: copies, noCarry: noCarry,
 				phase: phaseFrom(cmd.Context()),
 			}
 			if dash := cmd.ArgsLenAtDash(); dash >= 0 {
@@ -126,6 +126,7 @@ Examples:
 	testCmd.Flags().BoolVar(&all, "all", false, "run every tier over its all_targets")
 	testCmd.Flags().BoolVar(&guards, "guards", false, "after the listed tiers, run every //lym:guard test of the module under the tier its file belongs to")
 	testCmd.Flags().BoolVar(&stopOnFail, gateslot.StopOnFailFlag, false, "end the call at its first failed run, so no later tier, vet or guard run starts")
+	testCmd.Flags().BoolVar(&noCarry, gateslot.NoCarryFlag, false, "run every tier of the call even where its last green run covers the unchanged tree")
 	testCmd.Flags().BoolVar(&mapMode, mapFlag, false, "build the per-package coverage maps of tier0 and tier1 over the scope's packages instead of running the tiers")
 	testCmd.Flags().IntVar(&copies, "copies", 0, "with --gate and explicit targets, run this many copies of the key's one tier side by side inside one slot lease; 0 is off")
 	testCmd.Flags().BoolVar(&wait, "wait", false, "run the tiers in this process and block until they end, instead of in the detached runner an agent call starts or joins")
@@ -185,6 +186,8 @@ type testRequest struct {
 	guards bool
 	// stopOnFail is the --stop-on-fail flag: the call ends at its first failed run, bar a crashed test runner.
 	stopOnFail bool
+	// noCarry is the --no-carry flag: every tier of the call runs as a carry: false tier does, so no green record is carried.
+	noCarry bool
 	// mapMode is the --map flag: the call builds the coverage maps over its scope instead of running the tiers.
 	mapMode bool
 	// copies is the --copies value: how many copies of the gate key's one tier run side by side; 0 is off.

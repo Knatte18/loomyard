@@ -1,5 +1,6 @@
 // clone_onerepository_test.go proves CloneHub's refusals of a one-URL clone, before it creates anything.
 // Each row aims the clone at a bare repository built here and asserts the way forward the refusal names.
+// It also proves the refusal of a clone into a directory that is not there.
 // It shares the fixture helpers of clone_adopt_test.go and the TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -40,6 +41,11 @@ func TestCloneHub_OneURLRefusals(t *testing.T) {
 			[]string{"delete lym-bolt on origin", "then clone again"}},
 		{"EarlierLayoutWithFlag", withEarlierLayoutBranch, true, "tst", false,
 			[]string{"delete lym-bolt on origin", "then clone again"}},
+		{"SeedThatStoppedBeforeItsBoard", func(t *testing.T, fixtures string) string {
+			bare := makeBareRemote(t, fixtures, "stopped-seed")
+			gitkit.Git(t, bare, "update-ref", "refs/lym/heads/main-weft", "main")
+			return bare
+		}, false, "", false, []string{"a one-repository seed stopped before its board landed", "lym fabric clone --single-repo --shortname <shortname>"}},
 		{"BoardAlreadyOnOrigin", func(t *testing.T, fixtures string) string {
 			bare := makeBareRemote(t, fixtures, "board-present")
 			gitkit.Git(t, bare, "update-ref", "refs/lym/heads/main", "main")
@@ -101,6 +107,32 @@ func TestCloneHub_OneURLRefusals(t *testing.T) {
 				t.Errorf("clone parent holds %d entries after the refusal; want no hub and no probe directory", len(entries))
 			}
 		})
+	}
+}
+
+// TestCloneHub_RefusesAParentDirectoryThatIsNotThere asserts that a clone into a missing directory names that directory.
+// It creates nothing, and its error is not the failed start of a git that was never at fault.
+func TestCloneHub_RefusesAParentDirectoryThatIsNotThere(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	cloneParent := filepath.Join(t.TempDir(), "missing")
+
+	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{WeftURL: "https://example.com/code"})
+
+	if err == nil {
+		t.Fatalf("CloneHub(%s) = nil error; want a refusal", cloneParent)
+	}
+	for _, want := range []string{cloneParent, "pass --into an existing directory"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("CloneHub(%s) error = %q; want it to contain %q", cloneParent, err.Error(), want)
+		}
+	}
+	if strings.Contains(err.Error(), "fork/exec") {
+		t.Errorf("CloneHub(%s) error = %q; want no failed start of git", cloneParent, err.Error())
+	}
+	if _, statErr := os.Stat(cloneParent); !os.IsNotExist(statErr) {
+		t.Errorf("stat %s after the refusal = %v; want it still missing", cloneParent, statErr)
 	}
 }
 
