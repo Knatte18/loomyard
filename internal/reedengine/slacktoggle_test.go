@@ -46,8 +46,9 @@ func recordingTmux(t *testing.T) (tmuxPath string, calls func() [][]string) {
 	}
 }
 
-// TestShowToggleOutcome pins the tmux calls a Slack toggle's click ends with.
-// A message is shown on the clicking client first, with every # and % doubled, and the bar redraw follows in every case.
+// TestShowToggleOutcome pins the tmux calls that show a toggle's outcome on the clicking client's bar.
+// A message is shown on the clicking client first for ten seconds, with every # and % doubled,
+// and the bar redraw follows in every case.
 // It sets the process-global version probe, so it does not run in parallel.
 func TestShowToggleOutcome(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -62,10 +63,10 @@ func TestShowToggleOutcome(t *testing.T) {
 	}{
 		{"EmptyMessageOnlyRedraws", "", func() [][]string { return [][]string{redraw} }},
 		{"MessageIsShownThenRedrawn", "slack on", func() [][]string {
-			return [][]string{{"-S", socketPath, "display-message", "-c", client, "slack on"}, redraw}
+			return [][]string{{"-S", socketPath, "display-message", "-d", "10000", "-c", client, "slack on"}, redraw}
 		}},
 		{"HashAndPercentInTheMessageAreDoubled", "#3 is 50% done", func() [][]string {
-			return [][]string{{"-S", socketPath, "display-message", "-c", client, "##3 is 50%% done"}, redraw}
+			return [][]string{{"-S", socketPath, "display-message", "-d", "10000", "-c", client, "##3 is 50%% done"}, redraw}
 		}},
 	}
 	for _, tt := range tests {

@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/slackengine"
 )
@@ -18,6 +19,13 @@ import (
 const (
 	// barVerb is the name of the hidden verb reed's status bar runs for the toggles' state.
 	barVerb = "bar"
+	// toggleVerb is the name of the hidden verb a click on one of reed's Slack toggles runs.
+	toggleVerb = "toggle"
+	// toggleSocketFlag, toggleTmuxFlag and toggleClientFlag name the flags of `toggle` that name the clicked bar:
+	// the tmux server's socket path, the tmux binary and the clicking client.
+	toggleSocketFlag = "socket"
+	toggleTmuxFlag   = "tmux"
+	toggleClientFlag = "client"
 	// toggleSlack and toggleAway are the toggles `toggle` takes, named as reed's ranges name them.
 	toggleSlack = "slack"
 	toggleAway  = "away"
@@ -98,9 +106,8 @@ func (c *slackCLI) barSlackWord(dir string) (string, bool) {
 
 // toggleCmd returns the hidden `slack toggle` verb.
 func (c *slackCLI) toggleCmd() *cobra.Command {
-	var tmuxPath, socketPath, client string
 	cmd := &cobra.Command{
-		Use:         "toggle <toggle> --socket <path> --tmux <path> --client <name>",
+		Use:         toggleVerb + " <toggle> --socket <path> --tmux <path> --client <name>",
 		Short:       "flip an orch's slack button or the presence, as a click on reed's toggle asks",
 		Hidden:      true,
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
@@ -117,28 +124,44 @@ changes the presence.
 toggle away sets the presence to terminal while it is slack, as back does, and
 otherwise does what away does.
 
-It then redraws the clicking client's status bar on the server at --socket,
-showing the refusal there first when the toggle failed.`,
+It then redraws the clicking client's status bar on the server at --socket.
+The click discards what the verb prints, so a toggle that failed, or a refusal
+before it started such as a directory that is no worktree, is shown on that bar
+first. A click run in a lym worktree also writes the refusal to that worktree's
+trace log.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.runVerb(cmd, func() (map[string]any, error) {
 				fields, err := c.toggle(args[0])
-				message := ""
-				if err != nil {
-					message = "lym: " + err.Error()
-				}
-				c.showToggle(tmuxPath, socketPath, client, message)
+				c.reportToggle(cmd, args[0], err)
 				return fields, err
 			})
 		},
 	}
-	cmd.Flags().StringVar(&socketPath, "socket", "", "socket path of the tmux server whose bar was clicked")
-	cmd.Flags().StringVar(&tmuxPath, "tmux", "", "path of the tmux binary")
-	cmd.Flags().StringVar(&client, "client", "", "the clicking tmux client")
-	for _, flag := range []string{"socket", "tmux", "client"} {
+	cmd.Flags().String(toggleSocketFlag, "", "socket path of the tmux server whose bar was clicked")
+	cmd.Flags().String(toggleTmuxFlag, "", "path of the tmux binary")
+	cmd.Flags().String(toggleClientFlag, "", "the clicking tmux client")
+	for _, flag := range []string{toggleSocketFlag, toggleTmuxFlag, toggleClientFlag} {
 		_ = cmd.MarkFlagRequired(flag)
 	}
 	return cmd
+}
+
+// reportToggle ends a click on the named Slack toggle by redrawing the status bar of the client that cmd's flags name.
+// When err is not nil it first shows err on that bar and logs it at Warn.
+// The click line discards the verb's output.
+// The bar, and the trace log in a lym worktree, are therefore the only places a failed click shows.
+func (c *slackCLI) reportToggle(cmd *cobra.Command, toggle string, err error) {
+	message := ""
+	if err != nil {
+		message = "lym: " + err.Error()
+		logger.Warn("slack: a click on a Slack toggle failed", "toggle", toggle, "err", err)
+	}
+	// Each flag is declared as a string on the toggle verb, so reading it cannot fail.
+	tmuxPath, _ := cmd.Flags().GetString(toggleTmuxFlag)
+	socketPath, _ := cmd.Flags().GetString(toggleSocketFlag)
+	client, _ := cmd.Flags().GetString(toggleClientFlag)
+	c.showToggle(tmuxPath, socketPath, client, message)
 }
 
 // toggle flips the named toggle: slack the button of the worktree's orch, and away the presence.

@@ -26,6 +26,9 @@
 // `toggle` is what a click on the bar's slack or away toggle runs.
 // Switched on, the slack toggle starts this hub's relay, which makes the orch's channel;
 // switched off, it leaves the channel and ends this hub's relay once no orch of the hub has its button on.
+// The click discards what `toggle` prints.
+// A failed toggle is therefore shown on the clicked bar, its pre-run's refusals included, and logged at Warn.
+// The trace log exists only in a lym worktree, so a click from a directory that is no worktree is shown on the bar alone.
 //
 // `login` reads the bot token and the app-level token in one run.
 // On a terminal it reads each with echo off; any other input it reads to its end and splits at white space.

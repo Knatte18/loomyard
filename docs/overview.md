@@ -951,7 +951,7 @@ User-facing modules each get one `lym <module>` namespace:
   The operator's message in Slack sets the presence to `slack`, and a line the operator types in an orch's pane sets it back to `terminal`, through the orch's prompt hook (`lym slack hook`), which tells those lines from the ones lym types.
   While the presence is `slack`, the turn-end hook of an orch whose button is on posts each turn's final reply to its channel.
   While the orch's autonomy is on, the hook posts only a reply that opens with `[operator]`.
-  reed's status bar shows the session orch's button and the presence as the `slack` and `away` toggles; a click on `slack` flips that orch's button, and on `away` switches the presence.
+  reed's status bar shows the session orch's button and the presence as the `slack` and `away` toggles; a click on `slack` flips that orch's button, and on `away` switches the presence; a click that fails shows why on the bar, and in the trace log when the click runs in a lym worktree.
   While the presence is `slack`, each worktree's dobby leaves `SLACK` one line for a run waiting at PR-Review or Sampler-Session, every `remind_after_min` minutes of the wait.
   ✅ Implemented. See the `internal/slackengine` and `internal/slackcli` package documentation.
 - **gate** — the tier runner:

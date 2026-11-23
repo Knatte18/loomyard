@@ -53,6 +53,7 @@ func productionCLI() *slackCLI {
 		resolveLocation: lymcwd.Resolve,
 		wire:            wireProduction,
 		readHiddenLine:  readHiddenTerminalLine,
+		showToggle:      reedengine.ShowToggleOutcome,
 	}
 }
 
@@ -135,7 +136,6 @@ func wireProduction(c *slackCLI, location *lymcwd.Location) error {
 		}
 		return client, nil
 	}
-	c.showToggle = reedengine.ShowToggleOutcome
 	c.ensure = func(geom slackengine.Geometry) (slackengine.StartOutcome, error) {
 		return slackengine.EnsureRelay(geom, primeName)
 	}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/slackengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -169,6 +171,48 @@ func TestToggle(t *testing.T) {
 			}
 		})
 	}
+
+	// Not parallel: logcapture.Capture redirects the process-global logger output.
+	t.Run("AFailedClickLogsOneWarnRecordNamingTheToggleAndTheRefusal", func(t *testing.T) {
+		buf := logcapture.Capture(t)
+		h := newHarness(t, nil)
+		h.configure()
+		h.installPreRun = true
+
+		h.run("", toggleArgs(toggleSlack)...)
+
+		// Other parallel tests may log the same message, so the three parts are checked on one record's line.
+		for _, line := range strings.Split(buf.String(), "\n") {
+			if strings.Contains(line, "slack: a click on a Slack toggle failed") &&
+				strings.Contains(line, "toggle=slack") &&
+				strings.Contains(line, "this directory is no worktree") {
+				return
+			}
+		}
+		t.Errorf("no single log line holds the Warn message, toggle=slack and the refusal; log:\n%s", buf.String())
+	})
+
+	t.Run("TheProductionCLIHasTheBarSeamBeforeAnyWiring", func(t *testing.T) {
+		t.Parallel()
+		if productionCLI().showToggle == nil {
+			t.Error("productionCLI().showToggle = nil; want set, since a toggle whose wiring failed must still reach the bar")
+		}
+	})
+
+	t.Run("ARefusalBeforeTheToggleStartsIsShownOnTheBar", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t, nil)
+		h.configure()
+		h.installPreRun = true
+
+		code, env := h.run("", toggleArgs(toggleSlack)...)
+
+		wantRefused(t, code, env, "this directory is no worktree")
+		h.wantCalls()
+		if diff := cmp.Diff(wantRedraw("lym: slack-test: this directory is no worktree"), h.redraws, cmp.AllowUnexported(toggleRedraw{})); diff != "" {
+			t.Errorf("redraws mismatch (-want +got):\n%s", diff)
+		}
+	})
 
 	t.Run("AnUnknownToggleIsRefusedAndTheRedrawShowsTheRefusal", func(t *testing.T) {
 		t.Parallel()
