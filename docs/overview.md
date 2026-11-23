@@ -1514,6 +1514,7 @@ User-facing modules each get one `lym <module>` namespace:
   A per-perch 0 takes `review_hard_max_bounces`, and a hard cap below its perch's budget is refused at load.
   `discussion_auto_accept`/`code_auto_accept` make a perch accept a harvested round at a spent budget.
   The perch then skips the soft-cap rule.
+  On a perch whose Bouncer sets `blocking_escalates`, a round with an open BLOCKING finding escalates to the run's parent instead of being accepted.
   `split_max_bounces`, `split_hard_max_bounces` and `split_auto_accept` are the split perch's budget, hard cap and auto-accept.
   `split_auto_accept` defaults to false, and a null `split_max_bounces` and a 0 `split_hard_max_bounces` take the shared values.
   `tapestry.yaml` is the tapestry recipe's module, per-worktree, and holds the plan perch's own keys.

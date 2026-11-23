@@ -161,7 +161,7 @@ func Modules() []Module {
 		{Name: "language", Template: languageconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(languageconfig.Load), Spec: languageconfig.ConfigSpec},
 		{Name: "lenses", Template: lenses.ConfigTemplate, PerNameMaps: lenses.ConfigPerNameMaps(), CheckLoad: lenses.CheckLoad, Spec: lenses.ConfigSpec},
 		{Name: "logger", Template: loggerconfig.ConfigTemplate, CheckLoad: checkLoad(loggerconfig.Load), Spec: loggerconfig.ConfigSpec},
-		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps(), CheckValues: loomengine.ValidateLocalValues, CheckLoad: checkLoadNamed(loomengine.LoadConfig, "loom"), Spec: loomengine.ConfigSpec},
+		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps(), CheckValues: loomengine.ValidateLocalValues, CheckLoad: checkLoadNamed(loomengine.LoadConfig, "loom"), Reinterpretations: []Reinterpretation{{ID: loomengine.CodeAutoAcceptBlockingReinterpretationID, Rewrite: loomengine.FlagCodeAutoAccept, RunsWithoutFile: true}}, Spec: loomengine.ConfigSpec},
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true, CheckLoad: checkLoad(modelspec.LoadRegistry), Spec: modelspec.ConfigSpec},
 		{Name: "orch", Template: orchengine.ConfigTemplate, CheckLoad: checkLoadNamed(orchengine.LoadConfig, "orch"), Reinterpretations: []Reinterpretation{{ID: orchengine.RemoteControlOffReinterpretationID, Rewrite: orchengine.FlagRemoteControlDefault}}, Spec: orchengine.ConfigSpec},
 		{Name: runprofile.ModuleName, Template: runprofile.ConfigTemplate, HubWide: true, SeedOnly: true, CheckLoad: checkProfiles, Spec: runprofile.ConfigSpec},

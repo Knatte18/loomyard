@@ -167,8 +167,12 @@ type BouncerConfig struct {
 	// It accepts only a CONTINUE or CIRCLING verdict this call's judge just wrote at the soft cap;
 	// it needs a round with no decision or escalation record, and an escalated round returns its record.
 	AutoAccept bool
-	// BlockingEscalates sends a spent budget to the soft-cap rule if the ledger is unreadable or has an open BLOCKING entry.
-	// It only turns auto-accepts into rule runs and never accepts what the rule would not.
+	// BlockingEscalates hands a round in the soft-cap window to the run's parent with cause budget.
+	// It does so when the round's ledger holds an open BLOCKING entry or cannot be read.
+	// Neither the auto-accept nor the soft-cap rule's accept then passes the round:
+	// the parent accepts it or orders another round.
+	// A round that EscalateDecisions would escalate with cause decision is handed over the same way.
+	// The exception is a round whose open BLOCKING entries are all of class decision, which the arbiter may rule on.
 	BlockingEscalates bool
 	// EscalateDecisions makes a judged round escalate with cause decision, whatever the judge ruled.
 	// It does so when its accepted review holds a finding of class decision; false, the default, changes nothing.
@@ -290,6 +294,7 @@ type Bouncer struct {
 // The soft-cap rule's automatic continue is exempt as well.
 // With cfg.AutoAccept set, a spent budget turns a freshly judged CONTINUE or CIRCLING round into an automatic accept.
 // Such a round returns Done instead of running the soft-cap rule.
+// With cfg.BlockingEscalates set, a spent budget over an open BLOCKING ledger entry escalates to the parent instead.
 // A judge that never recovers halts within MaxBounces counted Stucks.
 // A continue past the soft cap buys exactly one judged round.
 //
@@ -1406,17 +1411,19 @@ func (b *Bouncer) acceptRound(round int, ptr shedengine.OutputPointer) (shedengi
 // It is also open when the round is at or past the hard cap by its number,
 // so a round past a new generation that reset Shed's count is still settled by the rule.
 // In order:
-// first, with the soft cap reached, AutoAccept set, a harvest (spawned) and no escalation record:
-// a round that BlockingEscalates does not send to the rule records an automatic accept and passes through acceptRound;
-// BlockingEscalates sends a round whose ledger holds an open BLOCKING entry, or cannot be read, to the rule instead.
-// Second, a stalemate escalates with cause stalemate, which the round's own stalemate record always answers again.
+// first, in an open window, BlockingEscalates applies.
+// A round whose ledger holds an open BLOCKING entry or cannot be read escalates with cause budget.
+// The detail names the open keys, and an escalation already recorded for the round is returned as recorded.
+// Second, AutoAccept applies with the soft cap reached, a harvest (spawned) and no escalation record.
+// The round then records an automatic accept and passes through acceptRound.
+// Third, a stalemate escalates with cause stalemate, which the round's own stalemate record always answers again.
 // In an open window a stalemate yields to softCapRule when its ledger holds no design-wrong entry.
-// Third, an open window or a CIRCLING verdict over a round whose escalation record exists or cannot be read escalates:
+// Fourth, an open window or a CIRCLING verdict over a round whose escalation record exists or cannot be read escalates:
 // the escalation returns the recorded Awaiting, or the unreadable-record Stuck.
-// Fourth, an open window runs softCapRule.
-// Fifth, a CIRCLING verdict escalates with cause circling,
+// Fifth, an open window runs softCapRule.
+// Sixth, a CIRCLING verdict escalates with cause circling,
 // and a CONTINUE calls ensureFocus(round + 1) and returns Stuck.
-// A round whose live gate is red, or whose live state cannot be read, skips the automatic accept at the first step.
+// A round whose live gate is red, or whose live state cannot be read, skips the automatic accept at the second step.
 // It escalates with cause budget instead.
 //
 // Bound: the rule accepts fixes no reviewer saw only when no open BLOCKING or MEDIUM entry is tagged design-wrong.
@@ -1426,7 +1433,12 @@ func (b *Bouncer) settleUndecided(round int, verdict bouncerVerdict, spawned boo
 	windowOpen := softCapReached || b.atHardCap(round)
 	_, _, escalated, readErr := readEscalation(b.cfg.RunDir, round)
 
-	if softCapReached && b.cfg.AutoAccept && spawned && readErr == nil && !escalated && !b.blockingSendsToRule(round) {
+	if windowOpen {
+		if detail := b.blockingEscalationDetail(round, ""); detail != "" {
+			return b.escalateWith(round, EscalationBudget, detail, ptr)
+		}
+	}
+	if softCapReached && b.cfg.AutoAccept && spawned && readErr == nil && !escalated {
 		if detail := b.liveRedDetail(round); detail != "" {
 			return b.escalateWith(round, EscalationBudget, detail, ptr)
 		}
@@ -1528,32 +1540,47 @@ func (b *Bouncer) softCapRule(round int, verdict bouncerVerdict, ptr shedengine.
 	return shedengine.Stuck, ptr, nil
 }
 
-// blockingSendsToRule reports whether BlockingEscalates sends round to the soft-cap rule instead of the auto-accept:
-// its ledger holds an open BLOCKING entry or cannot be read.
-func (b *Bouncer) blockingSendsToRule(round int) bool {
+// blockingEscalationDetail returns the budget escalation detail of a round that BlockingEscalates hands to the parent.
+// That is a round whose ledger holds an open BLOCKING entry, and the detail names each such key,
+// or a round whose ledger cannot be read.
+// An entry of class leftOut is not counted.
+// An empty leftOut counts every class, and an entry with no class always counts.
+// It returns "" when BlockingEscalates is off or the ledger holds no counted entry.
+func (b *Bouncer) blockingEscalationDetail(round int, leftOut burlerengine.Class) string {
 	if !b.cfg.BlockingEscalates {
-		return false
+		return ""
 	}
-	blocking, err := b.openBlocking(round)
+	keys, err := b.openBlockingKeys(round, leftOut)
 	if err != nil {
-		logger.Warn("shedadapters: bouncer could not read the ledger for the blocking check, sending the round to the soft-cap rule", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
+		return fmt.Sprintf("the round's ledger could not be read, so the spent budget cannot settle as an accept: %v", err)
 	}
-	return blocking || err != nil
+	if len(keys) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("the spent budget leaves BLOCKING findings open (%s), which only the parent may accept: accept them, or continue for another round", strings.Join(keys, ", "))
 }
 
-// openBlocking reports whether round's ledger holds an entry that is open at severity BLOCKING.
+// openBlockingKeys returns the keys of round's ledger entries that are open at severity BLOCKING, in ledger order.
+// It leaves out the entries of class leftOut; an empty leftOut counts every class.
 // A ledger that cannot be read or parsed is an error.
-func (b *Bouncer) openBlocking(round int) (bool, error) {
+func (b *Bouncer) openBlockingKeys(round int, leftOut burlerengine.Class) ([]string, error) {
 	ledger, err := readLedger(b.cfg.RunDir, round)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
+	return openBlockingKeysOf(ledger, leftOut), nil
+}
+
+// openBlockingKeysOf returns the keys of ledger's entries that are open at severity BLOCKING, in ledger order.
+// It leaves out the entries of class leftOut; an empty leftOut counts every class.
+func openBlockingKeysOf(ledger ledgerFile, leftOut burlerengine.Class) []string {
+	var keys []string
 	for _, entry := range ledger.Entries {
-		if entry.Status == "open" && entry.Severity == burlerengine.SeverityBlocking {
-			return true, nil
+		if entry.Status == "open" && entry.Severity == burlerengine.SeverityBlocking && (leftOut == "" || entry.Class != leftOut) {
+			keys = append(keys, entry.Key)
 		}
 	}
-	return false, nil
+	return keys
 }
 
 // liveRedDetail returns the escalation detail of a round whose live gate is red or whose live state cannot be read.
@@ -1570,6 +1597,12 @@ func (b *Bouncer) liveRedDetail(round int) string {
 		return "the round's live report is red, so the spent budget cannot settle as an accept"
 	}
 	return ""
+}
+
+// softCapWindowOpen reports whether round is in the soft-cap window:
+// the budget is reached by Shed's count, or the round is at or past the hard cap by its number.
+func (b *Bouncer) softCapWindowOpen(round int) bool {
+	return b.budgetReached(round) || b.atHardCap(round)
 }
 
 // budgetReached reports whether the segment's bounce budget is spent.

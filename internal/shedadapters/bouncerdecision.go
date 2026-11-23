@@ -87,10 +87,14 @@ func (b *Bouncer) decisionFindings(round int) ([]burlerengine.Finding, error) {
 // It does the same when the round's escalation or decision file has another cause;
 // it does the same for a settled accept.
 // A round with no decision yet escalates with cause decision after writing the snapshot of the decision record.
+// The exception is a round that BlockingEscalates hands to the parent with cause budget.
 // A pending continue is re-judged when the dropped-key check refuses it;
 // otherwise it runs another round, or at the hard cap it is retired and escalated again.
 // A pending accept passes the round when the refusal check admits it;
 // the decision findings are left out of its BLOCKING checks.
+// An accept over a CONTINUE or CIRCLING verdict rules only on the decision-class findings,
+// so an open BLOCKING ledger entry of another class holds it:
+// outside the soft-cap window the round runs another round, and inside it the round escalates with cause budget.
 // A refused accept is re-judged while budget is left;
 // at the budget it is retired and escalated again below the hard cap, and it halts the run at or past the hard cap.
 func (b *Bouncer) routeDecisions(ctx context.Context, round int, verdict bouncerVerdict, ledger ledgerFile, spawned bool) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
@@ -124,7 +128,7 @@ func (b *Bouncer) routeDecisions(ctx context.Context, round int, verdict bouncer
 		if !escalated {
 			logger.Info("shedadapters: bouncer escalating a decision-class finding to the parent", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "verdict", verdict, "spawned", spawned)
 		}
-		outcome, ptr, err = b.escalateUndecided(round, verdict, ledger, ptr)
+		outcome, ptr, err = b.escalateUndecided(round, verdict, ledger, findings, ptr)
 	case decision == CirclingContinue:
 		outcome, ptr, err = b.settleDecisionContinue(ctx, round, verdict, ledger, ptr)
 	default:
@@ -134,10 +138,24 @@ func (b *Bouncer) routeDecisions(ctx context.Context, round int, verdict bouncer
 }
 
 // escalateUndecided escalates round with cause decision after writing its snapshot.
+// With BlockingEscalates set, a CONTINUE or CIRCLING round in the soft-cap window escalates with cause budget instead.
+// That applies when its ledger holds an open BLOCKING entry of a class other than decision, or cannot be read.
+// Only the parent may accept such a round, and the detail names the decision-class findings in findings.
+// A CONVERGED verdict keeps cause decision, since the refusal check already shows the open entry.
 // A round that already carries the escalation record returns the same Awaiting.
-func (b *Bouncer) escalateUndecided(round int, verdict bouncerVerdict, ledger ledgerFile, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
+func (b *Bouncer) escalateUndecided(round int, verdict bouncerVerdict, ledger ledgerFile, findings []burlerengine.Finding, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := writeDecisionSnapshot(b.cfg.RunDir, round, b.cfg.DecisionRecordPath); err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): %w; way forward: make the named path writable, then run `lym loom start`, which re-escalates the round", b.cfg.Name, bouncerEngineLabel, err)
+	}
+	if verdict != verdictConverged && b.softCapWindowOpen(round) {
+		if detail := b.blockingEscalationDetail(round, burlerengine.ClassDecision); detail != "" {
+			ids := make([]string, len(findings))
+			for i, finding := range findings {
+				ids[i] = finding.ID
+			}
+			detail += fmt.Sprintf("; the review also holds decision findings (%s), which the parent rules on", strings.Join(ids, ", "))
+			return b.escalateWith(round, EscalationBudget, detail, ptr)
+		}
 	}
 	return b.escalateDecision(round, b.decisionRefusal(round, verdict, ledger, CirclingAccept), false, ptr)
 }
@@ -163,12 +181,21 @@ func (b *Bouncer) settleDecisionContinue(ctx context.Context, round int, verdict
 
 // settleDecisionAccept acts on a pending accept recorded for a decision escalation.
 // An admitted accept passes the round.
-// A refused one is re-judged while budget is left;
+// The exception is a CONTINUE or CIRCLING verdict whose ledger holds an open BLOCKING entry of another class.
+// Such an accept rules only on the decision findings and passes nothing else.
+// Outside the soft-cap window that round runs another round.
+// Inside it the accept is retired and the round escalates with cause budget, which only the parent accepts.
+// A refused accept is re-judged while budget is left;
 // at the budget below the hard cap it is retired and the round escalates again.
 // At the budget at or past the hard cap the judge outputs are archived and the run halts,
 // so a resume re-judges the round under the recorded accept.
 func (b *Bouncer) settleDecisionAccept(ctx context.Context, round int, verdict bouncerVerdict, ledger ledgerFile, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	refusal := b.decisionRefusal(round, verdict, ledger, CirclingAccept)
+	if refusal == "" && verdict != verdictConverged {
+		if keys := openBlockingKeysOf(ledger, burlerengine.ClassDecision); len(keys) > 0 {
+			return b.holdAcceptOverOpenEntries(round, keys, ptr)
+		}
+	}
 	switch {
 	case refusal == "":
 		return b.acceptRound(round, ptr)
@@ -185,6 +212,22 @@ func (b *Bouncer) settleDecisionAccept(ctx context.Context, round int, verdict b
 	}
 	reason := fmt.Sprintf("%sbouncer %s: round %d's recorded accept is held by a refusal at the budget and the perch's hard cap (%s); way forward: run `lym loom resume`, whose next Call re-judges the round under the recorded accept", DecisionHaltPrefix, b.cfg.Name, round, refusal)
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason, Halt: true}, nil
+}
+
+// holdAcceptOverOpenEntries holds a recorded accept that the ledger's open BLOCKING entries of another class outrule.
+// keys names those entries.
+// Outside the soft-cap window the next round starts so the fixer fixes them.
+// Inside it the accept is retired and the round escalates with cause budget, so only the parent accepts.
+func (b *Bouncer) holdAcceptOverOpenEntries(round int, keys []string, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	if !b.softCapWindowOpen(round) {
+		b.ensureFocus(round + 1)
+		return shedengine.Stuck, ptr, nil
+	}
+	detail := fmt.Sprintf("the recorded accept rules only on decision findings and leaves BLOCKING findings open (%s), which only the parent may accept: accept them, or continue for another round", strings.Join(keys, ", "))
+	if err := b.retireContinue(round); err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): retire the accept decision of round %d held by open BLOCKING entries: %w; way forward: make the named path writable, then run `lym loom start`, which re-escalates the round", b.cfg.Name, bouncerEngineLabel, round, err)
+	}
+	return b.escalateWith(round, EscalationBudget, detail, ptr)
 }
 
 // escalateDecision renders the decision detail of round and escalates it with cause decision.

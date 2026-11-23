@@ -518,6 +518,8 @@ type Config struct {
 	// A nil budget takes ReviewMaxBounces, and a budget of 0 runs no review round for the perch.
 	// A hard cap of 0 takes ReviewHardMaxBounces.
 	// A flag true makes the perch accept a harvested round at a spent budget instead of running the soft-cap rule.
+	// On a perch whose Bouncer sets blocking_escalates, a round with an open BLOCKING finding escalates.
+	// It goes to the run's parent instead.
 	DiscussionMaxBounces     *int `yaml:"discussion_max_bounces"`
 	PlanMaxBounces           *int `yaml:"-"`
 	CodeMaxBounces           *int `yaml:"code_max_bounces"`

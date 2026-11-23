@@ -123,6 +123,29 @@ func TestModules_OrchRegistersRemoteControlReinterpretation(t *testing.T) {
 	}
 }
 
+// TestModules_LoomRegistersCodeAutoAcceptReinterpretation pins the loom module's code_auto_accept reinterpretation.
+// A hub that sets code_auto_accept: true gets the notice that an open BLOCKING finding now escalates.
+// It does so only while the row declares the reinterpretation.
+//
+//testtiming:keep pins the loom row's Reinterpretations entry, which no walk test reads
+func TestModules_LoomRegistersCodeAutoAcceptReinterpretation(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	loom, found := Lookup("loom")
+	if !found {
+		t.Fatal("Lookup(\"loom\") found no module; want the loom module registered")
+	}
+	if len(loom.Reinterpretations) != 1 {
+		t.Fatalf("loom Reinterpretations = %d entries; want 1", len(loom.Reinterpretations))
+	}
+	if got := loom.Reinterpretations[0].ID; got != "loom-code-auto-accept-escalates-blocking" {
+		t.Errorf("loom Reinterpretations[0].ID = %q; want %q", got, "loom-code-auto-accept-escalates-blocking")
+	}
+	if loom.Reinterpretations[0].Rewrite == nil {
+		t.Error("loom Reinterpretations[0].Rewrite is nil; want the rewrite function")
+	}
+}
+
 // TestModules_EveryTemplateKeyClassified pins that each module's Categories classify every template unit.
 // It also pins that Categories name only paths the template holds.
 // The derived LocalKeys, LocalDenied and MachineKeys must match the record.

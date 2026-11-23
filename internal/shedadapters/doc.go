@@ -164,6 +164,8 @@
 // A recorded decision is acted on first, whatever the budget.
 // A pending accept settles its record and maps to Done after Approve and Commit.
 // A continue below the hard cap maps to Stuck, BudgetExempt when the cause is budget or the budget is reached.
+// With BouncerConfig.BlockingEscalates, a spent budget over an open BLOCKING ledger entry escalates with cause budget,
+// so no accept passes such a round without the parent.
 // The escalation rules read only files in the run directory, so a harvest and a replay settle alike.
 // A pass that settles a judged round calls the CarryOver seam, which only writes the segment's `## Open risks` entry:
 // it approves nothing, and a failure is the settle's own error, so neither Approve nor Commit runs.

@@ -72,6 +72,10 @@ producers:
       # under it in the decision record's Open risks section, and a test pins it equal to segment.
       carry_over: Harden-Review
       harden_round: true
+      # escalate_decisions makes this Bouncer send a round's decision-class findings to the arbiter, and to the
+      # run's parent where the arbiter cannot rule; a focus entry the round left undriven or marked WARN is one,
+      # so no round settles past it. Harden-Burler-Fix sets decisions_escalated so its fixer is given none.
+      escalate_decisions: true
 
   - name: Harden-Burler-Review
     engine: BurlerReview
@@ -125,6 +129,8 @@ producers:
       role_prefix: harden
       fixer_fan_setting: hardener.fixer_fan
       review_row: Harden-Burler-Review
+      # decisions_escalated says Harden-Bouncer's escalate_decisions sends the round's decision-class findings on.
+      decisions_escalated: true
       # No gates key: the engine fixes the row's gates to clean, verify and live.
       profile:
         target:

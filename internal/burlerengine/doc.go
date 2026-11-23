@@ -305,4 +305,7 @@
 // Profile.HaltReason adds a halt-reason block to the review prompt.
 // RoundContext.HaltReason lets the finding it asks for sit outside the changed files.
 // That finding is tagged `origin: webster` (WebsterOrigin), and it must still be BLOCKING in an incremental round.
+// A `decision`-class finding tagged `origin: focus` (FocusOrigin) records an undriven or WARN focus entry.
+// RoundContext.FocusFindings, set for a hardener round, lets it sit outside the changed files,
+// and it must still be BLOCKING in an incremental round.
 package burlerengine

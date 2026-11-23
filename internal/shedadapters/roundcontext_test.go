@@ -123,9 +123,11 @@ func TestBuildRoundContext(t *testing.T) {
 		withAnchor bool
 		// withPlanPaths passes the amendment record and the conflict directory to the builder.
 		withPlanPaths bool
-		wantNil       bool
-		wantErr       bool
-		check         func(t *testing.T, got *burlerengine.RoundContext, e env)
+		// withFocusFindings marks the round as a hardener round to the builder.
+		withFocusFindings bool
+		wantNil           bool
+		wantErr           bool
+		check             func(t *testing.T, got *burlerengine.RoundContext, e env)
 	}{
 		{name: "RoundOneHasNoEarlierRound", round: 1, setup: complete, wantNil: true},
 		{
@@ -359,6 +361,14 @@ func TestBuildRoundContext(t *testing.T) {
 			},
 		},
 		{
+			name: "FocusFindingsComesFromTheSources", withFocusFindings: true, setup: complete,
+			check: func(t *testing.T, got *burlerengine.RoundContext, _ env) {
+				if !got.FocusFindings {
+					t.Error("FocusFindings = false; want true")
+				}
+			},
+		},
+		{
 			name: "PlanPathsLeftEmptyReadNothing",
 			setup: then(func(t *testing.T, e env) {
 				writeDecisionRecord(t, e.recordPath, addedEntry("Fix the batch order", "swap cards 3 and 4"))
@@ -399,6 +409,7 @@ func TestBuildRoundContext(t *testing.T) {
 			if tt.withPlanPaths {
 				paths.AmendmentTitles, paths.ConflictDir = amendmentTitlesFile(e.amendment), e.conflictDir
 			}
+			paths.FocusFindings = tt.withFocusFindings
 
 			got, err := BuildRoundContext(e.runDir, round, paths)
 

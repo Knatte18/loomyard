@@ -1427,7 +1427,7 @@ func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 		{name: "absent keys auto-accept in the review color", autoAccept: true, wantOutcome: shedengine.Done, wantSegment: segmentcolor.Review},
 		{name: "a decision finding without escalate_decisions settles as today", autoAccept: true, decisionReview: true, wantOutcome: shedengine.Done, wantSegment: segmentcolor.Review},
 		{name: "escalate_decisions escalates a decision finding to the parent", extra: Config{"escalate_decisions": true}, autoAccept: true, decisionReview: true, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review},
-		{name: "blocking_escalates sends the open BLOCKING entry to the rule, which continues", extra: Config{"blocking_escalates": true}, autoAccept: true, wantOutcome: shedengine.Stuck, wantSegment: segmentcolor.Review},
+		{name: "blocking_escalates escalates the open BLOCKING entry to the parent", extra: Config{"blocking_escalates": true}, autoAccept: true, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review},
 		{name: "a null auto-accept is false, so the soft-cap rule runs", autoAccept: nil, wantOutcome: shedengine.Stuck, wantSegment: segmentcolor.Review},
 		{name: "a hard cap of 1 offers only accept", extra: Config{"blocking_escalates": true}, autoAccept: true, hardCap: 1, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review},
 		{name: "color_segment colors the judge", extra: Config{"color_segment": "merge"}, autoAccept: true, wantOutcome: shedengine.Done, wantSegment: segmentcolor.Merge},

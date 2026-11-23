@@ -182,6 +182,13 @@ producers:
       # carry_over names this row's own segment: the Bouncer files the round's still-open findings
       # under it in the decision record's Open risks section, and a test pins it equal to segment.
       carry_over: Code-Review
+      # escalate_decisions makes this Bouncer send a round's decision-class findings to the run's
+      # parent and wait for its ruling; Code-Burler-Fix sets decisions_escalated so its fixer is
+      # given none and posts no notice of its own.
+      escalate_decisions: true
+      # blocking_escalates sends a spent budget with an open BLOCKING finding to the run's parent,
+      # which accepts it or orders another round, instead of to the auto-accept.
+      blocking_escalates: true
 
   - name: Code-Burler-Review
     engine: BurlerReview
@@ -237,6 +244,9 @@ producers:
       role_prefix: code
       fixer_fan_setting: loom.code_fixer_fan
       review_row: Code-Burler-Review
+      # decisions_escalated says Code-Bouncer's escalate_decisions sends the round's decision-class
+      # findings to the parent.
+      decisions_escalated: true
       # The verify gate runs the tree-scoped command, or the hub's `code-burler-fix` key, on the
       # committed tree after each round, lints the comments from the merge base on every attempt,
       # and re-prompts the fix session with the findings until it passes. The row runs its own key

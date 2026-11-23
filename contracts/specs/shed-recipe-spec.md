@@ -118,9 +118,18 @@ A `Bouncer` row's optional boolean `escalate_decisions` key defaults to false.
 When true, a judged round whose review holds a `decision`-class finding escalates with cause `decision`.
 The arbiter settles that escalation where the board entry and the decision record answer it,
 and the run's parent settles it otherwise.
+Where `blocking_escalates` is set, a CONTINUE or CIRCLING round in the soft-cap window whose ledger holds an open BLOCKING entry
+of another class escalates with cause `budget` to the parent alone instead.
 A `BurlerFix` row's optional boolean `decisions_escalated` key (default false) says its segment's Bouncer does so:
 the fixer is given no `decision` finding and the row posts no parent notice of its own.
-Loom's recipe sets both keys on its Discussion-Review rows and on no other row.
+The shipped recipes set both keys on their Discussion-Review, Code-Review, split and Harden-Review rows.
+A `Bouncer` row's optional boolean `blocking_escalates` key defaults to false.
+When true, a round in the soft-cap window whose ledger holds an open BLOCKING entry, or cannot be read,
+escalates with cause `budget` to the run's parent, which accepts it or orders another round;
+neither the auto-accept nor the soft-cap rule's accept passes such a round.
+A round whose review holds a `decision`-class finding is handed over the same way under `escalate_decisions`,
+unless every open BLOCKING entry is of class `decision`.
+The shipped Code-Review rows set it.
 
 A `MultiLLM` row runs one lead and its advisors as seats.
 Its keys are `role`, `segment` and `seats`, and the optional `gates`, `timeout_min`, `interactive` and `tokens`.

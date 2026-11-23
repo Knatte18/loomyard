@@ -325,6 +325,46 @@ func TestBurlerReviewEntry_ProfileMapping(t *testing.T) {
 		}
 	})
 
+	// Only a harden_round row's round check admits a new focus finding outside the changed files.
+	t.Run("HardenRoundSetsTheFocusFindingsPermission", func(t *testing.T) {
+		const review = "---\nverdict: BLOCKING\nfindings:\n" +
+			"  - id: F2\n    severity: BLOCKING\n    class: decision\n    origin: focus\n    location: z.go:1\n    summary: s2\n    fix: f2\n" +
+			"prior:\n  - id: F1\n    status: resolved\n---\n\n### [BLOCKING] s2\n\n**Location:** z.go:1\n\n**Issue:** an undriven focus entry.\n"
+		tests := []struct {
+			name        string
+			hardenRound bool
+			wantErr     string
+		}{
+			{name: "HardenRoundAdmitsIt", hardenRound: true},
+			{name: "OtherRowRefusesIt", wantErr: "does not list"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				env := hardenTestEnv(t)
+				writeJudgedRoundOne(t, filepath.Join(env.RunRoot, "review-segment"))
+				cfg := minimalReviewConfig()
+				if tt.hardenRound {
+					cfg["harden_round"] = true
+				}
+
+				profile, _ := captureReview(t, "review-row", cfg, env)
+
+				if profile.Round == nil {
+					t.Fatal("profile.Round = nil; want the round-2 context")
+				}
+				ctx := *profile.Round
+				ctx.HasChanges, ctx.Changed = true, []string{"c.go"}
+				err := burlerengine.CheckReviewRound([]byte(review), &ctx)
+				if tt.wantErr == "" && err != nil {
+					t.Errorf("CheckReviewRound() = %v; want the focus finding admitted", err)
+				}
+				if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
+					t.Errorf("CheckReviewRound() = %v; want a refusal containing %q", err, tt.wantErr)
+				}
+			})
+		}
+	})
+
 	t.Run("NoStageDiffGivesNoDiff", func(t *testing.T) {
 		profile, _ := captureReview(t, "review-row", minimalReviewConfig(), newTestEnv(t))
 

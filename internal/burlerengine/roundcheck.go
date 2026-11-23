@@ -69,6 +69,10 @@ type RoundContext struct {
 	// HaltReason is the stuck reason of the plan executor call that sent the run back to review, empty when none.
 	// A new BLOCKING `origin: webster` finding is exempt from the changed-file rule while it is set.
 	HaltReason string
+	// FocusFindings marks a hardener round.
+	// Its review raises a `decision`-class finding for each focus entry it left undriven.
+	// A new BLOCKING `origin: focus` finding of that class is exempt from the changed-file rule while it is set.
+	FocusFindings bool
 	// ParentReportPath is the report of the round's parent-review ask, empty when the round holds none.
 	ParentReportPath string
 	// PriorReviewPath, PriorFixerReportPath and ChangesPath name the files the prior-findings block points at.
@@ -79,6 +83,11 @@ type RoundContext struct {
 	// WorktreeRoot is the worktree a finding's absolute location is made relative to.
 	WorktreeRoot string
 }
+
+// FocusOrigin is the origin of a `decision`-class review finding that records an undriven or WARN focus entry.
+// The run's arbiter or parent rules on such a finding.
+// Driving the entry later or accepting it is a call, not a fix.
+const FocusOrigin = "focus"
 
 // roundCheckGateName labels the round-check entry in a gate outcome.
 const roundCheckGateName = "round"
@@ -106,7 +115,8 @@ func roundRefusal(problem, rewrite string) error {
 // A new `origin: parent` finding is exempt from the BLOCKING and changed-file rules.
 // It is exempt only when its parent_ids are all ids of the round's parent report.
 // A carried or new finding located in a file that an entry of ctx.AmendingTexts names passes the changed-file rule.
-// A new BLOCKING finding with `origin: webster` passes it too, when ctx.HaltReason is set.
+// A new BLOCKING finding with `origin: webster` passes it too when ctx.HaltReason is set.
+// So does a new BLOCKING `decision`-class finding with `origin: focus` when ctx.FocusFindings is set.
 func CheckReviewRound(content []byte, ctx *RoundContext) error {
 	_, findings, err := ParseReview(content)
 	if err != nil {
@@ -314,6 +324,11 @@ func (c *roundCheck) newFindings(findings []Finding) error {
 			}
 			return roundRefusal(fmt.Sprintf("has a second new finding %q with `origin: webster` at %q, which the changes file does not list, but the plan executor's halt reason admits one", f.ID, path),
 				fmt.Sprintf("with %q located at a file the changes file lists, or without it", f.ID))
+		}
+		// A focus entry left undriven has no changed hunk to sit on, and the parent's call on it needs no fix of the round.
+		// Only a hardener round raises one, and it sets ctx.FocusFindings.
+		if outsideChanges && c.ctx.FocusFindings && f.Origin == FocusOrigin && f.Class == ClassDecision {
+			continue
 		}
 		if outsideChanges {
 			return roundRefusal(fmt.Sprintf("has the new finding %q at %q, which the changes file does not list", f.ID, path),
