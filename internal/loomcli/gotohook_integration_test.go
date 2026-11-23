@@ -3,6 +3,8 @@
 package loomcli
 
 import (
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -14,8 +16,10 @@ import (
 )
 
 // TestGotoSpec_AdmittedHookClearsThePRReviewRecordOnlyForThatRow pins what the goto spec's hook does.
-// It acts on the pair's record.
+// It acts on the pair's record, through a receiver wired as the goto verb wires it, with no shuttle runner.
 // A goto onto PR-Review clears the recorded autonomy and ask mark; a goto onto any other row leaves them.
+// A record that names a strand has the hook build its own runner to stop that strand's session;
+// with no reed session up, the runner's stop fails probing reed, and the hook returns that error and keeps the record.
 // It runs without t.Parallel: it sets environment variables that skip the record's commit and push.
 func TestGotoSpec_AdmittedHookClearsThePRReviewRecordOnlyForThatRow(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -36,24 +40,32 @@ func TestGotoSpec_AdmittedHookClearsThePRReviewRecordOnlyForThatRow(t *testing.T
 	recordPath, lockPath := shedrun.PullRequestRecord(pair, shedrun.SelfRunID), shedrun.PullRequestRecordLock(pair, shedrun.SelfRunID)
 	on := true
 	held := pullrequest.Record{Number: 7, Autonomy: &on, ParentReviewAsked: true}
+	withStrand := pullrequest.Record{Number: 7, Autonomy: &on, ParentReviewAsked: true, StrandGUID: "guid-1", StrandName: "pr-review", SessionID: "session-1", Engine: "claude"}
 
 	tests := []struct {
-		name   string
-		target string
-		want   pullrequest.Record
+		name    string
+		held    pullrequest.Record
+		target  string
+		wantErr string
+		want    pullrequest.Record
 	}{
-		{"AnotherRowKeepsTheRecord", loomshed.NameFinalize, held},
-		{"PRReviewClearsTheAutonomyAndTheAskMark", loomshed.NamePRReview, pullrequest.Record{Number: 7}},
+		{"AnotherRowKeepsTheRecord", held, loomshed.NameFinalize, "", held},
+		{"PRReviewClearsTheAutonomyAndTheAskMark", held, loomshed.NamePRReview, "", pullrequest.Record{Number: 7}},
+		{"PRReviewWithARecordedStrandOnAnUnwiredReceiverReturnsTheStopError", withStrand, loomshed.NamePRReview, "could not stop the recorded PR-Review session: shuttle: stop strand guid-1: probe reed before removing it", withStrand},
 	}
 	for _, tt := range tests {
-		if err := pullrequest.WriteRecord(recordPath, lockPath, held); err != nil {
+		if err := pullrequest.WriteRecord(recordPath, lockPath, tt.held); err != nil {
 			t.Fatalf("%s: WriteRecord() = %v; want nil", tt.name, err)
 		}
-		if err := hook(tt.target); err != nil {
-			t.Fatalf("%s: hook(%q) = %v; want nil", tt.name, tt.target, err)
+		err := hook(tt.target)
+		if tt.wantErr == "" && err != nil {
+			t.Errorf("%s: hook(%q) = %v; want nil", tt.name, tt.target, err)
+		}
+		if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
+			t.Errorf("%s: hook(%q) = %v; want an error containing %q", tt.name, tt.target, err, tt.wantErr)
 		}
 		got, found, err := pullrequest.ReadRecord(recordPath, lockPath)
-		if err != nil || !found || got.Number != tt.want.Number || (got.Autonomy != nil) != (tt.want.Autonomy != nil) || got.ParentReviewAsked != tt.want.ParentReviewAsked {
+		if err != nil || !found || !reflect.DeepEqual(got, tt.want) {
 			t.Errorf("%s: record after hook(%q) = %+v, %v, %v; want %+v", tt.name, tt.target, got, found, err, tt.want)
 		}
 	}
