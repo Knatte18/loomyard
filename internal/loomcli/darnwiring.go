@@ -251,6 +251,7 @@ func (c *loomCLI) wireTreeScope(location *lymcwd.Location) error {
 // treeScopeSettings returns the verify attempts and verify budget of a run whose verify source is tree_scope.
 // A hardener run reads hardener.yaml's verify_attempts and has no verify budget.
 // Any other run reads darn.yaml's verify_attempts and verify_budget_min, its notice going to the run's parent orch.
+// The notice opens with the run's slug, since the orch reads the notices of every run of the hub.
 // A load error carries its way forward.
 // That is the editor's for a malformed tree key, and the hub reconcile's for darn.yaml otherwise.
 func (c *loomCLI) treeScopeSettings(location *lymcwd.Location) (int, loomshed.VerifyBudget, error) {
@@ -269,7 +270,7 @@ func (c *loomCLI) treeScopeSettings(location *lymcwd.Location) (int, loomshed.Ve
 	return cfg.VerifyAttempts, loomshed.VerifyBudget{
 		Limit: time.Duration(cfg.VerifyBudgetMin) * time.Minute,
 		Notify: func(line string) error {
-			_, err := orchcli.NotifyParent(location, loomProgram, line)
+			_, err := orchcli.NotifyParent(location, loomProgram, fmt.Sprintf("loom %s: %s", location.WorktreeName, line))
 			return err
 		},
 	}, nil

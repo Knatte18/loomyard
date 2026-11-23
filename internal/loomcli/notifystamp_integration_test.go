@@ -1,4 +1,5 @@
-// notifystamp_integration_test.go proves the halt notices loomcli's seams post carry the run's autonomy, over a real hub.
+// notifystamp_integration_test.go proves what loomcli's seams stamp on the notices they post, over a real hub:
+// a halt notice carries the run's autonomy, and a verify-budget notice names the run.
 // Creel's daemon runs in process on a fake delivery.
 
 package loomcli
@@ -141,6 +142,37 @@ func TestHaltNoticeSeams_CarryTheRunsAutonomy(t *testing.T) {
 		want = append(want, tt.name+"; autonomy: "+tt.autonomy)
 	}
 
+	if got := postedSubjects(t, h); !slices.Equal(got, want) {
+		t.Errorf("posted subjects = %q; want %q", got, want)
+	}
+}
+
+// TestVerifyBudgetNotice_NamesTheRun pins that a darn run's verify-budget notice opens with the run's slug.
+// Several runs post to one orch, so a notice without the slug leaves the orch guessing which run it is about.
+// It runs without t.Parallel: the strand environment variable is process-global.
+func TestVerifyBudgetNotice_NamesTheRun(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Setenv(agentname.StrandNameEnv, "")
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPair(t, h, "budget-task")
+	startNoticeOrch(t, h)
+	seedDarnHubConfig(t, h.Path, "3")
+	pair, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("budget-task"))
+	if err != nil {
+		t.Fatalf("lymcwd.ResolveWorktree(budget-task) = %v; want nil", err)
+	}
+	c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
+	_, budget, err := c.treeScopeSettings(pair)
+	if err != nil {
+		t.Fatalf("treeScopeSettings() = _, _, %v; want nil", err)
+	}
+
+	if err := budget.Notify("Darn-Write gate: the verify gate has run past its 30m0s budget"); err != nil {
+		t.Fatalf("Notify() = %v; want nil", err)
+	}
+
+	want := []string{"loom budget-task: Darn-Write gate: the verify gate has run past its 30m0s budget"}
 	if got := postedSubjects(t, h); !slices.Equal(got, want) {
 		t.Errorf("posted subjects = %q; want %q", got, want)
 	}
