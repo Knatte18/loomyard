@@ -10,6 +10,9 @@
 // A `blocked` or `failed` halt and an interrupted stop write their Go halt note and spawn no reflection,
 // so no stop holds the driver lock for a friction session and `lym loom resume` never waits on one.
 // An interrupted stop's note carries the `interrupted-stop` anomaly kind, never `producer-hard-failure`.
+// A failed halt on a board stencil that a newer lym build wrote carries `build-skew`:
+// the run's lym was older than a board stencil it read, which is a binary to update and not a lym defect;
+// the driver hands such a run to a fresh driver when a newer build is on disk.
 //
 // The `lym loom` verbs serve loom runs only.
 // `armAt` refuses a recipe that does not declare the loom contract.

@@ -45,6 +45,9 @@ intake filters later.
 
 For a `loom-halt` or `loom-crash-resume` note, file an issue only when the notes, the reason or the trace show a lym problem behind the event.
 A halt caused by the task's own code, or a review segment that did not converge, is dropped; a process signal such as a spent budget or an escalation is not a defect.
+A `build-skew` halt is dropped too: the run's lym was older than a board stencil it read,
+which is a binary to update and not a lym defect;
+the driver hands such a run to a fresh driver when a newer build is on disk.
 A dropped event stays recoverable: the note names the trace file, the run's status and history stay on disk, and the operator can still file through `lym selfreport create`.
 
 ## Step 3 — File each issue

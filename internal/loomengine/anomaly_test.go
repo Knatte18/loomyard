@@ -119,6 +119,7 @@ func TestClassifyHalt(t *testing.T) {
 		state       shedengine.State
 		reason      string
 		interrupted bool
+		buildSkew   bool
 		wantKind    AnomalyKind
 		wantOK      bool
 	}{
@@ -156,6 +157,30 @@ func TestClassifyHalt(t *testing.T) {
 			reason:   "arbitrary failure text",
 			wantKind: AnomalyProducerFailure,
 			wantOK:   true,
+		},
+		{
+			name:      "FailedBuildSkew_BuildSkew",
+			state:     shedengine.StateFailed,
+			reason:    "stencilstore: stencil \"burler-assist-consolidation\" was written by lym build newer",
+			buildSkew: true,
+			wantKind:  AnomalyBuildSkew,
+			wantOK:    true,
+		},
+		{
+			name:      "NotFailedBuildSkew_NoKind",
+			state:     shedengine.StateRunning,
+			buildSkew: true,
+			wantKind:  "",
+			wantOK:    false,
+		},
+		{
+			name:        "FailedInterruptedBuildSkew_InterruptedStop",
+			state:       shedengine.StateFailed,
+			reason:      "loop-exited: loop 1 ended without an envelope",
+			interrupted: true,
+			buildSkew:   true,
+			wantKind:    AnomalyInterrupted,
+			wantOK:      true,
 		},
 		{
 			name:        "FailedInterrupted_InterruptedStop",
@@ -219,9 +244,9 @@ func TestClassifyHalt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			kind, ok := ClassifyHalt(tt.state, tt.reason, tt.interrupted)
+			kind, ok := ClassifyHalt(tt.state, tt.reason, tt.interrupted, tt.buildSkew)
 			if kind != tt.wantKind || ok != tt.wantOK {
-				t.Errorf("ClassifyHalt(%q, %q, %v) = (%q, %v); want (%q, %v)", tt.state, tt.reason, tt.interrupted, kind, ok, tt.wantKind, tt.wantOK)
+				t.Errorf("ClassifyHalt(%q, %q, %v, %v) = (%q, %v); want (%q, %v)", tt.state, tt.reason, tt.interrupted, tt.buildSkew, kind, ok, tt.wantKind, tt.wantOK)
 			}
 		})
 	}

@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -462,28 +463,51 @@ func TestStep_EscalationHaltSkipsReflectionAndKeepsBothNotes(t *testing.T) {
 
 // TestStep_ProducerErrorWritesTheHaltNoteAndNoReflection drives step with a producer that returns an error.
 // The error envelope reports friction skipped, the halt note is on disk and no reflection ran.
+// The note's anomaly kind is a build skew for a board stencil a newer lym build wrote, and a producer failure otherwise.
 func TestStep_ProducerErrorWritesTheHaltNoteAndNoReflection(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	f := newHaltFixture(t)
-	explode := funcProducer(func(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
-		return "", shedengine.OutputPointer{}, errors.New("producer exploded")
-	})
+	tests := []struct {
+		name        string
+		err         error
+		wantAnomaly string
+	}{
+		{name: "ProducerFailure", err: errors.New("producer exploded"), wantAnomaly: "anomaly: producer-hard-failure"},
+		{
+			name: "BoardStencilFromANewerBuild",
+			err: fmt.Errorf("shedadapters: Code-Burler-Review (burler-review): round 1 attempt 1b: review: %w",
+				&stencilstore.NewerBoardCopyError{Stencil: "burler-assist-consolidation", WrittenBy: "newer", Running: "running"}),
+			wantAnomaly: "anomaly: build-skew",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	envelope, code := f.stepEnvelopeOver(t, explode)
+			f := newHaltFixture(t)
+			explode := funcProducer(func(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+				return "", shedengine.OutputPointer{}, tt.err
+			})
 
-	if code == 0 || envelope["ok"] != false {
-		t.Fatalf("exit = %d, envelope = %v; want an error envelope", code, envelope)
-	}
-	if envelope["friction"] != frictionengine.StatusSkipped {
-		t.Errorf("envelope friction = %v; want %q", envelope["friction"], frictionengine.StatusSkipped)
-	}
-	if len(f.shuttle.Specs) != 0 {
-		t.Errorf("reflection shuttle ran %d times; want 0", len(f.shuttle.Specs))
-	}
-	if note := readNote(t, filepath.Join(f.frictionDir, "loom-halt.md")); !strings.Contains(note, "producer exploded") {
-		t.Errorf("loom-halt.md = %q; want it to carry the producer error", note)
+			envelope, code := f.stepEnvelopeOver(t, explode)
+
+			if code == 0 || envelope["ok"] != false {
+				t.Fatalf("exit = %d, envelope = %v; want an error envelope", code, envelope)
+			}
+			if envelope["friction"] != frictionengine.StatusSkipped {
+				t.Errorf("envelope friction = %v; want %q", envelope["friction"], frictionengine.StatusSkipped)
+			}
+			if len(f.shuttle.Specs) != 0 {
+				t.Errorf("reflection shuttle ran %d times; want 0", len(f.shuttle.Specs))
+			}
+			note := readNote(t, filepath.Join(f.frictionDir, "loom-halt.md"))
+			for _, want := range []string{tt.err.Error(), tt.wantAnomaly + "\n"} {
+				if !strings.Contains(note, want) {
+					t.Errorf("loom-halt.md = %q; want it to contain %q", note, want)
+				}
+			}
+		})
 	}
 }
 
