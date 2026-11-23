@@ -38,7 +38,8 @@ type BoardView struct {
 	Areas []string `json:"areas"`
 	// Sections are the README section names the entries occupy, in README order.
 	Sections []string `json:"sections"`
-	// Projects are the root and every open project, each after the project it stands under.
+	// Projects are the root and every open project, each after the project it stands under, then every done project.
+	// A done project stays listed until it is pruned, so its members stand under it and not under the root.
 	Projects []ViewProject `json:"projects"`
 	// Entries are every task and note, done ones included, in render order.
 	Entries []ViewEntry `json:"entries"`
@@ -55,6 +56,8 @@ type ViewProject struct {
 	Parent string `json:"parent"`
 	// DesignFile is the name of the project's design file, empty when it has none.
 	DesignFile string `json:"design_file"`
+	// Done reports whether the project is done, so a page can keep it out of the choices of a project to write.
+	Done bool `json:"done"`
 }
 
 // ViewEntry is one task or note of a BoardView.
@@ -162,25 +165,36 @@ func nonNil(values []string) []string {
 	return values
 }
 
-// viewProjects lists the root, then every open project in README order, each carrying the handle it stands under.
+// viewProjects lists the root, then every open project in README order, then every done project in README order.
+// Each carries the handle it stands under: an open one its README section's parent,
+// and a done one the project whose Done section lists it.
 func (b boardView) viewProjects() []ViewProject {
 	projects := []ViewProject{{Handle: rootProject.Handle, Slug: RootSubject, Title: rootProject.Title, Labels: []string{}}}
+	add := func(project Task, parentHandle string, done bool) {
+		projects = append(projects, ViewProject{
+			Handle:     project.Handle,
+			Slug:       project.Slug,
+			Title:      project.Title,
+			Brief:      project.Brief,
+			Labels:     nonNil(project.Labels),
+			Parent:     parentHandle,
+			DesignFile: b.designFile(project),
+			Done:       done,
+		})
+	}
 	var walk func(parent Task)
 	walk = func(parent Task) {
 		for _, child := range b.childProjects(parent) {
-			projects = append(projects, ViewProject{
-				Handle:     child.Handle,
-				Slug:       child.Slug,
-				Title:      child.Title,
-				Brief:      child.Brief,
-				Labels:     nonNil(child.Labels),
-				Parent:     parent.Handle,
-				DesignFile: b.designFile(child.Task),
-			})
+			add(child.Task, parent.Handle, false)
 			walk(child.Task)
 		}
 	}
 	walk(rootProject)
+	for _, twl := range b.ordered {
+		if twl.Kind == KindProject && isDone(twl.Task) {
+			add(twl.Task, b.projectHandle(twl.Task), true)
+		}
+	}
 	return projects
 }
 

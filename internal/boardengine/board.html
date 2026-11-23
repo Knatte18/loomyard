@@ -587,6 +587,9 @@ textarea { min-height: 6rem; font-family: ui-monospace, SFMono-Regular, Menlo, m
     }
     options.push(h('option', { value: '', text: '(no project)' }));
     state.view.projects.slice(1).forEach(function (project) {
+      if (project.done) {
+        return;
+      }
       options.push(h('option', { value: project.slug, text: project.handle + ' ' + project.title }));
     });
     var select = h('select', {

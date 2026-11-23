@@ -34,7 +34,7 @@ const viewPrimeOwner = "neve"
 // scriptBody holds a closing script tag and an HTML tag, which board-data.js must carry only escaped.
 const scriptBody = "Closes </script> and <b>bold</b> & more"
 
-// viewFixture returns a board of three projects and a done one.
+// viewFixture returns a board of three open projects and two done ones, one nested in the other.
 // It holds tasks in every layer, notes of two types, an entry with a body and a discussed entry.
 // The root holds one entry of every section the README can show, so its section list is the whole README order.
 func viewFixture() []boardengine.Task {
@@ -57,6 +57,8 @@ func viewFixture() []boardengine.Task {
 		{ID: 14, Handle: "T10", Slug: "gtask", Title: "Gamma task", Kind: task, Labels: []string{"bug"}, Project: "gamma"},
 		{ID: 15, Handle: "B1", Slug: "bugnote", Title: "Bug note", Kind: note, Labels: []string{"bug", "area"}, Brief: "A bug.", Priority: boardengine.PriorityHigh},
 		{ID: 16, Handle: "E1", Slug: "enhnote", Title: "Enhancement note", Kind: note, Labels: []string{"enhancement"}},
+		{ID: 17, Handle: "T11", Slug: "glanded", Title: "Gamma landed", Kind: task, Labels: []string{"bug"}, Project: "gamma", Status: stringPtr(boardengine.StatusDone)},
+		{ID: 18, Handle: "P5", Slug: "epsilon", Title: "Epsilon", Kind: project, Labels: []string{"bug"}, Project: "gamma", Status: stringPtr(boardengine.StatusDone)},
 	}
 }
 
@@ -117,6 +119,7 @@ func TestRenderBoardData(t *testing.T) {
 			"T8":  {project: "P0", section: "Ready"},
 			"T9":  {project: "P1", section: "Layer A", waitsOn: []string{"T1"}},
 			"T10": {project: "P3", section: "Ready"},
+			"T11": {project: "P3", section: "Done"},
 			"B1":  {project: "P0", section: "Bugs"},
 			"E1":  {project: "P0", section: "Enhancements"},
 		}
@@ -136,7 +139,7 @@ func TestRenderBoardData(t *testing.T) {
 		}
 	})
 
-	t.Run("ProjectsListTheRootThenEachOpenProjectWithItsParent", func(t *testing.T) {
+	t.Run("ProjectsListTheRootThenEachOpenThenEachDoneProjectWithItsParent", func(t *testing.T) {
 		t.Parallel()
 		want := []boardengine.ViewProject{
 			{Handle: "P0", Slug: "root", Title: "Root: entries under no project", Labels: []string{}},
@@ -144,6 +147,10 @@ func TestRenderBoardData(t *testing.T) {
 			{Handle: "P2", Slug: "beta", Title: "Beta", Labels: []string{"bug"}, Parent: "P1"},
 			// The README nests an open project under a done one beneath the root.
 			{Handle: "P4", Slug: "delta", Title: "Delta", Labels: []string{"bug"}, Parent: "P0"},
+			// A done project stays listed, so board.html files its members, done ones included, under it and not under the root.
+			{Handle: "P3", Slug: "gamma", Title: "Gamma", Labels: []string{"bug"}, Parent: "P0", Done: true},
+			// A done project inside a done project stands under it.
+			{Handle: "P5", Slug: "epsilon", Title: "Epsilon", Labels: []string{"bug"}, Parent: "P3", Done: true},
 		}
 		if !reflect.DeepEqual(view.Projects, want) {
 			t.Errorf("projects = %+v; want %+v", view.Projects, want)
