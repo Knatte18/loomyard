@@ -3,9 +3,11 @@
 // and a line's text stays under LineLengthLimit characters.
 // Each finding names the rule it breaks.
 //
-// Lint is told the worktree and the base and resolves no cwd.
-// With an empty base it diffs the working tree against HEAD, untracked `.go` files included;
-// with a base commit it diffs base against HEAD with rename detection, so a pure rename adds no line.
+// Lint and LintCommitRange are told the worktree and the base and resolve no cwd.
+// Lint diffs the working tree against the base, HEAD when the base is empty, untracked `.go` files included,
+// so an uncommitted fix is checked as it stands.
+// LintCommitRange diffs the base against HEAD and reads no working tree, for a gate that verifies the committed tree.
+// Both detect renames, so a pure rename adds no line.
 // A diff with no `.go` file yields no findings.
 //
 // A break between two consecutive prose lines of a paragraph is checked only when it is new:

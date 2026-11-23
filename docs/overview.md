@@ -1303,8 +1303,9 @@ User-facing modules each get one `lym <module>` namespace:
   `validate-description` runs the same checks the `Describe` row's `description` gate runs, standalone.
   It checks `_lym/landing/summary.md`, with the same exit-code and findings-envelope contract.
   `lint-comments [--base <commit>]` runs `internal/commentlint` over the worktree:
-  it reports the fixed-column-wrapped breaks and the over-long lines in `//` comment blocks that the working tree creates.
-  With `--base` it reports those that the range from `--base` to HEAD creates.
+  it reports the fixed-column-wrapped breaks and the over-long lines in `//` comment blocks that the working tree creates,
+  uncommitted edits and untracked files included.
+  It compares the working tree with HEAD, or with `--base` when given.
   `lint-pattern [--base <commit>]` runs `internal/patternlint` over the worktree:
   it compares `PATTERN.md` at HEAD with the working tree's, or at `--base` with HEAD's.
   It fails when the overview grew past its headroom line, naming the bytes to cut.

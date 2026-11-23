@@ -62,7 +62,7 @@ A mechanical gate's **closure** and its CLI self-check verb call the same packag
   Webster-Burler-Fix's `verify` gate (`loomshed.NewVerifyGate`) goes through `verifytree.Verify`:
   it runs the comment lint and the derived round command.
 - A gate key's `comments` lint step in `lym gate test` and `lym loom lint-comments`: `commentlint.Lint`.
-  The Webster-Burler-Fix round gate (`loomshed.NewVerifyGate`) joins this pair when it runs the lint.
+  The Webster-Burler-Fix round gate (`loomshed.NewVerifyGate`) runs the same rules over the committed range through `commentlint.LintCommitRange`.
 - A gate key's `pattern` lint step in `lym gate test` and `lym loom lint-pattern`:
   `patternlint.Lint` over `pattern.Headroom`.
   The Webster-Burler-Fix round gate (`loomshed.NewVerifyGate`) is the pair's third caller when it is told a merge base.

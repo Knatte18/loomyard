@@ -59,20 +59,37 @@ func wordSet(words ...string) map[string]bool {
 	return set
 }
 
-// Lint returns the comment line findings of the `.go` files that differ in worktree:
+// Lint returns the comment line findings of the `.go` files in worktree's working tree that differ from base:
 // the new fixed-column-wrapped breaks in their `//` comment blocks,
 // and the new or changed comment lines whose text reaches LineLengthLimit.
-// An empty base compares the working tree, untracked files included, against HEAD;
-// a base commit compares it against HEAD.
+// It reads the working tree, uncommitted edits and untracked files included,
+// so a fix is checked before it is committed.
+// An empty base is HEAD.
 // Findings are ordered by file path, then line.
 func Lint(worktree, base string) ([]Finding, error) {
-	changes, err := changedGoFiles(worktree, base)
+	if base == "" {
+		base = "HEAD"
+	}
+	return lintChanges(worktree, base, true)
+}
+
+// LintCommitRange returns the comment line findings that the commits from base to HEAD create in worktree:
+// the new fixed-column-wrapped breaks and the new or changed comment lines whose text reaches LineLengthLimit.
+// It reads HEAD, never the working tree, so it checks the committed tree a gate verifies.
+func LintCommitRange(worktree, base string) ([]Finding, error) {
+	return lintChanges(worktree, base, false)
+}
+
+// lintChanges returns the findings of every changed `.go` file between baseRevision and the new side:
+// the working tree with workingTree, and HEAD otherwise.
+func lintChanges(worktree, baseRevision string, workingTree bool) ([]Finding, error) {
+	changes, err := changedGoFiles(worktree, baseRevision, workingTree)
 	if err != nil {
 		return nil, err
 	}
 	var findings []Finding
 	for _, change := range changes {
-		baseText, newText, err := readChange(worktree, base, change)
+		baseText, newText, err := readChange(worktree, baseRevision, workingTree, change)
 		if err != nil {
 			return nil, err
 		}

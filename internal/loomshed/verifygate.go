@@ -143,7 +143,7 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 			}
 		}
 		if lintBase != "" {
-			commentFindings, err := commentlint.Lint(worktreeRoot, lintBase)
+			commentFindings, err := commentlint.LintCommitRange(worktreeRoot, lintBase)
 			if err != nil {
 				return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: lint the comments: %w", err)
 			}

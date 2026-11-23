@@ -18,8 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestLintCommentsCmd_OverARepository walks one repository through a wrapped comment, a clean tree and a commit range.
-// At each step it asserts lint-comments and lint-pattern agree on the same tree.
+// TestLintCommentsCmd_OverARepository walks one repository through a wrapped comment, a clean tree and a base commit.
+// The steps that run both verbs assert that lint-comments and lint-pattern agree on the same tree.
+// The last step checks that lint-comments --base also reports an uncommitted edit.
 // The steps share the repository and run in order, so the test is parallel as a whole and no step is.
 func TestLintCommentsCmd_OverARepository(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -101,7 +102,7 @@ func TestLintCommentsCmd_OverARepository(t *testing.T) {
 	write("PATTERN.md", grownOverview)
 	gitkit.Git(t, dir, "add", "-A")
 	gitkit.Git(t, dir, "commit", "-q", "-m", "wrapped")
-	t.Run("--base lints the committed range", func(t *testing.T) {
+	t.Run("--base lints the working tree against a base commit, on a clean tree the committed change", func(t *testing.T) {
 		for _, verb := range []string{"lint-comments", "lint-pattern"} {
 			if exitCode, env := lint(verb); exitCode != 0 || !env.OK {
 				t.Errorf("%s worktree form: exit code = %d, ok = %v; want 0, true for a committed tree", verb, exitCode, env.OK)
@@ -113,6 +114,22 @@ func TestLintCommentsCmd_OverARepository(t *testing.T) {
 			if findings, _ := env.Raw["findings"].([]any); len(findings) != 1 {
 				t.Errorf("%s findings = %v; want the one finding", verb, findings)
 			}
+		}
+	})
+
+	write("edited.go", "package p\n\n// an uncommitted comment that wraps in the\n// middle of a sentence.\nfunc Edited() {}\n")
+	t.Run("lint-comments --base lints uncommitted edits too", func(t *testing.T) {
+		exitCode, env := lint("lint-comments", "--base", base)
+		if exitCode != 1 || env.OK {
+			t.Fatalf("exit code = %d, ok = %v; want 1, false", exitCode, env.OK)
+		}
+		findings, _ := env.Raw["findings"].([]any)
+		want := []any{
+			"edited.go:3: wrapped break: // an uncommitted comment that wraps in the",
+			"wrapped.go:3: wrapped break: // a comment that wraps in the",
+		}
+		if !slices.Equal(findings, want) {
+			t.Errorf("findings = %v; want %v", findings, want)
 		}
 	})
 }

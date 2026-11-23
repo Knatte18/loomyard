@@ -38,6 +38,7 @@ var checkedCallPinnedRawSites = map[string]int{
 	"internal/lymcwd":        0,
 	"internal/fabriccli":     0,
 	"internal/websterengine": 0,
+	"internal/commentlint":   1, // changedGoFiles' cat-file probe of an untracked path at the base
 
 	"internal/gitrepo/internal/gitoracle": 6, // CurrentSHA, SHAExists, ChangedFilesSince, CurrentBranch, HeadRef, verifyQuiet
 }
