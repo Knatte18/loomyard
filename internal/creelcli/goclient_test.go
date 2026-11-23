@@ -22,6 +22,31 @@ func TestGoClient_DropRunOnAHubWithNoJournalAnswersNothingAndConnectsToNoDaemon(
 	}
 }
 
+func TestClaimsNonOrchStrand(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"WorkerStrandIsNonOrch", "ly:alpha:driver", true},
+		{"OrchStrandIsOrch", "ly:orch", false},
+		{"BeamOrchStrandIsOrch", "ly:alpha:orch", false},
+		{"ProgramNameIsNoStrand", "ly:BATTEN", false},
+		{"EmptyNameIsNoStrand", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := claimsNonOrchStrand(tt.in); got != tt.want {
+				t.Errorf("claimsNonOrchStrand(%q) = %v; want %v", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestProgramClaim(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

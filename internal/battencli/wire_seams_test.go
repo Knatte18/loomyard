@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -294,6 +295,38 @@ func TestWire_EverySeamFilled(t *testing.T) {
 	escalated := shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Finalize", Error: landingshed.EscalateStopPrefix + "the fixer escalated"}
 	if !c.env.InnerRun.HandBack(escalated) {
 		t.Errorf("InnerRun.HandBack(%+v) = false; want true, so the binary re-step leaves a tapestry or darn escalate halt alone", escalated)
+	}
+}
+
+// TestPrimeShuttle_WiresTheReplyProbe pins that the prime's runner holds a reply probe.
+// The tackler and the arbiter run through that runner.
+func TestPrimeShuttle_WiresTheReplyProbe(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	hub := t.TempDir()
+	// A .git directory marks the worktree as the prime.
+	if err := os.MkdirAll(filepath.Join(hub, "hub-repo", ".git"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(.git) = %v; want nil", err)
+	}
+	location := &lymcwd.Location{
+		RepoName:     "example",
+		HubPath:      hub,
+		WorktreeName: "hub-repo",
+		AnchorRel:    ".",
+	}
+	c := &battenCLI{location: location}
+
+	shuttle, err := c.primeShuttle(fabricengine.ConfigDirs(location))
+	if err != nil {
+		t.Fatalf("primeShuttle() error = %v; want nil", err)
+	}
+	runnerShuttle, ok := shuttle.(sheddriver.RunnerShuttle)
+	if !ok {
+		t.Fatalf("primeShuttle() = %T; want a sheddriver.RunnerShuttle", shuttle)
+	}
+	if !runnerShuttle.Runner.HasReplyProbe() {
+		t.Error("Runner.HasReplyProbe() = false; want the reply probe wired on the prime's runner")
 	}
 }
 

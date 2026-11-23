@@ -138,6 +138,9 @@ func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
 		if c.engine == nil {
 			t.Fatal("c.engine = nil; want a constructed *burlerengine.Engine")
 		}
+		if !c.runner.HasReplyProbe() {
+			t.Error("c.runner.HasReplyProbe() = false; want the reply probe wired in hub mode")
+		}
 		if c.reedUp != nil {
 			t.Error("wireHub armed c.reedUp; want nil -- hub mode's reed session is not run's to boot")
 		}

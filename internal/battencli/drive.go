@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -514,6 +515,7 @@ func (c *battenCLI) primeShuttle(dirs configengine.Dirs) (sheddriver.AgentShuttl
 		_, err := notifyRunParent(location, c.slug, line)
 		return err
 	})
+	runner.SetReplyProbe(creelcli.AwaitsReplyProbe(location, battenProgram))
 	// The tackler and the arbiter work for the task's run,
 	// so their sessions count toward the task worktree's usage records.
 	if taskLocation, err := taskWorktreeLocation(location, c.slug); err != nil {

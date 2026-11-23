@@ -45,6 +45,11 @@
 // finalize then evaluates the gate once more over the tree as it stands.
 // Every shell outstanding when the run ends, by whatever exit, is recorded in Result.EndedShells.
 //
+// A turn end that would end the run, or start its gate's evaluation, is held in one case.
+// The case is the runner's reply probe reporting the run's strand awaiting the reply to a question it asked.
+// replyhold.go holds the rules.
+// Any event or turn start read afterwards ends that hold, so the turn the reply starts decides afresh at its end.
+//
 // The events-tick Done branch splits in two, on whether run.gate is empty:
 // An ungated run's Done finalizes without consulting the gate.
 // A gated Done instead evaluates the gate's entries through run.evaluateGate().
@@ -324,6 +329,9 @@ func (run *Run) Wait() (Result, error) {
 			run.endHeldWait()
 			run.pendingHold = nil
 		}
+		if err == nil && (run.eventsRead || run.turnStartSeen) {
+			run.replyHold = nil
+		}
 		if err != nil {
 			eventsFailures++
 			if eventsFailures >= maxEventsReadRetries {
@@ -351,7 +359,10 @@ func (run *Run) Wait() (Result, error) {
 				}
 			} else if outcome != "" && (outcome != OutcomeDone || len(run.gate) == 0) {
 				// Any other outcome, or a Done with no gate, finalizes at once.
-				return run.finalizeAndRemoveDiedWindow(outcome)
+				// The exception is a Done held while the agent awaits a reply.
+				if outcome != OutcomeDone || !run.holdForReply() {
+					return run.finalizeAndRemoveDiedWindow(outcome)
+				}
 			} else if outcome == OutcomeDone {
 				// A gated Done marks the writer's turn boundary: per-turn gate state resets here.
 				run.endReworkSpans(run.clock.Now())
@@ -363,18 +374,24 @@ func (run *Run) Wait() (Result, error) {
 				if run.covered {
 					// A pause covers the session: nothing is evaluated or sent until the first uncovered tick.
 					run.boundaryHeld = true
-				} else if run.boundaryIdle() {
+				} else if !run.holdForReply() && run.boundaryIdle() {
+					// A boundary held for a reply is evaluated once the hold ends.
 					if result, finished, ferr := run.handleGatedBoundary(); finished {
 						return result, ferr
 					}
 				}
 			} else if run.boundaryHeld && !run.covered && run.gateAtBoundary {
-				// The pause lifted: evaluate the held arrival as if it had come now.
+				// The pause lifted: evaluate the held arrival as if it had come now, unless it is held for a reply.
 				run.boundaryHeld = false
-				if run.boundaryIdle() {
+				if !run.holdForReply() && run.boundaryIdle() {
 					if result, finished, ferr := run.handleGatedBoundary(); finished {
 						return result, ferr
 					}
+				}
+			} else if run.replyHold != nil {
+				// A turn end held for a reply: it ends once no reply is awaited, and nothing else is evaluated meanwhile.
+				if result, finished, ferr := run.releaseReplyHold(); finished {
+					return result, ferr
 				}
 			} else if !run.covered && (run.gatePending || run.unsentReprompt) && run.gateAtBoundary {
 				// No new arrival, an entry is pending or a re-prompt is unsent, and the writer is idle:
@@ -949,6 +966,7 @@ func startupCaptureExcerpt(capture string) string {
 func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	run.eventsRead = false
 	run.turnStartRead = false
+	run.turnStartSeen = false
 	startOffset := run.offset
 	data, newOffset, err := readEventsFrom(run.state.EventsPath, startOffset)
 	if err != nil {
@@ -965,6 +983,7 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	run.offset = newOffset
 	guardArmed := run.holdGuard
 	turnStarts := turnStartOffsets(run.engine, data, startOffset)
+	run.turnStartSeen = len(turnStarts) > 0
 	if len(turnStarts) > 0 {
 		run.holdGuard = false
 		run.promptTurnStarted = true

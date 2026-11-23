@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -30,6 +31,8 @@ const (
 	fixerRecordFile = "fixer.json"
 	// fixerBodyStencil names the body stencil a card gate's fixer prompt joins behind the shared cold frame.
 	fixerBodyStencil = "gatefix-body-card"
+	// cardFixerProgram is the program name the card fixer's reply probe signs with.
+	cardFixerProgram = "GATE"
 )
 
 // cardFixerKit is what the detached runner needs to hand a red call to a cold fixer.
@@ -128,6 +131,7 @@ func newStrandRig(location *lymcwd.Location) (strandRig, error) {
 	runner := shuttleengine.NewRunner(reed, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	runner.SetPause(pauseGeom)
 	runner.SetSessionEnd(shedadapters.UsageRecorder(location, shuttleengines.RecordReaders(dirs)))
+	runner.SetReplyProbe(creelcli.AwaitsReplyProbe(location, cardFixerProgram))
 	return strandRig{runner: runner, reed: reed, engines: engines, shuttleCfg: shuttleCfg, anchorRoot: reedGeom.AnchorPath}, nil
 }
 

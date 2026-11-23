@@ -8,7 +8,7 @@
 ## Your parent
 
 Your parent is `{{.parent_name}}`, the session that spawned this worktree's run.
-Ask it with `lym creel post --parent --expect-reply "<text>"`, then end your turn; the answer arrives as `[creel]` mail.
+Ask it with `lym creel post --parent --expect-reply "<text>"`, then end your turn: your run waits for the answer, which arrives as `[creel]` mail and starts your next turn.
 Answer a creel message with `lym creel post --reply <id> "<text>"`.
 When the post is refused, follow the way forward its refusal names, posting to the strand it points you to;
 when no strand answers, the question goes where your role's instructions send a stop it cannot settle.

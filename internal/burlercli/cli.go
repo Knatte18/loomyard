@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/preflight"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/spf13/cobra"
 )
 
@@ -22,6 +23,10 @@ import (
 type burlerCLI struct {
 	// engine is the constructed burlerengine.Engine the run verb closes over.
 	engine *burlerengine.Engine
+
+	// runner is the shuttle runner in hub mode, kept so a test can read how wire configured it.
+	// Standalone mode leaves it nil.
+	runner *shuttleengine.Runner
 
 	// languageSkills are the hub's language skills that a code round's seats load after burler's own skills.
 	// Hub mode loads them from the hub's language.yaml; standalone mode leaves them empty.

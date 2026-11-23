@@ -58,6 +58,8 @@ type Runner struct {
 	notifier func(line string) error
 	// sessionEnd receives the report of each ended session; nil, the default, calls nothing.
 	sessionEnd func(SessionEnd)
+	// replyProbe reports whether a strand awaits the reply to a question it asked; nil, the default, holds no turn end.
+	replyProbe func(strand string) (bool, error)
 	// pause is the pause geometry the runner was told, the zero value when it was told none and reads no record.
 	pause pauserecord.Geometry
 	// step is the shed step the runner's process runs, nil when it was told none; start copies it into each run's record.
@@ -97,6 +99,19 @@ func (r *Runner) holdFor(guid string) *turnStartHold {
 // A notify error is logged and never ends the run.
 func (r *Runner) SetNotifier(notify func(line string) error) {
 	r.notifier = notify
+}
+
+// SetReplyProbe sets the probe Wait asks whether a run's strand awaits the reply to a question it asked.
+// A turn end that would end the run, or start its gate's evaluation, is held while the probe answers true,
+// so the reply reaches a live session instead of a finished run.
+// A nil probe, the default, holds no turn end.
+func (r *Runner) SetReplyProbe(probe func(strand string) (bool, error)) {
+	r.replyProbe = probe
+}
+
+// HasReplyProbe reports whether the runner was told a reply probe.
+func (r *Runner) HasReplyProbe() bool {
+	return r.replyProbe != nil
 }
 
 // SetPause tells the runner the pause geometry it reads, so a run start waits while a pause covers the geometry's slug,
@@ -408,6 +423,10 @@ type Run struct {
 	// turnStartRead is true when the latest pollEventsTick read a turn start past the latest turn end the loop holds.
 	// It also ends a held wait; that turn end is the held one the tick returns, else the one on show.
 	turnStartRead bool
+	// turnStartSeen is true when the latest pollEventsTick read any turn start.
+	turnStartSeen bool
+	// replyHold is the turn end held while the run's strand awaits a reply, nil when none is held; it lives for one Wait.
+	replyHold *replyHold
 	// pendingHold is the held turn end whose parent notice a Spec.HoldDeferral run has not sent yet; nil when none.
 	// pendingHoldAt is the run clock's time when it was read.
 	// Both live in memory for one Wait.

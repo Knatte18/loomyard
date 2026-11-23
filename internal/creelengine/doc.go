@@ -110,6 +110,9 @@
 // It is journaled undelivered when none waits.
 // `post --expect-reply` marks a message that expects a reply, and `post --wait-reply` implies it.
 // The holder's reply clears the mark, and retention keeps the mark while the message is unread.
+// awaits-reply answers whether a strand awaits the reply to a question it asked:
+// a strand holds its marked message, unanswered and not settled unanswered, or it holds an unread reply to one.
+// Only the Go client sends it, and it changes nothing.
 //
 // forward moves an unread message the caller holds to another receiver.
 // The holder changes, the sender stays, and the caller joins the message's path.
@@ -269,6 +272,8 @@
 // When that step is no strand, the message is journaled undelivered and a waiting sender is told so.
 // Unread program mail waiting for a hub orch's strand is the exception: it stays under the orch's name.
 // A read message that expects a reply and has none is settled unanswered with the reason `holder-gone`.
+// A question a gone strand of this hub sent and nobody has answered is settled unanswered with the reason `asker-gone`,
+// so a later strand of the same name inherits none.
 // Each inject queued for the gone holder expires.
 //
 // # Notice tags

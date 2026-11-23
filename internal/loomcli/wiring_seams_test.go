@@ -194,6 +194,9 @@ func TestWire_EverySeamFilled(t *testing.T) {
 	if c.env.GateFixer == nil {
 		t.Error("GateFixer is nil; want it set after wire()")
 	}
+	if !c.runner.HasReplyProbe() {
+		t.Error("runner.HasReplyProbe() = false; want the reply probe wired by wire()")
+	}
 
 	nils := envkit.NilSeams(c.env)
 	for _, path := range nils {

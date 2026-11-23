@@ -55,6 +55,8 @@
 // NewProgramClient signs as `<shortname>:<PROGRAM>` and claims no strand.
 // NewStrandClient claims a strand and no program; the daemon's identity rules still decide who the caller is.
 // A strand claim from a process in no strand pane is refused with `creelengine.ErrStrandClaimOutsidePane`.
+// AwaitsReplyProbe asks whether a strand awaits the reply to a question it asked.
+// It signs as the caller's own non-orch strand when run in that strand's pane, and as a program otherwise.
 // ReadWait acknowledges the mail only when the handler returns nil.
 // A connection lost before or after the handler ran sends the read again,
 // so the handler can run a second time for mail it already saw.

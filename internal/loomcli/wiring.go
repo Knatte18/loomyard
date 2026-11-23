@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
+	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -710,6 +711,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		_, err := orchcli.NotifyAsker(location, loomProgram, line)
 		return err
 	})
+	runner.SetReplyProbe(creelcli.AwaitsReplyProbe(location, loomProgram))
 	runner.SetSessionEnd(shedadapters.UsageRecorder(location, shuttleengines.RecordReaders(fabricengine.ConfigDirs(location))))
 
 	websterGeom := hubgeom.WebsterGeometry(location)

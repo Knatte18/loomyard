@@ -350,6 +350,12 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 			return err
 		}
 		ok.Inbox = &inbox
+	case VerbAwaitsReply:
+		awaits, err := store.AwaitsReply(req.From)
+		if err != nil {
+			return err
+		}
+		ok.AwaitsReply = awaits
 	case VerbForward:
 		if err := store.Forward(sender, req.ID, req.Receiver); err != nil {
 			return err

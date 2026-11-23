@@ -392,7 +392,7 @@ github.com/Knatte18/loomyard/
 ├── internal/reportconfig/        the hub-wide `report.yaml` config: the run count a cell of `lym report cost` needs before it shows figures
 ├── internal/hubregistry/         the machine record of hubs in the per-user state directory, which maps a hub's shortname to its path, over `internal/state` and the Bolt shortname record
 ├── internal/creelconfig/         the hub-wide `creel.yaml` config: the shortnames of the hubs whose orch this hub obeys
-├── internal/creelcli/            the `lym creel` commands (`post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release`, `hubs` and the hidden `daemon`, `hook-read` and `hook-wait`), their hub wiring and the delivery adapter over reed and shuttle
+├── internal/creelcli/            the `lym creel` commands (`post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release`, `hubs` and the hidden `daemon`, `hook-read` and `hook-wait`), their hub wiring, the delivery adapter over reed and shuttle, and the Go client with its reply probe
 ├── internal/creelengine/         the per-hub message daemon: the journal-folded pool of mail and queued injects, sender identity, reminders for a strand without hook delivery, the per-strand mail flags, the tool-boundary and Stop claim, the idle waiter and bell, injects, holds, the removed-holder sweep and the socket protocol, over a delivery seam
 ├── internal/slackcli/            the `lym slack` commands (`login`, `setup`, `start`, `stop`, `away`, `back`, `status` and the hidden `relay`, `hook`, `bar` and `toggle`), their pane check and hub wiring
 ├── internal/slackengine/         the per-hub Slack relay: the Web API client, the Socket Mode connection, the machine's credential and presence files and the hub's setup, forwarding, channel-map and relay-state files, the push-woken inbound read of each orch's channel with its presence commands, the outbound read of mail for SLACK, and the relay's run loop and double-fork start
@@ -670,6 +670,7 @@ User-facing modules each get one `lym <module>` namespace:
   a start whose skill-load hold read its cap of API errors ends `api-error` too, after the hold's back-offs.
   Any other turn end without every output file never ends a run:
   `Wait` holds it and keeps polling the same agent until the outputs exist, the pane dies or the deadline passes, whatever the agent's reason (a question, a status report, a live `AskUserQuestion` call).
+  A turn end that would end a run, or start its gate's evaluation, is held too while creel's `awaits-reply` reports the run's strand awaiting the reply to a question it asked, so the reply starts a turn in a live session; every runner that notifies a parent asks it.
   An autonomous run notifies its parent once per held turn end as creel mail to the orch,
   and once per permission or input dialog its pane shows past 60 s,
   and once per edit loop, one file edited back to content it held earlier `edit_loop_edits` times within `edit_loop_window_s`,

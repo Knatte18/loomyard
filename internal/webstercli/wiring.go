@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -200,6 +201,7 @@ func (c *websterCLI) wireHub(loc *lymcwd.Location, stencilsDir, planDir, targetD
 		_, err := orchcli.NotifyAsker(loc, websterProgram, line)
 		return err
 	})
+	runner.SetReplyProbe(creelcli.AwaitsReplyProbe(loc, websterProgram))
 
 	c.setRunner(runner, engines, reedEngine)
 	c.shuttleCfg = shuttleCfg

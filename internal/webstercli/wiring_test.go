@@ -133,6 +133,9 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 			if c.refMatcher == nil {
 				t.Error("refMatcher = nil; want a non-nil matcher in hub mode")
 			}
+			if !c.runner.HasReplyProbe() {
+				t.Error("runner.HasReplyProbe() = false; want the reply probe wired in hub mode")
+			}
 			if c.runDeps().InstructionFiles == nil {
 				t.Error("runDeps().InstructionFiles = nil; want Master's instruction file lister supplied for `lym webster run`")
 			}

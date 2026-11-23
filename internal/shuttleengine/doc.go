@@ -55,6 +55,10 @@
 // # Run outcomes
 //
 // A turn end without every output file never ends a run: Wait holds it and keeps polling the same agent.
+// Runner.SetReplyProbe tells a Runner how to ask whether a strand awaits the reply to a question it asked.
+// While the run's strand awaits one, a turn end that would end the run or start its gate's evaluation is held,
+// so the reply starts a turn in a live session; the hold sends no notice.
+// The hold ends once no reply is awaited on two probes in a row and the agent's pane reads idle.
 // A run ends only as done, died, timeout, api-error or a mechanism failure.
 // A hold never extends the run's deadline, and each Attach starts a fresh deadline.
 // RunState.Outcome records whether a run ever ended, so "has this run already ended?" is a fact on disk.
