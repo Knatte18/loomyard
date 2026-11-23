@@ -21,8 +21,9 @@ func writeBodyFile(t *testing.T, content string) string {
 	return path
 }
 
-// TestApplyBodyFile asserts applyBodyFile sets the body from a file, from stdin and from an empty file,
-// and it refuses a missing file, a body already in the payload, and stdin claimed for both payload and body.
+// TestApplyBodyFile asserts applyBodyFile sets the body from a file, from stdin and from an empty file.
+// It also asserts that it refuses a missing file, a body already in the payload and stdin claimed for both.
+// A file holding a CLI error envelope is refused too.
 func TestApplyBodyFile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -78,6 +79,14 @@ func TestApplyBodyFile(t *testing.T) {
 			payloadSource: "{}",
 			wantErr:       "drop",
 			wantFields:    map[string]any{"slug": "s", "body": "x"},
+		},
+		{
+			name:          "a file holding a CLI error envelope is refused naming the envelope",
+			fields:        map[string]any{"slug": "s"},
+			fileContent:   str("## From some-note\n\n{\"error\":\"invalid json: invalid character 's' looking for beginning of value\",\"ok\":false}\n"),
+			payloadSource: "{}",
+			wantErr:       `holds a CLI error envelope, {"error":"invalid json: invalid character 's' looking for beginning of value","ok":false}`,
+			wantFields:    map[string]any{"slug": "s"},
 		},
 		{
 			name:          "stdin for both payload and body is refused",

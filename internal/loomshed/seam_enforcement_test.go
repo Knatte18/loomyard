@@ -100,6 +100,9 @@ var loomshedAllowedImports = []string{
 	// internal/boardengine is the filing type and the re-check error Raddle-File's seams carry.
 	// No geometry is resolved through it.
 	"github.com/Knatte18/loomyard/internal/boardengine",
+	// internal/output recognises a CLI error envelope line in an entry body.
+	// It imports only the standard library and resolves no geometry.
+	"github.com/Knatte18/loomyard/internal/output",
 }
 
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fsx"
+	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -42,6 +43,19 @@ var _ shedengine.ShedProducer = (*recordWrite)(nil)
 func NewRecordWrite(name string, deps RecordWriteDeps) shedengine.ShedProducer {
 	return &recordWrite{name: name, deps: deps}
 }
+
+// errorEnvelopeBodyReason is the Stuck reason of a board entry body holding a CLI error envelope.
+// Its verb is the envelope line.
+// Such a body is a failed verb's output captured where the entry's text belongs,
+// so a record written from it would carry no scope.
+// A beam project's run holds nothing at this row, so its body takes an edit in place.
+// Any other run holds the entry, so its body is corrected only once the run is ended and removed.
+const errorEnvelopeBodyReason = "the board entry's body holds a CLI error envelope where its text belongs: %s; " +
+	"way forward for a beam project: write the entry's own text with \"lym board upsert --body-file <path>\", " +
+	"then \"lym loom resume\"; " +
+	"for any other run: end it with \"lym batten cancel <slug> --remove\" from the hub's prime worktree, " +
+	"write the entry's own text with \"lym board upsert --body-file <path>\", " +
+	"release the slug with \"lym board set-status '{\"slug\":\"<slug>\",\"status\":null}'\", then \"lym batten run <slug>\""
 
 // recordSections are the headings of the decision record after its Goal, each written empty.
 var recordSections = []string{
@@ -123,7 +137,8 @@ func StoredRecordSupportLog() []byte {
 // otherwise it is the board-rendered log, whether or not the record was missing too.
 // A file that exists is never overwritten, so a resume keeps every entry added to the record after it was written.
 // The commit runs on every call, so a pair a crash left written but uncommitted is committed on resume.
-// A board with no entry for the run is Stuck, and a read, write or commit failure is a returned error.
+// A board with no entry for the run is Stuck, and so is an entry body holding a CLI error envelope, with nothing written.
+// A read, write or commit failure is a returned error.
 func (p *recordWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -165,6 +180,12 @@ func (p *recordWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 					return "", shedengine.OutputPointer{}, err
 				}
 				return shedengine.Stuck, shedengine.OutputPointer{Reason: "the board holds no entry for this run; way forward: restore the entry with \"lym board upsert\", then \"lym loom resume\""}, nil
+			}
+			if envelope, isEnvelope := output.ErrorEnvelopeLine(body); isEnvelope {
+				if err := cancelErr(ctx, p.name); err != nil {
+					return "", shedengine.OutputPointer{}, err
+				}
+				return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf(errorEnvelopeBodyReason, envelope)}, nil
 			}
 			if err := fsx.AtomicWriteBytes(p.deps.RecordPath, BoardRecord(body)); err != nil {
 				return "", shedengine.OutputPointer{}, p.fail(ctx, "write the decision record", err)

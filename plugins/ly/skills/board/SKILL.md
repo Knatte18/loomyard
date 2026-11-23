@@ -39,10 +39,11 @@ The board gives every entry a short handle, such as `T4`, `P1`, `B2` or `E7`:
 The number is the lowest of its letter not in use, and it stays while the entry lives;
 a promote or a type change gives the entry a new handle of its new letter.
 The operator names entries by handle,
-and every verb that takes `slug` or `id` takes `handle` instead, or the bare handle as its whole argument:
+and every verb that takes `slug` or `id` takes `handle` instead, or the bare handle or the bare slug as its whole argument:
 
 ```
 lym board get B4
+lym board get my-task
 lym board set-status '{"handle":"T4","status":null}'
 ```
 

@@ -9,7 +9,7 @@ import (
 )
 
 // payloadLegend states the grammar of a board payload command's `{…}` Use token.
-const payloadLegend = "A payload is one JSON object as a single quoted argument; ? marks an optional key, a|b exactly one of the keys, <task> stands for upsert's payload, and an unknown key is refused. A payload naming one entry by slug|id|handle may instead be the bare handle, such as B4."
+const payloadLegend = "A payload is one JSON object as a single quoted argument; ? marks an optional key, a|b exactly one of the keys, <task> stands for upsert's payload, and an unknown key is refused. A payload naming one entry by slug|id|handle may instead be the bare handle, such as B4, or the bare slug, such as my-task."
 
 // payloadKeys declares the keys one payload object accepts, exactly as its command's Use token spells them.
 type payloadKeys struct {

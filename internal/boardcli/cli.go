@@ -23,6 +23,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -592,7 +593,7 @@ Optional fields:
   "front", "on_land", "discussed" — marks only lym writes: a front task, its land action, an approved Discussion
 
 Flag:
-  --body-file <path>  read "body" from the file, or "-" for stdin; not with "body".
+  --body-file <path>  read "body" from the file, or "-" for stdin; not with "body"; not for a file with an error envelope line.
 
 Example:
   lym board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","kind":"task","labels":["enhancement"]}'` + slugLimitNote(),
@@ -823,6 +824,7 @@ Fields:
 Examples:
   lym board get '{"id":96}'
   lym board get B4
+  lym board get my-task
   lym board get '{"slug":"my-task"}' --body
   lym board get '{"slug":"my-task"}' --record` + slugLimitNote(),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -987,7 +989,8 @@ A task the merge creates is "draft", and a "set_status" of null releases it.
 Flag:
   --body-file <path>  read the upsert's "body" from the file, or from stdin when the path is "-"; every other field still comes from the payload.
                       Refused when the payload's "upsert" also carries "body" (drop one of them),
-                      and when the payload argument is itself "-" (stdin can feed only one of them).
+                      and when the payload argument is itself "-" (stdin can feed only one of them),
+                      and when the file holds a CLI error envelope line outside a fenced code block (a failed verb's captured output).
 
 Example:
   lym board merge '{"remove_slugs":["old"],"upsert":{"slug":"new","title":"New"},"set_status":{"slug":"new","status":"active"}}'` + slugLimitNote(),
@@ -1188,10 +1191,13 @@ func writeListing(out io.Writer, tasks []boardengine.BriefTask, text bool) int {
 // keys declares the slug|id|handle group and any further keys;
 // each of its required keys must be present, and a null value counts as present.
 // A raw payload that is a bare handle, such as B4, reads as {"handle":"B4"}.
+// Any other bare slug, such as my-task, reads as {"slug":"my-task"}.
 func resolveLookup(raw []byte, keys payloadKeys) (any, map[string]any, error) {
 	var m map[string]any
 	if _, _, ok := boardengine.ParseHandle(string(raw)); ok {
 		m = map[string]any{"handle": string(raw)}
+	} else if isBareSlug(string(raw)) {
+		m = map[string]any{"slug": string(raw)}
 	} else if err := json.Unmarshal(raw, &m); err != nil {
 		return nil, nil, fmt.Errorf("invalid json: %v", err)
 	}
@@ -1208,6 +1214,21 @@ func resolveLookup(raw []byte, keys payloadKeys) (any, map[string]any, error) {
 		}
 	}
 	return selector, m, nil
+}
+
+// isBareSlug reports whether raw has the shape of a slug standing alone:
+// a letter first, then only letters, digits, hyphens, underscores and dots.
+// No JSON object has that shape, so the reading never shadows a payload.
+func isBareSlug(raw string) bool {
+	for i, r := range raw {
+		if unicode.IsLetter(r) {
+			continue
+		}
+		if i == 0 || !(unicode.IsDigit(r) || r == '-' || r == '_' || r == '.') {
+			return false
+		}
+	}
+	return raw != ""
 }
 
 // lookupSelector returns the selector that m addresses.

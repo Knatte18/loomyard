@@ -19,13 +19,13 @@
 // A payload command's `Use` names its keys in one `{…}` token, written in the grammar `payloadLegend` states once.
 // Each parser validates against one `payloadKeys`, and an unknown key is refused.
 // The addressing verbs take exactly one key of `entrySelector`: a `slug`, a numeric `id` or a `handle` such as `B4`.
-// A payload argument that is a bare handle reads as `{"handle":…}`.
+// A payload argument that is a bare handle reads as `{"handle":…}`, and any other bare slug as `{"slug":…}`.
 // `upsert` takes `front`, `on_land` and `discussed` only as the entry's stored values, since only lym writes them.
 // `get` and `list` carry an entry's `parent_beam`, `root` when the prime is the parent.
 // `list` names the machine that owns the hub's prime as `prime_owner`.
 //
 // `upsert --body-file <path>` reads `body` from a file, or from stdin when the path is `-`;
-// it is refused beside a payload `body`.
+// it is refused beside a payload `body`, and refused when the file holds a CLI error envelope line.
 // `upsert --record-file <path>` replaces an existing entry's stored decision record from a file path only.
 // The file must first pass `discussionparser`'s record checks, and a failing file writes nothing.
 // The live-branch refusal runs on a probe the verb hands the engine; the verb itself runs no git.

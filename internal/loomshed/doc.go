@@ -111,6 +111,7 @@
 // The Record-Write row's producer (NewRecordWrite) writes a darn run's decision record and support log with no agent.
 // BoardRecord renders the record with the entry's body verbatim in one fenced block under `## Goal`.
 // A board with no entry for the run is reported as Stuck.
+// So is an entry body holding a CLI error envelope, which a failed verb's captured output leaves there.
 //
 // A raddle run's state is RaddleState, the run's `state.json`.
 // It is read and updated through internal/state under one lock, so a key it does not declare survives a rewrite.

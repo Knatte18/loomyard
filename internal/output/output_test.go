@@ -160,3 +160,40 @@ func TestErrFields_NilFieldsMatchesErr(t *testing.T) {
 		t.Errorf("ErrFields(w, msg, nil) = %q; want byte-identical to Err(w, msg) = %q", errFieldsBuf.String(), errBuf.String())
 	}
 }
+
+// TestErrorEnvelopeLine asserts that ErrorEnvelopeLine finds a line holding a whole error envelope.
+// It also asserts that text with none passes.
+func TestErrorEnvelopeLine(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name     string
+		text     string
+		wantLine string
+		wantOK   bool
+	}{
+		{"BareEnvelope", "{\"error\":\"invalid json: invalid character 'h' looking for beginning of value\",\"ok\":false}\n", "{\"error\":\"invalid json: invalid character 'h' looking for beginning of value\",\"ok\":false}", true},
+		{"EnvelopeUnderAHeading", "## From some-note\n\n  {\"ok\":false,\"error\":\"boom\"}  \n\nMore text.\n", "{\"ok\":false,\"error\":\"boom\"}", true},
+		{"EnvelopeWithFields", "{\"ok\":false,\"error\":\"boom\",\"slug\":\"x\"}", "{\"ok\":false,\"error\":\"boom\",\"slug\":\"x\"}", true},
+		{"PlainProse", "Fix the login redirect.\n\nKeep `session` intact.\n", "", false},
+		{"SuccessEnvelope", "{\"ok\":true,\"task\":null}\n", "", false},
+		{"FalseOkWithoutError", "{\"ok\":false}\n", "", false},
+		{"ErrorWithoutOk", "{\"error\":\"boom\"}\n", "", false},
+		{"NonStringError", "{\"ok\":false,\"error\":3}\n", "", false},
+		{"EnvelopeInsideProseLine", "The verb printed {\"ok\":false,\"error\":\"boom\"} here.\n", "", false},
+		{"EnvelopeInsideAFencedBlock", "The verb failed:\n\n```json\n{\"ok\":false,\"error\":\"boom\"}\n```\n", "", false},
+		{"BareEnvelopeAfterAFencedBlock", "```json\n{\"ok\":false,\"error\":\"quoted\"}\n```\n{\"ok\":false,\"error\":\"boom\"}\n", "{\"ok\":false,\"error\":\"boom\"}", true},
+		{"EnvelopeInsideANestedFence", "````md\n```\n{\"ok\":false,\"error\":\"boom\"}\n```\n````\n", "", false},
+		{"EnvelopeInsideATildeFenceHoldingBackticks", "~~~\n```\n{\"ok\":false,\"error\":\"boom\"}\n~~~\n", "", false},
+		{"EnvelopeAfterAnUnclosedFence", "```go\ncode\n\n## From x\n\n{\"ok\":false,\"error\":\"boom\"}\n", "{\"ok\":false,\"error\":\"boom\"}", true},
+		{"Empty", "", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if line, ok := output.ErrorEnvelopeLine(tt.text); line != tt.wantLine || ok != tt.wantOK {
+				t.Errorf("ErrorEnvelopeLine(%q) = %q, %v; want %q, %v", tt.text, line, ok, tt.wantLine, tt.wantOK)
+			}
+		})
+	}
+}

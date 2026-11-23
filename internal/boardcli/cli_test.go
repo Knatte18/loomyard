@@ -856,6 +856,45 @@ func stepLookupContract(t *testing.T, f *cliFixture) {
 			},
 		},
 		{
+			name: "get_by_bare_slug",
+			setup: func(t *testing.T) {
+				f.reset(t)
+				runCLI(t, "upsert", `{"slug":"halt-escalation-messages","title":"H","kind":"task","labels":["bug"]}`)
+			},
+			verb:         "get",
+			payload:      `halt-escalation-messages`,
+			wantExitCode: 0,
+			wantOK:       true,
+			assertResult: func(t *testing.T, result map[string]any) {
+				task, _ := result["task"].(map[string]any)
+				if task["slug"] != "halt-escalation-messages" {
+					t.Errorf("get halt-escalation-messages: got %v; want halt-escalation-messages", task)
+				}
+			},
+		},
+		{
+			name: "get_bare_payload_with_leading_digit_is_invalid_json",
+			setup: func(t *testing.T) {
+				f.reset(t)
+			},
+			verb:         "get",
+			payload:      `1abc`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "invalid json:",
+		},
+		{
+			name: "get_bare_payload_with_space_is_invalid_json",
+			setup: func(t *testing.T) {
+				f.reset(t)
+			},
+			verb:         "get",
+			payload:      `my task`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "invalid json:",
+		},
+		{
 			name: "set_status_bare_handle_lacks_status",
 			setup: func(t *testing.T) {
 				f.reset(t)

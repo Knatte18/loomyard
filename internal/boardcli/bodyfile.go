@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/Knatte18/loomyard/internal/output"
 )
 
 // stdinPath is the --body-file value that reads stdin.
@@ -15,6 +17,8 @@ const stdinPath = "-"
 // applyBodyFile sets fields["body"] from the file named by bodyFile, or from stdin when bodyFile is "-".
 // payloadArg is the raw payload argument, only consulted to refuse stdin feeding both the payload and the body.
 // It refuses a payload that already carries "body", and a read failure names the path.
+// It refuses a file holding a CLI error envelope line outside a closed fenced code block:
+// a failed verb's captured output leaves one where the body belongs.
 func applyBodyFile(fields map[string]any, bodyFile, payloadArg string, stdin io.Reader) error {
 	if bodyFile == stdinPath && payloadArg == stdinPath {
 		return fmt.Errorf(`stdin cannot supply both the payload and the body: pass the payload as an argument, or give --body-file a path`)
@@ -31,6 +35,10 @@ func applyBodyFile(fields map[string]any, bodyFile, payloadArg string, stdin io.
 	}
 	if err != nil {
 		return fmt.Errorf("read --body-file %s: %w", bodyFile, err)
+	}
+	if envelope, isEnvelope := output.ErrorEnvelopeLine(string(data)); isEnvelope {
+		return fmt.Errorf("--body-file %s holds a CLI error envelope, %s, where the body's text belongs: "+
+			"the verb whose output fed the file failed, so fix that verb's call and write the file again", bodyFile, envelope)
 	}
 	fields["body"] = string(data)
 	return nil

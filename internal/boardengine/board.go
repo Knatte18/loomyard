@@ -290,7 +290,7 @@ func (b *Board) RemoveTask(idOrSlug any) error {
 
 // RemoveCommand returns the `lym board remove` command line that removes the entry slug names.
 // The JSON payload is single-quoted for a shell.
-// A way forward names this command, since the verb takes a JSON payload or a bare handle, never a bare slug.
+// A way forward names this command with its JSON payload spelled out.
 func RemoveCommand(slug string) string {
 	payload, _ := json.Marshal(map[string]string{"slug": slug})
 	return "lym board remove '" + string(payload) + "'"
