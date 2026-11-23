@@ -48,6 +48,8 @@
 //
 // `parent-review answer` records the parent orch's answer to the run's latest ask.
 // It admits the operator's unnamed shell, the run's parent orch and the strand the ask went to.
+// It also answers a latest PR-Review ask that ended no-parent or undelivered,
+// so a parent the ask never reached can still settle its head.
 // `parent-review await` is the asking agent's capped wait on the same ask, and it writes nothing but a timeout.
 // `parent-review ask` records and posts a PR-Review ask at the task head for the review's session.
 // It signs the post as the session's own strand, where the PR-Review row's own ask signs as the loom program.

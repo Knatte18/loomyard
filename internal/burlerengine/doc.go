@@ -53,6 +53,8 @@
 // An ask moves only from pending-post to open and from either to an end state:
 // done, timeout, no-parent, undelivered or not-sent.
 // An ended ask may be cleared (ClearParentAsk): a cleared ask answers nothing, and the seat that made it asks again.
+// The one move out of an end state is AnswerParentAskOrUnreached's answer to a latest ask that never reached the parent:
+// one that ended no-parent or undelivered under the tag the caller names becomes done.
 // Every move takes the record's one lock, so an answer and a timeout never both land.
 // The chair keeps every finding of a done parent report, tagged `origin: parent` (ParentOrigin).
 // It lists the report ids it covers in `parent_ids` (Finding.ParentIDs).

@@ -200,6 +200,8 @@ func parentAnswerRefusalText(slug string, number int, refusal *burlerengine.Pare
 }
 
 // parentReviewAnswerVerb records the parent's answer in input to the run's latest ask and sets the ask done.
+// A PR-Review ask that ended no-parent or undelivered is answered too,
+// so the parent's verdict stands at the head it named.
 // A refusal carries a way forward and writes nothing.
 // An ask found at or past its deadline is the exception: the call sets it timeout.
 func parentReviewAnswerVerb(out io.Writer, slug string, deps parentReviewDeps, input parentAnswerInput) int {
@@ -230,7 +232,7 @@ func parentReviewAnswerVerb(out io.Writer, slug string, deps parentReviewDeps, i
 		return refuse("%s", refusal)
 	}
 
-	ask, err := burlerengine.AnswerParentAsk(deps.files, input.ask, deps.now(), findings)
+	ask, err := burlerengine.AnswerParentAskOrUnreached(deps.files, input.ask, landingshed.PRReviewAskLineTag, deps.now(), findings)
 	var refusal *burlerengine.ParentAnswerRefusal
 	if errors.As(err, &refusal) {
 		return refuse("%s", parentAnswerRefusalText(slug, input.ask, refusal, parent, parentErr))
@@ -461,7 +463,9 @@ in the file's order.
 
 It answers only the run's latest ask while that ask is pending-post or open
 and before its deadline; an ask at or past its deadline is set timeout and the
-answer refused. A call the parent still wants made after a refusal goes in with
+answer refused. A PR-Review ask that ended no-parent or undelivered never
+reached the parent, so it is answered too, and the answer stands at the head
+the ask named. A call the parent still wants made after a refusal goes in with
 "lym loom decision add <slug> --by parent". A refused answer to a PR-Review ask
 waits for the PR-Review session's next "[pr-review request]" line instead,
 since no decision ends a review.

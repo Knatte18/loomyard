@@ -274,6 +274,29 @@ func TestParentReviewAnswerVerb(t *testing.T) {
 			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskOpen, burlerengine.ParentAskTimeout},
 		},
 		{
+			name:       "the parent answers a no-parent PR-Review ask at the head it named",
+			asks:       []burlerengine.ParentAsk{{Tag: landingshed.PRReviewAskLineTag, Digest: parentReviewHead, State: burlerengine.ParentAskNoParent}},
+			input:      parentAnswerInput{ask: 1, satisfied: true},
+			setup:      func(d *parentReviewDeps) { d.strandName = parentReviewParent },
+			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskDone},
+		},
+		{
+			name:       "the parent answers an undelivered PR-Review ask with findings",
+			asks:       []burlerengine.ParentAsk{{Tag: landingshed.PRReviewAskLineTag, Digest: parentReviewHead, State: burlerengine.ParentAskUndelivered, Strand: "ly:orch-asked", Deadline: parentReviewNow}},
+			findings:   "findings:\n  - change: rename the helper\n",
+			input:      parentAnswerInput{ask: 1},
+			setup:      func(d *parentReviewDeps) { d.strandName = parentReviewParent },
+			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskDone},
+			wantReport: []burlerengine.ParentFinding{{ID: "P1", Change: "rename the helper"}},
+		},
+		{
+			name:       "a cleared no-parent PR-Review ask is refused",
+			asks:       []burlerengine.ParentAsk{{Tag: landingshed.PRReviewAskLineTag, State: burlerengine.ParentAskNoParent, Cleared: true}},
+			input:      parentAnswerInput{ask: 1, satisfied: true},
+			want:       []string{"already no-parent", landingshed.PRReviewAskLineTag},
+			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskNoParent},
+		},
+		{
 			name: "an answer to a PR-Review ask a newer open one replaced names the newer ask",
 			asks: []burlerengine.ParentAsk{
 				{Tag: landingshed.PRReviewAskLineTag, State: burlerengine.ParentAskTimeout},
@@ -610,8 +633,8 @@ func TestParentReviewAwaitVerb(t *testing.T) {
 				}
 				clock = clock.Add(d)
 				if tt.answerAfter > 0 && !clock.Before(parentReviewNow.Add(tt.answerAfter)) {
-					if _, err := burlerengine.AnswerParentAsk(deps.files, len(tt.asks), clock, nil); err != nil {
-						t.Errorf("AnswerParentAsk() error = %v", err)
+					if _, err := burlerengine.AnswerParentAskOrUnreached(deps.files, len(tt.asks), "", clock, nil); err != nil {
+						t.Errorf("AnswerParentAskOrUnreached() error = %v", err)
 					}
 				}
 				return nil

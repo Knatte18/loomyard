@@ -156,9 +156,9 @@ func TestReadPRReviewStanding(t *testing.T) {
 				}
 				switch spec.answer {
 				case "satisfied":
-					_, err = burlerengine.AnswerParentAsk(files, recorded.Number, prReviewNow, nil)
+					_, err = burlerengine.AnswerParentAskOrUnreached(files, recorded.Number, "", prReviewNow, nil)
 				case "findings":
-					_, err = burlerengine.AnswerParentAsk(files, recorded.Number, prReviewNow, []burlerengine.ParentFinding{{Change: "rename the helper"}})
+					_, err = burlerengine.AnswerParentAskOrUnreached(files, recorded.Number, "", prReviewNow, []burlerengine.ParentFinding{{Change: "rename the helper"}})
 				}
 				if err == nil && spec.cleared {
 					err = burlerengine.ClearParentAsk(files, recorded.Number)

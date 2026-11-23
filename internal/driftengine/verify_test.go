@@ -2071,8 +2071,8 @@ func (a *autonomousJudge) asks() []burlerengine.ParentAsk {
 func (a *autonomousJudge) answerLatestSatisfied() {
 	a.t.Helper()
 	asks := a.asks()
-	if _, err := burlerengine.AnswerParentAsk(a.files, asks[len(asks)-1].Number, a.clock, nil); err != nil {
-		a.t.Fatalf("AnswerParentAsk() error = %v; want nil", err)
+	if _, err := burlerengine.AnswerParentAskOrUnreached(a.files, asks[len(asks)-1].Number, "", a.clock, nil); err != nil {
+		a.t.Fatalf("AnswerParentAskOrUnreached() error = %v; want nil", err)
 	}
 }
 

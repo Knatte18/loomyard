@@ -140,8 +140,8 @@ func (f *parentFixture) recordAsk(t *testing.T, prior priorAsk) {
 		t.Fatalf("RecordParentAsk() error = %v; want nil", err)
 	}
 	if answered {
-		if _, err := burlerengine.AnswerParentAsk(f.files, recorded.Number, priorAskedAt.Add(time.Minute), prior.findings); err != nil {
-			t.Fatalf("AnswerParentAsk() error = %v; want nil", err)
+		if _, err := burlerengine.AnswerParentAskOrUnreached(f.files, recorded.Number, "", priorAskedAt.Add(time.Minute), prior.findings); err != nil {
+			t.Fatalf("AnswerParentAskOrUnreached() error = %v; want nil", err)
 		}
 	}
 }

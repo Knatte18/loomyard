@@ -181,8 +181,8 @@ func TestParentAgreementGate(t *testing.T) {
 			now := func() time.Time {
 				clockReads++
 				if tt.answerOnNow && clockReads == 1 {
-					if _, err := burlerengine.AnswerParentAsk(files, 1, judgeParentNow.Add(-time.Minute), findings); err != nil {
-						t.Fatalf("AnswerParentAsk() error = %v; want nil", err)
+					if _, err := burlerengine.AnswerParentAskOrUnreached(files, 1, "", judgeParentNow.Add(-time.Minute), findings); err != nil {
+						t.Fatalf("AnswerParentAskOrUnreached() error = %v; want nil", err)
 					}
 				}
 				return judgeParentNow
@@ -264,8 +264,8 @@ func recordJudgeAsk(t *testing.T, files burlerengine.ParentReviewFiles, prior bu
 		t.Fatalf("RecordParentAsk() error = %v; want nil", err)
 	}
 	if answered {
-		if _, err := burlerengine.AnswerParentAsk(files, recorded.Number, judgeParentNow.Add(-time.Minute), findings); err != nil {
-			t.Fatalf("AnswerParentAsk() error = %v; want nil", err)
+		if _, err := burlerengine.AnswerParentAskOrUnreached(files, recorded.Number, "", judgeParentNow.Add(-time.Minute), findings); err != nil {
+			t.Fatalf("AnswerParentAskOrUnreached() error = %v; want nil", err)
 		}
 	}
 }

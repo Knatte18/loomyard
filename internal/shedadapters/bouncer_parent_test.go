@@ -69,8 +69,8 @@ func TestBouncer_JudgeCall_AsksTheParentBeforeJudging(t *testing.T) {
 				inner := shuttle.DuringRun
 				shuttle.DuringRun = func() {
 					findings := []burlerengine.ParentFinding{{Change: "tighten the seam"}}
-					if _, err := burlerengine.AnswerParentAsk(files, 1, bouncerJudgeTestClock, findings); err != nil {
-						t.Errorf("AnswerParentAsk() error = %v; want nil", err)
+					if _, err := burlerengine.AnswerParentAskOrUnreached(files, 1, "", bouncerJudgeTestClock, findings); err != nil {
+						t.Errorf("AnswerParentAskOrUnreached() error = %v; want nil", err)
 					}
 					inner()
 				}
@@ -116,6 +116,8 @@ func TestBouncer_JudgeCall_AsksTheParentBeforeJudging(t *testing.T) {
 // The verdict is CONVERGED and already on disk at Call entry, with the subject unchanged since it was judged.
 // It is refused when the round's parent ask holds findings.
 // The refusal archives the verdict, spawns no judge, and approves nothing.
+//
+//testtiming:keep pins the recovered CONVERGED verdict's refusal over parent findings: its reason, the verdict's archive, and that no judge or commit runs
 func TestBouncer_Call_RefusesARecoveredConvergedOverParentFindings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -151,8 +153,8 @@ func TestBouncer_Call_RefusesARecoveredConvergedOverParentFindings(t *testing.T)
 		t.Fatalf("RecordParentAsk() error = %v; want nil", err)
 	}
 	findings := []burlerengine.ParentFinding{{Change: "tighten the seam"}}
-	if _, err := burlerengine.AnswerParentAsk(files, asked.Number, bouncerJudgeTestClock, findings); err != nil {
-		t.Fatalf("AnswerParentAsk() error = %v; want nil", err)
+	if _, err := burlerengine.AnswerParentAskOrUnreached(files, asked.Number, "", bouncerJudgeTestClock, findings); err != nil {
+		t.Fatalf("AnswerParentAskOrUnreached() error = %v; want nil", err)
 	}
 
 	ptr := shedfake.RequireOutcome(t, h.b, shedengine.Stuck)

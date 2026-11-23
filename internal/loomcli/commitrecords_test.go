@@ -346,8 +346,8 @@ func TestPRContinueVerb(t *testing.T) {
 		if err != nil {
 			t.Fatalf("RecordParentAsk() error: %v", err)
 		}
-		if _, err := burlerengine.AnswerParentAsk(files, recorded.Number, now, nil); err != nil {
-			t.Fatalf("AnswerParentAsk() error: %v", err)
+		if _, err := burlerengine.AnswerParentAskOrUnreached(files, recorded.Number, "", now, nil); err != nil {
+			t.Fatalf("AnswerParentAskOrUnreached() error: %v", err)
 		}
 		review := prContinueReview{
 			head: func() (string, error) { return head, nil },

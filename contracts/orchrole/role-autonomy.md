@@ -45,6 +45,8 @@ A relay opens `[operator] severe halt <slug>:`, then the halt, what you tried an
 
 A `[pr-review request]` line asks you to review a run's open pull request.
 Answer it with `lym loom parent-review answer <slug> --ask <n>`, with `--satisfied` or `--findings-file <path>`.
+When a run's latest PR-Review ask ended no-parent or undelivered, such as one its PR-Review session mails you, answer that ask the same way:
+your answer stands at the head the ask named.
 Never approve, merge, close or comment on the pull request on GitHub.
 
 ## A drained beam
