@@ -293,7 +293,9 @@ A session the operator chose to sit in, an interactive Discussion, PR-Review, sa
 Mail from `<shortname>:LOOM` whose text holds `[row reached]` says a run reached a row you asked to hear of.
 Name the rows in `notify_parent_on`, a list of the recipe's row names such as `["Drift-Verify"]`, in `loom.yaml` or the task's `run_settings`.
 lym sends it as the run calls the row, once each time the run reaches it;
-a re-call after an escalation's answer or a resumed halt spawns a fresh agent and sends it again;
+a re-call after an escalation's answer spawns a fresh agent;
+a re-call after a resumed halt whose agent ended before its work did resumes that agent's session;
+lym sends the row-reached mail again in both cases;
 a row the run skips sends none, and a call after a yield or a pause sends none.
 Brief the row's agent by creel once `lym reed list` shows its strand, ending the message with "Answer briefly, then continue your task."
 A name that is no row of the run's recipe refuses the run's steps, naming the recipe's rows.

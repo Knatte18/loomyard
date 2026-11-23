@@ -128,42 +128,56 @@ func unfinished(rs RunState, now time.Time, bound time.Duration) bool {
 	return false
 }
 
-// carriedInstructions returns the instructions a new run of the role key carries over: the carried and operator instructions of the newest run of key under the runner's run-directory root, without repeats, when that run is unfinished.
-// An empty key, no run of key, a newest run that is not unfinished and a run whose engine is not registered carry none.
-func (r *Runner) carriedInstructions(key string) []string {
+// predecessor is the newest earlier run of a role under a runner's run-directory root.
+type predecessor struct {
+	runDir string
+	state  RunState
+}
+
+// newestPredecessor returns the newest run of the role key under the runner's run-directory root, and whether one exists.
+// An empty key, an unreadable root and a root with no run of key find none.
+func (r *Runner) newestPredecessor(key string) (predecessor, bool) {
 	if key == "" {
-		return nil
+		return predecessor{}, false
 	}
 	root := runDirRoot(r.cfg, r.anchorPath)
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		return nil
+		return predecessor{}, false
 	}
-	var newest RunState
-	var newestDir string
+	var newest predecessor
+	found := false
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 		runDir := filepath.Join(root, entry.Name())
-		rs, found, err := loadRunState(runDir)
-		if err != nil || !found || rs.RoleKey != key {
+		rs, ok, err := loadRunState(runDir)
+		if err != nil || !ok || rs.RoleKey != key {
 			continue
 		}
-		if newestDir == "" || rs.CreatedAt > newest.CreatedAt || (rs.CreatedAt == newest.CreatedAt && runDir > newestDir) {
-			newest, newestDir = rs, runDir
+		if !found || rs.CreatedAt > newest.state.CreatedAt || (rs.CreatedAt == newest.state.CreatedAt && runDir > newest.runDir) {
+			newest, found = predecessor{runDir: runDir, state: rs}, true
 		}
 	}
-	if newestDir == "" || !unfinished(newest, r.clock.Now(), relaunchBound(r.cfg)) {
+	return newest, found
+}
+
+// carriedInstructions returns the instructions a new run carries over from pred.
+// pred is the newest run of its role, and found reports whether there is one.
+// They are pred's carried and operator instructions, without repeats, when pred is unfinished.
+// No predecessor, one that is not unfinished and one whose engine is not registered carry none.
+func (r *Runner) carriedInstructions(pred predecessor, found bool) []string {
+	if !found || !unfinished(pred.state, r.clock.Now(), relaunchBound(r.cfg)) {
 		return nil
 	}
-	engine, _, err := r.engineFor(newest)
+	engine, _, err := r.engineFor(pred.state)
 	if err != nil {
 		return nil
 	}
 	seen := map[string]bool{}
 	var carried []string
-	for _, instruction := range append(append([]string(nil), newest.CarriedInstructions...), operatorInstructions(newestDir, newest, engine)...) {
+	for _, instruction := range append(append([]string(nil), pred.state.CarriedInstructions...), operatorInstructions(pred.runDir, pred.state, engine)...) {
 		if !seen[instruction] {
 			seen[instruction] = true
 			carried = append(carried, instruction)

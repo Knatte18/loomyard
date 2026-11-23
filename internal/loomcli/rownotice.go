@@ -46,7 +46,7 @@ func watchRows(shed *shedengine.Shed, rows []string, recipe string, paths rowNot
 }
 
 // rowNoticeProducer tells the run's parent that the run reached row, once per visit, then calls the row's own producer.
-// A re-call after an escalation's answer or a resumed halt is a new visit, since it spawns a fresh agent.
+// A re-call after an escalation's answer or a resumed halt is a new visit.
 type rowNoticeProducer struct {
 	row    string
 	inner  shedengine.ShedProducer

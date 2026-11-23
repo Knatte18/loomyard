@@ -24,7 +24,7 @@ func (c *loomCLI) loomConsumeAttempt(_ context.Context, attempt string) error {
 
 // relaunchRequest builds the request that relaunches the run runID over the receiver's status files.
 // Its guard ends the run's fixers once guard admits the move,
-// and its Admitted hook resets a PR-Review review that the move lands on.
+// and its Admitted hook sets aside the interrupted shuttle runs and resets a PR-Review review that the move lands on.
 func (c *loomCLI) relaunchRequest(runID string, guard shedengine.GotoGuard) shedengine.RelaunchRequest {
 	return shedengine.RelaunchRequest{
 		StatusPath:              c.shedPaths.StatusPath,
@@ -34,6 +34,6 @@ func (c *loomCLI) relaunchRequest(runID string, guard shedengine.GotoGuard) shed
 		RunID:                   runID,
 		MissingStatusWayForward: c.shedPaths.MissingStatusWayForward,
 		Guard:                   c.gotoGuardEndingFixers(guard),
-		Admitted:                c.prReviewGotoAdmitted(),
+		Admitted:                c.gotoAdmitted(),
 	}
 }

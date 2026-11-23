@@ -178,6 +178,13 @@ type RunState struct {
 	// The record's Outcome stays running, so every reader that compares the outcome reads a relaunching run as running.
 	// RunState.relaunching reads the mark against its bound.
 	RelaunchingAt string `json:"relaunchingAt,omitempty"`
+	// Interrupted is true on a stopped record when lym stopped the run because its session had ended.
+	// It is also true when the run's step was gone, and false when the stop was on purpose.
+	// A later start of the run's role may then resume its session.
+	Interrupted bool `json:"interrupted,omitempty"`
+	// NoResume is true once a later start of the run's role, or a deliberate restart of its work, took the run's place.
+	// No start resumes the session of a run that carries it.
+	NoResume bool `json:"noResume,omitempty"`
 }
 
 // relaunchBound is how long a record's relaunching mark holds its run live: twice the startup timeout.

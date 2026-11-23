@@ -87,6 +87,11 @@ type loomCLI struct {
 	// Nil means the runner stops them.
 	// A test sets it to record the call.
 	stopOrphanedRuns func(stepsDir string) (shuttleengine.StepStopReport, error)
+	// retireRuns, when set, sets aside the interrupted shuttle runs an admitted goto restarts.
+	// It stands in for the receiver's runner.
+	// Nil means the runner sets them aside.
+	// A test sets it to record the call.
+	retireRuns func() (int, error)
 	// runner is the constructed shuttle runner.
 	// It is carried on the struct so run.go can pass it to landingDeps as the landing seam's Shuttle value.
 	runner *shuttleengine.Runner

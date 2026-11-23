@@ -200,6 +200,8 @@
 // The told goto guard refuses a goto onto Finalize while the parent's code checkout holds tracked dirt,
 // and a goto onto a review or fix row whose verdict is settled.
 // It ends every fixer role registered under the pair once a goto is admitted, before the move is written.
+// Once the move is written, the goto sets aside the worktree's interrupted shuttle runs,
+// so the rows it restarts start fresh sessions instead of resuming one.
 //
 // # Go driver
 //

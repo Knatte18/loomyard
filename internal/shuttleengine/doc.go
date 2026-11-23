@@ -117,8 +117,22 @@
 // and a record still reading running whose output files all exist keeps running, so a stop never hides finished work.
 // The record is written first; a failed write leaves the strand untouched.
 // Runner.StopStepRuns and Runner.StopOrphanedStepRuns apply the same record-then-remove order to every run of a step.
+// They record each stop as interrupted, since the step ended before the run's work did.
 // A run whose agent cannot be addressed is stopped only when its engine proves no process holds its session;
 // otherwise it stays running and is listed under StepStopReport.Held.
+//
+// # Resuming an interrupted session
+//
+// A start resumes the session of its role's newest earlier run.
+// It does so when that run declares the same output files and its session ended before its work did.
+// A crash, a reboot or a killed pane ends a session that way.
+// Such a run died, reads running with its waiter gone, or carries a stop recorded as interrupted.
+// The resume needs the engine's SessionResumer capability.
+// A resume check that refuses, as for a missing transcript, starts fresh.
+// The resumed session takes no skill-load turn, and its prompt opens with a line telling it to continue its work.
+// Once a start of those output files is up, the earlier run is set aside and never resumed again.
+// Runner.RetireInterruptedRuns sets aside every interrupted run, for a deliberate restart such as a goto.
+// A run that timed out, ended on API errors or was stopped on purpose is never resumed.
 //
 // # Attach
 //

@@ -228,6 +228,8 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (*Run, 
 // removeSupersededStrands removes the strand of each candidate that reed tracks as live or as an own-window strand with a dead pane,
 // so the fresh run the caller starts next does not run beside the session it supersedes.
 // A candidate whose strand is untracked or a dead window 0 strand has nothing to remove.
+// A candidate still reading running is respawn-eligible only once its agent is gone,
+// so its stop is recorded as interrupted and the start that follows resumes its session.
 func (r *Runner) removeSupersededStrands(candidates []attachCandidate, strands []reedengine.StrandStatus) error {
 	for _, c := range candidates {
 		strand, tracked := strandStatusByGUID(strands, c.state.StrandGUID)
@@ -235,7 +237,7 @@ func (r *Runner) removeSupersededStrands(candidates []attachCandidate, strands [
 			continue
 		}
 		logger.Warn("shuttle: attach: removing the strand of a superseded run before a fresh run", "runDir", c.runDir, "strandGUID", c.state.StrandGUID)
-		if err := r.stopRecorded(c.runDir, c.state.StrandGUID); err != nil {
+		if err := r.stopRecorded(c.runDir, c.state.StrandGUID, c.state.Outcome == runOutcomeRunning); err != nil {
 			return fmt.Errorf("shuttle: attach: could not remove the superseded strand %s of run %s: %w; way forward: run \"lym reed remove %s\", then re-step the row", c.state.StrandGUID, c.runDir, err, c.state.StrandGUID)
 		}
 	}

@@ -549,6 +549,9 @@ const EditRecordsFileName = "edit-records.jsonl"
 // The error wraps ErrNotStarted.
 // A start whose role's newest earlier run ended unfinished appends that run's operator instructions to the prompt;
 // it also records them in the new run's record and tells the notifier.
+// The start resumes that run's session instead when the run declares the same output files and was interrupted.
+// The resumed session already holds the instructions, so the prompt carries none and the notifier is told nothing.
+// Once a start of those output files is up, the earlier run is set aside and no later start resumes it.
 func (r *Runner) Start(spec Spec) (*Run, error) {
 	return r.StartGated(spec, GateSpec{})
 }
@@ -636,10 +639,20 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	}
 
 	// Read before the sweep, which may remove the predecessor's directory once its strand is gone.
-	carried := r.carriedInstructions(roleKey(spec))
+	pred, predFound := r.newestPredecessor(roleKey(spec))
+	carried := r.carriedInstructions(pred, predFound)
+	resume, resuming := r.resumeInterrupted(spec, engine, pred, predFound)
+	freshSpec, freshWarning, freshCopied := spec, resumeWarning, transcriptCopied
 	if len(carried) > 0 {
-		spec.Prompt += carryOverBlock(carried)
+		freshSpec.Prompt += carryOverBlock(carried)
 	}
+	if resuming {
+		spec, resumeWarning, transcriptCopied = resume.spec, resume.warning, resume.copied
+	} else {
+		spec = freshSpec
+	}
+	// A start of the predecessor's output files takes its place, so once the start is up no later start resumes it.
+	takesPlace := predFound && !spec.Unawaited && outputFilesSetEqual(pred.state.OutputFiles, spec.OutputFiles)
 
 	r.sweepOrphansOpportunistic()
 
@@ -647,10 +660,19 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	for attempt := 1; ; attempt++ {
 		run, result, err := r.launch(spec, gate, engine, engineName, resumeWarning, carried, transcriptCopied)
 		if err == nil {
-			if len(carried) > 0 {
+			if takesPlace {
+				setAside(pred.runDir)
+			}
+			if len(carried) > 0 && !resuming {
 				r.noticeCarriedInstructions(run.state.StrandName, roleKey(spec), carried)
 			}
 			return run, Result{}, nil
+		}
+		if resuming && run != nil {
+			// The resumed session never came up, so the next start runs a fresh session instead of trying it again.
+			setAside(run.runDir)
+			setAside(pred.runDir)
+			spec, resumeWarning, transcriptCopied, resuming = freshSpec, freshWarning, freshCopied, false
 		}
 		if run == nil || !run.startRetryable(result) || attempt >= attempts {
 			return nil, result, err

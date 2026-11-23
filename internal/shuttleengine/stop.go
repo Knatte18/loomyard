@@ -155,7 +155,7 @@ func (r *Runner) StopStrand(guid string) error {
 	if err != nil {
 		return removeStrandIfPresent(r.reed, guid)
 	}
-	return r.stopRecorded(runDir, guid)
+	return r.stopRecorded(runDir, guid, false)
 }
 
 // stopRecorded writes the stop into the record at runDir, then removes the strand guid names.
@@ -163,8 +163,9 @@ func (r *Runner) StopStrand(guid string) error {
 // The record is read and written in one hold of its lock,
 // so a stop racing another writer of the record loses neither change.
 // A record already terminal keeps its outcome, and one still reading running whose output files all exist keeps running.
+// interrupted marks the stopped record as one whose session ended unfinished, which a later start of its role resumes.
 // A failed read or write returns its error with the strand untouched.
-func (r *Runner) stopRecorded(runDir, guid string) error {
+func (r *Runner) stopRecorded(runDir, guid string, interrupted bool) error {
 	var stopped RunState
 	recorded := false
 	err := updateRunState(runDir, func(rs RunState, found bool) (RunState, error) {
@@ -172,6 +173,7 @@ func (r *Runner) stopRecorded(runDir, guid string) error {
 			return rs, errLeaveRunRecord
 		}
 		rs.Outcome = runOutcomeStopped
+		rs.Interrupted = interrupted
 		stopped, recorded = rs, true
 		return rs, nil
 	})

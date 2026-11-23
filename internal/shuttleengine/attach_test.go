@@ -368,6 +368,51 @@ func TestAttach_RemovesSupersededStrands(t *testing.T) {
 	}
 }
 
+// TestAttach_RecordsASupersededRunningCandidateAsInterrupted pins how a superseding attach records a candidate.
+// A candidate still reading running is recorded as stopped and interrupted,
+// so the start after the attach resumes its session.
+// A candidate with a terminal outcome keeps it and is not marked interrupted.
+func TestAttach_RecordsASupersededRunningCandidateAsInterrupted(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	deadOwnWindow := func(guid string) reedengine.StrandStatus {
+		return reedengine.StrandStatus{GUID: guid, PaneID: "%" + guid, OwnWindow: true, Present: true}
+	}
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{deadOwnWindow("strand-running"), deadOwnWindow("strand-died")}}}}
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+	seedPresentReedState(t, fx.DotLym)
+	outputFile := filepath.Join(fx.RunRoot, "out.md")
+	runningDir := seedAttachRun(t, fx.RunRoot, "run-running", seedAttachRunOpts{
+		strandGUID: "strand-running", sessionID: "session-1", outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true,
+	})
+	diedDir := seedAttachRun(t, fx.RunRoot, "run-died", seedAttachRunOpts{
+		strandGUID: "strand-died", sessionID: "session-2", outputFiles: []string{outputFile}, outcome: string(OutcomeDied), includeOutcome: true,
+	})
+
+	if _, found, err := fx.Runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute}); err != nil || found {
+		t.Fatalf("Attach() found, error = %v, %v; want false, nil", found, err)
+	}
+
+	tests := []struct {
+		name            string
+		runDir          string
+		wantOutcome     string
+		wantInterrupted bool
+	}{
+		{"running candidate", runningDir, runOutcomeStopped, true},
+		{"died candidate", diedDir, string(OutcomeDied), false},
+	}
+	for _, tt := range tests {
+		record, _, err := loadRunState(tt.runDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if record.Outcome != tt.wantOutcome || record.Interrupted != tt.wantInterrupted {
+			t.Errorf("%s record Outcome, Interrupted = %q, %v; want %q, %v", tt.name, record.Outcome, record.Interrupted, tt.wantOutcome, tt.wantInterrupted)
+		}
+	}
+}
+
 // TestAttach_Multiplicity covers candidate evaluation order and one-live-match-or-none:
 // the multiplicity rule applies only to the surviving ATTACHABLE set;
 // an error verdict dominates whatever the other candidates say;
