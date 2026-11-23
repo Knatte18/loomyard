@@ -431,7 +431,8 @@ func TestCheckResolved_Failures(t *testing.T) {
 // TestCheckResolved_LymOwnStateIsExempt leaves lym's own state under `_lym` uncommitted.
 // It asserts that the worktree-clean check passes over that state.
 // The state is the files that lym's stop and settle paths write into a run's directory.
-// It also holds a new friction note and a committed halt note that a reflection moved into an archive.
+// It also holds a new friction note, a committed halt note that a reflection moved into an archive,
+// and an agent session's usage record.
 // Fabric's own unscoped Clean must see the changes first, so the pass is never a gitignore's doing.
 // A file under `_lym` outside the exempt state then still refuses.
 // Each anchor builds its own hub, since a subpath anchor moves `_lym` below the worktree's root.
@@ -471,6 +472,10 @@ func TestCheckResolved_LymOwnStateIsExempt(t *testing.T) {
 			}
 			for _, path := range runState {
 				writeFile(t, path)
+			}
+			sessionUsage := shedrun.SessionUsageRecord{SessionID: "db065ed3-54e1-4008-bacd-df683191b516"}
+			if err := shedrun.WriteSessionUsage(shedrun.UsageDir(l), sessionUsage); err != nil {
+				t.Fatalf("WriteSessionUsage: %v", err)
 			}
 
 			if clean, _, err := fabricengine.Clean(l); err != nil || clean {

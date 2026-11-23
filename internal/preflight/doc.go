@@ -16,7 +16,8 @@
 // there is no coherent worktree to check, and that is a determined verdict.
 //
 // The worktree-clean check skips lym's own state under `_lym` on the state side:
-// the run-records root, the loom friction directory and the friction directory's reflection archives.
+// the run-records root, the usage directory, the loom friction directory,
+// and the friction directory's reflection archives.
 // Counting them would make a run refuse its own bookkeeping on every re-step.
 // Everything else under `_lym` still counts.
 //
