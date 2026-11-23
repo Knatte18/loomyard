@@ -103,9 +103,8 @@ func TestCheckCampaign(t *testing.T) {
 			wantSubs: []string{"fixer list is empty", "ROUTE(fixer)"},
 		},
 		{
-			name:     "ReviewerListOfOneEntry",
-			mutate:   func(in *CampaignCheck) { in.Config.Reviewer = []string{"opus"} },
-			wantSubs: []string{"holds one entry", "ROUTE(reviewer)"},
+			name:   "ReviewerListOfOneEntryPasses",
+			mutate: func(in *CampaignCheck) { in.Config.Reviewer = []string{"opus"} },
 		},
 		{
 			name:     "ReviewerNeighboursAreOneModel",

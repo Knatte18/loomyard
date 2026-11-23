@@ -95,8 +95,8 @@ and the paths of the round's focus file, the charter, and of the decision record
 ## The judge
 
 - **Converged.**
-  The judge rules CONVERGED only on a round whose review records no BLOCKING or MEDIUM finding, whose live gate is green, and whose reviewer model differs from the previous round's.
-  It reads all three from the round's facts.
+  The judge rules CONVERGED only on a round whose review records no BLOCKING or MEDIUM finding and whose live gate is green.
+  It reads both from the round's facts.
 - **Re-seed from the residue.**
   The focus file derives the next round's assignment from what this round left standing, never "review it again":
   - the residual to close: each open finding with its site and scenario, fixed at the right layer with a regression test;

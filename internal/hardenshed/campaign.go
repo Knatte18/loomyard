@@ -45,7 +45,7 @@ type CampaignCheck struct {
 // the live key naming the billed tier, or naming more than one tier when copies run;
 // a package holding no test of a tier the live key runs;
 // an empty reviewer or fixer list;
-// a reviewer list of one entry, or one whose cyclic expansion repeats a model in neighbouring rounds;
+// a reviewer list of two or more entries whose cyclic expansion repeats a model in neighbouring rounds;
 // and a soft cap of review rounds above the hard cap.
 // A config naming no package passes, since the seed pass then finds the module from the task's title and labels.
 // The template's live key passes, so a campaign needs no gate write of the hub's.
@@ -118,10 +118,11 @@ func gateWrite() string {
 }
 
 // reviewerRepeat returns what is wrong with a reviewer list, or "" when no round repeats the model of its neighbour.
-// A list of one entry repeats it every round, and the cyclic expansion's last entry meets its first.
+// A list of one entry is a single-model campaign and passes.
+// In a longer list the cyclic expansion's last entry meets its first.
 func reviewerRepeat(reviewer []string) string {
-	if len(reviewer) == 1 {
-		return "the reviewer list holds one entry, so every round reviews with the same model; list at least two models, none twice in a row"
+	if len(reviewer) <= 1 {
+		return ""
 	}
 	for i, entry := range reviewer {
 		next := reviewer[(i+1)%len(reviewer)]

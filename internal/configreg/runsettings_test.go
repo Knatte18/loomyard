@@ -91,6 +91,14 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantDocs: map[string]string{"hardener": "llm_driving: true\npackages:\n    - internal/foo\n"},
 		},
 		{
+			name: "hardener reviewer and fixer lists set a per-run model rotation",
+			settings: map[string]any{"hardener": map[string]any{
+				"reviewer": []any{"opus[high]", "sonnet[high]"},
+				"fixer":    []any{"sonnet[high]", "opus"},
+			}},
+			wantDocs: map[string]string{"hardener": "fixer:\n    - sonnet[high]\n    - opus\nreviewer:\n    - opus[high]\n    - sonnet[high]\n"},
+		},
+		{
 			name:        "hardener auto_accept is refused naming the hub file write",
 			settings:    map[string]any{"hardener": map[string]any{"auto_accept": true}},
 			wantRefusal: `lym config hardener --set auto_accept=<value>`,

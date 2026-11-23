@@ -36,7 +36,7 @@ func TestLoadConfig(t *testing.T) {
 	t.Parallel()
 
 	defaults := Config{
-		MaxBounces: 7, HardMaxBounces: 10, Reviewer: []string{"opus", "fable", "sonnet"}, Fixer: []string{"opus", "fable", "sonnet"},
+		MaxBounces: 7, HardMaxBounces: 10, Reviewer: []string{"sonnet[high]"}, Fixer: []string{"sonnet[high]"},
 		Concurrency: 3, LiveAttempts: 2, VerifyAttempts: 3,
 	}
 	tests := []struct {

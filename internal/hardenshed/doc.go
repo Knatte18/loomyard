@@ -10,6 +10,8 @@
 // ConfigSpec classifies `auto_accept`, `reviewer_fan`, `fixer_fan` and `tree_scope` as guard keys.
 // Only the hub file sets a guard key, and a task's `run_settings` setting one is refused at seed with that way forward.
 // Every other key is open to a task's `run_settings`.
+// The template runs every review and fix round on `sonnet[high]`, with no rotation;
+// a rotation over several models is the operator's choice per run, set as lists in `run_settings` under `hardener`.
 // `tree_scope` is an open map, which ConfigOpenMaps names.
 // LoadConfig loads the unit strictly through `configengine`, then runs CheckValues over the resolved document.
 // It normalizes `tree_scope` through the one tree-key rule darn's `tree_scope` takes.
@@ -91,7 +93,8 @@
 // A fixer that has just fixed something is motivated to declare it fixed.
 // So a round's own "merge-ready" verdict never gates the campaign.
 // Go gates each round instead, by re-running the live gate on the committed tree and believing only what it observes.
-// Rounds rotate models, since different models miss different things.
+// What a round finds rests on its seeded focus more than on its model, so a campaign runs one model by default.
+// The operator may set a rotation of models per round for a run.
 // Agreement across models is stronger evidence than repeated passes by one.
 // A round's assignment follows from the previous round's residue, never from "review it again".
 // When findings repeat a shape, the round enumerates that shape.
