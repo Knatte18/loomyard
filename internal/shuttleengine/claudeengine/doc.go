@@ -244,6 +244,9 @@
 // A resume reuses the file its launch wrote; a Prepare that runs again reads the passages afresh.
 // The settings set `CLAUDE_CODE_SUBAGENT_EFFORT` to the role's effort on a model the efforts table does not name.
 // A spec that names a remote-control session adds `--remote-control` with that name to the launch and resume lines.
+// A session's remote control reads as connected once its transcript holds a `bridge-session` record.
+// Claude Code writes that record when the connection is made.
+// A connection Claude Code refuses, such as one an organization's policy disables, writes none.
 //
 // Both the deny hooks and the notice are built from one deny list in settings.go, so the two cannot drift.
 // The Claude rows come first; the Bash denies render the rows of `internal/shellguard`'s table as PreToolUse(Bash) hooks,

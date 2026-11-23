@@ -114,7 +114,18 @@ func (o shuttleOps) SessionIdle(guid string) (shuttleengine.IdleProbe, error) {
 func (o shuttleOps) Send(guid, text string) error { return o.runner.Send(guid, text) }
 
 func (o shuttleOps) RunCommand(guid string, command creelengine.Command) error {
-	return runSessionCommand(o.runner, guid, command)
+	return runSessionCommand(sessionCommandOps{Runner: o.runner, reed: o.reed}, guid, command)
+}
+
+// sessionCommandOps is the shuttle runner's session commands, with the RC mark set through the worktree's reed engine.
+type sessionCommandOps struct {
+	*shuttleengine.Runner
+	reed *reedengine.Engine
+}
+
+// MarkRemoteControlOn sets the RC mark on the live pane of the strand guid.
+func (o sessionCommandOps) MarkRemoteControlOn(guid string) error {
+	return o.reed.MarkRemoteControlOn(guid)
 }
 
 func (o shuttleOps) Interrupt(guid string) error { return o.runner.InterruptRestoring(guid) }
@@ -126,12 +137,14 @@ type sessionCommands interface {
 	ReloadPlugins(guid string) error
 	TypeColor(guid string, color segmentcolor.Color) error
 	LoadSkills(guid string, skills []string) error
-	TurnOnRemoteControl(guid, name string) error
+	TurnOnRemoteControl(guid, name string) (connected bool, err error)
+	MarkRemoteControlOn(guid string) error
 }
 
 // runSessionCommand runs command through ops.
 // compact takes its argument as the focus, color as the segment color, and load-skills as a space-separated skill list;
 // remote-control takes it as the remote session's name.
+// remote-control marks the strand's pane for the RC button only once the session records its connection.
 // A command outside the closed set is refused.
 func runSessionCommand(ops sessionCommands, guid string, command creelengine.Command) error {
 	switch command.Name {
@@ -146,10 +159,31 @@ func runSessionCommand(ops sessionCommands, guid string, command creelengine.Com
 	case creelengine.CommandLoadSkills:
 		return ops.LoadSkills(guid, strings.Fields(command.Argument))
 	case creelengine.CommandRemoteControl:
-		return ops.TurnOnRemoteControl(guid, command.Argument)
+		return turnOnRemoteControl(ops, guid, command.Argument)
 	default:
 		return fmt.Errorf("creel: unknown command %q", command.Name)
 	}
+}
+
+// turnOnRemoteControl types the remote-control command named name into the strand guid's session.
+// It marks the strand's pane once the session records its remote control connecting.
+// That holds also when the paste was not seen to land and the session connected anyway.
+// The delivery error is still returned.
+// A connection the provider refuses, such as by an organization's policy, leaves the pane unmarked and the RC button dim.
+// A failed mark is logged and the command still succeeds, since it has landed and the mark is display only.
+func turnOnRemoteControl(ops sessionCommands, guid, name string) error {
+	connected, err := ops.TurnOnRemoteControl(guid, name)
+	if connected {
+		if markErr := ops.MarkRemoteControlOn(guid); markErr != nil {
+			logger.Warn("creel: could not mark the pane of a session whose remote control connected", "strandGUID", guid, "err", markErr)
+		}
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	logger.Info("creel: the session recorded no remote-control connection after the command, so the RC button stays dim", "strandGUID", guid, "name", name)
+	return nil
 }
 
 // errWorktreeGone marks a worktree that no longer resolves as a worktree, so the listing skips it instead of failing.

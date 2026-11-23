@@ -676,3 +676,14 @@ type RemoteController interface {
 	// The sequence starts no turn.
 	RemoteControlSequence(name string) []PaneInput
 }
+
+// RemoteControlReader is an optional engine capability: reading whether a session's remote control connected.
+// It reads the provider's own record of the session, so it reports what the provider did, never what lym asked for.
+// An engine without it never reports a connection.
+type RemoteControlReader interface {
+	// RemoteControlCheckpoint returns how far the provider's record of the session sessionID, run in workdir, reaches now.
+	// A session with no record yet returns zero.
+	RemoteControlCheckpoint(sessionID, workdir string) (int64, error)
+	// RemoteControlConnected reports whether that record shows the session's remote control connecting past checkpoint.
+	RemoteControlConnected(sessionID, workdir string, checkpoint int64) (bool, error)
+}

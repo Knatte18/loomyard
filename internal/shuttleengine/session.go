@@ -441,24 +441,54 @@ func (r *Runner) ReloadPlugins(guid string) error {
 
 // TurnOnRemoteControl sends the provider's remote-control command into the live pane of the run identified by guid.
 // The command carries the session name name.
-// An engine without the RemoteController capability types nothing.
+// It then reports whether the session's own record shows its remote control connecting within a bounded wait,
+// so a connection the provider refuses, such as by an organization's policy, reports false.
+// A paste not seen to land still waits for the connection, and the call reports it beside ErrSubmissionNotLanded.
+// A failed read of the record after the paste is logged and reports false with no error, since the command has landed.
+// An engine without the RemoteController capability types nothing and reports false.
 // It waits for an idle session first,
 // and it fails with ErrSessionBusy while the session or its input box is held.
 // It refuses a name containing a newline, since the name is sent as one line.
-func (r *Runner) TurnOnRemoteControl(guid, name string) error {
+func (r *Runner) TurnOnRemoteControl(guid, name string) (bool, error) {
 	if r.toldErr != nil {
-		return r.toldErr
+		return false, r.toldErr
 	}
 	if strings.ContainsAny(name, "\r\n") {
-		return fmt.Errorf("shuttle: remote-control name for strand %q spans several lines; it is typed as one line, so join it into one", guid)
+		return false, fmt.Errorf("shuttle: remote-control name for strand %q spans several lines; it is typed as one line, so join it into one", guid)
 	}
-	return r.sendSessionSequence(guid, "", func(cycler SessionCycler) []PaneInput {
+	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
+		return false, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	engine, _, err := r.engineFor(state)
+	if err != nil {
+		return false, err
+	}
+	checkpoint, err := r.remoteControlCheckpoint(engine, state.SessionID)
+	if err != nil {
+		return false, err
+	}
+	typed := false
+	err = r.sendSessionSequence(guid, "", func(cycler SessionCycler) []PaneInput {
 		controller, ok := cycler.(RemoteController)
 		if !ok {
 			return nil
 		}
+		typed = true
 		return controller.RemoteControlSequence(name)
 	})
+	if !typed {
+		return false, err
+	}
+	if err != nil && !errors.Is(err, ErrSubmissionNotLanded) {
+		return false, err
+	}
+	connected, awaitErr := r.awaitRemoteControl(engine, state.SessionID, checkpoint)
+	if awaitErr != nil {
+		logger.Warn("shuttle: could not read whether the session's remote control connected after its command landed", "strandGUID", guid, "sessionID", state.SessionID, "err", awaitErr)
+		return false, err
+	}
+	return connected, err
 }
 
 // TypeColor sends the provider's color command for color into the live pane of the run identified by guid.

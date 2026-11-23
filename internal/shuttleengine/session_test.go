@@ -616,6 +616,8 @@ const (
 	parserlessPasteShape
 	// clearlessPasteShape hides the input-box clear.
 	clearlessPasteShape
+	// remoteControlReadingShape adds a scripted record of remote-control connections, which starts empty.
+	remoteControlReadingShape
 )
 
 // newSlashPasteRunner returns a runner over a live strand "strand-1" on a paste-path engine.
@@ -649,6 +651,8 @@ func newSlashPasteRunnerAppending(t *testing.T, box string, active, noColor bool
 		engine = parserlessPasteEngine{Engine: slash, TextPaster: slash, InputBoxReader: slash, InputBoxClearer: slash, SessionCycler: slash, RemoteController: slash}
 	case clearlessPasteShape:
 		engine = clearlessPasteEngine{Engine: slash, TextPaster: slash, InputBoxReader: slash, SessionCycler: slash, RemoteController: slash}
+	case remoteControlReadingShape:
+		engine = &remoteControlPasteEngine{slashPasteEngine: slash, remoteControlRecord: &remoteControlRecord{}}
 	}
 	cfg := Config{SubmitSettleMS: 100, SubmitConfirmTimeoutS: 30, SendReadyTimeoutS: 60}
 	fx := newFixture(t, appending, engine, withConfig(cfg), withStrand("strand-1"), withClock(clock))
@@ -946,13 +950,16 @@ func TestRunner_TurnOnRemoteControl_PastesTheNamedCommandThroughTheGuardedSend(t
 	t.Parallel()
 
 	const name = "neve::tst:orch"
-	checkPastedSessionCommand(t, "/remote-control "+name, func(r *Runner) error { return r.TurnOnRemoteControl("strand-1", name) })
+	checkPastedSessionCommand(t, "/remote-control "+name, func(r *Runner) error {
+		_, err := r.TurnOnRemoteControl("strand-1", name)
+		return err
+	})
 
 	t.Run("a name spanning several lines is refused and nothing is typed", func(t *testing.T) {
 		t.Parallel()
 		for _, multiLine := range []string{"a\nb", "a\r\nb"} {
 			runner, reed, _ := newSlashPasteRunner(t, "", false, false)
-			if err := runner.TurnOnRemoteControl("strand-1", multiLine); err == nil {
+			if _, err := runner.TurnOnRemoteControl("strand-1", multiLine); err == nil {
 				t.Errorf("TurnOnRemoteControl(%q) = nil error", multiLine)
 			}
 			if len(reed.PasteSubmitCalls) != 0 || len(sentCalls(reed)) != 0 {
@@ -965,8 +972,8 @@ func TestRunner_TurnOnRemoteControl_PastesTheNamedCommandThroughTheGuardedSend(t
 		t.Parallel()
 		reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"IDLE"}}
 		runner := newFixture(t, reed, readyCyclerEngine(), withStrand("strand-1")).Runner
-		if err := runner.TurnOnRemoteControl("strand-1", name); err != nil {
-			t.Errorf("TurnOnRemoteControl() = %v, want nil", err)
+		if connected, err := runner.TurnOnRemoteControl("strand-1", name); connected || err != nil {
+			t.Errorf("TurnOnRemoteControl() = %v, %v; want false, nil", connected, err)
 		}
 		if len(reed.PasteSubmitCalls) != 0 || len(sentCalls(reed)) != 0 {
 			t.Errorf("typed without the capability: pastes %+v, sent %v", reed.PasteSubmitCalls, sentCalls(reed))
@@ -977,7 +984,7 @@ func TestRunner_TurnOnRemoteControl_PastesTheNamedCommandThroughTheGuardedSend(t
 		t.Parallel()
 		reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 		runner := NewRunner(reed, singleEngineSet(&fakeEngine{}), "", t.TempDir(), Config{RunTimeoutMin: 5})
-		if err := runner.TurnOnRemoteControl("strand-1", name); err == nil || !strings.Contains(err.Error(), "empty path") {
+		if _, err := runner.TurnOnRemoteControl("strand-1", name); err == nil || !strings.Contains(err.Error(), "empty path") {
 			t.Errorf("TurnOnRemoteControl() = %v, want an error naming the empty path", err)
 		}
 		if len(reed.CallLog) != 0 {

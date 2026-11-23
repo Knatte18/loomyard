@@ -173,6 +173,8 @@
 // Runner.SendConditioned gives one line to a session only while it is in a named state, and refuses at once otherwise.
 // Runner.ClearSession and Runner.CompactSession use the same guarded path.
 // So do Runner.ReloadPlugins and Runner.TurnOnRemoteControl.
+// Runner.TurnOnRemoteControl and Runner.AwaitRemoteControl report a connection only once the provider records one,
+// so a connection the provider refuses, such as by an organization's policy, reads as none.
 // A command taken as a prompt fails with ErrCommandTakenAsPrompt instead of confirming.
 // Every interrupt goes through a pane guard that sends the key only to a running turn;
 // a pane with no running turn gets no key and ErrNoRunningTurn, and an open rewind picker fails with ErrRewindPickerOpen.

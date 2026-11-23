@@ -72,8 +72,15 @@ func (s *stubOps) RunCommand(string, creelengine.Command) error { return s.comma
 func (s *stubOps) Interrupt(string) error { return s.interruptErr }
 
 // recordingCommands is a sessionCommands that records the one call it received as "method(arguments)".
+// A pane mark after a remote-control command is appended to that call.
 type recordingCommands struct {
 	called string
+	// connected is what TurnOnRemoteControl reports.
+	connected bool
+	// turnOnErr is the error TurnOnRemoteControl returns.
+	turnOnErr error
+	// markErr is the error MarkRemoteControlOn returns.
+	markErr error
 }
 
 func (r *recordingCommands) ClearSession(guid string) error {
@@ -101,9 +108,14 @@ func (r *recordingCommands) LoadSkills(guid string, skills []string) error {
 	return nil
 }
 
-func (r *recordingCommands) TurnOnRemoteControl(guid, name string) error {
+func (r *recordingCommands) TurnOnRemoteControl(guid, name string) (bool, error) {
 	r.called = "TurnOnRemoteControl(" + guid + "," + name + ")"
-	return nil
+	return r.connected, r.turnOnErr
+}
+
+func (r *recordingCommands) MarkRemoteControlOn(guid string) error {
+	r.called += " MarkRemoteControlOn(" + guid + ")"
+	return r.markErr
 }
 
 // restoringPane is a pane drawn like Claude's across an interrupt.
@@ -453,6 +465,26 @@ func TestHubDelivery(t *testing.T) {
 			if err := runSessionCommand(recorder, "guid-orch", tt.command); err != nil || recorder.called != tt.want {
 				t.Errorf("runSessionCommand(%s) called %q, %v; want %q", tt.command.Name, recorder.called, err, tt.want)
 			}
+		}
+		connected := &recordingCommands{connected: true}
+		remoteControl := creelengine.Command{Name: creelengine.CommandRemoteControl, Argument: "neve::ly:orch"}
+		want := "TurnOnRemoteControl(guid-orch,neve::ly:orch) MarkRemoteControlOn(guid-orch)"
+		if err := runSessionCommand(connected, "guid-orch", remoteControl); err != nil || connected.called != want {
+			t.Errorf("runSessionCommand(remote-control) on a session that connects called %q, %v; want %q", connected.called, err, want)
+		}
+		turnOnFailed := errors.New("transcript unreadable")
+		failed := &recordingCommands{turnOnErr: turnOnFailed}
+		wantUnmarked := "TurnOnRemoteControl(guid-orch,neve::ly:orch)"
+		if err := runSessionCommand(failed, "guid-orch", remoteControl); !errors.Is(err, turnOnFailed) || failed.called != wantUnmarked {
+			t.Errorf("runSessionCommand(remote-control) on a failed turn-on called %q, %v; want %q and the turn-on error", failed.called, err, wantUnmarked)
+		}
+		markFailed := &recordingCommands{connected: true, markErr: errors.New("tmux is gone")}
+		if err := runSessionCommand(markFailed, "guid-orch", remoteControl); err != nil || markFailed.called != want {
+			t.Errorf("runSessionCommand(remote-control) on a failed mark called %q, %v; want %q and nil", markFailed.called, err, want)
+		}
+		unconfirmed := &recordingCommands{connected: true, turnOnErr: turnOnFailed}
+		if err := runSessionCommand(unconfirmed, "guid-orch", remoteControl); !errors.Is(err, turnOnFailed) || unconfirmed.called != want {
+			t.Errorf("runSessionCommand(remote-control) on an unconfirmed paste that connected called %q, %v; want %q and the turn-on error", unconfirmed.called, err, want)
 		}
 
 		hub, prime, _ := newHub(t)

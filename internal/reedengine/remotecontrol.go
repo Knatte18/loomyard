@@ -1,6 +1,7 @@
-// remotecontrol.go holds the RC button's pane mark, which shows that lym turned remote control on in an agent's session.
-// It holds the engine-less read and write a click on the RC button runs.
-// It also holds the engine op a launch with remote control runs.
+// remotecontrol.go holds the RC button's pane mark.
+// The mark shows that an agent's session recorded its remote control connecting.
+// It holds the engine-less pane read a click on the RC button runs.
+// It also holds the engine op that sets the mark once a session's connection is recorded.
 
 package reedengine
 
@@ -9,7 +10,8 @@ import (
 	"strings"
 )
 
-// remoteControlPaneOption is the pane user option marking that lym turned remote control on in the pane's session.
+// remoteControlPaneOption is the pane user option marking that the pane's session recorded its remote control connecting.
+// A request the provider refused sets no mark.
 // The RC button is lit while the window's active pane carries it, and the mark dies with the pane.
 const remoteControlPaneOption = "@lym_rc"
 
@@ -46,11 +48,6 @@ func clientAgentPaneVia(cmd TmuxCmd, client string) (AgentPane, error) {
 	return AgentPane{PaneID: fields[0], StrandName: fields[1], RemoteControlOn: fields[2] != ""}, nil
 }
 
-// MarkPaneRemoteControlOn sets the RC mark on the pane paneID of the tmux server at socketPath.
-func MarkPaneRemoteControlOn(tmuxPath, socketPath, paneID string) error {
-	return markPaneRemoteControlOnVia(newTmuxCmdForSocketPath(tmuxPath, socketPath), paneID)
-}
-
 // markPaneRemoteControlOnVia sets the RC mark on paneID over cmd, so a test can replace the tmux command.
 func markPaneRemoteControlOnVia(cmd TmuxCmd, paneID string) error {
 	if err := cmd.run("set-option", "-p", "-t", paneID, remoteControlPaneOption, remoteControlPaneMark); err != nil {
@@ -60,7 +57,8 @@ func markPaneRemoteControlOnVia(cmd TmuxCmd, paneID string) error {
 }
 
 // MarkRemoteControlOn sets the RC mark on the live pane of the strand guid in this session.
-// A launch that started the strand with remote control on calls it, so the RC button shows the strand lit.
+// Its caller calls it once the strand's session records its remote control connecting,
+// so the RC button shows the strand lit.
 // Nothing is persisted: a failed call returns an error for the caller to log.
 func (e *Engine) MarkRemoteControlOn(guid string) error {
 	return e.withOpLock(func() error {
