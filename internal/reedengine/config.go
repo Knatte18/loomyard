@@ -36,6 +36,9 @@ type Config struct {
 	// WindowSplit is the direction a shared window splits in: "width" or "height".
 	WindowSplit string `yaml:"window_split"`
 
+	// PaneMemoryMaxMiB is the memory cap, in MiB, of the scope each strand pane runs in.
+	PaneMemoryMaxMiB int `yaml:"pane_memory_max_mib"`
+
 	TmuxConf string `yaml:"tmux_conf"`
 
 	// SegmentColors maps a loom segment key to a palette color name.
@@ -58,19 +61,20 @@ func ConfigSpec() configengine.Spec {
 		Name:     "reed",
 		Template: []byte(ConfigTemplate()),
 		Categories: map[string]configengine.Category{
-			"tmux":             configengine.CategoryExecutable,
-			"shell":            configengine.CategoryExecutable,
-			"width":            configengine.CategoryNone,
-			"height":           configengine.CategoryNone,
-			"debug_log":        configengine.CategoryCrossPair,
-			"mouse":            configengine.CategoryCrossPair,
-			"watchdog":         configengine.CategoryNone,
-			"operator_quiet_s": configengine.CategoryNone,
-			"window_share_max": configengine.CategoryNone,
-			"window_split":     configengine.CategoryNone,
-			"tmux_conf":        configengine.CategorySourcedFile,
-			"segment_colors":   configengine.CategoryNone,
-			"buttons":          configengine.CategoryExecutable,
+			"tmux":                configengine.CategoryExecutable,
+			"shell":               configengine.CategoryExecutable,
+			"width":               configengine.CategoryNone,
+			"height":              configengine.CategoryNone,
+			"debug_log":           configengine.CategoryCrossPair,
+			"mouse":               configengine.CategoryCrossPair,
+			"watchdog":            configengine.CategoryNone,
+			"operator_quiet_s":    configengine.CategoryNone,
+			"window_share_max":    configengine.CategoryNone,
+			"window_split":        configengine.CategoryNone,
+			"pane_memory_max_mib": configengine.CategoryNone,
+			"tmux_conf":           configengine.CategorySourcedFile,
+			"segment_colors":      configengine.CategoryNone,
+			"buttons":             configengine.CategoryExecutable,
 		},
 		OpenMaps: ConfigOpenMaps(),
 		RetiredKeys: map[string]configengine.Category{

@@ -59,6 +59,15 @@
 // proc cannot log, so the caller logs the command it hands over and its end.
 // The one-time probe's `systemd-run` spawn goes unlogged; a caller sees only its outcome, through MemoryCapCoversTree.
 //
+// CapProcessMemory moves a process that is already running into a new transient scope with a memory cap and no swap.
+// It asks the systemd user manager over D-Bus through `busctl`.
+// It waits until the process has joined the scope and checks the scope's `memory.max`.
+// The scope's `OOMPolicy` is `continue`, so a kill at the cap ends one process and leaves the rest running.
+// ProcessOOMKills reads a process's cgroup and the OOM kills its `memory.events` counts.
+// OOMKillsInCgroup reads the name and pid of each process the kernel journal records as OOM-killed in a cgroup.
+// It reads through `journalctl`.
+// All three are Linux only, and the caller logs their spawns.
+//
 // IsSpawnAgain reports whether a start failed on a temporary resource shortage, EAGAIN from fork or exec.
 // NoteSpawnAgain records the time of each such refusal process-wide, and LastSpawnAgain reads it back,
 // so a caller that sees a later failure can judge whether a host resource shortage preceded it.

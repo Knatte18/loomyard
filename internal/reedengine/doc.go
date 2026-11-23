@@ -49,6 +49,15 @@
 // Every key binding that runs `lym` names the pinning binary's absolute path from selfexec.ResolveLymBinary.
 // So no prelude, binding, button or Slack line names a running test binary.
 //
+// Every strand pane runs in a memory-capped scope of the systemd user manager.
+// So a runaway process it starts is killed inside that scope before the host runs out of memory.
+// The same chokepoint moves the fresh pane's shell into a scope named `lym-pane-<pid>.scope`.
+// It does so before it types anything, through `proc.CapProcessMemory`.
+// The scope is capped at `pane_memory_max_mib` with no swap.
+// A kill at the cap ends the process the kernel picks, and the pane lives on.
+// A pane the cap cannot reach launches uncapped with a Warn naming the cause.
+// Such a pane runs on a host whose user manager holds no memory controller, or on Windows.
+//
 // A strand's full name is formed once, in AddStrand under the state lock, from the told prefix and the role.
 // The name is a birth attribute and the only lookup key; a lookup matches the full name or its role segment.
 // A role already held is numbered `-N`, and an explicit name that is held refuses.

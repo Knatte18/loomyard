@@ -17,7 +17,7 @@ import (
 )
 
 // TestEnterSession_DrivesTheToldTmux seeds a worktree config that names one tmux path and sets watchdog to off.
-// It then asserts that enterSession's engine drives a different told path and starts no watcher.
+// It then asserts that enterSession's engine drives a different told path and starts no name-repair loop.
 func TestEnterSession_DrivesTheToldTmux(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -41,14 +41,15 @@ func TestEnterSession_DrivesTheToldTmux(t *testing.T) {
 	hubforge.SeedConfig(t, h, map[string]string{"reed": string(seeded)})
 
 	told := filepath.Join(scratch, "told-tmux")
-	ws, err := enterSession(h.Path, told, reedengine.SessionName(prime))
+	ws, err := enterSession(h.Path, told, reedengine.SessionName(prime), watchdogDefaultTiming())
 	if err != nil {
 		t.Fatalf("enterSession: %v", err)
 	}
+	t.Cleanup(ws.cancel)
 	if got := ws.eng.TmuxPath(); got != told {
 		t.Errorf("engine TmuxPath() = %q, want the told path %q", got, told)
 	}
-	if ws.cancel != nil {
-		t.Error("enterSession with watchdog: off returned a non-nil cancel; want no watcher started")
+	if ws.repairsNames {
+		t.Error("enterSession with watchdog: off started the name-repair loop; want none")
 	}
 }
