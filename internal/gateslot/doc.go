@@ -114,7 +114,7 @@
 // `lym gate red-first --gate <key>` runs the tests a diff adds or changes on its merge base.
 // A parent's decision that names a bug no test can reach lifts the guard.
 // Exit 0 means a test went red on the base;
-// any other code is a refusal or a run that judged none of the tests.
+// any other code is a refusal, a call that cannot judge the tests, or a run that ran tests and judged none of them.
 //
 // # Run log
 //

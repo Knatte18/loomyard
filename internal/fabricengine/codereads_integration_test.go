@@ -1,4 +1,5 @@
-// codereads_integration_test.go covers Fabric.CodeDirAt and Fabric.CodeFileAt over a wired hub's code checkout.
+// codereads_integration_test.go covers the code reads at a commit over a wired hub's code checkout.
+// They are Fabric.CodeDirAt, Fabric.CodeFileAt and Fabric.ExportCodeTreeAt.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -77,6 +78,32 @@ func TestCodeReadsAtCommit(t *testing.T) {
 			if found != tt.wantFound || string(data) != tt.want {
 				t.Errorf("CodeFileAt(%q) = (%q, %v); want (%q, %v)", tt.rel, data, found, tt.want, tt.wantFound)
 			}
+		}
+	})
+
+	t.Run("ExportCodeTreeAtWritesTheCommitsFiles", func(t *testing.T) {
+		dest := filepath.Join(t.TempDir(), "base")
+		if err := f.ExportCodeTreeAt(head, dest); err != nil {
+			t.Fatalf("ExportCodeTreeAt() error = %v", err)
+		}
+		tests := []struct {
+			rel       string
+			wantFound bool
+			want      string
+		}{
+			{"pkg/a.go", true, "package pkg\n"},
+			{"pkg/sub/c.go", true, "package sub\n"},
+			{"pkg/new.go", false, ""},
+		}
+		for _, tt := range tests {
+			data, err := os.ReadFile(filepath.Join(dest, filepath.FromSlash(tt.rel)))
+			found := err == nil
+			if found != tt.wantFound || string(data) != tt.want {
+				t.Errorf("exported %s = (%q, found %v); want (%q, found %v)", tt.rel, data, found, tt.want, tt.wantFound)
+			}
+		}
+		if err := f.ExportCodeTreeAt("not-a-sha", t.TempDir()); err == nil {
+			t.Error("ExportCodeTreeAt(not-a-sha) error = nil; want the invalid name refused")
 		}
 	})
 }

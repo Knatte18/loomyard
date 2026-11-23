@@ -199,6 +199,11 @@ type testRequest struct {
 	targets []string
 	// args are the arguments after `--`, which fill each tier's {args}.
 	args []string
+	// terms are the class filter terms each invocation of explicit targets runs under; only `lym gate red-first` sets them.
+	terms []string
+	// checkoutRoot, when set, replaces the worktree root that the tiers' dirs and the build's dir resolve against.
+	// `lym gate red-first` sets it to a checkout of the base, so the hub's tiers build and run that code.
+	checkoutRoot string
 
 	// The fields below are filled by runTest once the hub is resolved and the config loaded, and read by the tier runs.
 

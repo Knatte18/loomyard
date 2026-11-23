@@ -994,7 +994,9 @@ User-facing modules each get one `lym <module>` namespace:
   the call also lists the changed blocks no test covers and the packages it did not judge, with the reason, and exits 0 once it ran.
   `lym gate red-first --gate <key> [--base <rev>]` runs the tests the worktree's diff adds or changes, which `internal/testreach` names, once under the key's tiers,
   with a Go overlay that puts the base's production files and the non-Go files they embed back, and exits 0 when one of them fails there;
-  a run in which every one passes, a diff with no test, and a run the check cannot judge (a hub whose scoper is not `go`) each exit with their own code from `internal/gateslot`.
+  under the `dotnet` scoper it runs the changed C# test methods, which `internal/dotnetimpact` names, by fully qualified name in a checkout of the base
+  where the changed files of their test projects keep their working-tree text, and a test that does not build there counts as failing;
+  a run in which every one passes, a diff with no test, and a run the check cannot judge (a hub whose scoper is neither `go` nor `dotnet`, C# tests no filter or tier can reach, a C# test file whose project cannot be told, or a C# run that discovered no test) each exit with their own code from `internal/gateslot`.
   `lym gate test --map [<targets>...]` builds the per-package coverage maps of `internal/testcover` over its scope's packages at the HEAD of the worktree it runs in, only on command
   (the `reach` report step's refresh of a task worktree's own maps runs the same measurement under the same build and test bounds and memory cap),
   the hub's shared maps from the prime and a worktree's own, under its `.lym`, from any other worktree:
@@ -1111,7 +1113,7 @@ User-facing modules each get one `lym <module>` namespace:
   For an entry labelled `bug`, its `red-first` gate entry runs `lym gate red-first` and holds the handoff until a test the diff adds or changes fails on the merge base,
   unless the parent recorded an added decision titled `No test seam`, or `No bug fixed` for a change that only adds tests pinning existing behaviour;
   a diff with no test holds the handoff without spending an attempt until a new commit or that record;
-  a hub whose scoper is not go passes the gate, since the check cannot judge the tests there;
+  a hub whose scoper is neither go nor dotnet passes the gate, since the check cannot judge the tests there;
   the fix's commit carries a `Root-Cause:` trailer that the `Code-Review` perch checks.
   `Drift-Verify` checks the writer's code by containment and has a judge rule on the expected changes.
   The judge also rules on each loosened check, an assertion, tolerance or limit widened in a test existing at the review base, as caused or uncaused.

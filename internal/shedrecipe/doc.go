@@ -62,7 +62,7 @@
 // It holds until a test the diff adds or changes fails on the merge base.
 // The parent may instead record a decision titled `No test seam`, for a bug no test can reach.
 // A decision titled `No bug fixed` passes it too, for a change that only adds tests pinning existing behaviour.
-// A hub whose scoper is not go passes it, since the check cannot judge the tests there.
+// A hub whose scoper is neither go nor dotnet passes it, since the check cannot judge the tests there.
 // A diff that adds no test holds the run without spending an attempt.
 // The hold lasts until a new commit or that record, so its entry is MayHold.
 // An entry without the label passes at once.

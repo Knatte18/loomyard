@@ -105,6 +105,9 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	request.commands = &runningCommands{}
 
 	green := openGreen(gateslot.WaitDir(location.AnchorPath()), request.root, request.goBinary, cfg)
+	if request.checkoutRoot != "" {
+		request.root = request.checkoutRoot
+	}
 	sc, err := computeScope(preCtx, cfg, location, request.root, request, green)
 	if refusal := preTierExpiry(preCtx, runCtx, request, "computing the scope"); refusal != "" {
 		return output.Err(out, refusal)

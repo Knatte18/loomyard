@@ -12,8 +12,10 @@ const RedFirstGreenExit = 3
 const RedFirstNoTestExit = 4
 
 // RedFirstUnjudgedExit is the exit code of a `lym gate red-first` call that cannot judge the diff's tests on the base.
-// The cause is a hub scoper that is not go.
-// The site passes it, since no check can show the test red on such a hub.
+// The cause is a hub scoper that is neither go nor dotnet,
+// or a C# change whose tests no filter selects by name or no tier of the gate key can run.
+// It is also a C# change whose tier run discovered no test.
+// The site passes it, since no check can show the test red there and the writer cannot change that.
 const RedFirstUnjudgedExit = 5
 
 // BugLabel is the board label of an entry whose run must show its fix's test failing on the merge base.

@@ -206,6 +206,78 @@ func TestNamedFailedTests(t *testing.T) {
 	}
 }
 
+// TestTierFailureNames pins that the failures named under tier and guard runs are read, whatever else the report holds.
+func TestTierFailureNames(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	report := func(lines ...string) string {
+		return "Failed!\n" + FailureReportHeader + "\n" + strings.Join(lines, "\n") + "\n" +
+			FailedRunsPrefix + "tier0 (exit 1); the exit code is tier0's\n"
+	}
+	tests := []struct {
+		name string
+		log  string
+		want []string
+	}{
+		{
+			name: "the failures of a tier and a guard run are read once each, a Go test with its package",
+			log: report(
+				"tier0 (exit 1), log /runs/a.log:",
+				"  AreaIsPositive:",
+				"    Expected: greater than 0",
+				"  Scales(2):",
+				"  AreaIsPositive:",
+				"guard tier1 (exit 1), log /runs/g.log:",
+				"  example.com/m/g TestGuard:",
+			),
+			want: []string{"AreaIsPositive", "Scales(2)", "example.com/m/g TestGuard"},
+		},
+		{
+			name: "a package that failed outside any test, a cause line and a build run's lines name none",
+			log: report(
+				"build (exit 1), log /runs/b.log:",
+				"  "+ReportOutputLine,
+				"    error CS0117: no Two",
+				"tier0 (timed out), log /runs/a.log:",
+				"  lym gate test: tier timeout: tier0 exceeded timeout_min 30m0s; find the hang",
+				"  example.com/m/b"+ReportOutsideAnyTestSuffix+":",
+				"  AreaIsPositive:",
+			),
+			want: []string{"AreaIsPositive"},
+		},
+		{
+			name: "a failure line under a build run names none",
+			log: report(
+				"build (exit 1), log /runs/b.log:",
+				"  Ns.C.M:",
+				"tier0 (exit 1), log /runs/a.log:",
+				"  AreaIsPositive:",
+			),
+			want: []string{"AreaIsPositive"},
+		},
+		{
+			name: "a failure below the cut line is not read",
+			log: report(
+				"tier0 (exit 1), log /runs/a.log:",
+				"  AreaIsPositive:",
+				ReportCutPrefix+"12 more lines cut (tier0: 12); the logs named above hold the cut lines of a run with a log",
+				"  Scales:",
+			),
+			want: []string{"AreaIsPositive"},
+		},
+		{name: "a log with no report names none", log: "Failed AreaIsPositive [3 ms]\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := TierFailureNames(tt.log); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("TierFailureNames() = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestTierRunFailures pins which failure reports list tier and guard runs alone, and how each failure is named.
 func TestTierRunFailures(t *testing.T) {
 	tiergate.Require(t, 0)

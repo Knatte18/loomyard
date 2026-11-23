@@ -8,7 +8,6 @@ import (
 	"path"
 	"slices"
 	"sort"
-	"strings"
 )
 
 // Scope is the answer of a derivation.
@@ -212,11 +211,7 @@ func filterTerm(t typeDecl) string {
 	if t.Abstract {
 		return ""
 	}
-	name := strings.Join(append(slices.Clone(t.Outer), t.Name), "+")
-	if t.Namespace != "" {
-		name = t.Namespace + "." + name
-	}
-	return "FullyQualifiedName~" + name
+	return "FullyQualifiedName~" + qualifiedName(t)
 }
 
 // projectIndex answers which `.csproj` files sit in which directory.

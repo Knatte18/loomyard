@@ -134,7 +134,7 @@ producers:
         # and so does a bug the parent recorded, with lym loom decision add, under a title opening
         # "No test seam", and an entry that fixes no bug, such as one that only adds tests pinning
         # existing behaviour, recorded the same way under a title opening "No bug fixed".
-        # A hub whose scoper is not go passes it, since the check cannot judge the tests there.
+        # A hub whose scoper is neither go nor dotnet passes it, since the check cannot judge the tests there.
         # A diff that adds no test holds the run without spending an attempt until a new commit or that
         # record lands. It has no fixer: only the writer can make a test show the bug.
         - name: red-first

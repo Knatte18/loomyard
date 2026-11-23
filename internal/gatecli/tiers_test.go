@@ -129,6 +129,11 @@ func TestPlanTierRuns(t *testing.T) {
 	}{
 		{name: "the default is tier0 over its all_targets in its dir", want: []string{"tier0 all dir=. ./..."}},
 		{
+			name:    "explicit targets run under the call's class filter terms, partial",
+			request: testRequest{targets: []string{"/c/T/T.csproj"}, terms: []string{"FullyQualifiedName~N.C.M"}},
+			want:    []string{"tier0 targets dir=. /c/T/T.csproj terms=FullyQualifiedName~N.C.M partial"},
+		},
+		{
 			name:    "tiers run ascending and without repeats",
 			mutate:  func(cfg *gateslot.Config) { t1 := cfg.Tiers["tier1"]; t1.Covers = nil; cfg.Tiers["tier1"] = t1 },
 			request: testRequest{tiers: []int{1, 0, 1}},

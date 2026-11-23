@@ -471,9 +471,9 @@
 // `--gate` is required, and its refusal comes before hub resolution.
 // A diff with no added or changed test is refused with exit `gateslot.RedFirstNoTestExit`,
 // whose way forward is a recorded decision whose title opens `gateslot.NoTestSeamTitle`.
-// A hub whose scoper is not `go` exits `gateslot.RedFirstUnjudgedExit`, which a red-first gate passes.
+// A hub whose scoper is neither `go` nor `dotnet` exits `gateslot.RedFirstUnjudgedExit`, which a red-first gate passes.
 //
-// The verb puts the base's production code back with a Go build overlay.
+// Under the go scoper the verb puts the base's production code back with a Go build overlay.
 // It runs the key's tiers once in this process, once per package that holds a changed test.
 // The `{args}` are `-overlay=<file>` and `-run=^(<names>)$`.
 // The overlay maps each changed production `.go` file of the module to its text at the base.
@@ -482,13 +482,34 @@
 // Test files and every other changed non-Go file keep their working-tree text.
 // The key's lints, scope and report steps never run, and each tier's command must hold `{args}`.
 //
+// Under the dotnet scoper the changed tests are the test methods `dotnetimpact.ChangedTests` names in the changed files.
+// Each belongs to the `.csproj` of the nearest directory above its file.
+// The verb writes the base's tree into a temp checkout through fabric.
+// Every changed file whose nearest `.csproj` is one of those test projects keeps its working-tree text there.
+// It runs the key's tiers that hold `{targets}` once per test project, with the request's checkout root on the checkout.
+// So the shared build and each tier build and run the base's production code with the changed tests.
+// The one target is the project's absolute path in the checkout.
+// Each test's `FullyQualifiedName~<Class>.<Method>` term fills `{filter}`.
+// A failed test is red when the failure report names its method, bare, with arguments or fully qualified.
+// With none named, a C# compile error in a file of the test project makes every test of the project red.
+// A test that reads a member only the change adds does not build on the base.
+// The envelope then lists the error under `build_errors`.
+// The verb exits `gateslot.RedFirstUnjudgedExit` when no changed test is a method of a non-abstract class.
+// It exits so too when a test file's directory chain holds no `.csproj` or its nearest holds two.
+// It exits so too when no tier of the key holds `{targets}`.
+// It exits so too when a project's tier run discovered no test:
+// its filter selected none, or a restore or build failure ended the run before any test ran.
+//
 // The exit code is the contract:
-// - 0 when a changed test failed on the base; the envelope lists the red tests as `<package>.<Name>`.
-// - `gateslot.RedFirstGreenExit` when every changed test passed on the base, which does not show the bug.
-// - `gateslot.RedFirstNoTestExit` when the diff adds or changes no test.
-// - `gateslot.RedFirstUnjudgedExit` when the hub's scoper is not `go`.
-// - 1 for a refusal, and for a run that judged none of the tests, such as a timeout or a crash.
-// - 128 plus the signal number after a terminating signal.
+//   - 0 when a changed test failed on the base.
+//     The envelope lists the red tests as `<package>.<Name>` under the go scoper.
+//     Under the dotnet scoper it lists them as `<Class>.<Method>`.
+//   - `gateslot.RedFirstGreenExit` when every changed test passed on the base, which does not show the bug.
+//   - `gateslot.RedFirstNoTestExit` when the diff adds or changes no test.
+//   - `gateslot.RedFirstUnjudgedExit` when the hub's scoper is neither `go` nor `dotnet`,
+//     or when a C# change's tests cannot be selected or run.
+//   - 1 for a refusal, and for a run that ran tests and judged none of them, such as a timeout or a crash.
+//   - 128 plus the signal number after a terminating signal.
 //
 // The green exit's way forward names a second path, for a change that fixes no bug.
 // That path is a recorded decision whose title opens `gateslot.NoBugFixedTitle`.

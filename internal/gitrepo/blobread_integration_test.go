@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -297,6 +298,56 @@ func TestHistoryReads(t *testing.T) {
 			got, err = boundRepo.HeadContains(shaSkewedTarget)
 			if err != nil || !got {
 				t.Errorf("HeadContains(target under descendants 10 and 11 hours older) = (%v, %v); want (true, nil) within the slack", got, err)
+			}
+		}},
+		{"WriteTreeAtRevision writes every file as the commit stores it", func(t *testing.T) {
+			first := filepath.Join(t.TempDir(), "a")
+			if err := repo.WriteTreeAtRevision(shaA, first); err != nil {
+				t.Fatalf("WriteTreeAtRevision(A) error = %v; want nil", err)
+			}
+			if got, err := os.ReadFile(filepath.Join(first, "a.txt")); err != nil || string(got) != "version one" {
+				t.Errorf("a.txt written from A = %q, %v; want %q", got, err, "version one")
+			}
+			if _, err := os.Stat(filepath.Join(first, "other.txt")); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("other.txt written from A: stat error = %v; want it absent, since A lacks it", err)
+			}
+
+			last := filepath.Join(t.TempDir(), "c")
+			if err := repo.WriteTreeAtRevision(shaC, last); err != nil {
+				t.Fatalf("WriteTreeAtRevision(C) error = %v; want nil", err)
+			}
+			if got, err := os.ReadFile(filepath.Join(last, "pkg", "sub", "c.go")); err != nil || string(got) != "package sub" {
+				t.Errorf("pkg/sub/c.go written from C = %q, %v; want %q", got, err, "package sub")
+			}
+
+			// Windows stores no executable bit and needs a privilege for a symbolic link, so this part runs elsewhere.
+			if runtime.GOOS != "windows" {
+				modesDir, modesRepo := newRepo(t)
+				writeFile(t, modesDir, "run.sh", "#!/bin/sh\n")
+				if err := os.Chmod(filepath.Join(modesDir, "run.sh"), 0o755); err != nil {
+					t.Fatalf("chmod run.sh: %v", err)
+				}
+				if err := os.Symlink("run.sh", filepath.Join(modesDir, "link")); err != nil {
+					t.Fatalf("symlink link: %v", err)
+				}
+				commitAll(t, modesDir, "executable and symlink")
+				written := filepath.Join(t.TempDir(), "modes")
+				if err := modesRepo.WriteTreeAtRevision(requireCurrentSHA(t, modesRepo), written); err != nil {
+					t.Fatalf("WriteTreeAtRevision(modes) error = %v; want nil", err)
+				}
+				if got, err := os.ReadFile(filepath.Join(written, "run.sh")); err != nil || string(got) != "#!/bin/sh\n" {
+					t.Errorf("run.sh written = %q, %v; want %q", got, err, "#!/bin/sh\n")
+				}
+				if info, err := os.Stat(filepath.Join(written, "run.sh")); err != nil || info.Mode().Perm()&0o100 == 0 {
+					t.Errorf("run.sh written: stat = %v, %v; want the owner's execute bit set", info, err)
+				}
+				if _, err := os.Lstat(filepath.Join(written, "link")); !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("link written: lstat error = %v; want it absent, since a symbolic link is not written", err)
+				}
+			}
+
+			if err := repo.WriteTreeAtRevision("not-a-sha", t.TempDir()); !errors.Is(err, gitrepo.ErrInvalidSHA) {
+				t.Errorf("WriteTreeAtRevision(not-a-sha) error = %v; want ErrInvalidSHA", err)
 			}
 		}},
 		{"PathRevisions returns an empty slice for a path with no history", func(t *testing.T) {

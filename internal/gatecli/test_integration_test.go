@@ -35,6 +35,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -2519,6 +2520,56 @@ func TestGateTest_UnsetDirFollowsTheAnchor(t *testing.T) {
 	}
 	if want := []string{anchor, anchor, filepath.Join(prime, "sub"), prime}; !slices.Equal(cwds, want) {
 		t.Errorf("build, tier0, tier2 and tier6 ran in %q; want the build and tier0, which set no dir, in the anchor, tier2, whose dir is sub, in sub under the worktree root, and tier6, whose dir is ., in the worktree root: %q", cwds, want)
+	}
+}
+
+// TestGateTest_CheckoutRootMovesTheBuildAndTierDirs pins that a request's checkout root moves the shared build's dir.
+// It moves the tiers' dirs too, since both resolve against the root.
+// It runs in this process, whose environment sets the stand-in's role and record file, so it is not parallel.
+func TestGateTest_CheckoutRootMovesTheBuildAndTierDirs(t *testing.T) {
+	tiergate.Require(t, 1)
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
+	anchor := h.Location.AnchorPath()
+	checkout := t.TempDir()
+	for _, dir := range []string{"backend", "sub"} {
+		if err := os.MkdirAll(filepath.Join(checkout, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gateConfig := scenarioConfig(t, func(cfg map[string]any) {
+		cfg["build"] = map[string]any{"command": "'" + os.Args[0] + "' sharedbuild", "dir": "sub", "timeout_min": 1}
+		tiers := cfg["tiers"].(map[string]any)
+		tiers["tier0"].(map[string]any)["shared_build"] = true
+		tiers["tier2"].(map[string]any)["dir"] = "sub"
+	})
+	if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "gate"), gateConfig, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	record := filepath.Join(t.TempDir(), "standin.json")
+	t.Setenv(helperEnv, helperRoleStandIn)
+	t.Setenv(helperRecordEnv, record)
+	t.Setenv(gateslot.InheritEnv, "")
+	t.Setenv(enclosingGateEnv, "")
+	t.Setenv(agentname.StrandNameEnv, "")
+
+	var out, stderr bytes.Buffer
+	code := runTest(lymcwd.WithCwd(context.Background(), anchor), &out, testRequest{
+		goBinary: os.Args[0], samplePeriod: defaultSamplePeriod, preTierCeiling: defaultPreTierCeiling, timeoutUnit: time.Minute,
+		secondUnit: time.Second, rerunDelay: defaultRerunDelay, pipeWaitDelay: defaultPipeWaitDelay, stderr: &stderr,
+		tiers: []int{0, 2}, targets: []string{"./pkg"}, checkoutRoot: checkout,
+	})
+	if code != 0 {
+		t.Fatalf("runTest() = exit %d, stdout %q, stderr %q; want 0", code, out.String(), stderr.String())
+	}
+	g := &runningGate{record: record}
+	var cwds []string
+	for _, entry := range g.records(t) {
+		cwds = append(cwds, entry.Cwd)
+	}
+	want := []string{filepath.Join(checkout, "sub"), filepath.Join(checkout, "backend"), filepath.Join(checkout, "sub")}
+	if !slices.Equal(cwds, want) {
+		t.Errorf("the build, tier0 and tier2 ran in %q; want the checkout's sub, backend and sub: %q", cwds, want)
 	}
 }
 

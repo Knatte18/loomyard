@@ -39,7 +39,8 @@ type RedFirstGate struct {
 // `StatusPassed` and `StatusSkipped` pass, and `StatusDirty` fails with the dirty paths.
 // A `StatusFailed` run whose exit code is gateslot.RedFirstGreenExit fails with the way forward of a green test.
 // An exit of gateslot.RedFirstUnjudgedExit passes:
-// on a hub whose scoper is not go no check can show the test red, so holding would halt every bug fix there.
+// the check cannot judge the tests, as on a hub whose scoper is neither go nor dotnet.
+// Holding would halt a bug fix that no change of the writer's can let through.
 // An exit of gateslot.RedFirstNoTestExit waits on a new commit or the parent's record.
 // Gate answers it pending, so the run holds without spending an attempt.
 // A hold's pending answers carry one line telling the writer its way forward until the loop reports it delivered;
@@ -214,7 +215,7 @@ func (g *redFirstGate) verify() (verifytree.Result, *shuttleengine.GateResult, e
 		return res, &dirty, nil
 	}
 	if res.ExitCode == gateslot.RedFirstUnjudgedExit && !res.TimedOut && !res.RunnerCrash {
-		logger.Info("loomshed: red-first gate passed unjudged, the hub's scoper is not go", "gate", g.siteLabel, "attempt", g.attempt, "log", res.Log)
+		logger.Info("loomshed: red-first gate passed unjudged, the check cannot judge the tests", "gate", g.siteLabel, "attempt", g.attempt, "log", res.Log)
 		return res, &shuttleengine.GateResult{Passed: true}, nil
 	}
 	logger.Warn("loomshed: red-first gate failed", "gate", g.siteLabel, "attempt", g.attempt, "exitCode", res.ExitCode, "timedOut", res.TimedOut, "runnerCrash", res.RunnerCrash, "log", res.Log)

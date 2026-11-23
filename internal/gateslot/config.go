@@ -81,6 +81,27 @@ func (c Config) HasGoCoverageMaps() bool {
 	return scoperHasGoCoverageMaps[c.Scoper]
 }
 
+// RedFirstMode is how `lym gate red-first` runs the changed tests of a scoper on the diff's base.
+type RedFirstMode int
+
+// The ways a scoper's changed tests run on the diff's base.
+const (
+	// RedFirstUnsupported is a scoper the check cannot judge tests for.
+	RedFirstUnsupported RedFirstMode = iota
+	// RedFirstOverlay runs the tests in the worktree, under a build overlay of the base's production files.
+	RedFirstOverlay
+	// RedFirstCheckout runs the tests in a checkout of the base, where the changed test files keep their working-tree text.
+	RedFirstCheckout
+)
+
+// scoperRedFirstMode says, per scoper, how the red-first check runs its changed tests.
+var scoperRedFirstMode = map[string]RedFirstMode{"go": RedFirstOverlay, "none": RedFirstUnsupported, "dotnet": RedFirstCheckout}
+
+// RedFirstMode returns how the red-first check runs the config's scoper's changed tests on the diff's base.
+func (c Config) RedFirstMode() RedFirstMode {
+	return scoperRedFirstMode[c.Scoper]
+}
+
 // BuildStep is the build a gate call runs once for every tier that sets shared_build.
 type BuildStep struct {
 	// About is one line saying what the build produces.

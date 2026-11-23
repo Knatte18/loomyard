@@ -35,6 +35,8 @@ const (
 var (
 	tierSummaryPattern  = regexp.MustCompile(`^gate test: tier(\d+) .* discovered \d+ passed \d+ failed \d+ skipped \d+ wall \S+s exit (-?\d+) log .*$`)
 	buildSummaryPattern = regexp.MustCompile(`^gate test: build before tier(\d+) wall \S+s exit (-?\d+) log .*$`)
+	// tierDiscoveredPattern captures the number of tests a tier summary line reports as discovered.
+	tierDiscoveredPattern = regexp.MustCompile(`^gate test: tier\d+ .* discovered (\d+) passed \d+ failed \d+ skipped \d+ wall \S+s exit -?\d+ log .*$`)
 )
 
 // RunRecord is the diagnostic record of one tier run.
@@ -446,6 +448,38 @@ func TierRunFailures(log string) (failures []string, ok bool) {
 	return failures, header != ""
 }
 
+// TierFailureNames returns the failures the first failure report in log names under a tier or guard run.
+// Each comes once, in report order, as the text of its `  <failure>:` line:
+// a Go test reads as `<package> <test>`, and a VSTest test as the name its results give it.
+// A package that failed outside any test, a cause line and a failure under any other run name none.
+// A log with no report names none, and a cut report names only the failures above its cut line.
+func TierFailureNames(log string) []string {
+	lines := strings.Split(strings.ReplaceAll(log, "\r\n", "\n"), "\n")
+	start := slices.Index(lines, FailureReportHeader)
+	if start < 0 {
+		return nil
+	}
+	var names []string
+	underTier := false
+	for _, line := range lines[start+1:] {
+		if line == "" || strings.HasPrefix(line, failureReportEnd) || strings.HasPrefix(line, ReportCutPrefix) {
+			break
+		}
+		switch {
+		case strings.HasPrefix(line, "    "):
+			// A failure's own output.
+		case strings.HasPrefix(line, "  "):
+			failure, isFailure := reportFailureLine(line)
+			if underTier && isFailure && !strings.HasSuffix(failure, ReportOutsideAnyTestSuffix) && !slices.Contains(names, failure) {
+				names = append(names, failure)
+			}
+		default:
+			_, underTier = reportRunTier(line)
+		}
+	}
+	return names
+}
+
 // PackagesFailedOutsideTests returns the packages the first failure report in log names as failed outside any test.
 // Each comes once, in report order; a compile error of a package's tests is such a failure.
 // A log with no report, and a report cut at its line cap past the last such line, name only what they hold.
@@ -526,4 +560,19 @@ func FailedTier(log string) (tier int, build bool, ok bool) {
 		return number, isBuild, true
 	}
 	return 0, false, false
+}
+
+// TierDiscovered returns the number of tests the tier summary lines in log report as discovered, added up.
+// found is false when log holds no tier summary line; a build summary line is no tier line.
+func TierDiscovered(log string) (discovered int, found bool) {
+	for _, line := range strings.Split(log, "\n") {
+		match := tierDiscoveredPattern.FindStringSubmatch(strings.TrimRight(line, "\r"))
+		if match == nil {
+			continue
+		}
+		count, _ := strconv.Atoi(match[1])
+		discovered += count
+		found = true
+	}
+	return discovered, found
 }

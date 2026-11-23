@@ -34,6 +34,17 @@ func (f *Fabric) CodeTreeAt(rev, dir string) ([]string, error) {
 	return paths, nil
 }
 
+// ExportCodeTreeAt writes every regular file of the code checkout's commit rev under dest.
+// The working tree does not affect what it writes.
+// An executable file keeps its executable bit; a symbolic link and a submodule are not written.
+// rev is a hex commit name, such as the one HeadSHA returns.
+func (f *Fabric) ExportCodeTreeAt(rev, dest string) error {
+	if err := f.code.WriteTreeAtRevision(rev, dest); err != nil {
+		return fmt.Errorf("fabricengine: export the tree of %s: %w", rev, err)
+	}
+	return nil
+}
+
 // CodeFileAt returns rel as stored in the code checkout's commit rev, unaffected by any later change to the file.
 // rel is slash-separated and relative to the checkout's root, and rev is a hex commit name.
 // found is false with a nil error when rel is absent at rev.

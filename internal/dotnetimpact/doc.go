@@ -57,6 +57,10 @@
 // or the scan fails.
 // An empty seed list, and seeds all dropped as inert, are the empty scope.
 //
+// The package also names the test methods a diff adds or changes, each by class and method, in ChangedTests.
+// It compares each method's source text, from its first attribute list to the end of its body.
+// The comparison reads raw text, so a change inside a string literal or a comment counts.
+//
 // The empty scope, which has no project and does not set NoTestClass, runs nothing: nothing testable changed.
 // NoTestClass says something changed but no test class names it.
 // A cancelled ctx is the one error, checked before each git read.

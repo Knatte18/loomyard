@@ -165,6 +165,29 @@ func TestConfig_HasGoCoverageMaps(t *testing.T) {
 	}
 }
 
+// TestConfig_RedFirstMode pins how each scoper's changed tests run on the base.
+// Go runs them by overlay, dotnet by checkout, and none not at all.
+func TestConfig_RedFirstMode(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		scoper string
+		want   RedFirstMode
+	}{
+		{"go", RedFirstOverlay},
+		{"none", RedFirstUnsupported},
+		{"dotnet", RedFirstCheckout},
+	}
+	for _, tt := range tests {
+		t.Run(tt.scoper, func(t *testing.T) {
+			t.Parallel()
+			if got := (Config{Scoper: tt.scoper}).RedFirstMode(); got != tt.want {
+				t.Errorf("Config{Scoper: %q}.RedFirstMode() = %v; want %v", tt.scoper, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestResolveCommandDir pins the one base every hub command's dir resolves against:
 // the anchor for no dir, the worktree root for a relative dir, and an absolute dir as written.
 func TestResolveCommandDir(t *testing.T) {

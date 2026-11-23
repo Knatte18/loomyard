@@ -225,7 +225,8 @@ func watchSkipArgs(names []string) []string {
 }
 
 // scopeInvocations returns the invocations one tier makes over sc, and whether its command ignores the scope's narrowing.
-// Explicit targets run in the -C directory, else the tier's dir.
+// Explicit targets run in the -C directory, else the tier's dir, under the call's class filter terms.
+// Terms make the invocation partial.
 // A whole scope runs the tier's all_targets, split at spaces, in the tier's dir.
 // A narrower scope runs the tier once per module in that module's directory, and the empty scope makes none.
 // A dotnet share's module is a selected project, whose invocation carries its class filter terms and is partial.
@@ -241,7 +242,7 @@ func scopeInvocations(tier gateslot.Tier, request testRequest, sc scope) (invoca
 		if request.dir != "" {
 			dir = request.dir
 		}
-		return []invocation{{dir: dir, targets: request.targets}}, !gateslot.HoldsTargets(tier.Command)
+		return []invocation{{dir: dir, targets: request.targets, terms: request.terms, partial: len(request.terms) > 0}}, !gateslot.HoldsTargets(tier.Command)
 	case sc.whole, tier.NoCarry:
 		return runsWhole, false
 	case sc.noTests && tier.SharedBuild:

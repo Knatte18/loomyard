@@ -10,6 +10,85 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+func TestParseSource_TestMethods(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name string
+		src  string
+		// want maps a type's name to the test methods it holds; a type with none is absent.
+		want map[string][]testMethod
+	}{
+		{
+			name: "BlockBody",
+			src:  "class A { [Test] public void M() { Run(); } void Other() { } }",
+			want: map[string][]testMethod{"A": {{Name: "M", Text: "[Test] public void M() { Run(); }"}}},
+		},
+		{
+			name: "StackedAttributeLists_StartAtFirstList",
+			src:  "class A { [TestCase(1)]\n  [TestCase(2)]\n  void M(int x) { } }",
+			want: map[string][]testMethod{"A": {{Name: "M", Text: "[TestCase(1)]\n  [TestCase(2)]\n  void M(int x) { }"}}},
+		},
+		{
+			name: "ExpressionBody_EndsAtSemicolon",
+			src:  "class A { [Test] int M() => Make(new[] { 1, 2 }.Length); int N() { return 1; } }",
+			want: map[string][]testMethod{"A": {{Name: "M", Text: "[Test] int M() => Make(new[] { 1, 2 }.Length);"}}},
+		},
+		{
+			name: "GenericMethod_NameWithoutTypeParameters",
+			src:  "class A { [Test] void Check<T>() where T : new() { } }",
+			want: map[string][]testMethod{"A": {{Name: "Check", Text: "[Test] void Check<T>() where T : new() { }"}}},
+		},
+		{
+			name: "BodilessMethod_EndsAtSemicolon",
+			src:  "abstract class A { [Test] public abstract void M(); }",
+			want: map[string][]testMethod{"A": {{Name: "M", Text: "[Test] public abstract void M();"}}},
+		},
+		{
+			name: "PropertyAndField_NotRecorded",
+			src:  "class A { [Test] int P { get; } [Test] int f; [Test] void M() { } }",
+			want: map[string][]testMethod{"A": {{Name: "M", Text: "[Test] void M() { }"}}},
+		},
+		{
+			name: "NoTestAttribute_NotRecorded",
+			src:  "class A { [Obsolete] void M() { } void N() { } }",
+			want: map[string][]testMethod{},
+		},
+		{
+			name: "NestedClass_MethodsLandOnTheirOwnType",
+			src:  "class Outer { [Test] void A() { } class Inner { [Test] void B() { } } [Test] void C() { } }",
+			want: map[string][]testMethod{
+				"Outer": {{Name: "A", Text: "[Test] void A() { }"}, {Name: "C", Text: "[Test] void C() { }"}},
+				"Inner": {{Name: "B", Text: "[Test] void B() { }"}},
+			},
+		},
+		{
+			name: "StringLiteralChange_ChangesText",
+			src:  "class A { [Test] void M() { Assert.Equal(\"changed\", Run()); } }",
+			want: map[string][]testMethod{"A": {{Name: "M", Text: "[Test] void M() { Assert.Equal(\"changed\", Run()); }"}}},
+		},
+		{
+			name: "ExpressionBody_OpeningWithABracket_EndsAtSemicolon",
+			src:  "class A { [Test] void M() => (Run()).Check(); void N() { } }",
+			want: map[string][]testMethod{"A": {{Name: "M", Text: "[Test] void M() => (Run()).Check();"}}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := map[string][]testMethod{}
+			for _, decl := range parseSource("a/File.cs", []byte(tt.src)).Types {
+				if len(decl.TestMethods) > 0 {
+					got[decl.Name] = decl.TestMethods
+				}
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("parseSource TestMethods mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func TestParseSource(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -144,12 +223,12 @@ func TestParseSource(t *testing.T) {
 				"class F { [Fact(Skip = \"x\")] void M() { } }\n" +
 				"class G { [Obsolete] void M() { } }",
 			want: []typeDecl{
-				{Name: "A", Kind: "class", HasTestMethod: true},
-				{Name: "B", Kind: "class", HasTestMethod: true},
-				{Name: "C", Kind: "class", HasTestMethod: true},
-				{Name: "D", Kind: "class", HasTestMethod: true},
-				{Name: "E", Kind: "class", HasTestMethod: true},
-				{Name: "F", Kind: "class", HasTestMethod: true},
+				{Name: "A", Kind: "class", HasTestMethod: true, TestMethods: []testMethod{{Name: "M", Text: "[Test] void M() { }"}}},
+				{Name: "B", Kind: "class", HasTestMethod: true, TestMethods: []testMethod{{Name: "M", Text: "[TestMethod] public void M() { }"}}},
+				{Name: "C", Kind: "class", HasTestMethod: true, TestMethods: []testMethod{{Name: "M", Text: "[NUnit.Framework.TestAttribute] void M() { }"}}},
+				{Name: "D", Kind: "class", HasTestMethod: true, TestMethods: []testMethod{{Name: "M", Text: "[Category(\"x\"), Theory] void M() { }"}}},
+				{Name: "E", Kind: "class", HasTestMethod: true, TestMethods: []testMethod{{Name: "M", Text: "[TestCase(1, 2)] void M() { }"}}},
+				{Name: "F", Kind: "class", HasTestMethod: true, TestMethods: []testMethod{{Name: "M", Text: "[Fact(Skip = \"x\")] void M() { }"}}},
 				{Name: "G", Kind: "class"},
 			},
 		},

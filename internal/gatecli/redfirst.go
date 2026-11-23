@@ -1,6 +1,7 @@
 // redfirst.go implements `lym gate red-first`, which proves a bug fix's test was red before the fix.
 // It runs the tests the worktree's diff adds or changes once on the code of the diff's base.
-// It lays the base's production files, and the non-Go files they embed, over the working tree with a Go build overlay.
+// Under the go scoper it lays the base's production files over the working tree with a Go build overlay.
+// The non-Go files they embed go with them.
 // A site reads the verb's exit code.
 // The code is 0 when a changed test failed on the base, and a gateslot red-first code otherwise.
 
@@ -62,16 +63,21 @@ func redFirstCmd(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, rer
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `red-first proves that a bug fix's test was red before the fix.
 It takes the tests the worktree's diff adds or changes, from --base, else the merge base with the parent branch.
-It runs them once per package, through the tiers of the gate key --gate names, on the code of that base:
-a Go build overlay puts the base's production files and the non-Go files they embed back,
+It runs them once per package, through the tiers of the gate key --gate names, on the code of that base.
+Under the go scoper a Go build overlay puts the base's production files and the non-Go files they embed back,
 and the tests and every other non-Go file keep their working-tree text.
+Under the dotnet scoper it takes the changed test methods of the changed .cs files.
+It runs them once per test project, by fully qualified name, in a checkout of the base,
+where the changed files of those test projects keep their working-tree text.
 It runs the key's tiers only, never its lints, its scope or its report steps.
 A test that does not build on the base counts as failing there.
 It exits 0 when a changed test failed on the base, and prints the red tests.
 It exits ` + fmt.Sprint(gateslot.RedFirstGreenExit) + ` when every changed test passed on the base, since such a test does not show the bug.
 It exits ` + fmt.Sprint(gateslot.RedFirstNoTestExit) + ` when the diff adds or changes no test.
-It exits ` + fmt.Sprint(gateslot.RedFirstUnjudgedExit) + ` when the run cannot judge the tests on the base, on a hub whose scoper is not go.
-It exits 1 for a refusal, or when the run judged none of the tests.
+It exits ` + fmt.Sprint(gateslot.RedFirstUnjudgedExit) + ` when the run cannot judge the tests on the base:
+on a hub whose scoper is neither go nor dotnet,
+or on a C# hub whose changed tests no filter selects, no tier of the key can run, or whose run ends before any test runs.
+It exits 1 for a refusal, or when tests ran and the run judged none of them.
 
 Examples:
 
@@ -102,8 +108,9 @@ Examples:
 // The code is 0 when a changed test failed on the base.
 // It is gateslot.RedFirstGreenExit when all passed.
 // It is gateslot.RedFirstNoTestExit when the diff holds no changed test.
-// It is gateslot.RedFirstUnjudgedExit when the hub's scoper is not go.
-// It is 1 for a refusal or a run that judged none of them.
+// It is gateslot.RedFirstUnjudgedExit when the hub's scoper is neither go nor dotnet.
+// It is the same when a C# hub's changed tests cannot be selected or run.
+// It is 1 for a refusal or a run that ran tests and judged none of them.
 // After a terminating signal the code is 128 plus the signal number.
 func runRedFirst(ctx context.Context, out io.Writer, request redFirstRequest) int {
 	if request.gate == "" {
@@ -125,7 +132,8 @@ func runRedFirst(ctx context.Context, out io.Writer, request redFirstRequest) in
 		return output.Err(out, fmt.Sprintf("%s: cannot read the hub's gate config: %v; way forward: take the step it names, then re-run the same command", redFirstVerb, err))
 	}
 	cfg = cfg.WithDefaultDir(location.AnchorRel)
-	if !cfg.HasGoCoverageMaps() {
+	mode := cfg.RedFirstMode()
+	if mode == gateslot.RedFirstUnsupported {
 		output.Err(out, fmt.Sprintf("%s: "+noteScoper+"; way forward: none needed, a red-first gate passes this exit", redFirstVerb, cfg.Scoper))
 		return gateslot.RedFirstUnjudgedExit
 	}
@@ -137,9 +145,11 @@ func runRedFirst(ctx context.Context, out io.Writer, request redFirstRequest) in
 		return output.Err(out, fmt.Sprintf("%s: --gate %q runs no tier, since the hub declares none; way forward: declare tier0 with lym config gate from the prime, then re-run the same command", redFirstVerb, request.gate))
 	}
 	root := location.WorktreePath()
-	module, err := redundancyModule(cfg, root)
-	if err != nil {
-		return output.Err(out, fmt.Sprintf("%s: %v; way forward: declare tier0 or tier1 with its dir at the Go module's root with lym config gate from the prime, then re-run the same command", redFirstVerb, err))
+	var module goModule
+	if mode == gateslot.RedFirstOverlay {
+		if module, err = redundancyModule(cfg, root); err != nil {
+			return output.Err(out, fmt.Sprintf("%s: %v; way forward: declare tier0 or tier1 with its dir at the Go module's root with lym config gate from the prime, then re-run the same command", redFirstVerb, err))
+		}
 	}
 	fabric, err := fabricengine.Open(location)
 	if err != nil {
@@ -154,20 +164,56 @@ func runRedFirst(ctx context.Context, out io.Writer, request redFirstRequest) in
 		return output.Err(out, fmt.Sprintf("%s: %v; way forward: re-run the same command", redFirstVerb, err))
 	}
 	baseTree := commitTree{fabric: fabric, rev: base}
+	if mode == gateslot.RedFirstCheckout {
+		return dotnetRedFirstCall{
+			request: request, cfg: cfg, tiers: tiers, root: root, base: base, changed: changed, baseTree: baseTree,
+			exportBase: func(dest string) error { return fabric.ExportCodeTreeAt(base, dest) },
+			runTiers:   runTest,
+		}.run(ctx, out)
+	}
 	tests, err := changedTestsAt(baseTree, workingTree{root: root}, module, changed)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("%s: find the tests the diff changes: %v; way forward: fix the file it names, then re-run the same command", redFirstVerb, err))
 	}
 	if len(tests) == 0 {
-		output.Err(out, fmt.Sprintf("%s: the diff from %s adds or changes no test, so nothing shows the bug failing before the fix; "+
-			"way forward: add a test that fails on the merge base and passes with the fix and commit it; "+
-			"when the bug has no seam a test can reach, %s", redFirstVerb, base, noSeamWayForward()))
-		return gateslot.RedFirstNoTestExit
+		return redFirstNoTest(out, base)
 	}
 	return redFirstCall{
 		request: request, tiers: tiers, root: root, module: module, base: base, changed: changed, tests: tests, baseTree: baseTree,
 		runTiers: runTest,
 	}.run(ctx, out)
+}
+
+// redFirstNoTest prints the refusal of a diff from base that adds or changes no test and returns its exit code.
+func redFirstNoTest(out io.Writer, base string) int {
+	output.Err(out, fmt.Sprintf("%s: the diff from %s adds or changes no test, so nothing shows the bug failing before the fix; "+
+		"way forward: add a test that fails on the merge base and passes with the fix and commit it; "+
+		"when the bug has no seam a test can reach, %s", redFirstVerb, base, noSeamWayForward()))
+	return gateslot.RedFirstNoTestExit
+}
+
+// redFirstVerdictExit prints the verdict of a run of the changed tests labels on base and returns the verb's exit code.
+// red are the labels of the tests that failed on the base, and extra holds more keys for the envelope of a red run.
+// unjudgedCode is the tier exit code of the first run that judged none of its tests, 0 when every run judged its tests.
+// A red test exits 0; otherwise a run that judged none exits 1, and every test passing exits gateslot.RedFirstGreenExit.
+func redFirstVerdictExit(out io.Writer, base string, labels, red []string, unjudgedCode int, extra map[string]any) int {
+	switch {
+	case len(red) > 0:
+		envelope := map[string]any{"base": base, "red_tests": red, "tests": labels}
+		maps.Copy(envelope, extra)
+		return output.Ok(out, envelope)
+	case unjudgedCode == 0:
+		output.Err(out, fmt.Sprintf("%s: every test the diff adds or changes passed on the base %s: %s; "+
+			"a test that passes before the fix does not show the bug; "+
+			"way forward: when the change fixes a bug, make a test reach the bug through code the base already has, so it fails there, "+
+			"and commit it, then re-run the same command; "+
+			"when it fixes no bug, as a change that only adds tests pinning existing behaviour, "+
+			"the run's parent records that with `lym loom decision add` under a title opening %q",
+			redFirstVerb, base, strings.Join(labels, ", "), gateslot.NoBugFixedTitle))
+		return gateslot.RedFirstGreenExit
+	}
+	return output.Err(out, fmt.Sprintf("%s: the tiers exited %d on the base %s and judged none of %s; "+
+		"way forward: read the failure report above and re-run the same command", redFirstVerb, unjudgedCode, base, strings.Join(labels, ", ")))
 }
 
 // redFirstCall is one run of a diff's changed tests on its base, once the diff is resolved.
@@ -243,21 +289,7 @@ func (c redFirstCall) run(ctx context.Context, out io.Writer) int {
 		}
 	}
 
-	switch {
-	case len(red) > 0:
-		return output.Ok(out, map[string]any{"base": c.base, "red_tests": testLabels(red), "tests": labels})
-	case unjudgedCode == 0:
-		output.Err(out, fmt.Sprintf("%s: every test the diff adds or changes passed on the base %s: %s; "+
-			"a test that passes before the fix does not show the bug; "+
-			"way forward: when the change fixes a bug, make a test reach the bug through code the base already has, so it fails there, "+
-			"and commit it, then re-run the same command; "+
-			"when it fixes no bug, as a change that only adds tests pinning existing behaviour, "+
-			"the run's parent records that with `lym loom decision add` under a title opening %q",
-			redFirstVerb, c.base, strings.Join(labels, ", "), gateslot.NoBugFixedTitle))
-		return gateslot.RedFirstGreenExit
-	}
-	return output.Err(out, fmt.Sprintf("%s: the tiers exited %d on the base %s and judged none of %s; "+
-		"way forward: read the failure report above and re-run the same command", redFirstVerb, unjudgedCode, c.base, strings.Join(labels, ", ")))
+	return redFirstVerdictExit(out, c.base, labels, testLabels(red), unjudgedCode, nil)
 }
 
 // testsByPackage splits tests into one slice per package, in the order of each package's first test.
