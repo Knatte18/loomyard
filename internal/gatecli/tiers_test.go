@@ -126,8 +126,39 @@ func TestPlanTierRuns(t *testing.T) {
 		want  []string
 		// wantStderr is text the plan must print to stderr.
 		wantStderr string
+		// wantOtherTiers are the otherTiers every run of the plan must hold; nil leaves them unchecked.
+		wantOtherTiers []int
 	}{
 		{name: "the default is tier0 over its all_targets in its dir", want: []string{"tier0 all dir=. ./..."}},
+		{
+			name: "every run names the declared tiers a gate key does not run",
+			mutate: func(cfg *gateslot.Config) {
+				withManualTier3(cfg)
+				cfg.Gates = map[string]gateslot.GateKey{"fast": {Tiers: []int{0}, Scope: "all"}}
+			},
+			request:        testRequest{gate: "fast"},
+			want:           []string{"tier0 all dir=. ./..."},
+			wantOtherTiers: []int{1, 3},
+		},
+		{
+			name: "a tier a listed tier covers is not among the other tiers",
+			mutate: func(cfg *gateslot.Config) {
+				withManualTier3(cfg)
+				t0 := cfg.Tiers["tier0"]
+				t0.Covers = []int{1}
+				cfg.Tiers["tier0"] = t0
+			},
+			want:           []string{"tier0 all dir=. ./..."},
+			wantOtherTiers: []int{3},
+		},
+		{
+			name:           "a plan with a guard step names the other tiers, its guard run's tier included",
+			mutate:         withManualTier3,
+			request:        testRequest{guards: true},
+			scope:          scope{form: scopeAll, whole: true, guards: tier1Guards},
+			want:           []string{"tier0 all dir=. ./...", "tier1 guard dir=sub guard"},
+			wantOtherTiers: []int{1, 3},
+		},
 		{
 			name:    "explicit targets run under the call's class filter terms, partial",
 			request: testRequest{targets: []string{"/c/T/T.csproj"}, terms: []string{"FullyQualifiedName~N.C.M"}},
@@ -467,6 +498,9 @@ func TestPlanTierRuns(t *testing.T) {
 			got := make([]string, len(runs))
 			for i, run := range runs {
 				got[i] = describe(run)
+				if tc.wantOtherTiers != nil && !slices.Equal(run.otherTiers, tc.wantOtherTiers) {
+					t.Errorf("planTierRuns() run %q otherTiers = %v; want %v", got[i], run.otherTiers, tc.wantOtherTiers)
+				}
 			}
 			if !slices.Equal(got, tc.want) {
 				t.Errorf("planTierRuns() = %q; want %q", got, tc.want)
@@ -507,7 +541,8 @@ func TestPlanTierRuns(t *testing.T) {
 		{
 			name:   "a hub with no tier0",
 			mutate: func(cfg *gateslot.Config) { delete(cfg.Tiers, "tier0") },
-			want:   "declares no tier0",
+			exact: `gate test: the hub declares no tier0, and no call of lym gate test runs a tier until it does; declare gate.tiers.tier0, the tier every call without --tier, --upto or --gate runs; ` +
+				`way forward: fix it with "lym config gate" from the prime` + roleClause,
 		},
 		{
 			name:    "a covers entry naming an undeclared tier",
@@ -564,6 +599,22 @@ func TestPlanTierRuns(t *testing.T) {
 			},
 			request: testRequest{args: []string{"--results-directory", "/elsewhere"}},
 			exact:   `gate test: the words after "--" hold --results-directory, which the gate sets itself because tier0 reads its results file; way forward: drop --results-directory from the words after "--", then re-run the same command`,
+		},
+		{
+			name: "a --filter after -- for a tier whose command holds its own --filter",
+			mutate: func(cfg *gateslot.Config) {
+				t0 := cfg.Tiers["tier0"]
+				t0.Command, t0.Counter = "dotnet test {targets} --filter TestCategory=Long {args}", "vstest"
+				cfg.Tiers["tier0"] = t0
+			},
+			request: testRequest{args: []string{"--filter", "Name=X"}},
+			exact: `gate test: the words after "--" carry --filter, and the command of tier0 holds a --filter of its own, so dotnet test would get two and refuse the call; ` +
+				`move the command's filter expression into gate.tiers.tier0.filter and put {filter} in its place, so the gate ANDs the two; way forward: fix it with "lym config gate" from the prime` + roleClause,
+		},
+		{
+			name:    "words after -- that end in --filter with no expression",
+			request: testRequest{args: []string{"-v", "--filter"}},
+			exact:   `gate test: the words after "--" end in --filter with no expression; way forward: give the expression after --filter, then re-run the same command`,
 		},
 	}
 	for _, tc := range refusals {
@@ -665,7 +716,7 @@ func TestFilterArgument(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := filterArgument(tt.goos, 3, gateslot.Tier{Filter: tt.filter}, nil)
+			got, err := filterArgument(tt.goos, 3, gateslot.Tier{Filter: tt.filter}, nil, nil)
 			if tt.wantErr != "" {
 				if err == nil || err.Error() != tt.wantErr {
 					t.Fatalf("filterArgument() error = %v; want %q", err, tt.wantErr)

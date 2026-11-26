@@ -131,7 +131,7 @@ func runTierCommands(ctx context.Context, out io.Writer, run tierRun, env []stri
 		return tierResult{refusal: fmt.Sprintf("gate test: %v; way forward: fix the counter of %s with \"lym config gate\" from the prime%s", err, tierName(run.number), roleClause)}
 	}
 
-	tierCtx, cancel := context.WithTimeout(ctx, timeout)
+	tierCtx, cancel := withTimeoutMin(ctx, timeout, elapsedSinceNow(), time.After)
 	defer cancel()
 
 	tierEnv := slices.Concat(env, renderTierEnv(run.tier))
@@ -163,7 +163,7 @@ func runTierCommands(ctx context.Context, out io.Writer, run tierRun, env []stri
 			causes = append(causes, line)
 		}
 	}
-	timedOut := ctx.Err() == nil && errors.Is(tierCtx.Err(), context.DeadlineExceeded) && exit != 0
+	timedOut := ctx.Err() == nil && errors.Is(context.Cause(tierCtx), errTimeoutMinPassed) && exit != 0
 	if timedOut {
 		exit = 1
 		line := gateslot.TierTimeoutLine(tierName(run.number), timeout)
@@ -227,6 +227,47 @@ func runTierCommands(ctx context.Context, out io.Writer, run tierRun, env []stri
 		record: record, log: logBuffer.Bytes(), trimpathNote: trimpathNote,
 		processCapped: stops.processCap != "", memoryStopped: len(stops.memoryLines()) > 0,
 		failures: failures, causes: causes, unparsed: counter.Unparsed(),
+	}
+}
+
+// timeoutMinPoll is the longest a timeout_min bound goes without reading the clock.
+const timeoutMinPoll = 10 * time.Second
+
+// errTimeoutMinPassed is the cause of a context its timeout_min bound ended.
+var errTimeoutMinPassed = errors.New("the timeout_min bound passed")
+
+// withTimeoutMin returns a context under ctx that ends with the cause errTimeoutMinPassed once timeout has passed.
+// The time passed counts from the call on the monotonic clock and on the wall clock, whichever has run further.
+// The monotonic clock stands still while the host sleeps,
+// so a bound the host slept through still ends the context within timeoutMinPoll of its waking.
+// elapsed reads the time passed since the call on both clocks, and after waits as time.After does.
+// The cancel it returns ends the context and the goroutine that watches the bound.
+func withTimeoutMin(ctx context.Context, timeout time.Duration, elapsed func() (monotonic, wall time.Duration), after func(time.Duration) <-chan time.Time) (context.Context, context.CancelFunc) {
+	bounded, cancel := context.WithCancelCause(ctx)
+	go func() {
+		for {
+			monotonic, wall := elapsed()
+			left := timeout - max(monotonic, wall)
+			if left <= 0 {
+				cancel(errTimeoutMinPassed)
+				return
+			}
+			select {
+			case <-bounded.Done():
+				return
+			case <-after(min(left, timeoutMinPoll)):
+			}
+		}
+	}()
+	return bounded, func() { cancel(context.Canceled) }
+}
+
+// elapsedSinceNow returns a reading of the time passed since this call, on the monotonic clock and on the wall clock.
+func elapsedSinceNow() func() (monotonic, wall time.Duration) {
+	start := time.Now()
+	return func() (time.Duration, time.Duration) {
+		// Round(0) strips the monotonic reading, so the second difference is the wall clock's.
+		return time.Since(start), time.Now().Round(0).Sub(start.Round(0))
 	}
 }
 
@@ -503,15 +544,17 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 			}
 		}
 		args, resultsDir := run.args, ""
-		var vstest *vstestCounter
+		// A summary or a failure block the last invocation left open ends here, with or without a results file.
+		vstest, _ := counter.(*vstestCounter)
+		if vstest != nil {
+			vstest.startInvocation()
+		}
 		if run.tier.Results == gateslot.ResultsTRX {
-			vstest = counter.(*vstestCounter)
 			if dir, err := lymtemp.MkdirTemp("gate-vstest-"); err != nil {
 				logger.Warn("gate test: could not make the vstest results directory; the console counts stand", "tier", tierName(run.number), "cause", err)
 			} else {
 				resultsDir = dir
 				args = append(vstestResultsArgs(dir), run.args...)
-				vstest.startInvocation()
 			}
 		}
 		command, err := renderTierCommand(run.number, run.tier, invocation.targets, testTargets, invocation.terms, args)
@@ -608,6 +651,7 @@ func removeResultsDir(dir string) {
 // The line reads only the invocation's total, so it names no MSBuild property.
 // It sees no skip inside an invocation that ran some test.
 // The hand run is offered only while the hub's `refuse_raw` does not list `dotnet test`.
+// A run whose args carry a test filter gets the line of filteredNoTestNotice instead.
 func noTestNotice(run tierRun, inv invocation, dir string, discovered int) string {
 	if run.tier.Counter != counterVSTest || discovered > 0 {
 		return ""
@@ -620,7 +664,27 @@ func noTestNotice(run tierRun, inv invocation, dir string, discovered int) strin
 	if len(inv.terms) > 0 {
 		classes = " under the class filter " + strings.Join(inv.terms, "|")
 	}
+	if holdsCallerFilter(run.args) {
+		return filteredNoTestNotice(run, project, classes)
+	}
 	return fmt.Sprintf("gate test: %s ran no test of %s%s: dotnet test exited 0 and reported no test, as a test project does that sets IsTestProject false unless an MSBuild property is passed, so the gate's pass covers none of its tests; the gate reads only the invocation's total, so it names no property and sees no skip inside an invocation that ran some test; way forward: when those tests must run and the hub's %s does not list dotnet test, run them by hand with dotnet test <project> -p:<property>=true, the property its project file's IsTestProject condition names, and check that the run's summary line reports them; otherwise report the skipped tests to your parent", tierName(run.number), project, classes, keyName(refuseRawKey))
+}
+
+// filteredNoTestNotice returns the line of a passing `vstest` invocation of project that reported no test.
+// It covers the case where the call's own words carried a test filter.
+// classes is the clause naming the scope's class filter, empty when it set none.
+// The filter most likely names a test of a tier the call does not run,
+// so the line names the declared tiers of run.otherTiers and the call that runs the test through its own tier.
+func filteredNoTestNotice(run tierRun, project, classes string) string {
+	tier := tierName(run.number)
+	others := "the hub declares no tier besides those this call runs"
+	wayForward := "check that the filter selects a test of the project, then re-run the same command"
+	if len(run.otherTiers) > 0 {
+		others = fmt.Sprintf("the hub also declares %s, which this call does not run, and the test may belong to one of them", tierNames(run.otherTiers))
+		wayForward = "run the test through the tier that holds it, with lym gate test --tier <N> <its package or test project> -- <args> and the same words after \"--\""
+	}
+	return fmt.Sprintf("gate test: %s ran no test of %s%s: dotnet test exited 0 and no test of %s matched the filter among the words after \"--\"; %s; way forward: %s",
+		tier, project, classes, project, others, wayForward)
 }
 
 // tierTestTargets returns the packages of targets in the module at moduleDir that hold a test run's tier executes.

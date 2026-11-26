@@ -63,7 +63,7 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 // A copy's stdout is kept in its log only, so the copies never interleave their output.
 func runTierCopies(ctx context.Context, run tierRun, env []string, request testRequest) tierResult {
 	if run.tier.PrebuiltLym && len(run.invocations) > 0 {
-		prebuildCtx, cancel := context.WithTimeout(ctx, time.Duration(run.tier.TimeoutMin)*request.timeoutUnit)
+		prebuildCtx, cancel := withTimeoutMin(ctx, time.Duration(run.tier.TimeoutMin)*request.timeoutUnit, elapsedSinceNow(), time.After)
 		bin, cleanup, err := prebuildLym(prebuildCtx, request.goBinary, request.root, run.tier.Parallel, request.prebuiltStore, request.pipeWaitDelay, nil)
 		cancel()
 		if err != nil {

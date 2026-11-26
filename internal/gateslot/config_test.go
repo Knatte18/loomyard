@@ -880,7 +880,7 @@ func TestConfig_TierUse(t *testing.T) {
 			{name: "a hub that declares no tier keeps the key with no target", cfg: Config{Gates: cfg.Gates}, key: "darn-write", want: "lym gate test --gate darn-write -- <args>"},
 			{name: "a key the config does not hold is refused", cfg: cfg, key: "nope", wantErr: `gates holds no key "nope"`},
 			{name: "a key naming an undeclared tier is refused", cfg: cfg, key: "dangling", wantErr: "gates.dangling lists tier3, which the hub does not declare"},
-			{name: "a hub that declares tiers but no tier0 is refused", cfg: withoutTier0, key: "darn-write", wantErr: "the hub declares no tier0"},
+			{name: "a hub that declares tiers but no tier0 is refused", cfg: withoutTier0, key: "darn-write", wantErr: `gate config: the hub declares no tier0, so no gate has a tier to run; declare gate.tiers.tier0; fix it with "lym config gate" from the prime` + roleClause},
 			{name: "a key of scope card is refused", cfg: cfg, key: "cardkey", wantErr: "gates.cardkey has scope card"},
 			{name: "a key whose tier takes no {args} is refused", cfg: cfg, key: "noargs", wantErr: "gates.noargs lists tier2, whose command holds no {args}"},
 		}
@@ -915,7 +915,7 @@ func TestConfig_TierUse(t *testing.T) {
 			{"a list naming an undeclared tier", twoTier, "dangling", nil, "gates.dangling lists tier2, which the hub does not declare"},
 			{"an empty list for any gate", twoTier, "empty", nil, "gates.empty is empty, and every gate verifies at least one tier"},
 			{"an empty list for a gate lym reads", Config{Tiers: twoTier.Tiers, Gates: map[string]GateKey{"webster-fix": {Scope: "diff"}}}, "webster-fix", nil, "gates.webster-fix is empty, and every gate verifies at least one tier"},
-			{"a hub with no tier0", Config{Tiers: map[string]Tier{"tier1": {}}, Gates: twoTier.Gates}, "batch", nil, "the hub declares no tier0"},
+			{"a hub with no tier0", Config{Tiers: map[string]Tier{"tier1": {}}, Gates: twoTier.Gates}, "batch", nil, `gate config: the hub declares no tier0, so no gate has a tier to run; declare gate.tiers.tier0; fix it with "lym config gate" from the prime` + roleClause},
 			{"a hub that declares no tier", Config{Gates: twoTier.Gates}, "batch", nil, ""},
 			{"a hub that declares no tier and a gate the config holds no list for", Config{Gates: twoTier.Gates}, "nope", nil, `gates holds no key "nope"`},
 		}
@@ -945,8 +945,9 @@ func TestConfig_TierUse(t *testing.T) {
 			t.Errorf("Tier(1) = (%+v, %v); want the declared tier", got, err)
 		}
 		_, err := twoTier.Tier(5)
-		if err == nil || !strings.Contains(err.Error(), "tier5") || !strings.HasSuffix(err.Error(), `; fix it with "lym config gate" from the prime`+roleClause) {
-			t.Errorf("Tier(5) error = %v; want a refusal naming tier5 and ending with the role clause", err)
+		want := `gate config: the hub declares no tier5, the key gate.tiers.tier5; fix it with "lym config gate" from the prime` + roleClause
+		if err == nil || err.Error() != want {
+			t.Errorf("Tier(5) error = %v; want %q", err, want)
 		}
 	})
 

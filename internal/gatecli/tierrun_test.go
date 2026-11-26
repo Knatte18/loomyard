@@ -132,6 +132,136 @@ func TestRetryTier(t *testing.T) {
 	}
 }
 
+// TestWithTimeoutMin pins the timeout_min bound on a fake clock.
+// Either clock's reading past the bound ends the context at the next poll.
+// The wall clock's reading is the one that passes it after the host slept.
+// A poll waits at most timeoutMinPoll, and no longer than what is left of the bound.
+//
+//testtiming:keep the poll lengths and the cause of the timeout_min bound on a fake clock
+func TestWithTimeoutMin(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	type reading struct{ monotonic, wall time.Duration }
+	tests := []struct {
+		name    string
+		timeout time.Duration
+		// readings are the time passed on each clock, one per poll in order; the last repeats.
+		readings []reading
+		// readyPolls is how many polls end at once; every later poll waits until the context ends.
+		readyPolls int
+		// wantPolls are the waits the bound asks for, in order.
+		wantPolls []time.Duration
+		// wantCause is the context's cause once the polls are done, nil for a context still open.
+		wantCause error
+	}{
+		{
+			name: "AWallClockPastTheBoundEndsTheContextThoughTheMonotonicClockStoodStill", timeout: 35 * time.Minute,
+			readings: []reading{{monotonic: time.Minute, wall: 21 * time.Hour}}, wantCause: errTimeoutMinPassed,
+		},
+		{
+			name: "AMonotonicClockPastTheBoundEndsTheContextThoughTheWallClockWasSetBack", timeout: 35 * time.Minute,
+			readings: []reading{{monotonic: 36 * time.Minute, wall: -time.Hour}}, wantCause: errTimeoutMinPassed,
+		},
+		{
+			name: "ABoundNotYetPassedKeepsTheContextOpen", timeout: 35 * time.Minute,
+			readings: []reading{{time.Minute, time.Minute}}, readyPolls: 1, wantPolls: []time.Duration{timeoutMinPoll, timeoutMinPoll},
+		},
+		{
+			name: "TheLastPollWaitsOnlyWhatIsLeft", timeout: 3 * time.Second,
+			readings: []reading{{time.Second, time.Second}, {3 * time.Second, 3 * time.Second}}, readyPolls: 1,
+			wantPolls: []time.Duration{2 * time.Second}, wantCause: errTimeoutMinPassed,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var read atomic.Int32
+			elapsed := func() (time.Duration, time.Duration) {
+				at := tt.readings[min(int(read.Add(1))-1, len(tt.readings)-1)]
+				return at.monotonic, at.wall
+			}
+			polls := make(chan time.Duration, len(tt.wantPolls)+1)
+			var polled atomic.Int32
+			after := func(wait time.Duration) <-chan time.Time {
+				polls <- wait
+				if int(polled.Add(1)) > tt.readyPolls {
+					return nil
+				}
+				ready := make(chan time.Time, 1)
+				ready <- time.Time{}
+				return ready
+			}
+
+			ctx, cancel := withTimeoutMin(context.Background(), tt.timeout, elapsed, after)
+			t.Cleanup(cancel)
+
+			var got []time.Duration
+			for range tt.wantPolls {
+				got = append(got, <-polls)
+			}
+			if tt.wantCause != nil {
+				<-ctx.Done()
+			}
+			if !slices.Equal(got, tt.wantPolls) {
+				t.Errorf("withTimeoutMin() polled %v; want %v", got, tt.wantPolls)
+			}
+			if cause := context.Cause(ctx); cause != tt.wantCause {
+				t.Errorf("withTimeoutMin() context cause = %v; want %v", cause, tt.wantCause)
+			}
+		})
+	}
+}
+
+// TestRunBuildTimeout pins the build step's timeout_min.
+// A build that outlives it fails as timed out, prints the build's timeout line and blocks the tiers that opt into it.
+// A build that ends in time lets its tier run.
+func TestRunBuildTimeout(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the build command is a POSIX shell sleep")
+	}
+
+	const unit = 200 * time.Millisecond
+	tests := []struct {
+		name         string
+		command      string
+		wantOK       bool
+		wantTimedOut bool
+	}{
+		{name: "ABuildThatEndsInTime", command: "exit 0", wantOK: true},
+		{name: "ABuildThatOutlivesItsTimeout", command: "sleep 300", wantTimedOut: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			var stderr bytes.Buffer
+			e := &execution{
+				ctx:       context.Background(),
+				out:       io.Discard,
+				request:   testRequest{root: dir, stderr: &stderr, timeoutUnit: unit, pipeWaitDelay: defaultPipeWaitDelay},
+				cfg:       gateslot.Config{Build: gateslot.BuildStep{Command: tt.command, Dir: dir, TimeoutMin: 1}},
+				runLogDir: t.TempDir(),
+			}
+
+			result, ok := e.runBuild(tierRun{number: 0}, []string{"PATH=" + os.Getenv("PATH")})
+
+			if ok != tt.wantOK || result.buildFailed == tt.wantOK {
+				t.Errorf("runBuild() = ok %v, buildFailed %v; want ok %v", ok, result.buildFailed, tt.wantOK)
+			}
+			timeoutLine := gateslot.BuildTimeoutLine(unit)
+			if got := strings.Contains(stderr.String(), timeoutLine); got != tt.wantTimedOut {
+				t.Errorf("runBuild() stderr = %q; want it to hold the timeout line: %v", stderr.String(), tt.wantTimedOut)
+			}
+			if blocked := e.buildFailure != ""; blocked != tt.wantTimedOut {
+				t.Errorf("runBuild() left buildFailure %q; want it set: %v", e.buildFailure, tt.wantTimedOut)
+			}
+		})
+	}
+}
+
 // TestRunTierProcessCap pins the tier run's wiring of the process cap.
 // A tripped cap fails a command that exited 0 and marks the result so no rerun follows.
 // A run whose environment carries no run marker starts no cap.
@@ -406,14 +536,31 @@ func TestRunTierNoTestNotice(t *testing.T) {
 	notice := func(project, classes string) string {
 		return "gate test: tier0 ran no test of " + project + classes + ": dotnet test exited 0 and reported no test, as a test project does that sets IsTestProject false unless an MSBuild property is passed, so the gate's pass covers none of its tests; the gate reads only the invocation's total, so it names no property and sees no skip inside an invocation that ran some test; way forward: when those tests must run and the hub's gate.refuse_raw does not list dotnet test, run them by hand with dotnet test <project> -p:<property>=true, the property its project file's IsTestProject condition names, and check that the run's summary line reports them; otherwise report the skipped tests to your parent"
 	}
+	filtered := func(others, wayForward string) string {
+		return "gate test: tier0 ran no test of slow.csproj: dotnet test exited 0 and no test of slow.csproj matched the filter among the words after \"--\"; " + others + "; way forward: " + wayForward
+	}
 	tests := []struct {
 		name        string
 		counter     string
 		invocations []invocation
+		// args are the call's own words after `--`, and otherTiers the declared tiers the call does not run.
+		args       []string
+		otherTiers []int
 		// wantExit is the tier's exit code.
 		wantExit int
 		want     []string
 	}{
+		{
+			name: "ACallerFilterThatMatchesNoTestNamesTheTiersTheCallDoesNotRun", counter: counterVSTest,
+			invocations: []invocation{{targets: []string{"slow.csproj"}}}, args: []string{"--filter", "FullyQualifiedName~Ns.Slow"}, otherTiers: []int{1, 3},
+			want: []string{filtered("the hub also declares tier1, tier3, which this call does not run, and the test may belong to one of them",
+				"run the test through the tier that holds it, with lym gate test --tier <N> <its package or test project> -- <args> and the same words after \"--\"")},
+		},
+		{
+			name: "ACallerFilterInAHubWithNoOtherTierNamesTheFilter", counter: counterVSTest,
+			invocations: []invocation{{targets: []string{"slow.csproj"}}}, args: []string{"-p:VSTestTestCaseFilter=Name=X"},
+			want: []string{filtered("the hub declares no tier besides those this call runs", "check that the filter selects a test of the project, then re-run the same command")},
+		},
 		{name: "AProjectThatReportsATestPrintsNoLine", counter: counterVSTest, invocations: []invocation{{targets: []string{"ran.csproj"}}}},
 		{
 			name:    "ANarrowedProjectThatReportsNoTestIsNamedWithItsClassFilter",
@@ -438,7 +585,7 @@ func TestRunTierNoTestNotice(t *testing.T) {
 			}
 			var stderr bytes.Buffer
 			request := testRequest{root: dir, stderr: &stderr, timeoutUnit: 30 * time.Second, pipeWaitDelay: defaultPipeWaitDelay}
-			run := tierRun{number: 0, tier: gateslot.Tier{Command: command, Counter: tt.counter, TimeoutMin: 1}, invocations: tt.invocations}
+			run := tierRun{number: 0, tier: gateslot.Tier{Command: command, Counter: tt.counter, TimeoutMin: 1}, invocations: tt.invocations, args: tt.args, otherTiers: tt.otherTiers}
 
 			result := runTier(context.Background(), io.Discard, run, []string{"PATH=" + os.Getenv("PATH")}, request)
 
@@ -462,6 +609,29 @@ func TestRunTierNoTestNotice(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A `Total tests:` summary one invocation leaves open takes no outcome line of the next, on a tier with no results file.
+func TestRunTierEndsAVSTestSummaryWithItsInvocation(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the tier command is a POSIX shell case")
+	}
+
+	command := "case \"{targets}\" in *cut*) echo 'Total tests: 1';; *) echo '     Passed: 1';; esac"
+	dir := t.TempDir()
+	request := testRequest{root: dir, timeoutUnit: 30 * time.Second, pipeWaitDelay: defaultPipeWaitDelay}
+	run := tierRun{
+		tier:        gateslot.Tier{Command: command, Counter: counterVSTest, TimeoutMin: 1},
+		invocations: []invocation{{dir: dir, targets: []string{"cut.csproj"}}, {dir: dir, targets: []string{"next.csproj"}}},
+	}
+
+	result := runTier(context.Background(), io.Discard, run, []string{"PATH=" + os.Getenv("PATH")}, request)
+
+	if result.refusal != "" || result.record.Discovered != 1 || result.record.Passed != 0 {
+		t.Errorf("runTier() = refusal %q, discovered %d, passed %d; want no refusal, 1 and 0", result.refusal, result.record.Discovered, result.record.Passed)
 	}
 }
 

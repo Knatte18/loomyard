@@ -385,7 +385,7 @@ func (c Config) WithDefaultDir(dir string) Config {
 func (c Config) Tier(number int) (Tier, error) {
 	tier, ok := c.Tiers[tierKey(number)]
 	if !ok {
-		return Tier{}, useRefusal("the hub declares no %s", tierKey(number))
+		return Tier{}, useRefusal("the hub declares no %s, the key %s", tierKey(number), tierKeyName(tierKey(number)))
 	}
 	return tier, nil
 }
@@ -412,7 +412,7 @@ func (c Config) Gate(key string) (GateKey, error) {
 		return GateKey{Scope: gate.Scope, Lints: slices.Clone(gate.Lints), Reports: slices.Clone(gate.Reports)}, nil
 	}
 	if _, declared := c.Tiers[tierKey(0)]; !declared {
-		return GateKey{}, useRefusal("the hub declares no tier0, so no gate has a tier to run")
+		return GateKey{}, useRefusal("the hub declares no tier0, so no gate has a tier to run; declare %s", tierKeyName(tierKey(0)))
 	}
 	for _, number := range gate.Tiers {
 		if _, declared := c.Tiers[tierKey(number)]; !declared {

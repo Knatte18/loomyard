@@ -10,7 +10,15 @@ const configModule = "gate"
 // busyQuitSecKey is the gate.yaml key the CPU watchdog reads.
 const busyQuitSecKey = "busy_quit_sec"
 
+// tiersKey is the gate.yaml key that holds the tiers.
+const tiersKey = "tiers"
+
 // keyName returns the full name of the gate.yaml key at path.
 func keyName(path string) string {
 	return configengine.KeyName(configModule, path)
+}
+
+// tierKeyName returns the full name of the gate.yaml mapping of the tier named tier.
+func tierKeyName(tier string) string {
+	return keyName(tiersKey + "." + tier)
 }

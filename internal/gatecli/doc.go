@@ -78,7 +78,12 @@
 // Each target and arg is quoted for the platform shell.
 // `{filter}` renders as `--filter ` and the tier's filter expression, or as nothing when there is none.
 // A narrowed dotnet invocation combines the tier's filter with the class terms the scoper chose.
-// A command without `{filter}` renders no filter whatever terms it is given.
+// A `--filter` among the words after `--` leaves `{args}` and is ANDed into `{filter}` too.
+// The reason is that `dotnet test` refuses a second `--filter`.
+// A command without `{filter}` renders no filter whatever terms it is given, and keeps a `--filter` in its `{args}`.
+// Planning refuses a `--filter` after `--` for a command that holds a `--filter` of its own.
+// That refusal names the tier's `filter` key.
+// It also refuses words after `--` that end in `--filter`, which has no expression to take.
 // `{test_targets}` stands where the targets reach `go test`.
 // It renders each invocation's targets narrowed to the packages that hold a test function the tier runs,
 // so a pass starts no test binary that would find no test of its tier.
@@ -158,8 +163,9 @@
 //
 // Once the config is loaded, planning refuses these before any slot, naming `lym config gate`:
 // words after `--` for a tier whose command lacks `{args}`; explicit targets no listed tier's command takes;
-// an undeclared tier; a hub with no `tier0`; a `covers` entry naming an undeclared tier;
-// and a guard group whose tier the hub does not declare.
+// an undeclared tier; a hub with no `tier0`, naming `gate.tiers.tier0` in full;
+// a `--filter` after `--` for a command that holds a `--filter` of its own and no `{filter}`;
+// a `covers` entry naming an undeclared tier; and a guard group whose tier the hub does not declare.
 // Every such refusal closes with a clause for a session that is not the prime:
 // it takes none of the steps, reports status: FAILED and leaves them to the orch.
 //
@@ -311,12 +317,17 @@
 //
 // The tier's `timeout_min`, counted once its slots are held, bounds the prebuild and every invocation of its command.
 // A tier that outlives it has its process tree killed, fails with exit code 1 and prints `gateslot.TierTimeoutLine`.
+// The tree is the shell's process group and every process that carries the shell's marker in its environment.
+// The bound counts wall-clock time as well as awake time, whichever has run further,
+// so a tier the host slept through ends within seconds of the host waking; the build's `timeout_min` counts the same way.
 // The work before the first tier is bounded by a ceiling;
 // a step that outlives it fails naming the step, and the way forward is to run the same command again.
 //
 // # Counters, record and log
 //
 // A tier's output goes through its counter, `go-json` or `vstest`, which passes the text on and counts its tests.
+// The `vstest` counter reads the summary of every console logger verbosity:
+// the minimal one's `Passed!` or `Failed!` line, and the normal and detailed ones' `Total tests:` block.
 // After each tier the verb prints `gateslot.TierSummaryLine` to stderr
 // and writes the run record and log through `gateslot.WriteRunRecord` under `gateslot.RunLogDir`:
 // the board's gate directory inside a hub, so the records outlive the worktree;
@@ -339,6 +350,8 @@
 // A passing `vstest` invocation whose output reported no test still passes and prints a line to stderr and the log.
 // The line is there because a test project can skip all tests unless an MSBuild property is passed.
 // The line cannot see a disabled project beside a project that ran, or name the property behind a skip.
+// When the words after `--` carry a test filter, the line says instead that no test of the project matched it.
+// It names the declared tiers the call does not run, and `--tier` as the way to run the test through its own tier.
 //
 // # Stray files
 //
@@ -568,7 +581,11 @@
 // This holds even while a leftover process holds its output pipe.
 // One example is an MSBuild worker node a crashed `dotnet` left.
 // After a bounded delay the verb kills what is left of the shell's process group.
-// Bound: a leftover that left the shell's process group, such as one in a session of its own, is not killed.
+// Every shell gets an environment entry of its own, `LYM_GATE_CHILD_<pid>_<n>=1`, which each process it starts inherits.
+// The verb then also kills every process carrying it.
+// A leftover in a session of its own, such as a test host, therefore dies too.
+// Bound: a process that cleared its environment, or runs where no environment is readable by pid, escapes that kill;
+// on Windows the shell's kill-on-close job ends its tree instead.
 //
 // # CPU watchdog
 //

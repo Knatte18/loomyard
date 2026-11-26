@@ -37,7 +37,19 @@ func TestRenderTierCommand(t *testing.T) {
 		{name: "terms alone", command: "t {filter}", terms: []string{"FullyQualifiedName~A", "FullyQualifiedName~B"}, want: "t --filter 'FullyQualifiedName~A|FullyQualifiedName~B'"},
 		{name: "terms compose with the tier filter", command: "t {filter}", filter: "Category!=Slow", terms: []string{"FullyQualifiedName~A"}, want: "t --filter '(Category!=Slow)&(FullyQualifiedName~A)'"},
 		{name: "terms past the budget render the tier filter alone", command: "t {filter}", filter: "Category!=Slow", terms: []string{strings.Repeat("A", greenCommandBudget)}, want: "t --filter 'Category!=Slow'"},
+		{
+			name: "terms past the budget keep a filter among the args", command: "t {filter} {args}", filter: "Category!=Slow",
+			terms: []string{strings.Repeat("A", greenCommandBudget)}, args: []string{"--filter", "Name=X"},
+			want: "t --filter '(Category!=Slow)&(Name=X)' ",
+		},
 		{name: "terms given to a command without a filter placeholder filter nothing", command: "t {targets}", targets: []string{"p"}, terms: []string{"FullyQualifiedName~A"}, want: "t 'p'"},
+		{
+			name: "a filter among the args leaves them and composes with the tier filter and the terms", command: "t {filter} {args}", filter: "Category!=Slow",
+			terms: []string{"FullyQualifiedName~A"}, args: []string{"--filter", "Name=X", "-v", "--filter=Name!=Y", "--filter:Name!=Z"},
+			want: "t --filter '(Category!=Slow)&(Name=X)&(Name!=Y)&(Name!=Z)&(FullyQualifiedName~A)' '-v'",
+		},
+		{name: "a filter among the args alone", command: "t {filter} {args}", args: []string{"--filter", "Name=X"}, want: "t --filter 'Name=X' "},
+		{name: "a filter among the args stays there for a command without a filter placeholder", command: "t {args}", args: []string{"--filter", "Name=X"}, want: "t '--filter' 'Name=X'"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

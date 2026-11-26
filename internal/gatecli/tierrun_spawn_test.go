@@ -1,7 +1,8 @@
 //go:build !windows
 
 // tierrun_spawn_test.go covers the tier runs that start a POSIX shell and a tool such as cp.
-// They cover a vstest tier's verdict on the results file the gate asks for, and the env line of a tier run.
+// They cover a vstest tier's verdict on the results file the gate asks for, the env line of a tier run,
+// and the kill of a command's process that left its process group.
 
 package gatecli
 
@@ -12,6 +13,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +21,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -269,6 +272,55 @@ The test running when the crash occurred: Ns.Tests.Kept</Text></RunInfo>`
 			}
 			if diff := cmp.Diff(wantArgs, linesOf(t, argsLog)); diff != "" {
 				t.Errorf("the command's args mismatch (-want +got), want the gate's result words before the call's own:\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestRunTierKillsWhatLeftTheProcessGroup pins that a tier run ends a process of its command in a session of its own.
+// Such a process escapes the kill of the shell's process group, as a test host can.
+// The command starts one through setsid, waits until it wrote its pid, and then exits or outlives the tier's timeout.
+func TestRunTierKillsWhatLeftTheProcessGroup(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// tail ends the command once the escaped process is running.
+		tail         string
+		wantTimedOut bool
+	}{
+		{name: "ACommandThatExits", tail: "exit 0"},
+		{name: "ACommandThatOutlivesTheTimeout", tail: "sleep 300", wantTimedOut: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			pidFile := filepath.Join(dir, "escaped.pid")
+			command := fmt.Sprintf(`setsid sh -c 'echo $$ > "%[1]s"; exec sleep 300' >/dev/null 2>&1 & while [ ! -s "%[1]s" ]; do sleep 0.01; done; %[2]s`, pidFile, tt.tail)
+			request := testRequest{root: dir, stderr: io.Discard, timeoutUnit: 2 * time.Second, pipeWaitDelay: defaultPipeWaitDelay}
+			run := tierRun{number: 0, tier: gateslot.Tier{Command: command, Counter: counterGoJSON, TimeoutMin: 1}, invocations: []invocation{{dir: dir}}}
+
+			result := runTier(context.Background(), io.Discard, run, []string{"PATH=" + os.Getenv("PATH")}, request)
+
+			data, err := os.ReadFile(pidFile)
+			if err != nil {
+				t.Fatalf("read the escaped process's pid: %v; runTier() = refusal %q, log %q", err, result.refusal, result.log)
+			}
+			pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+			if err != nil {
+				t.Fatalf("parse the escaped process's pid %q: %v", data, err)
+			}
+			t.Cleanup(func() { _ = proc.SignalProcess(pid, true) })
+			if result.record.TimedOut != tt.wantTimedOut {
+				t.Errorf("runTier() TimedOut = %v; want %v", result.record.TimedOut, tt.wantTimedOut)
+			}
+			// The killed process is reaped by whichever process adopted it, a moment after the kill.
+			for deadline := time.Now().Add(10 * time.Second); proc.IsRunning(pid); time.Sleep(10 * time.Millisecond) {
+				if time.Now().After(deadline) {
+					t.Fatalf("process %d, which left the command's process group, still runs after runTier() returned; want it killed with the run", pid)
+				}
 			}
 		})
 	}

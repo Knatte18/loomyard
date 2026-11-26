@@ -71,7 +71,7 @@ func newCommand(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, reru
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `test runs the tiers of gate.tiers, in ascending tier number, going on past a failed one unless --stop-on-fail ends the call there.
 --gate K runs the tiers and the scope that key K of ` + keyName(gatesKey) + ` names, and goes with none of --tier, --upto, --all and --base.
-A key of scope card needs --card <id> per card, scope all runs every tier whole, or no tier when every changed file is inert, and scope diff runs the diff from the merge base with the pair's parent branch.
+A key of scope card needs --card <id> per card, scope all runs every tier whole, and scope diff takes the default diff scope.
 Explicit <targets> beside --gate replace the key's scope.
 --tier N names a tier and may repeat; the default is tier0 without --upto or --gate.
 --upto N adds every declared tier from 0 through N, bar a manual one, which --tier alone runs.
@@ -82,9 +82,10 @@ With --wait, and with no strand, the tiers run in this process.
 The exit code is the first failing run's own, or 0.
 Without --gate the scope is the explicit <targets>, --all, --card <id>, --base <rev>, or the diff from the merge base with the pair's parent branch.
 Arguments after "--" fill each tier's {args}.
+A --filter among them is ANDed with the tier's filter where the tier's command holds {filter}.
 --guards, and a narrower scope while ` + keyName(scoperKey) + ` is go, also run the //lym:guard tests outside the scope.
 --map builds the tier0 and tier1 coverage maps, and refuses the flags that pick tiers or steps.
---copies N, with --gate and explicit targets, runs N copies of the key's one tier side by side inside one lease of N times its slots.
+--copies N, with --gate and explicit targets, runs N copies of the key's one tier side by side.
 
 Examples:
 
