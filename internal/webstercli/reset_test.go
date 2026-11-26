@@ -372,6 +372,8 @@ func TestResetCmd(t *testing.T) {
 		fx := newResetFixture(t, h, "rst-prefix")
 		st := startedAt(fx.base)
 		st.PreFixHead = fx.base
+		st.FixedBase = fx.base
+		st.FixedHead = fx.base
 		fx.withRecoveryStrands(st, map[string]bool{"strand-live": true})
 		fx.saveState(t, st)
 		gitkit.CommitFile(t, fx.checkout, "rejected-fix.txt", "fix", "rejected fixer commit")
@@ -390,8 +392,8 @@ func TestResetCmd(t *testing.T) {
 		if err != nil || loaded == nil {
 			t.Fatalf("LoadState = %v, %v", loaded, err)
 		}
-		if loaded.PreFixHead != "" {
-			t.Errorf("PreFixHead = %q after the reset; want it cleared", loaded.PreFixHead)
+		if loaded.PreFixHead != "" || loaded.FixedBase != "" || loaded.FixedHead != "" {
+			t.Errorf("PreFixHead, FixedBase, FixedHead = %q, %q, %q after the reset; want them cleared", loaded.PreFixHead, loaded.FixedBase, loaded.FixedHead)
 		}
 	}) {
 		return

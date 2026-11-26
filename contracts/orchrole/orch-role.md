@@ -501,7 +501,7 @@ An instruction outside a role's limits goes to the party in the right column, ne
 
 | Role | Limits its stencil sets | Who carries out an instruction outside them |
 |---|---|---|
-| Webster master | runs no git, edits only its two contract files, spawns only forks | you, through the run's own verbs |
+| Webster master | runs no git, edits only its two contract files and its friction note, spawns only forks | you, through the run's own verbs |
 | Implementer fork | no `lym webster` command, writes only its batch report | webster's recovery, then you |
 | Driver | drives one run through `lym shed step`, edits no source | you, by message |
 | Review judge | reads and judges, edits no target | the producer it sent back |

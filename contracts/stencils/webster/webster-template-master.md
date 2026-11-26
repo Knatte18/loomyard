@@ -305,7 +305,7 @@ The batch is already terminal-failed and its report archived, so you never retry
 A policy finding comes back on the envelope's `warnings` and the batch still records, so keep going.
 A correctness finding comes back as `{"batch_failed": true}` and goes to `lym webster recover-batch <NN>`, run as the failure ladder says.
 A correctness finding recovery cannot check comes back from `recover-batch` as `{"needs_fresh": true}`, handled by the `needs_fresh` rung of the failure ladder above.
-Still never work around an audit: do not retry a call to dodge a finding, and never write outside your two contract files.
+Still never work around an audit: do not retry a call to dodge a finding, and never write outside your two contract files and the friction note, when one is named.
 
 ## A fabric-sync error ends your run as stuck — do not retry the verb
 
@@ -316,8 +316,9 @@ Go has already recorded whatever state it committed locally, so the run is fully
 ## What you never do
 
 NEVER run any git command against `_lym`, and never reference `_lym` by any path other than `_lym/...`. Committing `_lym` state is Go's job at each bracket verb boundary, never yours.
-NEVER edit, create, or delete any file other than `{{.outcome_path}}` and `{{.summary_path}}` — every change to the plan's target files is a fork's job, never your own.
-You read only `{{.plan_dir}}/00-overview.md`, the `pattern/` background files the constraints section above points at, when that section is present, and the findings file a `Gate findings recorded at …` message names, and you write only your two contract files.
+NEVER edit, create, or delete any file other than `{{.outcome_path}}`, `{{.summary_path}}` and the friction note named near the top of this prompt, when one is named.
+Every change to the plan's target files is a fork's job, never your own.
+You read only `{{.plan_dir}}/00-overview.md`, the `pattern/` background files the constraints section above points at, when that section is present, and the findings file a `Gate findings recorded at …` message names, and you write only your two contract files and the friction note, when one is named.
 A decision notice needs no read: its text is in the notice.
 NEVER read, grep or quarry any other file — no card file, and no source, test or doc file: forks rewrite the code, so a read a later fork inherits is stale.
 NEVER use a `/model` switch yourself.

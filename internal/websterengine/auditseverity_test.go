@@ -149,10 +149,10 @@ func TestCheckParent_KeysDistinctAndStable(t *testing.T) {
 		NamedSpawns:  2,
 		ParentWrites: []string{"/w/a.go", "/w/b.go"},
 	}
-	first := CheckParent(audit, "/w/o.yaml", "/w/s.md", "/w", NeverMatches{})
+	first := CheckParent(audit, "/w/o.yaml", "/w/s.md", "", "/w", NeverMatches{})
 	audit.NamedSpawns = 3
 	audit.ParentWrites = append(audit.ParentWrites, "/w/c.go")
-	grown := CheckParent(audit, "/w/o.yaml", "/w/s.md", "/w", NeverMatches{})
+	grown := CheckParent(audit, "/w/o.yaml", "/w/s.md", "", "/w", NeverMatches{})
 
 	seen := map[string]bool{}
 	for _, v := range first {

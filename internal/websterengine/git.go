@@ -37,6 +37,10 @@ type Git interface {
 	// AddedPaths returns, sorted, the repository-relative paths that a commit in base..head adds over its first parent.
 	// A path a later commit in the range deletes still counts.
 	AddedPaths(worktree, base, head string) ([]string, error)
+	// EnclosingCommit returns the commit rev names in the repository holding dir.
+	// dir may be a subdirectory of that repository.
+	// It returns "" when git resolves no such commit there.
+	EnclosingCommit(dir, rev string) (string, error)
 }
 
 // realGit implements Git over the repository on disk;
@@ -82,6 +86,8 @@ func (realGit) OtherWorktrees(worktree string) ([]string, error) { return otherW
 func (realGit) AddedPaths(worktree, base, head string) ([]string, error) {
 	return addedPaths(worktree, base, head)
 }
+
+func (realGit) EnclosingCommit(dir, rev string) (string, error) { return enclosingCommit(dir, rev) }
 
 func (realGit) PathDiffers(worktree, base, path string) (bool, error) {
 	return worktreePathDiffers(worktree, base, path)

@@ -380,7 +380,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	for _, f := range audit.Forks {
 		if slices.Contains(bs.BracketTranscripts, f.TranscriptPath) {
 			bracketForks = append(bracketForks, f)
-			if slices.ContainsFunc(f.WritePaths, func(w string) bool { return isOwnReportWrite(deps.Geom.PaneCwd, w, ownReport) }) {
+			if slices.ContainsFunc(f.WritePaths, func(w string) bool { return isWriteOf(deps.Geom.PaneCwd, w, ownReport) }) {
 				counted = append(counted, f)
 			}
 		}
@@ -410,7 +410,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, err
 	}
 	var candidates []AuditViolation
-	candidates = append(candidates, CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Geom.PaneCwd, deps.RefMatcher)...)
+	candidates = append(candidates, CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.State.MasterNotePath, deps.Geom.PaneCwd, deps.RefMatcher)...)
 	for _, f := range append(slices.Clone(newReports), bracketForks...) {
 		candidates = append(candidates, CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.PaneCwd, planDirs, websterDirs, ownReport, deps.RefMatcher)...)
 		forkWarnings = append(forkWarnings, ForkWarnings(f)...)

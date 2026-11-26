@@ -1,11 +1,14 @@
-// findingtext.go builds the text that audit and --fresh refusals share:
-// the findings clause, which names each finding once with its path,
-// and the reason a path cannot be checked; each refusal ends in a numbered list of steps from the helpers here.
+// findingtext.go builds the text that audit and --fresh refusals share.
+// That text includes the findings clause, which names each finding once with its path.
+// It also covers the reason a path cannot be checked and the status of a records-side path.
+// Each refusal ends in a numbered list of steps from the helpers here.
 
 package websterengine
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -29,6 +32,10 @@ const (
 
 	// noteClearedContract is the note of a contract file the evidence clears.
 	noteClearedContract = "cleared: absent, or Master wrote it last"
+	// noteClearedRecords is the note of a records-side path the evidence clears.
+	noteClearedRecords = "cleared: unchanged since Master spawned"
+	// noteChangedRecords is the note of a records-side path that differs from what it held when Master spawned.
+	noteChangedRecords = "changed since Master spawned"
 
 	// stepAcceptAudit is the step that accepts the pending findings.
 	stepAcceptAudit = "lym webster accept-audit"
@@ -142,6 +149,93 @@ func uncheckableReason(geom Geometry, st *State, path string) (reason string, un
 	default:
 		return reasonIgnored, true, nil
 	}
+}
+
+// recordsBaseline returns the records side's HEAD commit, which a records-side path is later compared against.
+// It returns "" when there is no `_lym` directory, or none that a commit holds yet.
+func recordsBaseline(geom Geometry) (string, error) {
+	records := filepath.Join(geom.PaneCwd, lymdirs.LymDirName)
+	if _, err := os.Stat(records); errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	} else if err != nil {
+		return "", fmt.Errorf("webster: stat %s: %w", records, err)
+	}
+	return geom.git().EnclosingCommit(records, "HEAD")
+}
+
+// recordsSideStatus reports whether path lies on the run's records side, and whether it is clean there.
+// The records side is the `_lym` directory the pane sees, wherever its link resolves.
+// Webster's run, reports and plan directories are no part of it.
+// Those hold the run's own state and have checks of their own.
+// base is the records side's commit from before Master could write.
+// Without a base its repository holds, no path counts as on the records side, so none clears.
+// A path is clean when its content is what base holds, absence included.
+// The error is a link-resolution, stat or git probe failure.
+func recordsSideStatus(geom Geometry, base, path string) (onRecords, clean bool, err error) {
+	if _, pathless := pathlessEntryClass(path); base == "" || path == "" || pathless {
+		return false, false, nil
+	}
+	canon, err := runplan.CanonicalPath(runplan.ResolveWritePath(geom.PaneCwd, path))
+	if err != nil {
+		return false, false, err
+	}
+	records, err := runplan.CanonicalPath(filepath.Join(geom.PaneCwd, lymdirs.LymDirName))
+	if err != nil {
+		return false, false, err
+	}
+	if !runplan.PathWithin(records, canon) {
+		return false, false, nil
+	}
+	for _, dir := range []string{geom.WebsterDir, geom.ReportsDir, geom.PlanDir} {
+		own, err := runplan.CanonicalPath(dir)
+		if err != nil {
+			return false, false, err
+		}
+		if runplan.PathWithin(own, canon) {
+			return false, false, nil
+		}
+	}
+	known, err := geom.git().EnclosingCommit(records, base)
+	if err != nil || known == "" {
+		return false, false, err
+	}
+	rel, err := filepath.Rel(records, canon)
+	if err != nil {
+		return false, false, fmt.Errorf("webster: relate %s to %s: %w", canon, records, err)
+	}
+	now, err := geom.git().WorktreeBlob(records, canon)
+	if err != nil {
+		return false, false, err
+	}
+	// The leading "./" makes git read the path against the records directory, not its repository's root.
+	then, err := geom.git().CommitBlob(records, base, "./"+filepath.ToSlash(rel))
+	if err != nil {
+		return false, false, err
+	}
+	return true, now == then, nil
+}
+
+// splitRecordsSidePaths drops every clean records-side path from paths, judged against base.
+// It returns the changed records-side paths apart from the rest, each in input order.
+func splitRecordsSidePaths(geom Geometry, base string, paths []string) (rest, changed []string, err error) {
+	for _, p := range paths {
+		onRecords, clean, err := recordsSideStatus(geom, base, p)
+		if err != nil {
+			return nil, nil, err
+		}
+		switch {
+		case !onRecords:
+			rest = append(rest, p)
+		case !clean:
+			changed = append(changed, p)
+		}
+	}
+	return rest, changed, nil
+}
+
+// recordsRestoreStep is the step that restores records-side paths to the records side's commit base.
+func recordsRestoreStep(base string, paths []string) string {
+	return fmt.Sprintf("restore %s to records-side commit %s (rm a path that commit does not hold)", strings.Join(paths, " "), base)
 }
 
 // restoreStep is the step that restores paths to head with git.

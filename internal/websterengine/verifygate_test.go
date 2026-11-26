@@ -48,6 +48,11 @@ type gateFake struct {
 	// recorded holds the heads recordPreFix was called with, in order.
 	recorded []string
 	cleared  int
+	// fixedBases and fixedHeads hold what recordPass was called with, in order.
+	fixedBases []string
+	fixedHeads []string
+	// earlier is the pre-fix head the earlierPreFix seam returns.
+	earlier string
 	// recordErr is returned by recordPreFix.
 	recordErr error
 }
@@ -94,13 +99,16 @@ func (f *gateFake) seams() verifyGateSeams {
 			}
 			return []string{"internal/b/b.go"}, nil
 		},
-		modulePath: func() string { return testModulePath },
+		modulePath:    func() string { return testModulePath },
+		earlierPreFix: func() (string, error) { return f.earlier, nil },
 		recordPreFix: func(head string) error {
 			f.recorded = append(f.recorded, head)
 			return f.recordErr
 		},
-		clearPreFix: func() error {
+		recordPass: func(fixedBase, fixedHead string) error {
 			f.cleared++
+			f.fixedBases = append(f.fixedBases, fixedBase)
+			f.fixedHeads = append(f.fixedHeads, fixedHead)
 			return nil
 		},
 	}
@@ -561,6 +569,9 @@ func TestVerifyGate_NotesFixCommitsOnce(t *testing.T) {
 	if got, want := notes.FixCommits(), []CommitLogEntry{fix}; !reflect.DeepEqual(got, want) {
 		t.Errorf("notes.FixCommits() = %+v; want %+v once", got, want)
 	}
+	if want := []string{"", ""}; !reflect.DeepEqual(f.fixedHeads, want) {
+		t.Errorf("fixed heads recorded with HEAD at the pre-fix head = %q; want %q", f.fixedHeads, want)
+	}
 
 	failing := &gateFake{
 		outcome:      outcomeDone,
@@ -581,10 +592,10 @@ func TestVerifyGate_NotesFixCommitsOnce(t *testing.T) {
 
 // TestVerifyGate_DirtyTreeRecordsPreFixHead walks one fake through dirty-tree failures:
 // a dirty tree fails without verifying or checking fix commits, and reports the dirty paths.
-// The pre-fix head is recorded once per closure and overwritten by a new closure.
-// The first clean pass checks fix commits from the recorded head and clears the record.
+// The pre-fix head is recorded once, and a new closure given the earlier one keeps it.
+// Its first clean pass checks fix commits from that head, records the range up to HEAD and clears the record.
 //
-//testtiming:keep pins the pre-fix head recorded once per closure, overwritten by a new closure and cleared only on a pass, and the dirty report; the covering parent-merge gate test only passes a clean tree
+//testtiming:keep pins the pre-fix head recorded once, kept by a later closure and cleared only on a pass, and the dirty report; the covering parent-merge gate test only passes a clean tree
 func TestVerifyGate_DirtyTreeRecordsPreFixHead(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -621,27 +632,25 @@ func TestVerifyGate_DirtyTreeRecordsPreFixHead(t *testing.T) {
 		t.Errorf("recorded heads after two failures = %v; want %v once", f.recorded, want)
 	}
 
-	f.head = "head1"
-	second := newVerifyGate(t.TempDir(), 5, &VerifyGateNotes{}, testFixPromptPath, f.seams())
-	if res, err := second(); err != nil || res.Passed {
-		t.Fatalf("second closure's gate() = %+v, %v; want a failure", res, err)
-	}
-	if want := []string{"head0", "head1"}; !reflect.DeepEqual(f.recorded, want) {
-		t.Errorf("recorded heads = %v; want the new closure to overwrite with %v", f.recorded, want)
-	}
 	if f.cleared != 0 {
-		t.Errorf("clearPreFix ran %d time(s) before any pass; want none", f.cleared)
+		t.Errorf("recordPass ran %d time(s) before any pass; want none", f.cleared)
 	}
 
+	f.earlier = "head0"
 	f.dirty = nil
+	f.head = "head2"
+	second := newVerifyGate(t.TempDir(), 5, &VerifyGateNotes{}, testFixPromptPath, f.seams())
 	if res, err := second(); err != nil || !res.Passed {
-		t.Fatalf("gate() after the tree was cleaned = %+v, %v; want a pass", res, err)
+		t.Fatalf("second closure's gate() on a clean tree = %+v, %v; want a pass", res, err)
 	}
-	if want := []string{"head1"}; !reflect.DeepEqual(f.rejectionBases, want) {
-		t.Errorf("commit check bases = %v; want the recorded pre-fix head %v", f.rejectionBases, want)
+	if want := []string{"head0"}; !reflect.DeepEqual(f.rejectionBases, want) {
+		t.Errorf("commit check bases = %v; want the earlier pre-fix head %v", f.rejectionBases, want)
 	}
 	if f.cleared != 1 {
-		t.Errorf("clearPreFix ran %d time(s) on a pass; want 1", f.cleared)
+		t.Errorf("recordPass ran %d time(s) on a pass; want 1", f.cleared)
+	}
+	if !slices.Equal(f.fixedBases, []string{"head0"}) || !slices.Equal(f.fixedHeads, []string{"head2"}) {
+		t.Errorf("fixed range recorded on the pass = %v to %v; want head0 to head2", f.fixedBases, f.fixedHeads)
 	}
 }
 
@@ -990,5 +999,74 @@ func TestReadModulePath(t *testing.T) {
 	}
 	if got := readModulePath(dir); got != testModulePath {
 		t.Errorf("readModulePath() = %q; want %q", got, testModulePath)
+	}
+}
+
+// mergeOnlyGit answers the first-parent walk: each commit has one parent unless merges lists its parents,
+// and every merge is a clean parent merge.
+type mergeOnlyGit struct {
+	Git
+	merges map[string][]string
+}
+
+func (g mergeOnlyGit) CommitParents(_, commit string) ([]string, error) {
+	if parents, ok := g.merges[commit]; ok {
+		return parents, nil
+	}
+	return []string{"parent"}, nil
+}
+
+func (mergeOnlyGit) MergeRejection(string, string, []string, ParentBranchFunc) string { return "" }
+
+// TestGateStateWrites proves the gate's writes to state.json.
+// A failure records the pre-fix head, and a pass clears it.
+// A pass records the fixed range it is given, and a pass given no head keeps the earlier one.
+// A range starting at the earlier fixed head, or a clean parent merge above it, keeps the earlier base.
+// A run with no state.json is left without one.
+func TestGateStateWrites(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	root := t.TempDir()
+	git := mergeOnlyGit{merges: map[string][]string{"merge": {"fixed3", "side"}}}
+	geom := Geometry{WebsterDir: filepath.Join(root, "webster"), ScratchDir: filepath.Join(root, "scratch"), Git: git}
+	pass := func(fixedBase, fixedHead string) error { return recordGatePass(geom, nil, fixedBase, fixedHead) }
+	if err := SaveState(geom.WebsterDir, geom.ScratchDir, &State{RunGUID: "g1", FixedBase: "oldbase", FixedHead: "old"}); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	steps := []struct {
+		name          string
+		apply         func() error
+		wantPreFix    string
+		wantFixedBase string
+		wantFixedHead string
+	}{
+		{"FailureRecordsPreFix", func() error { return setPreFixHead(geom, "pre") }, "pre", "oldbase", "old"},
+		{"PassWithoutFixesKeepsFixedHead", func() error { return pass("pre", "") }, "", "oldbase", "old"},
+		{"SecondFailure", func() error { return setPreFixHead(geom, "pre2") }, "pre2", "oldbase", "old"},
+		{"PassAfterFixesRecordsTheRange", func() error { return pass("pre2", "fixed") }, "", "pre2", "fixed"},
+		{"NewFixedHeadAloneIsSaved", func() error { return pass("pre3", "fixed2") }, "", "pre3", "fixed2"},
+		{"RangeFromTheEarlierFixedHeadKeepsItsBase", func() error { return pass("fixed2", "fixed3") }, "", "pre3", "fixed3"},
+		{"RangeFromAMergeAboveItKeepsItsBase", func() error { return pass("merge", "fixed4") }, "", "pre3", "fixed4"},
+	}
+	for _, step := range steps {
+		if err := step.apply(); err != nil {
+			t.Fatalf("%s: error = %v", step.name, err)
+		}
+		st, err := LoadState(geom.WebsterDir, geom.ScratchDir)
+		if err != nil {
+			t.Fatalf("%s: LoadState: %v", step.name, err)
+		}
+		if st.PreFixHead != step.wantPreFix || st.FixedBase != step.wantFixedBase || st.FixedHead != step.wantFixedHead {
+			t.Errorf("%s: PreFixHead, FixedBase, FixedHead = %q, %q, %q; want %q, %q, %q", step.name, st.PreFixHead, st.FixedBase, st.FixedHead, step.wantPreFix, step.wantFixedBase, step.wantFixedHead)
+		}
+	}
+
+	empty := Geometry{WebsterDir: filepath.Join(root, "none", "webster"), ScratchDir: filepath.Join(root, "none", "scratch")}
+	if err := recordGatePass(empty, nil, "pre", "fixed"); err != nil {
+		t.Fatalf("recordGatePass() with no state.json error = %v; want nil", err)
+	}
+	if st, err := LoadState(empty.WebsterDir, empty.ScratchDir); err != nil || st != nil {
+		t.Errorf("LoadState() after recordGatePass with no state.json = %+v, %v; want nil, nil", st, err)
 	}
 }

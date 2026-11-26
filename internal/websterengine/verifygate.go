@@ -7,6 +7,7 @@ package websterengine
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -190,10 +191,12 @@ type verifyGateSeams struct {
 	changedPaths func(sha string) ([]string, error)
 	// modulePath returns go.mod's module path, empty when the worktree has none.
 	modulePath func() string
+	// earlierPreFix returns the pre-fix head an earlier run left that this run's fixes still start from, or "".
+	earlierPreFix func() (string, error)
 	// recordPreFix persists head as state.json's PreFixHead.
 	recordPreFix func(head string) error
-	// clearPreFix clears state.json's PreFixHead.
-	clearPreFix func() error
+	// recordPass clears state.json's PreFixHead and, when fixedHead is set, records it with its fixedBase.
+	recordPass func(fixedBase, fixedHead string) error
 }
 
 // NewVerifyGate returns the must-pass shuttleengine.Gate for Master's spec, and the notes to apply after the wait.
@@ -218,16 +221,20 @@ type verifyGateSeams struct {
 // A run whose every failed tier run crashed its test runner with no failing test judged no code:
 // it fails `Terminal` at once, on the first run or the rerun, naming the crashed runs,
 // and no fixer gets it, no attempt is spent and no report is written.
-// A failure that survives returns findings, and the first failure of any kind records HEAD as the pre-fix head.
+// A failure that survives returns findings.
+// The first failure of any kind records HEAD as the pre-fix head, unless the gate took over an earlier run's.
 // Each failure goes to a fixer, which the report, the findings and the re-prompt line name.
 // A failure that reaches attempts goes to the cold fixer.
 // So does one that follows a fixer which added no commit above the pre-fix head.
 // Once a failure goes cold, every later failure does.
 // Every other failure goes to the fixer fork.
 // Every failed evaluation writes the verify-gate report.
-// Attempt and failure counts, the routing and the pre-fix head live in the closure for one shuttle run.
-// The pre-fix head is also persisted as state.json's PreFixHead when recorded, overwriting an earlier run's value.
-// A passing evaluation clears it.
+// Attempt and failure counts and the routing live in the closure for one shuttle run.
+// The pre-fix head is persisted as state.json's PreFixHead when recorded.
+// A later run's gate takes over the persisted one while it is on HEAD's history, no batch has landed above it,
+// and every commit above it passes the commit check; otherwise it starts with none.
+// A passing evaluation clears it;
+// when HEAD has moved above the pre-fix head, the pass also records the two as state.json's FixedBase and FixedHead.
 func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentBranch ParentBranchFunc, frictionDir, fixPromptPath string) (shuttleengine.Gate, *VerifyGateNotes) {
 	paths := verifytree.NewPaths(geom.PaneCwd, geom.VerifyDir)
 	seams := verifyGateSeams{
@@ -274,19 +281,98 @@ func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentB
 			shas, labels := accumulatedCardSHAs(batches, st)
 			return shas, labels, nil
 		},
-		changedPaths: func(sha string) ([]string, error) { return commitChangedPaths(geom.WorktreeRoot, sha) },
-		modulePath:   func() string { return readModulePath(geom.WorktreeRoot) },
-		recordPreFix: func(head string) error { return setPreFixHead(geom, head) },
-		clearPreFix:  func() error { return setPreFixHead(geom, "") },
+		changedPaths:  func(sha string) ([]string, error) { return commitChangedPaths(geom.WorktreeRoot, sha) },
+		modulePath:    func() string { return readModulePath(geom.WorktreeRoot) },
+		earlierPreFix: func() (string, error) { return earlierPreFixHead(geom, parentBranch) },
+		recordPreFix:  func(head string) error { return setPreFixHead(geom, head) },
+		recordPass: func(fixedBase, fixedHead string) error {
+			return recordGatePass(geom, parentBranch, fixedBase, fixedHead)
+		},
 	}
 	notes := &VerifyGateNotes{frictionDir: frictionDir}
 	return newVerifyGate(geom.ReportsDir, attempts, notes, fixPromptPath, seams), notes
 }
 
-// setPreFixHead loads state.json under the state-mutation lease, sets PreFixHead and saves.
+// setPreFixHead sets state.json's PreFixHead to head.
+func setPreFixHead(geom Geometry, head string) error {
+	return mutateGateState(geom, func(st *State) bool {
+		if st.PreFixHead == head {
+			return false
+		}
+		st.PreFixHead = head
+		return true
+	})
+}
+
+// earlierPreFixHead returns state.json's PreFixHead while it still bounds the fixes made since it, and "" otherwise.
+// It does while it is an ancestor of HEAD, the last recorded batch head is an ancestor of it,
+// and every commit above it is a non-merge commit or a clean parent merge.
+// A head with another merge above it would fail every later run's gate on that merge.
+func earlierPreFixHead(geom Geometry, parentBranch ParentBranchFunc) (string, error) {
+	st, err := LoadState(geom.WebsterDir, geom.ScratchDir)
+	if err != nil || st == nil || st.PreFixHead == "" {
+		return "", err
+	}
+	git := geom.git()
+	if !git.SHAExists(geom.WorktreeRoot, st.PreFixHead) {
+		return "", nil
+	}
+	head, err := git.HeadSHA(geom.WorktreeRoot)
+	if err != nil {
+		return "", err
+	}
+	onHead, err := git.IsAncestor(geom.WorktreeRoot, st.PreFixHead, head)
+	if err != nil || !onHead {
+		return "", err
+	}
+	bases, err := runplan.RunEvidenceBases(geom.runPlan(), &st.State)
+	if err != nil || len(bases.Missing) > 0 {
+		return "", err
+	}
+	if bases.Last != "" {
+		aboveBatches, err := git.IsAncestor(geom.WorktreeRoot, bases.Last, st.PreFixHead)
+		if err != nil || !aboveBatches {
+			return "", err
+		}
+	}
+	rejected, _, err := fixCommitRejection(geom.WorktreeRoot, st.PreFixHead, parentBranch)
+	if err != nil || rejected != "" {
+		return "", err
+	}
+	return st.PreFixHead, nil
+}
+
+// recordGatePass clears state.json's PreFixHead.
+// When fixedHead is set, it records it as FixedHead and fixedBase as FixedBase.
+// It keeps the earlier FixedBase when only clean parent merges, or nothing, lie from the earlier FixedHead to fixedBase.
+func recordGatePass(geom Geometry, parentBranch ParentBranchFunc, fixedBase, fixedHead string) error {
+	var walkErr error
+	err := mutateGateState(geom, func(st *State) bool {
+		changed := st.PreFixHead != ""
+		st.PreFixHead = ""
+		if fixedHead != "" && st.FixedHead != fixedHead {
+			_, err := walkParentMerges(geom.git(), geom.WorktreeRoot, st.FixedHead, fixedBase, "verify gate: earlier fixed head", parentBranch, headRefusal{})
+			var mismatch headMismatchError
+			switch {
+			case errors.As(err, &mismatch):
+				st.FixedBase = fixedBase
+			case err != nil:
+				walkErr = err
+				return false
+			}
+			st.FixedHead = fixedHead
+			changed = true
+		}
+		return changed
+	})
+	return errors.Join(walkErr, err)
+}
+
+// mutateGateState loads state.json under the state-mutation lease and applies change,
+// and it saves when change reports a change.
 // Master is idle at a gate evaluation, so no bracket verb holds the lease then.
 // A run with no state.json has nothing to record into and is left alone.
-func setPreFixHead(geom Geometry, head string) error {
+func mutateGateState(geom Geometry, change func(st *State) bool) error {
 	lease, err := AcquireStateMutation(geom.ScratchDir)
 	if err != nil {
 		return err
@@ -296,10 +382,9 @@ func setPreFixHead(geom Geometry, head string) error {
 	if err != nil {
 		return err
 	}
-	if st == nil || st.PreFixHead == head {
+	if st == nil || !change(st) {
 		return nil
 	}
-	st.PreFixHead = head
 	return SaveState(geom.WebsterDir, geom.ScratchDir, st)
 }
 
@@ -307,6 +392,8 @@ func setPreFixHead(geom Geometry, head string) error {
 func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixPromptPath string, s verifyGateSeams) shuttleengine.Gate {
 	attempt := 0
 	preFix := ""
+	// readEarlier is set once the first done arrival has taken over an earlier run's pre-fix head.
+	readEarlier := false
 	reportPath := VerifyGateReportPath(reportsDir)
 	failures := 0
 	cold := false
@@ -314,7 +401,7 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 	// command is the current arrival's verify command, empty until the arrival renders it.
 	command := ""
 
-	// fail records the pre-fix head on the first failure.
+	// fail records the pre-fix head on the first failure that finds none.
 	// It routes the failure to a fixer, writes the report naming the arrival's verify command, and returns its findings.
 	fail := func(report VerifyGateReport) (shuttleengine.GateResult, error) {
 		failures++
@@ -364,8 +451,19 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 	}
 
 	// pass clears the persisted pre-fix head and returns a passing result.
+	// When fixes moved HEAD above the pre-fix head, it also records both as the fixed range.
 	pass := func() (shuttleengine.GateResult, error) {
-		if err := s.clearPreFix(); err != nil {
+		fixedHead := ""
+		if preFix != "" {
+			head, err := s.head()
+			if err != nil {
+				return shuttleengine.GateResult{}, err
+			}
+			if head != preFix {
+				fixedHead = head
+			}
+		}
+		if err := s.recordPass(preFix, fixedHead); err != nil {
 			return shuttleengine.GateResult{}, err
 		}
 		return shuttleengine.GateResult{Passed: true}, nil
@@ -423,6 +521,14 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		}
 		if outcome != outcomeDone {
 			return shuttleengine.GateResult{Passed: true}, nil
+		}
+
+		if !readEarlier {
+			earlier, err := s.earlierPreFix()
+			if err != nil {
+				return shuttleengine.GateResult{}, err
+			}
+			preFix, readEarlier = earlier, true
 		}
 
 		dirty, err := s.dirty()

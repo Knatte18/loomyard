@@ -86,8 +86,13 @@ var ErrAuditNotAcceptable = errors.New("webster: pending audit findings cannot b
 var acceptAuditHeadRefusal = headRefusal{resetStep: "lym webster reset --to last-batch-head", rerun: `re-run "lym webster accept-audit"`, redoMerge: "once accept-audit accepts the findings"}
 
 // AcceptPendingAudit clears the pending audit findings and returns what it cleared, once their evidence holds.
-// The evidence first needs HEAD to be the last recorded batch head, or a clean parent merge on top of it.
+// The evidence first needs HEAD to be the last recorded batch head, or clean parent merges on top of it.
+// The verify-gate fix commits from st.FixedBase to st.FixedHead may sit between that head and those merges.
+// They count only when nothing but clean parent merges lies between that head and st.FixedBase.
 // Every pending path must then match that head.
+// That head cannot hold a path on the run's records side.
+// Such a path must be unchanged since the records side's commit st.MasterRecordsBase, absence included.
+// Without that commit it is unverifiable.
 // A differing or unverifiable path, or a finding with no path, refuses with ErrAuditNotAcceptable.
 // A refusal mutates nothing.
 // A missing recorded commit refuses first, with the way forward for it.
@@ -123,8 +128,8 @@ func AcceptPendingAudit(engines AuditEngines, st *State, geom Geometry, parentBr
 	}
 	head := bases.Last
 	if head != "" {
-		if _, err := reconcileHead(geom.git(), geom.WorktreeRoot, head, "accept-audit: last batch head", parentBranch, acceptAuditHeadRefusal); err != nil {
-			return nil, false, fmt.Errorf("%w: %v", ErrAuditNotAcceptable, err)
+		if err := reconcileAcceptHead(geom, st, head, parentBranch); err != nil {
+			return nil, false, err
 		}
 		if head, err = geom.git().HeadSHA(geom.WorktreeRoot); err != nil {
 			return nil, false, err
@@ -142,7 +147,11 @@ func AcceptPendingAudit(engines AuditEngines, st *State, geom Geometry, parentBr
 	if err != nil {
 		return nil, false, err
 	}
-	if len(differing) == 0 && len(unverifiable) == 0 && len(contracts.Uncleared) == 0 && !pathless {
+	unverifiable, recordsChanged, err := splitRecordsSidePaths(geom, st.MasterRecordsBase, unverifiable)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(differing) == 0 && len(unverifiable) == 0 && len(recordsChanged) == 0 && len(contracts.Uncleared) == 0 && !pathless {
 		st.PendingAuditFindings = nil
 		return pending, len(contracts.Absent) > 0, nil
 	}
@@ -159,6 +168,9 @@ func AcceptPendingAudit(engines AuditEngines, st *State, geom Geometry, parentBr
 	}
 	if len(gitDiffering) > 0 {
 		parts = append(parts, fmt.Sprintf("differs from the last batch head; %s", wayForwardSteps(restoreStep(head, gitDiffering), stepAcceptAudit)))
+	}
+	if len(recordsChanged) > 0 {
+		parts = append(parts, fmt.Sprintf("%s %s; %s", strings.Join(recordsChanged, ", "), noteChangedRecords, wayForwardSteps(recordsRestoreStep(st.MasterRecordsBase, recordsChanged), stepAcceptAudit)))
 	}
 	if len(unverifiable) > 0 || pathless {
 		var what []string
@@ -178,6 +190,37 @@ func AcceptPendingAudit(engines AuditEngines, st *State, geom Geometry, parentBr
 		parts = append(parts, fmt.Sprintf("%s; %s", strings.Join(what, "; "), resetToStartSteps(stepRun)))
 	}
 	return nil, false, fmt.Errorf("%w: %s", ErrAuditNotAcceptable, strings.Join(parts, "; "))
+}
+
+// reconcileAcceptHead returns nil when HEAD reconciles to lastHead through clean parent merges.
+// It also returns nil when HEAD reconciles that way to st.FixedHead and st.FixedBase reconciles that way to lastHead.
+// The verify gate's commit check vetted only the commits above FixedBase, so nothing but such merges may lie below it.
+// Otherwise it refuses, wrapping ErrAuditNotAcceptable, with the refusal worded against lastHead.
+// A failed git read is returned as it is.
+func reconcileAcceptHead(geom Geometry, st *State, lastHead string, parentBranch ParentBranchFunc) error {
+	git := geom.git()
+	_, refusal := reconcileHead(git, geom.WorktreeRoot, lastHead, "accept-audit: last batch head", parentBranch, acceptAuditHeadRefusal)
+	if refusal == nil {
+		return nil
+	}
+	var mismatch headMismatchError
+	if !errors.As(refusal, &mismatch) {
+		return refusal
+	}
+	base, fixed := st.FixedBase, st.FixedHead
+	if base != "" && fixed != lastHead && git.SHAExists(geom.WorktreeRoot, base) && git.SHAExists(geom.WorktreeRoot, fixed) {
+		_, err := walkParentMerges(git, geom.WorktreeRoot, lastHead, base, "accept-audit: verify-gate fixed base", parentBranch, acceptAuditHeadRefusal)
+		if err == nil {
+			_, err = reconcileHead(git, geom.WorktreeRoot, fixed, "accept-audit: verify-gate fixed head", parentBranch, acceptAuditHeadRefusal)
+		}
+		if err == nil {
+			return nil
+		}
+		if !errors.As(err, &mismatch) {
+			return err
+		}
+	}
+	return fmt.Errorf("%w: %v", ErrAuditNotAcceptable, refusal)
 }
 
 // AcceptBatchFabricReference clears the Uncheckable entries of failed batch n.

@@ -124,6 +124,7 @@
 // A correctness finding means the delta or the run's own state may be wrong:
 // a fork writing Master's contract files, the plan directory or webster's run directory beyond its report;
 // a parent write under `_lym`, to tracked content, under `.lym`, or in another worktree;
+// Master's write to the friction note its prompt names (State.MasterNotePath) is no finding at all;
 // a fabric reference whose command the injected ReadOnly classifier does not accept.
 // A policy finding breaks a steering rule without touching correctness, such as a named spawn or a nested agent call.
 // The ledger in state.json dispositions each finding once per run.
@@ -142,6 +143,13 @@
 // An OK report whose delta deleted a symbol a later card targets is handed back once as *LaterTargetRemovedError.
 // That happens while the fork still holds the batch's context.
 // A pending correctness finding stays in state.json until `lym webster accept-audit` clears it on evidence.
+// That evidence needs HEAD at the last batch head, or above it only by two kinds of commit.
+// Those are clean parent merges and the verify-gate fix commits from State.FixedBase to State.FixedHead.
+// The fix commits count only while nothing but clean parent merges lies between the last batch head and FixedBase.
+// A path on the run's records side, outside webster's own run state, has evidence of its own.
+// State.MasterRecordsBase is the records side's HEAD from before Master spawned.
+// Such a path clears when it is unchanged since that commit, absence included.
+// Without that commit such a path cannot be checked.
 // Run entry refuses with ErrPendingAuditFindings meanwhile.
 // The paths that do not clear that way clear only through `lym webster reset --to start` and then `lym webster run`.
 // The contract files outcome.yaml and summary.md have no blob to compare;
@@ -244,6 +252,9 @@
 // The run-exit fork audit, the gate's commit check (fixCommitRejection) and the Code-Review perch therefore bound them.
 // The gate, not the verb, judges a fix: a dead cold fixer leaves the failure for the next evaluation.
 // The first failed evaluation records HEAD as `PreFixHead`, which `reset --to pre-fix` targets.
+// A later run's gate keeps that head while no batch has landed above it and the commit check passes above it.
+// A pass with HEAD above it records it as `FixedBase` and HEAD as `FixedHead`.
+// accept-audit accepts the fix commits in that range.
 // A failure is rerun once and only a failure that survives the rerun goes to a fixer;
 // a hang (classifyHang) or a crashed test runner is never rerun, since neither is flakiness.
 // Tests that fail once and pass on the rerun are reported as flaky, not failed.

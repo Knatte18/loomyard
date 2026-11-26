@@ -582,6 +582,22 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 			},
 		},
 		{
+			name:   "a Master write to the saved friction note path is no finding",
+			audits: oneFork,
+			prepare: func(t *testing.T, fx *recordFixture) {
+				note := filepath.Join(t.TempDir(), "webster-master.md")
+				fx.Deps.State.MasterNotePath = note
+				fx.Audit.scripted[0].ParentWrites = []string{note}
+			},
+			report: okReport,
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				requireDone(t, result)
+				if len(result.Warnings) != 0 {
+					t.Errorf("RecordResult.Warnings = %v; want none", result.Warnings)
+				}
+			},
+		},
+		{
 			name:   "a done report over an unrendered amendment fails the batch with card_amended",
 			audits: oneFork,
 			prepare: func(t *testing.T, fx *recordFixture) {

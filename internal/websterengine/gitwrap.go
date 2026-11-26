@@ -110,37 +110,44 @@ func reportHeadRefusal(batch int) headRefusal {
 
 // reconcileHead cross-checks reportHead against worktree's HEAD, tolerating only clean parent merges between them.
 // refusal sets the wording of the way forward in each refusal it returns.
+// A refusal is a headMismatchError; any other error is a failed git read.
 func reconcileHead(git Git, worktree, reportHead, subject string, parentBranch ParentBranchFunc, refusal headRefusal) (warning string, err error) {
 	head, err := git.HeadSHA(worktree)
 	if err != nil {
 		return "", err
 	}
-	if head == reportHead {
-		return "", nil
+	merges, err := walkParentMerges(git, worktree, reportHead, head, subject, parentBranch, refusal)
+	if err != nil || len(merges) == 0 {
+		return "", err
 	}
+	return fmt.Sprintf("webster: %s: head_sha %q differs from the worktree's HEAD %q; only merge commits (%s) sit between them, so the batch is recorded at the report's head_sha %q",
+		subject, reportHead, head, strings.Join(merges, ", "), reportHead), nil
+}
 
-	var merges []string
-	for cur := head; ; {
-		if cur == reportHead {
-			return fmt.Sprintf("webster: %s: head_sha %q differs from the worktree's HEAD %q; only merge commits (%s) sit between them, so the batch is recorded at the report's head_sha %q",
-				subject, reportHead, head, strings.Join(merges, ", "), reportHead), nil
-		}
+// headMismatchError is a head cross-check's refusal, as opposed to a failure to read the commits.
+type headMismatchError struct{ error }
+
+// walkParentMerges walks tip's first-parent chain down to reportHead and returns the clean parent merges it passed.
+// Any other commit on the way is a headMismatchError refusal worded by refusal.
+func walkParentMerges(git Git, worktree, reportHead, tip, subject string, parentBranch ParentBranchFunc, refusal headRefusal) (merges []string, err error) {
+	for cur := tip; cur != reportHead; {
 		parents, err := git.CommitParents(worktree, cur)
 		if err != nil {
-			return "", fmt.Errorf("websterengine: walk first-parent chain from %s in %s: %w", head, worktree, err)
+			return nil, fmt.Errorf("websterengine: walk first-parent chain from %s in %s: %w", tip, worktree, err)
 		}
 		if len(parents) < 2 {
-			return "", fmt.Errorf("webster: %s: head_sha %q does not match the worktree's actual HEAD %q; "+
+			return nil, headMismatchError{fmt.Errorf("webster: %s: head_sha %q does not match the worktree's actual HEAD %q; "+
 				"only merge commits, such as a parent merge-in, may sit between a fork's reported head and HEAD; "+
 				"%s",
-				subject, reportHead, head, wayForwardSteps(refusal.resetStep, refusal.rerun))
+				subject, reportHead, tip, wayForwardSteps(refusal.resetStep, refusal.rerun))}
 		}
 		if reason := git.MergeRejection(worktree, cur, parents, parentBranch); reason != "" {
-			return "", parentMergeRefusal(subject, reportHead, head, cur, reason, refusal)
+			return nil, headMismatchError{parentMergeRefusal(subject, reportHead, tip, cur, reason, refusal)}
 		}
 		merges = append(merges, cur)
 		cur = parents[0]
 	}
+	return merges, nil
 }
 
 // resolveParentTips returns every tip a parent merge-in may merge from:
@@ -420,6 +427,20 @@ func commitBlob(worktree, commit, path string) (string, error) {
 	}
 	if err != nil {
 		return "", fmt.Errorf("websterengine: git rev-parse %s:%s in %s: %w", commit, path, worktree, err)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+// enclosingCommit returns the commit rev names in the repository holding dir, or "" when git rejects the question:
+// dir lies in no repository, or rev names no commit there.
+// A git that could not be run is an error.
+func enclosingCommit(dir, rev string) (string, error) {
+	stdout, err := gitexec.Run([]string{"rev-parse", "--verify", "--quiet", rev + "^{commit}"}, dir)
+	if _, rejected := gitExitCode(err); rejected {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("websterengine: git rev-parse %s in %s: %w", rev, dir, err)
 	}
 	return strings.TrimSpace(stdout), nil
 }

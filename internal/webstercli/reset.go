@@ -149,6 +149,8 @@ Example:
 				}
 
 				st.PreFixHead = ""
+				st.FixedHead = ""
+				st.FixedBase = ""
 				if target == websterengine.ResetToBatchStart {
 					if bs := st.Batches[batch]; bs != nil {
 						bs.Recoveries = 0

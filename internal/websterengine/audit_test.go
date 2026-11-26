@@ -2,7 +2,8 @@
 // The cases cover CheckFork, CheckParent, and the fabricengine.RefScanner matcher.
 // The matcher is built from a fake lymcwd.Location, never a hardcoded geometry token.
 // SettleRetry is covered with a recording fake Sleeper.
-// Every case is a pure fact-in/verdict-out table: no git spawn, no real sleeping, no filesystem I/O.
+// The cases are fact-in/verdict-out with no git spawn and no real sleeping.
+// Only the link-resolved path spelling touches the filesystem.
 
 package websterengine
 
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -327,6 +329,7 @@ func TestCheckParent(t *testing.T) {
 
 	const outcomePath = "/hub/master-builder/_lym/webster/outcome.yaml"
 	const summaryPath = "/hub/master-builder/_lym/webster/summary.md"
+	const notePath = "/hub/master-builder/_lym/loom/friction/webster-master.md"
 
 	tests := []struct {
 		name  string
@@ -383,6 +386,27 @@ func TestCheckParent(t *testing.T) {
 			wantClasses: nil,
 		},
 		{
+			name: "write to Master's friction note is allowed",
+			audit: shuttleengine.ForkAudit{
+				ParentWrites: []string{notePath},
+			},
+			wantClasses: nil,
+		},
+		{
+			name: "relative write to Master's friction note is allowed",
+			audit: shuttleengine.ForkAudit{
+				ParentWrites: []string{"_lym/loom/friction/webster-master.md"},
+			},
+			wantClasses: nil,
+		},
+		{
+			name: "write to another friction note is a hard error",
+			audit: shuttleengine.ForkAudit{
+				ParentWrites: []string{"/hub/master-builder/_lym/loom/friction/webster-master-2.md"},
+			},
+			wantClasses: []AuditViolationClass{ClassParentWrite},
+		},
+		{
 			name: "relative write to a source file is a hard error",
 			audit: shuttleengine.ForkAudit{
 				ParentWrites: []string{"internal/websterengine/audit.go"},
@@ -425,7 +449,7 @@ func TestCheckParent(t *testing.T) {
 			if workdir == "" {
 				workdir = "/hub/master-builder"
 			}
-			got := CheckParent(tt.audit, outcomePath, summaryPath, workdir, fabricRef)
+			got := CheckParent(tt.audit, outcomePath, summaryPath, notePath, workdir, fabricRef)
 			if len(got) != len(tt.wantClasses) {
 				t.Fatalf("CheckParent() = %v; want %d violation(s) of class %v", got, len(tt.wantClasses), tt.wantClasses)
 			}
@@ -439,6 +463,21 @@ func TestCheckParent(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("write to the friction note through its link target is allowed", func(t *testing.T) {
+		workdir, records := t.TempDir(), t.TempDir()
+		if err := fslink.CreateDirLink(filepath.Join(workdir, "_lym"), records); err != nil {
+			t.Fatal(err)
+		}
+		told := filepath.Join(workdir, "_lym", "loom", "friction", "webster-master.md")
+		resolved := filepath.Join(records, "loom", "friction", "webster-master.md")
+
+		got := CheckParent(shuttleengine.ForkAudit{ParentWrites: []string{resolved}}, outcomePath, summaryPath, told, workdir, fabricRef)
+
+		if len(got) != 0 {
+			t.Errorf("CheckParent() = %v; want no violation", got)
+		}
+	})
 }
 
 // recordingSleeper is a Sleeper that never blocks.

@@ -347,6 +347,17 @@ func (g *fakeGit) CommitLog(_, base, head string) ([]websterengine.CommitLogEntr
 
 func (g *fakeGit) IgnoredPath(_, path string) (bool, error) { return g.ignored[path], nil }
 
+// EnclosingCommit answers HEAD with the fake's head and a registered commit with itself.
+func (g *fakeGit) EnclosingCommit(_, rev string) (string, error) {
+	if rev == "HEAD" {
+		return g.head, nil
+	}
+	if g.SHAExists("", rev) {
+		return rev, nil
+	}
+	return "", nil
+}
+
 func (g *fakeGit) OtherWorktrees(string) ([]string, error) { return g.others, nil }
 
 func (g *fakeGit) AddedPaths(_, base, head string) ([]string, error) {

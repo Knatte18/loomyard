@@ -719,7 +719,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	}
 
 	// The fixer fork's prompt is rendered and written by Go up front:
-	// Merriam may write nothing but its two contract files.
+	// Merriam may write nothing but its two contract files and its friction note.
 	verifyFixNotePath := friction.NotePath(deps.FrictionDir, "webster-verify-fix")
 	choice, ok := deps.Roles[RoleMaster]
 	if !ok {
@@ -750,6 +750,11 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		return RunResult{}, fmt.Errorf("%w %s", err, deps.reentryStep())
 	}
 	masterNotePath := friction.NotePath(deps.FrictionDir, "webster-master")
+	// Read before the spawn, so nothing Master writes can be in it.
+	masterRecordsBase, err := recordsBaseline(deps.Geom)
+	if err != nil {
+		return RunResult{}, fmt.Errorf("webster: read the records side's HEAD: %w; way forward: transient, %s", err, deps.reentryStep())
+	}
 	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, verifyFixPromptPath, deps.Geom.PlanDir, deps.Config.SelfFixCap, deps.Geom.PaneCwd, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, engine, patternChanges, parentDecisions, masterNotePath, deps.Geom.ParentName)
 	if err != nil {
 		return RunResult{}, err
@@ -802,6 +807,8 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// that pane would be invisible to every future reclaim.
 	// Two saves, not one, keep the reclaimable record ahead of the fallible resolve.
 	st.MasterStrand = handle.StrandGUID()
+	st.MasterNotePath = masterNotePath
+	st.MasterRecordsBase = masterRecordsBase
 	if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
 		return RunResult{}, err
 	}
@@ -1081,7 +1088,7 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 		return nil, "", err
 	}
 	var candidates []AuditViolation
-	candidates = append(candidates, CheckParent(*result.ForkAudit, outcomePath, summaryPath, deps.Geom.PaneCwd, deps.RefMatcher)...)
+	candidates = append(candidates, CheckParent(*result.ForkAudit, outcomePath, summaryPath, st.MasterNotePath, deps.Geom.PaneCwd, deps.RefMatcher)...)
 	for _, f := range result.ForkAudit.Forks {
 		candidates = append(candidates, CheckFork(f, outcomePath, summaryPath, deps.Geom.PaneCwd, planDirs, websterDirs, forkOwnReport(st, deps.Geom, f.TranscriptPath), deps.RefMatcher)...)
 	}
@@ -1257,12 +1264,15 @@ func pendingFindingsText(engines AuditEngines, st *State, geom Geometry, items [
 // pendingPathsWayForward returns the ordered steps that clear pending findings naming paths.
 // It also returns each path's note for the findings clause.
 // A finding with no path clears only through the reset route.
-// So does a finding with a path that nothing the run recorded can check, unless the path is a cleared contract file.
+// So does a finding with a path that nothing the run recorded can check.
+// A cleared contract file is exempt from that.
+// So is a path on the run's records side while st.MasterRecordsBase names a commit its repository holds.
 // The steps are then the reset to start, then reentry;
 // accept-audit refuses every finding while any one of them cannot be checked.
 // Otherwise the steps are the restores, then accept-audit, then reentry.
 // The restores are: git checkout of the differing tracked paths to the last batch head;
 // restore-plan for plan paths that differ;
+// a restore to st.MasterRecordsBase for a records-side path changed since that commit;
 // rm for a contract path that a fork, recovery or verify-fixer session wrote last.
 // The error is a link-resolution or git probe failure.
 func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []string, pathless bool, reentry string) (steps []string, notes map[string]string, err error) {
@@ -1283,6 +1293,23 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 	if err != nil {
 		return nil, nil, err
 	}
+	var tracked, recordsChanged []string
+	for _, p := range rest {
+		onRecords, clean, err := recordsSideStatus(geom, st.MasterRecordsBase, p)
+		if err != nil {
+			return nil, nil, err
+		}
+		switch {
+		case !onRecords:
+			tracked = append(tracked, p)
+		case clean:
+			notes[p] = noteClearedRecords
+		default:
+			notes[p] = noteChangedRecords
+			recordsChanged = append(recordsChanged, p)
+		}
+	}
+	rest = tracked
 	unchecked := pathless
 	for _, p := range slices.Concat(plan, rest) {
 		reason, uncheckable, err := uncheckableReason(geom, st, p)
@@ -1318,6 +1345,9 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 	}
 	if len(plan) > 0 {
 		steps = append(steps, stepRestorePlan)
+	}
+	if len(recordsChanged) > 0 {
+		steps = append(steps, recordsRestoreStep(st.MasterRecordsBase, recordsChanged))
 	}
 	if len(unclearedPaths) > 0 {
 		steps = append(steps, "rm "+strings.Join(unclearedPaths, " "))
