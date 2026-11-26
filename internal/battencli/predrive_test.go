@@ -172,9 +172,9 @@ func TestPreDriveCheck(t *testing.T) {
 	})
 }
 
-// TestFreshStartCommitsWorktreeCreateThroughTheSeam pins that seeding an absent status makes the run's one start push.
-// Both pre-run hooks seed through the same call: the Worktree-Create commit pushes,
-// and the Seed-Child row that follows commits without a push.
+// TestFreshStartCommitsWorktreeCreateThroughTheSeam pins that seeding an absent status commits the Worktree-Create row.
+// Both pre-run hooks seed through the same call: the Worktree-Create commit starts the pusher and pushes nothing,
+// and the Seed-Child row that follows commits and starts it like any transition.
 func TestFreshStartCommitsWorktreeCreateThroughTheSeam(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -189,25 +189,26 @@ func TestFreshStartCommitsWorktreeCreateThroughTheSeam(t *testing.T) {
 			c := newPreDriveReceiver(t)
 			writeBattenSeed(t, c)
 			markerPath := filepath.Join(t.TempDir(), "last-commit")
-			var commits, pushes int
+			var commits, starts, pushes int
 			c.commitStatus = newCommitStatusSeam(commitStatusDeps{
 				MergeActive: func() (bool, error) { return false, nil },
 				Commit:      func(string) (bool, error) { commits++; return true, nil },
+				StartPush:   func() bool { starts++; return true },
 				Push:        func() error { pushes++; return nil },
 			}, markerPath, markerPath+".lock")
 
 			if err := hook(c); err != nil {
 				t.Fatalf("%s() = %v; want nil", name, err)
 			}
-			if commits != 1 || pushes != 1 {
-				t.Fatalf("after the fresh start, commits = %d, pushes = %d; want 1 and 1", commits, pushes)
+			if commits != 1 || starts != 1 || pushes != 0 {
+				t.Fatalf("after the fresh start, commits = %d, pusher starts = %d, pushes = %d; want 1, 1 and 0", commits, starts, pushes)
 			}
 			if err := c.commitStatus(battenrecipe.NameSeedChild, "running"); err != nil {
 				t.Fatalf("commitStatus(Seed-Child, running) = %v; want nil", err)
 			}
 
-			if commits != 2 || pushes != 1 {
-				t.Errorf("after Seed-Child, commits = %d, pushes = %d; want 2 and 1", commits, pushes)
+			if commits != 2 || starts != 2 || pushes != 0 {
+				t.Errorf("after Seed-Child, commits = %d, pusher starts = %d, pushes = %d; want 2, 2 and 0", commits, starts, pushes)
 			}
 		})
 	}

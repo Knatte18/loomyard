@@ -1100,7 +1100,8 @@ func TestRunRelay(t *testing.T) {
 		r := newRelayRun(t)
 		r.startAt("100.000000")
 		r.deps.Watch = func(string, ...string) (*fswatch.Watcher, error) { return nil, errors.New("inotify is unavailable") }
-		r.start()
+		// The first outbound read's wake drains the inbox too, so the hint waits until it is done.
+		r.settle()
 		for _, wait := range []time.Duration{time.Second, 2 * time.Second} {
 			r.clock.awaitWait(t, wait)
 			r.clock.Advance(wait)

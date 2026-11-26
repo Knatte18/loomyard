@@ -31,6 +31,10 @@ const (
 	endedRemoved = "removed"
 )
 
+// EndedHandedOver marks, in the EndedSet a prime's records replay reads, a run this machine handed over to another.
+// Its commits go under local set-aside tags like an ended run's, and the other runs' commits replay in order.
+const EndedHandedOver = "handed-over"
+
 // setAsideTagPrefix is the short-name prefix of the local tag that keeps a commit a replay set aside.
 // No archive reader matches it.
 const setAsideTagPrefix = "set-aside/"
@@ -354,13 +358,14 @@ func ParentHoldsTaskWork(l, pairLocation *lymcwd.Location, slug string) (bool, e
 
 // withoutFinalizeEntered returns the part of ended whose slugs this machine's own landing has not reached,
 // so a replay never sets aside the commits of a run this machine landed.
+// A run marked EndedHandedOver stays, since its commits are never replayed here.
 func withoutFinalizeEntered(l *lymcwd.Location, ended EndedSet) EndedSet {
 	if len(ended) == 0 {
 		return ended
 	}
 	live := EndedSet{}
 	for slug, how := range ended {
-		if finalizeEntered(l, slug, how) {
+		if how != EndedHandedOver && finalizeEntered(l, slug, how) {
 			logger.Info("fabricengine: a run origin has ended is left to this machine's own landing", "slug", slug)
 			continue
 		}

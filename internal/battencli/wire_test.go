@@ -36,7 +36,8 @@ import (
 
 // TestWire_BuildsLazilyForANonexistentTaskWorktree asserts wire succeeds for a missing task worktree.
 // Every lazy seam must be an injected closure after wire returns, not an already-evaluated value.
-// The seams checked are the status-path resolver, the spawn directory, both teardown halves and the status commit seam.
+// The seams checked are the status-path resolver, the spawn directory, the teardown seams and the status commit seam.
+// The teardown's push and level seams are checked here because the exhaustive seam test skips them as nil-legal.
 // Each seam is checked separately: eager evaluation is the failure laziness exists to avoid,
 // and a check on one seam alone would let the others regress silently.
 func TestWire_BuildsLazilyForANonexistentTaskWorktree(t *testing.T) {
@@ -63,6 +64,8 @@ func TestWire_BuildsLazilyForANonexistentTaskWorktree(t *testing.T) {
 		{"SpawnDirectory", c.env.InnerRun.Spawn != nil},
 		{"TeardownShutdown", c.env.Teardown.Shutdown != nil},
 		{"TeardownRemove", c.env.Teardown.Remove != nil},
+		{"TeardownPush", c.env.Teardown.Push != nil},
+		{"TeardownLevel", c.env.Teardown.Level != nil},
 		{"ReadDecision", c.env.InnerRun.ReadDecision != nil},
 		{"DriverAlive", c.env.InnerRun.DriverAlive != nil},
 		{"DriverStrand", c.env.InnerRun.DriverStrand != nil},

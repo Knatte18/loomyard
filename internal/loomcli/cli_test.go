@@ -56,6 +56,15 @@ func TestResolvePersistentPreRun_SkipsSlugGroups(t *testing.T) {
 			}
 		}
 	}
+
+	// The pusher verb is skipped too: it exits with the resolve error of its flag, not the pre-run's arming refusal.
+	var out bytes.Buffer
+	missing := filepath.Join(t.TempDir(), "no-such-worktree")
+	exitCode := clihelp.ExecuteIn(Command(), t.TempDir(), &out, []string{"pusher", "--worktree", missing})
+	wayForward := "; way forward: run lym loom pusher --worktree with the path of an existing code worktree; the next commit, dobby tick or resume starts the pusher again"
+	if exitCode != 1 || !strings.Contains(out.String(), wayForward) {
+		t.Errorf("loom pusher --worktree <missing> = exit %d, output %q; want exit 1 and the resolve error ending in %q", exitCode, out.String(), wayForward)
+	}
 }
 
 // TestCommand_StartVerbCarriesParent pins the start verb under the loom parent command: it exposes --parent.

@@ -740,7 +740,9 @@ func (c *battenCLI) pausedExtras() map[string]any {
 // that pre-flight is the run-scope origin reconcile (reconcileResume) for every run but these:
 // a run still at Worktree-Create, or at Worktree-Teardown whose pair is absent.
 // A fresh start runs no reconcile, and armAt has already run its owner check.
-// Once the owner pre-flight lets a found status resume, reopenWindow reopens the terminal window;
+// After the owner pre-flight lets a found status resume, startPusher starts the run's pushers.
+// It does so with or without --no-reopen.
+// reopenWindow then reopens the terminal window;
 // it does so when no client is attached, unless --no-reopen is set.
 // Under --continue-pass, refuseContinuePass runs first,
 // and a run it lets through skips the catch-up, the act rule, the owner pre-flight and the reopening:
@@ -773,6 +775,9 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 		if err := c.preflightRunOwner(); err != nil {
 			return err
 		}
+		if c.startPusher != nil {
+			c.startPusher()
+		}
 		if c.noReopen {
 			return nil
 		}
@@ -794,9 +799,9 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 }
 
 // seedFreshStatus seeds the absent status.
-// Once it seeded one, it commits the Worktree-Create running row through the seam.
-// The seeding writes that row without a shed transition, so no seam call would otherwise carry it:
-// this call is the push that the run's following start rows leave to, and a run that found its status makes none.
+// Once it seeded one, it commits the Worktree-Create running row through the seam, as it commits any transition.
+// The seeding writes that row without a shed transition, so no seam call would otherwise carry it;
+// a run that found its status makes no such commit.
 // The commit runs after the status lock is released.
 func (c *battenCLI) seedFreshStatus() error {
 	seeded := false

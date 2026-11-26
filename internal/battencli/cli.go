@@ -180,6 +180,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runfsm"
+	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -308,6 +309,12 @@ type battenCLI struct {
 	// machineName reads this machine's name, which is passed to the shed being built.
 	// Nil selects machinename.Name, which only a hand-populated receiver leaves nil.
 	machineName func() (string, error)
+	// startPusher starts the prime's pusher and the run's pair's, which a resume does before the run acts.
+	// Nil starts nothing, which only a hand-populated receiver has.
+	startPusher func()
+	// pusherStart is the pusher start startPusher runs for each worktree.
+	// Nil selects runpusher.Start.
+	pusherStart func(runpusher.Target) (bool, error)
 }
 
 // battenVerbTexts carries the Use, Short and Long text of batten's shedverbs-driven verbs.

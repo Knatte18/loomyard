@@ -1,6 +1,6 @@
 # PATTERN-pair-remote
 
-Pushing run records or tearing down a pair: the code branch goes along after the records side, both before the run acts, bar a batten run's uninterrupted start from Seed-Child to Run-Shed;
+Pushing run records or tearing down a pair: the code branch goes along after the records side, from the worktree's background pusher, which no transition waits for;
 a pair's remote steps hold the slug's teardown lock;
 teardown only via `internal/pairteardown`.
 
@@ -16,9 +16,9 @@ Go pushes a run's records side, and in a task pair the code branch goes after it
   The records side goes first and the code side only once it landed:
   a failed or rejected records side pushes no code.
 - The push is never left to an agent.
-- A transition's push is synchronous through `statuscommit`, before the next producer starts.
-  A batten run's uninterrupted start from Seed-Child to Run-Shed commits without a push, as `PATTERN-run-fsm` states.
-  A push owed on an unreachable origin or a held teardown lock holds the run at its transition and retries behind the gate.
+- The worktree's pusher pushes the records side and then the code side, and no transition waits for it.
+  An owed push, on an unreachable origin or a held teardown lock, is retried in the pusher.
+  A refused push leaves its record and notice and stops the pusher until the record's way forward clears it.
 - The detached pushes that stay keep that order in `coalescePushSides`:
   the anchor change, fabric's commit spawn, `lym fabric sync` and `add`, and a lift's deferred push.
   The pending-flag respawn and the failed-remove respawn are gone, and a left flag waits for its worktree's next push.
@@ -91,6 +91,9 @@ and its removal leaves the board claim to the cancel, which clears it.
   The pair's drift capture job, the strands, the loop, the run-lock wait and the session end follow.
   The caller's own locks are taken between the owned-process end and the capture job's termination.
   Its removal passes `Request.LeaveClaim`, which settles no claim, since the cancel clears it under its own locks.
+- Worktree-Teardown pushes the pair to completion with the prime lock released,
+  and removes it only while origin's tracking refs hold both tips.
+  With git or pushes off it pushes nothing and removes the pair without that read.
 - `internal/pairteardown` stays inside the fabric-boundary entry:
   it names no side and passes `fabricengine.RemoveResult` through whole.
 - Enforced by `internal/pairteardown/teardown_enforcement_test.go`, a tripwire and not a completeness proof.

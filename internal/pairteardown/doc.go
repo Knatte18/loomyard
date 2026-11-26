@@ -165,8 +165,10 @@
 //
 // # Handing a run over
 //
-// PushRun is the run's synchronous pair push, and every such push outside fabric goes through it.
+// PushRun is the push the background pusher, the teardown and the catch-up run.
+// Every such push outside fabric goes through it.
 // A rejected records push that meets another machine's takeover entry for the run gets a hand-over, not a replay.
+// A rejected push of the prime's records hands over every batten run taken over on origin, then pushes the rest.
 // HandOver ends the processes this machine runs for the run and archives the local tips.
 // It then moves the owed code tip and writes the hand-over mark.
 // Unless the caller runs inside the pair, it removes the local pair; inside the pair the parent's dobby removes it.

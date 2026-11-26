@@ -1,4 +1,5 @@
-// prepush.go judges a loom run against origin and its owners right before the run commits or pushes its work.
+// prepush.go judges a loom run against origin and its owners right before the run's work leaves the machine.
+// That covers the pull request record's commit and push, PR-Review's task push and each push of the run's pusher.
 // It stops a run whose owner or branches moved since the run last looked.
 
 package loomcli
@@ -25,7 +26,8 @@ import (
 // errPushStopped marks a push the pre-push check stopped: the run is paused or held, and the orch was noticed.
 var errPushStopped = errors.New("loomcli: the push was stopped before it ran")
 
-// prePushCheck is the check a loom run's commits and pushes pass first, its seams injected so a test drives it from stubs.
+// prePushCheck is the check the pull request record's commit and push, PR-Review's task push and the run's pusher pass.
+// Its seams are injected so a test drives it from stubs.
 type prePushCheck struct {
 	// slug names the run in its notices.
 	slug string

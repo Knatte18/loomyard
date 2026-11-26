@@ -226,6 +226,7 @@
 // `hubDobbyDeps` fills every seam of the engine from told paths.
 // The dobby's working directory is the hub root and never a worktree.
 // Only the prime's dobby carries the hub's hibernate request and Slack relay.
+// It also restarts the prime's pusher at the start of its `Tick`, the one hub-wide pusher restart.
 // Only a beam's dobby is given the landing step, the start hold and the member flagging.
 // Bound: a teardown in flight when the dobby stops ends half done;
 // the next attempt or `lym cleanup --apply` finishes it.

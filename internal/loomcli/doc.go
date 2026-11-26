@@ -213,6 +213,11 @@
 // A step at a row waiting on the operator reads as active to the step watchdog and as a live wait to dobby.
 // Those rows are Beam-Await, PR-Review and Sampler-Session.
 //
+// `lym loom pusher --worktree <code worktree> [--slug <slug>]` is the hidden role verb of a worktree's background pusher.
+// It resolves the worktree its flag names, never the cwd, and arms no run.
+// A pair's pusher, not the commit, runs the pre-push reconcile before each push.
+// The prime's pusher pushes its records for every batten run and runs no check.
+//
 // `lym loom pr-continue` sets the continue flag in the run's pull-request record when the operator ends a review.
 // It is refused until the PR-Review row has opened the pull request.
 // Under a review whose record holds autonomy true, it sets the flag only on the parent's satisfied answer.
@@ -227,10 +232,11 @@
 // It is also refused when the record names no session or the task worktree has uncommitted paths.
 //
 // A hand-back leaves a Go-authored stop report and writes the park marker.
-// `lym loom commit-records` pushes the pair's records with its task branch;
-// a push skipped under an exclusive teardown lock is an ok envelope with `push_skipped`.
+// `lym loom commit-records` commits the pair's records and starts the pair's pusher, which pushes them;
+// its ok envelope carries `committed` and `pusher_started`.
 //
-// Every commit and push of a loom run's pair passes the pre-push origin reconcile first.
+// The pair's pusher passes the pre-push origin reconcile before each push.
+// The landing's commits and pushes and the pull-request record's commits pass it too.
 // The reconcile is skipped when pushes are off, in the prime, under a pause and at Finalize.
 // An unreachable origin or a failed check lets the push go, so the push's own failure is recorded.
 // A run another machine owns stops the push with no pause, naming `lym adopt <subject>`.

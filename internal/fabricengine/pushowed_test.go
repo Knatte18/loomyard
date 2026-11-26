@@ -1,4 +1,4 @@
-// pushowed_test.go pins IsPushOwed, the classification a transition seam retries a failed push by.
+// pushowed_test.go pins IsPushOwed, the classification a pusher retries an owed push by.
 
 package fabricengine_test
 
@@ -41,6 +41,8 @@ func TestIsPushOwed(t *testing.T) {
 		), false},
 		{"BareTeardownRefusal", fmt.Errorf("pair is being removed: %w", fabricengine.ErrPairPushRunning), false},
 		{"HandedOver", fmt.Errorf("pushing: %w", fabricengine.ErrHandedOver), false},
+		{"TakeoverPassOwed", fmt.Errorf("pushing: %w", fabricengine.ErrTakeoverPassOwed), true},
+		{"TakeoversError", &fabricengine.TakeoversError{Takeovers: []*fabricengine.TakeoverError{{Slug: "run"}}}, false},
 		{"Nil", nil, false},
 	}
 	for _, tt := range tests {

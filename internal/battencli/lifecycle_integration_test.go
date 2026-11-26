@@ -359,6 +359,7 @@ func TestBattenIntegration_Rows(t *testing.T) {
 		{"Teardown_FailedRemoteDeletionHaltsResumably", stepTeardown_FailedRemoteDeletionHaltsResumably},
 		{"Teardown_UnreachableRemoteHaltsBeforeRemovalResumably", stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably},
 		{"Teardown_AlreadyGonePairWithNoBranchIsDone", stepTeardown_AlreadyGonePairWithNoBranchIsDone},
+		{"Teardown_ResumedRowWhosePairIsGoneFinishesDone", stepTeardown_ResumedRowWhosePairIsGoneFinishesDone},
 		{"StepDrivenRunShed_ReturnsOnTheChildsStateChange", stepStepDrivenRunShed_ReturnsOnTheChildsStateChange},
 		{"RunShedPausedChild_WaitsThenTearsDownOnceDone", stepRunShedPausedChild_WaitsThenTearsDownOnceDone},
 		{"CreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree", stepCreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree},
@@ -757,6 +758,26 @@ func refuseRemoteBranchDeletions(t *testing.T, bareDir string) func() {
 func remoteArchiveTagExists(bareDir, slug string) bool {
 	out, err := exec.Command("git", "-C", bareDir, "for-each-ref", "--format=%(refname)", "refs/tags/archive/"+slug+"/").Output()
 	return err == nil && strings.TrimSpace(string(out)) != ""
+}
+
+// stepTeardown_ResumedRowWhosePairIsGoneFinishesDone runs the Worktree-Teardown row over a pair already removed.
+// The row's push has nothing to push and its level read reads level, so the row goes on to its removal and finishes Done.
+func stepTeardown_ResumedRowWhosePairIsGoneFinishesDone(t *testing.T, h *hubforge.Hub) {
+	slug := "batten-teardown-resumed-gone"
+	hubforge.AddPair(t, h, slug)
+	if _, err := h.Topology.Remove(h.Location, slug, false, true); err != nil {
+		t.Fatalf("remove the pair: %v", err)
+	}
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		return shedengine.Status{State: shedengine.StateDone}, true, nil
+	})
+	producer := battenshed.NewWorktreeTeardown(battenrecipe.NameWorktreeTeardown, slug, c.env.Teardown, c.env.PrimeLock, c.env.ScratchDir)
+
+	outcome, pointer, err := producer.Call(context.Background())
+
+	if err != nil || outcome != shedengine.Done {
+		t.Errorf("Worktree-Teardown over a gone pair = %q, reason %q, error %v; want Done", outcome, pointer.Reason, err)
+	}
 }
 
 // stepTeardown_FailedRemoteDeletionHaltsResumably makes the records origin refuse branch deletions during teardown.

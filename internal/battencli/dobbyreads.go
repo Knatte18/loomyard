@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/runfsm"
+	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -144,7 +145,10 @@ var unsettledCodeTip logger.EpisodeSet
 // The pause coverage is read from the record at pauseRecord.
 // Each run also carries its FSM state and the act rule's verdict, judged with nothing set aside.
 // A run whose records or act inputs do not read is left out of the call, with one Warn per episode.
-// A run this machine owns, with its pair here, then settles its code tip:
+// A run this machine owns, with its pair here, is first handed to startPusher for its pair.
+// startPusher decides whether the pair needs a pusher.
+// A failed start only warns, and the run stays in the call.
+// It then settles its code tip:
 // a tip missing from origin is pushed or, past its grace, given up, and a code branch origin moved past is brought level.
 // A run whose code tip does not settle is left out of the call, with one Warn per episode.
 // A run's place against its Land row is read from its status,
@@ -158,7 +162,7 @@ var unsettledCodeTip logger.EpisodeSet
 // A paused run also carries whether its work already reached its parent.
 // That is read from the child's status in the task worktree,
 // and a read that fails leaves the run unreached, with one Warn, so the run stays paused.
-func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *DobbyParents, pauseRecord string) ([]dobbyengine.RunView, error) {
+func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *DobbyParents, pauseRecord string, startPusher func(runpusher.Target) (bool, error)) ([]dobbyengine.RunView, error) {
 	runs, err := dobbyParentRuns(prime, geom, parents)
 	if err != nil {
 		return nil, err
@@ -257,6 +261,7 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 			}
 		}
 		if !inputs.OwnedElsewhere && view.PairPresent {
+			restartPusher(pair, slug, startPusher)
 			if err := settleCodeTip(codeTip, slug, verdict, now); err != nil {
 				unsettledCodeTip.Fail(slug, "battencli: a run's code tip does not settle and the run is left out of this tick", "slug", slug, "error", err)
 				continue
@@ -493,7 +498,7 @@ func (r *DobbyViewReader) Read(now time.Time) (dobbyengine.View, error) {
 	if err != nil {
 		return dobbyengine.View{}, fmt.Errorf("load beam.yaml: %w", err)
 	}
-	runs, err := DobbyRuns(r.prime, r.geom, r.parents, r.pauseRecord)
+	runs, err := DobbyRuns(r.prime, r.geom, r.parents, r.pauseRecord, runpusher.StartIfAhead)
 	if err != nil {
 		return dobbyengine.View{}, fmt.Errorf("list the runs: %w", err)
 	}

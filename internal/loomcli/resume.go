@@ -37,6 +37,7 @@ type resumeRefusal struct {
 
 // resumeFromRunState answers `lym loom resume` for the run's persisted state.
 // It must be called holding bootstrapLock, and releases it exactly once on every path out.
+// Once it has read a found status that is not done, it starts the run's pusher, before any driver wake.
 func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstrapLock *lock.FileLock) {
 	refuse := func(r resumeRefusal) {
 		_ = bootstrapLock.Release()
@@ -83,6 +84,10 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 			refuse(refusal)
 			return
 		}
+	}
+
+	if c.startPusher != nil {
+		c.startPusher()
 	}
 
 	runLockHeld, err := c.runLockHeld()

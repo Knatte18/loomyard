@@ -115,6 +115,10 @@ var enforcementAllowlist = []scankit.Entry{
 		Key: "internal/testkit/scankit/scankit.go",
 		Why: "the test-only scan kit imports the standard library only and finds the module root from the test binary's starting directory, since -trimpath hides its source path",
 	},
+	{
+		Key: "docs/research/platform/seccomp-connect-probe/main.go",
+		Why: "a study's standalone probe, built only by go run, restores its own working directory after a relative connect and resolves no root",
+	},
 }
 
 // TestEnforcement walks the repo source tree and verifies that no source file outside internal/lymcwd and cmd/lym contains the raw cwd/root primitives os.Getwd or git rev-parse --show-toplevel.

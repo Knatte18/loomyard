@@ -153,6 +153,8 @@ var nilLegal = map[string]bool{
 	"RecordHead":                       true,
 	"ReviewInputs":                     true,
 	"Harden":                           true,
+	"Teardown.Push":                    true,
+	"Teardown.Level":                   true,
 }
 
 // noopSamplerSessions is a loomshed.SamplerSessions that starts and stops nothing.

@@ -356,15 +356,34 @@ type SeedChildDeps struct {
 	MarkWatched func(ctx context.Context) (held bool, err error)
 }
 
-// TeardownDeps carries the two closures a worktree teardown calls in sequence: Shutdown strictly before Remove.
-// They are separate fields so that Remove never runs when Shutdown fails,
-// and the stuck reason names which of the two failed.
+// ErrPushEntryEnded is the sentinel a teardown push wraps when origin ended the pair's records branch.
+// Nothing is left to push then, and the teardown removes the pair without reading whether origin holds its tips.
+var ErrPushEntryEnded = errors.New("battenshed: origin ended the pair's entry, so nothing is left to push")
+
+// ErrPushHandedOver is the sentinel a teardown push wraps when this machine already handed the run over.
+// The hand-over removed the pair, and the run belongs to the other machine.
+var ErrPushHandedOver = errors.New("battenshed: the run was handed over to another machine")
+
+// TeardownDeps carries the closures a worktree teardown calls in sequence:
+// Shutdown strictly before Push, Push before Level, and Level before Remove.
+// They are separate fields so that Remove never runs when Shutdown, Push or Level fails,
+// and the stuck reason names which of them failed.
 // The abandoned-session value Shutdown returns must surface on an otherwise Done row.
-// Both closures are expected to wrap the two phases of the pair-teardown composite, EndSession and RemovePair.
+// Shutdown and Remove are expected to wrap the two phases of the pair-teardown composite, EndSession and RemovePair.
 type TeardownDeps struct {
 	// Shutdown ends the loom session's own driving process, if one is still attached.
 	// It returns the name of any session it had to abandon rather than cleanly end.
 	Shutdown func(ctx context.Context) (abandonedSession string, err error)
-	// Remove deletes the task worktree pair, and runs only after Shutdown has succeeded.
+	// Push brings the pair's commits to origin and returns once they landed, with no prime lock held.
+	// An error wrapping ErrPushEntryEnded means origin ended the pair's entry.
+	// One wrapping ErrPushHandedOver means the run was handed over.
+	// Any other error is a refused push.
+	// A nil Push pushes nothing.
+	Push func(ctx context.Context) error
+	// Level reports whether origin's tracking refs hold the pair's tips.
+	// A false read means origin lacks a tip, so the teardown pushes again, a bounded number of times.
+	// A nil Level reads level.
+	Level func() (bool, error)
+	// Remove deletes the task worktree pair, and runs only after Shutdown, Push and Level succeeded.
 	Remove func(ctx context.Context) error
 }

@@ -7,6 +7,7 @@
 // BoltDirName names the Bolt checkout inside a hub.
 // The other constants name the directories modules keep under a worktree's or the hub's never-tracked directory.
 // HandOverDirName sits beside the other hub-level names and holds a machine's hand-over marks.
+// PusherDirName holds the locks of the background pushers, one per records worktree.
 // HardenSandboxDirName names the directory under a worktree's `.lym` that holds a run's throwaway sandbox hubs.
 // UsageDirName, RaddleDirName, WeaverDirName and HardenDirName are the exceptions:
 // they sit under a worktree's tracked LymDirName.

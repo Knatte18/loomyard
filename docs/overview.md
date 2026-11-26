@@ -336,7 +336,8 @@ github.com/Knatte18/loomyard/
 ├── internal/shedverbs/           the generic run/step/status/pause/goto cobra verb bodies shared by every module that arms a `*shedengine.Shed` onto a CLI subtree
 ├── internal/sheddriver/          the shed layer's Go driver: its settle loop, rule table and hand-back, the tackler agent call, and the `shed` config module, told its paths and seams by the arming module
 ├── internal/shedcli/             the `lym shed` subtree: a named-recipe arming table for the tapestry, motif, raddle, arras, darn, pawl, sampler, hardener and batten recipes plus the three CLI seams that register it under the lym root
-├── internal/statuscommit/        the shared per-transition status commit core (skip while mid-merge, commit hard-errors, push spawn warns) that `loomcli` and `battencli` wrap
+├── internal/runpusher/           the pusher of a records worktree: its start conditions, spawn, push loop and exit protocol
+├── internal/statuscommit/        the shared per-transition status commit core (skip while mid-merge, commit hard-errors, start the worktree's pusher) that `loomcli` and `battencli` wrap
 ├── internal/statuspane/          the pane mechanics the runs overview and the gate checklist share: a redraw-in-place pane loop and a lock-free status-file reader
 ├── internal/landingshed/         landing's general ShedProducers, Parent-Align, the PR-Review row and Finalize, shared by reference across producer lists
 ├── internal/pawlengine/          the pawl recipe's own producers, Beam-Up, Beam-Await and Beam-Down, the land request Beam-Await consumes and the beam's ready record, told their geometry and seams by their caller
@@ -1343,7 +1344,7 @@ User-facing modules each get one `lym <module>` namespace:
   `Plan-Bouncer` skips its judge only for an exempt generation:
   one whose live cards are all `Prosa` on non-source files.
   The `Webster` row commits the plan directory alongside its run record.
-  `commit-records` commits and pushes the run's records through fabric, and pushes the task branch along with them.
+  `commit-records` commits the run's records through fabric and starts the pair's pusher, which pushes them and the task branch.
   The records are the status file, the review round record, friction notes and drive reports.
   The loom driver's end-of-session command runs it after the driver writes its stop report.
   A loom-launched driver runs it at a hand-back, before it parks until `lym loom start` resumes it.

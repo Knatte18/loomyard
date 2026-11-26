@@ -479,7 +479,8 @@ func (j *pushJob) clear() error {
 	return nil
 }
 
-// record writes a failed-push record of the job's side and branch and returns it.
+// record builds the failed-push record of the job's side and branch, writes it and returns it.
+// It writes nothing for an owed class when the job's options set OwedUnrecorded.
 func (j *pushJob) record(class PushFailureClass, cause error, paths, commits []string, originHead string) FailedPush {
 	f := FailedPush{
 		Repo:       j.side,
@@ -502,6 +503,9 @@ func (j *pushJob) record(class PushFailureClass, cause error, paths, commits []s
 	if errors.As(cause, &anchorStop) {
 		f.WayForward = anchorStop.WayForward
 	}
+	if j.opts.OwedUnrecorded && isOwedClass(class) {
+		return f
+	}
 	if err := recordPushFailure(j.hubPath, f, time.Now(), j.opts.notifier()); err != nil {
 		logger.Warn("fabricengine: failed-push record not written", "side", j.side, "branch", j.branch, "error", err)
 	}
@@ -509,6 +513,7 @@ func (j *pushJob) record(class PushFailureClass, cause error, paths, commits []s
 }
 
 // fail records a failed push and returns it as a *PushFailedError.
+// A failure of an owed class is not recorded, and posts no notice, when the job's options set OwedUnrecorded.
 func (j *pushJob) fail(class PushFailureClass, cause error, paths, commits []string, originHead string) error {
 	return &PushFailedError{Record: j.record(class, cause, paths, commits, originHead), Err: cause}
 }
@@ -517,12 +522,16 @@ func (j *pushJob) fail(class PushFailureClass, cause error, paths, commits []str
 // The branch's next push retries it.
 // A records side whose worktree holds uncommitted tracked changes records them as the cause.
 // Origin's commits cannot be replayed onto the worktree until those changes are committed or discarded.
+// It returns nil, or with the job's OwedUnrecorded set the deferred class's unrecorded *PushFailedError.
 func (j *pushJob) deferral() error {
 	cause := errors.New("the push was deferred to the branch's next push")
 	if j.side == failedPushSideRecords && j.hasUncommittedChanges() {
 		cause = fmt.Errorf("origin's commits cannot be replayed onto %s until its uncommitted changes are committed or discarded", j.path)
 	}
-	j.record(PushFailureDeferred, cause, nil, nil, "")
+	record := j.record(PushFailureDeferred, cause, nil, nil, "")
+	if j.opts.OwedUnrecorded {
+		return &PushFailedError{Record: record, Err: cause}
+	}
 	return nil
 }
 
@@ -642,13 +651,22 @@ type originView struct {
 // proceed is false when the push is not to run.
 // err then holds the *PushFailedError of a push held back and recorded, or the error of a judgment that failed.
 // It is nil for a branch whose entry origin has ended.
+// That branch's local tracking ref is deleted first, with its upstream setting kept,
+// so a local read of the branch sees an upstream with no ref and never a stale ref that lacks the local tip.
 // A branch without an upstream was never pushed and has nothing to compare with.
+// An upstream whose tracking ref is absent, as after a fetch pruned it, is looked up on origin like any other.
+// A branch origin still holds is then pushed; the rewind check, which reads the ref's history, is skipped.
 func (j *pushJob) checkOrigin() (proceed bool, err error) {
+	refPruned := false
 	if _, upstreamErr := j.repo.UpstreamSHA(); upstreamErr != nil {
-		if errors.Is(upstreamErr, gitrepo.ErrNoUpstream) {
+		switch {
+		case errors.Is(upstreamErr, gitrepo.ErrNoUpstream):
 			return true, nil
+		case errors.Is(upstreamErr, gitrepo.ErrRefNotFound):
+			refPruned = true
+		default:
+			return false, upstreamErr
 		}
-		return false, upstreamErr
 	}
 
 	view, err := j.awaitOrigin()
@@ -660,15 +678,28 @@ func (j *pushJob) checkOrigin() (proceed bool, err error) {
 	case view.unchecked:
 		return true, nil
 	case view.ended:
-		return false, nil
+		return false, j.dropTrackingRefOfEndedBranch()
 	case view.gone:
 		return false, j.fail(PushFailureGone, fmt.Errorf("%w: %s", ErrBranchGone, j.branch), nil, nil, "")
 	}
 
-	if j.side == failedPushSideCode && !j.prime {
+	if j.side == failedPushSideCode && !j.prime && !refPruned {
 		return j.holdBackRewound(view.head)
 	}
 	return true, nil
+}
+
+// dropTrackingRefOfEndedBranch deletes the local tracking ref of the job's branch, which origin no longer has.
+// The branch keeps its upstream setting.
+func (j *pushJob) dropTrackingRefOfEndedBranch() error {
+	ns, err := originNamespaceAt(j.path)
+	if err != nil {
+		return err
+	}
+	if err := j.repo.DeleteRemoteTrackingRef(originRemoteName, j.branch, ns); err != nil {
+		return fmt.Errorf("fabricengine: delete the tracking ref of the branch %s, whose entry origin ended: %w", j.branch, err)
+	}
+	return nil
 }
 
 // awaitOrigin looks the branch up on origin.
@@ -829,7 +860,11 @@ func goneEntryEnded(hubPath, branch string) (bool, error) {
 // It fetches the weft branch and then reads origin's record of the run runSlug through takeoverStop:
 // a run taken over by a machine here does not hold returns an error before anything is replayed or changed.
 // The error is a *TakeoverError, or wraps ErrHandedOver.
-// A zero here or an empty runSlug skips that read.
+// A zero here skips that read, and so does an empty runSlug for a pair's records worktree.
+// On the prime's records worktree the read covers every batten run a local commit origin lacks names, and runSlug too.
+// It returns a *TakeoversError holding each pending takeover, with nothing replayed or pushed.
+// A failed read returns an error wrapping ErrTakeoverPassOwed.
+// The replay sets aside the commits of a run this machine already handed over, as it does an ended run's.
 // It then fetches origin's Bolt branch, and try-acquires the weft write lock, while the caller holds the push lock.
 // A held write lock and an uncommitted change on a path the replay touches report a deferral, with nothing changed.
 // A replay that stops returns ErrReplayConflict with the conflicting paths,
@@ -845,13 +880,25 @@ func retryWeftPush(rec *Mutations, hubPath, weftPath, runSlug string, here Machi
 	if err := repo.Fetch(); err != nil {
 		return false, fmt.Errorf("fabricengine: fetch the weft branch in %s: %w", weftPath, err)
 	}
-	if !here.isZero() && runSlug != "" {
+	var handedOver []string
+	if !here.isZero() {
 		warpLocation, err := warpLocationOfRecords(weftPath)
 		if err != nil {
 			return false, err
 		}
-		if err := takeoverStop(warpLocation, weftPath, runSlug, here); err != nil {
+		prime, err := IsPrimeWorktree(warpLocation)
+		if err != nil {
 			return false, err
+		}
+		switch {
+		case prime:
+			if handedOver, err = primePushTakeovers(warpLocation, weftPath, runSlug, here); err != nil {
+				return false, err
+			}
+		case runSlug != "":
+			if err := takeoverStop(warpLocation, weftPath, runSlug, here); err != nil {
+				return false, err
+			}
 		}
 	}
 	if err := fetchBoltBranch(hubPath); err != nil {
@@ -917,6 +964,12 @@ func retryWeftPush(rec *Mutations, hubPath, weftPath, runSlug string, here Machi
 		ended, err := (&Fabric{records: repo}).weftEndedByOrigin(l, ahead)
 		if err != nil {
 			return false, err
+		}
+		if len(handedOver) > 0 && ended == nil {
+			ended = EndedSet{}
+		}
+		for _, slug := range handedOver {
+			ended[slug] = EndedHandedOver
 		}
 		outcome, err := replayWeft(rec, l, weftPath, upstream, ended)
 		if errors.Is(err, ErrReplayDirty) {

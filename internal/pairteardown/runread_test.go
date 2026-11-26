@@ -50,6 +50,9 @@ type runFakes struct {
 	owedPushErr error
 	codeTipErr  error
 
+	localHoldsTip    bool
+	localHoldsTipErr error
+
 	boardErr error
 
 	// calls lists the seams that tell a branch of the reader, in call order.
@@ -81,7 +84,11 @@ func (f *runFakes) reader() runReader {
 		pauseCovers: func(string) (bool, error) { return f.pauseCovers, nil },
 		owedPush:    func(string) ([]fabricengine.FailedPush, error) { return f.owedPush, f.owedPushErr },
 		codeTip:     func(string) (fabricengine.CodeTipReading, error) { return f.codeTip, f.codeTipErr },
-		skipPush:    f.skipPush,
+		localHoldsTip: func(string, string) (bool, error) {
+			f.calls = append(f.calls, "local-tip")
+			return f.localHoldsTip, f.localHoldsTipErr
+		},
+		skipPush: f.skipPush,
 		originParentHolds: func(string) (bool, error) {
 			f.calls = append(f.calls, "parent-origin")
 			return f.originParentHolds, nil
@@ -330,7 +337,18 @@ func TestReadRun(t *testing.T) {
 			name:      "AMissingCodeTipWithAPairHereLeavesThePairAbsentInputClear",
 			fakes:     runFakes{pairHere: true, codeTip: fabricengine.CodeTipReading{Tip: "abc123", Missing: true, Machine: "oslo"}},
 			wantIn:    runfsm.Inputs{CodeTipMissing: true, CodeTip: "abc123", CodeTipMachine: "oslo"},
-			wantCalls: []string{"child-here"},
+			wantCalls: []string{"child-here", "local-tip"},
+		},
+		{
+			name:      "AMissingCodeTipTheLocalBranchHoldsSetsNoCodeTipInput",
+			fakes:     runFakes{pairHere: true, localHoldsTip: true, codeTip: fabricengine.CodeTipReading{Tip: "abc123", Missing: true, Machine: "oslo"}},
+			wantCalls: []string{"child-here", "local-tip"},
+		},
+		{
+			name:      "AFailedLocalTipReadNamesTheReadAndTheSlug",
+			fakes:     runFakes{pairHere: true, localHoldsTipErr: errors.New("boom"), codeTip: fabricengine.CodeTipReading{Tip: "abc123", Missing: true, Machine: "oslo"}},
+			wantErr:   "read whether the local code branch holds the code tip of slug: boom",
+			wantCalls: []string{"child-here", "local-tip"},
 		},
 		{
 			name:      "ACodeTipOriginHoldsSetsNoCodeTipInput",

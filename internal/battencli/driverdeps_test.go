@@ -223,7 +223,7 @@ func TestBattenRecordsCommitSeams(t *testing.T) {
 						messages = append(messages, msg)
 						return false, tt.commitErr
 					},
-					Push: func() error { return nil },
+					StartPush: func() bool { return false },
 				}
 			}
 			deps, err := c.driverDepsFor()

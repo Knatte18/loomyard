@@ -20,7 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
-// StatusPushLockWait is the bounded push-lock wait that `commit-records` and a run's transition push pass.
+// StatusPushLockWait is the wait for the push lock and for the pair's teardown lock.
+// A worktree's pusher and Worktree-Teardown pass it.
 // It is also the default for a pair's teardown lock.
 // It is long enough to ride out a detached push child, and short enough that a stuck holder never stalls a run.
 const StatusPushLockWait = 30 * time.Second
@@ -33,6 +34,31 @@ const LockWaitUnbounded time.Duration = 0
 // The error names the lock's holder, its pid and how long it has held the lock, when the holder recorded them.
 var ErrPushLockBusy = errors.New("fabricengine: push lock busy")
 
+// ErrEntryEnded is wrapped by the error of a records push that was skipped.
+// The push was skipped because its branch is gone from origin and its entry is ended there.
+// Such a branch is left to its teardown; the push is no failure and no owed push.
+var ErrEntryEnded error = errors.New("fabricengine: the entry of the branch is ended on origin")
+
+// entryEndedError is an error with its own text that satisfies errors.Is(err, ErrEntryEnded).
+type entryEndedError struct {
+	text string
+}
+
+// Error returns the error's own text.
+func (e entryEndedError) Error() string { return e.text }
+
+// Is reports whether target is ErrEntryEnded.
+func (e entryEndedError) Is(target error) bool { return target == ErrEntryEnded }
+
+// isOwedClass reports whether class is one a caller retries until the push lands: transport, deferred or teardown_lock.
+func isOwedClass(class PushFailureClass) bool {
+	switch class {
+	case PushFailureTransport, PushFailureDeferred, PushFailureTeardownLock:
+		return true
+	}
+	return false
+}
+
 // IsPushRejected reports whether err carries a remote's non-fast-forward rejection of a push.
 func IsPushRejected(err error) bool {
 	return errors.Is(err, gitrepo.ErrPushRejected)
@@ -41,19 +67,16 @@ func IsPushRejected(err error) bool {
 // IsPushOwed reports whether err is a push that is owed, one a caller retries until it lands.
 // A push is owed when the push lock stayed busy past the wait.
 // It is also owed when every recorded failure it carries is of class transport, deferred or teardown_lock.
+// A takeover read of the prime's records push that failed is owed too, and its error wraps ErrTakeoverPassOwed.
 // A bare ErrPairPushRunning is not owed: it comes only from a push with no teardown wait, which records no failure.
-// A rejection, a takeover and a hand-over are not owed.
+// A rejection, a takeover, a *TakeoversError and a hand-over are not owed.
 func IsPushOwed(err error) bool {
-	if errors.Is(err, ErrPushLockBusy) {
+	if errors.Is(err, ErrPushLockBusy) || errors.Is(err, ErrTakeoverPassOwed) {
 		return true
 	}
 	failures := pushFailuresOf(err)
 	return len(failures) > 0 && !slices.ContainsFunc(failures, func(failed *PushFailedError) bool {
-		switch failed.Record.Class {
-		case PushFailureTransport, PushFailureDeferred, PushFailureTeardownLock:
-			return false
-		}
-		return true
+		return !isOwedClass(failed.Record.Class)
 	})
 }
 
@@ -143,6 +166,9 @@ func pushLockBusyError(lockDir string, lockWait time.Duration) error {
 // the commits stay local for the pair's next push.
 // A positive wait that runs out also records a failed push of class PushFailureTeardownLock for the records side,
 // and the error is that record's *PushFailedError, which marks the push as owed.
+// With push.OwedUnrecorded an owed failure is returned as its *PushFailedError and written to no record, with no notice:
+// a deferred side is told from the returned error, and the caller retries the push itself.
+// Every other failure is recorded as without it.
 // The prime's records push takes no teardown lock.
 // The code side is sent with SyncOptions.AfterRecords set,
 // so a rejection by an origin tip that no transition of the run names resets that tip.
@@ -173,6 +199,7 @@ func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, push PairPush) (res 
 		return PushResult{}, err
 	}
 	opts.RunSlug = push.RunSlug
+	opts.OwedUnrecorded = push.OwedUnrecorded
 	if request.TeardownSlug != "" {
 		opts.RunSlug = request.TeardownSlug
 		releaseTeardown, acquired, err := acquireTeardownShared(l.HubPath, request.TeardownSlug, push.TeardownWait)
@@ -281,16 +308,18 @@ type MachineNames struct {
 // TeardownWait bounds the wait for the pair's teardown lock: zero makes one try, and a longer wait owes the push.
 // RunSlug names the run whose records a rejected prime push reads.
 // Here names this machine, for a takeover read; its zero value turns that read off.
+// OwedUnrecorded returns an owed push's error with no failed-push record, as SyncOptions.OwedUnrecorded says.
 type PairPush struct {
-	LockWait     time.Duration
-	TeardownWait time.Duration
-	RunSlug      string
-	Here         MachineNames
+	LockWait       time.Duration
+	TeardownWait   time.Duration
+	RunSlug        string
+	Here           MachineNames
+	OwedUnrecorded bool
 }
 
 // teardownLockOwedError is the error of a pair push that found slug's teardown lock held.
 // A zero wait returns the plain refusal wrapping ErrPairPushRunning, and records nothing.
-// A positive wait that ran out records a failed push of class PushFailureTeardownLock.
+// A positive wait that ran out records a failed push of class PushFailureTeardownLock, unless opts.OwedUnrecorded is set.
 // The record is against the records branch at weftPath.
 // The error returned is a *PushFailedError wrapping ErrPairPushRunning, which reads as an owed push.
 func teardownLockOwedError(hubPath, weftPath, slug string, wait time.Duration, opts SyncOptions) error {
@@ -312,8 +341,10 @@ func teardownLockOwedError(hubPath, weftPath, slug string, wait time.Duration, o
 		Error:        refusal.Error(),
 		Runs:         []string{slug},
 	}
-	if err := recordPushFailure(hubPath, record, time.Now(), opts.notifier()); err != nil {
-		logger.Warn("fabricengine: failed-push record not written", "side", failedPushSideRecords, "branch", branch, "error", err)
+	if !opts.OwedUnrecorded {
+		if err := recordPushFailure(hubPath, record, time.Now(), opts.notifier()); err != nil {
+			logger.Warn("fabricengine: failed-push record not written", "side", failedPushSideRecords, "branch", branch, "error", err)
+		}
 	}
 	return &PushFailedError{Record: record, Err: refusal}
 }
@@ -328,21 +359,25 @@ var errRecordsUnpushedPastPush = errors.New("fabricengine: the records branch ho
 // A push deferred since started returns its *PushFailedError, read from the deferred record the push wrote.
 // A branch origin still holds returns an error wrapping errRecordsUnpushedPastPush.
 // A branch gone from origin had its entry ended there, since the push skips only such a branch,
-// and its error says the branch is left to its teardown.
+// and its error wraps ErrEntryEnded and says the branch is left to its teardown.
 // A lookup of the branch on origin that fails to reach origin records a failed push of class PushFailureTransport,
 // and the error is that record's *PushFailedError, which marks the push as owed.
 // Any other failed lookup returns its error unclassified.
+// Outside opts.OwedUnrecorded a deferral is read back from the deferred record the push wrote;
+// with it the deferral came back as the push's own error, so no record is read.
 func recordsSideNotLanded(hubPath, weftPath string, started time.Time, opts SyncOptions) error {
 	branch, err := gitrepo.New(weftPath).CurrentBranch()
 	if err != nil {
 		return err
 	}
-	record, found, err := readFailedPush(hubPath, failedPushSideRecords, branch)
-	if err != nil {
-		return err
-	}
-	if found && record.Class == PushFailureDeferred && !record.LastSeen.Before(started) {
-		return &PushFailedError{Record: record, Err: errors.New(record.Error)}
+	if !opts.OwedUnrecorded {
+		record, found, err := readFailedPush(hubPath, failedPushSideRecords, branch)
+		if err != nil {
+			return err
+		}
+		if found && record.Class == PushFailureDeferred && !record.LastSeen.Before(started) {
+			return &PushFailedError{Record: record, Err: errors.New(record.Error)}
+		}
 	}
 	gone, err := branchGoneOnOrigin(weftPath)
 	if err != nil {
@@ -355,12 +390,13 @@ func recordsSideNotLanded(hubPath, weftPath string, started time.Time, opts Sync
 	if !gone {
 		return fmt.Errorf("%w: branch %s is still on origin", errRecordsUnpushedPastPush, branch)
 	}
-	return fmt.Errorf("the entry of branch %s is ended on origin, so the branch was not pushed and is left to its teardown", branch)
+	return entryEndedError{text: fmt.Sprintf("the entry of branch %s is ended on origin, so the branch was not pushed and is left to its teardown", branch)}
 }
 
 // recordOwedRecordsPush records a failed push of class for the records branch at weftPath.
 // It returns the record as a *PushFailedError wrapping cause.
 // The classes it is given read as owed pushes, so the caller retries the push.
+// With opts.OwedUnrecorded it writes no record and posts no notice.
 // A records branch that cannot be read returns cause with nothing recorded.
 func recordOwedRecordsPush(hubPath, weftPath string, class PushFailureClass, cause error, opts SyncOptions) error {
 	branch, err := gitrepo.New(weftPath).CurrentBranch()
@@ -378,8 +414,10 @@ func recordOwedRecordsPush(hubPath, weftPath string, class PushFailureClass, cau
 	if opts.RunSlug != "" {
 		record.Runs = []string{opts.RunSlug}
 	}
-	if err := recordPushFailure(hubPath, record, time.Now(), opts.notifier()); err != nil {
-		logger.Warn("fabricengine: failed-push record not written", "side", failedPushSideRecords, "branch", branch, "error", err)
+	if !opts.OwedUnrecorded {
+		if err := recordPushFailure(hubPath, record, time.Now(), opts.notifier()); err != nil {
+			logger.Warn("fabricengine: failed-push record not written", "side", failedPushSideRecords, "branch", branch, "error", err)
+		}
 	}
 	return &PushFailedError{Record: record, Err: cause}
 }

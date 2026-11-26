@@ -23,11 +23,16 @@ type RunPush struct {
 	LockWait time.Duration
 	// TeardownWait bounds the wait for the pair's teardown lock; a wait that runs out owes the push.
 	TeardownWait time.Duration
+	// OwedUnrecorded returns an owed push's error with no failed-push record, for a caller that retries the push itself.
+	OwedUnrecorded bool
 	// InsidePair says the caller runs inside the run's task pair.
 	// A hand-over then leaves the pair for the parent's dobby to remove.
 	InsidePair bool
 	// Parent is the parent pair a Finalize merged the run into, nil otherwise.
 	Parent *lymcwd.Location
+	// PrimeRecords says the run's unpushed transitions sit in the prime's records.
+	// A hand-over then archives the prime's local records tip under an owner archive tag, before its hand-over mark.
+	PrimeRecords bool
 }
 
 // ThisMachine returns the names that read as this machine in the hub at hubPath.
@@ -67,8 +72,17 @@ func machineNamesOf(here machinename.Identity, registry boardengine.Registry) fa
 }
 
 // PushRun pushes the pair at l synchronously for the run slug, in the hub of prime.
-// A rejected records push that meets another machine's takeover entry for the run hands the run over.
+// It serves every synchronous push of a run's records: the background pusher's, a teardown's and a catch-up's.
+// A rejected records push of a pair that meets another machine's takeover entry for the run hands the run over.
 // It then returns that hand-over's error.
+// A rejected push of the prime's records can meet the takeover entries of many batten runs.
+// Each such run is handed over, with its unpushed prime commits archived and its local pair removed,
+// and the push runs again.
+// The run's commits are then left out of every later push.
+// The push stops once it returns anything but such an entry.
+// A push that names a run among the handed-over ones returns an error wrapping fabricengine.ErrHandedOver.
+// A failed hand-over pushes nothing.
+// It returns an error wrapping fabricengine.ErrTakeoverPassOwed that names the run and the step.
 // An error wrapping fabricengine.ErrHandedOver from the push itself passes through unchanged:
 // this machine's hand-over mark already names the entry's machine, so nothing more is pushed.
 func PushRun(prime, l *lymcwd.Location, slug string, push RunPush) (fabricengine.PushResult, error) {
@@ -76,15 +90,40 @@ func PushRun(prime, l *lymcwd.Location, slug string, push RunPush) (fabricengine
 	if err != nil {
 		return fabricengine.PushResult{}, err
 	}
-	result, err := fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabricengine.PairPush{
-		LockWait:     push.LockWait,
-		TeardownWait: push.TeardownWait,
-		RunSlug:      slug,
-		Here:         here,
-	})
+	pushPair := func() (fabricengine.PushResult, error) {
+		return fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabricengine.PairPush{
+			LockWait:       push.LockWait,
+			TeardownWait:   push.TeardownWait,
+			RunSlug:        slug,
+			Here:           here,
+			OwedUnrecorded: push.OwedUnrecorded,
+		})
+	}
+	result, err := pushPair()
 	var takeover *fabricengine.TakeoverError
 	if errors.As(err, &takeover) {
 		return result, HandOver(prime, slug, takeover.Entry, push)
+	}
+
+	var namedHandOver error
+	for {
+		var takeovers *fabricengine.TakeoversError
+		if !errors.As(err, &takeovers) {
+			break
+		}
+		for _, pending := range takeovers.Takeovers {
+			handOverErr := HandOver(prime, pending.Slug, pending.Entry, RunPush{PrimeRecords: true})
+			if !errors.Is(handOverErr, fabricengine.ErrHandedOver) {
+				return result, fmt.Errorf("%w: %w", fabricengine.ErrTakeoverPassOwed, handOverErr)
+			}
+			if pending.Slug == slug {
+				namedHandOver = handOverErr
+			}
+		}
+		result, err = pushPair()
+	}
+	if err == nil && namedHandOver != nil {
+		return result, namedHandOver
 	}
 	return result, err
 }
@@ -127,13 +166,17 @@ func HandOver(prime *lymcwd.Location, slug string, entry shedengine.Takeover, pu
 			return fmt.Errorf("pairteardown: hand over the run %q: resolve its pair: %w", slug, err)
 		}
 	}
-	_, err = fabricengine.HandOverTips(prime, fabricengine.HandOverRequest{
+	request := fabricengine.HandOverRequest{
 		Slug:           slug,
 		Pair:           pair,
 		Parent:         push.Parent,
 		Entry:          entry,
 		DroppedIntents: droppedIntents(local, origin),
-	})
+	}
+	if push.PrimeRecords {
+		request.PrimeRecords = prime
+	}
+	_, err = fabricengine.HandOverTips(prime, request)
 	if err != nil {
 		return fmt.Errorf("pairteardown: hand over the run %q: archive its tips: %w", slug, err)
 	}

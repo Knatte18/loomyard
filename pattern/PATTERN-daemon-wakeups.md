@@ -97,7 +97,7 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
   `post --wait-reply`, `inject --wait`, `read --wait` and `hook-wait` wait on their connection;
   they reconnect from one second;
   the client's connect wait after a spawn also ends when the daemon it started exits, except a lost start race,
-- the owed transition push's retry in `internal/statuscommit/statuscommit.go`:
+- the pusher's owed retry in `internal/runpusher`:
   it waits from one second, doubling to a minute while the push stays owed,
 - the Slack relay's loops:
   the outbound read in `internal/slackengine/relay.go`, with the binary check and the retried work after it, from five seconds doubling to sixty;

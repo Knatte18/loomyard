@@ -1,5 +1,5 @@
 // wiring_commitstatus_integration_test.go drives the per-transition status seam and commitRecordsVerb.
-// Both run against a real fabric pair, with real MergeStateActive, CommitAnchoredPaths, PushPairAnchored, and git.
+// Both run against a real fabric pair, with real MergeStateActive, CommitAnchoredPathsWithTrailers, and git.
 // Stub-based tests pass over a seam that stages the status file into a foreign merge's index before killing the run.
 // A stub Commit has no index to stage into and no git to refuse it.
 // Only the composed shape shows what the three dispositions do to a repository.
@@ -124,10 +124,9 @@ func mergeHeadPresent(t *testing.T, dir string) bool {
 // TestCommitStatusSeam_Real drives the status seam and the commit-records verb through every disposition.
 // It runs them over one real pair.
 // The steps share state, so a step that relies on an earlier one says so.
-// The ordinary dispositions run first while the remote is healthy;
-// the mid-merge skips share one live foreign merge;
-// the remote-failure steps run last because they leave the branch diverged.
-// The seam pushes its transition to the remote before it returns, and so does commit-records.
+// The ordinary dispositions run first, and the mid-merge skips share one live foreign merge.
+// The seam commits locally and starts the pair's pusher, and so does commit-records.
+// Under go test the pusher start spawns no process, so origin is never touched.
 // Each step changes the status file first, so every seam call has something of its own to commit.
 func TestCommitStatusSeam_Real(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -152,8 +151,9 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 	}
 
 	// The seed written by realSeamFixture is this step's own change.
-	t.Run("ordinary path commits and pushes the transition", func(t *testing.T) {
+	t.Run("ordinary path commits the transition locally and leaves origin untouched", func(t *testing.T) {
 		before := gitkit.RevParse(t, recordsSibling, "HEAD")
+		originBefore := remoteBranchTip(t, recordsSibling)
 
 		if err := seam("Discussion-Write", "running"); err != nil {
 			t.Fatalf("seam(Discussion-Write, running) error = %v; want nil", err)
@@ -169,11 +169,11 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		if got := headChangedFiles(); !strings.Contains(got, statusRel) {
 			t.Errorf("records HEAD touched %q; want it to include %q", got, statusRel)
 		}
-		if got := gitkit.Git(t, recordsSibling, "log", "--oneline", "@{u}..HEAD"); got != "" {
-			t.Errorf("unpushed records commits after the seam = %q; want none — the seam pushes before it returns", got)
+		if got := gitkit.Git(t, recordsSibling, "log", "--oneline", "@{u}..HEAD"); got == "" {
+			t.Error("unpushed records commits after the seam = none; want the transition's commit, since the seam pushes nothing")
 		}
-		if got := remoteBranchTip(t, recordsSibling); got != after {
-			t.Errorf("remote records branch = %q; want it at the records HEAD %q", got, after)
+		if got := remoteBranchTip(t, recordsSibling); got != originBefore {
+			t.Errorf("remote records branch = %q; want it left at %q", got, originBefore)
 		}
 	})
 
@@ -290,28 +290,28 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		}
 	})
 
-	// A drive report written after the last transition lands on the records tip, and the records origin's branch carries it.
-	t.Run("commit-records commits and pushes a late drive report", func(t *testing.T) {
+	// A drive report written after the last transition lands on the records tip and stays local for the pusher to push.
+	t.Run("commit-records commits a late drive report and leaves origin untouched", func(t *testing.T) {
 		deps := loomCommitStatusDeps(location, shedrun.SelfRunID)
 		writeRecordFile(t, filepath.Join(shedrun.DriveReportsDir(location, shedrun.SelfRunID), "late-report.md"), "stop report\n")
+		originBefore := remoteBranchTip(t, recordsSibling)
 
 		var out bytes.Buffer
 		if code := commitRecordsVerb(&out, deps); code != 0 {
 			t.Fatalf("exit = %d; want 0; output %s", code, out.String())
 		}
 
+		for _, want := range []string{`"committed":true`, `"pusher_started":false`} {
+			if !strings.Contains(out.String(), want) {
+				t.Errorf("output = %s; want it to contain %q", out.String(), want)
+			}
+		}
 		want := filepath.ToSlash(filepath.Join(shedrun.DriveReportsRel(location, shedrun.SelfRunID), "late-report.md"))
 		if got := headChangedFiles(); !strings.Contains(got, want) {
 			t.Errorf("records HEAD touched %q; want it to include %q", got, want)
 		}
-		if got := gitkit.Git(t, recordsSibling, "log", "--oneline", "@{u}..HEAD"); got != "" {
-			t.Errorf("unpushed records commits = %q; want none", got)
-		}
-		branch := gitkit.CurrentBranch(t, recordsSibling)
-		remote := gitkit.Git(t, recordsSibling, "ls-remote", "origin", "refs/heads/"+branch)
-		head := gitkit.RevParse(t, recordsSibling, "HEAD")
-		if !strings.HasPrefix(remote, head) {
-			t.Errorf("origin %s = %q; want it at the records HEAD %s", branch, remote, head)
+		if got := remoteBranchTip(t, recordsSibling); got != originBefore {
+			t.Errorf("remote records branch = %q; want it left at %q", got, originBefore)
 		}
 	})
 
@@ -422,46 +422,11 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		statusOnly(t)
 	})
 
-	// The task branch advanced on its remote by a second clone, past every tip the run's transitions name:
-	// The commit-records commit is itself a transition, so the owner's code push resets origin's branch to its tip.
-	// The records reach their remote, and the local task branch is left as it was.
-	t.Run("task branch advanced on origin is overridden by the owner's push", func(t *testing.T) {
+	// The transition's tracked writes land in the records commit after a code commit.
+	// Neither side reaches origin, since the pusher brings them there.
+	t.Run("transition commits the tracked writes and leaves both origin branches untouched", func(t *testing.T) {
 		taskWorktree := location.WorktreePath()
-		branch := gitkit.CurrentBranch(t, taskWorktree)
-		clone := t.TempDir()
-		gitkit.Git(t, clone, "clone", "-q", "-b", branch, gitkit.Git(t, taskWorktree, "remote", "get-url", "origin"), ".")
-		gitkit.Git(t, clone, "config", "user.email", "rogue@example.test")
-		gitkit.Git(t, clone, "config", "user.name", "rogue")
-		writeRecordFile(t, filepath.Join(clone, "rogue.txt"), "rogue\n")
-		gitkit.Git(t, clone, "add", "rogue.txt")
-		gitkit.Git(t, clone, "commit", "-q", "-m", "rogue advance")
-		gitkit.Git(t, clone, "push", "-q", "origin", branch)
-
-		commitInTaskWorktree(t, location, "diverging.txt")
-		taskHead := gitkit.RevParse(t, taskWorktree, "HEAD")
-		writeRecordFile(t, filepath.Join(shedrun.DriveReportsDir(location, shedrun.SelfRunID), "diverged-report.md"), "stop report\n")
-
-		var out bytes.Buffer
-		if code := commitRecordsVerb(&out, loomCommitStatusDeps(location, shedrun.SelfRunID)); code != 0 {
-			t.Fatalf("exit = %d; want 0; output %s", code, out.String())
-		}
-		if got := gitkit.RevParse(t, taskWorktree, "HEAD"); got != taskHead {
-			t.Errorf("task branch HEAD = %q; want unchanged %q", got, taskHead)
-		}
-		if got := remoteBranchTip(t, taskWorktree); got != taskHead {
-			t.Errorf("remote task branch = %q; want it reset to the local tip %q", got, taskHead)
-		}
-		if got, want := remoteBranchTip(t, recordsSibling), gitkit.RevParse(t, recordsSibling, "HEAD"); got != want {
-			t.Errorf("remote records branch = %q; want it at the records HEAD %q", got, want)
-		}
-	})
-
-	// The transition's tracked writes and its code commit are on origin before the seam returns:
-	// the records branch holds the transition and a fixer attempts file written under the durable directory,
-	// and the code branch holds the code commit.
-	// It runs after the diverged step.
-	// A transition naming a pushed code tip makes the owner's push override another clone's advance of the code branch.
-	t.Run("transition pushes the records and the code side", func(t *testing.T) {
+		recordsOrigin, codeOrigin := remoteBranchTip(t, recordsSibling), remoteBranchTip(t, taskWorktree)
 		attemptsRel := filepath.ToSlash(filepath.Join(loomengine.LoomDurableDirRel(), "fixer-attempts.json"))
 		writeRecordFile(t, filepath.Join(loomengine.LoomDurableDir(location), "fixer-attempts.json"), "{\"attempts\":1}\n")
 		commitInTaskWorktree(t, location, "code-change.txt")
@@ -474,12 +439,11 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		if got := headChangedFiles(); !strings.Contains(got, attemptsRel) {
 			t.Errorf("records HEAD touched %q; want it to include %q", got, attemptsRel)
 		}
-		if got, want := remoteBranchTip(t, recordsSibling), gitkit.RevParse(t, recordsSibling, "HEAD"); got != want {
-			t.Errorf("remote records branch = %q; want it at the records HEAD %q", got, want)
+		if got := remoteBranchTip(t, recordsSibling); got != recordsOrigin {
+			t.Errorf("remote records branch = %q; want it left at %q", got, recordsOrigin)
 		}
-		taskWorktree := location.WorktreePath()
-		if got, want := remoteBranchTip(t, taskWorktree), gitkit.RevParse(t, taskWorktree, "HEAD"); got != want {
-			t.Errorf("remote code branch = %q; want it at the code HEAD %q", got, want)
+		if got := remoteBranchTip(t, taskWorktree); got != codeOrigin {
+			t.Errorf("remote code branch = %q; want it left at %q", got, codeOrigin)
 		}
 	})
 

@@ -29,4 +29,5 @@ A term settled that this list lacks is added here, in lym's repository at `inter
 - **strand**: one agent's pane, holding one session. Never: tab, window.
 - **beam**: a long-lived branch that groups board work; its tasks fork from it and land back into it.
 - **pair**: a task's code worktree together with its records worktree.
+- **pusher**: the background process that brings one worktree's run commits to origin in order.
 - **move note**: what a cancelled run learned, written for the fresh run that replaces it. Never: hand-back, handoff.

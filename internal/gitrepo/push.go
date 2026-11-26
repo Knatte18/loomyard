@@ -223,6 +223,28 @@ func (r *Repo) DropRemoteTracking(remote, branch string) error {
 	})
 }
 
+// DeleteRemoteTrackingRef deletes the remote-tracking ref of a branch.
+// It is the ref that the remote's fetch refspecs map the branch's ref under ns to.
+// The ref is resolved as a push destination resolves its tracking ref, and deleted in one hold of the remote-refs lock.
+// It touches no config, so the branch keeps its upstream setting and reads as upstream-set with a pruned ref.
+// An absent ref, or a remote whose refspecs map no ref, is no error.
+// It touches no remote and no local branch.
+func (r *Repo) DeleteRemoteTrackingRef(remote, branch string, ns RefNamespace) error {
+	dest, err := r.resolvePushDestination(remote, branch, ns)
+	if err != nil {
+		return err
+	}
+	if dest.trackingRef == "" {
+		return nil
+	}
+	return r.withRemoteRefs(func() error {
+		if err := r.moveTrackingRef(dest.trackingRef, "", false); err != nil {
+			return fmt.Errorf("gitrepo: delete remote-tracking ref %s: %w", dest.trackingRef, err)
+		}
+		return nil
+	})
+}
+
 // PushRebaseFree pushes the checked-out branch without rebasing.
 // A branch with no upstream gets its remote branch as upstream.
 // A rejection returns an error wrapping ErrPushRejected with git's rejection line.

@@ -58,6 +58,7 @@ var testOnlyCodeAllowed = []scankit.Entry{
 	{Key: "internal/shuttleengine/claudeengine.New", Why: "builds the engine, unexported state included, for the tests of the packages that drive it"},
 	{Key: "internal/slackengine.WriteSetup", Why: "writes the credentials file slackengine alone writes, for internal/slackcli's and internal/beamcli's tests"},
 	{Key: "internal/websterengine.ConflictRecordRel", Why: "oracle of the conflict record path in internal/loomrecipe's recipe test"},
+	{Key: "internal/fabricengine.IsPushRejected", Why: "classifies a rejected push for internal/fabricengine's push tests, its last production caller having left with commit-records' push"},
 }
 
 // testOnlyCodeMinFunctions is the vacuous-scan floor for the functions of production files the guard examines.

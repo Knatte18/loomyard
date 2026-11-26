@@ -40,6 +40,9 @@ type HandOverRequest struct {
 	Entry shedengine.Takeover
 	// DroppedIntents names the pause or cancel intents that never reached origin, for the notice.
 	DroppedIntents []string
+	// PrimeRecords is the prime whose records hold the run's unpushed transitions, nil when there is none to archive.
+	// A set one has its local records tip pushed under an owner archive tag named for the run.
+	PrimeRecords *lymcwd.Location
 }
 
 // HandOverResult reports what a hand-over did.
@@ -59,6 +62,7 @@ type HandOverResult struct {
 // Each goes under an owner archive tag pushed to origin.
 // A parent branch that only the run's own merge puts ahead of its upstream is tagged the same way.
 // That branch is then reset to the upstream.
+// With req.PrimeRecords set, the prime's local records tip is archived the same way, under a tag named for the run.
 // One notice goes through the installed push notifier, and the hand-over mark is written last, after every tag landed.
 // A failure at any step returns it before the mark is written, so the next rejected push hands the run over again;
 // a failed archive wraps ErrArchiveFailed.
@@ -104,6 +108,16 @@ func HandOverTips(prime *lymcwd.Location, req HandOverRequest) (HandOverResult, 
 					result.Tags = append(result.Tags, tag)
 				}
 			}
+		}
+	}
+
+	if req.PrimeRecords != nil {
+		tag, err := archiveOwnerTip(rec, RecordsWorktree(req.PrimeRecords), req.Slug, "records", false)
+		if err != nil {
+			return result, fmt.Errorf("%w: prime records of %s: %w", ErrArchiveFailed, req.Slug, err)
+		}
+		if tag != "" {
+			result.Tags = append(result.Tags, tag)
 		}
 	}
 

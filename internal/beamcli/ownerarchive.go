@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/runpusher"
 )
 
 // archiveOwnerTips archives every local tip under the worktree named worktree that origin lacks.
@@ -29,7 +30,7 @@ func archiveOwnerTips(prime *lymcwd.Location, worktree string) error {
 	if err != nil {
 		return err
 	}
-	runs, err := battencli.DobbyRuns(prime, geom, battencli.NewDobbyParents(prime), pause.RecordPath)
+	runs, err := battencli.DobbyRuns(prime, geom, battencli.NewDobbyParents(prime), pause.RecordPath, runpusher.StartIfAhead)
 	if err != nil {
 		return fmt.Errorf("list the runs under %s: %w", worktree, err)
 	}

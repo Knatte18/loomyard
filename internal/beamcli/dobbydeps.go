@@ -47,6 +47,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -144,10 +145,17 @@ func syncBoltHoldEntries(prime *lymcwd.Location, recordPath, boardDir string, sc
 }
 
 // hubDobbyDeps fills every seam of dobbyengine.Run over the hub of prime, for the dobby of geom.
+// The dobby starts the pushers of the worktrees it drives that are ahead of origin.
+func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengine.Deps, error) {
+	return hubDobbyDepsStarting(prime, geom, runpusher.StartIfAhead)
+}
+
+// hubDobbyDepsStarting fills every seam of dobbyengine.Run over the hub of prime, for the dobby of geom.
+// The dobby's ticks and run reads start the pushers of the worktrees that are ahead of origin through startPusher.
 // Its log lines are appended to the file the dobby tells.
 // The dobby's own working directory is the hub root, so every path comes from prime and geom.
 // Only the pass spawn starts its process in the prime's anchor.
-func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengine.Deps, error) {
+func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, startPusher func(runpusher.Target) (bool, error)) (dobbyengine.Deps, error) {
 	worktree, err := lymcwd.ResolveWorktree(geom.WorktreeRoot)
 	if err != nil {
 		return dobbyengine.Deps{}, err
@@ -227,7 +235,7 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		},
 		EndSubject: func() error { return pairteardown.EndSubjectProcesses(prime, subjectOwner(geom), true) },
 		Runs: func() ([]dobbyengine.RunView, error) {
-			return battencli.DobbyRuns(prime, geom, parents, pause.RecordPath)
+			return battencli.DobbyRuns(prime, geom, parents, pause.RecordPath, startPusher)
 		},
 		ClearDoneRun: func(slug string) (bool, error) { return battencli.ClearDoneRun(prime, slug) },
 		SpawnPass: func(slug string, continuePass, noReopen bool) (<-chan dobbyengine.PassExit, error) {
@@ -296,6 +304,13 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		}
 		var relayEpisodes logger.EpisodeSet
 		deps.Tick = func(context.Context, dobbyengine.TickInput) (bool, error) {
+			runpusher.RestartPusher(func() (bool, error) {
+				target, err := runpusher.TargetOf(prime, "")
+				if err != nil {
+					return false, err
+				}
+				return startPusher(target)
+			}, prime.WorktreePath())
 			return false, errors.Join(carrier.Tick(), ensureSlackRelay(prime, &relayEpisodes))
 		}
 		deps.CheckBinary = holdReexec(carrier.HoldsReexec, deps.CheckBinary)

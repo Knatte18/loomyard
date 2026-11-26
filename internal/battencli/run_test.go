@@ -72,7 +72,7 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 		return commitStatusDeps{
 			MergeActive: func() (bool, error) { return false, nil },
 			Commit:      func(string) (bool, error) { return false, nil },
-			Push:        func() error { return nil },
+			StartPush:   func() bool { return false },
 		}
 	}
 	c.shedPaths = shedbuild.ShedPaths{

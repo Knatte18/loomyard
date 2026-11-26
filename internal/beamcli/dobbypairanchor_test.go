@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/runfsm"
+	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -94,7 +95,7 @@ func TestDobbyRuns_PairAtItsOwnAnchor(t *testing.T) {
 
 	// The tests share one hub and its marker state, so the cases run in sequence.
 	t.Run("ChildStatusAndWatchDirUnderThePairsAnchor", func(t *testing.T) {
-		views, err := battencli.DobbyRuns(prime, geom, newParents(), pauseRecord)
+		views, err := battencli.DobbyRuns(prime, geom, newParents(), pauseRecord, runpusher.StartIfAhead)
 		if err != nil {
 			t.Fatalf("dobbyRuns() = _, %v; want nil", err)
 		}
@@ -125,7 +126,7 @@ func TestDobbyRuns_PairAtItsOwnAnchor(t *testing.T) {
 	t.Run("InvalidMarkerRefusesTheRunsAndLeavesThePairOutOfTheWatch", func(t *testing.T) {
 		commitAnchorMarker(t, h, "broken", "../out")
 
-		views, err := battencli.DobbyRuns(prime, geom, newParents(), pauseRecord)
+		views, err := battencli.DobbyRuns(prime, geom, newParents(), pauseRecord, runpusher.StartIfAhead)
 		if !errors.Is(err, lymcwd.ErrInvalidAnchor) || !strings.Contains(err.Error(), "broken") {
 			t.Fatalf("dobbyRuns() = %v, %v; want an error naming the pair and wrapping ErrInvalidAnchor", views, err)
 		}
@@ -155,7 +156,7 @@ func TestDobbyRuns_PairAtItsOwnAnchor(t *testing.T) {
 			if err := os.WriteFile(pauseRecord, content, 0o644); err != nil {
 				t.Fatalf("write %s: %v", pauseRecord, err)
 			}
-			views, err := battencli.DobbyRuns(prime, geom, newParents(), pauseRecord)
+			views, err := battencli.DobbyRuns(prime, geom, newParents(), pauseRecord, runpusher.StartIfAhead)
 			if err != nil {
 				t.Fatalf("dobbyRuns() = _, %v; want nil", err)
 			}
@@ -225,7 +226,7 @@ func TestDobbyRuns_ReadsWhetherAPausedRunsWorkReachedItsParent(t *testing.T) {
 		}
 	}
 
-	views, err := battencli.DobbyRuns(prime, dobbyengine.Geometry{}, battencli.NewDobbyParents(prime), filepath.Join(t.TempDir(), "pause.json"))
+	views, err := battencli.DobbyRuns(prime, dobbyengine.Geometry{}, battencli.NewDobbyParents(prime), filepath.Join(t.TempDir(), "pause.json"), runpusher.StartIfAhead)
 	if err != nil {
 		t.Fatalf("DobbyRuns() = _, %v; want nil", err)
 	}
@@ -290,7 +291,7 @@ func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitAndTheEndedEntryAndPair(t 
 	}
 
 	geom := dobbyengine.Geometry{BoardDir: h.BoardDir()}
-	views, err := battencli.DobbyRuns(prime, geom, battencli.NewDobbyParents(prime), filepath.Join(t.TempDir(), "pause.json"))
+	views, err := battencli.DobbyRuns(prime, geom, battencli.NewDobbyParents(prime), filepath.Join(t.TempDir(), "pause.json"), runpusher.StartIfAhead)
 	if err != nil {
 		t.Fatalf("DobbyRuns() = _, %v; want nil", err)
 	}

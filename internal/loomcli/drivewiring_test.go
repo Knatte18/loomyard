@@ -53,7 +53,7 @@ func TestLoomPark(t *testing.T) {
 			commit := commitStatusDeps{
 				MergeActive: func() (bool, error) { return false, nil },
 				Commit:      func(string) (bool, error) { return tt.commitErr == nil, tt.commitErr },
-				Push:        func() error { return nil },
+				StartPush:   func() bool { return true },
 			}
 			const reportPath = "/reports/report-1.md"
 

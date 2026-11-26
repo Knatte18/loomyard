@@ -3,11 +3,9 @@
 //
 // It stages only the run's own paths.
 // The Fabric Git Invariant forbids a fabric-commit caller from staging every change in its repo.
-// The push is run and waited for, so the transition's records are on origin before the next producer starts.
-// The run's uninterrupted start from Seed-Child to Run-Shed commits without a push:
-// the first later transition's push carries those commits.
-// A push owed on an unreachable origin or a held lock is retried until it lands.
-// Any other push failure, a hand-over included, halts the run at the transition.
+// The commit is local, and the seam starts the prime's pusher after it and waits for no push:
+// the pusher brings the transition's records to origin in the background.
+// Every row commits and starts the pusher alike, the run's start from Seed-Child to Run-Shed included.
 //
 // A transition at a row listed before Run-Shed first writes "<FSM state> · <row>" on the task's board entry.
 // The FSM state is runfsm.TransitionState's word for the transition: starting, halted or paused, never the shed state.
@@ -33,7 +31,6 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -41,8 +38,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
-	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/runfsm"
+	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -57,15 +54,14 @@ type commitStatusDeps struct {
 	MergeActive func() (bool, error)
 	// Commit commits batten's own status file with msg and reports whether it made a commit.
 	Commit func(msg string) (committed bool, err error)
+	// StartPush starts the pusher of the prime and reports whether a pusher started.
+	// It logs its own failure, and a failed start reads false.
+	// The commit seam and the commit of the run's records require it.
+	StartPush func() bool
 	// Push pushes the fabric sibling worktree's unpushed commits and waits for the result.
+	// Only the pushes made outside the commit seam call it: the cancel's record and the re-adopt's failed-stop record.
 	// A nil Push pushes nothing, for a receiver a test builds by hand.
 	Push func() error
-	// Admit takes the network gate's admission for a transition's push and returns its release; nil takes none.
-	Admit func() (release func())
-	// Owed reports whether a failed transition push is owed, so the seam retries it; nil reads none as owed.
-	Owed func(err error) bool
-	// Sleep waits between the retries of an owed push; nil is time.Sleep.
-	Sleep func(time.Duration)
 	// SetBoardStatus writes status onto the run's board entry, leaving an absent or already done entry untouched.
 	// It writes nothing once the run's filing mark stands.
 	// A nil SetBoardStatus writes nothing.
@@ -129,12 +125,11 @@ func battenRunCommitPaths(location *lymcwd.Location, runID string) []string {
 	return append(paths, shedrun.DriverRecordsRel(location, runID)...)
 }
 
-// commitRunRecords commits the run's records outside a status transition and pushes them when it made a commit.
+// commitRunRecords commits the run's records outside a status transition and starts the pusher when it made a commit.
 // The driver writes a hand-back's stop report and saves a done step's envelope after the transition's own commit,
 // so the two stops that follow those writes commit them here.
 // A merge in progress on the pair commits nothing, and the next commit of the run's records carries them.
-// A push that is owed is logged, never returned, since the next push carries the commit;
-// any other push failure is returned.
+// It returns only a failed merge-state read or a failed commit.
 func commitRunRecords(deps commitStatusDeps, slug string) error {
 	active, err := deps.MergeActive()
 	if err != nil {
@@ -148,14 +143,15 @@ func commitRunRecords(deps commitStatusDeps, slug string) error {
 	if err != nil || !committed {
 		return err
 	}
-	return pushRecordsOrOwe(deps, slug)
+	deps.StartPush()
+	return nil
 }
 
 // battenCommitStatusDeps builds the commitStatusDeps that drive the fabric pair for location and runID.
 // Commit marks every records commit with the run's transition trailer and the code tip it was made at.
+// StartPush starts the pusher of location, the prime, and logs a failed start at warn.
 // Push runs from the prime, so it covers only the prime's records side,
 // and a hand-over it triggers removes the local pair.
-// Admit, Owed and Sleep drive the seam's gate admission and its retry of an owed push.
 // SetBoardStatus writes the hub board's entry runID names, a batten run's id being its task's slug.
 // It writes nothing once the run's filing mark stands, since a family filing made that entry the family's project.
 func battenCommitStatusDeps(location *lymcwd.Location, runID string) commitStatusDeps {
@@ -168,13 +164,24 @@ func battenCommitStatusDeps(location *lymcwd.Location, runID string) commitStatu
 			_, committed, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(""), location, battenRunCommitPaths(location, runID), msg, trailers, fabricengine.EnvSyncOptions())
 			return committed, err
 		},
+		StartPush: func() bool {
+			slug := shedrun.ResolveRunID(location, runID)
+			target, err := runpusher.TargetOf(location, slug)
+			if err != nil {
+				logger.Warn("battencli: the pusher did not start; the next commit, tick or resume starts one", "slug", slug, "error", err)
+				return false
+			}
+			started, err := runpusher.Start(target)
+			if err != nil {
+				logger.Warn("battencli: the pusher did not start; the next commit, tick or resume starts one", "slug", slug, "error", err)
+				return false
+			}
+			return started
+		},
 		Push: func() error {
 			_, err := pairteardown.PushRun(location, location, runID, pairteardown.RunPush{LockWait: fabricengine.StatusPushLockWait})
 			return err
 		},
-		Admit: func() func() { return pauserecord.Admit("transition push") },
-		Owed:  fabricengine.IsPushOwed,
-		Sleep: time.Sleep,
 		SetBoardStatus: func(status string) error {
 			if marked, err := shedrun.FilingMarked(location, runID); err != nil || marked {
 				return err
@@ -188,77 +195,61 @@ func battenCommitStatusDeps(location *lymcwd.Location, runID string) commitStatu
 	}
 }
 
+// restartPusher starts the pusher of the worktree l for the run slug through start.
+// A failed start logs one warning per episode and never fails the caller.
+// The prime's target names no slug, whatever slug is passed.
+func restartPusher(l *lymcwd.Location, slug string, start func(runpusher.Target) (bool, error)) {
+	runpusher.RestartPusher(func() (bool, error) {
+		target, err := runpusher.TargetOf(l, slug)
+		if err != nil {
+			return false, err
+		}
+		return start(target)
+	}, l.WorktreePath())
+}
+
 // commitStatusMarker is the on-disk record of the last (producer, state) pair the commit seam committed.
 // It is the no-op-transition skip's memory, read before deciding and rewritten after a successful commit.
 // It lives on disk rather than in a closure variable,
 // so the skip survives a fresh `lym batten step` process rebuilding the seam between calls.
 //
-// PushPending is true from a commit until its transition's push has landed or been left owed.
-// A marker left pending, by a failed push or a crash between commit and push, makes the next start row push.
-// A marker written by an older binary has no such key and reads as not pending.
+// A marker an older binary wrote may carry a `push_pending` key, which reads and is ignored.
 type commitStatusMarker struct {
-	Producer    string `json:"producer"`
-	State       string `json:"state"`
-	PushPending bool   `json:"push_pending,omitempty"`
+	Producer string `json:"producer"`
+	State    string `json:"state"`
 }
 
 // newCommitStatusSeam builds the status-commit hook of a shed run from deps.
 // The hook wraps an on-disk no-op-transition skip, kept at markerPath and locked via markerLockPath.
 //
 // Evaluation order: the board status write of a row before Run-Shed first, then the no-op-transition skip.
-// The skip returns nil without committing or pushing when the incoming (producer, state) pair matches the marker.
+// The skip returns nil without committing when the incoming (producer, state) pair matches the marker.
 // Then the statuscommit core applies its dispositions.
-// It skips while a merge is in progress and returns a failed commit as an error.
-// It pushes synchronously, retries an owed push until it lands, and returns any other push failure.
-//
-// A start transition commits without a push, which saves the run's start a push to origin per row.
-// A start transition enters a row from Seed-Child to Run-Shed running,
-// and the marker holds a running row before Run-Shed whose push is not pending.
-// The next transition's push carries its commit.
-// A resumed or halted start row pushes as any transition does.
-// So does one with no readable marker, and one after a push that failed or was cut off.
-// Another machine that adopts the run meanwhile reads the run at its last pushed row and runs the start rows again;
-// this machine's next push meets that takeover and hands the run over.
+// It skips while a merge is in progress.
+// It returns a failed commit as an error.
+// It starts the pusher after a commit that landed something.
+// Every row takes this one path, and the seam never pushes.
+// Another machine that adopts the run meanwhile reads the run at its last pushed row and runs the later rows again;
+// the pusher meets that takeover at its next push and hands the run over.
 //
 // A missing or corrupt marker falls back to committing once rather than erroring:
 // the marker is a cache, and losing it costs one redundant commit, never correctness.
-// The core's after-commit callback rewrites the marker right after a successful Commit and before the push.
-// It marks the marker push-pending, and the seam clears the mark once the push has landed or been left owed.
-// So a later call skips re-committing the same pair, even when the push that followed failed.
+// The core's after-commit callback rewrites the marker right after a successful Commit and before the pusher starts,
+// so a later call skips re-committing the same pair.
 func newCommitStatusSeam(deps commitStatusDeps, markerPath, markerLockPath string) func(producer, st string) error {
 	// A failed marker write costs one redundant commit on the next call, the same cost a missing marker costs on read,
 	// so it is logged at warn rather than returned.
-	writeMarker := func(producer, st string, pushPending bool) {
-		if err := state.WriteJSON(markerPath, markerLockPath, commitStatusMarker{Producer: producer, State: st, PushPending: pushPending}); err != nil {
+	writeMarker := func(producer, st string) {
+		if err := state.WriteJSON(markerPath, markerLockPath, commitStatusMarker{Producer: producer, State: st}); err != nil {
 			logger.Warn("battencli: status commit succeeded but the marker write failed; a future call may recommit", "producer", producer, "state", st, "error", err)
 		}
 	}
-	// commitMade records whether the last Commit through the seam made a commit; the seam is not called concurrently.
-	commitMade := false
-	trackedCommit := func(msg string) (bool, error) {
-		made, err := deps.Commit(msg)
-		commitMade = made
-		return made, err
-	}
 	core := statuscommit.New(statuscommit.Deps{
 		MergeActive: deps.MergeActive,
-		Commit:      trackedCommit,
-		Push:        deps.push,
-		Admit:       deps.Admit,
-		Owed:        deps.Owed,
-		Sleep:       deps.Sleep,
-	}, "batten", "battencli", func(producer, st string) { writeMarker(producer, st, commitMade) })
-	// The start core takes no gate admission, since it makes no network call.
-	startCore := statuscommit.New(statuscommit.Deps{
-		MergeActive: deps.MergeActive,
 		Commit:      deps.Commit,
-		Push:        func() error { return nil },
-	}, "batten", "battencli", func(producer, st string) { writeMarker(producer, st, false) })
+		StartPush:   deps.StartPush,
+	}, "batten", "battencli", writeMarker)
 	preRunRows := battenrecipe.RowsBeforeRunShed()
-	running := string(shedengine.StateRunning)
-	isStartRow := func(producer string) bool {
-		return producer == battenrecipe.NameRunShed || (producer != battenrecipe.NameWorktreeCreate && slices.Contains(preRunRows, producer))
-	}
 	return func(producer, st string) error {
 		if deps.SetBoardStatus != nil && slices.Contains(preRunRows, producer) {
 			display := runfsm.TransitionState(shedengine.State(st), false, false)
@@ -274,18 +265,7 @@ func newCommitStatusSeam(deps commitStatusDeps, markerPath, markerLockPath strin
 		if found && marker.Producer == producer && marker.State == st {
 			return nil
 		}
-
-		if found && !marker.PushPending && marker.State == running && slices.Contains(preRunRows, marker.Producer) && st == running && isStartRow(producer) {
-			return startCore(producer, st)
-		}
-		commitMade = false
-		if err := core(producer, st); err != nil {
-			return err
-		}
-		if commitMade {
-			writeMarker(producer, st, false)
-		}
-		return nil
+		return core(producer, st)
 	}
 }
 

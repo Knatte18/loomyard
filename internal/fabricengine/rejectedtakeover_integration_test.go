@@ -10,12 +10,16 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/takeoverkit"
@@ -147,6 +151,80 @@ func (d *divergedPair) requireBothSidesLanded(t *testing.T) {
 	}
 }
 
+// newPrimeRunsAhead builds a hub whose prime records branch holds one unpushed commit per slug.
+// Each commit stages a file under that run's record directory and carries its Run-Transition trailer.
+// Origin's prime records branch has moved past the local tip by another clone's commit,
+// so the prime's next push is rejected.
+// It returns the fixture of the hub that holds that prime.
+func newPrimeRunsAhead(t *testing.T, slugs []string) *recordsFixture {
+	t.Helper()
+
+	f, _ := newFailureFixture(t)
+	weft, branch := f.primeWeft()
+	for _, slug := range slugs {
+		_, statusRel, err := shedrun.TreeRunFileRels(slug)
+		if err != nil {
+			t.Fatalf("TreeRunFileRels(%q): %v", slug, err)
+		}
+		message := "transition of " + slug + "\n\n" + fabricengine.TransitionTrailerKey + ": " + slug
+		gitkit.CommitFile(t, weft, path.Join(path.Dir(statusRel), "transition.txt"), slug+"\n", message)
+	}
+	f.originCommit(branch, "other.txt", "other\n", "another machine's commit")
+	return f
+}
+
+// primeRunsAhead is the prime of newPrimeRunsAhead with the paths and handle a prime row reads and moves origin through.
+type primeRunsAhead struct {
+	location *lymcwd.Location
+	weft     string
+	branch   string
+	bare     string
+	origin   *recordsFixture
+}
+
+// newPrimeRunsAheadWithOrigin builds newPrimeRunsAhead's hub.
+// It also builds the handle that commits on its origin from another clone.
+func newPrimeRunsAheadWithOrigin(t *testing.T, slugs []string) *primeRunsAhead {
+	t.Helper()
+
+	f := newPrimeRunsAhead(t, slugs)
+	location := f.hub.Location
+	weft := fabricengine.RecordsWorktree(location)
+	bare := gitkit.Git(t, weft, "remote", "get-url", "origin")
+	return &primeRunsAhead{
+		location: location,
+		weft:     weft,
+		branch:   gitkit.CurrentBranch(t, weft),
+		bare:     bare,
+		origin:   f,
+	}
+}
+
+// push runs the prime's synchronous push as the machine names, naming the run runSlug when it is not empty.
+func (p *primeRunsAhead) push(names fabricengine.MachineNames, runSlug string) error {
+	_, err := fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded, RunSlug: runSlug, Here: names})
+	return err
+}
+
+// originSubjects returns the subjects of the commits on origin's prime records branch, oldest first.
+func (p *primeRunsAhead) originSubjects(t *testing.T) []string {
+	t.Helper()
+	return strings.Split(gitkit.Git(t, p.bare, "log", "--reverse", "--format=%s", p.branch), "\n")
+}
+
+// requireTakeoversError fails the test unless err is a *TakeoversError naming exactly the one run slug with entry.
+func (p *primeRunsAhead) requireTakeoversError(t *testing.T, err error, slug string, entry shedengine.Takeover) {
+	t.Helper()
+
+	var takeovers *fabricengine.TakeoversError
+	if !errors.As(err, &takeovers) {
+		t.Fatalf("push error = %v; want a *TakeoversError", err)
+	}
+	if len(takeovers.Takeovers) != 1 || takeovers.Takeovers[0].Slug != slug || takeovers.Takeovers[0].Entry != entry || takeovers.Takeovers[0].RecordsWorktree != p.weft {
+		t.Errorf("TakeoversError = %+v; want the one run %q with entry %+v at %s", takeovers.Takeovers, slug, entry, p.weft)
+	}
+}
+
 // TestRejectedRecordsPush_ReadsTheTakeover drives a rejected records push against origin's record of the run.
 func TestRejectedRecordsPush_ReadsTheTakeover(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -247,5 +325,133 @@ func TestRejectedRecordsPush_ReadsTheTakeover(t *testing.T) {
 			t.Errorf("origin records tip = %s; want the replayed local tip %s", got, want)
 		}
 		requireNoFailedPush(t, f.hub.Location.HubPath)
+	})
+
+	// A rejected push of the prime's records carries every batten run's commits, so it reads each run's takeover.
+	const takenOver, other = "run-taken", "run-other"
+	t.Run("PrimeRunTakenOverByAnotherMachineReturnsATakeoversErrorAndPushesNothing", func(t *testing.T) {
+		p := newPrimeRunsAheadWithOrigin(t, []string{takenOver, other})
+		originTip := plantTakeover(t, p.origin, p.branch, takenOver, entry)
+		localTip := gitkit.RevParse(t, p.weft, "HEAD")
+
+		err := p.push(here, "")
+
+		p.requireTakeoversError(t, err, takenOver, entry)
+		if got := bareBranchTip(t, p.bare, p.branch); got != originTip {
+			t.Errorf("origin records tip = %s; want it unchanged at %s", got, originTip)
+		}
+		if got := gitkit.RevParse(t, p.weft, "HEAD"); got != localTip {
+			t.Errorf("local records tip = %s; want no replay, so %s", got, localTip)
+		}
+		requireNoFailedPush(t, p.location.HubPath)
+	})
+
+	t.Run("APushNamingTheRunNotTakenOverStillReadsTheTakenOverRun", func(t *testing.T) {
+		p := newPrimeRunsAheadWithOrigin(t, []string{takenOver, other})
+		originTip := plantTakeover(t, p.origin, p.branch, takenOver, entry)
+
+		err := p.push(here, other)
+
+		p.requireTakeoversError(t, err, takenOver, entry)
+		if got := bareBranchTip(t, p.bare, p.branch); got != originTip {
+			t.Errorf("origin records tip = %s; want it unchanged at %s", got, originTip)
+		}
+		requireNoFailedPush(t, p.location.HubPath)
+	})
+
+	handedOverRows := []struct {
+		name string
+		// prepare runs after the hand-over mark is written.
+		prepare func(t *testing.T, p *primeRunsAhead)
+	}{
+		{"HandedOverRunsCommitsAreSetAsideAndTheOthersLand", func(t *testing.T, p *primeRunsAhead) {}},
+		{"HandedOverRunAtItsLandRowIsStillSetAside", func(t *testing.T, p *primeRunsAhead) {
+			_, statusRel, err := shedrun.TreeRunFileRels(takenOver)
+			if err != nil {
+				t.Fatalf("TreeRunFileRels(%q): %v", takenOver, err)
+			}
+			message := "land status of " + takenOver + "\n\n" + fabricengine.TransitionTrailerKey + ": " + takenOver
+			gitkit.CommitFile(t, p.weft, statusRel, statusJSON("Land"), message)
+		}},
+	}
+	for _, tt := range handedOverRows {
+		t.Run(tt.name, func(t *testing.T) {
+			p := newPrimeRunsAheadWithOrigin(t, []string{takenOver, other})
+			plantTakeover(t, p.origin, p.branch, takenOver, entry)
+			writeHandOverMark(t, p.location.HubPath, takenOver, fabricengine.HandOverMark{Machine: entry.Machine, At: entry.At, Written: time.Now()})
+			tt.prepare(t, p)
+
+			err := p.push(here, "")
+
+			if err != nil {
+				t.Fatalf("push error = %v; want nil", err)
+			}
+			subjects := p.originSubjects(t)
+			if !slices.Contains(subjects, "transition of "+other) || slices.Contains(subjects, "transition of "+takenOver) || slices.Contains(subjects, "land status of "+takenOver) {
+				t.Errorf("origin records history = %q; want the other run's commit and not the handed-over run's", subjects)
+			}
+			if got, want := bareBranchTip(t, p.bare, p.branch), gitkit.RevParse(t, p.weft, "HEAD"); got != want {
+				t.Errorf("origin records tip = %s; want the replayed local tip %s", got, want)
+			}
+			requireNoFailedPush(t, p.location.HubPath)
+		})
+	}
+
+	t.Run("APushNamingATakenOverRunWithNoCommitOfItsOwnStillReadsItsTakeover", func(t *testing.T) {
+		p := newPrimeRunsAheadWithOrigin(t, []string{other})
+		originTip := plantTakeover(t, p.origin, p.branch, takenOver, entry)
+		localTip := gitkit.RevParse(t, p.weft, "HEAD")
+
+		err := p.push(here, takenOver)
+
+		p.requireTakeoversError(t, err, takenOver, entry)
+		if got := bareBranchTip(t, p.bare, p.branch); got != originTip {
+			t.Errorf("origin records tip = %s; want it unchanged at %s", got, originTip)
+		}
+		if got := gitkit.RevParse(t, p.weft, "HEAD"); got != localTip {
+			t.Errorf("local records tip = %s; want no replay, so %s", got, localTip)
+		}
+		requireNoFailedPush(t, p.location.HubPath)
+	})
+
+	t.Run("ARunOriginEndedAndARunHandedOverAreBothSetAsideAndTheOthersLand", func(t *testing.T) {
+		const ended = "run-ended"
+		p := newPrimeRunsAheadWithOrigin(t, []string{takenOver, ended, other})
+		plantTakeover(t, p.origin, p.branch, takenOver, entry)
+		p.origin.endEntryOnOrigin(ended)
+		writeHandOverMark(t, p.location.HubPath, takenOver, fabricengine.HandOverMark{Machine: entry.Machine, At: entry.At, Written: time.Now()})
+
+		err := p.push(here, "")
+
+		if err != nil {
+			t.Fatalf("push error = %v; want nil", err)
+		}
+		subjects := p.originSubjects(t)
+		if !slices.Contains(subjects, "transition of "+other) || slices.Contains(subjects, "transition of "+takenOver) || slices.Contains(subjects, "transition of "+ended) {
+			t.Errorf("origin records history = %q; want the other run's commit and neither the handed-over run's nor the ended run's", subjects)
+		}
+		if got, want := bareBranchTip(t, p.bare, p.branch), gitkit.RevParse(t, p.weft, "HEAD"); got != want {
+			t.Errorf("origin records tip = %s; want the replayed local tip %s", got, want)
+		}
+		requireNoFailedPush(t, p.location.HubPath)
+	})
+
+	t.Run("AFailedTakeoverReadOwesThePushWithNothingPushedOrRecorded", func(t *testing.T) {
+		p := newPrimeRunsAheadWithOrigin(t, []string{takenOver, other})
+		_, statusRel, err := shedrun.TreeRunFileRels(takenOver)
+		if err != nil {
+			t.Fatalf("TreeRunFileRels(%q): %v", takenOver, err)
+		}
+		originTip := p.origin.originCommit(p.branch, statusRel, "{not json", "unreadable status of "+takenOver)
+
+		err = p.push(here, "")
+
+		if !errors.Is(err, fabricengine.ErrTakeoverPassOwed) || !fabricengine.IsPushOwed(err) {
+			t.Fatalf("push error = %v; want an owed error wrapping ErrTakeoverPassOwed", err)
+		}
+		if got := bareBranchTip(t, p.bare, p.branch); got != originTip {
+			t.Errorf("origin records tip = %s; want it unchanged at %s", got, originTip)
+		}
+		requireNoFailedPush(t, p.location.HubPath)
 	})
 }

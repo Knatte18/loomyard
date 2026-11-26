@@ -111,7 +111,8 @@ type Deps struct {
 	// PushPair spawns the detached push of the pair slug names; nil spawns none.
 	PushPair func(slug string) error
 	// PushDeferred reports whether a pause deferred a detached push of the pair slug names, which a lift then pays.
-	// A run's transition pushes synchronously and owes no lift a push.
+	// A run's transition commits leave no deferred push:
+	// the dobby's tick restarts the pair's pusher once no pause covers it, so a lift spawns none for them.
 	// A nil PushDeferred reads every pair as owed one.
 	PushDeferred func(slug string) bool
 	// PushPrimeRecords spawns the detached push of the prime's records; nil spawns none.

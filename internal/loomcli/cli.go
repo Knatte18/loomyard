@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runfsm"
+	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -194,6 +195,12 @@ type loomCLI struct {
 	// notifyParent posts one line to the run's parent orch, signed as lym's loom program.
 	// A test substitutes a recorder.
 	notifyParent func(line string) error
+	// startPusher starts the pusher of the run's pair, which a resume does before it wakes a driver.
+	// Nil starts nothing, which only a hand-populated receiver has.
+	startPusher func()
+	// pusherStart is the pusher start startPusher runs.
+	// Nil selects runpusher.Start.
+	pusherStart func(runpusher.Target) (bool, error)
 }
 
 // newLoomCLI is the only place production code may build a *loomCLI.
@@ -256,8 +263,9 @@ func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec, gate shuttleen
 // cmd/lym sets cobra.EnableTraverseRunHooks, so cobra runs this pre-run for them too;
 // without the skip it would arm them and read a slug as a run-id.
 // The checklist pane verb is skipped as well, because arming refuses a missing seed and a pane must outlive one.
+// So is the pusher verb, which resolves the worktree its flag names and arms no run.
 func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
-	if cmd.Name() == "loom" || cmd.Name() == "checklist" || inReviewGroup(cmd) {
+	if cmd.Name() == "loom" || cmd.Name() == "checklist" || cmd.Name() == "pusher" || inReviewGroup(cmd) {
 		return nil
 	}
 
@@ -532,7 +540,7 @@ Example:
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 	gotoVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validatePartsCmd(), c.joinPartsCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.fmtCmd(), c.commitRecordsCmd(), c.prContinueCmd(), c.prFindingsCmd(), c.samplerDoneCmd(), c.raddleProposeCmd(), c.raddleApproveCmd(), c.circlingCmd(), c.decisionCmd(), c.parentReviewCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd(), c.driveCmd())
+	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validatePartsCmd(), c.joinPartsCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.fmtCmd(), c.commitRecordsCmd(), c.prContinueCmd(), c.prFindingsCmd(), c.samplerDoneCmd(), c.raddleProposeCmd(), c.raddleApproveCmd(), c.circlingCmd(), c.decisionCmd(), c.parentReviewCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd(), c.driveCmd(), c.pusherCmd())
 
 	return parent
 }

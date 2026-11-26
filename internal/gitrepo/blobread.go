@@ -362,6 +362,7 @@ var ErrNoUpstream = errors.New("gitrepo: no upstream configured")
 // UpstreamSHA returns the SHA of the remote-tracking ref that the current branch's upstream names.
 // The upstream comes from the branch.<name>.remote and branch.<name>.merge settings.
 // A detached HEAD or a branch with no upstream returns ErrNoUpstream bare.
+// A set upstream whose tracking ref is absent returns an error that also wraps ErrRefNotFound.
 // It reads the ref as last fetched and never contacts the remote.
 func (r *Repo) UpstreamSHA() (string, error) {
 	return readGoGit(r, func(repo *git.Repository) (string, error) {
@@ -391,10 +392,25 @@ func (r *Repo) UpstreamSHA() (string, error) {
 
 		tracking, err := repo.Reference(trackingRef, true)
 		if err != nil {
-			return "", fmt.Errorf("gitrepo: resolve upstream %s: %w", trackingRef, err)
+			resolveErr := fmt.Errorf("gitrepo: resolve upstream %s: %w", trackingRef, err)
+			if errors.Is(err, plumbing.ErrReferenceNotFound) {
+				return "", absentUpstreamRefError{resolveErr}
+			}
+			return "", resolveErr
 		}
 		return tracking.Hash().String(), nil
 	})
+}
+
+// absentUpstreamRefError is the error of an upstream whose remote-tracking ref is absent, as after a fetch pruned it.
+// Its text is the wrapped error's, and it also satisfies errors.Is(err, ErrRefNotFound).
+type absentUpstreamRefError struct {
+	error
+}
+
+// Unwrap returns the underlying error and ErrRefNotFound.
+func (e absentUpstreamRefError) Unwrap() []error {
+	return []error{e.error, ErrRefNotFound}
 }
 
 // CommitDetail is one commit's full message and the repo-relative, slash-separated paths its tree changes.

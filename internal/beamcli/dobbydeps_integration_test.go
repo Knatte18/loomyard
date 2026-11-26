@@ -35,6 +35,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/slackengine"
@@ -138,6 +139,60 @@ func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
 		if got, want := notices.MarkerPath("task1"), shedrun.NoticeEpisodeFile(prime, "task1"); got != want {
 			t.Errorf("%s RunNotices.MarkerPath(task1) = %q; want %q", name, got, want)
 		}
+	}
+}
+
+// TestHubDobbyDeps_PrimeTickStartsThePrimesPusherAndABeamsTickNone pins the pushers a dobby asks for.
+// The prime's tick asks for the prime's pusher, and its run read asks for each owned pair's.
+// A beam's dobby has no tick.
+func TestHubDobbyDeps_PrimeTickStartsThePrimesPusherAndABeamsTickNone(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPair(t, h, "task1")
+	prime := h.Location
+	var started []runpusher.Target
+	start := func(target runpusher.Target) (bool, error) {
+		started = append(started, target)
+		return false, nil
+	}
+
+	primeGeom, err := hubgeom.DobbyGeometry(prime, prime.WorktreeName)
+	if err != nil {
+		t.Fatalf("DobbyGeometry(prime) = %v; want nil", err)
+	}
+	primeDeps, err := hubDobbyDepsStarting(prime, primeGeom, start)
+	if err != nil {
+		t.Fatalf("hubDobbyDepsStarting(prime) = %v; want nil", err)
+	}
+	if _, err := primeDeps.Tick(t.Context(), dobbyengine.TickInput{}); err != nil {
+		t.Fatalf("prime Tick() = %v; want nil", err)
+	}
+	if want := []runpusher.Target{{Location: prime}}; !slices.Equal(started, want) {
+		t.Errorf("pushers asked for by the prime's tick = %+v; want the prime's alone, %+v", started, want)
+	}
+
+	// The run read asks for the pusher of each owned pair that stands here.
+	seedBattenRun(t, prime, "task1")
+	started = nil
+	if _, err := primeDeps.Runs(); err != nil {
+		t.Fatalf("prime Runs() = %v; want nil", err)
+	}
+	if len(started) != 1 || started[0].Slug != "task1" || !started[0].Pair {
+		t.Errorf("pushers asked for by the prime's run read = %+v; want the pair of task1 alone", started)
+	}
+
+	beamGeom, err := hubgeom.DobbyGeometry(prime, "task1")
+	if err != nil {
+		t.Fatalf("DobbyGeometry(task1) = %v; want nil", err)
+	}
+	beamDeps, err := hubDobbyDepsStarting(prime, beamGeom, start)
+	if err != nil {
+		t.Fatalf("hubDobbyDepsStarting(beam) = %v; want nil", err)
+	}
+	if beamDeps.Tick != nil {
+		t.Errorf("beam Tick is set; want nil, so no pusher is asked for by a beam's tick")
 	}
 }
 

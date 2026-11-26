@@ -72,6 +72,10 @@ const DriftJudgeDirName = "drift-judge"
 // A pair removal does not take it, since it sits under the hub's `.lym` and never in a pair.
 const HandOverDirName = "hand-over"
 
+// PusherDirName is the directory under the hub's board-level `.lym` that holds the pusher locks.
+// It holds one lock per records worktree, which the worktree's one background pusher holds while it runs.
+const PusherDirName = "pusher"
+
 // OrphanDirName is the directory under the hub's board-level `.lym` that holds the dobby's record of orphan pairs.
 // The record keeps when each orphan was first noticed, so a dobby restart neither resets nor skips its grace.
 const OrphanDirName = "orphan"
