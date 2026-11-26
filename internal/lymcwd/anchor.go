@@ -103,15 +103,42 @@ func normalizePath(p string) string {
 	return filepath.Clean(resolved)
 }
 
+// AnchorGateError is the refusal of a cwd that is not exactly the anchored directory.
+// Its text is Refusal followed by the likely cause and the way forward.
+// The likely cause is a cd in an earlier shell call that the shell kept.
+// An agent's shell keeps its directory between calls, so the refusal surfaces away from the cd that caused it.
+// A process whose cwd no shell chose reports Refusal alone.
+type AnchorGateError struct {
+	// Refusal wraps ErrCwdOutsideAnchor and names both paths and the marker file.
+	Refusal error
+	// AnchorDir is the anchored directory the way forward names.
+	AnchorDir string
+}
+
+// Error implements error.
+func (e *AnchorGateError) Error() string {
+	return fmt.Sprintf("%v; "+
+		"a shell keeps the directory a cd moved it to for every later command, so an earlier cd likely moved it; "+
+		"way forward: cd \"%s\" and run the command again, "+
+		"and reach other directories through absolute paths or git -C instead of cd",
+		e.Refusal, e.AnchorDir)
+}
+
+// Unwrap returns Refusal.
+func (e *AnchorGateError) Unwrap() error { return e.Refusal }
+
 // checkCwdAnchorGate returns nil when cwd is exactly the anchored directory, worktreePath joined with anchorRel.
-// Otherwise it wraps ErrCwdOutsideAnchor in an error that names both paths and the marker file.
+// Otherwise it returns an *AnchorGateError.
 func checkCwdAnchorGate(cwd, anchorRel, worktreePath string) error {
 	anchorAbs := filepath.Join(worktreePath, anchorRel)
 	if samePath(cwd, anchorAbs) {
 		return nil
 	}
-	return fmt.Errorf("%w: cwd %s does not equal the anchored directory %s (recorded by %s)",
-		ErrCwdOutsideAnchor, cwd, anchorAbs, AnchorFileName)
+	return &AnchorGateError{
+		Refusal: fmt.Errorf("%w: cwd %s does not equal the anchored directory %s (recorded by %s)",
+			ErrCwdOutsideAnchor, cwd, anchorAbs, AnchorFileName),
+		AnchorDir: anchorAbs,
+	}
 }
 
 // checkCwdWithinAnchor returns nil when cwd lies at or below the anchored directory.

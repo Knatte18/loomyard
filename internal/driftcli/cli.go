@@ -258,6 +258,11 @@ func runCaptureChild(cmd *cobra.Command) {
 	if err != nil {
 		// Only a refusal fixed by the directory is lasting; a read error on the anchor marker may pass on a fresh start.
 		if errors.Is(err, lymcwd.ErrNotAGitRepo) || errors.Is(err, lymcwd.ErrCwdOutsideAnchor) {
+			// No shell chose this child's cwd, and the start failure that quotes this text states its own way forward.
+			var gateErr *lymcwd.AnchorGateError
+			if errors.As(err, &gateErr) {
+				err = gateErr.Refusal
+			}
 			clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), map[string]any{driftengine.LastingFaultKey: true}))
 			return
 		}

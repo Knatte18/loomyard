@@ -185,6 +185,7 @@ func TestStore(t *testing.T) {
 		}{
 			{"lym-batching", "agents-file", "## Batch your calls", false},
 			{"lym-plan-edits-before-gate", "agents-file", "## Make every round of edits in this order", false},
+			{"lym-shell-directory", "agents-file", "## ", true},
 			{"lym-no-attribution", "claude-settings", "", false},
 			{"lym-plugins", "claude-settings", "", false},
 			{"lym-tool-deny", "claude-settings", "", false},

@@ -81,8 +81,8 @@ func TestDrift_RunsInTheAnchoredDirectory(t *testing.T) {
 	}
 
 	writeStatus("Drift-Await", shedengine.StateBlocked)
-	if env := lymRun(t, bin, pair, "capture-child"); env.OK || !strings.Contains(env.Error, "does not equal the anchored directory") || env.Raw[driftengine.LastingFaultKey] != true {
-		t.Errorf("lym drift capture-child at the worktree root = %+v; want its cwd refused and marked %s", env, driftengine.LastingFaultKey)
+	if env := lymRun(t, bin, pair, "capture-child"); env.OK || !strings.Contains(env.Error, "does not equal the anchored directory") || strings.Contains(env.Error, "way forward") || env.Raw[driftengine.LastingFaultKey] != true {
+		t.Errorf("lym drift capture-child at the worktree root = %+v; want its cwd refused with no way forward and marked %s", env, driftengine.LastingFaultKey)
 	}
 	if env := lymRun(t, bin, anchor, "capture"); !env.OK {
 		t.Fatalf("lym drift capture: %s", env.Error)

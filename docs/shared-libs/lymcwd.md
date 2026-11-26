@@ -52,6 +52,9 @@ On failure, one of two errors:
 - `ErrNotAGitRepo` when `cwd` is outside a git repo;
   it is also returned for a pruned worktree and for one whose gitfile names a missing git dir.
 - `ErrCwdOutsideAnchor` when `cwd` is not exactly the anchored directory.
+  It arrives wrapped in an `*AnchorGateError`, whose text adds the likely cause, a kept `cd`, and the way forward.
+  Its `Refusal` field is the error without those two, for a process whose cwd no shell chose,
+  and its `AnchorDir` field is the anchored directory.
 
 `Resolve` does NOT check for `_lym/`;
 that stays in `internal/configengine`.
