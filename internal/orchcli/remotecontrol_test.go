@@ -148,7 +148,7 @@ func TestRemoteControlOnVerb_QueuesForTheClientsPaneWithoutMarkingIt(t *testing.
 	}
 	tests := []struct {
 		name string
-		// paneReadFails makes the fake tmux fail the display-message that reads the active pane.
+		// paneReadFails makes the fake tmux fail the list-clients that reads the active pane.
 		paneReadFails bool
 		wantCode      int
 		wantError     string
@@ -162,11 +162,11 @@ func TestRemoteControlOnVerb_QueuesForTheClientsPaneWithoutMarkingIt(t *testing.
 			t.Parallel()
 			dir := t.TempDir()
 			log := filepath.Join(dir, "calls.log")
-			paneRead := "printf '%s\\t%s\\t\\n' '%7' 'tst:orch'"
+			paneRead := "printf '%s\\t%s\\t%s\\t\\n' '/dev/pts/3' '%7' 'tst:orch'"
 			if tt.paneReadFails {
-				paneRead = "echo no such client >&2; exit 1"
+				paneRead = "echo no server >&2; exit 1"
 			}
-			script := "#!/bin/sh\necho \"$*\" >> '" + log + "'\ncase \"$*\" in\n*' display-message -p '*) " + paneRead + " ;;\nesac\n"
+			script := "#!/bin/sh\necho \"$*\" >> '" + log + "'\ncase \"$*\" in\n*'list-clients -F '*) " + paneRead + " ;;\nesac\n"
 			tmuxPath := filepath.Join(dir, "tmux")
 			if err := os.WriteFile(tmuxPath, []byte(script), 0o755); err != nil {
 				t.Fatalf("write the fake tmux: %v", err)

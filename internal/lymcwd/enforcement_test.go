@@ -93,8 +93,12 @@ func TestStripGoComments(t *testing.T) {
 	}
 }
 
-// enforcementAllowlist is the set of paths TestEnforcement lets name the raw cwd/root primitives: the whole of internal/lymcwd and cmd/lym/main.go.
+// enforcementAllowlist is the set of paths TestEnforcement lets name the raw cwd/root primitives.
 var enforcementAllowlist = []scankit.Entry{
+	{
+		Key: "docs/research/platform/seccomp-connect-probe/main.go",
+		Why: "a //go:build ignore research probe that records one measured run saves its own working directory to restore it after a relative connect; it resolves no lym root",
+	},
 	{
 		Key: "internal/lymcwd/",
 		Why: "the sole cwd owner",
