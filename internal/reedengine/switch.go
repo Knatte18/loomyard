@@ -16,8 +16,9 @@ import (
 // Sessions are ordered by their numeric id;
 // the order matches the status bar's session loop, not tmux's name order.
 // A server with one session is a no-op success.
-// It issues list-sessions, display-message and switch-client on that socket, and nothing else.
-// The error names an unreachable socket, a client the server does not know, or a current session missing from the listing.
+// The step starts from the client's own session, whichever client was active last.
+// It issues list-sessions, list-clients and switch-client on that socket, and nothing else.
+// The error names an unreachable socket, a client that is not attached, or a current session missing from the listing.
 func SwitchClient(tmuxPath, socketPath, client string, next bool) error {
 	return switchClientVia(newTmuxCmdForSocketPath(tmuxPath, socketPath), client, next)
 }
@@ -38,11 +39,11 @@ func switchClientVia(cmd TmuxCmd, client string, next bool) error {
 		return nil
 	}
 
-	current, err := cmd.output("display-message", "-p", "-c", client, "#{session_id}")
+	current, err := readClientFormatsVia(cmd, client, "#{session_id}")
 	if err != nil {
 		return fmt.Errorf("read the session of client %q: %w", client, err)
 	}
-	target, err := nextSessionID(ids, strings.TrimSpace(current), next)
+	target, err := nextSessionID(ids, current[0], next)
 	if err != nil {
 		return err
 	}

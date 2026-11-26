@@ -41,6 +41,7 @@ Say in a line or two what you understood, then wait for the operator's message.
 Never run a dev build of lym in this hub: reed runs one tmux server per hub, and a newer build re-pins that server's bindings for every session in it.
 Try a build only in another hub on the machine, the sandbox hub on lym's own repository, which the operator names in this pane.
 Start any tmux a trial needs outside lym, on a server of its own: `tmux -L <name>`, with a name that holds the slug `{{.slug}}`.
+The name never opens with `lym-`, the prefix every hub's server carries.
 Kill that server before you run `lym loom sampler-done`.
 Commit what the trial settled as an ordinary change.
 

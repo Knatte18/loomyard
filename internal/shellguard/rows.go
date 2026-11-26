@@ -397,6 +397,77 @@ const noticeTmuxScriptDeny = steerTmuxScriptDeny + "."
 // It matches tmux or script, optionally path-prefixed, as a whole word in command position.
 var tmuxScriptCommandPattern = commandPositionPattern + `(tmux|script)` + wordEndPattern
 
+// steerSessionBusDeny refuses a Bash command that reaches the user session bus.
+// It names the operator or the parent as the way forward.
+// It must contain no single/double quote or backslash (checked at init).
+const steerSessionBusDeny = "systemd-run, busctl --user, gdbus and a dbus-send without --system are refused here: the user session bus they reach starts processes outside lym and every memory cap lym sets, and lym uses the bus itself where a run needs it. When the work needs the session bus, say so to the operator or your parent"
+
+// noticeSessionBusDeny announces the session bus deny in the same wording as its steer.
+const noticeSessionBusDeny = steerSessionBusDeny + "."
+
+// sessionBusCommandPattern is the grep -E pattern the session bus deny matches against the raw PreToolUse payload JSON.
+// In command position and optionally path-prefixed, it matches systemd-run or gdbus as a whole word.
+// It also matches busctl followed by any argument words on the same command and then --user as a whole word.
+// It also matches dbus-send, which talks to the session bus unless told --system.
+// It lets one through only when a --system word is reached from it through unquoted words alone.
+// A quote, backslash, tab, redirect or substitution before --system thus leaves it matched.
+// dbus-send with a --session, --bus or --peer flag word among its arguments is matched beside --system too.
+var sessionBusCommandPattern = commandRowPattern(func(scope shellScope) string {
+	arguments := `([[:space:]]+` + scope.argument() + `)*[[:space:]]+`
+	// Anything but an unquoted word ends the search for --system, so what the pattern cannot read is refused.
+	searchEnd := `([;&|()<>"'\\` + "`" + `]|$)`
+	return `((systemd-run|gdbus)` + wordEndPattern +
+		`|busctl` + arguments + `--user` + wordEndPattern +
+		`|dbus-send` + arguments + `--(session|bus|peer)` + wordEndPattern +
+		`|dbus-send([[:space:]]+` + unquotedWordOtherThan("--system") + `)*[[:space:]]*` + searchEnd + `)`
+})
+
+// unquotedWordOtherThan returns a grep -E pattern matching an unquoted command-line word that is not word.
+// The match may cover only the opening of a longer word.
+// word must hold only letters and dashes.
+func unquotedWordOtherThan(word string) string {
+	unit := func(excluded string) string {
+		return `[^[:space:]"\\;&|()'<>` + "`" + excluded + `]`
+	}
+	rest := unit("") + `+`
+	for i := len(word) - 1; i >= 0; i-- {
+		letter := word[i : i+1]
+		rest = `(` + unit(letter) + unit("") + `*|` + letter + rest + `)`
+		// A word may stop short of the whole of word, but not before its first character.
+		if i > 0 {
+			rest += "?"
+		}
+	}
+	return rest
+}
+
+// hubTmuxServerPrefix opens the name of every lym hub's tmux server.
+// That name is what tmux -L takes, and it is the file name of the server's socket.
+const hubTmuxServerPrefix = "lym-"
+
+// steerHubTmuxServerDeny refuses a Bash tmux command aimed at a lym hub's tmux server.
+// It names lym's verbs as the way forward.
+// It must contain no single/double quote or backslash (checked at init).
+const steerHubTmuxServerDeny = "a tmux command aimed at a lym hub server, through -L " + hubTmuxServerPrefix + " or an -S socket named " + hubTmuxServerPrefix + ", is refused here: a hub server runs the agents of that hub, so reach a hub only through lym and its verbs"
+
+// noticeHubTmuxServerDeny announces the hub tmux server deny in the same wording as its steer.
+const noticeHubTmuxServerDeny = steerHubTmuxServerDeny + "."
+
+// hubTmuxServerCommandPattern is the grep -E pattern the hub tmux server deny matches.
+// It is matched against the raw PreToolUse payload JSON.
+// In command position and optionally path-prefixed, it matches tmux, any argument words on the same command and a flag.
+// The flag is -L with a server name opening with hubTmuxServerPrefix, or -S with a socket path whose file name does.
+// Either letter may end a cluster of tmux's flags that take no value, as in -uL.
+// The name may follow the flag directly or after whitespace, and may open with a quote.
+// A directory along the socket path that opens with the prefix is no match.
+var hubTmuxServerCommandPattern = commandRowPattern(func(scope shellScope) string {
+	pathChars := `[^[:space:]"\\;&|()'<>` + "`" + `]`
+	fileNameChars := `[^/[:space:]"\\;&|()'<>` + "`" + `]`
+	cluster := `-[2CDlNuv]*`
+	return `tmux([[:space:]]+` + scope.argument() + `)*[[:space:]]+(` + cluster + `L[[:space:]]*(\\"|')?|` + cluster + `S[[:space:]]*(\\"|')?(` + pathChars + `*/)?)` +
+		hubTmuxServerPrefix + fileNameChars + `*([[:space:]"\\;&|()'<>` + "`" + `]|$)`
+})
+
 // githubAllowed maps each gh command the publish row lets through to the subcommands of it the row lets through, nil for every subcommand.
 // They read GitHub, comment on a pull request or edit its title and body; every other gh command and subcommand is refused.
 // Each word is lowercase letters only, which notWordPattern relies on.
@@ -746,7 +817,7 @@ func rowsAfterRawGo() []Row {
 			// Installed for every run, the orch included, with no config key.
 			// A guardrail, not a barrier.
 			// Eval, a shell variable and systemctl start or isolate of a sleep target pass.
-			// So do other sleep routes such as busctl, dbus-send and rtcwake.
+			// So do other sleep routes such as busctl or dbus-send on the system bus and rtcwake.
 			// A matching spelling after a separator inside a quote commandPositionPattern misreads is falsely denied.
 			Name:     "machine-sleep",
 			Patterns: []string{sleepCommandPattern},
@@ -803,6 +874,36 @@ func rowsAfterRawGo() []Row {
 			Steer:    steerTmuxScriptDeny,
 			Notice:   noticeTmuxScriptDeny,
 			Switch:   SwitchDenyRawTmux,
+		},
+		{
+			// Installed for every run, the orch included, with no config key.
+			// The session bus starts units and scopes outside lym's process tree and its memory caps.
+			// lym's own use of the bus, such as a memory-capped scope, runs from Go and never meets the row.
+			// A guardrail, not a barrier.
+			// A launch behind a script file, eval or a variable passes.
+			// So do systemctl --user, and busctl and dbus-send on the system bus.
+			// The dbus-send form stands for the call without --system, which a token sequence cannot spell.
+			// A matching spelling after a separator inside a quote commandPositionPattern misreads is falsely denied.
+			Name:     "session-bus",
+			Patterns: []string{sessionBusCommandPattern},
+			Steer:    steerSessionBusDeny,
+			Notice:   noticeSessionBusDeny,
+			Switch:   SwitchNone,
+			Forms:    [][]string{{"systemd-run"}, {"busctl", "--user"}, {"dbus-send"}, {"gdbus"}},
+		},
+		{
+			// Installed for every run, the orch included, with no config key.
+			// It reaches the sessions whose launch spec lifts the tmux and script row, whose own tmux servers carry other names.
+			// It refuses a hub's own server as well as another hub's, since a session reaches its hub through lym's verbs.
+			// A guardrail, not a barrier.
+			// A launch behind a script file, eval or a variable passes, and so does a socket reached through TMUX or a symlink.
+			// So does a quoted socket path with a space in a directory name.
+			// A matching spelling after a separator inside a quote commandPositionPattern misreads is falsely denied.
+			Name:     "hub-tmux-server",
+			Patterns: []string{hubTmuxServerCommandPattern},
+			Steer:    steerHubTmuxServerDeny,
+			Notice:   noticeHubTmuxServerDeny,
+			Switch:   SwitchNone,
 		},
 		{
 			// Installed only for a launch spec that sets DenyPublish, such as the PR-Review session's, which reads the pull request, comments on it and edits its title and body through gh.

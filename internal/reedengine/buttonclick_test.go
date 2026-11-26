@@ -165,10 +165,9 @@ func TestRunButtonVia(t *testing.T) {
 				}
 				return specText, tt.specErr
 			})
+			// The clicking client c1's row follows another client's, whose pane carries another name.
+			fake.answer("list-clients", "c0\ttst:orch\nc1\t"+tt.strandRead+"\n", tt.strandErr)
 			fake.answerFunc("display-message", func(args []string) (string, error) {
-				if slices.Contains(args, "-p") {
-					return tt.strandRead, tt.strandErr
-				}
 				if tt.messageErr {
 					return "", errors.New("client gone")
 				}
@@ -217,12 +216,10 @@ func TestRunButtonVia(t *testing.T) {
 
 			var messages []string
 			for _, call := range fake.ArgvFor("display-message") {
-				if !slices.Contains(call, "-p") {
-					if len(call) != 4 || call[1] != "-c" || call[2] != "c1" {
-						t.Fatalf("message call = %v, want display-message -c c1 <text>", call)
-					}
-					messages = append(messages, call[3])
+				if len(call) != 4 || call[1] != "-c" || call[2] != "c1" {
+					t.Fatalf("message call = %v, want display-message -c c1 <text>", call)
 				}
+				messages = append(messages, call[3])
 			}
 			var wantMessages []string
 			if tt.wantMessage != "" {

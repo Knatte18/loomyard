@@ -217,6 +217,10 @@
 //     The generation probe's absent case therefore surfaces as parsePaneGeneration's empty-field rejection,
 //     not as a tmux error.
 //     An error from that probe means the round trip could not be run, never that the session is gone.
+//   - display-message -c run from outside tmux expands its format against the most recently active client's session,
+//     not the named client's (clientrow.go).
+//     A read of a client's session, pane or pane option therefore takes that client's row of list-clients,
+//     which tmux expands against each client's own session.
 //   - Duplicate-pane-cell session destruction: select-layout accepts a layout that names one pane twice
 //     and destroys every pane the short cell list no longer covers.
 //     The engine clears such bindings from a corrupt persisted table at the single load chokepoint.

@@ -66,5 +66,12 @@
 // A tmux server or a script an agent starts outlives the command and every memory cap,
 // and the row's way forward is a tmux-tier test run through `lym gate test --tier`.
 //
+// Two SwitchNone rows close the routes out of lym's process tree that a session's own tmux servers leave open.
+// The session bus row refuses systemd-run, busctl --user, gdbus and a dbus-send without --system.
+// The user session bus they reach starts processes outside every memory cap.
+// lym's own use of the bus runs from Go and never meets a row.
+// The hub tmux server row refuses a tmux -L or -S aimed at a server named as lym names every hub's,
+// so a session that may start tmux servers of its own still reaches no hub's agents.
+//
 // It imports the standard library and the packages that own the environment variables the raw go row's pattern names.
 package shellguard

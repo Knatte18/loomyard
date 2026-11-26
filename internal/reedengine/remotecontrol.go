@@ -7,7 +7,6 @@ package reedengine
 
 import (
 	"fmt"
-	"strings"
 )
 
 // remoteControlPaneOption is the pane user option marking that the pane's session recorded its remote control connecting.
@@ -34,30 +33,16 @@ func ClientAgentPane(tmuxPath, socketPath, client string) (AgentPane, error) {
 	return clientAgentPaneVia(newTmuxCmdForSocketPath(tmuxPath, socketPath), client)
 }
 
-// clientAgentPaneVia reads the active pane of client over cmd, so a test can replace the tmux command.
-// It reads the pane through list-clients, which expands each row's format against that client's own session.
-// A display-message call run from outside tmux expands its format against the most recently active client's session.
-// On a server with clients in several sessions it can therefore name another session's pane.
+// clientAgentPaneVia reads the active pane of client's own session over cmd, so a test can replace the tmux command.
 func clientAgentPaneVia(cmd TmuxCmd, client string) (AgentPane, error) {
-	format := "#{client_name}\t#{pane_id}\t#{" + strandNamePaneOption + "}\t#{" + remoteControlPaneOption + "}"
-	out, err := cmd.output("list-clients", "-F", format)
+	fields, err := readClientFormatsVia(cmd, client, "#{pane_id}", "#{"+strandNamePaneOption+"}", "#{"+remoteControlPaneOption+"}")
 	if err != nil {
 		return AgentPane{}, fmt.Errorf("reed: read the active pane of client %q: %w", client, err)
 	}
-	for _, line := range strings.Split(out, "\n") {
-		fields := strings.Split(strings.TrimRight(line, "\r"), "\t")
-		if line == "" || fields[0] != client {
-			continue
-		}
-		if len(fields) != 4 {
-			return AgentPane{}, fmt.Errorf("reed: client %q has an unreadable list-clients row", client)
-		}
-		if fields[1] == "" {
-			return AgentPane{}, fmt.Errorf("reed: client %q shows no active pane", client)
-		}
-		return AgentPane{PaneID: fields[1], StrandName: fields[2], RemoteControlOn: fields[3] != ""}, nil
+	if fields[0] == "" {
+		return AgentPane{}, fmt.Errorf("reed: client %q shows no active pane", client)
 	}
-	return AgentPane{}, fmt.Errorf("reed: no client %q is attached", client)
+	return AgentPane{PaneID: fields[0], StrandName: fields[1], RemoteControlOn: fields[2] != ""}, nil
 }
 
 // markPaneRemoteControlOnVia sets the RC mark on paneID over cmd, so a test can replace the tmux command.

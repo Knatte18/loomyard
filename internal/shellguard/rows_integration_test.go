@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -294,6 +295,53 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"tmux-script", "tmux_inside_a_double_quoted_argument", `git commit -m "tmux attach is refused"`, false},
 		{"tmux-script", "reed_attach", "lym reed attach", false},
 
+		{"session-bus", "systemd_run_user_scope", "systemd-run --user --scope -p MemoryMax=1G true", true},
+		{"session-bus", "path_prefixed_systemd_run", "/usr/bin/systemd-run --user true", true},
+		{"session-bus", "busctl_user", "busctl --user status", true},
+		{"session-bus", "busctl_user_after_its_verb", "busctl call --user org.freedesktop.systemd1 /x y z", true},
+		{"session-bus", "dbus_send_session", "dbus-send --session --print-reply --dest=org.freedesktop.DBus / x.y", true},
+		{"session-bus", "dbus_send_without_a_bus_flag", "dbus-send --dest=org.x / x.y", true},
+		{"session-bus", "gdbus_call", "gdbus call --session --dest org.x --object-path / --method x.y", true},
+		{"session-bus", "after_a_separator", "cd x && systemd-run --user true", true},
+		{"session-bus", "in_a_shell_script", "bash -c 'busctl --user list'", true},
+		{"session-bus", "in_a_double_quoted_shell_script", `bash -c "busctl --user list"`, true},
+		{"session-bus", "dbus_send_system", "dbus-send --system --dest=org.x / x.y", false},
+		{"session-bus", "dbus_send_system_after_another_flag", "dbus-send --print-reply --system / x.y", false},
+		{"session-bus", "dbus_send_session_beside_system", "dbus-send --system --session / x.y", true},
+		{"session-bus", "dbus_send_session_after_a_tab", "dbus-send\t--session / x.y", true},
+		{"session-bus", "dbus_send_session_on_a_continued_line", "dbus-send \\\n --session / x.y", true},
+		{"session-bus", "dbus_send_with_an_escaped_quote_in_an_argument", `dbus-send / x.y "string:say \"hi\""`, true},
+		{"session-bus", "dbus_send_with_a_longer_flag", "dbus-send --systemd / x.y", true},
+		{"session-bus", "system_flag_of_a_later_command", "dbus-send / x.y && ls --system", true},
+		{"session-bus", "dbus_send_system_in_a_shell_script", "bash -c 'dbus-send --system / x.y'", false},
+		{"session-bus", "system_flag_after_a_shell_script", "sh -c 'dbus-send / x.y' --system", true},
+		{"session-bus", "system_flag_after_a_double_quoted_shell_script", `sh -c "dbus-send / x.y" --system`, true},
+		{"session-bus", "busctl_on_the_system_bus", "busctl status", false},
+		{"session-bus", "user_flag_of_a_later_command", "busctl status && ls --user", false},
+		{"session-bus", "longer_command_word", "systemd-runner x", false},
+		{"session-bus", "systemctl_user_status", "systemctl --user status", false},
+		{"session-bus", "named_as_an_argument", "grep -rn systemd-run internal", false},
+		{"session-bus", "inside_a_double_quoted_argument", `git commit -m "gdbus is refused"`, false},
+
+		{"hub-tmux-server", "named_server", "tmux -L lym-loomyard-LYMHUB-1a2b3c4d ls", true},
+		{"hub-tmux-server", "named_server_attached_to_its_flag", "tmux -Llym-hub-1a2b3c4d ls", true},
+		{"hub-tmux-server", "socket_path", "tmux -S /tmp/tmux-1000/lym-hub-1a2b3c4d list-sessions", true},
+		{"hub-tmux-server", "quoted_socket_path", `tmux -S "/tmp/tmux-1000/lym-hub-1a2b3c4d" ls`, true},
+		{"hub-tmux-server", "socket_file_in_the_working_directory", "tmux -S lym-hub-1a2b3c4d ls", true},
+		{"hub-tmux-server", "after_another_flag", "tmux -u -L lym-hub-1a2b3c4d ls", true},
+		{"hub-tmux-server", "in_a_shell_script", "sh -c 'tmux -L lym-hub-1a2b3c4d ls'", true},
+		{"hub-tmux-server", "in_a_double_quoted_shell_script", `sh -c "tmux -L lym-hub-1a2b3c4d ls"`, true},
+		{"hub-tmux-server", "single_quoted_named_server", `tmux -L 'lym-hub-1a2b3c4d' ls`, true},
+		{"hub-tmux-server", "single_quoted_socket_path", `tmux -S '/tmp/tmux-1000/lym-hub-1a2b3c4d' ls`, true},
+		{"hub-tmux-server", "name_flag_in_a_cluster", "tmux -uL lym-hub-1a2b3c4d ls", true},
+		{"hub-tmux-server", "socket_flag_in_a_cluster", "tmux -2S /tmp/tmux-1000/lym-hub-1a2b3c4d ls", true},
+		{"hub-tmux-server", "quoted_socket_path_with_a_spaced_directory", `tmux -S "/tmp/my dir/lym-hub-1a2b3c4d" ls`, false},
+		{"hub-tmux-server", "trial_server_of_its_own", "tmux -L sampler-trial-1 new -d -s a", false},
+		{"hub-tmux-server", "trial_socket_of_its_own", "tmux -S .scratch/tm/sock ls", false},
+		{"hub-tmux-server", "lym_prefix_inside_a_directory_name", "tmux -S /tmp/lym-x/sock ls", false},
+		{"hub-tmux-server", "plain_tmux", "tmux ls", false},
+		{"hub-tmux-server", "flag_of_a_later_command", "tmux ls && grep -L lym-x f", false},
+
 		{"publish", "git_push", "git push", true},
 		{"publish", "git_push_after_dash_c", "git -C x push origin b", true},
 		{"publish", "gh_pr_merge", "gh pr merge 3", true},
@@ -377,7 +425,14 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"headless-claude", "x; claude -p hi"},
 		{"adopt-take-hold", "x; lym adopt --take-hold b"},
 		{"tmux-script", "x; tmux attach -t a"},
+		{"session-bus", "x; systemd-run --user true"},
+		{"hub-tmux-server", "x; tmux -L lym-hub-1a2b3c4d ls"},
 		{"publish", "x; gh pr merge 3"},
+	}
+	// The hub tmux server row refuses the server name lym derives for a hub, so the two cannot drift apart.
+	hubServer := reedengine.ServerName("/home/u/Code/hub")
+	if !payloadDenied(t, rows["hub-tmux-server"], "tmux -L "+hubServer+" ls", "") {
+		t.Errorf("row hub-tmux-server lets through tmux -L %s, the server lym names for a hub; want denied", hubServer)
 	}
 	for _, tt := range tests {
 		t.Run(tt.row+"_"+tt.name, func(t *testing.T) {

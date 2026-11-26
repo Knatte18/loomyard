@@ -237,7 +237,7 @@ func findButtonEntry(spec buttonSpec, rangeName string) (buttonSpecEntry, bool) 
 
 // buttonStrand returns the strand name that fills {strand} for the click, or the message to show instead.
 // A confirmed click carries the name the prompt was raised for, which must parse as a strand name.
-// Any other click reads it from the clicking client's active pane.
+// Any other click reads it from the active pane of the clicking client's own session.
 func buttonStrand(cmd TmuxCmd, req ButtonRequest, entry buttonSpecEntry) (strand, problem string) {
 	if req.Confirmed || req.Answered {
 		if _, err := agentname.Parse(req.Strand); err != nil {
@@ -245,12 +245,11 @@ func buttonStrand(cmd TmuxCmd, req ButtonRequest, entry buttonSpecEntry) (strand
 		}
 		return req.Strand, ""
 	}
-	name, err := cmd.output("display-message", "-p", "-c", req.Client, "#{"+strandNamePaneOption+"}")
-	name = strings.TrimSpace(name)
-	if err != nil || name == "" {
+	fields, err := readClientFormatsVia(cmd, req.Client, "#{"+strandNamePaneOption+"}")
+	if err != nil || strings.TrimSpace(fields[0]) == "" {
 		return "", "lym: " + entry.Label + " needs the agent's name, which this pane lacks; reattach the session with lym reed attach and click again"
 	}
-	return name, ""
+	return strings.TrimSpace(fields[0]), ""
 }
 
 // buttonAnswer returns the value that fills {answer} for an answered or confirmed click, or the message to show instead.

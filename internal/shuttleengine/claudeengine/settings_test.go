@@ -510,8 +510,8 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 			if publishInstalled != tt.denyPublish {
 				t.Errorf("publish Bash PreToolUse entry present = %v; want %v (preToolUse: %v)", publishInstalled, tt.denyPublish, preToolUse)
 			}
-			if !tt.wantAskUserEntry && !tt.denyPublish && !tt.fork && len(preToolUse) != 8 {
-				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the python, raw go, shell-edit, computed-rm, sleep, headless claude, adopt takeover, and tmux and script denies", preToolUse)
+			if !tt.wantAskUserEntry && !tt.denyPublish && !tt.fork && len(preToolUse) != 10 {
+				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the python, raw go, shell-edit, computed-rm, sleep, headless claude, adopt takeover, tmux and script, session bus and hub tmux server denies", preToolUse)
 			}
 		})
 	}
@@ -633,13 +633,18 @@ func TestBuildSettings_NoAgentHookAndForkGuard(t *testing.T) {
 			}
 
 			// Every input installs the python, raw go, shell-edit, computed-rm, sleep and headless claude denies.
-			// It also installs the adopt takeover deny, and every input but one that sets the exemption the tmux and script deny.
+			// It also installs the adopt takeover, session bus and hub tmux server denies,
+			// and every input but one that sets the exemption the tmux and script deny.
 			// The rest of the Bash entries are the fork guard.
-			var bashCommands, pythonCommands, rawGoCommands, shellEditCommands, computedRmCommands, sleepCommands, headlessClaudeCommands, adoptTakeHoldCommands, tmuxScriptCommands []string
+			var bashCommands, pythonCommands, rawGoCommands, shellEditCommands, computedRmCommands, sleepCommands, headlessClaudeCommands, adoptTakeHoldCommands, tmuxScriptCommands, sessionBusCommands, hubTmuxServerCommands []string
 			for _, command := range matcherCommands(doc, "Bash") {
 				switch {
 				case strings.Contains(command, shellRow(t, "tmux-script").Steer):
 					tmuxScriptCommands = append(tmuxScriptCommands, command)
+				case strings.Contains(command, shellRow(t, "session-bus").Steer):
+					sessionBusCommands = append(sessionBusCommands, command)
+				case strings.Contains(command, shellRow(t, "hub-tmux-server").Steer):
+					hubTmuxServerCommands = append(hubTmuxServerCommands, command)
 				case strings.Contains(command, shellRow(t, "python").Steer):
 					pythonCommands = append(pythonCommands, command)
 				case strings.Contains(command, shellRow(t, "adopt-take-hold").Steer):
@@ -685,6 +690,12 @@ func TestBuildSettings_NoAgentHookAndForkGuard(t *testing.T) {
 			}
 			if len(sleepCommands) != 1 {
 				t.Errorf("sleep Bash PreToolUse entries = %q; want exactly one (data: %s)", sleepCommands, data)
+			}
+			if len(sessionBusCommands) != 1 {
+				t.Errorf("session bus Bash PreToolUse entries = %q; want exactly one (data: %s)", sessionBusCommands, data)
+			}
+			if len(hubTmuxServerCommands) != 1 {
+				t.Errorf("hub tmux server Bash PreToolUse entries = %q; want exactly one (data: %s)", hubTmuxServerCommands, data)
 			}
 			if !tt.wantBashGuard {
 				if len(bashCommands) != 0 {
@@ -995,9 +1006,9 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 		wantRefused bool
 		wantErr     bool
 	}{
-		{"SeededRefuseRawReachesSettingsAndNotice", "slots: 2\nrefuse_raw: [\"go test\"]\n", 9, true, false},
-		{"ScopelessGateKeyStillLaunchesWithRefuseRaw", "slots: 2\nrefuse_raw: [\"go test\"]\ngates:\n  harden-live-copies:\n    tiers: [1]\n", 9, true, false},
-		{"AbsentGateConfigRendersNoRefuseRawRow", "", 8, false, false},
+		{"SeededRefuseRawReachesSettingsAndNotice", "slots: 2\nrefuse_raw: [\"go test\"]\n", 11, true, false},
+		{"ScopelessGateKeyStillLaunchesWithRefuseRaw", "slots: 2\nrefuse_raw: [\"go test\"]\ngates:\n  harden-live-copies:\n    tiers: [1]\n", 11, true, false},
+		{"AbsentGateConfigRendersNoRefuseRawRow", "", 10, false, false},
 		{"UnparsableGateConfigRefusesBeforeArtifacts", "slots: [\n", 0, false, true},
 		{"InvalidRefuseRawBesideAScopelessGateKeyRefusesBeforeArtifacts", "slots: 2\nrefuse_raw: [\"go  test\"]\ngates:\n  harden-live-copies:\n    tiers: [1]\n", 0, false, true}}
 	for _, tt := range gateTests {
@@ -1107,7 +1118,7 @@ func TestBuildDenyNotice_SentenceContent(t *testing.T) {
 	claude := Config{DenyAskUserQuestion: true}
 	nonFork := buildDenyNotice(false, cfg, claude, false, false, false)
 	for name, notice := range map[string]string{"autonomous": nonFork, "interactive": buildDenyNotice(true, cfg, claude, false, false, false), "fork": buildDenyNotice(false, cfg, claude, true, false, false)} {
-		for _, row := range []string{"computed-rm", "machine-sleep", "headless-claude", "tmux-script"} {
+		for _, row := range []string{"computed-rm", "machine-sleep", "headless-claude", "tmux-script", "session-bus", "hub-tmux-server"} {
 			if !strings.Contains(notice, shellRow(t, row).Notice) {
 				t.Errorf("%s notice = %q; want it to contain the %s sentence", name, notice, row)
 			}
