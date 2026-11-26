@@ -66,7 +66,8 @@ Decision: late.
 
 ## Acceptance criteria
 
-- D1: first holds.
+- D1: first holds
+for every call.
 - D2: second holds.
 - D3: third holds.
 
@@ -76,7 +77,10 @@ Decision: late.
 - §PATTERN-two§ — changes: Two rule.
 `)
 
-// TestSectionBullets covers plain and continuation bullets, a fenced bullet, a carry-over block and an absent heading.
+// TestSectionBullets covers plain bullets and their indented and unindented continuation lines.
+// It covers a fenced bullet, a carry-over block and an absent heading.
+// It covers each kind of unindented line that ends a bullet: heading, thematic break, blockquote and HTML block.
+// It also covers lines that only resemble a heading or an HTML block, which continue the bullet.
 func TestSectionBullets(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -89,6 +93,20 @@ func TestSectionBullets(t *testing.T) {
 	}{
 		{"PlainBullets", "## Open risks\n\n- a\n- b\n\n## Acceptance criteria\n\n- c\n", "Open risks", []string{"a", "b"}},
 		{"ContinuationLines", "## Open risks\n\n- a\n  more\n  - nested\n- b\n", "Open risks", []string{"a\nmore\n- nested", "b"}},
+		{"UnindentedContinuationLine", "## Acceptance criteria\n\n- D6: the client attaches\nonly inside the area.\n- D7: b\n", "Acceptance criteria", []string{"D6: the client attaches\nonly inside the area.", "D7: b"}},
+		{"IssueNumberContinues", "## Open risks\n\n- a\n#123 b\n- c\n", "Open risks", []string{"a\n#123 b", "c"}},
+		{"PlaceholderContinues", "## Open risks\n\n- a\n<slug> b\n- c\n", "Open risks", []string{"a\n<slug> b", "c"}},
+		{"HeadingEndsBullet", "## Open risks\n\n- a\n### Note\n- b\n", "Open risks", []string{"a", "b"}},
+		{"ThematicBreakEndsBullet", "## Open risks\n\n- a\n---\n- b\n", "Open risks", []string{"a", "b"}},
+		{"SpacedThematicBreakIsNoBullet", "## Open risks\n\n- a\n* * *\n- b\n", "Open risks", []string{"a", "b"}},
+		{"UnderscoreThematicBreakEndsBullet", "## Open risks\n\n- a\n___\n- b\n", "Open risks", []string{"a", "b"}},
+		{"RawTextTagEndsBullet", "## Open risks\n\n- a\n<pre>\n- b\n", "Open risks", []string{"a", "b"}},
+		{"ProcessingInstructionEndsBullet", "## Open risks\n\n- a\n<?x ?>\n- b\n", "Open risks", []string{"a", "b"}},
+		{"DeclarationEndsBullet", "## Open risks\n\n- a\n<!DOCTYPE html>\n- b\n", "Open risks", []string{"a", "b"}},
+		{"CDATAEndsBullet", "## Open risks\n\n- a\n<![CDATA[x]]>\n- b\n", "Open risks", []string{"a", "b"}},
+		{"BlockquoteEndsBullet", "## Open risks\n\n- a\n> quote\n- b\n", "Open risks", []string{"a", "b"}},
+		{"CommentEndsBullet", "## Open risks\n\n- a\n<!-- note -->\n- b\n", "Open risks", []string{"a", "b"}},
+		{"BlockTagEndsBullet", "## Open risks\n\n- a\n<details>\n- b\n", "Open risks", []string{"a", "b"}},
 		{"FencedBulletSkipped", "## Open risks\n\n```\n- fenced\n```\n- real\n", "Open risks", []string{"real"}},
 		{"CarryOverBlockSkipped", "## Open risks\n\n- own\n\n<!-- lym:carry-over code -->\n- carried\n<!-- /lym:carry-over code -->\n", "Open risks", []string{"own"}},
 		{"AbsentHeading", "## Goal\n\n- a\n", "Open risks", nil},
@@ -158,7 +176,7 @@ func TestSplicePart(t *testing.T) {
 		Scope:          "Only the first part.",
 		Decisions:      []string{"D1", "D3"},
 		OpenRisks:      []string{"Risk one\ncontinues here."},
-		Criteria:       []string{"D1: first holds.", "D3: third holds."},
+		Criteria:       []string{"D1: first holds\nfor every call.", "D3: third holds."},
 		PatternChanges: []string{"PATTERN-two"},
 	}
 

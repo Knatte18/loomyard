@@ -629,6 +629,10 @@ func TestCheckDecisionIDs(t *testing.T) {
 			},
 		},
 		{
+			name:   "IDOnUnindentedContinuationLineIsCovered",
+			record: record(twoDecisions, accept("- D1 holds,\nand so does D2.\n")),
+		},
+		{
 			name:   "IDInsideNonBulletProseIsNotCovered",
 			record: record("### D1 — x\n\nDecision: a.\n", accept("D1 is prose, not a bullet.\n")),
 			want:   []want{{"decision-not-in-acceptance", []string{"D1 "}}},

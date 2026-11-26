@@ -60,6 +60,10 @@ Any other H3 there is refused as a `decision-heading-malformed` finding.
 A repeated id is a `decision-id-duplicate` finding.
 Each id appears as a whole word in a bullet of `## Acceptance criteria`.
 So `D1` is not met by `D10`, and a range such as "D1 to D4" covers only the ids it spells.
+A bullet runs on through the lines after it up to a blank line, the next bullet or a fenced line,
+and any other indented line continues it.
+An unindented line continues it as markdown's lazy continuation does,
+unless it is an ATX heading, a thematic break or a blockquote, or opens an HTML block that can interrupt a paragraph.
 An id no bullet names is a `decision-not-in-acceptance` finding.
 Both checks run for every loom record, in the discussion gates, Darn-Write's post-session guard and `lym loom validate-discussion`.
 They do not run in `lym loom decision add`.

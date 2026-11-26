@@ -4,6 +4,7 @@ package discussionparser
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -167,7 +168,7 @@ func parseDecisionHeading(heading string) (string, bool) {
 }
 
 // bulletLines returns the unfenced lines in [first, end) that belong to a list item:
-// the bullet line itself and the indented lines continuing it.
+// the bullet line itself and the lines continuing it.
 func bulletLines(lines []string, fenced []bool, first, end int) []string {
 	var bullets []string
 	inItem := false
@@ -181,7 +182,7 @@ func bulletLines(lines []string, fenced []bool, first, end int) []string {
 		switch {
 		case isBulletLine(trimmed):
 			inItem = true
-		case line == "" || (inItem && trimmed == line):
+		case !continuesItem(line):
 			inItem = false
 		}
 		if inItem {
@@ -191,8 +192,46 @@ func bulletLines(lines []string, fenced []bool, first, end int) []string {
 	return bullets
 }
 
+// The unindented lines that end a list item, as CommonMark lets each interrupt a paragraph.
+var (
+	atxHeadingLine    = regexp.MustCompile(`^#{1,6}([ \t]|$)`)
+	thematicBreakLine = regexp.MustCompile(`^((-[ \t]*){3,}|(\*[ \t]*){3,}|(_[ \t]*){3,})$`)
+	// htmlBlockStartLine matches CommonMark's HTML block start conditions 1 to 6;
+	// any other tag, an autolink or a `<placeholder>` is paragraph text.
+	htmlBlockStartLine = regexp.MustCompile(`(?i)^(<!--|<\?|<![a-z]|<!\[CDATA\[` +
+		`|<(script|pre|style|textarea)([ \t>]|$)` +
+		`|</?(address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt` +
+		`|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu` +
+		`|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr` +
+		`|track|ul)([ \t]|/?>|$))`)
+)
+
+// continuesItem reports whether line, right-trimmed and right after a list item's line, continues that item.
+// An indented line continues it.
+// So does an unindented line, as markdown reads a lazy continuation.
+// A record writer may leave a long criterion's second line unindented.
+// An unindented ATX heading, thematic break or blockquote ends the item.
+// So does the start of an HTML block that can interrupt a paragraph.
+// A blank line ends the item.
+func continuesItem(line string) bool {
+	if line == "" {
+		return false
+	}
+	if line[0] == ' ' || line[0] == '\t' {
+		return true
+	}
+	return line[0] != '>' &&
+		!atxHeadingLine.MatchString(line) &&
+		!thematicBreakLine.MatchString(line) &&
+		!htmlBlockStartLine.MatchString(line)
+}
+
 // isBulletLine reports whether line, left-trimmed, starts a markdown list item.
+// A spaced thematic break such as `* * *` starts none.
 func isBulletLine(line string) bool {
+	if thematicBreakLine.MatchString(line) {
+		return false
+	}
 	if len(line) >= 2 && strings.ContainsRune("-*+", rune(line[0])) && line[1] == ' ' {
 		return true
 	}
