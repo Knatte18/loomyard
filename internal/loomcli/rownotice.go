@@ -10,10 +10,14 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 )
+
+// notifyParentOnKey is the loom.yaml key naming the rows that mail the run's parent.
+const notifyParentOnKey = "notify_parent_on"
 
 // rowNoticePaths locates the files a row notice reads and writes.
 type rowNoticePaths struct {
@@ -34,7 +38,8 @@ func watchRows(shed *shedengine.Shed, rows []string, recipe string, paths rowNot
 	}
 	for _, row := range rows {
 		if !slices.Contains(names, row) {
-			return fmt.Errorf("loom config key %q names %q, which is no row of the %s recipe; way forward: set notify_parent_on in loom.yaml or the task's run_settings to rows of that recipe: %s", "notify_parent_on", row, recipe, strings.Join(names, ", "))
+			key := loomengine.FullKeyName(notifyParentOnKey)
+			return fmt.Errorf("config key %q names %q, which is no row of the %s recipe; way forward: set %s in loom.yaml or the task's run_settings to rows of that recipe: %s", key, row, recipe, key, strings.Join(names, ", "))
 		}
 	}
 	for i, def := range shed.Producers {

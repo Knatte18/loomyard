@@ -65,7 +65,7 @@ func TestRunAutonomy_ForcesTheRunsKeysOverARealHub(t *testing.T) {
 		t.Fatalf("lymcwd.Resolve(task pair): %v", err)
 	}
 	writeConfigFile(t, configengine.ConfigFile(h.BoardDir(), "drift"), "judge_ask_parent: false\njudge_interactive: true\n")
-	writeConfigFile(t, configengine.LocalFile(taskAnchor, "loom"), "pr_review_ask_parent: false\ndiscussion_interactive: true\nraddle_auto_approve: false\n")
+	writeConfigFile(t, configengine.LocalFile(taskAnchor, "loom"), "pr: {review_ask_parent: false}\ndiscussion: {interactive: true}\nraddle: {auto_approve: false}\n")
 
 	tests := []struct {
 		name     string
@@ -115,9 +115,9 @@ func TestRunAutonomy_ForcesTheRunsKeysOverARealHub(t *testing.T) {
 			if table.Interactive == tt.forced || strings.Contains(prompts[""], autonomousText) != tt.forced {
 				t.Errorf("lead seat interactive %v, prompt names the autonomous mode %v; want interactive %v and autonomous mode %v", table.Interactive, strings.Contains(prompts[""], autonomousText), !tt.forced, tt.forced)
 			}
-			approve, err := c.env.Setting("loom", "raddle_auto_approve")
+			approve, err := c.env.Setting("loom", "raddle.auto_approve")
 			if err != nil || approve != tt.forced {
-				t.Errorf("Setting(loom, raddle_auto_approve) = %v, %v; want %v", approve, err, tt.forced)
+				t.Errorf("Setting(loom, raddle.auto_approve) = %v, %v; want %v", approve, err, tt.forced)
 			}
 		})
 	}

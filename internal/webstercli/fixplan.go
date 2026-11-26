@@ -64,7 +64,7 @@ from a fixer that moved HEAD or left a new uncommitted change, with a
 warning.
 On "fixed", Master calls begin-batch again; on "plan_writer" it ends its run
 stuck, so the conflict goes to the plan writer. A fixer whose turn ended
-without a reply, whose strand is gone or that outlived recovery_timeout_min
+without a reply, whose strand is gone or that outlived ` + recoveryTimeoutName() + `
 returns {"status": "dead", "dead_reason": "..."} and exits non-zero. If
 --wait elapses first it returns {"status": "running", "elapsed_s": N}.
 
@@ -183,7 +183,7 @@ Example:
 		},
 	}
 
-	cmd.Flags().DurationVar(&wait, "wait", 0, "operator override of the wait budget; a shorter wait can return a running snapshot; 0 blocks until the fixer ends or recovery_timeout_min")
+	cmd.Flags().DurationVar(&wait, "wait", 0, "operator override of the wait budget; a shorter wait can return a running snapshot; 0 blocks until the fixer ends or "+recoveryTimeoutName())
 
 	return cmd
 }

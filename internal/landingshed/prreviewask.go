@@ -30,7 +30,7 @@ type PRReviewAsker struct {
 	URL          string
 	TaskBranch   string
 	ParentBranch string
-	// Wait is the time from an ask to its deadline: pr_review_parent_timeout_min.
+	// Wait is the time from an ask to its deadline: loom.pr.review_parent_timeout_min.
 	Wait time.Duration
 	// Resolve answers the orch strand an ask goes to and whether that orch's state records one.
 	Resolve func() (strand string, recorded bool, err error)

@@ -174,8 +174,8 @@ func (c *orchCLI) remoteControlOnCmd() *cobra.Command {
 		Long: `rc-on is what a click on reed's RC button runs, from the clicked session's run
 directory: the session's own worktree for the prime and a beam, the parent's for
 a task. It acts on the agent of the clicking client's active pane. It queues
-creel's remote-control command into that agent, under the name orch.yaml's
-remote_control_name forms, whether or not remote_control is on. The command is
+creel's remote-control command into that agent, under the name
+` + orchKeyName("remote_control_name") + ` forms, whether or not ` + orchKeyName("remote_control") + ` is on. The command is
 typed once the session is idle, and the pane is marked so the RC button shows
 lit only once the session records its remote control connecting. A connection
 the provider refuses, such as by an organization's policy, leaves the button

@@ -18,7 +18,7 @@
      edit_directive is a required marker, rendered unconditionally by internal/editdirective.
      self_check is a required marker, the body of Step 5, filled by internal/loomengine's PlanTable.
      It carries the fragment that has the writer run the validator or, when the row's gate has a cold fixer, the one that has it run none.
-     The subagent_model marker is declared by the Claude engine block the stencil includes, and filled from loom.yaml's subagent_model. -->
+     The subagent_model marker is declared by the Claude engine block the stencil includes, and filled from loom.subagent_model. -->
 
 # Plan — read the decision record, write a plan-format flat-card plan
 

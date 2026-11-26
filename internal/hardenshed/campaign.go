@@ -86,7 +86,7 @@ func CheckCampaign(in CampaignCheck) error {
 		return in.refuseKey("reviewer", reason)
 	}
 	if cfg.MaxBounces > cfg.HardMaxBounces {
-		return in.refuseKey("max_bounces", fmt.Sprintf("max_bounces %d is above hard_max_bounces %d", cfg.MaxBounces, cfg.HardMaxBounces))
+		return in.refuseKey("max_bounces", fmt.Sprintf("%s %d is above %s %d", keyName("max_bounces"), cfg.MaxBounces, keyName("hard_max_bounces"), cfg.HardMaxBounces))
 	}
 	return nil
 }

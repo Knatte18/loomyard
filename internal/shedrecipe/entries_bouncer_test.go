@@ -369,7 +369,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		{"ReferenceWithEmptyModule", "reviewer_fan_setting", ".x", nil, false, []string{`row "review-bounce"`, "reviewer_fan_setting", `".x"`, "way forward: set reviewer_fan_setting to a module.key"}},
 		{"ReferenceWithEmptyKey", "reviewer_fan_setting", "loom.", nil, false, []string{`row "review-bounce"`, "reviewer_fan_setting", `"loom."`, "way forward: set reviewer_fan_setting to a module.key"}},
 		{"ReferenceNotAString", "reviewer_fan_setting", 3, nil, false, []string{"reviewer_fan_setting", "must be a string"}},
-		{"NamedSettingWithNilLookup", "auto_accept_setting", "loom.discussion_auto_accept", nil, true, []string{`row "review-bounce"`, "auto_accept_setting", "loom.discussion_auto_accept", "way forward: fill Env.Setting in the caller that builds this recipe"}},
+		{"NamedSettingWithNilLookup", "auto_accept_setting", "loom.discussion.auto_accept", nil, true, []string{`row "review-bounce"`, "auto_accept_setting", "loom.discussion.auto_accept", "way forward: fill Env.Setting in the caller that builds this recipe"}},
 		{"UnknownReference", "reviewer_fan_setting", "loom.unknown", map[string]any{}, false, []string{`row "review-bounce"`, "reviewer_fan_setting", "loom.unknown", "fake setting lookup: unknown setting loom.unknown"}},
 		{"FanValueNotAFanOrList", "reviewer_fan_setting", "loom.fan", map[string]any{"loom.fan": 3}, false, []string{`row "review-bounce"`, "reviewer_fan_setting", "loom.fan", "fan in loom.yaml", "int", "way forward: point reviewer_fan_setting at"}},
 		{"FanListHoldingANonString", "reviewer_fan_setting", "loom.fan", map[string]any{"loom.fan": []any{"a", 1}}, false, []string{`row "review-bounce"`, "reviewer_fan_setting", "loom.fan", "entry 1", "int"}},

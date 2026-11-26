@@ -152,13 +152,13 @@ var LoomBlockPlanCards []byte
 var LoomTemplateParts []byte
 
 // LoomFragmentPartsLight is the light reading depth of the Parts-Write agent.
-// It is filled into the Parts-Write prompt when parts_depth is light.
+// It is filled into the Parts-Write prompt when tapestry.parts.depth is light.
 //
 //go:embed loom/loom-fragment-parts-light.md
 var LoomFragmentPartsLight []byte
 
 // LoomFragmentPartsMedium is the medium reading depth of the Parts-Write agent.
-// It is filled into the Parts-Write prompt when parts_depth is medium.
+// It is filled into the Parts-Write prompt when tapestry.parts.depth is medium.
 //
 //go:embed loom/loom-fragment-parts-medium.md
 var LoomFragmentPartsMedium []byte

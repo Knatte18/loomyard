@@ -320,7 +320,8 @@ func (r *testMapRun) prepare() string {
 	r.testMemory = r.cfg.RedundancyTestMemory()
 	for _, number := range slices.Sorted(maps.Keys(r.tiers)) {
 		if memoryMB := r.tiers[number].MemoryMB; memoryMB > 0 && r.tiers[number].MemoryLimit() < r.testMemory {
-			return fmt.Sprintf("gate test --map: tier%d sets memory_mb %d, below redundancy_test_memory_mb %d, so no test process fits its memory; way forward: raise tier%d's memory_mb or lower redundancy_test_memory_mb with lym config gate from the prime, then re-run the same command", number, memoryMB, r.cfg.RedundancyTestMemoryMB, number)
+			capKey, needKey := tierKeyName(tierName(number), tierMemoryMBLeaf), keyName(redundancyTestMemoryMBKey)
+			return fmt.Sprintf("gate test --map: %s is %d, below %s %d, so no test process fits its memory; way forward: raise %s or lower %s with lym config gate from the prime, then re-run the same command", capKey, memoryMB, needKey, r.cfg.RedundancyTestMemoryMB, capKey, needKey)
 		}
 	}
 	r.sideBySide = map[int]int{}
@@ -530,7 +531,7 @@ func holdsGoFile(dir string) bool {
 }
 
 // mapBudgetReason is why a package is unmeasured once the walk's deadline passed.
-const mapBudgetReason = "past reach_budget_min; way forward: run the gate again, since a package refreshed now costs nothing on the next call"
+var mapBudgetReason = "past " + keyName(reachBudgetMinKey) + "; way forward: run the gate again, since a package refreshed now costs nothing on the next call"
 
 // mapPackages reads HEAD and measures each package of packages whole, in order.
 // Every map write checks HEAD itself, so the walk reads it only once, before the first package.

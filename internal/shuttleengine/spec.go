@@ -246,7 +246,7 @@ func (s *Spec) validate(worktreeRoot string, cfg Config) error {
 	// Otherwise the run would launch and classify OutcomeTimeout on its first poll tick.
 	// It would then keep its live pane and run dir as stray state.
 	if s.Timeout < 0 {
-		return fmt.Errorf("shuttle: spec.Timeout must not be negative (got %s); use 0 for the config default run_timeout_min", s.Timeout)
+		return fmt.Errorf("shuttle: spec.Timeout must not be negative (got %s); use 0 for the config default %s", s.Timeout, keyName(runTimeoutMinKey))
 	}
 	if s.Timeout == 0 {
 		s.Timeout = time.Duration(cfg.RunTimeoutMin) * time.Minute

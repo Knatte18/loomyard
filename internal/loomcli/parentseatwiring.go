@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -28,8 +29,8 @@ import (
 // discussionAskParentKey and codeAskParentKey are those settings.
 const (
 	askParentModule        = "loom"
-	discussionAskParentKey = "discussion_review_ask_parent"
-	codeAskParentKey       = "code_review_ask_parent"
+	discussionAskParentKey = "discussion.review_ask_parent"
+	codeAskParentKey       = "code.review_ask_parent"
 )
 
 // parentSeatInputs holds what the review segments' parent seats are built from.
@@ -110,12 +111,12 @@ func baseParentSeat(in parentSeatInputs, perch loomengine.Perch, key string) *sh
 func askParentSetting(setting func(module, key string) (any, error), key string) bool {
 	value, err := setting(askParentModule, key)
 	if err != nil {
-		logger.Warn("loomcli: the parent-review setting is unreadable; this round asks no parent", "key", key, "error", err)
+		logger.Warn("loomcli: the parent-review setting is unreadable; this round asks no parent", "key", configengine.KeyName(askParentModule, key), "error", err)
 		return false
 	}
 	on, ok := value.(bool)
 	if !ok {
-		logger.Warn("loomcli: the parent-review setting is not a boolean; this round asks no parent", "key", key, "value", value)
+		logger.Warn("loomcli: the parent-review setting is not a boolean; this round asks no parent", "key", configengine.KeyName(askParentModule, key), "value", value)
 		return false
 	}
 	return on

@@ -293,6 +293,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 		},
 		// The budget is the prime's loom config, the hub's own, which no run profile reaches.
 		CodeReviewCaps: func() (reviewbudget.Caps, error) {
+			hubgeom.ReconcileBeforeLoad(prime)
 			cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(prime), "loom")
 			if err != nil {
 				return reviewbudget.Caps{}, err

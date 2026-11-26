@@ -307,7 +307,7 @@ func LoadRefuseRaw(dirs configengine.Dirs) ([]string, error) {
 	if err := decodeRefuseRaw(file.RefuseRaw); err != nil {
 		return nil, withConfigWayForward(err, ConfigFiles(dirs), "")
 	}
-	logger.Warn("gate config: the config does not load, so the launch reads its refuse_raw list alone; every gate call refuses until it is fixed", "error", loadErr)
+	logger.Warn("gate config: the config does not load, so the launch reads its "+keyName("refuse_raw")+" list alone; every gate call refuses until it is fixed", "error", loadErr)
 	return file.RefuseRaw, nil
 }
 
@@ -354,13 +354,13 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		return Config{}, fmt.Errorf("unmarshal gate config: %w", err)
 	}
 	if file.Slots < 1 {
-		return Config{}, fmt.Errorf("gate config key %q: %d; want at least 1", "slots", file.Slots)
+		return Config{}, fmt.Errorf("config key %q: %d; want at least 1", keyName("slots"), file.Slots)
 	}
 	if file.BusyQuitSec < 0 {
-		return Config{}, fmt.Errorf("gate config key %q: %d; want at least 0", "busy_quit_sec", file.BusyQuitSec)
+		return Config{}, fmt.Errorf("config key %q: %d; want at least 0", keyName(busyQuitSecKey), file.BusyQuitSec)
 	}
 	if file.MemoryQuitMB < 0 {
-		return Config{}, fmt.Errorf("gate config key %q: %d; want at least 0", "memory_quit_mb", file.MemoryQuitMB)
+		return Config{}, fmt.Errorf("config key %q: %d; want at least 0", keyName("memory_quit_mb"), file.MemoryQuitMB)
 	}
 	for _, bound := range []struct {
 		key   string
@@ -377,7 +377,7 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		{"mutation_budget_min", file.MutationBudgetMin},
 	} {
 		if bound.value < 1 {
-			return Config{}, fmt.Errorf("gate config key %q: %d; want at least 1", bound.key, bound.value)
+			return Config{}, fmt.Errorf("config key %q: %d; want at least 1", keyName(bound.key), bound.value)
 		}
 	}
 	tiers, err := decodeTiers(file.Tiers)
@@ -389,7 +389,7 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		return Config{}, err
 	}
 	if file.Scoper != "go" && file.Scoper != "none" && file.Scoper != "dotnet" {
-		return Config{}, fmt.Errorf("gate config key %q: %q; want go, none or dotnet", "scoper", file.Scoper)
+		return Config{}, fmt.Errorf("config key %q: %q; want go, none or dotnet", keyName("scoper"), file.Scoper)
 	}
 	build, err := decodeBuild(file.Build)
 	if err != nil {
@@ -397,7 +397,7 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 	}
 	for _, key := range sortedKeys(tiers) {
 		if tiers[key].SharedBuild && build.Command == "" {
-			return Config{}, fmt.Errorf("gate config key %q: true, but the hub declares no build step; want a build step or shared_build false", "tiers."+key+".shared_build")
+			return Config{}, fmt.Errorf("config key %q: true, but the hub declares no build step; want a build step or shared_build false", keyName("tiers."+key+".shared_build"))
 		}
 	}
 	if err := decodeRefuseRaw(file.RefuseRaw); err != nil {
@@ -437,7 +437,7 @@ func decodeBuild(file buildFile) (BuildStep, error) {
 		return BuildStep{}, nil
 	}
 	refuse := func(field, want string) error {
-		return fmt.Errorf("gate config key %q: %s", "build."+field, want)
+		return fmt.Errorf("config key %q: %s", keyName("build."+field), want)
 	}
 	if strings.TrimSpace(file.Command) == "" {
 		return BuildStep{}, refuse("command", "missing; want the shell command the build runs")
@@ -490,12 +490,12 @@ func CheckDirs(dirs configengine.Dirs, worktreeRoot, anchorDir string) error {
 	}
 	for _, key := range sortedKeys(cfg.Tiers) {
 		if _, err := StatCommandDir(worktreeRoot, anchorDir, cfg.Tiers[key].Dir); err != nil {
-			return useRefusal("key %q: %v", "tiers."+key+".dir", err)
+			return useRefusal("key %q: %v", keyName("tiers."+key+".dir"), err)
 		}
 	}
 	if cfg.Build.Command != "" {
 		if _, err := StatCommandDir(worktreeRoot, anchorDir, cfg.Build.Dir); err != nil {
-			return useRefusal("key %q: %v", "build.dir", err)
+			return useRefusal("key %q: %v", keyName("build.dir"), err)
 		}
 	}
 	return nil
@@ -549,7 +549,7 @@ func refuseRetiredGateLists(hubFile string) error {
 	}
 	for i := 0; i+1 < len(gates.Content); i += 2 {
 		if gates.Content[i+1].Kind == yaml.SequenceNode {
-			return fmt.Errorf("gate config key %q: the retired list shape; write it as a mapping with tiers and scope, such as {tiers: [0], scope: diff}, with \"lym config gate\" from the prime%s", "gates."+gates.Content[i].Value, roleClause)
+			return fmt.Errorf("config key %q: the retired list shape; write it as a mapping with tiers and scope, such as {tiers: [0], scope: diff}, with \"lym config gate\" from the prime%s", keyName("gates."+gates.Content[i].Value), roleClause)
 		}
 	}
 	return nil
@@ -576,38 +576,38 @@ func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 	gates := make(map[string]GateKey, len(entries))
 	for _, name := range sortedKeys(entries) {
 		node := entries[name]
-		path := "gates." + name
+		path := keyName("gates." + name)
 		var key GateKey
 		if err := node.Decode(&key); err != nil {
-			return nil, fmt.Errorf("gate config key %q: %w", path, err)
+			return nil, fmt.Errorf("config key %q: %w", path, err)
 		}
 		switch key.Scope {
 		case scopeCard:
 			if name != cardGateKey && name != "batch" {
-				return nil, guidedError{fmt.Errorf("gate config key %q: scope card is only for the card and batch keys; fix it with \"lym config gate\" from the prime%s", path, roleClause)}
+				return nil, guidedError{fmt.Errorf("config key %q: scope card is only for the card and batch keys; fix it with \"lym config gate\" from the prime%s", path, roleClause)}
 			}
 		case scopeDiff, scopeAll:
 		case retiredScopeCoverage:
-			return nil, guidedError{fmt.Errorf("gate config key %q: scope coverage is retired, since the gate no longer selects tests from the coverage maps; set scope diff with \"lym config gate\" from the prime%s", path, roleClause)}
+			return nil, guidedError{fmt.Errorf("config key %q: scope coverage is retired, since the gate no longer selects tests from the coverage maps; set %s to diff with \"lym config gate\" from the prime%s", path, path+".scope", roleClause)}
 		default:
-			return nil, guidedError{fmt.Errorf("gate config key %q: scope %q; want card, diff or all; fix it with \"lym config gate\" from the prime%s", path, key.Scope, roleClause)}
+			return nil, guidedError{fmt.Errorf("config key %q: scope %q; want card, diff or all; fix it with \"lym config gate\" from the prime%s", path, key.Scope, roleClause)}
 		}
 		for _, lint := range key.Lints {
 			if lint != LintComments && lint != LintPattern {
-				return nil, guidedError{fmt.Errorf("gate config key %q: lint %q; want %s or %s; fix it with \"lym config gate\" from the prime%s", path, lint, LintComments, LintPattern, roleClause)}
+				return nil, guidedError{fmt.Errorf("config key %q: lint %q; want %s or %s; fix it with \"lym config gate\" from the prime%s", path, lint, LintComments, LintPattern, roleClause)}
 			}
 		}
 		for _, report := range key.Reports {
 			if report != ReportReach && report != ReportRedundancy && report != ReportMutation {
-				return nil, guidedError{fmt.Errorf("gate config key %q: report %q; want %s, %s or %s; fix it with \"lym config gate\" from the prime%s", path, report, ReportReach, ReportRedundancy, ReportMutation, roleClause)}
+				return nil, guidedError{fmt.Errorf("config key %q: report %q; want %s, %s or %s; fix it with \"lym config gate\" from the prime%s", path, report, ReportReach, ReportRedundancy, ReportMutation, roleClause)}
 			}
 		}
 		if key.Fixer != "" {
 			if name != cardGateKey {
-				return nil, guidedError{fmt.Errorf("gate config key %q: a fixer is only for the card key, since only its agent call hands a red verdict to a fixer; remove fixer from that key with \"lym config gate\" from the prime%s", path+".fixer", roleClause)}
+				return nil, guidedError{fmt.Errorf("config key %q: a fixer is only for the card key, since only its agent call hands a red verdict to a fixer; remove fixer from that key with \"lym config gate\" from the prime%s", path+".fixer", roleClause)}
 			}
 			if _, err := modelspec.Parse(key.Fixer); err != nil {
-				return nil, guidedError{fmt.Errorf("gate config key %q: %q is no model-spec: %v; set a model-spec such as sonnet[medium], or \"\" to turn the fixer off, with \"lym config gate\" from the prime%s", path+".fixer", key.Fixer, err, roleClause)}
+				return nil, guidedError{fmt.Errorf("config key %q: %q is no model-spec: %v; set a model-spec such as sonnet[medium], or \"\" to turn the fixer off, with \"lym config gate\" from the prime%s", path+".fixer", key.Fixer, err, roleClause)}
 			}
 		}
 		gates[name] = key

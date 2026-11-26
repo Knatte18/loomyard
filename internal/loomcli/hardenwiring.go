@@ -59,9 +59,10 @@ const hardenConfigFile = hardenshed.ConfigModule + ".yaml"
 const hardenResumeClause = `then run "lym loom resume"`
 
 // hardenSegmentSettings builds the Harden-Review segment's settings from hardener.yaml.
-// The reviewer and fixer lists are expanded cyclically to hard_max_bounces and resolved through registry.
+// The reviewer and fixer lists are expanded cyclically to hardener.hard_max_bounces and resolved through registry.
 // Round n therefore takes entry n modulo the list's length, up to the hard cap.
-// The Bouncer's judge and seed are hardener.yaml's when set, and loom.yaml's code perch's otherwise.
+// The Bouncer's judge and seed are hardener.judge and hardener.seed when set.
+// Otherwise they are loom.code.judge and loom.code.seed.
 // A model-spec the registry cannot resolve is refused naming its hardener.yaml key.
 func hardenSegmentSettings(cfg hardenshed.Config, loomCfg loomengine.Config, registry modelspec.Registry) (shedrecipe.SegmentSettings, error) {
 	reviewKey := shuttleengine.ModelKey{Module: hardenshed.ConfigModule, Key: "reviewer"}
@@ -100,7 +101,7 @@ func hardenSegmentSettings(cfg hardenshed.Config, loomCfg loomengine.Config, reg
 		MaxBouncesKey:     "max_bounces",
 		HardMaxBounces:    cfg.HardMaxBounces,
 		HardMaxBouncesKey: "hard_max_bounces",
-		AmendMaxBounces:   loomCfg.ReviewAmendMaxBounces,
+		AmendMaxBounces:   loomCfg.Review.AmendMaxBounces,
 		ConfigFile:        hardenConfigFile,
 	}, nil
 }

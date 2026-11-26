@@ -4,10 +4,10 @@ max_bounces: 7  # the soft cap of review rounds of the campaign; 0 means no revi
 hard_max_bounces: 10  # the hard cap of review rounds, which the soft cap may not pass
 reviewer: ["sonnet[high]"]  # model-specs of the review rounds, taken in turn and cycled when the rounds outnumber them; the default is one model with no rotation, and a rotation over several models is the operator's choice per run, set in the task's run_settings as hardener.reviewer
 fixer: ["sonnet[high]"]  # model-specs of the fix rounds, taken in turn and cycled when the rounds outnumber them; the default is one model with no rotation, and a rotation over several models is the operator's choice per run, set in the task's run_settings as hardener.fixer
-judge: ""  # model-spec of the Bouncer's judge; empty takes loom.yaml's judge
-seed: ""  # model-spec of the campaign's seed round; empty takes loom.yaml's seed
-reviewer_fan: ""  # name of the reviewer fan the review rounds run, a fan lenses.yaml defines; empty runs a solo round
-fixer_fan: ""  # name of the fixer fan the fix rounds run, a fan lenses.yaml defines; empty runs a solo round
+judge: ""  # model-spec of the Bouncer's judge; empty takes loom.review.judge
+seed: ""  # model-spec of the campaign's seed round; empty takes loom.review.seed
+reviewer_fan: ""  # name of the reviewer fan the review rounds run, a fan lenses.fans defines; empty runs a solo round
+fixer_fan: ""  # name of the fixer fan the fix rounds run, a fan lenses.fans defines; empty runs a solo round
 auto_accept: false  # whether the Bouncer accepts a round's findings with no judge, bar a red live gate
 concurrency: 3  # how many copies of the live gate run side by side when the live tests drive no LLM session
 live_attempts: 2  # how many times the live gate runs before a red result ends the fix row

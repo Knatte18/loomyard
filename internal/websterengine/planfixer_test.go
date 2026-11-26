@@ -93,7 +93,7 @@ func TestFixPlanSpawnOrAttach(t *testing.T) {
 				arrange: func(_ *recoverFixture, deps *websterengine.FixPlanDeps) {
 					deps.Roles = map[websterengine.Role]shuttleengine.ModelChoice{}
 				},
-				wantText: []string{"no resolved model-spec", "way forward: set master in webster.yaml"},
+				wantText: []string{"no resolved model-spec", "way forward: set webster.master in webster.yaml"},
 			},
 			{
 				name:     "master engine cannot audit forks",
@@ -101,7 +101,7 @@ func TestFixPlanSpawnOrAttach(t *testing.T) {
 				arrange: func(_ *recoverFixture, deps *websterengine.FixPlanDeps) {
 					deps.Engines = noAuditEngines{engine: &shuttlefake.Engine{}}
 				},
-				wantText: []string{"cannot audit forks", "way forward: set master in webster.yaml"},
+				wantText: []string{"cannot audit forks", "way forward: set webster.master in webster.yaml"},
 			},
 			{
 				name:     "HEAD cannot be read",

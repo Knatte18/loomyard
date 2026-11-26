@@ -829,7 +829,7 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 				fx.Deps.Engines = shuttleengine.NewEngineSet(shuttlefake.EngineName, map[string]shuttleengine.Engine{shuttlefake.EngineName: struct{ shuttleengine.Engine }{fx.Audit.engine()}})
 			},
 			report:  okReport,
-			wantErr: []string{"engine:", "set engine: in shuttle.yaml back to an engine with fork audit"},
+			wantErr: []string{"shuttle.engine", "set shuttle.engine in shuttle.yaml back to an engine with fork audit"},
 			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
 				archived(t, fx, 0)
 			},

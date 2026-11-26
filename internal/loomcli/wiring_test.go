@@ -42,10 +42,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"gopkg.in/yaml.v3"
 )
 
 // seedLoomConfigWithInteractive overwrites <anchorPath>/_lym/config/loom.yaml with a full literal.
-// It matches the embedded template's own values except discussion_interactive, which takes the caller-chosen value.
+// It matches the embedded template's own values except discussion.interactive, which takes the caller-chosen value.
 // Every key is written explicitly, not substituted into the template.
 // The literal therefore pins every value rather than relying on template fills.
 func seedLoomConfigWithInteractive(t *testing.T, anchorPath string, discussionInteractive bool) {
@@ -55,13 +56,15 @@ func seedLoomConfigWithInteractive(t *testing.T, anchorPath string, discussionIn
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
 	cfgPath := filepath.Join(configDir, "loom.yaml")
-	contents := fmt.Sprintf(`discussion: opus[effort=high]
-discussion_timeout_min: 480
-discussion_interactive: %v
-review: opus[effort=high]
-review_timeout_min: 240
-friction: opus[effort=high]
-friction_timeout_min: 30
+	contents := fmt.Sprintf(`discussion:
+  model: opus[effort=high]
+  timeout_min: 480
+  interactive: %v
+review:
+  timeout_min: 240
+friction:
+  model: opus[effort=high]
+  timeout_min: 30
 driver: ""
 `, discussionInteractive)
 	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
@@ -70,7 +73,7 @@ driver: ""
 }
 
 // seedLoomConfigWithFriction overwrites <anchorPath>/_lym/config/loom.yaml with a full literal.
-// It matches the embedded template's own values except the friction key, which takes the caller-chosen value.
+// It matches the embedded template's own values except friction.model, which takes the caller-chosen value.
 // An empty value means Tier 2 is off.
 // Every key is written explicitly, so the literal pins every value.
 func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
@@ -80,13 +83,15 @@ func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
 	cfgPath := filepath.Join(configDir, "loom.yaml")
-	contents := fmt.Sprintf(`discussion: opus[effort=high]
-discussion_timeout_min: 480
-discussion_interactive: false
-review: opus[effort=high]
-review_timeout_min: 240
-friction: %s
-friction_timeout_min: 30
+	contents := fmt.Sprintf(`discussion:
+  model: opus[effort=high]
+  timeout_min: 480
+  interactive: false
+review:
+  timeout_min: 240
+friction:
+  model: %s
+  timeout_min: 30
 driver: ""
 `, friction)
 	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
@@ -400,7 +405,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 		if lead.ConfigRole != agentconfig.RolePlan || len(lead.Skills) != 0 {
 			t.Errorf("lead config role/skills = %q/%v; want %q and no further skills", lead.ConfigRole, lead.Skills, agentconfig.RolePlan)
 		}
-		wantTimeout := time.Duration(c.cfg.PlanTimeoutMin) * time.Minute
+		wantTimeout := time.Duration(c.cfg.Plan.TimeoutMin) * time.Minute
 		if table.Timeout != wantTimeout {
 			t.Errorf("table.Timeout = %s; want %s", table.Timeout, wantTimeout)
 		}
@@ -489,8 +494,8 @@ func TestWire_DefaultConfig(t *testing.T) {
 		if !wantIn || wantCount == 0 {
 			t.Fatalf("Routing.Bounces(%q, history) = (%d, %d, %v); want a segment row with a non-zero count", row, wantCount, wantBudget, wantIn)
 		}
-		if wantBudget != c.cfg.ReviewMaxBounces {
-			t.Errorf("Routing.Bounces(%q, history) budget = %d; want the configured %d", row, wantBudget, c.cfg.ReviewMaxBounces)
+		if wantBudget != c.cfg.Review.MaxBounces {
+			t.Errorf("Routing.Bounces(%q, history) budget = %d; want the configured %d", row, wantBudget, c.cfg.Review.MaxBounces)
 		}
 
 		// The landing deps are filled at arm time, after wire(); the Publish and Finalize rows refuse to build without them.
@@ -540,10 +545,10 @@ func TestWire_DefaultConfig(t *testing.T) {
 }
 
 // TestWire_DiscussionTableEvaluatesToExpectedShape evaluates c.env.DiscussionTable().
-// It runs for both discussion_interactive values.
+// It runs for both discussion.interactive values.
 // It asserts the table's settings and the lead's seat.
 // It asserts that the lead prompt names the parent and carries no unrendered marker.
-// It then asserts the table's seats and fork authorization under the discussion_advisors and discussion_lenses keys.
+// It then asserts the table's seats and fork authorization under the discussion.advisors and discussion.lenses keys.
 func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -583,7 +588,7 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 			if table.Segment != segmentcolor.Discussion {
 				t.Errorf("table.Segment = %q; want %q", table.Segment, segmentcolor.Discussion)
 			}
-			wantTimeout := time.Duration(c.cfg.DiscussionTimeoutMin) * time.Minute
+			wantTimeout := time.Duration(c.cfg.Discussion.TimeoutMin) * time.Minute
 			if table.Timeout != wantTimeout {
 				t.Errorf("table.Timeout = %s; want %s", table.Timeout, wantTimeout)
 			}
@@ -629,7 +634,7 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 		})
 	}
 
-	// The discussion_advisors and discussion_lenses keys decide the wired table's seats.
+	// The discussion.advisors and discussion.lenses keys decide the wired table's seats.
 	// They also decide whether its lead may fork.
 	// The template's lens fan authorizes the lead's forks and no advisor's;
 	// each configured advisor adds a seat named by its entry, and an empty lens key keeps the lead from forking.
@@ -641,9 +646,9 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 		wantForks bool
 	}{
 		{"TemplateLensFanAuthorizesTheLeadsForks", nil, []string{""}, true},
-		{"AdvisorsAddASeatEachAndTheLeadAloneForks", map[string]string{"discussion_advisors": advisorEntries}, []string{"", "critic", "skeptic"}, true},
-		{"EmptyLensKeyKeepsTheLeadFromForking", map[string]string{"discussion_lenses": `""`}, []string{""}, false},
-		{"AdvisorsWithoutLensesNeverFork", map[string]string{"discussion_advisors": advisorEntries, "discussion_lenses": `""`}, []string{"", "critic", "skeptic"}, false},
+		{"AdvisorsAddASeatEachAndTheLeadAloneForks", map[string]string{"discussion.advisors": advisorEntries}, []string{"", "critic", "skeptic"}, true},
+		{"EmptyLensKeyKeepsTheLeadFromForking", map[string]string{"discussion.lenses": `""`}, []string{""}, false},
+		{"AdvisorsWithoutLensesNeverFork", map[string]string{"discussion.advisors": advisorEntries, "discussion.lenses": `""`}, []string{"", "critic", "skeptic"}, false},
 	}
 	for _, tt := range keyTests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -854,8 +859,8 @@ func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
 }
 
 // seedLoomConfigWithKeys overwrites <anchorPath>/_lym/config/loom.yaml and tapestry.yaml with their embedded templates.
-// The value on each key's line is replaced by its entry in values;
-// a key neither template holds fails the test.
+// The value at each dotted path is replaced by the YAML text its entry in values gives;
+// a path neither template holds fails the test.
 func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]string) {
 	t.Helper()
 	replaced := map[string]bool{}
@@ -863,33 +868,54 @@ func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]s
 		{"loom.yaml", loomengine.ConfigTemplate()},
 		{"tapestry.yaml", loomengine.TapestryConfigTemplate()},
 	} {
-		var contents strings.Builder
-		for _, line := range strings.Split(strings.TrimSuffix(file.template, "\n"), "\n") {
-			for key, value := range values {
-				if strings.HasPrefix(line, key+":") {
-					line = key + ": " + value
-					replaced[key] = true
+		var document yaml.Node
+		if err := yaml.Unmarshal([]byte(file.template), &document); err != nil {
+			t.Fatalf("parse the %s template: %v", file.name, err)
+		}
+		for path, value := range values {
+			node := document.Content[0]
+			for _, step := range strings.Split(path, ".") {
+				var next *yaml.Node
+				for i := 0; i+1 < len(node.Content); i += 2 {
+					if node.Content[i].Value == step {
+						next = node.Content[i+1]
+					}
+				}
+				if node = next; node == nil {
+					break
 				}
 			}
-			contents.WriteString(line + "\n")
+			if node == nil {
+				continue
+			}
+			var replacement yaml.Node
+			if err := yaml.Unmarshal([]byte("key: "+value), &replacement); err != nil {
+				t.Fatalf("parse the value %q of %q: %v", value, path, err)
+			}
+			*node = *replacement.Content[0].Content[1]
+			replaced[path] = true
+		}
+		contents, err := yaml.Marshal(&document)
+		if err != nil {
+			t.Fatalf("marshal the %s template: %v", file.name, err)
 		}
 		cfgPath := filepath.Join(anchorPath, "_lym", "config", file.name)
-		if err := os.WriteFile(cfgPath, []byte(contents.String()), 0o644); err != nil {
+		if err := os.WriteFile(cfgPath, contents, 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
 		}
 	}
-	for key := range values {
-		if !replaced[key] {
-			t.Fatalf("key %q not present in the loom or tapestry template; the fixture would silently test nothing", key)
+	for path := range values {
+		if !replaced[path] {
+			t.Fatalf("path %q not present in the loom or tapestry template; the fixture would silently test nothing", path)
 		}
 	}
 }
 
 // TestWire_ReviewKeysReachTheEnv verifies the loom.yaml and tapestry.yaml keys tuning a review round reach the Env.
-// plan_reviewer_model lands in the Plan-Review segment's models alone.
-// Discussion-Review takes the template's per-round discussion_reviewer_model with the run-wide fix models.
+// plan.reviewer_model lands in the Plan-Review segment's models alone.
+// Discussion-Review takes the template's per-round discussion.reviewer_model with the run-wide fix models.
 // Code-Review takes the template's own reviewer and fixer models, one sonnet entry of effort medium each.
-// plan_judge, seed and code_seed land in each segment's Bouncer pair.
+// plan.judge, review.seed and code.seed land in each segment's Bouncer pair.
 // The per-perch budget and hard cap keys land in each segment's MaxBounces and HardMaxBounces,
 // and every segment's entry is pinned whole.
 func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
@@ -898,9 +924,9 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 
 	loc := hubLocation(t, "pair", ".")
 	seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{
-		"plan_reviewer_model": "opus[effort=low]", "plan_judge": "opus[effort=high]", "seed": "haiku[effort=low]", "code_seed": "opus[effort=low]",
-		"plan_max_bounces": "2", "code_max_bounces": "1", "code_auto_accept": "true",
-		"plan_hard_max_bounces": "5",
+		"plan.reviewer_model": "opus[effort=low]", "plan.judge": "opus[effort=high]", "review.seed": "haiku[effort=low]", "code.seed": "opus[effort=low]",
+		"plan.max_bounces": "2", "code.max_bounces": "1", "code.auto_accept": "true",
+		"plan.hard_max_bounces": "5",
 	})
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
@@ -969,51 +995,51 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	}
 
 	// Each loom segment's entry joins the models, keys and Bouncer pair with its resolved budget and hard cap:
-	// plan_max_bounces, code_max_bounces and plan_hard_max_bounces name their own keys;
+	// plan.max_bounces, code.max_bounces and plan.hard_max_bounces name their own keys;
 	// the rest fall back to the run-wide ones.
 	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
 	tapestryKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "tapestry", Key: key} }
 	// With the template's empty assistant keys, every segment's assistant holds one zero choice and one solo fan entry.
-	// Its bound is the default 60-minute one, which fits inside review_timeout_min.
+	// Its bound is the default 60-minute one, which fits inside review.timeout_min.
 	defaultAssist := func(module, segment string) shedadapters.AssistSettings {
 		return shedadapters.AssistSettings{
 			Models:   []shuttleengine.ModelChoice{{}},
 			Fans:     []string{""},
-			ModelKey: shuttleengine.ModelKey{Module: module, Key: segment + "_assist_reviewer_model"},
-			FanKey:   segment + "_assist_reviewer_fan",
+			ModelKey: shuttleengine.ModelKey{Module: module, Key: segment + ".assist_reviewer_model"},
+			FanKey:   module + "." + segment + ".assist_reviewer_fan",
 			Timeout:  60 * time.Minute,
 		}
 	}
 	wantSegments := map[string]shedrecipe.SegmentSettings{
 		"Discussion-Review": {
-			Models: c.env.Segments["Discussion-Review"].Models, ReviewKey: loomKey("discussion_reviewer_model"), FixKey: loomKey("fixer_model"),
+			Models: c.env.Segments["Discussion-Review"].Models, ReviewKey: loomKey("discussion.reviewer_model"), FixKey: loomKey("review.fixer_model"),
 			Bouncer:    wantBouncerModels["Discussion-Review"],
 			Assist:     defaultAssist("loom", "discussion"),
-			MaxBounces: 2, MaxBouncesKey: "discussion_max_bounces",
-			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
+			MaxBounces: 2, MaxBouncesKey: "loom.discussion.max_bounces",
+			HardMaxBounces: 4, HardMaxBouncesKey: "loom.review.hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
 		"Plan-Review": {
-			Models: plan, ReviewKey: tapestryKey("plan_reviewer_model"), FixKey: loomKey("fixer_model"),
+			Models: plan, ReviewKey: tapestryKey("plan.reviewer_model"), FixKey: loomKey("review.fixer_model"),
 			Bouncer:    wantBouncerModels["Plan-Review"],
 			Assist:     defaultAssist("tapestry", "plan"),
-			MaxBounces: 2, MaxBouncesKey: "plan_max_bounces",
-			HardMaxBounces: 5, HardMaxBouncesKey: "plan_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "tapestry.yaml",
+			MaxBounces: 2, MaxBouncesKey: "tapestry.plan.max_bounces",
+			HardMaxBounces: 5, HardMaxBouncesKey: "tapestry.plan.hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "tapestry.yaml",
 		},
 		"Code-Review": {
-			Models: c.env.Segments["Code-Review"].Models, ReviewKey: loomKey("code_reviewer_model"), FixKey: loomKey("code_fixer_model"),
+			Models: c.env.Segments["Code-Review"].Models, ReviewKey: loomKey("code.reviewer_model"), FixKey: loomKey("code.fixer_model"),
 			Bouncer:    wantBouncerModels["Code-Review"],
 			Assist:     defaultAssist("loom", "code"),
-			MaxBounces: 1, MaxBouncesKey: "code_max_bounces",
-			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
+			MaxBounces: 1, MaxBouncesKey: "loom.code.max_bounces",
+			HardMaxBounces: 4, HardMaxBouncesKey: "loom.review.hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
 		// The split perch has no assistant: its lists and keys are empty, its bound the default one.
-		// Its empty reviewer key takes reviewer_model, and its empty fixer key takes the raddle key's model.
+		// Its empty reviewer key takes review.reviewer_model, and its empty fixer key takes raddle.model's model.
 		"Raddle-Review": {
-			Models: c.env.Segments["Raddle-Review"].Models, ReviewKey: loomKey("reviewer_model"), FixKey: loomKey("raddle"),
+			Models: c.env.Segments["Raddle-Review"].Models, ReviewKey: loomKey("review.reviewer_model"), FixKey: loomKey("raddle.model"),
 			Bouncer:    shedadapters.BouncerModels{Seed: wantBouncerModels["Discussion-Review"].Seed, Judge: wantBouncerModels["Discussion-Review"].Judge},
 			Assist:     shedadapters.AssistSettings{Timeout: 60 * time.Minute},
-			MaxBounces: 2, MaxBouncesKey: "split_max_bounces",
-			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
+			MaxBounces: 2, MaxBouncesKey: "loom.split.max_bounces",
+			HardMaxBounces: 4, HardMaxBouncesKey: "loom.review.hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
 	}
 	// Only the Discussion-Review and Code-Review segments carry a parent seat, whose closures DeepEqual cannot compare.
@@ -1036,22 +1062,22 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	}
 
 	// Per-round fan lists reach each segment's Bouncer and review row, and the fixer fan lists the review rows alone.
-	// A fanned reviewer runs on its segment's own reviewer list, discussion_reviewer_model here.
+	// A fanned reviewer runs on its segment's own reviewer list, discussion.reviewer_model here.
 	fannedLoc := hubLocation(t, "pair", ".")
 	seedLoomConfigWithKeys(t, fannedLoc.AnchorPath(), map[string]string{
-		"discussion_reviewer_fan":   "\n  - \"\"\n  - review-discussion",
-		"plan_reviewer_fan":         "full",
-		"discussion_fixer_fan":      "fix-discussion",
-		"plan_fixer_fan":            "\n  - fix-plan\n  - \"\"",
-		"code_reviewer_fan":         "review-code",
-		"code_fixer_fan":            "fix-code",
-		"discussion_reviewer_model": "opus[effort=low]",
-		"code_fixer_model":          "sonnet[low]",
+		"discussion.reviewer_fan":   `["", review-discussion]`,
+		"plan.reviewer_fan":         "full",
+		"discussion.fixer_fan":      "fix-discussion",
+		"plan.fixer_fan":            `[fix-plan, ""]`,
+		"code.reviewer_fan":         "review-code",
+		"code.fixer_fan":            "fix-code",
+		"discussion.reviewer_model": "opus[effort=low]",
+		"code.fixer_model":          "sonnet[low]",
 
-		"discussion_assist_reviewer_model": `["sonnet[low]", ""]`,
-		"plan_assist_reviewer_model":       "sonnet[low]",
-		"plan_assist_reviewer_fan":         "full",
-		"assist_reviewer_timeout_min":      "30",
+		"discussion.assist_reviewer_model":   `["sonnet[low]", ""]`,
+		"plan.assist_reviewer_model":         "sonnet[low]",
+		"plan.assist_reviewer_fan":           "full",
+		"review.assist_reviewer_timeout_min": "30",
 	})
 	fanned := &loomCLI{runID: shedrun.SelfRunID}
 	if err := fanned.wire(fannedLoc, fannedLoc.AnchorPath()); err != nil {
@@ -1059,21 +1085,21 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	}
 	// A segment's own model keys reach its entry, and a fanned reviewer runs on its segment's own reviewer list.
 	discussion, webster := fanned.env.Segments["Discussion-Review"], fanned.env.Segments["Code-Review"]
-	if discussion.ReviewKey != loomKey("discussion_reviewer_model") {
-		t.Errorf("Segments[Discussion-Review].ReviewKey = %+v; want discussion_reviewer_model", discussion.ReviewKey)
+	if discussion.ReviewKey != loomKey("discussion.reviewer_model") {
+		t.Errorf("Segments[Discussion-Review].ReviewKey = %+v; want discussion.reviewer_model", discussion.ReviewKey)
 	}
-	if webster.FixKey != loomKey("code_fixer_model") {
-		t.Errorf("Segments[Code-Review].FixKey = %+v; want code_fixer_model", webster.FixKey)
+	if webster.FixKey != loomKey("code.fixer_model") {
+		t.Errorf("Segments[Code-Review].FixKey = %+v; want code.fixer_model", webster.FixKey)
 	}
 	// Setting answers a tapestry key from the pair's resolved config.
 	if fanned.env.Setting == nil {
 		t.Fatal("env.Setting = nil; want the told setting lookup")
 	}
-	if got, err := fanned.env.Setting("tapestry", "plan_reviewer_fan"); err != nil || got != "full" {
-		t.Errorf("env.Setting(tapestry, plan_reviewer_fan) = %v, %v; want full, nil", got, err)
+	if got, err := fanned.env.Setting("tapestry", "plan.reviewer_fan"); err != nil || got != "full" {
+		t.Errorf("env.Setting(tapestry, plan.reviewer_fan) = %v, %v; want full, nil", got, err)
 	}
 	if got := discussion.Models.Review; len(got) != 1 || got[0].Model != "opus" || got[0].Effort != "low" {
-		t.Errorf("Segments[Discussion-Review].Models.Review = %+v; want the discussion_reviewer_model entry, opus of effort low", got)
+		t.Errorf("Segments[Discussion-Review].Models.Review = %+v; want the discussion.reviewer_model entry, opus of effort low", got)
 	}
 
 	// The assistant lists and the capped bound reach each segment's entry.
@@ -1081,8 +1107,8 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	wantDiscussionAssist := shedadapters.AssistSettings{
 		Models:   []shuttleengine.ModelChoice{sonnetLow, {}},
 		Fans:     []string{""},
-		ModelKey: loomKey("discussion_assist_reviewer_model"),
-		FanKey:   "discussion_assist_reviewer_fan",
+		ModelKey: loomKey("discussion.assist_reviewer_model"),
+		FanKey:   "loom.discussion.assist_reviewer_fan",
 		Timeout:  30 * time.Minute,
 	}
 	if !reflect.DeepEqual(discussion.Assist, wantDiscussionAssist) {
@@ -1091,8 +1117,8 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	wantPlanAssist := shedadapters.AssistSettings{
 		Models:   []shuttleengine.ModelChoice{sonnetLow},
 		Fans:     []string{"full"},
-		ModelKey: tapestryKey("plan_assist_reviewer_model"),
-		FanKey:   "plan_assist_reviewer_fan",
+		ModelKey: tapestryKey("plan.assist_reviewer_model"),
+		FanKey:   "tapestry.plan.assist_reviewer_fan",
 		Timeout:  30 * time.Minute,
 	}
 	if got := fanned.env.Segments["Plan-Review"].Assist; !reflect.DeepEqual(got, wantPlanAssist) {
@@ -1101,13 +1127,13 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 
 	// A keep-warm cap below the default await cap changes the room the assistant's bound is capped to,
 	// so the bound proves the resolver's cap reaches it.
-	// The bound is review_timeout_min less shuttle's start allowance less that cap.
+	// The bound is review.timeout_min less shuttle's start allowance less that cap.
 	// The cap is looked up under the chair's strand name, which needs the hub's shortname record.
 	cappedLoc := hubLocation(t, "pair", ".")
 	if err := fabricengine.WriteShortname(fabricengine.BoardDir(cappedLoc.HubPath), "tst"); err != nil {
 		t.Fatalf("WriteShortname() = %v; want nil", err)
 	}
-	seedLoomConfigWithKeys(t, cappedLoc.AnchorPath(), map[string]string{"review_timeout_min": "10", "assist_reviewer_timeout_min": "60"})
+	seedLoomConfigWithKeys(t, cappedLoc.AnchorPath(), map[string]string{"review.timeout_min": "10", "review.assist_reviewer_timeout_min": "60"})
 	keepWarmCap := 2 * time.Minute
 	claudeConfig := strings.Replace(claudeengine.ConfigTemplate(), "keep_warm_cap: 250s", "keep_warm_cap: "+keepWarmCap.String(), 1)
 	if !strings.Contains(claudeConfig, "keep_warm_cap: "+keepWarmCap.String()) {
@@ -1137,7 +1163,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	if err := fabricengine.WriteShortname(fabricengine.BoardDir(roleLoc.HubPath), "tst"); err != nil {
 		t.Fatalf("WriteShortname() = %v; want nil", err)
 	}
-	seedLoomConfigWithKeys(t, roleLoc.AnchorPath(), map[string]string{"review_timeout_min": "10", "assist_reviewer_timeout_min": "60"})
+	seedLoomConfigWithKeys(t, roleLoc.AnchorPath(), map[string]string{"review.timeout_min": "10", "review.assist_reviewer_timeout_min": "60"})
 	codeRoleCap := 3 * time.Minute
 	roleClaudeConfig := strings.Replace(claudeengine.ConfigTemplate(), "keep_warm_cap_roles: {}", "keep_warm_cap_roles: {code-burler-review: "+codeRoleCap.String()+", burler-review: "+keepWarmCap.String()+"}", 1)
 	if !strings.Contains(roleClaudeConfig, "code-burler-review") {

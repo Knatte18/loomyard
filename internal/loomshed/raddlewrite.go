@@ -16,6 +16,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
+// raddleAutoApproveSetting is the loom.yaml key path of the setting that files a proposal without approval.
+const raddleAutoApproveSetting = "raddle.auto_approve"
+
 // RaddleWriteDeps holds the paths and seams the Raddle-Write producer reads and writes.
 type RaddleWriteDeps struct {
 	// StatePath and StateLockPath are the run's state record and its lock.
@@ -30,7 +33,7 @@ type RaddleWriteDeps struct {
 	ApprovalPath string
 	// SplitPerch reports whether the recipe's rows hold a split perch, a Bouncer row over the proposal.
 	SplitPerch func() (bool, error)
-	// AutoApprove reports the raddle_auto_approve loom key.
+	// AutoApprove reports the raddle.auto_approve loom key.
 	// The key is read through the run's setting lookup, so a profile's raddle block may set it.
 	AutoApprove func() (bool, error)
 	// FreshEntry reports whether the row's current attempt began with a Raddle-File return or an operator goto.
@@ -132,7 +135,7 @@ func (p *raddleWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 }
 
 // firstMode returns the mode the run's first call records.
-// It is perch when the recipe's rows hold a split perch, and then the raddle_auto_approve setting is never read;
+// It is perch when the recipe's rows hold a split perch, and then the raddle.auto_approve setting is never read;
 // otherwise it is auto or interactive by that setting.
 func (p *raddleWrite) firstMode() (loomengine.RaddleMode, error) {
 	perch, err := p.deps.SplitPerch()
@@ -144,7 +147,7 @@ func (p *raddleWrite) firstMode() (loomengine.RaddleMode, error) {
 	}
 	auto, err := p.deps.AutoApprove()
 	if err != nil {
-		return "", p.fail("read the raddle_auto_approve setting", err)
+		return "", p.fail("read the "+loomengine.FullKeyName(raddleAutoApproveSetting)+" setting", err)
 	}
 	if auto {
 		return loomengine.RaddleModeAuto, nil

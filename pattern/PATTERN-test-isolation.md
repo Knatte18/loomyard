@@ -130,7 +130,7 @@ A test package never reaches the operator's global gitconfig or default tmux soc
     so the operator's rc files still run and the login profile does not.
   - `exit-empty off`, so the server outlives having no session.
   - `@lym_test_server on`.
-- A server reed starts sources the file `tmux_conf` names.
+- A server reed starts sources the file `reed.tmux_conf` names.
   `tmuxkit.Main` empties that setting by unsetting `LYM_REED_TMUX_CONF`,
   so a test that exercises it sets `LYM_REED_TMUX_CONF` to a file it wrote and registers its key after reed's first boot.
 - The pre-start applies the environment hygiene reed's own server spawn applies:

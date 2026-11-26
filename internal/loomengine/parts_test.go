@@ -23,7 +23,7 @@ import (
 
 // partsTableConfig returns a config whose parts keys are depth, max and the model-spec parts.
 func partsTableConfig(depth string, max int, parts string) Config {
-	return Config{Parts: parts, PartsDepth: depth, PartsMax: max, PlanTimeoutMin: 120}
+	return Config{Parts: PartsConfig{Model: parts, Depth: depth, Max: max}, Plan: PlanConfig{TimeoutMin: 120}}
 }
 
 // fragmentText returns the named depth fragment under stencilsDir, stripped of its leading comment and padding.
@@ -75,7 +75,7 @@ func TestPartsTable(t *testing.T) {
 		if lead.Model != "sonnet" || lead.Effort != "low" {
 			t.Errorf("lead model/effort = %q/%q; want sonnet/low from parts: sonnet[low]", lead.Model, lead.Effort)
 		}
-		if want := (shuttleengine.ModelKey{Module: "tapestry", Key: "parts"}); lead.ModelKey != want {
+		if want := (shuttleengine.ModelKey{Module: "tapestry", Key: "parts.model"}); lead.ModelKey != want {
 			t.Errorf("lead ModelKey = %+v; want %+v", lead.ModelKey, want)
 		}
 		if lead.ForkSubagents {
@@ -136,7 +136,7 @@ func TestPartsTable(t *testing.T) {
 		layout := planTableLayout(t, "")
 		stencilsDir := newMinimalStencilsDir(t)
 		cfg := partsTableConfig("light", 6, "sonnet[low]")
-		cfg.Friction = "sonnet[medium]"
+		cfg.Friction.Model = "sonnet[medium]"
 
 		table, err := PartsTable(layout, stencilsDir, newTestSpecsDir(t), cfg, reg)
 		if err != nil {

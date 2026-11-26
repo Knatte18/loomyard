@@ -28,15 +28,16 @@ import (
 func TestResolveReview(t *testing.T) {
 	tiergate.Require(t, 0)
 	cfg := Config{
-		ReviewerModel:    burlerengine.ModelSpecList{"opus[effort=high]", "sonnet[medium]"},
-		FixerModel:       burlerengine.ModelSpecList{"opus[effort=low]"},
-		ReviewTimeoutMin: 240,
+		Review: ReviewConfig{
+			ReviewerModel: burlerengine.ModelSpecList{"opus[effort=high]", "sonnet[medium]"},
+			FixerModel:    burlerengine.ModelSpecList{"opus[effort=low]"},
+			TimeoutMin:    240,
+		},
 		// Discussion sets only its fixer list, Plan only its reviewer list, and Code leaves both unset.
 		// Code's unset lists hold one empty entry, as the template loads.
-		DiscussionFixerModel: burlerengine.ModelSpecList{"sonnet[effort=high]"},
-		PlanReviewerModel:    burlerengine.ModelSpecList{"sonnet[effort=low]", "opus[effort=high]"},
-		CodeReviewerModel:    burlerengine.ModelSpecList{""},
-		CodeFixerModel:       burlerengine.ModelSpecList{""},
+		Discussion: DiscussionConfig{FixerModel: burlerengine.ModelSpecList{"sonnet[effort=high]"}},
+		Plan:       PlanConfig{ReviewerModel: burlerengine.ModelSpecList{"sonnet[effort=low]", "opus[effort=high]"}},
+		Code:       CodeConfig{ReviewerModel: burlerengine.ModelSpecList{""}, FixerModel: burlerengine.ModelSpecList{""}},
 	}
 
 	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
@@ -89,10 +90,10 @@ func TestResolveReview(t *testing.T) {
 		segment   string
 		got, want SegmentKeys
 	}{
-		{"Discussion", settings.DiscussionKeys, SegmentKeys{Review: loomKey("reviewer_model"), Fix: loomKey("discussion_fixer_model")}},
-		{"Plan", settings.PlanKeys, SegmentKeys{Review: tapestryKey("plan_reviewer_model"), Fix: loomKey("fixer_model")}},
-		{"Code", settings.CodeKeys, SegmentKeys{Review: loomKey("reviewer_model"), Fix: loomKey("fixer_model")}},
-		{"Split", settings.SplitKeys, SegmentKeys{Review: loomKey("reviewer_model"), Fix: loomKey("fixer_model")}},
+		{"Discussion", settings.DiscussionKeys, SegmentKeys{Review: loomKey("review.reviewer_model"), Fix: loomKey("discussion.fixer_model")}},
+		{"Plan", settings.PlanKeys, SegmentKeys{Review: tapestryKey("plan.reviewer_model"), Fix: loomKey("review.fixer_model")}},
+		{"Code", settings.CodeKeys, SegmentKeys{Review: loomKey("review.reviewer_model"), Fix: loomKey("review.fixer_model")}},
+		{"Split", settings.SplitKeys, SegmentKeys{Review: loomKey("review.reviewer_model"), Fix: loomKey("review.fixer_model")}},
 	} {
 		if tt.got != tt.want {
 			t.Errorf("ResolveReview(...).%sKeys = %+v; want %+v", tt.segment, tt.got, tt.want)
@@ -101,11 +102,11 @@ func TestResolveReview(t *testing.T) {
 
 	// A set fan key changes no model:
 	// a fanned segment's reviewer list is still its own review list, else the run-wide one.
-	cfg.DiscussionReviewerFan = lenses.FanList{"standard"}
-	cfg.PlanReviewerFan = lenses.FanList{"", "full"}
-	cfg.DiscussionFixerFan = lenses.FanList{"fix-discussion"}
-	cfg.CodeReviewerFan = lenses.FanList{"review-code"}
-	cfg.CodeFixerFan = lenses.FanList{"fix-code"}
+	cfg.Discussion.ReviewerFan = lenses.FanList{"standard"}
+	cfg.Plan.ReviewerFan = lenses.FanList{"", "full"}
+	cfg.Discussion.FixerFan = lenses.FanList{"fix-discussion"}
+	cfg.Code.ReviewerFan = lenses.FanList{"review-code"}
+	cfg.Code.FixerFan = lenses.FanList{"fix-code"}
 	fanned, err := ResolveReview(cfg, reg)
 	if err != nil {
 		t.Fatalf("ResolveReview(fanned cfg) = _, %v; want nil error", err)
@@ -119,7 +120,7 @@ func TestResolveReview(t *testing.T) {
 		"alpha": {Engine: "claude", Model: "alpha-model"},
 		"beta":  {Engine: "other", Model: "beta-model"},
 	}
-	engineSettings, err := ResolveReview(Config{ReviewerModel: burlerengine.ModelSpecList{"alpha", "beta"}, FixerModel: burlerengine.ModelSpecList{"beta"}}, engineReg)
+	engineSettings, err := ResolveReview(Config{Review: ReviewConfig{ReviewerModel: burlerengine.ModelSpecList{"alpha", "beta"}, FixerModel: burlerengine.ModelSpecList{"beta"}}}, engineReg)
 	if err != nil {
 		t.Fatalf("ResolveReview(engine registry) = _, %v; want nil error", err)
 	}
@@ -132,14 +133,14 @@ func TestResolveReview(t *testing.T) {
 	}
 
 	// An unset split fixer list takes the raddle key's model while that key is set.
-	raddleSettings, err := ResolveReview(Config{ReviewerModel: burlerengine.ModelSpecList{"alpha"}, FixerModel: burlerengine.ModelSpecList{"alpha"}, Raddle: "beta"}, engineReg)
+	raddleSettings, err := ResolveReview(Config{Review: ReviewConfig{ReviewerModel: burlerengine.ModelSpecList{"alpha"}, FixerModel: burlerengine.ModelSpecList{"alpha"}}, Raddle: RaddleConfig{Model: "beta"}}, engineReg)
 	if err != nil {
 		t.Fatalf("ResolveReview(raddle set) = _, %v; want nil error", err)
 	}
 	if got := raddleSettings.Split.Fix; len(got) != 1 || got[0].Engine != "other" {
 		t.Errorf("ResolveReview(raddle set).Split.Fix = %+v; want one entry on engine other, the raddle key's model", got)
 	}
-	if want := (SegmentKeys{Review: loomKey("reviewer_model"), Fix: loomKey("raddle")}); raddleSettings.SplitKeys != want {
+	if want := (SegmentKeys{Review: loomKey("review.reviewer_model"), Fix: loomKey("raddle.model")}); raddleSettings.SplitKeys != want {
 		t.Errorf("ResolveReview(raddle set).SplitKeys = %+v; want %+v", raddleSettings.SplitKeys, want)
 	}
 }
@@ -159,9 +160,9 @@ func TestResolveReview_Assist(t *testing.T) {
 	t.Run("the default empty entry gives no assistant model in any segment", func(t *testing.T) {
 		t.Parallel()
 		cfg := Config{
-			DiscussionAssistReviewerModel: burlerengine.ModelSpecList{""},
-			PlanAssistReviewerModel:       burlerengine.ModelSpecList{""},
-			CodeAssistReviewerModel:       burlerengine.ModelSpecList{""},
+			Discussion: DiscussionConfig{AssistReviewerModel: burlerengine.ModelSpecList{""}},
+			Plan:       PlanConfig{AssistReviewerModel: burlerengine.ModelSpecList{""}},
+			Code:       CodeConfig{AssistReviewerModel: burlerengine.ModelSpecList{""}},
 		}
 		settings, err := ResolveReview(cfg, reg)
 		if err != nil {
@@ -188,19 +189,18 @@ func TestResolveReview_Assist(t *testing.T) {
 	t.Run("a per-round list resolves round by round with its keys and fans", func(t *testing.T) {
 		t.Parallel()
 		cfg := Config{
-			DiscussionAssistReviewerModel: burlerengine.ModelSpecList{"luna", ""},
-			DiscussionAssistReviewerFan:   lenses.FanList{"review-discussion", ""},
-			PlanAssistReviewerModel:       burlerengine.ModelSpecList{"", "luna"},
-			CodeAssistReviewerModel:       burlerengine.ModelSpecList{"luna"},
+			Discussion: DiscussionConfig{AssistReviewerModel: burlerengine.ModelSpecList{"luna", ""}, AssistReviewerFan: lenses.FanList{"review-discussion", ""}},
+			Plan:       PlanConfig{AssistReviewerModel: burlerengine.ModelSpecList{"", "luna"}},
+			Code:       CodeConfig{AssistReviewerModel: burlerengine.ModelSpecList{"luna"}},
 		}
 		settings, err := ResolveReview(cfg, reg)
 		if err != nil {
 			t.Fatalf("ResolveReview(...) = _, %v; want nil error", err)
 		}
 		want := map[string]AssistModels{
-			"Discussion": {Models: []shuttleengine.ModelChoice{luna, zero}, Fans: lenses.FanList{"review-discussion", ""}, ModelKey: loomKey("discussion_assist_reviewer_model"), FanKey: "discussion_assist_reviewer_fan"},
-			"Plan":       {Models: []shuttleengine.ModelChoice{zero, luna}, ModelKey: tapestryKey("plan_assist_reviewer_model"), FanKey: "plan_assist_reviewer_fan"},
-			"Code":       {Models: []shuttleengine.ModelChoice{luna}, ModelKey: loomKey("code_assist_reviewer_model"), FanKey: "code_assist_reviewer_fan"},
+			"Discussion": {Models: []shuttleengine.ModelChoice{luna, zero}, Fans: lenses.FanList{"review-discussion", ""}, ModelKey: loomKey("discussion.assist_reviewer_model"), FanKey: "loom.discussion.assist_reviewer_fan"},
+			"Plan":       {Models: []shuttleengine.ModelChoice{zero, luna}, ModelKey: tapestryKey("plan.assist_reviewer_model"), FanKey: "tapestry.plan.assist_reviewer_fan"},
+			"Code":       {Models: []shuttleengine.ModelChoice{luna}, ModelKey: loomKey("code.assist_reviewer_model"), FanKey: "loom.code.assist_reviewer_fan"},
 		}
 		got := map[string]AssistModels{"Discussion": settings.DiscussionAssist, "Plan": settings.PlanAssist, "Code": settings.CodeAssist}
 		if !reflect.DeepEqual(got, want) {
@@ -215,8 +215,8 @@ func TestResolveReview_Assist(t *testing.T) {
 			cfg    Config
 			wantIn []string
 		}{
-			{"malformed second discussion entry", Config{DiscussionAssistReviewerModel: burlerengine.ModelSpecList{"luna", "opus[effort"}}, []string{"discussion_assist_reviewer_model entry 2", "in loom.yaml"}},
-			{"unknown plan alias", Config{PlanAssistReviewerModel: burlerengine.ModelSpecList{"ghost"}}, []string{"plan_assist_reviewer_model entry 1", "in tapestry.yaml"}},
+			{"malformed second discussion entry", Config{Discussion: DiscussionConfig{AssistReviewerModel: burlerengine.ModelSpecList{"luna", "opus[effort"}}}, []string{"discussion.assist_reviewer_model entry 2", "in loom.yaml"}},
+			{"unknown plan alias", Config{Plan: PlanConfig{AssistReviewerModel: burlerengine.ModelSpecList{"ghost"}}}, []string{"plan.assist_reviewer_model entry 1", "in tapestry.yaml"}},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -236,7 +236,7 @@ func TestResolveReview_Assist(t *testing.T) {
 }
 
 // TestCapAssistTimeout verifies the assistant's bound is kept when it fits, and capped when it does not.
-// The chair is review_timeout_min, or the run timeout when that is 0.
+// The chair is review.timeout_min, or the run timeout when that is 0.
 // The room is the chair's timeout less the start allowance and one await cap;
 // with no room left the bound is zero, and the reason names both keys.
 func TestCapAssistTimeout(t *testing.T) {
@@ -251,13 +251,13 @@ func TestCapAssistTimeout(t *testing.T) {
 		want           time.Duration
 		wantSkip       bool
 	}{
-		{name: "a bound that fits is kept", cfg: Config{ReviewTimeoutMin: 240, AssistReviewerTimeoutMin: 60}, runTimeout: 30 * time.Minute, startAllowance: 3 * time.Minute, awaitCap: 5 * time.Minute, want: 60 * time.Minute},
-		{name: "a bound equal to the room is kept", cfg: Config{ReviewTimeoutMin: 60, AssistReviewerTimeoutMin: 50}, startAllowance: 5 * time.Minute, awaitCap: 5 * time.Minute, want: 50 * time.Minute},
-		{name: "a bound past the room is capped to chair less start allowance less await cap", cfg: Config{ReviewTimeoutMin: 60, AssistReviewerTimeoutMin: 60}, startAllowance: 3 * time.Minute, awaitCap: 7 * time.Minute, want: 50 * time.Minute},
-		{name: "a zero bound takes the whole room", cfg: Config{ReviewTimeoutMin: 60, AssistReviewerTimeoutMin: 0}, startAllowance: 3 * time.Minute, awaitCap: 7 * time.Minute, want: 50 * time.Minute},
-		{name: "a zero review timeout takes the run timeout as the chair", cfg: Config{ReviewTimeoutMin: 0, AssistReviewerTimeoutMin: 120}, runTimeout: 100 * time.Minute, startAllowance: 10 * time.Minute, awaitCap: 5 * time.Minute, want: 85 * time.Minute},
-		{name: "an allowance and await cap that spend the chair leave no time", cfg: Config{ReviewTimeoutMin: 10, AssistReviewerTimeoutMin: 60}, startAllowance: 6 * time.Minute, awaitCap: 4 * time.Minute, want: 0, wantSkip: true},
-		{name: "an allowance past the chair leaves no time", cfg: Config{ReviewTimeoutMin: 5, AssistReviewerTimeoutMin: 60}, startAllowance: 6 * time.Minute, awaitCap: 4 * time.Minute, want: 0, wantSkip: true},
+		{name: "a bound that fits is kept", cfg: Config{Review: ReviewConfig{TimeoutMin: 240, AssistReviewerTimeoutMin: 60}}, runTimeout: 30 * time.Minute, startAllowance: 3 * time.Minute, awaitCap: 5 * time.Minute, want: 60 * time.Minute},
+		{name: "a bound equal to the room is kept", cfg: Config{Review: ReviewConfig{TimeoutMin: 60, AssistReviewerTimeoutMin: 50}}, startAllowance: 5 * time.Minute, awaitCap: 5 * time.Minute, want: 50 * time.Minute},
+		{name: "a bound past the room is capped to chair less start allowance less await cap", cfg: Config{Review: ReviewConfig{TimeoutMin: 60, AssistReviewerTimeoutMin: 60}}, startAllowance: 3 * time.Minute, awaitCap: 7 * time.Minute, want: 50 * time.Minute},
+		{name: "a zero bound takes the whole room", cfg: Config{Review: ReviewConfig{TimeoutMin: 60, AssistReviewerTimeoutMin: 0}}, startAllowance: 3 * time.Minute, awaitCap: 7 * time.Minute, want: 50 * time.Minute},
+		{name: "a zero review timeout takes the run timeout as the chair", cfg: Config{Review: ReviewConfig{TimeoutMin: 0, AssistReviewerTimeoutMin: 120}}, runTimeout: 100 * time.Minute, startAllowance: 10 * time.Minute, awaitCap: 5 * time.Minute, want: 85 * time.Minute},
+		{name: "an allowance and await cap that spend the chair leave no time", cfg: Config{Review: ReviewConfig{TimeoutMin: 10, AssistReviewerTimeoutMin: 60}}, startAllowance: 6 * time.Minute, awaitCap: 4 * time.Minute, want: 0, wantSkip: true},
+		{name: "an allowance past the chair leaves no time", cfg: Config{Review: ReviewConfig{TimeoutMin: 5, AssistReviewerTimeoutMin: 60}}, startAllowance: 6 * time.Minute, awaitCap: 4 * time.Minute, want: 0, wantSkip: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -272,7 +272,7 @@ func TestCapAssistTimeout(t *testing.T) {
 				}
 				return
 			}
-			for _, key := range []string{"assist_reviewer_timeout_min", "review_timeout_min"} {
+			for _, key := range []string{"review.assist_reviewer_timeout_min", "review.timeout_min"} {
 				if !strings.Contains(reason, key) {
 					t.Errorf("CapAssistTimeout(...) reason = %q; want it to name %q", reason, key)
 				}
@@ -283,11 +283,18 @@ func TestCapAssistTimeout(t *testing.T) {
 
 // TestCapParentReviewWait verifies the parent's wait is kept when it fits, and capped when it does not.
 // The room is the chair's timeout less the start allowance, one await cap and the consolidation margin;
-// with no room left the wait is zero, and the reason names both keys and says to raise review_timeout_min.
+// with no room left the wait is zero, and the reason names both keys and says to raise review.timeout_min.
 // Each perch takes its own timeout key; a row with no perch is the discussion perch's.
 func TestCapParentReviewWait(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
+	waits := func(review, discussion, code int) Config {
+		return Config{
+			Review:     ReviewConfig{TimeoutMin: review},
+			Discussion: DiscussionConfig{ReviewParentTimeoutMin: discussion},
+			Code:       CodeConfig{ReviewParentTimeoutMin: code},
+		}
+	}
 	tests := []struct {
 		name           string
 		perch          Perch
@@ -298,20 +305,20 @@ func TestCapParentReviewWait(t *testing.T) {
 		want           time.Duration
 		wantSkip       bool
 	}{
-		{name: "the code perch takes code_review_parent_timeout_min", perch: PerchCode, cfg: Config{ReviewTimeoutMin: 240, DiscussionReviewParentTimeoutMin: 30, CodeReviewParentTimeoutMin: 45}, startAllowance: 3 * time.Minute, awaitCap: 5 * time.Minute, want: 45 * time.Minute},
-		{name: "the code perch's no-room reason names its own key", perch: PerchCode, cfg: Config{ReviewTimeoutMin: 13, CodeReviewParentTimeoutMin: 30}, startAllowance: 3 * time.Minute, awaitCap: 5 * time.Minute, wantSkip: true},
-		{name: "a wait that fits is kept", cfg: Config{ReviewTimeoutMin: 240, DiscussionReviewParentTimeoutMin: 30}, startAllowance: 3 * time.Minute, awaitCap: 5 * time.Minute, want: 30 * time.Minute},
-		{name: "a wait past the room is capped to chair less start allowance, await cap and margin", cfg: Config{ReviewTimeoutMin: 20, DiscussionReviewParentTimeoutMin: 30}, startAllowance: 3 * time.Minute, awaitCap: 5 * time.Minute, want: 7 * time.Minute},
-		{name: "a zero review timeout takes the run timeout as the chair", cfg: Config{ReviewTimeoutMin: 0, DiscussionReviewParentTimeoutMin: 60}, runTimeout: 40 * time.Minute, startAllowance: 5 * time.Minute, awaitCap: 5 * time.Minute, want: 25 * time.Minute},
-		{name: "a room spent to exactly zero sends no ask", cfg: Config{ReviewTimeoutMin: 13, DiscussionReviewParentTimeoutMin: 30}, startAllowance: 3 * time.Minute, awaitCap: 5 * time.Minute, wantSkip: true},
-		{name: "an allowance past the chair sends no ask", cfg: Config{ReviewTimeoutMin: 5, DiscussionReviewParentTimeoutMin: 30}, startAllowance: 6 * time.Minute, awaitCap: 4 * time.Minute, wantSkip: true},
+		{name: "the code perch takes code.review_parent_timeout_min", perch: PerchCode, cfg: waits(240, 30, 45), startAllowance: 3 * time.Minute, awaitCap: 5 * time.Minute, want: 45 * time.Minute},
+		{name: "the code perch's no-room reason names its own key", perch: PerchCode, cfg: waits(13, 0, 30), startAllowance: 3 * time.Minute, awaitCap: 5 * time.Minute, wantSkip: true},
+		{name: "a wait that fits is kept", cfg: waits(240, 30, 0), startAllowance: 3 * time.Minute, awaitCap: 5 * time.Minute, want: 30 * time.Minute},
+		{name: "a wait past the room is capped to chair less start allowance, await cap and margin", cfg: waits(20, 30, 0), startAllowance: 3 * time.Minute, awaitCap: 5 * time.Minute, want: 7 * time.Minute},
+		{name: "a zero review timeout takes the run timeout as the chair", cfg: waits(0, 60, 0), runTimeout: 40 * time.Minute, startAllowance: 5 * time.Minute, awaitCap: 5 * time.Minute, want: 25 * time.Minute},
+		{name: "a room spent to exactly zero sends no ask", cfg: waits(13, 30, 0), startAllowance: 3 * time.Minute, awaitCap: 5 * time.Minute, wantSkip: true},
+		{name: "an allowance past the chair sends no ask", cfg: waits(5, 30, 0), startAllowance: 6 * time.Minute, awaitCap: 4 * time.Minute, wantSkip: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			perch, key := PerchDiscussion, "discussion_review_parent_timeout_min"
+			perch, key := PerchDiscussion, "loom.discussion.review_parent_timeout_min"
 			if tt.perch == PerchCode {
-				perch, key = PerchCode, "code_review_parent_timeout_min"
+				perch, key = PerchCode, "loom.code.review_parent_timeout_min"
 			}
 			got, reason := CapParentReviewWait(tt.cfg, perch, tt.runTimeout, tt.startAllowance, tt.awaitCap)
 			if got != tt.want {
@@ -327,7 +334,7 @@ func TestCapParentReviewWait(t *testing.T) {
 				}
 				return
 			}
-			for _, want := range []string{key, "review_timeout_min", "raise review_timeout_min"} {
+			for _, want := range []string{key, "loom.review.timeout_min", "raise loom.review.timeout_min"} {
 				if !strings.Contains(reason, want) {
 					t.Errorf("CapParentReviewWait(...) reason = %q; want it to name %q", reason, want)
 				}
@@ -337,11 +344,12 @@ func TestCapParentReviewWait(t *testing.T) {
 }
 
 // TestCapParentJudgeWait verifies the judge's parent wait is capped by the run timeout its session runs under.
-// It ignores review_timeout_min, and a room spent to zero sends no ask, with a reason that says to raise run_timeout_min.
+// It ignores loom.review.timeout_min.
+// A room spent to zero sends no ask and gives a reason that says to raise shuttle.run_timeout_min.
 func TestCapParentJudgeWait(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	cfg := Config{ReviewTimeoutMin: 240, CodeReviewParentTimeoutMin: 30}
+	cfg := Config{Review: ReviewConfig{TimeoutMin: 240}, Code: CodeConfig{ReviewParentTimeoutMin: 30}}
 	tests := []struct {
 		name       string
 		runTimeout time.Duration
@@ -365,7 +373,7 @@ func TestCapParentJudgeWait(t *testing.T) {
 				}
 				return
 			}
-			for _, want := range []string{"code_review_parent_timeout_min", "run_timeout_min", "raise run_timeout_min"} {
+			for _, want := range []string{"loom.code.review_parent_timeout_min", "shuttle.run_timeout_min", "raise shuttle.run_timeout_min"} {
 				if !strings.Contains(reason, want) {
 					t.Errorf("CapParentJudgeWait(...) reason = %q; want it to name %q", reason, want)
 				}
@@ -390,61 +398,61 @@ func TestResolveJudge(t *testing.T) {
 	}{
 		{
 			name:  "all keys empty resolves every pass to judge",
-			cfg:   Config{Judge: "sonnet[medium]"},
+			cfg:   Config{Review: ReviewConfig{Judge: "sonnet[medium]"}},
 			want:  [3]segmentModels{{"sonnet", "sonnet"}, {"sonnet", "sonnet"}, {"sonnet", "sonnet"}},
 			split: segmentModels{"sonnet", "sonnet"},
 		},
 		{
 			name:  "seed moves every seed",
-			cfg:   Config{Judge: "sonnet[medium]", Seed: "haiku"},
+			cfg:   Config{Review: ReviewConfig{Judge: "sonnet[medium]", Seed: "haiku"}},
 			want:  [3]segmentModels{{"haiku", "sonnet"}, {"haiku", "sonnet"}, {"haiku", "sonnet"}},
 			split: segmentModels{"haiku", "sonnet"},
 		},
 		{
-			name:  "plan_judge alone moves plan's judge and seed together",
-			cfg:   Config{Judge: "sonnet[medium]", PlanJudge: "opus"},
+			name:  "plan.judge alone moves plan's judge and seed together",
+			cfg:   Config{Review: ReviewConfig{Judge: "sonnet[medium]"}, Plan: PlanConfig{Judge: "opus"}},
 			want:  [3]segmentModels{{"sonnet", "sonnet"}, {"opus", "opus"}, {"sonnet", "sonnet"}},
 			split: segmentModels{"sonnet", "sonnet"},
 		},
 		{
-			name:  "plan_judge with seed keeps plan's seed off the judge",
-			cfg:   Config{Judge: "sonnet[medium]", PlanJudge: "opus", Seed: "haiku"},
+			name:  "plan.judge with seed keeps plan's seed off the judge",
+			cfg:   Config{Review: ReviewConfig{Judge: "sonnet[medium]", Seed: "haiku"}, Plan: PlanConfig{Judge: "opus"}},
 			want:  [3]segmentModels{{"haiku", "sonnet"}, {"haiku", "opus"}, {"haiku", "sonnet"}},
 			split: segmentModels{"haiku", "sonnet"},
 		},
 		{
-			name:  "plan_judge with plan_seed keeps plan's seed off the judge",
-			cfg:   Config{Judge: "sonnet[medium]", PlanJudge: "opus", PlanSeed: "haiku"},
+			name:  "plan.judge with plan.seed keeps plan's seed off the judge",
+			cfg:   Config{Review: ReviewConfig{Judge: "sonnet[medium]"}, Plan: PlanConfig{Judge: "opus", Seed: "haiku"}},
 			want:  [3]segmentModels{{"sonnet", "sonnet"}, {"haiku", "opus"}, {"sonnet", "sonnet"}},
 			split: segmentModels{"sonnet", "sonnet"},
 		},
 		{
-			name:  "code_seed alone moves only code's seed",
-			cfg:   Config{Judge: "sonnet[medium]", CodeSeed: "haiku"},
+			name:  "code.seed alone moves only code's seed",
+			cfg:   Config{Review: ReviewConfig{Judge: "sonnet[medium]"}, Code: CodeConfig{Seed: "haiku"}},
 			want:  [3]segmentModels{{"sonnet", "sonnet"}, {"sonnet", "sonnet"}, {"haiku", "sonnet"}},
 			split: segmentModels{"sonnet", "sonnet"},
 		},
 		{
-			name:  "plan_seed beats seed for plan alone",
-			cfg:   Config{Judge: "sonnet[medium]", Seed: "haiku", PlanSeed: "opus"},
+			name:  "plan.seed beats seed for plan alone",
+			cfg:   Config{Review: ReviewConfig{Judge: "sonnet[medium]", Seed: "haiku"}, Plan: PlanConfig{Seed: "opus"}},
 			want:  [3]segmentModels{{"haiku", "sonnet"}, {"opus", "sonnet"}, {"haiku", "sonnet"}},
 			split: segmentModels{"haiku", "sonnet"},
 		},
 		{
-			name:  "discussion_judge and code_judge move their own segments",
-			cfg:   Config{Judge: "sonnet[medium]", DiscussionJudge: "opus", CodeJudge: "haiku"},
+			name:  "discussion.judge and code.judge move their own segments",
+			cfg:   Config{Review: ReviewConfig{Judge: "sonnet[medium]"}, Discussion: DiscussionConfig{Judge: "opus"}, Code: CodeConfig{Judge: "haiku"}},
 			want:  [3]segmentModels{{"opus", "opus"}, {"sonnet", "sonnet"}, {"haiku", "haiku"}},
 			split: segmentModels{"sonnet", "sonnet"},
 		},
 		{
-			name:  "split_judge alone moves split's judge and seed together",
-			cfg:   Config{Judge: "sonnet[medium]", SplitJudge: "opus"},
+			name:  "split.judge alone moves split's judge and seed together",
+			cfg:   Config{Review: ReviewConfig{Judge: "sonnet[medium]"}, Split: SplitConfig{Judge: "opus"}},
 			want:  [3]segmentModels{{"sonnet", "sonnet"}, {"sonnet", "sonnet"}, {"sonnet", "sonnet"}},
 			split: segmentModels{"opus", "opus"},
 		},
 		{
-			name:  "split_judge with seed keeps split's seed off the judge",
-			cfg:   Config{Judge: "sonnet[medium]", SplitJudge: "opus", Seed: "haiku"},
+			name:  "split.judge with seed keeps split's seed off the judge",
+			cfg:   Config{Review: ReviewConfig{Judge: "sonnet[medium]", Seed: "haiku"}, Split: SplitConfig{Judge: "opus"}},
 			want:  [3]segmentModels{{"haiku", "sonnet"}, {"haiku", "sonnet"}, {"haiku", "sonnet"}},
 			split: segmentModels{"haiku", "opus"},
 		},
@@ -485,7 +493,7 @@ func TestResolveJudge(t *testing.T) {
 		if err != nil {
 			t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 		}
-		settings, err := ResolveJudge(Config{Judge: "sonnet[medium]"}, reg)
+		settings, err := ResolveJudge(Config{Review: ReviewConfig{Judge: "sonnet[medium]"}}, reg)
 		if err != nil {
 			t.Fatalf("ResolveJudge(...) = _, %v; want nil error", err)
 		}
@@ -500,7 +508,7 @@ func TestResolveJudge(t *testing.T) {
 			"alpha": {Engine: "claude", Model: "alpha-model"},
 			"beta":  {Engine: "other", Model: "beta-model"},
 		}
-		settings, err := ResolveJudge(Config{Judge: "alpha", PlanSeed: "beta"}, reg)
+		settings, err := ResolveJudge(Config{Review: ReviewConfig{Judge: "alpha"}, Plan: PlanConfig{Seed: "beta"}}, reg)
 		if err != nil {
 			t.Fatalf("ResolveJudge(...) = _, %v; want nil error", err)
 		}
@@ -528,8 +536,8 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 	}{
 		{
 			name: "reviewer_model",
-			role: "reviewer_model",
-			cfg:  Config{ReviewerModel: burlerengine.ModelSpecList{"opus[effort"}, ReviewTimeoutMin: 240},
+			role: "review.reviewer_model",
+			cfg:  Config{Review: ReviewConfig{ReviewerModel: burlerengine.ModelSpecList{"opus[effort"}, TimeoutMin: 240}},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveReview(cfg, reg)
 				return err
@@ -537,8 +545,8 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 		},
 		{
 			name:   "later reviewer_model entry",
-			role:   "reviewer_model",
-			cfg:    Config{ReviewerModel: burlerengine.ModelSpecList{"sonnet[medium]", "opus[effort"}, FixerModel: burlerengine.ModelSpecList{"opus[medium]"}},
+			role:   "review.reviewer_model",
+			cfg:    Config{Review: ReviewConfig{ReviewerModel: burlerengine.ModelSpecList{"sonnet[medium]", "opus[effort"}, FixerModel: burlerengine.ModelSpecList{"opus[medium]"}}},
 			wantIn: []string{"entry 2", "in loom.yaml", "a model-spec the registry defines"},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveReview(cfg, reg)
@@ -547,8 +555,8 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 		},
 		{
 			name:   "fixer_model entry",
-			role:   "fixer_model",
-			cfg:    Config{ReviewerModel: burlerengine.ModelSpecList{"sonnet[medium]"}, FixerModel: burlerengine.ModelSpecList{"opus[medium]", "opus[effort"}},
+			role:   "review.fixer_model",
+			cfg:    Config{Review: ReviewConfig{ReviewerModel: burlerengine.ModelSpecList{"sonnet[medium]"}, FixerModel: burlerengine.ModelSpecList{"opus[medium]", "opus[effort"}}},
 			wantIn: []string{"entry 2", "a model-spec the registry defines"},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveReview(cfg, reg)
@@ -556,9 +564,9 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 			},
 		},
 		{
-			name:   "code_fixer_model entry",
-			role:   "code_fixer_model",
-			cfg:    Config{ReviewerModel: burlerengine.ModelSpecList{"sonnet[medium]"}, FixerModel: burlerengine.ModelSpecList{"opus[medium]"}, CodeFixerModel: burlerengine.ModelSpecList{"ghost"}},
+			name:   "code.fixer_model entry",
+			role:   "code.fixer_model",
+			cfg:    Config{Review: ReviewConfig{ReviewerModel: burlerengine.ModelSpecList{"sonnet[medium]"}, FixerModel: burlerengine.ModelSpecList{"opus[medium]"}}, Code: CodeConfig{FixerModel: burlerengine.ModelSpecList{"ghost"}}},
 			wantIn: []string{"entry 1", "in loom.yaml"},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveReview(cfg, reg)
@@ -567,8 +575,8 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 		},
 		{
 			name: "judge",
-			role: "judge",
-			cfg:  Config{Judge: "sonnet[medium"},
+			role: "review.judge",
+			cfg:  Config{Review: ReviewConfig{Judge: "sonnet[medium"}},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveJudge(cfg, reg)
 				return err
@@ -576,62 +584,62 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 		},
 		{
 			name: "seed",
-			role: "seed",
-			cfg:  Config{Judge: "sonnet[medium]", Seed: "haiku[medium"},
+			role: "review.seed",
+			cfg:  Config{Review: ReviewConfig{Judge: "sonnet[medium]", Seed: "haiku[medium"}},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveJudge(cfg, reg)
 				return err
 			},
 		},
 		{
-			name: "discussion_judge",
-			role: "discussion_judge",
-			cfg:  Config{Judge: "sonnet[medium]", DiscussionJudge: "opus[medium"},
+			name: "discussion.judge",
+			role: "discussion.judge",
+			cfg:  Config{Review: ReviewConfig{Judge: "sonnet[medium]"}, Discussion: DiscussionConfig{Judge: "opus[medium"}},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveJudge(cfg, reg)
 				return err
 			},
 		},
 		{
-			name: "plan_judge",
-			role: "plan_judge",
-			cfg:  Config{Judge: "sonnet[medium]", PlanJudge: "opus[medium"},
+			name: "plan.judge",
+			role: "plan.judge",
+			cfg:  Config{Review: ReviewConfig{Judge: "sonnet[medium]"}, Plan: PlanConfig{Judge: "opus[medium"}},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveJudge(cfg, reg)
 				return err
 			},
 		},
 		{
-			name: "code_judge",
-			role: "code_judge",
-			cfg:  Config{Judge: "sonnet[medium]", CodeJudge: "opus[medium"},
+			name: "code.judge",
+			role: "code.judge",
+			cfg:  Config{Review: ReviewConfig{Judge: "sonnet[medium]"}, Code: CodeConfig{Judge: "opus[medium"}},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveJudge(cfg, reg)
 				return err
 			},
 		},
 		{
-			name: "discussion_seed",
-			role: "discussion_seed",
-			cfg:  Config{Judge: "sonnet[medium]", DiscussionSeed: "opus[medium"},
+			name: "discussion.seed",
+			role: "discussion.seed",
+			cfg:  Config{Review: ReviewConfig{Judge: "sonnet[medium]"}, Discussion: DiscussionConfig{Seed: "opus[medium"}},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveJudge(cfg, reg)
 				return err
 			},
 		},
 		{
-			name: "plan_seed",
-			role: "plan_seed",
-			cfg:  Config{Judge: "sonnet[medium]", PlanSeed: "opus[medium"},
+			name: "plan.seed",
+			role: "plan.seed",
+			cfg:  Config{Review: ReviewConfig{Judge: "sonnet[medium]"}, Plan: PlanConfig{Seed: "opus[medium"}},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveJudge(cfg, reg)
 				return err
 			},
 		},
 		{
-			name: "code_seed",
-			role: "code_seed",
-			cfg:  Config{Judge: "sonnet[medium]", CodeSeed: "opus[medium"},
+			name: "code.seed",
+			role: "code.seed",
+			cfg:  Config{Review: ReviewConfig{Judge: "sonnet[medium]"}, Code: CodeConfig{Seed: "opus[medium"}},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveJudge(cfg, reg)
 				return err

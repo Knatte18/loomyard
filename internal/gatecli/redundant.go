@@ -118,9 +118,9 @@ Each listed candidate comes with its standalone seconds, the tests that cover it
 A test marked //testtiming:keep is neither a candidate nor a cover, nor is a test the spawn scan marks or one whose entry records no passing run.
 It reads the map as the last lym gate test --map call from this worktree left it.
 It refuses a map built from other Go files of the package than this worktree holds.
-It reads the keep markers from this worktree, and runs its builds and tests in one gate slot, bounded by redundancy_build_timeout_min and redundancy_test_timeout_sec.
-Each test run is capped at redundancy_test_memory_mb of memory.
-A test binary past memory_quit_mb is killed and named on stderr.
+It reads the keep markers from this worktree, and runs its builds and tests in one gate slot, bounded by ` + keyName(redundancyBuildTimeoutKey) + ` and ` + keyName(redundancyTestTimeoutKey) + `.
+Each test run is capped at ` + keyName(redundancyTestMemoryMBKey) + ` of memory.
+A test binary past ` + keyName(memoryQuitMBKey) + ` is killed and named on stderr.
 It prints the map's commit and build time, map_build_failure when a later coverage build failed, the candidates, the refuted tests, the unconfirmed tests, the kept tests with their reasons, the tests not judged with why, and what the mutation check cost.
 
 Examples:

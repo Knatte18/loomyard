@@ -11,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -106,7 +107,9 @@ func setMergeExit(cmd *cobra.Command, out io.Writer, res fabricengine.MergeResul
 // Each RunE body calls fabric() after the handle is resolved.
 //
 // loc is a getter for the same reason, returning the location resolved at run time.
-// merge-in reads it to check whether an implementer's run is in flight in this worktree.
+// merge-in first reconciles the hub's config there.
+// The order matters: a merge may leave the worktree mid-merge, which a reconcile skips.
+// It also reads it to check whether an implementer's run is in flight in this worktree.
 func addMergeVerbs(cmd *cobra.Command, fabric func() *fabricengine.Fabric, loc func() *lymcwd.Location) {
 	mergeInCmd := &cobra.Command{
 		Use:         "merge-in <branch>",
@@ -143,6 +146,7 @@ Example:
 				return nil
 			}
 			out := cmd.OutOrStdout()
+			hubgeom.ReconcileBeforeLoad(loc())
 			res, err := fabric().MergeIn(args[0])
 			var warnings []string
 			if err == nil && (!res.AlreadyUpToDate || len(res.Conflicts) > 0) {

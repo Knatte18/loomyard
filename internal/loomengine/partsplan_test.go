@@ -51,10 +51,8 @@ The task splits along its two modules.
 // partsPlanConfig returns a config with the plan timeout, the part writer, the parts chair and its timeout set.
 func partsPlanConfig(planTimeoutMin int, chairTimeoutMin *int) Config {
 	return Config{
-		PlanTimeoutMin:       planTimeoutMin,
-		PartWriter:           "sonnet[low]",
-		PartsChair:           "opus[high]",
-		PartsChairTimeoutMin: chairTimeoutMin,
+		Plan:  PlanConfig{TimeoutMin: planTimeoutMin},
+		Parts: PartsConfig{Writer: "sonnet[low]", Chair: "opus[high]", ChairTimeoutMin: chairTimeoutMin},
 	}
 }
 
@@ -138,8 +136,8 @@ func TestPartsPlanTable(t *testing.T) {
 		if want := []string{partsparser.JoinRecord(anchor)}; !slices.Equal(chair.Outputs, want) {
 			t.Errorf("chair outputs = %v; want the join record %v", chair.Outputs, want)
 		}
-		if chair.Model != "opus" || chair.Effort != "high" || chair.ModelKey != (shuttleengine.ModelKey{Module: "tapestry", Key: "parts_chair"}) {
-			t.Errorf("chair model/effort/key = %q/%q/%+v; want opus/high/tapestry parts_chair", chair.Model, chair.Effort, chair.ModelKey)
+		if chair.Model != "opus" || chair.Effort != "high" || chair.ModelKey != (shuttleengine.ModelKey{Module: "tapestry", Key: "parts.chair"}) {
+			t.Errorf("chair model/effort/key = %q/%q/%+v; want opus/high/tapestry parts.chair", chair.Model, chair.Effort, chair.ModelKey)
 		}
 		if chair.Writer || len(chair.Gate) != 0 {
 			t.Errorf("chair writer/gate = %v/%v; want a plain lead with no gate", chair.Writer, chair.Gate)
@@ -162,8 +160,8 @@ func TestPartsPlanTable(t *testing.T) {
 			if want := hooks.findingsPath(part); seat.GateFindingsPath != want {
 				t.Errorf("seat %q GateFindingsPath = %q; want %q", part, seat.GateFindingsPath, want)
 			}
-			if seat.Model != "sonnet" || seat.Effort != "low" || seat.ModelKey != (shuttleengine.ModelKey{Module: "tapestry", Key: "part_writer"}) {
-				t.Errorf("seat %q model/effort/key = %q/%q/%+v; want sonnet/low/tapestry part_writer", part, seat.Model, seat.Effort, seat.ModelKey)
+			if seat.Model != "sonnet" || seat.Effort != "low" || seat.ModelKey != (shuttleengine.ModelKey{Module: "tapestry", Key: "parts.writer"}) {
+				t.Errorf("seat %q model/effort/key = %q/%q/%+v; want sonnet/low/tapestry parts.writer", part, seat.Model, seat.Effort, seat.ModelKey)
 			}
 			if seat.ForkSubagents {
 				t.Errorf("seat %q ForkSubagents = true; want false", part)
@@ -213,10 +211,10 @@ func TestPartsPlanTable(t *testing.T) {
 			wantChair       time.Duration
 			wantErr         bool
 		}{
-			{"unset chair takes twice plan_timeout_min", 120, nil, time.Hour, 120 * time.Minute, 240 * time.Minute, false},
-			{"unset chair with plan_timeout_min 0 takes twice the run timeout", 0, nil, 90 * time.Minute, 90 * time.Minute, 180 * time.Minute, false},
+			{"unset chair takes twice plan.timeout_min", 120, nil, time.Hour, 120 * time.Minute, 240 * time.Minute, false},
+			{"unset chair with plan.timeout_min 0 takes twice the run timeout", 0, nil, 90 * time.Minute, 90 * time.Minute, 180 * time.Minute, false},
 			{"a set chair timeout above the plan timeout is kept", 120, minutes(300), time.Hour, 120 * time.Minute, 300 * time.Minute, false},
-			{"a set chair timeout not above the run timeout with plan_timeout_min 0 fails", 0, minutes(90), 90 * time.Minute, 0, 0, true},
+			{"a set chair timeout not above the run timeout with plan.timeout_min 0 fails", 0, minutes(90), 90 * time.Minute, 0, 0, true},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -225,8 +223,8 @@ func TestPartsPlanTable(t *testing.T) {
 				writePartsFile(t, layout, twoPartsFile)
 				table, err := buildPartsPlanTable(t, layout, newTestStencilsDir(t), partsPlanConfig(tt.planTimeoutMin, tt.chairTimeoutMin), tt.runTimeout, &partsPlanHooks{})
 				if tt.wantErr {
-					if err == nil || !strings.Contains(err.Error(), "parts_chair_timeout_min") {
-						t.Errorf("PartsPlanTable(...) = _, %v; want an error naming parts_chair_timeout_min", err)
+					if err == nil || !strings.Contains(err.Error(), "parts.chair_timeout_min") {
+						t.Errorf("PartsPlanTable(...) = _, %v; want an error naming parts.chair_timeout_min", err)
 					}
 					return
 				}

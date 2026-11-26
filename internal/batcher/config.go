@@ -55,7 +55,8 @@ func retiredKeyError(file string, layer configengine.Layer, profileName, key str
 	if file == "" {
 		file = moduleName + ".yaml"
 	}
-	wayForward := fmt.Sprintf("delete %s from the profile by hand", key)
+	name := profileKeyName(profileName, key)
+	wayForward := fmt.Sprintf("delete %s by hand", name)
 	if templateNamesProfile(profileName) {
 		if layer == configengine.LayerDefault {
 			wayForward = fmt.Sprintf(`%s, or run "lym config reconcile --layer default --apply" from the hub's prime worktree, which removes a key the template lacks; a session lym refuses the verb from reports status: FAILED and the orch runs it`, wayForward)
@@ -63,7 +64,7 @@ func retiredKeyError(file string, layer configengine.Layer, profileName, key str
 			wayForward = fmt.Sprintf(`%s, or run "lym config reconcile --apply", which removes a key the template lacks`, wayForward)
 		}
 	}
-	return configengine.MarkInvalid(fmt.Errorf("%s profile %q carries %s, which no longer exists (%w); way forward: %s", file, profileName, key, ErrRetiredKey, wayForward))
+	return configengine.MarkInvalid(fmt.Errorf("%s sets %s, which no longer exists (%w); way forward: %s", file, name, ErrRetiredKey, wayForward))
 }
 
 // templateNamesProfile reports whether the shipped template holds a profile of the given name.
@@ -126,11 +127,11 @@ func Active(dirs configengine.Dirs) (Batcher, error) {
 		if name == DefaultName {
 			return Identity(), nil
 		}
-		return nil, configengine.MarkInvalid(fmt.Errorf("batcher.yaml: active %q names no profile under profiles:", name))
+		return nil, configengine.MarkInvalid(fmt.Errorf("batcher.yaml: %s %q names no profile under %s", keyName(activeKey), name, keyName(profilesKey)))
 	}
 	construct, ok := constructors[prof.Batchifier]
 	if !ok {
-		return nil, configengine.MarkInvalid(fmt.Errorf("batcher.yaml profile %q has unknown batchifier %q", name, prof.Batchifier))
+		return nil, configengine.MarkInvalid(fmt.Errorf("batcher.yaml: %s names an unknown batchifier %q", profileKeyName(name, batchifierLeaf), prof.Batchifier))
 	}
 	return construct(name, prof)
 }

@@ -8,7 +8,7 @@ Project names below are examples, so use the hub's own.
 
 ## The dotnet scoper
 
-`scoper: dotnet` makes a computed, `--base` or `--card` scope the test projects and test classes a change can reach.
+`gate.scoper: dotnet` makes a computed, `--base` or `--card` scope the test projects and test classes a change can reach.
 `internal/dotnetimpact` derives them from C# source alone.
 The derivation takes the changed `.cs` files and the types they declare.
 It closes that set over every file whose identifiers name a type already in it.
@@ -29,7 +29,8 @@ The `dotnet` scoper plans no guard step and no vet step, and `--guards` is refus
 
 ## Tiers
 
-A tier's command holds `{targets}`, `{filter}` and optionally `{args}`:
+A tier's command holds `{targets}`, `{filter}` and optionally `{args}`.
+A tier's fields, such as `filter` or `timeout_min`, are named relative to its entry, `gate.tiers.<tier>`:
 
 ```yaml
 tiers:
@@ -62,7 +63,7 @@ and a crashed test host's cause reaches the gate log.
 A call whose own words hold a results directory or a `trx` logger is refused, since the gate owns them.
 A tier without `results` keeps counting the console summary and logs no crash cause.
 
-`shared_build: true` makes the tier depend on the hub's `build` step, which lym runs once per call before it,
+`shared_build: true` makes the tier depend on the hub's `gate.build` step, which lym runs once per call before it,
 so the tier's command carries `--no-build`.
 A command without `--no-build` builds again inside its own run, since lym does not read the command.
 
@@ -74,7 +75,7 @@ Alternatively set `TESTINGPLATFORM_EXITCODE_IGNORE: "8"` in the tier's `env`.
 
 ## The build step
 
-`build` is the one build a call runs for every tier with `shared_build`.
+`gate.build` is the one build a call runs for every tier with `shared_build`.
 It runs inside the slots of the first such tier whose run takes slots:
 
 ```yaml
@@ -92,7 +93,7 @@ The properties on the command make the gated and baseline projects test projects
 so the tiers' `--no-build` runs find them built.
 lym adds no switch to the command, and the words after `--` never reach it.
 Its output passes into the call's output and its own log.
-`build` has its own `timeout_min`, counted from the slot hold, and the tier's `timeout_min` starts after the build.
+The step has its own `gate.build.timeout_min`, counted from the slot hold, and the tier's `gate.tiers.<tier>.timeout_min` starts after the build.
 
 A scope whose changes no test class names still runs the build inside the first `shared_build` tier's slots.
 It runs no test command in that tier, so a compile break fails the gate.
@@ -104,7 +105,7 @@ The call exits with the build's code, or 1 for a timeout.
 
 ## Inert paths
 
-`inert_paths` lists glob patterns of files no test reads:
+`gate.inert_paths` lists glob patterns of files no test reads:
 
 ```yaml
 inert_paths: ["*.md", "docs/*"]
@@ -139,7 +140,7 @@ A landing key may list more tiers than the card keys, such as one that runs the 
 Parent-Align is then the one planned whole-solution run per task, since it is the first gate over the merged parent.
 Finalize carries that run from the green record when no commit landed between.
 It runs whole again only after a fix or a moved parent changed the tree.
-When the hub sets `inert_paths` and every file the branch changed matches them, the Parent-Align and Finalize gates run no tier,
+When the hub sets `gate.inert_paths` and every file the branch changed matches them, the Parent-Align and Finalize gates run no tier,
 except a tier with `carry: false`, which always runs whole.
 
 ## A timing tier
@@ -182,7 +183,7 @@ So keep the tier out of darn's gate keys and out of every tier's `covers`, and n
 refuse_raw: ["dotnet test"]
 ```
 
-The shell guard then refuses an agent's raw `dotnet test` and steers it to `lym gate test`.
+With `gate.refuse_raw` listing it, the shell guard then refuses an agent's raw `dotnet test` and steers it to `lym gate test`.
 
 ## Build processes
 
@@ -194,14 +195,14 @@ The shared compiler server is left at the SDK's default.
 A warm node holds none of the child's output pipe, so a call ends when the build or test process does.
 Set neither `MSBUILDENSURESTDOUTFORTASKPROCESSES` nor `MSBUILDNODEWINDOW` in a `build` or tier `env`:
 on a later SDK either leaves a Unix node's output unredirected,
-and the call then waits on idle nodes until `timeout_min`.
+and the call then waits on idle nodes until `gate.tiers.<tier>.timeout_min`.
 A tier's own `env` is applied after these values, so a hub that wants warm nodes for a tier sets them there;
 a `build` `env` likewise.
 
 ## The repo-rules lens
 
-The Models review rules are lens prose in the hub's `lenses.yaml`.
-They are added to the `review-code` fan the code review reads:
+The Models review rules are lens prose in the hub's `lenses.lenses`.
+They are added to the `lenses.fans.review-code` fan the code review reads:
 
 ```yaml
 lenses:

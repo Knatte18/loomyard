@@ -2,7 +2,7 @@
 # It is the one definition of those rows: the tapestry recipe runs it inline through its Motif block row, and a board task may name it to run alone.
 # Discussion-Write carries no on_stuck, so its Stuck halts the run, for the reason tapestry-recipe.yaml's header gives for its writer rows.
 # The ring follows the shared-segment rule that header states: the three rows carry segment: Discussion-Review and role_prefix: discussion,
-# and their budget is loom.yaml's discussion_max_bounces, or review_max_bounces when it is absent.
+# and their budget is loom.discussion.max_bounces, or loom.review.max_bounces when it is absent.
 #
 # Discussion-Bouncer sets no on_done.
 # Run alone, that ends the run once the approved record is stored on the board entry, so a motif run lands no code.
@@ -31,7 +31,7 @@ producers:
       gates:
         - name: discussion
           attempts: 3
-          fixer: loom.discussion_gate_fixer
+          fixer: loom.discussion.gate_fixer
 
   - name: Discussion-Bouncer
     engine: Bouncer
@@ -41,8 +41,8 @@ producers:
       run_subdir: discussion
       subject: document
       role_prefix: discussion
-      reviewer_fan_setting: loom.discussion_reviewer_fan
-      auto_accept_setting: loom.discussion_auto_accept
+      reviewer_fan_setting: loom.discussion.reviewer_fan
+      auto_accept_setting: loom.discussion.auto_accept
       artifact_paths:
         - _lym/discussion/decision-record.md
         - _lym/discussion/support-log.md
@@ -62,8 +62,8 @@ producers:
       # parent; Discussion-Burler-Fix sets decisions_escalated so its fixer is given none and
       # posts no notice of its own, and a test pins the two set together.
       escalate_decisions: true
-      # No model/effort/version key: the row refuses them as unknown keys, and loom.yaml's judge,
-      # seed and per-segment judge and seed keys are the only source of this row's passes' models.
+      # No model/effort/version key: the row refuses them as unknown keys, and loom.review.judge,
+      # loom.review.seed, loom.discussion.judge and loom.discussion.seed are the only source of this row's passes' models.
 
   - name: Discussion-Burler-Review
     engine: BurlerReview
@@ -78,8 +78,8 @@ producers:
       # shared run directory.
       run_subdir: discussion
       role_prefix: discussion
-      reviewer_fan_setting: loom.discussion_reviewer_fan
-      fixer_fan_setting: loom.discussion_fixer_fan
+      reviewer_fan_setting: loom.discussion.reviewer_fan
+      fixer_fan_setting: loom.discussion.fixer_fan
       profile:
         target:
           paths:
@@ -97,7 +97,8 @@ producers:
         # commits this round's approved settle.
         fix-scope: overlay
         tool-use: true
-      # No model/effort key: model choice lives in loom.yaml's reviewer and fixer model keys only.
+      # No model/effort key: model choice lives in loom.discussion.reviewer_model, loom.discussion.fixer_model
+      # and their loom.review fallbacks only.
       # No timeout_s key, for the same Env fallback reason as Discussion-Bouncer.
 
   - name: Discussion-Burler-Fix
@@ -111,7 +112,7 @@ producers:
     config:
       run_subdir: discussion
       role_prefix: discussion
-      fixer_fan_setting: loom.discussion_fixer_fan
+      fixer_fan_setting: loom.discussion.fixer_fan
       # decisions_escalated says Discussion-Bouncer's escalate_decisions sends the round's
       # decision-class findings to the parent, so this row keeps them out of the fixer's work
       # and posts no notice of its own.

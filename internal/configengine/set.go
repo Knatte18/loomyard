@@ -41,6 +41,9 @@ func layerPath(dirs Dirs, spec Spec, layer Layer) (path, owner string, err error
 // only the keys set are written, and nothing is scaffolded.
 // A local-layer write is checked against the local rule, and a machine-layer write against the machine rule.
 // A refused write writes nothing.
+// A pair whose key is an old name of the spec's MovedKeys is refused, naming the set of the new path.
+// An old name that is also the area its new path lies under is not refused as moved when its value is a flow mapping;
+// the template judges that pair as any other pair naming the area.
 // A spec with an overlay is judged against its effective template:
 // the one the written base document picks, or for a layer above the base the one the base file picks.
 // An unknown selector value fails before anything is written,
@@ -57,6 +60,13 @@ func Set(dirs Dirs, spec Spec, layer Layer, pairs []yamlengine.KV) ([]string, er
 	}
 	if _, err := FindBaseDir(owner); err != nil {
 		return nil, err
+	}
+	for _, pair := range pairs {
+		newPath, moved := spec.MovedKeys[pair.Key]
+		setsNewArea := strings.HasPrefix(newPath, pair.Key+".") && strings.HasPrefix(strings.TrimSpace(pair.Value), "{")
+		if moved && !setsNewArea {
+			return nil, movedKeyError(spec.Name, pair.Key, newPath, fmt.Sprintf(`run "lym config %s --layer %s --set %s=%s"`, spec.Name, layer, newPath, pair.Value))
+		}
 	}
 	effective, err := writeTemplate(dirs, spec, layer, path, pairs)
 	if err != nil {
@@ -108,7 +118,8 @@ func Set(dirs Dirs, spec Spec, layer Layer, pairs []yamlengine.KV) ([]string, er
 
 // Unset removes each dotted key from the layer's file of spec under dirs, with no editor,
 // so the key's value resolves from the layers below and the template.
-// It removes a key the template lacks, a retired key included, as it removes any other.
+// It removes a key the template lacks as it removes any other.
+// That includes a retired key and an old name of the spec's MovedKeys.
 // A mapping the removal leaves empty is removed with its key.
 // An absent file, or a key the file does not hold, is an error naming the file, and nothing is written.
 func Unset(dirs Dirs, spec Spec, layer Layer, keys []string) error {

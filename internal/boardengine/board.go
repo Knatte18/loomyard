@@ -4,6 +4,7 @@ package boardengine
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -68,7 +69,12 @@ type noWrite struct{ result any }
 // the write unwraps it, and the promotion keeps the note's dates.
 type promoted struct{ task Task }
 
-// boardCriticalSection runs the locked write scaffolding shared by every mutating Board method.
+// boardCriticalSection runs the locked write of boardCriticalSectionRollingBack with no rollback.
+func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSave func() error) (any, error) {
+	return b.boardCriticalSectionRollingBack(fn, afterSave, nil)
+}
+
+// boardCriticalSectionRollingBack runs the locked write scaffolding shared by every mutating Board method.
 // It takes the write lock and loads the store.
 // A board made by Expecting then checks its entry's revision and refuses a stale one before anything is written.
 // It then calls fn to mutate the store, and it gives a new task the draft status except a promoted raddle task.
@@ -79,10 +85,12 @@ type promoted struct{ task Task }
 // it renders the outputs and spawns a detached sync.
 // A fn returning a RenameResult has its dates and run lock judged against the loaded entries with that rename applied.
 // afterSave runs under the lock after the save and before the render.
+// When afterSave or the render fails, a non-nil rollback runs before the lock is released,
+// and its own failure is joined to the returned error.
 // A *DecisionRecordError does not stop the render or the sync;
 // it is returned last, with the write saved and the mutation's result.
 // A fn returning a noWrite skips every step after the mutation.
-func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSave func() error) (any, error) {
+func (b *Board) boardCriticalSectionRollingBack(fn func(store *Store) (any, error), afterSave, rollback func() error) (any, error) {
 	// Guard before any disk mutation.
 	// A Board built without output filenames, the --board-path shape, carries only the data dir;
 	// it can sync and read but must not write.
@@ -183,16 +191,25 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 		return nil, fmt.Errorf("save store: %w", err)
 	}
 
+	rolledBack := func(failure error) error {
+		if rollback == nil {
+			return failure
+		}
+		if err := rollback(); err != nil {
+			return errors.Join(failure, fmt.Errorf("roll back the saved store: %w", err))
+		}
+		return failure
+	}
 	if afterSave != nil {
 		if err := afterSave(); err != nil {
-			return nil, err
+			return nil, rolledBack(err)
 		}
 	}
 
 	recordErr := followDecisionRecords(b.boardPath, loaded, store.Tasks(), renamedFrom, renamedTo)
 
 	if err := RenderToDisk(b.boardPath, store.Tasks(), store.primeOwner, b.out, now); err != nil {
-		return nil, fmt.Errorf("render: %w", err)
+		return nil, rolledBack(fmt.Errorf("render: %w", err))
 	}
 
 	if !b.skipGit {
@@ -421,7 +438,7 @@ func (b *Board) checkFilterLabels(store *Store, labels []string) error {
 	}
 	for _, label := range labels {
 		if !b.vocab.Known(label) && !store.anyEntryCarries(label) {
-			return fmt.Errorf("filter label %q is in neither the types nor the labels list of board.yaml and no entry carries it: add it to board.yaml, or filter by a configured label", label)
+			return fmt.Errorf("filter label %q is in neither %s nor %s in board.yaml and no entry carries it: add it to one of them, or filter by a configured label", label, typesName(), labelsName())
 		}
 	}
 	return nil

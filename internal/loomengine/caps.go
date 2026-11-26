@@ -6,7 +6,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
 )
 
-// Perch names a loom review perch by its loom.yaml key prefix.
+// Perch names a loom review perch by the loom.yaml area that holds its keys.
 type Perch string
 
 const (
@@ -35,20 +35,20 @@ func reviewPerchNames() []string {
 }
 
 // Caps resolves p's soft and hard bounce caps.
-// The soft cap is the perch's own `<perch>_max_bounces` when that is non-null, else `review_max_bounces`.
-// The hard cap is the perch's own `<perch>_hard_max_bounces` when that is above 0, else `review_hard_max_bounces`.
+// The soft cap is the perch's own `<perch>.max_bounces` when that is non-null, else `review.max_bounces`.
+// The hard cap is the perch's own `<perch>.hard_max_bounces` when that is above 0, else `review.hard_max_bounces`.
 func (cfg Config) Caps(p Perch) reviewbudget.Caps {
 	var ownSoft *int
 	var ownHard int
 	switch p {
 	case PerchDiscussion:
-		ownSoft, ownHard = cfg.DiscussionMaxBounces, cfg.DiscussionHardMaxBounces
+		ownSoft, ownHard = cfg.Discussion.MaxBounces, cfg.Discussion.HardMaxBounces
 	case PerchPlan:
-		ownSoft, ownHard = cfg.PlanMaxBounces, cfg.PlanHardMaxBounces
+		ownSoft, ownHard = cfg.Plan.MaxBounces, cfg.Plan.HardMaxBounces
 	case PerchCode:
-		ownSoft, ownHard = cfg.CodeMaxBounces, cfg.CodeHardMaxBounces
+		ownSoft, ownHard = cfg.Code.MaxBounces, cfg.Code.HardMaxBounces
 	case PerchSplit:
-		ownSoft, ownHard = cfg.SplitMaxBounces, cfg.SplitHardMaxBounces
+		ownSoft, ownHard = cfg.Split.MaxBounces, cfg.Split.HardMaxBounces
 	}
-	return reviewbudget.Resolve(string(p), cfg.ReviewMaxBounces, cfg.ReviewHardMaxBounces, ownSoft, ownHard)
+	return reviewbudget.Resolve(string(p), cfg.Review.MaxBounces, cfg.Review.HardMaxBounces, ownSoft, ownHard)
 }

@@ -1,10 +1,10 @@
 # PATTERN-config-layers
 
-Loading, writing or changing the meaning of config: layers only through `configengine`; a hub base file holds only tuned units; a meaning change ships a reinterpretation `hubreconcile` applies; a per-task beam setting is read only through `dobbyengine`'s one lookup.
+Loading, writing or changing config: layers only through `configengine`; a hub base file holds only tuned units; a meaning change ships a reinterpretation, a key move a move table, both run by `hubreconcile`; a per-task beam setting is read only via `dobbyengine`'s one lookup.
 
 ## Layers
 
-Rule: Loading config: only `configengine` reads, stacks, locates and judges layers against the template; callers use `Load` or `LoadOrTemplate`, bar `runprofile` and the per-task lookup; only `hubreconcile.Ensure` reconciles on a binary change; no step removes an unknown base-layer key but the operator's `lym config reconcile` or `lym config <module> --unset <key>`.
+Rule: Loading config: only `configengine` reads, stacks, locates and judges layers against the template; callers use `Load` or `LoadOrTemplate`, bar `runprofile` and the per-task lookup; only `hubreconcile.Ensure` reconciles on a binary change; no step removes an unknown base-layer key but the operator's `lym config reconcile` or `lym config <module> --unset <key>`, save that every reconcile, the hub walk included, moves a key the module's move table names, or drops it when it is null or its new path is set.
 
 Only `internal/configengine` reads or stacks a module's layer files and forms their paths.
 Every category but None closes a key to the local override layer.
@@ -22,14 +22,14 @@ Machine alone opens a key to the machine layer.
   A key that only adds an ask to the run's parent, and the timeout bounding that added wait, is no Guard key:
   unset or expired, it leaves the run's own gates exactly as they are without it.
   It also includes the prose or lens set a reviewer is given.
-  `loom.code_reviewer_fan` is the one reviewer fan key open to the local layer:
+  `loom.code.reviewer_fan` is the one reviewer fan key open to the local layer:
   its value names only a fan the guarded `lenses.yaml` defines, or `""` for a solo round,
   and the perch's rounds, rubric and whole-diff read are unchanged.
 - **Machine**: the key's value is a property of the machine.
   It is a bound on a resource every worktree of the hub on that machine shares, or a fact of the machine.
   It may also be a convention of the person working on that machine.
-  Examples are the command run after lym opens a window, an `env.yaml` variable naming a path on its disk,
-  and fabric's `branch_prefix`.
+  Examples are the command run after lym opens a window, an `env.vars` variable naming a path on its disk,
+  and `fabric.branch_prefix`.
   It opens the key to the machine layer and keeps it closed to the local layer.
 
 The test asks what a key's value can do to a guard, not what kind of key it is.
@@ -70,11 +70,17 @@ Reconciling a hub's config after a binary change goes only through `hubreconcile
 
 ### Keys the template lacks
 
-Only the operator removes a key the running template lacks, from a hub base or worktree file.
+Only the operator removes a key the running template lacks, from a hub base or worktree file,
+save a key the module's move table names.
+Every reconcile, the hub walk included, moves such a key, or drops it when it is null or its new path is set.
+Until then the load refuses it, naming that layer's reconcile command as the way forward,
+`lym config reconcile --apply` or `lym config reconcile --layer default --apply`,
+and `lym config <module> --unset <key>` removes it.
 `lym config reconcile` prunes every such key, and `lym config <module> --unset <key>`, through `configengine.Unset`, removes one by name.
 A key a module retired is such a key like any other: the load warns of it and no loader reads it.
 The reconcile command alone sets `configsync`'s `PruneUnknown`.
-Every other reconcile keeps such a key and carries it in `configsync`'s `Result.Preserved`.
+Every other reconcile keeps such a key and carries it in `configsync`'s `Result.Preserved`,
+save a key the module's move table names, which it moves or drops as above.
 That covers the binary-change walk, a clone and `lym fabric reconcile`.
 The walk logs it when it writes the file.
 A binary older than the one that wrote a key cannot tell a key it never knew from one the template dropped.
@@ -136,4 +142,4 @@ Rule: Writing a hub base file, from any package: only the units the hub tuned, n
 
 ## Config reinterpretation
 
-Rule: Changing a hub config value's meaning: a binary carries a `configreg.Reinterpretation` on its module that rewrites the value to its old meaning, or flags it with a way forward; only `hubreconcile`'s walk applies it, once per hub behind its board marker, and mails the prime orch.
+Rule: Changing a hub config value's meaning: a binary carries a `configreg.Reinterpretation` on its module that rewrites the value to its old meaning, or flags it with a way forward; only `hubreconcile`'s walk applies it, once per hub behind its board marker, and mails the prime orch. Moving a key ships a move table on the module's `ConfigSpec`, which `configsync` applies on every reconcile and `hubreconcile`'s walk carries to the board's `run_settings`.

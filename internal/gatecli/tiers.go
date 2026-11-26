@@ -168,10 +168,10 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 		return runs, nil
 	}
 	if cfg.Scoper == "dotnet" {
-		return nil, errors.New("gate test: --guards needs the go scoper to find the guard tests, but gate.yaml's scoper is \"dotnet\"; way forward: drop --guards, then re-run the same command")
+		return nil, errors.New("gate test: --guards needs the go scoper to find the guard tests, but " + keyName(scoperKey) + " is \"dotnet\"; way forward: drop --guards, then re-run the same command")
 	}
 	if cfg.Scoper != "go" {
-		return nil, configRefusal("--guards needs the go scoper to find the guard tests, but gate.yaml's scoper is %q; drop --guards, or set scoper to go", cfg.Scoper)
+		return nil, configRefusal("--guards needs the go scoper to find the guard tests, but %s is %q; drop --guards, or set it to go", keyName(scoperKey), cfg.Scoper)
 	}
 
 	groupTiers := make([]int, 0, len(sc.guards))

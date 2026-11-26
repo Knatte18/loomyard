@@ -195,7 +195,7 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		if !errors.Is(err, configengine.ErrInvalid) {
 			t.Fatalf("err = %v, want ErrInvalid", err)
 		}
-		if !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), `"buttons.task"`) {
+		if !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), `"reed.buttons.task"`) {
 			t.Errorf("err = %q, want it to name %s and key buttons.task", err, localFile)
 		}
 	})
@@ -231,7 +231,7 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		if !errors.Is(err, configengine.ErrInvalid) {
 			t.Fatalf("err = %v, want ErrInvalid", err)
 		}
-		if !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), `"shell"`) {
+		if !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), `"reed.shell"`) {
 			t.Errorf("err = %q, want it to name %s and key shell", err, localFile)
 		}
 	})

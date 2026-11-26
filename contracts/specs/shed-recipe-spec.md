@@ -21,7 +21,7 @@ The entry runs the lead and its advisors, when the table has any, on `MultiLLMPr
 The table is told through `Env.DiscussionTable`.
 It carries the row's gates on the lead.
 The recipe file names `DiscussionWrite`,
-and the built row carries that engine whatever `discussion_advisors` and `discussion_lenses` hold.
+and the built row carries that engine whatever `loom.discussion.advisors` and `loom.discussion.lenses` hold.
 `Plan-Write` is the second such row, and it ships as its own `PlanWrite` entry for the same reason.
 Its seat table is resolved from the `plan` role's own model-spec and timeout rather than from recipe strings.
 Building it needs a `*lymcwd.Location` to build the plan paths.

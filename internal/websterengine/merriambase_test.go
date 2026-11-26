@@ -78,7 +78,7 @@ func TestMerriamBase(t *testing.T) {
 		if !errors.Is(err, shuttleengine.ErrEngineNotRegistered) {
 			t.Errorf("MasterInstructionFiles() error = %v; want it to wrap ErrEngineNotRegistered", err)
 		}
-		for _, want := range []string{"master", "set master in webster.yaml"} {
+		for _, want := range []string{"master", "set webster.master in webster.yaml"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("MasterInstructionFiles() error = %q; want it to contain %q", err.Error(), want)
 			}

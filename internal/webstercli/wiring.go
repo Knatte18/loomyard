@@ -98,7 +98,8 @@ func (c *websterCLI) wire(loc *lymcwd.Location, mode preflight.Mode, cwd, stenci
 }
 
 // wireHub builds the engine stack for hub mode.
-// It loads the module configs and the model registry from the anchor path.
+// It reconciles the hub's config after a binary change.
+// It then loads the module configs and the model registry from the anchor path.
 // It builds the geometry with hubgeom, and it wires a real fabricengine.RefScanner and a lazy fabricengine.Open closure.
 //
 // stencilsDir and planDir arrive already absolute or empty, because wire made them so.
@@ -113,12 +114,13 @@ func (c *websterCLI) wireHub(loc *lymcwd.Location, stencilsDir, planDir, targetD
 	// Master runs `lym webster begin-batch <NN>` and `lym webster recover-batch <NN>` as separate processes,
 	// so their prompts are composed here.
 	// See the webstercli-resolves-the-friction-directory-in-hub-mode Shared Decision.
-	// A load error or an empty Friction key leaves it empty.
+	// A load error or an empty friction.model leaves it empty.
 	// A `lym webster` verb must never fail over an unrelated module's config, since the value is optional bookkeeping.
 	c.frictionDir = ""
+	hubgeom.ReconcileBeforeLoad(loc)
 	if loomCfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(loc), "loom"); err != nil {
 		logger.Warn("webstercli: could not load loom config; Tier 2 friction notes are disabled for this invocation", "error", err)
-	} else if loomCfg.Friction != "" {
+	} else if loomCfg.Friction.Model != "" {
 		c.frictionDir = loomengine.LoomFrictionDir(loc)
 	}
 

@@ -122,7 +122,7 @@ func validatePromptCacheTTL(key, value string) error {
 	if validPromptCacheTTLs[value] {
 		return nil
 	}
-	return fmt.Errorf("claudeengine: invalid %s %q; valid values are 5m, 1h (case-sensitive); fix it in claude.yaml with lym config claude", key, value)
+	return fmt.Errorf("claudeengine: invalid %s %q; valid values are 5m, 1h (case-sensitive); fix it in claude.yaml with lym config claude", keyName(key), value)
 }
 
 // resolvePromptCacheTTL returns the prompt-cache TTL for a strand's role.
@@ -181,15 +181,15 @@ const minKeepWarmCap = 60 * time.Second
 func checkKeepWarmCap(key, value string, lifetime time.Duration) (time.Duration, error) {
 	capWait, err := time.ParseDuration(value)
 	if err != nil {
-		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must parse as a Go duration; fix it in claude.yaml with lym config claude", key, value)
+		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must parse as a Go duration; fix it in claude.yaml with lym config claude", keyName(key), value)
 	}
 	switch {
 	case capWait < minKeepWarmCap:
-		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must be at least %s; fix it in claude.yaml with lym config claude", key, value, minKeepWarmCap)
+		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must be at least %s; fix it in claude.yaml with lym config claude", keyName(key), value, minKeepWarmCap)
 	case capWait >= lifetime:
-		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must be below the role's prompt-cache lifetime %s; fix it in claude.yaml with lym config claude", key, value, lifetime)
+		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must be below the role's prompt-cache lifetime %s; fix it in claude.yaml with lym config claude", keyName(key), value, lifetime)
 	case capWait > longKeepWarmCap:
-		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must be at most %s; fix it in claude.yaml with lym config claude", key, value, longKeepWarmCap)
+		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must be at most %s; fix it in claude.yaml with lym config claude", keyName(key), value, longKeepWarmCap)
 	}
 	return capWait, nil
 }

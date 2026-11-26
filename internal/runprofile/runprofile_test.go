@@ -49,16 +49,16 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name:         "a removed starting profile stays removed",
-			contents:     new("light:\n  tapestry:\n    loom: {plan_max_bounces: 1}\nbroad:\n  darn:\n    loom: {code_max_bounces: 2}\n"),
+			contents:     new("light:\n  tapestry:\n    tapestry: {plan: {max_bounces: 1}}\nbroad:\n  darn:\n    loom: {code: {max_bounces: 2}}\n"),
 			wantNames:    []string{"broad", "light"},
 			wantDefaults: map[string]string{},
 		},
 		{name: "a comments-only file holds no profile", contents: new("# no profiles\n"), wantNames: []string{}, wantDefaults: map[string]string{}},
 		{name: "a profile that is not a mapping is refused", contents: new("light: 3\n"), wantRefusal: []string{`profile "light"`, "mapping of recipe name", "way forward"}},
 		{name: "a recipe block that is not a mapping is refused", contents: new("light:\n  tapestry: 3\n"), wantRefusal: []string{`profile "light"`, `recipe "tapestry"`}},
-		{name: "a profile in the old module-to-keys shape is refused", contents: new("light:\n  tapestry: {plan_max_bounces: 1}\n"), wantRefusal: []string{`profile "light"`, `recipe "tapestry"`, `module "plan_max_bounces"`, "lym config profiles"}},
+		{name: "a profile in the old module-to-keys shape is refused", contents: new("light:\n  tapestry: {max_bounces: 1}\n"), wantRefusal: []string{`profile "light"`, `recipe "tapestry"`, `module "max_bounces"`, "lym config profiles"}},
 		{name: "defaults that are not a mapping are refused", contents: new("defaults: solid\n"), wantRefusal: []string{"defaults must be a mapping", "way forward"}},
-		{name: "a profile named defaults is refused", contents: new("defaults:\n  tapestry:\n    loom: {plan_max_bounces: 1}\n"), wantRefusal: []string{`recipe "tapestry" must name a profile`}},
+		{name: "a profile named defaults is refused", contents: new("defaults:\n  tapestry:\n    tapestry: {plan: {max_bounces: 1}}\n"), wantRefusal: []string{`recipe "tapestry" must name a profile`}},
 		{name: "a default naming an unknown profile is refused", contents: new("defaults: {tapestry: heavy}\n"), wantRefusal: []string{`recipe "tapestry"`, `unknown profile "heavy"`}},
 		{name: "a default naming a profile without its recipe's block is refused", contents: new("defaults: {tapestry: docs}\ndocs:\n  darn:\n    darn: {writer: opus}\n"), wantRefusal: []string{`recipe "tapestry"`, `profile "docs"`, "no tapestry block"}},
 	}
@@ -102,7 +102,7 @@ func TestLoad(t *testing.T) {
 // Each profile's motif block holds its tapestry block's Discussion perch and nothing else.
 // Each profile's arras block holds that Discussion perch's rounds and the split perch's alike, with a hard cap one above.
 //
-//testtiming:keep pins the template's per-block code_reviewer_model values, which the lookup tests over a fixture file cannot see
+//testtiming:keep pins the template's per-block code.reviewer_model values, which the lookup tests over a fixture file cannot see
 func TestTemplateLadder(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -151,24 +151,23 @@ func TestTemplateLadder(t *testing.T) {
 				if segment == "plan" {
 					module = "tapestry"
 				}
-				keys := tapestry[module].(map[string]any)
-				got[segment] = map[string]int{"max": keys[segment+"_max_bounces"].(int), "hard": keys[segment+"_hard_max_bounces"].(int)}
+				got[segment] = areaRounds(tapestry[module], segment)
 			}
 			darnKeys := darn["loom"].(map[string]any)
-			got["darn code"] = map[string]int{"max": darnKeys["code_max_bounces"].(int), "hard": darnKeys["code_hard_max_bounces"].(int)}
+			got["darn code"] = areaRounds(darnKeys, "code")
 			pawl, err := profiles.Settings(tt.profile, "pawl")
 			if err != nil {
 				t.Fatal(err)
 			}
 			pawlKeys := pawl["loom"].(map[string]any)
-			got["pawl code"] = map[string]int{"max": pawlKeys["code_max_bounces"].(int), "hard": pawlKeys["code_hard_max_bounces"].(int)}
+			got["pawl code"] = areaRounds(pawlKeys, "code")
 			want["pawl code"] = perch(tt.darnCode)
 			sampler, err := profiles.Settings(tt.profile, "sampler")
 			if err != nil {
 				t.Fatal(err)
 			}
 			samplerLoom := sampler["loom"].(map[string]any)
-			got["sampler code"] = map[string]int{"max": samplerLoom["code_max_bounces"].(int), "hard": samplerLoom["code_hard_max_bounces"].(int)}
+			got["sampler code"] = areaRounds(samplerLoom, "code")
 			want["sampler code"] = perch(tt.darnCode)
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("Settings(%s) rounds = %v; want %v", tt.profile, got, want)
@@ -177,7 +176,10 @@ func TestTemplateLadder(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantMotif := map[string]any{"loom": map[string]any{"discussion_max_bounces": tt.discussion, "discussion_hard_max_bounces": tt.discussion + 1}}
+			caps := func() map[string]any {
+				return map[string]any{"max_bounces": tt.discussion, "hard_max_bounces": tt.discussion + 1}
+			}
+			wantMotif := map[string]any{"loom": map[string]any{"discussion": caps()}}
 			if !reflect.DeepEqual(motif, wantMotif) {
 				t.Errorf("Settings(%s, motif) = %v; want %v", tt.profile, motif, wantMotif)
 			}
@@ -185,10 +187,7 @@ func TestTemplateLadder(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantArras := map[string]any{"loom": map[string]any{
-				"discussion_max_bounces": tt.discussion, "discussion_hard_max_bounces": tt.discussion + 1,
-				"split_max_bounces": tt.discussion, "split_hard_max_bounces": tt.discussion + 1,
-			}}
+			wantArras := map[string]any{"loom": map[string]any{"discussion": caps(), "split": caps()}}
 			if !reflect.DeepEqual(arras, wantArras) {
 				t.Errorf("Settings(%s, arras) = %v; want %v", tt.profile, arras, wantArras)
 			}
@@ -202,17 +201,24 @@ func TestTemplateLadder(t *testing.T) {
 			}
 			blockKeys := map[string]map[string]any{"tapestry": tapestry["loom"].(map[string]any), "darn": darnKeys, "pawl": pawlKeys, "sampler": samplerLoom}
 			for block, keys := range blockKeys {
-				fan, present := keys["code_reviewer_fan"]
+				code := keys["code"].(map[string]any)
+				fan, present := code["reviewer_fan"]
 				if wantSolo := slices.Contains(tt.solo, block); present != wantSolo || (present && fan != "") {
-					t.Errorf("Settings(%s, %s) code_reviewer_fan = %v, present %v; want %q present %v", tt.profile, block, fan, present, "", wantSolo)
+					t.Errorf("Settings(%s, %s) code.reviewer_fan = %v, present %v; want %q present %v", tt.profile, block, fan, present, "", wantSolo)
 				}
-				model, present := keys["code_reviewer_model"]
+				model, present := code["reviewer_model"]
 				if wantOpus := block == "darn"; present != wantOpus || (present && model != "opus[medium]") {
-					t.Errorf("Settings(%s, %s) code_reviewer_model = %v, present %v; want %q present %v", tt.profile, block, model, present, "opus[medium]", wantOpus)
+					t.Errorf("Settings(%s, %s) code.reviewer_model = %v, present %v; want %q present %v", tt.profile, block, model, present, "opus[medium]", wantOpus)
 				}
 			}
 		})
 	}
+}
+
+// areaRounds returns the bounce budget and hard cap that the area of a block's module settings holds.
+func areaRounds(settings any, area string) map[string]int {
+	keys := settings.(map[string]any)[area].(map[string]any)
+	return map[string]int{"max": keys["max_bounces"].(int), "hard": keys["hard_max_bounces"].(int)}
 }
 
 // TestTemplateDocsProfile pins the template's darn-only docs profile:
@@ -220,7 +226,7 @@ func TestTemplateLadder(t *testing.T) {
 // It has one solo Code round with its hard cap and an Opus medium reviewer, and drift scope off.
 // Drift scope is off since a docs task changes no captured value.
 //
-//testtiming:keep pins the docs darn block's full settings map, including its code_reviewer_model, which the lookup tests over a fixture file cannot see
+//testtiming:keep pins the docs darn block's full settings map, including its code.reviewer_model, which the lookup tests over a fixture file cannot see
 func TestTemplateDocsProfile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -235,7 +241,7 @@ func TestTemplateDocsProfile(t *testing.T) {
 	want := map[string]any{
 		"darn":  map[string]any{"writer": "sonnet[medium]", "report_dir": "docs/research"},
 		"drift": map[string]any{"scope": "off"},
-		"loom":  map[string]any{"code_max_bounces": 1, "code_hard_max_bounces": 2, "code_reviewer_fan": "", "code_reviewer_model": "opus[medium]"},
+		"loom":  map[string]any{"code": map[string]any{"max_bounces": 1, "hard_max_bounces": 2, "reviewer_fan": "", "reviewer_model": "opus[medium]"}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Settings(docs, darn) = %v; want %v", got, want)
@@ -250,7 +256,7 @@ func TestTemplateDocsProfile(t *testing.T) {
 func TestFormerRecipeNameRefusal(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	profiles, err := runprofile.Load(configengine.Dirs{Board: boardWithProfiles(t, "defaults: {loom: light}\nlight:\n  loom:\n    loom: {plan_max_bounces: 1}\n")})
+	profiles, err := runprofile.Load(configengine.Dirs{Board: boardWithProfiles(t, "defaults: {loom: light}\nlight:\n  loom:\n    tapestry: {plan: {max_bounces: 1}}\n")})
 	if err != nil {
 		t.Fatal(err)
 	}

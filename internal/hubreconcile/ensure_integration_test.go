@@ -700,7 +700,7 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 // The logger's output is process-global, so this test does not call t.Parallel.
 func TestEnsureOrWarn_WarnsWithTheWayForward(t *testing.T) {
 	tiergate.Require(t, 1)
-	const wayForwardText = "start verb to retry the reconcile"
+	const wayForwardText = "re-run this verb once the reconcile can finish, or run a start verb to retry it"
 
 	tests := []struct {
 		name string
@@ -886,6 +886,7 @@ func TestEnsure_UnreachableBoardRemoteSkipsHubWideConfigAndLeavesStampAbsent(t *
 	logs := logcapture.Capture(t)
 	geom := geometryOf(h)
 	deleteBoardLoomDefault(t, h)
+	commitOldRunSettings(t, h)
 	gitkit.Git(t, h.BoardDir(), "remote", "set-url", "origin", filepath.Join(t.TempDir(), "missing.git"))
 	before := commitCount(t, h.BoardDir())
 
@@ -902,6 +903,82 @@ func TestEnsure_UnreachableBoardRemoteSkipsHubWideConfigAndLeavesStampAbsent(t *
 	}
 	if _, found := stampKey(t, geom); found {
 		t.Errorf("stamp written although the hub-wide config was skipped")
+	}
+	if got := boardRunSettings(t, h); !strings.Contains(got, "code_max_bounces") {
+		t.Errorf("entry run_settings = %s; want the old key kept, since a skipped hub-wide write runs no carry", got)
+	}
+}
+
+// commitOldRunSettings commits a board whose one entry holds a run_settings object with an old loom key.
+func commitOldRunSettings(t *testing.T, h *hubforge.Hub) {
+	t.Helper()
+	gitkit.CommitFile(t, h.BoardDir(), "board.json", `{"version":1,"entries":[{"id":0,"slug":"rs","title":"RS","kind":"task","labels":["bug"],`+
+		`"run_settings":{"loom":{"code_max_bounces":2},"drift":{"scope":"full"}}}]}`, "fixture: an entry with an old run_settings key")
+}
+
+// boardRunSettings returns the run_settings of the board's first entry, as compact JSON with sorted keys.
+func boardRunSettings(t *testing.T, h *hubforge.Hub) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(h.BoardDir(), "board.json"))
+	if err != nil {
+		t.Fatalf("read board.json: %v", err)
+	}
+	var board struct {
+		Entries []struct {
+			RunSettings map[string]any `json:"run_settings"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(data, &board); err != nil || len(board.Entries) == 0 {
+		t.Fatalf("parse board.json %s: %v", data, err)
+	}
+	settings, err := json.Marshal(board.Entries[0].RunSettings)
+	if err != nil {
+		t.Fatalf("marshal run_settings: %v", err)
+	}
+	return string(settings)
+}
+
+// The installed notifier and the detached board sync are process-global, so this test does not call t.Parallel.
+func TestEnsure_CarriesMovedRunSettingsOnTheBoard(t *testing.T) {
+	tiergate.Require(t, 1)
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	geom := geometryOf(h)
+	commitOldRunSettings(t, h)
+	gitkit.Git(t, h.BoardDir(), "remote", "remove", "origin")
+	recordBoardSyncs(t)
+	var mailed []string
+	t.Cleanup(hubreconcile.InstallNotifier(func(_, line string) (bool, error) {
+		mailed = append(mailed, line)
+		return true, nil
+	}))
+	const carried = `{"drift":{"scope":"full"},"loom":{"code":{"max_bounces":2}}}`
+	const old = `{"drift":{"scope":"full"},"loom":{"code_max_bounces":2}}`
+
+	if err := hubreconcile.EnsureFailingRunSettingsCarry(geom, hubreconcile.Options{}); err != nil {
+		t.Fatalf("EnsureFailingRunSettingsCarry: %v", err)
+	}
+	if got := boardRunSettings(t, h); got != old {
+		t.Errorf("run_settings after a failed carry = %s; want %s, rolled back", got, old)
+	}
+	if _, found := stampKey(t, geom); found {
+		t.Errorf("stamp written although the carry failed")
+	}
+
+	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+	if got := boardRunSettings(t, h); got != carried {
+		t.Errorf("run_settings = %s; want %s", got, carried)
+	}
+	var notices []string
+	for _, line := range mailed {
+		if strings.Contains(line, "run_settings keys to their new names") {
+			notices = append(notices, line)
+		}
+	}
+	if want := "rs moved loom.code_max_bounces to loom.code.max_bounces"; len(notices) != 1 || !strings.Contains(notices[0], want) {
+		t.Errorf("run_settings notices = %q; want one holding %q", notices, want)
 	}
 }
 
@@ -937,14 +1014,14 @@ func TestEnsure_CarriesATemplateChangeIntoASeedOnlyConfigFile(t *testing.T) {
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	geom := geometryOf(h)
-	const lightDarn = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_model: \"opus[medium]\"}\n"
-	const lightDarnSolo = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: \"\", code_reviewer_model: \"opus[medium]\"}\n"
-	const solidDarn = "  darn:\n    loom: {code_max_bounces: 2, code_hard_max_bounces: 3, code_reviewer_model: \"opus[medium]\"}\n"
-	const solidDarnBase = "  darn:\n    loom: {code_max_bounces: 3, code_hard_max_bounces: 4, code_reviewer_model: \"opus[medium]\"}\n"
-	const solidDarnTuned = "  darn:\n    loom: {code_max_bounces: 5, code_hard_max_bounces: 4, code_reviewer_model: \"opus[medium]\"}\n"
-	const solidDarnFollowed = "  darn:\n    loom: {code_max_bounces: 5, code_hard_max_bounces: 3, code_reviewer_model: \"opus[medium]\"}\n"
+	const lightDarn = "  darn:\n    loom: {code: {max_bounces: 1, hard_max_bounces: 2, reviewer_model: \"opus[medium]\"}}\n"
+	const lightDarnSolo = "  darn:\n    loom: {code: {max_bounces: 1, hard_max_bounces: 2, reviewer_fan: \"\", reviewer_model: \"opus[medium]\"}}\n"
+	const solidDarn = "  darn:\n    loom: {code: {max_bounces: 2, hard_max_bounces: 3, reviewer_model: \"opus[medium]\"}}\n"
+	const solidDarnBase = "  darn:\n    loom: {code: {max_bounces: 3, hard_max_bounces: 4, reviewer_model: \"opus[medium]\"}}\n"
+	const solidDarnTuned = "  darn:\n    loom: {code: {max_bounces: 5, hard_max_bounces: 4, reviewer_model: \"opus[medium]\"}}\n"
+	const solidDarnFollowed = "  darn:\n    loom: {code: {max_bounces: 5, hard_max_bounces: 3, reviewer_model: \"opus[medium]\"}}\n"
 	olderTemplate := strings.Replace(strings.Replace(runprofile.ConfigTemplate(), lightDarn, lightDarnSolo, 1), solidDarn, solidDarnBase, 1)
-	hubProfiles := strings.Replace(olderTemplate, solidDarnBase, solidDarnTuned, 1)
+	hubProfiles := strings.Replace(olderTemplate, solidDarnBase, solidDarnTuned, 1) + "mine:\n  darn:\n    loom: {code_max_bounces: 3}\n"
 	gitkit.CommitFile(t, h.BoardDir(), configengine.ConfigFileRel("profiles"), hubProfiles, "fixture: profiles seeded from an older template, with solid's darn rounds tuned")
 	gitkit.CommitFile(t, h.BoardDir(), configengine.TemplateBaseFileRel("profiles"), olderTemplate, "fixture: the older template as the profiles' base")
 	gitkit.Git(t, h.BoardDir(), "remote", "remove", "origin")
@@ -966,8 +1043,11 @@ func TestEnsure_CarriesATemplateChangeIntoASeedOnlyConfigFile(t *testing.T) {
 	if strings.Contains(string(got), lightDarnSolo) || !strings.Contains(string(got), lightDarn) {
 		t.Errorf("board profiles.yaml = %q; want light's darn block to follow the template and drop its solo fan", got)
 	}
+	if strings.Contains(string(got), "code_max_bounces") {
+		t.Errorf("board profiles.yaml = %q; want the operator's added profile's old key nested", got)
+	}
 	if !strings.Contains(string(got), solidDarnFollowed) {
-		t.Errorf("board profiles.yaml = %q; want the operator's tuned solid code_max_bounces kept and the untouched code_hard_max_bounces updated", got)
+		t.Errorf("board profiles.yaml = %q; want the operator's tuned solid code.max_bounces kept and the untouched code.hard_max_bounces updated", got)
 	}
 	if base, err := os.ReadFile(configengine.TemplateBaseFile(h.BoardDir(), "profiles")); err != nil || !strings.HasSuffix(string(base), runprofile.ConfigTemplate()) {
 		t.Errorf("board profiles.template-base = %q, %v; want it to end with the running template", base, err)
@@ -980,9 +1060,10 @@ func TestEnsure_CarriesATemplateChangeIntoASeedOnlyConfigFile(t *testing.T) {
 	}
 	assertClean(t, h.BoardDir())
 	for _, want := range []string{
-		"profiles.yaml removed light.darn.loom.code_reviewer_fan",
-		"profiles.yaml updated solid.darn.loom.code_hard_max_bounces: 4 -> 3",
-		"profiles.yaml kept the hub's solid.darn.loom.code_max_bounces: file 5, template 2",
+		"profiles.yaml removed light.darn.loom.code.reviewer_fan",
+		"profiles.yaml updated solid.darn.loom.code.hard_max_bounces: 4 -> 3",
+		"profiles.yaml kept the hub's solid.darn.loom.code.max_bounces: file 5, template 2",
+		"profiles.yaml mine.darn moved loom.code_max_bounces to loom.code.max_bounces",
 	} {
 		if !strings.Contains(strings.Join(mailed, "\n"), want) {
 			t.Errorf("orch mail = %q; want a reconcile notice naming %q", mailed, want)
@@ -999,6 +1080,103 @@ func TestEnsure_CarriesATemplateChangeIntoASeedOnlyConfigFile(t *testing.T) {
 	}
 	if len(mailed) != mailedByFirstWalk {
 		t.Errorf("orch mail after the second walk = %q; want nothing beyond the first walk's", mailed[mailedByFirstWalk:])
+	}
+}
+
+// The installed notifier and the detached board sync are process-global, so this test does not call t.Parallel.
+func TestEnsure_MovesOldConfigKeysAndMailsTheMoves(t *testing.T) {
+	tiergate.Require(t, 1)
+
+	h := newStaleHub(t)
+	geom := geometryOf(h)
+	const oldKey = "code_max_bounces: 2\n"
+	gitkit.CommitFile(t, h.BoardDir(), loomDefaultRel, oldKey, "fixture: an old loom key in the hub base")
+	gitkit.Git(t, h.BoardDir(), "remote", "remove", "origin")
+	writeOldKey := func(path string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
+		}
+		if err := os.WriteFile(path, []byte(oldKey), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+	primeFile := configengine.ConfigFile(h.PrimeWorktree(), "loom")
+	pairLocal := configengine.LocalFile(h.PairCodeWorktree("pair-a"), "loom")
+	writeOldKey(primeFile)
+	writeOldKey(pairLocal)
+	recordBoardSyncs(t)
+	var mailed []string
+	t.Cleanup(hubreconcile.InstallNotifier(func(_, line string) (bool, error) {
+		mailed = append(mailed, line)
+		return true, nil
+	}))
+	moveNotices := func() []string {
+		var notices []string
+		for _, line := range mailed {
+			if strings.Contains(line, "moved config keys to their new names") {
+				notices = append(notices, line)
+			}
+		}
+		return notices
+	}
+
+	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+
+	boardFile := configengine.ConfigFile(h.BoardDir(), "loom")
+	for _, path := range []string{boardFile, primeFile, pairLocal} {
+		got, err := os.ReadFile(path)
+		if err != nil || strings.Contains(string(got), "code_max_bounces") || !strings.Contains(string(got), "max_bounces: 2") {
+			t.Errorf("%s = %q, %v; want the old key nested", path, got, err)
+		}
+	}
+	assertClean(t, h.BoardDir())
+	assertClean(t, h.PrimeRecords())
+	notices := moveNotices()
+	if len(notices) != 1 {
+		t.Fatalf("move notices = %q; want one", notices)
+	}
+	for _, path := range []string{boardFile, primeFile, pairLocal} {
+		if want := path + " moved loom.code_max_bounces to loom.code.max_bounces"; !strings.Contains(notices[0], want) {
+			t.Errorf("move notice = %q; want it to hold %q", notices[0], want)
+		}
+	}
+
+	if err := os.Remove(geom.StampPath()); err != nil {
+		t.Fatalf("remove the stamp: %v", err)
+	}
+	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
+		t.Fatalf("second Ensure: %v", err)
+	}
+	if got := moveNotices(); len(got) != 1 {
+		t.Errorf("move notices after the second walk = %q; want nothing new", got)
+	}
+
+	writeOldKey(pairLocal)
+	if err := hubreconcile.Ensure(geom, hubreconcile.Options{Pair: filepath.Join(h.Path, "pair-a")}); err != nil {
+		t.Fatalf("pair Ensure: %v", err)
+	}
+	if got, err := os.ReadFile(pairLocal); err != nil || strings.Contains(string(got), "code_max_bounces") {
+		t.Errorf("%s = %q, %v after the pair call; want the old key moved", pairLocal, got, err)
+	}
+	if got := moveNotices(); len(got) != 1 {
+		t.Errorf("move notices after the pair call = %q; want the pair call to mail nothing", got)
+	}
+
+	// A walk that fails in a pair, after the hub-wide commit, still mails what it moved.
+	gitkit.CommitFile(t, h.BoardDir(), loomDefaultRel, oldKey, "fixture: an old loom key in the hub base again")
+	gitkit.CommitFile(t, h.PairRecordsSibling("pair-a"), configengine.ConfigFileRel("loom"), "a: [unclosed\n", "fixture: broken loom.yaml")
+	if err := os.Remove(geom.StampPath()); err != nil {
+		t.Fatalf("remove the stamp: %v", err)
+	}
+	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err == nil {
+		t.Fatal("Ensure over a broken pair config = nil; want the walk to fail")
+	}
+	notices = moveNotices()
+	if want := boardFile + " moved loom.code_max_bounces to loom.code.max_bounces"; len(notices) != 2 || !strings.Contains(notices[1], want) {
+		t.Errorf("move notices after the failed walk = %q; want a second one holding %q", notices, want)
 	}
 }
 

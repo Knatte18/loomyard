@@ -284,7 +284,7 @@ func (d *daemon) taskLimitHolds(headroom int, now time.Time) bool {
 	held := found && limit.Headroom() < headroom
 	switch {
 	case held && !d.taskLimitHeld:
-		d.logLine(now, fmt.Sprintf("hold starts: %d of %d tasks in %s, below task_headroom %d", limit.Current, limit.Max, limit.Cgroup, headroom))
+		d.logLine(now, fmt.Sprintf("hold starts: %d of %d tasks in %s, below %s %d", limit.Current, limit.Max, limit.Cgroup, keyName(taskHeadroomKey), headroom))
 	case !held && d.taskLimitHeld && found:
 		d.logLine(now, fmt.Sprintf("starts resume: %d of %d tasks in %s", limit.Current, limit.Max, limit.Cgroup))
 	case !held && d.taskLimitHeld:

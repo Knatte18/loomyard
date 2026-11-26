@@ -3,7 +3,16 @@
 
 package hubreconcile
 
-import "github.com/Knatte18/loomyard/internal/configreg"
+import (
+	"errors"
+
+	"github.com/Knatte18/loomyard/internal/configreg"
+)
+
+// EnsureFailingRunSettingsCarry runs the reconcile walk and fails the run_settings carry once it has saved board.json.
+func EnsureFailingRunSettingsCarry(geom Geometry, opts Options) error {
+	return ensure(geom, opts, walkHooks{afterRunSettingsCarrySave: func() error { return errors.New("the carry is made to fail") }})
+}
 
 // SetSpawnBoardSyncForTest replaces the detached board sync that the hub-wide reconcile spawns.
 // It returns a function that reinstates the previous sync.

@@ -11,7 +11,7 @@ The run ends on the pull request's state, not on this session, so after each ans
 ## Your parent's review
 
 Your parent orch may review the pull request.
-lym asks it on its own when the hub or the task turns `pr_review_ask_parent` on;
+lym asks it on its own when the hub or the task turns `loom.pr.review_ask_parent` on;
 otherwise ask it only when the operator asks you to, with `lym creel post --parent --expect-reply`, naming the pull request.
 Its answer arrives as creel mail: either that it is satisfied, or its findings.
 Run `lym loom pr-findings <file>` on its findings first, as the section above says, then fix them as you would the operator's requests, commit, and tell the operator in this pane what you changed.

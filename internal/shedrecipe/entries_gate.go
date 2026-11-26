@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -37,7 +38,7 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // "plan" requires env.AnchorPath, env.WorktreeRoot and a non-nil env.PlanIndex;
 // it returns loomshed.NewPlanGate over them;
 // "parts" requires env.AnchorPath, env.WorktreeRoot, env.DecisionRecordPath and a non-nil env.Setting;
-// it returns loomshed.NewPartsGate over them, capped by the tapestry.parts_max setting;
+// it returns loomshed.NewPartsGate over them, capped by the tapestry.parts.max setting;
 // "raddle" requires the absolute env.RaddleWrite.Check.ProposalPath and env.RaddleWrite.Check.RecordPath;
 // it also requires the non-nil env.RaddleWrite.Check.Board and env.RaddleWrite.Deps.StoreCold;
 // it returns loomshed.NewRaddleGate over them;
@@ -100,7 +101,7 @@ func resolveRowGateSpec(entry, row string, cfg Config, env Env) (shuttleengine.G
 	if raw, ok := cfg["gate_key"]; ok {
 		named, isString := raw.(string)
 		if !isString {
-			return nil, fmt.Errorf("shedrecipe: %s: row %q config key %q must be a string, got %T; way forward: set %q to the name of a gate.yaml key, a string, or remove it to run the key named for the row", entry, row, "gate_key", raw, "gate_key")
+			return nil, fmt.Errorf("shedrecipe: %s: row %q config key %q must be a string, got %T; way forward: set %q to the name of a key of %s, a string, or remove it to run the key named for the row", entry, row, "gate_key", raw, "gate_key", configengine.KeyName("gate", "gates"))
 		}
 		if named != "" {
 			gateKey = named
@@ -193,7 +194,7 @@ func planContextOf(env Env) loomshed.PlanContext {
 
 // resolvePlainGateClosure resolves the validator names of the gate vocabulary.
 // The "parts" gate requires the absolute env.AnchorPath and env.DecisionRecordPath and a non-nil env.Setting.
-// It reads its cap from the tapestry.parts_max setting.
+// It reads its cap from the tapestry.parts.max setting.
 // The "verify" gate is told env.VerifyHold, which holds its verify under a pause, and env.VerifyBudget.
 func resolvePlainGateClosure(entry, row, gateKey string, index int, name string, env Env) (shuttleengine.Gate, error) {
 	switch name {
@@ -257,13 +258,13 @@ func resolvePlainGateClosure(entry, row, gateKey string, index int, name string,
 		if err := requireSeam(entry, "Setting", env.Setting); err != nil {
 			return nil, err
 		}
-		value, err := env.Setting("tapestry", "parts_max")
+		value, err := env.Setting("tapestry", "parts.max")
 		if err != nil {
-			return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: setting tapestry.parts_max: %w", entry, "gates", index, err)
+			return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: setting tapestry.parts.max: %w", entry, "gates", index, err)
 		}
 		max, ok := value.(int)
 		if !ok || max < 1 {
-			return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: setting tapestry.parts_max holds %v, want an integer of 1 or more; way forward: set tapestry.parts_max in tapestry.yaml to the most parts a parts file may hold", entry, "gates", index, value)
+			return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: setting tapestry.parts.max holds %v, want an integer of 1 or more; way forward: set tapestry.parts.max in tapestry.yaml to the most parts a parts file may hold", entry, "gates", index, value)
 		}
 		return loomshed.NewPartsGate(env.AnchorPath, env.WorktreeRoot, env.DecisionRecordPath, max), nil
 	case "raddle":

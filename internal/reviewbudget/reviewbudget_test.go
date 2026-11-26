@@ -33,18 +33,18 @@ func TestCheckResolved(t *testing.T) {
 
 	perWorktree := configengine.Spec{
 		Name:       "loom",
-		Template:   []byte("review_max_bounces: 1\nreview_hard_max_bounces: 3\nreview_amend_max_bounces: 1\nplan_max_bounces: ~\nplan_hard_max_bounces: 0\n"),
+		Template:   []byte("review:\n  max_bounces: 1\n  hard_max_bounces: 3\n  amend_max_bounces: 1\nplan:\n  max_bounces: ~\n  hard_max_bounces: 0\n"),
 		Categories: Categories([]string{"plan"}),
 	}
 	hubWide := configengine.Spec{
 		Name:       "darn",
-		Template:   []byte("review_max_bounces: 1\nreview_hard_max_bounces: 3\n"),
+		Template:   []byte("review:\n  max_bounces: 1\n  hard_max_bounces: 3\n"),
 		HubWide:    true,
 		Categories: Categories(nil),
 	}
 	tapestry := configengine.Spec{
 		Name:       "tapestry",
-		Template:   []byte("plan_max_bounces: ~\nplan_hard_max_bounces: 0\n"),
+		Template:   []byte("plan:\n  max_bounces: ~\n  hard_max_bounces: 0\n"),
 		Categories: Categories([]string{"plan"}),
 	}
 	plan := []string{"plan"}
@@ -72,31 +72,31 @@ func TestCheckResolved(t *testing.T) {
 		{
 			name:     "clean set with a null perch budget resolves to the run-wide caps",
 			spec:     perWorktree,
-			layers:   map[configengine.Layer]string{configengine.LayerDefault: "review_max_bounces: 2\nreview_hard_max_bounces: 3\n"},
+			layers:   map[configengine.Layer]string{configengine.LayerDefault: "review: {max_bounces: 2, hard_max_bounces: 3}\n"},
 			values:   Values{RunSoft: 2, RunHard: 3, Perches: plan, PerchSoft: map[string]*int{"plan": nil}},
 			wantSoft: Caps{SoftKey: RunSoftKey, Soft: 2, HardKey: RunHardKey, Hard: 3},
 		},
 		{
 			name:     "own zero budget is zero rounds under the perch's own key",
 			spec:     perWorktree,
-			layers:   map[configengine.Layer]string{configengine.LayerDefault: "review_max_bounces: 2\nreview_hard_max_bounces: 3\nplan_max_bounces: 0\n"},
+			layers:   map[configengine.Layer]string{configengine.LayerDefault: "review: {max_bounces: 2, hard_max_bounces: 3}\nplan: {max_bounces: 0}\n"},
 			values:   Values{RunSoft: 2, RunHard: 3, Perches: plan, PerchSoft: map[string]*int{"plan": intPtr(0)}},
-			wantSoft: Caps{SoftKey: "plan_max_bounces", Soft: 0, HardKey: RunHardKey, Hard: 3},
+			wantSoft: Caps{SoftKey: "plan.max_bounces", Soft: 0, HardKey: RunHardKey, Hard: 3},
 		},
 		{
 			name:     "hard cap equal to the soft cap passes",
 			spec:     perWorktree,
-			layers:   map[configengine.Layer]string{configengine.LayerDefault: "review_max_bounces: 3\nreview_hard_max_bounces: 3\n"},
+			layers:   map[configengine.Layer]string{configengine.LayerDefault: "review: {max_bounces: 3, hard_max_bounces: 3}\n"},
 			values:   Values{RunSoft: 3, RunHard: 3, Perches: plan},
 			wantSoft: Caps{SoftKey: RunSoftKey, Soft: 3, HardKey: RunHardKey, Hard: 3},
 		},
 		{
 			name:   "negative run-wide budget from the local layer names the local route",
 			spec:   perWorktree,
-			layers: map[configengine.Layer]string{configengine.LayerLocal: "review_max_bounces: -1\n"},
+			layers: map[configengine.Layer]string{configengine.LayerLocal: "review: {max_bounces: -1}\n"},
 			values: Values{RunSoft: -1, RunHard: 3, Perches: plan},
 			wantParts: []string{
-				`loom config key "review_max_bounces": must not be negative, got -1; set it to 0 for no review round, or to a positive integer`,
+				`config key "loom.review.max_bounces": must not be negative, got -1; set it to 0 for no review round, or to a positive integer`,
 				route(localRoute, RunSoftKey),
 				resumeTail,
 			},
@@ -104,21 +104,21 @@ func TestCheckResolved(t *testing.T) {
 		{
 			name:   "negative perch budget from the worktree layer names the worktree route",
 			spec:   perWorktree,
-			layers: map[configengine.Layer]string{configengine.LayerWorktree: "plan_max_bounces: -2\n"},
+			layers: map[configengine.Layer]string{configengine.LayerWorktree: "plan: {max_bounces: -2}\n"},
 			values: Values{RunSoft: 1, RunHard: 3, Perches: plan, PerchSoft: map[string]*int{"plan": intPtr(-2)}},
 			wantParts: []string{
-				`loom config key "plan_max_bounces": must not be negative, got -2; set it to 0 for no review round, to a positive integer, or to null to take review_max_bounces`,
-				route(worktreeRoute, "plan_max_bounces"),
+				`config key "loom.plan.max_bounces": must not be negative, got -2; set it to 0 for no review round, to a positive integer, or to null to take loom.review.max_bounces`,
+				route(worktreeRoute, "plan.max_bounces"),
 				resumeTail,
 			},
 		},
 		{
 			name:   "negative amendment allowance from the local layer names the local route",
 			spec:   perWorktree,
-			layers: map[configengine.Layer]string{configengine.LayerLocal: "review_amend_max_bounces: -1\n"},
+			layers: map[configengine.Layer]string{configengine.LayerLocal: "review: {amend_max_bounces: -1}\n"},
 			values: Values{RunSoft: 1, RunHard: 3, RunAmend: -1, Perches: plan},
 			wantParts: []string{
-				`loom config key "review_amend_max_bounces": must not be negative, got -1; set it to 0 to settle every amendment with no review round, or to a positive integer`,
+				`config key "loom.review.amend_max_bounces": must not be negative, got -1; set it to 0 to settle every amendment with no review round, or to a positive integer`,
 				route(localRoute, RunAmendKey),
 				resumeTail,
 			},
@@ -126,10 +126,10 @@ func TestCheckResolved(t *testing.T) {
 		{
 			name:   "run-wide hard cap below one from the default layer names the prime route",
 			spec:   perWorktree,
-			layers: map[configengine.Layer]string{configengine.LayerDefault: "review_hard_max_bounces: 0\n"},
+			layers: map[configengine.Layer]string{configengine.LayerDefault: "review: {hard_max_bounces: 0}\n"},
 			values: Values{RunSoft: 1, RunHard: 0, Perches: plan},
 			wantParts: []string{
-				`loom config key "review_hard_max_bounces": must be at least 1, got 0`,
+				`config key "loom.review.hard_max_bounces": must be at least 1, got 0`,
 				route(defaultRoute, RunHardKey),
 				resumeTail,
 			},
@@ -137,33 +137,33 @@ func TestCheckResolved(t *testing.T) {
 		{
 			name:   "run-wide hard cap of a hub-wide module names the prime command",
 			spec:   hubWide,
-			layers: map[configengine.Layer]string{configengine.LayerDefault: "review_hard_max_bounces: 0\n"},
+			layers: map[configengine.Layer]string{configengine.LayerDefault: "review: {hard_max_bounces: 0}\n"},
 			values: Values{RunSoft: 1, RunHard: 0},
 			wantParts: []string{
-				`darn config key "review_hard_max_bounces": must be at least 1, got 0`,
+				`config key "darn.review.hard_max_bounces": must be at least 1, got 0`,
 				route(hubRoute, RunHardKey),
 			},
 		},
 		{
 			name:   "negative perch hard cap names the take-the-run-wide wording",
 			spec:   perWorktree,
-			layers: map[configengine.Layer]string{configengine.LayerLocal: "plan_hard_max_bounces: -1\n"},
+			layers: map[configengine.Layer]string{configengine.LayerLocal: "plan: {hard_max_bounces: -1}\n"},
 			values: Values{RunSoft: 1, RunHard: 3, Perches: plan, PerchHard: map[string]int{"plan": -1}},
 			wantParts: []string{
-				`loom config key "plan_hard_max_bounces": must not be negative, got -1; set it to 0 to take review_hard_max_bounces, or to a positive integer`,
-				route(localRoute, "plan_hard_max_bounces"),
+				`config key "loom.plan.hard_max_bounces": must not be negative, got -1; set it to 0 to take loom.review.hard_max_bounces, or to a positive integer`,
+				route(localRoute, "plan.hard_max_bounces"),
 			},
 		},
 		{
 			name: "hard cap below a local soft cap names the local and the hub route",
 			spec: perWorktree,
 			layers: map[configengine.Layer]string{
-				configengine.LayerDefault: "review_hard_max_bounces: 3\n",
-				configengine.LayerLocal:   "review_max_bounces: 5\n",
+				configengine.LayerDefault: "review: {hard_max_bounces: 3}\n",
+				configengine.LayerLocal:   "review: {max_bounces: 5}\n",
 			},
 			values: Values{RunSoft: 5, RunHard: 3, Perches: plan},
 			wantParts: []string{
-				`loom config key "review_hard_max_bounces": resolved hard cap 3 is below "review_max_bounces"'s resolved soft cap 5`,
+				`config key "loom.review.hard_max_bounces": resolved hard cap 3 is below "loom.review.max_bounces"'s resolved soft cap 5`,
 				"raise the hard cap: " + route(defaultRoute, RunHardKey),
 				"or lower the soft cap: " + route(localRoute, RunSoftKey),
 				resumeTail,
@@ -173,12 +173,12 @@ func TestCheckResolved(t *testing.T) {
 			name: "run-wide pair of a hub-wide module is checked when no perch is listed",
 			spec: hubWide,
 			layers: map[configengine.Layer]string{
-				configengine.LayerDefault: "review_hard_max_bounces: 3\n",
-				configengine.LayerLocal:   "review_max_bounces: 5\n",
+				configengine.LayerDefault: "review: {hard_max_bounces: 3}\n",
+				configengine.LayerLocal:   "review: {max_bounces: 5}\n",
 			},
 			values: Values{RunSoft: 5, RunHard: 3},
 			wantParts: []string{
-				`darn config key "review_hard_max_bounces": resolved hard cap 3 is below "review_max_bounces"'s resolved soft cap 5`,
+				`config key "darn.review.hard_max_bounces": resolved hard cap 3 is below "darn.review.max_bounces"'s resolved soft cap 5`,
 				"raise the hard cap: " + route(hubRoute, RunHardKey),
 				"or lower the soft cap: " + route("run \"lym config darn --layer local --set %s=<n>\" in the task worktree", RunSoftKey),
 			},
@@ -187,15 +187,15 @@ func TestCheckResolved(t *testing.T) {
 			name: "plan perch hard cap below an inherited run-wide soft cap names tapestry for the hard cap and loom for the soft cap",
 			spec: tapestry,
 			layers: map[configengine.Layer]string{
-				configengine.LayerDefault: "plan_hard_max_bounces: 2\n",
+				configengine.LayerDefault: "plan: {hard_max_bounces: 2}\n",
 			},
 			runWideLayers: map[configengine.Layer]string{
-				configengine.LayerLocal: "review_max_bounces: 5\n",
+				configengine.LayerLocal: "review: {max_bounces: 5}\n",
 			},
 			values: Values{RunSoft: 5, RunHard: 4, Perches: plan, PerchHard: map[string]int{"plan": 2}, RunWideSpec: perWorktree},
 			wantParts: []string{
-				`tapestry config key "plan_hard_max_bounces": resolved hard cap 2 is below "review_max_bounces"'s resolved soft cap 5`,
-				"raise the hard cap: " + route(tapestryDefaultRoute, "plan_hard_max_bounces"),
+				`config key "tapestry.plan.hard_max_bounces": resolved hard cap 2 is below "loom.review.max_bounces"'s resolved soft cap 5`,
+				"raise the hard cap: " + route(tapestryDefaultRoute, "plan.hard_max_bounces"),
 				"or lower the soft cap: " + route(localRoute, RunSoftKey),
 				resumeTail,
 			},
@@ -204,16 +204,16 @@ func TestCheckResolved(t *testing.T) {
 			name: "plan perch budget above the run-wide hard cap names loom for the hard cap and tapestry for the soft cap",
 			spec: tapestry,
 			layers: map[configengine.Layer]string{
-				configengine.LayerDefault: "plan_max_bounces: 5\n",
+				configengine.LayerDefault: "plan: {max_bounces: 5}\n",
 			},
 			runWideLayers: map[configengine.Layer]string{
-				configengine.LayerDefault: "review_hard_max_bounces: 4\n",
+				configengine.LayerDefault: "review: {hard_max_bounces: 4}\n",
 			},
 			values: Values{RunSoft: 3, RunHard: 4, Perches: plan, PerchSoft: map[string]*int{"plan": intPtr(5)}, RunWideSpec: perWorktree},
 			wantParts: []string{
-				`loom config key "review_hard_max_bounces": resolved hard cap 4 is below "plan_max_bounces"'s resolved soft cap 5`,
+				`config key "loom.review.hard_max_bounces": resolved hard cap 4 is below "tapestry.plan.max_bounces"'s resolved soft cap 5`,
 				"raise the hard cap: " + route(defaultRoute, RunHardKey),
-				"or lower the soft cap: " + route(tapestryDefaultRoute, "plan_max_bounces"),
+				"or lower the soft cap: " + route(tapestryDefaultRoute, "plan.max_bounces"),
 				resumeTail,
 			},
 		},
@@ -262,34 +262,37 @@ func TestCheckLocal(t *testing.T) {
 
 	perches := []string{"plan", "merge"}
 	const upsert = `correct the task's run_settings with "lym board upsert"`
+	at := func(area, key string, value any) map[string]any {
+		return map[string]any{area: map[string]any{key: value}}
+	}
 	tests := []struct {
 		name    string
 		set     map[string]any
 		perches []string
 		want    string
 	}{
-		{name: "run-wide zero is accepted", set: map[string]any{"review_max_bounces": 0}, perches: perches},
-		{name: "null perch soft key is accepted", set: map[string]any{"plan_max_bounces": nil}, perches: perches},
-		{name: "perch zero soft and hard keys are accepted", set: map[string]any{"plan_max_bounces": 0, "merge_hard_max_bounces": 0}, perches: perches},
-		{name: "non-budget keys are ignored", set: map[string]any{"verify": "x", "plan_auto_accept": "y", "other_max_bounces": -5}, perches: perches},
-		{name: "perch keys are ignored without perches", set: map[string]any{"plan_max_bounces": -1}},
-		{name: "negative run-wide budget", set: map[string]any{"review_max_bounces": -1}, perches: perches, want: `key "review_max_bounces": must be at least 0, got -1; ` + upsert},
-		{name: "negative perch budget", set: map[string]any{"merge_max_bounces": -1}, perches: perches, want: `key "merge_max_bounces": must be at least 0, got -1; ` + upsert},
-		{name: "run-wide hard cap of zero", set: map[string]any{"review_hard_max_bounces": 0}, perches: perches, want: `key "review_hard_max_bounces": must be at least 1, got 0; ` + upsert},
-		{name: "negative perch hard cap", set: map[string]any{"plan_hard_max_bounces": -1}, perches: perches, want: `key "plan_hard_max_bounces": must be at least 0, got -1; ` + upsert},
-		{name: "null run-wide budget", set: map[string]any{"review_max_bounces": nil}, perches: perches, want: `key "review_max_bounces": must be an integer`},
-		{name: "null run-wide hard cap", set: map[string]any{"review_hard_max_bounces": nil}, perches: perches, want: `key "review_hard_max_bounces": must be an integer`},
-		{name: "null perch hard cap", set: map[string]any{"plan_hard_max_bounces": nil}, perches: perches, want: `key "plan_hard_max_bounces": must be an integer`},
-		{name: "string value", set: map[string]any{"plan_max_bounces": "2"}, perches: perches, want: `key "plan_max_bounces": must be an integer`},
-		{name: "amendment allowance of zero is accepted", set: map[string]any{"review_amend_max_bounces": 0}, perches: perches},
-		{name: "negative amendment allowance", set: map[string]any{"review_amend_max_bounces": -1}, perches: perches, want: `key "review_amend_max_bounces": must be at least 0, got -1; ` + upsert},
-		{name: "null amendment allowance", set: map[string]any{"review_amend_max_bounces": nil}, perches: perches, want: `key "review_amend_max_bounces": must be an integer`},
-		{name: "string amendment allowance", set: map[string]any{"review_amend_max_bounces": "1"}, perches: perches, want: `key "review_amend_max_bounces": must be an integer`},
+		{name: "run-wide zero is accepted", set: at("review", "max_bounces", 0), perches: perches},
+		{name: "null perch soft key is accepted", set: at("plan", "max_bounces", nil), perches: perches},
+		{name: "perch zero soft and hard keys are accepted", set: map[string]any{"plan": map[string]any{"max_bounces": 0}, "merge": map[string]any{"hard_max_bounces": 0}}, perches: perches},
+		{name: "non-budget keys are ignored", set: map[string]any{"verify": "x", "plan": map[string]any{"auto_accept": "y"}, "other": map[string]any{"max_bounces": -5}}, perches: perches},
+		{name: "perch keys are ignored without perches", set: at("plan", "max_bounces", -1)},
+		{name: "negative run-wide budget", set: at("review", "max_bounces", -1), perches: perches, want: `key "loom.review.max_bounces": must be at least 0, got -1; ` + upsert},
+		{name: "negative perch budget", set: at("merge", "max_bounces", -1), perches: perches, want: `key "loom.merge.max_bounces": must be at least 0, got -1; ` + upsert},
+		{name: "run-wide hard cap of zero", set: at("review", "hard_max_bounces", 0), perches: perches, want: `key "loom.review.hard_max_bounces": must be at least 1, got 0; ` + upsert},
+		{name: "negative perch hard cap", set: at("plan", "hard_max_bounces", -1), perches: perches, want: `key "loom.plan.hard_max_bounces": must be at least 0, got -1; ` + upsert},
+		{name: "null run-wide budget", set: at("review", "max_bounces", nil), perches: perches, want: `key "loom.review.max_bounces": must be an integer`},
+		{name: "null run-wide hard cap", set: at("review", "hard_max_bounces", nil), perches: perches, want: `key "loom.review.hard_max_bounces": must be an integer`},
+		{name: "null perch hard cap", set: at("plan", "hard_max_bounces", nil), perches: perches, want: `key "loom.plan.hard_max_bounces": must be an integer`},
+		{name: "string value", set: at("plan", "max_bounces", "2"), perches: perches, want: `key "loom.plan.max_bounces": must be an integer`},
+		{name: "amendment allowance of zero is accepted", set: at("review", "amend_max_bounces", 0), perches: perches},
+		{name: "negative amendment allowance", set: at("review", "amend_max_bounces", -1), perches: perches, want: `key "loom.review.amend_max_bounces": must be at least 0, got -1; ` + upsert},
+		{name: "null amendment allowance", set: at("review", "amend_max_bounces", nil), perches: perches, want: `key "loom.review.amend_max_bounces": must be an integer`},
+		{name: "string amendment allowance", set: at("review", "amend_max_bounces", "1"), perches: perches, want: `key "loom.review.amend_max_bounces": must be an integer`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := CheckLocal(tt.set, tt.perches)
+			err := CheckLocal("loom", tt.set, tt.perches)
 			if tt.want == "" {
 				if err != nil {
 					t.Fatalf("CheckLocal() = %v, want nil", err)

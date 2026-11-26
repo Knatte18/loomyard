@@ -32,12 +32,12 @@
 # board field and the origin, which the row decides in its own call.
 #
 # Code-Bouncer, Code-Burler-Review and Code-Burler-Fix are the Code-Review perch, the same perch
-# loom's recipe runs, with the same row names, segment, run_subdir, role_prefix, rubric and loom.yaml
-# code_* keys; only its answer key differs. Its ring is the shared-segment one: the Bouncer's on_stuck
+# loom's recipe runs, with the same row names, segment, run_subdir, role_prefix, rubric and
+# loom.code.* keys; only its answer key differs. Its ring is the shared-segment one: the Bouncer's on_stuck
 # names the review row, the review row's on_stuck names the fix row, the fix row's on_stuck names the
 # Bouncer, and each Burler row's on_done names the same row as its on_stuck, since neither ever
-# returns Done. The segment's rows declare no max_bounces: their budget is loom.yaml's
-# code_max_bounces, applied by internal/loomrecipe, and a budget of 0 turns the perch off: the
+# returns Done. The segment's rows declare no max_bounces: their budget is
+# loom.code.max_bounces, applied by internal/loomrecipe, and a budget of 0 turns the perch off: the
 # Bouncer settles approved at once and Describe's entry gate skips it, so the writer's own
 # description stands.
 #
@@ -112,10 +112,10 @@ producers:
       # `darn-write` key, or the tree-scoped command for a diff wholly under the configured trees,
       # and lints the comments from the merge base on every attempt; gate_key names another key of
       # the hub's gate.yaml. The verify gate's attempts here is a
-      # placeholder: the builder stamps darn.yaml's verify_attempts at every build.
+      # placeholder: the builder stamps darn.verify_attempts at every build.
       # The verify call stops at its first failed tier. After a run whose failures are all named
       # tests, the next attempt runs those tests alone first and the full call once they pass.
-      # darn.yaml's verify_budget_min sends the parent one notice once the gate has run past it,
+      # darn.verify_budget_min sends the parent one notice once the gate has run past it,
       # and the attempts go on.
       # The decision record is no gate: Go checks it once the session returns and halts the run
       # when the writer left it invalid. The clean gate goes first, so a writer that left an
@@ -156,7 +156,7 @@ producers:
   - name: Drift-Verify
     engine: DriftVerify
     entry_gate: drift.enabled
-    # With loom.yaml's code_max_bounces at 0 the Bouncer settles approved at once, so this edge is kept.
+    # With loom.code.max_bounces at 0 the Bouncer settles approved at once, so this edge is kept.
     on_done: Code-Bouncer
     config:
       subject: decision-record
@@ -173,8 +173,8 @@ producers:
       run_subdir: code
       subject: code
       role_prefix: code
-      reviewer_fan_setting: loom.code_reviewer_fan
-      auto_accept_setting: loom.code_auto_accept
+      reviewer_fan_setting: loom.code.reviewer_fan
+      auto_accept_setting: loom.code.auto_accept
       # The subject under review is the committed diff, which artifact_paths cannot name; the key
       # names the answer key instead: the decision record. The rubric names the diff as the subject.
       artifact_paths:
@@ -205,8 +205,8 @@ producers:
       # shared run directory.
       run_subdir: code
       role_prefix: code
-      reviewer_fan_setting: loom.code_reviewer_fan
-      fixer_fan_setting: loom.code_fixer_fan
+      reviewer_fan_setting: loom.code.reviewer_fan
+      fixer_fan_setting: loom.code.fixer_fan
       # The reviewer gets the task's diff written out in per-package pieces, each small enough to
       # read whole, so it never prints or reads the whole diff at once.
       stage_diff: true
@@ -232,8 +232,8 @@ producers:
         tool-use: true
         # The round reviews code, so its seats load the hub's language skills after their own.
         language-skills: true
-        # No cluster-fan key: the row's reviewer_fan_setting and fixer_fan_setting keys name loom.yaml's
-        # code_reviewer_fan and code_fixer_fan.
+        # No cluster-fan key: the row's reviewer_fan_setting and fixer_fan_setting keys name
+        # loom.code.reviewer_fan and loom.code.fixer_fan.
 
   - name: Code-Burler-Fix
     engine: BurlerFix
@@ -245,7 +245,7 @@ producers:
     config:
       run_subdir: code
       role_prefix: code
-      fixer_fan_setting: loom.code_fixer_fan
+      fixer_fan_setting: loom.code.fixer_fan
       review_row: Code-Burler-Review
       # decisions_escalated says Code-Bouncer's escalate_decisions sends the round's decision-class
       # findings to the parent.
@@ -254,7 +254,7 @@ producers:
       # committed tree after each round, lints the comments from the merge base on every attempt,
       # and re-prompts the fix session with the findings until it passes. The row runs its own key
       # and shares no pass with the writer's; gate_key names another key of the hub's gate.yaml.
-      # Its attempts here is a placeholder: the builder stamps darn.yaml's verify_attempts at every build.
+      # Its attempts here is a placeholder: the builder stamps darn.verify_attempts at every build.
       # The clean gate goes first, so a fixer that left an uncommitted or untracked file commits or
       # deletes it before its session ends.
       gates:

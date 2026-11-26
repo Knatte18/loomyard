@@ -72,7 +72,7 @@ func TestUp_BootValidation(t *testing.T) {
 			name:      "ShellUnresolvable",
 			posixOnly: true,
 			configure: func(cfg *Config) { cfg.Shell = "lym-no-such-shell-for-this-test" },
-			wantErr:   "key shell",
+			wantErr:   "key reed.shell",
 		},
 		{
 			name:      "TmuxConfRelative",

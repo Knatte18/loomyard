@@ -198,7 +198,7 @@ func renderReviewMode(deps Deps, engine string, autonomous bool) (string, error)
 func (p *PRReview) sessionSpec(rec pullrequest.Record) (shuttleengine.Spec, error) {
 	choice, err := resolveModelChoice(p.deps.Config.PRReviewer, p.deps.Registry)
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("landingshed: %s: pr_reviewer model-spec: %w", p.name, err)
+		return shuttleengine.Spec{}, fmt.Errorf("landingshed: %s: %s model-spec: %w", p.name, keyName(prReviewerKey), err)
 	}
 	engine := p.deps.PullRequest.Sessions.EngineName(choice)
 

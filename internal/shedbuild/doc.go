@@ -27,7 +27,7 @@
 //	<operand> == <literal>
 //	<operand> != <literal>
 //
-// An operand is `module.key`, a top-level key of a registered config module.
+// An operand is `module.key`, a key of a registered config module named by its dotted path.
 // It may instead be `budget.<Segment>`, a review segment's resolved soft cap.
 // A literal is a YAML scalar; an unquoted one holds no whitespace.
 // A bare `module.key` operand must hold a bool and holds when it is true.

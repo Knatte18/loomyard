@@ -8,6 +8,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/beamsetting"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -79,10 +80,10 @@ func mergeParent(deps landDeps, slug string) (map[string]any, error) {
 		"labels":  labels,
 		"body":    mergeParentBody(slug, origin.ParentBranch),
 		"run_settings": map[string]any{
-			"loom": map[string]any{
+			"loom": configengine.NestPaths(map[string]any{
 				reviewbudget.SoftKey(perch): rounds,
 				reviewbudget.HardKey(perch): max(caps.Hard, rounds+1),
-			},
+			}),
 			beamsetting.Module: map[string]any{
 				dobbyengine.PullRequestKey: dobbyengine.PullRequestMergeIn,
 			},

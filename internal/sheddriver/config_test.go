@@ -56,7 +56,7 @@ func TestLoadConfig(t *testing.T) {
 			local: "tackler_max_spawns: 1\narbiter_max_spawns: 2\n",
 			want:  Config{DriverKind: "go", Tackler: "haiku", TacklerTimeoutMin: 10, TacklerMaxSpawns: 1, Arbiter: "opus[high]", ArbiterTimeoutMin: 30, ArbiterMaxSpawns: 2},
 		},
-		{name: "an invalid value is refused", base: "driver_kind: fast\n", wantErr: "shed config key"},
+		{name: "an invalid value is refused", base: "driver_kind: fast\n", wantErr: `config key "shed.driver_kind"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -102,14 +102,14 @@ func TestCheckOverride(t *testing.T) {
 		{name: "go driver kind", module: "darn", override: Override{DriverKind: "go"}},
 		{name: "nil spawn budget", module: "darn", override: Override{TacklerMaxSpawns: nil}},
 		{name: "zero spawn budget", module: "darn", override: Override{TacklerMaxSpawns: intPointer(0)}},
-		{name: "unknown driver kind", module: "loom", override: Override{DriverKind: "fast"}, wantErrIn: []string{`loom config key "driver_kind"`, "llm or go", "loom.yaml", "inherit shed.yaml"}},
-		{name: "unparseable tackler", module: "batten", override: Override{Tackler: "not a spec["}, wantErrIn: []string{`batten config key "tackler"`, "batten.yaml"}},
-		{name: "negative timeout", module: "darn", override: Override{TacklerTimeoutMin: -1}, wantErrIn: []string{`darn config key "tackler_timeout_min"`, "must not be negative", "0 for the 10 minute default"}},
-		{name: "negative spawn budget", module: "shed", override: Override{TacklerMaxSpawns: intPointer(-1)}, wantErrIn: []string{`shed config key "tackler_max_spawns"`, "0 to turn the tackler off"}},
+		{name: "unknown driver kind", module: "loom", override: Override{DriverKind: "fast"}, wantErrIn: []string{`config key "loom.driver_kind"`, "llm or go", "loom.yaml", "inherit shed.yaml"}},
+		{name: "unparseable tackler", module: "batten", override: Override{Tackler: "not a spec["}, wantErrIn: []string{`config key "batten.tackler"`, "batten.yaml"}},
+		{name: "negative timeout", module: "darn", override: Override{TacklerTimeoutMin: -1}, wantErrIn: []string{`config key "darn.tackler_timeout_min"`, "must not be negative", "0 for the 10 minute default"}},
+		{name: "negative spawn budget", module: "shed", override: Override{TacklerMaxSpawns: intPointer(-1)}, wantErrIn: []string{`config key "shed.tackler_max_spawns"`, "0 to turn the tackler off"}},
 		{name: "zero arbiter spawn budget", module: "batten", override: Override{ArbiterMaxSpawns: intPointer(0)}},
-		{name: "unparseable arbiter", module: "batten", override: Override{Arbiter: "not a spec["}, wantErrIn: []string{`batten config key "arbiter"`, "batten.yaml"}},
-		{name: "negative arbiter timeout", module: "loom", override: Override{ArbiterTimeoutMin: -1}, wantErrIn: []string{`loom config key "arbiter_timeout_min"`, "must not be negative", "0 for the 30 minute default"}},
-		{name: "negative arbiter spawn budget", module: "shed", override: Override{ArbiterMaxSpawns: intPointer(-1)}, wantErrIn: []string{`shed config key "arbiter_max_spawns"`, "0 to turn the arbiter off"}},
+		{name: "unparseable arbiter", module: "batten", override: Override{Arbiter: "not a spec["}, wantErrIn: []string{`config key "batten.arbiter"`, "batten.yaml"}},
+		{name: "negative arbiter timeout", module: "loom", override: Override{ArbiterTimeoutMin: -1}, wantErrIn: []string{`config key "loom.arbiter_timeout_min"`, "must not be negative", "0 for the 30 minute default"}},
+		{name: "negative arbiter spawn budget", module: "shed", override: Override{ArbiterMaxSpawns: intPointer(-1)}, wantErrIn: []string{`config key "shed.arbiter_max_spawns"`, "0 to turn the arbiter off"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

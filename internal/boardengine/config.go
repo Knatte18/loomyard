@@ -213,7 +213,8 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 // A prefix that starts with "decision-" is refused too.
 func checkDesignPrefix(prefix string) error {
 	if strings.HasPrefix(decisionFilePrefix, prefix) || strings.HasPrefix(prefix, decisionFilePrefix) {
-		return fmt.Errorf("board.yaml: design_prefix %q would name a design file %s<slug>%s, the name of an entry's decision record: set design_prefix in board.yaml to another value, such as \"design-\", with \"lym config board --set design_prefix=design-\"", prefix, decisionFilePrefix, decisionFileSuffix)
+		name := configengine.KeyName("board", "design_prefix")
+		return fmt.Errorf("%s %q would name a design file %s<slug>%s, the name of an entry's decision record: set %s in board.yaml to another value, such as \"design-\", with \"lym config board --set design_prefix=design-\"", name, prefix, decisionFilePrefix, decisionFileSuffix, name)
 	}
 	return nil
 }

@@ -160,7 +160,7 @@ func TestGateRows_StopsNameAWayForward(t *testing.T) {
 			if err != nil || outcome != shedengine.Stuck {
 				t.Fatalf("Call() = (%q, %v); want Stuck with no error", outcome, err)
 			}
-			if !strings.Contains(pointer.Reason, "way forward: fix batcher.yaml (its active: key or the profile it names)") {
+			if !strings.Contains(pointer.Reason, "way forward: fix batcher.yaml (batcher.active or the profile it names)") {
 				t.Errorf("Reason = %q; want the batcher.yaml way forward", pointer.Reason)
 			}
 

@@ -173,14 +173,14 @@ func TestCheckDirs(t *testing.T) {
 			name:    "ADirMissingUnderTheWorktreeRootOfTheCompareIsRefused",
 			capture: "capture: {}",
 			compare: `compare: {command: "c {baseline_dir}", dir: gone, timeout_min: 1}`,
-			wantErr: []string{`drift config key "compare.dir"`, filepath.Join(root, "gone"), "lym config drift"},
+			wantErr: []string{`config key "drift.compare.dir"`, filepath.Join(root, "gone"), "lym config drift"},
 		},
 		{name: "NoDirPasses", capture: `capture: {command: "p {baseline_dir}", timeout_min: 1}`},
 		{name: "AnExistingDirUnderTheWorktreeRootPasses", capture: `capture: {command: "p {baseline_dir}", dir: dotnet, timeout_min: 1}`},
 		{
 			name:    "ADirMissingUnderTheWorktreeRootIsRefused",
 			capture: `capture: {command: "p {baseline_dir}", dir: dotnet/dotnet, timeout_min: 1}`,
-			wantErr: []string{`drift config key "capture.dir"`, filepath.Join(root, "dotnet", "dotnet"), "lym config drift"},
+			wantErr: []string{`config key "drift.capture.dir"`, filepath.Join(root, "dotnet", "dotnet"), "lym config drift"},
 		},
 	}
 	for _, tt := range tests {
@@ -239,7 +239,7 @@ func TestCheckRetiredPlaceholders(t *testing.T) {
 		{
 			name:    "ALeftoverInTheCompareUnderDiffCommandIsRefused",
 			lines:   map[string]string{"enabled": "enabled: true", "diff": "diff: command", "compare": leftoverCompare},
-			wantErr: []string{"the drift compare command holds {skip_file}", "from compare with lym config drift --set"},
+			wantErr: []string{"the drift compare command holds {skip_file}", "from drift.compare with lym config drift --set"},
 		},
 		{
 			name:  "ACleanCompareUnderDiffCommandPasses",
@@ -370,7 +370,7 @@ func TestLoadConfig(t *testing.T) {
 		{
 			name: "a judge_parent_timeout_min below 1", seed: true,
 			contents: withKey(t, "judge_parent_timeout_min", "judge_parent_timeout_min: 0"),
-			wantErr:  []string{`"judge_parent_timeout_min"`, "positive integer", "lym config drift"},
+			wantErr:  []string{`"drift.judge_parent_timeout_min"`, "positive integer", "lym config drift"},
 		},
 		{
 			name: "diff command loads beside a declared compare", seed: true,
@@ -383,12 +383,12 @@ func TestLoadConfig(t *testing.T) {
 		{
 			name: "a diff other than lines or command", seed: true,
 			contents: withKey(t, "diff", "diff: words"),
-			wantErr:  []string{`"diff"`, "lines", "command", "lym config drift"},
+			wantErr:  []string{`"drift.diff"`, "lines", "command", "lym config drift"},
 		},
 		{
 			name: "a key pattern with no value group", seed: true,
 			contents: withKey(t, "key_patterns", `key_patterns: ['^(?P<key>\w+)$']`),
-			wantErr:  []string{`"key_patterns"`, "pattern 0", `no named group "value"`, "lym config drift"},
+			wantErr:  []string{`"drift.key_patterns"`, "pattern 0", `no named group "value"`, "lym config drift"},
 		},
 		{
 			name: "volatile lists load", seed: true,
@@ -400,22 +400,22 @@ func TestLoadConfig(t *testing.T) {
 		{
 			name: "a volatile file that is no valid glob", seed: true,
 			contents: withKey(t, "volatile_files", "volatile_files: ['[']"),
-			wantErr:  []string{`"volatile_files"`, `"["`, "lym config drift"},
+			wantErr:  []string{`"drift.volatile_files"`, `"["`, "lym config drift"},
 		},
 		{
 			name: "a blank volatile file", seed: true,
 			contents: withKey(t, "volatile_files", "volatile_files: [' ']"),
-			wantErr:  []string{`"volatile_files"`, "blank", "lym config drift"},
+			wantErr:  []string{`"drift.volatile_files"`, "blank", "lym config drift"},
 		},
 		{
 			name: "a blank volatile key", seed: true,
 			contents: withKey(t, "volatile_keys", "volatile_keys: ['']"),
-			wantErr:  []string{`"volatile_keys"`, "blank", "lym config drift"},
+			wantErr:  []string{`"drift.volatile_keys"`, "blank", "lym config drift"},
 		},
 		{
 			name: "diff command with no compare declared", seed: true,
 			contents: withKey(t, "diff", "diff: command"),
-			wantErr:  []string{`"compare"`, "diff: command", "lym config drift"},
+			wantErr:  []string{`"drift.compare"`, "diff: command", "lym config drift"},
 		},
 		{
 			name: "scope full loads", seed: true,
@@ -425,12 +425,12 @@ func TestLoadConfig(t *testing.T) {
 		{
 			name: "an unknown scope", seed: true,
 			contents: withKey(t, "scope", "scope: some"),
-			wantErr:  []string{`"scope"`, "run_settings", "lym config drift"},
+			wantErr:  []string{`"drift.scope"`, "run_settings", "lym config drift"},
 		},
 		{
 			name: "scope partial is refused naming full", seed: true,
 			contents: withKey(t, "scope", "scope: partial"),
-			wantErr:  []string{`"scope"`, `"partial"`, "full", "lym config drift"},
+			wantErr:  []string{`"drift.scope"`, `"partial"`, "full", "lym config drift"},
 		},
 		{
 			name: "a capture without the baseline placeholder", seed: true,

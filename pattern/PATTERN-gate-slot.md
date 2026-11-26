@@ -109,7 +109,7 @@ the `landing` gate's at Parent-Align, Finalize, Code-Burler-Fix and Darn-Write.
   They share no pass with Webster's end gate.
   Each lints from its own latest recorded pass or the merge base.
   Darn-Write, and Code-Burler-Fix in a darn run, lint from the merge base on every attempt.
-  For a diff wholly under `darn.yaml`'s `tree_scope` they run their own key's call over the touched trees' targets;
+  For a diff wholly under `darn.tree_scope` they run their own key's call over the touched trees' targets;
   otherwise they run their own key's call alone.
   Darn-Write's call carries `--stop-on-fail`, so it ends at its first failed tier.
   After a run whose failure report names failed tests alone, the next arrival first runs those tests alone through `Verify`.
@@ -139,7 +139,7 @@ the `landing` gate's at Parent-Align, Finalize, Code-Burler-Fix and Darn-Write.
   `cardverify` and battencli's `verifyrun` rows tell none, being no verify site.
 - `internal/cardverify/runner.go` reruns a card's own `**Verify:**` command through `verifyrun` directly.
   It is no plan-verify site.
-- `internal/battencli/land.go` runs the landing config's `deploy` command through `verifyrun` directly.
+- `internal/battencli/land.go` runs the `landing.deploy` command through `verifyrun` directly.
   It is no plan-verify site: it verifies no tree.
 
 #### Enforcement

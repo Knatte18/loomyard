@@ -313,7 +313,7 @@ func newBurlerFixProducer(row RowIdentity, cfg Config, env Env, resolveGate func
 	}
 	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), Gate: gate, FixKey: segment.FixKey}
 	if fixFanNamed {
-		opts.FixFanKey = fixFanRef.Key
+		opts.FixFanKey = fixFanRef.Text
 	}
 	deps := shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, RequiresFans: fixFanNamed, GateFindingsPath: env.gateFindingsPath(row.Name), NotifyParent: env.NotifyParent, DecisionsEscalated: decisionsEscalated}
 	producer, err := shedadapters.NewBurlerFixProducer(row.Name, reviewRow, deps, profile, opts, runDir, env.Now)

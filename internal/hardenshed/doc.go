@@ -7,7 +7,8 @@
 // # Config
 //
 // The hub-wide `hardener` config module is `hardener.yaml`, whose keys Config mirrors with the defaults of template.yaml.
-// ConfigSpec classifies `auto_accept`, `reviewer_fan`, `fixer_fan` and `tree_scope` as guard keys.
+// ConfigSpec classifies some keys as guard keys.
+// They are `hardener.auto_accept`, `hardener.reviewer_fan`, `hardener.fixer_fan` and `hardener.tree_scope`.
 // Only the hub file sets a guard key, and a task's `run_settings` setting one is refused at seed with that way forward.
 // Every other key is open to a task's `run_settings`.
 // The template runs every review and fix round on `sonnet[high]`, with no rotation;

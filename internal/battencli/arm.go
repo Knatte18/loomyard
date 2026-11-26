@@ -20,7 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -115,8 +114,8 @@ func refuseAdoptedSeed(seed shedrun.Seed, runID string, driverFlag string, drive
 		recorded, has := childDriverOf(seed)
 		if !has {
 			return fmt.Errorf(
-				"battencli: run %q is already seeded with no child driver; --child-driver %q cannot be recorded on a seeded run -- delete the run's seed to re-seed it with the flag, or drop the flag to take the child recipe's driver_kind, then shed.yaml's",
-				runID, childDriverFlag,
+				"battencli: run %q is already seeded with no child driver; --child-driver %q cannot be recorded on a seeded run -- delete the run's seed to re-seed it with the flag, or drop the flag to take %s",
+				runID, childDriverFlag, childDriverFallback(),
 			)
 		}
 		if childDriverFlag != recorded {
@@ -288,6 +287,7 @@ func refuseBattenOwnDriverLLM(driver string) error {
 
 // arm resolves cwd into a *lymcwd.Location, then delegates to armAt with the run-id from args.
 // The run-id is args[0] when present and counts as explicit; otherwise it is shedrun.SelfRunID and does not.
+// Every verb first reconciles the hub's config after a binary change.
 func (c *battenCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
 	location, err := lymcwd.Resolve(cwd)
 	if err != nil {
@@ -295,13 +295,9 @@ func (c *battenCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec,
 		return shedverbs.Spec{}, err
 	}
 
-	// A run reconciles the hub's config after a binary change;
-	// that must happen before the run is seeded and before the Worktree-Create row forks the pair from the prime.
-	if verb == "run" {
-		if geometry, inHub := hubgeom.ReconcileGeometry(location); inHub {
-			hubreconcile.EnsureOrWarn(geometry, hubreconcile.Options{})
-		}
-	}
+	// The reconcile must precede a config load and a run's seeding.
+	// It must also precede the Worktree-Create row's fork of the pair from the prime.
+	hubgeom.ReconcileBeforeLoad(location)
 
 	runID, explicit := resolveBattenRunID(args)
 	return c.armAt(location, runID, explicit, verb)

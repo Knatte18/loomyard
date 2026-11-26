@@ -37,7 +37,15 @@ const (
 	noteRedGate  = "a tier of the call was red, so the step judged nothing"
 	noteNoHub    = "the worktree is in no hub, and the coverage maps live in a hub, so the step judged nothing"
 	noteNoParent = "the worktree has no parent branch to diff from, so the step judged nothing"
-	noteScoper   = "the hub's scoper is %s, not go, so the step judged nothing"
+)
+
+// noteScoper is the note of a step the hub's scoper leaves without work.
+var noteScoper = "the hub's " + keyName(scoperKey) + " is %s, not go, so the step judged nothing"
+
+// The reasons that name the gate key bounding the step.
+var (
+	reasonPastCap     = "past " + keyName(redundancyMaxTestsKey) + " (%d)"
+	reasonBudgetSpent = keyName(redundancyBudgetMinKey) + " was spent before it ran"
 )
 
 // Reasons a test the step took is not judged, beside the eligibility reasons of testcover.
@@ -46,12 +54,10 @@ const (
 	reasonUndeclared    = "tier%d, which the hub does not declare"
 	reasonKeep          = "kept: %s"
 	reasonScanFailed    = "its package's keep or spawn scan failed"
-	reasonPastCap       = "past redundancy_max_tests (%d)"
 	reasonNoMap         = "its package has no coverage map"
 	reasonMapFailure    = "its package's coverage map records a build failure"
 	reasonMapUnreadable = "its package's coverage map is unreadable"
 	reasonNoSlot        = "the step took no gate slot"
-	reasonBudgetSpent   = "redundancy_budget_min was spent before it ran"
 	reasonCancelled     = "the call was cancelled"
 	reasonBuildFailed   = "its package's coverage build failed"
 	reasonLymFailed     = "the lym build failed"

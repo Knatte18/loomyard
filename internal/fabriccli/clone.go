@@ -149,7 +149,7 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	// A new hub has no build stamp, so the walk seeds every absent per-worktree repo default sparse.
 	// The header-only base comes from the template, and the prime's non-template units come from the prime.
 	// The walk commits them on the board and pushes it.
-	// A walk failure leaves the clone intact, and the next start verb's walk seeds the defaults.
+	// A walk failure leaves the clone intact, and the walk of the next verb that runs one seeds the defaults.
 	absentDefaults := absentRepoDefaults(res.BoardDir)
 	if err := hubreconcile.Ensure(hubreconcile.Geometry{BoardDir: res.BoardDir, WorktreePath: l.WorktreePath()}, hubreconcile.Options{}); err != nil {
 		if res.SeamWarning != "" {

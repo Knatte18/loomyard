@@ -6,6 +6,7 @@ package burlerengine
 import (
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"gopkg.in/yaml.v3"
 )
@@ -67,7 +68,7 @@ func ValidateAssistModelList(module, key string, specs ModelSpecList) error {
 			continue
 		}
 		if _, err := modelspec.Parse(spec); err != nil {
-			return fmt.Errorf("%s config key %q entry %d: %w; %s", module, key, i+1, err, assistModelListWayForward)
+			return fmt.Errorf("config key %q entry %d: %w; %s", configengine.KeyName(module, key), i+1, err, assistModelListWayForward)
 		}
 	}
 	return nil
@@ -76,11 +77,11 @@ func ValidateAssistModelList(module, key string, specs ModelSpecList) error {
 // ValidateModelSpecList refuses an empty list and an entry that is not a model-spec, naming module, key and the 1-based entry index.
 func ValidateModelSpecList(module, key string, specs ModelSpecList) error {
 	if len(specs) == 0 {
-		return fmt.Errorf("%s config key %q: the list is empty; %s", module, key, modelSpecListWayForward)
+		return fmt.Errorf("config key %q: the list is empty; %s", configengine.KeyName(module, key), modelSpecListWayForward)
 	}
 	for i, spec := range specs {
 		if _, err := modelspec.Parse(spec); err != nil {
-			return fmt.Errorf("%s config key %q entry %d: %w; %s", module, key, i+1, err, modelSpecListWayForward)
+			return fmt.Errorf("config key %q entry %d: %w; %s", configengine.KeyName(module, key), i+1, err, modelSpecListWayForward)
 		}
 	}
 	return nil

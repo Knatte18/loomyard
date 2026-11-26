@@ -119,24 +119,24 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	switch cfg.CycleMode {
 	case "", CycleClear, CycleCompact:
 	default:
-		return Config{}, fmt.Errorf("orch config: cycle_mode %q is not accepted; set cycle_mode to %q or %q", cfg.CycleMode, CycleClear, CycleCompact)
+		return Config{}, fmt.Errorf("orch config: %s %q is not accepted; set %s to %q or %q", keyName("cycle_mode"), cfg.CycleMode, keyName("cycle_mode"), CycleClear, CycleCompact)
 	}
 	switch cfg.PermissionMode {
 	case "":
 		cfg.PermissionMode = permissionBypass
 	case permissionBypass:
 	default:
-		return Config{}, fmt.Errorf("orch config: permission_mode %q is not accepted; set permission_mode: bypass or remove the key", cfg.PermissionMode)
+		return Config{}, fmt.Errorf("orch config: %s %q is not accepted; set %s to bypass or remove the key", keyName("permission_mode"), cfg.PermissionMode, keyName("permission_mode"))
 	}
 	if strings.IndexFunc(cfg.RemoteControlName, unicode.IsControl) >= 0 {
-		return Config{}, fmt.Errorf("orch config: remote_control_name %q holds a control character; set it to one line", cfg.RemoteControlName)
+		return Config{}, fmt.Errorf("orch config: %s %q holds a control character; set it to one line", keyName(remoteControlNameKey), cfg.RemoteControlName)
 	}
 	if cfg.RemoteControl && strings.TrimSpace(cfg.RemoteControlName) == "" {
-		return Config{}, fmt.Errorf("orch config: remote_control is on but remote_control_name is empty; set remote_control_name, such as %q, or set remote_control: false", remoteControlMachinePlaceholder+agentname.MachineAddressSeparator+remoteControlNamePlaceholder)
+		return Config{}, fmt.Errorf("orch config: %s is on but %s is empty; set %s, such as %q, or set %s to false", keyName(remoteControlKey), keyName(remoteControlNameKey), keyName(remoteControlNameKey), remoteControlMachinePlaceholder+agentname.MachineAddressSeparator+remoteControlNamePlaceholder, keyName(remoteControlKey))
 	}
 
 	if time.Duration(cfg.PollIntervalMS)*time.Millisecond < pollFloor {
-		logger.Warn("orch config: poll_interval_ms is below the floor and is raised to it", "key", "poll_interval_ms", "value", cfg.PollIntervalMS, "floor_ms", pollFloor.Milliseconds())
+		logger.Warn("orch config: "+keyName(pollIntervalKey)+" is below the floor and is raised to it", "key", pollIntervalKey, "value", cfg.PollIntervalMS, "floor_ms", pollFloor.Milliseconds())
 	}
 
 	return cfg, nil

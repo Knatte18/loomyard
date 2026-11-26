@@ -91,14 +91,14 @@ func LookupWithSource(chain TaskSettingChain, key string) (value string, anchor 
 	for index, dirs := range places {
 		raw, path, set, err := ownTaskSetting(dirs, key)
 		if err != nil {
-			return "", 0, fmt.Errorf("look up beam.yaml's %s: %w", key, err)
+			return "", 0, fmt.Errorf("look up %s: %w", keyName(key), err)
 		}
 		if !set {
 			continue
 		}
 		expanded, err := expandEnvMarkers(dirs, key, raw)
 		if err != nil {
-			return "", 0, fmt.Errorf("expand beam.yaml's %s in %s: %w", key, path, err)
+			return "", 0, fmt.Errorf("expand %s in %s: %w", keyName(key), path, err)
 		}
 		if index >= len(chain.Anchors) {
 			index = HubWideSource

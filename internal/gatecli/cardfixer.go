@@ -172,7 +172,7 @@ func newCardFixer(request detachRequest) (cardFixerKit, bool, error) {
 	}
 	resolved, err := registry.Resolve(modelSpec)
 	if err != nil {
-		return cardFixerKit{}, false, fmt.Errorf("gate test: resolve the %s gate fixer's model-spec: %w; way forward: set the key's fixer in gate.yaml with lym config gate to an alias models.yaml holds, or to \"\" to turn the fixer off", key, err)
+		return cardFixerKit{}, false, fmt.Errorf("gate test: resolve the %s gate fixer's model-spec: %w; way forward: set %s with lym config gate to an alias models.yaml holds, or to \"\" to turn the fixer off", key, err, keyName(gatesKey+"."+key+".fixer"))
 	}
 	language, err := languageconfig.Load(dirs)
 	if err != nil {

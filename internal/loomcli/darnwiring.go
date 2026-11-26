@@ -283,8 +283,9 @@ func (c *loomCLI) treeScopeSettings(location *lymcwd.Location) (int, loomshed.Ve
 // The newer stencil's refusal keeps its own way forward alone.
 // It loads the hub-wide darn.yaml strictly.
 // So start, run, step and resume refuse an absent or malformed file before any row builds.
-// A malformed tree_scope key is refused with the editor way forward, since --set cannot remove a key the hub file holds.
-// subagentModel is loom.yaml's subagent_model: the model the writer's prompt names for the subagents it hands work to.
+// A malformed darn.tree_scope key is refused with the editor way forward.
+// The reason is that --set cannot remove a key the hub file holds.
+// subagentModel is loom.subagent_model: the model the writer's prompt names for the subagents it hands work to.
 // pairSlug is the worktree's pair slug, empty on the prime.
 // When it is set, a verify gate whose fixer setting holds a model-spec has the writer's prompt drop its gate runs.
 func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, frictionDir, subagentModel, pairSlug string, registry modelspec.Registry) error {

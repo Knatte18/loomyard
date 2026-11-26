@@ -79,7 +79,7 @@ func Load(dirs configengine.Dirs) (logger.RetentionBounds, error) {
 		return logger.RetentionBounds{}, err
 	}
 	if days > maxRetentionDays {
-		return logger.RetentionBounds{}, fmt.Errorf("logger config: %s must be at most %d, got %d", daysKey, maxRetentionDays, days)
+		return logger.RetentionBounds{}, fmt.Errorf("logger config: %s must be at most %d, got %d", configengine.KeyName(moduleName, daysKey), maxRetentionDays, days)
 	}
 
 	return logger.RetentionBounds{Count: count, MaxAge: time.Duration(days) * day}, nil
@@ -102,14 +102,14 @@ func LoadOrDefault(dirs configengine.Dirs) logger.RetentionBounds {
 // yaml.v3 decodes a !!float such as 1.5 or 14.0 into an int by truncation without an error.
 func positiveInt(key string, node *yaml.Node) (int, error) {
 	if node.Kind != yaml.ScalarNode || node.ShortTag() != "!!int" {
-		return 0, fmt.Errorf("logger config: %s must be a positive integer", key)
+		return 0, fmt.Errorf("logger config: %s must be a positive integer", configengine.KeyName(moduleName, key))
 	}
 	var v int
 	if err := node.Decode(&v); err != nil {
-		return 0, fmt.Errorf("logger config: %s must be a positive integer: %w", key, err)
+		return 0, fmt.Errorf("logger config: %s must be a positive integer: %w", configengine.KeyName(moduleName, key), err)
 	}
 	if v <= 0 {
-		return 0, fmt.Errorf("logger config: %s must be a positive integer, got %d", key, v)
+		return 0, fmt.Errorf("logger config: %s must be a positive integer, got %d", configengine.KeyName(moduleName, key), v)
 	}
 	return v, nil
 }

@@ -90,7 +90,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	}
 	for _, role := range roles {
 		if _, err := modelspec.Parse(role.value); err != nil {
-			return Config{}, configengine.MarkInvalid(fmt.Errorf("webster config key %q: %w", role.key, err))
+			return Config{}, configengine.MarkInvalid(fmt.Errorf("config key %q: %w", keyName(role.key), err))
 		}
 	}
 
@@ -115,7 +115,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	}
 	for _, knob := range knobs {
 		if knob.value <= 0 {
-			return Config{}, configengine.MarkInvalid(fmt.Errorf("webster config key %q: must be a positive integer, got %d — a missing or zero value silently classifies every recovery batch dead on its first poll rather than degrading", knob.key, knob.value))
+			return Config{}, configengine.MarkInvalid(fmt.Errorf("config key %q: must be a positive integer, got %d — a missing or zero value silently classifies every recovery batch dead on its first poll rather than degrading", keyName(knob.key), knob.value))
 		}
 	}
 

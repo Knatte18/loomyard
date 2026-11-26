@@ -231,7 +231,7 @@ func TestReflectFrictionRow_SpawnsThroughTheReflectionShuttle(t *testing.T) {
 	c := &loomCLI{
 		location:          loc,
 		frictionDir:       frictionDir,
-		cfg:               loomengine.Config{Friction: "claude:sonnet[effort=high]", FrictionTimeoutMin: 1},
+		cfg:               loomengine.Config{Friction: loomengine.FrictionConfig{Model: "claude:sonnet[effort=high]", TimeoutMin: 1}},
 		runDeps:           websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: stencilsDir}},
 		reflectionShuttle: shuttle,
 	}

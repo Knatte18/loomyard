@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -391,10 +392,10 @@ func twillEngineRefusal(opts RunOpts, err error) error {
 	if cut := strings.LastIndex(refusal, wayForwardMarker); cut >= 0 {
 		refusal = refusal[:cut]
 	}
-	modelKey := "engine: in shuttle.yaml"
-	step := fmt.Sprintf("set engine: in shuttle.yaml to an engine with forks, or remove %s from the profile, and re-run", opts.FixFanKey)
+	modelKey := configengine.KeyName("shuttle", "engine")
+	step := fmt.Sprintf("set %s to an engine with forks, or remove %s from the profile, and re-run", modelKey, opts.FixFanKey)
 	if opts.FixKey.Key != "" {
-		modelKey = fmt.Sprintf("%s in %s.yaml", opts.FixKey.Key, opts.FixKey.Module)
+		modelKey = configengine.KeyName(opts.FixKey.Module, opts.FixKey.Key)
 		step = fmt.Sprintf("move %s to an engine with forks, then resume; setting the %s entry to \"\" reaches only rounds whose reviewer is spawned after the edit", modelKey, opts.FixFanKey)
 	}
 	return &engineRefusalError{message: fmt.Sprintf("burler: the twill fixer's fan from %s needs forks, which the engine of %s cannot run: %s%s%s", opts.FixFanKey, modelKey, refusal, wayForwardMarker, step)}

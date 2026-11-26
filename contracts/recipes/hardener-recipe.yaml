@@ -5,7 +5,7 @@
 # durable on-disk identities pinned against internal/loomshed's Name* constants.
 #
 # The Harden-Bouncer's seed pass writes the campaign's charter into round 1's focus file:
-# it reads the modules hardener.yaml's packages name, or that the task's title and labels name, and each judge carries the charter forward.
+# it reads the modules hardener.packages names, or that the task's title and labels name, and each judge carries the charter forward.
 # The decision record's `## Goal` holds the operator's optional focus, which binds the charter.
 # The ring's open findings land in the record's `## Open risks`.
 # The recipe has no Drift rows and no writer row: the fix row of the ring is the one build row.

@@ -139,7 +139,7 @@ func TestPRReview_Call(t *testing.T) {
 	const (
 		wantCreateCall  = "Create task main|Change title|" + wantPRBody
 		wantEditSeven   = "Edit 7|Change title|" + wantPRBody
-		localNoReason   = "no pull request: beam.yaml's pull_request for this landing is on and the task pair has no origin remote"
+		localNoReason   = "no pull request: beam.pull_request for this landing is on and the task pair has no origin remote"
 		taskHead        = "head-new"
 		recordedGated   = "head-old"
 		recordedURLSeen = "https://github.com/acme/widgets/pull/7"
@@ -266,7 +266,7 @@ func TestPRReview_Call(t *testing.T) {
 		{
 			name: "AFailedModeLookupHaltsNamingTheErrorAndTheFix", modeErr: errors.New("bad yaml"), origin: githubOrigin,
 			wantOutcome: shedengine.Stuck, wantHalt: true,
-			wantReason: []string{"beam.yaml's pull_request for this landing could not be read", "bad yaml", "lym config beam --set pull_request=", "--layer default", "run_settings", "lym loom resume"},
+			wantReason: []string{"beam.pull_request for this landing could not be read", "bad yaml", "lym config beam --set pull_request=", "--layer default", "run_settings", "lym loom resume"},
 		},
 		{
 			name: "MergeWithALocalOriginHaltsWithItsWayForward", mode: "merge", origin: localOrigin,
@@ -698,7 +698,7 @@ func TestPRReview_Call(t *testing.T) {
 }
 
 // emptyBranchReason is the resolver's reason for an on landing whose task branch holds no commit beyond its parent.
-const emptyBranchReason = "no pull request: beam.yaml's pull_request for this landing is on, but the task branch has no commits beyond its parent, so the landing is empty"
+const emptyBranchReason = "no pull request: beam.pull_request for this landing is on, but the task branch has no commits beyond its parent, so the landing is empty"
 
 // githubErrorResponse is the error go-github returns for a response GitHub answered with status and message.
 func githubErrorResponse(status int, message string) *github.ErrorResponse {

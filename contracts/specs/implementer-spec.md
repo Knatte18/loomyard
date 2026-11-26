@@ -7,7 +7,7 @@
 ## The row
 
 Tapestry's implementer row, the recipe's Webster row, is built by the `Implementer` engine.
-The engine builds the implementer that `tapestry.yaml`'s `implementer` key names.
+The engine builds the implementer that the `tapestry.implementer` key names.
 The row reads that key through its `implementer_setting: tapestry.implementer`.
 The key is settable per task through `run_settings`,
 and a value outside the closed implementer table in `internal/shedrecipe` refuses when the recipe builds.
@@ -16,7 +16,7 @@ Every implementer builds the same row with the same edges, so which implementer 
 | Value | Implementer |
 | --- | --- |
 | `webster` | One long-lived Merriam session forking one implementer per execution batch ([webster-spec.md](webster-spec.md)). |
-| `weaver` | One Go row that forms each batch from the remaining cards and runs it as one cold strand per attempt, climbing `weaver.yaml`'s model ladder, with a journal. |
+| `weaver` | One Go row that forms each batch from the remaining cards and runs it as one cold strand per attempt, climbing the `weaver.ladder` model ladder, with a journal. |
 
 A run never switches implementer with work half built.
 Once either implementer holds a begun batch, it is the run's active implementer, whatever the setting says.

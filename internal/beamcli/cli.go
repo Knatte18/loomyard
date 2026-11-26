@@ -278,9 +278,9 @@ func mergeParentCmd() *cobra.Command {
 parent branch into the beam: its writer runs "lym fabric merge-in <parent branch>"
 in the task's own worktree, settles the conflicts and the gate failures, and its
 Code-Review perch, turned on through the task's run_settings, reviews the merge
-alone. The task's run_settings set beam's pull_request to merge-in, so its landing
+alone. The task's run_settings set ` + pullRequestName() + ` to merge-in, so its landing
 brings the merge into the beam as a true merge, with no pull request, whatever
-the beam's own pull_request, so the beam keeps the parent's commit as an
+the beam's own ` + pullRequestName() + `, so the beam keeps the parent's commit as an
 ancestor; the beam's own pull request reviews the merge again. The
 beam's dobby starts it as any member, at any time. The orch runs it before
 "lym beam ready", which refuses while the parent holds commits the beam lacks;
@@ -336,11 +336,11 @@ func statusCmd() *cobra.Command {
 		Short:       "show the dobby and the orch of the prime and of every local beam",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Prints, once, what a beam's window draws for a dobby, for the hub's prime and
-for every local beam: whether the dobby is alive with its max_runs, each run it
+for every local beam: whether the dobby is alive with its ` + maxRunsName() + `, each run it
 drives with its state, stage, time in the stage, last pass and whether it owes a
 landing notice, and each released task it has not
 started with what the task waits on -- open dependencies, another machine's
-ownership, a pause, a start batten refuses, a refused start and its retry, or max_runs.
+ownership, a pause, a start batten refuses, a refused start and its retry, or ` + maxRunsName() + `.
 A ready task shows its last refused start when one is recorded. Each entry
 carries the structured view and its rendered lines, and the beam's orch: whether its
 strand is live, whether its watcher is live and the session id it recorded.
@@ -712,7 +712,15 @@ machine owns the beam. It is launched by "lym beam start", never by hand.`,
 // The registration waits for the lock,
 // so a dobby that finds another one holding it ends the call with nothing registered.
 func runDobby(ctx context.Context, out io.Writer, root string) int {
-	return runDobbyWith(ctx, out, root, hubDobbyDeps, orchcli.NotifyFromScoped, reapInheritedChildren)
+	return runDobbyWith(ctx, out, root, wireDobby, orchcli.NotifyFromScoped, reapInheritedChildren)
+}
+
+// wireDobby builds the dependencies of the dobby whose geometry is geom over the hub of prime.
+// The hub's config is reconciled before the dependencies are built,
+// so a dobby re-executed on a new binary reconciles before it reads a setting.
+func wireDobby(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengine.Deps, error) {
+	hubgeom.ReconcileBeforeLoad(prime)
+	return hubDobbyDeps(prime, geom)
 }
 
 // reapInheritedChildren waits on the batten passes a dobby re-exec'd onto a new binary keeps from its old image.

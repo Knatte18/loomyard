@@ -71,7 +71,7 @@ the agent asks its parent.
 - An interactive role's questions are the one place a question reaches a person,
   and they come from the `{{.mode_rules}}` marker Go fills, not from stencil text.
   The Discussion chair and the raddle agent are such roles,
-  and the judge seat is another when drift.yaml sets `judge_interactive`.
+  and the judge seat is another when `drift.judge_interactive` is set.
 - The orch stencils are exempt: the orch session is the operator's own delegate and has no parent to ask.
 - Enforced by a test over the stencils.
 

@@ -406,7 +406,7 @@ func (c *loomCLI) validatePartsCmd() *cobra.Command {
 		Long: `validate-parts runs partsparser.Validate against the current worktree's
 parts file -- the identical check the Parts-Write row's own gate runs: the
 file's format, the part and shared-spot rules, the decision ids each part
-names against the decision record, the most parts parts_max allows, and that
+names against the decision record, the most parts tapestry.parts.max allows, and that
 each export is new to the worktree, a plan: handle passing the name checks a
 part's plan runs on it -- and
 reports the result as one JSON envelope. It takes no arguments and no flags,
@@ -427,7 +427,7 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-parts: "+err.Error()))
 				return nil
 			}
-			findings, err := partsparser.Validate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.DecisionRecordPath, tapestry.PartsMax)
+			findings, err := partsparser.Validate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.DecisionRecordPath, tapestry.Parts.Max)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-parts: "+err.Error()))
 				return nil

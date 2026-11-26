@@ -131,7 +131,7 @@ func checkValues(document []byte) (string, error) {
 		{"max_bounces", values.MaxBounces, 0},
 	} {
 		if bound.value != nil && *bound.value < bound.floor {
-			return bound.key, fmt.Errorf("hardener config key %q: %d; want at least %d", bound.key, *bound.value, bound.floor)
+			return bound.key, fmt.Errorf("config key %q: %d; want at least %d", keyName(bound.key), *bound.value, bound.floor)
 		}
 	}
 	specs := []struct {
@@ -153,7 +153,7 @@ func checkValues(document []byte) (string, error) {
 	for _, list := range specs {
 		for _, spec := range list.specs {
 			if _, err := modelspec.Parse(spec); err != nil {
-				return list.key, fmt.Errorf("hardener config key %q: %w", list.key, err)
+				return list.key, fmt.Errorf("config key %q: %w", keyName(list.key), err)
 			}
 		}
 	}
@@ -197,7 +197,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	}
 	treeScope, err := darnengine.NormalizeTrees(cfg.TreeScope)
 	if err != nil {
-		return Config{}, fmt.Errorf("hardener config key %q: %w; way forward: fix the named key in lym config hardener's editor from the prime, then run \"lym loom resume\"", "tree_scope", err)
+		return Config{}, fmt.Errorf("config key %q: %w; way forward: fix the named key in lym config hardener's editor from the prime, then run \"lym loom resume\"", keyName("tree_scope"), err)
 	}
 	cfg.TreeScope = treeScope
 	return cfg, nil

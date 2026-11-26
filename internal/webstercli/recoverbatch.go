@@ -398,7 +398,7 @@ Example:
 		},
 	}
 
-	cmd.Flags().DurationVar(&wait, "wait", 0, "operator override of the wait budget; a shorter wait can return a running snapshot; 0 blocks until a terminal digest or recovery_timeout_min")
+	cmd.Flags().DurationVar(&wait, "wait", 0, "operator override of the wait budget; a shorter wait can return a running snapshot; 0 blocks until a terminal digest or "+recoveryTimeoutName())
 
 	cmd.Flags().StringVar(&answer, "answer", "", "the parent's reply to a waiting batch's need, rendered into the resumed recovery's prompt")
 

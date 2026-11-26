@@ -77,7 +77,7 @@ func TestOrchIntegration_Refusals(t *testing.T) {
 				if code != 1 {
 					t.Fatalf("exit code = %d; want 1; output: %s", code, out.String())
 				}
-				if !strings.Contains(out.String(), "set permission_mode: bypass or remove the key") {
+				if !strings.Contains(out.String(), "set orch.permission_mode to bypass or remove the key") {
 					t.Errorf("refusal = %q; want the fix named", out.String())
 				}
 			})

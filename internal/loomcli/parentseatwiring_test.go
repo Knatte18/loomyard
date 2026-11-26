@@ -49,8 +49,8 @@ func TestAskParentSetting_ReadsTheBooleanSetting(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("askParentSetting() = %v; want %v", got, tt.want)
 			}
-			if gotModule != "loom" || gotKey != "code_review_ask_parent" {
-				t.Errorf("lookup called with (%q, %q); want (%q, %q)", gotModule, gotKey, "loom", "code_review_ask_parent")
+			if gotModule != "loom" || gotKey != "code.review_ask_parent" {
+				t.Errorf("lookup called with (%q, %q); want (%q, %q)", gotModule, gotKey, "loom", "code.review_ask_parent")
 			}
 		})
 	}
@@ -180,12 +180,12 @@ func TestParentSeats_BuildEachSeatFromItsOwnPerch(t *testing.T) {
 		{
 			name: "Discussion", perch: loomengine.PerchDiscussion, tag: shedadapters.DiscussionParentAskLineTag,
 			subject:            "the decision record " + loomengine.DiscussionDecisionRecord(location),
-			hasRecordWrittenAt: true, key: "discussion_review_ask_parent", wantWait: 30 * time.Minute,
+			hasRecordWrittenAt: true, key: "discussion.review_ask_parent", wantWait: 30 * time.Minute,
 		},
 		{
 			name: "Code", perch: loomengine.PerchCode, tag: shedadapters.CodeParentAskLineTag,
 			subject:        "the task's code change in the task worktree " + location.WorktreePath(),
-			askBeforeJudge: true, key: "code_review_ask_parent", wantWait: 23 * time.Minute,
+			askBeforeJudge: true, key: "code.review_ask_parent", wantWait: 23 * time.Minute,
 		},
 	}
 	for _, tt := range tests {
@@ -195,7 +195,7 @@ func TestParentSeats_BuildEachSeatFromItsOwnPerch(t *testing.T) {
 			var gotModule, gotKey string
 			seats := parentSeats(parentSeatInputs{
 				location:       location,
-				cfg:            loomengine.Config{ReviewTimeoutMin: 240, DiscussionReviewParentTimeoutMin: 30, CodeReviewParentTimeoutMin: 30},
+				cfg:            loomengine.Config{Review: loomengine.ReviewConfig{TimeoutMin: 240}, Discussion: loomengine.DiscussionConfig{ReviewParentTimeoutMin: 30}, Code: loomengine.CodeConfig{ReviewParentTimeoutMin: 30}},
 				runTimeout:     30 * time.Minute,
 				startAllowance: time.Minute,
 				awaitCap:       func(loomengine.Perch) time.Duration { return time.Minute },

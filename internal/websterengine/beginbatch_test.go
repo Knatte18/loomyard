@@ -66,7 +66,7 @@ func TestBeginBatch_Refusals(t *testing.T) {
 				fx.Deps.Batches[0].Cards[0].Pairs = []planparser.MovePair{{Old: "sub#Foo", New: "plan:sub#Bar"}}
 			},
 			wantIs:   websterengine.ErrRenameToolMissing,
-			wantText: []string{"sub#Foo", "1-json-flag", `way forward: set rename_tools with "lym config language"`, "lym webster begin-batch 1"},
+			wantText: []string{"sub#Foo", "1-json-flag", `way forward: set language.rename_tools with "lym config language"`, "lym webster begin-batch 1"},
 			check: func(t *testing.T, fx *beginFixture) {
 				if len(fx.Deps.State.Batches) != 0 {
 					t.Errorf("state batches = %v; want none recorded", fx.Deps.State.Batches)

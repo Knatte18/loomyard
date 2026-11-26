@@ -68,7 +68,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	}
 
 	if _, err := modelspec.Parse(cfg.Agent); err != nil {
-		return Config{}, fmt.Errorf("sampler config key %q: %w", "agent", err)
+		return Config{}, fmt.Errorf("config key %q: %w", configengine.KeyName(configModule, "agent"), err)
 	}
 	return cfg, nil
 }

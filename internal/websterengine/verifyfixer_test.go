@@ -96,14 +96,14 @@ func TestFixVerifySpawnOrAttach(t *testing.T) {
 				arrange: func(deps *websterengine.FixVerifyDeps) {
 					deps.Roles = map[websterengine.Role]shuttleengine.ModelChoice{}
 				},
-				wantText: []string{"no resolved model-spec", "way forward: set recovery in webster.yaml"},
+				wantText: []string{"no resolved model-spec", "way forward: set webster.recovery in webster.yaml"},
 			},
 			{
 				name: "recovery engine cannot audit forks",
 				arrange: func(deps *websterengine.FixVerifyDeps) {
 					deps.Engines = noAuditEngines{engine: &shuttlefake.Engine{}}
 				},
-				wantText: []string{"cannot audit forks", "way forward: set recovery in webster.yaml"},
+				wantText: []string{"cannot audit forks", "way forward: set webster.recovery in webster.yaml"},
 			},
 			{
 				name: "gate config with no webster-fix key",

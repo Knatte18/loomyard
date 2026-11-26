@@ -990,7 +990,7 @@ func TestGateTestMap(t *testing.T) {
 			},
 			{
 				name: "MemoryBelowTheTestCapTier0", dir: prime, args: []string{"test", "--wait", "--map"},
-				want: "gate test --map: tier0 sets memory_mb 64, below redundancy_test_memory_mb 128, so no test process fits its memory; way forward: raise tier0's memory_mb or lower redundancy_test_memory_mb with lym config gate from the prime, then re-run the same command",
+				want: "gate test --map: gate.tiers.tier0.memory_mb is 64, below gate.redundancy_test_memory_mb 128, so no test process fits its memory; way forward: raise gate.tiers.tier0.memory_mb or lower gate.redundancy_test_memory_mb with lym config gate from the prime, then re-run the same command",
 				setup: func(t *testing.T) {
 					writeGate(t, "redundancy_test_memory_mb: 128\n"+strings.Replace(gateYAML("parallel: 2, "), "tier0: {command: x,", "tier0: {memory_mb: 64, command: x,", 1))
 					t.Cleanup(func() { writeGate(t, gateYAML("parallel: 2, ")) })
@@ -998,7 +998,7 @@ func TestGateTestMap(t *testing.T) {
 			},
 			{
 				name: "MemoryBelowTheTestCapTier1", dir: prime, args: []string{"test", "--wait", "--map"},
-				want: "gate test --map: tier1 sets memory_mb 64, below redundancy_test_memory_mb 128, so no test process fits its memory; way forward: raise tier1's memory_mb or lower redundancy_test_memory_mb with lym config gate from the prime, then re-run the same command",
+				want: "gate test --map: gate.tiers.tier1.memory_mb is 64, below gate.redundancy_test_memory_mb 128, so no test process fits its memory; way forward: raise gate.tiers.tier1.memory_mb or lower gate.redundancy_test_memory_mb with lym config gate from the prime, then re-run the same command",
 				setup: func(t *testing.T) {
 					writeGate(t, "redundancy_test_memory_mb: 128\n"+strings.Replace(gateYAML("parallel: 2, "), "tier1: {command: x,", "tier1: {memory_mb: 64, command: x,", 1))
 					t.Cleanup(func() { writeGate(t, gateYAML("parallel: 2, ")) })

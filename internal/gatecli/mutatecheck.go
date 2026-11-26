@@ -25,8 +25,9 @@ import (
 )
 
 // Reasons a mutant is left unjudged.
+var reasonMutantBudget = "past " + keyName(mutationBudgetMinKey) + "; way forward: run the verb again, or raise " + keyName(mutationBudgetMinKey) + " with lym config gate from the prime"
+
 const (
-	reasonMutantBudget       = "past mutation_budget_min; way forward: run the verb again, or raise mutation_budget_min with lym config gate from the prime"
 	reasonMutantTimedOut     = "a covering test ran past its time bound with the mutant on"
 	reasonMutantMemoryCapped = "a covering test ended at the memory cap with the mutant on"
 	reasonMutantGuardKilled  = "the memory guard killed a covering test's run with the mutant on"

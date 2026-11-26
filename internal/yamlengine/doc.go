@@ -3,6 +3,7 @@
 //
 // The per-file operations are [Reconcile], [FillMissing], [MissingKeys], [SetValues], [SetEntries] and [FollowTemplate].
 // The layer operations below work on the layer stack.
+// [MoveKeys] moves renamed keys to their new paths in one document, keeping their comments.
 //
 // # Layer operations
 //

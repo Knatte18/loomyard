@@ -191,7 +191,8 @@ func (c *Call) settleFresh(attempts []loomengine.ArbiterAttempt) (loomengine.Arb
 	}
 	settings := c.deps.Settings
 	if settings.MaxSpawns == 0 {
-		return loomengine.ArbiterEnvelope{}, refusal(c.deps, "off: arbiter_max_spawns is 0")
+		// The budget may be the run's own module's key rather than shed.yaml's, so the text names both.
+		return loomengine.ArbiterEnvelope{}, refusal(c.deps, "off: the run's arbiter spawn budget is 0; the run's own module key sets it, else %s", sheddriver.ArbiterMaxSpawnsName())
 	}
 	if len(attempts) >= settings.MaxSpawns {
 		return loomengine.ArbiterEnvelope{}, refusal(c.deps, "spawn budget spent: the run has used %d of its %d arbiter spawns", len(attempts), settings.MaxSpawns)

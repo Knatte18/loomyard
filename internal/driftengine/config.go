@@ -281,7 +281,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 
 // refuseKey builds the refusal of a drift config key, naming the key and its way forward.
 func refuseKey(key, want string) error {
-	return fmt.Errorf("drift config key %q: %s; way forward: fix it with lym config drift", key, want)
+	return fmt.Errorf("config key %q: %s; way forward: fix it with lym config drift", keyName(key), want)
 }
 
 // checkVolatile refuses a blank entry of either list and a file pattern that is no valid glob.
@@ -296,7 +296,7 @@ func checkVolatile(files, keys []string) error {
 	}
 	for _, key := range keys {
 		if strings.TrimSpace(key) == "" {
-			return refuseKey("volatile_keys", "holds a blank entry; want a key the key_patterns read")
+			return refuseKey("volatile_keys", "holds a blank entry; want a key "+keyName("key_patterns")+" reads")
 		}
 	}
 	return nil
@@ -309,7 +309,7 @@ func checkScope(scope string) error {
 	case "", ScopeOff, ScopeFull:
 		return nil
 	}
-	return fmt.Errorf("drift config key \"scope\": %q; want %s, %s, or empty for %s; way forward: fix it in the board entry's run_settings, or with lym config drift", scope, ScopeOff, ScopeFull, ScopeFull)
+	return fmt.Errorf("config key %q: %q; want %s, %s, or empty for %s; way forward: fix it in the board entry's run_settings, or with lym config drift", keyName("scope"), scope, ScopeOff, ScopeFull, ScopeFull)
 }
 
 // decodeStep validates one declared command step and fills its defaults.

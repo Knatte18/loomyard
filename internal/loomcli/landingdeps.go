@@ -456,11 +456,11 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 			_, err = client.Post(strandName, line)
 			return err
 		},
-		// ParentReviewWanted reads loom.yaml's pr_review_ask_parent over the pair's layers, the task's run_settings included.
+		// ParentReviewWanted reads loom.pr.review_ask_parent over the pair's layers, the task's run_settings included.
 		// The run's autonomy, read at each call, forces it on.
 		ParentReviewWanted: func() (bool, error) {
 			cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(l), "loom")
-			return loomengine.ApplyAutonomy(cfg, runAutonomy(l)).PRReviewAskParent, err
+			return loomengine.ApplyAutonomy(cfg, runAutonomy(l)).PR.ReviewAskParent, err
 		},
 		AskParent: func(line string) (bool, error) {
 			return orchcli.NotifyParent(l, loomProgram, line)
@@ -495,7 +495,7 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 }
 
 // prReviewAsker builds the asker of the PR-Review ask for the run at l and the pull request rec records.
-// The wait from an ask to its deadline is loom.yaml's pr_review_parent_timeout_min over l's layers.
+// The wait from an ask to its deadline is loom.pr.review_parent_timeout_min over l's layers.
 // The ask goes to the orch the run's parent resolves to, tagged with the run.
 // It is signed as strandClaim when that names a strand that is not an orch, and as lym's loom program otherwise.
 // The PR-Review session's own ask passes its strand; the row's ask passes none.
@@ -510,7 +510,7 @@ func prReviewAsker(l *lymcwd.Location, rec pullrequest.Record, strandClaim strin
 		URL:          rec.URL,
 		TaskBranch:   rec.Head,
 		ParentBranch: rec.Base,
-		Wait:         time.Duration(cfg.PRReviewParentTimeoutMin) * time.Minute,
+		Wait:         time.Duration(cfg.PR.ReviewParentTimeoutMin) * time.Minute,
 		Resolve:      func() (string, bool, error) { return orchcli.ParentStrand(l) },
 		Post: func(strand, line string) error {
 			return orchcli.PostAsCaller(l, strand, loomProgram, strandClaim, line, creelengine.PostTags{Run: l.WorktreeName})

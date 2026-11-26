@@ -11,10 +11,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"gopkg.in/yaml.v3"
 )
 
 func TestMergeParent(t *testing.T) {
@@ -117,8 +119,22 @@ func TestMergeParent(t *testing.T) {
 				t.Fatalf("want slug %q is longer than the board's slug length", tt.wantTask)
 			}
 			wantSettings := map[string]any{
-				"loom": map[string]any{"code_max_bounces": tt.wantRounds, "code_hard_max_bounces": tt.wantHard},
+				"loom": map[string]any{"code": map[string]any{"max_bounces": tt.wantRounds, "hard_max_bounces": tt.wantHard}},
 				"beam": map[string]any{"pull_request": "merge-in"},
+			}
+			// Seed-Child runs this step over the filed settings, so they must load as a loom document.
+			documents, err := configreg.PrepareRunSettings(fields["run_settings"].(map[string]any))
+			if err != nil {
+				t.Fatalf("PrepareRunSettings(%v) = _, %v; want the filed run settings admitted", fields["run_settings"], err)
+			}
+			var loom struct {
+				Code struct {
+					MaxBounces     int `yaml:"max_bounces"`
+					HardMaxBounces int `yaml:"hard_max_bounces"`
+				} `yaml:"code"`
+			}
+			if err := yaml.Unmarshal(documents["loom"], &loom); err != nil || loom.Code.MaxBounces != tt.wantRounds || loom.Code.HardMaxBounces != tt.wantHard {
+				t.Errorf("loom document %q: code caps = %d, %d, %v; want %d, %d", documents["loom"], loom.Code.MaxBounces, loom.Code.HardMaxBounces, err, tt.wantRounds, tt.wantHard)
 			}
 			if fields["slug"] != tt.wantTask || fields["kind"] != boardengine.KindTask || fields["project"] != tt.slug || fields["recipe"] != "darn" || !reflect.DeepEqual(fields["run_settings"], wantSettings) {
 				t.Errorf("mergeParent(%q) filed %v; want slug %q, a darn task in project %q with run settings %v", tt.slug, fields, tt.wantTask, tt.slug, wantSettings)

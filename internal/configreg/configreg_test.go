@@ -123,8 +123,8 @@ func TestModules_OrchRegistersRemoteControlReinterpretation(t *testing.T) {
 	}
 }
 
-// TestModules_LoomRegistersCodeAutoAcceptReinterpretation pins the loom module's code_auto_accept reinterpretation.
-// A hub that sets code_auto_accept: true gets the notice that an open BLOCKING finding now escalates.
+// TestModules_LoomRegistersCodeAutoAcceptReinterpretation pins the loom module's code.auto_accept reinterpretation.
+// A hub that sets code.auto_accept: true gets the notice that an open BLOCKING finding now escalates.
 // It does so only while the row declares the reinterpretation.
 //
 //testtiming:keep pins the loom row's Reinterpretations entry, which no walk test reads
@@ -172,8 +172,8 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 		"codex":    {"binary", "sandbox_mode", "writable_roots"},
 		"reed":     {"buttons", "debug_log", "mouse", "shell", "tmux", "tmux_conf"},
 		"shuttle":  {"deny_python", "run_dir"},
-		"loom":     {"code_auto_accept", "code_fixer_fan", "discussion_advisors", "discussion_auto_accept", "discussion_fixer_fan", "discussion_lenses", "discussion_reviewer_fan", "split_auto_accept", "split_fixer_fan", "split_reviewer_fan"},
-		"tapestry": {"plan_auto_accept", "plan_fixer_fan", "plan_lenses", "plan_reviewer_fan"},
+		"loom":     {"code.auto_accept", "code.fixer_fan", "discussion.advisors", "discussion.auto_accept", "discussion.fixer_fan", "discussion.lenses", "discussion.reviewer_fan", "split.auto_accept", "split.fixer_fan", "split.reviewer_fan"},
+		"tapestry": {"plan.auto_accept", "plan.fixer_fan", "plan.lenses", "plan.reviewer_fan"},
 		"lenses":   {"fans", "lens_set", "lenses", "remove"},
 		"weaver":   {"verify_gate"},
 	}
@@ -305,6 +305,8 @@ func holdsPath(units []string, entry string) bool {
 }
 
 // TestModules_LocalLayerRefusals pins the local-layer verdict of keys that no loader test pins through its real load.
+//
+//testtiming:keep pins per-module local-layer verdicts and the refusal naming file and key, which TestLayerRunSettings never asserts
 func TestModules_LocalLayerRefusals(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -320,10 +322,10 @@ func TestModules_LocalLayerRefusals(t *testing.T) {
 		{"landing", "deploy_branches: false\n", "deploy_branches", false},
 		{"language", "skills:\n  - scribe:a\n", "skills", false},
 		{"reed", "mouse: true\n", "mouse", false},
-		{"loom", "discussion_advisors:\n  - name: critic\n    model: sonnet[low]\n", "discussion_advisors", false},
-		{"loom", "discussion_lenses: twill-discussion\n", "discussion_lenses", false},
-		{"tapestry", "plan_lenses: twill-plan\n", "plan_lenses", false},
-		{"tapestry", "plan_reviewer_fan: \"\"\n", "plan_reviewer_fan", false},
+		{"loom", "discussion:\n  advisors:\n    - name: critic\n      model: sonnet[low]\n", "discussion.advisors", false},
+		{"loom", "discussion: {lenses: twill-discussion}\n", "discussion.lenses", false},
+		{"tapestry", "plan: {lenses: twill-plan}\n", "plan.lenses", false},
+		{"tapestry", "plan: {reviewer_fan: \"\"}\n", "plan.reviewer_fan", false},
 		{"shuttle", "claude_prompt_cache_ttl_roles:\n  worker: 1h\n", "", true},
 	}
 	for _, tt := range tests {
@@ -388,6 +390,7 @@ func TestTemplate(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins each module's registered OpenMaps and found flag, which TestPrepareRunSettings never asserts
 func TestLookup(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -399,17 +402,17 @@ func TestLookup(t *testing.T) {
 		{"batcher", true, nil},
 		{"board", true, []string{"types", "labels"}},
 		{"loom", true, []string{
-			"reviewer_model", "fixer_model",
-			"discussion_reviewer_model", "discussion_fixer_model",
-			"code_reviewer_model", "code_fixer_model",
-			"split_reviewer_model", "split_fixer_model",
-			"discussion_reviewer_fan", "code_reviewer_fan", "split_reviewer_fan",
-			"discussion_fixer_fan", "code_fixer_fan", "split_fixer_fan",
-			"discussion_assist_reviewer_model", "code_assist_reviewer_model",
-			"discussion_assist_reviewer_fan", "code_assist_reviewer_fan",
-			"discussion_advisors",
+			"review.reviewer_model", "review.fixer_model",
+			"discussion.reviewer_model", "discussion.fixer_model",
+			"code.reviewer_model", "code.fixer_model",
+			"split.reviewer_model", "split.fixer_model",
+			"discussion.reviewer_fan", "code.reviewer_fan", "split.reviewer_fan",
+			"discussion.fixer_fan", "code.fixer_fan", "split.fixer_fan",
+			"discussion.assist_reviewer_model", "code.assist_reviewer_model",
+			"discussion.assist_reviewer_fan", "code.assist_reviewer_fan",
+			"discussion.advisors",
 		}},
-		{"tapestry", true, []string{"plan_reviewer_model", "plan_fixer_model", "plan_reviewer_fan", "plan_fixer_fan", "plan_assist_reviewer_model", "plan_assist_reviewer_fan"}},
+		{"tapestry", true, []string{"plan.reviewer_model", "plan.fixer_model", "plan.reviewer_fan", "plan.fixer_fan", "plan.assist_reviewer_model", "plan.assist_reviewer_fan"}},
 		{"darn", true, []string{"tree_scope"}},
 		{"reed", true, []string{"buttons.task", "buttons.beam", "buttons.prime"}},
 		{"shuttle", true, nil},

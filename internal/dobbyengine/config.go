@@ -120,7 +120,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 		{"adopt_fix_tries", cfg.AdoptFixTries},
 	} {
 		if key.value < 0 {
-			return Config{}, configengine.MarkInvalid(fmt.Errorf("beam config key %q is %d: must not be negative; way forward: fix it with `lym config beam --set %s=<value>`", key.name, key.value, key.name))
+			return Config{}, configengine.MarkInvalid(fmt.Errorf("config key %q is %d: must not be negative; way forward: fix it with `lym config beam --set %s=<value>`", keyName(key.name), key.value, key.name))
 		}
 	}
 	var perTask map[string]any
@@ -164,7 +164,7 @@ func checkTaskSetting(key string, value any, where string) (string, error) {
 		if flag, isBool := value.(bool); isBool {
 			return strconv.FormatBool(flag), nil
 		}
-		return "", configengine.MarkInvalid(fmt.Errorf("beam config key %q in %s is %v: must be true or false; way forward: fix it with `lym config beam --set %s=<true|false>` in that worktree, or in the task's run_settings for its next run", key, where, value, key))
+		return "", configengine.MarkInvalid(fmt.Errorf("config key %q in %s is %v: must be true or false; way forward: fix it with `lym config beam --set %s=<true|false>` in that worktree, or in the task's run_settings for its next run", keyName(key), where, value, key))
 	}
 	allowed := beamsetting.LandNoticeValues()
 	if key == PullRequestKey {
@@ -179,5 +179,5 @@ func checkTaskSetting(key string, value any, where string) (string, error) {
 		}
 	}
 	choices := fmt.Sprint(allowed)
-	return "", configengine.MarkInvalid(fmt.Errorf("beam config key %q in %s is %v: must be one of %s; way forward: fix it with `lym config beam --set %s=<value>` in that worktree, or in the task's run_settings for its next run", key, where, value, choices, key))
+	return "", configengine.MarkInvalid(fmt.Errorf("config key %q in %s is %v: must be one of %s; way forward: fix it with `lym config beam --set %s=<value>` in that worktree, or in the task's run_settings for its next run", keyName(key), where, value, choices, key))
 }

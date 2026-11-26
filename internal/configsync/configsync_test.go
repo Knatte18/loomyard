@@ -112,6 +112,8 @@ type moduleWant struct {
 	wantLoadedLenses *lenses.Config
 	// loadUnchanged pins that lenses.Load over the base dir resolves the same before and after the run.
 	loadUnchanged bool
+	// movedHas are substrings that one line of Result.Moved holds; nil skips the check.
+	movedHas []string
 }
 
 // TestReconcileAll pins what a run does to each module's file and Result.
@@ -126,7 +128,7 @@ type moduleWant struct {
 func TestReconcileAll(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	const loomStale = "discussion_timeout_min: 480\nstale_key: old_value\n"
+	const loomStale = "discussion:\n  timeout_min: 480\nstale_key: old_value\n"
 	const modelsAlias = "zephyr:\n  engine: claude\n  model: claude-zephyr-1\n"
 	const modelsTrimmed = "sonnet:\n  engine: claude\n  model: sonnet\n"
 	loggerTemplate := loggerconfig.ConfigTemplate()
@@ -170,11 +172,22 @@ func TestReconcileAll(t *testing.T) {
 				"loom": {
 					applied:         true,
 					removedAll:      []string{"stale_key"},
-					fileContains:    []string{"review_max_bounces:"},
+					fileContains:    []string{"review:\n", "max_bounces:"},
 					fileNotContains: []string{"stale_key"},
 				},
 				"models": {applied: false, removedNone: true, wantFile: ptr(modelsAlias)},
 			},
+		},
+		{
+			name:  "a standalone loom file's old key is moved to its new path",
+			seed:  map[string]string{"loom": "code_max_bounces: 2\n"},
+			apply: true,
+			want: map[string]moduleWant{"loom": {
+				applied:         true,
+				fileContains:    []string{"max_bounces: 2"},
+				fileNotContains: []string{"code_max_bounces"},
+				movedHas:        []string{"loom.yaml moved loom.code_max_bounces to loom.code.max_bounces"},
+			}},
 		},
 		{
 			name:  "absent logger.yaml is seeded from the template",
@@ -348,6 +361,11 @@ func TestReconcileAll(t *testing.T) {
 						t.Errorf("%s.Removed = %v; want it to contain %q", module, result.Removed, key)
 					}
 				}
+				for _, line := range want.movedHas {
+					if !strings.Contains(strings.Join(result.Moved, "\n"), line) {
+						t.Errorf("%s.Moved = %q; want a line holding %q", module, result.Moved, line)
+					}
+				}
 				if want.loadsAsBatcher {
 					if _, err := batcher.Active(configengine.Dirs{Anchor: baseDir}); err != nil {
 						t.Errorf("batcher.Active after the run = %v; want nil error", err)
@@ -471,6 +489,8 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeOrTemplate(t *testing.T) {
 		// wantFileError means both the dry run and the apply return a *FileError naming the module;
 		// the hub file's bytes stay as they were.
 		wantFileError bool
+		// wantMoved is the number of lines the applied result's Moved holds; a second apply moves nothing.
+		wantMoved int
 	}{
 		{
 			name:           "lenses default under lens_set drops a lens equal to the layer's prose and keeps one equal to the base's",
@@ -507,11 +527,11 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeOrTemplate(t *testing.T) {
 		{
 			name:         "loom default absent with a prime copy is seeded with the prime's non-template units",
 			module:       "loom",
-			primeFile:    "discussion_timeout_min: 500\n",
+			primeFile:    "discussion:\n  timeout_min: 500\n",
 			seedDefaults: true,
 			wantSeed:     SeedPrime,
-			wantContains: []string{"discussion_timeout_min: 500"},
-			wantAbsent:   []string{"review_max_bounces:"},
+			wantContains: []string{"timeout_min: 500"},
+			wantAbsent:   []string{"review:\n"},
 			wantAdded:    []string{},
 		},
 		{
@@ -520,35 +540,54 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeOrTemplate(t *testing.T) {
 			seedDefaults: true,
 			wantSeed:     SeedTemplate,
 			wantContains: []string{configengine.SparseBaseHeader},
-			wantAbsent:   []string{"review_max_bounces:"},
+			wantAbsent:   []string{"review:\n"},
+		},
+		{
+			name:         "loom default present moves its old keys and keeps a neighbour's comment",
+			module:       "loom",
+			hubFile:      "# keep me\nsubagent_model: haiku\ncode_max_bounces: 2\ndiscussion: opus[low]\n",
+			wantSeed:     SeedHub,
+			wantContains: []string{"# keep me\nsubagent_model: haiku\n", "discussion:\n    model: opus[low]\n", "code:\n    max_bounces: 2\n"},
+			wantAbsent:   []string{"code_max_bounces"},
+			wantMoved:    2,
+		},
+		{
+			name:         "loom default absent seeded from a prime copy holding an old key carries its value",
+			module:       "loom",
+			primeFile:    "code_max_bounces: 2\n",
+			seedDefaults: true,
+			wantSeed:     SeedPrime,
+			wantContains: []string{"code:\n    max_bounces: 2\n"},
+			wantAbsent:   []string{"code_max_bounces"},
+			wantMoved:    1,
 		},
 		{
 			name:         "loom default present keeps a key the template lacks and gains no template key",
 			module:       "loom",
-			hubFile:      "discussion_timeout_min: 7\npr_review: old\n",
-			primeFile:    "discussion_timeout_min: 480\n",
+			hubFile:      "discussion:\n  timeout_min: 7\npr_review: old\n",
+			primeFile:    "discussion:\n  timeout_min: 480\n",
 			seedDefaults: true,
 			wantSeed:     SeedHub,
-			wantContains: []string{"discussion_timeout_min: 7", "pr_review: old"},
-			wantAbsent:   []string{"480", "review_max_bounces:"},
+			wantContains: []string{"timeout_min: 7", "pr_review: old"},
+			wantAbsent:   []string{"480", "review:\n"},
 			wantAdded:    []string{},
 		},
 		{
 			name:         "loom default present keeps a key the template lacks without SeedDefaults",
 			module:       "loom",
-			hubFile:      "discussion_timeout_min: 7\npr_review: old\n",
+			hubFile:      "discussion:\n  timeout_min: 7\npr_review: old\n",
 			wantSeed:     SeedHub,
-			wantContains: []string{"discussion_timeout_min: 7", "pr_review: old"},
-			wantAbsent:   []string{"review_max_bounces:"},
+			wantContains: []string{"timeout_min: 7", "pr_review: old"},
+			wantAbsent:   []string{"review:\n"},
 		},
 		{
 			name:         "loom default is pruned of a key the template lacks under PruneUnknown",
 			module:       "loom",
-			hubFile:      "discussion_timeout_min: 7\npr_review: old\n",
+			hubFile:      "discussion:\n  timeout_min: 7\npr_review: old\n",
 			pruneUnknown: true,
 			wantSeed:     SeedHub,
-			wantContains: []string{"discussion_timeout_min: 7"},
-			wantAbsent:   []string{"pr_review", "review_max_bounces:"},
+			wantContains: []string{"timeout_min: 7"},
+			wantAbsent:   []string{"pr_review", "review:\n"},
 		},
 		{
 			name:         "loom default left with no unit by a prune is written as the header-only base",
@@ -562,7 +601,7 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeOrTemplate(t *testing.T) {
 		{
 			name:       "loom default absent stays absent without SeedDefaults",
 			module:     "loom",
-			primeFile:  "discussion_timeout_min: 480\n",
+			primeFile:  "discussion:\n  timeout_min: 480\n",
 			wantNoFile: true,
 		},
 		{
@@ -647,9 +686,9 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeOrTemplate(t *testing.T) {
 		{
 			name:         "profiles present with no template base gain every template unit they lack and keep their own profile",
 			module:       "profiles",
-			hubFile:      "broad:\n  darn:\n    loom: {code_max_bounces: 2}\n",
+			hubFile:      "broad:\n  darn:\n    loom: {code: {max_bounces: 2}}\n",
 			wantSeed:     SeedHub,
-			wantContains: []string{"broad:\n  darn:\n    loom: {code_max_bounces: 2}\n", "defaults:", "light:", "solid:", "docs:"},
+			wantContains: []string{"broad:\n  darn:\n    loom: {code: {max_bounces: 2}}\n", "defaults:", "light:", "solid:", "docs:"},
 		},
 		{
 			name:          "profiles present that fails to parse is refused and left untouched",
@@ -663,7 +702,7 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeOrTemplate(t *testing.T) {
 			hubFile:      "tree_scope:\n  tools: ./tools/...\n  docs: \"\"\n",
 			wantSeed:     SeedHub,
 			wantContains: []string{"tools: ./tools/...", "docs: \"\""},
-			wantAbsent:   []string{"review_max_bounces:"},
+			wantAbsent:   []string{"review:\n"},
 		},
 	}
 
@@ -735,6 +774,18 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeOrTemplate(t *testing.T) {
 			if tt.wantAdded != nil && !slices.Equal(sortedCopy(appliedResult.Added), tt.wantAdded) {
 				t.Errorf("applied Added = %v; want %v", appliedResult.Added, tt.wantAdded)
 			}
+			if len(appliedResult.Moved) != tt.wantMoved {
+				t.Errorf("applied Moved = %q; want %d lines", appliedResult.Moved, tt.wantMoved)
+			}
+			if tt.wantMoved > 0 {
+				second, err := ReconcileHubWideAt(boardDir, primeDir, options)
+				if err != nil {
+					t.Fatalf("ReconcileHubWideAt(second apply): %v", err)
+				}
+				if r := findResult(second, tt.module); r == nil || r.Applied || len(r.Moved) > 0 {
+					t.Errorf("second apply result = %+v; want nothing moved or written", r)
+				}
+			}
 			for _, name := range tt.wantAddedHas {
 				if !slices.Contains(appliedResult.Added, name) {
 					t.Errorf("applied Added = %v; want it to contain %q", appliedResult.Added, name)
@@ -793,13 +844,13 @@ func TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	const (
-		lightDarn            = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_model: \"opus[medium]\"}\n"
-		lightDarnSolo        = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: \"\", code_reviewer_model: \"opus[medium]\"}\n"
-		lightDarnOperator    = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: standard, code_reviewer_model: \"opus[medium]\"}\n"
-		lightDarnNoModel     = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}\n"
-		lightDarnOwnModel    = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_model: \"sonnet[high]\"}\n"
-		lightSamplerReview   = "    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}\n    sampler: {code_review: true}\n"
-		lightSamplerNoReview = "    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}\n"
+		lightDarn            = "  darn:\n    loom: {code: {max_bounces: 1, hard_max_bounces: 2, reviewer_model: \"opus[medium]\"}}\n"
+		lightDarnSolo        = "  darn:\n    loom: {code: {max_bounces: 1, hard_max_bounces: 2, reviewer_fan: \"\", reviewer_model: \"opus[medium]\"}}\n"
+		lightDarnOperator    = "  darn:\n    loom: {code: {max_bounces: 1, hard_max_bounces: 2, reviewer_fan: standard, reviewer_model: \"opus[medium]\"}}\n"
+		lightDarnNoModel     = "  darn:\n    loom: {code: {max_bounces: 1, hard_max_bounces: 2}}\n"
+		lightDarnOwnModel    = "  darn:\n    loom: {code: {max_bounces: 1, hard_max_bounces: 2, reviewer_model: \"sonnet[high]\"}}\n"
+		lightSamplerReview   = "    loom: {code: {max_bounces: 1, hard_max_bounces: 2}}\n    sampler: {code_review: true}\n"
+		lightSamplerNoReview = "    loom: {code: {max_bounces: 1, hard_max_bounces: 2}}\n"
 	)
 	template := runprofile.ConfigTemplate()
 	older := strings.Replace(template, lightDarn, lightDarnSolo, 1)
@@ -810,6 +861,79 @@ func TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate(t *testing.T) {
 		t.Fatalf("module %q is not registered", runprofile.ModuleName)
 	}
 	currentBase := string(templateBaseContent(m))
+	flatBytes, err := os.ReadFile(filepath.Join("testdata", "profiles-flat.yaml"))
+	if err != nil {
+		t.Fatalf("read the profiles template from before the key move: %v", err)
+	}
+	flat := string(flatBytes)
+
+	t.Run("an old flat file and base move every block before the follow", func(t *testing.T) {
+		t.Parallel()
+		const flatSolidTapestry = "    loom: {discussion_max_bounces: 2, discussion_hard_max_bounces: 3, code_max_bounces: 1, code_hard_max_bounces: 2}\n"
+		const added = "mine:\n  tapestry:\n    loom: {code_max_bounces: 3}\n"
+		if !strings.Contains(flat, flatSolidTapestry) {
+			t.Fatal("the fixture lacks the shipped block a row edits")
+		}
+		for _, tt := range []struct {
+			name    string
+			hubFile string
+			// path leads to the value want, in the file after the apply; nil compares the whole file with the new template.
+			path []string
+			want any
+		}{
+			{name: "the untouched file takes the new template", hubFile: flat},
+			{name: "a profile the operator added moves", hubFile: flat + added, path: []string{"mine", "tapestry", "loom", "code", "max_bounces"}, want: 3},
+			{
+				name:    "a profile whose name holds a dot moves",
+				hubFile: flat + "v1.2:\n  tapestry:\n    loom: {code_max_bounces: 3}\n",
+				path:    []string{"v1.2", "tapestry", "loom", "code", "max_bounces"},
+				want:    3,
+			},
+			{
+				name:    "a shipped block the operator changed stays theirs at the new path",
+				hubFile: strings.Replace(flat, flatSolidTapestry, "    loom: {code_max_bounces: 3}\n", 1),
+				path:    []string{"solid", "tapestry", "loom", "code", "max_bounces"},
+				want:    3,
+			},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				boardDir := t.TempDir()
+				writeModuleFile(t, boardDir, runprofile.ModuleName, tt.hubFile)
+				if err := os.WriteFile(configengine.TemplateBaseFile(boardDir, runprofile.ModuleName), []byte(flat), 0o644); err != nil {
+					t.Fatalf("write the template base: %v", err)
+				}
+				results, err := ReconcileHubWideAt(boardDir, "", HubWideOptions{Apply: true})
+				if err != nil {
+					t.Fatalf("ReconcileHubWideAt(): %v", err)
+				}
+				if result := findResult(results, runprofile.ModuleName); result == nil || !result.Applied || len(result.Moved) == 0 {
+					t.Errorf("result = %+v; want the file written with its moves listed", result)
+				}
+				got, err := os.ReadFile(configengine.ConfigFile(boardDir, runprofile.ModuleName))
+				if err != nil {
+					t.Fatalf("read the hub file: %v", err)
+				}
+				var value any
+				if err := yaml.Unmarshal(got, &value); err != nil {
+					t.Fatalf("parse the hub file: %v", err)
+				}
+				want := tt.want
+				if tt.path == nil {
+					if err := yaml.Unmarshal([]byte(template), &want); err != nil {
+						t.Fatalf("parse the template: %v", err)
+					}
+				}
+				for _, step := range tt.path {
+					mapping, _ := value.(map[string]any)
+					value = mapping[step]
+				}
+				if !reflect.DeepEqual(value, want) {
+					t.Errorf("hub file value at %q = %v; want %v; file:\n%s", tt.path, value, want, got)
+				}
+			})
+		}
+	})
 
 	tests := []struct {
 		name    string
@@ -836,7 +960,7 @@ func TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate(t *testing.T) {
 			hubFile:       older,
 			baseFile:      older,
 			wantAdded:     []string{},
-			wantRemoved:   []string{"light.darn.loom.code_reviewer_fan"},
+			wantRemoved:   []string{"light.darn.loom.code.reviewer_fan"},
 			wantContains:  []string{lightDarn},
 			wantAbsent:    []string{lightDarnSolo},
 			wantRewritten: true,
@@ -846,14 +970,14 @@ func TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate(t *testing.T) {
 			hubFile:      strings.Replace(template, lightDarn, lightDarnOperator, 1),
 			baseFile:     older,
 			wantAdded:    []string{},
-			wantDiffers:  []string{"light.darn.loom.code_reviewer_fan: file standard, template absent"},
+			wantDiffers:  []string{"light.darn.loom.code.reviewer_fan: file standard, template absent"},
 			wantContains: []string{lightDarnOperator},
 		},
 		{
 			name:          "an unedited file without the reviewer model gains the template's",
 			hubFile:       withoutReviewerModel,
 			baseFile:      withoutReviewerModel,
-			wantAddedHas:  []string{"light.darn.loom.code_reviewer_model"},
+			wantAddedHas:  []string{"light.darn.loom.code.reviewer_model"},
 			wantContains:  []string{lightDarn},
 			wantRewritten: true,
 		},
@@ -862,7 +986,7 @@ func TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate(t *testing.T) {
 			hubFile:      strings.Replace(template, lightDarn, lightDarnOwnModel, 1),
 			baseFile:     withoutReviewerModel,
 			wantAdded:    []string{},
-			wantDiffers:  []string{"light.darn.loom.code_reviewer_model: file \"sonnet[high]\", template \"opus[medium]\""},
+			wantDiffers:  []string{"light.darn.loom.code.reviewer_model: file \"sonnet[high]\", template \"opus[medium]\""},
 			wantContains: []string{lightDarnOwnModel},
 		},
 		{
@@ -881,10 +1005,10 @@ func TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate(t *testing.T) {
 		},
 		{
 			name:          "with no base a lacking key is added and a differing one kept and listed",
-			hubFile:       "light:\n  darn:\n    loom: {code_max_bounces: 4}\n",
-			wantAddedHas:  []string{"light.darn.loom.code_hard_max_bounces", "solid"},
-			wantDiffers:   []string{"light.darn.loom.code_max_bounces: file 4, template 1"},
-			wantContains:  []string{"    loom: {code_max_bounces: 4, code_hard_max_bounces: 2, code_reviewer_model: ", "solid:"},
+			hubFile:       "light:\n  darn:\n    loom: {code: {max_bounces: 4}}\n",
+			wantAddedHas:  []string{"light.darn.loom.code.hard_max_bounces", "solid"},
+			wantDiffers:   []string{"light.darn.loom.code.max_bounces: file 4, template 1"},
+			wantContains:  []string{"    loom: {code: {max_bounces: 4, hard_max_bounces: 2, reviewer_model: ", "solid:"},
 			wantRewritten: true,
 		},
 		{
@@ -1059,7 +1183,29 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 		wantKeptExtra []string
 		pruneUnknown  bool
 		wantPreserved []string
+		// wantMoved are the lines of Result.Moved without the leading file path.
+		wantMoved []string
 	}{
+		{
+			name: "worktree file moves its old keys and keeps a neighbour's comment", module: "loom", layer: configengine.LayerWorktree,
+			content:     "# keep me\nsubagent_model: haiku\ncode_max_bounces: 2\ndiscussion: sonnet[medium]\n",
+			wantFile:    ptr("# keep me\nsubagent_model: haiku\ndiscussion:\n    model: sonnet[medium]\ncode:\n    max_bounces: 2\n"),
+			wantApplied: true, wantResult: true,
+			wantMoved: []string{"moved loom.code_max_bounces to loom.code.max_bounces", "moved loom.discussion to loom.discussion.model"},
+		},
+		{
+			name: "local file keeps the values of its old keys through the prune of unknown keys", module: "loom", layer: configengine.LayerLocal,
+			content:     "code_max_bounces: 2\n",
+			wantFile:    ptr("code:\n    max_bounces: 2\n"),
+			wantApplied: true, wantResult: true,
+			wantMoved: []string{"moved loom.code_max_bounces to loom.code.max_bounces"},
+		},
+		{
+			name: "local file drops an old key holding null", module: "loom", layer: configengine.LayerLocal,
+			content:     "code_max_bounces: ~\n",
+			wantApplied: true, wantResult: true,
+			wantMoved: []string{"dropped loom.code_max_bounces, which was null"},
+		},
 		{
 			name: "worktree file keeps a hub-only lens and stays byte-identical", module: "lenses", layer: configengine.LayerWorktree,
 			content: "lenses:\n  hub-lens: |\n    Hub emphasis.\n", wantFile: ptr("lenses:\n  hub-lens: |\n    Hub emphasis.\n"),
@@ -1067,17 +1213,17 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 		},
 		{
 			name: "worktree file loses a key the template lacks under PruneUnknown and gains no template key", module: "loom", layer: configengine.LayerWorktree,
-			content: "discussion_timeout_min: 480\nstale_key: old\n", wantFile: ptr("discussion_timeout_min: 480\n"),
+			content: "discussion:\n    timeout_min: 480\nstale_key: old\n", wantFile: ptr("discussion:\n    timeout_min: 480\n"),
 			wantApplied: true, wantRemoved: []string{"stale_key"}, wantResult: true, pruneUnknown: true,
 		},
 		{
 			name: "worktree file keeps a key the template lacks without PruneUnknown and reports it preserved", module: "loom", layer: configengine.LayerWorktree,
-			content: "discussion_timeout_min: 480\nnewer_key: x\n", wantFile: ptr("discussion_timeout_min: 480\nnewer_key: x\n"),
+			content: "discussion:\n    timeout_min: 480\nnewer_key: x\n", wantFile: ptr("discussion:\n    timeout_min: 480\nnewer_key: x\n"),
 			wantResult: true, wantPreserved: []string{"newer_key"},
 		},
 		{
 			name: "worktree file keeps a retired key without PruneUnknown like any other key the template lacks", module: "loom", layer: configengine.LayerWorktree,
-			content: "discussion_timeout_min: 480\nnewer_key: x\npr_review: x\n", wantFile: ptr("discussion_timeout_min: 480\nnewer_key: x\npr_review: x\n"),
+			content: "discussion:\n    timeout_min: 480\nnewer_key: x\npr_review: x\n", wantFile: ptr("discussion:\n    timeout_min: 480\nnewer_key: x\npr_review: x\n"),
 			wantResult: true, wantPreserved: []string{"newer_key", "pr_review"},
 		},
 		{
@@ -1086,7 +1232,7 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 		},
 		{
 			name: "local file is pruned without PruneUnknown and reported with layer local", module: "loom", layer: configengine.LayerLocal,
-			content: "review_max_bounces: 2\nstale_key: old\n", wantFile: ptr("review_max_bounces: 2\n"),
+			content: "review:\n    max_bounces: 2\nstale_key: old\n", wantFile: ptr("review:\n    max_bounces: 2\n"),
 			wantApplied: true, wantRemoved: []string{"stale_key"}, wantResult: true,
 		},
 		{
@@ -1105,8 +1251,8 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 			name: "absent local file reports nothing", module: "loom", layer: configengine.LayerLocal,
 		},
 		{
-			name: "a local loom file keeps a solo code_reviewer_fan", module: "loom", layer: configengine.LayerLocal,
-			content: "code_reviewer_fan: \"\"\n", wantFile: ptr("code_reviewer_fan: \"\"\n"), wantResult: true,
+			name: "a local loom file keeps a solo code.reviewer_fan", module: "loom", layer: configengine.LayerLocal,
+			content: "code:\n    reviewer_fan: \"\"\n", wantFile: ptr("code:\n    reviewer_fan: \"\"\n"), wantResult: true,
 		},
 	}
 	for _, tt := range tests {
@@ -1157,6 +1303,21 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 				if !slices.Equal(result.Preserved, tt.wantPreserved) {
 					t.Errorf("Preserved = %v; want %v", result.Preserved, tt.wantPreserved)
 				}
+				var wantMoved []string
+				for _, line := range tt.wantMoved {
+					wantMoved = append(wantMoved, path+" "+line)
+				}
+				if !slices.Equal(result.Moved, wantMoved) {
+					t.Errorf("Moved = %q; want %q", result.Moved, wantMoved)
+				}
+			}
+			// A second run finds no old key.
+			again, err := ReconcileAll(anchor, boardDir, Options{Apply: true, PruneUnknown: tt.pruneUnknown})
+			if err != nil {
+				t.Fatalf("ReconcileAll(second apply): %v", err)
+			}
+			if r := findLayerResult(again, tt.module, tt.layer); r != nil && (r.Applied || len(r.Moved) > 0) {
+				t.Errorf("second apply result = %+v; want nothing moved or written", r)
 			}
 			got, readErr := os.ReadFile(path)
 			if tt.wantFile == nil {
@@ -1208,43 +1369,55 @@ func TestReconcileHubWideAt_PrunesUnknownKeysOnlyWhenAsked(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name          string
+		module        string
 		content       string
 		pruneUnknown  bool
 		wantFile      string
 		wantApplied   bool
 		wantRemoved   []string
 		wantPreserved []string
+		// wantMoved are the lines of Result.Moved without the leading file path.
+		wantMoved []string
 	}{
 		{
-			name: "a key the template lacks stays and is reported preserved", content: "newer_key: 1\n",
+			name: "a key the template lacks stays and is reported preserved", module: "landing", content: "newer_key: 1\n",
 			wantFile: "newer_key: 1\n", wantPreserved: []string{"newer_key"},
 		},
 		{
-			name: "a retired key stays beside a preserved key", content: "newer_key: 1\npublish_verify: x\n",
+			name: "a retired key stays beside a preserved key", module: "landing", content: "newer_key: 1\npublish_verify: x\n",
 			wantFile: "newer_key: 1\npublish_verify: x\n", wantPreserved: []string{"newer_key", "publish_verify"},
 		},
 		{
-			name: "PruneUnknown prunes every key the template lacks", content: "newer_key: 1\npublish_verify: x\n", pruneUnknown: true,
+			name: "PruneUnknown prunes every key the template lacks", module: "landing", content: "newer_key: 1\npublish_verify: x\n", pruneUnknown: true,
 			wantFile: configengine.SparseBaseHeader, wantApplied: true, wantRemoved: []string{"newer_key", "publish_verify"},
+		},
+		{
+			name: "an old key whose new path is set is dropped and the new value stays", module: "loom", content: "code_max_bounces: 2\ncode: {max_bounces: 3}\n",
+			wantFile: "code: {max_bounces: 3}\n", wantApplied: true,
+			wantMoved: []string{"dropped loom.code_max_bounces, since loom.code.max_bounces is set"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			boardDir := t.TempDir()
-			writeModuleFile(t, boardDir, "landing", tt.content)
-			path := configengine.ConfigFile(boardDir, "landing")
+			writeModuleFile(t, boardDir, tt.module, tt.content)
+			path := configengine.ConfigFile(boardDir, tt.module)
+			var wantMoved []string
+			for _, line := range tt.wantMoved {
+				wantMoved = append(wantMoved, path+" "+line)
+			}
 			for _, apply := range []bool{false, true} {
 				results, err := ReconcileHubWideAt(boardDir, "", HubWideOptions{Apply: apply, PruneUnknown: tt.pruneUnknown})
 				if err != nil {
 					t.Fatalf("ReconcileHubWideAt(apply %v): %v", apply, err)
 				}
-				result := findResult(results, "landing")
+				result := findResult(results, tt.module)
 				if result == nil {
-					t.Fatalf("ReconcileHubWideAt(apply %v) returned no landing result", apply)
+					t.Fatalf("ReconcileHubWideAt(apply %v) returned no %s result", apply, tt.module)
 				}
-				if result.Applied != (apply && tt.wantApplied) || !slices.Equal(result.Removed, tt.wantRemoved) || !slices.Equal(result.Preserved, tt.wantPreserved) {
-					t.Errorf("apply %v: result = %+v; want Applied %v, Removed %v, Preserved %v", apply, result, apply && tt.wantApplied, tt.wantRemoved, tt.wantPreserved)
+				if result.Applied != (apply && tt.wantApplied) || !slices.Equal(result.Removed, tt.wantRemoved) || !slices.Equal(result.Preserved, tt.wantPreserved) || !slices.Equal(result.Moved, wantMoved) {
+					t.Errorf("apply %v: result = %+v; want Applied %v, Removed %v, Preserved %v, Moved %q", apply, result, apply && tt.wantApplied, tt.wantRemoved, tt.wantPreserved, wantMoved)
 				}
 				if !apply {
 					if got, _ := os.ReadFile(path); string(got) != tt.content {
@@ -1287,7 +1460,31 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 		wantErr []string
 		// worktreeFile is written as the module's file in the base dir beside a content file at the board dir.
 		worktreeFile string
+		// templateBase is written as the module's template base at the board dir, and is then the failing file.
+		templateBase string
 	}{
+		{
+			name: "ReconcileHubWideAt seeding from a prime copy whose old key cannot move names the prime's copy",
+			run: func(baseDir, boardDir string) error {
+				_, err := ReconcileHubWideAt(boardDir, baseDir, HubWideOptions{SeedDefaults: true})
+				return err
+			},
+			module:     "loom",
+			wantInBase: true,
+			content:    "code: scalar\ncode_max_bounces: 2\n",
+			wantErr:    []string{"move the old keys of loom"},
+		},
+		{
+			name: "ReconcileHubWideAt on a profiles template base whose block cannot move names the base",
+			run: func(baseDir, boardDir string) error {
+				_, err := ReconcileHubWideAt(boardDir, "", HubWideOptions{})
+				return err
+			},
+			module:       "profiles",
+			content:      "mine: {}\n",
+			templateBase: "solid:\n  tapestry:\n    loom:\n      code: scalar\n      code_max_bounces: 2\n",
+			wantErr:      []string{"solid.tapestry: move the old keys of loom"},
+		},
 		{
 			name: "ReconcileAll on an unparseable per-worktree file",
 			run: func(baseDir, boardDir string) error {
@@ -1296,6 +1493,17 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 			},
 			module:     "batcher",
 			wantInBase: true,
+		},
+		{
+			name: "ReconcileAll on a loom file whose old key cannot move",
+			run: func(baseDir, boardDir string) error {
+				_, err := ReconcileAll(baseDir, boardDir, Options{})
+				return err
+			},
+			module:     "loom",
+			wantInBase: true,
+			content:    "code: scalar\ncode_max_bounces: 2\n",
+			wantErr:    []string{"move the old keys of loom"},
 		},
 		{
 			name: "ReconcileAll on an unparseable shuttle.yaml",
@@ -1374,6 +1582,11 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 			if tt.worktreeFile != "" {
 				writeModuleFile(t, baseDir, tt.module, tt.worktreeFile)
 			}
+			if tt.templateBase != "" {
+				if err := os.WriteFile(configengine.TemplateBaseFile(boardDir, tt.module), []byte(tt.templateBase), 0o644); err != nil {
+					t.Fatalf("write the template base: %v", err)
+				}
+			}
 
 			err := tt.run(baseDir, boardDir)
 
@@ -1382,6 +1595,9 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 				t.Fatalf("error = %v, want a *FileError", err)
 			}
 			wantPath := configengine.ConfigFile(fileDir, tt.module)
+			if tt.templateBase != "" {
+				wantPath = configengine.TemplateBaseFile(boardDir, tt.module)
+			}
 			if fileErr.Module != tt.module || fileErr.Path != wantPath {
 				t.Errorf("FileError{Module: %q, Path: %q}, want module %q path %q", fileErr.Module, fileErr.Path, tt.module, wantPath)
 			}

@@ -141,8 +141,8 @@ func checkFixTableShapeAndFiles(t *testing.T, twill bool) {
 		Rerun:   FixRerun{Reason: "the round halted", Report: filepath.Join(root, "old-fixer-report.md")},
 	}
 	if twill {
-		opts.FixKey = shuttleengine.ModelKey{Module: "loom", Key: "discussion_fixer_model"}
-		opts.FixFanKey = "discussion_fixer_fan"
+		opts.FixKey = shuttleengine.ModelKey{Module: "loom", Key: "discussion.fixer_model"}
+		opts.FixFanKey = "loom.discussion.fixer_fan"
 	}
 	resolved := p
 	if err := resolved.validateFix(root, cfg); err != nil {
@@ -408,10 +408,10 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 		{
 			name:   "a twill fixer under a loom key names the key, the fan key and the resume step",
 			fixFan: "standard",
-			opts:   RunOpts{FixKey: shuttleengine.ModelKey{Module: "loom", Key: "discussion_fixer_model"}, FixFanKey: "discussion_fixer_fan"},
+			opts:   RunOpts{FixKey: shuttleengine.ModelKey{Module: "loom", Key: "discussion.fixer_model"}, FixFanKey: "loom.discussion.fixer_fan"},
 			wantContains: []string{
-				"burler: the twill fixer's fan from discussion_fixer_fan needs forks, which the engine of discussion_fixer_model in loom.yaml cannot run",
-				"move discussion_fixer_model in loom.yaml to an engine with forks, then resume",
+				"burler: the twill fixer's fan from loom.discussion.fixer_fan needs forks, which the engine of loom.discussion.fixer_model cannot run",
+				"move loom.discussion.fixer_model to an engine with forks, then resume",
 			},
 		},
 		{
@@ -419,7 +419,7 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 			fixFan: "standard",
 			opts:   RunOpts{FixKey: shuttleengine.ModelKey{DefaultEngine: true}, FixFanKey: "fix-fan"},
 			wantContains: []string{
-				"which the engine of engine: in shuttle.yaml cannot run",
+				"which the engine of shuttle.engine cannot run",
 				"remove fix-fan from the profile, and re-run",
 			},
 		},

@@ -323,7 +323,7 @@ func prStatus(ctx context.Context, deps landDeps, slug string) (map[string]any, 
 		if err != nil {
 			return nil, rerunRefusal(verb, slug, "read the pawl run", err)
 		}
-		wayForward := fmt.Sprintf("Finalize decides the landing's pull request by the beam's pull_request and the parent's rules; run `lym batten status %s` to follow the landing", slug)
+		wayForward := fmt.Sprintf("Finalize decides the landing's pull request by the beam's %s and the parent's rules; run `lym batten status %s` to follow the landing", pullRequestName(), slug)
 		if runFound && status.CurrentProducer == pawlengine.NameBeamAwait {
 			wayForward = fmt.Sprintf("no pull request is recorded; run `lym beam pr open %s` when the operator wants one", slug)
 		}
@@ -419,7 +419,7 @@ func prClose(ctx context.Context, deps landDeps, slug string) (map[string]any, e
 		}
 		wayForward = closeFollowUp(slug, mode, decision.Open)
 	} else {
-		wayForward = fmt.Sprintf("the beam's pull_request or the beam's commits could not be read: %v; fix the cause, then run `lym beam ready %s`, which refuses what a pull request is still owed", readErr, slug)
+		wayForward = fmt.Sprintf("the beam's %s or the beam's commits could not be read: %v; fix the cause, then run `lym beam ready %s`, which refuses what a pull request is still owed", pullRequestName(), readErr, slug)
 	}
 
 	closed := status.State == pullrequest.StateOpen
@@ -456,7 +456,7 @@ func closeFollowUp(slug, mode string, wantsPullRequest bool) string {
 	case !wantsPullRequest:
 		return fmt.Sprintf("the pull request is dropped from the landing record; run `lym beam ready %s` when the operator says so, after which Finalize lands the beam without a pull request", slug)
 	case mode == beamsetting.PullRequestMerge:
-		return fmt.Sprintf("the pull request is dropped, but the beam's pull_request is merge, so Finalize still lands through a pull request it finds or opens; run `lym beam ready %s` when the operator says so", slug)
+		return fmt.Sprintf("the pull request is dropped, but the beam's %s is merge, so Finalize still lands through a pull request it finds or opens; run `lym beam ready %s` when the operator says so", pullRequestName(), slug)
 	default:
 		return fmt.Sprintf("the pull request is dropped, but GitHub's rules for the parent branch require one, so `lym beam ready %s` refuses until one is recorded again; run `lym beam pr open %s`", slug, slug)
 	}
@@ -483,6 +483,6 @@ func parentRuleRequired(ctx context.Context, origin landingshed.Origin, parentBr
 	if !tokenFailure && (ctx.Err() != nil || shedtransient.Class(err) != "") {
 		return false, err
 	}
-	logger.Warn("beamcli: GitHub's rules for the parent branch are unreadable, so the beam's pull_request decides alone", "branch", parentBranch, "cause", err)
+	logger.Warn("beamcli: GitHub's rules for the parent branch are unreadable, so the beam's "+pullRequestName()+" decides alone", "branch", parentBranch, "cause", err)
 	return false, nil
 }

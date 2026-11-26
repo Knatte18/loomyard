@@ -21,7 +21,7 @@
      self_check is a required marker: the body of Step 6 up to its closing two lines.
      DiscussionTable fills it with the fragment that has the writer run the validator or,
      when the gate has a cold fixer, the one that has it run none.
-     The subagent_model marker is declared by the Claude engine block the stencil includes, and filled from loom.yaml's subagent_model.
+     The subagent_model marker is declared by the Claude engine block the stencil includes, and filled from loom.subagent_model.
      The literal `{` / `}` characters around {{.slug}} in the board-read example below are ordinary JSON punctuation, not template syntax;
      only `{{` begins a template action. -->
 

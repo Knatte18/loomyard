@@ -17,8 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
-	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -204,7 +202,6 @@ func refuseVerbOffRecipe(verb, recipe string) error {
 // arm is the entry point of loom's own subtree:
 // the `lym loom` pre-run reaches it for every verb it arms, so cwd is resolved once per invocation.
 // It resolves cwd into a *lymcwd.Location and hands it, with the raw positional args, to armAt.
-// For a start or resume verb, it first reconciles the hub's config.
 func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
 	location, err := lymcwd.Resolve(cwd)
 	if err != nil {
@@ -212,17 +209,9 @@ func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, e
 		// pass it through bare rather than doubling that same text on top of it.
 		return shedverbs.Spec{}, err
 	}
-	// Recorded before the reconcile and armAt so a refusal from any later arming stage finds the location set.
+	// Recorded before armAt so a refusal from any later arming stage finds the location set.
 	c.location = location
 	c.loomPath = true
-
-	// A start or resume verb reconciles the hub's config after a binary change before armAt loads any module config.
-	// A strict load of a file still carrying a retired key would refuse the verb before the reconcile removes that key.
-	if verb == "start" || verb == "resume" {
-		if geometry, inHub := hubgeom.ReconcileGeometry(location); inHub {
-			hubreconcile.EnsureOrWarn(geometry, hubreconcile.Options{})
-		}
-	}
 
 	return c.armAt(location, verb, args)
 }
@@ -388,7 +377,7 @@ func (c *loomCLI) reviewBudget() (map[string]int, error) {
 
 // loomReviewBudget returns the loom review segments' bounce budgets, read as reviewBudget describes.
 func (c *loomCLI) loomReviewBudget() (map[string]int, error) {
-	if c.cfg.ReviewHardMaxBounces > 0 {
+	if c.cfg.Review.HardMaxBounces > 0 {
 		return loomSegmentBudgets(c.cfg), nil
 	}
 

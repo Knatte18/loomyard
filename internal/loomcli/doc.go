@@ -56,10 +56,11 @@
 // Only that session runs it.
 // It admits only a review recorded under autonomy, and it refuses an ask that already awaits an answer at the head.
 // It also refuses an ask at a head where a satisfied answer stands.
-// The Discussion-Review and Code-Review parent seats read `discussion_review_ask_parent` and `code_review_ask_parent`.
+// The Discussion-Review parent seat reads `loom.discussion.review_ask_parent`.
+// The Code-Review parent seat reads `loom.code.review_ask_parent`.
 // They read them on each call, and an unreadable value reads as false.
 //
-// The rows loom.yaml's `notify_parent_on` names post a `[row reached]` notice once per visit.
+// The rows `loom.notify_parent_on` names post a `[row reached]` notice once per visit.
 // A name that is no row of the recipe refuses the shed.
 // A failed read, write or post only warns: a notice never stops the run.
 //
@@ -225,7 +226,7 @@
 // A record whose autonomy is false or absent takes no parent answer.
 // `lym loom pr-findings <file>` takes findings in burler's review format.
 // It sends the set back to Code-Review when the reroute edge can fire.
-// That needs a BLOCKING finding or findings exceeding `pr_review_small_max`; otherwise it only counts them.
+// That needs a BLOCKING finding or findings exceeding `pr.review_small_max`; otherwise it only counts them.
 // It is refused while the task worktree has uncommitted paths.
 // `lym loom sampler-done` sets the done flag in the Sampler-Session record and nothing else.
 // It is refused on a recipe with no SamplerSession row and while the run stands at another row.
@@ -296,7 +297,7 @@
 //
 // Each Bouncer row's `subject` key says what its segment judges: `document` or `code`.
 // A re-entry over an unchanged subject settles without a review,
-// and a changed one reviews only the change under `review_amend_max_bounces`.
+// and a changed one reviews only the change under `review.amend_max_bounces`.
 // A code subject is the task worktree's change against the task's merge base.
 // The merge base is the merge base of HEAD with the parent tip the merge record names.
 // A run with no recorded parent branch tells no code subject, so its code segments write no records.

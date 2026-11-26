@@ -3,7 +3,7 @@
      and the writer acts only on what the fixer leaves.
      The writer asks its parent for the single run of the test a task's reported failure names, before it diagnoses it.
      internal/darnengine's DarnTable reads it for the writer's engine,
-     fills the {{.subagent_model}} marker its Claude engine block declares from loom.yaml's subagent_model,
+     fills the {{.subagent_model}} marker its Claude engine block declares from loom.subagent_model,
      fills the {{.measure_call}} marker with the measuring call the hub's gate config can run,
      then fills the result whole into darn-template-write's make_change marker. -->
 

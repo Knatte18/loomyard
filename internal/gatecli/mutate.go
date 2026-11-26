@@ -78,12 +78,12 @@ func mutateCmd(goBinary string, minuteUnit, grace time.Duration) *cobra.Command 
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `mutate mutates the lines the worktree's diff changes and lists the mutants no test kills.
 The diff is from --base, else the merge base with the parent branch; a worktree with neither, the prime's case, is refused.
-It refreshes the worktree's own coverage maps of the packages holding a changed function under reach_budget_min; the prime refreshes nothing.
+It refreshes the worktree's own coverage maps of the packages holding a changed function under ` + keyName(reachBudgetMinKey) + `; the prime refreshes nothing.
 A package is judged only with a fresh map: one the refresh wrote, or a map whose file hashes match the worktree, the hub's shared one in the prime.
 Any other changed package is listed as not judged, with its reason and way forward.
 It places at most one mutant on each changed line of a block a test covers, leaving out lines that only log or test another platform.
-It takes up to mutation_max_mutants over the changed functions in turn, spread evenly over them when the cap is short of one each.
-It runs each mutant against the map's tests that cover its block until one fails, inside one gate slot bounded by mutation_budget_min.
+It takes up to ` + keyName(mutationMaxMutantsKey) + ` over the changed functions in turn, spread evenly over them when the cap is short of one each.
+It runs each mutant against the map's tests that cover its block until one fails, inside one gate slot bounded by ` + keyName(mutationBudgetMinKey) + `.
 A run past its time bound or the memory cap is unjudged, never a kill; a mutant every covering test passes is a survivor.
 It prints the survivors with the tests of other packages that reach their function, the uncovered changed blocks, the packages not judged and the counts of mutants run, killed, survived and unjudged.
 It exits 0 once it ran, whatever it found.

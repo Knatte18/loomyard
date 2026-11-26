@@ -420,9 +420,9 @@ func TestPlanWriteEntry_GateConfig(t *testing.T) {
 		} {
 			t.Run(tt.name, func(t *testing.T) {
 				env := newTestEnv(t)
-				env.Setting = fakeSetting(map[string]any{"tapestry.plan_gate_fixer": "opus", "tapestry.plan_lenses": tt.lenses})
+				env.Setting = fakeSetting(map[string]any{"tapestry.plan.gate_fixer": "opus", "tapestry.plan.lenses": tt.lenses})
 				calls := recordGateFixer(&env)
-				cfg := Config{"gates": []any{map[string]any{"name": "plan", "attempts": 3, "fixer": "tapestry.plan_gate_fixer"}}}
+				cfg := Config{"gates": []any{map[string]any{"name": "plan", "attempts": 3, "fixer": "tapestry.plan.gate_fixer"}}}
 				if _, err := planWriteEntry(RowIdentity{Name: "Row"}, cfg, env); err != nil {
 					t.Fatalf("planWriteEntry() error = %v; want nil", err)
 				}

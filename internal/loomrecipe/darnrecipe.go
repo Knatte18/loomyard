@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
@@ -69,7 +70,7 @@ func hasVerifyGate(row shedbuild.Row) bool {
 // checkVerifyAttempts refuses a verify attempt budget below 1.
 func checkVerifyAttempts(attempts int) error {
 	if attempts < 1 {
-		return fmt.Errorf("loomrecipe: verify_attempts = %d; want at least 1; way forward: run \"lym config darn --set verify_attempts=<n>\" from the prime, then \"lym loom resume\"", attempts)
+		return fmt.Errorf("loomrecipe: %s = %d; want at least 1; way forward: run \"lym config darn --set verify_attempts=<n>\" from the prime, then \"lym loom resume\"", loomengine.DarnVerifyAttemptsName(), attempts)
 	}
 
 	return nil

@@ -20,6 +20,9 @@
 // and the refusal carries that text as its way forward.
 // The hub-only keys are set only in the hub's file, such as drift's `diff` and `key_patterns`.
 // They still load from the hub layers.
+// PrepareRunSettings refuses a moved key by both its old and its new full name.
+// MoveSettings moves the old keys of such an object, and MoveRunSettings those of one decoded from JSON.
+// The RunSettingsBlocks flag marks the run-profile module, whose file holds one object per profile and recipe.
 //
 // # Reinterpretations
 //

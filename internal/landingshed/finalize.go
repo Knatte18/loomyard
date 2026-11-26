@@ -889,7 +889,7 @@ func protectedParentWayForward(task, parent string, parentMerges bool) string {
 	if parentMerges {
 		return "way forward: " + handLanding
 	}
-	return `way forward: mark the parent to land through a pull request lym squash-merges on GitHub at once, with "lym config beam --set pull_request=merge" in the parent's worktree, or for every branch of the hub with "lym config beam --layer default --set pull_request=merge" from the prime, or by setting beam's pull_request to merge in the task's run_settings; ` + handLanding
+	return `way forward: mark the parent to land through a pull request lym squash-merges on GitHub at once, with "lym config beam --set pull_request=merge" in the parent's worktree, or for every branch of the hub with "lym config beam --layer default --set pull_request=merge" from the prime, or by setting ` + beamPullRequestName() + ` to merge in the task's run_settings; ` + handLanding
 }
 
 // recheckLock re-reads the parent lock record immediately before a landing attempt.

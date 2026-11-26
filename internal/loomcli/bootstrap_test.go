@@ -178,7 +178,7 @@ func TestAwaitRunLock(t *testing.T) {
 		{name: "ready before the alive check, child about to exit", lockHeldOnCall: 1, deadline: 10, want: awaitRunLockReady},
 		// The regression guard for a finished driver that is still alive with the lock free.
 		// shedengine.Run releases the run lock on return, and the driver then runs the friction reflection agent.
-		// That agent can take up to `friction_timeout_min`, against a handshake budget far shorter than that.
+		// That agent can take up to `friction.timeout_min`, against a handshake budget far shorter than that.
 		// A finished machine with a live child and a free lock must report halted;
 		// otherwise it falls through to the deadline, which dispositionForHandshake refuses.
 		// That refusal reports a healthy run as a driver that did not take the run lock.

@@ -33,6 +33,7 @@ func TestLoomPreBootstrapPair(t *testing.T) {
 
 	exe := lymbin.Build(t)
 	_, loc, worktree, slug := newWiredPairFixture(t)
+	waitForFixtureProcessesToExit(t)
 	recordsDir := fabricengine.RecordsWorktree(loc)
 
 	// The run verb on a never-seeded pair refuses on the envelope with a message naming the bootstrap verb.
@@ -40,7 +41,7 @@ func TestLoomPreBootstrapPair(t *testing.T) {
 	t.Run("run on a never-seeded pair refuses and writes nothing", func(t *testing.T) {
 		beforeCount := gitkit.RevListCount(t, recordsDir, "HEAD")
 
-		stdout, code, err := runLoomCLINoFatal(exe, worktree, 15*time.Second, "loom", "run")
+		stdout, code, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 15*time.Second, "loom", "run")
 		if err != nil {
 			t.Fatalf("tapestry run: %v; output: %s", err, stdout)
 		}
@@ -123,11 +124,12 @@ func TestLoomStatusAndPauseOnNeverBootstrappedPair(t *testing.T) {
 
 	exe := lymbin.Build(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
+	waitForFixtureProcessesToExit(t)
 	seedGoDriverRun(t, loc)
 
 	for _, verb := range []string{"status", "pause"} {
 		t.Run(verb, func(t *testing.T) {
-			stdout, code, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", verb)
+			stdout, code, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", verb)
 			if err != nil {
 				t.Fatalf("loom %s: %v; output: %s", verb, err, stdout)
 			}
@@ -158,8 +160,8 @@ func TestLoomStatusAndPauseOnNeverBootstrappedPair(t *testing.T) {
 	}
 }
 
-// TestLoomResumeReconcilesTheHubConfigBeforeArming asserts only a start verb reconciles a hub whose build has no stamp.
-// Status leaves a deleted lenses repo default on the board deleted and writes no stamp.
+// TestLoomResumeReconcilesTheHubConfigBeforeArming asserts a loom verb reconciles an unstamped hub before arming.
+// The bare group loads no config, so it leaves a deleted lenses repo default on the board deleted and writes no stamp.
 // Resume on an unparseable loom.yaml warns with the way forward and goes on.
 // It refuses at the loom config load that meets the same file and writes no stamp.
 // Resume after the fix reseeds the default, commits it and writes the stamp.
@@ -175,14 +177,14 @@ func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 	recordsDir := fabricengine.RecordsWorktree(loc)
 	lensesPath := boardLensesDefault(loc)
 
-	if _, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "status"); err != nil {
-		t.Fatalf("loom status: %v", err)
+	if _, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom"); err != nil {
+		t.Fatalf("bare loom: %v", err)
 	}
 	if _, err := os.Stat(lensesPath); !os.IsNotExist(err) {
-		t.Fatalf("loom status reseeded the board's lenses.yaml (stat err %v); want it left deleted", err)
+		t.Fatalf("bare loom reseeded the board's lenses.yaml (stat err %v); want it left deleted", err)
 	}
 	if _, err := os.Stat(hubStampPath(loc)); err == nil {
-		t.Fatalf("loom status wrote the build stamp; only a start verb reconciles")
+		t.Fatalf("bare loom wrote the build stamp; it loads no config and reconciles nothing")
 	}
 
 	loom, _ := configreg.Lookup("loom")
@@ -196,7 +198,7 @@ func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 	}
 	// The Warn precedes the loom config load's refusal of the same broken file.
 	// That order shows a failed reconcile does not stop the verb.
-	warnAt := strings.Index(out, "retry the reconcile")
+	warnAt := strings.Index(out, "run a start verb to retry it")
 	loadAt := strings.LastIndex(out, configengine.ConfigFile(worktree, "loom"))
 	if warnAt < 0 || loadAt < warnAt {
 		t.Errorf("loom resume output has the reconcile Warn at %d and the loom config load's refusal of loom.yaml at %d; want the Warn first, then the refusal; output: %s", warnAt, loadAt, out)

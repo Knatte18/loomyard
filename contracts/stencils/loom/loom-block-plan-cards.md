@@ -5,7 +5,7 @@
      It names no step of the stencil around it;
      each including stencil states its own rule for the lines this block leaves out. -->
 
-A symbol `Rename` needs the hub's `rename_tools` in `language.yaml`; the plan gate refuses one when the list is empty.
+A symbol `Rename` needs the hub's `language.rename_tools`; the plan gate refuses one when the list is empty.
 
 ### Each `NN-<card-slug>.md`
 
@@ -78,7 +78,7 @@ A genuinely new file with no predecessor belongs in a separate `Create` card, ne
    into the `Rename` pair.
 4. Never write the relocated file from scratch and delete the original — that loses
    git history exactly as an unstructured create+delete pair would.
-5. For a symbol pair, run the hub's structure-aware rename tool the implementer prompt names (`language.yaml` `rename_tools`), never a text or regex replace, then grep for zero remaining old-name references and confirm the symbol's doc comment opening names the new name.
+5. For a symbol pair, run the hub's structure-aware rename tool the implementer prompt names (`language.rename_tools`), never a text or regex replace, then grep for zero remaining old-name references and confirm the symbol's doc comment opening names the new name.
 ```
 
 ### Minimal skeleton

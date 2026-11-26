@@ -41,7 +41,7 @@ func TestResolvePullRequest(t *testing.T) {
 			})
 		}
 		off := ResolvePullRequest("off", NotABeam, false, githubOrigin, true)
-		if want := "pull request off: beam.yaml's pull_request for this landing is off"; off.Reason != want {
+		if want := "pull request off: beam.pull_request for this landing is off"; off.Reason != want {
 			t.Errorf("off reason = %q; want %q", off.Reason, want)
 		}
 	})
@@ -108,7 +108,7 @@ func TestResolvePullRequest(t *testing.T) {
 			wantIn string
 		}{
 			{"LocalPathUnderOnIsNo", "on", local, false, "/srv/hub.git"},
-			{"LocalPathUnderMergeHalts", "merge", local, true, "beam.yaml's pull_request for this landing is merge"},
+			{"LocalPathUnderMergeHalts", "merge", local, true, "beam.pull_request for this landing is merge"},
 			{"OwnerOnlyHalts", "on", Origin{URL: "https://github.com/onlyowner", Upstream: true}, true, "names no repository"},
 			{"EmptyUserInfoHalts", "on", Origin{URL: "https://@github.com/o/r", Upstream: true}, true, "names no repository"},
 			{"SSHWithPortHalts", "on", Origin{URL: "ssh://git@github.com:22/o/r.git", Upstream: true}, true, "names no repository"},
@@ -172,7 +172,7 @@ func TestResolvePullRequest(t *testing.T) {
 			{"NoneRecordedUnderOnIsNo", "on", BeamWithoutPullRequest, false, githubOrigin, false, false, noRecord},
 			{"NoneRecordedUnderOffIsNo", "off", BeamWithoutPullRequest, false, githubOrigin, false, false, noRecord},
 			{"NoneRecordedUnderMergeInReadsAsOff", "merge-in", BeamWithoutPullRequest, false, githubOrigin, false, false, noRecord},
-			{"NoneRecordedUnderMergeIsYes", "merge", BeamWithoutPullRequest, false, githubOrigin, true, false, "beam.yaml's pull_request for this landing is merge"},
+			{"NoneRecordedUnderMergeIsYes", "merge", BeamWithoutPullRequest, false, githubOrigin, true, false, "beam.pull_request for this landing is merge"},
 			{"NoneRecordedUnderAParentRuleIsYes", "off", BeamWithoutPullRequest, true, githubOrigin, true, false, "GitHub's rules for the parent branch require one"},
 			{"NoneRecordedUnderMergeInAndAParentRuleIsYes", "merge-in", BeamWithoutPullRequest, true, githubOrigin, true, false, "GitHub's rules for the parent branch require one"},
 			{"RecordedPullRequestWithALocalOriginHalts", "off", BeamWithPullRequest, false, local, false, true, recordDemand},

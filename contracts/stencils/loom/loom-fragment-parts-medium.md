@@ -1,4 +1,4 @@
-<!-- This is the medium reading depth of the Parts-Write agent, chosen by tapestry.yaml's parts_depth.
+<!-- This is the medium reading depth of the Parts-Write agent, chosen by tapestry.parts.depth.
      internal/loomengine's PartsTable fills it whole into loom-template-parts' depth_block marker.
      It declares no marker. -->
 

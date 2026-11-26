@@ -139,7 +139,7 @@ and the adopt path drops nothing.
 
 ## Stop chain
 
-Rule: A shed run's stop: rule table, tackler, arbiter, then parent, for every recipe; a stop the driver's arbiter seam marks as judged first, by row and reason, skips the tackler; arbiter keys in shed.yaml, batten's overridable in batten.yaml, a loom recipe's own via its profile block.
+Rule: A shed run's stop: rule table, tackler, arbiter, then parent, for every recipe; a stop the driver's arbiter seam marks as judged first, by row and reason, skips the tackler; the `shed.arbiter`, `shed.arbiter_timeout_min` and `shed.arbiter_max_spawns` keys, batten's overridable by the `batten` keys of the same names, a loom recipe's own via its profile block.
 
 Held by review alone; no test enforces it.
 

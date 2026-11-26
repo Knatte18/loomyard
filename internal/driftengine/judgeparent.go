@@ -171,7 +171,7 @@ func (s *JudgeParentSeat) sendJudgeAsk(seed string, round int, digest string, wa
 	deadline := now.Add(wait)
 	capped := !limit.IsZero() && deadline.After(limit)
 	if capped && !limit.After(now) {
-		ask.State, ask.Reason = burlerengine.ParentAskNotSent, fmt.Sprintf("judge_parent_timeout_min leaves the parent no time: the judge's own timeout ends its session by %s", limit.UTC().Format(time.RFC3339))
+		ask.State, ask.Reason = burlerengine.ParentAskNotSent, fmt.Sprintf("%s leaves the parent no time: the judge's own timeout ends its session by %s", keyName(judgeParentTimeoutKey), limit.UTC().Format(time.RFC3339))
 	} else {
 		strand, recorded, err := s.Resolve()
 		switch {
@@ -181,7 +181,7 @@ func (s *JudgeParentSeat) sendJudgeAsk(seed string, round int, digest string, wa
 			ask.State, ask.Reason = burlerengine.ParentAskNoParent, "no orch strand is recorded at the run's parent"
 		default:
 			if capped {
-				logger.Warn("drift: judge_parent_timeout_min is capped to leave the judge room to end its turn before its own timeout", "key", "judge_parent_timeout_min", "value", wait, "capped", limit.Sub(now))
+				logger.Warn("drift: "+keyName(judgeParentTimeoutKey)+" is capped to leave the judge room to end its turn before its own timeout", "key", keyName(judgeParentTimeoutKey), "value", wait, "capped", limit.Sub(now))
 				deadline = limit
 			}
 			ask.State, ask.Strand, ask.Deadline = burlerengine.ParentAskPendingPost, strand, deadline

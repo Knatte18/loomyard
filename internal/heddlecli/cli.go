@@ -51,8 +51,8 @@ lym ships in its binary, read-only, and the repository's own in heddle.json in
 the hub's Bolt checkout. It renders file targets into git-excluded files at a
 worktree's anchor directory, the shipped entries first, and it appends prompt targets to
 the system prompt of the Claude sessions launched in the hub: claude-prompt to
-every one, orch-prompt to an orch session alone. A hub whose heddle.yaml sets
-lym_override may override a shipped entry's text with set --layer lym.
+every one, orch-prompt to an orch session alone. A hub that sets
+` + lymOverrideName() + ` may override a shipped entry's text with set --layer lym.
 
 set and remove change the store under the Bolt write lock, render HEDDLE.md,
 the overview of every entry, beside it, render every file target into every

@@ -97,7 +97,7 @@ The gate routes each failure to a fixer and records it as `fixer` in `verify-gat
 The default fixer is a fork in Merriam's session, on Merriam's model.
 The cold fixer takes the last attempt, and every attempt after a fixer that committed nothing.
 `lym webster fix-verify` spawns the cold fixer as its own strand at the `recovery` role.
-`verify_gate_attempts` in `webster.yaml` bounds the attempts;
+`webster.verify_gate_attempts` bounds the attempts;
 an exhausted gate ends the run `stuck`, as does a fixer commit the gate rejects.
 Nothing runs the suite after the session ends.
 

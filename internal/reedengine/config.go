@@ -94,7 +94,7 @@ func windowSplitLayout(raw string) (splitFlag, layout string, err error) {
 	case "height":
 		return "-v", "even-vertical", nil
 	}
-	return "", "", fmt.Errorf("invalid window_split value %q: want \"width\" or \"height\"", raw)
+	return "", "", fmt.Errorf("invalid %s value %q: want \"width\" or \"height\"", keyName("window_split"), raw)
 }
 
 // validateWindowConfig refuses a window_split other than "width" or "height" and a negative window_share_max.
@@ -104,7 +104,7 @@ func validateWindowConfig(cfg Config) error {
 		return err
 	}
 	if cfg.WindowShareMax < 0 {
-		return fmt.Errorf("invalid window_share_max value %d: want an integer of at least 0", cfg.WindowShareMax)
+		return fmt.Errorf("invalid %s value %d: want an integer of at least 0", keyName("window_share_max"), cfg.WindowShareMax)
 	}
 	return nil
 }

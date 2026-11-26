@@ -34,7 +34,7 @@ Every never-tracked file lives under `.lym`, at the mirrored subpath of the `_ly
   It never sits at the mirrored file path `.lym/config/<module>.yaml`, which is the editor staging copy's.
 - A module's machine override sits under the board dir's `.lym/config/`, as `.lym/config/<module>.machine.yaml`.
 - The split is structural, held in `fabricengine.structuralCommittedDirs` and `structuralNeverCommittedDirs`.
-  It is never read from `fabric.yaml`'s `pathspec`.
+  It is never read from `fabric.pathspec`.
 - Weft content is per-branch and is never a merge participant in either direction.
 - `internal/logger`'s durable trace sink arms its cwd-anchored fallback only inside a worktree lym owns.
   Such a worktree has `_lym` at the anchor.

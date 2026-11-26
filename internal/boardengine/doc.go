@@ -63,6 +63,8 @@
 // Priority is part of an entry's scope, so the run lock refuses a change to it on a run-held note.
 // An entry may carry run_settings, and a task may carry a profile.
 // Neither is scope, so the run lock lets a run-held entry take a change to them.
+// RewriteRunSettings rewrites every entry's run_settings in one write.
+// It puts board.json back when a step after the save fails.
 //
 // # Owners
 //

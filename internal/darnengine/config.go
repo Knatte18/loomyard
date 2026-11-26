@@ -30,7 +30,7 @@ func ConfigTemplate() string {
 const configModule = "darn"
 
 // ErrTreeScopeKey marks a tree_scope key that is malformed or repeats another key after its trailing slash is trimmed.
-var ErrTreeScopeKey = errors.New("darn config key \"tree_scope\" holds a malformed tree key")
+var ErrTreeScopeKey = errors.New("config key \"" + keyName(treeScopeKey) + "\" holds a malformed tree key")
 
 // Config represents the resolved darn.yaml configuration.
 type Config struct {
@@ -127,25 +127,25 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	}
 
 	if _, err := modelspec.Parse(cfg.Writer); err != nil {
-		return Config{}, fmt.Errorf("darn config key %q: %w", "writer", err)
+		return Config{}, fmt.Errorf("config key %q: %w", keyName(writerKey), err)
 	}
 
 	// An empty gate_fixer turns the fixer off and must load cleanly.
 	if cfg.GateFixer != "" {
 		if _, err := modelspec.Parse(cfg.GateFixer); err != nil {
-			return Config{}, fmt.Errorf("darn config key %q: %w; set a model-spec with \"lym config darn\", or \"\" to turn the fixer off", "gate_fixer", err)
+			return Config{}, fmt.Errorf("config key %q: %w; set a model-spec with \"lym config darn\", or \"\" to turn the fixer off", keyName(gateFixerKey), err)
 		}
 	}
 
 	if cfg.ReportDir != "" {
 		if !filepath.IsLocal(cfg.ReportDir) {
-			return Config{}, fmt.Errorf("darn config key %q: %q is not a worktree-relative directory; set one such as docs/research, or \"\" for no report file", "report_dir", cfg.ReportDir)
+			return Config{}, fmt.Errorf("config key %q: %q is not a worktree-relative directory; set one such as docs/research, or \"\" for no report file", keyName(reportDirKey), cfg.ReportDir)
 		}
 		cfg.ReportDir = path.Clean(filepath.ToSlash(cfg.ReportDir))
 		// Any segment counts, as a hub anchored at a subpath keeps its records at <anchor>/_lym.
 		for _, root := range []string{lymdirs.LymDirName, lymdirs.DotLymDirName} {
 			if slices.Contains(strings.Split(cfg.ReportDir, "/"), root) {
-				return Config{}, fmt.Errorf("darn config key %q: %q lies under a records directory %q, so its report never reaches the parent branch; set one such as docs/research, or \"\" for no report file", "report_dir", cfg.ReportDir, root)
+				return Config{}, fmt.Errorf("config key %q: %q lies under a records directory %q, so its report never reaches the parent branch; set one such as docs/research, or \"\" for no report file", keyName(reportDirKey), cfg.ReportDir, root)
 			}
 		}
 	}
@@ -200,7 +200,7 @@ func WithEditorWayForward(err error) error {
 	if !errors.Is(err, ErrTreeScopeKey) {
 		return err
 	}
-	return fmt.Errorf("%w; fix the named tree_scope key in lym config darn's editor from the prime, then re-run the lym command that refused", err)
+	return fmt.Errorf("%w; fix the named %s key in lym config darn's editor from the prime, then re-run the lym command that refused", err, keyName(treeScopeKey))
 }
 
 // TreeScopedTargets reports whether a diff is tree-scoped and returns the targets of the trees it touches.

@@ -320,7 +320,7 @@ func TestGateReach(t *testing.T) {
 		otherPrime := seedTestMapModule(t, other, reachVerbModule, strings.Replace(reachVerbGate, "scoper: go", "scoper: none", 1),
 			map[string]map[string]int{"alpha": {"TestAlphaOne": 0}})
 		code, answer := runReachVerb(t, otherPrime, "alpha/alpha.go#One")
-		if code != 0 || !strings.Contains(strings.Join(answer.Lines, "\n"), "the hub's scoper is none, not go") {
+		if code != 0 || !strings.Contains(strings.Join(answer.Lines, "\n"), "the hub's gate.scoper is none, not go") {
 			t.Errorf("lym gate reach = exit %d, lines %q; want exit 0 and a note naming the scoper", code, answer.Lines)
 		}
 	})

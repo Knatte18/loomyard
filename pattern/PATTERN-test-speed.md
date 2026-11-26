@@ -134,7 +134,7 @@ Bound: a forged value misleads only an ungated raw run, since `lym gate test` se
   The whole verify catches it at the sites that keep it for a diff touching production code, never on `main`.
   For a tree-scoped darn diff, a site runs its row's key over the trees' targets,
   so such a violation can reach the parent.
-  What the hub lists as non-production in `darn.yaml`'s `tree_scope` bounds that.
+  What the hub lists as non-production in `darn.tree_scope` bounds that.
 
 ## Reflective tests carry `//lym:seam`
 
@@ -233,9 +233,9 @@ so every run takes its slots, its timeout and its log.
   and `cmd/testtiming` measures outside the gate because its modes measure what a tier run hides.
 - A site or stencil names a gate key, never a tier list, scope form, test command or target list.
 - Darn's tree-scoped sites add the touched trees' targets to the key's call.
-- The shell guard refuses a command with a prefix in `gate.yaml`'s `refuse_raw`,
+- The shell guard refuses a command with a prefix in `gate.refuse_raw`,
   so an agent's raw test run is steered to the gate.
-- The plan gate's `verify-raw-command` finding flags a card `**Verify:**` line that starts with a `refuse_raw` prefix.
+- The plan gate's `verify-raw-command` finding flags a card `**Verify:**` line that starts with a `gate.refuse_raw` prefix.
 
 ## Test economy
 
@@ -303,8 +303,8 @@ this section keeps only what is project-specific or stricter here.
   A failed build keeps the map's entries.
   The map run bounds its test processes by the tiers' own limits:
   a package's tier0 tests run before its tier1 tests, each tier's tests up to its `parallel` side by side,
-  clamped to the memory its limit leaves and, for a tier that sets `memory_mb`, to that memory divided by `redundancy_test_memory_mb`.
-  A hub whose tier0 or tier1 sets a `memory_mb` below `redundancy_test_memory_mb` is refused.
+  clamped to the memory its limit leaves and, for a tier that sets `memory_mb`, to that memory divided by `gate.redundancy_test_memory_mb`.
+  A hub whose tier0 or tier1 sets a `memory_mb` below `gate.redundancy_test_memory_mb` is refused.
   A test that fails, times out or is ended by the memory guard or its cap beside others runs again alone, and that run stands.
   A test that passed only alone is listed as `passed_alone` and logged, and enters the map as a plain pass.
   The run holds the larger of tier0's and tier1's slot asks, where `slots: all` ranks above any count, and builds no `lym`.
@@ -332,7 +332,7 @@ this section keeps only what is project-specific or stricter here.
   and writes `reach.json` in the worktree's gate directory with the tests of the maps that reach each one.
   It prints a note of the report.
   A task worktree first refreshes its own anchor maps of the packages holding a changed function whose map is absent or stale,
-  within `reach_budget_min`; a package with an uncommitted file of its own or of a linked package keeps its map and is listed.
+  within `gate.reach_budget_min`; a package with an uncommitted file of its own or of a linked package keeps its map and is listed.
   The prime refreshes nothing and answers from the shared maps.
   The step is advisory: it never changes the gate's result.
   Bound: a map older than the files, or a test that runs the function in another process, can make a function read as unreached.
@@ -348,7 +348,7 @@ this section keeps only what is project-specific or stricter here.
   It judges each against its package's map, package-scoped like `cmd/testtiming`'s verdict,
   and writes `redundancy.json` in the worktree's gate directory with each test contained, unique or not judged.
 - The step is advisory and bounded: it never changes the gate's result,
-  and `redundancy_max_tests` and `redundancy_budget_min` cap what it judges.
+  and `gate.redundancy_max_tests` and `gate.redundancy_budget_min` cap what it judges.
   Bound: it lets a redundant test through when an edited block is uncovered or a test lies past the cap or the budget.
   Bound: it can flag a test falsely, since a map test whose own text is unchanged counts as a cover
   even when a helper or callee change stops it reaching a block.

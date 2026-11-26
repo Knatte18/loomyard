@@ -101,6 +101,12 @@ func ConfigFileRel(module string) string {
 	return filepath.Join(lymdirs.LymDirName, configDirName, module+".yaml")
 }
 
+// KeyName returns the full name of a module's config key, `<module>.<dotted path>`, as a message or doc spells it.
+// It reads no template, so it answers for any module.
+func KeyName(module, path string) string {
+	return module + "." + path
+}
+
 // SparseBaseHeader is the whole content of a hub's base file holding no tuned unit:
 // one comment line saying the file holds the hub's tuned values over lym's template.
 const SparseBaseHeader = "# This file holds the hub's tuned values over lym's template.\n"
@@ -247,6 +253,9 @@ func load(dirs Dirs, spec Spec, fallbackOnAbsent bool) ([]byte, error) {
 	}
 	spec.Template = effective
 
+	if err := refuseMovedKeys(stack.Layers, spec); err != nil {
+		return nil, err
+	}
 	if err := warnUnknownKeys(stack.Layers, spec); err != nil {
 		return nil, err
 	}
@@ -289,6 +298,26 @@ func load(dirs Dirs, spec Spec, fallbackOnAbsent bool) ([]byte, error) {
 	return resolved, nil
 }
 
+// refuseMovedKeys refuses the first default- or worktree-layer file holding an old key name, naming the file.
+// The machine and local layers are checked as they are read.
+func refuseMovedKeys(layers []LayerDoc, spec Spec) error {
+	for _, layer := range layers {
+		var wayForward string
+		switch layer.Layer {
+		case LayerDefault:
+			wayForward = `run "lym config reconcile --layer default --apply" from the hub's prime worktree` + boardDirWayForwardClause
+		case LayerWorktree:
+			wayForward = fmt.Sprintf(`run "lym config reconcile --apply" in this worktree, then commit the moved %s`, ConfigFileRel(spec.Name))
+		default:
+			continue
+		}
+		if err := refuseMovedKey(spec, layer.Bytes, wayForward); err != nil {
+			return fmt.Errorf("config file %s: %w", layer.Path, err)
+		}
+	}
+	return nil
+}
+
 // warnedUnknownKeys holds, as file and key list, every unknown-keys warning this process has logged.
 var warnedUnknownKeys sync.Map
 
@@ -320,7 +349,11 @@ func warnUnknownKeys(layers []LayerDoc, spec Spec) error {
 		if len(pruned) == 0 {
 			continue
 		}
-		keys := strings.Join(pruned, ",")
+		names := make([]string, len(pruned))
+		for i, path := range pruned {
+			names[i] = KeyName(spec.Name, path)
+		}
+		keys := strings.Join(names, ",")
 		if _, warned := warnedUnknownKeys.LoadOrStore(layer.Path+"\x00"+keys, true); warned {
 			continue
 		}

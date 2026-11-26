@@ -18,7 +18,7 @@ import (
 func resolveShellPath(shell string) (string, error) {
 	path, err := exec.LookPath(shell)
 	if err != nil {
-		return "", fmt.Errorf("reed: the configured shell %q (key shell) is not an executable on PATH: %w; set shell in reed.yaml to a shell that exists", shell, err)
+		return "", fmt.Errorf("reed: the configured shell %q (key %s) is not an executable on PATH: %w; set %s in reed.yaml to a shell that exists", shell, keyName("shell"), err, keyName("shell"))
 	}
 	return path, nil
 }

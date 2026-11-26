@@ -94,7 +94,7 @@ every call then blocks for up to --wait watching it.
 
 A terminal call fabric-commits state.json and returns {"status": "done",
 "reply": "..."} once the fixer wrote its reply; a fixer whose turn ended
-without a reply, whose strand is gone or that outlived recovery_timeout_min
+without a reply, whose strand is gone or that outlived ` + recoveryTimeoutName() + `
 returns {"status": "dead", "dead_reason": "..."} and exits non-zero. Either
 way the gate, not this verb, judges the fix: Master rewrites its contract
 files and ends its turn, and the gate verifies again. If --wait elapses first
@@ -218,7 +218,7 @@ Example:
 		},
 	}
 
-	cmd.Flags().DurationVar(&wait, "wait", 0, "operator override of the wait budget; a shorter wait can return a running snapshot; 0 blocks until the fixer ends or recovery_timeout_min")
+	cmd.Flags().DurationVar(&wait, "wait", 0, "operator override of the wait budget; a shorter wait can return a running snapshot; 0 blocks until the fixer ends or "+recoveryTimeoutName())
 
 	return cmd
 }

@@ -136,8 +136,8 @@ Under `language: none` the glyph checks are skipped:
   a card lists a test named after it under `Edit` in the same unit, and no pair renames that test.
   A test is named after it when it is `Test<base>` or `Test<base>_<case>`, with base `Name`, or `T_M` for a method.
   Way forward: add the test's rename as a pair on the renaming card.
-- `rename-tool-missing` *(loomshed)* — a symbol pair of a pending card while `language.yaml` lists no `rename_tools`.
-  Way forward: set `rename_tools` with `lym config language` from the prime, or recast the card.
+- `rename-tool-missing` *(loomshed)* — a symbol pair of a pending card while `language.rename_tools` is empty.
+  Way forward: set `language.rename_tools` with `lym config language` from the prime, or recast the card.
 
 ## Re-signs, deletes and callers
 
@@ -192,7 +192,7 @@ None sees a command behind a variable or `bash -c`.
   A directory created by this or an earlier card counts as on disk.
   A card at or after a `Move` is skipped.
   Way forward: correct the line; a `_test`-suffixed argument names its directory's spelling.
-- `verify-raw-command` *(loomshed)* — a command the hub's `gate.yaml` `refuse_raw` list names.
+- `verify-raw-command` *(loomshed)* — a command the hub's `gate.refuse_raw` list names.
   A leading `env`, `exec`, `xargs`, `sudo` or `time` is looked past.
   Way forward: one `lym gate test --wait` call with a tier list and a scope form.
 - `verify-gate-no-wait` *(loomshed)* — a `lym gate test` call without `--wait`.

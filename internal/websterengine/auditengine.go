@@ -39,10 +39,10 @@ func roleAuditEngine(engines AuditEngines, role Role, choice shuttleengine.Model
 	const wayForward = "set %s in webster.yaml to an alias whose engine audits forks with lym config webster, then re-run the verb, or under the Webster row re-step the row"
 	engine, err := engines.Lookup(choice.Engine)
 	if err != nil {
-		return fmt.Errorf("webster: the %s role's engine %q is not held by this lym: %w; way forward: "+wayForward, role, name, err, role)
+		return fmt.Errorf("webster: the %s role's engine %q is not held by this lym: %w; way forward: "+wayForward, role, name, err, keyName(string(role)))
 	}
 	if _, ok := engine.(AuditEngine); !ok {
-		return fmt.Errorf("webster: the %s role's engine %q cannot audit forks, which webster needs; way forward: "+wayForward, role, name, role)
+		return fmt.Errorf("webster: the %s role's engine %q cannot audit forks, which webster needs; way forward: "+wayForward, role, name, keyName(string(role)))
 	}
 	return nil
 }
@@ -61,7 +61,7 @@ func MasterInstructionFiles(engines AuditEngines, master shuttleengine.ModelChoi
 			if name == "" {
 				name = engines.DefaultName()
 			}
-			return nil, fmt.Errorf("webster: the master role's engine %q is not held by this lym: %w; way forward: set master in webster.yaml to an alias whose engine the set holds with lym config webster, then re-run the verb", name, err)
+			return nil, fmt.Errorf("webster: the master role's engine %q is not held by this lym: %w; way forward: set %s in webster.yaml to an alias whose engine the set holds with lym config webster, then re-run the verb", name, err, keyName("master"))
 		}
 		lister, ok := engine.(shuttleengine.InstructionFileLister)
 		if !ok {
@@ -90,7 +90,7 @@ func sessionAuditEngine(engines AuditEngines, session, recorded string) (AuditEn
 		return auditEngine, nil
 	}
 	if recorded == "" {
-		return nil, fmt.Errorf("webster: session %s records no engine, and shuttle.yaml's engine: %q cannot audit forks, which webster needs; way forward: set engine: in shuttle.yaml back to an engine with fork audit, then re-run the verb, or under the Webster row re-step the row", session, engines.DefaultName())
+		return nil, fmt.Errorf("webster: session %s records no engine, and %s %q cannot audit forks, which webster needs; way forward: set %s in shuttle.yaml back to an engine with fork audit, then re-run the verb, or under the Webster row re-step the row", session, shuttleEngineKeyName(), engines.DefaultName(), shuttleEngineKeyName())
 	}
 	return nil, fmt.Errorf("webster: internal error: session %s ran under engine %q, which cannot audit forks", session, recorded)
 }

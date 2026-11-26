@@ -142,7 +142,7 @@ an `Extends` against any other label, and a `Uses` against an `Extends` target, 
 | Edit | existing symbol(s) | impact on the symbol changed; `caller-uncovered` for a re-signed member | required |
 | Extends | existing symbol(s) or file(s) the card only adds to | `extends-overlap`, `extends-resign` | required |
 | Delete | existing symbol(s) or whole file(s) | assert-no-callers, mechanically `caller-uncovered` for a member | required |
-| Rename | existing symbol(s), `old -> new` pairs | the hub's structure-aware rename tool (`language.yaml` `rename_tools`) + grep verify, never text or regex replace | not required |
+| Rename | existing symbol(s), `old -> new` pairs | the hub's structure-aware rename tool (`language.rename_tools`) + grep verify, never text or regex replace | not required |
 | Move | existing symbol or whole file relocated | `git mv` + import fixup; destination stated in `Intent`, not the target list | not required |
 | Prosa | file(s), no symbol target | none | not required |
 | Custom | either | none — explicit escape hatch | as applicable |
@@ -241,10 +241,10 @@ The section is reproduced verbatim:
    into the `Rename` pair.
 4. Never write the relocated file from scratch and delete the original — that loses
    git history exactly as an unstructured create+delete pair would.
-5. For a symbol pair, run the hub's structure-aware rename tool the implementer prompt names (`language.yaml` `rename_tools`), never a text or regex replace, then grep for zero remaining old-name references and confirm the symbol's doc comment opening names the new name.
+5. For a symbol pair, run the hub's structure-aware rename tool the implementer prompt names (`language.rename_tools`), never a text or regex replace, then grep for zero remaining old-name references and confirm the symbol's doc comment opening names the new name.
 ```
 
-A hub with an empty `rename_tools` list cannot run a symbol pair (`rename-tool-missing`).
+A hub with an empty `language.rename_tools` list cannot run a symbol pair (`rename-tool-missing`).
 
 ## Plan: handles
 

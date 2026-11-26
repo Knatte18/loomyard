@@ -6,7 +6,12 @@ import (
 	"reflect"
 	"sort"
 	"testing"
+	"time"
 )
+
+// loopStepBound is how long a loop test waits for a process that runs a step.
+// It is far under the package timeout, so a stuck step names itself.
+const loopStepBound = 30 * time.Second
 
 func stepTexts() VerbTexts {
 	return VerbTexts{Step: VerbText{Use: "step", Short: "step the fake shed"}}

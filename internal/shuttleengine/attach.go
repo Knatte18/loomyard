@@ -362,7 +362,7 @@ func normalizeAttachSpec(spec Spec, worktreeRoot string, cfg Config) (Spec, erro
 	// than on the start path it was written for — an attached run's deadline would already be in the
 	// past, reporting a LIVE interview as timed out on its very first tick.
 	if spec.Timeout < 0 {
-		return Spec{}, fmt.Errorf("shuttle: spec.Timeout must not be negative (got %s); use 0 for the config default run_timeout_min", spec.Timeout)
+		return Spec{}, fmt.Errorf("shuttle: spec.Timeout must not be negative (got %s); use 0 for the config default %s", spec.Timeout, keyName(runTimeoutMinKey))
 	}
 
 	// Resolve every relative OutputFiles entry against worktreeRoot with the same rule

@@ -89,7 +89,7 @@ func TestReinterpretPerTaskSettings(t *testing.T) {
 			wantValues:    map[string]any{"max_runs": 3},
 			wantFlagged: [][]string{
 				{"{worktree}", "pull_request: required", "lym config beam --set pull_request=on", "in the prime", requiredFlag},
-				{"a worktree file's pull_request now decides that worktree's own landing", "{worktree}"},
+				{"a worktree file's beam.pull_request now decides that worktree's own landing", "{worktree}"},
 			},
 		},
 		{
@@ -105,7 +105,7 @@ func TestReinterpretPerTaskSettings(t *testing.T) {
 			primeWorktree: "pull_request: merge\n",
 			primeLocal:    "land_notice: \"on\"\n",
 			wantValues:    map[string]any{"max_runs": 3},
-			wantFlagged:   [][]string{{"a worktree file's pull_request now decides that worktree's own landing", "{worktree}"}},
+			wantFlagged:   [][]string{{"a worktree file's beam.pull_request now decides that worktree's own landing", "{worktree}"}},
 		},
 		{
 			name:        "a prime file that does not read is flagged and the hub file is still rewritten",
@@ -318,7 +318,7 @@ func TestCarryBeamTaskSettings(t *testing.T) {
 					t.Errorf("carried = %q; want a line containing every one of %q", carried, wants)
 				}
 			}
-			wantOff := []string{"task-off", "pull_request off", "lym config beam --set pull_request=off"}
+			wantOff := []string{"task-off", "beam.pull_request off", "lym config beam --set pull_request=off"}
 			if got := containsLineWith(flagged, wantOff...); got != tt.wantOffFlag {
 				t.Errorf("flagged = %q; want a line containing every one of %q: %v", flagged, wantOff, tt.wantOffFlag)
 			}

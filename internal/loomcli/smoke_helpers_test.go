@@ -119,11 +119,11 @@ func claudeConfigWithBinary(binary string) string {
 // The deadline override must be applied together with the provider override, and neither is sufficient alone.
 // Removing the provider stops a real session from starting but not the wait:
 // a launch that fails still leaves reed holding the pane, so shuttle's wait loop polls until the SPEC's own deadline.
-// The discussion deadline comes from loom.yaml's discussion_timeout_min, which ships at 480 minutes.
+// The discussion deadline comes from loom.yaml's discussion.timeout_min, which ships at 480 minutes.
 // That default is set high so an autonomous agent exploring a codebase is never cut off.
 // In a fixture with no agent at all, the wait would be an eight-hour block on a thirty-second test.
 func fastDeadlineLoomConfig() string {
-	return strings.Replace(loomengine.ConfigTemplate(), "discussion_timeout_min: 480", "discussion_timeout_min: 1", 1)
+	return strings.Replace(loomengine.ConfigTemplate(), "  timeout_min: 480", "  timeout_min: 1", 1)
 }
 
 // smokeStatusRel is the status file's relative path for the self run.

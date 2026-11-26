@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hibernatecli"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -652,7 +653,7 @@ func TestHubLandDeps_FileTaskReleasesTheTaskAndCodeReviewCapsReadTheHubConfig(t 
 	if err := os.MkdirAll(filepath.Dir(loomPath), 0o755); err != nil {
 		t.Fatalf("create the anchor config directory: %v", err)
 	}
-	if err := os.WriteFile(loomPath, []byte("code_max_bounces: 7\ncode_hard_max_bounces: 9\n"), 0o644); err != nil {
+	if err := os.WriteFile(loomPath, []byte("code: {max_bounces: 7, hard_max_bounces: 9}\n"), 0o644); err != nil {
 		t.Fatalf("write the anchor loom.yaml: %v", err)
 	}
 
@@ -684,6 +685,43 @@ func TestHubLandDeps_FileTaskReleasesTheTaskAndCodeReviewCapsReadTheHubConfig(t 
 	}
 	if caps.Soft != 7 || caps.Hard != 9 {
 		t.Errorf("CodeReviewCaps() = %+v; want soft 7 and hard 9, the code perch's caps", caps)
+	}
+
+	// A hub base still holding old keys under a stale stamp is moved before the strict load.
+	// The hard cap sits beside the soft one, since the template's run-wide hard cap is below 7.
+	stale, _ := landingHub(t)
+	gitkit.CommitFile(t, stale.BoardDir(), configengine.ConfigFileRel("loom"), "code_max_bounces: 7\ncode_hard_max_bounces: 9\n", "fixture: old loom keys")
+	caps, err = hubLandDeps(stale.Location).CodeReviewCaps()
+	if err != nil {
+		t.Fatalf("CodeReviewCaps() over old keys = %v; want nil", err)
+	}
+	if caps.Soft != 7 || caps.Hard != 9 {
+		t.Errorf("CodeReviewCaps() over old keys = %+v; want soft 7 and hard 9", caps)
+	}
+}
+
+// A dobby's wiring reconciles a hub whose build stamp is stale before it builds its dependencies.
+func TestWireDobby_StaleStampReconcilesTheHubBase(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h, _ := landingHub(t)
+	gitkit.CommitFile(t, h.BoardDir(), configengine.ConfigFileRel("loom"), "code_max_bounces: 2\n", "fixture: old loom key")
+	geom, err := hubgeom.DobbyGeometry(h.Location, h.Location.WorktreeName)
+	if err != nil {
+		t.Fatalf("DobbyGeometry(prime) = %v; want nil", err)
+	}
+
+	if _, err := wireDobby(h.Location, geom); err != nil {
+		t.Fatalf("wireDobby() = %v; want nil", err)
+	}
+
+	base, err := os.ReadFile(configengine.ConfigFile(h.BoardDir(), "loom"))
+	if err != nil {
+		t.Fatalf("read the hub base loom.yaml: %v", err)
+	}
+	if got := string(base); !strings.Contains(got, "max_bounces: 2") || strings.Contains(got, "code_max_bounces") {
+		t.Errorf("hub base loom.yaml = %q; want the old key nested", got)
 	}
 }
 

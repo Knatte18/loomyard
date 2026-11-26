@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -302,7 +303,7 @@ func ReworkDeps(t testing.TB, dir string) loomshed.PRReworkDeps {
 	}
 }
 
-// TemplateSetting answers any registered config module's key from the module's embedded template.
+// TemplateSetting answers any registered config module's dotted key path from the module's embedded template.
 // It errors naming the module when it is unregistered, and naming the key when the template lacks it.
 // A recipe that names a new setting key needs no kit change.
 func TemplateSetting(module, key string) (any, error) {
@@ -314,9 +315,13 @@ func TemplateSetting(module, key string) (any, error) {
 	if err := yaml.Unmarshal([]byte(registered.Template()), &template); err != nil {
 		return nil, fmt.Errorf("envkit: decode %s template: %w", module, err)
 	}
-	value, ok := template[key]
-	if !ok {
-		return nil, fmt.Errorf("envkit: key %q is not in the %s template", key, module)
+	var value any = template
+	for _, step := range strings.Split(key, ".") {
+		mapping, _ := value.(map[string]any)
+		held := false
+		if value, held = mapping[step]; !held {
+			return nil, fmt.Errorf("envkit: key %q is not in the %s template", key, module)
+		}
 	}
 	return value, nil
 }
@@ -824,11 +829,11 @@ func darnRowNames() []string {
 }
 
 // fullEnvSegment returns a review segment's settings with empty models and the given bounce budget.
-// MaxBouncesKey names review_max_bounces in configFile.
+// MaxBouncesKey names review.max_bounces in configFile.
 func fullEnvSegment(maxBounces int, configFile string) shedrecipe.SegmentSettings {
 	return shedrecipe.SegmentSettings{
 		MaxBounces:      maxBounces,
-		MaxBouncesKey:   "review_max_bounces",
+		MaxBouncesKey:   "review.max_bounces",
 		ConfigFile:      configFile,
 		AmendMaxBounces: 1,
 	}

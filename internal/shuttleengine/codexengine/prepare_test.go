@@ -735,20 +735,20 @@ func TestPrepare_RefusesBeforeWriting(t *testing.T) {
 		{name: "PromptPermissionMode", spec: shuttleengine.Spec{PermissionMode: "prompt"}, wantErr: []string{`permission mode "prompt"`, "way forward"}},
 		{name: "ResumedSession", spec: shuttleengine.Spec{ResumeSessionID: "abc"}, wantErr: []string{"cannot be resumed", "way forward"}},
 		{name: "Advisor", spec: shuttleengine.Spec{Advisor: "opus"}, wantErr: []string{`advisor "opus"`, "way forward"}},
-		{name: "EffortOutsideEfforts", spec: shuttleengine.Spec{ModelChoice: shuttleengine.ModelChoice{Effort: "xhigh"}}, wantErr: []string{`effort "xhigh"`, "codex.yaml's efforts", "way forward"}},
+		{name: "EffortOutsideEfforts", spec: shuttleengine.Spec{ModelChoice: shuttleengine.ModelChoice{Effort: "xhigh"}}, wantErr: []string{`effort "xhigh"`, "codex.efforts", "way forward"}},
 		{
 			name: "RelativeWritableRoot",
 			setup: func(t *testing.T, anchor string) {
 				writeWritableRoots(t, anchor, "cache")
 			},
-			wantErr: []string{`codex.yaml's writable_roots "cache"`, "way forward"},
+			wantErr: []string{`codex.writable_roots "cache"`, "way forward"},
 		},
 		{
 			name: "UnknownSandboxMode",
 			setup: func(t *testing.T, anchor string) {
 				writeFile(t, configengine.ConfigFile(anchor, "codex"), "writable_roots: []\nsandbox_mode: read-only\n")
 			},
-			wantErr: []string{`codex.yaml's sandbox_mode "read-only"`, "way forward", "--layer <default|worktree|machine|local>"},
+			wantErr: []string{`codex.sandbox_mode "read-only"`, "way forward", "--layer <default|worktree|machine|local>"},
 		},
 		{
 			name: "RulesInWorktree",
@@ -996,7 +996,7 @@ func TestLoadConfig_SandboxModeLayers(t *testing.T) {
 	}{
 		{name: "MachineOverWorktree", worktree: sandboxWorkspaceWrite, machine: sandboxFullAccess, want: sandboxFullAccess},
 		{name: "WorktreeWithNoMachineFile", worktree: sandboxFullAccess, want: sandboxFullAccess},
-		{name: "LocalRefused", local: sandboxFullAccess, wantErr: `"sandbox_mode"`},
+		{name: "LocalRefused", local: sandboxFullAccess, wantErr: `"codex.sandbox_mode"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1232,7 +1232,7 @@ func TestExpandHomePath(t *testing.T) {
 			t.Parallel()
 			got, err := expandHomePath("home", tt.value)
 			if tt.wantErr {
-				if err == nil || !strings.Contains(err.Error(), "codex.yaml's home") {
+				if err == nil || !strings.Contains(err.Error(), "codex.home") {
 					t.Errorf("expandHomePath(%q) error = %v; want a refusal naming the key", tt.value, err)
 				}
 				return

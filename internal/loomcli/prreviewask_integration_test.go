@@ -21,7 +21,7 @@ import (
 // TestPRReviewAsker_AskReachesTheParentSignedAsTheCaller pins who signs the PR-Review ask the parent orch receives.
 // The verb's ask seam gets the session's strand, which signs the ask from the pane where creel refuses a program claim.
 // The row passes no claim, and its ask signs as the loom program.
-// Either ask is recorded open with the deadline loom.yaml's pr_review_parent_timeout_min of 60 minutes sets.
+// Either ask is recorded open with the deadline loom.yaml's pr.review_parent_timeout_min of 60 minutes sets.
 func TestPRReviewAsker_AskReachesTheParentSignedAsTheCaller(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

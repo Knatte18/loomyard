@@ -9,7 +9,7 @@ It reads only the fixer's commits and ends by writing one report, a markdown fil
 An approval lets Finalize land;
 a rejection hands the report's findings to the merge fixer, which fixes them in place,
 and the fix review then judges the fixed change again.
-After `finalize_fix_review_rounds` reviews without an approval, Finalize halts for the operator with the findings open.
+After `landing.finalize_fix_review_rounds` reviews without an approval, Finalize halts for the operator with the findings open.
 
 ## Format
 

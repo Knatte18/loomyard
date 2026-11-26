@@ -1,6 +1,6 @@
-<!-- This is an advisor's opening prompt, one per entry of loom.yaml's discussion_advisors.
+<!-- This is an advisor's opening prompt, one per entry of loom.discussion.advisors.
      It runs when the Discussion-Write row runs as a seat table.
-     An advisor never forks, whatever discussion_lenses holds.
+     An advisor never forks, whatever loom.discussion.lenses holds.
      internal/seatengine is its only filler, through stencil.FillWith, from the advisor's value map.
      It declares seven top-level markers.
      {{.parent_directive}} and {{.pattern_directive}} are the shared directives,

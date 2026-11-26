@@ -8,8 +8,10 @@ package configcli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -62,7 +64,7 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 	reedPath := configengine.ConfigFile(tmpDir, "reed")
 
 	if !t.Run("dry run writes nothing and reports every module's shape", func(t *testing.T) {
-		const originalContent = "discussion_timeout_min: 480\nstale_key: old_value\n"
+		const originalContent = "discussion:\n  timeout_min: 480\nstale_key: old_value\n"
 		seedModuleConfig(t, tmpDir, "loom", originalContent)
 		seedModuleConfig(t, tmpDir, "lenses", "lenses:\n  hub-lens: |\n    Hub emphasis.\nfans:\n  standard: [generic, generic, correctness, error-handling, test-gaps]\n")
 
@@ -109,10 +111,10 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 	}
 
 	if !t.Run("an orphan key planted by --set is reported by reconcile", func(t *testing.T) {
-		seedModuleConfig(t, tmpDir, "loom", "discussion_timeout_min: 480\nlegacy_key: keepme\n")
+		seedModuleConfig(t, tmpDir, "loom", "discussion:\n  timeout_min: 480\nlegacy_key: keepme\n")
 
 		var setOut bytes.Buffer
-		setCode := dispatch(makeLayoutAt(tmpDir), &setOut, []string{"loom"}, makeNeverCalledEditor(t), (&fakeSyncTracker{exitCode: 0}).syncFunc(), nil, false, []string{"discussion_timeout_min=60"}, nil, "", nil, true)
+		setCode := dispatch(makeLayoutAt(tmpDir), &setOut, []string{"loom"}, makeNeverCalledEditor(t), (&fakeSyncTracker{exitCode: 0}).syncFunc(), nil, false, []string{"discussion.timeout_min=60"}, nil, "", nil, true)
 		if setCode != 0 {
 			t.Fatalf("dispatch(--set) = %d; want 0; output: %q", setCode, setOut.String())
 		}
@@ -128,6 +130,22 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 		}
 		if !slices.Contains(removed, any("legacy_key")) {
 			t.Errorf("loom module's removed = %v; want it to contain \"legacy_key\"", removed)
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("the envelope carries the moved lines of an old key", func(t *testing.T) {
+		seedModuleConfig(t, tmpDir, "loom", "code_max_bounces: 2\nlegacy_key: keepme\n")
+
+		code, result := runReconcileCLI(t, tmpDir)
+
+		if code != 0 {
+			t.Fatalf("Execute(reconcile) = %d; want 0; result: %v", code, result)
+		}
+		moved, _ := reconcileModule(t, result, "loom")["moved"].([]any)
+		if len(moved) != 1 || !strings.Contains(fmt.Sprint(moved[0]), "moved loom.code_max_bounces to loom.code.max_bounces") {
+			t.Errorf("loom module's moved = %v; want one line naming both full names", moved)
 		}
 	}) {
 		return

@@ -1,4 +1,5 @@
 // Package configengine loads, resolves and writes a module's YAML configuration under a base directory's `_lym/config/`.
+// [KeyName] renders a key's full name, `<module>.<dotted path>`.
 //
 // [Load] is strict: an absent base layer is an error.
 // [LoadOrTemplate] degrades to the caller's embedded template on proven absence of the base layer's `_lym/` or file.
@@ -72,6 +73,15 @@
 // `RetiredWayForward` and `HubOnlyWayForward` texts end the matching refusal.
 // In a default or worktree layer a retired key is an unknown key:
 // only `lym config reconcile --apply` or [Unset] removes it.
+//
+// A [Spec]'s move table, `MovedKeys`, maps each old dotted key the module moved to its new dotted path,
+// and every layer refuses an old name, naming both full names.
+// A local file's refusal, from [ValidateLocal], names `lym config reconcile --apply`.
+// A loaded worktree file's names the same command and the commit of the moved file,
+// and a loaded default file's names `lym config reconcile --layer default --apply`.
+// [Set] names the write of the new path.
+// An old name that is also the area its new path lies under is refused only while it holds no mapping.
+// [Unset] removes an old name as any other key.
 //
 // # Open maps
 //

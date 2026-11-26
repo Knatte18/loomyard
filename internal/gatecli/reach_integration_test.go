@@ -340,7 +340,7 @@ func TestGateTestReachStep(t *testing.T) {
 		}{
 			{name: "ARedTier", red: true, inHub: true, want: noteRedGate},
 			{name: "ACallOutsideAHub", want: noteNoHub},
-			{name: "AScoperOtherThanGo", inHub: true, scoper: "none", want: "the hub's scoper is none, not go, so the step judged nothing"},
+			{name: "AScoperOtherThanGo", inHub: true, scoper: "none", want: "the hub's gate.scoper is none, not go, so the step judged nothing"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

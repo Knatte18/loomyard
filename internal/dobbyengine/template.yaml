@@ -3,6 +3,6 @@ board_tidy_every: 5  # dobby starts the board-tidy agent after this many landing
 board_tidy_timeout_min: 30  # the minutes the board-tidy agent may run before dobby gives up on it
 task_headroom: 500  # the fewest free tasks under the cgroup task limit (pids.max) for dobby to start a run; 0 never holds a start
 pull_request: "on"  # per task: whether a task's landing goes through a GitHub pull request: on, off (only when GitHub's rules for the parent branch require one), merge (always, squash-merged on GitHub at once with no review, for a branch the remote takes only through a pull request) or merge-in (none, a true merge keeping the merged commit); the task's run_settings, else the nearest worktree up to the prime that sets it, else the hub's default decides
-land_notice: "off"  # per task: whether dobby posts a line to the orch once a task's run lands or ends without landing: on or off; decided like pull_request
-autonomy: false  # per task: whether the orch settles every halt of the task's runs and reaches the operator only for a severe halt or a merge-ready beam: true or false; decided like pull_request
+land_notice: "off"  # per task: whether dobby posts a line to the orch once a task's run lands or ends without landing: on or off; decided like beam.pull_request
+autonomy: false  # per task: whether the orch settles every halt of the task's runs and reaches the operator only for a severe halt or a merge-ready beam: true or false; decided like beam.pull_request
 adopt_fix_tries: 3  # the most adopt fix tasks a failed adopt check files for this worktree's subject between two hand adopts; 0 files none

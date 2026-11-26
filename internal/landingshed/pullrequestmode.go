@@ -89,7 +89,7 @@ type BeamPullRequest struct {
 // These are beam.yaml's pull_request, the beam's landing record, the parent's GitHub rules and the task branch.
 func ResolvePullRequest(mode string, beam BeamRecord, parentRuleRequired bool, origin Origin, taskHasCommits bool) PullRequestDecision {
 	isBeam := beam != NotABeam
-	modeClause := fmt.Sprintf("beam.yaml's pull_request for this landing is %s", mode)
+	modeClause := fmt.Sprintf("%s for this landing is %s", beamPullRequestName(), mode)
 	if !isBeam && mode == beamsetting.PullRequestMergeIn {
 		return PullRequestDecision{TrueMerge: true, Reason: fmt.Sprintf("no pull request: %s, so the task lands by a true merge whatever GitHub's rules say", modeClause)}
 	}

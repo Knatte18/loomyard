@@ -290,12 +290,13 @@ func (s runStops) stopped() bool {
 	return s.processCap != "" || len(s.memoryLines()) > 0
 }
 
-// tierMemoryCapLine is the line a tier run prints and logs once the kernel killed a process of it at its memory_mb.
+// tierMemoryCapLine is the line a tier run prints and logs once the kernel killed a process of it at its memory cap.
 func tierMemoryCapLine(tier string, memoryMB int) string {
-	return fmt.Sprintf("gate test: %s held more than its memory_mb of %d MB, its builds and test binaries together, "+
+	capKey := tierKeyName(tier, tierMemoryMBLeaf)
+	return fmt.Sprintf("gate test: %s held more than its %s of %d MB, its builds and test binaries together, "+
 		"so the kernel killed the largest of them and the run fails; "+
 		"way forward: find the package whose tests hold memory without bound and fix it, then re-run the same command, "+
-		"or raise tiers.%s.memory_mb with \"lym config gate\" from the prime%s", tier, memoryMB, tier, roleClause)
+		"or raise %s with \"lym config gate\" from the prime%s", tier, capKey, memoryMB, capKey, roleClause)
 }
 
 // unfinishedTestsShown caps the tests the line of unfinished tests names per package.
@@ -321,12 +322,13 @@ func unfinishedTestsLine(unfinished map[string][]string) string {
 	return "gate test: the tests running when the memory kill ended their test binary, which never reported a result: " + strings.Join(packages, "; ")
 }
 
-// tierMemoryCapRefusal is the refusal of a tier whose command did not run under its memory_mb of memoryMB.
+// tierMemoryCapRefusal is the refusal of a tier whose command did not run under its memory cap of memoryMB.
 // err wraps proc.ErrMemoryCap and says why: a scope that never ran the command, or a cap that could not be set.
 func tierMemoryCapRefusal(tier string, memoryMB int, dir string, err error) string {
-	return fmt.Sprintf("gate test: the command of %s in %s did not run under its memory_mb of %d MB: %v; "+
+	capKey := tierKeyName(tier, tierMemoryMBLeaf)
+	return fmt.Sprintf("gate test: the command of %s in %s did not run under its %s of %d MB: %v; "+
 		"way forward: run from a session that reaches the systemd user manager, which must hand the memory controller to its scopes, "+
-		"or remove tiers.%s.memory_mb with \"lym config gate\" from the prime, then re-run the same command%s", tier, dir, memoryMB, err, tier, roleClause)
+		"or remove %s with \"lym config gate\" from the prime, then re-run the same command%s", tier, dir, capKey, memoryMB, err, capKey, roleClause)
 }
 
 // testFailures returns the failed tests of failures as the run record carries them.
@@ -618,7 +620,7 @@ func noTestNotice(run tierRun, inv invocation, dir string, discovered int) strin
 	if len(inv.terms) > 0 {
 		classes = " under the class filter " + strings.Join(inv.terms, "|")
 	}
-	return fmt.Sprintf("gate test: %s ran no test of %s%s: dotnet test exited 0 and reported no test, as a test project does that sets IsTestProject false unless an MSBuild property is passed, so the gate's pass covers none of its tests; the gate reads only the invocation's total, so it names no property and sees no skip inside an invocation that ran some test; way forward: when those tests must run and the hub's refuse_raw does not list dotnet test, run them by hand with dotnet test <project> -p:<property>=true, the property its project file's IsTestProject condition names, and check that the run's summary line reports them; otherwise report the skipped tests to your parent", tierName(run.number), project, classes)
+	return fmt.Sprintf("gate test: %s ran no test of %s%s: dotnet test exited 0 and reported no test, as a test project does that sets IsTestProject false unless an MSBuild property is passed, so the gate's pass covers none of its tests; the gate reads only the invocation's total, so it names no property and sees no skip inside an invocation that ran some test; way forward: when those tests must run and the hub's %s does not list dotnet test, run them by hand with dotnet test <project> -p:<property>=true, the property its project file's IsTestProject condition names, and check that the run's summary line reports them; otherwise report the skipped tests to your parent", tierName(run.number), project, classes, keyName(refuseRawKey))
 }
 
 // tierTestTargets returns the packages of targets in the module at moduleDir that hold a test run's tier executes.

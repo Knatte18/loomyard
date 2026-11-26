@@ -13,6 +13,8 @@
 // any other run on a hub base or worktree file keeps it and reports it as Preserved,
 // so a binary older than the one that wrote a key never strips it.
 // A retired key is such a key like any other.
+// An old key a module's move table names is moved to its new path before any merge, prune or strip.
+// That holds for every file a reconcile reads, bar a seed-only module's.
 // Every prune, reconcile and template-equal drop judges a file against its base layer's effective template.
 // That is the module's template with the overlay its selector names laid over it.
 // Reconcile failures are *FileError values naming the file that failed.
@@ -23,7 +25,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -80,6 +84,9 @@ type Result struct {
 	// They stay in place because the run did not prune unknown keys.
 	// Set on a dry run too.
 	Preserved []string
+	// Moved lists one line per old key the module's move table moved or dropped, each naming the file and the full names.
+	// Set on a dry run too.
+	Moved []string
 	// WroteTemplateBase reports that the apply wrote the template base beside a seed-only module's board file.
 	// Set only by ReconcileHubWideAt.
 	WroteTemplateBase bool
@@ -243,8 +250,37 @@ func ReconcileAll(baseDir, boardDir string, opts Options) ([]Result, error) {
 	return results, nil
 }
 
+// moveOldKeys moves the old keys the module's move table names in document, the content of the config file at file.
+// It returns the moved bytes and one line per change.
+// A module with no table gets document back unchanged and no line.
+// A failure is a *FileError naming file.
+func moveOldKeys(m configreg.Module, file string, document []byte) ([]byte, []string, error) {
+	moves := m.Spec().MovedKeys
+	if len(moves) == 0 {
+		return document, nil, nil
+	}
+	moved, changes, err := yamlengine.MoveKeys(document, nil, moves)
+	if err != nil {
+		return nil, nil, &FileError{Module: m.Name, Path: file, Err: fmt.Errorf("move the old keys of %s: %w", m.Name, err)}
+	}
+	var lines []string
+	for _, change := range changes {
+		oldName, newName := configengine.KeyName(m.Name, change.Old), configengine.KeyName(m.Name, change.New)
+		switch change.Outcome {
+		case yamlengine.MoveDone:
+			lines = append(lines, fmt.Sprintf("%s moved %s to %s", file, oldName, newName))
+		case yamlengine.MoveDroppedNull:
+			lines = append(lines, fmt.Sprintf("%s dropped %s, which was null", file, oldName))
+		case yamlengine.MoveDroppedNewSet:
+			lines = append(lines, fmt.Sprintf("%s dropped %s, since %s is set", file, oldName, newName))
+		}
+	}
+	return moved, lines, nil
+}
+
 // reconcileBaseWorktreeFile fully reconciles a per-worktree module's worktree file.
 // That file is the base layer of a standalone stack.
+// Its old keys are moved first.
 // A seed-only module's present file is reported untouched and an absent one materializes the template verbatim.
 func reconcileBaseWorktreeFile(m configreg.Module, baseDir string, apply bool) (Result, error) {
 	cfgPath := configengine.ConfigFile(baseDir, m.Name)
@@ -277,6 +313,10 @@ func reconcileBaseWorktreeFile(m configreg.Module, baseDir string, apply bool) (
 		return result, nil
 	}
 
+	existing, moved, err := moveOldKeys(m, cfgPath, existing)
+	if err != nil {
+		return Result{}, err
+	}
 	template, err := effectiveTemplateOf(m, existing, false, cfgPath)
 	if err != nil {
 		return Result{}, err
@@ -292,9 +332,10 @@ func reconcileBaseWorktreeFile(m configreg.Module, baseDir string, apply bool) (
 		Removed:   removed,
 		KeptExtra: kept,
 		Dropped:   dropped,
+		Moved:     moved,
 		Layer:     configengine.LayerWorktree,
 	}
-	if apply && (fileAbsent || len(added)+len(removed)+len(dropped) > 0) {
+	if apply && (fileAbsent || len(added)+len(removed)+len(dropped)+len(moved) > 0) {
 		if err := fsx.AtomicWriteBytes(cfgPath, merged); err != nil {
 			return Result{}, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("write config for %s: %w", m.Name, err)}
 		}
@@ -304,6 +345,7 @@ func reconcileBaseWorktreeFile(m configreg.Module, baseDir string, apply bool) (
 }
 
 // reconcileSparseFile reconciles one sparse layer file of a module.
+// Its old keys are moved first, so a move is never pruned as an unknown key.
 // The file is pruned of the keys the template lacks only when pruneUnknown is set, and nothing is added.
 // A key kept for want of pruneUnknown is reported as preserved.
 // An absent file stays absent and reports present false.
@@ -321,6 +363,10 @@ func reconcileSparseFile(m configreg.Module, dirs configengine.Dirs, path string
 
 	current := original
 	if !m.SeedOnly {
+		current, result.Moved, err = moveOldKeys(m, path, current)
+		if err != nil {
+			return Result{}, true, err
+		}
 		template, err := templateUnderBase(m, dirs)
 		if err != nil {
 			return Result{}, true, err
@@ -331,7 +377,7 @@ func reconcileSparseFile(m configreg.Module, dirs configengine.Dirs, path string
 		}
 	}
 
-	if !apply || len(result.Removed) == 0 {
+	if !apply || len(result.Removed)+len(result.Moved) == 0 {
 		return result, true, nil
 	}
 	if len(bytes.TrimSpace(current)) == 0 {
@@ -409,11 +455,13 @@ func primeConfig(primeBaseDir, module string) []byte {
 // Any other unit is kept, and it is reported under Differs when the template holds a third value.
 // Without a base, a unit the file lacks is added,
 // and a unit it holds otherwise than the template is kept and reported under Differs.
-// The file is written only when the merge rewrote it.
+// A module with run-settings blocks first has the old keys of its present file's and template base's blocks moved.
+// The file is written only when the move or the merge rewrote it.
 // An absent seed-only file is seeded from the prime's copy when one exists, and from the template otherwise.
 // Apply also writes the template base when it is absent or stale, and reports WroteTemplateBase.
 //
 // Every other module's file is a sparse base over the template.
+// A present file, or a prime copy seeding an absent one, has its old keys moved first.
 // A present file is pruned only under opts.PruneUnknown.
 // Otherwise its unknown keys are kept and reported as Preserved.
 // Nothing is added.
@@ -464,7 +512,7 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 			}
 		}
 
-		var added, removed, updated, differs, keptExtra, dropped, preserved []string
+		var added, removed, updated, differs, keptExtra, dropped, preserved, moved []string
 		var mergedBytes []byte
 		var reconcileErr error
 		changed := fileAbsent
@@ -478,30 +526,82 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 				added, reconcileErr = yamlengine.MissingKeys(mergedBytes, nil)
 				break
 			}
+			// moveBlocks moves the old keys of every second-level mapping, one line per change naming its block.
+			// A document that is no mapping comes back unchanged, for the follow to report.
+			moveBlocks := func(document []byte) ([]byte, []string, error) {
+				var tops map[string]yaml.Node
+				if yaml.Unmarshal(document, &tops) != nil {
+					return document, nil, nil
+				}
+				var lines []string
+				for _, top := range slices.Sorted(maps.Keys(tops)) {
+					node := tops[top]
+					var blocks map[string]yaml.Node
+					if node.Kind != yaml.MappingNode || node.Decode(&blocks) != nil {
+						continue
+					}
+					for _, second := range slices.Sorted(maps.Keys(blocks)) {
+						block := top + "." + second
+						moved, blockLines, err := configreg.MoveSettings(document, []string{top, second})
+						if err != nil {
+							return nil, nil, fmt.Errorf("%s: %w", block, err)
+						}
+						document = moved
+						for _, line := range blockLines {
+							lines = append(lines, fmt.Sprintf("%s.yaml %s %s", m.Name, block, line))
+						}
+					}
+				}
+				return document, lines, nil
+			}
+			base := templateBase
+			if m.RunSettingsBlocks && !fileAbsent {
+				// The base moves too, so the follow compares file, base and template at the new paths.
+				if templateBasePresent {
+					var baseErr error
+					if base, _, baseErr = moveBlocks(templateBase); baseErr != nil {
+						reconcileErr = &FileError{Module: m.Name, Path: configengine.TemplateBaseFile(boardDir, m.Name), Err: baseErr}
+						break
+					}
+				}
+				if mergedBytes, moved, reconcileErr = moveBlocks(mergedBytes); reconcileErr != nil {
+					break
+				}
+			}
 			var follow yamlengine.FollowReport
-			mergedBytes, follow, reconcileErr = yamlengine.FollowTemplate(templateBase, []byte(m.Template()), mergedBytes, templateBasePresent && !fileAbsent)
+			mergedBytes, follow, reconcileErr = yamlengine.FollowTemplate(base, []byte(m.Template()), mergedBytes, templateBasePresent && !fileAbsent)
 			if errors.Is(reconcileErr, yamlengine.ErrInvalidBase) {
 				reconcileErr = &FileError{Module: m.Name, Path: configengine.TemplateBaseFile(boardDir, m.Name), Err: fmt.Errorf("%w; delete it, and the next reconcile treats %s.yaml as having no base", reconcileErr, m.Name)}
 			}
 			added, updated, removed, differs = follow.Added, follow.Updated, follow.Removed, follow.Differs
-			changed = changed || follow.Changed()
+			changed = changed || follow.Changed() || len(moved) > 0
 		case fileAbsent:
 			if seed == SeedPrime {
-				mergedBytes, reconcileErr = sparseSeed(m, existing)
-				if reconcileErr != nil {
-					reconcileErr = primeSeedError(m, primeBaseDir, reconcileErr)
+				var seeded []byte
+				seeded, moved, reconcileErr = moveOldKeys(m, cfgPath, existing)
+				var moveErr *FileError
+				if errors.As(reconcileErr, &moveErr) {
+					moveErr.Path = configengine.ConfigFile(primeBaseDir, m.Name)
+				}
+				if reconcileErr == nil {
+					mergedBytes, reconcileErr = sparseSeed(m, seeded)
+					if reconcileErr != nil {
+						reconcileErr = primeSeedError(m, primeBaseDir, reconcileErr)
+					}
 				}
 			} else {
 				mergedBytes = []byte(configengine.SparseBaseHeader)
 			}
 		default:
-			mergedBytes = existing
+			mergedBytes, moved, reconcileErr = moveOldKeys(m, cfgPath, existing)
 			var template []byte
-			template, reconcileErr = effectiveTemplateOf(m, mergedBytes, true, cfgPath)
+			if reconcileErr == nil {
+				template, reconcileErr = effectiveTemplateOf(m, mergedBytes, true, cfgPath)
+			}
 			if reconcileErr == nil {
 				mergedBytes, removed, keptExtra, preserved, reconcileErr = pruneSparse(m, template, mergedBytes, opts.PruneUnknown)
 			}
-			changed = len(removed) > 0
+			changed = len(removed) > 0 || len(moved) > 0
 			if reconcileErr == nil && len(m.PerNameMaps) > 0 {
 				mergedBytes, dropped, reconcileErr = yamlengine.DropTemplateEqualNames(template, mergedBytes, m.PerNameMaps)
 				changed = changed || len(dropped) > 0
@@ -524,6 +624,7 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 			KeptExtra: keptExtra,
 			Dropped:   dropped,
 			Preserved: preserved,
+			Moved:     moved,
 			Seed:      seed,
 			Layer:     configengine.LayerDefault,
 		}

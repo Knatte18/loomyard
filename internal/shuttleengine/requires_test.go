@@ -79,7 +79,7 @@ func TestRunner_Requires(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	startWayForward := "way forward: give the role a model alias of an engine that meets them, or for a role that takes no alias set engine: in shuttle.yaml to one that does, then re-run the verb"
+	startWayForward := "way forward: give the role a model alias of an engine that meets them, or for a role that takes no alias set shuttle.engine in shuttle.yaml to one that does, then re-run the verb"
 	startRefusals := []struct {
 		name string
 		spec Spec
@@ -118,9 +118,9 @@ func TestRunner_Requires(t *testing.T) {
 		key  ModelKey
 		want string
 	}{
-		{"a named key", ModelKey{Module: "loom", Key: "discussion"}, "set discussion in loom.yaml to an alias whose engine meets them with lym config loom --set discussion=<alias>"},
-		{"a list entry", ModelKey{Module: "loom", Key: "discussion_advisors", Entry: "skeptic"}, "set the model of skeptic in discussion_advisors in loom.yaml"},
-		{"the default engine", ModelKey{DefaultEngine: true}, "set engine: in shuttle.yaml to an engine that meets them, then re-run the verb"},
+		{"a named key", ModelKey{Module: "loom", Key: "discussion"}, "set loom.discussion in loom.yaml to an alias whose engine meets them with lym config loom --set discussion=<alias>"},
+		{"a list entry", ModelKey{Module: "loom", Key: "discussion_advisors", Entry: "skeptic"}, "set the model of skeptic in loom.discussion_advisors in loom.yaml"},
+		{"the default engine", ModelKey{DefaultEngine: true}, "set shuttle.engine in shuttle.yaml to an engine that meets them, then re-run the verb"},
 		{"the zero key", ModelKey{}, "set the seat's model to an alias whose engine meets them"},
 	}
 	for _, tt := range wrapRows {
@@ -183,7 +183,7 @@ func TestRunner_Requires(t *testing.T) {
 		return []string{
 			fmt.Sprintf(`lym reed remove %s`, "strand-1"),
 			runDir,
-			fmt.Sprintf("older than twice startup_timeout_s (%s)", minAge),
+			fmt.Sprintf("older than twice shuttle.startup_timeout_s (%s)", minAge),
 		}
 	}
 

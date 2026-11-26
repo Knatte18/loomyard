@@ -694,10 +694,10 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	websterGeom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
 
 	// frictionDir is the single resolved value every told-friction consumer below reads.
-	// It is non-empty only when loom.yaml sets the friction key: Tier 2 off is an empty path string, never a boolean.
-	// Resolving it once here keeps every consumer from re-checking loomCfg.Friction and disagreeing about Tier 2.
+	// It is non-empty only when loom.yaml sets friction.model: Tier 2 off is an empty path string, never a boolean.
+	// Resolving it once here keeps every consumer from re-checking loomCfg.Friction.Model and disagreeing about Tier 2.
 	frictionDir := ""
-	if loomCfg.Friction != "" {
+	if loomCfg.Friction.Model != "" {
 		frictionDir = loomengine.LoomFrictionDir(location)
 	}
 
@@ -1005,7 +1005,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		}),
 		Models: registry,
 		// DiscussionTable is evaluated per Call, so the stencils are read at call time per the Stencil Ownership Invariant.
-		// The lead's interactivity is loomCfg.DiscussionInteractive, read fresh on every wire() call.
+		// The lead's interactivity is loomCfg.Discussion.Interactive, read fresh on every wire() call.
 		// Nothing compares it with the mode a live run was started with:
 		// the resume decision rests on live-agent evidence alone: flipping the key between a crash and a resume is harmless,
 		// and it only changes how the next spawn is interviewed.
@@ -1128,7 +1128,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 			return err
 		},
 		// PartsTable and PartsPlanTable are evaluated per Call, so the stencils and the parts file are read at call time.
-		// PartsPlanTable receives shuttle's run_timeout_min as a duration; a plan_timeout_min of 0 resolves to that value.
+		// PartsPlanTable receives shuttle's run_timeout_min as a duration; a plan.timeout_min of 0 resolves to that value.
 		// Only the producer entry can build the per-part hooks.
 		PartsTable: func() (seatengine.Table, error) {
 			return loomengine.PartsTable(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry)
@@ -1221,8 +1221,8 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		SettingKnown: configreg.CheckSettingKey,
 		Resume:       "lym loom resume",
 
-		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
-		ReviewStalemateRounds:    loomCfg.ReviewStalemateRounds,
+		ReviewCirclingCheckpoint: loomCfg.Review.CirclingCheckpoint,
+		ReviewStalemateRounds:    loomCfg.Review.StalemateRounds,
 		ReviewTimeout:            reviewSettings.Timeout,
 		// The tree closures open the fabric on each call, since wire() also runs for status and pause.
 		ReviewTreeID: func() (string, error) {
@@ -1559,10 +1559,10 @@ func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings
 			FixKey:            keys[perch].Fix,
 			Bouncer:           shedadapters.BouncerModels(bouncers[perch]),
 			MaxBounces:        caps.Soft,
-			MaxBouncesKey:     caps.SoftKey,
+			MaxBouncesKey:     loomengine.FullKeyName(caps.SoftKey),
 			HardMaxBounces:    caps.Hard,
-			HardMaxBouncesKey: caps.HardKey,
-			AmendMaxBounces:   cfg.ReviewAmendMaxBounces,
+			HardMaxBouncesKey: loomengine.FullKeyName(caps.HardKey),
+			AmendMaxBounces:   cfg.Review.AmendMaxBounces,
 			ConfigFile:        segmentConfigFile(perch),
 			Assist: shedadapters.AssistSettings{
 				Models:     assists[perch].Models,

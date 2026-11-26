@@ -184,11 +184,11 @@ func decodeTiers(files map[string]tierFile) (map[string]Tier, error) {
 	tiers := make(map[string]Tier, len(files))
 	for key, file := range files {
 		if !tierKeyPattern.MatchString(key) {
-			return nil, fmt.Errorf("gate config key %q under \"tiers\": want a name spelled tier<N>, such as tier0", key)
+			return nil, fmt.Errorf("config key %q: want a name spelled tier<N>, such as tier0", keyName("tiers."+key))
 		}
 		number, err := strconv.Atoi(strings.TrimPrefix(key, "tier"))
 		if err != nil {
-			return nil, fmt.Errorf("gate config key %q under \"tiers\": want a tier number that fits an int, such as tier0", key)
+			return nil, fmt.Errorf("config key %q: want a tier number that fits an int, such as tier0", keyName("tiers."+key))
 		}
 		tier, err := decodeTier(key, number, file)
 		if err != nil {
@@ -202,7 +202,7 @@ func decodeTiers(files map[string]tierFile) (map[string]Tier, error) {
 // decodeTier validates one tier and fills its defaults.
 func decodeTier(key string, number int, file tierFile) (Tier, error) {
 	refuse := func(field, want string) error {
-		return fmt.Errorf("gate config key %q: %s", "tiers."+key+"."+field, want)
+		return fmt.Errorf("config key %q: %s", keyName("tiers."+key+"."+field), want)
 	}
 	tier := Tier{
 		About:       file.About,
@@ -309,7 +309,7 @@ func decodeTier(key string, number int, file tierFile) (Tier, error) {
 func decodeRefuseRaw(entries []string) error {
 	for _, entry := range entries {
 		if !refuseRawPattern.MatchString(entry) {
-			return fmt.Errorf("gate config key %q: %q; want one or more words of letters, digits, '.', '_' and '-' separated by single spaces", "refuse_raw", entry)
+			return fmt.Errorf("config key %q: %q; want one or more words of letters, digits, '.', '_' and '-' separated by single spaces", keyName("refuse_raw"), entry)
 		}
 	}
 	return nil
@@ -324,11 +324,11 @@ func applyTierParallel(entries map[string]yaml.Node, tiers map[string]Tier, mach
 		node := entries[name]
 		count, err := strconv.Atoi(node.Value)
 		if node.Kind != yaml.ScalarNode || err != nil || count < 1 {
-			return nil, fmt.Errorf("gate config key %q: %q; want an integer of at least 1", "tier_parallel."+name, node.Value)
+			return nil, fmt.Errorf("config key %q: %q; want an integer of at least 1", keyName("tier_parallel."+name), node.Value)
 		}
 		tier, declared := tiers[name]
 		if !declared {
-			logger.Warn("gate config: tier_parallel entry names a tier the hub does not declare, so it is dropped", "tier", name, "way_forward", undeclaredTierParallelWayForward(name, machineLayerApplies))
+			logger.Warn("gate config: a "+keyName("tier_parallel")+" entry names a tier the hub does not declare, so it is dropped", "tier", name, "way_forward", undeclaredTierParallelWayForward(name, machineLayerApplies))
 			continue
 		}
 		tier.Parallel = count
@@ -342,9 +342,9 @@ func applyTierParallel(entries map[string]yaml.Node, tiers map[string]Tier, mach
 // With a machine layer the stacked document cannot tell which layer holds the entry, so both steps are named.
 func undeclaredTierParallelWayForward(name string, machineLayerApplies bool) string {
 	if !machineLayerApplies {
-		return fmt.Sprintf("remove tier_parallel.%s with \"lym config gate\"", name)
+		return fmt.Sprintf("remove %s with \"lym config gate\"", keyName("tier_parallel."+name))
 	}
-	return fmt.Sprintf("remove tier_parallel.%s with \"lym config gate\" when the hub file holds it, or in the editor session of \"lym config gate --layer machine\" when the machine file does", name)
+	return fmt.Sprintf("remove %s with \"lym config gate\" when the hub file holds it, or in the editor session of \"lym config gate --layer machine\" when the machine file does", keyName("tier_parallel."+name))
 }
 
 // sortedKeys returns the keys of m in ascending order.

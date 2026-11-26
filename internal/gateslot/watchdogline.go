@@ -16,7 +16,7 @@ const (
 )
 
 // BusyQuitWayForward is the way forward a halt names after the CPU watchdog quit a test binary.
-const BusyQuitWayForward = "raise busy_quit_sec in the hub's gate.yaml through \"lym config gate\" from the prime"
+var BusyQuitWayForward = "raise " + keyName(busyQuitSecKey) + " in the hub's gate.yaml through \"lym config gate\" from the prime"
 
 // WatchdogLine renders the line the watchdog prints after it sends SIGQUIT to the test binary at pid.
 // window is written in the form time.Duration's String method gives.

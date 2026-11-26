@@ -11,7 +11,7 @@ import (
 )
 
 // TestFlagCodeAutoAccept pins the outcomes of the check.
-// A file that sets code_auto_accept to true is flagged with the way forward and left unchanged.
+// A file that sets code.auto_accept to true is flagged with the way forward and left unchanged.
 // A file that sets none, and an absent file, are flagged too, since they take the template default of true.
 // A file that sets it to false is neither changed nor flagged.
 // A file that is no mapping, or sets a value that is no bool, fails.
@@ -27,12 +27,13 @@ func TestFlagCodeAutoAccept(t *testing.T) {
 		wantFlagged bool
 		wantError   bool
 	}{
-		{name: "SetOn", input: "model: sonnet\ncode_auto_accept: true\n", wantFlagged: true},
-		{name: "SetOff", input: "code_auto_accept: false\n"},
+		{name: "SetOn", input: "model: sonnet\ncode: {auto_accept: true}\n", wantFlagged: true},
+		{name: "SetOff", input: "code: {auto_accept: false}\n"},
+		{name: "AreaWithoutTheKey", input: "code: {max_bounces: 2}\n", wantFlagged: true},
 		{name: "OtherKeysOnly", input: "model: sonnet\n", wantFlagged: true},
 		{name: "HeaderOnly", input: "# tuned for this hub\n", wantFlagged: true},
 		{name: "AbsentFile", absent: true, wantFlagged: true},
-		{name: "NotABool", input: "code_auto_accept: maybe\n", wantError: true},
+		{name: "NotABool", input: "code: {auto_accept: maybe}\n", wantError: true},
 		{name: "NotAMapping", input: "- a\n- b\n", wantError: true},
 	}
 	for _, tt := range tests {

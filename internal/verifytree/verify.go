@@ -512,14 +512,14 @@ func tierTimeoutDetail(logPath string) (bool, string) {
 	if !ok {
 		return false, ""
 	}
-	detail := fmt.Sprintf("gate %s outlived its timeout_min and was killed", tier)
+	detail := fmt.Sprintf("gate %s outlived its %s and was killed", tier, gateslot.TimeoutKeyName(tier))
 	for _, line := range strings.Split(string(data), "\n") {
 		_, after, found := strings.Cut(line, tier+" exceeded timeout_min ")
 		if !found {
 			continue
 		}
 		timeout, _, _ := strings.Cut(after, ";")
-		detail = fmt.Sprintf("gate %s exceeded timeout_min %s and was killed", tier, strings.TrimSpace(timeout))
+		detail = fmt.Sprintf("gate %s exceeded %s %s and was killed", tier, gateslot.TimeoutKeyName(tier), strings.TrimSpace(timeout))
 		break
 	}
 	return true, detail

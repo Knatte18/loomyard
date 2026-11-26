@@ -393,6 +393,13 @@ func TestSeedChild_RunSettings(t *testing.T) {
 			wantReasonIn: []string{"darn", "verify", "lym board upsert", "lym config profiles", "lym batten run myslug"},
 		},
 		{
+			name:         "AMovedKeyIsStuckNamingBothFullNames",
+			settings:     map[string]any{"loom": map[string]any{"code_max_bounces": 2}},
+			prepareErr:   fmt.Errorf("%w: run_settings for module %q: key loom.code_max_bounces was moved to loom.code.max_bounces", ErrInvalidRunSettings, "loom"),
+			wantOutcome:  shedengine.Stuck,
+			wantReasonIn: []string{"key loom.code_max_bounces was moved to loom.code.max_bounces"},
+		},
+		{
 			name:         "AnUnreadableBoardIsStuck",
 			readErr:      errors.New("board decode failed"),
 			wantOutcome:  shedengine.Stuck,
@@ -465,6 +472,9 @@ func TestSeedChild_RunSettings(t *testing.T) {
 					if !strings.Contains(reason, want) {
 						t.Errorf("stuck-reason file = %q; want it to contain %q", reason, want)
 					}
+				}
+				if errors.Is(tt.prepareErr, ErrInvalidRunSettings) && strings.Count(reason, "way forward:") != 1 {
+					t.Errorf("stuck-reason file = %q; want exactly one way forward", reason)
 				}
 				if calls.writeCalled {
 					t.Error("WriteSeed was called; want no seed written")

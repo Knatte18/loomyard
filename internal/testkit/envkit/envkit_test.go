@@ -64,17 +64,17 @@ func TestFullEnv_FillsEverySeam(t *testing.T) {
 	}
 
 	t.Run("TemplateSetting_AnswersATemplateKey", func(t *testing.T) {
-		got, err := TemplateSetting("tapestry", "plan_auto_accept")
+		got, err := TemplateSetting("tapestry", "plan.auto_accept")
 		if err != nil {
-			t.Fatalf("TemplateSetting(tapestry, plan_auto_accept): %v", err)
+			t.Fatalf("TemplateSetting(tapestry, plan.auto_accept): %v", err)
 		}
 		if got != false {
-			t.Errorf("TemplateSetting(tapestry, plan_auto_accept) = %v; want false", got)
+			t.Errorf("TemplateSetting(tapestry, plan.auto_accept) = %v; want false", got)
 		}
 	})
 
 	t.Run("TemplateSetting_RefusesUnknownModuleAndKey", func(t *testing.T) {
-		if _, err := TemplateSetting("no-such-module", "plan_auto_accept"); err == nil || !strings.Contains(err.Error(), "no-such-module") {
+		if _, err := TemplateSetting("no-such-module", "plan.auto_accept"); err == nil || !strings.Contains(err.Error(), "no-such-module") {
 			t.Errorf("TemplateSetting(no-such-module, ...) error = %v; want one naming the module", err)
 		}
 		if _, err := TemplateSetting("loom", "no_such_key"); err == nil || !strings.Contains(err.Error(), "no_such_key") {

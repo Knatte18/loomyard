@@ -94,7 +94,7 @@ func TestRunCompare(t *testing.T) {
 		t.Parallel()
 		req, pool := newCompareFixture(t, "cat {skip_file}")
 		_, err := RunCompare(context.Background(), req)
-		for _, want := range []string{"the drift compare command holds {skip_file}, which drift no longer renders", "the operator or the hub orch removes every use of it", "from compare with lym config drift --set from the hub's prime worktree"} {
+		for _, want := range []string{"the drift compare command holds {skip_file}, which drift no longer renders", "the operator or the hub orch removes every use of it", "from drift.compare with lym config drift --set from the hub's prime worktree"} {
 			if err == nil || !strings.Contains(err.Error(), want) {
 				t.Errorf("RunCompare() = %v; want an error naming %q", err, want)
 			}
@@ -147,7 +147,7 @@ func TestRunCompare(t *testing.T) {
 		req, pool := newCompareFixture(t, "true")
 		req.Step.Dir = "gone"
 		_, err := RunCompare(context.Background(), req)
-		for _, want := range []string{filepath.Join(req.WorktreeDir, "gone"), `drift.yaml key "compare.dir"`, "lym config drift --set compare.dir=<dir> from the prime, then lym loom resume"} {
+		for _, want := range []string{filepath.Join(req.WorktreeDir, "gone"), `config key "drift.compare.dir"`, "lym config drift --set compare.dir=<dir> from the prime, then lym loom resume"} {
 			if err == nil || !strings.Contains(err.Error(), want) {
 				t.Errorf("RunCompare() = %v; want an error naming %q", err, want)
 			}

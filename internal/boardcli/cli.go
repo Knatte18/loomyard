@@ -106,8 +106,8 @@ type, each table sorted by handle. Agents read and write the
 board through "lym board", never through the JSON files under ` + fabricengine.BoltDirName + `.
 
 The config file is the hub's <hub>/` + fabricengine.BoltDirName + `/_lym/config/board.yaml, read whatever worktree the verb runs in.
-It controls non-geometry settings: readme
-and design_prefix filenames and the types and labels lists. The board data dir (<hub>/` + fabricengine.BoltDirName + `) is
+It controls non-geometry settings: the ` + boardKeyName("readme") + `
+and ` + boardKeyName("design_prefix") + ` filenames and the ` + boardKeyName("types") + ` and ` + boardKeyName("labels") + ` lists. The board data dir (<hub>/` + fabricengine.BoltDirName + `) is
 derived from the worktree layout via lymcwd and is not config- or
 env-overridable. The hidden --board-path flag overrides the data dir for the
 detached sync child process. Running "lym board" with no subcommand lists
@@ -330,7 +330,7 @@ The arguments are joined with single spaces into one search text. At least one a
 Prints the same tasks array as "lym board list", in an envelope without prime_owner; with --text it prints the compact one-line-per-task
 listing instead (errors stay JSON); its columns are handle, kind, priority, age, time since last revision, slug, title, labels and, when set, [status].
 --label <name> keeps only entries carrying that label; repeat it to require several (AND).
-A label that is in neither the types nor the labels list of board.yaml and that no entry carries is refused.
+A label that is in neither ` + boardKeyName("types") + ` nor ` + boardKeyName("labels") + ` and that no entry carries is refused.
 
 Examples:
   lym board find retry backoff
@@ -445,7 +445,7 @@ defaults maps a recipe to the profile a task of that recipe takes when it names 
 Edit the profiles with "lym config profiles".
 
 Output:
-  {"ok":true,"defaults":{"tapestry":"light"},"profiles":[{"name":"light","settings":{"tapestry":{"tapestry":{"plan_max_bounces":1}}}}]}
+  {"ok":true,"defaults":{"tapestry":"light"},"profiles":[{"name":"light","settings":{"tapestry":{"tapestry":{"plan":{"max_bounces":1}}}}}]}
 
 Example:
   lym board profiles`,
@@ -577,7 +577,7 @@ Optional fields:
   "status"     string — lifecycle status
   "kind"       string — "task", "note" or "project", default "note"
   "labels"     array  — replaces the list; a task needs a type label, a note exactly one
-  "recipe"    string — "darn", "tapestry", "arras", "hardener" or "motif", or default_recipe
+  "recipe"    string — "darn", "tapestry", "arras", "hardener" or "motif", or ` + boardKeyName("default_recipe") + `
   "priority"   string — a note's "high", "normal" or "low"; "normal" clears it
   "short_name" string — display label; falls back to the slug
   "issues"     array  — hub issue numbers
@@ -908,7 +908,7 @@ Without --label, the --text listing shows the root project, the prime, as a P0 r
 before the first project, note or done entry, and last under --sort; the JSON "tasks" array holds no root row.
 An entry's "parent_beam" is the slug of the beam above it, "root" when the prime is its parent.
 --label <name> keeps only entries carrying that label; repeat it to require several (AND).
-A label that is in neither the types nor the labels list of board.yaml and that no entry carries is refused.
+A label that is in neither ` + boardKeyName("types") + ` nor ` + boardKeyName("labels") + ` and that no entry carries is refused.
 --sort age lists the oldest entries first, --sort revised the longest unrevised first;
 an entry without the date goes last, and entries that tie keep README order.
 

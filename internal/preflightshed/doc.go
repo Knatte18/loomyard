@@ -8,10 +8,13 @@
 // so this package has no seam_enforcement_test.go import allowlist.
 //
 // Before preflight.Check the row asks hubreconcile.EnsureOrWarn to reconcile a hub whose build stamp is stale.
-// It is a safety net for a run whose start verb predates the binary change or that reaches the row without one.
+// Every verb outside `lym config` that loads the loom or tapestry config runs the same reconcile.
+// The start verbs are among them;
+// the row is a safety net for a run that reaches it with none of those run since the binary change.
 // The reconcile precedes the check so the config it commits leaves the tree clean for the worktree-clean check.
 // A failure is logged at Warn with its way forward,
-// and the row goes on to the check without going Stuck; the next start verb or Preflight row retries the reconcile.
+// and the row goes on to the check without going Stuck;
+// the next Preflight row or verb loading the loom or tapestry config retries the reconcile.
 //
 // The wiring tells NewPreflightWithChecks optional checks, which run after the reconcile and before the check,
 // so a fault they find stops the run before any agent row.

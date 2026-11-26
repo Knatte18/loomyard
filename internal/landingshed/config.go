@@ -70,7 +70,8 @@ const defaultIdleReleaseMin = 10
 // A parent_lock_idle_release_min below 1, an absent key included, returns the default and logs one Warn naming the key.
 func (c Config) IdleRelease() time.Duration {
 	if c.ParentLockIdleReleaseMin < 1 {
-		logger.Warn("landingshed: parent_lock_idle_release_min is below 1 or absent, using the default", "key", "parent_lock_idle_release_min", "value", c.ParentLockIdleReleaseMin, "defaultMin", defaultIdleReleaseMin)
+		name := keyName("parent_lock_idle_release_min")
+		logger.Warn("landingshed: "+name+" is below 1 or absent, using the default", "key", name, "value", c.ParentLockIdleReleaseMin, "defaultMin", defaultIdleReleaseMin)
 		return defaultIdleReleaseMin * time.Minute
 	}
 	return time.Duration(c.ParentLockIdleReleaseMin) * time.Minute
@@ -185,38 +186,38 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	}
 
 	if _, err := modelspec.Parse(cfg.Conflict); err != nil {
-		return Config{}, fmt.Errorf("landing config key %q: %w", "conflict", err)
+		return Config{}, fmt.Errorf("config key %q: %w", keyName(conflictKey), err)
 	}
 
 	if _, err := modelspec.Parse(cfg.Describe); err != nil {
-		return Config{}, fmt.Errorf("landing config key %q: %w", "describe", err)
+		return Config{}, fmt.Errorf("config key %q: %w", keyName(describeKey), err)
 	}
 
 	if _, err := modelspec.Parse(cfg.PRReviewer); err != nil {
-		return Config{}, fmt.Errorf("landing config key %q: %w", "pr_reviewer", err)
+		return Config{}, fmt.Errorf("config key %q: %w", keyName(prReviewerKey), err)
 	}
 
 	if _, err := modelspec.Parse(cfg.Fixer); err != nil {
-		return Config{}, fmt.Errorf("landing config key %q: %w", "fixer", err)
+		return Config{}, fmt.Errorf("config key %q: %w", keyName(fixerKey), err)
 	}
 	for _, positive := range []struct {
 		key   string
 		value int
 	}{
-		{"fixer_timeout_min", cfg.FixerTimeoutMin},
+		{fixerTimeoutMinKey, cfg.FixerTimeoutMin},
 		{"parent_align_fix_attempts", cfg.ParentAlignFixAttempts},
 		{"finalize_fix_attempts", cfg.FinalizeFixAttempts},
 		{"finalize_fix_max_lines", cfg.FinalizeFixMaxLines},
 		{"finalize_fix_review_rounds", cfg.FinalizeFixReviewRounds},
 	} {
 		if positive.value < 1 {
-			return Config{}, fmt.Errorf("landing config key %q: %d is below 1; way forward: lym config landing --set %s=<n> from the prime", positive.key, positive.value, positive.key)
+			return Config{}, fmt.Errorf("config key %q: %d is below 1; way forward: lym config landing --set %s=<n> from the prime", keyName(positive.key), positive.value, positive.key)
 		}
 	}
 	engines := modelspec.EngineNames()
 	for name := range cfg.CreditEngines {
 		if !slices.Contains(engines, name) {
-			return Config{}, fmt.Errorf("landing config key %q: %q is no engine; use one of %v, or remove the entry", creditEnginesKey+"."+name, name, engines)
+			return Config{}, fmt.Errorf("config key %q: %q is no engine; use one of %v, or remove the entry", keyName(creditEnginesKey+"."+name), name, engines)
 		}
 	}
 

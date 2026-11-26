@@ -255,7 +255,7 @@ func TestPRFindingsVerb(t *testing.T) {
 			producers:   open,
 			smallMaxErr: errors.New("config broken"),
 			calls: []call{{wantCode: 1, wantOutput: []string{
-				"read pr_review_small_max: config broken",
+				"read pr.review_small_max: config broken",
 				"way forward: run lym loom pr-findings",
 				"tell the operator when it keeps failing",
 			}}},
@@ -464,7 +464,7 @@ func equalNames(got, want []string) bool {
 }
 
 // TestPRReviewSmallMax_ReadsThePairsLayers asserts what the small-maximum seam reads.
-// It reads pr_review_small_max over the pair's layers, so the task's local layer, where run_settings land, wins.
+// It reads pr.review_small_max over the pair's layers, so the task's local layer, where run_settings land, wins.
 func TestPRReviewSmallMax_ReadsThePairsLayers(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -474,13 +474,13 @@ func TestPRReviewSmallMax_ReadsThePairsLayers(t *testing.T) {
 		want       int
 	}{
 		{name: "no local value reads the hub's", want: 3},
-		{name: "the task's local layer wins over the hub's", localLayer: "pr_review_small_max: 1\n", want: 1},
+		{name: "the task's local layer wins over the hub's", localLayer: "pr: {review_small_max: 1}\n", want: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			loc := hubLocation(t, "pair", ".")
-			seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"pr_review_small_max": "3"})
+			seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"pr.review_small_max": "3"})
 			if tt.localLayer != "" {
 				localConfig := configengine.LocalFile(loc.AnchorPath(), "loom")
 				if err := os.MkdirAll(filepath.Dir(localConfig), 0o755); err != nil {

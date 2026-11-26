@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/lenses"
@@ -174,7 +175,9 @@ func languageSkillsOf(env SeatEnv) ([]string, error) {
 }
 
 // loomConfigOf returns loom's configuration with the tapestry keys a plan-review row adds.
+// It reconciles the hub's config after a binary change before the loads.
 func loomConfigOf(env SeatEnv) (loomengine.Config, error) {
+	hubgeom.ReconcileBeforeLoad(env.Location)
 	cfg, err := loomengine.LoadConfig(env.Dirs, "loom")
 	if err != nil {
 		return loomengine.Config{}, err

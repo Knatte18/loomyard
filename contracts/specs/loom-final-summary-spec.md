@@ -64,7 +64,7 @@ The artifact's consumers are both in `internal/landingshed`:
 - **`Publish`** uses the parsed title and body as the pull request's own title and body fields.
 - **`Finalize`** uses `LandingMessage` as the landing merge commit's message.
   `LandingMessage` is the title, a blank line, the body with its leading whitespace trimmed, then, after a blank line, the credit block.
-  Go composes the credit block from `landing.yaml`'s `credit_*` keys and the engines that ran a session in the task.
+  Go composes the credit block from the `landing.credit_*` keys and the engines that ran a session in the task.
   The pull request's body carries the same body and credit block.
 
 Both consumers append the task's regression check, when the task has one, after the body and before the credit block.

@@ -34,5 +34,5 @@ func FlagRemoteControlDefault(existing []byte, _ []configengine.HubWorktree) (re
 		"sets no %s, whose default is now off, so the orch starts without remote control; "+
 			"to keep it on for every orch session, run `lym config orch --set %s=true` from the prime, "+
 			"or click the RC button of a pane to turn it on for that agent",
-		remoteControlKey, remoteControlKey)}, nil
+		keyName(remoteControlKey), remoteControlKey)}, nil
 }

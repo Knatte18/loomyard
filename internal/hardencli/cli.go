@@ -283,13 +283,13 @@ func sandboxDeps(target sandboxTarget, deps cliDeps, singleRepo bool) hardenshed
 }
 
 // commitSandboxConfig writes the sandbox's loom.yaml override into the prime at primeCwd and commits it on its records.
-// The override sets loom.yaml's friction key empty, which turns Tier 2 self-reporting off in the sandbox hub.
+// The override sets loom.friction.model empty, which turns Tier 2 self-reporting off in the sandbox hub.
 func commitSandboxConfig(primeCwd string) error {
 	prime, err := lymcwd.Resolve(primeCwd)
 	if err != nil {
 		return fmt.Errorf("resolve the sandbox hub's prime: %w", err)
 	}
-	pairs := []yamlengine.KV{{Key: "friction", Value: ""}}
+	pairs := []yamlengine.KV{{Key: "friction.model", Value: ""}}
 	if _, err := configengine.Set(fabricengine.ConfigDirs(prime), loomengine.ConfigSpec(), configengine.LayerWorktree, pairs); err != nil {
 		return fmt.Errorf("write the sandbox hub's loom.yaml: %w", err)
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/preflightshed"
@@ -37,7 +38,7 @@ func landingRowDeps(entry string, row RowIdentity, cfg Config, env Env) (landing
 	if raw, ok := cfg["gate_key"]; ok {
 		named, isString := raw.(string)
 		if !isString {
-			return landingshed.Deps{}, fmt.Errorf("shedrecipe: %s: row %q config key %q must be a string, got %T; way forward: set %q to the name of a gate.yaml key, a string, or remove it to run the key named for the row", entry, row.Name, "gate_key", raw, "gate_key")
+			return landingshed.Deps{}, fmt.Errorf("shedrecipe: %s: row %q config key %q must be a string, got %T; way forward: set %q to the name of a key of %s, a string, or remove it to run the key named for the row", entry, row.Name, "gate_key", raw, "gate_key", configengine.KeyName("gate", "gates"))
 		}
 		if named != "" {
 			gateKey = named

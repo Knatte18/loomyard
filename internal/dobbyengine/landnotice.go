@@ -81,10 +81,10 @@ func (d *daemon) readLandNoticeRequests(runs []RunView, unread map[string]bool) 
 		}
 		on, err := d.deps.LandNotice(run.Slug)
 		if err != nil {
-			d.landNoticeLookup.Fail(run.Slug, "dobbyengine: the run's land_notice does not read; it keeps its last reading and is read again", "slug", run.Slug, "error", err)
+			d.landNoticeLookup.Fail(run.Slug, "dobbyengine: the run's "+keyName(LandNoticeKey)+" does not read; it keeps its last reading and is read again", "slug", run.Slug, "error", err)
 			continue
 		}
-		d.landNoticeLookup.Recover(run.Slug, "dobbyengine: the run's land_notice reads again", "slug", run.Slug)
+		d.landNoticeLookup.Recover(run.Slug, "dobbyengine: the run's "+keyName(LandNoticeKey)+" reads again", "slug", run.Slug)
 		requests[run.Slug] = on
 	}
 	return requests

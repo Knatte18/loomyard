@@ -23,7 +23,7 @@ func debugLogArgs(level string) ([]string, error) {
 	case "2":
 		return []string{"-vv"}, nil
 	default:
-		return nil, fmt.Errorf("invalid debug_log %q: must be 0, 1 or 2", level)
+		return nil, fmt.Errorf("invalid %s %q: must be 0, 1 or 2", keyName("debug_log"), level)
 	}
 }
 

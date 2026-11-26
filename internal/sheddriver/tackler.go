@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -198,7 +199,8 @@ func (c *TacklerCall) attach(attempt TacklerAttempt, remaining time.Duration) (s
 func (c *TacklerCall) settleFresh(attempts []TacklerAttempt) (TacklerEnvelope, error) {
 	settings := c.deps.Settings
 	if settings.MaxSpawns == 0 {
-		return TacklerEnvelope{}, fmt.Errorf("%w: tackler_max_spawns: 0 turns the tackler off", ErrTacklerUnavailable)
+		// The budget may be the run's own module's key rather than shed.yaml's, so the text names both.
+		return TacklerEnvelope{}, fmt.Errorf("%w: the run's tackler spawn budget is 0, which turns the tackler off; the run's own module key sets it, else %s", ErrTacklerUnavailable, configengine.KeyName(configModule, "tackler_max_spawns"))
 	}
 	if len(attempts) >= settings.MaxSpawns {
 		return TacklerEnvelope{}, fmt.Errorf("%w: spawn budget spent: the run has used %d of its %d tackler spawns", ErrTacklerUnavailable, len(attempts), settings.MaxSpawns)

@@ -620,6 +620,10 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 		if len(result.Differs) > 0 {
 			m["differs"] = result.Differs
 		}
+		// moved is set only by a file holding an old key name.
+		if len(result.Moved) > 0 {
+			m["moved"] = result.Moved
+		}
 		// seed is set only by a reconcile of the board dir's files.
 		if result.Seed != "" {
 			m["seed"] = result.Seed
@@ -712,9 +716,14 @@ outside a task session, and commits the files in ` + fabricengine.BoltDirName + 
 Reconcile is refused in the board dir itself.
 
 Beside "lym config <module> --unset <key>", this verb is the one way to remove
-a key the template lacks, a retired key included: the reconcile a start verb,
-a clone or fabric reconcile runs keeps such a key, since a newer lym binary may
-have written it.`,
+a key the template lacks, a retired key included: the reconcile that a clone,
+fabric reconcile, a start verb or a verb outside "lym config" loading the loom
+or tapestry config runs keeps such a key, since a newer binary may have written
+it.
+
+A renamed key a module's move table names is the exception: every reconcile,
+those included, moves it to its new path, or drops it when it holds null or the
+new path is already set.`,
 	}
 	apply := reconcileCmd.Flags().Bool("apply", false, "apply changes to disk (default: dry-run)")
 	reconcileLayer := reconcileCmd.Flags().String("layer", "", "default reconciles the files under the hub's board dir (default: this worktree's own and local files)")

@@ -20,6 +20,7 @@ import (
 // Other keys keep their values. An orphaned top-level key survives and is reported.
 // A refused pair removes a file Set scaffolded, or leaves a pre-existing one byte for byte unchanged;
 // a machine write is included.
+// A moved key is refused by a set and removed by an unset.
 func TestSet(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -66,7 +67,57 @@ func TestSet(t *testing.T) {
 		fileLacks []string
 		// defaultFile is the hub default file's bytes before the call; empty leaves it absent. It needs board.
 		defaultFile string
+		// movedKeys is the spec's move table.
+		movedKeys map[string]string
+		// unset makes the call an Unset of these keys in place of the Set of pairs.
+		unset []string
 	}{
+		{
+			name:      "a set of a moved key is refused naming the set of the new path and writes nothing",
+			state:     baseWithFile,
+			existing:  "area:\n  key: 1\n",
+			template:  areaTemplate,
+			movedKeys: areaMoves(),
+			pairs:     []yamlengine.KV{{Key: "old_key", Value: "3"}},
+			wantErr:   `"lym config testmod --layer worktree --set area.key=3"`,
+		},
+		{
+			name:      "a local set of a moved key names the local layer and creates no file",
+			state:     baseLym,
+			template:  areaTemplate,
+			movedKeys: areaMoves(),
+			pairs:     []yamlengine.KV{{Key: "old_key", Value: "3"}},
+			layer:     configengine.LayerLocal,
+			wantErr:   "--layer local --set area.key=3",
+		},
+		{
+			name:      "a set of an old key that is its own area with a flow mapping is judged by the template, not as the old key",
+			state:     baseWithFile,
+			existing:  "area:\n  key: 1\n",
+			template:  areaTemplate,
+			movedKeys: areaMoves(),
+			pairs:     []yamlengine.KV{{Key: "area", Value: "{model: x}"}},
+			wantErr:   "unknown config key(s): area (known: area.key, area.model)",
+			errLacks:  []string{"was moved"},
+		},
+		{
+			name:      "a set of an old key that is its own area to a scalar is refused naming the set of the new path",
+			state:     baseWithFile,
+			existing:  "area:\n  key: 1\n",
+			template:  areaTemplate,
+			movedKeys: areaMoves(),
+			pairs:     []yamlengine.KV{{Key: "area", Value: "x"}},
+			wantErr:   "--set area.model=x",
+		},
+		{
+			name:      "an unset removes every old key it is told",
+			state:     baseWithFile,
+			existing:  "old_key: 2\narea: x\nname: n\n",
+			template:  areaTemplate,
+			movedKeys: areaMoves(),
+			unset:     []string{"old_key", "area"},
+			wantExact: "name: n\n",
+		},
 		{
 			name:      "an overlay base scaffold holds no per-name entry and takes the selector",
 			state:     baseLym,
@@ -106,7 +157,7 @@ func TestSet(t *testing.T) {
 			overlay:  true,
 			pairs:    []yamlengine.KV{{Key: "pick", Value: "x"}},
 			wantErr:  "--layer default",
-			errLacks: []string{"delete the pick line"},
+			errLacks: []string{"delete the testmod.pick line"},
 		},
 		{
 			name:     "a hub worktree write into a file holding another selector value is refused naming the line to delete",
@@ -115,7 +166,7 @@ func TestSet(t *testing.T) {
 			board:    true,
 			overlay:  true,
 			pairs:    []yamlengine.KV{{Key: "lenses.a", Value: "Y"}},
-			wantErr:  "delete the pick line from",
+			wantErr:  "delete the testmod.pick line from",
 		},
 		{
 			name:        "a hub worktree write of the selector with the default file's value saves",
@@ -397,13 +448,19 @@ func TestSet(t *testing.T) {
 					}
 				}
 			}
-			spec := configengine.Spec{Name: "testmod", Template: []byte(tt.template), OpenMaps: tt.openMaps, PerNameMaps: tt.perNameMaps, Categories: tt.categories, HubWide: tt.hubWide, JSONEntries: tt.jsonEntries, SeedOnly: tt.seedOnly}
+			spec := configengine.Spec{Name: "testmod", Template: []byte(tt.template), OpenMaps: tt.openMaps, PerNameMaps: tt.perNameMaps, Categories: tt.categories, HubWide: tt.hubWide, JSONEntries: tt.jsonEntries, SeedOnly: tt.seedOnly, MovedKeys: tt.movedKeys}
 			if tt.overlay {
 				spec = overlaySpec()
 				spec.Name = "testmod"
 			}
 
-			preserved, err := configengine.Set(dirs, spec, layer, tt.pairs)
+			var preserved []string
+			var err error
+			if tt.unset != nil {
+				err = configengine.Unset(dirs, spec, layer, tt.unset)
+			} else {
+				preserved, err = configengine.Set(dirs, spec, layer, tt.pairs)
+			}
 
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {

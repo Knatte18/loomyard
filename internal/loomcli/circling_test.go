@@ -147,8 +147,8 @@ func TestCirclingVerb_AcceptsFinalizeFixReviewHalt(t *testing.T) {
 
 func TestCirclingVerb_Refusals(t *testing.T) {
 	tiergate.Require(t, 0)
-	const loomRaise = `run "lym config loom --set review_hard_max_bounces=<n>" in the task worktree`
-	const localRaise = `run "lym config loom --layer local --set review_hard_max_bounces=<n>" in the task worktree, and correct the task's run_settings with "lym board upsert" too, so a later Seed-Child writes the same value`
+	const loomRaise = `run "lym config loom --set review.hard_max_bounces=<n>" in the task worktree`
+	const localRaise = `run "lym config loom --layer local --set review.hard_max_bounces=<n>" in the task worktree, and correct the task's run_settings with "lym board upsert" too, so a later Seed-Child writes the same value`
 	atPlanBouncer := awaitingAt(loomshed.NamePlanBouncer)
 	tests := []struct {
 		name string
@@ -191,7 +191,7 @@ func TestCirclingVerb_Refusals(t *testing.T) {
 		},
 		{
 			"hard cap unresolved", shedadapters.CirclingContinue,
-			circlingFake{status: atPlanBouncer, found: true, hardCapErr: errors.New("loom config key \"review_hard_max_bounces\": must be at least 1")},
+			circlingFake{status: atPlanBouncer, found: true, hardCapErr: errors.New("loom config key \"review.hard_max_bounces\": must be at least 1")},
 			[]string{"fix the file or key the message names", "lym loom circling continue task-a", "in place of any"},
 		},
 		{
@@ -247,10 +247,10 @@ func TestPerchHardCap(t *testing.T) {
 			name: "a plan cap in tapestry.yaml",
 			row:  loomshed.NamePlanBouncer,
 			seed: func(t *testing.T, loc *lymcwd.Location) {
-				seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"plan_hard_max_bounces": "6"})
+				seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"plan.hard_max_bounces": "6"})
 			},
 			wantHard:  6,
-			wantRaise: []string{"lym config tapestry --set plan_hard_max_bounces=<n>"},
+			wantRaise: []string{"lym config tapestry --set plan.hard_max_bounces=<n>"},
 		},
 		{
 			name: "a plan cap that falls back to the run-wide one routes through loom",
@@ -260,12 +260,12 @@ func TestPerchHardCap(t *testing.T) {
 				if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
 					t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(localPath), err)
 				}
-				if err := os.WriteFile(localPath, []byte("review_hard_max_bounces: 5\n"), 0o644); err != nil {
+				if err := os.WriteFile(localPath, []byte("review: {hard_max_bounces: 5}\n"), 0o644); err != nil {
 					t.Fatalf("WriteFile(%q) = %v; want nil", localPath, err)
 				}
 			},
 			wantHard:     5,
-			wantRaise:    []string{"lym config loom --layer local --set review_hard_max_bounces=<n>"},
+			wantRaise:    []string{"lym config loom --layer local --set review.hard_max_bounces=<n>"},
 			rejectRaised: []string{"lym config tapestry"},
 		},
 		{
@@ -276,12 +276,12 @@ func TestPerchHardCap(t *testing.T) {
 				if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
 					t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(localPath), err)
 				}
-				if err := os.WriteFile(localPath, []byte("review_hard_max_bounces: 5\n"), 0o644); err != nil {
+				if err := os.WriteFile(localPath, []byte("review: {hard_max_bounces: 5}\n"), 0o644); err != nil {
 					t.Fatalf("WriteFile(%q) = %v; want nil", localPath, err)
 				}
 			},
 			wantHard:  5,
-			wantRaise: []string{"lym config loom --layer local --set review_hard_max_bounces=<n>", "lym board upsert"},
+			wantRaise: []string{"lym config loom --layer local --set review.hard_max_bounces=<n>", "lym board upsert"},
 		},
 		{
 			name: "a harden cap in hardener.yaml, raised through the hardener module",
@@ -296,10 +296,10 @@ func TestPerchHardCap(t *testing.T) {
 			name: "a code cap, the darn recipe's perch's too",
 			row:  loomshed.NameCodeBouncer,
 			seed: func(t *testing.T, loc *lymcwd.Location) {
-				seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"code_hard_max_bounces": "7"})
+				seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"code.hard_max_bounces": "7"})
 			},
 			wantHard:  7,
-			wantRaise: []string{"lym config loom --set code_hard_max_bounces=<n>"},
+			wantRaise: []string{"lym config loom --set code.hard_max_bounces=<n>"},
 		},
 	}
 	for _, tt := range tests {

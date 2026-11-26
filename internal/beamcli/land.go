@@ -273,7 +273,7 @@ func judgeDescribed(deps landDeps, verb, slug string) (pawlengine.LandingRecord,
 func judgeNoPullRequest(deps landDeps, verb, slug string) error {
 	mode, rulesRequired, err := deps.PullRequestMode(slug)
 	if err != nil {
-		return rerunRefusal(verb, slug, "read the beam's pull_request", err)
+		return rerunRefusal(verb, slug, "read the beam's "+pullRequestName(), err)
 	}
 	hasCommits, err := deps.BeamHasCommits(slug)
 	if err != nil {
@@ -287,7 +287,7 @@ func judgeNoPullRequest(deps landDeps, verb, slug string) error {
 	if decision.Halt != "" {
 		demand := "GitHub's rules for the parent branch require a pull request"
 		if mode == beamsetting.PullRequestMerge {
-			demand = "the beam's pull_request is merge"
+			demand = "the beam's " + pullRequestName() + " is merge"
 		}
 		return fmt.Errorf("%s: a pull request is required for the beam %s (%s) but %s; way forward: give the hub a GitHub origin, an upstream for the parent branch and no push skip, then run `%s %s` again", verb, slug, demand, landingshed.OriginMissing(side.Origin), verb, slug)
 	}

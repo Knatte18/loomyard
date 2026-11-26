@@ -32,6 +32,14 @@ const (
 	runnerCrashPrefix = "lym gate test: runner crash: "
 )
 
+// TimeoutKeyName returns the full name of the gate.yaml key bounding the run named tier, a tier or the build.
+func TimeoutKeyName(tier string) string {
+	if tier == buildTierName {
+		return keyName("build.timeout_min")
+	}
+	return keyName("tiers." + tier + ".timeout_min")
+}
+
 var (
 	tierSummaryPattern  = regexp.MustCompile(`^gate test: tier(\d+) .* discovered \d+ passed \d+ failed \d+ skipped \d+ wall \S+s exit (-?\d+) log .*$`)
 	buildSummaryPattern = regexp.MustCompile(`^gate test: build before tier(\d+) wall \S+s exit (-?\d+) log .*$`)
@@ -212,15 +220,15 @@ func pruneRunLog(dir string, now time.Time) {
 // TierTimeoutLine renders the line the gate prints to stderr and into the log when tier outlives timeout.
 // It names the tier, the timeout and the way forward.
 func TierTimeoutLine(tier string, timeout time.Duration) string {
-	return fmt.Sprintf("%s%s%s%s; find the hang in this log; when the tier is slow but healthy, rewrite the tier whole from the prime with \"lym config gate --set 'tiers.%s={...}'\", carrying every key of the tier and the raised timeout_min, since a dotted key under the tier writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it",
-		tierTimeoutPrefix, tier, tierTimeoutMid, timeout, tier)
+	return fmt.Sprintf("%s%s%s%s; find the hang in this log; when the tier is slow but healthy, rewrite the tier whole from the prime with \"lym config gate --set 'tiers.%s={...}'\", carrying every key of the tier and the raised %s, since a dotted key under the tier writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it",
+		tierTimeoutPrefix, tier, tierTimeoutMid, timeout, tier, keyName("tiers."+tier+".timeout_min"))
 }
 
 // BuildTimeoutLine renders the line the gate prints to stderr and into the log when the build step outlives timeout.
 // It names the timeout and the way forward.
 func BuildTimeoutLine(timeout time.Duration) string {
-	return fmt.Sprintf("%s%s%s%s; find the hang in this log; when the build is slow but healthy, rewrite the build whole from the prime with \"lym config gate --set 'build={...}'\", carrying every key of the build and the raised timeout_min, since a dotted key under the build writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it",
-		buildTimeoutPrefix, buildTierName, tierTimeoutMid, timeout)
+	return fmt.Sprintf("%s%s%s%s; find the hang in this log; when the build is slow but healthy, rewrite the build whole from the prime with \"lym config gate --set 'build={...}'\", carrying every key of the build and the raised %s, since a dotted key under the build writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it",
+		buildTimeoutPrefix, buildTierName, tierTimeoutMid, timeout, keyName("build.timeout_min"))
 }
 
 // FindTierTimeout returns the tier of the first tier or build timeout line in log.

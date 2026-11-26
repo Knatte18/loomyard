@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/desktophook"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -193,14 +194,14 @@ func filesToOpen(anchorPath string, entries []string, beam func() string) []stri
 				beamName, beamAsked = beam(), true
 			}
 			if beamName == "" {
-				logger.Info("ide: no beam resolves an open_files entry; skipping it", "entry", entry)
+				logger.Info("ide: no beam resolves an "+configengine.KeyName("ide", "open_files")+" entry; skipping it", "entry", entry)
 				continue
 			}
 			entry = strings.ReplaceAll(entry, ideconfig.BeamPlaceholder, beamName)
 		}
 		filePath := filepath.Join(anchorPath, filepath.FromSlash(entry))
 		if info, err := os.Stat(filePath); err != nil || !info.Mode().IsRegular() {
-			logger.Info("ide: an open_files entry names no file; skipping it", "path", filePath)
+			logger.Info("ide: an "+configengine.KeyName("ide", "open_files")+" entry names no file; skipping it", "path", filePath)
 			continue
 		}
 		files = append(files, filePath)

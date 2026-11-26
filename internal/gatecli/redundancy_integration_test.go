@@ -284,7 +284,7 @@ func TestRedundancyStep(t *testing.T) {
 			{Package: "drops", Name: "TestDropsSpawns", File: "drops/spawn_tier1_test.go", Verdict: RedundancyNotJudged, Reason: testcover.ReasonOutOfProcess},
 			notJudged("nomap", "TestNomapNew", reasonNoMap),
 			{Package: "stale", Name: "TestStaleNew", File: "stale/stale_test.go", Verdict: RedundancyUnique},
-			notJudged("zcapped", "TestZcappedNew", "past redundancy_max_tests (10)"),
+			notJudged("zcapped", "TestZcappedNew", "past gate.redundancy_max_tests (10)"),
 		}
 		if diff := cmp.Diff(wantTests, first.Tests, cmpopts.EquateEmpty()); diff != "" {
 			t.Errorf("report tests mismatch (-want +got):\n%s", diff)
@@ -572,7 +572,7 @@ func TestRedundancyStep(t *testing.T) {
 		}{
 			{name: "ARedGate", location: pairLocation, red: true, want: noteRedGate},
 			{name: "NoParentBranch", location: primeLocation, want: noteNoParent},
-			{name: "AScoperOtherThanGo", location: pairLocation, scoper: "none", want: "the hub's scoper is none, not go, so the step judged nothing"},
+			{name: "AScoperOtherThanGo", location: pairLocation, scoper: "none", want: "the hub's gate.scoper is none, not go, so the step judged nothing"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

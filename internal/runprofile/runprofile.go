@@ -90,7 +90,7 @@ func (p Profiles) Names() []string {
 func (p Profiles) Lookup(name string) (Profile, error) {
 	profile, ok := p.ByName[name]
 	if !ok {
-		return nil, fmt.Errorf("unknown run profile %q (known: %s); way forward: name a known profile in the task's profile field, or add it with \"lym config profiles --set %s='<json object>'\" from the hub's prime worktree", name, strings.Join(p.Names(), ", "), name)
+		return nil, fmt.Errorf("unknown run profile %q (known: %s); way forward: name a known profile in the task's profile field, or add %s with \"lym config profiles --set %s='<json object>'\" from the hub's prime worktree", name, strings.Join(p.Names(), ", "), configengine.KeyName(ModuleName, name), name)
 	}
 	return profile, nil
 }
@@ -134,7 +134,7 @@ func (p Profiles) Settings(name, recipe string) (map[string]any, error) {
 		if former, held := heldFormerName(profile, recipe); held {
 			return nil, fmt.Errorf("run profile %q holds no %s block but a %s block, the recipe's former name; way forward: %s", name, recipe, former, renameWayForward)
 		}
-		return nil, fmt.Errorf("run profile %q holds no %s block (it covers: %s); way forward: name a profile that covers %s in the task's profile field, or add a %s block to %q with \"lym config profiles\" from the hub's prime worktree", name, recipe, strings.Join(slices.Sorted(maps.Keys(profile)), ", "), recipe, recipe, name)
+		return nil, fmt.Errorf("run profile %q holds no %s block (it covers: %s); way forward: name a profile that covers %s in the task's profile field, or add a %s block, %s, with \"lym config profiles\" from the hub's prime worktree", name, recipe, strings.Join(slices.Sorted(maps.Keys(profile)), ", "), recipe, recipe, configengine.KeyName(ModuleName, name+"."+recipe))
 	}
 	return settings, nil
 }
@@ -147,7 +147,7 @@ func (p Profiles) Default(recipe string) (string, error) {
 		return name, nil
 	}
 	if former, held := heldFormerName(p.Defaults, recipe); held {
-		return "", fmt.Errorf("the run profiles' %s hold no %s entry but a %s entry, the recipe's former name; way forward: %s", DefaultsEntry, recipe, former, renameWayForward)
+		return "", fmt.Errorf("the run profiles' %s hold no %s entry but a %s entry, the recipe's former name; way forward: %s", configengine.KeyName(ModuleName, DefaultsEntry), recipe, former, renameWayForward)
 	}
 	return "", nil
 }
@@ -197,7 +197,7 @@ func decode(document []byte, source string) (Profiles, error) {
 	if value, ok := raw[DefaultsEntry]; ok {
 		defaults, err := decodeDefaults(value, profiles)
 		if err != nil {
-			return Profiles{}, configengine.MarkInvalid(fmt.Errorf("runprofile: %s: %w; way forward: map each recipe to a profile that covers it under %s with \"lym config profiles\"", source, err, DefaultsEntry))
+			return Profiles{}, configengine.MarkInvalid(fmt.Errorf("runprofile: %s: %w; way forward: map each recipe to a profile that covers it under %s with \"lym config profiles\"", source, err, configengine.KeyName(ModuleName, DefaultsEntry)))
 		}
 		profiles.Defaults = defaults
 	}

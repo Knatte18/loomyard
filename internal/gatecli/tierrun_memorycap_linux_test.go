@@ -36,7 +36,7 @@ func TestRunTierMemoryCapThatCannotBeSetRefusesWithItsWayForward(t *testing.T) {
 	// With only PATH, systemd-run cannot reach the user manager's bus, so the scope never runs the command.
 	result := runTier(context.Background(), io.Discard, run, []string{"PATH=" + os.Getenv("PATH")}, request)
 
-	for _, want := range []string{"did not run under its memory_mb of 64 MB", "remove tiers.tier1.memory_mb"} {
+	for _, want := range []string{"did not run under its gate.tiers.tier1.memory_mb of 64 MB", "remove gate.tiers.tier1.memory_mb"} {
 		if !strings.Contains(result.refusal, want) {
 			t.Errorf("runTier() refusal = %q; want it to hold %q", result.refusal, want)
 		}

@@ -142,47 +142,47 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	}
 
 	if time.Duration(cfg.PollIntervalMS)*time.Millisecond < pollFloor {
-		logger.Warn("shuttle config: poll_interval_ms is below the floor and is raised to it", "key", "poll_interval_ms", "value", cfg.PollIntervalMS, "floor_ms", pollFloor.Milliseconds())
+		logger.Warn("shuttle config: "+keyName("poll_interval_ms")+" is below the floor and is raised to it", "key", "poll_interval_ms", "value", cfg.PollIntervalMS, "floor_ms", pollFloor.Milliseconds())
 	}
 
 	if cfg.Engine == "" {
-		return Config{}, fmt.Errorf("shuttle config: engine must name a registered engine, got an empty value")
+		return Config{}, fmt.Errorf("shuttle config: %s must name a registered engine, got an empty value", keyName(engineKey))
 	}
 
 	if cfg.StartRetries < 0 {
-		return Config{}, fmt.Errorf("shuttle config: start_retries must not be negative, got %d", cfg.StartRetries)
+		return Config{}, fmt.Errorf("shuttle config: %s must not be negative, got %d", keyName("start_retries"), cfg.StartRetries)
 	}
 
 	if cfg.KeepWarmMaxReruns < 0 {
-		return Config{}, fmt.Errorf("shuttle config: keep_warm_max_reruns must not be negative, got %d; way forward: set it to 0 or more with lym config shuttle", cfg.KeepWarmMaxReruns)
+		return Config{}, fmt.Errorf("shuttle config: %s must not be negative, got %d; way forward: set it to 0 or more with lym config shuttle", keyName("keep_warm_max_reruns"), cfg.KeepWarmMaxReruns)
 	}
 
 	if cfg.BackgroundShellWaitMin <= 0 {
-		return Config{}, fmt.Errorf("shuttle config: background_shell_wait_min must be positive, got %d", cfg.BackgroundShellWaitMin)
+		return Config{}, fmt.Errorf("shuttle config: %s must be positive, got %d", keyName("background_shell_wait_min"), cfg.BackgroundShellWaitMin)
 	}
 
 	if cfg.SubmitSettleMS < 0 {
-		return Config{}, fmt.Errorf("shuttle config: submit_settle_ms must not be negative, got %d", cfg.SubmitSettleMS)
+		return Config{}, fmt.Errorf("shuttle config: %s must not be negative, got %d", keyName("submit_settle_ms"), cfg.SubmitSettleMS)
 	}
 
 	if cfg.SubmitRedrawSettleMS < 0 {
-		return Config{}, fmt.Errorf("shuttle config: submit_redraw_settle_ms must not be negative, got %d", cfg.SubmitRedrawSettleMS)
+		return Config{}, fmt.Errorf("shuttle config: %s must not be negative, got %d", keyName("submit_redraw_settle_ms"), cfg.SubmitRedrawSettleMS)
 	}
 
 	if cfg.SendReadyTimeoutS <= 0 {
-		return Config{}, fmt.Errorf("shuttle config: send_ready_timeout_s must be positive, got %d", cfg.SendReadyTimeoutS)
+		return Config{}, fmt.Errorf("shuttle config: %s must be positive, got %d", keyName("send_ready_timeout_s"), cfg.SendReadyTimeoutS)
 	}
 
 	if cfg.SubmitConfirmTimeoutS <= 0 {
-		return Config{}, fmt.Errorf("shuttle config: submit_confirm_timeout_s must be positive, got %d", cfg.SubmitConfirmTimeoutS)
+		return Config{}, fmt.Errorf("shuttle config: %s must be positive, got %d", keyName("submit_confirm_timeout_s"), cfg.SubmitConfirmTimeoutS)
 	}
 
 	if cfg.EditLoopEdits < 0 {
-		return Config{}, fmt.Errorf("shuttle config: edit_loop_edits must not be negative, got %d; way forward: set it to 0 to turn the edit-loop watch off, or above 0, with lym config shuttle", cfg.EditLoopEdits)
+		return Config{}, fmt.Errorf("shuttle config: %s must not be negative, got %d; way forward: set it to 0 to turn the edit-loop watch off, or above 0, with lym config shuttle", keyName("edit_loop_edits"), cfg.EditLoopEdits)
 	}
 
 	if cfg.EditLoopEdits > 0 && cfg.EditLoopWindowS <= 0 {
-		return Config{}, fmt.Errorf("shuttle config: edit_loop_window_s must be positive while edit_loop_edits is above 0, got %d; way forward: set it above 0 with lym config shuttle", cfg.EditLoopWindowS)
+		return Config{}, fmt.Errorf("shuttle config: %s must be positive while %s is above 0, got %d; way forward: set it above 0 with lym config shuttle", keyName("edit_loop_window_s"), keyName("edit_loop_edits"), cfg.EditLoopWindowS)
 	}
 
 	agents, err := agentconfig.Load(dirs)

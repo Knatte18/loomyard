@@ -81,7 +81,7 @@ const codexEditToolsRule = "change a file with the apply_patch tool, and read or
 
 // pythonRefusal states the python deny, why it stands and the way forward for work that needs Python itself.
 // It names the version check, which agents otherwise run as a probe before choosing how to edit or parse.
-const pythonRefusal = "python and python3 are refused in every lym session, a version check included, so never probe for Python: what it runs differs from machine to machine with the installed packages, venvs and installations, and it is often very slow; when the work itself needs Python, as OCR does, say so to the operator or your parent, who can set " + string(SwitchDenyPython) + ": false for the hub, and never work round the guard"
+const pythonRefusal = "python and python3 are refused in every lym session, a version check included, so never probe for Python: what it runs differs from machine to machine with the installed packages, venvs and installations, and it is often very slow; when the work itself needs Python, as OCR does, say so to the operator or your parent, who can set shuttle." + string(SwitchDenyPython) + ": false for the hub, and never work round the guard"
 
 // pythonRoutes opens the python row's own steer text, which follows the shared whole-command clause.
 // It holds the refusal and the parse routes in Python's place.

@@ -59,7 +59,7 @@
 // or it reads `waits on`, followed by each of these:
 // open dependencies; another machine's ownership; a pause; a start batten refuses, with its text;
 // a refused start, with its text and the minutes to its retry; and `max_runs`.
-// A run that asks for a landing notice ends its line with `land_notice`.
+// A run that asks for a landing notice ends its line with `beam.land_notice`.
 // A dobby view that does not read shows `dobby <label>: unreadable`.
 // A run's cells are batten's state, the stage and the time in that stage.
 // A run with a seed and no status shows as `starting`.
@@ -350,12 +350,12 @@ first holds the driver lock.
 An omitted run-id refuses by name rather than defaulting to "self".
 
 The Open-Window, Seed-IDE and Open-IDE rows are Command rows: each runs its
-batten.yaml command (open_window_command, seed_ide_command, open_ide_command)
-only when its entry gate (the open_window, seed_ide or open_ide setting) is on.
+command (` + battenKeyName("open_window_command") + `, ` + battenKeyName("seed_ide_command") + `, ` + battenKeyName("open_ide_command") + `)
+only when its gate (` + battenKeyName("open_window") + `, ` + battenKeyName("seed_ide") + ` or ` + battenKeyName("open_ide") + `) is on.
 Open-Window's default command opens one desktop terminal window attached to the
 task worktree's reed session; Seed-IDE's writes the worktree's VS Code config,
 and Open-IDE's opens VS Code. A run resumed past that row opens a window again
-when no client is attached to that session and open_window is on.
+when no client is attached to that session and ` + battenKeyName("open_window") + ` is on.
 
 Example:
   lym batten run some-slug`,
@@ -510,14 +510,14 @@ Example:
 	// That is a fact about the worktree's recipe, not batten's, so both "go" and "llm" are accepted.
 	// The child's own recipe capability is checked when that child's seed is written.
 	runVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
-	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the child recipe's driver_kind, then shed.yaml's")
+	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, "+childDriverFallback())
 	runVerb.Flags().BoolVar(&c.continuePass, "continue-pass", false, "run the continue pass dobby schedules into a run it already drives: skip the origin reconcile, the Open-Window re-run and the pause refusal, and refuse a run that is not one dobby may continue")
 	runVerb.Flags().BoolVar(&c.noReopen, "no-reopen", false, "skip the Open-Window re-run of a resumed run")
 	_ = runVerb.Flags().MarkHidden("continue-pass")
 	_ = runVerb.Flags().MarkHidden("no-reopen")
 	runVerb.RunE = func(cmd *cobra.Command, args []string) error { return c.driveRun(cmd) }
 	stepVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
-	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the child recipe's driver_kind, then shed.yaml's")
+	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, "+childDriverFallback())
 
 	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, lockCommand(), c.cleanupCmd(), c.cancelCmd(), c.overviewCmd())
 

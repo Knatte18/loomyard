@@ -271,7 +271,7 @@ func (s *fixerSession) judge() (shuttleengine.GateResult, error) {
 	}
 	gate := s.run.gate
 	if gate.now().Sub(s.turnStart) > s.turnLimit {
-		return s.halt(fixerEndTimeout, "the fixer's turn ran past fixer_timeout_min")
+		return s.halt(fixerEndTimeout, "the fixer's turn ran past "+keyName(fixerTimeoutMinKey))
 	}
 	const point = "after the fixer's turn"
 	dirty, err := gate.dirtyPaths(s.run.row, point)

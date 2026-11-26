@@ -98,7 +98,7 @@ Examples:
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&gate, "gate", "", "gate.yaml key whose tiers run the tests; required")
+	cmd.Flags().StringVar(&gate, "gate", "", "key of "+keyName(gatesKey)+" whose tiers run the tests; required")
 	cmd.Flags().StringVar(&base, "base", "", "commit whose code the tests run on; default the merge base with the parent branch")
 	return cmd
 }
@@ -114,7 +114,7 @@ Examples:
 // After a terminating signal the code is 128 plus the signal number.
 func runRedFirst(ctx context.Context, out io.Writer, request redFirstRequest) int {
 	if request.gate == "" {
-		return output.Err(out, redFirstVerb+": --gate names no gate key; way forward: pass --gate with a key of gate.yaml's gates, then re-run the same command")
+		return output.Err(out, redFirstVerb+": --gate names no gate key; way forward: pass --gate with a key of "+keyName(gatesKey)+", then re-run the same command")
 	}
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {

@@ -155,7 +155,7 @@ func renameToolRefusal(plan *planparser.Plan, batch batcher.Batch, renameTools [
 		if len(pairs) == 0 {
 			continue
 		}
-		return fmt.Errorf("%w: batch %02d-%s, symbol pair %s -> %s on card %s; way forward: set rename_tools with \"lym config language\" from the prime, or recast the card, then re-run `lym webster %s %d`", ErrRenameToolMissing, number, slug, pairs[0].Old, pairs[0].New, card.ID(), verb, number)
+		return fmt.Errorf("%w: batch %02d-%s, symbol pair %s -> %s on card %s; way forward: set %s with \"lym config language\" from the prime, or recast the card, then re-run `lym webster %s %d`", ErrRenameToolMissing, number, slug, pairs[0].Old, pairs[0].New, card.ID(), renameToolsKeyName(), verb, number)
 	}
 	return nil
 }

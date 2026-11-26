@@ -162,7 +162,7 @@ func ReadLayers(boltDir string) (Layers, error) {
 // A repository entry that shares a shipped slug therefore stays open to change and removal.
 func refuseShipped(slug string) error {
 	if _, found := shippedStore.Get(slug); found {
-		return fmt.Errorf("entry %q ships with lym and is read-only, so no repository entry can be created under it; way forward: give the new repository entry another slug, or tune the shipped text with `lym heddle set %s --layer %s` in a hub whose heddle.yaml sets %s", slug, slug, OverrideLayer, LymOverrideKey)
+		return fmt.Errorf("entry %q ships with lym and is read-only, so no repository entry can be created under it; way forward: give the new repository entry another slug, or tune the shipped text with `lym heddle set %s --layer %s` in a hub whose heddle.yaml sets %s", slug, slug, OverrideLayer, configengine.KeyName(configModule, LymOverrideKey))
 	}
 	return nil
 }

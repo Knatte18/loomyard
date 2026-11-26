@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/beamsetting"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/durfmt"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -18,11 +20,12 @@ const (
 	dobbyIndent = "  "
 	// dobbyNoRuns is the line of a dobby that drives no run.
 	dobbyNoRuns = "no runs driven"
-	// dobbyLandNotice ends the line of a run that asks for a landing notice.
-	dobbyLandNotice = dobbyengine.LandNoticeKey
 	// dobbyUnreadableFormat is the one line of a dobby whose view does not read, filled with its label.
 	dobbyUnreadableFormat = "dobby %s: unreadable"
 )
+
+// dobbyLandNotice ends the line of a run that asks for a landing notice.
+var dobbyLandNotice = configengine.KeyName(beamsetting.Module, dobbyengine.LandNoticeKey)
 
 // DobbyLines renders the dobby labeled label as lines at now.
 // It takes the dobby's state from view and the cells of its runs from runCells.
@@ -30,12 +33,12 @@ const (
 // Each run it drives takes one line, with its cells and its last pass.
 // What a run's cells say it owes ends its pass cell.
 // Each released task it has not started takes one line, naming everything that holds it back.
-// A run that asks for a landing notice ends its line with land_notice.
+// A run that asks for a landing notice ends its line with beam.land_notice.
 // Each pair a cancel kept takes one line with its age and the verb that removes it.
 // A run whose cells are unreadable draws `status unreadable` in their place and takes no part in their column widths.
 // A duration still growing renders in whole minutes, so the lines change at most once a minute.
 func DobbyLines(label string, view dobbyengine.View, runCells map[string]RunCells, now time.Time) []string {
-	header := fmt.Sprintf("dobby %s: alive, max_runs %d", label, view.MaxRuns)
+	header := fmt.Sprintf("dobby %s: alive, %s %d", label, maxRunsName(), view.MaxRuns)
 	if !view.Alive {
 		header = fmt.Sprintf("dobby %s: not running; way forward: lym beam start", label)
 	}
@@ -162,7 +165,7 @@ func dobbyTaskWait(task dobbyengine.WaitingTask, maxRuns int, now time.Time) str
 		reasons = append(reasons, fmt.Sprintf("a refused start (%s), retry in %s", firstLine(task.Refusal), durfmt.FormatMinutes(task.NextTry.Sub(now))))
 	}
 	if task.AtMaxRuns {
-		reasons = append(reasons, fmt.Sprintf("max_runs %d", maxRuns))
+		reasons = append(reasons, fmt.Sprintf("%s %d", maxRunsName(), maxRuns))
 	}
 	return "waits on " + strings.Join(reasons, "; ")
 }

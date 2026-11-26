@@ -553,7 +553,7 @@ func TestPlanTierRuns(t *testing.T) {
 			name:    "--guards under the dotnet scoper",
 			mutate:  func(cfg *gateslot.Config) { cfg.Scoper = "dotnet" },
 			request: testRequest{guards: true},
-			exact:   `gate test: --guards needs the go scoper to find the guard tests, but gate.yaml's scoper is "dotnet"; way forward: drop --guards, then re-run the same command`,
+			exact:   `gate test: --guards needs the go scoper to find the guard tests, but gate.scoper is "dotnet"; way forward: drop --guards, then re-run the same command`,
 		},
 		{
 			name: "words after -- that set the results directory of a tier with results trx",

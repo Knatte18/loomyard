@@ -543,7 +543,7 @@ func TestMarkReady(t *testing.T) {
 				w.mode = "merge"
 				w.origin = landingshed.Origin{URL: "https://github.com/o/r.git"}
 			}),
-			wantErr:   []string{"no upstream", "lym beam ready b", "the beam's pull_request is merge"},
+			wantErr:   []string{"no upstream", "lym beam ready b", "the beam's beam.pull_request is merge"},
 			wantNoErr: []string{"lym loom resume"},
 		},
 		{

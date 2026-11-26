@@ -189,8 +189,8 @@ func build(cfg shuttleengine.Config, dirs configengine.Dirs, constructors map[st
 	}
 	if _, ok := engines[cfg.Engine]; !ok {
 		return shuttleengine.EngineSet{}, fmt.Errorf(
-			"shuttle: shuttle.yaml's engine: %q names no registered engine; registered engines: %s; way forward: set engine: in shuttle.yaml to one of them",
-			cfg.Engine, strings.Join(names, ", "))
+			"shuttle: %s %q names no registered engine; registered engines: %s; way forward: set %s in shuttle.yaml to one of them",
+			configengine.KeyName("shuttle", "engine"), cfg.Engine, strings.Join(names, ", "), configengine.KeyName("shuttle", "engine"))
 	}
 	return shuttleengine.NewEngineSet(cfg.Engine, engines), nil
 }

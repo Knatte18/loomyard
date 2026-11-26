@@ -8,6 +8,7 @@ import (
 	"math"
 	"slices"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -38,6 +39,7 @@ func (e *RunSettingsError) Unwrap() error {
 // It returns each named module's local-layer YAML document, and drops a module whose object is empty.
 // A module that is not registered is refused.
 // A top-level key the module's Spec maps to a RetiredWayForward or HubOnlyWayForward text is refused with that text.
+// A top-level old name of the module's Spec.MovedKeys is refused naming both full names, with no way forward.
 // Every refusal is a [*RunSettingsError]; value semantics are left to the module's load.
 // Nil or empty settings return an empty map.
 func PrepareRunSettings(settings map[string]any) (map[string][]byte, error) {
@@ -63,6 +65,9 @@ func PrepareRunSettings(settings map[string]any) (map[string][]byte, error) {
 		if err := refuseRetiredKeys(module, keys); err != nil {
 			return nil, &RunSettingsError{Module: name, Cause: err}
 		}
+		if err := refuseMovedKeys(module, keys); err != nil {
+			return nil, &RunSettingsError{Module: name, Cause: err}
+		}
 		if err := refuseHubOnlyKeys(module, keys); err != nil {
 			return nil, &RunSettingsError{Module: name, Cause: err}
 		}
@@ -79,26 +84,45 @@ func PrepareRunSettings(settings map[string]any) (map[string][]byte, error) {
 }
 
 // refuseRetiredKeys refuses the first key, in name order, that the module's Spec maps to a RetiredWayForward text.
-// The refusal is marked [configengine.ErrInvalid] and names the key and the module.
+// The refusal is marked [configengine.ErrInvalid] and names the key in full.
 // It ends with that text as its way forward.
 func refuseRetiredKeys(module Module, keys map[string]any) error {
 	wayForward := module.Spec().RetiredWayForward
 	for _, key := range slices.Sorted(maps.Keys(keys)) {
 		if text, retired := wayForward[key]; retired {
-			return configengine.MarkInvalid(fmt.Errorf("key %q of module %q is retired; way forward: %s", key, module.Name, text))
+			return configengine.MarkInvalid(fmt.Errorf("key %q is retired; way forward: %s", configengine.KeyName(module.Name, key), text))
 		}
 	}
 	return nil
 }
 
+// refuseMovedKeys refuses the first key, in name order, that is an old name in the module's Spec.MovedKeys.
+// An old name that is also the area its new path lies under is refused only while its value is not an object.
+// The refusal is marked [configengine.ErrInvalid] and names both full names.
+// It carries no way forward, since each caller prints its own.
+func refuseMovedKeys(module Module, keys map[string]any) error {
+	moved := module.Spec().MovedKeys
+	for _, key := range slices.Sorted(maps.Keys(keys)) {
+		newPath, isOld := moved[key]
+		if !isOld {
+			continue
+		}
+		if _, isArea := keys[key].(map[string]any); isArea && strings.HasPrefix(newPath, key+".") {
+			continue
+		}
+		return configengine.MarkInvalid(fmt.Errorf("key %s was moved to %s", configengine.KeyName(module.Name, key), configengine.KeyName(module.Name, newPath)))
+	}
+	return nil
+}
+
 // refuseHubOnlyKeys refuses the first key, in name order, that the module's Spec maps to a HubOnlyWayForward text.
-// The refusal is marked [configengine.ErrInvalid] and names the key and the module.
+// The refusal is marked [configengine.ErrInvalid] and names the key in full.
 // It ends with that text as its way forward.
 func refuseHubOnlyKeys(module Module, keys map[string]any) error {
 	wayForward := module.Spec().HubOnlyWayForward
 	for _, key := range slices.Sorted(maps.Keys(keys)) {
 		if text, hubOnly := wayForward[key]; hubOnly {
-			return configengine.MarkInvalid(fmt.Errorf("key %q of module %q is set only in the hub's config; way forward: %s", key, module.Name, text))
+			return configengine.MarkInvalid(fmt.Errorf("key %q is set only in the hub's config; way forward: %s", configengine.KeyName(module.Name, key), text))
 		}
 	}
 	return nil
@@ -138,6 +162,57 @@ func LayerRunSettings(profileName string, profile, settings map[string]any) (map
 		documents[name] = merged
 	}
 	return documents, nil
+}
+
+// MoveSettings moves the old keys of one module-keyed settings object in document, as each module's moved keys name them.
+// prefix holds one key per level leading to the object, and an empty prefix names the document root.
+// It returns the moved bytes and one line per change, naming both full names.
+// Comments and every key it does not move are kept, and a document with no old key comes back unchanged.
+func MoveSettings(document []byte, prefix []string) ([]byte, []string, error) {
+	var lines []string
+	for _, module := range Modules() {
+		moves := module.Spec().MovedKeys
+		if len(moves) == 0 {
+			continue
+		}
+		under := append(slices.Clone(prefix), module.Name)
+		moved, changes, err := yamlengine.MoveKeys(document, under, moves)
+		if err != nil {
+			return nil, nil, fmt.Errorf("move the old keys of %s: %w", module.Name, err)
+		}
+		document = moved
+		for _, change := range changes {
+			oldName, newName := configengine.KeyName(module.Name, change.Old), configengine.KeyName(module.Name, change.New)
+			switch change.Outcome {
+			case yamlengine.MoveDone:
+				lines = append(lines, fmt.Sprintf("moved %s to %s", oldName, newName))
+			case yamlengine.MoveDroppedNull:
+				lines = append(lines, fmt.Sprintf("dropped %s, which was null", oldName))
+			case yamlengine.MoveDroppedNewSet:
+				lines = append(lines, fmt.Sprintf("dropped %s, since %s is set", oldName, newName))
+			}
+		}
+	}
+	return document, lines, nil
+}
+
+// MoveRunSettings moves the old keys of a module-keyed settings object decoded from JSON.
+// It returns the moved object and one line per change, naming both full names.
+// An object with no old key comes back as it was, with no line.
+func MoveRunSettings(settings map[string]any) (map[string]any, []string, error) {
+	document, err := yaml.Marshal(wholeNumbersAsIntegers(settings))
+	if err != nil {
+		return nil, nil, fmt.Errorf("marshal the run settings: %w", err)
+	}
+	moved, lines, err := MoveSettings(document, nil)
+	if err != nil || len(lines) == 0 {
+		return settings, nil, err
+	}
+	var object map[string]any
+	if err := yaml.Unmarshal(moved, &object); err != nil {
+		return nil, nil, fmt.Errorf("decode the moved run settings: %w", err)
+	}
+	return object, lines, nil
 }
 
 // checkLocalDocument checks a module's local-layer document against the local rule and then the module's value checks.

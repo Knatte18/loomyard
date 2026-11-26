@@ -204,7 +204,7 @@ func TestLoadConfig_PermissionMode(t *testing.T) {
 		if err == nil {
 			t.Fatalf("permission_mode: %s = nil error, want error", mode)
 		}
-		if !strings.Contains(err.Error(), "set permission_mode: bypass or remove the key") {
+		if !strings.Contains(err.Error(), "set orch.permission_mode to bypass or remove the key") {
 			t.Errorf("permission_mode: %s error = %q, want the fix named", mode, err)
 		}
 	}

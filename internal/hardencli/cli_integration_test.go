@@ -103,12 +103,14 @@ func TestSandboxVerbs(t *testing.T) {
 		holdsOverride := slices.ContainsFunc(overrides, func(path string) bool {
 			contents, err := os.ReadFile(path)
 			var document struct {
-				Friction *string `yaml:"friction"`
+				Friction struct {
+					Model *string `yaml:"model"`
+				} `yaml:"friction"`
 			}
-			return err == nil && yaml.Unmarshal(contents, &document) == nil && document.Friction != nil && *document.Friction == ""
+			return err == nil && yaml.Unmarshal(contents, &document) == nil && document.Friction.Model != nil && *document.Friction.Model == ""
 		})
 		if !holdsOverride {
-			t.Errorf("none of %v holds the friction key empty; want the committed override", overrides)
+			t.Errorf("none of %v holds friction.model empty; want the committed override", overrides)
 		}
 		if answer["single_repo"] != false {
 			t.Errorf("single_repo = %v; want false for a hub made without --single-repo", answer["single_repo"])

@@ -252,7 +252,7 @@ func roleEngineRefusalCase(name string, fresh bool, roleKey, engineQuoted string
 			return nil
 		},
 		msgContains: []string{engineQuoted},
-		wayForward:  []string{"set " + roleKey + " in webster.yaml", "audits forks"},
+		wayForward:  []string{"set webster." + roleKey + " in webster.yaml", "audits forks"},
 		check: func(t *testing.T, fx *runFixture, _ error) {
 			stateAfter, outcomeAfter, dirAfter := snapshotWebsterDir(t, fx)
 			if !bytes.Equal(stateAfter, stateBefore) {
@@ -315,7 +315,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			},
 			errIs:       shuttleengine.ErrRequirementsUnmet,
 			msgContains: []string{`engine "fake"`, "master", "lym config webster"},
-			wayForward:  []string{"set master in webster.yaml", "lym config webster"},
+			wayForward:  []string{"set webster.master in webster.yaml", "lym config webster"},
 			check: func(t *testing.T, fx *runFixture, err error) {
 				if strings.Contains(err.Error(), "transient") {
 					t.Errorf("Run() error = %q; want no transient clause on a requirements refusal", err)

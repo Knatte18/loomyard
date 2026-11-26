@@ -14,13 +14,36 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+// A batten verb reconciles a hub whose build stamp is stale as it arms, whether or not the arm then succeeds.
+func TestArm_StaleStampReconcilesTheHubBase(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	gitkit.CommitFile(t, h.BoardDir(), configengine.ConfigFileRel("loom"), "code_max_bounces: 2\n", "fixture: old loom key")
+	c := &battenCLI{}
+
+	// The status verb names no run here, which arm may refuse; the reconcile comes first.
+	_, _ = c.arm(h.PrimeWorktree(), "status", nil)
+
+	base, err := os.ReadFile(configengine.ConfigFile(h.BoardDir(), "loom"))
+	if err != nil {
+		t.Fatalf("read the hub base loom.yaml: %v", err)
+	}
+	if got := string(base); !strings.Contains(got, "max_bounces: 2") || strings.Contains(got, "code_max_bounces") {
+		t.Errorf("hub base loom.yaml = %q; want the old key nested", got)
+	}
+}
 
 // TestArmAt_StartGuardRefusesBeforeAnyWrite asserts the guard refuses a start before any write:
 // no board pull, no prime claim, and no seed write.

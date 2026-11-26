@@ -4,8 +4,8 @@
 // A profile maps a recipe name, such as `tapestry` or `darn`, to that recipe's settings.
 // The settings take the shape of a board task's `run_settings`: module name to that module's config keys.
 // One profile name serves every recipe, and each recipe's block may set the same key to its own value:
-// darn's and pawl's Code-Review perch read loom's `code_*` keys,
-// so each recipe's block sets `loom.code_max_bounces` for its own runs.
+// darn's and pawl's Code-Review perch read loom's `code` area,
+// so each recipe's block sets `loom.code.max_bounces` for its own runs.
 // The reserved top-level `defaults` entry maps a recipe name to the profile a task of that recipe takes.
 // A task takes it when it names no profile.
 // A board task names a profile in its `profile` field.
@@ -34,7 +34,7 @@
 // and the refusal names the hand rename with `lym config profiles` as the way forward.
 // Each profile, like `defaults`, is one whole entry,
 // and `lym config profiles --set <name>='<json object>'` adds or replaces one whole entry.
-// A dotted key sets one value inside a profile and keeps the rest, as in `--set docs.darn.loom.code_max_bounces=0`.
+// A dotted key sets one value inside a profile and keeps the rest, as in `--set docs.darn.loom.code.max_bounces=0`.
 // No key is open to the local layer.
 //
 // `Load` decodes the stacked file without filling it from the template,

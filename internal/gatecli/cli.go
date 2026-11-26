@@ -69,20 +69,20 @@ func newCommand(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, reru
 		Use:         "test [<targets>...]",
 		Short:       "run the hub's test tiers once their gate slots are free",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `test runs the tiers the hub declares in gate.yaml, in ascending tier number, going on past a failed one unless --stop-on-fail ends the call there.
---gate K runs the tiers and the scope the gate key K of gate.yaml names, and goes with none of --tier, --upto, --all and --base.
+		Long: `test runs the tiers of gate.tiers, in ascending tier number, going on past a failed one unless --stop-on-fail ends the call there.
+--gate K runs the tiers and the scope that key K of ` + keyName(gatesKey) + ` names, and goes with none of --tier, --upto, --all and --base.
 A key of scope card needs --card <id> per card, scope all runs every tier whole, or no tier when every changed file is inert, and scope diff runs the diff from the merge base with the pair's parent branch.
 Explicit <targets> beside --gate replace the key's scope.
 --tier N names a tier and may repeat; the default is tier0 without --upto or --gate.
 --upto N adds every declared tier from 0 through N, bar a manual one, which --tier alone runs.
-Each tier takes the gate slots it asks for, bounded by its timeout_min.
+Each tier takes the gate slots it asks for, bounded by its ` + tierKeyName("<tier>", tierTimeoutMinLeaf) + `.
 Without --wait, an agent strand's call runs in a detached runner it starts or joins and answers done false with exit 75, no failure, once its keep-warm cap passes:
 run the same command again in a turn that does nothing else, so the prompt cache stays warm; it prints the result once the run ended.
 With --wait, and with no strand, the tiers run in this process.
 The exit code is the first failing run's own, or 0.
 Without --gate the scope is the explicit <targets>, --all, --card <id>, --base <rev>, or the diff from the merge base with the pair's parent branch.
 Arguments after "--" fill each tier's {args}.
---guards, and a narrower scope under the go scoper, also run the //lym:guard tests outside the scope.
+--guards, and a narrower scope while ` + keyName(scoperKey) + ` is go, also run the //lym:guard tests outside the scope.
 --map builds the tier0 and tier1 coverage maps, and refuses the flags that pick tiers or steps.
 --copies N, with --gate and explicit targets, runs N copies of the key's one tier side by side inside one lease of N times its slots.
 
@@ -118,7 +118,7 @@ Examples:
 	}
 	testCmd.Flags().StringVarP(&dir, "dir", "C", "", "directory the tiers run in, with explicit targets only; defaults to each tier's own dir")
 	testCmd.Flags().StringVar(&tags, "tags", "", "refused: name the tier that compiles the tags with --tier")
-	testCmd.Flags().StringVar(&gate, "gate", "", "gate.yaml key whose tiers and scope the call runs; goes with none of --tier, --upto, --all and --base")
+	testCmd.Flags().StringVar(&gate, "gate", "", "key of "+keyName(gatesKey)+" whose tiers and scope the call runs; goes with none of --tier, --upto, --all and --base")
 	testCmd.Flags().IntSliceVar(&tiers, "tier", nil, "tier number to run; repeatable, default 0")
 	testCmd.Flags().IntVar(&upto, "upto", 0, "run every declared tier numbered 0 through N but the manual ones")
 	testCmd.Flags().StringArrayVar(&cards, "card", nil, "plan card id whose packages are the scope; repeatable")

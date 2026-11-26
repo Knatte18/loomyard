@@ -286,10 +286,10 @@ func TestResolveGateSpec_Rejections(t *testing.T) {
 		{"PartsEmptyDecisionRecordPath", gatesCfg("parts", 1), "DecisionRecordPath"},
 		{"PartsRelativeWorktreeRoot", gatesCfg("parts", 1), "WorktreeRoot"},
 		{"PartsNilSetting", gatesCfg("parts", 1), "Setting"},
-		{"PartsMaxBelowOne", gatesCfg("parts", 1), "tapestry.parts_max"},
+		{"PartsMaxBelowOne", gatesCfg("parts", 1), "tapestry.parts.max"},
 		{"DriftNilCaptureCurrent", gatesCfg("drift", 1), "Drift.CaptureCurrent"},
 		{"DriftNilHead", gatesCfg("drift", 1), "Drift.Head"},
-		{"FixerOnARowThatReadsNone", Config{"gates": []any{map[string]any{"name": "plan", "attempts": 1, "fixer": "tapestry.plan_gate_fixer"}}}, "fixer"},
+		{"FixerOnARowThatReadsNone", Config{"gates": []any{map[string]any{"name": "plan", "attempts": 1, "fixer": "tapestry.plan.gate_fixer"}}}, "fixer"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

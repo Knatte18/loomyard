@@ -608,9 +608,9 @@ func TestParentReviewAwaitVerb(t *testing.T) {
 		},
 		{
 			name:     "a not-sent ask answers ready with its reason",
-			asks:     []burlerengine.ParentAsk{{State: burlerengine.ParentAskNotSent, Reason: "raise review_timeout_min"}},
+			asks:     []burlerengine.ParentAsk{{State: burlerengine.ParentAskNotSent, Reason: "raise review.timeout_min"}},
 			awaitCap: time.Minute,
-			want:     map[string]any{"ready": true, "ask": float64(1), "state": "not-sent", "reason": "raise review_timeout_min"},
+			want:     map[string]any{"ready": true, "ask": float64(1), "state": "not-sent", "reason": "raise review.timeout_min"},
 		},
 		{
 			name:     "an undelivered ask answers ready with its reason",

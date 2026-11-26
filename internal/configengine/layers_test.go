@@ -73,6 +73,14 @@ func machineSpec() configengine.Spec {
 	return spec
 }
 
+// areaTemplate holds one area, the new home of the keys areaMoves names.
+const areaTemplate = "area:\n  key: 0\n  model: \"\"\n"
+
+// areaMoves is a move table over areaTemplate: a flat key, and a key that became its own area.
+func areaMoves() map[string]string {
+	return map[string]string{"old_key": "area.key", "area": "area.model"}
+}
+
 // geometry is how a case lays out its anchor and board dir.
 type geometry int
 
@@ -182,6 +190,8 @@ func TestLoad_LayerStack(t *testing.T) {
 		wantFill string
 		// retired is the spec's retired keys.
 		retired map[string]configengine.Category
+		// movedKeys is the spec's move table; a row that sets it loads over the template with areaTemplate appended.
+		movedKeys map[string]string
 		// wantUnknown maps each layer with keys the template lacks to their warning, from both loaders; empty means none.
 		wantUnknown map[configengine.Layer]string
 		// perNameMaps is the spec's per-name maps; a row that sets it loads over the template with perNameTail appended.
@@ -244,7 +254,7 @@ func TestLoad_LayerStack(t *testing.T) {
 				configengine.LayerWorktree: "pick: x\n",
 			},
 			overlay: true,
-			refusal: []string{"mod.yaml holds pick, which only the base file", "delete the pick line from", "--layer default", "the orch runs it"},
+			refusal: []string{"mod.yaml holds mod.pick, which only the base file", "delete the mod.pick line from", "--layer default", "the orch runs it"},
 		},
 		{
 			name:    "a hub default picking an unknown layer is refused naming the shipped ones",
@@ -273,7 +283,24 @@ func TestLoad_LayerStack(t *testing.T) {
 				configengine.LayerWorktree: "pick: [x]\n",
 			},
 			overlay: true,
-			refusal: []string{"mod.yaml holds pick", "delete the pick line from"},
+			refusal: []string{"mod.yaml holds mod.pick", "delete the mod.pick line from"},
+		},
+		{
+			name:      "a default file holding a moved key is refused naming the default reconcile and who runs it",
+			movedKeys: areaMoves(),
+			files:     map[configengine.Layer]string{configengine.LayerDefault: "old_key: 2\n"},
+			refusal:   []string{"mod.yaml: key mod.old_key was moved to mod.area.key", `"lym config reconcile --layer default --apply"`, "the orch runs it"},
+		},
+		{
+			name:      "a worktree file holding a moved key is refused naming the reconcile and the commit",
+			movedKeys: areaMoves(),
+			files:     map[configengine.Layer]string{configengine.LayerDefault: fullDefault, configengine.LayerWorktree: "old_key: 2\n"},
+			refusal: []string{
+				"key mod.old_key was moved to mod.area.key",
+				`"lym config reconcile --apply" in this worktree`,
+				"then commit the moved " + filepath.Join("_lym", "config", "mod.yaml"),
+			},
+			refusalLacks: []string{"the orch runs it"},
 		},
 		{
 			name:    "a machine value wins over the hub file",
@@ -497,6 +524,10 @@ func TestLoad_LayerStack(t *testing.T) {
 			spec.HubWide = tc.hubWide || tc.machine
 			spec.SeedOnly = tc.seedOnly
 			spec.RetiredKeys = tc.retired
+			spec.MovedKeys = tc.movedKeys
+			if tc.movedKeys != nil {
+				spec.Template = append(spec.Template, areaTemplate...)
+			}
 			if !tc.overlay {
 				spec.PerNameMaps = tc.perNameMaps
 				if len(tc.perNameMaps) > 0 {
@@ -566,7 +597,9 @@ func TestLoad_LayerStack(t *testing.T) {
 				configengine.LayerWorktree: `lym config reconcile --apply\" in this worktree`,
 			}
 			for layer, keys := range tc.wantUnknown {
-				for _, want := range []string{"layer=" + string(layer) + " ", "keys=" + keys + " ", wayForward[layer]} {
+				// The warning names each key in full.
+				fullKeys := layerModule + "." + strings.ReplaceAll(keys, ",", ","+layerModule+".")
+				for _, want := range []string{"layer=" + string(layer) + " ", "keys=" + fullKeys + " ", wayForward[layer]} {
 					if !strings.Contains(log, want) {
 						t.Errorf("unknown-keys warning for layer %s lacks %q\nlog:\n%s", layer, want, log)
 					}
@@ -621,6 +654,8 @@ func TestValidateLocal(t *testing.T) {
 	}
 	const removal = "remove it from the machine override"
 
+	moved := configengine.Spec{Name: "mod", Template: []byte(areaTemplate), MovedKeys: areaMoves()}
+
 	profiles := configengine.Spec{
 		Name:        "profiles",
 		Template:    []byte("profiles:\n  plain:\n    kind: identity\n  costed:\n    kind: cost\n    budget: 200\n"),
@@ -660,6 +695,9 @@ func TestValidateLocal(t *testing.T) {
 		{name: "retired guard key without a text keeps the plain message", spec: retired, doc: "gone_guard: x\n", wantErr: "gone_guard", wantSuffix: "cannot be set in a local override"},
 		{name: "longest retired key admits its none entry", spec: retired, doc: "old:\n  open:\n    a: 1\n"},
 		{name: "longest retired key refuses the guard remainder", spec: retired, doc: "old:\n  shut: 1\n", wantErr: "old"},
+		{name: "moved key", spec: moved, doc: "old_key: 2\n", wantErr: "mod.old_key", wantMore: []string{"mod.area.key", `"lym config reconcile --apply"`}},
+		{name: "a scalar under a key that became its own area", spec: moved, doc: "area: x\n", wantErr: "mod.area was moved to mod.area.model"},
+		{name: "a mapping under a key that became its own area", spec: moved, doc: "area:\n  key: 1\n"},
 		{name: "empty document", spec: layerSpec(), doc: ""},
 		{name: "comment-only document", spec: layerSpec(), doc: "# nothing\n"},
 		{name: "unclassified keys of a per-worktree module", spec: layerSpec(), doc: "name: x\nport: 81\n"},
@@ -670,7 +708,7 @@ func TestValidateLocal(t *testing.T) {
 		{name: "unknown nested key", spec: layerSpec(), doc: "nested:\n  other: 1\n", wantErr: "nested.other"},
 		{name: "scalar where the template holds a mapping", spec: layerSpec(), doc: "nested: 5\n", wantErr: "nested"},
 		{name: "mapping where the template holds a scalar", spec: layerSpec(), doc: "port:\n  a: 1\n", wantErr: "port"},
-		{name: "guard category", spec: layerSpec(), doc: "list: [x]\n", wantErr: "list"},
+		{name: "guard category", spec: layerSpec(), doc: "list: [x]\n", wantErr: `"` + configengine.KeyName(layerModule, "list") + `"`},
 		{name: "executable category", spec: layerSpec(), doc: "run: evil\n", wantErr: "run"},
 		{name: "hub-wide classified none", spec: hubWide, doc: "name: x\n"},
 		{name: "hub-wide unclassified key", spec: hubWide, doc: "port: 81\n", wantErr: "port"},

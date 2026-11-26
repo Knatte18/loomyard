@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -264,8 +265,13 @@ func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec, gate shuttleen
 // without the skip it would arm them and read a slug as a run-id.
 // The checklist pane verb is skipped as well, because arming refuses a missing seed and a pane must outlive one.
 // So is the pusher verb, which resolves the worktree its flag names and arms no run.
+//
+// It reconciles the hub's config after a binary change, ahead of any config load.
+// The reconcile comes before the groups' skip, so their verbs are covered too.
+// The bare group, checklist and pusher load no loom or tapestry config and reconcile nothing.
+// A cwd that is no git repository reconciles nothing either.
 func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
-	if cmd.Name() == "loom" || cmd.Name() == "checklist" || cmd.Name() == "pusher" || inReviewGroup(cmd) {
+	if cmd.Name() == "loom" || cmd.Name() == "checklist" || cmd.Name() == "pusher" {
 		return nil
 	}
 
@@ -273,6 +279,15 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 	out := cmd.OutOrStdout()
 
 	cwd, err := lymcwd.CwdFrom(ctx)
+	if err == nil {
+		// A cwd that does not resolve is left to the verb's own resolve, which refuses it.
+		if location, resolveErr := lymcwd.Resolve(cwd); resolveErr == nil {
+			hubgeom.ReconcileBeforeLoad(location)
+		}
+	}
+	if inReviewGroup(cmd) {
+		return nil
+	}
 	if err != nil {
 		output.Err(out, err.Error())
 		clihelp.Abort(ctx, 1)

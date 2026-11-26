@@ -162,7 +162,7 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 
 	choice, ok := deps.Roles[RoleRecovery]
 	if !ok {
-		return nil, false, fmt.Errorf("webster: no resolved model-spec for role %q; way forward: set %s in webster.yaml with lym config webster, then re-run `%s`", RoleRecovery, RoleRecovery, fixVerifyCommand)
+		return nil, false, fmt.Errorf("webster: no resolved model-spec for role %q; way forward: set %s in webster.yaml with lym config webster, then re-run `%s`", RoleRecovery, keyName(string(RoleRecovery)), fixVerifyCommand)
 	}
 	if err := roleAuditEngine(deps.Engines, RoleRecovery, choice); err != nil {
 		return nil, false, err

@@ -44,7 +44,8 @@ type Config map[string]any
 
 // SegmentSettings holds one review segment's resolved values, shared by every row of that segment.
 type SegmentSettings struct {
-	// Models holds the segment's reviewer and fixer round models, after the fallback to reviewer_model and fixer_model.
+	// Models holds the segment's reviewer and fixer round models.
+	// The fallback to review.reviewer_model and review.fixer_model is already applied.
 	Models burlerengine.RoundModels
 	// ReviewKey is the config key the reviewer models came from.
 	ReviewKey shuttleengine.ModelKey
@@ -62,7 +63,7 @@ type SegmentSettings struct {
 	HardMaxBouncesKey string
 	// ConfigFile is the file both keys live in, loom.yaml, tapestry.yaml or darn.yaml.
 	ConfigFile string
-	// AmendMaxBounces is the resolved review_amend_max_bounces; 0 settles an amendment without a review.
+	// AmendMaxBounces is the resolved review.amend_max_bounces; 0 settles an amendment without a review.
 	AmendMaxBounces int
 	// Assist is the segment's assistant reviewer settings; the zero value runs no assistant.
 	Assist shedadapters.AssistSettings

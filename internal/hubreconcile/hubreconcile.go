@@ -59,11 +59,11 @@ func Ensure(geom Geometry, opts Options) error {
 }
 
 // reconcileWayForward is the way forward a failed reconcile's warning names.
-const reconcileWayForward = "fix the cause the error names, then run a start verb to retry the reconcile: `lym loom resume` in the task worktree, or `lym batten run` or `lym beam start` from the prime"
+const reconcileWayForward = "fix the cause the error names, then re-run this verb once the reconcile can finish, or run a start verb to retry it: `lym loom resume` in the task worktree, or `lym batten run` or `lym beam start` from the prime"
 
 // EnsureOrWarn is Ensure for a caller that reads a hub's config and goes on when the reconcile fails.
 // A failure logs one warning naming the error and the way forward, and returns nothing.
-// It leaves the stamp stale, so the next start verb retries the walk.
+// It leaves the stamp stale, so the next verb that loads a reconciled config retries the walk.
 func EnsureOrWarn(geom Geometry, opts Options) {
 	if err := Ensure(geom, opts); err != nil {
 		logger.Warn("hubreconcile: hub config reconcile failed, going on with the config as it is", "error", err, "way_forward", reconcileWayForward)

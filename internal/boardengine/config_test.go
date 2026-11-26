@@ -178,7 +178,7 @@ func TestLoadConfig_DesignPrefixRefused(t *testing.T) {
 				}
 				return
 			}
-			if err == nil || !strings.Contains(err.Error(), "design_prefix") || !strings.Contains(err.Error(), "set design_prefix in board.yaml") {
+			if err == nil || !strings.Contains(err.Error(), "design_prefix") || !strings.Contains(err.Error(), "set board.design_prefix in board.yaml") {
 				t.Errorf("LoadConfig(design_prefix %s) error = %v; want a refusal naming design_prefix and its way forward", tt.prefix, err)
 			}
 		})

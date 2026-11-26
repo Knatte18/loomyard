@@ -71,14 +71,14 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	}
 	for i, rung := range cfg.Ladder {
 		if _, err := modelspec.Parse(rung); err != nil {
-			return Config{}, configengine.MarkInvalid(fmt.Errorf("weaver config key %q rung %d: %w", "ladder", i+1, err))
+			return Config{}, configengine.MarkInvalid(fmt.Errorf("config key %q rung %d: %w", keyName(ladderKey), i+1, err))
 		}
 	}
 	if cfg.FixerTimeoutMin <= 0 {
-		return Config{}, configengine.MarkInvalid(fmt.Errorf("weaver config key %q: must be a positive integer, got %d", "fixer_timeout_min", cfg.FixerTimeoutMin))
+		return Config{}, configengine.MarkInvalid(fmt.Errorf("config key %q: must be a positive integer, got %d", keyName(fixerTimeoutMinKey), cfg.FixerTimeoutMin))
 	}
 	if cfg.VerifyGate == "" {
-		return Config{}, configengine.MarkInvalid(fmt.Errorf("weaver config key %q: must name a gate key, got none", "verify_gate"))
+		return Config{}, configengine.MarkInvalid(fmt.Errorf("config key %q: must name a gate key, got none", keyName(verifyGateKey)))
 	}
 	return cfg, nil
 }
@@ -87,17 +87,17 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 // It refuses an empty ladder and a spec the registry cannot resolve, each naming the key and `lym config weaver`.
 func ResolveLadder(cfg Config, reg modelspec.Registry) ([]shuttleengine.ModelChoice, error) {
 	if len(cfg.Ladder) == 0 {
-		return nil, fmt.Errorf("weaver: the ladder key of weaver.yaml is empty; way forward: list at least one model-spec under ladder with `lym config weaver`")
+		return nil, fmt.Errorf("weaver: %s is empty; way forward: list at least one model-spec under it with `lym config weaver`", keyName(ladderKey))
 	}
 	choices := make([]shuttleengine.ModelChoice, 0, len(cfg.Ladder))
 	for i, rung := range cfg.Ladder {
 		parsed, err := modelspec.Parse(rung)
 		if err != nil {
-			return nil, fmt.Errorf("weaver: ladder rung %d of weaver.yaml: %w; way forward: fix the spec with `lym config weaver`", i+1, err)
+			return nil, fmt.Errorf("weaver: rung %d of %s: %w; way forward: fix the spec with `lym config weaver`", i+1, keyName(ladderKey), err)
 		}
 		resolved, err := reg.Resolve(parsed)
 		if err != nil {
-			return nil, fmt.Errorf("weaver: ladder rung %d of weaver.yaml: %w; way forward: name a known alias with `lym config weaver`", i+1, err)
+			return nil, fmt.Errorf("weaver: rung %d of %s: %w; way forward: name a known alias with `lym config weaver`", i+1, keyName(ladderKey), err)
 		}
 		choices = append(choices, shuttleengine.NewModelChoice(resolved))
 	}

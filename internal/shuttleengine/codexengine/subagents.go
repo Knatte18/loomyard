@@ -20,7 +20,7 @@ func (c *Codex) subagentEffort(agents agentconfig.Config, role agentconfig.Role,
 	if effort == "" || slices.Contains(codex.Efforts, effort) {
 		return effort
 	}
-	c.warn("codexengine: agents.yaml gives subagents an effort that codex.yaml's efforts does not list, so they take Codex's default; way forward: add it to efforts with lym config codex", "effort", effort, "efforts", codex.Efforts)
+	c.warn("codexengine: "+otherKeyName("agents", "efforts")+" gives subagents an effort that "+keyName(effortsKey)+" does not list, so they take Codex's default; way forward: add it to "+keyName(effortsKey)+" with lym config codex", "effort", effort, "efforts", codex.Efforts)
 	return ""
 }
 

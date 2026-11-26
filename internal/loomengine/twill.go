@@ -51,11 +51,11 @@ const (
 func twillLenses(dirs configengine.Dirs, fan, module, key string) ([]twilldirective.Lens, error) {
 	lensesConfig, err := lenses.Load(dirs)
 	if err != nil {
-		return nil, fmt.Errorf("%s config key %q: lenses.yaml unreadable for the %q fan: %w; fix lenses.yaml, or set the key to \"\" to turn the lens forks off", module, key, fan, err)
+		return nil, fmt.Errorf("config key %q: lenses.yaml unreadable for the %q fan: %w; fix lenses.yaml, or set the key to \"\" to turn the lens forks off", configengine.KeyName(module, key), fan, err)
 	}
 	resolved, err := lenses.ResolveFan(lensesConfig, fan)
 	if err != nil {
-		return nil, fmt.Errorf("%s config key %q: fan %q unresolvable through lenses.yaml: %w; define the fan and its lenses in lenses.yaml, or set the key to \"\" to turn the lens forks off", module, key, fan, err)
+		return nil, fmt.Errorf("config key %q: fan %q unresolvable through lenses.yaml: %w; define the fan and its lenses in lenses.yaml, or set the key to \"\" to turn the lens forks off", configengine.KeyName(module, key), fan, err)
 	}
 	fanLenses := make([]twilldirective.Lens, len(resolved))
 	for i, lens := range resolved {
@@ -70,7 +70,7 @@ func twillLenses(dirs configengine.Dirs, fan, module, key string) ([]twilldirect
 // The forks review the overview and every card file its Card Index names.
 // The writer records the lens review in the plan directory's lens review file.
 // It saves each fork's report beside it, in the format of the spec deployed under specsDir.
-// A fan that does not resolve is refused naming the plan_lenses key.
+// A fan that does not resolve is refused naming the plan.lenses key.
 // With fixerOn set, a cold fixer clears the plan gate's findings, so the writer is told to run no validator.
 // The spawn point drops the validator's pass, and the directive carries no self-check command.
 // The directive is worded for engine, the engine the writer launches on.
@@ -117,7 +117,7 @@ func planLensDirective(layout *lymcwd.Location, dirs configengine.Dirs, stencils
 // The lenses come from the named fan, resolved against lenses.yaml's layer stack under dirs.
 // The writer saves each fork's report beside the support log, in the format of the spec deployed under specsDir.
 // An unreadable lenses.yaml, or a fan that does not resolve, is refused.
-// The error names the discussion_lenses key and the way forward.
+// The error names the discussion.lenses key and the way forward.
 // With fixerOn set, a cold fixer clears the discussion gate's findings,
 // so the spawn point drops the validator's pass, and the directive carries no final self-check.
 // The directive is worded for engine, the engine the writer launches on.

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -96,7 +97,7 @@ const batchifierReasonPrefix = "active batchifier did not resolve: "
 
 // batchifierWayForward closes the batchifier reason;
 // the fault is in batcher.yaml, so the operator fixes it there.
-const batchifierWayForward = "; way forward: fix batcher.yaml (its active: key or the profile it names), then re-step"
+var batchifierWayForward = "; way forward: fix batcher.yaml (" + configengine.KeyName("batcher", "active") + " or the profile it names), then re-step"
 
 // retiredKeyWayForward completes the way forward that a retired-key error already ends with.
 // The error's own text names the reconcile that removes the key from a worktree or local file,

@@ -235,7 +235,8 @@ type BouncerConfig struct {
 	// An error is returned by the call that reads it.
 	// Nil keeps the base the settle record was written with.
 	SettledBase func() (string, error)
-	// AmendAllowance is the run-wide review_amend_max_bounces: the bounces an amendment generation may spend before the soft-cap rule's window opens.
+	// AmendAllowance is the run-wide loom.review.amend_max_bounces.
+	// It is the bounces an amendment generation may spend before the soft-cap rule's window opens.
 	// An amendment with an allowance of 0 settles without a review.
 	// It never applies to a FullGeneration.
 	AmendAllowance int

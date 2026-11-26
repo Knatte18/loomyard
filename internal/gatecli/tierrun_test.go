@@ -241,7 +241,7 @@ func TestRunTierMemoryGuard(t *testing.T) {
 	}
 
 	const shortage = "resource temporarily unavailable"
-	killLine := memoryGuardLine(filepath.Base(testBinaryPath), testBinaryPID, guardTestDir, guardFilter, "it held 5000 MB, over memory_quit_mb's 4096 MB")
+	killLine := memoryGuardLine(filepath.Base(testBinaryPath), testBinaryPID, guardTestDir, guardFilter, "it held 5000 MB, over gate.memory_quit_mb's 4096 MB")
 	tests := []struct {
 		name string
 		// guarding is whether the request turns the memory guard on.
@@ -404,7 +404,7 @@ func TestRunTierNoTestNotice(t *testing.T) {
 	command := "case \"{targets}\" in *ran*) echo '" + summary + "';; *bad*) exit 3;; *) echo 'Restored the project';; esac"
 	// notice builds the expected line; project "{dir}" stands for the invocation's run directory.
 	notice := func(project, classes string) string {
-		return "gate test: tier0 ran no test of " + project + classes + ": dotnet test exited 0 and reported no test, as a test project does that sets IsTestProject false unless an MSBuild property is passed, so the gate's pass covers none of its tests; the gate reads only the invocation's total, so it names no property and sees no skip inside an invocation that ran some test; way forward: when those tests must run and the hub's refuse_raw does not list dotnet test, run them by hand with dotnet test <project> -p:<property>=true, the property its project file's IsTestProject condition names, and check that the run's summary line reports them; otherwise report the skipped tests to your parent"
+		return "gate test: tier0 ran no test of " + project + classes + ": dotnet test exited 0 and reported no test, as a test project does that sets IsTestProject false unless an MSBuild property is passed, so the gate's pass covers none of its tests; the gate reads only the invocation's total, so it names no property and sees no skip inside an invocation that ran some test; way forward: when those tests must run and the hub's gate.refuse_raw does not list dotnet test, run them by hand with dotnet test <project> -p:<property>=true, the property its project file's IsTestProject condition names, and check that the run's summary line reports them; otherwise report the skipped tests to your parent"
 	}
 	tests := []struct {
 		name        string
@@ -462,6 +462,20 @@ func TestRunTierNoTestNotice(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The kill line names the tier's memory cap in full, as the key to raise.
+func TestTierMemoryCapLine(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	got := tierMemoryCapLine("tier1", 64)
+
+	for _, want := range []string{"gate test: tier1 held more than its gate.tiers.tier1.memory_mb of 64 MB", `or raise gate.tiers.tier1.memory_mb with "lym config gate" from the prime`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("tierMemoryCapLine(tier1, 64) = %q; want it to hold %q", got, want)
+		}
 	}
 }
 

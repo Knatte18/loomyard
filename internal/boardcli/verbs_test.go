@@ -1094,15 +1094,16 @@ func stepProfiles(t *testing.T, f *cliFixture) {
 // A beam's orch changes the entries of its own beam and no other, and its refusal names its beam's parent orch.
 // A change on an entry past Seed-Child returns the notice.
 func stepRunSettings(t *testing.T, f *cliFixture) {
-	const loomBounces = `{"slug":"rs","title":"RS","kind":"task","labels":["bug"],"run_settings":{"loom":{"review_max_bounces":2}}}`
+	const loomBounces = `{"slug":"rs","title":"RS","kind":"task","labels":["bug"],"run_settings":{"loom":{"review":{"max_bounces":2}}}}`
 
 	t.Run("a valid setting is stored", func(t *testing.T) {
 		result := runJSON(t, 0, "upsert", loomBounces)
 		task, _ := result["task"].(map[string]any)
 		settings, _ := task["run_settings"].(map[string]any)
 		loom, _ := settings["loom"].(map[string]any)
-		if loom["review_max_bounces"] != float64(2) {
-			t.Errorf("stored run_settings = %v, want loom.review_max_bounces 2", task["run_settings"])
+		review, _ := loom["review"].(map[string]any)
+		if review["max_bounces"] != float64(2) {
+			t.Errorf("stored run_settings = %v, want loom.review.max_bounces 2", task["run_settings"])
 		}
 	})
 
@@ -1114,8 +1115,8 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 		{name: "a non-object value", payload: `{"slug":"bad","run_settings":3}`, wantErr: []string{"run_settings"}},
 		{name: "an unknown module", payload: `{"slug":"bad","run_settings":{"bogus":{"x":1}}}`, wantErr: []string{"bogus"}},
 		{name: "a key absent from the template", payload: `{"slug":"bad","run_settings":{"loom":{"no_such_key":1}}}`, wantErr: []string{"loom", "no_such_key"}},
-		{name: "a shape mismatch", payload: `{"slug":"bad","run_settings":{"loom":{"review_max_bounces":{"a":1}}}}`, wantErr: []string{"loom", "review_max_bounces"}},
-		{name: "a closed key", payload: `{"slug":"bad","run_settings":{"loom":{"discussion_advisors":[{"name":"critic","model":"sonnet[low]"}]}}}`, wantErr: []string{"loom", "discussion_advisors"}},
+		{name: "a shape mismatch", payload: `{"slug":"bad","run_settings":{"loom":{"review":{"max_bounces":{"a":1}}}}}`, wantErr: []string{"loom", "review.max_bounces"}},
+		{name: "a closed key", payload: `{"slug":"bad","run_settings":{"loom":{"discussion":{"advisors":[{"name":"critic","model":"sonnet[low]"}]}}}}`, wantErr: []string{"loom", "discussion.advisors"}},
 		{name: "a profile that is not a string", payload: `{"slug":"bad","profile":3}`, wantErr: []string{"profile must be a string"}},
 		{name: "an unknown profile", payload: `{"slug":"bad","profile":"heavy"}`, wantErr: []string{`"heavy"`, "known: docs, light, solid, speed, wide", "lym config profiles --set heavy="}},
 	}
@@ -1130,6 +1131,19 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 			}
 		})
 	}
+
+	t.Run("refuses a moved key by both full names and writes nothing", func(t *testing.T) {
+		result := runJSON(t, 1, "upsert", `{"slug":"moved","title":"M","kind":"task","labels":["bug"],"run_settings":{"loom":{"code_max_bounces":2}}}`)
+		message, _ := result["error"].(string)
+		for _, want := range []string{"loom.code_max_bounces", "loom.code.max_bounces"} {
+			if !strings.Contains(message, want) {
+				t.Errorf("error %q lacks %q", message, want)
+			}
+		}
+		if task := runJSON(t, 0, "get", `{"slug":"moved"}`)["task"]; task != nil {
+			t.Errorf("stored task = %v; want the refused upsert to write nothing", task)
+		}
+	})
 
 	batchAndMerge := []struct {
 		name    string
@@ -1155,7 +1169,7 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 		mustUpsert(t, loomBounces)
 		t.Setenv(agentname.StrandNameEnv, "ly:task-a:loom")
 		runJSON(t, 0, "upsert", loomBounces)
-		result := runJSON(t, 1, "upsert", strings.Replace(loomBounces, `"review_max_bounces":2`, `"review_max_bounces":3`, 1))
+		result := runJSON(t, 1, "upsert", strings.Replace(loomBounces, `"max_bounces":2`, `"max_bounces":3`, 1))
 		if message, _ := result["error"].(string); !strings.Contains(message, "ly:task-a:loom") {
 			t.Errorf("error %q does not name the session", message)
 		}
@@ -1243,7 +1257,7 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 			f.reset(t)
 			mustUpsert(t, loomBounces)
 			runJSON(t, 0, "set-status", `{"slug":"rs","status":"`+tt.status+`"}`)
-			result := runJSON(t, 0, "upsert", `{"slug":"rs","run_settings":{"loom":{"review_max_bounces":4}}}`)
+			result := runJSON(t, 0, "upsert", `{"slug":"rs","run_settings":{"loom":{"review":{"max_bounces":4}}}}`)
 			notice, hasNotice := result["notice"].(string)
 			if hasNotice != tt.wantNotice || (tt.wantNotice && !strings.Contains(notice, "--layer local")) {
 				t.Errorf("notice = %q (present %v), want present %v naming --layer local", notice, hasNotice, tt.wantNotice)

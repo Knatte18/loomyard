@@ -332,7 +332,7 @@ func TestGateMutate(t *testing.T) {
 			map[string]map[string]int{"calc": nil})
 		code, answer := runMutateVerb(t, Command(), otherPrime, "mutate")
 		requireMutateAnswer(t, code, answer)
-		if !strings.Contains(answer.Note, "the hub's scoper is none, not go") {
+		if !strings.Contains(answer.Note, "the hub's gate.scoper is none, not go") {
 			t.Errorf("lym gate mutate note = %q; want one naming the scoper", answer.Note)
 		}
 	})
@@ -587,7 +587,7 @@ func TestGateMutate(t *testing.T) {
 	}{
 		{name: "ARedTier", red: true, inHub: true, want: noteRedGate},
 		{name: "ACallOutsideAHub", want: noteNoHub},
-		{name: "AScoperOtherThanGo", inHub: true, scoper: "none", want: "the hub's scoper is none, not go, so the step judged nothing"},
+		{name: "AScoperOtherThanGo", inHub: true, scoper: "none", want: "the hub's gate.scoper is none, not go, so the step judged nothing"},
 	}
 	for _, tt := range judgesNothing {
 		t.Run("TheStepJudgesNothingFor"+tt.name, func(t *testing.T) {

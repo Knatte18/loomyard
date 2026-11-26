@@ -54,7 +54,7 @@ type prFindingsDeps struct {
 	scratchDir  string
 	frictionDir string
 	stencilsDir string
-	// smallMax answers the run's pr_review_small_max.
+	// smallMax answers the run's pr.review_small_max.
 	smallMax func() (int, error)
 	// edge answers whether the send-back edge can fire, and why not when it cannot.
 	edge func() (bool, string, error)
@@ -194,7 +194,7 @@ func prFindingsVerb(out io.Writer, file string, deps prFindingsDeps) int {
 
 	smallMax, err := deps.smallMax()
 	if err != nil {
-		return prFindingsReadFailure(out, file, "read pr_review_small_max", err)
+		return prFindingsReadFailure(out, file, "read pr.review_small_max", err)
 	}
 	canSendBack, reason, err := deps.edge()
 	if err != nil {
@@ -273,12 +273,12 @@ func prFindingsVerb(out io.Writer, file string, deps prFindingsDeps) int {
 	})
 }
 
-// prReviewSmallMax returns a reader of the run's pr_review_small_max over the pair's config layers.
+// prReviewSmallMax returns a reader of the run's pr.review_small_max over the pair's config layers.
 // It reads at each call, so the task's run_settings, which land in the local layer, reach it.
 func prReviewSmallMax(l *lymcwd.Location) func() (int, error) {
 	return func() (int, error) {
 		cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(l), "loom")
-		return cfg.PRReviewSmallMax, err
+		return cfg.PR.ReviewSmallMax, err
 	}
 }
 
@@ -318,7 +318,7 @@ worktree's uncommitted paths. Run the verb on every findings set, after the
 task worktree is committed.
 
 When the set holds a BLOCKING finding, or the findings fixed in place since the
-last send-back would pass pr_review_small_max, the verb stores the file,
+last send-back would pass pr.review_small_max, the verb stores the file,
 marks the pull request record and answers send_back: true. End your turn then:
 the run sends the findings back to Code-Review. Otherwise it answers
 send_back: false and counts the findings, and you fix them yourself. It is

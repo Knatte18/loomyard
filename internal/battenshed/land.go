@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
@@ -277,7 +278,7 @@ func (p *landProducer) pullAndDeploy(ctx context.Context, parent string) (reason
 		return "", recordsStop, nil
 	}
 	if !slices.Contains(settings.DeployBranches, parent) {
-		logger.Info("battenshed: parent branch is not in deploy_branches; skipping deploy", "producer", p.name, "slug", p.slug, "parent", parent)
+		logger.Info("battenshed: parent branch is not in "+configengine.KeyName("landing", "deploy_branches")+"; skipping deploy", "producer", p.name, "slug", p.slug, "parent", parent)
 		return "", recordsStop, nil
 	}
 

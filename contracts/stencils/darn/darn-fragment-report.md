@@ -1,6 +1,6 @@
-<!-- This is the darn writer's report passage, for a run whose darn.yaml report_dir is set.
+<!-- This is the darn writer's report passage, for a run whose darn.report_dir is set.
      internal/darnengine's DarnTable reads it for the writer's engine, fills report_dir and report_path,
-     and appends it to the writer prompt's Step 4 list; an empty report_dir leaves it out. -->
+     and appends it to the writer prompt's Step 4 list; an empty darn.report_dir leaves it out. -->
 
 ## The report this run commits
 

@@ -1987,7 +1987,7 @@ func stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer(t *testing.T, h *h
 
 	t.Run("a valid setting lands in the pair's local layer", func(t *testing.T) {
 		const slug = "batten-run-settings"
-		result := runWorktreeCreateAndSeedChild(t, slug, map[string]any{"loom": map[string]any{"review_max_bounces": 2}})
+		result := runWorktreeCreateAndSeedChild(t, slug, map[string]any{"loom": map[string]any{"review": map[string]any{"max_bounces": 2}}})
 		if result.Outcome != shedengine.Done {
 			t.Fatalf("Seed-Child outcome = %q (reason %q); want done", result.Outcome, result.Reason)
 		}
@@ -1996,15 +1996,15 @@ func stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer(t *testing.T, h *h
 			t.Fatalf("resolve child location: %v", err)
 		}
 		local, err := os.ReadFile(configengine.LocalFile(pair.AnchorPath(), "loom"))
-		if err != nil || !strings.Contains(string(local), "review_max_bounces: 2") {
-			t.Fatalf("pair loom.local.yaml = %q, %v; want review_max_bounces: 2", local, err)
+		if err != nil || !strings.Contains(string(local), "max_bounces: 2") {
+			t.Fatalf("pair loom.local.yaml = %q, %v; want review.max_bounces: 2", local, err)
 		}
 		cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(pair), "loom")
 		if err != nil {
 			t.Fatalf("load the pair's loom config: %v", err)
 		}
-		if cfg.ReviewMaxBounces != 2 {
-			t.Errorf("resolved review_max_bounces = %d; want 2", cfg.ReviewMaxBounces)
+		if cfg.Review.MaxBounces != 2 {
+			t.Errorf("resolved review.max_bounces = %d; want 2", cfg.Review.MaxBounces)
 		}
 
 		pairFabric, err := fabricengine.Open(pair)

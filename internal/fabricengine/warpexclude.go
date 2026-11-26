@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
@@ -72,5 +73,5 @@ func SeedWarpExclude(l *lymcwd.Location) ([]string, error) {
 // the path cannot be written because git would show it as untracked,
 // and it joins the list through the `warp_exclude` key in `lym config fabric`.
 func ExcludeWayForward(path string) string {
-	return fmt.Sprintf("%s is not on fabric's warp exclude list, so it would show as untracked; way forward: add it to the warp_exclude key in \"lym config fabric\" and run again", path)
+	return fmt.Sprintf("%s is not on fabric's warp exclude list, so it would show as untracked; way forward: add it to the %s key in \"lym config fabric\" and run again", path, configengine.KeyName("fabric", ExcludeListKey))
 }

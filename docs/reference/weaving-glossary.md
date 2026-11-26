@@ -111,7 +111,7 @@ Agent nouns name the one who does the work.
 | shearer, cropper | – † | fr tondeur; de Tuchscherer | trims the nap from finished cloth | agent role | – |
 | burler | – † | fr épinceteuse | inspects cloth for defects and picks them out | agent role | Taken: `burler`, the review-and-fix round module described above. Its reviewer role is `burler-review`. |
 | mender, darner | stopper † | fr stoppeuse, repriseuse | repairs holes and defects | agent role | Close: `darn`, the recipe described above. |
-| sampler (maker of samples) | – † | – | weaves a sample to test a design | agent role | Taken: `sampler`, a recipe and an agent role. Its hub-wide config `sampler.yaml` holds the model-spec of the sampler agent's interactive session and whether the Code-Review perch runs on a sampler run. |
+| sampler (maker of samples) | – † | – | weaves a sample to test a design | agent role | Taken: `sampler`, a recipe and an agent role. Its hub-wide config holds the model-spec of the sampler agent's interactive session, `sampler.agent`, and whether the Code-Review perch runs on a sampler run, `sampler.code_review`. |
 | finisher | etterbehandler † | fr apprêteur; de Appreteur | applies the finishing steps | agent role | – |
 | tackler | – † | – | the overseer of looms in a mill; also the one who rigs a loom | agent role | Taken: `tackler`, the cold agent the shed driver asks about a stop that no rule in its closed rule table settles. It is the second stage of a shed run's stop chain. |
 | loom fixer, tuner | – † | – | keeps mill looms running | agent role | Close: `fixer`, the seat that repairs the findings of a burler or landing review. |
@@ -161,7 +161,7 @@ Agent nouns name the one who does the work.
 | selvedge mark | – | – | a mark woven in the edge to identify a cloth | artifact | Close: `Selvage`, the console pane described above. |
 | label, mill mark | merke † | fr marque | identifies the maker | artifact | – |
 | note | – | – | not a weaving term | – | Taken: `note`, a board kind: an idea or observation. Unlike a task, it cannot be claimed or depend on other tasks. |
-| perch | – | – | a frame on which cloth is inspected | state, artifact | Taken: `perch`, a named review stage of a loom recipe, such as the Code-Review perch with its bouncer, review and fix rows and its `loom.yaml` keys for models, fans and budget. |
+| perch | – | – | a frame on which cloth is inspected | state, artifact | Taken: `perch`, a named review stage of a loom recipe, such as the Code-Review perch with its bouncer, review and fix rows and its `loom.code.*` keys for models, fans and budget. |
 | pattern book, record | mønsterbok † | sv mönsterbok; de Musterbuch | a bound collection of drafts | artifact | Close: `PATTERN.md` and the `pattern` package, which hold the repository's cross-cutting rules and the directive text agents read about them. |
 
 ## Defects and repairs

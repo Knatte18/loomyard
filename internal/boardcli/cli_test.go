@@ -230,7 +230,7 @@ func stepSiblingWarning(t *testing.T, f *cliFixture) {
 	})
 	t.Run("a batch joins the run-settings notice and the sibling line", func(t *testing.T) {
 		seed(t, `{"slug":"rs","title":"RS","kind":"task","labels":["bug"],"status":"running · Discussion-Write"}`)
-		result := runJSON(t, 0, "upsert-batch", `{"tasks":[{"slug":"rs","run_settings":{"loom":{"review_max_bounces":4}}},{"slug":"X","depends_on":["D"]}]}`)
+		result := runJSON(t, 0, "upsert-batch", `{"tasks":[{"slug":"rs","run_settings":{"loom":{"review":{"max_bounces":4}}}},{"slug":"X","depends_on":["D"]}]}`)
 		notice, _ := result["notice"].(string)
 		if !strings.Contains(notice, "--layer local") || !strings.Contains(notice, `"X" now waits on D`) {
 			t.Errorf("notice = %q; want the run-settings line and the sibling line", notice)

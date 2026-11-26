@@ -68,7 +68,7 @@ The one exception is a perch-mode run's project, whose slug is the run's own ent
 ## Perch mode
 
 A run whose recipe rows hold a split perch, a Bouncer row over the proposal, records perch mode in its raddle state at Raddle-Write's first call.
-The perch's approval files the proposal in place of the operator's, so `raddle_auto_approve` is never read.
+The perch's approval files the proposal in place of the operator's, so `loom.raddle.auto_approve` is never read.
 In perch mode the checks allow two outcomes:
 
 - One task: shape `tapestry`, or shape `tasks` with one part.

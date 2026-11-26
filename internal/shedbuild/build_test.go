@@ -99,7 +99,13 @@ func TestBuild_Errors(t *testing.T) {
 			name:     "entry gate naming a key the module's template lacks",
 			rows:     []Row{{Name: "Gated", Engine: "Stub", EntryGate: EntryChecks{"loom.nosuchkey"}}},
 			fullEnv:  true,
-			wantSubs: []string{"Gated", "loom.nosuchkey", "is not a key of module"},
+			wantSubs: []string{"Gated", `setting key "loom.nosuchkey" is not a key of module`},
+		},
+		{
+			name:     "entry gate naming a moved key",
+			rows:     []Row{{Name: "Gated", Engine: "Stub", EntryGate: EntryChecks{"tapestry.plan_split"}}},
+			fullEnv:  true,
+			wantSubs: []string{"Gated", "tapestry.plan.split", "way forward"},
 		},
 		{
 			name:     "entry gate naming a segment with no Env.Segments entry",
@@ -109,7 +115,7 @@ func TestBuild_Errors(t *testing.T) {
 		},
 		{
 			name:     "entry gate naming a setting while Env.SettingKnown is nil",
-			rows:     []Row{{Name: "Gated", Engine: "Stub", EntryGate: EntryChecks{"tapestry.plan_auto_accept"}}},
+			rows:     []Row{{Name: "Gated", Engine: "Stub", EntryGate: EntryChecks{"tapestry.plan.auto_accept"}}},
 			wantSubs: []string{"Gated", "Env.SettingKnown is nil", "fill Env.SettingKnown in the caller"},
 		},
 		{

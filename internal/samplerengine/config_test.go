@@ -70,7 +70,7 @@ func TestLoadConfig(t *testing.T) {
 		{
 			name: "an invalid agent spec is refused naming the key", hasHub: true,
 			hub:     strings.Replace(ConfigTemplate(), "agent: opus[high]", "agent: \"opus[[bad\"", 1),
-			wantErr: `sampler config key "agent"`,
+			wantErr: `config key "sampler.agent"`,
 		},
 		{name: "not initialized", wantErr: `not initialized here; run "lym fabric reconcile"`},
 	}

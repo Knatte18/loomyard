@@ -140,7 +140,7 @@ started. The detached remover is a no-op for a guid already gone, answering
 ok with an empty "removed" list; a positional <guid> typed by an operator
 still errors on an unknown guid.
 
-A remove under an invalid window_split or window_share_max still removes,
+A remove under an invalid ` + reedKeyName("window_split") + ` or ` + reedKeyName("window_share_max") + ` still removes,
 skips the even layout of a shared window and adds a "warning" naming the key.
 
 Example:

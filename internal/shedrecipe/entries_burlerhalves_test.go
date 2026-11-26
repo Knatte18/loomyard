@@ -1154,17 +1154,17 @@ func TestBurlerFixEntry_GateConfig(t *testing.T) {
 			named      bool
 			wantFanKey string
 		}{
-			{"RowNamingTheSettingCarriesItsKeyAsTheFanKey", true, "discussion_fixer_fan"},
+			{"RowNamingTheSettingCarriesItsKeyAsTheFanKey", true, "loom.discussion.fixer_fan"},
 			{"RowNamingNoSettingHasNoFanKey", false, ""},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				env := newTestEnv(t)
 				env.Segments[testReviewSegment] = SegmentSettings{FixKey: wantKey}
-				env.Setting = fakeSetting(map[string]any{"loom.discussion_fixer_fan": "a-fan"})
+				env.Setting = fakeSetting(map[string]any{"loom.discussion.fixer_fan": "a-fan"})
 				cfg := minimalFixConfig()
 				if tt.named {
-					cfg["fixer_fan_setting"] = "loom.discussion_fixer_fan"
+					cfg["fixer_fan_setting"] = "loom.discussion.fixer_fan"
 				}
 
 				_, opts := captureFix(t, "fix-row", cfg, env)
@@ -1182,16 +1182,16 @@ func TestBurlerFixEntry_GateConfig(t *testing.T) {
 			named   bool
 			wantErr string
 		}{
-			{"NamedNullSettingIsRefusedAsUnrecorded", true, "discussion_fixer_fan"},
+			{"NamedNullSettingIsRefusedAsUnrecorded", true, "loom.discussion.fixer_fan"},
 			{"NoSettingRunsTheSingleFixer", false, ""},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				env := newTestEnv(t)
-				env.Setting = fakeSetting(map[string]any{"loom.discussion_fixer_fan": nil})
+				env.Setting = fakeSetting(map[string]any{"loom.discussion.fixer_fan": nil})
 				cfg := minimalFixConfig()
 				if tt.named {
-					cfg["fixer_fan_setting"] = "loom.discussion_fixer_fan"
+					cfg["fixer_fan_setting"] = "loom.discussion.fixer_fan"
 				}
 				producer, err := burlerFixEntry(reviewRow("fix-row"), cfg, env)
 				if err != nil {

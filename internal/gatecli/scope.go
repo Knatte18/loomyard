@@ -355,7 +355,7 @@ func allInertSince(ctx context.Context, cfg gateslot.Config, root, base string) 
 	}
 	paths, err := impactset.ChangedPaths(ctx, root, base)
 	if err != nil {
-		logger.Warn("gate test: could not read the changed files to check them against inert_paths; the scope stays as it is", "base", base, "cause", err)
+		logger.Warn("gate test: could not read the changed files to check them against "+keyName(inertPathsKey)+"; the scope stays as it is", "base", base, "cause", err)
 		return false
 	}
 	return cfg.AllInert(paths)

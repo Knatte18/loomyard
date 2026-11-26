@@ -68,11 +68,11 @@ func TestGateFixerSetting(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{name: "tapestry plan", recipe: shedrun.RecipeTapestry, engine: "PlanWrite", gate: "plan", want: "tapestry.plan_gate_fixer"},
-		{name: "tapestry discussion", recipe: shedrun.RecipeTapestry, engine: "DiscussionWrite", gate: "discussion", want: "loom.discussion_gate_fixer"},
+		{name: "tapestry plan", recipe: shedrun.RecipeTapestry, engine: "PlanWrite", gate: "plan", want: "tapestry.plan.gate_fixer"},
+		{name: "tapestry discussion", recipe: shedrun.RecipeTapestry, engine: "DiscussionWrite", gate: "discussion", want: "loom.discussion.gate_fixer"},
 		{name: "darn verify", recipe: shedrun.RecipeDarn, engine: "DarnWrite", gate: "verify", want: "darn.gate_fixer"},
 		{name: "an element without a fixer", recipe: shedrun.RecipeDarn, engine: "DarnWrite", gate: "clean", want: ""},
-		{name: "an empty recipe name reads as tapestry", recipe: "", engine: "PlanWrite", gate: "plan", want: "tapestry.plan_gate_fixer"},
+		{name: "an empty recipe name reads as tapestry", recipe: "", engine: "PlanWrite", gate: "plan", want: "tapestry.plan.gate_fixer"},
 		{name: "an unknown recipe", recipe: "no-such-recipe", engine: "PlanWrite", gate: "plan", wantErr: true},
 		{name: "a recipe with no row of the engine", recipe: shedrun.RecipeDarn, engine: "PlanWrite", gate: "plan", wantErr: true},
 	}

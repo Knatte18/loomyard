@@ -449,7 +449,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(localPath), err)
 		}
-		if err := os.WriteFile(localPath, []byte("code_max_bounces: 2\ncode_hard_max_bounces: 3\n"), 0o644); err != nil {
+		if err := os.WriteFile(localPath, []byte("code: {max_bounces: 2, hard_max_bounces: 3}\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v; want nil", localPath, err)
 		}
 		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
@@ -457,7 +457,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
 		segment := c.env.Segments["Code-Review"]
-		if segment.MaxBounces != 2 || segment.MaxBouncesKey != "code_max_bounces" || segment.HardMaxBounces != 3 || segment.HardMaxBouncesKey != "code_hard_max_bounces" || segment.ConfigFile != "loom.yaml" {
+		if segment.MaxBounces != 2 || segment.MaxBouncesKey != "loom.code.max_bounces" || segment.HardMaxBounces != 3 || segment.HardMaxBouncesKey != "loom.code.hard_max_bounces" || segment.ConfigFile != "loom.yaml" {
 			t.Errorf("Segments[Code-Review] = %+v; want the local budget 2 and hard cap 3 under their code keys in loom.yaml", segment)
 		}
 	})
@@ -728,7 +728,7 @@ func TestRecipeRouting(t *testing.T) {
 		t.Run("recipe "+tt.recipe, func(t *testing.T) {
 			t.Parallel()
 			c := &loomCLI{recipe: tt.recipe}
-			c.cfg.ReviewMaxBounces, c.cfg.ReviewHardMaxBounces = 3, 4
+			c.cfg.Review.MaxBounces, c.cfg.Review.HardMaxBounces = 3, 4
 			routing, err := c.recipeRouting()
 			if err != nil {
 				t.Fatalf("recipeRouting() = %v; want nil", err)

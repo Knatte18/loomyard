@@ -70,7 +70,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, "ly:"+slug+":webster")
 
 		// loom is per-worktree, so this exercises the fabric-sync path.
-		validYAML := "discussion_timeout_min: 60\n"
+		validYAML := "discussion:\n  timeout_min: 60\n"
 		fakeEdit := func(path string) error {
 			return os.WriteFile(path, []byte(validYAML), 0o644)
 		}
@@ -353,13 +353,7 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Fatalf("read the board loom.yaml: %v", err)
 		}
 		// The planted keys are webster_fan, plan_reviewer_fan and plan_fan, none of which loom's template holds.
-		var planted []string
-		for _, line := range strings.Split(strings.TrimRight(string(current), "\n"), "\n") {
-			if !strings.HasPrefix(line, "code_reviewer_fan:") && !strings.HasPrefix(line, "plan_reviewer_fan:") {
-				planted = append(planted, line)
-			}
-		}
-		planted = append(planted, "webster_fan: review-code", "plan_reviewer_fan: review-plan", "plan_fan: stale-fan")
+		planted := []string{strings.TrimRight(string(current), "\n"), "webster_fan: review-code", "plan_reviewer_fan: review-plan", "plan_fan: stale-fan"}
 		before := []byte(strings.Join(planted, "\n") + "\n")
 		if err := os.WriteFile(loomFile, before, 0o644); err != nil {
 			t.Fatalf("plant old keys in the board loom.yaml: %v", err)
@@ -390,11 +384,11 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 		baseFile := configengine.TemplateBaseFile(boardDir, "profiles")
 		baseOriginal, baseErr := os.ReadFile(baseFile)
-		const lightDarn = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_model: \"opus[medium]\"}\n"
-		const lightDarnSolo = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: \"\", code_reviewer_model: \"opus[medium]\"}\n"
-		const solidDarn = "  darn:\n    loom: {code_max_bounces: 2, code_hard_max_bounces: 3, code_reviewer_model: \"opus[medium]\"}\n"
-		const solidDarnBase = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 4, code_reviewer_model: \"opus[medium]\"}\n"
-		const solidDarnTuned = "  darn:\n    loom: {code_max_bounces: 5, code_hard_max_bounces: 4, code_reviewer_model: \"opus[medium]\"}\n"
+		const lightDarn = "  darn:\n    loom: {code: {max_bounces: 1, hard_max_bounces: 2, reviewer_model: \"opus[medium]\"}}\n"
+		const lightDarnSolo = "  darn:\n    loom: {code: {max_bounces: 1, hard_max_bounces: 2, reviewer_fan: \"\", reviewer_model: \"opus[medium]\"}}\n"
+		const solidDarn = "  darn:\n    loom: {code: {max_bounces: 2, hard_max_bounces: 3, reviewer_model: \"opus[medium]\"}}\n"
+		const solidDarnBase = "  darn:\n    loom: {code: {max_bounces: 1, hard_max_bounces: 4, reviewer_model: \"opus[medium]\"}}\n"
+		const solidDarnTuned = "  darn:\n    loom: {code: {max_bounces: 5, hard_max_bounces: 4, reviewer_model: \"opus[medium]\"}}\n"
 		olderTemplate := strings.Replace(runprofile.ConfigTemplate(), lightDarn, lightDarnSolo, 1)
 		basePlanted := strings.Replace(olderTemplate, solidDarn, solidDarnBase, 1)
 		profilesPlanted := strings.Replace(olderTemplate, solidDarn, solidDarnTuned, 1)
@@ -426,9 +420,9 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 		restoreProfiles()
 		for key, want := range map[string]string{
-			"removed": "[light.darn.loom.code_reviewer_fan]",
-			"updated": "[solid.darn.loom.code_hard_max_bounces: 4 -> 3]",
-			"differs": "[solid.darn.loom.code_max_bounces: file 5, template 2]",
+			"removed": "[light.darn.loom.code.reviewer_fan]",
+			"updated": "[solid.darn.loom.code.hard_max_bounces: 4 -> 3]",
+			"differs": "[solid.darn.loom.code.max_bounces: file 5, template 2]",
 		} {
 			if got := fmt.Sprint(reconcileModule(t, result, "profiles")[key]); got != want {
 				t.Errorf("dry-run profiles %s = %s; want %s", key, got, want)
@@ -574,14 +568,14 @@ func TestConfigOverRealHub(t *testing.T) {
 	t.Run("reconcile --apply removes a key the template lacks from a hub worktree file", func(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, "")
 		loomFile := configengine.ConfigFile(codeWorktreePath, "loom")
-		if err := os.WriteFile(loomFile, []byte("discussion_timeout_min: 60\nnewer_key: 1\n"), 0o644); err != nil {
+		if err := os.WriteFile(loomFile, []byte("discussion:\n    timeout_min: 60\nnewer_key: 1\n"), 0o644); err != nil {
 			t.Fatalf("plant a key the template lacks in the worktree loom.yaml: %v", err)
 		}
 
 		if code, result := runReconcileCLI(t, codeWorktreePath, "--apply"); code != 0 {
 			t.Fatalf("reconcile --apply = %d; want 0; result: %v", code, result)
 		}
-		if after, err := os.ReadFile(loomFile); err != nil || string(after) != "discussion_timeout_min: 60\n" {
+		if after, err := os.ReadFile(loomFile); err != nil || string(after) != "discussion:\n    timeout_min: 60\n" {
 			t.Errorf("worktree loom.yaml = %q, %v after the apply; want the unknown key removed and the tuned one kept", after, err)
 		}
 	})

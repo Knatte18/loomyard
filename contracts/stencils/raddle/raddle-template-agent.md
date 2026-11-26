@@ -7,7 +7,7 @@
      mode_rules, the mode's text filled by Go;
      parent_directive, rendered by internal/parentdirective;
      and edit_directive, rendered unconditionally by internal/editdirective.
-     The subagent_model marker is declared by the Claude engine block the stencil includes, and filled from loom.yaml's subagent_model.
+     The subagent_model marker is declared by the Claude engine block the stencil includes, and filled from loom.subagent_model.
      return_note is the one optional marker:
      empty on a first session, and after a return the reason of the returned filing with the path to start from.
      There are no {{if}}/{{range}} conditionals anywhere in this file. -->

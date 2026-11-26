@@ -96,7 +96,7 @@ func TestMemoryGuard(t *testing.T) {
 	t.Parallel()
 
 	overCap := guardTree(3000<<20, 2000<<20)
-	overLine := memoryGuardLine("pkg.test", testBinaryPID, guardTestDir, guardFilter, "it held 5000 MB, over memory_quit_mb's 4096 MB")
+	overLine := memoryGuardLine("pkg.test", testBinaryPID, guardTestDir, guardFilter, "it held 5000 MB, over gate.memory_quit_mb's 4096 MB")
 	short := proc.MemoryLimit{Used: 16384<<20 - 512<<20, Max: 16384 << 20, Cgroup: "/user.slice"}
 	ample := proc.MemoryLimit{Used: 8192 << 20, Max: 16384 << 20, Cgroup: "/user.slice"}
 	tests := []struct {
@@ -131,7 +131,7 @@ func TestMemoryGuard(t *testing.T) {
 				{PID: innerPID, Parent: testBinaryPID, Path: longBinaryPath, RSS: 5000 << 20},
 			}}},
 			wantKilled: []int{innerPID},
-			wantLines:  []string{memoryGuardLine("averylongpackagenamethatpassesfifteen.test", innerPID, "", "", "it held 5000 MB, over memory_quit_mb's 4096 MB")},
+			wantLines:  []string{memoryGuardLine("averylongpackagenamethatpassesfifteen.test", innerPID, "", "", "it held 5000 MB, over gate.memory_quit_mb's 4096 MB")},
 		},
 		{
 			name: "a test binary below a running tier command is left to the tier's own guard",

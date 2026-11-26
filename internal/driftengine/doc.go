@@ -11,13 +11,13 @@
 // `diff` is `lines` or `command`;
 // `key_patterns` are regular expressions with the named groups `key` and `value` that key a captured line;
 // `volatile_files` and `volatile_keys` name the capture files and line keys the diff ignores;
-// `expect_model` and `judge_model` are model-specs;
-// `judge_interactive` makes the judge a session with the operator in its pane;
-// `judge_ask_parent` and `judge_parent_timeout_min` route the judge's rulings to the run's parent orch;
-// and `scope` is a task's regression scope, set in its board entry's `run_settings`.
-// `diff`, `key_patterns`, `volatile_files` and `volatile_keys` are guard keys:
+// `drift.expect_model` and `drift.judge_model` are model-specs;
+// `drift.judge_interactive` makes the judge a session with the operator in its pane;
+// `drift.judge_ask_parent` and `drift.judge_parent_timeout_min` route the judge's rulings to the run's parent orch;
+// and `drift.scope` is a task's regression scope, set in its board entry's `run_settings`.
+// `drift.diff`, `drift.key_patterns`, `drift.volatile_files` and `drift.volatile_keys` are guard keys:
 // only the hub's file sets take them, and a task's run settings are refused them.
-// `capture` and `compare` are executable keys: only the template and the hub's board default layer set them.
+// `drift.capture` and `drift.compare` are executable keys: only the template and the hub's board default layer set them.
 // A step left with keys but no command fails the load check.
 // LoadConfig loads the file strictly and refuses an invalid key, naming it.
 //
@@ -66,13 +66,13 @@
 // an unkeyed line by its Line position among the file's unkeyed lines.
 // Check drops the cells of the volatile lists and the metadata marks after the diff.
 // The baseline digest still covers them.
-// Under `diff: command` the declared compare decides alone.
+// With `drift.diff` set to `command` the declared compare decides alone.
 //
 // # Expectation
 //
 // ParseExpectation is the sole reader of `_lym/drift/expected.yaml`, the expectation the expect agent writes.
 // It decodes strictly, refuses an unknown key, and reads an empty file as the empty expectation.
-// Under `diff: command` a case holds one `why` and nothing else.
+// With `drift.diff` set to `command` a case holds one `why` and nothing else.
 // Under both modes, `metadata` marks the capture files and line keys that hold metadata, and no results.
 // Every `why` must be non-blank, and a case, key, occurrence and mark are checked against the baseline's listings.
 //
@@ -87,13 +87,14 @@
 // JudgeTable builds the judge's seat: one lead on the `review` segment, role `drift-judge`.
 // Its one output is judgement.yaml, and the table carries no gate; the row sets the `judgement` entry, NewJudgementGate.
 //
-// Under `judge_ask_parent` Drift-Verify appends the `parent-agreement` entry, ParentAgreementGateEntry.
+// Under `drift.judge_ask_parent` Drift-Verify appends the `parent-agreement` entry, ParentAgreementGateEntry.
 // The ask mails the run's parent orch and records a digest of the rulings it presented.
 // The entry passes only on an answer to those rulings, a timeout, or an ask that never reached the parent.
 // A judgement changed after the ask gets a new ask.
 // Bound: the entry checks that the judge changed its rulings after the parent's findings, not that it took each one.
 //
-// Under the run's autonomy, Config.Autonomous, ApplyAutonomy forces `judge_ask_parent` on and `judge_interactive` off.
+// Under the run's autonomy, Config.Autonomous, ApplyAutonomy turns two keys.
+// It forces `drift.judge_ask_parent` on and `drift.judge_interactive` off.
 // It writes no layer file, so autonomy off restores each key's layered value at the next load.
 // Under it, a judge ask that ended timeout, not-sent, no-parent or undelivered halts Drift-Verify.
 // The parent agreement entry does not pass, and the rulings are not stored.

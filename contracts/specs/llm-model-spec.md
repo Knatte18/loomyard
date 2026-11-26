@@ -96,7 +96,7 @@ loom's config section  >  the module's own config (e.g. webster.yaml)  >  (unset
 There is **no per-parameter merging across layers** — a losing spec contributes nothing.
 Within the winning spec: **bracket param > registry default**.
 
-Example — which effort does webster's `master` role run at?
+Example — which effort does the `webster.master` role run at?
 
 ```yaml
 # models.yaml:    sonnet defaults effort=medium
@@ -137,22 +137,24 @@ For Claude, that engine is `internal/shuttleengine/claudeengine`.
 ## Roles that use this notation
 
 webster.yaml holds one model-spec per role.
-`master` is the long-lived Master session.
+`webster.master` is the long-lived Master session.
 Its in-session forks always inherit Master's current model, so there are no per-fork roles.
-The cold plan fixer `fix-plan` spawns runs on `master` too.
-`recovery` is the cold recovery strand `recover-batch` spawns, and the cold verify-gate fixer `fix-verify` spawns.
+The cold plan fixer `fix-plan` spawns runs on `webster.master` too.
+`webster.recovery` is the cold recovery strand `recover-batch` spawns, and the cold verify-gate fixer `fix-verify` spawns.
 Stack-wide roles elsewhere (burler reviewers, Bouncer judges, loom producers) use the same notation.
 Each lives in its own config section, and loom's config section overrides per role when loom drives the module.
 
 loom.yaml gives the Bouncer judge and seed passes keys of their own, each a model-spec validated only when non-empty:
 
-- A per-segment judge key (`discussion_judge`, `code_judge`) left empty takes `judge`.
-- A per-segment seed key (`discussion_seed`, `code_seed`) left empty takes `seed`, and `seed` left empty takes that segment's resolved judge.
+- A per-segment judge key (`loom.discussion.judge`, `loom.code.judge`) left empty takes `loom.review.judge`.
+- A per-segment seed key (`loom.discussion.seed`, `loom.code.seed`) left empty takes `loom.review.seed`,
+  and `loom.review.seed` left empty takes that segment's resolved judge.
 
-tapestry.yaml gives the plan segment's Bouncer passes `plan_judge` and `plan_seed`, each validated only when non-empty.
-An empty `plan_judge` takes loom.yaml's `judge`.
-An empty `plan_seed` takes loom.yaml's `seed`, and that left empty takes the segment's resolved judge.
+tapestry.yaml gives the plan segment's Bouncer passes `tapestry.plan.judge` and `tapestry.plan.seed`,
+each validated only when non-empty.
+An empty `tapestry.plan.judge` takes `loom.review.judge`.
+An empty `tapestry.plan.seed` takes `loom.review.seed`, and that left empty takes the segment's resolved judge.
 
-landing.yaml's `fixer` is the model-spec of the merge fixer session that Parent-Align and Finalize run.
+`landing.fixer` is the model-spec of the merge fixer session that Parent-Align and Finalize run.
 It also serves the fix review session Finalize runs over an over-cap fixer change, and defaults to `opus[high]`.
-`fixer_timeout_min` bounds one of the fixer's turns or the fix review session.
+`landing.fixer_timeout_min` bounds one of the fixer's turns or the fix review session.

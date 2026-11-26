@@ -37,7 +37,7 @@ func TestLoadConfig(t *testing.T) {
 			machine: "window_command: \"~/.local/bin/arrange-to-tiles.sh\"\nwindow_wait_ms: 200\n",
 			want:    desktophook.Config{WindowCommand: "~/.local/bin/arrange-to-tiles.sh", WindowWaitMs: 200},
 		},
-		{name: "NegativeWaitRefused", machine: "window_wait_ms: -1\n", wantErr: `desktop config key "window_wait_ms" holds -1`},
+		{name: "NegativeWaitRefused", machine: "window_wait_ms: -1\n", wantErr: `config key "desktop.window_wait_ms" holds -1`},
 		{name: "LocalOverrideRefused", local: "window_command: \"true\"\n", wantErr: "window_command"},
 		{
 			name:         "MachineOverrideAddsButtons",

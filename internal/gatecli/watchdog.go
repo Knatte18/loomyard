@@ -153,7 +153,7 @@ func (w watchdog) quit(binary proc.ProcessSample) {
 // An empty, unparsable or non-ancestor enclosing value is ignored.
 func watchdogApplies(window time.Duration, flags []string, enclosing string, isAncestor func(pid int) bool) (bool, string) {
 	if window <= 0 {
-		return false, "busy_quit_sec is 0"
+		return false, keyName(busyQuitSecKey) + " is 0"
 	}
 	for _, flag := range flags {
 		name, _, _ := strings.Cut(strings.TrimLeft(flag, "-"), "=")
@@ -165,5 +165,5 @@ func watchdogApplies(window time.Duration, flags []string, enclosing string, isA
 	if pid, err := strconv.Atoi(enclosing); err == nil && isAncestor(pid) {
 		return false, fmt.Sprintf("an enclosing lym gate test (pid %d) already watches this run", pid)
 	}
-	return true, "busy_quit_sec is set and nothing exempts this run"
+	return true, keyName(busyQuitSecKey) + " is set and nothing exempts this run"
 }

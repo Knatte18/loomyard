@@ -82,5 +82,5 @@ func (c *Codex) launchSandboxMode(codex Config, home string) (string, error) {
 		c.warn("codexengine: Codex's sandbox cannot start on this machine, so the session runs with no sandbox", "sandbox_mode", sandboxAuto, "cause", err)
 		return sandboxFullAccess, nil
 	}
-	return "", fmt.Errorf("codexengine: codex.yaml's sandbox_mode is %s, but Codex's sandbox cannot start on this machine: %w; way forward: set it for this machine with lym config codex --layer machine --set sandbox_mode=%s from the hub's prime worktree", sandboxWorkspaceWrite, err, sandboxAuto)
+	return "", fmt.Errorf("codexengine: %s is %s, but Codex's sandbox cannot start on this machine: %w; way forward: set it for this machine with lym config codex --layer machine --set sandbox_mode=%s from the hub's prime worktree", keyName(sandboxModeConfigKey), sandboxWorkspaceWrite, err, sandboxAuto)
 }

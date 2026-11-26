@@ -277,7 +277,7 @@ func missingDirRefusal(run stepRun, cause error) error {
 	if run.Site == siteCapture {
 		again = "lym drift capture and lym loom resume"
 	}
-	return &stepRefusal{cause: fmt.Errorf("drift: the %s command cannot start: %s.yaml key %q: %w; way forward: lym config drift --set %s.dir=<dir> from the prime, then %s", run.Site, configModule, run.Name+".dir", cause, run.Name, again)}
+	return &stepRefusal{cause: fmt.Errorf("drift: the %s command cannot start: config key %q: %w; way forward: lym config drift --set %s.dir=<dir> from the prime, then %s", run.Site, keyName(run.Name+".dir"), cause, run.Name, again)}
 }
 
 // acquireSlot returns the slot the run's command runs in.
@@ -341,7 +341,7 @@ func refuseSkipFilePlaceholder(site, step, command string) error {
 	if !strings.Contains(command, skipFilePlaceholder) {
 		return nil
 	}
-	return &stepRefusal{cause: fmt.Errorf("drift: the %s command holds %s, which drift no longer renders; way forward: the operator or the hub orch removes every use of it, such as an -e NAME=%s argument, from %s with lym config drift --set from the hub's prime worktree, since a hub-wide config write is refused from any other session, then lym loom resume", site, skipFilePlaceholder, skipFilePlaceholder, step)}
+	return &stepRefusal{cause: fmt.Errorf("drift: the %s command holds %s, which drift no longer renders; way forward: the operator or the hub orch removes every use of it, such as an -e NAME=%s argument, from %s with lym config drift --set from the hub's prime worktree, since a hub-wide config write is refused from any other session, then lym loom resume", site, skipFilePlaceholder, skipFilePlaceholder, keyName(step))}
 }
 
 // renderEnv returns env as KEY=VALUE entries in key order.

@@ -57,7 +57,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 		return Config{}, configengine.MarkInvalid(fmt.Errorf("unmarshal slack config: %w", err))
 	}
 	if cfg.RemindAfterMin < 1 {
-		return Config{}, configengine.MarkInvalid(fmt.Errorf("slack config key %q holds %d; want an integer of at least 1; way forward: set `%s` to 1 or more with `lym config slack`", remindAfterMinKey, cfg.RemindAfterMin, remindAfterMinKey))
+		return Config{}, configengine.MarkInvalid(fmt.Errorf("config key %q holds %d; want an integer of at least 1; way forward: set `%s` to 1 or more with `lym config slack`", configengine.KeyName(configModule, remindAfterMinKey), cfg.RemindAfterMin, configengine.KeyName(configModule, remindAfterMinKey)))
 	}
 	return cfg, nil
 }

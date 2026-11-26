@@ -251,7 +251,7 @@ func runFixReview(deps Deps, gate verifyGate, row, baseline, head, capReason str
 		outcome.end, outcome.cause = fixReviewEndChanged, fmt.Sprintf("the task head moved from %s to %s", head, after)
 		return outcome, nil
 	case result.Chair.Outcome == shuttleengine.OutcomeTimeout:
-		outcome.end, outcome.cause = fixReviewEndNoVerdict, "the session ran past fixer_timeout_min"
+		outcome.end, outcome.cause = fixReviewEndNoVerdict, "the session ran past "+keyName(fixerTimeoutMinKey)
 		return outcome, nil
 	}
 	report, err := ParseFixReviewReport(reportPath)

@@ -66,6 +66,10 @@ type Module struct {
 	// The board dir's reconcile merges each template change into a present file against its base;
 	// it keeps every value the operator set. A worktree's copy is never rewritten.
 	SeedOnly bool
+	// RunSettingsBlocks marks a seed-only module whose file holds module-keyed settings objects.
+	// Each second-level mapping, such as <profile>.<recipe>, is one such object.
+	// The reconcile moves their old keys before the file follows its template.
+	RunSettingsBlocks bool
 	// HubWide marks a module that describes a hub-level fact.
 	// Its one file lives at configengine.ConfigFile(<BoardDir>, name)
 	// and is never read or written in a worktree's _lym/config/.
@@ -164,7 +168,7 @@ func Modules() []Module {
 		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps(), CheckValues: loomengine.ValidateLocalValues, CheckLoad: checkLoadNamed(loomengine.LoadConfig, "loom"), Reinterpretations: []Reinterpretation{{ID: loomengine.CodeAutoAcceptBlockingReinterpretationID, Rewrite: loomengine.FlagCodeAutoAccept, RunsWithoutFile: true}}, Spec: loomengine.ConfigSpec},
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true, CheckLoad: checkLoad(modelspec.LoadRegistry), Spec: modelspec.ConfigSpec},
 		{Name: "orch", Template: orchengine.ConfigTemplate, CheckLoad: checkLoadNamed(orchengine.LoadConfig, "orch"), Reinterpretations: []Reinterpretation{{ID: orchengine.RemoteControlOffReinterpretationID, Rewrite: orchengine.FlagRemoteControlDefault}}, Spec: orchengine.ConfigSpec},
-		{Name: runprofile.ModuleName, Template: runprofile.ConfigTemplate, HubWide: true, SeedOnly: true, CheckLoad: checkProfiles, Spec: runprofile.ConfigSpec},
+		{Name: runprofile.ModuleName, Template: runprofile.ConfigTemplate, HubWide: true, SeedOnly: true, RunSettingsBlocks: true, CheckLoad: checkProfiles, Spec: runprofile.ConfigSpec},
 		{Name: "reed", Template: reedengine.ConfigTemplate, OpenMaps: reedengine.ConfigOpenMaps(), CheckLoad: checkLoadNamed(reedengine.LoadConfig, "reed"), Spec: reedengine.ConfigSpec},
 		{Name: "report", Template: reportconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(reportconfig.LoadConfig), Spec: reportconfig.ConfigSpec},
 		{Name: "sampler", Template: samplerengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoadNamed(samplerengine.LoadConfig, "sampler"), Spec: samplerengine.ConfigSpec},

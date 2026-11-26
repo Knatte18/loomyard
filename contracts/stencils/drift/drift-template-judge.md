@@ -5,7 +5,7 @@
      It then hands the result to shuttle as the agent's whole prompt.
      Every marker below is a top-level substitution, and the file has no conditionals.
      The engine fills the parent and edit directives, and `driftengine.JudgeTable` fills the rest;
-     mode_rules holds the autonomous or the operator text, chosen by drift.yaml's judge_interactive. -->
+     mode_rules holds the autonomous or the operator text, chosen by drift.judge_interactive. -->
 
 # Drift judge — rule on each change the task made
 

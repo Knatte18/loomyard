@@ -138,7 +138,7 @@ func TestFinalize_PullRequest(t *testing.T) {
 	}{
 		{
 			name: "AFailedModeLookupHaltsNamingTheErrorAndTheFixBehindTheLandingPrefix", modeErr: errors.New("bad yaml"),
-			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"beam.yaml's pull_request for this landing could not be read", "bad yaml", "lym config beam", "--layer default", "run_settings", "lym loom resume"},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"beam.pull_request for this landing could not be read", "bad yaml", "lym config beam", "--layer default", "run_settings", "lym loom resume"},
 		},
 		{
 			name: "AResolverHaltIsStuckBehindTheLandingPrefix", mode: "merge", origin: &Origin{},
@@ -147,7 +147,7 @@ func TestFinalize_PullRequest(t *testing.T) {
 		{
 			name: "NoClosesAnOpenRecordedPullRequestRemovesTheRecordAndMergesLocally", mode: "off", record: recorded(), scripts: statusScript(open), wantCommits: 1,
 			wantOutcome: shedengine.Done, wantMerges: 1, wantNoRecord: true, wantOrder: "merge,push,mark",
-			wantCalls: []string{"RequiresPullRequest main", "Status 7", "Close 7 lym closed this pull request: pull request off: beam.yaml's pull_request for this landing is off"},
+			wantCalls: []string{"RequiresPullRequest main", "Status 7", "Close 7 lym closed this pull request: pull request off: beam.pull_request for this landing is off"},
 		},
 		{
 			name: "AnOffParentWhoseBranchRulesRequireAPullRequestMergesTheRecordedOneOnGitHub", mode: "off", record: recorded(),
@@ -516,7 +516,7 @@ func TestFinalize_PullRequest(t *testing.T) {
 			name: "AFailingCommitOfTheRecordRemovalIsAnErrorStopWithNoMerge", mode: "off", record: recorded(), scripts: statusScript(open),
 			commitErr: errors.New("push stopped"),
 			wantErr:   true, wantErrText: "commit the pull request record", wantCommits: 1,
-			wantCalls: []string{"RequiresPullRequest main", "Status 7", "Close 7 lym closed this pull request: pull request off: beam.yaml's pull_request for this landing is off"},
+			wantCalls: []string{"RequiresPullRequest main", "Status 7", "Close 7 lym closed this pull request: pull request off: beam.pull_request for this landing is off"},
 		},
 		{
 			name: "AFailingCommitOfTheOpenedRecordIsAnErrorStopWithNoGitHubMerge", mode: "merge",

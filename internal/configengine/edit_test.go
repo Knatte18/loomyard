@@ -89,7 +89,7 @@ func TestEdit(t *testing.T) {
 			overlay:  true,
 			existing: "pick: x\n",
 			steps:    []editStep{{write: "pick: x\nlenses:\n  a: Z\n"}},
-			wantErr:  "delete the pick line from",
+			wantErr:  "delete the testmod.pick line from",
 			wantFile: ptr("pick: x\n"),
 		},
 		{

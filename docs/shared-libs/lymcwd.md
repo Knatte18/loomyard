@@ -124,7 +124,7 @@ Every per-module durable-storage subdirectory (`_lym/plan`, `_lym/webster`, and 
 The owning module joins it onto `AnchorPath()` directly, never through a `lymcwd` function call.
 Records-sibling paths and junction construction belong to `internal/fabricengine`,
 as do the prime and sibling-worktree lookups they are built from (for example `RecordsWorktree` and `WorktreePath`).
-Fabric config (`fabric.yaml`'s `pathspec`) supplies the records-backed junction name-set;
+Fabric config (`fabric.pathspec`) supplies the records-backed junction name-set;
 that too is `fabricengine`'s concern, never `lymcwd`'s.
 See [PATTERN-cwd-resolution](../../pattern/PATTERN-cwd-resolution.md) for the per-token ownership map.
 

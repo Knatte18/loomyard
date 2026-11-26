@@ -28,6 +28,11 @@ func ConfigTemplate() string {
 // configModule is the config module name shed.yaml is loaded under.
 const configModule = "shed"
 
+// ArbiterMaxSpawnsName returns the full name of the shed.yaml key bounding a run's arbiter spawns.
+func ArbiterMaxSpawnsName() string {
+	return configengine.KeyName(configModule, "arbiter_max_spawns")
+}
+
 // tacklerDefaultModelSpec is the model-spec an empty tackler key takes.
 const tacklerDefaultModelSpec = "haiku"
 
@@ -130,30 +135,30 @@ func ValidateLocalValues(document []byte) error {
 func CheckOverride(module string, o Override) error {
 	if o.DriverKind != "" {
 		if err := shedrun.ValidateDriver(o.DriverKind); err != nil {
-			return fmt.Errorf("%s config key %q: %w; set driver_kind to llm or go in %s.yaml or the task's run_settings%s", module, "driver_kind", err, module, inheritClause(module))
+			return fmt.Errorf("config key %q: %w; set it to llm or go in %s.yaml or the task's run_settings%s", configengine.KeyName(module, "driver_kind"), err, module, inheritClause(module))
 		}
 	}
 	if o.Tackler != "" {
 		if _, err := modelspec.Parse(o.Tackler); err != nil {
-			return fmt.Errorf("%s config key %q: %w; set tackler to a model-spec in %s.yaml or the task's run_settings%s", module, "tackler", err, module, inheritClause(module))
+			return fmt.Errorf("config key %q: %w; set it to a model-spec in %s.yaml or the task's run_settings%s", configengine.KeyName(module, "tackler"), err, module, inheritClause(module))
 		}
 	}
 	if o.TacklerTimeoutMin < 0 {
-		return fmt.Errorf("%s config key %q: must not be negative, got %d; set it to 0 for the 10 minute default, or to a positive integer, in %s.yaml or the task's run_settings%s", module, "tackler_timeout_min", o.TacklerTimeoutMin, module, inheritClause(module))
+		return fmt.Errorf("config key %q: must not be negative, got %d; set it to 0 for the 10 minute default, or to a positive integer, in %s.yaml or the task's run_settings%s", configengine.KeyName(module, "tackler_timeout_min"), o.TacklerTimeoutMin, module, inheritClause(module))
 	}
 	if o.TacklerMaxSpawns != nil && *o.TacklerMaxSpawns < 0 {
-		return fmt.Errorf("%s config key %q: must not be negative, got %d; set it to 0 to turn the tackler off, or to a positive integer, in %s.yaml or the task's run_settings%s", module, "tackler_max_spawns", *o.TacklerMaxSpawns, module, inheritClause(module))
+		return fmt.Errorf("config key %q: must not be negative, got %d; set it to 0 to turn the tackler off, or to a positive integer, in %s.yaml or the task's run_settings%s", configengine.KeyName(module, "tackler_max_spawns"), *o.TacklerMaxSpawns, module, inheritClause(module))
 	}
 	if o.Arbiter != "" {
 		if _, err := modelspec.Parse(o.Arbiter); err != nil {
-			return fmt.Errorf("%s config key %q: %w; set arbiter to a model-spec in %s.yaml or the task's run_settings%s", module, "arbiter", err, module, inheritClause(module))
+			return fmt.Errorf("config key %q: %w; set it to a model-spec in %s.yaml or the task's run_settings%s", configengine.KeyName(module, "arbiter"), err, module, inheritClause(module))
 		}
 	}
 	if o.ArbiterTimeoutMin < 0 {
-		return fmt.Errorf("%s config key %q: must not be negative, got %d; set it to 0 for the 30 minute default, or to a positive integer, in %s.yaml or the task's run_settings%s", module, "arbiter_timeout_min", o.ArbiterTimeoutMin, module, inheritClause(module))
+		return fmt.Errorf("config key %q: must not be negative, got %d; set it to 0 for the 30 minute default, or to a positive integer, in %s.yaml or the task's run_settings%s", configengine.KeyName(module, "arbiter_timeout_min"), o.ArbiterTimeoutMin, module, inheritClause(module))
 	}
 	if o.ArbiterMaxSpawns != nil && *o.ArbiterMaxSpawns < 0 {
-		return fmt.Errorf("%s config key %q: must not be negative, got %d; set it to 0 to turn the arbiter off, or to a positive integer, in %s.yaml or the task's run_settings%s", module, "arbiter_max_spawns", *o.ArbiterMaxSpawns, module, inheritClause(module))
+		return fmt.Errorf("config key %q: must not be negative, got %d; set it to 0 to turn the arbiter off, or to a positive integer, in %s.yaml or the task's run_settings%s", configengine.KeyName(module, "arbiter_max_spawns"), *o.ArbiterMaxSpawns, module, inheritClause(module))
 	}
 	return nil
 }

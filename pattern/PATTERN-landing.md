@@ -9,5 +9,5 @@ Rule: Moving, merging into or landing on a local parent branch, or merging a run
 ## Pull request mode
 
 Rule: Deciding if a landing uses a pull request: only landingshed's one resolver, from the landing's `beam.pull_request` as the per-task lookup reads it from the landing run's worktree up, a beam's pull-request record, the parent's GitHub rules, origin and task commits; a yes merges on GitHub.
-A task whose `pull_request` is `merge-in` is a no under every rule.
+A task whose `beam.pull_request` is `merge-in` is a no under every rule.
 Its parent-side merge never squashes.

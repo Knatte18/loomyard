@@ -14,7 +14,7 @@
      edit_directive is rendered unconditionally by internal/editdirective.
      make_change holds Step 4's list: `darnengine.DarnTable` fills it with darn-fragment-make-change,
      or with darn-fragment-make-change-gated when a cold fixer clears the row's verify gate.
-     report_directive holds darn-fragment-report, led by a blank line, when darn.yaml's report_dir is set.
+     report_directive holds darn-fragment-report, led by a blank line, when darn.report_dir is set.
      It shares make_change's line, so an empty value leaves the prompt's bytes unchanged. -->
 
 # Darn — make the change a board entry asks for, in one session

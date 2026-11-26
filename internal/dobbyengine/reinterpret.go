@@ -81,9 +81,9 @@ func rewriteHubFile(existing []byte) (rewritten []byte, rewrote, flagged []strin
 		if value.Kind != yaml.ScalarNode || !retired {
 			continue
 		}
-		rewrote = append(rewrote, fmt.Sprintf("beam.yaml's %s: %s is retired; it now reads %s, %s", key, value.Value, replacement, retiredMeaning(key, value.Value)))
+		rewrote = append(rewrote, fmt.Sprintf("%s: %s is retired; it now reads %s, %s", keyName(key), value.Value, replacement, retiredMeaning(key, value.Value)))
 		if key == PullRequestKey && value.Value == retiredPullRequestRequired {
-			flagged = append(flagged, fmt.Sprintf("beam.yaml's %s: %s is rewritten to %s only so beam.yaml loads, and %s; way forward: %s", key, value.Value, replacement, requiredLoss, requiredWayForward))
+			flagged = append(flagged, fmt.Sprintf("%s: %s is rewritten to %s only so beam.yaml loads, and %s; way forward: %s", keyName(key), value.Value, replacement, requiredLoss, requiredWayForward))
 		}
 		value.Value = replacement
 		value.Tag = "!!str"
@@ -140,16 +140,16 @@ func flagRetiredValues(worktrees []configengine.HubWorktree) []string {
 		}
 	}
 	if len(pullRequestFiles) > 0 {
-		flagged = append(flagged, fmt.Sprintf("a worktree file's pull_request now decides that worktree's own landing, and every task below it inherits it, "+
-			"where it once decided the landings into that branch; it is set in %s", strings.Join(pullRequestFiles, ", ")))
+		flagged = append(flagged, fmt.Sprintf("a worktree file's %s now decides that worktree's own landing, and every task below it inherits it, "+
+			"where it once decided the landings into that branch; it is set in %s", keyName(PullRequestKey), strings.Join(pullRequestFiles, ", ")))
 	}
 	return flagged
 }
 
 // retiredFlag returns the line that flags a retired value at path, with the way forward in the worktree called label.
 func retiredFlag(label, path, key, retired, replacement string) string {
-	opening := fmt.Sprintf("%s sets beam.yaml's %s: %s, which is retired, so beam.yaml stops loading there; way forward: run `lym config beam --set %s=%s` in %s",
-		path, key, retired, key, replacement, label)
+	opening := fmt.Sprintf("%s sets %s: %s, which is retired, so beam.yaml stops loading there; way forward: run `lym config beam --set %s=%s` in %s",
+		path, keyName(key), retired, key, replacement, label)
 	if key == PullRequestKey && retired == retiredPullRequestRequired {
 		return fmt.Sprintf("%s to load it again, though %s; %s", opening, requiredLoss, requiredWayForward)
 	}
@@ -164,7 +164,7 @@ func retiredMeaning(key, retired string) string {
 	case retired == retiredLandNoticeAll:
 		return "so every run still gets the landing notice unless a task or worktree below sets off"
 	default:
-		return "and each board entry that carried notify_on_land carries land_notice on, so the same runs still get the notice"
+		return "and each board entry that carried notify_on_land carries " + keyName(LandNoticeKey) + " on, so the same runs still get the notice"
 	}
 }
 
@@ -197,24 +197,24 @@ func CarryBeamTaskSettings(boardDir string, worktrees []configengine.HubWorktree
 			_, _, set, err := ownTaskSetting(dirs, key)
 			if err != nil {
 				flagged = append(flagged, fmt.Sprintf("the beam.yaml files of %s could not be read, so the board entry's %s: %s is not carried: %v; way forward: fix the file the error names, then run `lym config beam --set %s=%s` in %s",
-					label, key, settings[key], err, key, settings[key], label))
+					label, keyName(key), settings[key], err, key, settings[key], label))
 				continue
 			}
 			if set {
 				continue
 			}
 			if key == PullRequestKey && entry.RetiredOff {
-				flagged = append(flagged, fmt.Sprintf("the board entry of %s asked for pull_request off, which is not carried: under a required or merge parent it still opened a pull request; way forward: run `lym config beam --set %s=%s` in %s to land it with no pull request",
-					worktree.Name, key, settings[key], label))
+				flagged = append(flagged, fmt.Sprintf("the board entry of %s asked for %s off, which is not carried: under a required or merge parent it still opened a pull request; way forward: run `lym config beam --set %s=%s` in %s to land it with no pull request",
+					worktree.Name, keyName(key), key, settings[key], label))
 				continue
 			}
 			pairs := []yamlengine.KV{{Key: key, Value: settings[key]}}
 			if _, err := configengine.Set(dirs, ConfigSpec(), configengine.LayerLocal, pairs); err != nil {
-				flagged = append(flagged, fmt.Sprintf("the board entry of %s carried beam.yaml's %s: %s, which could not be written to its worktree: %v; way forward: run `lym config beam --set %s=%s` in %s",
-					worktree.Name, key, settings[key], err, key, settings[key], label))
+				flagged = append(flagged, fmt.Sprintf("the board entry of %s carried %s: %s, which could not be written to its worktree: %v; way forward: run `lym config beam --set %s=%s` in %s",
+					worktree.Name, keyName(key), settings[key], err, key, settings[key], label))
 				continue
 			}
-			carried = append(carried, fmt.Sprintf("the board entry of %s carried beam.yaml's %s: %s, now set in %s's local beam.yaml", worktree.Name, key, settings[key], worktree.Name))
+			carried = append(carried, fmt.Sprintf("the board entry of %s carried %s: %s, now set in %s's local beam.yaml", worktree.Name, keyName(key), settings[key], worktree.Name))
 		}
 	}
 	return carried, flagged, nil

@@ -19,6 +19,8 @@
 // A pair whose seed is absent, has no stamp or has one that does not parse is undated.
 //
 // The tellers do I/O only for Board and run state that no Location carries, and spawn nothing.
+// ReconcileBeforeLoad is no teller: it serves a verb about to load a reconciled config.
+// It runs the hub reconcile over ReconcileGeometry, and that reconcile writes, commits and spawns.
 // BurlerGeometry tells the shortname and slug as ReedGeometry does, from the same prime test.
 // The agent names burler forms therefore match the names reed gives the strands.
 // ResolveParent reads the pair's origin record alone.

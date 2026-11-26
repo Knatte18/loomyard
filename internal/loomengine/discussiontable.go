@@ -68,9 +68,9 @@ func resolveModelChoice(raw string, reg modelspec.Registry) (shuttleengine.Model
 
 // DiscussionTable builds the seatengine.Table of one Discussion-Write run.
 // The lead writes the decision record, the support log and the relevant list.
-// Each entry of cfg.DiscussionAdvisors adds one advisor, named by the entry,
+// Each entry of cfg.Discussion.Advisors adds one advisor, named by the entry,
 // and each advisor writes a notes file for the lead to read.
-// When cfg.DiscussionLenses is set, the lead alone may spawn fork subagents.
+// When cfg.Discussion.Lenses is set, the lead alone may spawn fork subagents.
 // Under the same condition, the lead carries the twill lens review directive.
 // Its fan is resolved through lenses.yaml under dirs; the advisors never fork.
 // The seats' opening stencils are read at call time from stencilsDir.
@@ -92,7 +92,7 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: slug must not be empty")
 	}
 
-	chairChoice, err := resolveModelChoice(cfg.Discussion, reg)
+	chairChoice, err := resolveModelChoice(cfg.Discussion.Model, reg)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: discussion role model-spec: %w", err)
 	}
@@ -107,7 +107,7 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 	}
 
 	var frictionDir string
-	if cfg.Friction != "" {
+	if cfg.Friction.Model != "" {
 		frictionDir = LoomFrictionDir(layout)
 	}
 	frictionDirective, err := friction.Directive(friction.NotePath(frictionDir, "Discussion-Write"), stencilsDir, friction.RoleInterview)
@@ -122,22 +122,22 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: self-check step: %w", err)
 	}
-	forks := cfg.DiscussionLenses != ""
+	forks := cfg.Discussion.Lenses != ""
 	leadValues := map[string]string{"self_check": selfCheck}
 	if forks {
-		lensDirective, err := discussionLensDirective(layout, dirs, stencilsDir, specsDir, cfg.DiscussionLenses, chairChoice.Engine, fixerOn)
+		lensDirective, err := discussionLensDirective(layout, dirs, stencilsDir, specsDir, cfg.Discussion.Lenses, chairChoice.Engine, fixerOn)
 		if err != nil {
 			return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: %w", err)
 		}
 		leadValues[twilldirective.MarkerName] = setOffParagraph(lensDirective)
 	}
 
-	seats := make([]seatengine.Seat, 0, 1+len(cfg.DiscussionAdvisors))
+	seats := make([]seatengine.Seat, 0, 1+len(cfg.Discussion.Advisors))
 	var notes []string
-	for n, advisor := range cfg.DiscussionAdvisors {
+	for n, advisor := range cfg.Discussion.Advisors {
 		choice, err := resolveModelChoice(advisor.Model, reg)
 		if err != nil {
-			return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: %s entry %d: %w; set the entry's model to a model-spec the registry defines", discussionAdvisorsKey, n+1, err)
+			return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: %s entry %d: %w; set the entry's model to a model-spec the registry defines", FullKeyName(discussionAdvisorsKey), n+1, err)
 		}
 		path := DiscussionAdvisorNotes(layout, advisor.Name)
 		notes = append(notes, path)
@@ -158,7 +158,7 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 		ConfigRole:    agentconfig.RoleDiscussion,
 		Values:        leadValues,
 		ForkSubagents: forks,
-		ModelKey:      shuttleengine.ModelKey{Module: loomModule, Key: "discussion"},
+		ModelKey:      shuttleengine.ModelKey{Module: loomModule, Key: discussionModelKey},
 	}
 	if forks {
 		// The lens directive tells the lead to fork and to end its turn while forks are outstanding.
@@ -169,8 +169,8 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 	return seatengine.Table{
 		RolePrefix:  discussionRole,
 		Segment:     segmentcolor.Discussion,
-		Timeout:     time.Duration(cfg.DiscussionTimeoutMin) * time.Minute,
-		Interactive: cfg.DiscussionInteractive,
+		Timeout:     time.Duration(cfg.Discussion.TimeoutMin) * time.Minute,
+		Interactive: cfg.Discussion.Interactive,
 		Values: map[string]string{
 			"slug":                 slug,
 			"specs_dir":            specsDir,
@@ -178,7 +178,7 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 			"support_log_path":     DiscussionSupportLog(layout),
 			"relevant_path":        DiscussionRelevant(layout),
 			subagentModelKey:       cfg.SubagentModel,
-			"mode_rules":           discussionModeRules(!cfg.DiscussionInteractive, len(cfg.DiscussionAdvisors) > 0),
+			"mode_rules":           discussionModeRules(!cfg.Discussion.Interactive, len(cfg.Discussion.Advisors) > 0),
 			"pattern_directive":    patternDirective,
 			friction.MarkerName:    frictionDirective,
 			"glossary":             heddleengine.Glossary(),

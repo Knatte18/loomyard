@@ -6,6 +6,7 @@ package loomrecipe
 import (
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -166,7 +167,11 @@ func checkSegmentBudgets(segments map[string]string, budgets map[string]int, way
 			continue
 		}
 
-		return fmt.Errorf("loomrecipe: bounce budget of review segment %q = %d; want 0 or more; way forward: set the perch's <perch>_max_bounces, or review_max_bounces, in loom.yaml", segment, budget)
+		return fmt.Errorf("loomrecipe: bounce budget of review segment %q = %d; want 0 or more; way forward: set the perch's %s or %s in loom.yaml, or %s in tapestry.yaml for the plan perch",
+			segment, budget,
+			loomengine.PerchBudgetKeyName("<perch>"),
+			loomengine.RunBudgetKeyName(),
+			loomengine.PerchBudgetKeyName(loomengine.PerchPlan))
 	}
 
 	return nil

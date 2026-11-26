@@ -68,6 +68,8 @@
 // `lym config reconcile` drops or fills keys across every module against its template.
 // It is a dry run unless applied.
 // A key the template lacks, a retired key included, is pruned only by this verb or removed by `--unset`.
+// A key a module's move table names is the exception:
+// every reconcile moves it to its new path, or drops it when it holds null or the new path is already set.
 // With no `--layer` it reconciles the worktree's own and local files;
 // `--layer default` reconciles every file under the Bolt checkout's `_lym/config/` instead.
 // A seed-only file, such as `profiles`, is never pruned down to the template.

@@ -77,11 +77,11 @@ func (c *Claude) SetAccount(name string) error {
 	index := slices.IndexFunc(claude.Accounts, func(account AccountConfig) bool { return account.Name == name })
 	switch {
 	case index < 0:
-		return fmt.Errorf("claudeengine: claude.yaml %s lists no account %q; %s; way forward: pick one of them, or add the account with `lym config claude --layer machine`", accountsKey, name, listedAccountsText(claude))
+		return fmt.Errorf("claudeengine: %s lists no account %q; %s; way forward: pick one of them, or add the account with `lym config claude --layer machine`", keyName(accountsKey), name, listedAccountsText(claude))
 	case claude.Accounts[index].retired():
 		return fmt.Errorf("claudeengine: account %q is retired with weight 0; %s; way forward: pick one of them", name, listedAccountsText(claude))
 	case claude.AccountPins.Hub != "":
-		return fmt.Errorf("claudeengine: %s names %q and holds every worktree of the hub to it; way forward: change the pin with `lym config claude --layer machine`", accountPinsKey+".hub", claude.AccountPins.Hub)
+		return fmt.Errorf("claudeengine: %s names %q and holds every worktree of the hub to it; way forward: change the pin with `lym config claude --layer machine`", keyName(accountPinsKey+".hub"), claude.AccountPins.Hub)
 	}
 	written := c.now()
 	return updateAccountFile(worktree.AccountDir, func(file accountFile) (accountFile, error) {
@@ -174,7 +174,7 @@ func (c *Claude) RecordStatusLine(name string, input []byte) (string, error) {
 		for _, account := range claude.Accounts {
 			listed = append(listed, account.Name)
 		}
-		return "", fmt.Errorf("claudeengine: claude.yaml %s lists no account %q, so nothing is recorded; the listed names are %s; way forward: run the status line with a listed account's name", accountsKey, name, strings.Join(listed, ", "))
+		return "", fmt.Errorf("claudeengine: %s lists no account %q, so nothing is recorded; the listed names are %s; way forward: run the status line with a listed account's name", keyName(accountsKey), name, strings.Join(listed, ", "))
 	}
 	dir := c.worktree.AccountDir
 	if dir == "" {

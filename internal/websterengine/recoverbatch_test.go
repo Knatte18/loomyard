@@ -616,7 +616,7 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
 				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, struct{ shuttleengine.Engine }{fx.Engine})
 				fx.Deps.State.Batches[1].RecoveryEngines = nil
-				return secondCall{refusal: []string{"engine:", "set engine: in shuttle.yaml back to an engine with fork audit"}}
+				return secondCall{refusal: []string{"shuttle.engine", "set shuttle.engine in shuttle.yaml back to an engine with fork audit"}}
 			},
 		},
 	}
@@ -1237,7 +1237,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				if err == nil || spawned {
 					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, error %v; want a refusal", spawned, err)
 				}
-				for _, want := range []string{"recovery", strconv.Quote(engine), "set recovery in webster.yaml"} {
+				for _, want := range []string{"recovery", strconv.Quote(engine), "set webster.recovery in webster.yaml"} {
 					if !strings.Contains(err.Error(), want) {
 						t.Errorf("error %q lacks %q", err, want)
 					}

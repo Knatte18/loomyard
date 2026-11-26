@@ -50,7 +50,7 @@ type prLanding struct {
 // beamModeUnreadableReason is the Stuck reason of a failed lookup of beam.yaml's pull_request for a landing.
 // err is the lookup's error.
 func beamModeUnreadableReason(err error) string {
-	return fmt.Sprintf("beam.yaml's pull_request for this landing could not be read: %v; way forward: fix the beam.yaml file the error names, with lym config beam --set pull_request=<on|off|merge|merge-in> run in that worktree, or for the hub's default file with lym config beam --layer default --set pull_request=<on|off|merge|merge-in> from the prime, then run lym loom resume; a run_settings change applies from the next run", err)
+	return fmt.Sprintf("%s for this landing could not be read: %v; way forward: fix the beam.yaml file the error names, with lym config beam --set pull_request=<on|off|merge|merge-in> run in that worktree, or for the hub's default file with lym config beam --layer default --set pull_request=<on|off|merge|merge-in> from the prime, then run lym loom resume; a run_settings change applies from the next run", beamPullRequestName(), err)
 }
 
 // pushHaltReason is the Stuck reason of a push of the task branch that failed for a reason other than a transient one.
@@ -609,10 +609,10 @@ func (fz *Finalize) mergeRefusalReason(landing prLanding, refusal *pullrequest.M
 		return fmt.Sprintf("GitHub refused to merge pull request %s: %s%s; way forward: settle on GitHub what the message names, then %s", rec.URL, refusal.Message, reported, check)
 	}
 	if refusal.Kind == pullrequest.RefusalMethod && landing.atOnce {
-		return fmt.Sprintf("GitHub refused the squash merge of pull request %s: %s; way forward: allow squash merging in the repository's settings on GitHub, since a landing whose beam.yaml pull_request is merge always squashes, then run lym loom resume", rec.URL, refusal.Message)
+		return fmt.Sprintf("GitHub refused the squash merge of pull request %s: %s; way forward: allow squash merging in the repository's settings on GitHub, since a landing whose %s is merge always squashes, then run lym loom resume", rec.URL, refusal.Message, beamPullRequestName())
 	}
 	if refusal.Kind == pullrequest.RefusalMethod {
-		return fmt.Sprintf("GitHub refused the merge method for pull request %s: %s; way forward: set landing.yaml's squash to the method the repository allows with lym config landing --set squash=<true|false> in the prime worktree, or allow the method in the repository's settings, then run lym loom resume", rec.URL, refusal.Message)
+		return fmt.Sprintf("GitHub refused the merge method for pull request %s: %s; way forward: set %s to the method the repository allows with lym config landing --set squash=<true|false> in the prime worktree, or allow the method in the repository's settings, then run lym loom resume", rec.URL, refusal.Message, keyName(squashKey))
 	}
 	return fmt.Sprintf("GitHub refused to merge pull request %s: %s%s; way forward: a second person approves the pull request again or settles the required check or conflict on GitHub, then runs lym loom resume; or the operator runs lym batten cancel %s", rec.URL, refusal.Message, reported, fz.deps.Slug)
 }

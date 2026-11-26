@@ -105,7 +105,7 @@ func hubWith(mutate func(*Config)) Config {
 // unparsableFixerRefusal is the refusal of a card key whose fixer value is text modelspec.Parse rejects.
 func unparsableFixerRefusal(spec string) string {
 	_, err := modelspec.Parse(spec)
-	return fmt.Sprintf(`gate config key "gates.card.fixer": %q is no model-spec: %v; set a model-spec such as sonnet[medium], or "" to turn the fixer off, with "lym config gate" from the prime%s`, spec, err, roleClause)
+	return fmt.Sprintf(`config key "gate.gates.card.fixer": %q is no model-spec: %v; set a model-spec such as sonnet[medium], or "" to turn the fixer off, with "lym config gate" from the prime%s`, spec, err, roleClause)
 }
 
 // fixIt is the way forward every key refusal of a load carries.
@@ -121,7 +121,7 @@ const hubTier0 = baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter
 const machineBadParallel = "tier_parallel:\n  tier0: 0\n"
 
 // badParallelKey is the key a refusal of machineBadParallel names.
-const badParallelKey = `gate config key "tier_parallel.tier0": "0"`
+const badParallelKey = `config key "gate.tier_parallel.tier0": "0"`
 
 // tier0Flow is a tiers block whose tier0 is written whole in flow form, with parallel and slots absent.
 const tier0Flow = `tiers:
@@ -246,19 +246,19 @@ func TestCheckDirs(t *testing.T) {
 			name:    "AMissingTierDirIsRefused",
 			tiers:   "tiers:\n  tier0: {command: run, dir: dotnet/dotnet, timeout_min: 1, counter: vstest}\n",
 			build:   "build: {}\n",
-			wantErr: []string{`key "tiers.tier0.dir"`, filepath.Join(root, "dotnet", "dotnet"), `"lym config gate" from the prime`},
+			wantErr: []string{`key "gate.tiers.tier0.dir"`, filepath.Join(root, "dotnet", "dotnet"), `"lym config gate" from the prime`},
 		},
 		{
 			name:    "ADirNamingARegularFileIsRefused",
 			tiers:   "tiers:\n  tier0: {command: run, dir: afile, timeout_min: 1, counter: vstest}\n",
 			build:   "build: {}\n",
-			wantErr: []string{`key "tiers.tier0.dir"`, filepath.Join(root, "afile")},
+			wantErr: []string{`key "gate.tiers.tier0.dir"`, filepath.Join(root, "afile")},
 		},
 		{
 			name:    "AMissingBuildDirIsRefused",
 			tiers:   "tiers:\n" + tier1,
 			build:   "build: {command: make, dir: gone, timeout_min: 1}\n",
-			wantErr: []string{`key "build.dir"`, filepath.Join(root, "gone")},
+			wantErr: []string{`key "gate.build.dir"`, filepath.Join(root, "gone")},
 		},
 	}
 	for _, tt := range tests {
@@ -292,15 +292,15 @@ func TestLoadConfig(t *testing.T) {
 		wantErr  string
 	}{
 		{"template loads to its defaults", ConfigTemplate(), hubWith(func(*Config) {}), ""},
-		{"zero slots", "slots: 0\n", Config{}, `gate config key "slots": 0; want at least 1; fix it with "lym config gate" from the prime` + roleClause},
+		{"zero slots", "slots: 0\n", Config{}, `config key "gate.slots": 0; want at least 1; fix it with "lym config gate" from the prime` + roleClause},
 		{"a retired go_parallel still loads, whatever its value", "slots: 2\ngo_parallel: 0\n", hubWith(func(*Config) {}), ""},
 		{"a retired cli_wait_sec still loads", "slots: 3\ncli_wait_sec: 180\n", hubWith(func(c *Config) { c.Slots = 3 }), ""},
 		{"a retired guard_tier still loads", "slots: 3\nguard_tier: 1\n", hubWith(func(c *Config) { c.Slots = 3 }), ""},
 		{"a retired test_map_max_age_days still loads, whatever its value", "slots: 3\ntest_map_max_age_days: 0\n", hubWith(func(c *Config) { c.Slots = 3 }), ""},
 		{"busy_quit_sec zero turns the watchdog off", "slots: 2\nbusy_quit_sec: 0\n", hubWith(func(c *Config) { c.BusyQuitSec = 0 }), ""},
 		{"memory_quit_mb zero turns the memory guard off", "slots: 2\nmemory_quit_mb: 0\n", hubWith(func(c *Config) { c.MemoryQuitMB = 0 }), ""},
-		{"negative memory_quit_mb", baseKeys + "memory_quit_mb: -1\n", Config{}, `gate config key "memory_quit_mb": -1; want at least 0` + fixIt},
-		{"tier with memory_mb 0", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, memory_mb: 0}}`, Config{}, `gate config key "tiers.tier0.memory_mb": 0; want at least 1, or no memory_mb for an uncapped tier` + fixIt},
+		{"negative memory_quit_mb", baseKeys + "memory_quit_mb: -1\n", Config{}, `config key "gate.memory_quit_mb": -1; want at least 0` + fixIt},
+		{"tier with memory_mb 0", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, memory_mb: 0}}`, Config{}, `config key "gate.tiers.tier0.memory_mb": 0; want at least 1, or no memory_mb for an uncapped tier` + fixIt},
 		{
 			"a tier in flow form reads parallel and slots as 1", baseKeys + tier0Flow,
 			hubWith(func(c *Config) {
@@ -334,19 +334,19 @@ func TestLoadConfig(t *testing.T) {
 		},
 		{
 			"a fixer on a key but card", baseKeys + "gates:\n  webster: {tiers: [0], scope: all, fixer: \"sonnet[medium]\"}\n", Config{},
-			`gate config key "gates.webster.fixer": a fixer is only for the card key, since only its agent call hands a red verdict to a fixer; remove fixer from that key with "lym config gate" from the prime` + roleClause,
+			`config key "gate.gates.webster.fixer": a fixer is only for the card key, since only its agent call hands a red verdict to a fixer; remove fixer from that key with "lym config gate" from the prime` + roleClause,
 		},
 		{"an unparsable fixer on the card key", baseKeys + "gates:\n  card: {fixer: \"???\"}\n", Config{}, unparsableFixerRefusal("???")},
-		{"fixer_timeout_min zero", baseKeys + "fixer_timeout_min: 0\n", Config{}, `gate config key "fixer_timeout_min": 0; want at least 1` + fixIt},
-		{"redundancy_build_timeout_min zero", baseKeys + "redundancy_build_timeout_min: 0\n", Config{}, `gate config key "redundancy_build_timeout_min": 0; want at least 1` + fixIt},
-		{"redundancy_test_timeout_sec zero", baseKeys + "redundancy_test_timeout_sec: 0\n", Config{}, `gate config key "redundancy_test_timeout_sec": 0; want at least 1` + fixIt},
-		{"redundancy_test_memory_mb zero", baseKeys + "redundancy_test_memory_mb: 0\n", Config{}, `gate config key "redundancy_test_memory_mb": 0; want at least 1` + fixIt},
-		{"redundancy_max_tests zero", baseKeys + "redundancy_max_tests: 0\n", Config{}, `gate config key "redundancy_max_tests": 0; want at least 1` + fixIt},
-		{"redundancy_budget_min zero", baseKeys + "redundancy_budget_min: 0\n", Config{}, `gate config key "redundancy_budget_min": 0; want at least 1` + fixIt},
-		{"reach_budget_min zero", baseKeys + "reach_budget_min: 0\n", Config{}, `gate config key "reach_budget_min": 0; want at least 1` + fixIt},
-		{"mutation_max_mutants zero", baseKeys + "mutation_max_mutants: 0\n", Config{}, `gate config key "mutation_max_mutants": 0; want at least 1` + fixIt},
-		{"mutation_budget_min zero", baseKeys + "mutation_budget_min: 0\n", Config{}, `gate config key "mutation_budget_min": 0; want at least 1` + fixIt},
-		{"an unknown report", baseKeys + "gates:\n  webster: {tiers: [0], scope: all, reports: [speed]}\n", Config{}, `gate config key "gates.webster": report "speed"; want reach, redundancy or mutation` + fixIt},
+		{"fixer_timeout_min zero", baseKeys + "fixer_timeout_min: 0\n", Config{}, `config key "gate.fixer_timeout_min": 0; want at least 1` + fixIt},
+		{"redundancy_build_timeout_min zero", baseKeys + "redundancy_build_timeout_min: 0\n", Config{}, `config key "gate.redundancy_build_timeout_min": 0; want at least 1` + fixIt},
+		{"redundancy_test_timeout_sec zero", baseKeys + "redundancy_test_timeout_sec: 0\n", Config{}, `config key "gate.redundancy_test_timeout_sec": 0; want at least 1` + fixIt},
+		{"redundancy_test_memory_mb zero", baseKeys + "redundancy_test_memory_mb: 0\n", Config{}, `config key "gate.redundancy_test_memory_mb": 0; want at least 1` + fixIt},
+		{"redundancy_max_tests zero", baseKeys + "redundancy_max_tests: 0\n", Config{}, `config key "gate.redundancy_max_tests": 0; want at least 1` + fixIt},
+		{"redundancy_budget_min zero", baseKeys + "redundancy_budget_min: 0\n", Config{}, `config key "gate.redundancy_budget_min": 0; want at least 1` + fixIt},
+		{"reach_budget_min zero", baseKeys + "reach_budget_min: 0\n", Config{}, `config key "gate.reach_budget_min": 0; want at least 1` + fixIt},
+		{"mutation_max_mutants zero", baseKeys + "mutation_max_mutants: 0\n", Config{}, `config key "gate.mutation_max_mutants": 0; want at least 1` + fixIt},
+		{"mutation_budget_min zero", baseKeys + "mutation_budget_min: 0\n", Config{}, `config key "gate.mutation_budget_min": 0; want at least 1` + fixIt},
+		{"an unknown report", baseKeys + "gates:\n  webster: {tiers: [0], scope: all, reports: [speed]}\n", Config{}, `config key "gate.gates.webster": report "speed"; want reach, redundancy or mutation` + fixIt},
 		{
 			"a key listing every report loads", baseKeys + "gates:\n  finalize: {tiers: [0], scope: all, reports: [reach, redundancy, mutation]}\n",
 			hubWith(func(c *Config) {
@@ -371,13 +371,13 @@ func TestLoadConfig(t *testing.T) {
 				c.Gates["darn-write"] = GateKey{Tiers: []int{0, 1}, Scope: "diff", Reports: []string{"reach", "redundancy", "mutation"}}
 			}), "",
 		},
-		{"scope card on a key but card and batch", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: card}\n", Config{}, `gate config key "gates.parent-align": scope card is only for the card and batch keys` + fixIt},
-		{"an unknown scope", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: some}\n", Config{}, `gate config key "gates.parent-align": scope "some"; want card, diff or all` + fixIt},
+		{"scope card on a key but card and batch", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: card}\n", Config{}, `config key "gate.gates.parent-align": scope card is only for the card and batch keys` + fixIt},
+		{"an unknown scope", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: some}\n", Config{}, `config key "gate.gates.parent-align": scope "some"; want card, diff or all` + fixIt},
 		{
 			"the retired scope coverage names the migrating way forward", baseKeys + "gates:\n  webster-fix: {tiers: [0], scope: coverage}\n", Config{},
-			`gate config key "gates.webster-fix": scope coverage is retired, since the gate no longer selects tests from the coverage maps; set scope diff with "lym config gate" from the prime` + roleClause,
+			`config key "gate.gates.webster-fix": scope coverage is retired, since the gate no longer selects tests from the coverage maps; set gate.gates.webster-fix.scope to diff with "lym config gate" from the prime` + roleClause,
 		},
-		{"an unknown lint", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: all, lints: [spelling]}\n", Config{}, `gate config key "gates.parent-align": lint "spelling"; want comments or pattern` + fixIt},
+		{"an unknown lint", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: all, lints: [spelling]}\n", Config{}, `config key "gate.gates.parent-align": lint "spelling"; want comments or pattern` + fixIt},
 		{
 			"a key's lints load in order", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: all, lints: [pattern, comments]}\n",
 			hubWith(func(c *Config) {
@@ -385,7 +385,7 @@ func TestLoadConfig(t *testing.T) {
 				c.Gates["parent-align"] = GateKey{Tiers: []int{0}, Scope: "all", Lints: []string{"pattern", "comments"}, Reports: []string{"reach", "redundancy"}}
 			}), "",
 		},
-		{"a key in the retired list shape", baseKeys + "gates:\n  card: [0]\n", Config{}, `gate config key "gates.card": the retired list shape; write it as a mapping with tiers and scope, such as {tiers: [0], scope: diff}, with "lym config gate" from the prime` + roleClause},
+		{"a key in the retired list shape", baseKeys + "gates:\n  card: [0]\n", Config{}, `config key "gate.gates.card": the retired list shape; write it as a mapping with tiers and scope, such as {tiers: [0], scope: diff}, with "lym config gate" from the prime` + roleClause},
 		{
 			"a manual tier above tier0 loads", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest}, tier3: {command: y, timeout_min: 5, counter: vstest, manual: true}}`,
 			hubWith(func(c *Config) {
@@ -393,21 +393,21 @@ func TestLoadConfig(t *testing.T) {
 				c.Tiers["tier3"] = Tier{Command: "y", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1, Manual: true}
 			}), "",
 		},
-		{"a manual tier0", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, manual: true}}`, Config{}, `gate config key "tiers.tier0.manual": true; want false, since tier0 is the tier a call with no tier flag runs` + fixIt},
-		{"tier without command", baseKeys + `tiers: {tier0: {timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.command": missing; want the shell command a run executes` + fixIt},
-		{"tier without timeout_min", baseKeys + `tiers: {tier0: {command: x, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.timeout_min": missing; want at least 1` + fixIt},
-		{"tier with timeout_min 0", baseKeys + `tiers: {tier0: {command: x, timeout_min: 0, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.timeout_min": 0; want at least 1` + fixIt},
-		{"tier without counter", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5}}`, Config{}, `gate config key "tiers.tier0.counter": missing; want go-json or vstest` + fixIt},
-		{"tier with an unknown counter", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: tap}}`, Config{}, `gate config key "tiers.tier0.counter": "tap"; want go-json or vstest` + fixIt},
-		{"command with {targets} and no all_targets", baseKeys + `tiers: {tier0: {command: "go test {targets}", timeout_min: 5, counter: go-json}}`, Config{}, `gate config key "tiers.tier0.all_targets": missing; want the targets of a whole run, since the command holds {targets} or {test_targets}` + fixIt},
-		{"command with {test_targets} alone and no all_targets", baseKeys + `tiers: {tier0: {command: "go test {test_targets}", timeout_min: 5, counter: go-json}}`, Config{}, `gate config key "tiers.tier0.all_targets": missing; want the targets of a whole run, since the command holds {targets} or {test_targets}` + fixIt},
-		{"tier with parallel 0", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, parallel: 0}}`, Config{}, `gate config key "tiers.tier0.parallel": 0; want at least 1` + fixIt},
-		{"tier with slots 0", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, slots: 0}}`, Config{}, `gate config key "tiers.tier0.slots": "0"; want all or a count of at least 1` + fixIt},
-		{"tier with slots everything", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, slots: everything}}`, Config{}, `gate config key "tiers.tier0.slots": "everything"; want all or a count of at least 1` + fixIt},
-		{"tier key whose number overflows int", baseKeys + `tiers: {tier99999999999999999999: {command: x, timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tier99999999999999999999" under "tiers": want a tier number that fits an int, such as tier0` + fixIt},
-		{"covers a tier that is not lower", baseKeys + `tiers: {tier1: {command: x, timeout_min: 5, counter: vstest, covers: [1]}}`, Config{}, `gate config key "tiers.tier1.covers": 1; want tier numbers lower than 1` + fixIt},
-		{"tier key not spelled tier<N>", baseKeys + `tiers: {fast: {command: x, timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "fast" under "tiers": want a name spelled tier<N>, such as tier0` + fixIt},
-		{"unknown scoper", baseKeys + "scoper: rust\n", Config{}, `gate config key "scoper": "rust"; want go, none or dotnet` + fixIt},
+		{"a manual tier0", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, manual: true}}`, Config{}, `config key "gate.tiers.tier0.manual": true; want false, since tier0 is the tier a call with no tier flag runs` + fixIt},
+		{"tier without command", baseKeys + `tiers: {tier0: {timeout_min: 5, counter: vstest}}`, Config{}, `config key "gate.tiers.tier0.command": missing; want the shell command a run executes` + fixIt},
+		{"tier without timeout_min", baseKeys + `tiers: {tier0: {command: x, counter: vstest}}`, Config{}, `config key "gate.tiers.tier0.timeout_min": missing; want at least 1` + fixIt},
+		{"tier with timeout_min 0", baseKeys + `tiers: {tier0: {command: x, timeout_min: 0, counter: vstest}}`, Config{}, `config key "gate.tiers.tier0.timeout_min": 0; want at least 1` + fixIt},
+		{"tier without counter", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5}}`, Config{}, `config key "gate.tiers.tier0.counter": missing; want go-json or vstest` + fixIt},
+		{"tier with an unknown counter", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: tap}}`, Config{}, `config key "gate.tiers.tier0.counter": "tap"; want go-json or vstest` + fixIt},
+		{"command with {targets} and no all_targets", baseKeys + `tiers: {tier0: {command: "go test {targets}", timeout_min: 5, counter: go-json}}`, Config{}, `config key "gate.tiers.tier0.all_targets": missing; want the targets of a whole run, since the command holds {targets} or {test_targets}` + fixIt},
+		{"command with {test_targets} alone and no all_targets", baseKeys + `tiers: {tier0: {command: "go test {test_targets}", timeout_min: 5, counter: go-json}}`, Config{}, `config key "gate.tiers.tier0.all_targets": missing; want the targets of a whole run, since the command holds {targets} or {test_targets}` + fixIt},
+		{"tier with parallel 0", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, parallel: 0}}`, Config{}, `config key "gate.tiers.tier0.parallel": 0; want at least 1` + fixIt},
+		{"tier with slots 0", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, slots: 0}}`, Config{}, `config key "gate.tiers.tier0.slots": "0"; want all or a count of at least 1` + fixIt},
+		{"tier with slots everything", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, slots: everything}}`, Config{}, `config key "gate.tiers.tier0.slots": "everything"; want all or a count of at least 1` + fixIt},
+		{"tier key whose number overflows int", baseKeys + `tiers: {tier99999999999999999999: {command: x, timeout_min: 5, counter: vstest}}`, Config{}, `config key "gate.tiers.tier99999999999999999999": want a tier number that fits an int, such as tier0` + fixIt},
+		{"covers a tier that is not lower", baseKeys + `tiers: {tier1: {command: x, timeout_min: 5, counter: vstest, covers: [1]}}`, Config{}, `config key "gate.tiers.tier1.covers": 1; want tier numbers lower than 1` + fixIt},
+		{"tier key not spelled tier<N>", baseKeys + `tiers: {fast: {command: x, timeout_min: 5, counter: vstest}}`, Config{}, `config key "gate.tiers.fast": want a name spelled tier<N>, such as tier0` + fixIt},
+		{"unknown scoper", baseKeys + "scoper: rust\n", Config{}, `config key "gate.scoper": "rust"; want go, none or dotnet` + fixIt},
 		{"scoper dotnet", baseKeys + "scoper: dotnet\n", hubWith(func(c *Config) { c.Scoper = "dotnet" }), ""},
 		{
 			"filter, shared_build and carry false beside a build and inert_paths", baseKeys + `tiers: {tier0: {command: "dotnet test {filter}", filter: "Category!=Slow", shared_build: true, carry: false, timeout_min: 5, counter: vstest}, tier1: {command: x, timeout_min: 5, counter: vstest, carry: true}}
@@ -421,7 +421,7 @@ inert_paths: ["*.md", "docs/*"]
 				c.InertPaths = []string{"*.md", "docs/*"}
 			}), "",
 		},
-		{"filter on a command with no {filter}", baseKeys + `tiers: {tier0: {command: x, filter: "A", timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.filter": set, but the command holds no {filter}; want {filter} in the command or no filter` + fixIt},
+		{"filter on a command with no {filter}", baseKeys + `tiers: {tier0: {command: x, filter: "A", timeout_min: 5, counter: vstest}}`, Config{}, `config key "gate.tiers.tier0.filter": set, but the command holds no {filter}; want {filter} in the command or no filter` + fixIt},
 		{
 			"test_timeout_min defaults or loads on a command with {test_timeout}", baseKeys + `tiers: {tier0: {command: "go test -timeout {test_timeout}", timeout_min: 30, counter: go-json}, tier1: {command: "go test -timeout {test_timeout}", test_timeout_min: 25, timeout_min: 30, counter: go-json}}`,
 			hubWith(func(c *Config) {
@@ -429,26 +429,26 @@ inert_paths: ["*.md", "docs/*"]
 				c.Tiers["tier1"] = Tier{Command: "go test -timeout {test_timeout}", Parallel: 1, TimeoutMin: 30, TestTimeoutMin: 25, Counter: "go-json", Slots: 1}
 			}), "",
 		},
-		{"test_timeout_min on a command with no {test_timeout}", baseKeys + `tiers: {tier0: {command: x, test_timeout_min: 25, timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.test_timeout_min": set, but the command holds no {test_timeout}; want {test_timeout} in the command or no test_timeout_min` + fixIt},
-		{"test_timeout_min 0", baseKeys + `tiers: {tier0: {command: "t {test_timeout}", test_timeout_min: 0, timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.test_timeout_min": 0; want at least 1` + fixIt},
+		{"test_timeout_min on a command with no {test_timeout}", baseKeys + `tiers: {tier0: {command: x, test_timeout_min: 25, timeout_min: 5, counter: vstest}}`, Config{}, `config key "gate.tiers.tier0.test_timeout_min": set, but the command holds no {test_timeout}; want {test_timeout} in the command or no test_timeout_min` + fixIt},
+		{"test_timeout_min 0", baseKeys + `tiers: {tier0: {command: "t {test_timeout}", test_timeout_min: 0, timeout_min: 5, counter: vstest}}`, Config{}, `config key "gate.tiers.tier0.test_timeout_min": 0; want at least 1` + fixIt},
 		{
 			"results trx loads on a vstest tier whose command holds {args}", baseKeys + `tiers: {tier0: {command: "dotnet test {args}", results: trx, timeout_min: 5, counter: vstest}}`,
 			hubWith(func(c *Config) {
 				c.Tiers["tier0"] = Tier{Command: "dotnet test {args}", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1, Results: ResultsTRX}
 			}), "",
 		},
-		{"results other than trx", baseKeys + `tiers: {tier0: {command: "dotnet test {args}", results: xml, timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.results": "xml"; want trx or no results` + fixIt},
-		{"results trx on a go-json tier", baseKeys + `tiers: {tier0: {command: "go test {args}", results: trx, timeout_min: 5, counter: go-json}}`, Config{}, `gate config key "tiers.tier0.results": "trx", but the counter is "go-json"; want counter vstest or no results` + fixIt},
-		{"results trx on a command with no {args}", baseKeys + `tiers: {tier0: {command: "dotnet test", results: trx, timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.results": "trx", but the command holds no {args}; want {args} in the command, where the gate puts the options that write the results file, or no results` + fixIt},
-		{"build without command", baseKeys + "build: {dir: x, timeout_min: 5}\n", Config{}, `gate config key "build.command": missing; want the shell command the build runs` + fixIt},
-		{"build without timeout_min", baseKeys + "build: {command: b}\n", Config{}, `gate config key "build.timeout_min": missing; want at least 1` + fixIt},
-		{"build with timeout_min 0", baseKeys + "build: {command: b, timeout_min: 0}\n", Config{}, `gate config key "build.timeout_min": 0; want at least 1` + fixIt},
-		{"shared_build with no build step", baseKeys + `tiers: {tier0: {command: x, shared_build: true, timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.shared_build": true, but the hub declares no build step; want a build step or shared_build false` + fixIt},
-		{"refuse_raw entry with a double space", baseKeys + `refuse_raw: ["go  test"]`, Config{}, `gate config key "refuse_raw": "go  test"; want one or more words of letters, digits, '.', '_' and '-' separated by single spaces` + fixIt},
-		{"covers a negative tier", baseKeys + `tiers: {tier1: {command: x, timeout_min: 5, counter: vstest, covers: [-1]}}`, Config{}, `gate config key "tiers.tier1.covers": -1; want tier numbers lower than 1` + fixIt},
-		{"refuse_raw entry with a shell character", baseKeys + `refuse_raw: ["go;test"]`, Config{}, `gate config key "refuse_raw": "go;test"; want one or more words of letters, digits, '.', '_' and '-' separated by single spaces` + fixIt},
+		{"results other than trx", baseKeys + `tiers: {tier0: {command: "dotnet test {args}", results: xml, timeout_min: 5, counter: vstest}}`, Config{}, `config key "gate.tiers.tier0.results": "xml"; want trx or no results` + fixIt},
+		{"results trx on a go-json tier", baseKeys + `tiers: {tier0: {command: "go test {args}", results: trx, timeout_min: 5, counter: go-json}}`, Config{}, `config key "gate.tiers.tier0.results": "trx", but the counter is "go-json"; want counter vstest or no results` + fixIt},
+		{"results trx on a command with no {args}", baseKeys + `tiers: {tier0: {command: "dotnet test", results: trx, timeout_min: 5, counter: vstest}}`, Config{}, `config key "gate.tiers.tier0.results": "trx", but the command holds no {args}; want {args} in the command, where the gate puts the options that write the results file, or no results` + fixIt},
+		{"build without command", baseKeys + "build: {dir: x, timeout_min: 5}\n", Config{}, `config key "gate.build.command": missing; want the shell command the build runs` + fixIt},
+		{"build without timeout_min", baseKeys + "build: {command: b}\n", Config{}, `config key "gate.build.timeout_min": missing; want at least 1` + fixIt},
+		{"build with timeout_min 0", baseKeys + "build: {command: b, timeout_min: 0}\n", Config{}, `config key "gate.build.timeout_min": 0; want at least 1` + fixIt},
+		{"shared_build with no build step", baseKeys + `tiers: {tier0: {command: x, shared_build: true, timeout_min: 5, counter: vstest}}`, Config{}, `config key "gate.tiers.tier0.shared_build": true, but the hub declares no build step; want a build step or shared_build false` + fixIt},
+		{"refuse_raw entry with a double space", baseKeys + `refuse_raw: ["go  test"]`, Config{}, `config key "gate.refuse_raw": "go  test"; want one or more words of letters, digits, '.', '_' and '-' separated by single spaces` + fixIt},
+		{"covers a negative tier", baseKeys + `tiers: {tier1: {command: x, timeout_min: 5, counter: vstest, covers: [-1]}}`, Config{}, `config key "gate.tiers.tier1.covers": -1; want tier numbers lower than 1` + fixIt},
+		{"refuse_raw entry with a shell character", baseKeys + `refuse_raw: ["go;test"]`, Config{}, `config key "gate.refuse_raw": "go;test"; want one or more words of letters, digits, '.', '_' and '-' separated by single spaces` + fixIt},
 		{"absent busy_quit_sec takes the template value", "slots: 2\n", hubWith(func(*Config) {}), ""},
-		{"negative busy_quit_sec", "slots: 2\nbusy_quit_sec: -1\n", Config{}, `gate config key "busy_quit_sec": -1; want at least 0; fix it with "lym config gate" from the prime` + roleClause},
+		{"negative busy_quit_sec", "slots: 2\nbusy_quit_sec: -1\n", Config{}, `config key "gate.busy_quit_sec": -1; want at least 0; fix it with "lym config gate" from the prime` + roleClause},
 		{"absent file names the one way forward", "", Config{}, `gate config absent; run "lym fabric reconcile"; a session lym refuses the verb from reports status: FAILED and the orch runs it`},
 	}
 	for _, tc := range tests {
@@ -557,26 +557,26 @@ inert_paths: ["*.md", "docs/*"]
 		{
 			name: "a machine tier_parallel entry below 1 names both files and both ways forward", hub: baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest}}`, machine: "tier_parallel:\n  tier0: 0\n",
 			wantErr: func(hub, machine string) string {
-				return `gate config key "tier_parallel.tier0": "0"; want an integer of at least 1` + twoFileWayForward(hub, machine)
+				return `config key "gate.tier_parallel.tier0": "0"; want an integer of at least 1` + twoFileWayForward(hub, machine)
 			},
 		},
 		{
 			name: "a machine tier_parallel entry that is no integer names both files", hub: baseKeys, machine: "tier_parallel:\n  tier0: many\n",
 			wantErr: func(hub, machine string) string {
-				return `gate config key "tier_parallel.tier0": "many"; want an integer of at least 1` + twoFileWayForward(hub, machine)
+				return `config key "gate.tier_parallel.tier0": "many"; want an integer of at least 1` + twoFileWayForward(hub, machine)
 			},
 		},
 		{
 			name: "a machine busy_quit_sec is refused as a cross-pair key", hub: "slots: 2\n", machine: "busy_quit_sec: 9\n",
 			wantInvalid: true,
 			wantErr: func(hub, machine string) string {
-				return "machine config file " + machine + `: key "busy_quit_sec" is cross-pair and cannot be set in a machine override; way forward: remove it from the machine override and set it in the hub file through "lym config gate" from the prime` + twoFileWayForward(hub, machine)
+				return "machine config file " + machine + `: key "gate.busy_quit_sec" is cross-pair and cannot be set in a machine override; way forward: remove it from the machine override and set it in the hub file through "lym config gate" from the prime` + twoFileWayForward(hub, machine)
 			},
 		},
 		{
 			name: "a machine cli_wait_sec is refused as retired", hub: "slots: 2\n", machine: "cli_wait_sec: 180\n",
 			wantInvalid:  true,
-			wantContains: func(hub, machine string) []string { return []string{machine, `"cli_wait_sec"`, "retired"} },
+			wantContains: func(hub, machine string) []string { return []string{machine, `"gate.cli_wait_sec"`, "retired"} },
 		},
 		{
 			name: "a board-only load never stacks the machine file", hub: hubTier0, machine: machineBadParallel, boardOnly: true,

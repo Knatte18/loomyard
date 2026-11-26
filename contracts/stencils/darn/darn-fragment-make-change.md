@@ -1,7 +1,7 @@
 <!-- This is the darn writer's Step 4 list for a run whose verify gate has no cold fixer:
      the writer and its subagents run the gate themselves.
      internal/darnengine's DarnTable reads it for the writer's engine,
-     fills the {{.subagent_model}} marker its Claude engine block declares from loom.yaml's subagent_model,
+     fills the {{.subagent_model}} marker its Claude engine block declares from loom.subagent_model,
      then fills the result whole into darn-template-write's make_change marker. -->
 
 1. Edit the repository to make the change.
@@ -12,8 +12,8 @@
    Keep in this session the work that needs the overview: the design, a change that spans packages, the commits and the change description.
 3. Test with `lym gate test` after the last edit of each commit; it computes its scope from your changes, and when it answers `done: false` with exit 75 the run goes on, so run the same command again; never run a raw test command or a module-wide run.
    A gate line saying a tier ran no test of a project means the project skipped its own tests, and the gate's pass covers none of them.
-   When your change needs those tests and the hub's `refuse_raw` does not list `dotnet test`, run them by hand as that line's way forward names, and check that the run's summary line reports them: this is the one raw test command you run.
-   When `refuse_raw` lists it, report the skipped tests to your parent, or with no parent name them in the change description.
+   When your change needs those tests and the hub's `gate.refuse_raw` does not list `dotnet test`, run them by hand as that line's way forward names, and check that the run's summary line reports them: this is the one raw test command you run.
+   When `gate.refuse_raw` lists it, report the skipped tests to your parent, or with no parent name them in the change description.
    Learn how an external tool such as tmux behaves from a test you write in the repository, in the tier the hub runs that tool's tests in,
    and run that one test through `lym gate test --tier <that tier>` with its package and, after `--`, a filter that selects it;
    then check that the gate's report shows the test ran, not skipped.

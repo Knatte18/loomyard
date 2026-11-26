@@ -217,7 +217,7 @@ func (g memoryGuard) kills(trees []testTree, killed map[int]bool) []memoryKill {
 			}
 		}
 		if !holdsInner {
-			kills = append(kills, memoryKill{tree: tree, reason: fmt.Sprintf("it held %d MB, over memory_quit_mb's %d MB", tree.held>>20, g.limit>>20)})
+			kills = append(kills, memoryKill{tree: tree, reason: fmt.Sprintf("it held %d MB, over %s's %d MB", tree.held>>20, keyName(memoryQuitMBKey), g.limit>>20)})
 		}
 	}
 	if len(kills) > 0 {
@@ -285,8 +285,8 @@ func memoryGuardLine(binary string, pid int, dir, filter, reason string) string 
 	}
 	return fmt.Sprintf("lym gate: memory guard: killed the test binary %s (pid %d) %s%s, with every process it started: %s; "+
 		"its tests fail; way forward: find the test that holds memory without bound, fix it and re-run the same command; "+
-		"raise memory_quit_mb in the hub's gate.yaml through \"lym config gate\" from the prime only for a package whose tests need that much",
-		binary, pid, where, tests, reason)
+		"raise %s through \"lym config gate\" from the prime only for a package whose tests need that much",
+		binary, pid, where, tests, reason, keyName(memoryQuitMBKey))
 }
 
 // memoryGuardApplies decides whether the memory guard runs, and returns the reason it logs.
@@ -296,12 +296,12 @@ func memoryGuardLine(binary string, pid int, dir, filter, reason string) string 
 // An empty, unparsable or non-ancestor enclosing value is ignored.
 func memoryGuardApplies(limit int64, enclosing string, isAncestor func(pid int) bool) (bool, string) {
 	if limit <= 0 {
-		return false, "memory_quit_mb is 0"
+		return false, keyName(memoryQuitMBKey) + " is 0"
 	}
 	if pid, err := strconv.Atoi(enclosing); err == nil && isAncestor(pid) {
 		return false, fmt.Sprintf("an enclosing lym gate test (pid %d) already guards this run's memory", pid)
 	}
-	return true, "memory_quit_mb is set and no enclosing lym gate test guards this run"
+	return true, keyName(memoryQuitMBKey) + " is set and no enclosing lym gate test guards this run"
 }
 
 // guardOwnTests starts the memory guard over the test binaries the calling process starts, when the guard applies.

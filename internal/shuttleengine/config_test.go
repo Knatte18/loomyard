@@ -132,8 +132,8 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		if !errors.Is(err, configengine.ErrInvalid) {
 			t.Fatalf("err = %v, want ErrInvalid", err)
 		}
-		if !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), `"deny_python"`) {
-			t.Errorf("err = %q, want it to name %s and key deny_python", err, localFile)
+		if !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), `"shuttle.deny_python"`) {
+			t.Errorf("err = %q, want it to name %s and key shuttle.deny_python", err, localFile)
 		}
 	})
 }
@@ -297,8 +297,8 @@ func TestLoadConfig_RetiredClaudeKeys(t *testing.T) {
 	}{
 		{name: "retired TTL roles map in the local layer loads", localBody: "claude_prompt_cache_ttl_roles:\n  a: 1h\n  b: 5m\n"},
 		{name: "retired TTL map in the local layer loads", localBody: "claude_prompt_cache_ttl: {a: 1}\n"},
-		{name: "retired executable key in the local layer is refused", localBody: "claude: /opt/claude\n", wantErr: `"claude"`},
-		{name: "retired guard key in the local layer is refused", localBody: "claude_deny_agent_tool: false\n", wantErr: `"claude_deny_agent_tool"`},
+		{name: "retired executable key in the local layer is refused", localBody: "claude: /opt/claude\n", wantErr: `"shuttle.claude"`},
+		{name: "retired guard key in the local layer is refused", localBody: "claude_deny_agent_tool: false\n", wantErr: `"shuttle.claude_deny_agent_tool"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
