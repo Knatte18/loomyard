@@ -1381,6 +1381,12 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	c.driverPaneProbe = newReedDriverPaneProbe(reedEngine)
 	c.driverDirectory = newReedDriverDirectory(reedEngine)
 	c.bouncerSubdir = loomrecipe.BouncerRunSubdir
+	c.restoreStatusPane = func() error {
+		if _, err := reedEngine.Up(); err != nil {
+			return err
+		}
+		return c.ensureStatusStrand()
+	}
 	// The slug is read when the pusher starts, since the run id is armed before wire and read here lazily.
 	c.startPusher = func() {
 		start := c.pusherStart

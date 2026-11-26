@@ -22,7 +22,7 @@ import (
 // It then gets past the reed config load.
 // The stamp exists afterwards, and the verb reaches the run's own state.
 // It refuses over the missing driver with the way forward, never over a config.
-// Resume brings no reed session up, so reed reports no session on the registered hub key.
+// A refused resume brings no reed session up, so reed reports no session on the registered hub key.
 func TestLoomResumeReconcilesThenRefusesWithoutLiveDriver(t *testing.T) {
 	tiergate.Require(t, 2)
 	tmuxBinaryPath(t)
@@ -49,6 +49,6 @@ func TestLoomResumeReconcilesThenRefusesWithoutLiveDriver(t *testing.T) {
 		t.Fatalf("reed geometry: %v", err)
 	}
 	if _, statusErr := probeReedEngine(t, loc).Status(); !errors.Is(statusErr, reedengine.ErrNoSession) {
-		t.Errorf("reed status on key %q after loom resume = %v; want reed's no-session refusal: resume never brings reed up", reedGeom.SocketKey, statusErr)
+		t.Errorf("reed status on key %q after loom resume = %v; want reed's no-session refusal: a refused resume never brings reed up", reedGeom.SocketKey, statusErr)
 	}
 }

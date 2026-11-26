@@ -1210,8 +1210,9 @@ User-facing modules each get one `lym <module>` namespace:
   `lym loom resume` wakes a halted run's live, parked driver through the same branch.
   A run awaiting at a review segment's Bouncer row with a pending circling decision takes that branch too:
   its driver's step re-calls the Bouncer, which acts on the decision.
-  `lym loom resume` never spawns an LLM driver, adds a strand or brings reed up.
+  `lym loom resume` never spawns an LLM driver.
   It spawns a Go driver for a halted go-seeded run that has none.
+  Before it spawns or wakes a driver it brings reed up and restores the run's status strand, as `start` does.
   It reads the driver strand from reed's sessionless directory.
   It refuses every other state with its way forward.
   [refusal-spec.md](../contracts/specs/refusal-spec.md) defines a way forward.

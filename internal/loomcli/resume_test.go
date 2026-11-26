@@ -51,6 +51,8 @@ type resumeEnvelope struct {
 	Conflicts  *[]string `json:"conflicts"`
 	// StencilsChanged lists the stencils changed since the run started.
 	StencilsChanged []string `json:"stencils_changed"`
+	// StatusPane is the warning of a status-pane restore that failed.
+	StatusPane string `json:"status_pane"`
 }
 
 // newResumeVerbReceiver builds a receiver for the resume verb over the shared temp-directory fixture.
@@ -167,7 +169,8 @@ func (s eventSender) SendDriver(guid, text string) error {
 // It asserts that nothing was spawned, added or removed.
 // It asserts that a resume line was typed only when a parked driver was woken.
 // It asserts that no message names `lym loom start` as the retry of resume.
-// Rows that name their events assert the pusher starts once before any driver wake.
+// It asserts that the status pane is restored once exactly when a driver is about to be put to work.
+// Rows that name their events assert the pusher starts once, then the pane is restored, before any driver wake.
 // They assert it does not start for a done or covered run.
 func TestResumeVerb(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -229,6 +232,11 @@ func TestResumeVerb(t *testing.T) {
 		// ordered makes the row assert wantEvents, the pusher starts and driver wakes in call order.
 		ordered    bool
 		wantEvents []string
+		// paneErr makes the status-pane restore fail.
+		paneErr error
+		// wantPaneIn holds substrings of the envelope's status_pane warning;
+		// empty means the envelope carries none.
+		wantPaneIn []string
 	}{
 		{name: "no status file", wantIn: []string{`"lym loom start"`, "task worktree"}},
 		{name: "done is a no-op success", runState: shedengine.StateDone, directory: noDriver, wantOK: true, wantIn: []string{"done"}, ordered: true},
@@ -247,7 +255,7 @@ func TestResumeVerb(t *testing.T) {
 		{name: "blocked parked driver is woken", runState: shedengine.StateBlocked, directory: liveDriver, marker: true, wantOK: true, wantSent: true, wantIn: []string{"woken"}},
 		{name: "parked driver whose pane holds a draft is refused as busy", runState: shedengine.StateBlocked, directory: liveDriver, marker: true, sendErr: fmt.Errorf("the input box holds a draft: %w", shuttleengine.ErrSessionBusy), wantKind: shedrun.StartDriverBusyKind, wantIn: []string{"draft", `"lym loom resume" again`, "lym batten run <slug>"}},
 		{name: "paused parked driver is woken", runState: shedengine.StatePaused, directory: liveDriver, marker: true, wantOK: true, wantSent: true, wantIn: []string{"woken"},
-			ordered: true, wantEvents: []string{"pusher", "wake"}},
+			ordered: true, wantEvents: []string{"pusher", "pane", "wake"}},
 		{name: "failed parked driver is woken", runState: shedengine.StateFailed, directory: liveDriver, marker: true, wantOK: true, wantSent: true, wantIn: []string{"woken"}},
 		{name: "parked driver over an unfinished merge is refused", runState: shedengine.StateBlocked, directory: liveDriver, marker: true, merge: mergeParked, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{`"lym loom resume"`, "lym fabric merge"}},
 		{name: "no live driver over an unfinished merge is refused", runState: shedengine.StateBlocked, directory: deadDriver, merge: mergeParked, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{`"lym loom resume"`}},
@@ -262,7 +270,9 @@ func TestResumeVerb(t *testing.T) {
 		{name: "a held driver lock over a blocked run is refused as not parked", runState: shedengine.StateBlocked, directory: noDriver, driverLock: true, wantKind: shedrun.StartNotParkedKind, wantIn: []string{"Go driver", "settling", `"lym loom resume" again`}},
 		{name: "a held driver lock over a running run is the already-running success", runState: shedengine.StateRunning, directory: noDriver, driverLock: true, wantOK: true, wantIn: []string{"already running"}},
 		{name: "a go-seeded blocked run with no strand spawns a Go driver once", runState: shedengine.StateBlocked, directory: noDriver, seedDriver: shedrun.DriverGo, wantOK: true, wantSpawns: 1, wantIn: []string{"a Go driver was spawned"},
-			ordered: true, wantEvents: []string{"pusher", "wake"}},
+			ordered: true, wantEvents: []string{"pusher", "pane", "wake"}},
+		{name: "a failed status-pane restore still spawns the Go driver and names start", runState: shedengine.StateBlocked, directory: noDriver, seedDriver: shedrun.DriverGo, paneErr: errors.New("reed up failed"),
+			wantOK: true, wantSpawns: 1, wantIn: []string{"a Go driver was spawned"}, wantPaneIn: []string{"reed up failed", `"lym loom start"`}},
 		{name: "a go-seeded run under an unfinished merge is refused with no spawn", runState: shedengine.StateBlocked, directory: noDriver, seedDriver: shedrun.DriverGo, merge: mergeParked, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{"lym fabric merge"}},
 		{name: "an llm-seeded blocked run with no strand keeps the no-driver-strand refusal", runState: shedengine.StateBlocked, directory: noDriver, seedDriver: shedrun.DriverLLM, wantIn: []string{"no driver strand", `"lym loom start"`}},
 		{name: "a go-seeded running run with no driver keeps the no-live-driver refusal", runState: shedengine.StateRunning, directory: noDriver, seedDriver: shedrun.DriverGo, wantIn: []string{"no live driver", `"lym loom start"`}},
@@ -289,6 +299,12 @@ func TestResumeVerb(t *testing.T) {
 			var events []string
 			c.startPusher = func() { events = append(events, "pusher") }
 			c.driverSender = eventSender{inner: sender, events: &events}
+			paneRestores := 0
+			c.restoreStatusPane = func() error {
+				paneRestores++
+				events = append(events, "pane")
+				return tt.paneErr
+			}
 			spawns := 0
 			c.spawnGoDriver = func() (int, error) {
 				spawns++
@@ -375,6 +391,21 @@ func TestResumeVerb(t *testing.T) {
 			}
 			if spawns != tt.wantSpawns {
 				t.Errorf("Go driver spawns = %d; want %d", spawns, tt.wantSpawns)
+			}
+			wantPaneRestores := 0
+			if tt.wantSpawns > 0 || tt.wantSent || tt.sendErr != nil {
+				wantPaneRestores = 1
+			}
+			if paneRestores != wantPaneRestores {
+				t.Errorf("status-pane restores = %d; want %d", paneRestores, wantPaneRestores)
+			}
+			if len(tt.wantPaneIn) == 0 && env.StatusPane != "" {
+				t.Errorf("status_pane = %q; want none", env.StatusPane)
+			}
+			for _, want := range tt.wantPaneIn {
+				if !strings.Contains(env.StatusPane, want) {
+					t.Errorf("status_pane %q lacks %q", env.StatusPane, want)
+				}
 			}
 			if tt.ordered && !slices.Equal(events, tt.wantEvents) {
 				t.Errorf("pusher starts and driver wakes = %v; want %v", events, tt.wantEvents)

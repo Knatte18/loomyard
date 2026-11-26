@@ -597,7 +597,9 @@ Example:
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			if err := c.ensureStatusStrand(); err != nil {
+			if err := c.ensureStatusStrand(); errors.Is(err, errStatusStrandNotReplaced) {
+				logger.Warn("loom: the status pane will be missing this run", "cause", err)
+			} else if err != nil {
 				_ = bootstrapLock.Release()
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil

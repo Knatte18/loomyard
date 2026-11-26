@@ -199,6 +199,10 @@ type loomCLI struct {
 	// startPusher starts the pusher of the run's pair, which a resume does before it wakes a driver.
 	// Nil starts nothing, which only a hand-populated receiver has.
 	startPusher func()
+	// restoreStatusPane brings the worktree's reed session up and keeps, replaces or adds its status strand.
+	// A resume runs it before it puts a driver to work, so a run resumed after a reboot gets its status pane back.
+	// Nil restores nothing, which only a hand-populated receiver has.
+	restoreStatusPane func() error
 	// pusherStart is the pusher start startPusher runs.
 	// Nil selects runpusher.Start.
 	pusherStart func(runpusher.Target) (bool, error)

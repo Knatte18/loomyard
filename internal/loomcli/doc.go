@@ -107,6 +107,9 @@
 //   - halted with no live driver otherwise: refused, naming `lym batten run <slug>` or `lym loom start`.
 //
 // The driver strand is read from reed's directory, never from the run's seed.
+// As start does, a resume brings reed up and keeps, replaces or adds the status strand.
+// It does so before it spawns or wakes a driver, so a run resumed after a reboot gets its status pane back.
+// A failed restore never fails the resume: the envelope's `status_pane` names it and `lym loom start`.
 // A start or resume that spawns or wakes a driver compares the run's stencil pins with the installed stencils.
 // One notice to the run's parent orch names each changed or missing stencil,
 // and the envelope lists them under `stencils_changed`.

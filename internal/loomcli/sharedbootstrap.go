@@ -1,9 +1,11 @@
-// sharedbootstrap.go holds the bootstrap steps that `start` and `step` share.
+// sharedbootstrap.go holds the bootstrap helpers that `start`, `step` and `resume` share.
 // Every helper here is lock-agnostic: none acquires or releases loomengine.LoomBootstrapLock.
-// Each verb wraps its own lock window around these calls, so no helper may assume either window.
+// Each verb wraps its own lock window around these calls, so no helper may assume any one window.
 // `start` holds the lock across the strand work, the driver spawn, and the run-lock handshake.
 // `step` holds it around reed Up alone and releases it before it calls the producer.
-// ensureStatusStrand is `start`'s alone, because `step` touches no strand.
+// `resume` holds it across its status-pane restore and the driver wake or spawn.
+// ensureStatusStrand is called by `start` and by `resume`'s status-pane restore.
+// `step` never calls it, because `step` touches no strand.
 
 package loomcli
 
@@ -331,13 +333,17 @@ func ensureFrictionDirAfterSeed(frictionDir string, seedErr error) {
 	friction.EnsureDir(frictionDir)
 }
 
-// ensureStatusStrand is `start`'s status-strand work: it keeps, replaces or adds the worktree's status strand.
-// Only `start` calls it, after it has brought reed up.
-// It runs after the bootstrap-lock acquisition and ends before the run-lock probe.
+// errStatusStrandNotReplaced marks a failed replace of the status strand.
+// It costs the operator the status pane, not the run.
+var errStatusStrandNotReplaced = errors.New("could not replace the status strand")
+
+// ensureStatusStrand keeps, replaces or adds the worktree's status strand.
+// The caller has brought reed up and holds the bootstrap lock, which this function neither acquires nor releases.
 //
-// It returns the first error encountered, unwrapped, and nil on success.
-// The caller owns the bootstrap lock: this function must neither acquire nor release it.
-// The lock's position differs between the verbs that run the bootstrap.
+// It returns nil on success.
+// A failed replace returns an error wrapping errStatusStrandNotReplaced and the cause.
+// A caller treats that error as non-fatal.
+// Any other failure is returned unwrapped.
 func (c *loomCLI) ensureStatusStrand() error {
 	statusResult, err := c.reed.Status()
 	if err != nil {
@@ -361,12 +367,9 @@ func (c *loomCLI) ensureStatusStrand() error {
 	var strand reedengine.Strand
 	if strandAction == statusStrandReplace {
 		// A replace goes through ReplaceStrand so the status strand keeps its top slot.
-		// A failure is not fatal to the bootstrap;
-		// it costs the operator the status pane for this run, not the run itself.
 		strand, err = c.reed.ReplaceStrand(staleGUID, addSpec)
 		if err != nil {
-			logger.Warn("loom: could not replace the status strand; the status pane will be missing this run", "guid", staleGUID, "cause", err)
-			return nil
+			return fmt.Errorf("%w %s: %w", errStatusStrandNotReplaced, staleGUID, err)
 		}
 	} else {
 		strand, err = c.reed.AddStrand(addSpec)
@@ -376,7 +379,7 @@ func (c *loomCLI) ensureStatusStrand() error {
 	}
 	if buildErr == nil {
 		if err := statuspane.WriteSidecar(sidecarPath, strand.GUID, build); err != nil {
-			logger.Warn("loom: could not record the status strand's build; the next start will replace it", "cause", err)
+			logger.Warn("loom: could not record the status strand's build; the next status-pane restore will replace it", "cause", err)
 		}
 	}
 	return nil
