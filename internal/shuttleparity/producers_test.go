@@ -197,7 +197,7 @@ func buildRecovery(fx parityFixture, engine string) (shuttleengine.Spec, error) 
 		return shuttleengine.Spec{}, err
 	}
 	worktree := env.Location.WorktreePath()
-	prompt, err := websterengine.RenderRecoveryPrompt(batcher.Batch{Cards: []planparser.Card{standInCard}}, "the card gates", "the batch gate", "", "", "",
+	prompt, err := websterengine.RenderRecoveryPrompt(batcher.Batch{Cards: []planparser.Card{standInCard}}, "the card gates", "the batch gate", "", "", "", "",
 		standInPath(env, "report.yaml"), worktree, standInPath(env, "plan"), worktree, env.StencilsDir, engine, env.SpecsDir, "", nil, nil, 2, "", env.ParentName, false)
 	if err != nil {
 		return shuttleengine.Spec{}, err

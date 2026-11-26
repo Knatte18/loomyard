@@ -13,7 +13,7 @@
 // None may read Glyph.Unit as a disk path or run a local regex over a glyph string.
 // cmd/lym/constraintchokepoint_test.go guards this mechanically.
 // The one exception is the external-test pseudo-unit `<dir>_test`, which Glyph.UnitPath returns unchanged;
-// goPackageDir and GoPackageCounterpart (targetdirs.go) map it to its package directory and back.
+// GoPackageDir and GoPackageCounterpart (targetdirs.go) map it to its package directory and back.
 // ParseRef is the one alphabet choice for a plan ref and for a `plan:` handle's body;
 // it reads the alphabet from the plan's `language:`.
 // Quarry's Enclose is a location-to-glyph conversion, and internal/planglyph's EncloseAt is its one sanctioned call.

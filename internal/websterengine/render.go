@@ -206,11 +206,13 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 // it fills the optional failure_digest marker, rendered as "none" when empty.
 // uncommittedPaths is the caller-rendered block of the worktree's uncommitted paths grouped by who wrote them;
 // it fills the optional uncommitted_paths marker, rendered as "none" when empty.
+// parentAnswers is the caller-rendered block of what the batch waited on and the parent's answers;
+// it fills the optional parent_answers marker, rendered as "none" when empty.
 // cardFixer says a failed card gate call goes through a cold fixer first;
 // it renders the card-gate fixer paragraph after the card gates, and false leaves the text unchanged.
 // engine names the engine the strand launches on.
 // The prompt is worded for it, and the edit directive is that engine's copy.
-func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, failureDigest, uncommittedPaths, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, engine, specsDir, gateTiers string, renameTools, patternChanges []string, selfFixCap int, notePath, parentName string, cardFixer bool) ([]byte, error) {
+func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, failureDigest, parentAnswers, uncommittedPaths, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, engine, specsDir, gateTiers string, renameTools, patternChanges []string, selfFixCap int, notePath, parentName string, cardFixer bool) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -222,6 +224,10 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 	uncommittedLine := uncommittedPaths
 	if strings.TrimSpace(uncommittedLine) == "" {
 		uncommittedLine = "none"
+	}
+	answersBlock := parentAnswers
+	if strings.TrimSpace(answersBlock) == "" {
+		answersBlock = "none"
 	}
 
 	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleImplementer, patternChanges)
@@ -261,6 +267,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		cardGateFixerMarker: cardFixerText,
 		"failure_digest":    failureLine,
 		"uncommitted_paths": uncommittedLine,
+		"parent_answers":    answersBlock,
 		"pattern_directive": directive,
 		"specs_dir":         specsDir,
 		"gate_tiers":        gateTiersOrNone(gateTiers),
@@ -275,7 +282,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		return nil, fmt.Errorf("webster: read recovery template: %w", err)
 	}
 	friction.WarnIfMarkerAbsent(template, "webster-prefix-recovery", frictionDirective)
-	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", "failure_digest", "uncommitted_paths", cardGateFixerMarker, friction.MarkerName, parentdirective.MarkerName})
+	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", "failure_digest", "uncommitted_paths", "parent_answers", cardGateFixerMarker, friction.MarkerName, parentdirective.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill recovery template: %w", err)
 	}

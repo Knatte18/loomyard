@@ -911,7 +911,7 @@ func checkRenameLeavesTest(plan *Plan) []ValidationError {
 							continue
 						}
 						test, err := ParseRef(plan, ref)
-						if err != nil || goPackageDir(test.Unit) != goPackageDir(old.Unit) || len(test.Owner) != 0 || !namesTestOf(test.Name, base) {
+						if err != nil || GoPackageDir(test.Unit) != GoPackageDir(old.Unit) || len(test.Owner) != 0 || !namesTestOf(test.Name, base) {
 							continue
 						}
 						findings = append(findings, ValidationError{

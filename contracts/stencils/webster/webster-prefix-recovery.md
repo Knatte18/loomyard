@@ -3,9 +3,10 @@
      recover-batch hands that file to the separate, cold recovery-strand process it spawns when a fork reports stuck or writes no report (see the fork-context-hygiene Shared Decision).
      The strand inherits nothing from Master's session: no plan framing, no constraints, and no code.
      It must orient itself before the shared implementer body runs.
-     Its optional markers (filled via stencil.FillOptional) are {{.pattern_directive}}, {{.friction_directive}}, {{.failure_digest}}, {{.uncommitted_paths}} and parent_directive.
+     Its optional markers (filled via stencil.FillOptional) are {{.pattern_directive}}, {{.friction_directive}}, {{.failure_digest}}, {{.uncommitted_paths}}, {{.parent_answers}} and parent_directive.
      The pattern and friction directives render as nothing when their own tier is inactive;
      failure_digest renders as `none` when the batch was not failed, and uncommitted_paths renders as `none` on a clean worktree;
+     parent_answers renders as `none` when the parent has answered this batch nothing;
      internal/parentdirective renders parent_directive.
      edit_directive is a required marker, rendered unconditionally by internal/editdirective. -->
 
@@ -35,6 +36,22 @@ Do this BEFORE the card instructions below: it gives you what an in-session fork
 You implement ONLY your card(s) below and write your report as your final action.
 **NEVER run any `lym webster` command** — not `await-batch`, not anything;
 those are Master's own verbs, driven by a session you are not part of.
+
+## A question only your parent can answer
+
+A turn you end without a report ends this recovery, and nothing you wait for reaches it.
+This holds over "Your parent" above: never post a question and end your turn to wait for the reply.
+When you cannot go on without your parent's answer, write the report with `status: NEEDS_PARENT` and the question as its one-line `need`, with every card you finished committed.
+Such a question counts as a step only your parent can take.
+Your parent's answer reaches the attempt that resumes the batch.
+
+## What your parent answered
+
+{{.parent_answers}}
+
+If the text above is not `none`, an earlier attempt of this batch stopped on each need listed, and your parent answered it.
+Act on the answer.
+Report the need again only when it is still unmet, saying in the new `need` what is still missing.
 
 ## Why this batch is being recovered
 

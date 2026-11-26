@@ -75,7 +75,13 @@ func sortedCards(cards []planparser.Card) []planparser.Card {
 // This function does not special-case a Create group's targets: resolvePass excludes those before
 // calling statusFindings, and create.go's createFindings handles them instead, so this policy
 // stays readable on its own.
-func statusFindings(plan *planparser.Plan, worktreeRoot string, results []quarry.ResolveResult) []Finding {
+//
+// created maps the glyph of each member a Create handle names to the number of the earliest card that creates it.
+// A not_found target that created holds is no finding for a card numbered at or after its creator.
+// The member exists for such a card once its creator runs.
+// A card before its creator gets a finding naming the creator.
+// members maps a not_found target whose unit exists to the members declared beside it, which its finding lists.
+func statusFindings(plan *planparser.Plan, worktreeRoot string, results []quarry.ResolveResult, created map[string]int, members map[string][]string) []Finding {
 	var findings []Finding
 	index := targetCards(plan)
 
@@ -113,17 +119,15 @@ func statusFindings(plan *planparser.Plan, worktreeRoot string, results []quarry
 				})
 			}
 		case verdict == planindex.GlyphMissing:
-			var detail string
-			if r.Unit == quarry.StatusFound {
-				detail = fmt.Sprintf("target %q's unit exists but the member is missing — check for a misspelled member", r.Target)
-			} else {
-				detail = fmt.Sprintf("target %q's unit does not exist — check for a misspelled unit", r.Target)
-			}
+			creator, isCreated := createdBy(created, r)
 			for _, c := range cards {
+				if isCreated && creator <= c.Number {
+					continue
+				}
 				findings = append(findings, Finding{
 					Check:    "glyph-not-found",
 					Card:     c.ID(),
-					Detail:   detail,
+					Detail:   missingDetail(r, creator, isCreated, members[r.Target]),
 					Severity: SeverityBlocking,
 					Ref:      r.Target,
 				})
@@ -132,6 +136,35 @@ func statusFindings(plan *planparser.Plan, worktreeRoot string, results []quarry
 	}
 
 	return findings
+}
+
+// createdBy returns the number of the earliest card that created names as creating r's target.
+// The target matches by r's spelling or its parsed ID.
+// It reports false when no card creates it.
+func createdBy(created map[string]int, r quarry.ResolveResult) (int, bool) {
+	if n, ok := created[r.Target]; ok {
+		return n, true
+	}
+	n, ok := created[r.ID]
+	return n, ok
+}
+
+// missingDetail renders the glyph-not-found detail for r, a not_found answer.
+// A target a card creates names that card, which comes after the card the finding is for.
+// Otherwise the detail tells a missing member from a missing unit;
+// a missing member's detail says no card creates it and lists members, the members declared beside it.
+func missingDetail(r quarry.ResolveResult, creator int, created bool, members []string) string {
+	if created {
+		return fmt.Sprintf("target %q is created by card %d, which comes after this card — move the use to card %d or later", r.Target, creator, creator)
+	}
+	if r.Unit != quarry.StatusFound {
+		return fmt.Sprintf("target %q's unit does not exist — check for a misspelled unit", r.Target)
+	}
+	detail := fmt.Sprintf("target %q's unit exists but the member is missing — check for a misspelled member; no card of the plan creates it", r.Target)
+	if len(members) > 0 {
+		detail += "; members beside it: " + strings.Join(members, ", ")
+	}
+	return detail
 }
 
 // resolveVerdict is the glyph-not-found status policy both statusFindings and ResolveGlyphs apply, so the two can never disagree about what resolves.

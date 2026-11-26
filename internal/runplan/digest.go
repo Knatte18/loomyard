@@ -8,7 +8,8 @@ import "fmt"
 
 // The six legal Digest.Status values.
 // DigestStatusFailed marks a batch whose report the implementer rejected on its merits.
-// DigestStatusWaiting marks a batch stopped on a step only the run's parent can take; it is in flight, never terminal.
+// DigestStatusWaiting marks a batch stopped on a step or an answer only the run's parent can give;
+// it is in flight, never terminal.
 const (
 	DigestStatusRunning = "running"
 	DigestStatusDone    = "done"
@@ -42,9 +43,12 @@ type Digest struct {
 	Renames []ReportRename `json:"renames,omitempty"`
 	// DeadReason is set only when Status is Dead.
 	DeadReason string `json:"dead_reason,omitempty"`
+	// LastMessage is the final message, on one line, of a strand that ended its turn without a report.
+	// It is set only when DeadReason is DeadReasonAsking and the turn end carried a message.
+	LastMessage string `json:"last_message,omitempty"`
 	// Reasons is set only when Status is Failed.
 	Reasons []string `json:"reasons,omitempty"`
-	// Need is the step only the parent can take; set only when Status is Waiting.
+	// Need is the step only the parent can take or the question only it can answer; set only when Status is Waiting.
 	Need string `json:"need,omitempty"`
 	// ElapsedS is the seconds since spawn, for running snapshots only.
 	ElapsedS int `json:"elapsed_s,omitempty"`

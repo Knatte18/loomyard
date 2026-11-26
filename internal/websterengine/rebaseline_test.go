@@ -590,34 +590,45 @@ func TestRebaseline_EditedPlan(t *testing.T) {
 			wantText: []string{"batch 1 card 01-json-flag changed since it was begun", "batch is done", followUpWayForward},
 		},
 		{
-			name: "a named card of a failed batch is accepted and restamped",
+			name: "a named card of a failed batch is accepted and restamped, with no amendment",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				beginAndFinishBatchOne(t, fx)
 				setBatchOneState(fx, true, "failed", nil)
 				editBegunCardOne(t, fx)
 			},
 			cards: []int{1},
-			check: checkBegunCardRestamped,
+			check: checkTerminalCardNotAmended,
 		},
 		{
-			name: "a named card of a dead batch is accepted and restamped",
+			name: "a named card of a dead batch is accepted, restamped and recorded as amended",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				beginAndFinishBatchOne(t, fx)
 				setBatchOneState(fx, true, websterengine.DigestStatusDead, nil)
 				editBegunCardOne(t, fx)
 			},
 			cards: []int{1},
-			check: checkBegunCardRestamped,
+			check: checkTerminalCardAmended,
 		},
 		{
-			name: "a named card of a stuck batch is accepted and restamped",
+			name: "a named card of a stuck batch is accepted and restamped, with no amendment",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				beginAndFinishBatchOne(t, fx)
 				setBatchOneState(fx, true, websterengine.DigestStatusStuck, nil)
 				editBegunCardOne(t, fx)
 			},
 			cards: []int{1},
-			check: checkBegunCardRestamped,
+			check: checkTerminalCardNotAmended,
+		},
+		{
+			name: "a re-edit over a failed batch already holding an entry resets its rendered mark",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				beginAndFinishBatchOne(t, fx)
+				setBatchOneState(fx, true, websterengine.DigestStatusFailed, nil)
+				fx.Deps.State.Batches[1].AmendedCards = []websterengine.AmendedCard{{Card: "01-json-flag", Rendered: true}}
+				editBegunCardOne(t, fx)
+			},
+			cards: []int{1},
+			check: checkTerminalCardAmended,
 		},
 		{
 			name: "a named card of an in-flight batch is accepted, restamped and recorded as amended",
@@ -1007,6 +1018,33 @@ func checkInFlightCardAmended(t *testing.T, fx *beginFixture, before websterengi
 	}
 	if !slices.Equal(res.CardsAmended, []string{"01-json-flag"}) {
 		t.Errorf("CardsAmended = %v; want [01-json-flag]", res.CardsAmended)
+	}
+}
+
+// checkTerminalCardNotAmended asserts that an accepted edit of a failed or stuck batch holding no entry only restamps it.
+func checkTerminalCardNotAmended(t *testing.T, fx *beginFixture, before websterengine.BatchState, res *websterengine.RebaselineResult) {
+	t.Helper()
+	checkBegunCardRestamped(t, fx, before, res)
+	if got := fx.Deps.State.Batches[1].AmendedCards; len(got) != 0 {
+		t.Errorf("AmendedCards = %v; want none", got)
+	}
+	if len(res.CardsAmended) != 0 {
+		t.Errorf("CardsAmended = %v; want none for a terminal batch", res.CardsAmended)
+	}
+}
+
+// checkTerminalCardAmended asserts that an accepted edit of a terminal batch's card restamps it.
+// The edit also records exactly one unrendered AmendedCards entry for the card, which earns a recovery.
+// The result lists no amended card, since only an in-flight batch's cards are listed.
+func checkTerminalCardAmended(t *testing.T, fx *beginFixture, before websterengine.BatchState, res *websterengine.RebaselineResult) {
+	t.Helper()
+	checkBegunCardRestamped(t, fx, before, res)
+	want := []websterengine.AmendedCard{{Card: "01-json-flag", Rendered: false}}
+	if got := fx.Deps.State.Batches[1].AmendedCards; !slices.Equal(got, want) {
+		t.Errorf("AmendedCards = %v; want %v", got, want)
+	}
+	if len(res.CardsAmended) != 0 {
+		t.Errorf("CardsAmended = %v; want none for a terminal batch", res.CardsAmended)
 	}
 }
 

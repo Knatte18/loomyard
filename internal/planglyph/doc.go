@@ -30,6 +30,8 @@
 //   - glyph-not-found, glyph-ambiguous, glyph-rejected: the resolve status policy, blocking,
 //     over every glyph target that neither a Create group owns nor a Rename pair names as its New side.
 //     glyph-rejected is also the fail-closed arm for an answer no policy understands.
+//     A target spelling the member an earlier card's Create handle names resolves for every card from that one on.
+//     A glyph-not-found member of a unit that exists lists the members declared beside it.
 //     A member whose declarations sit in files no single build environment selects together is one member,
 //     so a partitioned ambiguous answer resolves.
 //     A self glyph that two alphabets both match is ambiguous, and its detail names the way forward.

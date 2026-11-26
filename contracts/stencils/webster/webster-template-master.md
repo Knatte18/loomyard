@@ -77,9 +77,11 @@ Read the trail by status — a resumed session thus picks up exactly where the l
   With `recovery_retry: true`, run `lym webster recover-batch <NN>` once more, as the failure ladder below describes.
   With `recovery_retry: false`, the run is exhausted for that batch: write `outcome: stuck` naming it (per the dead rungs of the failure ladder) and stop.
   Do NOT skip it and do NOT begin any later batch.
-- `waiting` → the batch stopped on a step only your parent can take, named after `need:`.
-  The run was re-entered, so treat the step as taken: resume the batch with the verb named after `resume:`, a `begin-batch` followed by its fork exactly as the loop below runs it, or a `recover-batch`, before touching any later batch.
+- `waiting` → the batch stopped on a step only your parent can take or a question only your parent can answer, named after `need:`.
+  Resume it before touching any later batch, as the verb named after `resume:` says.
+  For a `begin-batch`, the run was re-entered, so treat the step as taken: run it and fork its implementer exactly as the loop below runs it.
   A strand that still finds the step untaken reports it again, and the waiting rung of the failure ladder below handles that.
+  For a `recover-batch --answer`, you hold no answer, so never run it as printed and never write one yourself: follow the waiting rung of the failure ladder below, which messages your parent with the `need` and resumes with its reply.
 
 ## The loop: begin-batch, fork, wait for its notification, record-batch — verbatim sequence
 
@@ -117,6 +119,7 @@ and you read ONLY these fields:
 - `departures`
 - `renames`
 - `dead_reason`
+- `last_message`
 - `need`
 - `elapsed_s`
 
@@ -135,10 +138,10 @@ You message your parent only on the `waiting` rung below and under "A parent dec
 - Report present, `status: done` → `record-batch` already ran above;
   move on to the next batch.
 - Report present, `status: stuck` → run `lym webster recover-batch <NN>` (below).
-- `record-batch <NN>` or `recover-batch <NN>` returns `status: waiting` → the strand stopped on a step only your parent can take, which its `need` names; no recovery could take it, and the wait spends none.
+- `record-batch <NN>` or `recover-batch <NN>` returns `status: waiting` → the strand stopped on a step only your parent can take or a question only your parent can answer, which its `need` names; no recovery could take it, and the wait spends none.
   Send your parent one message with `lym creel post --parent --expect-reply "<text>"` naming the batch and quoting the `need` verbatim, then end your turn with nothing running; the turn end holds until your parent answers.
-  When your parent's message says the step is taken, resume the batch where it stood: for a batch `record-batch` returned, run `lym webster begin-batch <NN>` and fork its implementer exactly as the loop runs it;
-  for a batch `recover-batch` returned, run `lym webster recover-batch <NN>` again, as the `recover-batch` rungs below run it.
+  When your parent's message says the step is taken or answers the question, resume the batch where it stood: for a batch `record-batch` returned, run `lym webster begin-batch <NN>` and fork its implementer exactly as the loop runs it;
+  for a batch `recover-batch` returned, run `lym webster recover-batch <NN> --answer '<your parent's message, verbatim>'`, quoted for the shell, as the `recover-batch` rungs below run it.
   When your parent's message says the step will not be taken, write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` naming the batch and quoting the `need`, and stop.
   Do NOT begin a later batch while one waits, and do NOT call `record-batch` for a waiting batch: it refuses, since nothing is left to record.
 - Fork finished but wrote **no report** (`record-batch` classifies this `no_report`) → re-fork the same batch once, with the SAME prompt file and no new `begin-batch` call (the bracket is still open), end your turn again, and call `record-batch` again on its completion notification;
@@ -152,10 +155,10 @@ You message your parent only on the `waiting` rung below and under "A parent dec
 - `recover-batch <NN>` completes with a terminal `status: stuck` → the recovery itself failed.
   You have exhausted this batch's recovery: stop the run here — write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` naming the batch and the failure, and stop.
   Do NOT re-fork it, do NOT begin the next batch (batch N+1 assumes N is committed).
-- `recover-batch <NN>` completes with a terminal `status: dead` (any `dead_reason`) and `recovery_retry: true` → the batch earns another recovery: the dead recovery committed work of its own and the batch has a recovery left, or a `reset --to batch-start` cleared the batch's recovery count.
+- `recover-batch <NN>` completes with a terminal `status: dead` (any `dead_reason`) and `recovery_retry: true` → the batch earns another recovery: the dead recovery committed work of its own and the batch has a recovery left, a `reset --to batch-start` cleared the batch's recovery count, or a rebaseline amended one of the batch's cards.
   Run `lym webster recover-batch <NN>` once more {{template "engine-background-command"}}; its result goes through these rungs again.
 - `recover-batch <NN>` completes with a terminal `status: dead` and `recovery_retry: false` → the recovery itself failed and earns no retry.
-  Stop exactly as for a terminal `stuck` recovery: write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` naming the batch and the failure, and stop.
+  Stop exactly as for a terminal `stuck` recovery: write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` naming the batch and the failure, and quoting the digest's `last_message` when it has one, and stop.
   Do NOT re-fork it, do NOT begin the next batch.
 - `recover-batch <NN>` refuses with `{"batch_failed": true, "card_amended": true}` → a card of the batch was amended after the attempt began, so webster failed the attempt to re-run the batch on the amended card.
   Run `lym webster recover-batch <NN>` again, as the rung above runs it, even though the failed attempt was a recovery; each amendment forces at most one such re-run.

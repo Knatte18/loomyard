@@ -34,6 +34,37 @@ func createTargetSet(plan *planparser.Plan) map[string]bool {
 	return set
 }
 
+// createdHandleGlyphs maps the glyph each Create handle names to the number of the earliest card that creates it.
+// A card of forthcoming creates before every card of current, so it maps to 0.
+// The glyph is the handle's body, which is the member's glyph once canonicalization has rewritten the handle;
+// a handle still in draft form maps under its draft body.
+func createdHandleGlyphs(current, forthcoming *planparser.Plan) map[string]int {
+	created := make(map[string]int)
+	add := func(c planparser.Card, number int) {
+		for _, g := range c.TargetGroups {
+			if g.Type != planparser.CardTypeCreate {
+				continue
+			}
+			for _, ref := range g.Refs {
+				body, ok := planparser.HandleBody(ref)
+				if !ok {
+					continue
+				}
+				if earliest, seen := created[body]; !seen || number < earliest {
+					created[body] = number
+				}
+			}
+		}
+	}
+	for _, c := range forthcoming.Cards {
+		add(c, 0)
+	}
+	for _, c := range current.Cards {
+		add(c, c.Number)
+	}
+	return created
+}
+
 // resultByTarget indexes results by their own Target, for a group-scoped lookup by both
 // createFindings and CanonicalizeHandles (handle.go).
 func resultByTarget(results []quarry.ResolveResult) map[string]quarry.ResolveResult {

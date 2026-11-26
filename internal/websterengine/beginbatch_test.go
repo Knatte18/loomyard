@@ -212,15 +212,15 @@ func TestBeginBatch_Refusals(t *testing.T) {
 			wantNotText: []string{"exhausted", "record-batch"},
 		},
 		{
-			name: "a report over a dead recovery at the cap with an unrendered amendment ends the run stuck without exhausted",
+			name: "a report over a dead recovery at the cap with an unrendered amendment names recover-batch once more",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				seedReport(t, fx)
 				fx.Deps.State.Batches = map[int]*websterengine.BatchState{
 					1: {Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 2, AmendedCards: []websterengine.AmendedCard{{Card: "01-json-flag"}}},
 				}
 			},
-			wantText:    []string{"terminal with status dead", "end the run stuck naming the batch"},
-			wantNotText: []string{"exhausted", "record-batch", "recover-batch"},
+			wantText:    []string{"terminal with status dead", "`lym webster recover-batch 1`, once more"},
+			wantNotText: []string{"exhausted", "record-batch", "end the run stuck"},
 		},
 		{
 			name: "a report over a stuck fork record at the cap names the exhausted routes",
@@ -582,10 +582,14 @@ func TestBeginBatch_Record(t *testing.T) {
 			},
 		},
 		{
-			name:      "a re-begin carries the recovery count, its sessions and its start commit",
-			prior:     &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Recoveries: 2, RecoverySessions: []string{"r1", "r2"}, RecoveryEngines: map[string]string{"r1": "claude", "r2": "fake"}, RecoveryStartSHA: recordedStart},
+			name: "a re-begin carries the recovery count, its sessions, its start commit and the parent's answers",
+			prior: &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Recoveries: 2, RecoverySessions: []string{"r1", "r2"}, RecoveryEngines: map[string]string{"r1": "claude", "r2": "fake"}, RecoveryStartSHA: recordedStart,
+				ParentAnswers: []websterengine.ParentAnswer{{Need: "which flag?", Answer: "the old one"}}},
 			wantStart: func(fx *beginFixture) string { return fx.Git.head },
 			check: func(t *testing.T, fx *beginFixture, bs *websterengine.BatchState) {
+				if want := []websterengine.ParentAnswer{{Need: "which flag?", Answer: "the old one"}}; !slices.Equal(bs.ParentAnswers, want) {
+					t.Errorf("Batches[1].ParentAnswers = %v; want %v", bs.ParentAnswers, want)
+				}
 				if want := map[string]string{"r1": "claude", "r2": "fake"}; !maps.Equal(bs.RecoveryEngines, want) {
 					t.Errorf("Batches[1].RecoveryEngines = %v; want %v", bs.RecoveryEngines, want)
 				}

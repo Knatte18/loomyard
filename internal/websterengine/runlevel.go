@@ -1202,6 +1202,9 @@ func deadEndBatchError(geom Geometry, st *State, batches []batcher.Batch, reentr
 		if why == "" {
 			continue
 		}
+		if bs.Digest != nil && bs.Digest.LastMessage != "" {
+			why += fmt.Sprintf(" (its last message: %s)", bs.Digest.LastMessage)
+		}
 		return fmt.Errorf("%w: batch %02d-%s %s, so a Master would only end the run stuck on it; %s; or %s",
 			ErrBatchDeadEnd, number, slug, why, wayForwardSteps(resetVerb(ResetToBatchStart, number), reentry), freshRestartSteps(reentry))
 	}

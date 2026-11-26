@@ -533,6 +533,9 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 		},
 		deadEndRefusalCase("a dead recovery that earns no retry", &websterengine.BatchState{Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: 1},
 			"batch 01-batch1 is dead and its recovery earns no retry"),
+		deadEndRefusalCase("a dead recovery quotes its strand's last message", &websterengine.BatchState{Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: 1,
+			Digest: &websterengine.Digest{Status: websterengine.DigestStatusDead, DeadReason: websterengine.DeadReasonAsking, LastMessage: "Keep the old flag?"}},
+			"batch 01-batch1 is dead and its recovery earns no retry (its last message: Keep the old flag?)"),
 		deadEndRefusalCase("a stuck batch whose recoveries are spent", &websterengine.BatchState{Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusStuck, Recoveries: 2},
 			"batch 01-batch1 is stuck and has had its 2 recoveries"),
 		{

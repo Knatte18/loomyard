@@ -103,8 +103,10 @@
 // It regroups the cards after it with the active batchifier, and replaces State.Partition.
 // The operator names every changed card; a changed card file not named is refused.
 // A named card of a failed, dead or stuck batch has its CardHashes entry restamped.
-// A named card of an in-flight batch is also recorded in AmendedCards with Rendered false.
-// This forces that batch's next report failed, so a recovery re-runs it on the edited cards.
+// A named card of a dead batch or of an in-flight one is also recorded in AmendedCards with Rendered false.
+// So is one of a failed or stuck batch that already holds an entry.
+// This forces an in-flight batch's next report failed, so a recovery re-runs it on the edited cards.
+// A dead batch's amendment earns it one uncounted recovery, so an edit to its cards clears its dead end.
 // An edit to a done batch's card is refused, with a follow-up card as the way forward.
 // Only the Card Index of 00-overview.md may change, held to the card-set rule:
 // cards before the last begun batch keep their number and slug.
@@ -184,7 +186,11 @@
 // A step only the run's parent can take, such as a hub setting or a board write, is no card failure.
 // The implementer reports `status: NEEDS_PARENT` with a one-line `need`,
 // and the batch is recorded as `waiting` (not `Terminal`), spending no recovery.
+// A recovery strand with a question only the parent can answer reports the same way, with the question as its need.
 // Merriam messages its parent and resumes through begin-batch's re-begin or recover-batch once the step is taken.
+// Resuming a recovery takes the parent's reply in `--answer`, which the resumed strand's prompt holds beside the need.
+// A recovery strand that ends its turn with no report stays dead/asking.
+// Its final message is kept on the digest and quoted by the refusals that halt on it.
 // A waiting batch and a decision with no batch left are the only times Merriam messages its parent;
 // every other dead end is an `outcome: stuck` with no message.
 //

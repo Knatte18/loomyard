@@ -28,6 +28,8 @@ It appears in neither the artifact list nor the answer key, and it must not be r
 
 `none` means webster has begun no batch, and no card is frozen.
 Otherwise a done card is frozen: a fix never edits its file.
+`00-overview.md` outside its Card Index is frozen too, since it carries the plan's integration verify: a fix edits only its Card Index, and the gate refuses any other edit to it.
+On a run with no recorded overview frame and no baseline copy to take it from, the gate refuses every edit to `00-overview.md`, so a card-set change there needs a fresh run.
 A fix to its work is a follow-up card placed after the last begun batch, with its Card Index line in `00-overview.md`, in the format `{{.specs_dir}}/loom/loom-plan-spec.md` defines.
 A fix inserts or removes a card only with `lym loom insert-card` or `lym loom remove-card`, which renumber the later cards and whose `--help` says what they do, never by renaming, rewriting under a new name or deleting a card file by hand.
 

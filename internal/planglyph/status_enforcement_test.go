@@ -61,7 +61,9 @@ func statusConsumerKey(rel, fn string) string {
 // Every other value, the zero value included, goes through a default or else arm.
 // A new vocabulary read must fail closed, then be added here; until it is, the tripwire fails.
 var allowedStatusConsumers = []scankit.Entry{
-	{Key: "internal/planglyph/resolve.go:statusFindings", Why: "fail-closed status reader"},
+	{Key: "internal/planglyph/resolve.go:missingDetail", Why: "words a finding already decided as missing, never a verdict; any unit answer but found reads as a missing unit"},
+	{Key: "internal/planglyph/planglyph.go:missingMemberSiblings", Why: "decides only whether to list members for a finding's detail, never a verdict; any answer but not_found in a found unit lists nothing"},
+	{Key: "internal/planglyph/repo.go:siblingMembers", Why: "reads glyph.Glyph.Unit, a name-shape match for the status vocabulary's Unit selector that is no resolve status"},
 	{Key: "internal/planglyph/resolve.go:resolveVerdict", Why: "fail-closed status reader: an unreadable answer is missing"},
 	{Key: "internal/planglyph/resolve.go:unreadableStatusDetail", Why: "fail-closed status reader"},
 	{Key: "internal/planglyph/create.go:createFindings", Why: "fail-closed status reader"},

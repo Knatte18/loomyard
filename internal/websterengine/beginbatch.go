@@ -45,7 +45,7 @@ func fingerprintMismatchWayForward(st *State, planDir, websterDir, reentry strin
 	indexChanged := false
 	for _, name := range changed {
 		if name == runplan.PlanOverviewFile {
-			recorded, _, _, err := recordedOverviewFrame(st, websterDir)
+			recorded, _, _, err := runplan.RecordedOverviewFrame(&st.State, websterDir)
 			indexOnly := false
 			if err == nil {
 				indexOnly, err = overviewIndexOnly(recorded, planDir)
@@ -215,6 +215,9 @@ func predecessorDigestLine(batches []batcher.Batch, st *State, batchNumber int) 
 // Then come a dead recovery with a retry, any other dead recovery, and a stuck or failed record.
 func existingReportRemedy(number int, recorded *BatchState, retry bool) (string, bool) {
 	if !recorded.Terminal {
+		if waitsOnParent(recorded) && recorded.Kind == "recovery" {
+			return fmt.Sprintf("`%s`, once the parent has answered", resumeStep(recorded, number)), false
+		}
 		if recorded.Kind == "recovery" {
 			return fmt.Sprintf("`lym webster recover-batch %d`", number), false
 		}
@@ -399,13 +402,16 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// so the run-exit audit still knows which report each of those forks owns.
 	// The recovery count and its start commit carry over as well,
 	// so a re-begin does not hand a batch a fresh pair of recoveries.
+	// The parent's answers carry over, so a later recovery still renders them.
 	var priorWarnings []AuditWarning
 	var priorTranscripts []string
 	var priorRecoveries int
 	var priorRecoveryStart string
 	var priorRecoverySessions []string
 	var priorRecoveryEngines map[string]string
+	var priorAnswers []ParentAnswer
 	if prior != nil {
+		priorAnswers = prior.ParentAnswers
 		priorRecoverySessions = prior.RecoverySessions
 		priorRecoveryEngines = prior.RecoveryEngines
 		priorWarnings = prior.AuditWarnings
@@ -426,6 +432,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		RecoverySessions: priorRecoverySessions,
 		RecoveryEngines:  priorRecoveryEngines,
 		RecoveryStartSHA: priorRecoveryStart,
+		ParentAnswers:    priorAnswers,
 		SpawnedAt:        time.Now().UTC().Format(time.RFC3339),
 		// Stamp the opening Master session.
 		// The run-exit audit cross-check scopes its begun-batch count to that session;

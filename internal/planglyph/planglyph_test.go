@@ -415,6 +415,97 @@ func TestResolvePass_ForthcomingCreateTargetExcludedFromStatus(t *testing.T) {
 	}
 }
 
+// TestValidateFormat_MissingMemberFindings asserts the glyph-not-found detail over a real Go fixture tree.
+// A member a card's Create handle names resolves for that card and every later one,
+// and a card before its creator is told to move the use.
+// A member no card creates lists the members declared beside it.
+// A forthcoming creator counts as preceding every pending card, which the dispatch gate rows pin.
+func TestValidateFormat_MissingMemberFindings(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const source = "package sub\n\nfunc Foo() {}\n\nfunc Bar() {}\n\ntype Thing struct{}\n\n" +
+		"func (t Thing) Method() {}\n\nfunc (t Thing) Other() {}\n"
+	const create = "**Create:**\n- `plan:sub#Thing.Fresh`\n\n**Intent:** add the method\n"
+	const useFresh = "**Edit:**\n- `sub#Foo`\n\n**Uses:**\n- `sub#Thing.Fresh`\n\n**Intent:** use the method\n"
+	const useMissingMember = "**Edit:**\n- `sub#Foo`\n\n**Uses:**\n- `sub#Thing.Missing`\n\n**Intent:** use it\n"
+	const useMissingFunc = "**Edit:**\n- `sub#Foo`\n\n**Uses:**\n- `sub#Missing`\n\n**Intent:** use it\n"
+	const noCreator = "**Edit:**\n- `sub#Bar`\n\n**Intent:** unrelated\n"
+	const createAndEdit = "**Create:**\n- `plan:sub#Thing.Fresh`\n\n**Edit:**\n- `sub#Thing.Fresh`\n\n**Intent:** add and wire the method\n"
+	const useExternalMissing = "**Edit:**\n- `sub#Foo`\n\n**Uses:**\n- `sub_test#Missing`\n\n**Intent:** use it\n"
+	const useMemberOfFunc = "**Edit:**\n- `sub#Foo`\n\n**Uses:**\n- `sub#Foo.X`\n\n**Intent:** use it\n"
+	const externalSource = "package sub_test\n\nfunc One() {}\n\nfunc Two() {}\n"
+
+	tests := []struct {
+		name  string
+		cards map[int]string
+		// forthcoming is the number of a begun card whose work has not landed; 0 runs the whole-plan gate.
+		forthcoming int
+		want        []string
+	}{
+		{name: "UseAfterCreateResolves", cards: map[int]string{1: create, 2: useFresh}},
+		{name: "CardCitingTheMemberItCreatesResolves", cards: map[int]string{1: createAndEdit}},
+		{name: "ForthcomingCreatorPrecedesEveryPendingCard", cards: map[int]string{1: useFresh, 2: create}, forthcoming: 2},
+		{
+			name:  "UseBeforeCreateNamesCreator",
+			cards: map[int]string{1: useFresh, 2: create},
+			want:  []string{`target "sub#Thing.Fresh" is created by card 2, which comes after this card — move the use to card 2 or later`},
+		},
+		{
+			name:  "MissingMemberOfTypeListsItsMembers",
+			cards: map[int]string{1: useMissingMember, 2: noCreator},
+			want: []string{`target "sub#Thing.Missing"'s unit exists but the member is missing — check for a misspelled member; ` +
+				`no card of the plan creates it; members beside it: Thing.Method, Thing.Other`},
+		},
+		{
+			name:  "MissingFuncOfPackageListsOwnerlessMembers",
+			cards: map[int]string{1: useMissingFunc, 2: noCreator},
+			want: []string{`target "sub#Missing"'s unit exists but the member is missing — check for a misspelled member; ` +
+				`no card of the plan creates it; members beside it: Bar, Foo, Thing`},
+		},
+		{
+			name:  "MissingMemberOfExternalTestUnitListsFromThePackageDirectory",
+			cards: map[int]string{1: useExternalMissing, 2: noCreator},
+			want: []string{`target "sub_test#Missing"'s unit exists but the member is missing — check for a misspelled member; ` +
+				`no card of the plan creates it; members beside it: One, Two`},
+		},
+		{
+			name:  "OwnerThatIsNoTypeListsNoMembers",
+			cards: map[int]string{1: useMemberOfFunc, 2: noCreator},
+			want: []string{`target "sub#Foo.X"'s unit exists but the member is missing — check for a misspelled member; ` +
+				`no card of the plan creates it`},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root := writeFixtureRepo(t, map[string]string{"sub/a.go": source, "sub/a_test.go": externalSource})
+			_, plan := writePlanFixture(t, tt.cards)
+
+			var findings []Finding
+			var err error
+			if tt.forthcoming == 0 {
+				findings, err = ValidateFormat(plan, root)
+			} else {
+				begun := []planparser.Card{plan.Cards[tt.forthcoming-1]}
+				findings, err = ValidateDispatch(plan, root, begun, begun)
+			}
+			if err != nil {
+				t.Fatalf("validating the plan returned error: %v", err)
+			}
+			var got []string
+			for _, f := range findings {
+				if f.Check == "glyph-not-found" {
+					got = append(got, f.Detail)
+				}
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("glyph-not-found details = %q; want %q (all findings: %+v)", got, tt.want, findings)
+			}
+		})
+	}
+}
+
 // TestValidateFormat_PartScope asserts the plan-gate form keeps a file self glyph out of the status policy.
 // The exclusion applies to a glyph the part scope's Paths hold;
 // without the scope, it is reported as glyph-not-found.

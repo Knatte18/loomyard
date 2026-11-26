@@ -732,19 +732,32 @@ func TestNewPlanGate(t *testing.T) {
 	})
 
 	// Once a batch has begun, the overview outside its Card Index is frozen: an edit there fails the gate.
+	// The frame comes from the record or, without it, from the run directory's baseline copy of the recorded overview.
+	const (
+		recordFrame       = "frame"
+		recordHashAndCopy = "hash and baseline copy, no frame"
+		recordHashNoCopy  = "hash without a baseline copy"
+		recordNoOverview  = "no overview hash"
+	)
 	for _, tt := range []struct {
 		name string
-		// batches is whether the record holds a begun batch; frame is whether it holds the overview frame.
-		batches, frame bool
+		// batches is whether the record holds a begun batch; record is what the record and run directory hold of the overview.
+		batches bool
+		record  string
 		// edit rewrites the framing; editCardIndex rewrites a Card Index line only.
 		edit, editCardIndex bool
 		wantPassing         bool
 	}{
-		{"OverviewEditedOutsideTheCardIndexAfterABegunBatchFails", true, true, true, false, false},
-		{"UneditedOverviewAfterABegunBatchReportsNothing", true, true, false, false, true},
-		{"CardIndexEditedAfterABegunBatchReportsNothing", true, true, false, true, true},
-		{"OverviewEditedBeforeAnyBatchBeganReportsNothing", false, true, true, false, true},
-		{"RecordWithoutAFrameReportsNothing", true, false, true, false, true},
+		{"OverviewEditedOutsideTheCardIndexAfterABegunBatchFails", true, recordFrame, true, false, false},
+		{"UneditedOverviewAfterABegunBatchReportsNothing", true, recordFrame, false, false, true},
+		{"CardIndexEditedAfterABegunBatchReportsNothing", true, recordFrame, false, true, true},
+		{"OverviewEditedBeforeAnyBatchBeganReportsNothing", false, recordFrame, true, false, true},
+		{"RecordWithoutAnOverviewHashReportsNothing", true, recordNoOverview, true, false, true},
+		{"FrameFromTheBaselineCopyFailsOnAnEditOutsideTheCardIndex", true, recordHashAndCopy, true, false, false},
+		{"FrameFromTheBaselineCopyAllowsACardIndexEdit", true, recordHashAndCopy, false, true, true},
+		{"MissingBaselineCopyFailsOnAnyOverviewEdit", true, recordHashNoCopy, true, false, false},
+		{"MissingBaselineCopyFailsOnACardIndexEdit", true, recordHashNoCopy, false, true, false},
+		{"MissingBaselineCopyWithAnUneditedOverviewReportsNothing", true, recordHashNoCopy, false, false, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -755,12 +768,24 @@ func TestNewPlanGate(t *testing.T) {
 			if tt.batches {
 				st = batchOne(false, "", nil)
 			}
-			if tt.frame {
+			if tt.record == recordFrame {
 				frame, err := runplan.OverviewFrameHash(planDir)
 				if err != nil {
 					t.Fatalf("OverviewFrameHash: %v", err)
 				}
 				st.PlanOverviewFrameHash = frame
+			}
+			if tt.record == recordHashAndCopy || tt.record == recordHashNoCopy {
+				hashes, err := runplan.PlanFileHashes(planDir)
+				if err != nil {
+					t.Fatalf("PlanFileHashes: %v", err)
+				}
+				st.PlanFileHashes = hashes
+				if tt.record == recordHashAndCopy {
+					if err := runplan.StorePlanBaseline(websterengine.Dir(anchorPath), planDir, hashes); err != nil {
+						t.Fatalf("StorePlanBaseline: %v", err)
+					}
+				}
 			}
 			saveState(t, anchorPath, st)
 			for _, edit := range []struct {
@@ -808,7 +833,7 @@ func TestNewPlanGate(t *testing.T) {
 		}
 		st := &runplan.State{Batches: map[int]*runplan.BatchState{1: {Slug: "first-card"}}, PlanOverviewFrameHash: "recorded"}
 
-		if findings, err := overviewFrameEditedFindings(planDir, st); err == nil {
+		if findings, err := overviewFrameEditedFindings(planDir, t.TempDir(), st); err == nil {
 			t.Errorf("overviewFrameEditedFindings() = %+v, nil; want a returned error", findings)
 		}
 	})
