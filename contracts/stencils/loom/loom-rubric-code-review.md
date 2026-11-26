@@ -84,6 +84,7 @@ Do not flag any of the following as a finding:
 - **Loosened checks.**
   An assertion, tolerance or limit the diff widens or removes in a test that exists at the review base is a finding, unless a `Loosened-Check:` trailer on any commit of the review range names it and a measured cause.
   A cause that is no measurement, such as "flaky" or "to make it pass", is a finding too.
+  A removed assertion that a test in another file still holds, on the same behaviour and no looser, is not removed.
 - **Root cause of a bug fix.**
   A `Root-Cause:` trailer on a commit of the review range names the defect the diff's fix removes.
   A trailer that names a symptom, or a defect the diff does not touch, is a finding.

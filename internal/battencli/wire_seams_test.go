@@ -198,6 +198,7 @@ var intentionallyNil = map[string]string{
 	"Drift.CommitsSince":                     "loom- and darn-only seam, batten has no Drift row",
 	"Drift.ChangedFiles":                     "loom- and darn-only seam, batten has no Drift row",
 	"Drift.CommitMessages":                   "loom- and darn-only seam, batten has no Drift row",
+	"Drift.RangeDiff":                        "loom- and darn-only seam, batten has no Drift row",
 	"Drift.ExpectTable":                      "loom- and darn-only seam, batten has no Drift row",
 	"Drift.StartCapture":                     "loom- and darn-only seam, batten has no Drift row",
 	"Drift.RunCapture":                       "loom- and darn-only seam, batten has no Drift row",

@@ -212,6 +212,13 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 			}
 			return fabric.CommittedFileDiffs(base)
 		},
+		RangeDiff: func(base string) (string, error) {
+			fabric, err := fabricengine.Open(location)
+			if err != nil {
+				return "", err
+			}
+			return fabric.ReadCommittedDiff(base)
+		},
 		CommitMessages: func(base string) ([]string, error) {
 			fabric, err := fabricengine.Open(location)
 			if err != nil {

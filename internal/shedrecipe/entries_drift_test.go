@@ -37,6 +37,7 @@ func driftTestEnv(t *testing.T) Env {
 		FileAt:       func(string, string) ([]byte, bool, error) { return nil, false, nil },
 		CommitsSince: func(string) ([]string, error) { return nil, nil },
 		ChangedFiles: func(string) ([]fabricengine.FileDiff, error) { return nil, nil },
+		RangeDiff:    func(string) (string, error) { return "", nil },
 		CommitMessages: func(string) ([]string, error) {
 			return nil, nil
 		},
@@ -113,6 +114,7 @@ func TestDriftEntries(t *testing.T) {
 		{"VerifyNilCompare", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.Compare = nil }, nil, "Drift.Compare"},
 		{"VerifyNilChangedFiles", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.ChangedFiles = nil }, nil, "Drift.ChangedFiles"},
 		{"VerifyNilCommitMessages", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.CommitMessages = nil }, nil, "Drift.CommitMessages"},
+		{"VerifyNilRangeDiff", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.RangeDiff = nil }, nil, "Drift.RangeDiff"},
 		{"VerifyNilRecordsChangedSince", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.RecordsChangedSince = nil }, nil, "Drift.RecordsChangedSince"},
 		{"VerifyNilEndRoles", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.EndRoles = nil }, nil, "Drift.EndRoles"},
 		{"BaselineNilHead", driftBaselineEntry, Config{"subject": "decision-record"}, func(e *Env) { e.Drift.Head = nil }, nil, "Drift.Head"},

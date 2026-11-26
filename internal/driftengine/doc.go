@@ -236,8 +236,14 @@
 // A file's key is the sha256 of its diff, a NUL and the range's `Loosened-Check:` trailer lines,
 // so a commit that only adds a trailer changes every key.
 // The judge rules a file `none` or `loosened`, and each loosened check `caused` or `uncaused`.
+// An assertion removed from one file that a test in another file still holds, no looser, is not loosened,
+// and the file's ruling names that file under `carried_by`.
 // A loosened check with no measured cause is a Stuck.
-// Its way forward is a `Loosened-Check:` trailer on a commit of the range, or a revert, then `lym loom resume`.
+// Its way forward is a `Loosened-Check:` trailer on a commit of the range, a revert,
+// or a commit that adds the dropped checks to a test, then `lym loom resume`.
+// A ruling that holds an uncaused check or names a carrying file depends on the rest of the range.
+// It is reused only while the range's diff, over every file it adds, modifies or deletes, is unchanged.
+// A commit to another file may answer such a check, or drop the one that was carried.
 // Bound: a trailer's measured cause is the committer's attestation, which neither the judge nor the code re-measures.
 //
 // Otherwise one judge is spawned under the snapshot guard.

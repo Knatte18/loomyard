@@ -23,7 +23,8 @@ const (
 	RulingNoMatch Ruling = "does not match"
 	// RulingUnexpected says a failing compare is not a change the expectation explains, under DiffCommand only.
 	RulingUnexpected Ruling = "unexpected"
-	// RulingNone says a file's diff widens or removes no assertion, tolerance or limit in a test.
+	// RulingNone says a file's diff widens no assertion, tolerance or limit in a test.
+	// It also says that another test holds each one the diff removes.
 	RulingNone Ruling = "none"
 	// RulingLoosened says a file's diff loosens at least one check in a test.
 	RulingLoosened Ruling = "loosened"
@@ -59,6 +60,8 @@ type FileRuling struct {
 	Reason string `yaml:"reason"`
 	// Checks are the loosened checks of the file, one per loosened assertion, and empty under RulingNone.
 	Checks []LoosenedRuling `yaml:"checks"`
+	// CarriedBy are the paths of the other files whose tests hold an assertion this file's diff removes.
+	CarriedBy []string `yaml:"carried_by"`
 }
 
 // LoosenedRuling is the judge's ruling on one loosened check of a file.

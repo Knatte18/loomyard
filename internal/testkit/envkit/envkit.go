@@ -779,6 +779,7 @@ func driftDeps(root string) driftengine.Deps {
 		FileAt:       func(string, string) ([]byte, bool, error) { return nil, false, nil },
 		CommitsSince: func(string) ([]string, error) { return nil, nil },
 		ChangedFiles: func(string) ([]fabricengine.FileDiff, error) { return nil, nil },
+		RangeDiff:    func(string) (string, error) { return "", nil },
 		CommitMessages: func(string) ([]string, error) {
 			return nil, nil
 		},

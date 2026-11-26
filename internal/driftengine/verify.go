@@ -73,7 +73,7 @@ func NewDriftVerify(name string, row Row, judgement shuttleengine.GateEntry, dep
 // Under a recorded diff of command the declared compare replaces the capture and the diff.
 // An exit 0 is Done, and a failing compare is ruled on case by case by one judge.
 // Where the review base is told, each file of the review range that exists at the base is also listed,
-// and the judge rules on the loosened checks of every file with no stored ruling under its key.
+// and the judge rules on the loosened checks of every file that no stored ruling still covers.
 // A loosened check with no measured cause is a Stuck for the parent.
 // A stored ruling of the same code head stands until an amendment follows it.
 // Every Stuck for the parent opens with shedadapters.DecisionHaltPrefix.
@@ -96,6 +96,7 @@ func (p *DriftVerify) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 		seam{"EndRoles", d.EndRoles != nil},
 		seam{"ChangedFiles", d.ChangedFiles != nil},
 		seam{"CommitMessages", d.CommitMessages != nil},
+		seam{"RangeDiff", d.RangeDiff != nil},
 	)
 	if err == nil && p.judgement.Gate == nil {
 		err = fmt.Errorf("drift: %s is wired without a judgement gate entry", p.name)
@@ -254,7 +255,8 @@ func (p *DriftVerify) recordUnsealed(rec Records) error {
 // checkAndJudge runs the drift check and maps its report.
 // A fault or an unexpected change is a Stuck.
 // Stored rulings are reused, and the changes and files left over go to the judge.
-// A stored ruling that a loosened check has no measured cause is a Stuck, with no judge.
+// A stored ruling that a loosened check has no measured cause is a Stuck with no judge.
+// That holds while the range's diff and trailer lines are unchanged.
 func (p *DriftVerify) checkAndJudge(ctx context.Context, rec Records, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	report, err := Check(ctx, p.deps)
 	if err != nil {

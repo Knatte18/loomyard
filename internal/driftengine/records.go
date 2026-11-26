@@ -171,10 +171,16 @@ type JudgedRecord struct {
 type JudgedFile struct {
 	Path string `json:"path"`
 	// Key identifies the judged diff and commit messages, so a later check reuses the ruling only while they are unchanged.
-	Key    string           `json:"key"`
-	Ruling Ruling           `json:"ruling"`
-	Reason string           `json:"reason"`
-	Checks []LoosenedRuling `json:"checks,omitempty"`
+	Key string `json:"key"`
+	// RangeKey identifies the full diff of the range the ruling was given over.
+	// A ruling that holds an uncaused check or names a carrying file is reused only while it is unchanged,
+	// so a later change to any file the range adds, modifies or deletes has the file judged again.
+	RangeKey string           `json:"range_key,omitempty"`
+	Ruling   Ruling           `json:"ruling"`
+	Reason   string           `json:"reason"`
+	Checks   []LoosenedRuling `json:"checks,omitempty"`
+	// CarriedBy are the paths of the other files whose tests held an assertion this file's diff removes.
+	CarriedBy []string `json:"carried_by,omitempty"`
 	// Strand is the judge's strand name.
 	Strand string `json:"strand"`
 	// At is the RFC 3339 time of the ruling.

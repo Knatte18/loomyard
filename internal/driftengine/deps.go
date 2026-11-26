@@ -37,6 +37,8 @@ type Deps struct {
 	ReviewBase func() (string, error)
 	// ChangedFiles lists the files that exist at base and that the commits from base to HEAD change, each with its diff.
 	ChangedFiles func(base string) ([]fabricengine.FileDiff, error)
+	// RangeDiff reads the full diff of the commits from base to HEAD, added files included.
+	RangeDiff func(base string) (string, error)
 	// CommitMessages lists the whole message of every commit from base to HEAD.
 	CommitMessages func(base string) ([]string, error)
 	// Commit commits the told anchor-relative paths under the durable drift directory with the run's records.

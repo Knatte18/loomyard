@@ -150,14 +150,19 @@ type verifyFixture struct {
 	checkoutsErr   error
 	recordsChanged []string
 	// reviewBase is what the ReviewBase seam answers; changedFiles and commitMessages are what the range's reads answer.
-	// changedFilesBases and commitMessagesBases hold the base each of those reads was called with.
+	// addedDiff is the diff of the files the range adds, which the full range diff holds after the changed files' diffs.
+	// changedFilesBases, commitMessagesBases and rangeDiffBases hold the base each of those reads was called with.
 	reviewBase          string
 	changedFiles        []fabricengine.FileDiff
+	addedDiff           string
 	commitMessages      []string
 	changedFilesBases   []string
 	commitMessagesBases []string
+	rangeDiffBases      []string
 	// fileRulings maps a listed file's path to the loosened checks the judge rules on it; a file with none is ruled none.
 	fileRulings map[string][]LoosenedRuling
+	// fileCarriedBy maps a listed file's path to the files the judge names as carrying its removed checks.
+	fileCarriedBy map[string][]string
 	// rulings maps a cell's "<case> <key>" to its ruling, which defaults to matching; rangeChecked is the open-range note.
 	rulings      map[string]Ruling
 	rangeChecked string
@@ -249,6 +254,15 @@ func newVerifyFixture(t *testing.T) *verifyFixture {
 		f.commitMessagesBases = append(f.commitMessagesBases, base)
 		return f.commitMessages, nil
 	}
+	d.RangeDiff = func(base string) (string, error) {
+		f.rangeDiffBases = append(f.rangeDiffBases, base)
+		var diff strings.Builder
+		for _, file := range f.changedFiles {
+			diff.WriteString(file.Path + "\n" + file.Diff)
+		}
+		diff.WriteString(f.addedDiff)
+		return diff.String(), nil
+	}
 	f.deps = d
 	return f
 }
@@ -327,6 +341,9 @@ func (f *verifyFixture) filesYAML(request JudgeRequest) string {
 		checks := f.fileRulings[file.Path]
 		if len(checks) == 0 {
 			fmt.Fprintf(&text, "  - id: %s\n    ruling: %s\n    reason: no assertion was widened\n", file.ID, RulingNone)
+			if carriers := f.fileCarriedBy[file.Path]; len(carriers) > 0 {
+				fmt.Fprintf(&text, "    carried_by: [%s]\n", strings.Join(carriers, ", "))
+			}
 			continue
 		}
 		fmt.Fprintf(&text, "  - id: %s\n    ruling: %s\n    reason: a limit was widened\n    checks:\n", file.ID, RulingLoosened)
@@ -1296,8 +1313,8 @@ func TestDriftVerify(t *testing.T) {
 			if len(f.requests) != 1 || len(f.requests[0].Cells) != 0 || !slices.Equal(f.requests[0].Files, []JudgeFile{wantFile}) || !slices.Equal(f.requests[0].CommitMessages, f.commitMessages) {
 				t.Fatalf("requests = %+v; want one judge listing %+v and the range's messages, with no cell", f.requests, wantFile)
 			}
-			if !slices.Equal(f.changedFilesBases, []string{"review-base"}) || !slices.Equal(f.commitMessagesBases, []string{"review-base"}) {
-				t.Errorf("ChangedFiles bases %q and CommitMessages bases %q; want the review base alone, not the branch point", f.changedFilesBases, f.commitMessagesBases)
+			if !slices.Equal(f.changedFilesBases, []string{"review-base"}) || !slices.Equal(f.commitMessagesBases, []string{"review-base"}) || !slices.Equal(f.rangeDiffBases, []string{"review-base"}) {
+				t.Errorf("ChangedFiles bases %q, CommitMessages bases %q and RangeDiff bases %q; want the review base alone, not the branch point", f.changedFilesBases, f.commitMessagesBases, f.rangeDiffBases)
 			}
 			scope, judged := f.records().Scope, f.records().Judged
 			if len(judged.Files) != 1 || judged.Files[0].Path != limitsTest || judged.Files[0].Key != fileRulingKey(widened[0].Diff, nil) || judged.Files[0].Ruling != RulingLoosened {
@@ -1340,6 +1357,97 @@ func TestDriftVerify(t *testing.T) {
 			}
 		})
 
+		t.Run("a later commit that adds the dropped checks to another test has the uncaused ruling judged again", func(t *testing.T) {
+			t.Parallel()
+			const movedTo = "limits_class_test.go"
+			const untouchedTest = "names_test.go"
+			before := fabricengine.FileDiff{Path: movedTo, Diff: "+type limitsClass struct{}\n"}
+			untouched := fabricengine.FileDiff{Path: untouchedTest, Diff: "+\tname := \"limit\"\n"}
+			f := newVerifyFixture(t)
+			f.seed(countedScope(), verifyBaseline)
+			f.current = verifyBaseline
+			f.changedFiles = []fabricengine.FileDiff{widened[0], before, untouched}
+			f.commitMessages = []string{"3: widen the limit\n"}
+			f.fileRulings = uncaused
+			storedUntouched := func() JudgedFile {
+				files := f.records().Judged.Files
+				index := slices.IndexFunc(files, func(held JudgedFile) bool { return held.Path == untouchedTest })
+				if index < 0 {
+					t.Fatalf("stored files = %+v; want a ruling on %s", files, untouchedTest)
+				}
+				return files[index]
+			}
+
+			outcome, pointer, err := f.call()
+
+			requireStuck(t, outcome, pointer, err, true, "has no measured cause", "commit the dropped checks in a test", "has the judge rule again on a file whose stored ruling the new commits may answer")
+			ruledFirst := storedUntouched()
+
+			added := fabricengine.FileDiff{Path: movedTo, Diff: before.Diff + "+\tif got > 5 {\n+\t\tt.Errorf(\"limit exceeded\")\n"}
+			f.moveHead("code-head-1")
+			f.changedFiles = []fabricengine.FileDiff{widened[0], added, untouched}
+			f.commitMessages = []string{"4: add the dropped checks\n", "3: widen the limit\n"}
+			f.fileRulings = nil
+
+			requireDone(f)
+
+			wantFiles := []JudgeFile{{ID: "f1", Path: limitsTest, Diff: widened[0].Diff}, {ID: "f2", Path: movedTo, Diff: added.Diff}}
+			if f.seats.Calls != 2 || !slices.Equal(f.requests[1].Files, wantFiles) {
+				t.Fatalf("%d judge runs, requests %+v; want a second judge listing %+v", f.seats.Calls, f.requests, wantFiles)
+			}
+			if got := storedUntouched(); !reflect.DeepEqual(got, ruledFirst) {
+				t.Errorf("stored ruling on %s = %+v; want it reused as %+v", untouchedTest, got, ruledFirst)
+			}
+			if scope := f.scope(); !scope.LastCheck.Passed || len(scope.LastCheck.Loosened) != 0 {
+				t.Errorf("last check = %+v; want a pass with no loosened check", scope.LastCheck)
+			}
+		})
+
+		t.Run("a later commit that adds the dropped checks in a new test file has the uncaused ruling judged again", func(t *testing.T) {
+			t.Parallel()
+			f := newVerifyFixture(t)
+			f.seed(countedScope(), verifyBaseline)
+			f.current = verifyBaseline
+			f.changedFiles = widened
+			f.fileRulings = uncaused
+
+			outcome, pointer, err := f.call()
+
+			requireStuck(t, outcome, pointer, err, true, "has no measured cause")
+
+			f.moveHead("code-head-1")
+			f.addedDiff = "limits_class_test.go\n+\tif got > 5 {\n"
+			f.fileRulings = nil
+
+			requireDone(f)
+
+			if f.seats.Calls != 2 || !f.scope().LastCheck.Passed {
+				t.Errorf("%d judge runs and last check %+v; want a second judge and a pass", f.seats.Calls, f.scope().LastCheck)
+			}
+		})
+
+		t.Run("a ruling that names a carrying file the range adds is judged again once that file changes", func(t *testing.T) {
+			t.Parallel()
+			const carrier = "limits_class_test.go"
+			f := newVerifyFixture(t)
+			f.seed(countedScope(), verifyBaseline)
+			f.current = verifyBaseline
+			f.changedFiles = widened
+			f.addedDiff = carrier + "\n+\tif got > 5 {\n"
+			f.fileCarriedBy = map[string][]string{limitsTest: {carrier}}
+			requireDone(f)
+
+			f.moveHead("code-head-1")
+			f.addedDiff = carrier + "\n+type limitsClass struct{}\n"
+
+			requireDone(f)
+
+			wantFiles := []JudgeFile{{ID: "f1", Path: limitsTest, Diff: widened[0].Diff}}
+			if f.seats.Calls != 2 || !slices.Equal(f.requests[1].Files, wantFiles) {
+				t.Errorf("%d judge runs, requests %+v; want a second judge listing %+v", f.seats.Calls, f.requests, wantFiles)
+			}
+		})
+
 		t.Run("a judge spawn ruling a cell does not match and a file uncaused halts with both reasons, the no-match one first", func(t *testing.T) {
 			t.Parallel()
 			f := newVerifyFixture(t)
@@ -1366,8 +1474,8 @@ func TestDriftVerify(t *testing.T) {
 
 			requireDone(f)
 
-			if len(f.requests) != 1 || len(f.requests[0].Files) != 0 || len(f.changedFilesBases)+len(f.commitMessagesBases) != 0 {
-				t.Errorf("requests = %+v, file reads %q and %q; want one judge for the cell alone and no range read", f.requests, f.changedFilesBases, f.commitMessagesBases)
+			if len(f.requests) != 1 || len(f.requests[0].Files) != 0 || len(f.changedFilesBases)+len(f.commitMessagesBases)+len(f.rangeDiffBases) != 0 {
+				t.Errorf("requests = %+v, range reads %q, %q and %q; want one judge for the cell alone and no range read", f.requests, f.changedFilesBases, f.commitMessagesBases, f.rangeDiffBases)
 			}
 		})
 

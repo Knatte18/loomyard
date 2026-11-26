@@ -1118,8 +1118,10 @@ User-facing modules each get one `lym <module>` namespace:
   a hub whose scoper is neither go nor dotnet passes the gate, since the check cannot judge the tests there;
   the fix's commit carries a `Root-Cause:` trailer that the `Code-Review` perch checks.
   `Drift-Verify` checks the writer's code by containment and has a judge rule on the expected changes.
-  The judge also rules on each loosened check, an assertion, tolerance or limit widened in a test existing at the review base, as caused or uncaused.
-  An uncaused one makes the row Stuck until a `Loosened-Check` trailer commit or a revert, then `lym loom resume`.
+  The judge also rules on each loosened check, an assertion, tolerance or limit widened or removed in a test existing at the review base, as caused or uncaused.
+  A removed assertion that another test still holds, no looser, is no loosened check.
+  An uncaused one makes the row Stuck until a `Loosened-Check` trailer commit, a revert or a commit adding the dropped checks to a test, then `lym loom resume`.
+  A change to a file of the review range has the judge rule on the uncaused file again.
   The `Code-Review` perch (`Code-Bouncer`, `Code-Burler-Review` and `Code-Burler-Fix`) reviews the committed diff.
   It carries its open findings into the record.
   `Drift-Recheck` then checks again, by containment and the judge, the code the perch's fixes committed.
