@@ -164,8 +164,10 @@ A test package never reaches the operator's global gitconfig or default tmux soc
 ## Testkit
 
 Test support used by two or more packages lives in one kit package under `internal/testkit/<kit>/`.
-Such support covers fakes, builders, fixtures and the scan harness.
-It is never duplicated per package and never placed under the package it fakes.
+Such support covers builders, fixtures, the scan harness and stand-ins for things outside the repository.
+It is never duplicated per package, and a stand-in is never placed under the package whose seam it fills.
+[PATTERN-test-stand-ins](PATTERN-test-stand-ins.md) bars a stand-in for a repository module.
+The kits that hold one, such as `shedfake`, predate it and last until a sweep removes them.
 
 - No non-test file outside `internal/testkit/` imports a path under it, so every kit is reachable only from tests.
   Files under `internal/testkit/` are exempt, so a kit may build on another kit.

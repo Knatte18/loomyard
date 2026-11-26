@@ -2111,8 +2111,9 @@ It asserts nothing itself, and it never imports fabric.
 It builds every hub fixture in the repo through `fabriccli.CloneAndWire`, never a hand-assembled stand-in.
 It asserts nothing about fabric either.
 `internal/testkit` holds the shared test kits, one package per kit, for test support used by two or more packages.
-That support covers fakes, builders, fixtures and the scan harness.
+That support covers builders, fixtures, the scan harness and stand-ins.
 [PATTERN-test-isolation](../pattern/PATTERN-test-isolation.md) states what a kit may import and assert.
+[PATTERN-test-stand-ins](../pattern/PATTERN-test-stand-ins.md) states what a test may stand in for.
 `internal/testkit/scankit` is the harness every invariant scan runs on.
 It provides module-root lookup, file walk and allowlists that report stale entries.
 It also provides a vacuity floor and an import-allowlist assertion.

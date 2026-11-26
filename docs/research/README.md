@@ -172,6 +172,10 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 
 - [pocock-skills-2026-11-19](survey/pocock-skills-2026-11-19/report.md) — what LoomYard could take from Matt Pocock's skills repository: each candidate's landing place, gain, cost and verdict, with the three best written as board notes.
 
+## testing — test practice
+
+- [no-fake-other-modules](no-fake-other-modules.md) — the rule against faking another module in tests, and every stand-in found, with a verdict for each.
+
 ## tokens — token use, cost and models
 
 - [token-audit-2026-10-22](tokens/token-audit-2026-10-22/report.md) — where Claude tokens went over two weeks of runs.

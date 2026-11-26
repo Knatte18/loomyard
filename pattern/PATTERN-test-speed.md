@@ -247,8 +247,11 @@ this section keeps only what is project-specific or stricter here.
 - A test targets behavior and contract at a module's public surface, not each helper.
   The surface is the exported API, a CLI verb or a file contract.
   An unexported helper is tested through the surface that uses it.
-- A behavior testable with a fake or an in-memory fixture is tested at tier0 that way, never through a real hub.
-  Integration tests stay the exception.
+- A behavior is tested at the lowest tier its real modules run in.
+  An in-memory or temp-dir fixture of the module's own state, or a stand-in for something outside the repository,
+  keeps it at `tier0`; such a behavior is never tested through a real hub.
+  Another module is never faked to lower a tier:
+  when the real one spawns, the test takes its tier, per [PATTERN-test-stand-ins](PATTERN-test-stand-ins.md).
 - A new test function or file must cover a behavior no existing test covers.
   Otherwise it becomes a row in an existing table-driven test, or an assertion in an existing test of that behavior.
 - Many items of one kind (refusals, claims, rows, verbs) are covered by one table-driven or contract-level test.
