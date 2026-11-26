@@ -187,6 +187,11 @@ type BouncerConfig struct {
 	// and an earlier CIRCLING is read as CONTINUE.
 	// It must be positive.
 	CirclingCheckpoint int
+	// FirstRaisedGates makes a gating finding hold convergence in every round.
+	// That includes a key first raised in the latest round.
+	// False lets such a key converge from round 2 on, carried into the decision record's `## Open risks`.
+	// A hardener campaign sets it, since a fix its closing round made is behaviour no round has driven.
+	FirstRaisedGates bool
 	// StalemateRounds is how many unchanged-target rounds in a row escalate with cause stalemate.
 	// 0, which is also the zero value, turns the check off.
 	StalemateRounds int
@@ -2075,7 +2080,7 @@ func (b *Bouncer) RenderJudgePrompt(engine string, round int) (string, error) {
 		"facts_path":      factsPath(b.cfg.RunDir, round),
 		"round":           strconv.Itoa(round),
 		"next_round":      strconv.Itoa(round + 1),
-		"decision_rule":   decisionRuleMarker(round, b.cfg.CirclingCheckpoint),
+		"decision_rule":   decisionRuleMarker(round, b.cfg.CirclingCheckpoint, b.cfg.FirstRaisedGates),
 		"report_path":     reportPath,
 		"previous_ledger": previousLedger,
 		"verdict_path":    outputs[0],

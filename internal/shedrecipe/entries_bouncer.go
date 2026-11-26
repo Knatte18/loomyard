@@ -369,6 +369,7 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 		bouncerCfg.RoundFacts = func(round int) (string, error) { return env.Harden.RoundFacts(runDir, round) }
 		bouncerCfg.LiveRed = func(round int) (bool, error) { return env.Harden.LiveRed(runDir, round) }
 		bouncerCfg.OnHalt = func() error { return env.Harden.Halt(row.Name) }
+		bouncerCfg.FirstRaisedGates = true
 	}
 
 	// NewBouncer probes the rubric stencil eagerly, at construction.

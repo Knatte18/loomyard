@@ -157,6 +157,10 @@
 // Call acts on a judgment that provably happened: a verdict and ledger that both exist and parse.
 // It acts regardless of what the shuttle run itself reported.
 //
+// From round 2 on, the judge's decision rule lets a gating key first raised in the latest round converge.
+// Such a key is carried into the decision record's `## Open risks`.
+// A Bouncer with FirstRaisedGates set, as a hardener campaign's is, rules every round by round 1's rule instead.
+//
 // A CONTINUE or CIRCLING round escalates to the run's parent instead of halting for a human.
 // The causes are budget, circling, hard-cap, decision and stalemate; BouncerConfig names the seams that enable each.
 // An escalation writes round-<N>-escalation.md and round-<N>-parent-notice.md and returns Awaiting with the ledger path.

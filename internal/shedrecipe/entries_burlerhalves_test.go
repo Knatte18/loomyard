@@ -325,8 +325,8 @@ func TestBurlerReviewEntry_ProfileMapping(t *testing.T) {
 		}
 	})
 
-	// Only a harden_round row's round check admits a new focus finding outside the changed files.
-	t.Run("HardenRoundSetsTheFocusFindingsPermission", func(t *testing.T) {
+	// Only a harden_round row's round check admits a new finding outside the changed files.
+	t.Run("HardenRoundMarksTheRoundContext", func(t *testing.T) {
 		const review = "---\nverdict: BLOCKING\nfindings:\n" +
 			"  - id: F2\n    severity: BLOCKING\n    class: decision\n    origin: focus\n    location: z.go:1\n    summary: s2\n    fix: f2\n" +
 			"prior:\n  - id: F1\n    status: resolved\n---\n\n### [BLOCKING] s2\n\n**Location:** z.go:1\n\n**Issue:** an undriven focus entry.\n"
@@ -356,7 +356,7 @@ func TestBurlerReviewEntry_ProfileMapping(t *testing.T) {
 				ctx.HasChanges, ctx.Changed = true, []string{"c.go"}
 				err := burlerengine.CheckReviewRound([]byte(review), &ctx)
 				if tt.wantErr == "" && err != nil {
-					t.Errorf("CheckReviewRound() = %v; want the focus finding admitted", err)
+					t.Errorf("CheckReviewRound() = %v; want the off-changes finding admitted", err)
 				}
 				if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
 					t.Errorf("CheckReviewRound() = %v; want a refusal containing %q", err, tt.wantErr)

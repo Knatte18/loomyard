@@ -95,8 +95,8 @@ type RoundContextSources struct {
 	AmendmentTitles func() ([]string, error)
 	// ConflictDir is the directory holding the plan executor's halt-reason file.
 	ConflictDir string
-	// FocusFindings marks a hardener segment's round, which may raise a focus finding outside the changed files.
-	FocusFindings bool
+	// HardenerRound marks a hardener segment's round, whose findings the BLOCKING and changed-file rules do not bind.
+	HardenerRound bool
 }
 
 // amendingEntryTexts returns the full text of every added entry of the decision record whose title amendmentTitles lists.
@@ -221,7 +221,7 @@ func BuildRoundContext(runDir string, round int, paths RoundContextSources) (*bu
 		AddedTexts:           texts,
 		AmendingTexts:        amendingTexts,
 		HaltReason:           haltReason,
-		FocusFindings:        paths.FocusFindings,
+		HardenerRound:        paths.HardenerRound,
 		HasChanges:           hasChanges,
 		Changed:              changed,
 		PriorReviewPath:      reviewPath,

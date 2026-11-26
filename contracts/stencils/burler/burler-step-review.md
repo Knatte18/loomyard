@@ -54,4 +54,5 @@ a section without that heading has none of them.
   Locate a regression a fix caused in an untouched file at the changed line that causes it, and name the broken site in its `summary`.
   A card that an added entry marked as amending the plan names may be located whether or not the changes file lists it.
   A finding raising the plan executor's halt reason, when the section above quotes one, carries `origin: webster` and may sit outside the changed files.
-  In a hardener round, a new `origin: focus` finding of class `decision` may sit outside the changed hunks and files.
+- In a hardener round, raise each fault you drove at the severity it has and at the site that fixes it, whether or not the changes file lists it,
+  and move a carried finding to any file.

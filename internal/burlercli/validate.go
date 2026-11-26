@@ -129,12 +129,12 @@ func checkRoundInRunDirectory(cwd, reviewFile string) (refusal error, builderNot
 		}
 		paths.ConflictDir = runplan.ConflictDir(location.AnchorPath())
 	}
-	// Only the hardener's review raises a focus finding outside the changed files.
+	// Only the hardener's review raises a new finding below BLOCKING or outside the changed files.
 	hardenSubdir, found, err := loomrecipe.BouncerRunSubdir(loomshed.NameHardenBouncer)
 	if err != nil {
 		return nil, fmt.Sprintf("the hardener review run directory could not be read from the recipe, so the parse alone decided: %s", err)
 	}
-	paths.FocusFindings = found && filepath.Clean(runDir) == filepath.Join(loomengine.LoomReviewsDir(location), hardenSubdir)
+	paths.HardenerRound = found && filepath.Clean(runDir) == filepath.Join(loomengine.LoomReviewsDir(location), hardenSubdir)
 	roundContext, err := shedadapters.BuildRoundContext(runDir, round, paths)
 	if err != nil {
 		return nil, fmt.Sprintf("the round context could not be built, so the parse alone decided: %s", err)

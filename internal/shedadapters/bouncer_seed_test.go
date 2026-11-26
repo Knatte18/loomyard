@@ -485,7 +485,7 @@ func TestBouncer_MarkerCompleteness_BothTemplates(t *testing.T) {
 			"facts_path":      "/abs/round-1-facts.md",
 			"round":           "1",
 			"next_round":      "2",
-			"decision_rule":   decisionRuleMarker(1, 3),
+			"decision_rule":   decisionRuleMarker(1, 3, false),
 			"report_path":     "/abs/round-1-report.md",
 			"previous_ledger": "(none)",
 			"verdict_path":    "/abs/round-1-bouncer-verdict.md",

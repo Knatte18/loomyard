@@ -146,6 +146,9 @@ producers:
             its first statement requires tier 2, or tier 3 when it spawns a real LLM,
             and it waits on the state change with a deadline, never a fixed sleep.
             Prove such a test's determinism by running it many times in parallel under load, never once.
+            Drive the neighbours of each fix on a sandbox hub as well as its finding's scenario:
+            every other failure kind that a classifier the fix adds or changes receives,
+            and every role and verb that reads a way forward the fix adds or changes, typing that way forward where it is printed.
             When `tools/sandbox/` holds a `SANDBOX-<MODULE>-SUITE.md` for the module,
             extend it with the behaviour the review surfaced and keep the sandbox coverage test green in the same change;
             with no such file, creating one is not required.

@@ -97,11 +97,7 @@ func TestCheckReviewRound(t *testing.T) {
 		f.Origin = WebsterOrigin
 		return f
 	}
-	focusing := func(ctx *RoundContext) { ctx.FocusFindings = true }
-	fromFocus := func(f Finding, class Class) Finding {
-		f.Origin, f.Class = FocusOrigin, class
-		return f
-	}
+	hardening := func(ctx *RoundContext) { ctx.HardenerRound = true }
 	const planCard = "_lym/plan/14-card-slug.md"
 	const amendingEntry = "### Rework the slug card\n\nAmend plan card 14-card-slug to name the retry."
 	held := func(titles ...string) func(*RoundContext) {
@@ -195,10 +191,11 @@ func TestCheckReviewRound(t *testing.T) {
 		{name: "NewWebsterFindingWithNoHaltReasonIsRefused", ctx: round(changed("c.go")), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{fromWebster(finding("F1", SeverityBlocking, planCard+":3"))}, wantErr: "does not list"},
 		{name: "NewWebsterFindingWithAHaltReasonPasses", ctx: round(changedWith(halted("card 14 misses the retry"))), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{fromWebster(finding("F1", SeverityBlocking, planCard+":3"))}},
 		{name: "NewWebsterFindingBelowBlockingIsRefused", ctx: round(changedWith(halted("card 14 misses the retry"))), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{fromWebster(finding("F1", SeverityMedium, planCard+":3"))}, wantErr: "only at BLOCKING"},
-		{name: "NewFocusDecisionOnAnUntouchedFilePasses", ctx: round(changedWith(focusing)), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{fromFocus(finding("F1", SeverityBlocking, "z.go:1"), ClassDecision), fromFocus(finding("F2", SeverityBlocking, "y.go:1"), ClassDecision)}},
-		{name: "NewFocusDecisionOnAnUntouchedFileOutsideAHardenerRoundIsRefused", ctx: round(changed("c.go")), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{fromFocus(finding("F1", SeverityBlocking, "z.go:1"), ClassDecision)}, wantErr: "does not list"},
-		{name: "NewFocusFindingOfAnotherClassOnAnUntouchedFileIsRefused", ctx: round(changedWith(focusing)), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{fromFocus(finding("F1", SeverityBlocking, "z.go:1"), ClassScope)}, wantErr: "does not list"},
-		{name: "NewFocusDecisionBelowBlockingIsRefused", ctx: round(changedWith(focusing)), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{fromFocus(finding("F1", SeverityMedium, "z.go:1"), ClassDecision)}, wantErr: "only at BLOCKING"},
+		{name: "NewFindingsBelowBlockingOnUntouchedFilesInAHardenerRoundPass", ctx: round(changedWith(hardening)), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{finding("F1", SeverityMedium, "z.go:1"), finding("F2", SeverityLow, "y.go:1")}},
+		{name: "CarriedMovedToAnUntouchedFileInAHardenerRoundPasses", ctx: round(changedWith(hardening)), prior: []PriorEntry{entry("E1", PriorOpen)}, findings: []Finding{carrying(finding("F1", SeverityMedium, "b.go:3"), "E1")}},
+		{name: "CarriedMovedWithNoChangesFileInAHardenerRoundPasses", ctx: round(hardening), prior: []PriorEntry{entry("E1", PriorOpen)}, findings: []Finding{carrying(finding("F1", SeverityMedium, "b.go:3"), "E1")}},
+		{name: "CarriedSeverityRaisedInAHardenerRoundIsRefused", ctx: round(hardening), prior: []PriorEntry{entry("E1", PriorOpen)}, findings: []Finding{carrying(finding("F1", SeverityBlocking, "a.go:10"), "E1")}, wantErr: "above its earlier"},
+		{name: "NewParentFindingWithNoAskInAHardenerRoundIsRefused", ctx: round(hardening), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{fromParent(finding("F1", SeverityBlocking, "a.go:3"), "P1")}, wantErr: "origin: parent"},
 		{
 			name: "HeldPairOneResolvedAndOneCarried",
 			ctx: round(func(ctx *RoundContext) {

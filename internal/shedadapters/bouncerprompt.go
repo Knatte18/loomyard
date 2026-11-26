@@ -13,6 +13,7 @@ package shedadapters
 // A gating finding on a key first raised in the latest round does not block it.
 // It goes into the decision record's `## Open risks` for a later check.
 // A parse-error line in the facts' earlier-open list means the judge rules by round 1's rule.
+// With firstRaisedGates set, every round rules by round 1's rule, so a key first raised in the latest round blocks too.
 //
 // Below the checkpoint the rule offers CONVERGED and CONTINUE only and names no CIRCLING,
 // so a judge cannot rule on no-progress evidence before the run has had rounds to show progress.
@@ -20,11 +21,11 @@ package shedadapters
 // CIRCLING is earned only by a gating finding on a key the facts list as open in an earlier round.
 // The key must still be open in this round.
 // The variant lives here so the stencil stays conditional-free.
-func decisionRuleMarker(round, checkpoint int) string {
+func decisionRuleMarker(round, checkpoint int, firstRaisedGates bool) string {
 	const roundOneContinue = "`CONTINUE` while the latest round carries a gating-class finding at MEDIUM or worse, or any BLOCKING finding.\n"
 	rule := "A finding is gating when its class is `design`.\n" +
 		"\n"
-	if round < 2 {
+	if round < 2 || firstRaisedGates {
 		rule += "- " + roundOneContinue +
 			"- `CONVERGED` when the latest round carries neither.\n"
 	} else {

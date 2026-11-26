@@ -286,6 +286,42 @@ func TestHardenRoundKey(t *testing.T) {
 		}
 	})
 
+	t.Run("BouncerRowGatesAFirstRaisedKeyOnlyWithHardenRound", func(t *testing.T) {
+		const lighterClause = "on a key first raised in the latest round does not block it"
+		tests := []struct {
+			name        string
+			hardenRound bool
+			wantLighter bool
+		}{
+			{name: "HardenRoundRendersRoundOnesRule", hardenRound: true},
+			{name: "OtherRowRendersTheLighterRule", wantLighter: true},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				env := hardenTestEnv(t)
+				shuttle := continueSeamShuttle()
+				env.Shuttle = shuttle
+				writeStencil(t, env.StencilsDir, "bouncer-template-judge", "{{.decision_rule}}\n")
+				cfg := minimalBouncerConfig(t, env)
+				if tt.hardenRound {
+					cfg["harden_round"] = true
+				}
+				layoutBouncerCirclingRounds(t, env)
+
+				producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
+				if err != nil {
+					t.Fatalf("bouncerEntry() error = %v; want nil", err)
+				}
+				if _, _, err := producer.Call(context.Background()); err != nil {
+					t.Fatalf("Call() error = %v; want nil", err)
+				}
+				if has := strings.Contains(shuttle.GotSpec.Prompt, lighterClause); has != tt.wantLighter {
+					t.Errorf("round 2 judge prompt contains %q = %v; want %v\n%s", lighterClause, has, tt.wantLighter, shuttle.GotSpec.Prompt)
+				}
+			})
+		}
+	})
+
 	t.Run("BouncerRowReapsTheSandboxAtTheHaltPointWhenTheRunHalts", func(t *testing.T) {
 		env := newTestEnv(t)
 		var recorder *campaignRecorder

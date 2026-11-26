@@ -77,10 +77,10 @@ func TestValidateReviewVerb_RoundChecks(t *testing.T) {
 		runDir       string
 		bare         bool
 		brokenRecord bool
-		// focusReview writes a review with a complete prior list.
+		// offChangesReview writes a review with a complete prior list.
 		// Its one new finding is BLOCKING, class decision and origin focus, and sits outside the changed files.
 		// The changes file lists only a.go.
-		focusReview bool
+		offChangesReview bool
 		// cwd is the seam cwd the verb runs from; empty is the worktree.
 		cwd string
 		// wantRefusal is the substring of the refusal an exit 1 carries, empty for exit 0.
@@ -93,8 +93,8 @@ func TestValidateReviewVerb_RoundChecks(t *testing.T) {
 		{name: "SeamCwdOutsideAGitRepository", runDir: filepath.Join(reviews, "run-no-repo"), cwd: t.TempDir()},
 		{name: "RunDirectoryOutsideTheReviewRunRoot", runDir: filepath.Join(worktree, "elsewhere")},
 		{name: "BuilderErrorFallsBackToTheParse", runDir: filepath.Join(reviews, "run-broken"), brokenRecord: true, wantNote: "round context could not be built"},
-		{name: "FocusFindingAdmittedInTheHardenerRunDirectory", runDir: filepath.Join(reviews, hardenSubdir), focusReview: true},
-		{name: "FocusFindingRefusedInTheCodeRunDirectory", runDir: filepath.Join(reviews, codeSubdir), focusReview: true, wantRefusal: "does not list"},
+		{name: "OffChangesFindingAdmittedInTheHardenerRunDirectory", runDir: filepath.Join(reviews, hardenSubdir), offChangesReview: true},
+		{name: "OffChangesFindingRefusedInTheCodeRunDirectory", runDir: filepath.Join(reviews, codeSubdir), offChangesReview: true, wantRefusal: "does not list"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -106,7 +106,7 @@ func TestValidateReviewVerb_RoundChecks(t *testing.T) {
 			}
 			review := filepath.Join(tt.runDir, "round-2-review.md")
 			content := "---\nverdict: APPROVED\n---\nnothing found\n"
-			if tt.focusReview {
+			if tt.offChangesReview {
 				content = "---\nverdict: BLOCKING\nfindings:\n" +
 					"  - id: F2\n    severity: BLOCKING\n    class: decision\n    origin: focus\n    location: z.go:1\n    summary: s2\n    fix: f2\n" +
 					"prior:\n  - id: F1\n    status: resolved\n---\n\n### [BLOCKING] s2\n\n**Location:** z.go:1\n\n**Issue:** an undriven focus entry.\n"

@@ -56,6 +56,8 @@ and the paths of the round's focus file, the charter, and of the decision record
   Such a finding goes to the arbiter or the run's parent, which orders another round over the entry or accepts it with a stated reason,
   so no round settles while a focus entry is undriven.
   A held focus finding that this round drove OK is resolved, its answer quoting the title of the decision record entry that ordered the drive.
+  A focus entry you recorded FAIL is a finding of the fault the drive showed:
+  severity BLOCKING, located at the site that fixes it, so the fix half fixes it and no round settles past it.
   Then improvise many more adversarial scenarios of your own:
   crash and rebirth, scope across hubs and worktrees, dead-but-present state, orphans of an operation that failed midway, rapid churn,
   and verbs combined in orders nothing has tried.
@@ -73,8 +75,14 @@ and the paths of the round's focus file, the charter, and of the decision record
   A drive that stays green under sabotage leaves the scenario unproven, not the code proven.
 - **Re-drive earlier fixes.**
   Re-drive each prior round's fixes against the sandbox, so an earlier fix that a later change undid is found.
+  Mark a prior finding `resolved` only once this round has driven its whole reproduction on the fixed build.
+  While any half of it is undriven, it stays `open`, carried with the undriven half named in its `fix`.
 - **Prove a concurrency claim twice.**
   A claim about concurrent behaviour needs a sequential control, and a second hub that runs the same drive beside the first.
+- **Kill every job both ways.**
+  Kill each job from each caller that starts it, twice:
+  once while origin applies the push in flight, as a hook that sleeps after it receives the push allows, and once while origin refuses it.
+  In the state each kill left, type the command the verb printed as its way forward, with every placeholder filled, and record what it did.
 - **Hold the merge bar.**
   Correctness in the normal single-instance flow is the gate.
   A timeout under the concurrent copies' CPU peg is a diagnostic, never a defect.
@@ -94,6 +102,9 @@ and the paths of the round's focus file, the charter, and of the decision record
 - **Judge each finding.**
   Give each finding its file and line, a concrete failure scenario, a severity of BLOCKING, MEDIUM, LOW or NIT, and a suggested fix.
   Mark it CONFIRMED when reproduced, or PLAUSIBLE when it looks wrong but is unverified.
+  Class each fault in the modules' behaviour `design`, a fault a fix's missed call site causes included,
+  since behaviour is this rubric's subject.
+  `decision` is for a focus entry left undriven or WARN, and `consistency` for a doc or message that disagrees with what a verb does.
 - **Record every finding, large or small.**
   Severity decides how a finding is reported, never whether it is fixed.
   A finding whose fix is large, such as a feature, a subsystem or a refactor outside the modules, is recorded like any other.
@@ -101,8 +112,10 @@ and the paths of the round's focus file, the charter, and of the decision record
 ## The judge
 
 - **Converged.**
-  The judge rules CONVERGED only on a round whose review records no BLOCKING or MEDIUM finding and whose live gate is green.
-  A review that left a focus entry undriven or WARN holds an `origin: focus` finding, so it never converges.
+  The judge rules CONVERGED only on a round whose review records no BLOCKING finding and no `design` finding at MEDIUM,
+  and whose live gate is green.
+  A finding first raised in that round counts like any other: the fix it got is behaviour no round has driven, so another round drives it.
+  A review that left a focus entry undriven, WARN or FAIL holds a BLOCKING finding for it, so it never converges.
   It reads both from the round's facts.
 - **Re-seed from the residue.**
   The focus file derives the next round's assignment from what this round left standing, never "review it again":
@@ -123,3 +136,5 @@ and the paths of the round's focus file, the charter, and of the decision record
   the focus file asks the next round for the missing proof.
 - **Coverage.**
   A convergence verdict states what the campaign did not drive, and what its method failed to show about itself.
+  Its prose lists each scenario no sandbox can drive, such as an owner takeover, the pull-request sweep or a lost lease,
+  as a follow-up for the run's parent to file, naming the code it concerns and what a drive of it would need.

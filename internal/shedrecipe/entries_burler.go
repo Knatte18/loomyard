@@ -180,7 +180,7 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 	snapshot := reviewTargetSnapshot(env, runSubdir)
 	snapshot.Scope, snapshot.Paths = profile.FixScope, profile.Target.Paths
 	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), ReviewKey: segment.ReviewKey}
-	halfDeps := shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, Fans: fans, Assist: segment.Assist, Parent: segment.Parent, GateFindingsPath: env.gateFindingsPath(row.Name), Snapshot: &snapshot, DecisionRecordPath: env.DecisionRecordPath, FocusFindings: hardenRound, Diff: diff, Rubric: rubric}
+	halfDeps := shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, Fans: fans, Assist: segment.Assist, Parent: segment.Parent, GateFindingsPath: env.gateFindingsPath(row.Name), Snapshot: &snapshot, DecisionRecordPath: env.DecisionRecordPath, HardenerRound: hardenRound, Diff: diff, Rubric: rubric}
 	// Only the plan segment's review answers to the plan amendment record and the plan executor's halt reason.
 	if row.Name == loomshed.NamePlanBurlerReview {
 		halfDeps.AmendmentTitles, halfDeps.HaltConflictDir = amendmentTitlesAt(env.AmendmentPath), env.HaltConflictDir

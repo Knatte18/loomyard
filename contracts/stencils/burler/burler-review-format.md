@@ -75,8 +75,8 @@ Frontmatter rules, all strict:
   A carried finding keeps its `class`, keeps or lowers its `severity`, and keeps its location path or moves to a file the changes file lists.
 - In an incremental round a new finding is `BLOCKING` and sits on a changed hunk, in a file the changes file lists.
   A card a listed added entry marked as amending the plan names is exempt from the file rule, and so is a new `origin: webster` finding.
-  In a hardener round, a new `origin: focus` finding of class `decision` is exempt from the file rule too,
-  and from the changed-hunk rule.
+- A hardener round's findings are exempt from the incremental round's rule above and from a carried finding's file rule:
+  a new finding takes the severity it has and sits where the fault lives, and a carried finding may move to any file.
 
 Below the closing `---`, write prose: exactly one `### [SEVERITY] <title>` block per finding, each carrying `**Location:**` and `**Issue:**` lines.
 The change lives in the finding's `fix` key; no prose `**Fix:**` line restates it.

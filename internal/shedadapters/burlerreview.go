@@ -85,8 +85,9 @@ type BurlerHalfDeps struct {
 	// The review producer reads it on every call and puts the reason in the review prompt.
 	// Empty for a segment that reads none.
 	HaltConflictDir string
-	// FocusFindings marks a hardener segment's review, whose round check admits a focus finding outside the changed files.
-	FocusFindings bool
+	// HardenerRound marks a hardener segment's review.
+	// Its round check holds no finding to the BLOCKING or changed-file rules.
+	HardenerRound bool
 	// Diff reads the unified diff a spawned reviewer is given in pieces, read by the review producer once per spawning call.
 	// Nil gives no diff, and so does a failed read, which is logged.
 	Diff func() (string, error)
@@ -168,8 +169,9 @@ type BurlerReviewProducer struct {
 	amendmentTitles func() ([]string, error)
 	// haltConflictDir, when non-empty, is the conflict directory whose halt-reason file each call reads.
 	haltConflictDir string
-	// focusFindings marks a hardener segment's review, whose round context admits a focus finding outside the changed files.
-	focusFindings bool
+	// hardenerRound marks a hardener segment's review.
+	// Its round context holds no finding to the BLOCKING or changed-file rules.
+	hardenerRound bool
 	// diff, when non-nil, reads the diff a spawned reviewer is given.
 	diff func() (string, error)
 	// rubric, when non-nil, reads each round's rubric.
@@ -200,7 +202,7 @@ func NewBurlerReviewProducer(name string, deps BurlerHalfDeps, profile burlereng
 	if now == nil {
 		now = time.Now
 	}
-	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, fans: deps.Fans, assist: deps.Assist, parent: deps.Parent, snapshot: deps.Snapshot, decisionRecordPath: deps.DecisionRecordPath, amendmentTitles: deps.AmendmentTitles, haltConflictDir: deps.HaltConflictDir, focusFindings: deps.FocusFindings, diff: deps.Diff, rubric: deps.Rubric, gateFindingsPath: deps.GateFindingsPath, profile: profile, opts: opts, runDir: runDir, now: now}, nil
+	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, fans: deps.Fans, assist: deps.Assist, parent: deps.Parent, snapshot: deps.Snapshot, decisionRecordPath: deps.DecisionRecordPath, amendmentTitles: deps.AmendmentTitles, haltConflictDir: deps.HaltConflictDir, hardenerRound: deps.HardenerRound, diff: deps.Diff, rubric: deps.Rubric, gateFindingsPath: deps.GateFindingsPath, profile: profile, opts: opts, runDir: runDir, now: now}, nil
 }
 
 // recordRoundStart writes round's snapshot record when none exists yet.
@@ -273,7 +275,7 @@ func (p *BurlerReviewProducer) roundProfile(round int, fan, rubric string) burle
 	profile.PriorFixerReports = append(append([]string{}, p.profile.PriorFixerReports...), priorFixerReports...)
 	profile.ClusterExclude = nil
 	profile.ClusterExcludeHeld = nil
-	roundContext, err := BuildRoundContext(p.runDir, round, RoundContextSources{DecisionRecordPath: p.decisionRecordPath, AmendmentTitles: p.amendmentTitles, ConflictDir: p.haltConflictDir, FocusFindings: p.focusFindings})
+	roundContext, err := BuildRoundContext(p.runDir, round, RoundContextSources{DecisionRecordPath: p.decisionRecordPath, AmendmentTitles: p.amendmentTitles, ConflictDir: p.haltConflictDir, HardenerRound: p.hardenerRound})
 	if err != nil {
 		logger.Warn("shedadapters: burler review could not build the round context; the round is reviewed in full", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", err)
 	}
