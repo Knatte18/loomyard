@@ -197,11 +197,14 @@ func sessionsAreIdle(names []string, err error) bool {
 // watchedSession is one worktree session the daemon has entered.
 // It holds the *reedengine.Engine built for the session.
 // Its cancel stops every goroutine running on its behalf: the OOM watch, and the name-repair loop when there is one.
+// cancel returns at once, while a goroutine may still be inside a read that writes under the worktree;
+// running counts those goroutines down to zero as each returns.
 //
 // repairsNames is false for a `watchdog: off` worktree, which runs no name-repair loop but still has its OOM watch.
 type watchedSession struct {
 	eng          *reedengine.Engine
 	cancel       context.CancelFunc
+	running      *sync.WaitGroup
 	repairsNames bool
 }
 
@@ -348,22 +351,25 @@ func enterSession(hub, tmuxPath, sessionName string, timing watchdogTiming) (wat
 	eng := reedengine.New(cfg, geom, shuttleengines.EnvScrub())
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go watchPaneOOMKills(ctx, hub, sessionName, engineOOMBoundaries(eng, location), timing)
+	running := &sync.WaitGroup{}
+	running.Go(func() {
+		watchPaneOOMKills(ctx, hub, sessionName, engineOOMBoundaries(eng, location), timing)
+	})
 
 	// A worktree reaches the daemon's discovery loop only after "lym reed up" already booted it,
 	// and that boot already validated cfg.Watchdog loudly (ensureServerAndSessionLocked), so the
 	// only value this needs to recognize here is the "off" spelling itself — every other value,
 	// valid or not, behaves as enabled, failing safe toward watching for a value it cannot parse.
 	if strings.EqualFold(strings.TrimSpace(cfg.Watchdog), "off") {
-		return watchedSession{eng: eng, cancel: cancel}, nil
+		return watchedSession{eng: eng, cancel: cancel, running: running}, nil
 	}
 
-	go func() {
+	running.Go(func() {
 		if err := eng.WatchNames(ctx, shuttleengines.SessionNamers(dirs)); err != nil {
 			logger.Debug("reed: watchdog's name repair loop returned", "session", sessionName, "err", err)
 		}
-	}()
-	return watchedSession{eng: eng, cancel: cancel, repairsNames: true}, nil
+	})
+	return watchedSession{eng: eng, cancel: cancel, running: running, repairsNames: true}, nil
 }
 
 // dispatchReap starts the one off-loop goroutine that reaps sessionName, registering it with wg and

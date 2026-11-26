@@ -512,7 +512,7 @@ func TestWatchdogDaemon(t *testing.T) {
 		if err != nil {
 			t.Fatalf("enterSession (after down + flip-to-off + up): %v", err)
 		}
-		t.Cleanup(ws.cancel)
+		t.Cleanup(func() { stopWatchedSession(t, ws) })
 		if ws.repairsNames {
 			t.Error("enterSession() after down + flip-to-off + up started the name-repair loop; want none — re-entry must re-read the flipped config rather than the value it held before the down/up")
 		}
