@@ -23,5 +23,7 @@
    the repository's overview doc when a module table or execution stack it shows changes;
    and, when the repository has a `PATTERN.md`, its entry for a cross-cutting invariant the change adds or changes.
 5. Apply each bullet of the record's `## PATTERN changes` section to `PATTERN.md` in your own commits.
-6. Commit on the task branch in small, coherent commits, each leaving the tree green.
+6. Commit on the task branch after each coherent step, as soon as its gate passes, in small commits that each leave the tree green.
+   Never hold the change uncommitted until the end:
+   a stall, a dead session or a reboot then loses at most one step, and your parent sees your progress in the branch's history.
    Never push: the landing steps that follow push the branch.

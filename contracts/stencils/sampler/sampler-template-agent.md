@@ -31,7 +31,8 @@ Say in a line or two what you understood, then wait for the operator's message.
 ## Working
 
 - Work only in `{{.task_worktree}}`.
-- Commit as you go, one commit per settled step.
+- Commit as you go, one commit per settled step, never holding the work uncommitted until the end:
+  a stall, a dead session or a reboot then loses at most one step.
 - Write any board result with `lym board` as a note.
   A run's agent never creates or promotes a task and never changes its own run's entry, and the board refuses both; the operator promotes a note when they want one.
 - Record each thing the operator settles that changes the task's scope with `lym loom decision add --by operator`.
