@@ -5,6 +5,7 @@ package claudeengine
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"path"
@@ -1145,51 +1146,77 @@ func goldenLabel(interactive, fork, denyAsk, denyPython bool) string {
 	return fmt.Sprintf("interactive=%t fork=%t denyAsk=%t denyPython=%t", interactive, fork, denyAsk, denyPython)
 }
 
+// settingsGoldenPath is the settings golden file, relative to the package directory.
+var settingsGoldenPath = filepath.Join("testdata", "settings-golden.json")
+
+// updateSettingsGolden turns TestBuildSettings_MatchesGolden into the golden's renderer:
+// the test rewrites the golden from the rendered settings and deny notices instead of comparing against it.
+// A shell guard row change rewrites the golden, and this flag renders it with no renderer of the agent's own:
+// lym gate test ./internal/shuttleengine/claudeengine -- -run TestBuildSettings_MatchesGolden -update
+var updateSettingsGolden = flag.Bool("update", false, "rewrite "+settingsGoldenPath+" from the rendered settings and deny notices")
+
+// settingsGolden is one entry of the settings golden, for one combination of the deny inputs.
+// It holds that combination's settings document and deny notice.
+type settingsGolden struct {
+	Settings string `json:"settings"`
+	Notice   string `json:"notice"`
+}
+
 // TestBuildSettings_MatchesGolden pins the settings document and deny notice byte for byte.
 // It covers every combination of the four deny inputs.
+// Under -update it rewrites the golden from what it renders and compares nothing.
 func TestBuildSettings_MatchesGolden(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	type golden struct {
-		Settings string `json:"settings"`
-		Notice   string `json:"notice"`
-	}
-	raw, err := os.ReadFile(filepath.Join("testdata", "settings-golden.json"))
-	if err != nil {
-		t.Fatalf("read golden: %v", err)
-	}
-	var want map[string]golden
-	if err := json.Unmarshal(raw, &want); err != nil {
-		t.Fatalf("unmarshal golden: %v", err)
-	}
 
-	rendered := map[string]bool{}
+	got := map[string]settingsGolden{}
 	for mask := 0; mask < 16; mask++ {
 		bit := func(position int) bool { return mask&(1<<position) != 0 }
 		interactive, fork := bit(0), bit(1)
 		cfg := shuttleengine.Config{DenyPython: bit(3)}
 		claude := Config{DenyAskUserQuestion: bit(2)}
 		label := goldenLabel(interactive, fork, claude.DenyAskUserQuestion, cfg.DenyPython)
-		rendered[label] = true
-
-		entry, ok := want[label]
-		if !ok {
-			t.Errorf("golden lacks %q", label)
-			continue
-		}
 		settings, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, false, "", "", "", "", testLymPath, sessionScope{})
 		if err != nil {
 			t.Fatalf("buildSettings(%s): %v", label, err)
 		}
-		if string(settings) != entry.Settings {
-			t.Errorf("settings differ for %q:\ngot  %s\nwant %s", label, settings, entry.Settings)
+		got[label] = settingsGolden{Settings: string(settings), Notice: buildDenyNotice(interactive, cfg, claude, fork, false, false)}
+	}
+
+	if *updateSettingsGolden {
+		data, err := json.MarshalIndent(got, "", "  ")
+		if err != nil {
+			t.Fatalf("marshal golden: %v", err)
 		}
-		if notice := buildDenyNotice(interactive, cfg, claude, fork, false, false); notice != entry.Notice {
-			t.Errorf("notice differs for %q:\ngot  %q\nwant %q", label, notice, entry.Notice)
+		if err := os.WriteFile(settingsGoldenPath, append(data, '\n'), 0o644); err != nil {
+			t.Fatalf("write golden: %v", err)
+		}
+		return
+	}
+
+	raw, err := os.ReadFile(settingsGoldenPath)
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	var want map[string]settingsGolden
+	if err := json.Unmarshal(raw, &want); err != nil {
+		t.Fatalf("unmarshal golden: %v", err)
+	}
+	for label, entry := range got {
+		wantEntry, ok := want[label]
+		if !ok {
+			t.Errorf("golden lacks %q", label)
+			continue
+		}
+		if entry.Settings != wantEntry.Settings {
+			t.Errorf("settings differ for %q:\ngot  %s\nwant %s", label, entry.Settings, wantEntry.Settings)
+		}
+		if entry.Notice != wantEntry.Notice {
+			t.Errorf("notice differs for %q:\ngot  %q\nwant %q", label, entry.Notice, wantEntry.Notice)
 		}
 	}
 	for label := range want {
-		if !rendered[label] {
+		if _, ok := got[label]; !ok {
 			t.Errorf("golden holds %q, which the test does not render", label)
 		}
 	}

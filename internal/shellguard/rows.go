@@ -34,6 +34,8 @@ type Row struct {
 	// Name identifies the row.
 	Name string
 	// Patterns are grep -E patterns; the guard denies when every one of them matches the payload.
+	// A pattern matches anywhere in the payload,
+	// so an exception the row allows is spelled inside the pattern that matches the command.
 	Patterns []string
 	// Steer is the deny reason shown to the agent.
 	Steer string
@@ -414,20 +416,28 @@ const noticeSessionBusDeny = steerSessionBusDeny + "."
 // dbus-send with a --session, --bus or --peer flag word among its arguments is matched beside --system too.
 var sessionBusCommandPattern = commandRowPattern(func(scope shellScope) string {
 	arguments := `([[:space:]]+` + scope.argument() + `)*[[:space:]]+`
-	// Anything but an unquoted word ends the search for --system, so what the pattern cannot read is refused.
-	searchEnd := `([;&|()<>"'\\` + "`" + `]|$)`
 	return `((systemd-run|gdbus)` + wordEndPattern +
 		`|busctl` + arguments + `--user` + wordEndPattern +
 		`|dbus-send` + arguments + `--(session|bus|peer)` + wordEndPattern +
-		`|dbus-send([[:space:]]+` + unquotedWordOtherThan("--system") + `)*[[:space:]]*` + searchEnd + `)`
+		`|dbus-send([[:space:]]+` + unquotedWordOtherThan("--system") + `)*[[:space:]]*` + unquotedWordRunEnd() + `)`
 })
 
+// unquotedWordBreakers is a grep -E bracket body.
+// It lists the characters, whitespace aside, that an unquoted word cannot hold.
+const unquotedWordBreakers = `"\\;&|()'<>` + "`"
+
 // unquotedWordOtherThan returns a grep -E pattern matching an unquoted command-line word that is not word.
+// It is how a row states an exception to a command it refuses:
+// after the command word come a run of these words, optional whitespace and then unquotedWordRunEnd.
+// Only word among the command's unquoted words keeps the run from reaching that end.
+// The run is fail-closed only when unquotedWordRunEnd ends it:
+// that end matches at every character, whitespace aside, that an unquoted word cannot hold,
+// so a command the run cannot read is refused.
 // The match may cover only the opening of a longer word.
 // word must hold only letters and dashes.
 func unquotedWordOtherThan(word string) string {
 	unit := func(excluded string) string {
-		return `[^[:space:]"\\;&|()'<>` + "`" + excluded + `]`
+		return `[^[:space:]` + unquotedWordBreakers + excluded + `]`
 	}
 	rest := unit("") + `+`
 	for i := len(word) - 1; i >= 0; i-- {
@@ -439,6 +449,12 @@ func unquotedWordOtherThan(word string) string {
 		}
 	}
 	return rest
+}
+
+// unquotedWordRunEnd returns a grep -E pattern matching what ends a run of unquoted words:
+// the payload's end, or any character, whitespace aside, that such a word cannot hold.
+func unquotedWordRunEnd() string {
+	return `([` + unquotedWordBreakers + `]|$)`
 }
 
 // hubTmuxServerPrefix opens the name of every lym hub's tmux server.

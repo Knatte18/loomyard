@@ -313,6 +313,7 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"session-bus", "dbus_send_with_an_escaped_quote_in_an_argument", `dbus-send / x.y "string:say \"hi\""`, true},
 		{"session-bus", "dbus_send_with_a_longer_flag", "dbus-send --systemd / x.y", true},
 		{"session-bus", "system_flag_of_a_later_command", "dbus-send / x.y && ls --system", true},
+		{"session-bus", "system_flag_of_a_later_dbus_send", "dbus-send / x.y; dbus-send --system / a.b", true},
 		{"session-bus", "dbus_send_system_in_a_shell_script", "bash -c 'dbus-send --system / x.y'", false},
 		{"session-bus", "system_flag_after_a_shell_script", "sh -c 'dbus-send / x.y' --system", true},
 		{"session-bus", "system_flag_after_a_double_quoted_shell_script", `sh -c "dbus-send / x.y" --system`, true},

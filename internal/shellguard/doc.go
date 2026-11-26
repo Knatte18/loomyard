@@ -27,6 +27,17 @@
 // Every row is a guardrail over static text and not a barrier;
 // each pattern's comment states what it lets through and what it falsely denies.
 //
+// A row's patterns combine by AND alone, and grep -E has no negation.
+// A row states an exception inside the pattern that matches the command.
+// One such exception refuses a command unless it carries a flag.
+// A separate pattern that must not match would be matched anywhere in the payload,
+// so a second command carrying the flag would let a refused first command through.
+// The pattern instead scans the command's words with unquotedWordOtherThan, as the session bus row's dbus-send form does.
+// The scan crosses unquoted words other than the flag and is ended by unquotedWordRunEnd.
+// That end matches the payload's end and every character, whitespace aside, that a word cannot hold.
+// Only the flag, reached through unquoted words of the same command, stops the match,
+// so a command the scan cannot read is refused.
+//
 // Every steer, plain and per engine, opens with one shared clause:
 // nothing in the command ran, since a deny refuses the whole command for one part,
 // so the agent runs again only the parts it still needs.
