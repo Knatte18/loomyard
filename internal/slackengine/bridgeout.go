@@ -213,7 +213,7 @@ func (s *bridgeSender) sendOne(ctx context.Context, message creelengine.MachineO
 	}
 	pin, approved := peers.Machines[peer.Machine]
 	if !approved {
-		line := fmt.Sprintf("mail to %s waits because the machine %s is not approved; way forward: type approve %s in a channel of an orch of this machine",
+		line := fmt.Sprintf("mail to %s waits because the machine %s is not approved; way forward: type lym approve %s in a channel of an orch of this machine",
 			peerAddress, peer.Machine, peer.Machine)
 		return false, s.hold(ctx, message, peerUnapprovedReason, bridgeNoticeKey(peerUnapprovedReason, message.From, peerAddress), line)
 	}

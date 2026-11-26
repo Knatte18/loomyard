@@ -1,5 +1,5 @@
-// peercommand.go parses and runs the operator's `approve` and `revoke` commands.
-// They pin and unpin a peer machine's Slack app.
+// peercommand.go reads the `lym` prefix of the operator's relay commands.
+// It parses and runs `lym approve` and `lym revoke`, which pin and unpin a peer machine's Slack app.
 
 package slackengine
 
@@ -13,14 +13,26 @@ import (
 )
 
 const (
-	// approveVerb and revokeVerb are the two words of a peer command.
+	// relayCommandPrefix opens every relay command, `lym <command>`, so no other message of the operator is read as one.
+	relayCommandPrefix = "lym"
+	// approveVerb and revokeVerb are the two verbs of a peer command.
 	approveVerb = "approve"
 	revokeVerb  = "revoke"
 	// peerBotNamePrefix precedes the machine name in the name of a machine's bot, `lym-<machine>`.
 	peerBotNamePrefix = "lym-"
 )
 
-// peerCommand is the operator's `approve` or `revoke` command.
+// relayCommandWords returns the words of text after the relay command prefix, which matches case-insensitively.
+// It reports false when text does not open with the prefix and at least one word after it.
+func relayCommandWords(text string) ([]string, bool) {
+	fields := strings.Fields(text)
+	if len(fields) < 2 || !strings.EqualFold(fields[0], relayCommandPrefix) {
+		return nil, false
+	}
+	return fields[1:], true
+}
+
+// peerCommand is the operator's `lym approve` or `lym revoke` command.
 type peerCommand struct {
 	// Verb is `approve` or `revoke`.
 	Verb string
@@ -30,12 +42,12 @@ type peerCommand struct {
 	AppID string
 }
 
-// parsePeerCommand reads text as `approve <machine>`, `approve <machine> <app id>` or `revoke <machine>`.
-// The verb matches case-insensitively and the machine is lower-cased; the app id is kept as written.
+// parsePeerCommand reads text as `lym approve <machine>`, `lym approve <machine> <app id>` or `lym revoke <machine>`.
+// The prefix and the verb match case-insensitively and the machine is lower-cased; the app id is kept as written.
 // It reports false for any other text.
 func parsePeerCommand(text string) (peerCommand, bool) {
-	fields := strings.Fields(text)
-	if len(fields) < 2 {
+	fields, isCommand := relayCommandWords(text)
+	if !isCommand || len(fields) < 2 {
 		return peerCommand{}, false
 	}
 	verb, machine := strings.ToLower(fields[0]), strings.ToLower(fields[1])
@@ -63,7 +75,7 @@ func (in *inbound) handlePeerCommand(ctx context.Context, channel string, messag
 	})
 	if named {
 		in.settle()
-		in.answer(ctx, channel, fmt.Sprintf("approve and revoke name another machine; type approve %s in a channel of that other machine", current))
+		in.answer(ctx, channel, fmt.Sprintf("lym approve and lym revoke name another machine; type lym approve %s in a channel of that other machine", current))
 		return true, nil
 	}
 	line, err := in.runPeerCommand(ctx, command)
@@ -103,13 +115,13 @@ func (in *inbound) approvePeerByName(ctx context.Context, machine string) (strin
 	case 1:
 		return in.pinPeer(machine, bots[0])
 	case 0:
-		return fmt.Sprintf("found no bot named %s%s; type approve %s <app id> with the app id from `status` typed in a channel of that machine", peerBotNamePrefix, machine, machine), nil
+		return fmt.Sprintf("found no bot named %s%s; type lym approve %s <app id> with the app id from `lym status` typed in a channel of that machine", peerBotNamePrefix, machine, machine), nil
 	}
 	appIDs := make([]string, 0, len(bots))
 	for _, bot := range bots {
 		appIDs = append(appIDs, bot.AppID)
 	}
-	return fmt.Sprintf("found %d bots named %s%s, with app ids %s; type approve %s <app id> to pick one", len(bots), peerBotNamePrefix, machine, strings.Join(appIDs, ", "), machine), nil
+	return fmt.Sprintf("found %d bots named %s%s, with app ids %s; type lym approve %s <app id> to pick one", len(bots), peerBotNamePrefix, machine, strings.Join(appIDs, ", "), machine), nil
 }
 
 // approvePeerByAppID pins the bot of the workspace whose app id equals appID exactly, whatever its name.
@@ -123,7 +135,7 @@ func (in *inbound) approvePeerByAppID(ctx context.Context, machine, appID string
 			return in.pinPeer(machine, bot)
 		}
 	}
-	return fmt.Sprintf("found no bot of the app id %s; read the app id from `status` typed in a channel of the other machine", appID), nil
+	return fmt.Sprintf("found no bot of the app id %s; read the app id from `lym status` typed in a channel of the other machine", appID), nil
 }
 
 // pinPeer records bot as the approved app of machine and returns the line that names its app id.

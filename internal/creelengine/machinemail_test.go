@@ -162,9 +162,9 @@ func TestStore_MachineOutbound(t *testing.T) {
 				t.Errorf("the unreported message returned with %q; want %q", reason, creelengine.MachineUnsettled)
 			}
 			notices := e.noticeSubjects(orch)
-			if len(notices) != 2 || !strings.Contains(notices[0], "peer-unapproved") || !strings.Contains(notices[0], "`approve osl`") ||
+			if len(notices) != 2 || !strings.Contains(notices[0], "peer-unapproved") || !strings.Contains(notices[0], "`lym approve osl`") ||
 				!strings.Contains(notices[1], creelengine.MachineUnsettled) || !strings.Contains(notices[1], "slack relay runs") {
-				t.Errorf("notices to the sender = %q; want one per message, the first naming `approve osl` and the second the slack button", notices)
+				t.Errorf("notices to the sender = %q; want one per message, the first naming `lym approve osl` and the second the slack button", notices)
 			}
 		}},
 		{"APostToAnotherMachineStartsNoHubWorkerAtTheSchedulersStartOrOnThePost", func(t *testing.T, e *env) {

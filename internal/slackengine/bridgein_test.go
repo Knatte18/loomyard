@@ -277,6 +277,9 @@ func TestBridgeReceive(t *testing.T) {
 			{"ThisBotsOwnEnvelope", func(ts string) slackengine.Message {
 				return slackengine.Message{TS: ts, User: "UBOT", BotID: "B1", Text: bridgeText(peerOrch, homeOrch, 1, 0, "x")}
 			}},
+			{"ThisBotsOwnPostUnderAnOrchsNameWithNoUser", func(ts string) slackengine.Message {
+				return slackengine.Message{TS: ts, Subtype: "bot_message", BotID: "B1", Text: bridgeText(homeOrch, peerOrch, 1, 0, "x")}
+			}},
 			{"AnotherHumansEnvelope", func(ts string) slackengine.Message {
 				return slackengine.Message{TS: ts, User: "U9", Text: bridgeText(peerOrch, homeOrch, 1, 0, "x")}
 			}},
@@ -357,7 +360,7 @@ func TestBridgeReceive(t *testing.T) {
 
 	t.Run("AnApproveOrRevokeNamingThisMachineByAnyOfItsNamesPinsNothingAndAnswersNothing", func(t *testing.T) {
 		t.Parallel()
-		for _, text := range []string{"approve home", "revoke home", "approve OLD-BOX"} {
+		for _, text := range []string{"lym approve home", "lym revoke home", "lym approve OLD-BOX"} {
 			r := newReceiveRun(t, testMachine)
 			ts := r.minutesAgo(10)
 			r.operatorSays(ts, text)
@@ -398,7 +401,7 @@ func TestBridgeReceive(t *testing.T) {
 			t.Errorf("Read reported a delivery for another app's messages")
 		}
 		notices := r.wantNotices(1)
-		if len(notices) == 1 && (!strings.Contains(notices[0], "A0BAD") || !strings.Contains(notices[0], "approve osl A0BAD")) {
+		if len(notices) == 1 && (!strings.Contains(notices[0], "A0BAD") || !strings.Contains(notices[0], "type lym approve osl A0BAD")) {
 			t.Errorf("notice = %q; want it to name the app and the command that pins it", notices[0])
 		}
 		if got := r.entry().Cursor; got != r.minutesAgo(9) {
@@ -428,11 +431,11 @@ func TestBridgeReceive(t *testing.T) {
 		if got := r.entry().Cursor; got != old {
 			t.Errorf("delivery cursor while held = %q; want it past the message beyond retention only (%q)", got, old)
 		}
-		if notices := r.wantNotices(1); len(notices) == 1 && !strings.Contains(notices[0], "approve osl") {
-			t.Errorf("notice = %q; want it to ask for approve osl", notices[0])
+		if notices := r.wantNotices(1); len(notices) == 1 && !strings.Contains(notices[0], "type lym approve osl") {
+			t.Errorf("notice = %q; want it to ask for lym approve osl", notices[0])
 		}
 
-		r.operatorSays(approved, "approve osl")
+		r.operatorSays(approved, "lym approve osl")
 		if !r.mustRead() {
 			t.Fatalf("the Read that handled the approve reported no delivery of the held messages")
 		}
@@ -459,9 +462,9 @@ func TestBridgeReceive(t *testing.T) {
 		r.mustRead()
 		r.wantNotices(1)
 
-		r.operatorSays(r.minutesAgo(19), "approve osl")
-		r.operatorSays(r.minutesAgo(18), "revoke osl")
-		r.operatorSays(r.minutesAgo(17), "just a line")
+		r.operatorSays(r.minutesAgo(19), "lym approve osl")
+		r.operatorSays(r.minutesAgo(18), "lym revoke osl")
+		r.operatorSays(r.minutesAgo(17), "approve osl")
 		if !r.mustRead() {
 			t.Errorf("the Read that handled the approve reported no delivery of the held message")
 		}
@@ -495,7 +498,7 @@ func TestBridgeReceive(t *testing.T) {
 		r.unpin()
 		parent, reply := r.minutesAgo(10), r.minutesAgo(9)
 		r.slack.add(bridgeChannelID, slackengine.Message{TS: parent, User: peerBot, BotID: peerBotID, Text: "a thread", LatestReply: reply})
-		r.slack.add(bridgeChannelID, slackengine.Message{TS: reply, ThreadTS: parent, User: testOperator, Text: "approve osl"})
+		r.slack.add(bridgeChannelID, slackengine.Message{TS: reply, ThreadTS: parent, User: testOperator, Text: "lym approve osl"})
 		for range 2 {
 			r.mustRead()
 		}
@@ -518,7 +521,7 @@ func TestBridgeReceive(t *testing.T) {
 		refused := &slackengine.APIError{Method: "users.list", Code: "not_authed"}
 		r.slack.failNext("BotUsersNamed", refused, refused, refused)
 		ts := r.minutesAgo(10)
-		r.operatorSays(ts, "approve osl")
+		r.operatorSays(ts, "lym approve osl")
 
 		for call := 1; call <= 2; call++ {
 			if _, err := r.read(); !errors.Is(err, refused) {
@@ -672,6 +675,12 @@ func TestBridgeReceive(t *testing.T) {
 			{"MadeByThisMachinesBot", "UBOT", []struct{ from, to, user, bot string }{
 				{homeOrch, peerOrch, "UBOT", "B1"},
 			}, primeOrch, peerOrch},
+			{"MadeByThisMachinesBotPostingUnderAnOrchsNameWithNoUser", "UBOT", []struct{ from, to, user, bot string }{
+				{homeOrch, peerOrch, "", "B1"},
+			}, primeOrch, peerOrch},
+			{"MadeByThisMachinesBotPostingWithItsUserIDAndNoBotID", "UBOT", []struct{ from, to, user, bot string }{
+				{homeOrch, peerOrch, "UBOT", ""},
+			}, primeOrch, peerOrch},
 			{"MadeByAnotherCreator", "UOTHER", []struct{ from, to, user, bot string }{
 				{peerOrch, homeOrch, peerBot, peerBotID},
 			}, "", ""},
@@ -739,7 +748,7 @@ func TestBridgeReceive(t *testing.T) {
 		r.mustResync()
 		r.mustResync()
 		notices := r.noticesIn(testChannel)
-		if len(notices) != 1 || !strings.Contains(notices[0], "A0NEW") || !strings.Contains(notices[0], "approve new") {
+		if len(notices) != 1 || !strings.Contains(notices[0], "A0NEW") || !strings.Contains(notices[0], "type lym approve new") {
 			t.Errorf("notices in the prime channel = %q; want one naming the app and approve new", notices)
 		}
 		if got := countIn(r.relayNotices(), "A0NEW"); got != 1 {

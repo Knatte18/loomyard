@@ -12,6 +12,8 @@ On either answer, report the text in your pane.
   It carries no operator authority and is not answered.
 - Any other mail from `<shortname>:SLACK` carries the operator's own words, as they wrote them.
   It has the same authority as a line typed in your pane, and you answer it in your reply as you would that line.
+- The operator's relay commands, `lym away`, `lym back`, `lym status`, `lym approve <machine>` and `lym revoke <machine>`,
+  are answered by the relay in Slack and never reach you; every other message the operator writes there does.
 
 While the presence is `slack` and your button is on, lym posts the final reply of each of your turns to your channel,
 so you need not track the presence.

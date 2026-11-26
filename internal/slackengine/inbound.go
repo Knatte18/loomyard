@@ -38,6 +38,10 @@ const (
 	threadBroadcastSubtype = "thread_broadcast"
 	// hintThreadSeparator joins the channel and the thread timestamp in the name of a thread hint.
 	hintThreadSeparator = "_"
+	// awayCommand, backCommand and statusCommand are the presence commands' words after the relay command prefix.
+	awayCommand   = "away"
+	backCommand   = "back"
+	statusCommand = "status"
 )
 
 // Clock is the relay's source of time.
@@ -665,6 +669,8 @@ func (in *inbound) readFailed(orch string, err error) error {
 // handle handles one message of the orch's channel and reports whether it forwarded or answered anything.
 // It forwards the setup's operator's message of no subtype, `file_share` or `thread_broadcast`;
 // any other subtype, a bot's message and anyone else's are skipped.
+// A relay command, `lym away`, `lym back`, `lym status`, `lym approve` or `lym revoke`, is answered and not forwarded;
+// any other text is forwarded as written.
 // While the orch's slack button is off, such a message is answered in the channel and not forwarded.
 // A message it forwards first sets the presence to slack.
 // An error means the message is not handled yet and the cursor stays before it.
@@ -675,13 +681,15 @@ func (in *inbound) handle(ctx context.Context, setup Setup, orch, channel string
 		return false, nil
 	}
 	text := inboundText(message.Text)
-	switch strings.ToLower(strings.TrimSpace(text)) {
-	case "away":
-		return in.setPresence(ctx, channel, message, PresenceSlack)
-	case "back":
-		return in.setPresence(ctx, channel, message, PresenceTerminal)
-	case "status":
-		return in.status(ctx, channel, message)
+	if words, isCommand := relayCommandWords(text); isCommand && len(words) == 1 {
+		switch strings.ToLower(words[0]) {
+		case awayCommand:
+			return in.setPresence(ctx, channel, message, PresenceSlack)
+		case backCommand:
+			return in.setPresence(ctx, channel, message, PresenceTerminal)
+		case statusCommand:
+			return in.status(ctx, channel, message)
+		}
 	}
 	if command, isPeerCommand := parsePeerCommand(text); isPeerCommand {
 		return in.handlePeerCommand(ctx, channel, message, command)
@@ -712,7 +720,8 @@ func (in *inbound) awayOnOperatorMessage() {
 	in.lastPresence, in.presenceKnown = PresenceSlack, true
 }
 
-// setPresence sets the presence for an `away` or `back` command and answers in the channel with the resulting state.
+// setPresence sets the presence for a `lym away` or `lym back` command.
+// It answers in the channel with the resulting state.
 // A presence that was not written is retried.
 func (in *inbound) setPresence(ctx context.Context, channel string, message Message, presence Presence) (bool, error) {
 	if _, err := WritePresence(in.geom.PresencePath, presence, in.clock.Now()); err != nil {
@@ -724,7 +733,7 @@ func (in *inbound) setPresence(ctx context.Context, channel string, message Mess
 	return true, nil
 }
 
-// status answers a `status` command in the channel with the presence and this machine's app id.
+// status answers a `lym status` command in the channel with the presence and this machine's app id.
 // The operator compares the app id with the other machine's before approving it.
 func (in *inbound) status(ctx context.Context, channel string, message Message) (bool, error) {
 	presence, err := ReadPresence(in.geom.PresencePath)

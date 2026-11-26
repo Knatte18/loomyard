@@ -32,8 +32,9 @@
 // While no orch of the hub has its button on, no start spawns a relay.
 //
 // Inbound, the relay hands each message of the configured operator, once, to the orch of the channel as mail.
-// `away`, `back` and `status` are presence commands, and `approve` and `revoke` are peer commands;
-// both kinds are answered in Slack and sent to no orch.
+// Every relay command opens with `lym`: `lym away`, `lym back` and `lym status` are presence commands,
+// and `lym approve` and `lym revoke` are peer commands; both kinds are answered in Slack and sent to no orch.
+// Every other message, a bare `status` or `approve it` included, goes to the orch as written.
 // Any other message of the operator first sets the presence to slack: writing in Slack shows the operator is away.
 // A message in the channel of an orch whose button is off is answered in Slack and forwarded to no orch.
 //

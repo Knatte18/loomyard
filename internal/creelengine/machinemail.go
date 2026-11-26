@@ -234,7 +234,7 @@ func machineHoldWayForward(reason, machine string) string {
 	case MachineUnsettled:
 		return "ask the operator to check that this hub's slack relay runs and that a slack button of this hub is on" + holdsAgain
 	case holdPeerUnapproved:
-		return fmt.Sprintf("ask the operator to type `approve %s` in an orch channel of this machine%s", machine, holdsAgain)
+		return fmt.Sprintf("ask the operator to type `lym approve %s` in an orch channel of this machine%s", machine, holdsAgain)
 	case holdBridgeNameTaken, holdBridgeArchived:
 		return "act on the relay notice in your orch's Slack channel" + holdsAgain
 	case holdButtonOff:

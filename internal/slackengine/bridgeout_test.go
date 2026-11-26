@@ -172,12 +172,12 @@ func TestBridgeSend(t *testing.T) {
 		}
 		b.wantReports(1, "peer-unapproved", "peer-unapproved", "peer-unapproved")
 		notices := b.wantNotices(1)
-		if len(notices) == 1 && !strings.Contains(notices[0], "approve osl") {
-			t.Errorf("notice = %q; want it to name approve osl", notices[0])
+		if len(notices) == 1 && !strings.Contains(notices[0], "type lym approve osl") {
+			t.Errorf("notice = %q; want it to name lym approve osl", notices[0])
 		}
 		answers := b.slack.logged("PostAs")
-		if len(answers) != 1 || answers[0].Channel != b.entryOf(primeOrch).ID || !strings.Contains(answers[0].Arg, "approve osl") {
-			t.Errorf("channel notices = %+v; want one in the orch's channel naming approve osl", answers)
+		if len(answers) != 1 || answers[0].Channel != b.entryOf(primeOrch).ID || !strings.Contains(answers[0].Arg, "type lym approve osl") {
+			t.Errorf("channel notices = %+v; want one in the orch's channel naming lym approve osl", answers)
 		}
 
 		b.approve()

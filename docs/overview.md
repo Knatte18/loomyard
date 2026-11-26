@@ -944,7 +944,7 @@ User-facing modules each get one `lym <module>` namespace:
   and a second press switches the orch's forwarding off and leaves the channel in place.
   The relay runs only while some orch of the hub has its button on, so the machine's connection follows the buttons.
   One relay of the machine holds the Socket Mode connection, and each event it receives wakes the relay of the hub whose channel it belongs to.
-  The relay forwards the operator's messages in an orch's channel to that orch as creel mail from `<shortname>:SLACK` that carries their text alone, answers `away`, `back` and `status` in the channel, and posts the mail the orchs and programs leave for `SLACK` to their own channel, at least once, and a message Slack accepted is not posted again within one relay process.
+  The relay forwards the operator's messages in an orch's channel to that orch as creel mail from `<shortname>:SLACK` that carries their text alone, answers the relay commands `lym away`, `lym back`, `lym status`, `lym approve` and `lym revoke` in the channel, and posts the mail the orchs and programs leave for `SLACK` to their own channel, at least once, and a message Slack accepted is not posted again within one relay process.
   Each post goes under its sender's name in the cross-machine address form `<machine>::<sender>`.
   A channel is archived only when its orch retires, under a dated name, and `lym slack stop` archives nothing.
   It starts through a double fork, so no pane's tree holds it, and its files sit in the hub's `.lym/slack/` directory.
