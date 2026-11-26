@@ -56,6 +56,15 @@
 // It answers for the worktree it is named, through TaskSettingChain and the per-task lookup, at the moment of the call.
 // A failed read answers false and warns once per episode.
 //
+// BeamModes is the board's beam mode reader.
+// It reads autonomy and pull_request for the root and each beam the way their runs read them.
+// The read goes through TaskSettingChain and the per-task lookup, and each value carries the worktree that set it.
+// It adds a beam's parent branch from its origin record and its pull request from its landing record.
+// A beam whose worktree is not on this machine is left out,
+// so the board files never show its parent's values as its own runs' values.
+// It finds the prime from the board directory alone:
+// the Bolt checkout is a worktree of the records repository, whose main worktree is the prime's records sibling.
+//
 // A pair reads as a beam when its origin record carries the beam mark or its board entry is a project with the beam flag.
 // So a beam reads as one before its pawl run marks the pair.
 // A failed prime read is taken as the prime and a failed beam read as a task, each logged at Warn.

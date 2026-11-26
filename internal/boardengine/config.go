@@ -90,9 +90,11 @@ type Outputs struct {
 	Types []string
 	// Labels is the configured area-label order, which the view projection lists as the board's areas.
 	Labels []string
+	// BeamModes reads the beam modes a render writes to disk; nil writes no mode line.
+	BeamModes BeamModeReader
 }
 
-// Outputs returns the values a board's rendering reads from c.
+// Outputs returns the values a board's rendering reads from c, with the beam mode reader this process installed.
 func (c Config) Outputs() Outputs {
 	return Outputs{
 		Readme:        c.Readme,
@@ -100,6 +102,7 @@ func (c Config) Outputs() Outputs {
 		DefaultRecipe: c.DefaultRecipe,
 		Types:         labelNames(c.Types),
 		Labels:        labelNames(c.Labels),
+		BeamModes:     installedReader(),
 	}
 }
 

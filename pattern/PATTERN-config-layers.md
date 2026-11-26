@@ -126,6 +126,9 @@ Rule: Reading a per-task beam setting, `beam.pull_request`, `beam.land_notice` o
   A merged value never counts, so a hub default is never a worktree's own setting.
 - A value set lower down overrides the one above in both directions; absence means the parent's value.
 - No board field carries a per-task beam setting.
+- The board files show the root's and each beam's value, and the worktree that set it, through the same lookup:
+  `hubgeom.BeamModes` reads them with `LookupWithSource`.
+  A beam whose worktree is not on the rendering machine shows no value.
 
 ## Sparse hub base
 

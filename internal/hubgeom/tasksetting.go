@@ -16,6 +16,7 @@ import (
 // TaskSettingChain returns the chain the per-task beam settings of the worktree slug are looked up through.
 // It lists the anchor of slug's worktree, then each parent's that ParentOf names, ending with the prime's;
 // an empty slug names the prime alone.
+// Each anchor's worktree name stands beside it, "" for the prime.
 // A worktree with no directory in the hub on this machine is left out, so its parent's value applies.
 // A cycle among the parents ends the walk at the prime.
 // The board is the hub's Bolt checkout, whose default layer applies when no worktree sets a key.
@@ -34,6 +35,7 @@ func TaskSettingChain(prime *lymcwd.Location, slug string) (dobbyengine.TaskSett
 				return dobbyengine.TaskSettingChain{}, fmt.Errorf("hubgeom: resolve the worktree of %q for its beam settings: %w", slug, err)
 			}
 			chain.Anchors = append(chain.Anchors, worktree.AnchorPath())
+			chain.Names = append(chain.Names, slug)
 		case !errors.Is(err, fs.ErrNotExist):
 			return dobbyengine.TaskSettingChain{}, fmt.Errorf("hubgeom: stat the worktree of %q for its beam settings: %w", slug, err)
 		}
@@ -42,6 +44,7 @@ func TaskSettingChain(prime *lymcwd.Location, slug string) (dobbyengine.TaskSett
 		}
 	}
 	chain.Anchors = append(chain.Anchors, prime.AnchorPath())
+	chain.Names = append(chain.Names, "")
 	chain.Board = fabricengine.BoltDir(prime.HubPath)
 	return chain, nil
 }

@@ -144,6 +144,21 @@
 // Every project, open or done, renders to project-<slug>.md beside it, and the root to project-root.md.
 // The split is rendering only: every entry stays in the one store, and handles stay numbered across the hub.
 // A render rewrites each board file in place, so an open VS Code markdown preview shows the new content.
+//
+// RenderToDisk reads the beam modes through the BeamModeReader its Outputs carry.
+// Config.Outputs takes that reader from InstallBeamModeReader;
+// the lym root installs it, and a test binary installs none.
+// With modes, the README's header states the hub-wide default of autonomy and of the pull-request setting,
+// and the legend of the mode lines.
+// The section and file header of the root and of each open beam carry a mode line.
+// A beam the reader leaves out of its answer, such as one whose worktree is not on this machine, carries none,
+// and the legend says its settings may differ.
+// It shows autonomy and the pull-request setting, then a beam's parent branch and its recorded pull request as a link.
+// The link is the one the landing record names, so GitHub may already have closed or merged that pull request,
+// and the legend says so.
+// A setting is bold when the project sets it itself, and it is italic with the place it inherits from otherwise.
+// A setting that the root and every beam read take from the hub-wide default stands in the README's header alone.
+// A failed read renders the board with no mode line and logs a warning.
 // board-data.js is the board's view projection as `window.BOARD = <JSON>;`.
 // Each entry in it carries a revision, the SHA-256 of its stored encoding, which Board.View and the render both take.
 // BoardRevision is the SHA-256 of board.json, and "" while the file is absent.

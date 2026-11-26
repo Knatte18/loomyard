@@ -22,6 +22,9 @@ type TaskSettingChain struct {
 	// The last is the prime's.
 	// A worktree absent on this machine is left out, so its parent's value applies.
 	Anchors []string
+	// Names are the worktree names of Anchors in the same order, "" for the prime's.
+	// Only a caller that reads where a value was set needs them.
+	Names []string
 	// Board is the hub's board directory, whose default layer applies when no worktree of Anchors sets the key.
 	// Empty means no default layer.
 	Board string
@@ -60,37 +63,55 @@ func ownTaskSetting(dirs configengine.Dirs, key string) (value any, path string,
 }
 
 // lookupTaskSetting returns the value of the per-task key for the task at the chain's head.
+func lookupTaskSetting(chain TaskSettingChain, key string) (string, error) {
+	value, _, err := LookupWithSource(chain, key)
+	return value, err
+}
+
+// HubWideSource is the anchor index LookupWithSource answers when no worktree of the chain sets the key.
+// The hub's default layer, else the template, then decides.
+const HubWideSource = -1
+
+// LookupWithSource returns the value of the per-task key for the task at the chain's head, as its run reads it.
+// It also returns the index into the chain's Anchors of the worktree whose own files set the value, or HubWideSource.
 // Each anchor's own files, its worktree file and its local file, are read in chain order,
 // and the first that sets the key decides.
 // With none set, the board's default layer decides, and then the template.
 // An envsource marker in the winning value is expanded the way a load of beam.yaml expands it.
-func lookupTaskSetting(chain TaskSettingChain, key string) (string, error) {
+// autonomy answers "true" or "false".
+// A value the key does not take is refused, naming the file that set it.
+func LookupWithSource(chain TaskSettingChain, key string) (value string, anchor int, err error) {
 	places := make([]configengine.Dirs, 0, len(chain.Anchors)+1)
-	for _, anchor := range chain.Anchors {
-		places = append(places, configengine.Dirs{Anchor: anchor})
+	for _, dir := range chain.Anchors {
+		places = append(places, configengine.Dirs{Anchor: dir})
 	}
 	if chain.Board != "" {
 		places = append(places, configengine.Dirs{Board: chain.Board})
 	}
-	for _, dirs := range places {
-		value, path, set, err := ownTaskSetting(dirs, key)
+	for index, dirs := range places {
+		raw, path, set, err := ownTaskSetting(dirs, key)
 		if err != nil {
-			return "", fmt.Errorf("look up beam.yaml's %s: %w", key, err)
+			return "", 0, fmt.Errorf("look up beam.yaml's %s: %w", key, err)
 		}
 		if !set {
 			continue
 		}
-		expanded, err := expandEnvMarkers(dirs, key, value)
+		expanded, err := expandEnvMarkers(dirs, key, raw)
 		if err != nil {
-			return "", fmt.Errorf("expand beam.yaml's %s in %s: %w", key, path, err)
+			return "", 0, fmt.Errorf("expand beam.yaml's %s in %s: %w", key, path, err)
 		}
-		return checkTaskSetting(key, expanded, path)
+		if index >= len(chain.Anchors) {
+			index = HubWideSource
+		}
+		value, err = checkTaskSetting(key, expanded, path)
+		return value, index, err
 	}
 	var template map[string]any
 	if err := yaml.Unmarshal([]byte(ConfigTemplate()), &template); err != nil {
-		return "", fmt.Errorf("decode beam.yaml's template: %w", err)
+		return "", 0, fmt.Errorf("decode beam.yaml's template: %w", err)
 	}
-	return checkTaskSetting(key, template[key], "beam.yaml's template")
+	value, err = checkTaskSetting(key, template[key], "beam.yaml's template")
+	return value, HubWideSource, err
 }
 
 // expandEnvMarkers expands the envsource markers of a text value, with the environment of the place dirs names.

@@ -33,6 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/helpcli"
 	"github.com/Knatte18/loomyard/internal/hibernatecli"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/idecli"
 	"github.com/Knatte18/loomyard/internal/ideengine"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -170,6 +171,8 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				orchcli.InstallRunMailDropper()
 				// A records replay merges the board by entry through boardengine's Bolt replayer, in the detached push child and in a pull-first Bolt write.
 				fabricengine.RegisterBoltReplayer(boardengine.FabricReplay{})
+				// Every board render shows each beam's and the root's autonomy and pull-request setting as the runs read them.
+				boardengine.InstallBeamModeReader(hubgeom.BeamModes)
 				// A worktree that fabric makes or moves reaches heddle through the worktree seam, to render its files.
 				fabricengine.InstallWorktreeSeam(heddleengine.Seam{})
 				// The hub workspace file leads a pair's folder name with its project's handle, read from the board.

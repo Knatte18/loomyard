@@ -55,7 +55,7 @@ const (
 
 // Config is the resolved beam.yaml's worktree-wide keys.
 // The per-task keys are pull_request, land_notice and autonomy.
-// They are read through LookupPullRequest, LookupLandNotice and LookupAutonomy alone.
+// They are read through LookupPullRequest, LookupLandNotice, LookupAutonomy and LookupWithSource alone.
 type Config struct {
 	// MaxRuns is the most runs dobby drives at once; 0 starts none.
 	MaxRuns int `yaml:"max_runs"`

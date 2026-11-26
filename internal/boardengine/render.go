@@ -28,8 +28,10 @@ const renderManifestFile = ".board-rendered.json"
 // It removes the files the previous render recorded in the manifest that this render does not produce.
 // An entry flagged discussed whose decision record file is missing from boardPath renders as undiscussed,
 // so no board file links a missing record.
+// The board files carry the beam modes out's reader reads for the hub of boardPath, and none when it has no reader.
 func RenderToDisk(boardPath string, tasks []Task, primeOwner string, out Outputs, now time.Time) error {
-	files, err := renderFiles(tasks, withMissingRecordsUndiscussed(boardPath, tasks), primeOwner, out, now)
+	modes := readBeamModes(boardPath, tasks, out)
+	files, err := renderFiles(tasks, withMissingRecordsUndiscussed(boardPath, tasks), primeOwner, out, now, modes)
 	if err != nil {
 		return err
 	}
@@ -106,20 +108,23 @@ func writeRenderManifest(boardPath string, files map[string]string) {
 // Every project, open or done, gets a file named by projectFileName, and the root project gets rootProjectFile.
 // Every entry flagged discussed is linked to its decision record, which Render takes to exist.
 // BoardDataFile holds the board's view projection beside the README, and BoardPageFile the viewer page.
+// The files carry no beam mode line, since Render reads no hub.
 func Render(tasks []Task, primeOwner string, out Outputs, now time.Time) (map[string]string, error) {
-	return renderFiles(tasks, tasks, primeOwner, out, now)
+	return renderFiles(tasks, tasks, primeOwner, out, now, nil)
 }
 
 // renderFiles renders every board file from rendered, and the view projection's revisions from stored.
 // The two differ only where RenderToDisk clears the discussed flag of an entry whose decision record is missing,
 // so an entry's revision covers its stored copy while its files follow the copy rendered.
-func renderFiles(stored, rendered []Task, primeOwner string, out Outputs, now time.Time) (map[string]string, error) {
+// modes are the beam modes the files show, nil for none.
+func renderFiles(stored, rendered []Task, primeOwner string, out Outputs, now time.Time, modes *BeamModes) (map[string]string, error) {
 	ordered, err := RenderOrder(rendered)
 	if err != nil {
 		return nil, err
 	}
 
 	board := newBoardView(ordered, primeOwner, out, now)
+	board.modes = modes
 	result := map[string]string{
 		out.Readme:      board.renderReadme(),
 		rootProjectFile: board.renderProjectFile(rootProject),
@@ -358,6 +363,8 @@ type boardView struct {
 	ownerOf      func(slug string) string
 	out          Outputs
 	now          time.Time
+	// modes are the beam modes the board files show, nil for none.
+	modes *BeamModes
 }
 
 // newBoardView indexes ordered for rendering the board files with the given prime owner and outputs, every age as of now.
@@ -408,10 +415,12 @@ func (b boardView) renderedLine() string {
 }
 
 // fileHeader is the opening of project's board file.
-// It holds the heading, the render time, a link up to the file above, the facts line, the brief and the body.
+// It holds the heading, the render time and a link up to the file above.
+// The facts line, the mode line, the brief and the body follow.
 func (b boardView) fileHeader(project Task) []string {
 	title := "# " + cellText(project.Handle+" "+project.Title) + beamSuffix(project)
 	lines := []string{title, "", b.renderedLine(), "Under: " + b.upLink(project) + ".", "", b.projectFacts(project), ""}
+	lines = append(lines, b.modeLines(project)...)
 	if project.Brief != "" {
 		lines = append(lines, project.Brief, "")
 	}
@@ -518,10 +527,11 @@ func (b boardView) projectFacts(project Task) string {
 }
 
 // renderReadme builds README.md, the overview of every project.
-// Its header names the render time and the prime owner, then comes the intro.
+// Its header names the render time, the prime owner and, with beam modes, the hub-wide defaults; then comes the intro.
 // Each open project directly under the root gets a section, and the root's own section comes last.
 func (b boardView) renderReadme() string {
 	lines := []string{"# " + rootTitle, "", b.renderedLine(), "Prime owner: " + primeOwnerText(b.primeOwner) + ".", ""}
+	lines = append(lines, b.modeHeader()...)
 	lines = append(lines, boardIntro...)
 	for _, child := range b.childProjects(rootProject) {
 		lines = append(lines, b.projectSection(child.Task, readmeSectionLevel)...)
@@ -562,9 +572,10 @@ func (b boardView) openMembers(project Task) int {
 }
 
 // projectSectionContent is what a section of project at heading level level holds under its heading:
-// its facts line, its brief when it has one, and its body.
+// its facts line, its mode line for the root or a beam, its brief when it has one, and its body.
 func (b boardView) projectSectionContent(project Task, level int) []string {
 	lines := []string{b.projectFacts(project), ""}
+	lines = append(lines, b.modeLines(project)...)
 	if project.Brief != "" {
 		lines = append(lines, project.Brief, "")
 	}

@@ -77,17 +77,19 @@ func TestLookupTaskSettings(t *testing.T) {
 		// hub is the board's default layer.
 		hub  string
 		want string
+		// wantSource is the anchor index LookupWithSource names as the place that set the value.
+		wantSource int
 	}{
-		{name: "the task's local file wins over its worktree file and over the parent", task: "off", taskLocal: "on", parent: "off", want: "on"},
-		{name: "the task's local file turns a worktree on off", task: "on", taskLocal: "off", parent: "on", want: "off"},
-		{name: "a task that sets nothing takes the parent's value over the prime's", parent: "off", prime: "on", want: "off"},
-		{name: "a task that sets nothing takes the parent's on over the hub default", parent: "on", hub: "off", want: "on"},
-		{name: "a lower value overrides a parent's on", task: "off", parent: "on", want: "off"},
-		{name: "a lower value overrides a parent's off", task: "on", parent: "off", want: "on"},
-		{name: "the prime's own file applies when nothing nearer sets the key", prime: "off", hub: "on", want: "off"},
-		{name: "a hub default that is on applies when no anchor sets the key", hub: "on", want: "on"},
-		{name: "a hub default that is off applies when no anchor sets the key", hub: "off", want: "off"},
-		{name: "a hub default never counts as the prime's own setting", prime: "on", hub: "off", want: "on"},
+		{name: "the task's local file wins over its worktree file and over the parent", task: "off", taskLocal: "on", parent: "off", want: "on", wantSource: 0},
+		{name: "the task's local file turns a worktree on off", task: "on", taskLocal: "off", parent: "on", want: "off", wantSource: 0},
+		{name: "a task that sets nothing takes the parent's value over the prime's", parent: "off", prime: "on", want: "off", wantSource: 1},
+		{name: "a task that sets nothing takes the parent's on over the hub default", parent: "on", hub: "off", want: "on", wantSource: 1},
+		{name: "a lower value overrides a parent's on", task: "off", parent: "on", want: "off", wantSource: 0},
+		{name: "a lower value overrides a parent's off", task: "on", parent: "off", want: "on", wantSource: 0},
+		{name: "the prime's own file applies when nothing nearer sets the key", prime: "off", hub: "on", want: "off", wantSource: 2},
+		{name: "a hub default that is on applies when no anchor sets the key", hub: "on", want: "on", wantSource: HubWideSource},
+		{name: "a hub default that is off applies when no anchor sets the key", hub: "off", want: "off", wantSource: HubWideSource},
+		{name: "a hub default never counts as the prime's own setting", prime: "on", hub: "off", want: "on", wantSource: 2},
 	}
 	for _, key := range []string{PullRequestKey, LandNoticeKey, AutonomyKey} {
 		for _, tt := range tests {
@@ -106,9 +108,13 @@ func TestLookupTaskSettings(t *testing.T) {
 					writeBeamLayer(t, board, settingDocument(key, tt.hub))
 				}
 
-				got, err := lookupAsText(key, TaskSettingChain{Anchors: []string{taskDir, parentDir, primeDir}, Board: board})
+				chain := TaskSettingChain{Anchors: []string{taskDir, parentDir, primeDir}, Board: board}
+				got, err := lookupAsText(key, chain)
 				if err != nil || got != tt.want {
 					t.Errorf("lookup of %s = %q, %v; want %q", key, got, err, tt.want)
+				}
+				if _, source, err := LookupWithSource(chain, key); err != nil || source != tt.wantSource {
+					t.Errorf("LookupWithSource(%s) source = %d, %v; want %d", key, source, err, tt.wantSource)
 				}
 			})
 		}
@@ -137,6 +143,9 @@ func TestLookupTaskSettings(t *testing.T) {
 		}
 		if got, err := LookupAutonomy(chain); err != nil || got {
 			t.Errorf("LookupAutonomy() = %v, %v; want false", got, err)
+		}
+		if got, source, err := LookupWithSource(chain, PullRequestKey); err != nil || got != "on" || source != HubWideSource {
+			t.Errorf("LookupWithSource(pull_request) = %q, %d, %v; want on, %d", got, source, err, HubWideSource)
 		}
 	})
 
