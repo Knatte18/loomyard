@@ -77,6 +77,7 @@ func tmuxBinaryPath(t *testing.T) string {
 // registerBootstrapTeardown registers a cleanup that kills any surviving driver process for worktree
 // and the per-hub watchdog daemon, then tears the reed substrate down.
 // A failed assertion then never leaves a live tmux server, a detached driver, or a watchdog daemon behind.
+// Once those are gone, it ends every process still running under the test's temp dirs, such as a detached board sync.
 //
 // The watchdog reap is unconditional, not a branch.
 // The smoke tier builds and runs a real binary, so testing.Testing() is false there,
@@ -89,6 +90,9 @@ func registerBootstrapTeardown(t *testing.T, loc *lymcwd.Location, worktree stri
 	if err != nil {
 		t.Fatalf("reed geometry: %v", err)
 	}
+	// Registered before the kills below, so it runs after them:
+	// a git child of a killed process can still be writing into the hub when the temp dir is removed.
+	waitForFixtureProcessesToExit(t, fixtureProcessPatience)
 	// Registered before the first boot, so reed's boot finds the kit's hermetic server on the hub's key.
 	// The kill and socket-file removal run after the teardown below.
 	tmuxkit.KillOnCleanup(t, tmuxBinaryPath(t), reedGeom.SocketKey)

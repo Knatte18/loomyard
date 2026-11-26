@@ -33,7 +33,7 @@ func TestLoomPreBootstrapPair(t *testing.T) {
 
 	exe := lymbin.Build(t)
 	_, loc, worktree, slug := newWiredPairFixture(t)
-	waitForFixtureProcessesToExit(t)
+	waitForFixtureProcessesToExit(t, fixtureProcessPatience)
 	recordsDir := fabricengine.RecordsWorktree(loc)
 
 	// The run verb on a never-seeded pair refuses on the envelope with a message naming the bootstrap verb.
@@ -124,7 +124,7 @@ func TestLoomStatusAndPauseOnNeverBootstrappedPair(t *testing.T) {
 
 	exe := lymbin.Build(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
-	waitForFixtureProcessesToExit(t)
+	waitForFixtureProcessesToExit(t, fixtureProcessPatience)
 	seedGoDriverRun(t, loc)
 
 	for _, verb := range []string{"status", "pause"} {
@@ -173,7 +173,6 @@ func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 
 	exe := lymbin.Build(t)
 	loc, worktree := newBadReedUpFixture(t, deleteBoardLensesDefault)
-	waitForFixtureProcessesToExit(t)
 	recordsDir := fabricengine.RecordsWorktree(loc)
 	lensesPath := boardLensesDefault(loc)
 

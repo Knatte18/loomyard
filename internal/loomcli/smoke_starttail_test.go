@@ -116,9 +116,6 @@ func TestSmokeWatchdog_StartSpawnsTheDaemon(t *testing.T) {
 	tmuxBinaryPath(t)
 	exe := lymbin.Build(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
-	// Registered before the teardown, so it runs after the teardown's kills:
-	// a git child of a killed process can still be writing into the hub when the temp dir is removed.
-	waitForFixtureProcessesToExit(t)
 	registerBootstrapTeardown(t, loc, worktree)
 
 	stdout, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start")

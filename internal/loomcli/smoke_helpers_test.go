@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -250,9 +251,12 @@ var badReedUpRegistration = &hubforge.Registration{
 
 // newBadReedUpFixture copies the bad-reed-config template, whose reed config makes reed Up fail.
 // It seeds the copy's pair with seed and returns the resolved location and the worktree path.
+// A verb run against it reconciles the hub, which spawns a detached board sync,
+// so the fixture ends every process left under the copy before the copy is removed.
 func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lymcwd.Location)) (*lymcwd.Location, string) {
 	t.Helper()
 	h := hubforge.CopyRegistered(t, badReedUpRegistration)
+	waitForFixtureProcessesToExit(t, fixtureProcessPatience)
 	worktree := h.PairCodeWorktree(badReedUpSlug)
 	loc, err := lymcwd.Resolve(worktree)
 	if err != nil {
@@ -262,28 +266,66 @@ func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lymcwd.Location)) 
 	return loc, worktree
 }
 
-// waitForFixtureProcessesToExit registers a cleanup that waits for processes whose cwd is under the test's temp dirs.
-// A push into a bare repository leaves a git process there for a moment;
-// that process would otherwise write into a directory the temp-dir removal is deleting.
-// It is registered after the fixture, so it runs before the fixture's removal;
-// the wait is best effort, and the removal reports what is still left.
-func waitForFixtureProcessesToExit(t *testing.T) {
+// fixtureProcessPatience is how long a fixture's cleanup waits for its temp dirs' processes to exit on their own.
+const fixtureProcessPatience = 10 * time.Second
+
+// fixtureProcessPoll is the interval at which a fixture's cleanup rescans for the processes under its temp dirs.
+const fixtureProcessPoll = 20 * time.Millisecond
+
+// waitForFixtureProcessesToExit registers a cleanup that ends every process whose cwd is under the test's temp dirs.
+// A push into a bare repository leaves a git process there for a moment,
+// and a verb's detached `lym board sync` runs on after the verb returns.
+// Either would otherwise write into a directory the temp-dir removal is deleting.
+// Either could also outlive the package's run, whose end fails on every process left running.
+// The cleanup waits up to patience for them to exit, then kills and logs each one still running.
+// A process that appears after a kill is killed and logged in turn, a further patience later.
+// The cleanup fails the test when the only processes left after that patience are ones it already killed.
+// It is registered after the fixture, so it runs before the fixture's removal.
+func waitForFixtureProcessesToExit(t *testing.T, patience time.Duration) {
 	t.Helper()
-	root := filepath.Dir(t.TempDir())
+	root, err := filepath.EvalSymlinks(filepath.Dir(t.TempDir()))
+	if err != nil {
+		t.Fatalf("resolve the test's temp root: %v", err)
+	}
 	t.Cleanup(func() {
-		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-			running := false
-			for _, pid := range tmuxkit.Pids() {
-				if cwd, ok := tmuxkit.ProcCwd(pid); ok && pid != os.Getpid() && strings.HasPrefix(cwd, root+string(filepath.Separator)) {
-					running = true
-					break
-				}
-			}
-			if !running {
+		killed := map[int]bool{}
+		for deadline := time.Now().Add(patience); ; time.Sleep(fixtureProcessPoll) {
+			left := processesUnder(root)
+			if len(left) == 0 {
 				return
 			}
+			if time.Now().Before(deadline) {
+				continue
+			}
+			killedAnother := false
+			for _, pid := range left {
+				if killed[pid] {
+					continue
+				}
+				argv, _ := tmuxkit.ProcArgv(pid)
+				t.Logf("fixture process %d under %s still runs after %s; killing it: %q", pid, root, patience, argv)
+				_ = proc.KillPID(pid)
+				killed[pid] = true
+				killedAnother = true
+			}
+			if !killedAnother {
+				t.Errorf("fixture processes %v under %s still run %s after they were killed", left, root, patience)
+				return
+			}
+			deadline = time.Now().Add(patience)
 		}
 	})
+}
+
+// processesUnder returns the pids of the live processes other than this one whose cwd is under root.
+func processesUnder(root string) []int {
+	var pids []int
+	for _, pid := range tmuxkit.Pids() {
+		if cwd, ok := tmuxkit.ProcCwd(pid); ok && pid != os.Getpid() && strings.HasPrefix(cwd, root+string(filepath.Separator)) {
+			pids = append(pids, pid)
+		}
+	}
+	return pids
 }
 
 // hubStampPath returns the hub's build stamp file.
