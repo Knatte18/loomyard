@@ -131,6 +131,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [linux-portability-survey.md](platform/linux-portability-survey.md) — what broke when the Go test suite first ran on Linux.
 - [sandboxing-options-2026-10-30.md](platform/sandboxing-options-2026-10-30.md) — sandboxing options for a closed area for lym.
 - [landlock-area-2026-11-23.md](platform/landlock-area-2026-11-23.md) — whether a lym-started Landlock area closes the bus and other hubs' tmux without root, measured with [its probe](platform/landlock-probe/main.go).
+- [sandbox-without-new-kernel-2026-11-23.md](platform/sandbox-without-new-kernel-2026-11-23.md) — what closes the bus and other hubs' tmux on kernel 7.0 without root: a seccomp connect supervisor, measured with [its probe](platform/seccomp-connect-probe/main.go) and [a take-away probe](platform/same-uid-probe/main.go).
 
 ## quarry — code search
 
