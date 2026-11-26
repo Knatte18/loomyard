@@ -14,6 +14,7 @@ import (
 
 // TestPendingTeardowns covers the list of remote teardowns whose child ended before its job did.
 // A record whose teardown lock no process holds is listed with the re-run that finishes it.
+// A removal's record that carries its caller's command names that command, not `lym fabric remove`, as the re-run.
 // A record that carries the task tip a discard tagged names the hand push of that tip's archive tag first.
 // A record whose lock a process holds exclusive is a teardown still running and is not listed.
 func TestPendingTeardowns(t *testing.T) {
@@ -36,6 +37,7 @@ func TestPendingTeardowns(t *testing.T) {
 		taskTag := ArchiveTagName("tipped", taskTip)
 		for _, job := range []remoteTeardownJob{
 			{Kind: remoteTeardownRemove, Slug: "ended"},
+			{Kind: remoteTeardownRemove, Slug: "cancelled", Rerun: "lym batten cancel cancelled --remove"},
 			{Kind: remoteTeardownDiscard, Slug: "discarded"},
 			{Kind: remoteTeardownDiscard, Slug: "tipped", Worktree: "/code", TaskTip: taskTip},
 			{Kind: remoteTeardownRemove, Slug: "running"},
@@ -56,6 +58,7 @@ func TestPendingTeardowns(t *testing.T) {
 			t.Fatalf("PendingTeardowns() error = %v; want nil", err)
 		}
 		want := []PendingTeardown{
+			{Slug: "cancelled", Kind: remoteTeardownRemove, HandedAt: handedAt, WayForward: "run `lym batten cancel cancelled --remove` again"},
 			{Slug: "discarded", Kind: remoteTeardownDiscard, HandedAt: handedAt, WayForward: "run the command that discarded the task branch again"},
 			{Slug: "ended", Kind: remoteTeardownRemove, HandedAt: handedAt, WayForward: "run `lym fabric remove ended --remote` again"},
 			{Slug: "tipped", Kind: remoteTeardownDiscard, HandedAt: handedAt, WayForward: "push the archive tag with `git -C /code push origin refs/tags/" + taskTag + ":refs/tags/" + taskTag +

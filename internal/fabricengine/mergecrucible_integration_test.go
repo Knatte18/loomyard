@@ -194,7 +194,7 @@ func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T)
 		t.Fatalf("MergeIn(%s).Conflicts is empty; the fixture must leave a live merge record", sourceBranch)
 	}
 
-	_, err = h.Topology.Remove(primeLocation, slug, false, false)
+	_, err = h.Topology.Remove(primeLocation, slug, false, false, "")
 	var refused *fabricengine.ErrMergeInProgress
 	if !errors.As(err, &refused) {
 		t.Fatalf("Remove(%s) while the prime pair is mid-merge on its branches: error = %v (%T); want *ErrMergeInProgress", slug, err, err)
@@ -207,7 +207,7 @@ func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T)
 	}
 
 	// force answers dirtiness only, never a live merge record.
-	if _, err := h.Topology.Remove(primeLocation, slug, true, false); !errors.As(err, &refused) {
+	if _, err := h.Topology.Remove(primeLocation, slug, true, false, ""); !errors.As(err, &refused) {
 		t.Fatalf("Remove(%s, force=true): error = %v (%T); want *ErrMergeInProgress even with force", slug, err, err)
 	}
 
@@ -215,7 +215,7 @@ func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T)
 	if _, err := prime.MergeAbort(); err != nil {
 		t.Fatalf("MergeAbort: %v", err)
 	}
-	if _, err := h.Topology.Remove(primeLocation, slug, true, false); err != nil {
+	if _, err := h.Topology.Remove(primeLocation, slug, true, false, ""); err != nil {
 		t.Fatalf("Remove(%s) after MergeAbort: %v; want success — the guard must close a window, not block the pair forever", slug, err)
 	}
 }

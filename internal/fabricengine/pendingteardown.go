@@ -2,6 +2,7 @@
 // The command writes the record before it hands a remote teardown job to its detached child.
 // The child removes it once the job has run with no failed step, and keeps it with the way forward of a step that failed.
 // PendingTeardowns lists the records no running teardown holds, for `lym fabric status` and `lym fabric prune`.
+// SettleGonePairTeardown drops the record of a pair of which nothing remains.
 
 package fabricengine
 
@@ -27,7 +28,8 @@ const pendingTeardownSuffix = ".pending.json"
 // The command writes it before the handover, and the child removes it once the job has run with no failed step.
 // A record whose slug's teardown lock no process holds therefore names a teardown that did not finish:
 // its child ended before the job did, killed outright for instance, or a remote step of the job failed.
-// Either leaves the pair's branches on origin.
+// Either can leave the pair's branches on origin.
+// A record whose pair is gone everywhere stays until it is settled.
 type PendingTeardown struct {
 	Slug     string    `json:"slug"`
 	Kind     string    `json:"kind"`
@@ -38,7 +40,7 @@ type PendingTeardown struct {
 	WeftTip string `json:"weft_tip,omitempty"`
 	// TaskTip is the local task tip a discard tagged before it deleted the branch, empty when it found none.
 	TaskTip string `json:"task_tip,omitempty"`
-	// Rerun is the command whose re-run retries a discard, empty when its caller named none.
+	// Rerun is the command whose re-run retries a discard or a removal, empty when its caller named none.
 	Rerun string `json:"rerun,omitempty"`
 	// WayForward is what finishes the teardown.
 	// A record on disk holds one only once a remote step failed; a listed record always holds one.
@@ -94,6 +96,40 @@ func clearPendingTeardown(hubPath, slug string) {
 	if err := os.Remove(pendingTeardownPath(hubPath, slug)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		logger.Warn("fabricengine: pending teardown record not removed", "slug", slug, "error", err)
 	}
+}
+
+// SettleGonePairTeardown drops the pending-teardown record of slug once its pair is gone, locally and on origin.
+// It first pushes the slug's archive tags that origin lacks.
+// The unfinished teardown may hold such a tag on this machine alone.
+// A failed push returns an error wrapping ErrArchiveFailed and keeps the record.
+// A slug with no record, or with any part of its pair left, is left as it is.
+// It holds the slug's teardown lock exclusive, and the refusal of a held lock names rerun as the command to run again.
+func (t *Topology) SettleGonePairTeardown(l *lymcwd.Location, slug, rerun string) error {
+	if !pathPresent(pendingTeardownPath(l.HubPath, slug)) {
+		return nil
+	}
+	rec := NewMutations(l.HubPath)
+	release, err := t.lockPairTeardown(rec, l, slug, false, "re-run `"+rerun+"`")
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	pair, err := t.inspectPair(l, slug)
+	if err != nil {
+		return err
+	}
+	// A nil error means a part of the pair is left.
+	if _, err := t.refuseWhenNothingRemains(l, slug, pair); !errors.Is(err, ErrPairNotFound) {
+		return err
+	}
+	// The job reads both stores, since the record does not say which tags its teardown pushed.
+	job := remoteTeardownJob{Kind: remoteTeardownRemove, Slug: slug, DeleteTaskOnOrigin: true}
+	if err := pushOwedArchiveTags(rec, l, job, t.archiveSleep); err != nil {
+		return err
+	}
+	clearPendingTeardown(l.HubPath, slug)
+	return nil
 }
 
 // PendingTeardowns lists the hub's remote teardowns that did not finish, in slug order:

@@ -721,7 +721,7 @@ func TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval(t *testing.T) {
 			t.Fatalf("write through the link: %v", err)
 		}
 
-		result, err := h.Topology.Remove(l, slug, true, false)
+		result, err := h.Topology.Remove(l, slug, true, false, "")
 		if err != nil {
 			t.Fatalf("Remove = %v; want nil", err)
 		}
@@ -754,7 +754,7 @@ func TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval(t *testing.T) {
 		root, _ := scratchPaths(l, slug)
 		replaceLinkWithRealDirectory(t, root)
 
-		result, err := h.Topology.Remove(l, slug, true, false)
+		result, err := h.Topology.Remove(l, slug, true, false, "")
 		if err != nil {
 			t.Fatalf("Remove = %v; want nil", err)
 		}
@@ -784,7 +784,7 @@ func TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval(t *testing.T) {
 			t.Fatalf("link %s: %v", root, err)
 		}
 
-		result, err := h.Topology.Remove(l, slug, true, false)
+		result, err := h.Topology.Remove(l, slug, true, false, "")
 		if err != nil {
 			t.Fatalf("Remove = %v; want nil", err)
 		}

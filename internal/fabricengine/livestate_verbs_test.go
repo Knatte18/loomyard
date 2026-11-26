@@ -470,7 +470,7 @@ func removeCase() VerbCase {
 		},
 		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
-			res, err := h.Topology.Remove(h.Location, f.Slug, false, false)
+			res, err := h.Topology.Remove(h.Location, f.Slug, false, false, "")
 			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {
@@ -1114,7 +1114,7 @@ func removeHostileCases() []VerbCase {
 			},
 			Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 				tb.Helper()
-				res, err := h.Topology.Remove(h.Location, f.Slug, false, false)
+				res, err := h.Topology.Remove(h.Location, f.Slug, false, false, "")
 				return res.Mutated(), err
 			},
 			Expect: func(state string) Expectation {

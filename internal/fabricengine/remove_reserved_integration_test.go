@@ -45,7 +45,7 @@ func TestRemove_RefusesReservedSlugsAndLeavesThemOnDisk(t *testing.T) {
 			t.Fatalf("seed %s: %v", marker, err)
 		}
 
-		_, err := topology.Remove(l, slug, true, false)
+		_, err := topology.Remove(l, slug, true, false, "")
 		if err == nil {
 			t.Errorf("Remove(%q) = nil error; want an invalid-slug refusal", slug)
 		} else if !errors.Is(err, fabricengine.ErrInvalidSlug) {

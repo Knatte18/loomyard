@@ -82,7 +82,7 @@ func removedPair(t *testing.T, slug string) *hubforge.Hub {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	if _, err := topology.Remove(h.Location, slug, false, false); err != nil {
+	if _, err := topology.Remove(h.Location, slug, false, false, ""); err != nil {
 		t.Fatalf("setup Remove(%q): %v", slug, err)
 	}
 	return h
@@ -113,7 +113,7 @@ func TestAdd_LiveLocalWeftAgainstOrigin(t *testing.T) {
 			topology := h.Topology
 			hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 			oldTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
-			if _, err := topology.Remove(h.Location, slug, false, false); err != nil {
+			if _, err := topology.Remove(h.Location, slug, false, false, ""); err != nil {
 				t.Fatalf("setup Remove: %v", err)
 			}
 			mustGit(h.PrimeRecords(), "branch", weftBranch, oldTip)
@@ -182,7 +182,7 @@ func TestAdd_LiveLocalWeftAdoptsDivergedWarpFromOrigin(t *testing.T) {
 	warpTip := gitkit.CommitFile(t, wt, "work.txt", "work\n", "warp work")
 	mustGit(wt, "push", "--quiet", "origin", slug)
 	weftTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
-	if _, err := topology.Remove(h.Location, slug, false, false); err != nil {
+	if _, err := topology.Remove(h.Location, slug, false, false, ""); err != nil {
 		t.Fatalf("setup Remove: %v", err)
 	}
 	requireArchiveCovers(t, h.RecordsBare, slug, weftTip)
@@ -220,7 +220,7 @@ func TestAdd_WarpLeftoverRefusedAtPreflight(t *testing.T) {
 	mustGit(wt, "push", "--quiet", "origin", slug)
 	mustGit(h.PrimeWorktree(), "merge", "--squash", slug)
 	gitkit.Git(t, h.PrimeWorktree(), "commit", "-m", "land "+slug)
-	if _, err := topology.Remove(h.Location, slug, false, false); err != nil {
+	if _, err := topology.Remove(h.Location, slug, false, false, ""); err != nil {
 		t.Fatalf("setup Remove: %v", err)
 	}
 
@@ -300,7 +300,7 @@ func TestAdd_DivergedArchivedWeftLeftoverReplaced(t *testing.T) {
 	gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(h.Location, slug), "extra.txt", "extra.txt\n", "extra weft work")
 	mustGit(fabricengine.RecordsWorktreePath(h.Location, slug), "push", "--quiet", "origin", weftBranch)
 	oldTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
-	if _, err := topology.Remove(h.Location, slug, false, false); err != nil {
+	if _, err := topology.Remove(h.Location, slug, false, false, ""); err != nil {
 		t.Fatalf("setup Remove: %v", err)
 	}
 

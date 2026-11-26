@@ -38,7 +38,7 @@ func TestRemove_RemoteTrueDeletesWeftBranchOnRemote(t *testing.T) {
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
-	res, err := topology.Remove(l, slug, false, true)
+	res, err := topology.Remove(l, slug, false, true, "")
 	if err != nil {
 		t.Fatalf("Remove(%q, remote=true) error = %v", slug, err)
 	}
@@ -88,7 +88,7 @@ func TestRemove_LeasedWeftDelete(t *testing.T) {
 			movedTip = gitkit.RevParse(t, h.RecordsBare, weftBranch)
 		})
 
-		res, err := h.Topology.Remove(h.Location, slug, false, true)
+		res, err := h.Topology.Remove(h.Location, slug, false, true, "")
 		if err != nil {
 			t.Fatalf("Remove error = %v; want a kept branch to leave the removal successful", err)
 		}
@@ -109,7 +109,7 @@ func TestRemove_LeasedWeftDelete(t *testing.T) {
 		deletes := 0
 		fabricengine.SetRemoveBeforeWeftDeleteHookForTest(t, func() { deletes++ })
 
-		res, err := h.Topology.Remove(h.Location, slug, false, true)
+		res, err := h.Topology.Remove(h.Location, slug, false, true, "")
 		if err != nil {
 			t.Fatalf("Remove error = %v", err)
 		}
@@ -128,7 +128,7 @@ func TestRemove_LeasedWeftDelete(t *testing.T) {
 			originAtDelete = gitkit.RevParse(t, h.RecordsBare, weftBranch)
 		})
 
-		res, err := h.Topology.Remove(h.Location, slug, false, true)
+		res, err := h.Topology.Remove(h.Location, slug, false, true, "")
 		if err != nil {
 			t.Fatalf("Remove error = %v", err)
 		}
@@ -154,7 +154,7 @@ func TestRemove_LeasedWeftDelete(t *testing.T) {
 			originAtDelete = gitkit.RevParse(t, h.RecordsBare, weftBranch)
 		})
 
-		res, err := h.Topology.Remove(h.Location, slug, false, true)
+		res, err := h.Topology.Remove(h.Location, slug, false, true, "")
 		if err != nil {
 			t.Fatalf("Remove error = %v", err)
 		}
@@ -177,7 +177,7 @@ func TestRemove_LeasedWeftDelete(t *testing.T) {
 			movedTip = gitkit.RevParse(t, h.RecordsBare, weftBranch)
 		})
 
-		res, err := h.Topology.Remove(h.Location, slug, false, true)
+		res, err := h.Topology.Remove(h.Location, slug, false, true, "")
 		if err != nil {
 			t.Fatalf("Remove error = %v", err)
 		}
@@ -206,7 +206,7 @@ func TestRemove_RemoteFalseLeavesRemoteBranchIntact(t *testing.T) {
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
-	res, err := topology.Remove(l, slug, false, false)
+	res, err := topology.Remove(l, slug, false, false, "")
 	if err != nil {
 		t.Fatalf("Remove(%q, remote=false) error = %v", slug, err)
 	}
@@ -235,7 +235,7 @@ func TestRemove_NoOriginUnderRemoteReportsSkipReasonAndCompletesTeardown(t *test
 
 	mustRemoveOrigin(t, weftRoot)
 
-	res, err := topology.Remove(l, slug, false, true)
+	res, err := topology.Remove(l, slug, false, true, "")
 	if err != nil {
 		t.Fatalf("Remove(%q, remote=true) error = %v", slug, err)
 	}

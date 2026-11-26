@@ -421,7 +421,7 @@ func checkBeamOpensBeamWorkspace(t *testing.T, h *hubforge.Hub, slug string) {
 	hubforge.AddPairWith(t, h, child, fabricengine.AddOptions{Parent: slug})
 	// The forked task is removed on cleanup, since the hub workspace check of a later step lists every pair of the hub.
 	t.Cleanup(func() {
-		if _, err := h.Topology.Remove(l, child, true, false); err != nil {
+		if _, err := h.Topology.Remove(l, child, true, false, ""); err != nil {
 			t.Errorf("remove the task forked from the beam: %v", err)
 		}
 	})

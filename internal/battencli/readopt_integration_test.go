@@ -176,7 +176,7 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		const slug = "removed-pair"
 		hubforge.AddPair(t, h, slug)
-		if _, err := h.Topology.Remove(h.Location, slug, false, true); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, true, ""); err != nil {
 			t.Fatalf("Remove: %v", err)
 		}
 		c, _ := readoptReceiver(h, slug)
@@ -229,7 +229,7 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 		gitkit.Git(t, prime, "merge", "--squash", taskBranch)
 		gitkit.Git(t, prime, "commit", "-m", "land "+slug)
 		gitkit.Git(t, prime, "push", "--quiet", "origin", "HEAD")
-		if _, err := h.Topology.Remove(h.Location, slug, false, true); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, true, ""); err != nil {
 			t.Fatalf("Remove: %v", err)
 		}
 

@@ -238,7 +238,9 @@
 // So does a child whose remote step failed, and its record holds that step's way forward.
 // `PendingTeardowns` lists each with what finishes it, for `lym fabric status` and `lym fabric prune` to print:
 // the hand push of the archive tag of a tip the record carries, then the re-run.
-// A discard's job and record carry the command its caller names for that re-run.
+// A discard's or a removal's job and record carry the command its caller names for that re-run.
+// A removal whose caller names none is re-run by `lym fabric remove <slug> --remote`.
+// `SettleGonePairTeardown` drops the record of a pair of which nothing remains.
 // A remote branch delete is leased and a branch origin moved since is kept, never a failure.
 // A pair already half removed is finished rather than refused, and `ErrPairNotFound` means nothing is left.
 // `RemoveLocal` is the same removal with no origin step and no waiting.

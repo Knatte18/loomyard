@@ -1,5 +1,6 @@
 // cancel_integration_test.go drives "lym batten cancel" through clihelp.ExecuteIn over hubforge hubs.
-// It covers a blocked run with no pair, a kept pair whose reconcile only judges, and a removed pair.
+// It covers a blocked run with no pair, a kept pair whose reconcile only judges, a removed pair,
+// and the re-run that finishes an unfinished removal.
 
 package battencli
 
@@ -364,6 +365,49 @@ func TestCancelIntegration_RemoveTearsDownPairAndBranch(t *testing.T) {
 	if status, _ := boardStatusOf(t, h, slug); status == nil || *status != boardengine.StatusDraft {
 		t.Errorf("board entry status = %v; want draft", status)
 	}
+}
+
+// TestCancelIntegration_FinishesAnUnfinishedRemoval re-runs the cancel that a pending removal record names.
+// The slug has no run record, claim or local pair part, and only its records branch is left on origin.
+// The first re-run deletes that branch.
+// The record then still stands, as one of a pair gone everywhere, and the second re-run drops it.
+// A third finds nothing left to cancel.
+func TestCancelIntegration_FinishesAnUnfinishedRemoval(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	slug := hubforge.TemplatePairSlug
+	boardkit.InstallReplay(t)
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{slug}})
+	recordsBranch := fabricengine.RecordsBranchName(slug)
+	if _, err := h.Topology.Remove(h.Location, slug, true, false, ""); err != nil {
+		t.Fatalf("Remove(%s): %v", slug, err)
+	}
+	if gitkit.BranchExists(t, h.CodeBare, slug) {
+		gitkit.MustRun(t, h.CodeBare, "git", "update-ref", "-d", "refs/heads/"+slug)
+	}
+	if !gitkit.BranchExists(t, h.RecordsBare, recordsBranch) {
+		t.Fatalf("origin holds no %q after the local removal; the fixture needs it", recordsBranch)
+	}
+	// The record a removal's teardown child leaves behind when it ends before its job does.
+	recordPath := filepath.Join(filepath.Dir(fabricengine.TeardownLockPath(h.Path, slug)), slug+".pending.json")
+	record := fabricengine.PendingTeardown{Slug: slug, Kind: "remove", HandedAt: time.Now(), Worktree: h.PrimeWorktree(), Rerun: "lym batten cancel " + slug + " --remove"}
+	if err := state.WriteJSON(recordPath, recordPath+".lock", record); err != nil {
+		t.Fatalf("write the pending teardown record: %v", err)
+	}
+
+	envelope.RequireOK(t, runCancel(t, h.PrimeWorktree(), slug, "--remove"))
+
+	if gitkit.BranchExists(t, h.RecordsBare, recordsBranch) {
+		t.Errorf("origin still holds %q after the cancel; want it deleted", recordsBranch)
+	}
+
+	envelope.RequireOK(t, runCancel(t, h.PrimeWorktree(), slug, "--remove"))
+
+	if pending, err := fabricengine.PendingTeardowns(h.Path); err != nil || len(pending) != 0 {
+		t.Errorf("PendingTeardowns() after the cancel of a gone pair = (%+v, %v); want none", pending, err)
+	}
+	envelope.RequireErr(t, runCancel(t, h.PrimeWorktree(), slug, "--remove"), "nothing of "+slug+" is left to cancel")
 }
 
 // mustRunGit runs git with args in dir and returns its output, failing the test on an error.

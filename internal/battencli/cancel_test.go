@@ -25,7 +25,7 @@ import (
 const cancelSlug = "some-slug"
 
 // destructiveCancelCalls are the seams whose call means the cancel ended, removed, cleared or lifted something.
-var destructiveCancelCalls = []string{"WriteIntent", "CommitRecord", "EndForCancel", "StopTackler", "RemovePair", "DiscardTaskBranch", "FinishCancel", "RemoveRecords", "ClearClaim", "LiftPauses"}
+var destructiveCancelCalls = []string{"WriteIntent", "CommitRecord", "EndForCancel", "StopTackler", "RemovePair", "DiscardTaskBranch", "FinishCancel", "RemoveRecords", "ClearClaim", "LiftPauses", "SettleTeardown"}
 
 // cancelFake is a set of fake substrates for cancelRun that records every call and answers from its knobs.
 // Its zero value has no status, no board entry and no records, and nothing alive.
@@ -62,6 +62,8 @@ type cancelFake struct {
 	onOrigin        bool
 	discardResult   fabricengine.DiscardResult
 	discardErr      error
+	teardownPending bool
+	settleErr       error
 	recordsErr      error
 	recordsCommit   bool
 	claimCleared    bool
@@ -219,7 +221,9 @@ func (f *cancelFake) deps() cancelDeps {
 			f.call("DiscardTaskBranch")
 			return f.discardResult, f.discardErr
 		},
-		Verdict: func() (runfsm.Verdict, error) { f.call("Verdict"); return f.verdict, f.verdictErr },
+		TeardownPending: func() (bool, error) { f.call("TeardownPending"); return f.teardownPending, nil },
+		SettleTeardown:  func() error { f.call("SettleTeardown"); return f.settleErr },
+		Verdict:         func() (runfsm.Verdict, error) { f.call("Verdict"); return f.verdict, f.verdictErr },
 		WriteIntent: func(remove bool) (bool, error) {
 			f.call("WriteIntent")
 			f.intentRemove = remove
@@ -489,8 +493,8 @@ func TestCancelRun(t *testing.T) {
 			noCalls:   []string{"FinishCancel"},
 			marker:    "removed",
 			check: func(t *testing.T, r cancelReport, f *cancelFake) {
-				want := pairteardown.Request{Slug: cancelSlug, Force: true, Snapshot: true, Remote: true, LeaveClaim: true, ClearStray: true}
-				if f.removeRequest.Slug != want.Slug || !f.removeRequest.Force || !f.removeRequest.Snapshot || !f.removeRequest.Remote || !f.removeRequest.LeaveClaim || !f.removeRequest.ClearStray {
+				want := pairteardown.Request{Slug: cancelSlug, Force: true, Snapshot: true, Remote: true, LeaveClaim: true, ClearStray: true, Rerun: "lym batten cancel " + cancelSlug + " --remove"}
+				if f.removeRequest.Slug != want.Slug || !f.removeRequest.Force || !f.removeRequest.Snapshot || !f.removeRequest.Remote || !f.removeRequest.LeaveClaim || !f.removeRequest.ClearStray || f.removeRequest.Rerun != want.Rerun {
 					t.Errorf("RemovePair request = %+v; want %+v", f.removeRequest, want)
 				}
 				if f.endRequest.Keep {
@@ -782,6 +786,28 @@ func TestCancelRun(t *testing.T) {
 			marker:    "removed",
 		},
 		{
+			name:   "UnfinishedTeardownAloneIsLeftToFinishWithRemove",
+			remove: true,
+			setup: func(f *cancelFake) {
+				f.recordsPresent, f.boardStatus, f.boardFound, f.statusFound = false, nil, false, false
+				f.teardownPending = true
+			},
+			wantCalls: []string{"TeardownPending", "RemovePair"},
+			noCalls:   []string{"SettleTeardown"},
+			marker:    "removed",
+		},
+		{
+			name:   "FailedSettleOfAGonePairNamesTheRerun",
+			remove: true,
+			setup: func(f *cancelFake) {
+				f.removeErr = fmt.Errorf("remove: %w", fabricengine.ErrPairNotFound)
+				f.settleErr = errors.New("archive tag push refused")
+			},
+			wantErr: `settling the unfinished teardown of some-slug failed: archive tag push refused; way forward: fix the cause it names, then run "lym batten cancel some-slug --remove" again`,
+			noCalls: []string{"RemoveRecords", "ClearClaim", "LiftPauses"},
+			marker:  "left",
+		},
+		{
 			name: "LiveCancelRefuses",
 			setup: func(f *cancelFake) {
 				f.marker = cancelMarkerReading{Present: true, WriterAlive: true, Intent: shedengine.CancelIntent{StartedAt: "2026-10-23T08:00:00Z"}}
@@ -859,7 +885,7 @@ func TestCancelRun(t *testing.T) {
 			setup: func(f *cancelFake) {
 				f.removeErr = fmt.Errorf("remove: %w", fabricengine.ErrPairNotFound)
 			},
-			wantCalls: []string{"RemovePair", "RemoveRecords", "ClearClaim"},
+			wantCalls: []string{"RemovePair", "SettleTeardown", "RemoveRecords", "ClearClaim"},
 			noCalls:   []string{"DiscardTaskBranch"},
 			marker:    "removed",
 			check: func(t *testing.T, r cancelReport, _ *cancelFake) {

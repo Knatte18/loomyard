@@ -80,7 +80,7 @@ type remoteTeardownJob struct {
 	DeleteTaskOnOrigin bool   `json:"delete_task_on_origin,omitempty"`
 	// TaskTip is the local task tip a discard tagged and deleted, empty when no local task branch existed.
 	TaskTip string `json:"task_tip,omitempty"`
-	// Rerun is the command whose re-run retries a discard, empty when its caller named none.
+	// Rerun is the command whose re-run retries a discard or a removal, empty when its caller named none.
 	Rerun string `json:"rerun,omitempty"`
 	// ExemptPause is set when the command that wrote the job runs exempt from every pause;
 	// so the child's remote steps pass under a pause as the command's own did.
@@ -201,11 +201,14 @@ func unknownKindWayForward(slug string) string {
 }
 
 // rerunWayForward returns the re-run that retries the remote steps of job:
-// the cleanup sweep for a cleanup job, else the removal of its slug.
+// the cleanup sweep for a cleanup job, the command a removal job names, else the removal of its slug.
 // It serves a step that leaves its branch on origin, which is what lets the re-run find the pair.
 func rerunWayForward(job remoteTeardownJob) string {
-	if job.Kind == remoteTeardownCleanup {
+	switch {
+	case job.Kind == remoteTeardownCleanup:
 		return "run `lym fabric cleanup --apply --remote` again"
+	case job.Rerun != "":
+		return fmt.Sprintf("run `%s` again", job.Rerun)
 	}
 	return fmt.Sprintf("run `lym fabric remove %s --remote` again", job.Slug)
 }
@@ -240,8 +243,9 @@ func recordsArchiveWayForward(job remoteTeardownJob, weftRoot string) string {
 	if job.WeftTip == "" {
 		return wayForward
 	}
-	if job.Kind == remoteTeardownRemove {
-		// A removal whose branches never reached origin leaves its re-run nothing to find.
+	if job.Kind == remoteTeardownRemove && job.Rerun == "" {
+		// A removal whose branches never reached origin leaves `lym fabric remove` nothing to find.
+		// A command the caller names finishes the teardown in that state too, so it gets no condition.
 		wayForward = "when origin still holds a branch of the pair, " + wayForward
 	}
 	if weftRoot == "" {

@@ -403,7 +403,7 @@ func TestRemoveWarpWorktreeDir_LeftoverRetry(t *testing.T) {
 			o := outcome{target: target}
 			remove, sleep := tt.setup(lockedDir, &o)
 			fabricengine.SetLeftoverSeamForTest(h.Topology, remove, sleep)
-			o.res, o.err = h.Topology.Remove(l, slug, false, false)
+			o.res, o.err = h.Topology.Remove(l, slug, false, false, "")
 
 			tt.check(t, slug, o)
 		})
@@ -430,7 +430,7 @@ func TestRemoveWarpWorktreeDir_LeftoverRetry(t *testing.T) {
 				sleepCalls++
 				_ = held.Close()
 			})
-			res, err := h.Topology.Remove(l, slug, false, false)
+			res, err := h.Topology.Remove(l, slug, false, false, "")
 
 			if err != nil {
 				t.Fatalf("Remove error = %v; want the leftover finished once the writer closed the file", err)

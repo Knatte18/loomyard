@@ -83,6 +83,10 @@ type cancelDeps struct {
 	TaskBranchOnOrigin func() (bool, error)
 	// DiscardTaskBranch archives and deletes the task branch, locally and on origin.
 	DiscardTaskBranch func() (fabricengine.DiscardResult, error)
+	// TeardownPending reports whether an unfinished teardown of the slug names this cancel, with --remove, as its re-run.
+	TeardownPending func() (bool, error)
+	// SettleTeardown drops the record of an unfinished teardown of the slug once nothing of its pair remains.
+	SettleTeardown func() error
 	// Verdict returns the act rule's verdict for the slug, with the cancel, pause, hold, shed pause and owed push set aside.
 	// A paused, held or offline run is still cancelled, so only a landed run or one another machine owns is refused.
 	Verdict func() (runfsm.Verdict, error)
@@ -222,6 +226,7 @@ func cancelCommand(slug string, remove bool) string {
 
 // ErrNothingLeft is the sentinel that a cancel refusal matches through errors.Is.
 // The refusal applies when no record, claim, pair part, session, process or cancel of the slug is left.
+// A cancel that removes refuses only when no unfinished teardown naming it is left either.
 var ErrNothingLeft = errors.New("nothing of the slug is left to cancel")
 
 // nothingLeftError is the refusal that nothing of a slug is left to cancel, carrying the message to show.
@@ -719,6 +724,8 @@ func cancelOwnedElsewhere(slug, owner, subject string) error {
 // Without remove, it also refuses when only a task branch or a stray directory is left.
 // A stray directory is one that is no worktree at the task worktree's path.
 // With remove, neither a local task branch nor a stray directory refuses.
+// With remove, an unfinished teardown that names this cancel counts as left too,
+// so the re-run its record names finishes it whatever of the pair is still on origin.
 // A task branch on origin counts as left, and it is read only when nothing else is left and origin was reached.
 func refuseNothingLeft(slug string, remove, endOnly bool, rerun string, reading cancelMarkerReading, parts fabricengine.PairParts, deps cancelDeps) error {
 	recordsHere, err := deps.RecordsPresent()
@@ -755,6 +762,13 @@ func refuseNothingLeft(slug string, remove, endOnly bool, rerun string, reading 
 	if parts.TaskBranch || parts.StrayPath {
 		return nil
 	}
+	pending, err := deps.TeardownPending()
+	if err != nil {
+		return probeRefusal("the unfinished teardowns", slug, rerun, err)
+	}
+	if pending {
+		return nil
+	}
 	if endOnly {
 		return fmt.Errorf("origin was unreachable, so the task branch of %s on origin could not be read; way forward: run %s again once origin answers", slug, rerun)
 	}
@@ -775,18 +789,23 @@ func nothingLeft(slug string) error {
 
 // removePairAndBranch removes the pair, snapshotting its uncommitted paths first.
 // It then archives and deletes the task branch while one is left.
-// A pair with nothing left reads as removed.
+// A pair with nothing left reads as removed, and an unfinished teardown of it is settled.
 // A directory that is no worktree at the pair's task worktree path is deleted with the pair.
 // Left behind, it would block the slug's next run.
 // A failed delete refuses and names the cancel to run again.
 func removePairAndBranch(slug, rerun string, report *cancelReport, deps cancelDeps) error {
-	result, err := deps.RemovePair(pairteardown.Request{Slug: slug, Force: true, Snapshot: true, Remote: true, LeaveClaim: true, ClearStray: true})
+	result, err := deps.RemovePair(pairteardown.Request{Slug: slug, Force: true, Snapshot: true, Remote: true, LeaveClaim: true, ClearStray: true, Rerun: cancelCommand(slug, true)})
 	report.SnapshotTag = result.SnapshotTag
 	report.StrayDirectoryDeleted = result.StrayPathDeleted
 	if err != nil && !errors.Is(err, fabricengine.ErrPairNotFound) {
 		return fmt.Errorf("battencli: removing the pair of %s refused: %w; way forward: fix the cause it names, then run \"lym batten cancel %s --remove\" again", slug, err, slug)
 	}
 	report.PairRemoved = true
+	if errors.Is(err, fabricengine.ErrPairNotFound) {
+		if err := deps.SettleTeardown(); err != nil {
+			return fmt.Errorf("battencli: settling the unfinished teardown of %s failed: %w; way forward: fix the cause it names, then run %s again", slug, err, rerun)
+		}
+	}
 
 	parts, err := deps.PairParts()
 	if err != nil {

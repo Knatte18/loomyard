@@ -93,7 +93,7 @@ func TestSeedWarpExclude_SeedsWarpOnlyOnce(t *testing.T) {
 			}
 		}
 
-		if _, err := h.Topology.Remove(l, slug, false, false); err != nil {
+		if _, err := h.Topology.Remove(l, slug, false, false, ""); err != nil {
 			t.Fatalf("Remove: %v", err)
 		}
 		requireWarpExcludeOnce(t, h.PrimeWorktree())

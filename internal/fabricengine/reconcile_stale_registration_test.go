@@ -407,7 +407,7 @@ func TestCleanup_VerdictIsIndependentOfDryRunAndForce(t *testing.T) {
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
-	if _, err := topology.Remove(l, slug, true, false); err != nil {
+	if _, err := topology.Remove(l, slug, true, false, ""); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
 

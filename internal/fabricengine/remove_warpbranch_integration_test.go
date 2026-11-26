@@ -48,7 +48,7 @@ func TestRemove_UnlandedWarpBranchIsKept(t *testing.T) {
 			}
 			warpBranchCommit(t, l, slug, "work.txt")
 
-			res, err := topology.Remove(l, slug, force, false)
+			res, err := topology.Remove(l, slug, force, false, "")
 			if err != nil {
 				t.Fatalf("Remove(%q, force=%v) error = %v; a kept branch is not a failure", slug, force, err)
 			}

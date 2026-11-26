@@ -77,7 +77,7 @@ func TestAdd_AdoptedWeftKeepsItsOriginRecord(t *testing.T) {
 
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	recordedTip := gitkit.RevParse(t, mustRecordsRepoRoot(t, l), "refs/remotes/origin/"+weftBranch)
-	if _, err := h.Topology.Remove(l, slug, false, false); err != nil {
+	if _, err := h.Topology.Remove(l, slug, false, false, ""); err != nil {
 		t.Fatalf("setup Remove(%q): %v", slug, err)
 	}
 	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "branch", weftBranch, recordedTip)

@@ -705,7 +705,7 @@ func stepTeardown_AlreadyGonePairFinishesItsBranchDeletion(t *testing.T, h *hubf
 				t.Fatalf("precondition: %q not on the remote after the create", recordsBranch)
 			}
 			// Both worktrees are removed and the remote copy kept: the state a kill between the local and remote deletions leaves.
-			if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
+			if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
 				t.Fatalf("remove the pair without its remote copy: %v", err)
 			}
 			recordsRepoRoot, err := fabricengine.RecordsRepoRoot(h.Location)
@@ -765,7 +765,7 @@ func remoteArchiveTagExists(bareDir, slug string) bool {
 func stepTeardown_ResumedRowWhosePairIsGoneFinishesDone(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-teardown-resumed-gone"
 	hubforge.AddPair(t, h, slug)
-	if _, err := h.Topology.Remove(h.Location, slug, false, true); err != nil {
+	if _, err := h.Topology.Remove(h.Location, slug, false, true, ""); err != nil {
 		t.Fatalf("remove the pair: %v", err)
 	}
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
@@ -868,7 +868,7 @@ func stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably(t *testing.T, h *
 func stepTeardown_AlreadyGonePairWithNoBranchIsDone(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-teardown-finished"
 	hubforge.AddPair(t, h, slug)
-	if _, err := h.Topology.Remove(h.Location, slug, false, true); err != nil {
+	if _, err := h.Topology.Remove(h.Location, slug, false, true, ""); err != nil {
 		t.Fatalf("remove the pair: %v", err)
 	}
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
@@ -1208,7 +1208,7 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 	if err != nil {
 		t.Fatalf("load fabric config: %v", err)
 	}
-	if _, err := fabricengine.NewTopology(cfg).Remove(h.Location, slug, true, false); err != nil {
+	if _, err := fabricengine.NewTopology(cfg).Remove(h.Location, slug, true, false, ""); err != nil {
 		t.Fatalf("%s: %v", removeCommand, err)
 	}
 	if exec.Command("git", "-C", h.PrimeWorktree(), "rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run() == nil {

@@ -64,7 +64,8 @@ and deletes its task branch locally and on origin, and deletes batten's record w
 It refuses, before it ends or removes anything, while a hub pause covers the prime, when the run's
 work already reached its parent (finish the landing with "lym batten run"), when the slug already
 landed, when another machine owns it, when origin stopped the entry, when the cancel already finished
-with its pair kept (run it with --remove), when another cancel is under way, and when nothing is left.
+with its pair kept (run it with --remove), when another cancel is under way, and when nothing is left
+(--remove counts an unfinished teardown).
 It skips every wait a teardown makes for a working driver.
 With origin unreachable it only ends the run's processes and strands and posts a notice;
 running it again finishes the cancel.
@@ -287,8 +288,15 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 		RemovePair:         teardown.RemovePair,
 		TaskBranchOnOrigin: func() (bool, error) { return topology.TaskBranchOnOrigin(location, slug) },
 		DiscardTaskBranch: func() (fabricengine.DiscardResult, error) {
-			return topology.DiscardTaskBranch(location, slug, "lym batten cancel "+slug+" --remove")
+			return topology.DiscardTaskBranch(location, slug, cancelCommand(slug, true))
 		},
+		TeardownPending: func() (bool, error) {
+			pending, err := fabricengine.PendingTeardowns(location.HubPath)
+			return slices.ContainsFunc(pending, func(record fabricengine.PendingTeardown) bool {
+				return record.Slug == slug && record.Rerun == cancelCommand(slug, true)
+			}), err
+		},
+		SettleTeardown: func() error { return topology.SettleGonePairTeardown(location, slug, cancelCommand(slug, true)) },
 		Verdict: func() (runfsm.Verdict, error) {
 			records, inputs, err := pairteardown.ReadRun(location, slug)
 			if err != nil {

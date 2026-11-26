@@ -79,6 +79,9 @@ func TestLandNotice_ReachesAnOrchStrandListedAfterTheLanding(t *testing.T) {
 		sweepWaits(len(waits) + 1)
 	}
 
+	// Stopping waits for the delivery workers the last advance woke.
+	// One still probing once the orch is listed would type the notice into its pane ahead of the read.
+	scheduler.Stop()
 	delivery.SetStrands(creelfake.LiveStrand(driver), creelfake.LiveStrand(peer), creelfake.LiveStrand(orchName))
 	reading, err := store.Read(creelengine.StrandSender(orchName), "")
 	if err != nil {

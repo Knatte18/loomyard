@@ -45,7 +45,7 @@ func TestRemove_RerunAfterItsTeardownChildEndedArchivesTheLocalRecordsTip(t *tes
 	gitkit.CommitFile(t, h.PairRecordsSibling(slug), "unpushed.txt", "unpushed\n", "unpushed records")
 
 	fabricengine.SetTeardownChildEndsForTest(h.Topology, true)
-	ended, err := h.Topology.Remove(h.Location, slug, false, true)
+	ended, err := h.Topology.Remove(h.Location, slug, false, true, "")
 	if err != nil {
 		t.Fatalf("Remove(%s) with its teardown child ended: %v", slug, err)
 	}
@@ -58,7 +58,7 @@ func TestRemove_RerunAfterItsTeardownChildEndedArchivesTheLocalRecordsTip(t *tes
 		"`, then when origin still holds a branch of the pair, run `lym fabric remove "+slug+" --remote` again")
 
 	fabricengine.SetTeardownChildEndsForTest(h.Topology, false)
-	if _, err := h.Topology.Remove(h.Location, slug, false, true); err != nil {
+	if _, err := h.Topology.Remove(h.Location, slug, false, true, ""); err != nil {
 		t.Fatalf("re-run Remove(%s): %v", slug, err)
 	}
 
@@ -67,6 +67,53 @@ func TestRemove_RerunAfterItsTeardownChildEndedArchivesTheLocalRecordsTip(t *tes
 	}
 	if got := refLines(t, bare, "%(refname)", namespaceHeadsPrefix+recordsBranch); len(got) != 0 {
 		t.Errorf("origin still holds %v after the re-run; want the records branch deleted", got)
+	}
+}
+
+// TestRemove_PendingRecordNamesTheRerunItsCallerGave covers a removal whose caller names the command that retries it.
+// The first run's child ended before its first push, with a records commit origin lacks tagged locally.
+// The pending record names the hand push of that tag and then the caller's command, with no condition on origin.
+// Settling the teardown keeps the record while origin holds the pair's branches.
+// Once origin holds none, it pushes the local tag and drops the record.
+func TestRemove_PendingRecordNamesTheRerunItsCallerGave(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	const slug = "cancelled-remove"
+	const rerun = "lym batten cancel " + slug + " --remove"
+	h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
+	bare := h.CodeBare
+	branch := hubforge.AddPair(t, h, slug).Branch
+	gitkit.CommitFile(t, h.PairRecordsSibling(slug), "unpushed.txt", "unpushed\n", "unpushed records")
+
+	fabricengine.SetTeardownChildEndsForTest(h.Topology, true)
+	ended, err := h.Topology.Remove(h.Location, slug, false, true, rerun)
+	if err != nil {
+		t.Fatalf("Remove(%s) with its teardown child ended: %v", slug, err)
+	}
+	localTip := gitkit.RevParse(t, h.PrimeRecords(), "refs/tags/"+ended.ArchiveTag)
+	wayForward := "push the archive tag with `git -C " + h.PrimeRecords() + " push origin refs/tags/" + ended.ArchiveTag + ":" + namespaceTagsPrefix + ended.ArchiveTag +
+		"`, then run `" + rerun + "` again"
+
+	requireOnePendingTeardown(t, h, slug, wayForward)
+
+	if err := h.Topology.SettleGonePairTeardown(h.Location, slug, rerun); err != nil {
+		t.Fatalf("SettleGonePairTeardown(%s) with the pair on origin: %v", slug, err)
+	}
+	requireOnePendingTeardown(t, h, slug, wayForward)
+
+	for _, ref := range []string{namespaceHeadsPrefix + fabricengine.RecordsBranchName(branch), "refs/heads/" + branch} {
+		gitkit.MustRun(t, bare, "git", "update-ref", "-d", ref)
+	}
+	if err := h.Topology.SettleGonePairTeardown(h.Location, slug, rerun); err != nil {
+		t.Fatalf("SettleGonePairTeardown(%s) with the pair gone: %v", slug, err)
+	}
+
+	if got := refLines(t, bare, "%(objectname)", namespaceTagsPrefix+ended.ArchiveTag); !slices.Equal(got, []string{localTip}) {
+		t.Errorf("origin's archive tag of the local records tip = %v; want one at %s", got, localTip)
+	}
+	if pending, err := fabricengine.PendingTeardowns(h.Path); err != nil || len(pending) != 0 {
+		t.Errorf("PendingTeardowns() after settling a gone pair = (%+v, %v); want none", pending, err)
 	}
 }
 
@@ -92,7 +139,7 @@ func TestDiscardTaskBranch_RerunAfterItsTeardownChildEndedArchivesTheTaskTip(t *
 	localTip := gitkit.CommitFile(t, h.PairCodeWorktree(slug), "unpushed.txt", "unpushed\n", "unlanded work origin lacks")
 	localTag := fabricengine.ArchiveTagName(slug, localTip)
 	// The removal keeps the unlanded task branch, locally and on origin, for the discard that follows it.
-	if _, err := h.Topology.Remove(h.Location, slug, false, true); err != nil {
+	if _, err := h.Topology.Remove(h.Location, slug, false, true, ""); err != nil {
 		t.Fatalf("Remove(%s): %v", slug, err)
 	}
 
@@ -104,7 +151,7 @@ func TestDiscardTaskBranch_RerunAfterItsTeardownChildEndedArchivesTheTaskTip(t *
 		"`, then run `"+rerun+"` again")
 
 	fabricengine.SetTeardownChildEndsForTest(h.Topology, false)
-	if _, err := h.Topology.Remove(h.Location, slug, false, true); err != nil {
+	if _, err := h.Topology.Remove(h.Location, slug, false, true, ""); err != nil {
 		t.Fatalf("re-run Remove(%s): %v", slug, err)
 	}
 	if _, err := h.Topology.DiscardTaskBranch(h.Location, slug, rerun); err != nil {

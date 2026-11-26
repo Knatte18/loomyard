@@ -54,7 +54,7 @@ func TestVerbsRegenerateHubWorkspace(t *testing.T) {
 		hubforge.AddPairWith(t, h, "locked-pair", fabricengine.AddOptions{SkipPush: true})
 		gitkit.MustRun(t, h.PrimeRecords(), "git", "worktree", "lock", fabricengine.RecordsWorktreePath(h.Location, "locked-pair"))
 
-		if _, err := h.Topology.Remove(h.Location, "locked-pair", true, false); err == nil {
+		if _, err := h.Topology.Remove(h.Location, "locked-pair", true, false, ""); err == nil {
 			t.Fatal("Remove error = nil; want the failed weft teardown")
 		}
 
@@ -113,7 +113,7 @@ func TestVerbsRegenerateHubWorkspace(t *testing.T) {
 		hubforge.AddPairWith(t, h, "b-task", fabricengine.AddOptions{SkipPush: true})
 		assertFoldersAndNoPortals(t, h, path, prime, "Bolt", "a-task", "b-task")
 
-		removed, err := h.Topology.Remove(h.Location, "a-task", true, false)
+		removed, err := h.Topology.Remove(h.Location, "a-task", true, false, "")
 		if err != nil {
 			t.Fatalf("Remove: %v", err)
 		}
@@ -209,7 +209,7 @@ func TestVerbsRegenerateHubWorkspace(t *testing.T) {
 		plantTrackedDirt(t, h.PairCodeWorktree("dirty-pair"), "dirtyWarpTracked")
 		removeWorkspaceFile(t, h)
 
-		if _, err := h.Topology.Remove(h.Location, "dirty-pair", false, false); err == nil {
+		if _, err := h.Topology.Remove(h.Location, "dirty-pair", false, false, ""); err == nil {
 			t.Fatal("Remove error = nil; want the dirty worktree refusal")
 		}
 		assertNoWorkspaceFile(t, h)

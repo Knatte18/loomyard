@@ -58,7 +58,7 @@ func TestOriginRunReads(t *testing.T) {
 		weft := h.PairRecordsSibling(slug)
 		gitkit.CommitFile(t, weft, "_lym/shed/"+slug+"/status.json", `{"state":"paused","future_key":1}`, "child run status")
 		gitkit.MustRun(t, weft, "git", "push", "origin", gitkit.CurrentBranch(t, weft))
-		if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
 			t.Fatalf("Remove(%q): %v", slug, err)
 		}
 

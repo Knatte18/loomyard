@@ -216,7 +216,7 @@ func TestOneRepositoryPair_RecordsLiveInTheNamespace(t *testing.T) {
 			t.Errorf("refs the pair added outside %s = %v; want %v", fabricengine.RecordsNamespaceRoot, outside, want)
 		}
 
-		res, err := h.Topology.Remove(h.Location, slug, false, true)
+		res, err := h.Topology.Remove(h.Location, slug, false, true, "")
 		if err != nil {
 			t.Fatalf("Remove(%s): %v", slug, err)
 		}
@@ -245,7 +245,7 @@ func TestOneRepositoryPair_RecordsLiveInTheNamespace(t *testing.T) {
 		gitkit.CommitFile(t, h.PairRecordsSibling(slug), "extra.txt", "extra\n", "extra records work")
 		oneRepoPushRecords(t, h, slug)
 		oldTip := oneRepoRecordsTip(t, bare, recordsBranch)
-		if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
 			t.Fatalf("setup Remove(%s): %v", slug, err)
 		}
 
@@ -571,7 +571,7 @@ func TestOneRepositorySecondMachine_AdoptPullAndReplay(t *testing.T) {
 		const slug = "ns-live-local"
 		first, second, recordsBranch := pairOnBoth(t, slug)
 		removedTip := gitkit.RevParse(t, second.PairRecordsSibling(slug), "HEAD")
-		if _, err := second.Topology.Remove(second.Location, slug, false, false); err != nil {
+		if _, err := second.Topology.Remove(second.Location, slug, false, false, ""); err != nil {
 			t.Fatalf("Remove on the second machine: %v", err)
 		}
 		gitkit.Git(t, second.PrimeRecords(), "branch", recordsBranch, removedTip)

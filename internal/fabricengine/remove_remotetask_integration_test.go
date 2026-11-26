@@ -60,7 +60,7 @@ func TestRemove_RemoteDeletesSquashLandedTaskBranchOnOrigin(t *testing.T) {
 	h := pushedPair(t, slug)
 	squashLand(t, h, slug)
 
-	res, err := h.Topology.Remove(h.Location, slug, false, true)
+	res, err := h.Topology.Remove(h.Location, slug, false, true, "")
 	if err != nil {
 		t.Fatalf("Remove(%q) error = %v", slug, err)
 	}
@@ -86,7 +86,7 @@ func TestRemove_RemoteKeepsUnlandedTaskBranchOnOrigin(t *testing.T) {
 	const slug = "rt-unlanded"
 	h := pushedPair(t, slug)
 
-	res, err := h.Topology.Remove(h.Location, slug, false, true)
+	res, err := h.Topology.Remove(h.Location, slug, false, true, "")
 	if err != nil {
 		t.Fatalf("Remove(%q) error = %v; a kept branch is not a failure", slug, err)
 	}
@@ -115,7 +115,7 @@ func TestRemove_WithoutRemoteLeavesTaskBranchOnOrigin(t *testing.T) {
 	h := pushedPair(t, slug)
 	squashLand(t, h, slug)
 
-	res, err := h.Topology.Remove(h.Location, slug, false, false)
+	res, err := h.Topology.Remove(h.Location, slug, false, false, "")
 	if err != nil {
 		t.Fatalf("Remove(%q) error = %v", slug, err)
 	}

@@ -58,7 +58,7 @@ func TestRemove_ArchivesWeftTipBeforeTeardown(t *testing.T) {
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	tip := gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(l, slug), "_lym/record.txt", "run record\n", "record")
 
-	res, err := topology.Remove(l, slug, false, false)
+	res, err := topology.Remove(l, slug, false, false, "")
 	if err != nil {
 		t.Fatalf("Remove(%q) error = %v", slug, err)
 	}
@@ -97,7 +97,7 @@ func TestRemove_ReusesSameTipArchiveTag(t *testing.T) {
 	gitkit.MustRun(t, weftRoot, "git", "tag", wantTag, tip)
 	gitkit.MustRun(t, weftRoot, "git", "push", "origin", "refs/tags/"+wantTag)
 
-	res, err := topology.Remove(l, slug, false, false)
+	res, err := topology.Remove(l, slug, false, false, "")
 	if err != nil {
 		t.Fatalf("Remove error = %v", err)
 	}
@@ -135,7 +135,7 @@ func TestRemove_LeavesAnOwnerArchiveTagOutOfTheTeardownArchive(t *testing.T) {
 		t.Fatalf("ArchiveOwnerTips() = %v, %v; want the weft tip tagged %s", ownerTags, err, ownerTag)
 	}
 
-	res, err := h.Topology.Remove(l, slug, false, false)
+	res, err := h.Topology.Remove(l, slug, false, false, "")
 	if err != nil {
 		t.Fatalf("Remove(%q) error = %v", slug, err)
 	}
@@ -178,7 +178,7 @@ func TestRemove_PendingRecordsAreCommittedAndArchivedOnce(t *testing.T) {
 	}
 	tipBefore := gitkit.RevParse(t, weftWorktree, "HEAD")
 
-	res, err := topology.Remove(l, slug, false, false)
+	res, err := topology.Remove(l, slug, false, false, "")
 	if err != nil {
 		t.Fatalf("Remove on a weft worktree holding an uncommitted record error = %v; want it committed and archived", err)
 	}
@@ -219,7 +219,7 @@ func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
 	weftTip := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName(slug))
 	mustBreakOrigin(t, weftRoot)
 
-	_, err := topology.Remove(l, slug, false, false)
+	_, err := topology.Remove(l, slug, false, false, "")
 	if !errors.Is(err, fabricengine.ErrArchiveFailed) {
 		t.Fatalf("Remove with an unreachable origin error = %v; want one wrapping ErrArchiveFailed", err)
 	}
@@ -251,7 +251,7 @@ func TestRemove_ForceStillArchives(t *testing.T) {
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	tip := gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(l, slug), "_lym/record.txt", "run record\n", "record")
 
-	res, err := topology.Remove(l, slug, true, false)
+	res, err := topology.Remove(l, slug, true, false, "")
 	if err != nil {
 		t.Fatalf("Remove(force) error = %v", err)
 	}
@@ -279,7 +279,7 @@ func TestRemove_NoOriginSkipsArchiveAndCompletes(t *testing.T) {
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	mustRemoveOrigin(t, weftRoot)
 
-	res, err := topology.Remove(l, slug, false, false)
+	res, err := topology.Remove(l, slug, false, false, "")
 	if err != nil {
 		t.Fatalf("Remove without an origin error = %v; want completion", err)
 	}
@@ -330,7 +330,7 @@ func TestRemove_ArchiveOrder(t *testing.T) {
 		tip := gitkit.CommitFile(t, h.PairRecordsSibling(slug), "_lym/record.txt", "run record\n", "record")
 		installUpdateHook(t, h.RecordsBare, "case \"$1\" in\nrefs/tags/archive/*)\n  git merge-base --is-ancestor \"$3\" refs/heads/"+weftBranch+" || { echo \"archive tag target is not on the weft branch\" >&2; exit 1; }\n  ;;\nesac")
 
-		res, err := h.Topology.Remove(h.Location, slug, false, false)
+		res, err := h.Topology.Remove(h.Location, slug, false, false, "")
 		if err != nil {
 			t.Fatalf("Remove error = %v; want the tag accepted after the branch push", err)
 		}
@@ -354,7 +354,7 @@ func TestRemove_ArchiveOrder(t *testing.T) {
 		pushCommitToOrigin(t, h.RecordsBare, weftBranch)
 		originTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
 
-		res, err := h.Topology.Remove(h.Location, slug, false, false)
+		res, err := h.Topology.Remove(h.Location, slug, false, false, "")
 		if err != nil {
 			t.Fatalf("Remove error = %v", err)
 		}
@@ -386,7 +386,7 @@ func TestRemove_ArchiveOrder(t *testing.T) {
 		pushCommitToOrigin(t, h.RecordsBare, weftBranch)
 		originTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
 
-		res, err := h.Topology.Remove(h.Location, slug, false, false)
+		res, err := h.Topology.Remove(h.Location, slug, false, false, "")
 		if err != nil {
 			t.Fatalf("Remove error = %v", err)
 		}
@@ -412,7 +412,7 @@ func TestRemove_ArchiveOrder(t *testing.T) {
 			return &gitexec.GitError{Args: []string{"push"}, ExitCode: 1, Stderr: " ! [remote rejected] " + tagRef + " -> " + tagRef + " (missing necessary objects)\n"}
 		})
 
-		if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
 			t.Fatalf("Remove error = %v; want the refused attempt retried", err)
 		}
 		wantTag := wantArchiveTag(slug, tip)
@@ -431,7 +431,7 @@ func TestRemove_ArchiveOrder(t *testing.T) {
 		tip := gitkit.CommitFile(t, h.PairRecordsSibling(slug), "_lym/record.txt", "run record\n", "record")
 		installUpdateHook(t, h.RecordsBare, "case \"$1\" in\nrefs/heads/"+weftBranch+")\n  echo \"weft branch updates refused\" >&2\n  exit 1\n  ;;\nesac")
 
-		if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
 			t.Fatalf("Remove error = %v; want a refused branch push only logged", err)
 		}
 		wantTag := wantArchiveTag(slug, tip)

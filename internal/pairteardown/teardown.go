@@ -70,6 +70,9 @@ type Request struct {
 	// Verdict is the caller's origin reconcile verdict for the slug, empty when it ran none.
 	// An ended or owned_elsewhere verdict skips the driver checks.
 	Verdict fabricengine.EntryState
+	// Rerun is the caller's command that retries the removal.
+	// A held teardown lock's refusal and the pending-teardown record name it; empty names `lym fabric remove <slug>`.
+	Rerun string
 }
 
 // SessionResult reports EndSession's outcome.
@@ -238,10 +241,7 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 		if err != nil {
 			return fabricengine.RemoveResult{}, err
 		}
-		if req.Local {
-			return top.RemoveLocal(prime, req.Slug, req.Force)
-		}
-		return top.Remove(prime, req.Slug, req.Force, req.Remote)
+		return removeThrough(top, prime, req)
 	}
 	t.removeStray = func(slug string) (bool, error) {
 		top, err := t.topology()
@@ -258,6 +258,20 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 		return top.SnapshotUncommitted(rec, prime, slug)
 	}
 	return t, nil
+}
+
+// pairRemover removes a pair, with its origin steps or locally.
+type pairRemover interface {
+	Remove(l *lymcwd.Location, slug string, force, remote bool, rerun string) (fabricengine.RemoveResult, error)
+	RemoveLocal(l *lymcwd.Location, slug string, force bool) (fabricengine.RemoveResult, error)
+}
+
+// removeThrough asks remover for the removal req names.
+func removeThrough(remover pairRemover, prime *lymcwd.Location, req Request) (fabricengine.RemoveResult, error) {
+	if req.Local {
+		return remover.RemoveLocal(prime, req.Slug, req.Force)
+	}
+	return remover.Remove(prime, req.Slug, req.Force, req.Remote, req.Rerun)
 }
 
 // EndSession ends a pair's work and session ahead of its removal.

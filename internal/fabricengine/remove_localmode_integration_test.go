@@ -214,7 +214,7 @@ func TestRemoveLocal(t *testing.T) {
 		var housekept []string
 		defer fabricengine.SetHousekeepHookForTest(func(s string) { housekept = append(housekept, s) })()
 
-		if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
 			t.Fatalf("Remove: %v", err)
 		}
 		if !reflect.DeepEqual(housekept, []string{slug}) {
@@ -232,7 +232,7 @@ func TestRemoveLocal(t *testing.T) {
 				return err
 			}},
 			{"Remove", func(h *hubforge.Hub) error {
-				_, err := h.Topology.Remove(h.Location, slug, false, false)
+				_, err := h.Topology.Remove(h.Location, slug, false, false, "")
 				return err
 			}},
 		}
