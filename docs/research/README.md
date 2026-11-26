@@ -13,6 +13,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [burler-fork-review-audit-2026-10-16](burler/burler-fork-review-audit-2026-10-16/report.md) — a reviewer master that forks its review, fixes, and reviews its own fix.
 - [concrete-review-findings-2026-11-03](burler/concrete-review-findings-2026-11-03/report.md) — whether Plan and Discussion reviewers already write concrete findings.
 - [fixers-on-sonnet-2026-11-03](burler/fixers-on-sonnet-2026-11-03/report.md) — Plan and Discussion fixers on Sonnet against Opus.
+- [hardener-works-study.md](hardener-works-study.md) — whether the hardener's two fabric campaigns found and fixed real faults, kept focus and converged, and what they cost.
 - [review-setup-audit-2026-10-28](burler/review-setup-audit-2026-10-28/report.md) — what each part of the review setup is worth, read from landed loom runs.
 - [session-fork-spike.md](burler/session-fork-spike.md) — whether a review forked over lenses from one session finds more than one reviewer.
 
