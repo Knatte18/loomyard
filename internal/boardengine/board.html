@@ -238,7 +238,7 @@ textarea { min-height: 6rem; }
       brief: entry.brief,
       body: entry.body,
       project: project,
-      depends_on: entry.waits_on.map(slugOfHandle).join(", ")
+      depends_on: entry.depends_on.join(", ")
     };
   }
 
@@ -278,7 +278,8 @@ textarea { min-height: 6rem; }
       var control = panel.inputs[name];
       var untouched = panel.baseline === null || control.value === panel.baseline[name];
       if (name === "project") { projectOptions(control, untouched ? values[name] : control.value); }
-      if (untouched) { control.value = values[name]; }
+      // A control normalizes line endings, so the baseline is what it reports back.
+      if (untouched) { control.value = values[name]; values[name] = control.value; }
     });
     panel.baseline = values;
     panel.revision = entry.revision;
@@ -288,25 +289,39 @@ textarea { min-height: 6rem; }
     return Object.keys(panel.inputs).some(function (name) { return panel.inputs[name].value !== panel.baseline[name]; });
   }
 
+  // An unsent edit moves to the form of the entry's new kind, with the revision it was filled from.
+  function keepTyped(previous, panel) {
+    if (!isDirty(previous)) { return; }
+    Object.keys(panel.inputs).forEach(function (name) {
+      var typed = previous.inputs[name];
+      if (!typed || typed.value === previous.baseline[name]) { return; }
+      if (name === "project") { projectOptions(panel.inputs[name], typed.value); }
+      panel.inputs[name].value = typed.value;
+      panel.baseline[name] = previous.baseline[name];
+    });
+    panel.revision = previous.revision;
+  }
+
   function panelFor(entry) {
-    var panel = panels.get(entry.slug);
-    if (panel && panel.kind === entry.kind) {
+    var previous = panels.get(entry.slug);
+    if (previous && previous.kind === entry.kind) {
       // A form holding an unsent edit keeps the revision it was filled from, so the write is judged against it.
-      if (!isDirty(panel)) { fill(panel, entry); }
-      return panel;
+      if (!isDirty(previous)) { fill(previous, entry); }
+      return previous;
     }
     var node = element("div");
     var form = document.createElement("form");
-    panel = {
+    var panel = {
       kind: entry.kind, slug: entry.slug, node: node, baseline: null, revision: "",
-      message: element("div", "", "notice"), fresh: element("div", "", "fresh"),
+      message: previous ? previous.message : element("div", "", "notice"),
+      fresh: previous ? previous.fresh : element("div", "", "fresh"),
       actions: element("div", null, "group")
     };
+    if (!previous) { panel.fresh.hidden = true; }
     panel.inputs = editFields(form, entry.kind === "task");
     var save = element("button", "Save");
     save.type = "submit";
     form.appendChild(save);
-    panel.fresh.hidden = true;
     form.addEventListener("submit", function (event) {
       event.preventDefault();
       var fields = {};
@@ -322,6 +337,7 @@ textarea { min-height: 6rem; }
     node.appendChild(form);
     panels.set(entry.slug, panel);
     fill(panel, entry);
+    if (previous) { keepTyped(previous, panel); }
     return panel;
   }
 
@@ -340,14 +356,15 @@ textarea { min-height: 6rem; }
   }
 
   function showFresh(panel, entry) {
-    panel.fresh.textContent = "Entry on the board now:\n" + [
+    var lines = [
       "title: " + entry.title,
       "status: " + (entry.status || "none"),
       "labels: " + labelsOf(entry).join(", "),
-      "brief: " + entry.brief,
-      "body:",
-      entry.body
-    ].join("\n");
+      "project: " + (entry.project === ROOT ? "root" : slugOfHandle(entry.project))
+    ];
+    if (entry.kind === "task") { lines.push("depends_on: " + entry.depends_on.join(", ")); }
+    lines.push("brief: " + entry.brief, "body:", entry.body);
+    panel.fresh.textContent = "Entry on the board now:\n" + lines.join("\n");
     panel.fresh.hidden = false;
   }
 
@@ -364,7 +381,8 @@ textarea { min-height: 6rem; }
   // Requests. A failed request is retried with a doubling delay for a bounded time before the page gives up.
   async function request(path, options) {
     var delay = 1000;
-    var started = Date.now();
+    // The bound runs from the first failure: a long poll alone can last most of it.
+    var started = null;
     for (;;) {
       try {
         var headers = Object.assign({ "Authorization": "Bearer " + token }, options.headers || {});
@@ -374,6 +392,7 @@ textarea { min-height: 6rem; }
       } catch (error) {
         // The server did not answer; the delay below retries.
       }
+      if (started === null) { started = Date.now(); }
       if (Date.now() - started >= RETRY_BOUND_MS) {
         showNotice("The board server does not answer. Run lym board open to start it and open the page again.");
         throw new Error("board server unreachable");
@@ -391,13 +410,20 @@ textarea { min-height: 6rem; }
     var result;
     try { result = await write(body); } catch (error) { return; }
     var answer = result.answer;
-    panel.message.textContent = answer.ok ? "" : answer.error;
+    // A poll answered during the write may have rebuilt the entry's panel.
+    panel = panels.get(panel.slug) || panel;
+    panel.message.textContent = answer.ok ? answer.warning || "" : answer.error;
     panel.fresh.hidden = true;
     if (answer.ok) {
       if (answer.entry) {
         upsertEntry(answer.entry);
         if (body.op === "edit") { panel.baseline = null; }
-        if (body.op === "edit" || !isDirty(panel)) { fill(panel, answer.entry); } else { panel.revision = answer.entry.revision; }
+        if (body.op === "edit" || !isDirty(panel)) {
+          fill(panel, answer.entry);
+        } else if (body.revision === panel.revision) {
+          // A form filled from an older revision keeps it, so the next save is refused as stale and shows the change.
+          panel.revision = answer.entry.revision;
+        }
       }
     } else if (result.status === 409) {
       if (answer.entry) {

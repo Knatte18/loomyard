@@ -19,6 +19,9 @@ import (
 // BoardDataFile is the rendered file that holds the view projection as a script a page can load.
 const BoardDataFile = "board-data.js"
 
+// BoardStoreFile is the name of the file in the board directory that holds the entry store.
+const BoardStoreFile = boardFile
+
 // boardDataPrefix and boardDataSuffix wrap the projection's JSON into the script of BoardDataFile.
 const (
 	boardDataPrefix = "window.BOARD = "
@@ -69,8 +72,10 @@ type ViewEntry struct {
 	Section string `json:"section"`
 	// WaitsOn holds the unmet dependencies by handle, by slug for one with no handle.
 	WaitsOn []string `json:"waits_on"`
-	Brief   string   `json:"brief"`
-	Body    string   `json:"body"`
+	// DependsOn holds every stored dependency by slug, met ones included.
+	DependsOn []string `json:"depends_on"`
+	Brief     string   `json:"brief"`
+	Body      string   `json:"body"`
 	// Owner is the effective owner machine.
 	Owner string `json:"owner"`
 	// Recipe is the recipe a task runs, empty for a note.
@@ -186,6 +191,7 @@ func (b boardView) viewEntry(twl TaskWithLayer, stored Task) (ViewEntry, error) 
 		Project:    rootProject.Handle,
 		Section:    sectionName(twl, b.out.Types),
 		WaitsOn:    []string{},
+		DependsOn:  append([]string{}, twl.DependsOn...),
 		Brief:      twl.Brief,
 		Body:       twl.Body,
 		Owner:      b.ownerOf(twl.Slug),

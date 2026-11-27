@@ -282,7 +282,7 @@ func (s *Server) serveWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entry, err := s.applyWrite(request)
+	entry, warning, err := s.applyWrite(request)
 	var stale *boardengine.StaleEntryError
 	switch {
 	case errors.As(err, &stale):
@@ -290,7 +290,11 @@ func (s *Server) serveWrite(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		refuse(w, http.StatusUnprocessableEntity, err.Error())
 	default:
-		reply(w, http.StatusOK, map[string]any{"ok": true, "entry": entry})
+		body := map[string]any{"ok": true, "entry": entry}
+		if warning != "" {
+			body["warning"] = warning
+		}
+		reply(w, http.StatusOK, body)
 	}
 }
 

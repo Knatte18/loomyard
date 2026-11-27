@@ -109,6 +109,7 @@ type answer struct {
 	Unchanged bool                   `json:"unchanged"`
 	Board     boardengine.BoardView  `json:"board"`
 	Entry     *boardengine.ViewEntry `json:"entry"`
+	Warning   string                 `json:"warning"`
 }
 
 func decodeAnswer(t *testing.T, recorder *httptest.ResponseRecorder) answer {
@@ -175,6 +176,7 @@ func TestServer(t *testing.T) {
 			{"ForeignOrigin", http.MethodPost, routeWrite, edit, func(r *http.Request) { r.Header.Set("Origin", "http://example.test") }, http.StatusForbidden},
 			{"BodyAboveTheCap", http.MethodPost, routeWrite, strings.Repeat(" ", maxBodyBytes) + edit, nil, http.StatusRequestEntityTooLarge},
 			{"UnknownKey", http.MethodPost, routeWrite, `{"op":"edit","slug":"drafted","force":true}`, nil, http.StatusBadRequest},
+			{"WrongMethod", http.MethodGet, routeWrite, "", nil, http.StatusMethodNotAllowed},
 		}
 		before := storeBytes(t, dir)
 		for _, tt := range tests {
@@ -345,6 +347,15 @@ func TestServer(t *testing.T) {
 		if runLock == nil {
 			t.Fatal("an edit of a running task was accepted")
 		}
+		for _, slug := range []string{"ship", "shipped"} {
+			if _, err := board.UpsertTask(map[string]any{"slug": slug, "title": slug, "kind": boardengine.KindProject, "labels": []string{"bug"}}); err != nil {
+				t.Fatalf("seed project %s: %v", slug, err)
+			}
+		}
+		done := "done"
+		if err := board.SetStatus("shipped", &done); err != nil {
+			t.Fatalf("seed the done project: %v", err)
+		}
 		const current = "current"
 		tests := []struct {
 			name     string
@@ -372,6 +383,14 @@ func TestServer(t *testing.T) {
 			{"StaleEdit", opEdit, "drafted", "older", map[string]any{"title": "Changed"}, 409, "changed since the page read it"},
 			{"StaleRelease", opRelease, "parked", "older", nil, 409, "changed since the page read it"},
 			{"ReleaseOfARemovedEntry", opRelease, "absent", "older", nil, 409, "was removed"},
+			{"EmptySlug", opEdit, "", "older", nil, 422, "slug must be a non-empty string"},
+			{"ReleaseOfAProject", opRelease, "ship", "older", nil, 422, "the page's release takes a task"},
+			{"DraftOfAProject", opDraft, "ship", "older", nil, 422, "the page's draft takes a task"},
+			{"UndraftOfAProject", opUndraft, "ship", "older", nil, 422, "the page's undraft takes a task"},
+			{"EditOfAProject", opEdit, "ship", "older", map[string]any{"title": "Changed"}, 422, "the page edits a task or a note"},
+			{"EditOfADoneProject", opEdit, "shipped", "older", map[string]any{"title": "Changed"}, 422, "the page edits a task or a note"},
+			{"CreateOfAProject", opCreate, "epic", "", map[string]any{"kind": "project", "title": "Epic"}, 422, "the page creates a task or a note"},
+			{"CreateOfAnUnknownKind", opCreate, "epic", "", map[string]any{"kind": "chore", "title": "Epic"}, 422, "the page creates a task or a note"},
 		}
 		before := storeBytes(t, dir)
 		for _, tt := range tests {
@@ -393,6 +412,36 @@ func TestServer(t *testing.T) {
 			if after := storeBytes(t, dir); after != before {
 				t.Errorf("%s changed board.json", tt.name)
 			}
+		}
+	})
+
+	t.Run("PromoteAnswersTheRecordWarning", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		board := boardengine.New(boardengine.Config{
+			Path:         dir,
+			Readme:       "README.md",
+			DesignPrefix: "design-",
+			Types:        []boardengine.Label{{Name: boardengine.SketchType}},
+			SkipGit:      true,
+		})
+		note := map[string]any{"slug": "plan", "title": "Plan", "kind": boardengine.KindNote, "labels": []string{boardengine.SketchType}, "body": "First."}
+		if _, err := board.UpsertTask(note); err != nil {
+			t.Fatalf("seed the note: %v", err)
+		}
+		if err := board.StoreDecisionRecord("plan", []byte("The record.")); err != nil {
+			t.Fatalf("store the record: %v", err)
+		}
+		if _, err := board.UpsertTask(map[string]any{"slug": "plan", "body": "Outgrown."}); err != nil {
+			t.Fatalf("outgrow the record: %v", err)
+		}
+
+		request := writeBody(t, writeRequest{Op: opPromote, Slug: "plan", Revision: revisionOf(t, board, "plan")})
+		recorder := serve(newTestServer(t, board, dir, time.Minute), http.MethodPost, routeWrite, request, nil)
+
+		got := decodeAnswer(t, recorder)
+		if !got.OK || !strings.Contains(got.Warning, "changed after its decision record was stored") {
+			t.Errorf("promote = %d %s; want success with the record warning", recorder.Code, recorder.Body)
 		}
 	})
 
@@ -442,15 +491,33 @@ func TestServer(t *testing.T) {
 	t.Run("Files", func(t *testing.T) {
 		t.Parallel()
 		board, dir := seededBoard(t)
+		if err := board.StoreDecisionRecord("drafted", []byte("Drafted record.")); err != nil {
+			t.Fatalf("store the record: %v", err)
+		}
+		if _, err := board.UpsertTask(map[string]any{"slug": "ship", "title": "Ship", "kind": boardengine.KindProject, "labels": []string{"bug"}, "body": "Ship design."}); err != nil {
+			t.Fatalf("seed the project: %v", err)
+		}
 		server := newTestServer(t, board, dir, time.Minute)
-		for name, want := range map[string]int{"design-drafted.md": 200, "board.json": 404, "a/b.md": 404} {
-			recorder := serve(server, http.MethodGet, routeFile+name+"?t="+testToken, "", nil)
-			if recorder.Code != want {
-				t.Errorf("GET %s%s = %d; want %d", routeFile, name, recorder.Code, want)
+		tests := []struct {
+			name string
+			code int
+			// ending closes a served file's content.
+			ending string
+		}{
+			{"design-drafted.md", 200, "Drafted design."},
+			{"decision-drafted.md", 200, "Drafted record."},
+			{"design-ship.md", 200, "Ship design."},
+			{"board.json", 404, ""},
+			{"a/b.md", 404, ""},
+		}
+		for _, tt := range tests {
+			recorder := serve(server, http.MethodGet, routeFile+tt.name+"?t="+testToken, "", nil)
+			if recorder.Code != tt.code {
+				t.Errorf("GET %s%s = %d; want %d", routeFile, tt.name, recorder.Code, tt.code)
 			}
-			assertHeaders(t, name, recorder)
-			if want == 200 && !strings.HasSuffix(recorder.Body.String(), "Drafted design.") {
-				t.Errorf("GET %s%s = %q; want the design file", routeFile, name, recorder.Body)
+			assertHeaders(t, tt.name, recorder)
+			if tt.code == 200 && !strings.HasSuffix(recorder.Body.String(), tt.ending) {
+				t.Errorf("GET %s%s = %q; want content ending %q", routeFile, tt.name, recorder.Body, tt.ending)
 			}
 		}
 	})

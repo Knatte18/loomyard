@@ -60,11 +60,12 @@ func decodeWriteRequest(body []byte) (writeRequest, error) {
 }
 
 // applyWrite runs the one board write of request and returns the entry as the board then holds it.
-// The entry is nil when the board lists none under the slug, as for a project.
+// The entry is nil when the board lists none under the slug.
+// The warning is empty unless the write succeeded with something the operator has to follow up.
 // A write against an entry that moved since the page read it returns a *boardengine.StaleEntryError.
-func (s *Server) applyWrite(request writeRequest) (*boardengine.ViewEntry, error) {
+func (s *Server) applyWrite(request writeRequest) (entry *boardengine.ViewEntry, warning string, err error) {
 	if !slices.Contains(writeOps, request.Op) {
-		return nil, fmt.Errorf("unknown op %q: the ops are %s", request.Op, strings.Join(writeOps, ", "))
+		return nil, "", fmt.Errorf("unknown op %q: the ops are %s", request.Op, strings.Join(writeOps, ", "))
 	}
 	for _, field := range slices.Sorted(maps.Keys(request.Fields)) {
 		if allowed := opFields[request.Op]; !slices.Contains(allowed, field) {
@@ -72,36 +73,35 @@ func (s *Server) applyWrite(request writeRequest) (*boardengine.ViewEntry, error
 			if list == "" {
 				list = "none"
 			}
-			return nil, fmt.Errorf("%s takes no field %q: its fields are %s", request.Op, field, list)
+			return nil, "", fmt.Errorf("%s takes no field %q: its fields are %s", request.Op, field, list)
 		}
 	}
 	if request.Slug == "" {
-		return nil, errors.New("slug must be a non-empty string")
+		return nil, "", errors.New("slug must be a non-empty string")
 	}
 	if request.Op != opCreate && request.Revision == "" {
-		return nil, fmt.Errorf("%s of entry %q carries no revision, so nothing was written: way forward: reload the board and act on what it holds now", request.Op, request.Slug)
+		return nil, "", fmt.Errorf("%s of entry %q carries no revision, so nothing was written: way forward: reload the board and act on what it holds now", request.Op, request.Slug)
 	}
 
-	var err error
 	switch request.Op {
 	case opCreate:
 		err = s.create(request)
 	case opEdit:
-		err = s.upsert(request, request.Revision)
+		err = s.edit(request)
 	case opPromote:
-		err = s.promote(request)
+		warning, err = s.promote(request)
 	default:
 		err = s.setStatus(request)
 	}
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	view, err := s.config.Board.View()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return entryOf(view, request.Slug), nil
+	return entryOf(view, request.Slug), warning, nil
 }
 
 // entryOf returns the entry of view under slug, or nil when there is none.
@@ -113,8 +113,11 @@ func entryOf(view boardengine.BoardView, slug string) *boardengine.ViewEntry {
 	return &view.Entries[i]
 }
 
-// create adds a new entry, refusing a slug the board already holds as stale.
+// create adds a new task or note, refusing a slug the board already holds as stale.
 func (s *Server) create(request writeRequest) error {
+	if kind, given := request.Fields["kind"]; given && kind != boardengine.KindTask && kind != boardengine.KindNote {
+		return fmt.Errorf("the page creates a task or a note, not kind %v: way forward: create any other entry with lym board upsert", kind)
+	}
 	view, err := s.config.Board.View()
 	if err != nil {
 		return err
@@ -123,6 +126,18 @@ func (s *Server) create(request writeRequest) error {
 		return &boardengine.StaleEntryError{Slug: request.Slug, Fresh: existing}
 	}
 	return s.upsert(request, "")
+}
+
+// edit changes a task or note, which must stand at the revision of the request.
+func (s *Server) edit(request writeRequest) error {
+	stored, found, err := s.config.Board.GetTask(request.Slug)
+	if err != nil {
+		return err
+	}
+	if found && stored.Kind == boardengine.KindProject {
+		return fmt.Errorf("entry %q is a project, and the page edits a task or a note: way forward: edit the project with lym board upsert", request.Slug)
+	}
+	return s.upsert(request, request.Revision)
 }
 
 // upsert writes the request's fields to its entry, which must stand at revision.
@@ -136,17 +151,17 @@ func (s *Server) upsert(request writeRequest, revision string) error {
 	return err
 }
 
-// promote turns a note into a task.
-func (s *Server) promote(request writeRequest) error {
+// promote turns a note into a task and returns the board's warning about its decision record, if any.
+func (s *Server) promote(request writeRequest) (string, error) {
 	view, err := s.config.Board.View()
 	if err != nil {
-		return err
+		return "", err
 	}
 	if entry := entryOf(view, request.Slug); entry != nil && entry.Kind == boardengine.KindTask {
-		return fmt.Errorf("entry %q is a task already, and only a note is promoted: way forward: edit it, or promote a note", request.Slug)
+		return "", fmt.Errorf("entry %q is a task already, and only a note is promoted: way forward: edit it, or promote a note", request.Slug)
 	}
-	_, err = s.config.Board.Expecting(request.Slug, request.Revision).PromoteTo(request.Slug, "", nil)
-	return err
+	result, err := s.config.Board.Expecting(request.Slug, request.Revision).PromoteTo(request.Slug, "", nil)
+	return result.RecordWarning, err
 }
 
 // setStatus runs release, draft or undraft, whose rules read the entry's kind and status.

@@ -98,7 +98,8 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
   the holder in `internal/slackengine/holder.go`, its lock wait blocking without waking, its 30-second ping spawning nothing and its reconnect from one second doubling to sixty;
   and the inbox and forwarding-file watch in `internal/slackengine/relay.go`, never within a second of the previous wake's start, with its on-disk fallback from one second to sixty,
 - the board server's watch loop in `internal/boardserve/run.go`:
-  it wakes on an `internal/fswatch` event in the board directory or on a timer from one second doubling to eight while `board.json` is unchanged,
+  it wakes on an `internal/fswatch` event of `board.json`, never within a second of the previous wake's start,
+  or on a timer from one second doubling to eight while `board.json` is unchanged,
   with the binary and idle checks on each wake.
 
 A bounded wait that ends within a minute is outside the rule.

@@ -26,6 +26,7 @@ import (
 )
 
 // The watch loop's timer starts at watchBase and doubles to watchCeiling while the board is unchanged.
+// watchBase is also the least time between two wakes.
 const (
 	watchBase    = time.Second
 	watchCeiling = 8 * time.Second
@@ -130,6 +131,7 @@ func Run(ctx context.Context, opts Options) error {
 	go func() {
 		// A server that can no longer accept exits instead of holding the lock.
 		if err := serving.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
+			fmt.Fprintf(opts.Log, "serve: %v\n", err)
 			stopWatching()
 		}
 	}()
@@ -148,11 +150,11 @@ func Run(ctx context.Context, opts Options) error {
 }
 
 // watchBoard tells server of each change of board.json until the server should exit, and returns why.
-// The whole board directory is watched, so an event only prompts a read of the revision.
+// It wakes on an event of board.json or on its timer, never within watchBase of the previous wake.
 func watchBoard(ctx context.Context, server *Server, opts Options) string {
 	started := opts.Now()
 	var events <-chan fswatch.Event
-	if watcher, err := opts.Watch(opts.BoardPath); err != nil {
+	if watcher, err := opts.Watch(opts.BoardPath, boardengine.BoardStoreFile); err != nil {
 		fmt.Fprintf(opts.Log, "watch the board directory: %v; reading the board on a timer\n", err)
 	} else {
 		defer watcher.Close()
@@ -162,6 +164,7 @@ func watchBoard(ctx context.Context, server *Server, opts Options) string {
 	revision, _ := server.current()
 	wait := watchBase
 	failing := false
+	var woke time.Time
 	for {
 		timer := opts.After(wait)
 		select {
@@ -171,8 +174,15 @@ func watchBoard(ctx context.Context, server *Server, opts Options) string {
 			if !open {
 				events = nil
 			}
+			if rest := watchBase - opts.Now().Sub(woke); rest > 0 {
+				var running bool
+				if events, running = coalesceEvents(ctx, events, opts.After(rest)); !running {
+					return exitStopped
+				}
+			}
 		case <-timer:
 		}
+		woke = opts.Now()
 
 		next, err := boardengine.BoardRevision(opts.BoardPath)
 		switch {
@@ -199,6 +209,23 @@ func watchBoard(ctx context.Context, server *Server, opts Options) string {
 		}
 		if opts.Now().Sub(last) >= opts.IdleBound {
 			return exitIdle
+		}
+	}
+}
+
+// coalesceEvents takes the events that arrive until floor fires, so they share the one wake that follows.
+// It returns the event channel to go on with, nil once it is closed, and false when ctx ended first.
+func coalesceEvents(ctx context.Context, events <-chan fswatch.Event, floor <-chan time.Time) (<-chan fswatch.Event, bool) {
+	for {
+		select {
+		case <-ctx.Done():
+			return events, false
+		case _, open := <-events:
+			if !open {
+				events = nil
+			}
+		case <-floor:
+			return events, true
 		}
 	}
 }

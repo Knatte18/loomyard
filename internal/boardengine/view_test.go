@@ -22,11 +22,11 @@ import (
 func viewFixture() []boardengine.Task {
 	task, note, project := boardengine.KindTask, boardengine.KindNote, boardengine.KindProject
 	return []boardengine.Task{
-		{ID: 1, Handle: "P1", Slug: "ship", Title: "Ship it", Kind: project, Body: "Ship design."},
+		{ID: 1, Handle: "P1", Slug: "ship", Title: "Ship it", Kind: project, Brief: "Get it out.", Labels: []string{"board"}, Body: "Ship design."},
 		{ID: 2, Handle: "P2", Slug: "inner", Title: "Inner", Kind: project, Project: "ship"},
 		{ID: 3, Handle: "P3", Slug: "old", Title: "Old project", Kind: project, Status: stringPtr("done")},
 		{ID: 4, Handle: "P4", Slug: "orphan", Title: "Orphan", Kind: project, Project: "old"},
-		{ID: 5, Handle: "T1", Slug: "base", Title: "Base", Kind: task, Labels: []string{"enhancement", "board"}, Body: "</script><b>bold</b>", Created: renderTime.AddDate(0, 0, -4), Revised: renderTime.AddDate(0, 0, -1)},
+		{ID: 5, Handle: "T1", Slug: "base", Title: "Base", Kind: task, Labels: []string{"enhancement", "board"}, Brief: "Grounds the rest.", Body: "</script><b>bold</b>", Created: renderTime.AddDate(0, 0, -4), Revised: renderTime.AddDate(0, 0, -1)},
 		{ID: 6, Handle: "T2", Slug: "next", Title: "Next", Kind: task, Labels: []string{"bug"}, DependsOn: []string{"base", "shipped", "ghost"}},
 		{ID: 7, Handle: "T3", Slug: "held", Title: "Held", Kind: task, Project: "ship", Status: stringPtr(boardengine.RunStatus("running", "Webster")), Discussed: true},
 		{ID: 8, Handle: "T4", Slug: "drafted", Title: "Drafted", Kind: task, Project: "inner", Status: stringPtr(boardengine.StatusDraft)},
@@ -145,6 +145,19 @@ func TestRenderBoardData(t *testing.T) {
 		}
 		if !slices.Equal(base.Types, []string{"enhancement"}) || !slices.Equal(base.Areas, []string{"board"}) {
 			t.Errorf("base types, areas = %q, %q; want [enhancement], [board]", base.Types, base.Areas)
+		}
+		if base.Handle != "T1" || base.Title != "Base" || base.Brief != "Grounds the rest." || base.Body != "</script><b>bold</b>" {
+			t.Errorf("base handle, title, brief, body = %q, %q, %q, %q; want the stored values", base.Handle, base.Title, base.Brief, base.Body)
+		}
+		if ship := view.Projects[1]; ship.Title != "Ship it" || ship.Brief != "Get it out." || !slices.Equal(ship.Labels, []string{"board"}) {
+			t.Errorf("project ship title, brief, labels = %q, %q, %q; want the stored values", ship.Title, ship.Brief, ship.Labels)
+		}
+		if held := viewEntryBySlug(t, view, "held"); held.DecisionFile != "decision-held.md" {
+			t.Errorf("held decision_file = %q; want decision-held.md", held.DecisionFile)
+		}
+		// base is open and shipped is done: both stay stored dependencies.
+		if next := viewEntryBySlug(t, view, "next"); !slices.Equal(next.DependsOn, []string{"base", "shipped", "ghost"}) {
+			t.Errorf("next depends_on = %q; want [base shipped ghost]", next.DependsOn)
 		}
 		idea := viewEntryBySlug(t, view, "idea")
 		if idea.DesignFile != "" || idea.Recipe != "" {

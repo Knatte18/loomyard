@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -35,6 +36,8 @@ type stepClock struct {
 	mu     sync.Mutex
 	now    time.Time
 	timers []chan time.Time
+	// waits are the durations of the timers asked for, in order.
+	waits []time.Duration
 	// armed receives once per timer the server asks for, and read once per reading of the clock.
 	armed chan struct{}
 	read  chan struct{}
@@ -50,13 +53,20 @@ func (c *stepClock) Now() time.Time {
 	return c.now
 }
 
-func (c *stepClock) After(time.Duration) <-chan time.Time {
+func (c *stepClock) After(d time.Duration) <-chan time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	timer := make(chan time.Time, 1)
 	c.timers = append(c.timers, timer)
+	c.waits = append(c.waits, d)
 	c.armed <- struct{}{}
 	return timer
+}
+
+func (c *stepClock) requested() []time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.Clone(c.waits)
 }
 
 // advance moves the clock by d and fires every timer asked for so far.
@@ -406,6 +416,9 @@ func TestRun(t *testing.T) {
 		// The poll is answered by the drain, which follows the release of the server's lock.
 		wantAnswer(t, poll, `"unchanged":true`)
 		s.wantLive(false)
+		if err := Probe(server); err == nil {
+			t.Error("the exiting server answered a new request")
+		}
 		select {
 		case err := <-s.done:
 			t.Fatalf("Run returned %v while a write was in flight", err)
@@ -422,21 +435,54 @@ func TestRun(t *testing.T) {
 		}
 	})
 
-	t.Run("WatchEventWakesAPoll", func(t *testing.T) {
+	t.Run("WatchEventWakesAPollAndABurstWakesOncePerSecond", func(t *testing.T) {
 		t.Parallel()
 		s := newRunningServer(t)
 		// The injected watcher watches a directory of the test's own, so the test says when an event arrives.
 		events := t.TempDir()
-		s.opts.Watch = func(string, ...string) (*fswatch.Watcher, error) { return fswatch.Watch(events) }
+		s.opts.Watch = func(_ string, names ...string) (*fswatch.Watcher, error) { return fswatch.Watch(events, names...) }
+		// The binary check runs once per wake.
+		var wakes atomic.Int32
+		s.opts.Replaced = func() bool { wakes.Add(1); return false }
 		server := s.start()
 		poll := s.send(server, http.MethodGet, routeBoard+"?after="+s.revision(), "")
 
 		moved := s.moveBoard()
-		if err := os.WriteFile(filepath.Join(events, "signal"), nil, 0o600); err != nil {
-			t.Fatal(err)
+		drain(s.clock.armed)
+		for range 5 {
+			if err := os.WriteFile(filepath.Join(events, "board.json"), []byte("signal"), 0o600); err != nil {
+				t.Fatal(err)
+			}
 		}
 
 		wantAnswer(t, poll, `"revision":"`+moved+`"`)
+		// The first event wakes at once; the loop then arms its timer, and the next event arms the floor.
+		s.awaitWake()
+		s.awaitWake()
+		if got := wakes.Load(); got != 1 {
+			t.Errorf("wakes within the first second = %d; want 1", got)
+		}
+		s.step(time.Second)
+		if got := wakes.Load(); got != 2 {
+			t.Errorf("wakes after one second = %d; want 2", got)
+		}
+	})
+
+	t.Run("TimerBacksOffAndReturnsToTheBaseOnAChange", func(t *testing.T) {
+		t.Parallel()
+		s := newRunningServer(t)
+		s.start()
+
+		for _, d := range []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second} {
+			s.step(d)
+		}
+		s.moveBoard()
+		s.step(8 * time.Second)
+
+		want := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 8 * time.Second, time.Second}
+		if got := s.clock.requested(); !slices.Equal(got, want) {
+			t.Errorf("timer waits = %v; want %v", got, want)
+		}
 	})
 
 	t.Run("TimerWakesAPollWithoutAWatcher", func(t *testing.T) {
