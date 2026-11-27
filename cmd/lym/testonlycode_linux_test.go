@@ -60,6 +60,7 @@ var testOnlyCodeAllowed = []scankit.Entry{
 	// The entries below are temporary: they go once the board server is wired to a command, which a stale entry forces.
 	{Key: "internal/boardengine.BoardRevision", Why: "temporary: the board server calls it, and no main reaches the server yet"},
 	{Key: "internal/boardengine.Board.View", Why: "temporary: the board server calls it, and no main reaches the server yet"},
+	{Key: "internal/boardengine.Board.Expecting", Why: "temporary: the board server calls it, and no main reaches the server yet"},
 }
 
 // testOnlyCodeMinFunctions is the vacuous-scan floor for the functions of production files the guard examines.
