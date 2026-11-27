@@ -104,6 +104,13 @@
 // It names the tier's value only, never the session's, which may be a secret.
 // A tier with `prebuilt_lym` first builds `lym` inside its slots and timeout, where the worktree root holds `cmd/lym`.
 // It then exports `gateslot.PrebuiltLymEnv`.
+// It builds only when a test it runs may use the binary.
+// A command that takes no targets runs whole, so it always builds.
+// For one that takes targets, that is so when a targeted package's test file imports `internal/testkit/lymbin`.
+// It is also so when the kit's own directory is targeted, or when a target is a `...` pattern or no directory.
+// The whole set's `./...` therefore builds it, and an invocation with no target does too.
+// The Testkit Invariant keeps every other file from importing the kit,
+// so a test reaches the binary through no other route.
 // Inside a hub the binary is copied into the pool's store under a name from its content hash.
 // Go therefore keeps a re-run on an unchanged tree cached.
 //

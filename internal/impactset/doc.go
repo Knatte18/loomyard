@@ -25,6 +25,8 @@
 // So the set also gets every package whose tests import `internal/testkit/lymbin`, which builds the binary;
 // any other change reaches those packages through the import graph only.
 // Targets.BinaryTests lists those packages, inside the set or not.
+// TestsUseLymBinary answers the same question for one package directory from its test files' imports alone.
+// It runs no `go list`, so a caller can decide before any build whether a run needs the binary.
 // A diff touching only Markdown files yields no module and no package.
 // The context is checked before each git read, and cancelling it kills a stalled `go list`;
 // a local git read already in flight runs to its end.

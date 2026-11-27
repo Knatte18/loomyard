@@ -87,7 +87,7 @@ go run ./cmd/testtiming -tags tier2
 
 It shells out to `go test ./... -json -count=1 -tags <tags>` (`tier0` with no tags of its own, `tier1` in full mode), so it needs nothing beyond a working Go toolchain.
 It sets `LYM_TEST_TIER` to the tiers the tags name, so a run that wants several names every tag, and the tiers must form one range.
-A run under a tier above `tier0` builds `lym` once and hands it to every test binary through the `LYM_PREBUILT_LYM` variable, as `lym gate test --tags` does, and a `tier0` run builds nothing and strips an inherited value.
+A run under a tier above `tier0` builds `lym` once and hands it to every test binary through the `LYM_PREBUILT_LYM` variable, and a `tier0` run builds nothing and strips an inherited value.
 `lym gate test --tags <tags> <packages>` is where one `lym` build serves every package of the run.
 Exit code mirrors `go test`: `0` on success, `1` if any package fails to build or any test fails (failing rows are marked `FAIL` in the table).
 

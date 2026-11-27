@@ -72,6 +72,11 @@ so the hub never runs more at once than its configured count.
 A tier run takes the slots its tier asks for, and the non-tier holders `internal/gateslot`'s doc lists each hold one.
 An agent runs a module-wide or `tier2` test only through `lym gate test`, and never as a raw `go` run.
 A tagged gate run builds `lym` once and hands it to every package through the `LYM_PREBUILT_LYM` variable.
+It builds only when a test it runs may use the binary:
+a targeted package's test file imports `internal/testkit/lymbin`, or the kit's own directory is targeted;
+a target is a pattern such as `./...`, an import path or absent;
+a targeted directory or test file cannot be read or parsed;
+or the command takes no targets, so it runs whole.
 `lymbin` returns that binary instead of building.
 A tagged hub run exports a path named by the binary's content,
 and `lym gate test` strips the trace id from `go test`'s environment.

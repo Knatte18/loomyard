@@ -27,7 +27,8 @@ import (
 const InheritEnv = "LYM_GATE_SLOT"
 
 // PrebuiltLymEnv names the environment variable that carries the path of the `lym` binary.
-// A tagged gate run builds it once for all packages, and each test binary runs that build instead.
+// A tagged gate run whose tests may use the binary builds it once for all packages,
+// and each test binary runs that build instead.
 const PrebuiltLymEnv = "LYM_PREBUILT_LYM"
 
 // StripPrebuilt returns env without PrebuiltLymEnv.

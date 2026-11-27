@@ -234,44 +234,73 @@ func TestMergeCopies(t *testing.T) {
 	}
 }
 
-// TestRunTierCopies_BuildsThePrebuiltLymOnce is not parallel:
-// it writes and then executes a stand-in go binary.
+// TestRunTierCopies_PrebuildsLymOnceWhenATestMayUseIt is not parallel, and neither are its subtests:
+// each writes and then executes a stand-in go binary.
 // A fork in a parallel test could hold the script's write handle open.
-func TestRunTierCopies_BuildsThePrebuiltLymOnce(t *testing.T) {
+func TestRunTierCopies_PrebuildsLymOnceWhenATestMayUseIt(t *testing.T) {
 	tiergate.Require(t, 0)
 	if runtime.GOOS == "windows" {
 		t.Skip("the tier command and the stand-in go binary are POSIX shell scripts")
 	}
 
-	dir := t.TempDir()
-	builds := filepath.Join(dir, "builds")
-	goBinary := filepath.Join(dir, "go")
-	// The build's arguments are `build -C <root> -p <n> -trimpath -o <bin> ./cmd/lym`, so $8 is the binary's path.
-	script := fmt.Sprintf("#!/bin/sh\necho built >> %q\n: > \"$8\"\n", builds)
-	if err := os.WriteFile(goBinary, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	// A root without cmd/lym builds nothing.
-	if err := os.MkdirAll(filepath.Join(dir, "cmd", "lym"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	run := tierRun{
-		number: 0,
-		tier: gateslot.Tier{
-			Command: fmt.Sprintf(`test -e "$%s"`, gateslot.PrebuiltLymEnv), Counter: counterGoJSON, TimeoutMin: 1, PrebuiltLym: true,
+	tests := []struct {
+		name string
+		// command exits 0 only when it sees the prebuilt-binary variable as the row expects.
+		command    string
+		targets    []string
+		wantBuilds int
+	}{
+		{
+			name:       "BothCopiesShareOneBuild",
+			command:    fmt.Sprintf(`test -e "$%s"`, gateslot.PrebuiltLymEnv),
+			wantBuilds: 1,
 		},
-		invocations: []invocation{{dir: dir}},
+		{
+			name:    "TargetsWhoseTestsDoNotUseItBuildNone",
+			command: fmt.Sprintf(`test -z "$%s" && : {targets}`, gateslot.PrebuiltLymEnv),
+			targets: []string{"./plain"},
+		},
 	}
-	request := testRequest{
-		root: dir, goBinary: goBinary, stderr: io.Discard, copiesRun: 2, timeoutUnit: 30 * time.Second, pipeWaitDelay: defaultPipeWaitDelay,
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			builds := filepath.Join(dir, "builds")
+			goBinary := filepath.Join(dir, "go")
+			// The build's arguments are `build -C <root> -p <n> -trimpath -o <bin> ./cmd/lym`, so $8 is the binary's path.
+			script := fmt.Sprintf("#!/bin/sh\necho built >> %q\n: > \"$8\"\n", builds)
+			if err := os.WriteFile(goBinary, []byte(script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			// A root without cmd/lym builds nothing.
+			for _, sub := range []string{filepath.Join("cmd", "lym"), "plain"} {
+				if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(dir, "plain", "plain_test.go"), []byte("package plain\n\nimport \"testing\"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			run := tierRun{
+				number:      0,
+				tier:        gateslot.Tier{Command: tt.command, Counter: counterGoJSON, TimeoutMin: 1, PrebuiltLym: true},
+				invocations: []invocation{{dir: dir, targets: tt.targets}},
+			}
+			request := testRequest{
+				root: dir, goBinary: goBinary, stderr: io.Discard, copiesRun: 2, timeoutUnit: 30 * time.Second, pipeWaitDelay: defaultPipeWaitDelay,
+			}
 
-	result := runTierCopies(context.Background(), run, []string{"PATH=" + os.Getenv("PATH")}, request)
+			result := runTierCopies(context.Background(), run, []string{"PATH=" + os.Getenv("PATH")}, request)
 
-	if result.refusal != "" || result.record.ExitCode != 0 || len(result.copies) != 2 {
-		t.Fatalf("runTierCopies() = refusal %q, exit %d, %d copies, log %q; want two green copies that saw the prebuilt lym", result.refusal, result.record.ExitCode, len(result.copies), result.log)
-	}
-	if content, err := os.ReadFile(builds); err != nil || strings.Count(string(content), "built") != 1 {
-		t.Errorf("builds record = %q, %v; want the one build both copies share", content, err)
+			if result.refusal != "" || result.record.ExitCode != 0 || len(result.copies) != 2 {
+				t.Fatalf("runTierCopies() = refusal %q, exit %d, %d copies, log %q; want two green copies", result.refusal, result.record.ExitCode, len(result.copies), result.log)
+			}
+			content, err := os.ReadFile(builds)
+			if err != nil && !os.IsNotExist(err) {
+				t.Fatal(err)
+			}
+			if got := strings.Count(string(content), "built"); got != tt.wantBuilds {
+				t.Errorf("builds = %d; want %d", got, tt.wantBuilds)
+			}
+		})
 	}
 }

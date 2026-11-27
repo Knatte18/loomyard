@@ -46,6 +46,7 @@ type Tier struct {
 	// Slots is how many gate slots the tier holds; 0 means every slot.
 	Slots int
 	// PrebuiltLym makes a run of the tier prebuild lym from the worktree first.
+	// It does so only when a test the run executes may use the binary.
 	PrebuiltLym bool
 	// Manual keeps the tier out of a tier range, so it runs only when named by number, such as a tier that spends tokens.
 	Manual bool

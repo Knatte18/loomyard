@@ -59,10 +59,10 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 
 // runTierCopies runs request.copiesRun copies of run side by side, each a tier run of its own, and waits on all of them.
 // Each copy runs under the tier's own counter, timeout, CPU watchdog and memory guard.
-// A tier that asks for a prebuilt `lym` builds it once for all the copies.
+// A tier that asks for a prebuilt `lym` builds it once for all the copies, when a test they run may use it.
 // A copy's stdout is kept in its log only, so the copies never interleave their output.
 func runTierCopies(ctx context.Context, run tierRun, env []string, request testRequest) tierResult {
-	if run.tier.PrebuiltLym && len(run.invocations) > 0 {
+	if len(run.invocations) > 0 && needsPrebuiltLym(run, request.root) {
 		prebuildCtx, cancel := withTimeoutMin(ctx, time.Duration(run.tier.TimeoutMin)*request.timeoutUnit, elapsedSinceNow(), time.After)
 		bin, cleanup, err := prebuildLym(prebuildCtx, request.goBinary, request.root, run.tier.Parallel, request.prebuiltStore, request.pipeWaitDelay, nil)
 		cancel()
@@ -77,8 +77,8 @@ func runTierCopies(ctx context.Context, run tierRun, env []string, request testR
 		if bin != "" {
 			env = append(slices.Clone(env), gateslot.PrebuiltLymEnv+"="+bin)
 		}
-		run.tier.PrebuiltLym = false
 	}
+	run.tier.PrebuiltLym = false
 
 	copyRequest := request
 	copyRequest.copiesRun = 0

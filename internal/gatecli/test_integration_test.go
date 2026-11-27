@@ -2194,6 +2194,28 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 	})
 
+	t.Run("a prebuilding tier whose targeted package's tests do not use the lym binary builds nothing", func(t *testing.T) {
+		t.Parallel()
+		worktree := standaloneWorktree(t, true)
+		quiet := filepath.Join(worktree, "quiet")
+		for _, dir := range []string{filepath.Join(worktree, "cmd", "lym"), quiet} {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := os.WriteFile(filepath.Join(quiet, "quiet_test.go"), []byte("package quiet\n\nimport \"testing\"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		g := startGate(t, gateRun{cwd: worktree, args: []string{"test", "--tier", "3", "./quiet"}, env: []string{helperBuildContentEnv + "=lym build"}})
+		if code := g.wait(t); code != 0 {
+			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
+		}
+		records := g.records(t)
+		if len(records) != 1 || records[0].Build || records[0].Prebuilt != "" {
+			t.Errorf("records = %+v; want the tier invocation alone, with no build and no %s", records, gateslot.PrebuiltLymEnv)
+		}
+	})
+
 	// Each row breaks its own hub in its setup and repairs it in the returned restore.
 	// The restore runs before requireFree reads the slots.
 	refusals := []struct {

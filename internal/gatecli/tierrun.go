@@ -113,7 +113,7 @@ func runTierChecked(ctx context.Context, out io.Writer, run tierRun, env []strin
 }
 
 // runTierCommands runs the tier of run once in ctx with its slots held.
-// It prebuilds `lym` when the tier asks.
+// It prebuilds `lym` when the tier asks and a test the run executes may use it.
 // Each invocation's command then runs through the platform shell as a tied child.
 // The run stops at the first non-zero exit.
 // The tier's timeout_min bounds the prebuild and every invocation together, counted from the call;
@@ -533,7 +533,7 @@ func retryTier(ctx context.Context, stderr io.Writer, tier string, delay time.Du
 	return retried
 }
 
-// runInvocations prebuilds `lym` when the tier asks.
+// runInvocations prebuilds `lym` when the tier asks and a test the run executes may use it.
 // It then runs each invocation of run in order under ctx, stopping at the first non-zero exit.
 // For a command holding {test_targets} it first narrows each invocation's targets.
 // It keeps the packages holding a test of the tier.
@@ -555,7 +555,7 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 	if refusal := resultsArgsRefusal(run.number, run.tier, run.args); refusal != "" {
 		return 0, nil, runStops{}, refusal
 	}
-	if run.tier.PrebuiltLym {
+	if needsPrebuiltLym(run, request.root) {
 		bin, cleanup, err := prebuildLym(ctx, request.goBinary, request.root, run.tier.Parallel, request.prebuiltStore, request.pipeWaitDelay, nil)
 		if err != nil {
 			if ctx.Err() != nil {
