@@ -768,6 +768,13 @@
 //
 // Board sequences all mutating operations with a file lock:
 // lock → load → mutate → save board.json → move or remove decision record files → render → write files.
+// A board copy from Board.Expecting holds one slug to the entry revision its caller read.
+// The write section checks it after the load migrations and before the mutation, so a refused write saves nothing.
+// It refuses with a *StaleEntryError in three cases:
+// the expected entry was removed;
+// it stands at another revision;
+// or the write expected no entry of the slug and one exists.
+// A Board without Expecting checks no revision.
 // After each write but the three below, sync.go launches a detached background process.
 // That process commits and pushes the changes to the remote.
 // Such a write returns immediately without waiting for the sync.
