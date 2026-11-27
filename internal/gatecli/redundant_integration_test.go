@@ -354,14 +354,16 @@ func TestGateRedundant(t *testing.T) {
 		cwd       string
 		pkg       string
 		wantError string
+		// wantWayForward are the parts of the way forward the refusal names.
+		wantWayForward []string
 	}{
-		{name: "OutsideEveryHub", cwd: t.TempDir(), pkg: "cov", wantError: "is in no hub"},
-		{name: "APackageWithNoMap", cwd: prime, pkg: "nomap", wantError: "nomap has no coverage map"},
-		{name: "AMapHoldingOnlyAFailedBuild", cwd: prime, pkg: "broken", wantError: "records only a failed build: boom"},
-		{name: "AMapNamingABlockOutsideItsTable", cwd: prime, pkg: "badindex", wantError: "is unreadable"},
-		{name: "AFailedKeepScan", cwd: prime, pkg: "badkeep", wantError: "the keep scan of"},
-		{name: "AMapBuiltFromOtherFiles", cwd: prime, pkg: "stale", wantError: "was built from other Go files than this worktree holds: stale.go"},
-		{name: "AMapWithAFileOnOneSideOnly", cwd: prime, pkg: "lacking", wantError: "was built from other Go files than this worktree holds: gone.go, lacking.go"},
+		{name: "OutsideEveryHub", cwd: t.TempDir(), pkg: "cov", wantError: "is in no hub", wantWayForward: []string{"run lym gate redundant from a worktree of the hub"}},
+		{name: "APackageWithNoMap", cwd: prime, pkg: "nomap", wantError: "nomap has no coverage map", wantWayForward: []string{"lym gate test --map nomap"}},
+		{name: "AMapHoldingOnlyAFailedBuild", cwd: prime, pkg: "broken", wantError: "records only a failed build: boom", wantWayForward: []string{"lym gate test --map broken"}},
+		{name: "AMapNamingABlockOutsideItsTable", cwd: prime, pkg: "badindex", wantError: "is unreadable", wantWayForward: []string{"lym gate test --map badindex"}},
+		{name: "AFailedKeepScan", cwd: prime, pkg: "badkeep", wantError: "the keep scan of", wantWayForward: []string{"fix the //testtiming:keep line it names"}},
+		{name: "AMapBuiltFromOtherFiles", cwd: prime, pkg: "stale", wantError: "was built from other Go files than this worktree holds: stale.go", wantWayForward: []string{"commit or revert", "lym gate test --map stale"}},
+		{name: "AMapWithAFileOnOneSideOnly", cwd: prime, pkg: "lacking", wantError: "was built from other Go files than this worktree holds: gone.go, lacking.go", wantWayForward: []string{"commit or revert", "lym gate test --map lacking"}},
 	}
 	for _, tt := range refusals {
 		t.Run("Refuses"+tt.name, func(t *testing.T) {
@@ -377,6 +379,11 @@ func TestGateRedundant(t *testing.T) {
 			}
 			if code != 1 || envelope.OK || !strings.Contains(envelope.Error, tt.wantError) || !strings.Contains(envelope.Error, "way forward") {
 				t.Errorf("redundant %s = %d, %+v; want exit 1, ok false and an error holding %q and a way forward", tt.pkg, code, envelope, tt.wantError)
+			}
+			for _, want := range tt.wantWayForward {
+				if _, wayForward, _ := strings.Cut(envelope.Error, "way forward: "); !strings.Contains(wayForward, want) {
+					t.Errorf("redundant %s error = %q; want its way forward to hold %q", tt.pkg, envelope.Error, want)
+				}
 			}
 		})
 	}
