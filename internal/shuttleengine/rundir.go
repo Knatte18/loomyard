@@ -272,7 +272,7 @@ func findRunByStrand(root, guid string) (RunState, string, error) {
 
 	unreadable := 0
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir() || entry.Name() == manifestsDirName {
 			continue
 		}
 		runDir := filepath.Join(root, entry.Name())
@@ -324,6 +324,7 @@ func FindRun(cfg Config, anchorPath, guid string) (RunState, string, error) {
 // and their kept diagnosis directories would be swept once past the age guard.
 // A directory whose run.json is missing or unreadable counts as an orphan: no strand can be confirmed live for it.
 // The same age guard applies to it.
+// The directory of manifest copies is never removed.
 // now is the clock the caller supplies, so tests can control aging deterministically.
 // It returns the removed directory paths and a joined error naming every directory that could not be removed.
 // The sweep visits every entry, so one undeletable directory costs only that directory.
@@ -339,7 +340,7 @@ func sweepOrphans(root string, strandGUIDs map[string]bool, minAge time.Duration
 	var removed []string
 	var removeErrs []error
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir() || entry.Name() == manifestsDirName {
 			continue
 		}
 		runDir := filepath.Join(root, entry.Name())

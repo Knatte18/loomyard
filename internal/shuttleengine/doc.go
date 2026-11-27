@@ -36,6 +36,14 @@
 // It returns none outside a hub, with no reader installed, or when the reader fails, which is logged at Warn.
 // A launch therefore never waits on the store.
 // An engine appends the passages to the system prompt it launches with, and shuttle itself parses no store.
+//
+// A launch manifest lists what the session receives, one item per channel and engine-neutral key.
+// Each engine's Prepare writes it into the run directory as manifest.json, and its Verdict holds the omitted items.
+// Once the run record is saved, a launch copies it to manifests/<runID>.json under the run-directory root.
+// The copy stays after a done run's cleanup, and nothing removes it.
+// A launch whose engine writes no record keeps no copy, and a failed copy is logged and never fails the launch.
+// The orphan sweep and the run lookup by strand skip the manifests directory, since it holds no run.json.
+//
 // The Engine interface is extended by optional capabilities, which an engine can lack:
 // requirement support, fork audit, the outstanding-fork reading, resume-context rendering and instruction files;
 // the check after startup; and the idle wake of a provider no hook exit wakes.

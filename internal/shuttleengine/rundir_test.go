@@ -7,6 +7,7 @@
 package shuttleengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -137,6 +138,8 @@ func TestFindRunByStrand(t *testing.T) {
 		wantErrIn []string
 		// wantErrNotIn is a fragment a miss error must not carry.
 		wantErrNotIn string
+		// wantNoRecord requires the miss to wrap ErrNoRunRecord.
+		wantNoRecord bool
 	}{
 		{
 			name: "hit returns the run state and its directory",
@@ -176,6 +179,19 @@ func TestFindRunByStrand(t *testing.T) {
 			strandGUID: "strand-damaged",
 			wantErrIn:  []string{"1 run directory", "could not be read", "still in its pane"},
 		},
+		{
+			name: "the manifest copies directory is no unreadable run",
+			seed: func(t *testing.T, root string) string {
+				if err := os.MkdirAll(filepath.Join(root, manifestsDirName), 0o755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				return ""
+			},
+			strandGUID:   "does-not-exist",
+			wantErrIn:    []string{"does-not-exist"},
+			wantErrNotIn: "could not be read",
+			wantNoRecord: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -203,6 +219,9 @@ func TestFindRunByStrand(t *testing.T) {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("findRunByStrand() error = %v; want it to name %q", err, want)
 				}
+			}
+			if tt.wantNoRecord && !errors.Is(err, ErrNoRunRecord) {
+				t.Errorf("findRunByStrand() error = %v; want it to wrap ErrNoRunRecord", err)
 			}
 			if tt.wantErrNotIn != "" && strings.Contains(err.Error(), tt.wantErrNotIn) {
 				t.Errorf("findRunByStrand() error = %v; want no %q clause", err, tt.wantErrNotIn)
@@ -255,6 +274,13 @@ func TestSweepOrphans_AgeGuardAndLiveGuid(t *testing.T) {
 	liveDir := seedRun(t, root, "live-run", "strand-live")
 	setDirMTime(t, liveDir, now, 10*time.Minute)
 
+	// The manifest copies' directory holds no run.json and must survive however old it is.
+	copies := filepath.Join(root, manifestsDirName)
+	if err := os.MkdirAll(copies, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	setDirMTime(t, copies, now, 10*time.Minute)
+
 	strandGUIDs := map[string]bool{"strand-live": true}
 	removed, err := sweepOrphans(root, strandGUIDs, minAge, now)
 	if err != nil {
@@ -273,6 +299,9 @@ func TestSweepOrphans_AgeGuardAndLiveGuid(t *testing.T) {
 	}
 	if _, err := os.Stat(oldOrphan); !os.IsNotExist(err) {
 		t.Errorf("old orphan dir still exists, want removed")
+	}
+	if _, err := os.Stat(copies); err != nil {
+		t.Errorf("manifest copies directory was removed, want kept: %v", err)
 	}
 	if _, err := os.Stat(youngNoState); err != nil {
 		t.Errorf("young no-state dir was removed, want kept: %v", err)

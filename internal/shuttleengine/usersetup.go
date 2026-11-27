@@ -38,6 +38,8 @@ type UserSetup struct {
 	InstructionFiles []InstructionItem
 	// SkillListing lists the skills the session's scope turns on, with the rule for using one; empty when none is listed.
 	SkillListing string
+	// ListedSkills holds the names SkillListing lists, in listing order.
+	ListedSkills []string
 	// PluginContexts are the contexts the scope's plugins' session-start hooks produce.
 	PluginContexts []InstructionItem
 	// Omitted lists each plugin hook whose context is left out, with the reason.
@@ -54,6 +56,9 @@ type InstructionItem struct {
 	Text string
 	// WayForward is the step that shrinks the item.
 	WayForward string
+	// Plugin and Hook are the plugin id and hook command of a plugin session-start context; empty on any other item.
+	Plugin string
+	Hook   string
 }
 
 // OmittedHook is a plugin hook whose context a session goes without.
@@ -62,6 +67,9 @@ type OmittedHook struct {
 	Name string
 	// Reason says why its context is left out.
 	Reason string
+	// Plugin and Hook are the plugin id and hook command; empty for an omission that names no one hook.
+	Plugin string
+	Hook   string
 }
 
 // HookRun describes one plugin hook run.

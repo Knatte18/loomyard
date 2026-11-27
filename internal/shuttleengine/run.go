@@ -737,6 +737,8 @@ func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, res
 		_ = os.RemoveAll(runDir)
 		return nil, Result{}, fmt.Errorf("shuttle: save run state: %w", err)
 	}
+	// Copied once the run record is saved, so only a launch whose strand registered keeps a copy.
+	copyManifest(root, runID, runDir)
 
 	logger.Info("shuttle: run started", "runDir", runDir, "strandGUID", strand.GUID, "sessionID", launch.SessionID, "role", spec.Role, "round", spec.Round, "forkSubagents", spec.ForkSubagents, "engine", engineName)
 

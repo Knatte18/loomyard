@@ -57,6 +57,8 @@ var testOnlyCodeAllowed = []scankit.Entry{
 	{Key: "internal/shortcutcli.Load", Why: "reads the embedded shortcut file for cmd/lym's shortcut test"},
 	{Key: "internal/shuttleengine/claudeengine.New", Why: "builds the engine, unexported state included, for the tests of the packages that drive it"},
 	{Key: "internal/runfsm.Order", Why: "no caller until the board displays a run's state from the FSM; that card removes this entry"},
+	{Key: "internal/shuttleengine.MissingItems", Why: "no caller until `lym shuttle manifest` lands; that card removes this entry"},
+	{Key: "internal/shuttleengine.WriteManifest", Why: "no caller until the engines' Prepare writes its launch manifest; that change removes this entry"},
 	{Key: "internal/slackengine.WriteSetup", Why: "writes the credentials file slackengine alone writes, for internal/slackcli's and internal/beamcli's tests"},
 	{Key: "internal/websterengine.ConflictRecordRel", Why: "oracle of the conflict record path in internal/loomrecipe's recipe test"},
 }
