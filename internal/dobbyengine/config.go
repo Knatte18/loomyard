@@ -5,6 +5,7 @@ package dobbyengine
 import (
 	_ "embed"
 	"fmt"
+	"math"
 	"strconv"
 
 	"gopkg.in/yaml.v3"
@@ -53,9 +54,22 @@ const (
 	LandNoticeOff = beamsetting.LandNoticeOff
 )
 
+// RunWatchKey is the per-task key deciding which changes of a task's run dobby mails the orch, and its values.
+// They are declared once, in beamsetting.
+const (
+	// RunWatchKey names the key.
+	RunWatchKey = beamsetting.RunWatchKey
+	// RunWatchStops mails a line for each stop of the run.
+	RunWatchStops = beamsetting.RunWatchStops
+	// RunWatchRows mails a line for every change of the run.
+	RunWatchRows = beamsetting.RunWatchRows
+	// RunWatchOff mails none.
+	RunWatchOff = beamsetting.RunWatchOff
+)
+
 // Config is the resolved beam.yaml's worktree-wide keys.
-// The per-task keys are pull_request, land_notice and autonomy.
-// They are read through LookupPullRequest, LookupLandNotice, LookupAutonomy and LookupWithSource alone.
+// The per-task keys are beam.pull_request, beam.land_notice, beam.autonomy and beam.run_watch.
+// They are read through LookupPullRequest, LookupLandNotice, LookupAutonomy, LookupRunWatch and LookupWithSource alone.
 type Config struct {
 	// MaxRuns is the most runs dobby drives at once; 0 starts none.
 	MaxRuns int `yaml:"max_runs"`
@@ -67,6 +81,11 @@ type Config struct {
 	TaskHeadroom int `yaml:"task_headroom"`
 	// AdoptFixTries is the most fix tasks a failed adopt check files for the worktree's subject between two hand adopts; 0 files none.
 	AdoptFixTries int `yaml:"adopt_fix_tries"`
+	// GateHoldFactor times a tier's gate.tiers.<tier>.timeout_min is how long a run may hold a gate slot unnoticed.
+	// 0 sends no gate-hold notice.
+	GateHoldFactor float64 `yaml:"gate_hold_factor"`
+	// GateHoldMin is the minutes the gate-hold bound is for a holder with no tier or a tier with no timeout.
+	GateHoldMin int `yaml:"gate_hold_min"`
 }
 
 // ConfigSpec returns beam's layered-load spec: a per-worktree module whose keys are all open to every layer.
@@ -85,7 +104,10 @@ func ConfigSpec() configengine.Spec {
 			PullRequestKey:           configengine.CategoryNone,
 			LandNoticeKey:            configengine.CategoryNone,
 			AutonomyKey:              configengine.CategoryNone,
+			RunWatchKey:              configengine.CategoryNone,
 			"adopt_fix_tries":        configengine.CategoryNone,
+			gateHoldFactorKey:        configengine.CategoryNone,
+			gateHoldMinKey:           configengine.CategoryNone,
 		},
 		RetiredKeys: map[string]configengine.Category{
 			"test_map_upkeep": configengine.CategoryNone,
@@ -97,9 +119,11 @@ func ConfigSpec() configengine.Spec {
 
 // LoadConfig resolves beam.yaml strictly from the layer stack under dirs, since dobby only ever runs inside a hub.
 // A negative value is refused, naming its key.
-// So is a resolved pull_request other than review, off, trail or merge-in, a land_notice other than on or off,
-// and an autonomy that is no YAML boolean,
-// so a write the per-task lookup would refuse is refused when it is made.
+// So is a beam.gate_hold_factor that is negative or not finite, and a beam.gate_hold_min below 1.
+// A resolved per-task key holding a value it does not take is refused too.
+// beam.pull_request takes review, off, trail or merge-in, and beam.land_notice takes on or off.
+// beam.run_watch takes stops, rows or off, and beam.autonomy takes a YAML boolean.
+// A write the per-task lookup would refuse is therefore refused when it is made.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.Load(dirs, ConfigSpec())
 	if err != nil {
@@ -123,11 +147,18 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 			return Config{}, configengine.MarkInvalid(fmt.Errorf("config key %q is %d: must not be negative; way forward: fix it with `lym config beam --set %s=<value>`", keyName(key.name), key.value, key.name))
 		}
 	}
+	// A NaN or an infinity passes a sign check and makes a bound every hold is past.
+	if factor := cfg.GateHoldFactor; math.IsNaN(factor) || math.IsInf(factor, 0) || factor < 0 {
+		return Config{}, configengine.MarkInvalid(fmt.Errorf("config key %q is %v: must be a finite number that is not negative; way forward: fix it with `lym config beam --set %s=<value>`", keyName(gateHoldFactorKey), factor, gateHoldFactorKey))
+	}
+	if cfg.GateHoldMin < 1 {
+		return Config{}, configengine.MarkInvalid(fmt.Errorf("config key %q is %d: must be at least 1; way forward: fix it with `lym config beam --set %s=<value>`", keyName(gateHoldMinKey), cfg.GateHoldMin, gateHoldMinKey))
+	}
 	var perTask map[string]any
 	if err := yaml.Unmarshal(resolved, &perTask); err != nil {
 		return Config{}, configengine.MarkInvalid(fmt.Errorf("unmarshal beam config: %w", err))
 	}
-	for _, key := range []string{PullRequestKey, LandNoticeKey, AutonomyKey} {
+	for _, key := range []string{PullRequestKey, LandNoticeKey, AutonomyKey, RunWatchKey} {
 		if _, err := checkTaskSetting(key, perTask[key], "the resolved beam.yaml"); err != nil {
 			return Config{}, err
 		}
@@ -136,14 +167,14 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 }
 
 // CheckLocalValues refuses a local-layer beam document holding a value its key does not take.
-// It checks only pull_request, land_notice and autonomy.
+// It checks only beam.pull_request, beam.land_notice, beam.autonomy and beam.run_watch.
 // The refusal is marked [configengine.ErrInvalid] and names the key, the values it takes and the way forward.
 func CheckLocalValues(document []byte) error {
 	var keys map[string]any
 	if err := yaml.Unmarshal(document, &keys); err != nil {
 		return configengine.MarkInvalid(fmt.Errorf("unmarshal beam run settings: %w", err))
 	}
-	for _, key := range []string{PullRequestKey, LandNoticeKey, AutonomyKey} {
+	for _, key := range []string{PullRequestKey, LandNoticeKey, AutonomyKey, RunWatchKey} {
 		value, set := keys[key]
 		if !set {
 			continue
@@ -167,8 +198,11 @@ func checkTaskSetting(key string, value any, where string) (string, error) {
 		return "", configengine.MarkInvalid(fmt.Errorf("config key %q in %s is %v: must be true or false; way forward: fix it with `lym config beam --set %s=<true|false>` in that worktree, or in the task's run_settings for its next run", keyName(key), where, value, key))
 	}
 	allowed := beamsetting.LandNoticeValues()
-	if key == PullRequestKey {
+	switch key {
+	case PullRequestKey:
 		allowed = beamsetting.PullRequestValues()
+	case RunWatchKey:
+		allowed = beamsetting.RunWatchValues()
 	}
 	text, isText := value.(string)
 	if isText {

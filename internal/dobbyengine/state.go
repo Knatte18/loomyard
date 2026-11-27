@@ -44,6 +44,9 @@ type State struct {
 	Describe *DescribeState `json:"describe,omitempty"`
 	// LandNotices is the memory of the landing notices of the runs seen ahead of their Land row, keyed by slug.
 	LandNotices map[string]LandNoticeState `json:"land_notices,omitempty"`
+	// Watches is the run watch's memory, keyed by slug.
+	// A run keeps its entry after it leaves Runs.
+	Watches map[string]RunWatchState `json:"watches,omitempty"`
 	// Land is the landing step taken in the current episode: a land request asked for or a notice posted.
 	// It is nil when none was taken or the beam can no longer land.
 	// It stays open to a retry when it holds only a posted refusal of Land.

@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hibernatecli"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -44,6 +45,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
 func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
@@ -764,6 +766,73 @@ func TestHubDobbyDeps_PullRequestRecordedReadsTheBeamLandingRecord(t *testing.T)
 	}
 }
 
+func TestDobbyGateHolders(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	declared := []yamlengine.KV{
+		{Key: "slots", Value: "3"},
+		{Key: "tiers.tier1", Value: `{command: "true", all_targets: ./pkg, timeout_min: 35, counter: go-json}`},
+	}
+	if _, err := configengine.Set(fabricengine.ConfigDirs(h.Location), gateslot.ConfigSpec(), configengine.LayerDefault, declared); err != nil {
+		t.Fatalf("declare the gate tier: %v", err)
+	}
+	acquired := []gateslot.Holder{
+		{Worktree: "wt-tier", Site: "site-tier", Tier: "tier1", Marker: "LYM_GATE_TEST_PID=1"},
+		{Worktree: "wt-plain", Site: "site-plain"},
+		{Worktree: "wt-undeclared", Site: "site-undeclared", Tier: "tier9", Marker: "LYM_GATE_TEST_PID=9"},
+	}
+	pool := hubgeom.GateSlots(h.Location)
+	for _, holder := range acquired {
+		lease, err := pool.Acquire(t.Context(), holder)
+		if err != nil {
+			t.Fatalf("Acquire(%q) = %v; want nil", holder.Site, err)
+		}
+		t.Cleanup(func() { _ = lease.Release() })
+	}
+	// The pool picks each slot and its start time, so those two are read from its records.
+	records, err := pool.Holders()
+	if err != nil {
+		t.Fatalf("Holders() = %v; want nil", err)
+	}
+
+	holders, err := dobbyGateHolders(h.Location)()
+	if err != nil {
+		t.Fatalf("dobbyGateHolders() = %v; want nil", err)
+	}
+	if len(holders) != len(acquired) {
+		t.Fatalf("dobbyGateHolders() = %+v; want %d holders", holders, len(acquired))
+	}
+	timeouts := map[string]time.Duration{"tier1": 35 * time.Minute}
+	for _, want := range acquired {
+		recorded := slices.IndexFunc(records, func(r gateslot.Holder) bool { return r.Site == want.Site })
+		mapped := slices.IndexFunc(holders, func(m dobbyengine.GateHolder) bool { return m.Site == want.Site })
+		if recorded < 0 || mapped < 0 {
+			t.Fatalf("no holder at site %q in records %+v and holders %+v", want.Site, records, holders)
+		}
+		got := holders[mapped]
+		if got.Started.IsZero() || !got.Started.Equal(records[recorded].Started) {
+			t.Errorf("holder at %q Started = %v; want %v", want.Site, got.Started, records[recorded].Started)
+		}
+		got.Started = time.Time{}
+		expected := dobbyengine.GateHolder{
+			Slot: records[recorded].Slot, Worktree: want.Worktree, Site: want.Site, Tier: want.Tier, Marker: want.Marker,
+			PID: os.Getpid(), TierTimeout: timeouts[want.Tier],
+		}
+		if got != expected {
+			t.Errorf("holder at %q = %+v; want %+v", want.Site, got, expected)
+		}
+	}
+
+	if err := os.Remove(configengine.ConfigFile(h.BoardDir(), "gate")); err != nil {
+		t.Fatalf("remove the gate config: %v", err)
+	}
+	if _, err := dobbyGateHolders(h.Location)(); err == nil || !strings.Contains(err.Error(), "load the gate config") {
+		t.Errorf("dobbyGateHolders() with no gate config = %v; want an error naming the gate config load", err)
+	}
+}
+
 func TestHubDobbyDeps_LandNoticeReadsTheRunsWorktreeLayer(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -777,15 +846,22 @@ func TestHubDobbyDeps_LandNoticeReadsTheRunsWorktreeLayer(t *testing.T) {
 	if on, err := deps.LandNotice("b"); on || err != nil {
 		t.Fatalf("LandNotice(b) with no layer setting it = %v, %v; want false, nil", on, err)
 	}
-
-	beamYAML := filepath.Join(beam.AnchorPath(), lymdirs.LymDirName, "config", "beam.yaml")
-	if err := os.MkdirAll(filepath.Dir(beamYAML), 0o755); err != nil {
-		t.Fatalf("create the worktree config directory: %v", err)
+	if level, err := deps.RunWatch.Level("b"); level != "stops" || err != nil {
+		t.Fatalf("RunWatch.Level(b) with no layer setting it = %q, %v; want stops, nil", level, err)
 	}
-	if err := os.WriteFile(beamYAML, []byte("land_notice: \"on\"\n"), 0o644); err != nil {
-		t.Fatalf("write the worktree beam.yaml: %v", err)
+
+	if got, err := deps.GateHolds.TaskWorktree("b"); got != beam.WorktreePath() || err != nil {
+		t.Errorf("GateHolds.TaskWorktree(b) = %q, %v; want %q, nil", got, err, beam.WorktreePath())
+	}
+
+	set := []yamlengine.KV{{Key: dobbyengine.LandNoticeKey, Value: "on"}, {Key: dobbyengine.RunWatchKey, Value: "rows"}}
+	if _, err := configengine.Set(fabricengine.ConfigDirs(beam), dobbyengine.ConfigSpec(), configengine.LayerWorktree, set); err != nil {
+		t.Fatalf("set the beam worktree's settings: %v", err)
 	}
 	if on, err := deps.LandNotice("b"); !on || err != nil {
 		t.Errorf("LandNotice(b) with its worktree's beam.yaml setting on = %v, %v; want true, nil", on, err)
+	}
+	if level, err := deps.RunWatch.Level("b"); level != "rows" || err != nil {
+		t.Errorf("RunWatch.Level(b) with its worktree's beam.yaml setting rows = %q, %v; want rows, nil", level, err)
 	}
 }

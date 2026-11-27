@@ -122,7 +122,10 @@ func TestReadNoticeChild(t *testing.T) {
 		// memory writes the memory record into the scratch directory, none when nil.
 		memory     func(t *testing.T, scratchDir string)
 		wantCapped bool
+		// repeats is the folded repeats of the child status's newest history entry.
+		repeats int
 	}{
+		{name: "ARepeatedNewestHistoryEntryCarriesItsRepeats", repeats: 2},
 		{name: "ACappedChildCarriesTheRespawnCap", memory: writeMemory(statusWritten), wantCapped: true},
 		{name: "AStatusWriteSinceTheLastRespawnIsNotCapped", memory: writeMemory(statusWritten.Add(-time.Minute))},
 		{name: "AMissingMemoryRecordIsNotCapped"},
@@ -151,13 +154,17 @@ func TestReadNoticeChild(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			absent, found, err := readNoticeChild(prime, slug, locateTask)
+			if err != nil || found || absent.PairDir != taskLocation.WorktreePath() {
+				t.Fatalf("readNoticeChild() with no status = %+v, %v, %v; want not found with the task worktree root %q", absent, found, err, taskLocation.WorktreePath())
+			}
 			status := shedengine.Status{
 				State:           shedengine.StateRunning,
 				CurrentProducer: "Plan-Write",
 				Error:           "waits on the plan",
 				History: []shedengine.HistoryEntry{
 					{Producer: "Worktree-Create", At: newestHistory.Add(-time.Hour).Format(time.RFC3339)},
-					{Producer: "Seed-Child", At: newestHistory.Format(time.RFC3339)},
+					{Producer: "Seed-Child", At: newestHistory.Format(time.RFC3339), Repeats: tt.repeats},
 				},
 			}
 			if err := state.WriteJSON(statusPath, statusLockPath, status); err != nil {
@@ -180,6 +187,9 @@ func TestReadNoticeChild(t *testing.T) {
 			}
 			if child.State != "running" || child.CurrentProducer != "Plan-Write" || child.Error != "waits on the plan" || child.HistoryLen != 2 {
 				t.Errorf("readNoticeChild() = %+v; want the status file's state, producer, error and history length", child)
+			}
+			if child.LastRepeats != tt.repeats {
+				t.Errorf("readNoticeChild() LastRepeats = %d; want %d", child.LastRepeats, tt.repeats)
 			}
 			if !child.NewestHistory.Equal(newestHistory) || !child.Modified.Equal(statusWritten) {
 				t.Errorf("readNoticeChild() newest history %v, modified %v; want %v and %v", child.NewestHistory, child.Modified, newestHistory, statusWritten)

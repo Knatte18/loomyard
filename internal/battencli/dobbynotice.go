@@ -71,6 +71,7 @@ func DobbyRunNotices(prime *lymcwd.Location, pauseRecordPath string, quiet time.
 // readNoticeChild reads the child of slug for the run notices: its status and the status file's modification time.
 // It also reports the task worktree's directory and whether batten's Run-Shed row has reached its respawn cap.
 // An absent task worktree or child status reads as not found.
+// A present worktree with no child status still reports its directory.
 func readNoticeChild(prime *lymcwd.Location, slug string, locateTask func() (*lymcwd.Location, error)) (dobbyengine.ChildReading, bool, error) {
 	present, err := taskWorktreePresent(prime, slug)
 	if err != nil || !present {
@@ -80,10 +81,11 @@ func readNoticeChild(prime *lymcwd.Location, slug string, locateTask func() (*ly
 	if err != nil {
 		return dobbyengine.ChildReading{}, false, err
 	}
+	noStatus := dobbyengine.ChildReading{PairDir: taskLocation.WorktreePath()}
 	statusPath := shedrun.StatusFile(taskLocation, shedrun.SelfRunID)
 	info, err := os.Stat(statusPath)
 	if os.IsNotExist(err) {
-		return dobbyengine.ChildReading{}, false, nil
+		return noStatus, false, nil
 	}
 	if err != nil {
 		return dobbyengine.ChildReading{}, false, err
@@ -93,8 +95,11 @@ func readNoticeChild(prime *lymcwd.Location, slug string, locateTask func() (*ly
 		return dobbyengine.ChildReading{}, false, err
 	}
 	status, found, err := state.ReadJSON[shedengine.Status](statusPath, statusLockPath)
-	if err != nil || !found {
+	if err != nil {
 		return dobbyengine.ChildReading{}, false, err
+	}
+	if !found {
+		return noStatus, false, nil
 	}
 	// An unreadable respawn memory reads as not capped.
 	// The cap only words a driver-dead notice, so it must not hide the run's conditions.
@@ -108,6 +113,7 @@ func readNoticeChild(prime *lymcwd.Location, slug string, locateTask func() (*ly
 		CurrentProducer: status.CurrentProducer,
 		Error:           status.Error,
 		HistoryLen:      len(status.History),
+		LastRepeats:     lastRepeats(status.History),
 		Modified:        info.ModTime(),
 		PairDir:         taskLocation.WorktreePath(),
 	}

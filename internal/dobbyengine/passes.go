@@ -34,6 +34,12 @@ type RunView struct {
 	// State is batten's status state and Producer its current producer.
 	State    string
 	Producer string
+	// HistoryLen is the length of batten's status history.
+	// LastRepeats is the folded repeats of its last entry, zero for an empty history.
+	HistoryLen  int
+	LastRepeats int
+	// Error is batten's status reason.
+	Error string
 	// StatusModified is the modification time of batten's own status file and ChildStatusModified that of the child's status file.
 	StatusModified      time.Time
 	ChildStatusModified time.Time

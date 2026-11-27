@@ -72,8 +72,10 @@ type ChildReading struct {
 	CurrentProducer string
 	Error           string
 	// HistoryLen is the child's history length; NewestHistory is its newest entry's time, zero when unparsable or absent.
+	// LastRepeats is the folded repeats of its newest entry, zero for an empty history.
 	HistoryLen    int
 	NewestHistory time.Time
+	LastRepeats   int
 	// Modified is the modification time of the child's status file.
 	Modified time.Time
 	// PairDir is the task worktree's directory, which every path in a notice is rendered relative to.
@@ -105,6 +107,7 @@ type AgentRun struct {
 // A nil ReadChild sends no run notice.
 type RunNoticeDeps struct {
 	// ReadChild reads the child of the run slug; found is false while the child has no status file.
+	// The reading then holds PairDir alone, which is empty while the task worktree is absent.
 	ReadChild func(slug string) (child ChildReading, found bool, err error)
 	// DriverAlive reports whether the child has a live driver: a driver strand, or a held driver, run or bootstrap lock.
 	DriverAlive func(ctx context.Context, slug string) (bool, error)

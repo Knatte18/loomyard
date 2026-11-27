@@ -105,6 +105,18 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
+			name:     "a beam run_watch of rows is admitted into a beam local document",
+			settings: map[string]any{"beam": map[string]any{"run_watch": "rows"}},
+			wantDocs: map[string]string{"beam": "run_watch: rows\n"},
+		},
+		{
+			name:        "a beam run_watch the lookup refuses is refused at the run settings",
+			settings:    map[string]any{"beam": map[string]any{"run_watch": "all"}},
+			wantRefusal: "run_watch",
+			wantModule:  "beam",
+			wantInvalid: true,
+		},
+		{
 			name:     "hardener packages and llm_driving pass",
 			settings: map[string]any{"hardener": map[string]any{"packages": []any{"internal/foo"}, "llm_driving": true}},
 			wantDocs: map[string]string{"hardener": "llm_driving: true\npackages:\n    - internal/foo\n"},

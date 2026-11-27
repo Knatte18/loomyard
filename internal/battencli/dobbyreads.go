@@ -187,13 +187,16 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 		coverage := record.CoverageOf(slug, now)
 		entry, onBoard := entryOf[slug]
 		view := dobbyengine.RunView{
-			Slug:       slug,
-			State:      string(run.status.State),
-			Producer:   run.status.CurrentProducer,
-			Covered:    coverage.Covered,
-			Held:       coverage.Held,
-			NoSlot:     runTakesNoSlot(entry),
-			EntryEnded: entryEnded(entry, onBoard),
+			Slug:        slug,
+			State:       string(run.status.State),
+			Producer:    run.status.CurrentProducer,
+			HistoryLen:  len(run.status.History),
+			LastRepeats: lastRepeats(run.status.History),
+			Error:       run.status.Error,
+			Covered:     coverage.Covered,
+			Held:        coverage.Held,
+			NoSlot:      runTakesNoSlot(entry),
+			EntryEnded:  entryEnded(entry, onBoard),
 		}
 		outcome := battenrecipe.LandOutcomeOf(run.status)
 		view.PastLand, view.Landed = outcome != battenrecipe.LandOutcomeAhead, outcome == battenrecipe.LandOutcomeLanded
@@ -271,6 +274,14 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 		views = append(views, view)
 	}
 	return views, nil
+}
+
+// lastRepeats returns the folded repeats of the newest entry of history, zero for an empty history.
+func lastRepeats(history []shedengine.HistoryEntry) int {
+	if len(history) == 0 {
+		return 0
+	}
+	return history[len(history)-1].Repeats
 }
 
 // keptSince returns when the cancel that kept a run's pair finished, read from the batten record's cancel intent.

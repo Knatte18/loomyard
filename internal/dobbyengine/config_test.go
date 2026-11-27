@@ -31,6 +31,7 @@ func defaultsWith(change func(*Config)) Config {
 	cfg := Config{
 		MaxRuns: 3, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30,
 		TaskHeadroom: 500, AdoptFixTries: 3,
+		GateHoldFactor: 1.5, GateHoldMin: 90,
 	}
 	change(&cfg)
 	return cfg
@@ -69,6 +70,15 @@ func TestLoadConfig(t *testing.T) {
 		{name: "a worktree layer's retired test_map_upkeep loads and changes nothing", worktree: "test_map_upkeep: false\n", want: defaultsWith(func(*Config) {})},
 		{name: "a local layer's retired test_map_every of 0 loads and changes nothing", local: "test_map_every: 0\n", want: defaultsWith(func(*Config) {})},
 		{name: "a retired test_map_every other than 0 and a retired test_map_batch load and change nothing", worktree: "test_map_every: 3\ntest_map_batch: 0\n", want: defaultsWith(func(*Config) {})},
+		{name: "a worktree layer's run_watch of rows loads", worktree: "run_watch: rows\n", want: defaultsWith(func(*Config) {})},
+		{name: "a local layer's run_watch of off loads", local: "run_watch: \"off\"\n", want: defaultsWith(func(*Config) {})},
+		{name: "an unknown run_watch is refused naming the key, the values and the way forward", worktree: "run_watch: all\n", wantErr: []string{"run_watch", "all", "[stops rows off]", "lym config beam --set run_watch="}},
+		{name: "a gate_hold_factor of 0 resolves as set", worktree: "gate_hold_factor: 0\n", want: defaultsWith(func(c *Config) { c.GateHoldFactor = 0 })},
+		{name: "a gate_hold_min of 30 resolves as set", worktree: "gate_hold_min: 30\n", want: defaultsWith(func(c *Config) { c.GateHoldMin = 30 })},
+		{name: "a negative gate_hold_factor is refused naming the key", worktree: "gate_hold_factor: -0.5\n", wantErr: []string{"gate_hold_factor", "must be a finite number that is not negative", "lym config beam --set"}},
+		{name: "a gate_hold_factor that is not a number is refused", worktree: "gate_hold_factor: .nan\n", wantErr: []string{"gate_hold_factor", "NaN", "must be a finite number"}},
+		{name: "an infinite gate_hold_factor is refused", worktree: "gate_hold_factor: .inf\n", wantErr: []string{"gate_hold_factor", "+Inf", "must be a finite number"}},
+		{name: "a gate_hold_min of 0 is refused naming the key", worktree: "gate_hold_min: 0\n", wantErr: []string{"gate_hold_min", "at least 1", "lym config beam --set"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

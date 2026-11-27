@@ -60,6 +60,7 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 				"priority",
 				"beam.pull_request",
 				"beam.land_notice",
+				"beam.run_watch",
 				"notice",
 				"Example",
 			},

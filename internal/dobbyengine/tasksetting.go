@@ -1,4 +1,4 @@
-// tasksetting.go is the one reader of beam.yaml's per-task settings, pull_request, land_notice and autonomy.
+// tasksetting.go alone reads beam.pull_request, beam.land_notice, beam.autonomy and beam.run_watch per task.
 // A task's value is the one its own worktree's files set.
 // Failing that, it is the value of the nearest worktree above it that sets one, up to the prime.
 // Failing all of those, it is the hub's default layer's, else the template's.
@@ -52,6 +52,13 @@ func LookupLandNotice(chain TaskSettingChain) (bool, error) {
 func LookupAutonomy(chain TaskSettingChain) (bool, error) {
 	value, err := lookupTaskSetting(chain, AutonomyKey)
 	return value == "true", err
+}
+
+// LookupRunWatch returns the beam.run_watch of the task at the chain's head: stops, rows or off.
+// It is the only reader of the key.
+// A value the key does not take is refused, naming the file that set it.
+func LookupRunWatch(chain TaskSettingChain) (string, error) {
+	return lookupTaskSetting(chain, RunWatchKey)
 }
 
 // ownTaskSetting returns the value the files of the one place dirs names set for the per-task key.

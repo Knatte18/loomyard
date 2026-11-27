@@ -135,8 +135,8 @@
 //
 // The landing notice:
 //
-//   - `pull_request`, `land_notice` and `autonomy` are per-task settings,
-//     read only through LookupPullRequest, LookupLandNotice, LookupAutonomy and LookupWithSource.
+//   - `beam.pull_request`, `beam.land_notice`, `beam.autonomy` and `beam.run_watch` are per-task settings,
+//     read only through LookupPullRequest, LookupLandNotice, LookupAutonomy, LookupRunWatch and LookupWithSource.
 //     LookupWithSource also names the worktree of the chain whose own files set the value, or the hub-wide default.
 //     A task's value is the one its own worktree's files set, else each parent worktree's own value up to the prime,
 //     else the hub's default layer's, else the template's.
@@ -149,6 +149,50 @@
 //     a member landing under a recorded pull request gets the description rewrite.
 //   - An owed line stays in the state record and is posted every tick until a post succeeds.
 //   - A run first seen past its Land row gets no line, and a done board entry owes none by itself.
+//
+// The run watch:
+//
+//   - Each scheduling tick reads every listed run:
+//     its derived state, batten's state, row, reason and history, and the child's state, row, reason and history.
+//     The child is read only when a status file was written since its last read.
+//     A child that does not read or has no status keeps the child part read last.
+//     So does a child written after the runs were listed, which the next tick reads;
+//     with no reading yet, the run keeps none for that tick.
+//   - A run's `beam.run_watch`, read through Deps.RunWatch.Level, is stops, rows or off.
+//     Stops owes a line for a change to a stop, rows for every change, off for none.
+//     A run whose level never read keeps no reading, so its first read tells the standing stop.
+//   - The level kept is the one read ahead of the Land row:
+//     the task worktree that sets it is torn down before batten reads done, so a later read would answer a parent's.
+//   - A stop is a derived state of paused, halted, cancelling, cancelled or landed,
+//     or a batten or child state other than running.
+//     A stop is new when the derived state, batten's state, the child's state, whether the child is read
+//     or the episode changed.
+//     The episode is a history length plus its newest entry's folded repeats, so a repeated block at one row counts.
+//   - A landed run whose `beam.land_notice` read on owes no line, since the landing notice reports it.
+//   - The memory is State.Watches, keyed by slug, which outlives the run's entry in the pass records.
+//     It is dropped once the run is no longer listed, owes nothing and has no batten status.
+//   - An owed line stays in the memory until Deps.RunWatch.Post posts it, oldest first.
+//     A post that finds no orch counts no attempt.
+//     A failing post is retried a probe interval later and dropped after three failures,
+//     and a line owed an hour of awake time is dropped.
+//   - A nil Level or Post watches nothing.
+//
+// The gate-hold notice:
+//
+//   - On each probe tick that schedules, dobby reads the held gate slots through Deps.GateHolds.
+//     The slots one process holds are one hold, which starts at the earliest of them.
+//     A hold belongs to the listed run whose task worktree it works in.
+//   - The bound is `beam.gate_hold_factor` times the largest `gate.tiers.<tier>.timeout_min` of the hold,
+//     or `beam.gate_hold_min` minutes when it has none; a factor of 0 sends nothing.
+//   - The bound runs on awake time, so a machine sleep delays the notice.
+//   - A hold past its bound gets one `[dobby notice]` line, whatever the run's watch level.
+//     It names the slots, tier, site, start, bound, the holder's process tree with each process's CPU time,
+//     and the processes outside the tree that carry the holder's environment marker.
+//     Each list names the busiest processes and counts the rest.
+//     A tree or marker scan that fails still sends the notice, naming the tree as unreadable.
+//   - The noticed holds are kept in State.Watches, so a re-exec sends no second line, and a failed post is retried.
+//     A new hold, by another process or with another start, is noticed again.
+//   - The step only reads: it ends no process and frees no slot.
 //
 // The board tidy:
 //
@@ -188,7 +232,9 @@
 //     whose batten status reads done, through Deps.ClearDoneRun,
 //     so a finished run never refuses a later start under its slug.
 //   - A run is cleared only when no pass of it is in flight, its driver lock is free, its pair is gone,
-//     and neither its landing notice nor its board-tidy count is still owed.
+//     and none of its landing notice, its board-tidy count and a watch line is still owed.
+//     A run whose watch entry holds no level waits too, as does every run on a tick whose watch step failed to record.
+//     The clear drops the run's watch entry.
 //   - A failed clear is logged once per episode and never fails the tick.
 //
 // The catch-up:

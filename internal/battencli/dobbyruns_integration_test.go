@@ -1,4 +1,5 @@
-// dobbyruns_integration_test.go pins what DobbyRuns reads of a run's kept cancel, hand-over mark, owner and Bolt hold.
+// dobbyruns_integration_test.go pins what DobbyRuns reads of a run:
+// its history, reason, kept cancel, hand-over mark, owner and Bolt hold.
 // Each row runs one status and one board over its own hubforge hub.
 
 package battencli
@@ -22,8 +23,9 @@ func TestDobbyRuns_ReadsTheKeptCancelTheHandOverMarkTheOwnerAndTheBoltHold(t *te
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	const running = `{"state":"running","current_producer":"Run-Shed"}`
-	const keptCancel = `{"state":"cancelled","current_producer":"Run-Shed","cancel":{"started_at":"2026-11-15T09:00:00Z",` +
+	const history = `"error":"waits on the child","history":[{"producer":"Seed-Child","outcome":"done"},{"producer":"Run-Shed","outcome":"stuck","repeats":2}]`
+	const running = `{"state":"running","current_producer":"Run-Shed",` + history + `}`
+	const keptCancel = `{"state":"cancelled","current_producer":"Run-Shed",` + history + `,"cancel":{"started_at":"2026-11-15T09:00:00Z",` +
 		`"machine":"other-machine","remove":false,"finish":{"ended_at":"2026-11-15T09:30:00Z","remove":false}}}`
 	const entry = `{"id":0,"slug":"subject","title":"S","kind":"task","labels":["bug"],"status":"draft"}`
 	const ownedByRegisteredMachine = `"prime_owner":"other-machine","machines":{"0123456789abcdef0123456789abcdef":{"name":"other-machine"}},`
@@ -35,6 +37,14 @@ func TestDobbyRuns_ReadsTheKeptCancelTheHandOverMarkTheOwnerAndTheBoltHold(t *te
 		handOverMarked bool
 		ownedElsewhere bool
 		boltHeld       bool
+		historyLen     int
+		lastRepeats    int
+		reason         string
+	}
+	// told is the history and reason every status carries, with change applied.
+	told := func(change reading) reading {
+		change.historyLen, change.lastRepeats, change.reason = 2, 2, "waits on the child"
+		return change
 	}
 	tests := []struct {
 		name     string
@@ -43,13 +53,13 @@ func TestDobbyRuns_ReadsTheKeptCancelTheHandOverMarkTheOwnerAndTheBoltHold(t *te
 		markMade bool
 		want     reading
 	}{
-		{name: "RunningRunWithNoneOfThemReadsNone", status: running},
+		{name: "RunningRunWithNoneOfThemReadsNone", status: running, want: told(reading{})},
 		{name: "CancelledWithKeepAndFinishReadsKeptSinceTheFinish", status: keptCancel,
-			want: reading{pairKept: true, keptSince: "2026-11-15T09:30:00Z"}},
+			want: told(reading{pairKept: true, keptSince: "2026-11-15T09:30:00Z"})},
 		{name: "HandedOverRunOwnedByAnotherRegisteredMachineReadsMarkedAndElsewhere", status: running, members: ownedByRegisteredMachine, markMade: true,
-			want: reading{handOverMarked: true, ownedElsewhere: true}},
+			want: told(reading{handOverMarked: true, ownedElsewhere: true})},
 		{name: "RunUnderABoltHoldReadsHeld", status: running, members: adoptHold,
-			want: reading{boltHeld: true}},
+			want: told(reading{boltHeld: true})},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -80,12 +90,13 @@ func TestDobbyRuns_ReadsTheKeptCancelTheHandOverMarkTheOwnerAndTheBoltHold(t *te
 			if len(views) != 1 || views[0].Slug != "subject" {
 				t.Fatalf("DobbyRuns() = %+v; want the run subject alone", views)
 			}
-			got := reading{pairKept: views[0].PairKept, handOverMarked: views[0].HandOverMarked, ownedElsewhere: views[0].OwnedElsewhere, boltHeld: views[0].BoltHeld}
+			got := reading{pairKept: views[0].PairKept, handOverMarked: views[0].HandOverMarked, ownedElsewhere: views[0].OwnedElsewhere, boltHeld: views[0].BoltHeld,
+				historyLen: views[0].HistoryLen, lastRepeats: views[0].LastRepeats, reason: views[0].Error}
 			if !views[0].KeptSince.IsZero() {
 				got.keptSince = views[0].KeptSince.UTC().Format(time.RFC3339)
 			}
 			if got != tt.want {
-				t.Errorf("DobbyRuns() PairKept, KeptSince, HandOverMarked, OwnedElsewhere, BoltHeld = %+v; want %+v", got, tt.want)
+				t.Errorf("DobbyRuns() reading = %+v; want %+v", got, tt.want)
 			}
 		})
 	}

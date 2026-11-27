@@ -151,6 +151,11 @@ type Deps struct {
 	NearestOrch func() (string, error)
 	// RunNotices are the seams the run notices of the runs this dobby drives read; a nil RunNotices.ReadChild sends none.
 	RunNotices RunNoticeDeps
+	// RunWatch are the seams of the run watch; a nil RunWatch.Level or RunWatch.Post watches nothing.
+	// The child it reads comes through RunNotices.ReadChild.
+	RunWatch RunWatchDeps
+	// GateHolds are the seams of the gate-hold notice; a nil GateHolds.Holders or GateHolds.Post checks nothing.
+	GateHolds GateHoldDeps
 	// WaitReminders are the seams the reminders of a child waiting on the operator read; nil WaitReminders.Post sends none.
 	WaitReminders WaitReminderDeps
 	// CanLand reads whether the beam of this dobby is flagged ready with nothing working under it, and who owns its parent.
@@ -382,6 +387,14 @@ type daemon struct {
 	landNoticeLookup logger.EpisodeSet
 	// landNoticePosts guards each owed landing notice's post by its slug.
 	landNoticePosts logger.EpisodeSet
+	// watchRecordFailed reports that the tick's run watch step could not read or write the state record.
+	watchRecordFailed bool
+	// watchLevelReads guards each run's beam.run_watch lookup by its slug, and watchPosts each owed watch line's post.
+	watchLevelReads logger.EpisodeSet
+	watchPosts      logger.EpisodeSet
+	// gateHoldReads guards each read of the gate-hold check, and gateHoldPosts each run's notice and its record.
+	gateHoldReads logger.EpisodeSet
+	gateHoldPosts logger.EpisodeSet
 	// listedRuns is the run listing of the tick's pass step, done runs included.
 	listedRuns []RunView
 	// landed is the slugs whose landing the tick's landing count read, nil while Deps.Landings is nil.
@@ -717,6 +730,8 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 		d.runNotices(ctx, now)
 		d.waitReminders(ctx, now)
 		d.landNotices(ctx, now, d.listedRuns)
+		d.runWatch(ctx, now)
+		d.gateHolds(ctx, now)
 		d.settleFronts(ctx)
 		if err := d.startReady(ctx, now); err != nil {
 			return err

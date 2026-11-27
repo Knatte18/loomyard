@@ -1,4 +1,4 @@
-// tasksetting_test.go pins the per-task lookup of beam.yaml's pull_request, land_notice and autonomy.
+// tasksetting_test.go pins the per-task lookup of beam.pull_request, beam.land_notice, beam.autonomy and beam.run_watch.
 // It pins which of a task's own files, its parents' files, the hub default and the template decides.
 // It also pins the refusal of a bad value.
 
@@ -42,6 +42,9 @@ func lookupAsText(key string, chain TaskSettingChain) (string, error) {
 			return LandNoticeOn, nil
 		}
 		return LandNoticeOff, nil
+	}
+	if key == RunWatchKey {
+		return LookupRunWatch(chain)
 	}
 	got, err := LookupPullRequest(chain)
 	if got == PullRequestReview {
@@ -129,6 +132,39 @@ func TestLookupTaskSettings(t *testing.T) {
 		}
 	}
 
+	t.Run("run_watch takes the nearest value that sets it, else the template's", func(t *testing.T) {
+		t.Parallel()
+		rows := []struct {
+			name                                string
+			task, taskLocal, parent, prime, hub string
+			want                                string
+		}{
+			{name: "the task's local file wins over its worktree file", task: RunWatchOff, taskLocal: RunWatchRows, want: RunWatchRows},
+			{name: "a task that sets nothing takes the parent's value over the prime's", parent: RunWatchOff, prime: RunWatchRows, want: RunWatchOff},
+			{name: "the hub default applies when no anchor sets the key", hub: RunWatchRows, want: RunWatchRows},
+			{name: "nothing set anywhere takes the template's value", want: RunWatchStops},
+		}
+		for _, row := range rows {
+			t.Run(row.name, func(t *testing.T) {
+				t.Parallel()
+				taskDir, parentDir, primeDir, board := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+				for dir, value := range map[string]string{taskDir: row.task, parentDir: row.parent, primeDir: row.prime, board: row.hub} {
+					if value != "" {
+						writeBeamLayer(t, dir, settingDocument(RunWatchKey, value))
+					}
+				}
+				if row.taskLocal != "" {
+					writeBeamLocalLayer(t, taskDir, settingDocument(RunWatchKey, row.taskLocal))
+				}
+
+				got, err := LookupRunWatch(TaskSettingChain{Anchors: []string{taskDir, parentDir, primeDir}, Board: board})
+				if err != nil || got != row.want {
+					t.Errorf("LookupRunWatch() = %q, %v; want %q", got, err, row.want)
+				}
+			})
+		}
+	})
+
 	t.Run("pull_request merge-in and trail pass through as set", func(t *testing.T) {
 		t.Parallel()
 		for _, value := range []string{PullRequestMergeIn, PullRequestTrail} {
@@ -215,7 +251,10 @@ func TestLookupTaskSettings_RefusesAValueTheKeyDoesNotTake(t *testing.T) {
 		value string
 		// place is where the bad value is written: worktree, local or hub.
 		place string
+		// wantValues, when set, is the list of values the refusal must name.
+		wantValues string
 	}{
+		{name: "run_watch all in a worktree file", key: RunWatchKey, value: "all", place: "worktree", wantValues: "[stops rows off]"},
 		{name: "pull_request required in a worktree file", key: PullRequestKey, value: "required", place: "worktree"},
 		{name: "land_notice all in a worktree file", key: LandNoticeKey, value: "all", place: "worktree"},
 		{name: "land_notice per-task in a worktree file", key: LandNoticeKey, value: "per-task", place: "worktree"},
@@ -249,7 +288,7 @@ func TestLookupTaskSettings_RefusesAValueTheKeyDoesNotTake(t *testing.T) {
 			if err == nil {
 				t.Fatalf("lookup of %s = _, nil; want a refusal", tt.key)
 			}
-			for _, want := range []string{wantPath, tt.key, tt.value, "lym config beam --set " + tt.key + "="} {
+			for _, want := range []string{wantPath, tt.key, tt.value, tt.wantValues, "lym config beam --set " + tt.key + "="} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("lookup error = %q; want it to contain %q", err.Error(), want)
 				}

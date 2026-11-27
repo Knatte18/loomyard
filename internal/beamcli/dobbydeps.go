@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fronttask"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hibernatecli"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -63,6 +64,8 @@ const (
 	dobbyProgram = orchcli.DobbyProgram
 	// runNoticeTopicPrefix leads the creel topic of a run notice, followed by the run's slug.
 	runNoticeTopicPrefix = "dobby-run-notice/"
+	// gateHoldTopicPrefix leads the creel topic of a gate-hold notice, followed by the run's slug.
+	gateHoldTopicPrefix = "dobby-gate-hold/"
 	// defaultNoticeProbe is the probe interval when the batten recipe's Run-Shed row names none.
 	defaultNoticeProbe = 30 * time.Second
 	// defaultNoticeQuiet is the run notices' quiet window when the batten recipe's Run-Shed row names none.
@@ -83,6 +86,38 @@ const (
 // The topic lets a newer notice about the run replace an unread one, and the run lets the run's teardown drop it.
 func runNoticeTags(slug string) creelengine.PostTags {
 	return creelengine.PostTags{Topic: runNoticeTopicPrefix + slug, Run: slug}
+}
+
+// gateHoldTags returns the creel tags of dobby's gate-hold notice about the run slug.
+// The topic is its own, so the notice and a notice about the run's child never replace each other,
+// and the run lets the run's teardown drop it.
+func gateHoldTags(slug string) creelengine.PostTags {
+	return creelengine.PostTags{Topic: gateHoldTopicPrefix + slug, Run: slug}
+}
+
+// dobbyGateHolders returns a read of the live gate slot holders of prime's hub, each with its tier's timeout.
+// The timeout is zero for a holder with no tier or with a tier the gate config does not declare.
+// A gate config that does not load and a holder record that does not read each fail the call.
+func dobbyGateHolders(prime *lymcwd.Location) func() ([]dobbyengine.GateHolder, error) {
+	return func() ([]dobbyengine.GateHolder, error) {
+		cfg, err := gateslot.LoadConfig(fabricengine.ConfigDirs(prime))
+		if err != nil {
+			return nil, fmt.Errorf("load the gate config: %w", err)
+		}
+		held, err := hubgeom.GateSlots(prime).Holders()
+		if err != nil {
+			return nil, fmt.Errorf("read the gate slot holders: %w", err)
+		}
+		holders := make([]dobbyengine.GateHolder, len(held))
+		for i, holder := range held {
+			holders[i] = dobbyengine.GateHolder{
+				Slot: holder.Slot, Worktree: holder.Worktree, Site: holder.Site, Tier: holder.Tier, Marker: holder.Marker,
+				PID: holder.PID, Started: holder.Started,
+				TierTimeout: time.Duration(cfg.Tiers[holder.Tier].TimeoutMin) * time.Minute,
+			}
+		}
+		return holders, nil
+	}
 }
 
 // requirePosted turns a notice that no orch strand was recorded to receive into an error, so dobby tries it again.
@@ -276,6 +311,36 @@ func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, sta
 				return false, err
 			}
 			return dobbyengine.LookupLandNotice(chain)
+		},
+		RunWatch: dobbyengine.RunWatchDeps{
+			Level: func(slug string) (string, error) {
+				chain, err := hubgeom.TaskSettingChain(prime, slug)
+				if err != nil {
+					return "", err
+				}
+				return dobbyengine.LookupRunWatch(chain)
+			},
+			// Untagged, so no watch line replaces another unread one and a run's teardown drops none.
+			Post: func(_ context.Context, slug, line string) (bool, error) {
+				stamped := orchcli.WithRunAutonomy(worktree, slug, line)
+				return orchcli.NotifyRunFrom(worktree, geom.Slug, dobbyProgram, creelengine.PostTags{}, stamped)
+			},
+		},
+		GateHolds: dobbyengine.GateHoldDeps{
+			Holders: dobbyGateHolders(prime),
+			TaskWorktree: func(slug string) (string, error) {
+				pair, err := pairLocation(prime, slug)
+				if err != nil {
+					return "", err
+				}
+				return pair.WorktreePath(), nil
+			},
+			Tree:       proc.TreeSample,
+			MarkedPIDs: proc.PIDsWithEnv,
+			Post: func(_ context.Context, slug, line string) error {
+				stamped := orchcli.WithRunAutonomy(worktree, slug, line)
+				return requirePosted(orchcli.NotifyRunFrom(worktree, geom.Slug, dobbyProgram, gateHoldTags(slug), stamped))
+			},
 		},
 		SettleFronts: func() error { return fronttask.Settle(settleFronts) },
 		Landings: machineLandings(func() (string, []string, error) {

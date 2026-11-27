@@ -104,6 +104,11 @@ func TestRunNoticeTags(t *testing.T) {
 	if got != want {
 		t.Errorf("runNoticeTags(pay) = %+v; want %+v", got, want)
 	}
+	gotHold := gateHoldTags("pay")
+	wantHold := creelengine.PostTags{Topic: "dobby-gate-hold/pay", Run: "pay"}
+	if gotHold != wantHold {
+		t.Errorf("gateHoldTags(pay) = %+v; want %+v", gotHold, wantHold)
+	}
 }
 
 func TestEndedTeardownResults(t *testing.T) {

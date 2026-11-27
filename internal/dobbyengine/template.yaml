@@ -6,3 +6,6 @@ pull_request: "review"  # per task: whether a task's landing goes through a GitH
 land_notice: "off"  # per task: whether dobby posts a line to the orch once a task's run lands or ends without landing: on or off; decided like beam.pull_request
 autonomy: false  # per task: whether the orch settles every halt of the task's runs and reaches the operator only for a severe halt or a merge-ready beam: true or false; decided like beam.pull_request
 adopt_fix_tries: 3  # the most adopt fix tasks a failed adopt check files for this worktree's subject between two hand adopts; 0 files none
+run_watch: "stops"  # per task: which changes of a task's run dobby mails the orch as a `[run watch]` line: stops, rows or off; decided like beam.pull_request
+gate_hold_factor: 1.5  # dobby notices a gate slot a run holds past this many times its tier's gate.tiers.<tier>.timeout_min, in awake time; 0 sends no gate-hold notice
+gate_hold_min: 90  # the minutes the gate-hold bound is for a holder with no tier or a tier with no gate.tiers.<tier>.timeout_min; at least 1

@@ -680,9 +680,9 @@ here and on origin; while its pair stands it is skipped, naming the step that re
 A run that is running, paused, blocked, awaiting or failed, or whose run
 lock is held, is skipped and reported with its reason. It never touches a pair, a branch, a
 lock file or another run. The dobby of a run's parent worktree removes a done run
-itself once it has counted its landing and decided its landing notice; a done
-motif run is also cleared by "lym beam create" and by the start of a raddle run
-under its slug.
+itself once it has counted its landing and decided its landing notice, owes no run
+watch line for it and has read the run's beam.run_watch; a done motif run is also
+cleared by "lym beam create" and by the start of a raddle run under its slug.
 
 Output: {"applied", "removed", "emptied", "skipped", "push_spawned", "push_error"}.
 push_spawned says the push was started, not that origin took it; "lym fabric status" lists a push origin refused under failed_pushes.

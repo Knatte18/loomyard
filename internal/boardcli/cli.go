@@ -584,7 +584,7 @@ Optional fields:
   "created"    string — RFC 3339 creation
   "revised"    string — RFC 3339 scope change
   "run_settings" object — module name to config keys; {} clears it;
-                  beam.pull_request, beam.land_notice and beam.autonomy set the task's per-task beam settings
+                  beam.pull_request, beam.land_notice, beam.autonomy and beam.run_watch are per task
   "profile"    string — a "lym board profiles" name; "" clears it
   "owner_machine" string — the effective owner only; "lym adopt" moves it
   "project"    string — slug of the open project holding the entry; "" leaves none

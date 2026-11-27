@@ -188,12 +188,13 @@ func TestHolders_NamesLiveHoldersAndDropsRecordsOfFreeLocks(t *testing.T) {
 	t.Parallel()
 
 	pool := newPool(t, fixedLimits(2))
-	lease, err := pool.Acquire(shortContext(t), Holder{Worktree: "wt", Site: "webster gate"})
+	lease, err := pool.Acquire(shortContext(t), Holder{Worktree: "wt", Site: "webster gate", Marker: "RUN_MARKER=7"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	staleRecord := filepath.Join(pool.Dir, "slot-2.yaml")
-	if err := os.WriteFile(staleRecord, []byte("site: crashed\npid: 1\n"), 0o644); err != nil {
+	// Neither this record nor the second live holder's below has a marker key, as a record an older binary wrote.
+	otherRecord := filepath.Join(pool.Dir, "slot-2.yaml")
+	if err := os.WriteFile(otherRecord, []byte("site: crashed\npid: 1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -201,10 +202,28 @@ func TestHolders_NamesLiveHoldersAndDropsRecordsOfFreeLocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(holders) != 1 || holders[0].Slot != 1 || holders[0].Worktree != "wt" || holders[0].Site != "webster gate" || holders[0].PID != os.Getpid() || holders[0].Started.IsZero() {
-		t.Fatalf("Holders() = %+v; want only the live holder of slot 1 with worktree, site, pid and start time", holders)
+	if len(holders) != 1 || holders[0].Slot != 1 || holders[0].Worktree != "wt" || holders[0].Site != "webster gate" || holders[0].PID != os.Getpid() || holders[0].Started.IsZero() || holders[0].Marker != "RUN_MARKER=7" {
+		t.Fatalf("Holders() = %+v; want only the live holder of slot 1 with worktree, site, pid, start time and marker", holders)
 	}
 
+	older, err := pool.Acquire(shortContext(t), Holder{Site: "older"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(otherRecord, []byte("site: older\npid: 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	holders, err = pool.Holders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(holders) != 2 || !slices.ContainsFunc(holders, func(h Holder) bool { return h.Slot == 2 && h.Site == "older" && h.Marker == "" }) {
+		t.Fatalf("Holders() = %+v; want the second holder, of slot 2, with no marker", holders)
+	}
+
+	if err := older.Release(); err != nil {
+		t.Fatal(err)
+	}
 	if err := lease.Release(); err != nil {
 		t.Fatal(err)
 	}

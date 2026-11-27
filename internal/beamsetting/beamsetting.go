@@ -1,5 +1,5 @@
 // Package beamsetting names the module, keys and values of beam.yaml's per-task settings.
-// Those settings are pull_request, land_notice and autonomy.
+// Those settings are beam.pull_request, beam.land_notice, beam.autonomy and beam.run_watch.
 // Every package that reads, writes or refuses one of them takes its name from here, so each is declared once.
 package beamsetting
 
@@ -15,6 +15,18 @@ const (
 	// AutonomyKey decides whether the orch settles every halt of a task's runs.
 	// Under it the orch reaches the operator only for a severe halt or a merge-ready beam.
 	AutonomyKey = "autonomy"
+	// RunWatchKey decides which changes of a task's run dobby mails the orch as a watch line.
+	RunWatchKey = "run_watch"
+)
+
+// The values of beam.run_watch.
+const (
+	// RunWatchStops mails a line for each stop of the run.
+	RunWatchStops = "stops"
+	// RunWatchRows mails a line for every change of the run.
+	RunWatchRows = "rows"
+	// RunWatchOff mails none.
+	RunWatchOff = "off"
 )
 
 // The values of beam.yaml's pull_request.
@@ -48,4 +60,9 @@ func PullRequestValues() []string {
 // LandNoticeValues returns every value land_notice takes.
 func LandNoticeValues() []string {
 	return []string{LandNoticeOn, LandNoticeOff}
+}
+
+// RunWatchValues returns every value beam.run_watch takes.
+func RunWatchValues() []string {
+	return []string{RunWatchStops, RunWatchRows, RunWatchOff}
 }

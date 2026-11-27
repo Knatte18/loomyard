@@ -78,7 +78,7 @@ Files beside this one hold what a rarer event needs; read the one that fits befo
 
 ## Notices
 
-Each mail body or line whose text starts with `[batten notice]` or `[dobby notice]` is a notice.
+Each mail body or line whose text starts with `[batten notice]`, `[dobby notice]` or `[run watch]` is a notice.
 Handle each under Investigating a stop.
 Only these reach you:
 
@@ -87,9 +87,14 @@ Only these reach you:
   and a Land or Worktree-Teardown failure the stop chain handed back.
 - `[dobby notice]`, from `<shortname>:DOBBY` or `<shortname>:<slug>:DOBBY`, for a running child:
   a dead driver, an API-error stall, a usage limit, and a quiet notice (informational).
+  Also for a run, a gate slot it holds past its bound, naming the holder's process tree
+  and any process outside it that carries its marker: dobby only reports, so you decide what to end.
 - Dobby's own lines, from the same senders:
   a refused start, a pass that keeps failing, landings into a beam, and the board tidy's report path.
   You put the report's removals and scope changes to the operator.
+- `[run watch]` lines, from `<shortname>:DOBBY` or `<shortname>:<slug>:DOBBY`:
+  a stop line is a stop, and a later `[batten notice]` or driver line for the same stop adds its detail and opens no second fork;
+  a `rows` progress line asks for nothing.
 
 ## Investigating a stop
 

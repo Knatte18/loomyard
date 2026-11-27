@@ -832,7 +832,8 @@ User-facing modules each get one `lym <module>` namespace:
 - **beam** — the making, landing, starting and stopping of a beam, a long-lived pair that groups board work, and dobby, the daemon every beam and the prime run (`internal/beamcli` + `internal/dobbyengine`; `lym beam create <slug>`, `lym beam ready <slug>`, which flags the beam ready to merge so its dobby writes the land request once nothing works under it, and is final: no verb takes the flag back, `lym beam land <slug>`, which writes the land request the beam's pawl run consumes at Beam-Await and refuses a beam not flagged ready, `lym beam merge-parent <slug>`, which files a darn task in the beam, its Code-Review perch on, whose run merges the beam's parent branch into the beam, `lym beam start [slug] [--all]`, `lym beam stop [slug] [--all]`, whose `--all` takes the whole hub down on this machine from a detached process, and `lym beam status`, from the prime and from any beam, and the hidden `lym beam dobby`).
   Create runs from the beam's parent worktree, claims the root when none is recorded, records this machine as a board project's owner with the beam flag and the pawl recipe, and starts the beam's pawl run as a detached first pass, whose Worktree-Create makes the pair, forked from the parent beam of a nested beam, whose Record-Write writes the project record from the project entry's body under `_lym/project/<slug>/`, and whose Beam-Up marks it.
   Before it starts that run, create removes a done batten run under the same slug whose pair is gone and whose child ran motif, reporting `motif_run_cleared`;
-  any other done run is refused, naming `lym batten cleanup --apply`, until the parent's dobby removes it once its landing is counted and its notice decided.
+  any other done run is refused, naming `lym batten cleanup --apply`, until the parent's dobby removes it.
+  The dobby does so once its landing is counted, its notice decided, no `[run watch]` line of it is owed and its `beam.run_watch` has been read.
   The project record binds every member:
   a member's Discussion-Write lead and darn writer read each enclosing beam's record from that beam's worktree, the board refuses an edit of the project's body once the record exists,
   and `lym loom decision add <beam-slug>` or `lym loom decision replace <beam-slug>`, run by the beam's orch, are the only ways its scope changes, its notice reaching every live member run under the beam.
@@ -847,7 +848,7 @@ User-facing modules each get one `lym <module>` namespace:
   Stop takes a beam's orch and dobby down.
   Status prints, once, the dobby section a beam's window draws, for the prime and for each local beam:
   alive or not, the runs it drives with their state, stage, time in stage and last pass, and each released task it has not started with what the task waits on, and the beam's orch: strand live, watcher live and the recorded session, then one adopt check item per subject, shown only when the hub holds a record of it: the subject, its state, the tier in flight, the tiers done and the paths of its log and output.
-  Dobby starts the beam's released tasks from an empty status, drives their batten runs in short passes, sends the nearest live orch its own notices and the `[dobby notice]` lines of a running child (a dead driver, an API-error stall, a usage limit, idle agents), spawns the board-tidy agent every few landings, and, while a beam's pull request is recorded, spawns a describer agent after each member landing to rewrite the beam's change description.
+  Dobby starts the beam's released tasks from an empty status, drives their batten runs in short passes, sends the nearest live orch its own notices, the `[dobby notice]` lines of a running child (a dead driver, an API-error stall, a usage limit, idle agents) and the `[run watch]` lines of every run it drives, one per stop or, under `beam.run_watch: rows`, one per change, and a `[dobby notice]` for a gate slot a driven run holds past its bound, spawns the board-tidy agent every few landings, and, while a beam's pull request is recorded, spawns a describer agent after each member landing to rewrite the beam's change description.
   No dobby builds the shared coverage maps: the operator builds them on command with `lym gate test --map`, and the gate's `reach` and `mutation` steps refresh only a task worktree's own.
   It logs to its `dobby.log` the changes it sees, such as a task start, a run changing state and a failing pass episode, plus a heartbeat line every ten minutes.
   A front task, filed through `internal/fronttask`, is the one open task of its worktree that dobby starts first, past `beam.max_runs`, while no other task of that worktree starts.
@@ -1741,7 +1742,8 @@ User-facing modules each get one `lym <module>` namespace:
   It removes each done run's records run directory with a records commit and a spawned push.
   It also empties that run's scratch beside its lock files, and any orphan scratch older than a day.
   A done motif run is also cleared by `lym beam create` and by the start of a raddle run under its slug.
-  The parent worktree's dobby removes any done run itself, with its task branch, once its landing is counted and its notice decided.
+  The parent worktree's dobby removes any done run itself, with its task branch.
+  It does so once its landing is counted, its notice decided, no `[run watch]` line of it is owed and its `beam.run_watch` has been read.
   A run is one pass after another.
   `lym batten run <slug>` runs one pass and exits, started by the run's parent worktree's dobby or by hand.
   A hand pass makes sure that dobby is live once it is over.

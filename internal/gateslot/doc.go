@@ -9,6 +9,7 @@
 //
 // A Pool holds one OS file lock per slot at `<Dir>/slot-<n>.lock`, n from 1 to the current Limits.Slots.
 // Acquire takes the first free slot and writes its Holder record as YAML at `<Dir>/slot-<n>.yaml`.
+// A tier run's record also carries the environment marker of the processes the run starts.
 // Limits is a closure read at every attempt.
 // A lowered count takes effect on the next acquire, while a running holder of a higher slot finishes.
 // Acquire imposes no deadline: a caller wanting a bound passes a deadline context.

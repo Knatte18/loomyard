@@ -169,7 +169,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	logger.Info("gate test: memory guard decision", "applies", guarding, "reason", guardReason)
 	exe.request.memoryGuarding = guarding
 	// A nested `lym gate test` reads the variable to learn this run's watchdog already sees its test binaries.
-	exe.env = append(slices.DeleteFunc(env, func(entry string) bool { return strings.HasPrefix(entry, enclosingGateEnv+"=") }), enclosingGateEnv+"="+strconv.Itoa(os.Getpid()))
+	exe.env = append(slices.DeleteFunc(env, func(entry string) bool { return strings.HasPrefix(entry, enclosingGateEnv+"=") }), runMarkerEntry(os.Getpid()))
 
 	// Without --stop-on-fail a failed run does not stop the call, so every later tier and guard run stays checked.
 	// That holds even when the change under test did not cause the failure.
@@ -803,6 +803,13 @@ func resolveHub(dir string) (*lymcwd.Location, bool, error) {
 	return location, true, nil
 }
 
+// runMarkerEntry returns the environment entry that every process the tier run of pid starts carries,
+// so a process can be traced to the run after it has left the run's process tree.
+// A nested `lym gate test` replaces the entry for the processes it starts.
+func runMarkerEntry(pid int) string {
+	return enclosingGateEnv + "=" + strconv.Itoa(pid)
+}
+
 // acquireSlot takes count slots of pool for tier.
 // It keeps a wait record in the worktree's wait directory until the acquire returns.
 // The wait has no cap of its own: it ends when the slots free or ctx is cancelled.
@@ -819,7 +826,8 @@ func acquireSlot(ctx context.Context, out io.Writer, pool *gateslot.Pool, locati
 		defer os.Remove(waitPath)
 	}
 
-	lease, err := pool.AcquireSlots(ctx, gateslot.Holder{Worktree: location.WorktreePath(), Site: site, Tier: tier}, count)
+	holder := gateslot.Holder{Worktree: location.WorktreePath(), Site: site, Tier: tier, Marker: runMarkerEntry(os.Getpid())}
+	lease, err := pool.AcquireSlots(ctx, holder, count)
 	switch {
 	case err == nil:
 		return lease, 0

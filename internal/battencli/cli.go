@@ -341,8 +341,8 @@ already in progress, it resumes
 silently from the persisted current producer -- there is no re-seed flag,
 because every operator-fixable refusal this task raises lands as blocked,
 which is the everyday resume path. The dobby of the run's parent worktree
-removes a done run's record once it has counted its landing and decided its
-landing notice. Before it drives anything it asks whether the run may act:
+removes a done run's record once its landing and run watch are settled.
+Before it drives anything it asks whether the run may act:
 a covering pause, a paused run, a cancel under way and another machine's
 ownership each refuse it, naming the way forward. A slug whose done record still stands refuses,
 naming "lym batten cleanup --apply" and the leftover branches to delete,
