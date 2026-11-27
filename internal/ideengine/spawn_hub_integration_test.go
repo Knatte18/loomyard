@@ -154,6 +154,7 @@ func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	if runs := windowCommandRuns(t, markerPath); runs != 1 {
 		t.Errorf("window command runs after a prime Spawn = %d; want 1, since the command runs in the hub directory beside the workspace file", runs)
 	}
+	assertWorktreeTasks(t, primeAnchor)
 	data, err := os.ReadFile(wsPath)
 	if err != nil {
 		t.Fatalf("read workspace file: %v", err)
@@ -220,7 +221,7 @@ func readOptionalFile(t *testing.T, path string) (data []byte, exists bool) {
 
 // checkTaskSlugOpensBareFolder asserts a task spawn launches its bare folder.
 // It also asserts a task seed and a task spawn leave the workspace file's bytes, or its absence, unchanged.
-// It also asserts Seed and Spawn both write the on-demand attach task and seed keybindings.json into missing files.
+// It also asserts Seed and Spawn both write the worktree tasks and seed keybindings.json into missing files.
 // It also asserts Spawn, and never Seed, runs the machine's desktop window command.
 // An ide.yaml that fails to load fails Seed, Spawn and OpenTask, with nothing launched and no settings.json written.
 // A valid ide.yaml opens the folder beside the existing files it lists for a task.
@@ -270,7 +271,7 @@ func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	if err != nil {
 		t.Fatalf("Seed: %v", err)
 	}
-	assertAttachTaskOnly(t, filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel))
+	assertWorktreeTasks(t, filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel))
 	if keybindings.Outcome != vscode.KeybindingsCreated {
 		t.Errorf("Seed keybindings outcome = %+v; want %q", keybindings, vscode.KeybindingsCreated)
 	}
@@ -357,6 +358,7 @@ func checkBeamOpensBeamWorkspace(t *testing.T, h *hubforge.Hub, slug string) {
 	if runs := windowCommandRuns(t, markerPath); runs != 1 {
 		t.Errorf("window command runs after a beam Spawn = %d; want 1", runs)
 	}
+	assertWorktreeTasks(t, beamAnchor)
 	data, err := os.ReadFile(beamPath)
 	if err != nil {
 		t.Fatalf("read beam workspace: %v", err)

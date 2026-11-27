@@ -14,7 +14,7 @@ import (
 )
 
 // TestKeybindingsBlock pins the block's entries:
-// the Alt-arrow sendSequence keys in the terminal, and ctrl+alt+a running the reed attach task.
+// the Alt-arrow sendSequence keys in the terminal, and the keys that each run one task.
 func TestKeybindingsBlock(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -26,6 +26,8 @@ func TestKeybindingsBlock(t *testing.T) {
 		`  { "key": "alt+right", "command": "workbench.action.terminal.sendSequence", "args": { "text": "\u001b[1;3C" }, "when": "terminalFocus" },`,
 		`  { "key": "alt+left", "command": "workbench.action.terminal.sendSequence", "args": { "text": "\u001b[1;3D" }, "when": "terminalFocus" },`,
 		`  { "key": "ctrl+alt+a", "command": "workbench.action.tasks.runTask", "args": "reed attach" },`,
+		`  { "key": "alt+shift+0", "command": "workbench.action.tasks.runTask", "args": "beam start" },`,
+		`  { "key": "alt+shift+9", "command": "workbench.action.tasks.runTask", "args": "board open" },`,
 		`// lym:end`,
 	}, "\r\n")
 	if got := keybindingsBlock("\r\n"); got != want {
@@ -161,6 +163,11 @@ func TestSeedKeybindings(t *testing.T) {
 		}
 		if got := SeedKeybindings(path); got.Outcome != KeybindingsUnchanged || got.Reason != "" {
 			t.Fatalf("second run = %+v; want unchanged", got)
+		}
+		for _, key := range []string{`"alt+shift+0"`, `"alt+shift+9"`} {
+			if got := strings.Count(read(t, path), key); got != 1 {
+				t.Errorf("entries for %s after two seeds = %d; want 1", key, got)
+			}
 		}
 		assertNoLeftovers(t, dir, "keybindings.json")
 	})
