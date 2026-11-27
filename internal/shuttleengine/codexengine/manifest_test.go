@@ -3,17 +3,51 @@
 package codexengine
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
+	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shellguard"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+func TestCodexManifest_ListsNoTextTheLaunchLacks(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	got := codexManifest(manifestInputs{
+		sh:               shell.ForGOOS(),
+		launchCmd:        "codex",
+		passages:         []shuttleengine.Passage{{Slug: "said", Text: "said text"}},
+		instructionFiles: []shuttleengine.InstructionItem{{Name: "/global/CLAUDE.md", Text: "global rules"}},
+		claudeFiles:      []claudeFileCandidate{{key: "CLAUDE.md", path: "/repo/CLAUDE.md", unread: true}},
+		pointers:         "read these:\n- /repo/CLAUDE.md",
+		fileEntries:      []shuttleengine.Passage{{Slug: "filed", Text: "filed text"}},
+		agentsOverride:   heddleengine.Marker + "\n\nother text\n",
+		skills:           []string{"p:x"},
+		skillLoad:        "load p:x",
+		skillListing:     "listing of skills",
+		listedSkills:     []string{"p:x"},
+		pluginContexts:   []shuttleengine.InstructionItem{{Name: "emit", Text: "plugin context", Plugin: "p@m", Hook: "emit"}},
+		guards:           []guardCandidate{{key: "denied", command: "deny it"}},
+		batchingCommand:  "nudge",
+		denyNotice:       "the deny notice",
+		subagentPassage:  "the subagent passage",
+	})
+
+	for _, item := range got.Items {
+		if item.Channel != shuttleengine.ManifestChannelSettings {
+			t.Errorf("codexManifest() lists %s/%s, which the launch does not hold", item.Channel, item.Key)
+		}
+	}
+}
 
 // TestPrepare_WritesTheManifest is not parallel: its rows install the process-wide passage reader.
 func TestPrepare_WritesTheManifest(t *testing.T) {
@@ -23,6 +57,7 @@ func TestPrepare_WritesTheManifest(t *testing.T) {
 		global  = "/home/user/.claude/CLAUDE.md"
 		found   = "scribe:prose"
 		unfound = "ghost:none"
+		role    = "writer"
 	)
 	// The expected keys are written "channel/key".
 	guardKeys := func(switches ...shellguard.Switch) []string {
@@ -44,6 +79,8 @@ func TestPrepare_WritesTheManifest(t *testing.T) {
 		codexExtra string
 		// files are written under the worktree, keyed by slash path.
 		files map[string]string
+		// blockedRecord puts a directory where the record goes.
+		blockedRecord bool
 		// want and absent are "channel/key" items the record holds and lacks.
 		want   []string
 		absent []string
@@ -100,6 +137,17 @@ func TestPrepare_WritesTheManifest(t *testing.T) {
 			files:  map[string]string{"AGENTS.override.md": "filed text\n"},
 			absent: []string{"instruction-source/heddle-file/filed"},
 		},
+		{
+			name:   "a hand-written prompt",
+			spec:   shuttleengine.Spec{HandWrittenPrompt: true},
+			want:   []string{"prompt-engine/hand-written"},
+			absent: []string{"prompt-engine/prompt-engine"},
+		},
+		{
+			name:          "a record that cannot be written",
+			spec:          shuttleengine.Spec{PromptEngine: engineName},
+			blockedRecord: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -138,9 +186,23 @@ func TestPrepare_WritesTheManifest(t *testing.T) {
 			cfg.Agents = agents
 			spec := tt.spec
 			spec.Prompt = "p"
+			spec.Role = role
 			runDir := t.TempDir()
+			record := filepath.Join(runDir, shuttleengine.ManifestFileName)
+			if tt.blockedRecord {
+				if err := os.Mkdir(record, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
 
-			if _, err := engine.Prepare(runDir, spec, cfg); err != nil {
+			_, err = engine.Prepare(runDir, spec, cfg)
+			if tt.blockedRecord {
+				if err == nil || !strings.Contains(err.Error(), record) {
+					t.Errorf("Prepare() error = %v; want a refusal naming %s", err, record)
+				}
+				return
+			}
+			if err != nil {
 				t.Fatalf("Prepare() error: %v", err)
 			}
 			manifest, recorded, err := shuttleengine.ReadManifest(runDir)
@@ -149,6 +211,9 @@ func TestPrepare_WritesTheManifest(t *testing.T) {
 			}
 			if manifest.Engine != engineName {
 				t.Errorf("manifest engine = %q; want %q", manifest.Engine, engineName)
+			}
+			if manifest.Role != role || manifest.PromptEngine != tt.spec.PromptEngine {
+				t.Errorf("manifest role = %q, prompt engine = %q; want %q and %q", manifest.Role, manifest.PromptEngine, role, tt.spec.PromptEngine)
 			}
 			items := map[string]shuttleengine.ManifestItem{}
 			for _, item := range manifest.Items {

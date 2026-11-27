@@ -23,12 +23,22 @@ const OrchPromptTarget = "orch-prompt"
 // the local Claude Code settings every Claude session started in the worktree loads.
 const ClaudeSettingsFile = ".claude/settings.local.json"
 
+// ClaudeLocalFile is the anchor-relative file the claude-file target renders into:
+// the local instructions every Claude session started in the worktree loads.
+const ClaudeLocalFile = "CLAUDE.local.md"
+
+// The names of the engines a target narrows to.
+const (
+	claudeEngineName = "claude"
+	codexEngineName  = "codex"
+)
+
 // SettingsExcludeReinterpretation names the reconcile change that adds ClaudeSettingsFile to a hub's exclude list.
 // A hub whose fabric.yaml sets that list would otherwise leave the file unwritten.
 const SettingsExcludeReinterpretation = "heddle-claude-settings-excluded"
 
 const (
-	// claudeFileTarget is the file target rendered into CLAUDE.local.md, the instructions a Claude session reads.
+	// claudeFileTarget is the file target rendered into ClaudeLocalFile, the instructions a Claude session reads.
 	claudeFileTarget = "claude-file"
 	// codexFileTarget is the file target rendered into AGENTS.override.md, the instructions a Codex session reads.
 	codexFileTarget = "codex-file"
@@ -65,12 +75,12 @@ type Target struct {
 
 // targetTable holds one row per target; a further target is one new row.
 var targetTable = []Target{
-	{Name: claudeFileTarget, Delivery: DeliveryFile, File: "CLAUDE.local.md", ReRender: []string{"CLAUDE.local.md", "AGENTS.md", "CLAUDE.md", ".claude/AGENTS.md", ".claude/CLAUDE.md"}, Engine: "claude"},
-	{Name: codexFileTarget, Delivery: DeliveryFile, File: "AGENTS.override.md", ReRender: []string{"AGENTS.md", "CLAUDE.md", "AGENTS.override.md"}, Engine: "codex"},
+	{Name: claudeFileTarget, Delivery: DeliveryFile, File: ClaudeLocalFile, ReRender: []string{ClaudeLocalFile, "AGENTS.md", "CLAUDE.md", ".claude/AGENTS.md", ".claude/CLAUDE.md"}, Engine: claudeEngineName},
+	{Name: codexFileTarget, Delivery: DeliveryFile, File: "AGENTS.override.md", ReRender: []string{"AGENTS.md", "CLAUDE.md", "AGENTS.override.md"}, Engine: codexEngineName},
 	{Name: agentsFileTarget, Delivery: DeliveryFile, RendersInto: []string{claudeFileTarget, codexFileTarget}},
 	{Name: claudeSettingsTarget, Delivery: DeliveryFile, File: ClaudeSettingsFile, JSONObject: true},
-	{Name: "claude-prompt", Delivery: DeliveryPrompt, Engine: "claude"},
-	{Name: "codex-prompt", Delivery: DeliveryPrompt, Engine: "codex"},
+	{Name: "claude-prompt", Delivery: DeliveryPrompt, Engine: claudeEngineName},
+	{Name: "codex-prompt", Delivery: DeliveryPrompt, Engine: codexEngineName},
 	{Name: OrchPromptTarget, Delivery: DeliveryPrompt, Role: agentname.RoleOrch},
 	{Name: agentsPromptTarget, Delivery: DeliveryPrompt, RendersInto: []string{"claude-prompt", "codex-prompt"}},
 }

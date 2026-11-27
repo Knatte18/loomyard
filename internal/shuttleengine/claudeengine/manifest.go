@@ -19,9 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// localInstructionFileName is the file at a worktree's anchor that heddle renders and Claude Code loads.
-const localInstructionFileName = "CLAUDE.local.md"
-
 // guardCandidate is one PreToolUse deny a launch could carry: its manifest key and its hook command.
 type guardCandidate struct {
 	key     string
@@ -170,7 +167,7 @@ func (c *Claude) writeLaunchManifest(runDir string, spec shuttleengine.Spec, set
 		return fmt.Errorf("claudeengine: find the worktree root of %s: %w", c.dirs.Anchor, err)
 	}
 	// An absent or unreadable file lists no heddle entry.
-	local, _ := os.ReadFile(filepath.Join(workDir, localInstructionFileName))
+	local, _ := os.ReadFile(filepath.Join(workDir, heddleengine.ClaudeLocalFile))
 
 	in.role, in.promptEngine, in.handWritten = spec.Role, spec.PromptEngine, spec.HandWrittenPrompt
 	in.settings, in.appendPrompt, in.localInstructions = settings, string(appendPrompt), string(local)
@@ -187,6 +184,9 @@ func (c *Claude) writeLaunchManifest(runDir string, spec shuttleengine.Spec, set
 // the instruction files, the listed skills and the session-start hooks of the scope's plugins, none of which it runs.
 // An empty repoRoot stands for no repository, and then only the working directory's instruction file is listed.
 // A user setup that cannot be resolved is logged and lists the worktree's own files alone, so it never blocks a launch.
+// Each part the resolution left out with a warning is logged too.
+// An empty instruction file in the config directory or above the repository is not listed,
+// since it gives the session nothing.
 func (c *Claude) nativeManifestItems(sessionID string, spec shuttleengine.Spec, workDir, repoRoot string) []shuttleengine.ManifestItem {
 	var items []shuttleengine.ManifestItem
 	add := func(channel shuttleengine.ManifestChannel, key string) {
@@ -202,9 +202,14 @@ func (c *Claude) nativeManifestItems(sessionID string, spec shuttleengine.Spec, 
 	if err != nil {
 		logger.Warn("claudeengine: the launch manifest lists no user instruction file, skill or plugin context; way forward: fix the file the error names", "error", err)
 	}
+	for _, warning := range setup.Warnings {
+		logger.Warn("claudeengine: the launch manifest leaves out part of the user setup; way forward: follow the way forward the warning names", "warning", warning)
+	}
 	if repoRoot != "" {
 		for _, file := range setup.InstructionFiles {
-			add(shuttleengine.ManifestChannelInstructionSource, file.Name)
+			if file.Text != "" {
+				add(shuttleengine.ManifestChannelInstructionSource, file.Name)
+			}
 		}
 	}
 	// workDir lies in root, so the walk up from it ends there.

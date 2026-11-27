@@ -5,6 +5,7 @@ package claudeengine
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
@@ -15,6 +16,32 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+func TestClaudeManifest_ListsNoTextTheLaunchLacks(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	got := claudeManifest(manifestInputs{
+		settings:          []byte("{}"),
+		appendPrompt:      "other text",
+		launchCmd:         "claude",
+		passages:          []shuttleengine.Passage{{Slug: "said", Text: "said text"}},
+		denyNotice:        "the deny notice",
+		subagentPassage:   "the subagent passage",
+		skills:            []string{"p:x"},
+		skillLoadArgument: "'load p:x'",
+		guards:            []guardCandidate{{key: "denied", command: "deny it"}},
+		batchingCommand:   "nudge",
+		fileEntries:       []shuttleengine.Passage{{Slug: "filed", Text: "filed text"}},
+		localInstructions: heddleengine.Marker + "\n\nother text\n",
+	})
+
+	for _, item := range got.Items {
+		if item.Channel != shuttleengine.ManifestChannelSettings {
+			t.Errorf("claudeManifest() lists %s/%s, which the launch does not hold", item.Channel, item.Key)
+		}
+	}
+}
+
 // TestPrepare_WritesTheManifest is not parallel: its rows install the process-wide passage reader.
 func TestPrepare_WritesTheManifest(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -23,6 +50,7 @@ func TestPrepare_WritesTheManifest(t *testing.T) {
 		skill  = "p:x"
 		plugin = "p@m"
 		hook   = "emit"
+		role   = "writer"
 	)
 	// The expected keys are written "channel/key".
 	guardKeys := func(rows ...shellguard.Switch) []string {
@@ -47,6 +75,14 @@ func TestPrepare_WritesTheManifest(t *testing.T) {
 		// passages installs a reader with one passage and one file entry, both keyed to claude.
 		passages bool
 		unmarked bool
+		// noRepository leaves the anchor with no .git, and anchorBelowRoot moves it into a sub directory of the repository.
+		noRepository    bool
+		anchorBelowRoot bool
+		// emptyGlobal and unreadableGlobal replace the global instruction file with an empty file or a directory.
+		emptyGlobal      bool
+		unreadableGlobal bool
+		// blockedRecord puts a directory where the record goes.
+		blockedRecord bool
 		// want and absent are "channel/key" items the record holds and lacks.
 		want   []string
 		absent []string
@@ -104,6 +140,38 @@ func TestPrepare_WritesTheManifest(t *testing.T) {
 			unmarked: true,
 			absent:   []string{"instruction-source/heddle-file/filed"},
 		},
+		{
+			name:         "an anchor in no repository",
+			spec:         shuttleengine.Spec{PromptEngine: engineName},
+			noRepository: true,
+			wantNative:   []string{"instruction-source/CLAUDE.md"},
+			absent:       []string{"instruction-source/GLOBAL"},
+		},
+		{
+			name:            "an anchor below the repository root",
+			spec:            shuttleengine.Spec{PromptEngine: engineName},
+			anchorBelowRoot: true,
+			wantNative:      []string{"instruction-source/CLAUDE.md", "instruction-source/sub/CLAUDE.md"},
+		},
+		{
+			name:        "an empty global instruction file",
+			spec:        shuttleengine.Spec{PromptEngine: engineName},
+			emptyGlobal: true,
+			wantNative:  []string{"instruction-source/CLAUDE.md"},
+			absent:      []string{"instruction-source/GLOBAL"},
+		},
+		{
+			name:             "an unreadable global instruction file",
+			spec:             shuttleengine.Spec{PromptEngine: engineName},
+			unreadableGlobal: true,
+			wantNative:       []string{"instruction-source/CLAUDE.md"},
+			absent:           []string{"instruction-source/GLOBAL", "skill-listing/p:x"},
+		},
+		{
+			name:          "a record that cannot be written",
+			spec:          shuttleengine.Spec{PromptEngine: engineName},
+			blockedRecord: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -111,23 +179,38 @@ func TestPrepare_WritesTheManifest(t *testing.T) {
 			configDir := t.TempDir()
 			engine.claudeDir = configDir
 			global := filepath.Join(configDir, instructionFileName)
-			writeUserSetupFile(t, global, "global rules")
+			switch {
+			case tt.unreadableGlobal:
+				if err := os.Mkdir(global, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			case tt.emptyGlobal:
+				writeUserSetupFile(t, global, "")
+			default:
+				writeUserSetupFile(t, global, "global rules")
+			}
 			root := filepath.Join(t.TempDir(), "p")
 			writePluginInstalls(t, configDir, []pluginInstall{{ID: plugin, Scope: pluginScopeUser, Root: root}})
 			writeUserSetupFile(t, filepath.Join(root, pluginHooksDirName, pluginHooksFileName), sessionStartHooksJSON("", 0, hook))
 			writeSkillFile(t, root, "x", "Does x.")
-			writeUserSetupFile(t, filepath.Join(anchor, ".git", "HEAD"), "ref: refs/heads/trunk\n")
-			for _, dir := range []string{"objects", "refs"} {
-				if err := os.MkdirAll(filepath.Join(anchor, ".git", dir), 0o755); err != nil {
-					t.Fatal(err)
+			if !tt.noRepository {
+				writeUserSetupFile(t, filepath.Join(anchor, ".git", "HEAD"), "ref: refs/heads/trunk\n")
+				for _, dir := range []string{"objects", "refs"} {
+					if err := os.MkdirAll(filepath.Join(anchor, ".git", dir), 0o755); err != nil {
+						t.Fatal(err)
+					}
 				}
 			}
 			writeUserSetupFile(t, filepath.Join(anchor, instructionFileName), "repository rules")
+			if tt.anchorBelowRoot {
+				engine.dirs.Anchor = filepath.Join(anchor, "sub")
+				writeUserSetupFile(t, filepath.Join(engine.dirs.Anchor, instructionFileName), "sub rules")
+			}
 			local := heddleengine.Marker + "\n\nfiled text\n"
 			if tt.unmarked {
 				local = "filed text\n"
 			}
-			writeUserSetupFile(t, filepath.Join(anchor, localInstructionFileName), local)
+			writeUserSetupFile(t, filepath.Join(anchor, heddleengine.ClaudeLocalFile), local)
 			if tt.claudeLayer != "" {
 				writeClaudeLayer(t, configengine.ConfigFile(anchor, "claude"), tt.claudeLayer)
 			}
@@ -144,9 +227,23 @@ func TestPrepare_WritesTheManifest(t *testing.T) {
 			cfg.Agents = templateAgentsConfig(t).Agents
 			spec := tt.spec
 			spec.Prompt = "p"
+			spec.Role = role
 			runDir := t.TempDir()
+			record := filepath.Join(runDir, shuttleengine.ManifestFileName)
+			if tt.blockedRecord {
+				if err := os.Mkdir(record, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
 
-			if _, err := engine.Prepare(runDir, spec, cfg); err != nil {
+			_, err := engine.Prepare(runDir, spec, cfg)
+			if tt.blockedRecord {
+				if err == nil || !strings.Contains(err.Error(), record) {
+					t.Errorf("Prepare() error = %v; want a refusal naming %s", err, record)
+				}
+				return
+			}
+			if err != nil {
 				t.Fatalf("Prepare() error: %v", err)
 			}
 			manifest, found, err := shuttleengine.ReadManifest(runDir)
@@ -155,6 +252,9 @@ func TestPrepare_WritesTheManifest(t *testing.T) {
 			}
 			if manifest.Engine != engineName || len(manifest.Verdict) != 0 {
 				t.Errorf("manifest engine = %q, verdict = %+v; want %q and an empty verdict", manifest.Engine, manifest.Verdict, engineName)
+			}
+			if manifest.Role != role || manifest.PromptEngine != tt.spec.PromptEngine {
+				t.Errorf("manifest role = %q, prompt engine = %q; want %q and %q", manifest.Role, manifest.PromptEngine, role, tt.spec.PromptEngine)
 			}
 			items := map[string]shuttleengine.ManifestItem{}
 			for _, item := range manifest.Items {
