@@ -26,23 +26,41 @@ func TestBuildWorkspace(t *testing.T) {
 		name     string
 		folders  []WorkspaceFolder
 		settings []byte
+		members  map[string]json.RawMessage
 		want     string
 		valid    bool
+		wantErr  string
 	}{
-		{"plain json", folders, []byte("{\n  \"a\": 1\n}\n"), head + "{\n  \"a\": 1\n}\n}\n", true},
-		{"jsonc verbatim", folders, []byte("{\n  // c\n  /* b */ \"a\": [1,],\n}"), head + "{\n  // c\n  /* b */ \"a\": [1,],\n}\n}\n", false},
-		{"bom stripped", folders, append([]byte{0xEF, 0xBB, 0xBF}, []byte("{\"a\":1}")...), head + "{\"a\":1}\n}\n", true},
-		{"nil", folders, nil, head + "{}\n}\n", true},
-		{"empty", folders, []byte{}, head + "{}\n}\n", true},
-		{"whitespace only", folders, []byte(" \n\t\r\n"), head + "{}\n}\n", true},
-		{"comments only", folders, []byte("// a\n/* b\n c */\n// d"), head + "{}\n}\n", true},
-		{"ends in line comment", folders, []byte("{\"a\":1} // tail"), head + "{\"a\":1} // tail\n}\n", false},
-		{"folder name and path escaped", escapedFolders, nil, escapedHead + "{}\n}\n", true},
+		{"plain json", folders, []byte("{\n  \"a\": 1\n}\n"), nil, head + "{\n  \"a\": 1\n}\n}\n", true, ""},
+		{"jsonc verbatim", folders, []byte("{\n  // c\n  /* b */ \"a\": [1,],\n}"), nil, head + "{\n  // c\n  /* b */ \"a\": [1,],\n}\n}\n", false, ""},
+		{"bom stripped", folders, append([]byte{0xEF, 0xBB, 0xBF}, []byte("{\"a\":1}")...), nil, head + "{\"a\":1}\n}\n", true, ""},
+		{"nil", folders, nil, nil, head + "{}\n}\n", true, ""},
+		{"empty", folders, []byte{}, nil, head + "{}\n}\n", true, ""},
+		{"whitespace only", folders, []byte(" \n\t\r\n"), nil, head + "{}\n}\n", true, ""},
+		{"comments only", folders, []byte("// a\n/* b\n c */\n// d"), nil, head + "{}\n}\n", true, ""},
+		{"ends in line comment", folders, []byte("{\"a\":1} // tail"), nil, head + "{\"a\":1} // tail\n}\n", false, ""},
+		{"folder name and path escaped", escapedFolders, nil, nil, escapedHead + "{}\n}\n", true, ""},
+		{
+			name:     "members follow settings in name order",
+			folders:  folders,
+			settings: []byte(`{"a":1}`),
+			members:  map[string]json.RawMessage{"tasks": []byte("{\"x\": 1}\n"), "extensions": []byte("[]  ")},
+			want:     head + "{\"a\":1},\n  \"extensions\": [],\n  \"tasks\": {\"x\": 1}\n}\n",
+			valid:    true,
+		},
+		{name: "a member named folders", folders: folders, members: map[string]json.RawMessage{"folders": []byte("[]")}, wantErr: `workspace member "folders" is a key the workspace builder writes itself`},
+		{name: "a member named settings", folders: folders, members: map[string]json.RawMessage{"settings": []byte("{}")}, wantErr: `workspace member "settings" is a key the workspace builder writes itself`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := BuildWorkspace(tt.folders, tt.settings)
+			got, err := BuildWorkspace(tt.folders, tt.settings, tt.members)
+			if tt.wantErr != "" {
+				if err == nil || err.Error() != tt.wantErr {
+					t.Fatalf("BuildWorkspace() error = %v; want %q", err, tt.wantErr)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}

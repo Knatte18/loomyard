@@ -1783,6 +1783,11 @@
 // The namer is a general seam: fabric hands it the hub path and knows nothing of what it reads.
 // lym's root pre-run installs the board's, which leads a pair's slug with its project's handle, such as `P1: <slug>`.
 // The names are read at every regeneration, so a regeneration after a board change brings them current.
+// A file also carries the extra top-level members the process's installed `WorkspaceContent` hook returns for it.
+// The hook is handed the hub path, the beam's slug (empty for the hub's own file) and that worktree's anchor path.
+// The seam is general: fabric names no workspace key but its own mark and passes the members on unread.
+// A member of the mark's name is refused, and every file is built before any is written.
+// A beam whose anchor cannot be read has its file built with no hook member, with a Warn.
 // Each pair whose origin record carries the beam mark also gets a beam file of its own.
 // `BeamWorkspacePath` names it `<hub>/<RepoName>-<beam>.code-workspace`.
 // It lists the beam, its parent, `Bolt` and every pair whose parent is the beam, each named by its slug.
