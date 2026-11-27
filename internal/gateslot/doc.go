@@ -180,6 +180,9 @@
 // A mutant run past the test bound or the memory cap counts as a kill in `lym gate redundant`.
 // `lym gate test --map` and `lym gate redundant` run fewer tests side by side when memory is short.
 // That is when the limit they sit under leaves less than the caps of those tests together.
+// `lym gate test --map` runs a tier's tests side by side up to that tier's parallel, tier0's before tier1's.
+// It runs no more than the tier's `memory_mb` holds test caps, and refuses a `memory_mb` below one cap.
+// It holds the larger of tier0's and tier1's slot asks, where a tier asking for every slot ranks above any count.
 // The report step has two bounds of its own.
 // `redundancy_max_tests` caps the tests it judges in one call.
 // `redundancy_budget_min` bounds, in minutes, its builds and tests once it holds its slot.

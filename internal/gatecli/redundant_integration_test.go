@@ -236,8 +236,9 @@ func TestGateRedundant(t *testing.T) {
 	t.Run("ListsTheCandidatesMutationConfirmsAndSetsApartTheRefutedKeptAndUnjudgedOnes", func(t *testing.T) {
 		t.Parallel()
 		var built bytes.Buffer
-		if code := clihelp.ExecuteIn(Command(), prime, &built, []string{"test", "--wait", "--map", "cov"}); code != 0 {
-			t.Fatalf("test --wait --map cov = %d, %s; want exit 0", code, built.Bytes())
+		// cov's TestFails fails, so the map run writes the map and exits 1.
+		if code := clihelp.ExecuteIn(Command(), prime, &built, []string{"test", "--wait", "--map", "cov"}); code != 1 {
+			t.Fatalf("test --wait --map cov = %d, %s; want exit 1", code, built.Bytes())
 		}
 		m, found, err := testcover.ReadMap(mapsDir, "cov")
 		if err != nil || !found {

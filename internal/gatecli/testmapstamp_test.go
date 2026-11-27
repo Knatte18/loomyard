@@ -1,4 +1,5 @@
-// testmapstamp_test.go covers the environment stamp a coverage map build computes.
+// testmapstamp_test.go covers the environment stamp a coverage map build computes,
+// and the map run's side-by-side count and slot ask.
 
 package gatecli
 
@@ -62,6 +63,61 @@ func TestStampEnvironment(t *testing.T) {
 			}
 			if got.GoVersion != toolchain.GoVersion || got.GOOS != toolchain.GOOS || got.GOARCH != toolchain.GOARCH {
 				t.Errorf("stampEnvironment() = %+v; want the toolchain's version and platform kept", got)
+			}
+		})
+	}
+}
+
+func TestMapSideBySide(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const testMemory = 128 << 20
+	asGiven := func(parallel int, _ int64) int { return parallel }
+	cappedTo := func(count int) func(int, int64) int {
+		return func(int, int64) int { return count }
+	}
+	tests := []struct {
+		name     string
+		memoryMB int
+		capped   func(int, int64) int
+		want     int
+	}{
+		{"NoMemoryLimitGivesTheCappedParallel", 0, cappedTo(3), 3},
+		{"ALimitOfTwoTestCapsGivesAtMostTwo", 256, asGiven, 2},
+		{"ALimitOfOneTestCapGivesOne", 128, asGiven, 1},
+		{"ACappedCountBelowTheQuotientWins", 1024, cappedTo(2), 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := mapSideBySide(gateslot.Tier{Parallel: 4, MemoryMB: tt.memoryMB}, testMemory, tt.capped)
+			if got != tt.want {
+				t.Errorf("mapSideBySide(memory_mb %d) = %d; want %d", tt.memoryMB, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMapSlotAsk(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		tiers map[int]gateslot.Tier
+		want  int
+	}{
+		{"TierZeroAlone", map[int]gateslot.Tier{0: {Slots: 2}}, 2},
+		{"TheLargerAsk", map[int]gateslot.Tier{0: {Slots: 1}, 1: {Slots: 2}}, 2},
+		{"TierOneAskingEverySlot", map[int]gateslot.Tier{0: {Slots: 1}, 1: {Slots: 0}}, 0},
+		{"TierZeroAskingEverySlot", map[int]gateslot.Tier{0: {Slots: 0}, 1: {Slots: 3}}, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := mapSlotAsk(tt.tiers); got != tt.want {
+				t.Errorf("mapSlotAsk(%v) = %d; want %d", tt.tiers, got, tt.want)
 			}
 		})
 	}

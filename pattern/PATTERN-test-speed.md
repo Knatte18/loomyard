@@ -67,6 +67,7 @@ Running it is the operator's call, because a `tier3` run is billed, nondetermini
 Every gate build or test run holds slots of the hub's gate-slot pool,
 so the hub never runs more at once than its configured count.
 A tier run takes the slots its tier asks for, and the non-tier holders `internal/gateslot`'s doc lists each hold one.
+The map run of `lym gate test --map` holds the larger of `tier0`'s and `tier1`'s asks.
 An agent runs a module-wide or `tier2` test only through `lym gate test`, and never as a raw `go` run.
 A tagged gate run builds `lym` once and hands it to every package through the `LYM_PREBUILT_LYM` variable.
 `lymbin` returns that binary instead of building.
@@ -217,7 +218,7 @@ so every run takes its slots, its timeout and its log.
 
 - Tests run only through `lym gate test` over `gate.yaml`'s tiers.
   Two things run outside it: a card `**Verify:**` line and `cmd/testtiming`'s runs in every mode.
-- Three redundancy runs take a tier's `env` and a gate slot as a tier run does.
+- Three redundancy runs take a tier's `env` and gate slots as a tier run does.
   `lym gate test --map` rebuilds the per-package coverage maps at the HEAD of the worktree it runs in,
   into the hub's shared maps from the prime and into the worktree's anchor `.lym` elsewhere.
   The `redundancy` report step a gate key's `reports` lists runs after the key's tiers released their slots.
@@ -293,6 +294,14 @@ this section keeps only what is project-specific or stricter here.
   The maps are built only on command: no dobby, landing or gate builds them, and the gate selects no test from them.
   A call measures every package of its scope whole and replaces its map.
   A failed build keeps the map's entries and records the failure beside them.
+  A package's tier0 tests run before its tier1 tests, each tier side by side up to its parallel,
+  fewer when memory is short or the tier's `memory_mb` holds fewer `redundancy_test_memory_mb` caps;
+  a `memory_mb` below one cap is refused.
+  A test that fails, times out or is killed beside others runs once more alone, and that outcome stands;
+  the call lists each test that passed only there, which enters the map as a plain pass.
+  A call builds no `lym`, holds the larger of `tier0`'s and `tier1`'s slot asks and writes no run or green record.
+  It exits non-zero when a build failed or a test's standing outcome is a failure, a timeout or a kill,
+  and still writes the map.
 - `lym gate redundant <package>` judges a whole package's map by the same package-scoped verdict,
   then confirms each candidate by mutation inside a gate slot.
   It mutates the candidates' blocks and keeps a candidate only when its covering tests kill every mutant it kills;

@@ -955,10 +955,15 @@ User-facing modules each get one `lym <module>` namespace:
   a run that ends at the cap or at its time bound kills its mutant and is listed.
   `lym gate test --map [<targets>...]` builds the per-package coverage maps of `internal/testcover` over the call's scope at the HEAD of the worktree it runs in, only on command,
   the hub's shared maps from the prime and a worktree's own, under its `.lym`, from any other worktree.
-  It replaces each map whole: each tier0 and tier1 test runs alone in its own process, up to the tier0 parallel side by side inside one gate slot,
-  fewer when memory is short,
+  It replaces each map whole: each tier0 and tier1 test runs alone in its own process,
+  a package's tier0 tests before its tier1 tests, each tier up to its parallel side by side,
+  fewer when memory is short or the tier's `memory_mb` holds fewer test caps,
   bounded by `redundancy_build_timeout_min` and `redundancy_test_timeout_sec` and capped at `redundancy_test_memory_mb`,
   under a coverage binary over every in-module package its test binary links; the gate selects no test from the maps.
+  It holds the larger of tier0's and tier1's slot asks, where a tier asking for every slot ranks above any count,
+  and it builds no `lym`.
+  A test that fails beside others runs once more alone and is listed when it passes there.
+  The call exits non-zero when a build failed or a map records a failed or timed-out test.
   A package whose linked packages hold a modified or untracked file just before its build or after its tests is skipped.
   A run inside a slot an enclosing gate run holds takes no second one,
   and a git worktree outside every hub runs unslotted under its own `gate.yaml`.

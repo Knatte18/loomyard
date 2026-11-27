@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/testcover"
@@ -50,6 +51,9 @@ type testMapRequest struct {
 	cappedParallel func(parallel int, limit int64) int
 	// stderr receives the memory guard's line for each test binary it kills; nil prints none.
 	stderr io.Writer
+	// guardFor starts the memory guard over the call's test binaries, killing past limit bytes and printing to out.
+	// It returns the guard's stop and its report of the pids it killed; nil starts the process's own guard.
+	guardFor func(ctx context.Context, limit int64, out io.Writer) (stop func(), guardKilled func(pid int) bool)
 }
 
 // testMapSkip is a package the call left without a new map, with the cause.
@@ -118,16 +122,13 @@ type testMapRun struct {
 	head string
 	// headMoved is set once a later read of HEAD differs from head, which ends the call.
 	headMoved bool
-	// lease is the held slot; it stays nil before the first build and inside an enclosing gate run's slot.
+	// lease is the held slots; it stays nil before the first build and inside an enclosing gate run's slot.
 	lease *gateslot.Lease
-	// holderEnv is env with the slot's Go flags, nil until the call holds its slot.
+	// holderEnv is env with the slot holder's Go flags, nil until the call holds its slots.
 	holderEnv []string
-	// parallel is the `-p` of the `lym` build, read with the slot.
-	parallel int
-	// sideBySide is the most tests run at once.
-	// It is parallel, or fewer when the memory limit leaves less than their caps together.
-	sideBySide int
-	// tmp holds the coverage binaries and profiles, empty until the call holds its slot.
+	// sideBySide is the most tests of each mapped tier run at once, by tier number.
+	sideBySide map[int]int
+	// tmp holds the coverage binaries and profiles, empty until the call holds its slots.
 	tmp string
 	// next is the job the walk measures after the current one, whose binary the current job builds ahead;
 	// its pkg is empty when none follows.
@@ -136,10 +137,6 @@ type testMapRun struct {
 	ahead *coverageBuild
 	// builds counts the coverage builds the call started, so each writes its own binary.
 	builds int
-	// lymBuilt is set once the call built `lym`; lymBin is the binary, and lymErr the build's failure.
-	lymBuilt bool
-	lymBin   string
-	lymErr   error
 	// toolchain holds the Go version and platform of the maps' environment stamp, nil until the call reads them.
 	toolchain *testcover.EnvironmentStamp
 
@@ -147,6 +144,10 @@ type testMapRun struct {
 	skipped  []testMapSkip
 	failed   []testMapFailure
 	timedOut []string
+	// passedAlone holds the tests, as `<package>.<Test>`, that failed beside others and passed run alone.
+	passedAlone []string
+	// failedTests holds the tests, as `<package>.<Test>`, that a written map records as failed or timed out.
+	failedTests []string
 	// leftOut holds the packages the command line names that the call does not map, each with the reason.
 	leftOut []testMapSkip
 	// queued counts the packages a HEAD move, an error or a terminating signal left unmeasured.
@@ -156,8 +157,9 @@ type testMapRun struct {
 }
 
 // runTestMap runs one map run and returns its exit code.
-// The code is 0 once it walked its packages.
+// The code is 0 once it walked its packages and every build and test succeeded.
 // It is 1 for a refusal or a failure that ends the call.
+// It is also 1 for a walk in which a build failed or a written map records a failed or timed-out test.
 // It is 128 plus the signal number after a terminating signal.
 func runTestMap(ctx context.Context, out io.Writer, request testMapRequest) int {
 	cwd, err := lymcwd.CwdFrom(ctx)
@@ -174,7 +176,7 @@ func runTestMap(ctx context.Context, out io.Writer, request testMapRequest) int 
 	run := &testMapRun{
 		ctx: runCtx, request: request, location: location, mapsDir: mapsDir,
 		built: []string{}, skipped: []testMapSkip{}, failed: []testMapFailure{}, timedOut: []string{},
-		leftOut: []testMapSkip{}, measures: []testMapMeasure{},
+		passedAlone: []string{}, failedTests: []string{}, leftOut: []testMapSkip{}, measures: []testMapMeasure{},
 	}
 	defer run.close()
 	if refusal := run.prepare(); refusal != "" {
@@ -184,7 +186,11 @@ func runTestMap(ctx context.Context, out io.Writer, request testMapRequest) int 
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
-	stopGuard, guardKilled := guardOwnTests(runCtx, run.memoryQuit, request.stderr)
+	guardFor := request.guardFor
+	if guardFor == nil {
+		guardFor = guardOwnTests
+	}
+	stopGuard, guardKilled := guardFor(runCtx, run.memoryQuit, request.stderr)
 	defer stopGuard()
 	run.guardKilled = guardKilled
 	packages, refusal := run.packages(sc)
@@ -198,16 +204,25 @@ func runTestMap(ctx context.Context, out io.Writer, request testMapRequest) int 
 		}
 		return output.Err(out, fmt.Sprintf("gate test --map: %v; way forward: re-run the same command", err))
 	}
-	return output.Ok(out, map[string]any{
-		"built":     run.built,
-		"skipped":   run.skipped,
-		"failed":    run.failed,
-		"timed_out": run.timedOut,
-		"left_out":  run.leftOut,
-		"head":      run.head,
-		"queued":    run.queued,
-		"packages":  run.measures,
+	if len(run.passedAlone) > 0 {
+		logger.Info("gate test --map: tests passed only when run alone", "tests", run.passedAlone)
+	}
+	code := output.Ok(out, map[string]any{
+		"built":        run.built,
+		"skipped":      run.skipped,
+		"failed":       run.failed,
+		"timed_out":    run.timedOut,
+		"passed_alone": run.passedAlone,
+		"failed_tests": run.failedTests,
+		"left_out":     run.leftOut,
+		"head":         run.head,
+		"queued":       run.queued,
+		"packages":     run.measures,
 	})
+	if len(run.failed) > 0 || len(run.failedTests) > 0 {
+		return 1
+	}
+	return code
 }
 
 // testMapLocation resolves the hub worktree cwd lies in and the coverage map directory of a call from it.
@@ -245,6 +260,7 @@ func coverageMapsDir(location *lymcwd.Location) (string, error) {
 // prepare loads the hub's gate and env config and finds the Go module.
 // It returns a refusal when one of them cannot be read or the hub declares no mapped tier.
 // It also returns one for a mapped tier that does not count its tests as go-json.
+// It returns one too for a mapped tier whose memory limit holds no test process.
 func (r *testMapRun) prepare() string {
 	dirs := fabricengine.ConfigDirs(r.location)
 	cfg, err := gateslot.LoadConfig(dirs)
@@ -266,6 +282,18 @@ func (r *testMapRun) prepare() string {
 			return fmt.Sprintf("gate test --map: tier%d counts its tests with %s, and a coverage map exists only for a go-json tier; way forward: when tier%d runs Go tests, set its counter to go-json with lym config gate from the prime and re-run the same command; a hub whose tier%d runs no Go tests has no coverage map to build", number, tier.Counter, number, number)
 		}
 	}
+	r.testMemory = r.cfg.RedundancyTestMemory()
+	r.sideBySide = map[int]int{}
+	for _, number := range mappedTiers {
+		tier, declared := r.tiers[number]
+		if !declared {
+			continue
+		}
+		if tier.MemoryMB > 0 && tier.MemoryLimit() < r.testMemory {
+			return fmt.Sprintf("gate test --map: tier%d sets memory_mb %d, below redundancy_test_memory_mb %d, so no test process fits its memory; way forward: raise tier%d's memory_mb or lower redundancy_test_memory_mb with lym config gate from the prime, then re-run the same command", number, tier.MemoryMB, r.cfg.RedundancyTestMemoryMB, number)
+		}
+		r.sideBySide[number] = mapSideBySide(tier, r.testMemory, r.request.cappedParallel)
+	}
 	r.moduleDir = resolveRunDir(root, r.tiers[slices.Min(slices.Collect(maps.Keys(r.tiers)))].Dir)
 	rel, err := filepath.Rel(root, r.moduleDir)
 	if r.modulePath = modulePathOf(r.moduleDir); r.modulePath == "" || err != nil || !filepath.IsLocal(rel) {
@@ -274,7 +302,6 @@ func (r *testMapRun) prepare() string {
 	r.moduleRel = filepath.ToSlash(rel)
 	r.buildTimeout = time.Duration(r.cfg.RedundancyBuildTimeoutMin) * r.request.minuteUnit
 	r.testTimeout = time.Duration(r.cfg.RedundancyTestTimeoutSec) * r.request.secondUnit
-	r.testMemory = r.cfg.RedundancyTestMemory()
 	r.memoryQuit = r.cfg.MemoryQuit()
 	r.env = gateEnv(r.request.environ, hubEnv)
 	r.hubEnv = hubEnv
@@ -556,7 +583,7 @@ func (r *testMapRun) skip(pkg, cause string) {
 }
 
 // close cancels a coverage build still running ahead and waits for it to end.
-// It then releases the call's slot and its temporary directory.
+// It then releases the call's slots and its temporary directory.
 func (r *testMapRun) close() {
 	if r.ahead != nil {
 		r.ahead.cancel()

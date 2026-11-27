@@ -9,11 +9,14 @@ Rule: Running gate build, test or verify: in held `internal/gateslot` slots, ver
 Running a gate build or test holds `internal/gateslot` slots,
 so the hub never runs more at once than its configured count.
 
-- A gate build or test runs only holding `internal/gateslot` slots, in one of two places.
+- A gate build or test runs only holding `internal/gateslot` slots, in one of three places.
 - Inside a `lym gate test` tier run, holding the slots its tier asks for;
   the tier's config sets its parallelism and environment.
 - In one of the non-tier holders `internal/gateslot`'s doc lists, holding one slot;
   the holder sets its own `-trimpath` Go flag, plus `-p` from `tier0`'s parallel when the hub declares `tier0`.
+- In the map run of `lym gate test --map`, holding the larger of `tier0`'s and `tier1`'s slot asks,
+  where a tier asking for every slot ranks above any count;
+  it sets the same Go flags as a non-tier holder.
 - Every Go gate build keeps `-trimpath`,
   so a fresh worktree reuses the build and test cache;
   a `dotnet` build takes no Go flags.

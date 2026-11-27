@@ -1,6 +1,6 @@
-// testmappackage.go measures one package in the map run of `lym gate test --map`, inside the call's slot.
+// testmappackage.go measures one package in the map run of `lym gate test --map`, inside the call's slots.
 // It runs the package's tests under a coverage binary over every in-module package the test binary links.
-// Each test runs alone in its own process, up to the slot's tier0 parallel side by side, fewer when memory is short.
+// Each test runs alone in its own process, tier0 before tier1, each tier up to its count side by side.
 // It reads each run's profile once.
 // It keys the blocks covered of the package's own files and names the functions covered of the others.
 // It merges the runs into the package's map and writes it once.
@@ -11,13 +11,11 @@ package gatecli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"maps"
 	"os"
 	"path"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -163,14 +161,6 @@ func (r *testMapRun) mapPackage(job testMapJob) error {
 		job: job, pkgDir: pkgDir, importPath: importPath, bin: build.bin, trees: trees, m: m,
 		indexes: map[string]*testcover.FuncIndex{}, measure: testMapMeasure{Package: pkg, BuildSeconds: build.seconds},
 	}
-	if slices.ContainsFunc(mapped, func(fn testcover.TestFunc) bool { return r.tiers[fn.Tier].PrebuiltLym }) {
-		if err := r.buildLym(); err != nil {
-			if stop := r.ctx.Err(); stop != nil {
-				return stop
-			}
-			return r.writeFailed(pkg, m, err)
-		}
-	}
 	for _, other := range build.linked {
 		if other != importPath {
 			p.indexes[other] = testcover.NewFuncIndex(filepath.Join(r.location.WorktreePath(), filepath.FromSlash(trees[other].dir)), other)
@@ -228,17 +218,23 @@ func (r *testMapRun) takeBuild(pkg string) *coverageBuild {
 }
 
 // measureTests runs queue, the job's tests, and writes the package's map once they ran.
+// A tier's tests all run before the next tier's, so no two tiers' tests run at once.
 // Once the runs end it reads the worktree status and HEAD.
 // A dirty file a linked package owns, or a HEAD move, discards the runs and ends the job with the package skipped.
 // The error reports a read or write failure, or a signal, that ends the job.
 func (r *testMapRun) measureTests(p *packageRun, queue []testcover.TestFunc) error {
 	start := time.Now()
-	runs, err := r.runBatch(p, queue)
-	if err != nil {
-		if stop := r.ctx.Err(); stop != nil {
-			return stop
+	var runs []mappedRun
+	for _, number := range mappedTiers {
+		batch := slices.DeleteFunc(slices.Clone(queue), func(fn testcover.TestFunc) bool { return fn.Tier != number })
+		batchRuns, err := r.runBatch(p, batch, r.sideBySide[number])
+		if err != nil {
+			if stop := r.ctx.Err(); stop != nil {
+				return stop
+			}
+			return r.writeFailed(p.job.pkg, p.m, err)
 		}
-		return r.writeFailed(p.job.pkg, p.m, err)
+		runs = append(runs, batchRuns...)
 	}
 	p.measure.RunSeconds = time.Since(start).Seconds()
 	ended, err := r.endJob(p)
@@ -248,6 +244,11 @@ func (r *testMapRun) measureTests(p *packageRun, queue []testcover.TestFunc) err
 	fillMapTests(&p.m, p.table, runs, r.head, time.Now())
 	if err := r.write(p.job.pkg, p.m); err != nil {
 		return err
+	}
+	for _, run := range runs {
+		if run.outcome == testcover.OutcomeFailed || run.outcome == testcover.OutcomeTimedOut {
+			r.failedTests = append(r.failedTests, p.job.pkg+"."+run.fn.Name)
+		}
 	}
 	p.measure.Tests = len(runs)
 	r.addMeasure(p.measure)
@@ -260,26 +261,29 @@ func (r *testMapRun) addMeasure(m testMapMeasure) {
 }
 
 // runBatch runs each test of queue alone in its own process and returns their runs.
-// Up to the call's side-by-side count of them run at once.
+// Up to sideBySide of them run at once.
 // The runs come back in the order of queue.
-// A test that failed or timed out beside other tests runs once more alone, and that run stands.
-// A timed-out test is listed on the call's report.
+// A test that failed, timed out or was killed beside other tests runs once more alone, and that run stands.
+// A test whose run alone passed, and a timed-out test, are listed on the call's report.
 // The error is the call context's after a terminating signal, which discards the batch, or the first reduction failure.
-func (r *testMapRun) runBatch(p *packageRun, queue []testcover.TestFunc) ([]mappedRun, error) {
-	runs, err := r.runSideBySide(p, queue)
+func (r *testMapRun) runBatch(p *packageRun, queue []testcover.TestFunc, sideBySide int) ([]mappedRun, error) {
+	runs, err := r.runSideBySide(p, queue, sideBySide)
 	if err != nil {
 		return nil, err
 	}
-	if len(queue) > 1 && r.sideBySide > 1 {
+	if len(queue) > 1 && sideBySide > 1 {
 		for i, run := range runs {
 			if run.outcome != testcover.OutcomeFailed && run.outcome != testcover.OutcomeTimedOut {
 				continue
 			}
-			alone, err := r.runSideBySide(p, queue[i:i+1])
+			alone, err := r.runSideBySide(p, queue[i:i+1], sideBySide)
 			if err != nil {
 				return nil, err
 			}
 			runs[i] = alone[0]
+			if alone[0].outcome == "" {
+				r.passedAlone = append(r.passedAlone, p.job.pkg+"."+alone[0].fn.Name)
+			}
 		}
 	}
 	for _, run := range runs {
@@ -291,12 +295,12 @@ func (r *testMapRun) runBatch(p *packageRun, queue []testcover.TestFunc) ([]mapp
 }
 
 // runSideBySide runs each of tests alone in its own process with its own profile.
-// At most the call's side-by-side count of them run at once.
+// At most sideBySide of them run at once.
 // It reduces each run as the run ends, so it holds no more profiles at once than runs side by side.
 // The runs come back in the order of tests.
 // The error is the call context's after a terminating signal, since a run it ended records nothing.
 // Otherwise it is the first reduction failure.
-func (r *testMapRun) runSideBySide(p *packageRun, tests []testcover.TestFunc) ([]mappedRun, error) {
+func (r *testMapRun) runSideBySide(p *packageRun, tests []testcover.TestFunc, sideBySide int) ([]mappedRun, error) {
 	if err := r.ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -304,7 +308,7 @@ func (r *testMapRun) runSideBySide(p *packageRun, tests []testcover.TestFunc) ([
 	indexes := make(chan int)
 	ended := make(chan int)
 	var workers sync.WaitGroup
-	for worker := range min(r.sideBySide, len(tests)) {
+	for worker := range min(sideBySide, len(tests)) {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
@@ -475,45 +479,59 @@ func linkedHashes(trees map[string]packageTree, importPath string) map[string]ma
 	return hashes
 }
 
-// holdSlot takes one slot of the hub's pool for the rest of the call, waiting with no bound but the call's context.
-func (r *testMapRun) holdSlot() error {
-	_, err := r.takeSlot(func(holder gateslot.Holder) (*gateslot.Lease, error) { return r.pool.Acquire(r.ctx, holder) })
-	return err
+// mapSideBySide returns how many of the tier's tests a map run runs side by side, each capped at testMemory bytes.
+// It is the tier's parallel as capped clamps it.
+// When the tier sets a memory limit, it is also at most the number of such caps that limit holds.
+func mapSideBySide(tier gateslot.Tier, testMemory int64, capped func(parallel int, limit int64) int) int {
+	sideBySide := capped(tier.Parallel, testMemory)
+	if tier.MemoryMB > 0 {
+		sideBySide = min(sideBySide, int(tier.MemoryLimit()/testMemory))
+	}
+	return sideBySide
 }
 
-// takeSlot takes one slot of the hub's pool through acquire, and reports whether the call holds one.
-// It takes none when it holds one already or runs inside the slot an enclosing gate run holds.
-// It reports false when acquire returns no lease.
+// mapSlotAsk returns how many gate slots a map run over tiers holds: the largest of their asks.
+// An ask of 0 stands for every slot, ranks above any count and is returned as 0.
+func mapSlotAsk(tiers map[int]gateslot.Tier) int {
+	ask := 0
+	for _, tier := range tiers {
+		if tier.Slots == 0 {
+			return 0
+		}
+		ask = max(ask, tier.Slots)
+	}
+	return ask
+}
+
+// holdSlot takes the call's gate slots for the rest of the call, waiting with no bound but the call's context.
+func (r *testMapRun) holdSlot() error {
+	return r.takeSlot(mapSlotAsk(r.tiers))
+}
+
+// takeSlot takes count slots of the hub's pool, 0 meaning every slot.
+// It takes none when the call holds them already or runs inside the slot an enclosing gate run holds.
 // It fills the slot holder's Go flags into the call's environment and creates the call's temporary directory once.
-func (r *testMapRun) takeSlot(acquire func(gateslot.Holder) (*gateslot.Lease, error)) (bool, error) {
+func (r *testMapRun) takeSlot(count int) error {
 	if r.holderEnv != nil {
-		return true, nil
+		return nil
 	}
 	limits, err := r.pool.Limits()
 	if err != nil {
-		return false, fmt.Errorf("read the hub's gate limits: %w", err)
+		return fmt.Errorf("read the hub's gate limits: %w", err)
 	}
 	if !r.inheritsSlot() {
-		r.lease, err = acquire(gateslot.Holder{Worktree: r.location.WorktreePath(), Site: testMapSite})
+		r.lease, err = r.pool.AcquireSlots(r.ctx, gateslot.Holder{Worktree: r.location.WorktreePath(), Site: testMapSite}, count)
 		if err != nil {
-			return false, fmt.Errorf("acquire a gate slot: %w", err)
-		}
-		if r.lease == nil {
-			return false, nil
+			return fmt.Errorf("acquire the gate slots: %w", err)
 		}
 	}
 	if r.tmp == "" {
 		if r.tmp, err = lymtemp.MkdirTemp("testmap-"); err != nil {
-			return false, fmt.Errorf("create the coverage binary directory: %w", err)
+			return fmt.Errorf("create the coverage binary directory: %w", err)
 		}
 	}
-	r.parallel = limits.Tier0Parallel
-	if r.parallel < 1 {
-		r.parallel = runtime.NumCPU()
-	}
-	r.sideBySide = r.request.cappedParallel(r.parallel, r.testMemory)
 	r.holderEnv = gateslot.HolderEnv(r.env, r.lease, limits.Tier0Parallel)
-	return true, nil
+	return nil
 }
 
 // inheritsSlot reports whether the call runs inside the slot an enclosing gate run holds, named by gateslot.InheritEnv.
@@ -522,7 +540,7 @@ func (r *testMapRun) inheritsSlot() bool {
 	return inherited != "" && r.pool.Inherited(inherited)
 }
 
-// releaseHeldSlot releases the slot the call holds, if any.
+// releaseHeldSlot releases the slots the call holds, if any.
 func (r *testMapRun) releaseHeldSlot() {
 	if r.lease == nil {
 		return
@@ -542,41 +560,11 @@ func envValue(env []string, key string) string {
 	return value
 }
 
-// buildLym builds `lym` from the worktree into the pool's prebuilt store, once per call, bounded by the build timeout.
-// A failed build is kept, so every later package that needs it fails the same way without building again.
-// A build a terminating signal ended is not kept and returns the call context's error.
-func (r *testMapRun) buildLym() error {
-	if r.lymBuilt {
-		return r.lymErr
-	}
-	r.lymBuilt = true
-	bounded, cancel := context.WithTimeout(r.ctx, r.buildTimeout)
-	defer cancel()
-	// The store keeps the binary, so the cleanup prebuildLym returns for it removes nothing.
-	bin, _, err := prebuildLym(bounded, r.request.goBinary, r.location.WorktreePath(), r.parallel, r.pool.PrebuiltDir(), r.request.grace, r.holderEnv)
-	if stop := r.ctx.Err(); stop != nil {
-		r.lymBuilt = false
-		return stop
-	}
-	switch {
-	case err != nil && errors.Is(bounded.Err(), context.DeadlineExceeded):
-		r.lymErr = fmt.Errorf("lym build: timed out after %s", r.buildTimeout)
-	case err != nil:
-		r.lymErr = fmt.Errorf("lym build: %w", err)
-	}
-	r.lymBin = bin
-	return r.lymErr
-}
-
 // runTest runs the mapped test fn of the job's package alone under its coverage binary, writing the profile to profile.
-// It runs in the package directory with its tier's env and, for a tier with prebuilt_lym, the call's `lym` build.
+// It runs in the package directory with its tier's env.
 // The run's outcome is set unless the test passed: a test that could not run counts as failed.
 func (r *testMapRun) runTest(p *packageRun, fn testcover.TestFunc, profile string) mappedRun {
-	tier := r.tiers[fn.Tier]
-	env := slices.Concat(r.holderEnv, renderTierEnv(tier))
-	if tier.PrebuiltLym && r.lymBin != "" {
-		env = append(env, gateslot.PrebuiltLymEnv+"="+r.lymBin)
-	}
+	env := slices.Concat(r.holderEnv, renderTierEnv(r.tiers[fn.Tier]))
 	runner := testcover.Toolchain{
 		Env: env, Ctx: r.ctx, TestTimeout: r.testTimeout, MemoryLimit: r.testMemory, GuardKilled: r.guardKilled, Grace: r.request.grace,
 	}

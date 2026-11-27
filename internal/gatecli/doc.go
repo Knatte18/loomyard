@@ -1029,7 +1029,7 @@
 // It also refuses a hub whose tier0 or tier1 counts its tests with another counter than `go-json`.
 // It runs no tier command, shared build, lint, report, guard step, green carry or card fixer,
 // and it writes nothing but the maps and its log.
-// A tier's command, filter, memory cap and timeouts bound nothing here.
+// A tier's command, filter and timeouts bound nothing here, and no memory cap scopes it as a whole.
 // A capped call runs in the detached runner, and `--map` is one of the words that run is keyed on and replayed from.
 //
 // The module root is the dir of the lowest declared of tier0 and tier1, and its go.mod names the import path.
@@ -1061,9 +1061,10 @@
 // The map holds the hashes of its Go files in `Files` and of the others it owns in `OtherFiles`.
 // Its tests are the top-level Test functions whose `tiergate.Require` names a tier0 or tier1 the hub declares.
 // A package with none gets a map of its file hashes and no tests, with no build.
-// For any other the call needs one gate slot.
+// For any other the call needs gate slots: the larger of tier0's and tier1's `slots`.
+// A tier asking for every slot ranks above any count.
 // Inside the slot an enclosing gate run holds, named by `gateslot.InheritEnv`, it takes none.
-// Otherwise it waits for its slot through `gateslot.Pool.Acquire` and holds it to its end.
+// Otherwise it waits for them through `gateslot.Pool.AcquireSlots` and holds them to its end.
 // It lists the in-module packages the package's test binary links through `testcover.Toolchain.LinkedPackages`,
 // and the map holds the hashes of the files each other one owns in `Linked`.
 // It builds the package's coverage binary with a coverpkg naming every linked package.
@@ -1076,18 +1077,25 @@
 // Bound: some packages are written with no such check, under HEAD's hashes.
 // They are one with no mapped test or only spawn-marked ones, and one whose scan or build failed.
 // It runs each test alone in its own process with its own profile, in the package directory under its tier's env.
-// It runs them through `testcover.Toolchain.RunAlone`, up to the slot's tier0 parallel side by side.
-// Fewer go side by side when memory is short, as in `lym gate redundant`.
-// That holds whether or not a test calls `t.Parallel`:
+// It runs them through `testcover.Toolchain.RunAlone`.
+// A package's tier0 tests run first and then its tier1 tests, so at most one tier's count runs at once.
+// A tier's count is its parallel side by side, fewer when memory is short, as in `lym gate redundant`.
+// A tier with a `memory_mb` also runs at most as many as that holds `redundancy_test_memory_mb` caps,
+// and a hub whose tier0 or tier1 sets a `memory_mb` below one cap is refused.
+// Tests run side by side whether or not they call `t.Parallel`:
 // each test runs in its own process with its own environment and profile, all in the package directory,
 // so a test that writes a fixed path there can disturb another.
-// A test that fails or times out beside other tests runs once more alone, and that run's outcome stands.
+// A test that fails, times out or is killed beside other tests runs once more alone, and that run's outcome stands.
+// One that passes there enters the map as a plain pass, and is listed under `passed_alone` and logged.
 // The re-run alone bounds a failure or timeout beside others, but a run that still passes is recorded as it ran.
 // It reads each profile once: `testcover.ProfileByPackage` groups its blocks by package,
 // and each linked package's `testcover.FuncIndex` names the covered functions from that package's group alone.
 // A profile is dropped once read, so the call holds no more profiles than tests run side by side.
 // The call writes the map once, after the package's tests ran.
-// A tier with `prebuilt_lym` gets the `lym` the call builds once into the pool's prebuilt store, as a tier run does.
+// The call builds no `lym`, a tier's `prebuilt_lym` notwithstanding:
+// no test it runs may run this module's code in another process.
+// The memory guard kills a test binary past `memory_quit_mb` and names it on stderr.
+// The package's other tests keep running.
 // Each build is bounded by `redundancy_build_timeout_min` and each test by `redundancy_test_timeout_sec`.
 // Each test is also capped at `redundancy_test_memory_mb` of memory, and one the cap ends is recorded as failed.
 // Past its bound the process group is killed.
@@ -1127,9 +1135,11 @@
 //
 // The call prints `built`, the packages whose map it wrote.
 // It prints `skipped` with each cause, `failed` with each failure, `timed_out` and `left_out`.
+// It prints `passed_alone`, and `failed_tests`: each test a written map records as failed or timed out.
 // It also prints `head` and `queued`.
 // Its `packages` holds each measured package's build seconds, run seconds and test count.
-// It exits 0 once it walked its packages, and 1 for a refusal or a read, slot or write failure that ends the walk.
+// It exits 1 when a build failed or `failed_tests` is not empty, having written the maps all the same.
+// It exits 1 too for a refusal or a read, slot or write failure that ends the walk, and otherwise 0.
 //
 // `lym gate redundant <package>` judges the map of one package and confirms its redundancy candidates by mutation.
 // It runs from any worktree of the hub and resolves the module as the redundancy report step does.
