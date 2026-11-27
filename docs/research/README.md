@@ -221,6 +221,10 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [twill-plan-bench-sonnet](twill/plan-bench/twill-plan-bench-sonnet/report.md) — the Sonnet arm.
 - [twill-plan-bench-sonnet-medium-fable](twill/plan-bench/twill-plan-bench-sonnet-medium-fable/report.md) — twill on Sonnet at medium effort, and a single Fable writer.
 
+## weaver — the cold-start implementer
+
+- [bench-2026-11-27](weaver/bench-2026-11-27/report.md) — Weaver against Webster on three landed plans: time, cost and quality, and what Weaver needs before it replaces Webster.
+
 ## webster — implementation batches
 
 - [parallel-batches-2026-10-17](webster/parallel-batches-2026-10-17/report.md) — how often cards and batches could have run in parallel worktrees.
