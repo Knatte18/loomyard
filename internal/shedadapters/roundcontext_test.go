@@ -205,6 +205,23 @@ func TestBuildRoundContext(t *testing.T) {
 				if got.Prior[0].Held || !got.Prior[1].Held {
 					t.Errorf("held = %v, %v; want only the decision-class finding held", got.Prior[0].Held, got.Prior[1].Held)
 				}
+				if got.Prior[0].InScope || got.Prior[1].InScope {
+					t.Errorf("in scope = %v, %v; want none with no ruling", got.Prior[0].InScope, got.Prior[1].InScope)
+				}
+			},
+		},
+		{
+			name: "InScopeRulingMarksOnlyTheHeldFindingsItNames",
+			setup: func(t *testing.T, e env) {
+				writeCompleteRound(t, e.runDir, 1, true)
+				if err := createCirclingDecision(e.runDir, 1, CirclingContinue, EscalationDecision, false, []string{"F1", "F2"}); err != nil {
+					t.Fatalf("createCirclingDecision(round 1) = %v; want nil", err)
+				}
+			},
+			check: func(t *testing.T, got *burlerengine.RoundContext, _ env) {
+				if got.Prior[0].InScope || !got.Prior[1].InScope {
+					t.Errorf("in scope = %v, %v; want only the held decision-class finding F2 in scope", got.Prior[0].InScope, got.Prior[1].InScope)
+				}
 			},
 		},
 		{

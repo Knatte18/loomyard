@@ -65,6 +65,8 @@ That is the `card-field-overlap` finding — see `{{.specs_dir}}/loom/loom-plan-
 The gates run the hub's tier lists over scopes lym computes, so the plan carries no plan-level verify section and asks for none.
 The hub's tiers and gate lists follow:
 {{.gate_tiers}}
+When they hold a plan tier0 budget line, each card that creates or widens a `tier0` test states in its Intent the seconds the test adds to one `tier0` run,
+and the plan's estimates together stay within that budget; a test that cannot fit moves to a higher tier or shares an existing test.
 A card's `**Verify:**` is the optional escape hatch for what no gate expresses, written only for what the gates cannot catch on their own.
 A `**Verify:**` line that tests is one `lym gate test --wait` call with a tier list and a scope form, never a raw test command or a target list.
 See `{{.specs_dir}}/loom/loom-plan-spec.md`'s verify model section for the gates and scope forms themselves — this file does not restate them.

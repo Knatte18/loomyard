@@ -3,17 +3,23 @@
 // The writer checks the mechanical precondition: the latest round is escalated,
 // and no decision exists for it yet.
 // The run-state check, that the run is awaiting at a Bouncer row, belongs to the verbs.
+// A continue may rule decision-class findings in scope, which the next round's fixer takes.
 
 package shedadapters
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 )
 
 // CirclingDecision is the operator's answer to an escalated round.
@@ -30,18 +36,24 @@ var (
 	ErrNotEscalated = errors.New("shedadapters: the latest round is not escalated")
 	// ErrCirclingDecided reports that a decision is already recorded for the escalated round.
 	ErrCirclingDecided = errors.New("shedadapters: a circling decision is already recorded for this round")
+	// ErrInScopeCause reports an in-scope ruling on a round whose escalation cause is not decision.
+	ErrInScopeCause = errors.New("shedadapters: an in-scope ruling answers only a decision escalation")
+	// ErrInScopeFinding reports an in-scope ruling naming an id that is no decision-class finding of the round's review.
+	ErrInScopeFinding = errors.New("shedadapters: an in-scope ruling names no decision-class finding of the round's review")
 )
 
 // circlingDecisionHeader mirrors a circling decision file's YAML frontmatter.
 // Automatic is true for a decision the Bouncer recorded itself:
 // an auto-accept, or the soft-cap rule's accept or continue.
 // A parent's decision never sets it.
+// InScope lists the decision-class findings a continue rules in scope, which the next round's fixer takes.
 type circlingDecisionHeader struct {
-	Round     int    `yaml:"round"`
-	Decision  string `yaml:"decision"`
-	Cause     string `yaml:"cause"`
-	Settled   bool   `yaml:"settled"`
-	Automatic bool   `yaml:"automatic"`
+	Round     int      `yaml:"round"`
+	Decision  string   `yaml:"decision"`
+	Cause     string   `yaml:"cause"`
+	Settled   bool     `yaml:"settled"`
+	Automatic bool     `yaml:"automatic"`
+	InScope   []string `yaml:"in_scope,omitempty"`
 }
 
 // LatestRound returns the run directory's latest round, 0 when it holds none.
@@ -74,27 +86,104 @@ func RecordCirclingDecision(runDir string, d CirclingDecision) (int, EscalationC
 		return 0, "", ErrNotEscalated
 	}
 
-	if err := createCirclingDecision(runDir, round, d, cause, false); err != nil {
+	if err := createCirclingDecision(runDir, round, d, cause, false, nil); err != nil {
 		return 0, "", err
 	}
 	return round, cause, nil
+}
+
+// RecordInScopeContinue records a pending continue for the run directory's latest round that rules ids in scope.
+// Each id is a decision-class finding of that round's review the task's record already asks for,
+// so the next round carries it as fixer work instead of a question for the parent.
+// On success it returns that round.
+// It returns ErrNotEscalated unless that round carries an escalation record.
+// It returns ErrInScopeCause unless that record's cause is decision.
+// It returns ErrInScopeFinding, naming the ids, when an id is no decision-class finding of the round's review.
+// It returns ErrCirclingDecided when a decision file for the round already exists, leaving it untouched.
+func RecordInScopeContinue(runDir string, ids []string) (int, error) {
+	round, err := LatestRound(runDir)
+	if err != nil {
+		return 0, err
+	}
+	if round == 0 {
+		return 0, ErrNotEscalated
+	}
+	cause, _, escalated, err := readEscalation(runDir, round)
+	if err != nil {
+		return 0, err
+	}
+	if !escalated {
+		return 0, ErrNotEscalated
+	}
+	if cause != EscalationDecision {
+		return 0, fmt.Errorf("%w: round %d's escalation cause is %s", ErrInScopeCause, round, cause)
+	}
+	raw, err := os.ReadFile(roundReviewPath(runDir, round))
+	if err != nil {
+		return 0, fmt.Errorf("shedadapters: read round %d's review: %w", round, err)
+	}
+	_, findings, err := burlerengine.ParseReview(raw)
+	if err != nil {
+		return 0, fmt.Errorf("shedadapters: parse round %d's review: %w", round, err)
+	}
+	var decisions, unknown []string
+	for _, finding := range findings {
+		if finding.Class == burlerengine.ClassDecision {
+			decisions = append(decisions, finding.ID)
+		}
+	}
+	for _, id := range ids {
+		if !slices.Contains(decisions, id) {
+			unknown = append(unknown, id)
+		}
+	}
+	if len(unknown) > 0 {
+		return 0, fmt.Errorf("%w: %s, while round %d's decision-class findings are %s", ErrInScopeFinding, strings.Join(unknown, ", "), round, cmp.Or(strings.Join(decisions, ", "), "none"))
+	}
+	if err := createCirclingDecision(runDir, round, CirclingContinue, cause, false, ids); err != nil {
+		return 0, err
+	}
+	return round, nil
+}
+
+// InScopeFindings returns the ids round's circling decision rules in scope, none when the round holds no such ruling.
+// A malformed decision file is an error.
+func InScopeFindings(runDir string, round int) ([]string, error) {
+	path := circlingDecisionPath(runDir, round)
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("shedadapters: read circling decision %s: %w", path, err)
+	}
+	header, err := splitFrontmatter(raw, "circling decision")
+	if err != nil {
+		return nil, err
+	}
+	var parsed circlingDecisionHeader
+	if err := yaml.Unmarshal([]byte(header), &parsed); err != nil {
+		return nil, fmt.Errorf("shedadapters: circling decision %s frontmatter is not valid YAML: %w", path, err)
+	}
+	return parsed.InScope, nil
 }
 
 // recordAutoAccept records round's circling decision as an automatic, not yet settled accept with cause budget.
 // It serves the automatic accepts recorded at the soft cap.
 // It returns ErrCirclingDecided when a decision file for the round already exists, leaving it untouched.
 func recordAutoAccept(runDir string, round int) error {
-	return createCirclingDecision(runDir, round, CirclingAccept, EscalationBudget, true)
+	return createCirclingDecision(runDir, round, CirclingAccept, EscalationBudget, true, nil)
 }
 
 // recordAutoContinue records round's circling decision as an automatic, not yet settled continue with cause budget.
 // It returns ErrCirclingDecided when a decision file for the round already exists, leaving it untouched.
 func recordAutoContinue(runDir string, round int) error {
-	return createCirclingDecision(runDir, round, CirclingContinue, EscalationBudget, true)
+	return createCirclingDecision(runDir, round, CirclingContinue, EscalationBudget, true, nil)
 }
 
 // createCirclingDecision writes round's pending decision file, refusing with ErrCirclingDecided to overwrite one.
-func createCirclingDecision(runDir string, round int, d CirclingDecision, cause EscalationCause, automatic bool) error {
+// inScope lists the findings a continue rules in scope, none for any other decision.
+func createCirclingDecision(runDir string, round int, d CirclingDecision, cause EscalationCause, automatic bool, inScope []string) error {
 	path := circlingDecisionPath(runDir, round)
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
@@ -103,7 +192,7 @@ func createCirclingDecision(runDir string, round int, d CirclingDecision, cause 
 		}
 		return fmt.Errorf("shedadapters: create circling decision %s: %w", path, err)
 	}
-	content, err := renderCirclingDecision(round, d, cause, false, automatic)
+	content, err := renderCirclingDecision(round, d, cause, false, automatic, inScope)
 	if err == nil {
 		_, err = f.Write(content)
 	}
@@ -238,7 +327,7 @@ func settleCirclingAccept(runDir string, round int) error {
 	if decision != CirclingAccept {
 		return fmt.Errorf("shedadapters: round %d circling decision is %q; only an accept settles", round, decision)
 	}
-	content, err := renderCirclingDecision(round, decision, cause, true, automatic)
+	content, err := renderCirclingDecision(round, decision, cause, true, automatic, nil)
 	if err != nil {
 		return err
 	}
@@ -250,8 +339,8 @@ func settleCirclingAccept(runDir string, round int) error {
 }
 
 // renderCirclingDecision marshals a decision file's bytes: the YAML frontmatter alone.
-func renderCirclingDecision(round int, d CirclingDecision, cause EscalationCause, settled, automatic bool) ([]byte, error) {
-	headerBytes, err := yaml.Marshal(circlingDecisionHeader{Round: round, Decision: string(d), Cause: string(cause), Settled: settled, Automatic: automatic})
+func renderCirclingDecision(round int, d CirclingDecision, cause EscalationCause, settled, automatic bool, inScope []string) ([]byte, error) {
+	headerBytes, err := yaml.Marshal(circlingDecisionHeader{Round: round, Decision: string(d), Cause: string(cause), Settled: settled, Automatic: automatic, InScope: inScope})
 	if err != nil {
 		return nil, fmt.Errorf("bouncer: render circling decision frontmatter: %w", err)
 	}

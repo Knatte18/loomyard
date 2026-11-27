@@ -70,7 +70,7 @@ func TestConfigSpec_SetNestedKeys(t *testing.T) {
 var templateDefaults = Config{
 	Slots: 2, BusyQuitSec: 120, MemoryQuitMB: 4096, FixerTimeoutMin: 30,
 	RedundancyBuildTimeoutMin: 10, RedundancyTestTimeoutSec: 120, RedundancyTestMemoryMB: 2048, RedundancyMaxTests: 40, RedundancyBudgetMin: 10,
-	ReachBudgetMin: 10, MutationMaxMutants: 40, MutationBudgetMin: 20,
+	ReachBudgetMin: 10, MutationMaxMutants: 40, MutationBudgetMin: 20, PlanTier0BudgetSec: 60,
 	Gates: map[string]GateKey{
 		"card":            {Tiers: []int{0}, Scope: "card", Lints: []string{"comments", "pattern"}, Fixer: "sonnet[medium]"},
 		"batch":           {Tiers: []int{0}, Scope: "card", Reports: []string{"reach"}},
@@ -346,6 +346,7 @@ func TestLoadConfig(t *testing.T) {
 		{"reach_budget_min zero", baseKeys + "reach_budget_min: 0\n", Config{}, `config key "gate.reach_budget_min": 0; want at least 1` + fixIt},
 		{"mutation_max_mutants zero", baseKeys + "mutation_max_mutants: 0\n", Config{}, `config key "gate.mutation_max_mutants": 0; want at least 1` + fixIt},
 		{"mutation_budget_min zero", baseKeys + "mutation_budget_min: 0\n", Config{}, `config key "gate.mutation_budget_min": 0; want at least 1` + fixIt},
+		{"plan_tier0_budget_sec negative", baseKeys + "plan_tier0_budget_sec: -1\n", Config{}, `config key "gate.plan_tier0_budget_sec": -1; want at least 0` + fixIt},
 		{"an unknown report", baseKeys + "gates:\n  webster: {tiers: [0], scope: all, reports: [speed]}\n", Config{}, `config key "gate.gates.webster": report "speed"; want reach, redundancy or mutation` + fixIt},
 		{
 			"a key listing every report loads", baseKeys + "gates:\n  finalize: {tiers: [0], scope: all, reports: [reach, redundancy, mutation]}\n",
@@ -988,6 +989,12 @@ func TestConfig_TierUse(t *testing.T) {
 			"- gate card: [0] card\n- gate batch: [0, 1] card\n- gate webster: [0, 1] all\n- gate finalize: [0, 1] all\n- gate webster-fix: [0, 1] diff"
 		if got := twoTier.TiersValue(); got != want {
 			t.Errorf("TiersValue() = %q; want %q", got, want)
+		}
+		budgeted := twoTier
+		budgeted.PlanTier0BudgetSec = 45
+		wantBudget := want + "\n- plan tier0 budget: 45 seconds, the most a plan's new and changed tier0 tests may add to one tier0 run"
+		if got := budgeted.TiersValue(); got != wantBudget {
+			t.Errorf("TiersValue() with a plan tier0 budget = %q; want %q", got, wantBudget)
 		}
 		template, err := TemplateConfig()
 		if err != nil {

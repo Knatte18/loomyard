@@ -206,9 +206,14 @@ func BuildRoundContext(runDir string, round int, paths RoundContextSources) (*bu
 	for _, disposition := range report.Dispositions {
 		dispositions[disposition.ID] = disposition
 	}
+	inScope, err := InScopeFindings(runDir, previous)
+	if err != nil {
+		return nil, err
+	}
 	prior := make([]burlerengine.PriorFinding, len(findings))
 	for i, finding := range findings {
-		prior[i] = burlerengine.PriorFinding{Finding: finding, Held: routed && finding.Class == burlerengine.ClassDecision}
+		held := routed && finding.Class == burlerengine.ClassDecision
+		prior[i] = burlerengine.PriorFinding{Finding: finding, Held: held, InScope: held && slices.Contains(inScope, finding.ID)}
 		if disposition, answered := dispositions[finding.ID]; answered {
 			prior[i].Disposition = &disposition
 		}

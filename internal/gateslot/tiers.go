@@ -587,6 +587,7 @@ func (c Config) renderGateCall(key string, wait bool, cards []string) (string, e
 // TiersValue renders the value prompts take for the hub's tiers.
 // It holds one line per declared tier in number order: `- tier<N>: <about>`.
 // Then it holds one line per Go-read gate key the config lists: `- gate <key>: [<n>, ...] <scope>`.
+// A set plan tier0 budget ends it with one line naming the seconds a plan's tier0 tests may add.
 // It is `none` when no tier is declared.
 func (c Config) TiersValue() string {
 	if len(c.Tiers) == 0 {
@@ -612,6 +613,9 @@ func (c Config) TiersValue() string {
 			items[i] = strconv.Itoa(number)
 		}
 		lines = append(lines, fmt.Sprintf("- gate %s: [%s] %s", gate, strings.Join(items, ", "), key.Scope))
+	}
+	if c.PlanTier0BudgetSec > 0 {
+		lines = append(lines, fmt.Sprintf("- plan tier0 budget: %d seconds, the most a plan's new and changed tier0 tests may add to one tier0 run", c.PlanTier0BudgetSec))
 	}
 	return strings.Join(lines, "\n")
 }

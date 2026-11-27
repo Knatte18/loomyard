@@ -85,6 +85,10 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 	if err != nil {
 		return nil, err
 	}
+	scopeClosed, err := configBool(cfg, "scope_closed", false)
+	if err != nil {
+		return nil, err
+	}
 	zeroRounds, err := configBool(cfg, "zero_rounds", false)
 	if err != nil {
 		return nil, err
@@ -105,7 +109,7 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 	if err != nil {
 		return nil, err
 	}
-	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "seed_stencil", "commit_seam", "approve_seam", "skip_seam", "carry_over", "subject", "cluster_excludes", "blocking_escalates", "escalate_decisions", "zero_rounds", "color_segment", "role_prefix", "reviewer_fan_setting", "auto_accept_setting", "harden_round"); err != nil {
+	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "seed_stencil", "commit_seam", "approve_seam", "skip_seam", "carry_over", "subject", "cluster_excludes", "blocking_escalates", "escalate_decisions", "scope_closed", "zero_rounds", "color_segment", "role_prefix", "reviewer_fan_setting", "auto_accept_setting", "harden_round"); err != nil {
 		return nil, err
 	}
 	if hardenRound {
@@ -354,6 +358,7 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 
 		BlockingEscalates: blockingEscalates,
 		EscalateDecisions: escalateDecisions,
+		ScopeClosed:       scopeClosed,
 		ColorSegment:      colorSegment,
 		RolePrefix:        rolePrefix,
 

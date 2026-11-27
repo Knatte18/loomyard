@@ -145,6 +145,7 @@ func parentAnswerCallerRefusal(caller string, parent hubgeom.Parent, parentErr e
 
 // parentReviewWayDecision returns the way forward of a refused answer that no later answer can take:
 // a call the parent still wants made goes in with `lym loom decision add`.
+// Once the task's scope is closed, it is filed as a board note instead.
 // It names who runs that verb as its guard resolves it: the run's parent orch,
 // or the operator's own unnamed shell when no parent orch resolves or the resolved one has no name.
 func parentReviewWayDecision(slug string, parent hubgeom.Parent, parentErr error) string {
@@ -152,7 +153,7 @@ func parentReviewWayDecision(slug string, parent hubgeom.Parent, parentErr error
 	if parentErr == nil && parent.Name != "" {
 		who = "the run's parent orch " + parent.Name
 	}
-	return fmt.Sprintf(`way forward: a call the parent still wants made goes in with "lym loom decision add %s --by parent", run by %s`, slug, who)
+	return fmt.Sprintf(`way forward: a call the parent still wants made goes in with "lym loom decision add %s --by parent", run by %s; once the task's scope is closed, as from Code-Review on, file it instead as a board note for a new task with "lym board upsert" and kind note`, slug, who)
 }
 
 // parentAnswerRefusalText returns the refusal text of an answer to the ask numbered number that refusal turned down.
@@ -360,7 +361,8 @@ in the file's order.
 It answers only the run's latest ask while that ask is pending-post or open
 and before its deadline; an ask at or past its deadline is set timeout and the
 answer refused. A call the parent still wants made after a refusal goes in with
-"lym loom decision add <slug> --by parent".
+"lym loom decision add <slug> --by parent"; once the task's scope is closed, as
+from Code-Review on, it is filed as a board note for a new task instead.
 
 The callers are the run's parent orch, resolved at call time, the orch strand
 the ask went to, and the operator's own unnamed shell; the strand name is not

@@ -35,7 +35,7 @@ const (
 
 // planConflictWayForward is the way-forward clause that ends the Stuck reason for a webster plan conflict.
 // It names the steps that clear the conflict.
-const planConflictWayForward = "the run's parent records the fix as a decision naming the conflicting pending cards by slug and number with \"lym loom decision add <slug> --by parent … --amends-plan\", then runs \"lym loom goto --to Plan-Burler-Review\" and \"lym loom resume\" in the task worktree"
+const planConflictWayForward = "the run's parent records the fix as a decision naming the conflicting pending cards by slug and number with \"lym loom decision add <slug> --by parent … --amends-plan\", then runs \"lym loom goto --to Plan-Burler-Review\" and \"lym loom resume\" in the task worktree; once the task's scope is closed no amendment enters the record and the settled plan takes no goto back to Plan-Burler-Review, so the parent files the fix as a board note for a new task with \"lym board upsert\" and kind note, then runs \"lym loom goto --to Plan-Write\" (\"--to Parts-Plan-Write\" for a split plan) and \"lym loom resume\", which writes the plan again from the record as it stands"
 
 // WebsterProducer is a shedengine.ShedProducer that runs websterengine.Run once per Call.
 // Each Call runs with Fresh false and AutoRebaseline true, and maps the result onto the shedengine contract.

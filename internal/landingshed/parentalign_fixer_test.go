@@ -247,7 +247,7 @@ func TestMergeIn_Fixer(t *testing.T) {
 
 		outcome, ptr := fx.call(t)
 
-		requireEscalateHalt(t, outcome, ptr, parentAlignName, fx.fixerReportPath(), "decision D3", "`lym loom decision add`")
+		requireEscalateHalt(t, outcome, ptr, parentAlignName, fx.fixerReportPath(), "decision D3", "`lym loom decision add`", "kind note")
 	})
 
 	t.Run("a first Merge-In that stops with an error after the merge still spawns the fixer when resumed", func(t *testing.T) {

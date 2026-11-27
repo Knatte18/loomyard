@@ -112,7 +112,8 @@ func (b *Board) judgeRecordReplaceIn(store *Store, slug string) (bool, error) {
 			"way forward: file the change as a new entry with `lym board upsert`", slug)
 	case RunHolds(task):
 		return false, fmt.Errorf("entry %q is held by a run (status %q), which reads its own record and never the stored one; nothing was written; "+
-			"way forward: change the record on the run with `lym loom decision replace %s`", slug, *task.Status, slug)
+			"way forward: change the record on the run with `lym loom decision replace %s`, "+
+			"or, once that run's scope is closed, file the change as a board note with `lym board upsert` and kind note", slug, *task.Status, slug)
 	}
 	raddle, err := ReadRaddleStore(b.boardPath)
 	if err != nil {

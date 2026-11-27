@@ -285,6 +285,31 @@ func TestBouncer_DecisionEscalation(t *testing.T) {
 		}
 	})
 
+	t.Run("AClosedScopeNamesTheInScopeRulingAndABoardNoteInPlaceOfADecisionEntry", func(t *testing.T) {
+		t.Parallel()
+		b, cfg, _ := decisionBouncerFor(t, "CONTINUE", decisionReviewContent(lowDecision), bouncerLedgerContent(2), func(c *BouncerConfig) { c.ScopeClosed = true })
+
+		ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
+		requireReasonContains(t, ptr.Reason, "cause: decision", "board note for a new task", "lym loom circling continue my-task")
+		if strings.Contains(ptr.Reason, "lym loom decision add") {
+			t.Errorf("Reason = %q; want no decision entry named", ptr.Reason)
+		}
+		for _, want := range []string{"the task's scope is closed", `"lym loom circling continue my-task --in-scope <finding-id>"`, "board note"} {
+			if !strings.Contains(ptr.ParentNotice, want) {
+				t.Errorf("ParentNotice = %q; want it to contain %q", ptr.ParentNotice, want)
+			}
+		}
+		brief := requireDecisionEscalation(t, cfg)
+		for _, want := range []string{"D1", "`lym loom decision add` refuses", "lym loom circling continue my-task --in-scope <finding-id>", "`lym board upsert` and kind note"} {
+			if !strings.Contains(brief, want) {
+				t.Errorf("escalation brief = %q; want it to contain %q", brief, want)
+			}
+		}
+		if strings.Contains(brief, "Record the answer with `lym loom decision add") {
+			t.Errorf("escalation brief = %q; want no decision entry as the answer's route", brief)
+		}
+	})
+
 	t.Run("AHeldFindingCarriedByTheReviewIsTheOnlyOneTheDetailNames", func(t *testing.T) {
 		t.Parallel()
 		review := "---\nverdict: APPROVED\nprior:\n  - id: H1\n    status: resolved\n    answer: settled by the added entry\n  - id: H2\n    status: open\n" +
@@ -606,6 +631,27 @@ func TestBouncer_DecisionEscalation(t *testing.T) {
 			}
 			if !strings.Contains(brief, "lym loom circling accept my-task") {
 				t.Errorf("escalation brief = %q; want the accept verb", brief)
+			}
+		})
+		t.Run("at the cap on a closed scope", func(t *testing.T) {
+			t.Parallel()
+			b, cfg, _ := decisionBouncerFor(t, "CONVERGED", decisionReviewContent(lowDecision), bouncerLedgerContent(2), func(c *BouncerConfig) {
+				c.HardCap = 2
+				c.ScopeClosed = true
+			})
+			ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
+			requireReasonContains(t, ptr.Reason, "board note for a new task", "lym loom circling accept my-task")
+			brief := requireDecisionEscalation(t, cfg)
+			for _, got := range []string{ptr.Reason, ptr.ParentNotice, brief} {
+				if strings.Contains(got, "--in-scope") || strings.Contains(got, "lym loom circling continue") {
+					t.Errorf("escalation text = %q; want the accept verb alone and no in-scope ruling", got)
+				}
+			}
+			if !strings.Contains(ptr.ParentNotice, "file each call as a board note") {
+				t.Errorf("ParentNotice = %q; want every call filed as a board note", ptr.ParentNotice)
+			}
+			if !strings.Contains(brief, "File every call as a board note") {
+				t.Errorf("escalation brief = %q; want every call filed as a board note", brief)
 			}
 		})
 		t.Run("a continue settled after the cap is lowered", func(t *testing.T) {

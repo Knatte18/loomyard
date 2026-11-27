@@ -7,6 +7,7 @@
 // The Bouncer sends a round's decision-class findings to the run's parent,
 // and the fix row of the same segment keeps them out of the fixer and posts nothing.
 // blocking_escalates sends a spent budget with an open BLOCKING finding to the parent instead of an accept.
+// scope_closed sits on a Bouncer row whose segment runs after the task's scope closed.
 // It parses the real embedded recipes and reads no worktree, staying offline.
 
 package loomrecipe
@@ -23,22 +24,24 @@ import (
 // TestDecisionSwitches_SetOnTheRowsThatAskTheParent asserts which rows carry each switch.
 // The decision switches sit on the Discussion-Review, Code-Review, split and Harden-Review perches,
 // so the Plan-Review rows keep the fix row's own parent notice.
-// blocking_escalates sits on every Code-Bouncer row.
+// blocking_escalates sits on every Code-Bouncer row, and so does scope_closed.
 //
-//testtiming:keep pins which shipped recipe rows set escalate_decisions, decisions_escalated and blocking_escalates
+//testtiming:keep pins which shipped recipe rows set escalate_decisions, decisions_escalated, blocking_escalates and scope_closed
 func TestDecisionSwitches_SetOnTheRowsThatAskTheParent(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		recipe                                    string
 		wantEscalate, wantEscalated, wantBlocking []string
+		wantScopeClosed                           []string
 	}{
 		{recipe: shedrun.RecipeTapestry,
-			wantEscalate:  []string{"Code-Bouncer", "Discussion-Bouncer"},
-			wantEscalated: []string{"Code-Burler-Fix", "Discussion-Burler-Fix"},
-			wantBlocking:  []string{"Code-Bouncer"}},
-		{recipe: shedrun.RecipeDarn, wantEscalate: []string{"Code-Bouncer"}, wantEscalated: []string{"Code-Burler-Fix"}, wantBlocking: []string{"Code-Bouncer"}},
-		{recipe: shedrun.RecipeSampler, wantEscalate: []string{"Code-Bouncer"}, wantEscalated: []string{"Code-Burler-Fix"}, wantBlocking: []string{"Code-Bouncer"}},
+			wantEscalate:    []string{"Code-Bouncer", "Discussion-Bouncer"},
+			wantEscalated:   []string{"Code-Burler-Fix", "Discussion-Burler-Fix"},
+			wantBlocking:    []string{"Code-Bouncer"},
+			wantScopeClosed: []string{"Code-Bouncer"}},
+		{recipe: shedrun.RecipeDarn, wantEscalate: []string{"Code-Bouncer"}, wantEscalated: []string{"Code-Burler-Fix"}, wantBlocking: []string{"Code-Bouncer"}, wantScopeClosed: []string{"Code-Bouncer"}},
+		{recipe: shedrun.RecipeSampler, wantEscalate: []string{"Code-Bouncer"}, wantEscalated: []string{"Code-Burler-Fix"}, wantBlocking: []string{"Code-Bouncer"}, wantScopeClosed: []string{"Code-Bouncer"}},
 		{recipe: shedrun.RecipeArras,
 			wantEscalate:  []string{"Discussion-Bouncer", "Raddle-Bouncer"},
 			wantEscalated: []string{"Discussion-Burler-Fix", "Raddle-Burler-Fix"}},
@@ -51,8 +54,11 @@ func TestDecisionSwitches_SetOnTheRowsThatAskTheParent(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parseEmbeddedRecipe(%s) error = %v; want nil", tt.recipe, err)
 			}
-			var gotEscalate, gotEscalated, gotBlocking []string
+			var gotEscalate, gotEscalated, gotBlocking, gotScopeClosed []string
 			for _, row := range recipe.Producers {
+				if set, _ := row.Config["scope_closed"].(bool); set {
+					gotScopeClosed = append(gotScopeClosed, row.Name)
+				}
 				if set, _ := row.Config["escalate_decisions"].(bool); set {
 					gotEscalate = append(gotEscalate, row.Name)
 				}
@@ -74,6 +80,10 @@ func TestDecisionSwitches_SetOnTheRowsThatAskTheParent(t *testing.T) {
 			}
 			if !reflect.DeepEqual(gotBlocking, tt.wantBlocking) {
 				t.Errorf("rows with blocking_escalates = %v; want %v", gotBlocking, tt.wantBlocking)
+			}
+			sort.Strings(gotScopeClosed)
+			if !reflect.DeepEqual(gotScopeClosed, tt.wantScopeClosed) {
+				t.Errorf("rows with scope_closed = %v; want %v", gotScopeClosed, tt.wantScopeClosed)
 			}
 		})
 	}

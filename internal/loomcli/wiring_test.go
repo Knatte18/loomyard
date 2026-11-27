@@ -1359,7 +1359,7 @@ func TestLoomRerouteCapWayForward_IsRowNeutral(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	for _, want := range []string{`lym loom resume`, "--amends-plan", "lym loom goto --to Plan-Burler-Review"} {
+	for _, want := range []string{`lym loom resume`, "--amends-plan", "lym loom goto --to Plan-Burler-Review", "kind note", "lym loom goto --to Plan-Write"} {
 		if !strings.Contains(loomRerouteCapWayForward, want) {
 			t.Errorf("loomRerouteCapWayForward = %q; want it to contain %q", loomRerouteCapWayForward, want)
 		}

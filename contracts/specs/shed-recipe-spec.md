@@ -133,6 +133,10 @@ each entry it confirms fixed is resolved in the ledger, and only the entries lef
 A round whose review holds a `decision`-class finding is handed over the same way under `escalate_decisions`,
 unless every open BLOCKING entry is of class `decision`.
 The shipped Code-Review rows set it.
+A `Bouncer` row's optional boolean `scope_closed` key defaults to false.
+When true, its decision escalation's brief, notice and reason name the `--in-scope` ruling and a board note
+in place of a decision-record entry.
+The shipped Code-Review rows of `tapestry`, `darn` and `sampler` set it.
 
 A `MultiLLM` row runs one lead and its advisors as seats.
 Its keys are `role`, `segment` and `seats`, and the optional `gates`, `timeout_min`, `interactive` and `tokens`.

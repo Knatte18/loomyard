@@ -56,6 +56,9 @@ type Config struct {
 	// MutationBudgetMin is the minutes `lym gate mutate` and the mutation report step may spend on mutant builds and runs.
 	// It counts from the hold of their slot.
 	MutationBudgetMin int `yaml:"mutation_budget_min"`
+	// PlanTier0BudgetSec is the seconds a plan's new and changed tier0 tests may add to one tier0 run; 0 sets no budget.
+	// The planner and the plan review read it through TiersValue.
+	PlanTier0BudgetSec int `yaml:"plan_tier0_budget_sec"`
 	// Tiers are the declared test tiers keyed tier0, tier1, and so on.
 	Tiers map[string]Tier `yaml:"tiers"`
 	// Gates maps a gate key to the tiers and scope that site runs.
@@ -141,6 +144,7 @@ type configFile struct {
 	ReachBudgetMin            int                  `yaml:"reach_budget_min"`
 	MutationMaxMutants        int                  `yaml:"mutation_max_mutants"`
 	MutationBudgetMin         int                  `yaml:"mutation_budget_min"`
+	PlanTier0BudgetSec        int                  `yaml:"plan_tier0_budget_sec"`
 	Tiers                     map[string]tierFile  `yaml:"tiers"`
 	Gates                     map[string]yaml.Node `yaml:"gates"`
 	Scoper                    string               `yaml:"scoper"`
@@ -205,6 +209,7 @@ func ConfigSpec() configengine.Spec {
 			"reach_budget_min":             configengine.CategoryCrossPair,
 			"mutation_max_mutants":         configengine.CategoryCrossPair,
 			"mutation_budget_min":          configengine.CategoryCrossPair,
+			"plan_tier0_budget_sec":        configengine.CategoryGuard,
 			"tiers":                        configengine.CategoryExecutable,
 			"gates":                        configengine.CategoryGuard,
 			"scoper":                       configengine.CategoryGuard,
@@ -362,6 +367,9 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 	if file.MemoryQuitMB < 0 {
 		return Config{}, fmt.Errorf("config key %q: %d; want at least 0", keyName("memory_quit_mb"), file.MemoryQuitMB)
 	}
+	if file.PlanTier0BudgetSec < 0 {
+		return Config{}, fmt.Errorf("config key %q: %d; want at least 0", keyName("plan_tier0_budget_sec"), file.PlanTier0BudgetSec)
+	}
 	for _, bound := range []struct {
 		key   string
 		value int
@@ -420,6 +428,7 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		ReachBudgetMin:            file.ReachBudgetMin,
 		MutationMaxMutants:        file.MutationMaxMutants,
 		MutationBudgetMin:         file.MutationBudgetMin,
+		PlanTier0BudgetSec:        file.PlanTier0BudgetSec,
 		Tiers:                     tiers,
 		Gates:                     gates,
 		Scoper:                    file.Scoper,

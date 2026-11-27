@@ -17,7 +17,9 @@ const arbiterAbsentPath = "none"
 // The verbs end every recipe description, so the arbiter stencil's `{{.recipe}}` marker carries them.
 const arbiterRepairVerbs = "Its repair verbs, run with `<slug>` the task named above:" +
 	" at a review escalation exactly one of `lym loom circling accept <slug>` or `lym loom circling continue <slug>`;" +
-	" `lym loom decision add <slug> --by arbiter --title … --decision … --rationale … [--amends-plan]` to record a design call." +
+	" `lym loom decision add <slug> --by arbiter --title … --decision … --rationale … [--amends-plan]` to record a design call," +
+	" refused once the task's scope closed at its first Code-Review round;" +
+	" there `lym loom circling continue <slug> --in-scope <finding-id>` rules a decision finding the record already asks for in scope." +
 	" A decision that adds, changes or removes a PATTERN entry, or `withdraws` a declared change, also passes `--pattern-entry`, `--pattern-action` and, for `adds` or `changes`, `--pattern-text`, as `lym loom decision add --help` says."
 
 // arbiterRecipeDescription returns the description of recipe that the arbiter stencil's `{{.recipe}}` marker carries:

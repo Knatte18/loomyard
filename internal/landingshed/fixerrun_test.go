@@ -484,7 +484,7 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				if !strings.HasPrefix(judged, EscalateStopPrefix) {
 					t.Errorf("haltReason(judged first) = %q; want the prefix %q", judged, EscalateStopPrefix)
 				}
-				for _, want := range []string{outcome.reportPath, fixerTestRow, "decision D3", "`lym loom decision add`", "`lym loom resume`"} {
+				for _, want := range []string{outcome.reportPath, fixerTestRow, "decision D3", "`lym loom decision add`", "`lym loom resume`", "kind note"} {
 					if !strings.Contains(judged, want) {
 						t.Errorf("haltReason(judged first) = %q; want it to contain %q", judged, want)
 					}

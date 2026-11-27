@@ -188,11 +188,9 @@ func (g *redFirstGate) exempt() (bool, error) {
 		return false, fmt.Errorf("loomshed: red-first gate: parse the decision record's added entries: %w", err)
 	}
 	for _, entry := range added {
-		for _, title := range []string{gateslot.NoTestSeamTitle, gateslot.NoBugFixedTitle} {
-			if strings.HasPrefix(strings.ToLower(entry.Title), strings.ToLower(title)) {
-				logger.Info("loomshed: red-first gate ran nothing, the decision record lifts the check", "gate", g.siteLabel, "attempt", g.attempt, "title", entry.Title)
-				return true, nil
-			}
+		if gateslot.LiftsRedFirst(entry.Title) {
+			logger.Info("loomshed: red-first gate ran nothing, the decision record lifts the check", "gate", g.siteLabel, "attempt", g.attempt, "title", entry.Title)
+			return true, nil
 		}
 	}
 	return false, nil

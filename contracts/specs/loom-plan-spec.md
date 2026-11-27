@@ -109,6 +109,10 @@ Rules on targets:
 - A new test file is a `**Create:**` file target.
   The card's Intent states its tier, such as `tier0`, on a line that names no other test file (`test-tier-unstated`).
   The tier is the one its test functions name in their opening `tiergate.Require` call.
+- When the tiers the planner is given hold a plan tier0 budget line, set by `gate.plan_tier0_budget_sec`,
+  a card that creates or widens a `tier0` test states, in its Intent, the seconds the test adds to one `tier0` run.
+  The plan's estimates together stay within that budget;
+  a test that cannot fit moves to a higher tier or shares an existing test.
 - A card that touches a struct a `//lym:seam` test marks lists that test by its member glyph (`seam-test-unlisted`).
   The test goes under `Edit` when the card changes it and under `Uses` when it stays as is.
 - A card that changes a package's non-test Go code covers the package's `doc.go` (`doc-go-unlisted`):

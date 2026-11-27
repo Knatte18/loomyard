@@ -49,6 +49,9 @@ Do not flag any of the following as a finding:
   the root cause or what is still unknown about it,
   and the test that fails on the merge base, why no test seam exists, or that the entry fixes no bug.
   A record that omits one of them is a finding.
+- **A check left for the reviewer to infer.**
+  A record whose change must measure a figure, make a doc statement true or add a test, and whose `## Acceptance criteria` does not name the figure and its measured case, the doc statement, or the test's intent and tier, is a finding.
+  The fix names each in the criteria, as the discussion spec says.
 - **A Decision that edits the task's own board entry.**
   A Decision that asks the run to change this task's own board entry's body or scope, through `lym board` or otherwise, is a finding, because the run's board lock refuses such a change.
   A Decision that writes another entry, the entry's status or its `run_settings`, or changes board-module code is not flagged by this bullet.

@@ -382,7 +382,8 @@ func (s *fixerSession) judge() (shuttleengine.GateResult, error) {
 // Every reason except a tapestry, darn or sampler escalate opens with LandingStopPrefix and ends with a way forward;
 // each is one line.
 // With escalateJudgedFirst true, an escalate end opens with EscalateStopPrefix instead;
-// it names `lym loom decision add` as its way forward.
+// it names `lym loom decision add` as its way forward,
+// and a board note with a fix on the task branch once the task's scope is closed.
 // With escalateJudgedFirst false, a pawl run's arbiter has no decision verb to settle it with;
 // so the way forward is to settle the conflict on the task branch.
 // An unjudged end's reason is the landing gate's own;
@@ -400,7 +401,7 @@ func (o fixerOutcome) haltReason(row string, escalateJudgedFirst bool) string {
 		cause = fmt.Sprintf("the fixer of %s found a parent change that conflicts with a decision of the record; report: %s; conflict: %s", row, o.reportPath, singleLine(o.conflict))
 		if escalateJudgedFirst {
 			prefix = EscalateStopPrefix
-			wayForward = "record the deciding decision with `lym loom decision add` in the task worktree, then `lym loom resume`"
+			wayForward = "record the deciding decision with `lym loom decision add` in the task worktree, then `lym loom resume`; once the task's scope is closed, file the call as a board note for a new task with `lym board upsert` and kind note, settle the conflict on the task branch so the record's decisions hold, then `lym loom resume`"
 		} else {
 			wayForward = "settle the conflict on the task branch, then `lym loom resume`"
 		}

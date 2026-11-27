@@ -53,7 +53,7 @@ func openParentAsk(d time.Duration) burlerengine.ParentAsk {
 func TestParentReviewAnswerVerb(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	const decisionWay = `"lym loom decision add task-a --by parent", run by the run's parent orch ly:orch`
+	const decisionWay = `"lym loom decision add task-a --by parent", run by the run's parent orch ly:orch; once the task's scope is closed, as from Code-Review on, file it instead as a board note`
 	tests := []struct {
 		name string
 		asks []burlerengine.ParentAsk

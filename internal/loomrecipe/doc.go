@@ -26,6 +26,10 @@
 // PastDiscussionApproval answers whether a run standing at a row is past that approval.
 // Both read the expanded rows and never the recipe's name.
 //
+// InClosedScope answers whether a run at a row stands where its task's scope is closed:
+// from the recipe's first Code-Review row, or after that segment has run, until its Finalize row.
+// CodeReviewRunSubdir answers the run directory of the recipe's Code-Review perch.
+//
 // HoldsSplitPerch and RowsHoldSplitPerch answer whether rows hold a split perch, a Bouncer row over the raddle proposal.
 // CodePerchGate answers the entry gate of a recipe's Code-Review Bouncer row, nil when the perch carries none;
 // a reader of whether the perch is off follows that gate as well as the budget.

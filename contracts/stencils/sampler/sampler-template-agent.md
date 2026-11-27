@@ -36,6 +36,8 @@ Say in a line or two what you understood, then wait for the operator's message.
 - Write any board result with `lym board` as a note.
   A run's agent never creates or promotes a task and never changes its own run's entry, and the board refuses both; the operator promotes a note when they want one.
 - Record each thing the operator settles that changes the task's scope with `lym loom decision add --by operator`.
+  Once a Code-Review round has run on this task, the record takes no such call:
+  file it as a board note for a new task with `lym board upsert` and kind note.
 
 ## Trying a build of lym
 

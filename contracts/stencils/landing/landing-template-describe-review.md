@@ -29,7 +29,8 @@ While it answers `ready: false`, run it again in a turn that does nothing else, 
 
 Read these first, and the description last, so you review the text as the writer left it:
 
-- The decision record, `{{.decision_record_path}}`: its `## Goal`, as its `Added after Discussion` entries amend it, is the task's scope.
+- The decision record, `{{.decision_record_path}}`: its `## Goal`, as its `Added after Discussion` entries amend it, is the task's scope,
+  and its `## Acceptance criteria` names the figures, doc statements and test intents the description states.
 - The board entry, via `lym board get '{"slug":"{{.slug}}"}'`.
 - The diff, read as `git diff {{.merge_base}} {{.task_branch}}`.
 - The run records, as the source of measured figures and of items to check by hand; `(none)` means the run has none:

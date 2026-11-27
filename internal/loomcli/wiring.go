@@ -1636,7 +1636,7 @@ const loomMissingStatusWayForward = "way forward: run \"lym loom start\" first t
 
 // loomRerouteCapWayForward is the told clause a reroute-cap halt ends with, whichever row's reroute hit the cap.
 // The halt is resumed once the cause its reason quotes is cleared.
-const loomRerouteCapWayForward = "run \"lym loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a Webster plan conflict, once the run's parent has recorded the fix with \"lym loom decision add\" and \"--amends-plan\", then run \"lym loom goto --to Plan-Burler-Review\""
+const loomRerouteCapWayForward = "run \"lym loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a Webster plan conflict, once the run's parent has recorded the fix with \"lym loom decision add\" and \"--amends-plan\", then run \"lym loom goto --to Plan-Burler-Review\"; once the task's scope is closed no amendment enters the record and the settled plan takes no goto back to Plan-Burler-Review, so the parent files the fix as a board note for a new task with \"lym board upsert\" and kind note, then runs \"lym loom goto --to Plan-Write\" (\"--to Parts-Plan-Write\" for a split plan) before the resume, which writes the plan again from the record as it stands"
 
 // loomBudgetWayForward is the told clause a bounce-budget-exhausted halt ends with, whichever row's budget ran out.
 // Only the resume grants a budget; a goto keeps the spent one.

@@ -246,6 +246,7 @@ The overview is read at the task branch's merge base with its parent, or at `HEA
   Way forward: shorten the prescribed lines or move detail into background files.
   When that is not enough, record a `changes` decision that shortens other entries.
   Record it with `lym loom decision add`, adding `--amends-plan` once the plan is approved.
+  Once the task's scope is closed no decision enters the record, so only the shortening is left.
 - `pattern-card-headroom` — a pending card's own step grows the projected overview past the headroom line.
   The projection takes the cards in plan order.
   Each card applies its fenced lines, then drops the `removes` entries it is first to name.

@@ -29,7 +29,7 @@ const darnRecordGotoWayForward = "way forward: run \"lym loom goto --to Record-W
 const darnRecordRestoreWayForward = "way forward: restore the decision record from the committed copy under _lym with \"git -C _lym checkout HEAD -- discussion/decision-record.md\", then run \"lym loom resume\""
 
 // darnStopWayForward follows the stop report in the Reason of a Darn-Write session whose writer stopped and wrote the stop marker.
-const darnStopWayForward = "way forward: record the answer with \"lym loom decision add\", then run \"lym loom resume\""
+const darnStopWayForward = "way forward: record the answer with \"lym loom decision add\", then run \"lym loom resume\"; once the task's scope is closed, file the call instead as a board note for a new task with \"lym board upsert\" and kind note, titled \"Decision for <slug>: <call>\" and saying the scope is closed, then run \"lym loom resume\""
 
 // darnStopReportMissing stands in for the stop report when the writer wrote the stop marker and no report.
 const darnStopReportMissing = "the writer stopped and wrote no stop report"

@@ -98,6 +98,8 @@ Cover:
 - **Testing** — approach per module, key scenarios to cover.
   Phrase each acceptance criterion as behavior a test can check;
   a criterion about wording in a stencil, spec, doc or other prose is a review check, marked as the discussion spec's acceptance-criteria rule says, never a test of that prose.
+- **What the reviewer will check** — settle now, and record under `## Acceptance criteria` as the discussion spec says,
+  each figure the change must measure and state and the case it is measured on, each doc statement the change must make true, and each new test's intent and tier.
 
 When the entry is labelled `bug`, the design also settles the observed fault and how to reproduce it,
 its root cause or what is still unknown about it,

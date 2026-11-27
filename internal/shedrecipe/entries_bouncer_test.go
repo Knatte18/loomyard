@@ -1412,6 +1412,7 @@ func callStalemateBouncer(t *testing.T, stalemateRounds int) (shedengine.Outcome
 // TestBouncerEntry_BlockingEscalatesAndColorSegment covers the two optional keys the Merge-Review perch's Bouncer row carries.
 // A round-1 judge call writes a CONTINUE verdict over a ledger holding an open BLOCKING entry, with the row's budget spent and its auto-accept set.
 // blocking_escalates turns that auto-accept into an escalation, and color_segment colors the judge's session, the review color where absent.
+// scope_closed changes what a decision escalation tells the parent to do.
 func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -1423,7 +1424,10 @@ func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 		decisionReview bool
 		wantOutcome    shedengine.Outcome
 		wantSegment    segmentcolor.Segment
+		// wantReason, when set, is text the escalation reason holds.
+		wantReason string
 	}{
+		{name: "scope_closed names the closed-scope route in a decision escalation", extra: Config{"escalate_decisions": true, "scope_closed": true}, autoAccept: true, decisionReview: true, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review, wantReason: "since the task's scope is closed"},
 		{name: "absent keys auto-accept in the review color", autoAccept: true, wantOutcome: shedengine.Done, wantSegment: segmentcolor.Review},
 		{name: "a decision finding without escalate_decisions settles as today", autoAccept: true, decisionReview: true, wantOutcome: shedengine.Done, wantSegment: segmentcolor.Review},
 		{name: "escalate_decisions escalates a decision finding to the parent", extra: Config{"escalate_decisions": true}, autoAccept: true, decisionReview: true, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review},
@@ -1480,6 +1484,9 @@ func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 			}
 			if len(segments) != 1 || segments[0] != tt.wantSegment {
 				t.Errorf("judge spawn segments = %v; want [%s]", segments, tt.wantSegment)
+			}
+			if !strings.Contains(ptr.Reason, tt.wantReason) {
+				t.Errorf("Reason = %q; want it to contain %q", ptr.Reason, tt.wantReason)
 			}
 		})
 	}

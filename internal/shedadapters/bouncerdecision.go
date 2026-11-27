@@ -255,7 +255,8 @@ func (b *Bouncer) decisionRefusal(round int, verdict bouncerVerdict, ledger ledg
 
 // renderDecisionDetail renders the decision fragment for round.
 // It holds the round's decision-class findings and every BLOCKING finding of its review.
-// It also holds the refusal and the verbs that record the answer.
+// It also holds the refusal, the route the answer takes and the verbs that record the outcome.
+// On a closed-scope segment the route rules findings in scope or files them as board notes, never a decision entry.
 // held reports whether the refusal already retired an accept at the budget;
 // if so, the fragment says that an accept escalates the round again while the refusal holds.
 // A refusal over a dropped ledger key also makes the fragment say that a continue meets the same check.
@@ -296,6 +297,7 @@ func (b *Bouncer) renderDecisionDetail(round int, refusal string, held bool) (st
 		"decision_findings": strings.Join(decisionLines, "\n"),
 		"blocking_findings": blocking,
 		"refusal":           refusalText,
+		"answer_route":      b.answerRoute(round),
 		"decide_verbs":      b.decideVerbs(round),
 	})
 	if err != nil {
@@ -318,8 +320,27 @@ func oneLine(text string) string {
 	return strings.Join(strings.Fields(text), " ")
 }
 
+// answerRoute renders how the parent's answer to the decision findings is recorded before the outcome.
+// An open scope records each answer as a decision entry.
+// A closed scope rules a finding the record already asks for in scope and files every other call as a board note.
+// At or past the hard cap no further round exists to take a ruling, so a closed scope files every call as a note.
+func (b *Bouncer) answerRoute(round int) string {
+	if !b.cfg.ScopeClosed {
+		return fmt.Sprintf("Record the answer with `lym loom decision add %s`, then record the segment's outcome with exactly one of:", b.cfg.Slug)
+	}
+	calls := "Rule each finding the decision record already asks for in scope by passing its id to `--in-scope` on the continue verb below; the next round's fixer then takes it.\n" +
+		"File every other call"
+	if b.atHardCap(round) {
+		calls = "File every call"
+	}
+	return "The task's scope closed before this segment, so no decision enters the record, and `lym loom decision add` refuses.\n" +
+		calls + " as a board note for a new task with `lym board upsert` and kind note.\n" +
+		"Then record the segment's outcome with exactly one of:"
+}
+
 // decideVerbs renders the verb lines that record the segment's outcome for round.
 // Below the hard cap it offers continue and accept; at or past it, only accept.
+// On a segment whose scope is closed the continue line names its --in-scope flag.
 func (b *Bouncer) decideVerbs(round int) string {
 	verbSuffix := ""
 	if b.cfg.Slug != "" {
@@ -328,6 +349,9 @@ func (b *Bouncer) decideVerbs(round int) string {
 	accept := fmt.Sprintf("- `lym loom circling accept%s` to proceed", verbSuffix)
 	if b.atHardCap(round) {
 		return accept
+	}
+	if b.cfg.ScopeClosed {
+		return fmt.Sprintf("- `lym loom circling continue%s --in-scope <finding-id>`, the flag repeated per finding, for a round whose fixer takes the findings ruled in scope\n%s", verbSuffix, accept)
 	}
 	return fmt.Sprintf("- `lym loom circling continue%s` for a round over the amended record\n%s", verbSuffix, accept)
 }

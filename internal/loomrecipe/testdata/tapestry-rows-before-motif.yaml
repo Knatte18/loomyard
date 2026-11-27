@@ -503,6 +503,8 @@ producers:
       # parent and wait for its ruling; Code-Burler-Fix sets decisions_escalated so its fixer is
       # given none and posts no notice of its own.
       escalate_decisions: true
+      # scope_closed says the segment runs after the task's scope closed at its first round.
+      scope_closed: true
       # blocking_escalates sends a spent budget with an open BLOCKING finding to the run's parent,
       # which accepts it or orders another round, instead of to the auto-accept.
       blocking_escalates: true

@@ -182,6 +182,10 @@ type BouncerConfig struct {
 	// The arbiter settles it where the board entry and the decision record answer it; otherwise the run's parent does.
 	// A parent's recorded accept passes over those findings and carries them forward; a continue runs another round.
 	EscalateDecisions bool
+	// ScopeClosed marks a segment that runs after the task's scope closed, where no decision enters the record.
+	// Its decision escalation names two routes in place of recording each answer as a decision:
+	// ruling a finding in scope through the continue verb's --in-scope, and filing every other call as a board note.
+	ScopeClosed bool
 	// CirclingCheckpoint is the first round a CIRCLING verdict is legal in.
 	// The judge prompt offers CIRCLING only from this round on,
 	// and an earlier CIRCLING is read as CONTINUE.
@@ -1758,14 +1762,20 @@ func (b *Bouncer) renderEscalation(round int, cause EscalationCause, detail stri
 }
 
 // noticeWayForward returns the clause of the parent notice that names how to settle round's escalation of cause.
-// A cause decision opens with recording each answer through `lym loom decision add`.
+// For cause decision on an open scope, it opens with recording each answer through `lym loom decision add`.
+// On a segment whose scope is closed, it opens with ruling findings in scope and filing other calls as board notes.
 // Every cause then names the accept and continue verbs, and at or past the hard cap the accept verb alone.
 func (b *Bouncer) noticeWayForward(round int, cause EscalationCause) string {
 	decide := fmt.Sprintf(`"lym loom circling accept %s" or "lym loom circling continue %s"`, b.cfg.Slug, b.cfg.Slug)
 	if b.atHardCap(round) {
 		decide = fmt.Sprintf(`"lym loom circling accept %s"`, b.cfg.Slug)
 	}
-	if cause == EscalationDecision {
+	switch {
+	case cause == EscalationDecision && b.cfg.ScopeClosed && !b.atHardCap(round):
+		return fmt.Sprintf(`Way forward: the task's scope is closed, so no decision enters the record: rule each finding the record already asks for in scope with "lym loom circling continue %s --in-scope <finding-id>", which hands it to the next round's fixer, file every other call as a board note for a new task, and decide with %s.`, b.cfg.Slug, decide)
+	case cause == EscalationDecision && b.cfg.ScopeClosed:
+		return fmt.Sprintf(`Way forward: the task's scope is closed, so no decision enters the record: file each call as a board note for a new task, then decide with %s.`, decide)
+	case cause == EscalationDecision:
 		return fmt.Sprintf(`Way forward: record each answer with "lym loom decision add %s --by parent", one entry per answered finding, then decide with %s.`, b.cfg.Slug, decide)
 	}
 	return fmt.Sprintf("Way forward: decide with %s.", decide)
@@ -1777,6 +1787,7 @@ func (b *Bouncer) noticeWayForward(round int, cause EscalationCause) string {
 // The circling verbs take the slug, while the resume command addresses the cwd worktree's own run.
 // At or past the hard cap, whatever the cause, the decide clause names accept alone.
 // For cause decision the decide clause opens with recording the answer through `lym loom decision add`.
+// On a segment whose scope is closed, it opens with filing each call the record does not ask for as a board note.
 func (b *Bouncer) escalationReason(round int, cause EscalationCause, briefPath string) string {
 	verbSuffix := ""
 	if b.cfg.Slug != "" {
@@ -1787,7 +1798,10 @@ func (b *Bouncer) escalationReason(round int, cause EscalationCause, briefPath s
 		reason += fmt.Sprintf("; brief at %s", briefPath)
 	}
 	recordAnswer := ""
-	if cause == EscalationDecision {
+	switch {
+	case cause == EscalationDecision && b.cfg.ScopeClosed:
+		recordAnswer = "file each call the record does not ask for as a board note for a new task, since the task's scope is closed, then "
+	case cause == EscalationDecision:
 		recordAnswer = fmt.Sprintf("record the answer with `lym loom decision add%s`, then ", verbSuffix)
 	}
 	if b.atHardCap(round) {

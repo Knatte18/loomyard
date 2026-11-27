@@ -180,6 +180,10 @@
 // The escalation rules read only files in the run directory, so a harvest and a replay settle alike.
 // A pass that settles a judged round calls the CarryOver seam, which only writes the segment's `## Open risks` entry:
 // it approves nothing, and a failure is the settle's own error, so neither Approve nor Commit runs.
+// A continue recorded through RecordInScopeContinue names decision-class findings the parent ruled in scope;
+// BuildRoundContext marks them on the next round's prior findings, so that round's fixer takes them.
+// BouncerConfig.ScopeClosed marks a segment after the task's scope closed.
+// Its decision escalation names that ruling and a board note in place of a decision-record entry.
 // A decision halt is a recorded accept held by a refusal at the budget and the hard cap.
 // It archives the judge outputs and halts the run with a Reason opening with DecisionHaltPrefix.
 // Drift-Verify opens the Reason of its decision halts with the same prefix.

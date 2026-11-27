@@ -146,6 +146,17 @@ a hard-cap accept; a landing stop; or a false premise in the entry.
 Only a design question goes to the operator:
 what to build, a change of a task's scope, or a choice between designs the board entry leaves open.
 
+Put every call in as early as you can: a task's scope closes when its first Code-Review round starts.
+From the recipe's first Code-Review row until Finalize, `lym loom decision add` and `replace` refuse every caller, yours and the operator's included,
+and a run sent back to its writer after that round stays closed.
+The one call those verbs still take there is an `add` on a `bug` entry,
+titled `No test seam` or `No bug fixed` and changing nothing else:
+it records why the red-first check does not apply, so it changes no scope.
+A call that comes up there is a board note for a new task, filed with `lym board upsert` and kind note, never a change to this task.
+Finalize's fixes to a merge or test failure stay outside the line, and their escalations still take `lym loom decision add`.
+Feedback the operator gives after the scope closes, on the pull request or elsewhere,
+is a board note for a new task like any other late call.
+
 - **The arbiter's own hand-on:** a review escalation whose stop report names an arbiter attempt.
   Its `envelope.json` sits in the attempt directory beside the verdict file.
   The envelope carries verdict `hand-on` and an empty `cause`.
@@ -157,6 +168,9 @@ what to build, a change of a task's scope, or a choice between designs the board
 - **Cause `decision`:** a question the review could not settle goes to the arbiter as `hard-cap` and `circling` do,
   so it reaches you only as a hand-on.
   Record the answer with `lym loom decision add <slug> --by parent` before the escalation brief's circling verb.
+  At Code-Review, where the scope is closed, rule each finding the board entry and the record already ask for in scope
+  with `lym loom circling continue <slug> --in-scope <finding-id>`, so the next round's fixer takes it,
+  and file every other call as a board note before you accept.
   Then resume.
 - **Cause `stalemate`:** the review target stayed unchanged for the configured rounds in a row.
   The arbiter settles it as it settles `circling`, so it reaches you only as a hand-on.
@@ -167,7 +181,7 @@ what to build, a change of a task's scope, or a choice between designs the board
   At or past it, or at a `hard-cap` escalation, take the work as it stands with `lym loom circling accept <slug>`.
   Or raise the hard cap by the command the refusal names for the layer its value comes from.
   A new round is expensive:
-  prefer recording the blocking fixes with `lym loom decision add`, then `lym loom circling accept <slug>`.
+  before Code-Review, prefer recording the blocking fixes with `lym loom decision add`, then `lym loom circling accept <slug>`.
   Grant a round only for findings no decision settles.
   Either verb only records the decision, so run `lym loom resume` in the task worktree to go on.
 - **An exhausted bounce budget at a producer:** `lym loom resume` in the task worktree grants the row one more budget.
@@ -184,7 +198,7 @@ what to build, a change of a task's scope, or a choice between designs the board
   A release never stops a run:
   it takes the lock again at its next lock-taking row and merges the moved parent at its next Finalize.
 - **A design call the child cannot make**, in an escalation that is not a review escalation:
-  decide it and record it with `lym loom decision add`.
+  decide it and record it with `lym loom decision add`, or, once the task's scope is closed, file it as a board note.
   One that amends the approved plan follows Fixing a run.
 - **An escalation naming a peer run:** classify each as a hand-on or a fault first, and investigate a fault as a stop.
   Two runs with related work never talk to each other; you align them.
@@ -255,7 +269,8 @@ It goes out once the round's fixer report exists, before the round's Bouncer jud
 The line names the slug, the round, the ask number, the task worktree, the round's own review and fixer report,
 the deadline and the answer verb with its `--ask` filled in.
 The review holds the findings the round ruled on, and the fixer report what its fixer did with each.
-Hand the review to a one-shot fork, as for a decision record, with the same two writing verbs and the same findings file.
+Hand the review to a one-shot fork, as for a decision record, with the same findings file and the answer verb alone:
+the task's scope is closed at Code-Review, so `lym loom decision add` refuses, and the fork names a call beyond the record in its report for you to file as a board note.
 The fork reads the task's diff, the named review and fixer report, and the run's decision record,
 and answers `--satisfied` when the change and those rulings stand, or gives each finding it wants fixed.
 The round's Bouncer waits for your answer and keeps every finding you give:
@@ -312,11 +327,16 @@ To stop a run at a point, message its driver with the producer name and whether 
 A go-driven run has no driver to message.
 Address it through `lym loom` and `lym shed` verbs (pause, goto, decision, resume).
 A scope correction on a run whose decision record exists goes through `lym loom decision add <slug> --by parent`.
+Once the task's scope is closed, it is a board note for a new task instead.
 That holds even while an agent of the run is alive, and you send no message of your own.
 The verb tells each live agent.
 Record a design call that amends the approved plan with `lym loom decision add <slug> --by parent … --amends-plan`.
 Word it as a concrete change to named cards, each named by slug as well as number.
 Then run `lym loom goto --to Plan-Burler-Review` and `lym loom resume` in the task worktree.
+Once the task's scope is closed, no call amends the plan: file it as a board note.
+The settled plan then takes no goto onto its review, so when the plan itself needs the fix,
+run `lym loom goto --to Plan-Write` (`--to Parts-Plan-Write` for a split plan) and `lym loom resume`,
+which writes the plan again from the record as it stands.
 Never edit a card yourself.
 A spent Plan-Review bounce budget pauses the judge for `lym loom resume`.
 That bounds your repeats by your own judgment.
@@ -361,6 +381,7 @@ An operator decision made in chat is recorded in the same turn:
 - On an entry no run holds, write it into that entry's body through `lym board`.
 - On a task a run holds, record it with `lym loom decision add <slug> --by parent`;
   the board's run lock means a held task's entry is never edited.
+  Once that task's scope is closed, it is a board note for a new task instead.
   An operator decision on a running arras entry goes the same way, with `--by operator`, never into the entry body.
   - Several decisions taken together go in one call with `--from <file>`, a JSON array of entries,
     so they land in one commit and one notice.

@@ -119,6 +119,11 @@ The Discussion-Write and Discussion-Burler-Fix gates halt on a quarry outage as 
 - **A criterion is behavior a test can check, or a review check.**
   A criterion that a stencil, spec, doc or other prose names, says or contains a wording opens its bullet with `Review:`.
   The code review checks it by reading the text the diff leaves, and no test asserts that prose.
+- **`## Acceptance criteria` names what a reviewer of the landed change will check by hand.**
+  It names each figure the change must measure and state, with the case it is measured on and where the figure is stated;
+  each doc statement the change must make true, as a `Review:` bullet naming the doc;
+  and the intent of each test the change adds: the behavior it pins and its tier.
+  A criterion left for the reviewer to infer is checked only after the scope has closed, when no fix enters this task.
 - **A Decision that adds an edge or weakens a guard states its bound.**
   A Decision that adds a verb, flag, escape hatch or routing edge states what it can skip or let through and what bounds it.
   The same holds for a Decision that removes, downgrades or makes bypassable a guard.

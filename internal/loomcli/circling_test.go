@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -53,11 +54,15 @@ func (f *circlingFake) deps() circlingDeps {
 	return circlingDeps{
 		readStatus:    func() (shedengine.Status, bool, error) { return f.status, f.found, f.statusErr },
 		bouncerSubdir: bouncerSubdir,
-		record: func(subdir string, d shedadapters.CirclingDecision) (int, shedadapters.EscalationCause, error) {
+		record: func(subdir string, d shedadapters.CirclingDecision, inScope []string) (int, shedadapters.EscalationCause, error) {
 			if f.recordErr != nil {
 				return 0, "", f.recordErr
 			}
-			f.records = append(f.records, subdir+":"+string(d))
+			record := subdir + ":" + string(d)
+			if len(inScope) > 0 {
+				record += ":" + strings.Join(inScope, ",")
+			}
+			f.records = append(f.records, record)
 			return f.round, f.cause, nil
 		},
 		latestRound:       func(string) (int, error) { return f.latest, f.latestErr },
@@ -89,28 +94,76 @@ func TestCirclingVerb_Records(t *testing.T) {
 	tests := []struct {
 		name      string
 		decision  shedadapters.CirclingDecision
+		inScope   []string
 		fake      circlingFake
 		wantRound float64
 		wantCause string
+		// wantRecord is the record the verb makes after the plan subdir's prefix.
+		wantRecord string
 	}{
-		{"accept", shedadapters.CirclingAccept, escalated(3, shedadapters.EscalationBudget), 3, "budget"},
-		{"continue", shedadapters.CirclingContinue, escalated(3, shedadapters.EscalationBudget), 3, "budget"},
-		{"continue below the hard cap on a circling escalation", shedadapters.CirclingContinue, belowCap, 3, "circling"},
-		{"accept at the hard cap", shedadapters.CirclingAccept, acceptAtCap, 4, "hard-cap"},
+		{"accept", shedadapters.CirclingAccept, nil, escalated(3, shedadapters.EscalationBudget), 3, "budget", "accept"},
+		{"continue", shedadapters.CirclingContinue, nil, escalated(3, shedadapters.EscalationBudget), 3, "budget", "continue"},
+		{"continue below the hard cap on a circling escalation", shedadapters.CirclingContinue, nil, belowCap, 3, "circling", "continue"},
+		{"accept at the hard cap", shedadapters.CirclingAccept, nil, acceptAtCap, 4, "hard-cap", "accept"},
+		{"continue ruling findings in scope", shedadapters.CirclingContinue, []string{"f1", "f3"}, escalated(2, shedadapters.EscalationDecision), 2, "decision", "continue:f1,f3"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := tt.fake
 			var out bytes.Buffer
-			if code := circlingVerb(&out, "task-a", f.deps(), tt.decision); code != 0 {
+			if code := circlingVerb(&out, "task-a", f.deps(), tt.decision, tt.inScope); code != 0 {
 				t.Fatalf("exit = %d, out %s; want 0", code, out.String())
 			}
 			data := envelope.RequireOK(t, out.String()).Raw
 			if data["slug"] != "task-a" || data["decision"] != string(tt.decision) || data["round"] != tt.wantRound || data["cause"] != tt.wantCause || data["resume"] != "lym loom resume" {
 				t.Fatalf("envelope = %v; want slug, decision, round %v, cause %s and the resume hint", data, tt.wantRound, tt.wantCause)
 			}
-			if want := "plan:" + string(tt.decision); len(f.records) != 1 || f.records[0] != want {
+			if _, named := data["in_scope"]; named != (tt.inScope != nil) {
+				t.Errorf("envelope in_scope present = %v; want %v", named, tt.inScope != nil)
+			}
+			if want := "plan:" + tt.wantRecord; len(f.records) != 1 || f.records[0] != want {
 				t.Fatalf("records = %v; want [%s]", f.records, want)
+			}
+		})
+	}
+}
+
+// TestRecordCircling asserts that a continue records the findings it names as ruled in scope, and no others.
+func TestRecordCircling(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name    string
+		inScope []string
+	}{
+		{name: "RulingFindingsInScope", inScope: []string{"D1"}},
+		{name: "WithoutARuling"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			reviewsDir := t.TempDir()
+			runDir := filepath.Join(reviewsDir, "code")
+			if err := os.MkdirAll(runDir, 0o755); err != nil {
+				t.Fatalf("MkdirAll(%s) = %v; want nil", runDir, err)
+			}
+			files := map[string]string{
+				"round-1-review.md":     "---\nverdict: APPROVED\nfindings:\n  - id: D1\n    severity: LOW\n    class: decision\n    location: plan.md:4\n    summary: open question\n    fix: settle it\n---\n",
+				"round-1-escalation.md": "---\nround: 1\ncause: decision\n---\n",
+			}
+			for name, content := range files {
+				if err := os.WriteFile(filepath.Join(runDir, name), []byte(content), 0o644); err != nil {
+					t.Fatalf("WriteFile(%s) = %v; want nil", name, err)
+				}
+			}
+
+			round, cause, err := recordCircling(reviewsDir)("code", shedadapters.CirclingContinue, tt.inScope)
+
+			if err != nil || round != 1 || cause != shedadapters.EscalationDecision {
+				t.Fatalf("record(code, continue, %v) = %d, %q, %v; want 1, decision, nil", tt.inScope, round, cause, err)
+			}
+			if got, err := shedadapters.InScopeFindings(runDir, 1); err != nil || !slices.Equal(got, tt.inScope) {
+				t.Errorf("InScopeFindings() = %v, %v; want %v", got, err, tt.inScope)
 			}
 		})
 	}
@@ -132,7 +185,7 @@ func TestCirclingVerb_AcceptsFinalizeFixReviewHalt(t *testing.T) {
 	f := circlingFake{status: blockedAtFinalize(), found: true}
 	var out bytes.Buffer
 
-	if code := circlingVerb(&out, "task-a", f.deps(), shedadapters.CirclingAccept); code != 0 {
+	if code := circlingVerb(&out, "task-a", f.deps(), shedadapters.CirclingAccept, nil); code != 0 {
 		t.Fatalf("exit = %d, out %s; want 0", code, out.String())
 	}
 
@@ -169,6 +222,8 @@ func TestCirclingVerb_Refusals(t *testing.T) {
 		{"latest round not escalated", "", circlingFake{status: awaitingAt(loomshed.NameCodeBouncer), found: true, recordErr: shedadapters.ErrNotEscalated}, []string{"is not escalated"}},
 		{"malformed escalation record", "", circlingFake{status: atPlanBouncer, found: true, recordErr: fmt.Errorf("%w: round-2-escalation.md: bad cause", shedadapters.ErrEscalationMalformed)}, []string{"fix or delete the named escalation file"}},
 		{"second decision", "", circlingFake{status: awaitingAt(loomshed.NameDiscussionBouncer), found: true, recordErr: shedadapters.ErrCirclingDecided}, []string{`already recorded for the escalated round at Discussion-Bouncer; way forward: the decision for this round is recorded and stays; run "lym loom resume"`}},
+		{"in-scope ruling on another cause", shedadapters.CirclingContinue, circlingFake{status: awaitingAt(loomshed.NameCodeBouncer), found: true, recordErr: fmt.Errorf("%w: round 2's escalation cause is budget", shedadapters.ErrInScopeCause)}, []string{"answers only a decision escalation", `run "lym loom circling continue task-a" without it`}},
+		{"in-scope ruling naming no decision finding", shedadapters.CirclingContinue, circlingFake{status: awaitingAt(loomshed.NameCodeBouncer), found: true, recordErr: fmt.Errorf("%w: f9, while round 2's decision-class findings are f1", shedadapters.ErrInScopeFinding)}, []string{"f9, while round 2's decision-class findings are f1", "name only their ids"}},
 		{
 			"continue at the hard cap", shedadapters.CirclingContinue,
 			circlingFake{status: atPlanBouncer, found: true, latest: 4, hardCap: 4, pending: true, raise: loomRaise},
@@ -208,7 +263,7 @@ func TestCirclingVerb_Refusals(t *testing.T) {
 				decision = shedadapters.CirclingAccept
 			}
 			var out bytes.Buffer
-			if code := circlingVerb(&out, "task-a", f.deps(), decision); code != 1 {
+			if code := circlingVerb(&out, "task-a", f.deps(), decision, nil); code != 1 {
 				t.Fatalf("exit = %d; want 1", code)
 			}
 			msg := envelope.RequireErr(t, out.String(), tt.want[0]).Error

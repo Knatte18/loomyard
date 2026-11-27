@@ -79,6 +79,9 @@
 // RunOpts.DecisionsRouted marks a caller that sends decision-class findings to the run's parent.
 // Fix then counts those findings as no work until the parent rules on one.
 // A ruling that reaches the fixer makes the ruled finding its work, and the fixer-report records it under Rulings.
+// A held finding the parent ruled in scope is marked PriorFinding.InScope.
+// The next round's review carries it outside class decision, so that round's fixer takes it.
+// The round check refuses a carry that keeps class decision.
 //
 // The fixer-report opens with `---`-delimited YAML frontmatter over its prose.
 // `dispositions` holds one entry per finding the fixer owns:

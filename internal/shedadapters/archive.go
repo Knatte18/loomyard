@@ -6,7 +6,9 @@
 package shedadapters
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -100,6 +102,42 @@ func ArchivedRunDirSegment(dirName string) (string, bool) {
 		return "", false
 	}
 	return match[1], true
+}
+
+// SegmentRan reports whether the review segment whose run directory is reviewsDir/segment has run.
+// A round review, a generation record or a settle record in that directory shows that it has.
+// So does an archived sibling of the directory.
+// An absent directory is no run, and any other read failure is an error.
+func SegmentRan(reviewsDir, segment string) (bool, error) {
+	entries, err := os.ReadDir(reviewsDir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("shedadapters: read reviews dir %s: %w", reviewsDir, err)
+	}
+	for _, entry := range entries {
+		if archived, ok := ArchivedRunDirSegment(entry.Name()); ok && archived == segment && entry.IsDir() {
+			return true, nil
+		}
+	}
+
+	runDir := filepath.Join(reviewsDir, segment)
+	if _, err := os.Stat(runDir); errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("shedadapters: stat run dir %s: %w", runDir, err)
+	}
+	for _, name := range []string{generationRecordFile, settleRecordFile} {
+		path := filepath.Join(runDir, name)
+		if _, err := os.Stat(path); err == nil {
+			return true, nil
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return false, fmt.Errorf("shedadapters: stat %s: %w", path, err)
+		}
+	}
+	round, err := LatestRound(runDir)
+	return round > 0, err
 }
 
 // firstFreeArchivePath returns the first path that candidate builds and that does not exist.

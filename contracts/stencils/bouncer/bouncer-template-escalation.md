@@ -57,6 +57,8 @@ When a recorded operator decision answers the question:
 
 1. Record the operator decision you applied, citing where it is recorded, with `lym loom decision add {{.slug}} --by parent --title … --decision … --rationale …`, run in `{{.worktree}}`, when the decision record exists; never record with `--by operator`.
    Without a decision record, name the applied decision and its source in your report back to your parent session instead.
+   When the verb refuses because the task's scope is closed, name the applied decision and its source in your report back instead,
+   and handle each decision finding as the cause detail says for a closed scope.
 2. {{.decide_options}}
 3. Resume the run with `lym loom resume` in `{{.worktree}}`.
 

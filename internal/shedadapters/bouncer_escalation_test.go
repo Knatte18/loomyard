@@ -837,7 +837,7 @@ func runSoftCapRuleRow(t *testing.T, row softCapRuleRow, path softCapPath) {
 		}
 	}
 	if row.prevDecision {
-		if err := createCirclingDecision(cfg.RunDir, 1, CirclingContinue, EscalationBudget, true); err != nil {
+		if err := createCirclingDecision(cfg.RunDir, 1, CirclingContinue, EscalationBudget, true, nil); err != nil {
 			t.Fatalf("createCirclingDecision(round 1) = %v; want nil", err)
 		}
 	}

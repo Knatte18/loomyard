@@ -121,6 +121,9 @@ Do not flag any of the following as a finding:
   The hub's tiers and gate lists, as the plan writer was given them:
 {{.gate_tiers}}
   A plan-level `## verify:` section is accepted and ignored, so it is no finding.
+- **The plan tier0 budget.**
+  When the tiers above hold a plan tier0 budget line, a card that creates or widens a `tier0` test and states no estimate of the seconds it adds is a finding,
+  and so is a plan whose estimates together pass the budget; the finding names the cards and their sum.
 - **The attack-surface question.**
   For every new verb, flag, escape hatch or routing edge, and every guard that is removed, downgraded or bypassable, the card that introduces the change states in its `**Intent:**` what it can now skip or let through and what bounds it.
   A card that introduces one with no stated bound is a finding.

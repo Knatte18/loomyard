@@ -44,6 +44,11 @@
 // and a sampler run's recorded session strand with `--by operator` only while its Sampler-Session row is current.
 // `decision add`, `replace` and `store` refuse a raddle run, naming the goto or the filed parts.
 // `decision add` with `--amends-plan` or a PATTERN change is refused while the run's drift judge session is open.
+// `decision add` and `replace` refuse every caller once the task's scope is closed:
+// from the recipe's first Code-Review row, or once that segment has run, until its Finalize row.
+// `add` still takes a `bug` entry's call that only records why the red-first check does not apply.
+// Such a call changes no scope.
+// The refusal names a board note for a new task as the way forward.
 // `decision replace` commits a whole record with a `Lym-Record-Replaced` trailer under the run's decision lock.
 //
 // `parent-review answer` records the parent orch's answer to the run's latest ask.
@@ -108,6 +113,8 @@
 // and the envelope lists them under `stencils_changed`.
 // A failed compare never fails the verb.
 // `lym loom circling continue` refuses at or past the perch's hard cap, naming `circling accept` or raising the cap.
+// Its `--in-scope <finding-id>` rules a decision-class finding of a decision escalation in scope,
+// so the next round carries it as fixer work; any other cause, and an id naming no such finding, is refused.
 //
 // # Plan card verbs
 //

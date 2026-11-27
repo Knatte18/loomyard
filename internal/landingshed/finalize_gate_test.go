@@ -1167,7 +1167,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 
 		outcome, ptr := fx.call(t)
 
-		requireEscalateHalt(t, outcome, ptr, finalizeName, fx.reportPath(), "decision D3", "`lym loom decision add`")
+		requireEscalateHalt(t, outcome, ptr, finalizeName, fx.reportPath(), "decision D3", "`lym loom decision add`", "kind note")
 	})
 
 	t.Run("a re-entry from another row starts at zero attempts while a resume keeps the spent ones", func(t *testing.T) {

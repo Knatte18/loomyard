@@ -184,7 +184,7 @@ func TestWebsterProducer_OutcomeStuck(t *testing.T) {
 				seedWebsterConflictRecord(t, deps, "finding-a", "finding-b")
 				writeWebsterFile(t, websterengine.RoutedConflictPath(scratch), "- finding-a\n- finding-b\n")
 			},
-			wantReasonHas:  []string{"the same webster plan conflict recurred", stuckReason, "--amends-plan", "lym loom goto --to Plan-Burler-Review", "lym loom resume"},
+			wantReasonHas:  []string{"the same webster plan conflict recurred", stuckReason, "--amends-plan", "lym loom goto --to Plan-Burler-Review", "lym loom resume", "kind note", "lym loom goto --to Plan-Write"},
 			wantReasonLack: []string{"review"},
 			wantRouted:     "- finding-a\n- finding-b\n",
 		},

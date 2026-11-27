@@ -22,6 +22,7 @@
 4. Update, in the same commits as the code, the docs the change makes stale: the package doc of each package whose behavior changes, `doc.go` for a Go package;
    the repository's overview doc when a module table or execution stack it shows changes;
    and, when the repository has a `PATTERN.md`, its entry for a cross-cutting invariant the change adds or changes.
+   A figure a doc or comment quotes as measured on a case the change alters is measured again from the current code, or dropped.
 5. Apply each bullet of the record's `## PATTERN changes` section to `PATTERN.md` in your own commits.
 6. Commit on the task branch after each coherent step, as soon as its gate passes, in small commits that each leave the tree green.
    Never hold the change uncommitted until the end:

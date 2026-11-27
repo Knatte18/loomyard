@@ -31,4 +31,8 @@ When you are the parent of a run yourself, keep its decision record current this
   on a record whose `## Goal` is a fenced board body, as Record-Write renders it, the fold rewrites that body to carry the call, since darn and drift give precedence over the body to added entries alone;
 - once a motif run has made a Sketch whose record holds added entries, fold them with `lym board upsert --record-file`;
 - before sending a run back to a Webster row after a fold, record each folded call again with `lym loom decision add`;
-  a call that carried `Drops Create:` lines passes the same targets again with `--drops-create`.
+  a call that carried `Drops Create:` lines passes the same targets again with `--drops-create`;
+  once the run's scope is closed no call is recorded again, so file what that send-back would miss as a board note;
+- record every call before the run's first Code-Review round, where its scope closes and both verbs refuse until Finalize:
+  a call that comes later is a board note for a new task, and a Code-Review decision finding the record already asks for is ruled in scope with `lym loom circling continue --in-scope`.
+  The one record still taken then is a `bug` entry's, titled `No test seam` or `No bug fixed` and changing nothing else.

@@ -1137,6 +1137,7 @@ User-facing modules each get one `lym <module>` namespace:
   A writer that finds the entry overtaken writes a stop report as its description and creates the stop marker.
   The marker halts the run after the session, with the report as the reason.
   The parent records its answer with `lym loom decision add`, and the run resumes.
+  Once the task's scope is closed, the parent files the answer as a board note saying so instead.
   The perch is loom's own, with the same rows and rubric.
   It uses the `loom.code.*` keys for models, fans, budget, hard cap and auto-accept.
   Only its answer key differs.
@@ -1262,6 +1263,11 @@ User-facing modules each get one `lym <module>` namespace:
   It appends one design call made after the Discussion to the decision record.
   The call goes under an `Added after Discussion` heading.
   It re-runs the discussion check, restoring the record on a finding, and commits the record.
+  It and `decision replace` refuse every caller once the task's scope is closed, from the recipe's first Code-Review row,
+  or once that segment has run, until its Finalize row; a later call becomes a board note for a new task.
+  `decision add` still takes a `bug` entry's record titled `No test seam` or `No bug fixed` that changes nothing else.
+  At a Code-Review decision escalation, `lym loom circling continue --in-scope <finding-id>` rules a finding the record already asks for in scope,
+  and the next round's fixer takes it.
   `--pattern-entry <id> --pattern-action adds|changes|removes|withdraws` writes the entry's bullet too.
   The bullet goes under `## PATTERN changes`; for `withdraws`, the call strikes it in the same commit.
   `--from <file>` in place of the per-entry flags records a JSON array of such calls in one write and one commit.

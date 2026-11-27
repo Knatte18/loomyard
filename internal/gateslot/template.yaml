@@ -10,6 +10,7 @@ redundancy_budget_min: 10  # minutes the redundancy report step may spend on its
 reach_budget_min: 10  # minutes the reach and mutation report steps and lym gate mutate may spend refreshing the worktree's coverage maps once they hold a gate slot; past it they start no further build or test
 mutation_max_mutants: 40  # the most mutants lym gate mutate or the mutation report step runs for one diff, one per changed function in turn, spread evenly over the functions when the cap is short of one each; the rest are listed as not run
 mutation_budget_min: 20  # minutes lym gate mutate or the mutation report step may spend on its mutant builds and runs once it holds its gate slot; past it it starts no further build or test
+plan_tier0_budget_sec: 60  # seconds a plan's new and changed tier0 tests may add to one tier0 run; the planner states each card's estimate in its test Intent and the plan review flags a plan past it; 0 sets no budget
 
 # The hub's test tiers, keyed tier0, tier1, and so on; the template declares none.
 # A tier is written whole with one flow mapping: lym config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}'

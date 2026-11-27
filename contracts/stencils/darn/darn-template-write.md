@@ -49,12 +49,16 @@ Check whether landed work, another board entry or another run overtook or contra
 - Read `lym board list`, every entry that touches the task and every board note titled `Decision for {{.slug}}:` for it, and `lym loom peers` for the runs in flight and the parent's commits since the fork.
 - An ordinary misalignment you settle yourself.
 - When the entry is plainly outdated, and no `Added after Discussion` entry in the record answers it, you stop:
+  - The exception: once a Code-Review round has run on this task, its scope is closed and the record takes no new entry.
+    A parent's answer, or a `Decision for {{.slug}}:` note, that says the scope is closed and the call is filed for a new task settles the point:
+    make what the record as it stands asks, leave the filed part to that task, and name the note in the change description's design decisions.
   - With a parent, send it a message with `lym creel post --parent --expect-reply "<text>"` naming what overtook or contradicts the entry.
     Ask it to record its answer with `lym loom decision add`; then end your turn to wait.
     That verb appends an `Added after Discussion` entry to the record and types a line into your pane naming it.
     On any message from your parent, re-read the record, and follow the entry you find over the board entry's body.
-  - With no parent, a `Decision for {{.slug}}:` note never settles the stop: an outdated entry with no `Added after Discussion` entry answering it stops you again, whatever note answers it.
-    Write the change description, your one output file, as a stop report in the final-summary spec's form, naming the outdated entry, what overtook or contradicts it, and as the way forward `lym loom decision add` and then `lym loom resume`, never a board note.
+  - With no parent, while the scope is open, a `Decision for {{.slug}}:` note never settles the stop: an outdated entry with no `Added after Discussion` entry answering it stops you again, whatever note answers it.
+    Write the change description, your one output file, as a stop report in the final-summary spec's form, naming the outdated entry, what overtook or contradicts it, and as the way forward `lym loom decision add` and then `lym loom resume`,
+    or, on a task a Code-Review round has run on, a board note saying the scope is closed and then `lym loom resume`.
     Then create the stop marker, an empty file, at `{{.stop_marker_path}}`, and end your turn with no commit.
 - When the task's body names a stop condition and you find it holds, you stop.
   Write the change description, your one output file, as the stop report with the content the body asks for, in the final-summary spec's form.
@@ -81,6 +85,8 @@ A clean `validate-description` run is the last thing you do before you end your 
 ## A scope correction from your parent
 
 Your parent records a scope correction with `lym loom decision add`, which appends an `Added after Discussion` entry to the decision record and types a line into your pane naming the new entry.
+Once a Code-Review round has run on this task, the record takes no such entry:
+your parent files the correction as a board note for a new task, and you change nothing for it.
 On that line, or when a message from your parent carries a correction, re-read the record's `Added after Discussion` entries and follow them over the board entry's body.
 When the message names a correction the record does not yet hold, ask your parent to record it, follow the message meanwhile, and name it as an unrecorded parent correction in the change description's design decisions.
 You never run `lym loom decision add` yourself; the verb refuses a task session.
@@ -91,7 +97,10 @@ A follow-up you file goes on the board as a note, never as a task, and you never
 When the board entry or the decision record asks for such a step, leave it out from the start and ask your parent to record the drop with `lym loom decision add`.
 Until the record carries that `Added after Discussion` entry, name the omission in the change description's design decisions as an unrecorded parent correction.
 Once the entry exists, the omission is no deviation from the amended board entry.
-With no parent to ask, stop and report the step.
+Once a Code-Review round has run, no entry can record the drop:
+your parent files it as a board note, and the omission stays named in the design decisions.
+With no parent to ask, stop and report the step,
+unless a `Decision for {{.slug}}:` note says the scope is closed and files the drop: then leave the step out and name it.
 The route admits a drop of an own-entry step only: no other step is left out through it.
 
 ## The sealed expectation

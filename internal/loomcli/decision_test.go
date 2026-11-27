@@ -161,6 +161,12 @@ type decisionFake struct {
 	// implementerRows reports, per row, whether the run stands in its Webster span; implementerErr makes the read fail.
 	implementerRows map[string]bool
 	implementerErr  error
+	// closedRows reports, per row, whether the run's scope is closed there; closedErr makes the read fail.
+	closedRows map[string]bool
+	closedErr  error
+	// labels are the labels of the run's board entry, and labelsErr makes their read fail.
+	labels    []string
+	labelsErr error
 	// boardStored is whether the run's board entry carries a stored record; boardStoredErr makes the read fail.
 	boardStored    bool
 	boardStoredErr error
@@ -478,6 +484,8 @@ func (f *decisionFake) deps() decisionDeps {
 			return f.headTrailer == value, nil
 		},
 		implementerSpan:   func(row string) (bool, error) { return f.implementerRows[row], f.implementerErr },
+		scopeClosed:       func(row string) (bool, error) { return f.closedRows[row], f.closedErr },
+		entryLabels:       func() ([]string, error) { return f.labels, f.labelsErr },
 		boardRecordStored: func() (bool, error) { return f.boardStored, f.boardStoredErr },
 	}
 }

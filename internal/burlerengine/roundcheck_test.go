@@ -105,6 +105,14 @@ func TestCheckReviewRound(t *testing.T) {
 			ctx.Prior[0].Held, ctx.AddedTitles = true, titles
 		}
 	}
+	// inScope makes E1 a held decision-class finding the parent ruled in scope.
+	inScope := func(ctx *RoundContext) {
+		ctx.Prior[0].Held, ctx.Prior[0].InScope, ctx.Prior[0].Finding.Class = true, true, ClassDecision
+	}
+	asDecision := func(f Finding) Finding {
+		f.Class = ClassDecision
+		return f
+	}
 
 	tests := []struct {
 		name     string
@@ -131,6 +139,20 @@ func TestCheckReviewRound(t *testing.T) {
 		{
 			name: "HeldFindingResolvedWithoutAQuotedTitle", ctx: round(held("Use X")),
 			prior: []PriorEntry{{ID: "E1", Status: PriorResolved, Answer: "done"}}, wantErr: "without quoting the title",
+		},
+		{name: "InScopeFindingResolvedWithoutAQuotedTitlePasses", ctx: round(inScope), prior: []PriorEntry{{ID: "E1", Status: PriorResolved, Answer: "the code does it now"}}},
+		{name: "InScopeFindingOutdatedIsRefused", ctx: round(inScope), prior: []PriorEntry{entry("E1", PriorOutdated)}, wantErr: "held finding"},
+		{
+			name: "InScopeFindingCarriedAsADecisionIsRefused", ctx: round(inScope), prior: []PriorEntry{entry("E1", PriorOpen)},
+			findings: []Finding{carrying(asDecision(finding("F1", SeverityMedium, "a.go:10")), "E1")}, wantErr: "which no fixer takes",
+		},
+		{
+			name: "InScopeFindingCarriedAsFixerWorkPasses", ctx: round(inScope), prior: []PriorEntry{entry("E1", PriorOpen)},
+			findings: []Finding{carrying(finding("F1", SeverityMedium, "a.go:10"), "E1")},
+		},
+		{
+			name: "HeldFindingCarriedWithAnotherClassIsRefused", ctx: round(func(ctx *RoundContext) { held()(ctx); ctx.Prior[0].Finding.Class = ClassDecision }),
+			prior: []PriorEntry{entry("E1", PriorOpen)}, findings: []Finding{carrying(finding("F1", SeverityMedium, "a.go:10"), "E1")}, wantErr: "not the earlier class",
 		},
 
 		{name: "CarriesANonOpenEntry", ctx: round(nil), prior: []PriorEntry{entry("E1", PriorResolved)}, findings: []Finding{carrying(finding("F1", SeverityMedium, "a.go:10"), "E1")}, wantErr: "not an open `prior` entry"},

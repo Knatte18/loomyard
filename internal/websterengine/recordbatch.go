@@ -119,7 +119,7 @@ func createTargetWayForward(number int, uncheckable, signatureMismatch, droppabl
 	if !droppableCreate {
 		return fmt.Sprintf("%s; or `lym webster recover-batch %02d` to build the target as the card names it", amend, number)
 	}
-	return fmt.Sprintf("%s; or, when a parent decision drops the Create, the run's parent records it with `lym loom decision add <slug> --by parent … --drops-create <target>`, then `lym webster recover-batch %02d`, and the done-check skips that target; or `lym webster recover-batch %02d` to build the target as the card names it", amend, number, number)
+	return fmt.Sprintf("%s; or, when a parent decision drops the Create, the run's parent records it with `lym loom decision add <slug> --by parent … --drops-create <target>`, then `lym webster recover-batch %02d`, and the done-check skips that target; or `lym webster recover-batch %02d` to build the target as the card names it; once the task's scope is closed no decision records a drop, so the run's parent files it as a board note for a new task with `lym board upsert` and kind note, and one of the other steps is taken", amend, number, number)
 }
 
 // exhaustedRecoveryWayForward is the way forward for a batch that has used its counted recoveries.

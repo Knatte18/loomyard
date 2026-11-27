@@ -4,8 +4,10 @@ package shedadapters
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -138,6 +140,94 @@ func recordCirclingDecisionOverEscalation(t *testing.T, runDir string, round int
 	}
 	if _, _, err := RecordCirclingDecision(runDir, d); err != nil {
 		t.Fatalf("RecordCirclingDecision(%s) = %v; want nil", d, err)
+	}
+}
+
+// TestRecordInScopeContinue pins the pending continue an in-scope ruling records, and its refusals, which write nothing.
+func TestRecordInScopeContinue(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	review := decisionReviewContent(reviewFixtureFinding{"D1", "LOW", "decision"}, reviewFixtureFinding{"F1", "BLOCKING", "design"})
+	tests := []struct {
+		name string
+		// cause is the round's escalation cause, empty for a round that is not escalated.
+		cause EscalationCause
+		ids   []string
+		// review replaces the round's review text, and noRound leaves the run directory without a review.
+		review  string
+		noRound bool
+		// decided puts a decision file in place before the ruling.
+		decided bool
+		wantErr error
+		// wantMsg is the text of a refusal that has no sentinel.
+		wantMsg string
+	}{
+		{name: "RulesADecisionFindingInScope", cause: EscalationDecision, ids: []string{"D1"}},
+		{name: "AnotherCauseIsRefused", cause: EscalationBudget, ids: []string{"D1"}, wantErr: ErrInScopeCause},
+		{name: "AFindingOfAnotherClassIsRefused", cause: EscalationDecision, ids: []string{"D1", "F1"}, wantErr: ErrInScopeFinding},
+		{name: "AnIdTheReviewLacksIsRefused", cause: EscalationDecision, ids: []string{"D9"}, wantErr: ErrInScopeFinding},
+		{name: "ARoundNotEscalatedIsRefused", ids: []string{"D1"}, wantErr: ErrNotEscalated},
+		{name: "ARunDirectoryWithNoRoundIsRefused", noRound: true, ids: []string{"D1"}, wantErr: ErrNotEscalated},
+		{name: "AnUnparseableReviewIsRefused", cause: EscalationDecision, review: "no frontmatter\n", ids: []string{"D1"}, wantMsg: "parse round 1's review"},
+		{name: "ASecondDecisionIsRefused", cause: EscalationDecision, decided: true, ids: []string{"D1"}, wantErr: ErrCirclingDecided},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			if !tt.noRound {
+				if err := os.WriteFile(roundReviewPath(dir, 1), []byte(cmp.Or(tt.review, review)), 0o644); err != nil {
+					t.Fatalf("WriteFile(review) = %v; want nil", err)
+				}
+			}
+			if tt.cause != "" {
+				if err := writeEscalation(dir, 1, tt.cause, "brief\n", "notice"); err != nil {
+					t.Fatalf("writeEscalation() = %v; want nil", err)
+				}
+			}
+			earlier := ""
+			if tt.decided {
+				earlier = "earlier decision\n"
+				if err := os.WriteFile(circlingDecisionPath(dir, 1), []byte(earlier), 0o644); err != nil {
+					t.Fatalf("WriteFile(decision) = %v; want nil", err)
+				}
+			}
+
+			round, err := RecordInScopeContinue(dir, tt.ids)
+			if tt.wantErr != nil || tt.wantMsg != "" {
+				if err == nil || (tt.wantErr != nil && !errors.Is(err, tt.wantErr)) || !strings.Contains(err.Error(), tt.wantMsg) {
+					t.Errorf("RecordInScopeContinue(%v) error = %v; want %v %q", tt.ids, err, tt.wantErr, tt.wantMsg)
+				}
+				got, readErr := os.ReadFile(circlingDecisionPath(dir, 1))
+				if string(got) != earlier || (readErr == nil) != tt.decided {
+					t.Errorf("decision file = %q, %v; want %q, present %v", got, readErr, earlier, tt.decided)
+				}
+				return
+			}
+			if err != nil || round != 1 {
+				t.Fatalf("RecordInScopeContinue(%v) = %d, %v; want 1, nil", tt.ids, round, err)
+			}
+			decision, cause, settled, exists, err := readCirclingDecision(dir, 1)
+			if err != nil || !exists || settled || decision != CirclingContinue || cause != EscalationDecision {
+				t.Errorf("decision file = %q, %q, settled %v, exists %v, %v; want a pending continue with cause decision", decision, cause, settled, exists, err)
+			}
+			if got, err := InScopeFindings(dir, 1); err != nil || !slices.Equal(got, []string{"D1"}) {
+				t.Errorf("InScopeFindings() = %v, %v; want [D1]", got, err)
+			}
+		})
+	}
+}
+
+func TestInScopeFindings_RefusesAMalformedDecisionFile(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.WriteFile(circlingDecisionPath(dir, 1), []byte("no frontmatter\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(decision) = %v; want nil", err)
+	}
+
+	if got, err := InScopeFindings(dir, 1); err == nil {
+		t.Errorf("InScopeFindings() = %v, nil; want an error", got)
 	}
 }
 

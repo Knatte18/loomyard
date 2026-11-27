@@ -43,10 +43,12 @@ type PriorEntry struct {
 // PriorFinding is one finding of the round before the one being judged, with what the fixer answered.
 // Disposition is nil when the fixer gave none.
 // Held marks a decision-class finding of a round that routed its decisions to the run's parent.
+// InScope marks a held finding the parent ruled in scope: the review carries it as fixer work, outside class decision.
 type PriorFinding struct {
 	Finding     Finding
 	Disposition *FindingDisposition
 	Held        bool
+	InScope     bool
 }
 
 // RoundContext is what a review after the first round is judged against.
@@ -102,9 +104,10 @@ func roundRefusal(problem, rewrite string) error {
 // Otherwise it refuses, with the way forward:
 // a `prior` list that misses, repeats or invents an id of the round before, or holds an unknown status;
 // a withdrawn entry whose finding the fixer did not dispute, or an open one that gives a disputed finding no answer;
-// a held finding that is neither resolved nor open, or resolved without quoting a title of an added entry;
+// a held finding not ruled in scope that is neither open nor resolved with a quoted title of an added entry;
 // `carries` links that do not match the open entries one to one;
 // a carried finding that changes class, raises its severity, or moves to a file the round did not change;
+// a carried in-scope finding that keeps the class decision, since its class must change for the fixer to take it;
 // and a new finding in an incremental round that is not BLOCKING, is outside the changed files, or is not covered.
 // A new `origin: parent` finding is exempt from the BLOCKING and changed-file rules.
 // It is exempt only when its parent_ids are all ids of the round's parent report.
@@ -215,7 +218,7 @@ func (c *roundCheck) priorEntry(entry PriorEntry, earlier PriorFinding) error {
 		return roundRefusal(fmt.Sprintf("gives the held finding %q the status %q, but only the parent's call settles it", entry.ID, entry.Status),
 			fmt.Sprintf("with the status resolved or open for %q", entry.ID))
 	}
-	if entry.Status == PriorResolved && !quotesAddedTitle(entry.Answer, c.ctx.AddedTitles) {
+	if entry.Status == PriorResolved && !earlier.InScope && !quotesAddedTitle(entry.Answer, c.ctx.AddedTitles) {
 		return roundRefusal(fmt.Sprintf("resolves the held finding %q without quoting the title of an entry added to the decision record", entry.ID),
 			fmt.Sprintf("with the `answer` for %q quoting the title of the added entry that settles it, or with the status open", entry.ID))
 	}
@@ -248,7 +251,7 @@ func (c *roundCheck) carries(findings []Finding) error {
 			return roundRefusal(fmt.Sprintf("carries %q in more than one finding", f.Carries), fmt.Sprintf("with one finding carrying %q", f.Carries))
 		}
 		carried[f.Carries] = true
-		if err := c.carriedFinding(f, c.earlier[f.Carries].Finding); err != nil {
+		if err := c.carriedFinding(f, c.earlier[f.Carries]); err != nil {
 			return err
 		}
 	}
@@ -261,9 +264,15 @@ func (c *roundCheck) carries(findings []Finding) error {
 	return nil
 }
 
-// carriedFinding checks a finding that carries earlier: its class, its severity and its location path.
-func (c *roundCheck) carriedFinding(f, earlier Finding) error {
-	if f.Class != earlier.Class {
+// carriedFinding checks a finding that carries prior: its class, its severity and its location path.
+// A finding the parent ruled in scope leaves class decision, so the fixer takes it; any other keeps its class.
+func (c *roundCheck) carriedFinding(f Finding, prior PriorFinding) error {
+	earlier := prior.Finding
+	switch {
+	case prior.InScope && f.Class == ClassDecision:
+		return roundRefusal(fmt.Sprintf("finding %q carries %q, which the parent ruled in scope, with the class %q, which no fixer takes", f.ID, earlier.ID, ClassDecision),
+			fmt.Sprintf("with a class of %q other than %q", f.ID, ClassDecision))
+	case !prior.InScope && f.Class != earlier.Class:
 		return roundRefusal(fmt.Sprintf("finding %q carries %q with the class %q, not the earlier class %q", f.ID, earlier.ID, f.Class, earlier.Class),
 			fmt.Sprintf("with the class of %q kept as %q", f.ID, earlier.Class))
 	}

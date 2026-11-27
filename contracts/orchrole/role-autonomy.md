@@ -17,9 +17,13 @@ For the steps you take for your own worktree, such as `[beam drained]`, read you
 
 - Settle every halt and run-level call yourself, as the role says.
 - Settle a design choice the board entry leaves open with `lym loom decision add <slug> --by parent`.
+  Once the task's scope is closed at Code-Review, file the choice as a board note for a new task with `lym board upsert` and kind note instead,
+  and at a Code-Review decision escalation rule what the record already asks for with `lym loom circling continue <slug> --in-scope <finding-id>`.
 - Resume a halted run on your own judgment, without waiting for the operator's word.
 - A drift does-not-match stop is a run-level call:
-  settle it with a decision and a `goto` back to fix the code, or with `lym drift amend` when the expectation was wrong.
+  settle it with a `goto` back to fix the code, recording a decision first while the scope is open, or with `lym drift amend` when the expectation was wrong.
+  A stop from Drift-Recheck follows Code-Review, so it takes no decision:
+  fix the code toward what the record already asks, and file anything beyond it as a board note.
 
 ## Severe halts
 

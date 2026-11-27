@@ -7,6 +7,7 @@
 // A call made while `Discussion-Bouncer` is settling is not copied to the board,
 // and `store` closes that window by hand.
 // Each live shuttle run of the target worktree gets a creel notice, except the tackler, the arbiter and the caller.
+// `add` and `replace` refuse every caller once the run's scope is closed, from its first Code-Review row up to Finalize.
 // No verb routes the run or touches the support log or the plan.
 // The caller check guards against a mistaken call, not a forged strand name, so `--by` stays an unverified label.
 
@@ -14,6 +15,7 @@ package loomcli
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -36,6 +38,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -49,6 +52,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/raddleparser"
 	"github.com/Knatte18/loomyard/internal/samplerengine"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -101,6 +105,7 @@ const (
 	decisionWayNoticeTooLong   = "way forward: shorten the decision or rationale, put the detail in a file and name that file in the entry"
 	decisionWayLock            = `way forward: re-run the verb; nothing was written`
 	decisionWayJudgeOpen       = `way forward: re-run the call once Drift-Verify has ended its judge session: wait for a running judge, or run "lym loom resume" when the row is halted; or record the decision now without --amends-plan and without a PATTERN change; nothing was written`
+	decisionWayScopeClosed     = `way forward: file the call as a board note for a new task with "lym board upsert" and kind note; at a Code-Review decision escalation, rule a finding the record already asks for in scope with "lym loom circling continue --in-scope <finding-id>"; nothing was written`
 
 	replaceWayRebuild   = `way forward: re-read the record, rebuild the --from file from it and re-run "lym loom decision replace" with the sha256 of the record you read as --base-sha256`
 	replaceWayAdd       = `way forward: record the call with "lym loom decision add"`
@@ -358,6 +363,45 @@ type decisionDeps struct {
 	raddleBoardFiling func() ([]string, bool, error)
 	// judgeSessionOpen reports whether the run's drift scope record holds an open judge session.
 	judgeSessionOpen func() (bool, error)
+	// scopeClosed reports whether the run at currentRow (empty if no status file) stands where its task's scope is closed.
+	scopeClosed func(currentRow string) (bool, error)
+	// entryLabels returns the labels of the run's board entry.
+	entryLabels func() ([]string, error)
+}
+
+// scopeClosedRefusal returns the refusal for a scope closed at currentRow, or empty when the scope is open.
+// The scope closes at the first Code-Review round, so a call made after it becomes a note for a new task.
+func scopeClosedRefusal(deps decisionDeps, currentRow string) (string, error) {
+	closed, err := deps.scopeClosed(currentRow)
+	if err != nil || !closed {
+		return "", err
+	}
+	return fmt.Sprintf("the run stands at %s, at or past its first Code-Review round, where the task's scope is closed and no decision enters the record; %s", cmp.Or(currentRow, "no row"), decisionWayScopeClosed), nil
+}
+
+// onlyLiftsRedFirst reports whether a call only records why the red-first check does not apply.
+// Such a call changes no scope: every entry's title names that,
+// and the call amends no plan, changes no PATTERN entry and drops no Create target.
+func onlyLiftsRedFirst(input decisionInput, entries []decisionEntry) bool {
+	if input.amendsPlan || len(input.dropsCreate) > 0 || entriesChangePattern(entries) {
+		return false
+	}
+	return !slices.ContainsFunc(entries, func(entry decisionEntry) bool { return !gateslot.LiftsRedFirst(entry.Title) })
+}
+
+// scopeClosedAt reports whether target's run of recipe at currentRow stands where its task's scope is closed.
+// A Code-Review segment that has run counts as the line reached, whatever row the run stands at now,
+// so a run sent back to its writer after its first Code-Review round stays closed.
+func scopeClosedAt(target *lymcwd.Location, recipe, currentRow string) (bool, error) {
+	subdir, hasRow, err := loomrecipe.CodeReviewRunSubdir(recipe)
+	if err != nil || !hasRow {
+		return false, err
+	}
+	reviewRan, err := shedadapters.SegmentRan(loomengine.LoomReviewsDir(target), subdir)
+	if err != nil {
+		return false, err
+	}
+	return loomrecipe.InClosedScope(recipe, currentRow, reviewRan)
 }
 
 // decisionNoticeError is one notice the verb could not send, reported on its success envelope.
@@ -917,6 +961,8 @@ func planApprovedReader(anchorPath string) func() (bool, error) {
 // The call holds the run's decision lock from its first precondition through its commit and board copy.
 // A call with --amends-plan or a PATTERN change is refused while the run's drift judge session is open.
 // The judge's check cannot tell what those forms write beside the record from the judge's own edit.
+// The run's task scope is closed at or past its first Code-Review round and before Finalize.
+// A closed scope takes only a bug entry's call that records why the red-first check does not apply.
 func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionInput) int {
 	refuse := func(format string, args ...any) int {
 		return output.Err(out, fmt.Sprintf("loom: %s add: ", decisionGroup)+fmt.Sprintf(format, args...))
@@ -959,6 +1005,23 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 	}
 	if filingRefusal != "" {
 		return refuse("%s", filingRefusal)
+	}
+	scopeRefusal, err := scopeClosedRefusal(deps, currentRow)
+	if err != nil {
+		return refuse("read where the run's scope closes: %s; %s", err, decisionWayRetry)
+	}
+	if scopeRefusal != "" && onlyLiftsRedFirst(input, entries) {
+		// Only a bug entry has a red-first check, so on any other the title records nothing.
+		labels, err := deps.entryLabels()
+		if err != nil {
+			return refuse("read the entry's labels: %s; %s", err, decisionWayRetry)
+		}
+		if slices.Contains(labels, gateslot.BugLabel) {
+			scopeRefusal = ""
+		}
+	}
+	if scopeRefusal != "" {
+		return refuse("%s", scopeRefusal)
 	}
 	// A run whose board entry holds a copy of the record has that copy to refresh once the commit lands.
 	wayCommit := decisionWayFabricCommit
@@ -1326,6 +1389,7 @@ func replaceFileRefusal(current, file []byte) string {
 // It is also refused before a Discussion approval the recipe has.
 // It is refused between the plan's approval and the last Webster row too.
 // Each fresh Webster prompt there renders only added entries.
+// It is refused once the run's task scope is closed, as decisionVerb is.
 // The record committed at HEAD must hash to --base-sha256 and equal the working copy, so no concurrent write is lost.
 // The file must pass replaceFileRefusal; a refused file leaves the record as it was.
 // The commit carries the Lym-Record-Replaced trailer, and when HEAD already holds the bytes an empty commit carries it,
@@ -1376,6 +1440,13 @@ func decisionReplaceVerb(out io.Writer, slug string, deps decisionDeps, input re
 	}
 	if filingRefusal != "" {
 		return refuse("%s", filingRefusal)
+	}
+	scopeRefusal, err := scopeClosedRefusal(deps, currentRow)
+	if err != nil {
+		return refuse("read where the run's scope closes: %s; %s", err, replaceWayRetry)
+	}
+	if scopeRefusal != "" {
+		return refuse("%s", scopeRefusal)
 	}
 	if deps.approvalRow() && !deps.pastApproval(currentRow) {
 		return refuse("the run has not passed its Discussion approval, and before it the Discussion's own review folds each call into the main decisions; %s", replaceWayAdd)
@@ -1613,6 +1684,10 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 		},
 		raddleBoardFiling: func() ([]string, bool, error) { return raddleBoardFiling(target) },
 		judgeSessionOpen:  driftJudgeSessionOpen(target),
+		scopeClosed: func(currentRow string) (bool, error) {
+			return scopeClosedAt(target, recipe, currentRow)
+		},
+		entryLabels: entryLabels(target),
 		append: func(ds []discussionparser.AddedDecision) ([]discussionparser.Finding, error) {
 			return discussionparser.AppendDecisions(recordPath, supportLogPath, ds)
 		},
@@ -1990,29 +2065,30 @@ It then notifies the run's other live agents.
 
 --by is parent, operator or arbiter (the last only from the run's arbiter
 strand). --title, --decision and --rationale are required without --from.
-A session other than the run's parent orch, arbiter or sampler session (--by
-operator only) is refused, as is any call while Discussion-Write runs or, on a
-Record-Write recipe, before it has committed the record.
+Callers other than the parent orch, arbiter or sampler session (--by operator
+only) are refused, as is any call while Discussion-Write runs or before a
+Record-Write recipe has committed the record.
 
---amends-plan marks a decision that amends the approved plan: the call also
-appends the title to the plan amendment record in the same commit. It is
-refused on a recipe with no Plan-Write row and with no approved plan.
-Then the parent runs "lym loom goto --to Plan-Burler-Review", "lym loom resume".
+From the first Code-Review round until Finalize only a bug's "No test seam" or
+"No bug fixed" entry that changes nothing else is taken: file any other call
+as a board note, or rule an asked-for finding in with
+"lym loom circling continue --in-scope <id>".
 
-A decision on a PATTERN entry also passes --pattern-entry <PATTERN-id>,
---pattern-action adds|changes|removes and, for adds or changes, --pattern-text
-<new entry text>, which writes its bullet to the "## PATTERN changes" section.
---pattern-action withdraws strikes the declared bullet, takes no --pattern-text
-and is refused when the record declares none.
+--amends-plan also records the title in the plan amendment record; it needs an
+approved plan. Then run "lym loom goto --to Plan-Burler-Review", then resume.
 
---from <file> records several decisions from a JSON array of objects with the
-keys title, decision, rationale and optional pattern_entry, pattern_action,
-pattern_text. --by and --amends-plan apply to every entry. All land in one
-commit or none does; no two share a title or a PATTERN entry.
+--pattern-entry PATTERN-<id>, --pattern-action adds|changes|removes and, for
+adds or changes, --pattern-text write a "## PATTERN changes" bullet.
+--pattern-action withdraws strikes the declared one and takes no text.
 
---drops-create <target> (repeatable) records that the decision drops a Create
-target, as the card spells it, so Webster's done-check skips it. It applies to
-one entry; record the dropping decision as its own call.
+--from <file> records a JSON array of objects with the keys title, decision,
+rationale and optional pattern_entry, pattern_action, pattern_text. --by and
+--amends-plan apply to every entry; all land in one commit or none does; no
+two share a title or a PATTERN entry.
+
+--drops-create <target> (repeatable) drops a Create target, as the card spells
+it, so Webster's done-check skips it. It applies to one entry; record the
+dropping decision as its own call.
 
 Example:
   lym loom decision add <slug> --by parent --title "T" --decision "D" --rationale "R"`,
@@ -2082,7 +2158,8 @@ bullets, never insert or rewrite one. A new call is recorded with "add".
 
 The callers are "add"'s. It is refused while Discussion-Write runs, before a
 Discussion approval the recipe has, between the plan's approval and the last
-Webster row, and on a raddle run whose filing is done. It refreshes the board
+Webster row, once the task's scope is closed at its first Code-Review round,
+as for "add", and on a raddle run whose filing is done. It refreshes the board
 copy as "add" does and tells each live agent to re-read the record whole.
 
 Example:

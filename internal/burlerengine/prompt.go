@@ -417,6 +417,9 @@ const priorFindingsHeading = "### Prior findings"
 // heldByParentMark marks a prior finding that the run's parent rules on, not the fixer.
 const heldByParentMark = "held by the parent: the run's parent rules on this finding"
 
+// inScopeMark marks a held prior finding that the run's parent ruled in scope, so this round's fixer takes it.
+const inScopeMark = "ruled in scope by the parent: the task's record already asks for it, so carry it as fixer work with a class other than decision, or resolve it once the code does it"
+
 // amendsPlanMark leads an added decision record entry that is pending as a plan amendment.
 const amendsPlanMark = "(amends the plan) "
 
@@ -551,7 +554,10 @@ func writePriorFinding(b *strings.Builder, prior PriorFinding) {
 	fmt.Fprintf(b, "- `%s` — %s, %s, `%s`\n", finding.ID, finding.Severity, finding.Class, finding.Location)
 	fmt.Fprintf(b, "  - summary: %s\n", finding.Summary)
 	fmt.Fprintf(b, "  - fix: %s\n", finding.Fix)
-	if prior.Held {
+	switch {
+	case prior.InScope:
+		fmt.Fprintf(b, "  - %s\n", inScopeMark)
+	case prior.Held:
 		fmt.Fprintf(b, "  - %s\n", heldByParentMark)
 	}
 	disposition := prior.Disposition

@@ -3,6 +3,8 @@
 
 package gateslot
 
+import "strings"
+
 // RedFirstGreenExit is the exit code of a `lym gate red-first` call.
 // Every test the diff adds or changes passed on the base in that call.
 // The site reads it as a fix whose test would have passed before the fix.
@@ -29,6 +31,13 @@ const NoTestSeamTitle = "No test seam"
 // Such an entry only adds tests that pin existing behaviour, so its tests pass on the merge base by design.
 // The parent records that entry, and the red-first gate then passes without running the call.
 const NoBugFixedTitle = "No bug fixed"
+
+// LiftsRedFirst reports whether an added entry titled title records why the red-first check does not apply.
+// The title opens with NoTestSeamTitle or NoBugFixedTitle, compared case-insensitively.
+func LiftsRedFirst(title string) bool {
+	lower := strings.ToLower(strings.TrimSpace(title))
+	return strings.HasPrefix(lower, strings.ToLower(NoTestSeamTitle)) || strings.HasPrefix(lower, strings.ToLower(NoBugFixedTitle))
+}
 
 // RedFirstCall renders the call a site runs to check that the diff's tests fail on the merge base.
 // It is `lym gate red-first --gate <key>`, and runs the tiers of the named gate key.

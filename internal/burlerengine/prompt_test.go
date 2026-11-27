@@ -529,6 +529,10 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 				want: []string{heldByParentMark, rulingReportLabel, "followed the parent's ruling"},
 			},
 			{
+				name: "HeldFindingRuledInScopeIsMarkedForTheFixer", round: round(PriorFinding{Held: true, InScope: true, Finding: earlier("E1")}),
+				want: []string{inScopeMark}, notWant: []string{heldByParentMark},
+			},
+			{
 				name: "AddedEntriesAreListedOnce", round: twoAdded, notWant: []string{"No entry was added"},
 				once: []string{"first added entry text", "second added entry text"},
 			},

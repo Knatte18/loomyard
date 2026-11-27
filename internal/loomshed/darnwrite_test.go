@@ -260,7 +260,7 @@ func TestDarnWrite_Call(t *testing.T) {
 			session:       true,
 			wantResult:    shedengine.Stuck,
 			wantReason:    darnStopReport,
-			wantReasonHas: []string{"lym loom decision add", "lym loom resume"},
+			wantReasonHas: []string{"lym loom decision add", "lym loom resume", "lym board upsert", "kind note"},
 			wantEvents:    "session,commit",
 		},
 		{

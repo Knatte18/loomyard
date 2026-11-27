@@ -1631,7 +1631,7 @@ func TestFailCardNotDone_WayForward(t *testing.T) {
 
 	const (
 		amend        = "amend the card's Create target or Rename new side to the unit, owner or parameter list the finding names the member declared with, run `lym webster rebaseline --card NN` naming each card you edited, then `lym webster recover-batch 01`"
-		createWays   = amend + "; or, when a parent decision drops the Create, the run's parent records it with `lym loom decision add <slug> --by parent … --drops-create <target>`, then `lym webster recover-batch 01`, and the done-check skips that target; or `lym webster recover-batch 01` to build the target as the card names it"
+		createWays   = amend + "; or, when a parent decision drops the Create, the run's parent records it with `lym loom decision add <slug> --by parent … --drops-create <target>`, then `lym webster recover-batch 01`, and the done-check skips that target; or `lym webster recover-batch 01` to build the target as the card names it; once the task's scope is closed no decision records a drop, so the run's parent files it as a board note for a new task with `lym board upsert` and kind note, and one of the other steps is taken"
 		renameWays   = amend + "; or `lym webster recover-batch 01` to build the target as the card names it"
 		amendGlyph   = "amend the card's target to a spelling `lym quarry resolve` answers, run `lym webster rebaseline --card NN` naming each card you edited, then `lym webster recover-batch 01`"
 		moveDelete   = "move the delete to a card after the one that still references it, run `lym webster rebaseline --card NN` naming each card you edited, then `lym webster recover-batch 01`"

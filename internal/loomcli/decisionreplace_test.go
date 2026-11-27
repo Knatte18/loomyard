@@ -6,6 +6,7 @@ package loomcli
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"io/fs"
 	"os"
@@ -15,9 +16,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -721,6 +726,159 @@ func TestDecisionStoreVerb_TakesTheDecisionLock(t *testing.T) {
 			}
 			if len(f.stored) != 0 {
 				t.Errorf("stored = %q; want nothing copied", f.stored)
+			}
+		})
+	}
+}
+
+// TestDecisionCalls_RefusedOnceTheScopeCloses asserts add and replace refuse every caller once the scope is closed.
+// The refusal names the board note as the way forward, leaves the record and board copy alone and sends no notice;
+// a failed read of where the scope closes is refused too.
+// A bug entry's add that only records why the red-first check does not apply is taken.
+func TestDecisionCalls_RefusedOnceTheScopeCloses(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	cases := []struct {
+		name string
+		by   string
+		err  error
+		want []string
+	}{
+		{name: "Parent", by: decisionByParent, want: []string{"the run stands at Code-Bouncer, at or past its first Code-Review round", `"lym board upsert" and kind note`, "--in-scope"}},
+		{name: "Operator", by: decisionByOperator, want: []string{"where the task's scope is closed"}},
+		{name: "ReadFails", by: decisionByParent, err: errors.New("disk gone"), want: []string{"read where the run's scope closes: disk gone"}},
+	}
+	for _, tc := range cases {
+		for _, verb := range []string{"add", "replace"} {
+			t.Run(tc.name+"_"+verb, func(t *testing.T) {
+				t.Parallel()
+				f := newReplaceFake(t).atPastRow("Code-Bouncer")
+				f.boardStored = true
+				f.closedRows, f.closedErr = map[string]bool{"Code-Bouncer": true}, tc.err
+
+				var out bytes.Buffer
+				var code int
+				if verb == "add" {
+					input := goodDecisionInput()
+					input.by = tc.by
+					code = decisionVerb(&out, "task-a", f.deps(), input)
+				} else {
+					input := replaceInputOf(t, replaceFoldedRecord)
+					input.by = tc.by
+					code = decisionReplaceVerb(&out, "task-a", f.deps(), input)
+				}
+				if code == 0 {
+					t.Fatalf("%s exit = 0, out %s; want a refusal", verb, out.String())
+				}
+				msg := envelope.Decode(t, out.String()).Error
+				for _, w := range tc.want {
+					if !strings.Contains(msg, w) {
+						t.Errorf("message %q lacks %q", msg, w)
+					}
+				}
+				if got := readDecisionRecord(t, f.path); got != replaceBaseRecord {
+					t.Errorf("record = %q; want it unchanged", got)
+				}
+				if len(f.stored) != 0 || len(f.posts) != 0 || f.commits != 0 || f.replaceCommits != 0 {
+					t.Errorf("stored %d, posts %d, commits %d, replace commits %d; want none", len(f.stored), len(f.posts), f.commits, f.replaceCommits)
+				}
+			})
+		}
+	}
+
+	redFirst := []struct {
+		name       string
+		title      string
+		amendsPlan bool
+		pattern    string
+		notBug     bool
+		labelsErr  error
+		wantTaken  bool
+		// wantRefusal is the text a refused call carries, the closed-scope refusal when empty.
+		wantRefusal string
+	}{
+		{name: "NoTestSeam", title: "No test seam: the parser", wantTaken: true},
+		{name: "NoBugFixed", title: "no bug fixed, the tests pin behaviour", wantTaken: true},
+		{name: "NoTestSeamAmendingThePlan", title: "No test seam: the parser", amendsPlan: true},
+		{name: "NoTestSeamChangingAPattern", title: "No test seam: the parser", pattern: "PATTERN-cache"},
+		{name: "NoTestSeamOnAnEntryThatIsNoBug", title: "No test seam: the parser", notBug: true},
+		{name: "LabelsUnreadable", title: "No test seam: the parser", labelsErr: errors.New("board down"), wantRefusal: "read the entry's labels: board down"},
+	}
+	for _, tc := range redFirst {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := newReplaceFake(t).atPastRow("Code-Bouncer")
+			f.closedRows = map[string]bool{"Code-Bouncer": true}
+			if !tc.notBug {
+				f.labels = []string{gateslot.BugLabel}
+			}
+			f.labelsErr = tc.labelsErr
+			input := goodDecisionInput()
+			input.title, input.amendsPlan = tc.title, tc.amendsPlan
+			if tc.pattern != "" {
+				input.patternEntry, input.patternAction, input.patternText = tc.pattern, "adds", "Cache per run."
+			}
+
+			var out bytes.Buffer
+			code := decisionVerb(&out, "task-a", f.deps(), input)
+
+			recorded := strings.Contains(readDecisionRecord(t, f.path), tc.title)
+			if (code == 0) != tc.wantTaken || recorded != tc.wantTaken {
+				t.Errorf("add exit = %d, recorded %v, out %s; want taken %v", code, recorded, out.String(), tc.wantTaken)
+			}
+			if want := cmp.Or(tc.wantRefusal, "where the task's scope is closed"); !tc.wantTaken && !strings.Contains(envelope.Decode(t, out.String()).Error, want) {
+				t.Errorf("out = %s; want a refusal holding %q", out.String(), want)
+			}
+		})
+	}
+}
+
+// TestScopeClosedAt asserts which contents of the reviews directory close the scope of a run sent back to Darn-Write.
+func TestScopeClosedAt(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name   string
+		recipe string
+		// paths are made under the reviews directory; one ending in a slash is a directory.
+		paths   []string
+		want    bool
+		wantErr bool
+	}{
+		{name: "NoReviewsDirectory", recipe: shedrun.RecipeDarn},
+		{name: "EmptyRunDirectory", recipe: shedrun.RecipeDarn, paths: []string{"code/"}},
+		{name: "RoundReview", recipe: shedrun.RecipeDarn, paths: []string{"code/round-1-review.md"}, want: true},
+		{name: "GenerationRecord", recipe: shedrun.RecipeDarn, paths: []string{"code/generation-record.json"}, want: true},
+		{name: "SettleRecord", recipe: shedrun.RecipeDarn, paths: []string{"code/settle-record.json"}, want: true},
+		{name: "ArchivedRunDirectory", recipe: shedrun.RecipeDarn, paths: []string{"code-20260301T120000Z/", "code/"}, want: true},
+		{name: "AnotherSegmentsArchive", recipe: shedrun.RecipeDarn, paths: []string{"plan-20260301T120000Z/"}},
+		{name: "UnreadableRunDirectory", recipe: shedrun.RecipeDarn, paths: []string{"code"}, wantErr: true},
+		{name: "RecipeWithoutCodeReview", recipe: shedrun.RecipeArras, paths: []string{"code/round-1-review.md"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			target := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+			for _, rel := range tt.paths {
+				path := filepath.Join(loomengine.LoomReviewsDir(target), rel)
+				dir := filepath.Dir(path)
+				if strings.HasSuffix(rel, "/") {
+					dir = path
+				}
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					t.Fatalf("MkdirAll(%s) = %v; want nil", dir, err)
+				}
+				if dir != path {
+					if err := os.WriteFile(path, []byte("x\n"), 0o644); err != nil {
+						t.Fatalf("WriteFile(%s) = %v; want nil", path, err)
+					}
+				}
+			}
+
+			got, err := scopeClosedAt(target, tt.recipe, "Darn-Write")
+
+			if got != tt.want || (err != nil) != tt.wantErr {
+				t.Errorf("scopeClosedAt(%s, Darn-Write) = %v, %v; want %v, error %v", tt.recipe, got, err, tt.want, tt.wantErr)
 			}
 		})
 	}
