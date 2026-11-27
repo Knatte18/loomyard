@@ -16,7 +16,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // ModuleName is the config module name of the profiles file, profiles.yaml.
@@ -25,9 +24,6 @@ const ModuleName = "profiles"
 // DefaultsEntry is the reserved top-level entry of profiles.yaml.
 // It maps a recipe name to the profile a task of that recipe takes when it names none.
 const DefaultsEntry = "defaults"
-
-// DocsProfile names the template's darn-only profile for prose and config value edits.
-const DocsProfile = "docs"
 
 //go:embed template.yaml
 var configTemplate string
@@ -93,39 +89,14 @@ func (p Profiles) Names() []string {
 func (p Profiles) Lookup(name string) (Profile, error) {
 	profile, ok := p.ByName[name]
 	if !ok {
-		return nil, fmt.Errorf("unknown run profile %q (known: %s); way forward: name a known profile in the task's profile field, or add %s with \"lym config profiles --set %s='<json object>'\" from the hub's prime worktree", name, strings.Join(p.Names(), ", "), configengine.KeyName(ModuleName, name), name)
+		return nil, fmt.Errorf("unknown run profile %q (known: %s); way forward: name a known profile in the task's profile field, or add it with \"lym config profiles --set %s='<json object>'\" from the hub's prime worktree", name, strings.Join(p.Names(), ", "), name)
 	}
 	return profile, nil
 }
 
-// recipeRename names a recipe's former name and the name that replaced it.
-type recipeRename struct {
-	from, to string
-}
-
-// recipeRenames lists every recipe lym renamed.
-// No recipe carries a from name, so a block or defaults entry keyed by one is refused, never read.
-var recipeRenames = []recipeRename{{from: "loom", to: shedrun.RecipeTapestry}}
-
-// renameWayForward is the way forward of a refusal that finds a recipe held only under its former name.
-const renameWayForward = `rename the block or entry to the recipe's current name by hand, with "lym config profiles" from the hub's prime worktree`
-
-// heldFormerName returns the first former name of recipe that entries holds as a key, and reports whether one exists.
-func heldFormerName[V any](entries map[string]V, recipe string) (string, bool) {
-	for _, rename := range recipeRenames {
-		if rename.to != recipe {
-			continue
-		}
-		if _, held := entries[rename.from]; held {
-			return rename.from, true
-		}
-	}
-	return "", false
-}
-
 // Settings returns the named profile's settings for recipe, module name to keys.
 // An unknown name, or a profile holding no block for recipe, is an error naming the way forward.
-// When the profile holds the block under the recipe's former name, the way forward is the hand rename;
+// When the profile holds the block under the recipe's former name, the way forward is the reconcile that renames it;
 // otherwise it names another profile or adds the block.
 func (p Profiles) Settings(name, recipe string) (map[string]any, error) {
 	profile, err := p.Lookup(name)
@@ -135,22 +106,22 @@ func (p Profiles) Settings(name, recipe string) (map[string]any, error) {
 	settings, ok := profile[recipe]
 	if !ok {
 		if former, held := heldFormerName(profile, recipe); held {
-			return nil, fmt.Errorf("run profile %q holds no %s block but a %s block, the recipe's former name; way forward: %s", name, recipe, former, renameWayForward)
+			return nil, fmt.Errorf("run profile %q holds no %s block but a %s block, the recipe's former name; way forward: %s", name, recipe, former, migrateWayForward)
 		}
-		return nil, fmt.Errorf("run profile %q holds no %s block (it covers: %s); way forward: name a profile that covers %s in the task's profile field, or add a %s block, %s, with \"lym config profiles\" from the hub's prime worktree", name, recipe, strings.Join(slices.Sorted(maps.Keys(profile)), ", "), recipe, recipe, configengine.KeyName(ModuleName, name+"."+recipe))
+		return nil, fmt.Errorf("run profile %q holds no %s block (it covers: %s); way forward: name a profile that covers %s in the task's profile field, or add a %s block to %q with \"lym config profiles\" from the hub's prime worktree", name, recipe, strings.Join(slices.Sorted(maps.Keys(profile)), ", "), recipe, recipe, name)
 	}
 	return settings, nil
 }
 
 // Default returns the profile name recipe takes when a task names none, empty when the hub names no default for it.
-// A default held only under recipe's former name is an error naming the hand rename.
+// A default held only under recipe's former name is an error naming the reconcile that renames it.
 // Without the error the task would run on the hub's own config with no sign its default was missed.
 func (p Profiles) Default(recipe string) (string, error) {
 	if name, ok := p.Defaults[recipe]; ok {
 		return name, nil
 	}
 	if former, held := heldFormerName(p.Defaults, recipe); held {
-		return "", fmt.Errorf("the run profiles' %s hold no %s entry but a %s entry, the recipe's former name; way forward: %s", configengine.KeyName(ModuleName, DefaultsEntry), recipe, former, renameWayForward)
+		return "", fmt.Errorf("the run profiles' %s hold no %s entry but a %s entry, the recipe's former name; way forward: %s", DefaultsEntry, recipe, former, migrateWayForward)
 	}
 	return "", nil
 }
@@ -200,7 +171,7 @@ func decode(document []byte, source string) (Profiles, error) {
 	if value, ok := raw[DefaultsEntry]; ok {
 		defaults, err := decodeDefaults(value, profiles)
 		if err != nil {
-			return Profiles{}, configengine.MarkInvalid(fmt.Errorf("runprofile: %s: %w; way forward: map each recipe to a profile that covers it under %s with \"lym config profiles\"", source, err, configengine.KeyName(ModuleName, DefaultsEntry)))
+			return Profiles{}, configengine.MarkInvalid(fmt.Errorf("runprofile: %s: %w; way forward: map each recipe to a profile that covers it under %s with \"lym config profiles\"", source, err, DefaultsEntry))
 		}
 		profiles.Defaults = defaults
 	}

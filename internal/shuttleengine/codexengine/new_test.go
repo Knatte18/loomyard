@@ -2,13 +2,9 @@
 
 package codexengine
 
-import (
-	"time"
-
-	"github.com/Knatte18/loomyard/internal/logger"
-)
+import "github.com/Knatte18/loomyard/internal/logger"
 
 // New returns a Codex engine with the default redraw settle and no dirs, so it serves reading uses only.
 func New() *Codex {
-	return &Codex{submitRedrawSettleMS: defaultSubmitRedrawSettleMS, warn: logger.Warn, sandboxProbe: runSandboxProbe, now: time.Now}
+	return &Codex{submitRedrawSettleMS: defaultSubmitRedrawSettleMS, warn: logger.Warn, sandboxProbe: runSandboxProbe}
 }

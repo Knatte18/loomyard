@@ -13,7 +13,6 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [burler-fork-review-audit-2026-10-16](burler/burler-fork-review-audit-2026-10-16/report.md) — a reviewer master that forks its review, fixes, and reviews its own fix.
 - [concrete-review-findings-2026-11-03](burler/concrete-review-findings-2026-11-03/report.md) — whether Plan and Discussion reviewers already write concrete findings.
 - [fixers-on-sonnet-2026-11-03](burler/fixers-on-sonnet-2026-11-03/report.md) — Plan and Discussion fixers on Sonnet against Opus.
-- [hardener-works-study.md](hardener-works-study.md) — whether the hardener's two fabric campaigns found and fixed real faults, kept focus and converged, and what they cost.
 - [review-setup-audit-2026-10-28](burler/review-setup-audit-2026-10-28/report.md) — what each part of the review setup is worth, read from landed loom runs.
 - [session-fork-spike.md](burler/session-fork-spike.md) — whether a review forked over lenses from one session finds more than one reviewer.
 
@@ -26,12 +25,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 ## claude — Claude Code features
 
 - [code-mode-bench-2026-11-16](claude/code-mode-bench-2026-11-16/report.md) — Code Mode and shell pipelines on the Plan writer, one sample per arm.
-- [code-mode-darn-bench-2026-11-17](claude/code-mode-darn-bench-2026-11-17/report.md) — Code Mode on a darn writer repeating one edit across packages, one sample per arm, and a check that the shell guard holds in a script.
 - [code-mode-web-research-2026-11-16](claude/code-mode-web-research-2026-11-16/report.md) — how Anthropic and users say to use Code Mode, each tip judged for lym's writers, and a correction to the bench's reading of `Poll`.
-
-## cleanup — what to cut
-
-- [unused-features-2026-11-18](cleanup/unused-features-2026-11-18/report.md) — verbs and config keys with no use in three weeks of transcripts and hub configs, as a candidate list for the operator.
 
 ## codex — the Codex engine
 
@@ -96,10 +90,6 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [drift-csharp-trial-2026-11-03.md](drift/csharp-trial/drift-csharp-trial-2026-11-03.md) — the first trial.
 - [drift-csharp-trial-2-2026-11-03.md](drift/csharp-trial/drift-csharp-trial-2-2026-11-03.md) — the second trial.
 
-## engines — candidate agent engines
-
-- [gemini-antigravity-engine-study-2026-11-17.md](engines/gemini-antigravity-engine-study-2026-11-17.md) — the work to support Gemini CLI or Antigravity CLI as a third agent engine, measured against Codex.
-
 ## glyph — what Webster forks read
 
 - [glyph-audit-2026-10-12](glyph/glyph-audit-2026-10-12/report.md) — the Webster kick-start pack.
@@ -131,8 +121,6 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 
 - [linux-portability-survey.md](platform/linux-portability-survey.md) — what broke when the Go test suite first ran on Linux.
 - [sandboxing-options-2026-10-30.md](platform/sandboxing-options-2026-10-30.md) — sandboxing options for a closed area for lym.
-- [landlock-area-2026-11-23.md](platform/landlock-area-2026-11-23.md) — whether a lym-started Landlock area closes the bus and other hubs' tmux without root, measured with [its probe](platform/landlock-probe/main.go).
-- [sandbox-without-new-kernel-2026-11-23.md](platform/sandbox-without-new-kernel-2026-11-23.md) — what closes the bus and other hubs' tmux on kernel 7.0 without root: a seccomp connect supervisor, measured with [its probe](platform/seccomp-connect-probe/main.go) and [a take-away probe](platform/same-uid-probe/main.go).
 
 ## quarry — code search
 
@@ -147,10 +135,6 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 
 - [retro-20261116-115411](retro/retro-20261116-115411/report.md) — ten runs landed up to 2026-11-16T11:54:11Z, audited from their transcripts, with four proposals to the agent environment, most severe first.
 
-## rewrite — clean-room rewrites
-
-- [shrink-estimate-2026-11-18](rewrite/shrink-estimate-2026-11-18/report.md) — how much smaller a clean rewrite of the seven most patched modules would be, with a `landingshed` spec for a pilot.
-
 ## speed — test and start time
 
 - [batten-start-2026-10-18](speed/batten-start-2026-10-18/report.md) — the time of a batten start before the fast-start plan.
@@ -163,19 +147,6 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [testmap-upkeep-2026-11-11](speed/testmap-upkeep-2026-11-11/report.md) — three independent proposals, two by Fable and one by Opus, for keeping the per-test coverage maps fresh, compared side by side.
 - [coverage-map-pilot-2026-11-12](speed/coverage-map-pilot-2026-11-12/report.md) — a pilot of the coverage map on `internal/adoptcli`: what building it costs, and whether its redundancy candidates hold up as deletable tests.
 - [testmap-smart-build-2026-11-15](speed/testmap-smart-build-2026-11-15/report.md) — five ways to build and keep the per-test coverage maps more cheaply, weighed by three probes on `internal/loomcli`, with one recommended design.
-- [map-tooling-trial-2026-11-17](speed/map-tooling-trial-2026-11-17/report.md) — `lym gate test --map` and `lym gate redundant` run on `internal/durfmt` and `internal/boardengine`: cost, map agreement with single-test runs, leftovers, and the defects found.
-- [redundant-candidates-check-2026-11-17](speed/redundant-candidates-check-2026-11-17/report.md) — `lym gate redundant internal/boardengine` after the kill-count fix: its lists against the trial's 14 candidates, and five candidates read by hand against their covering tests.
-- [testmap-use-cases-2026-11-18](speed/testmap-use-cases-2026-11-18/report.md) — what the per-test coverage maps can do for lym and its agents: every use found in research and practice, ranked, with the top three argued and the rest ruled out.
-- [mutation-trial-2026-11-19](speed/mutation-trial-2026-11-19/report.md) — `lym gate mutate` replayed on 20 landed diffs: mutants run, killed, survived and unjudged, the survivors judged by hand, and the decision to build the `mutation` report step.
-- [testmap-worth-evaluation](testmap-worth-evaluation.md) — every user of the coverage maps, what each has given against its cost, and which to remove.
-
-## survey — ideas from outside projects
-
-- [pocock-skills-2026-11-19](survey/pocock-skills-2026-11-19/report.md) — what LoomYard could take from Matt Pocock's skills repository: each candidate's landing place, gain, cost and verdict, with the three best written as board notes.
-
-## testing — test practice
-
-- [no-fake-other-modules](no-fake-other-modules.md) — the rule against faking another module in tests, and every stand-in found, with a verdict for each.
 
 ## tokens — token use, cost and models
 
@@ -186,7 +157,6 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [session-scope-launch-2026-11-06](tokens/session-scope-launch-2026-11-06/report.md) — which session-scope settings work in a real Claude Code launch, and the start load with and without them.
 - [session-scope-fix-launch-2026-11-06](tokens/session-scope-fix-launch-2026-11-06/report.md) — the session-scope fix in a real launch: first-request tokens of a spawned role and an orch, the `Workflow` tool gone, preloaded and plugin skills kept.
 - [role-tool-schemas-2026-11-07](tokens/role-tool-schemas-2026-11-07/report.md) — each tool's schema tokens in a role's and the orch's first request, the tools each role called, and `--disallowedTools` against `permissions.deny`.
-- [usage-outside-runs-2026-11-18](tokens/usage-outside-runs-2026-11-18/report.md) — weekly Claude usage W45 to W47 of every session tokencount does not count, by kind and model, beside the run spend.
 
 ### model-downgrade — cheaper models per role
 

@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -44,12 +43,6 @@ type Config struct {
 	// WritableRoots are folders outside the workspace that a launch's sandbox lets the session write, such as a build cache;
 	// a leading "~/" names the user's home directory.
 	WritableRoots []string `yaml:"writable_roots"`
-	// MaxSubagentThreads caps the concurrent child threads of one Codex session; it is at least 1.
-	MaxSubagentThreads int `yaml:"max_subagent_threads"`
-	// PluginHookTimeout bounds each plugin session-start hook that sets no timeout of its own; a positive Go duration.
-	PluginHookTimeout string `yaml:"plugin_hook_timeout"`
-	// BatchingNudge switches and tunes the after-tool-call hook that nudges a session back to batching its calls.
-	BatchingNudge BatchingNudgeConfig `yaml:"batching_nudge"`
 }
 
 // The modes codex.yaml's sandbox_mode may name.
@@ -85,10 +78,6 @@ func ConfigSpec() configengine.Spec {
 			"skill_roots":    configengine.CategoryNone,
 			"sandbox_mode":   configengine.CategoryMachine,
 			"writable_roots": configengine.CategoryGuard,
-
-			"max_subagent_threads": configengine.CategoryNone,
-			"plugin_hook_timeout":  configengine.CategoryNone,
-			batchingNudgeKey:       configengine.CategoryNone,
 		},
 	}
 }
@@ -96,10 +85,6 @@ func ConfigSpec() configengine.Spec {
 // LoadConfig resolves codex.yaml from the layer stack under dirs.
 // An absent file in every layer resolves the template; a layer file that exists but is invalid is an error.
 // A sandbox_mode other than auto, workspace-write or danger-full-access is invalid.
-// So is a max_subagent_threads below 1.
-// So is a plugin_hook_timeout that is not a positive Go duration.
-// While the batching nudge is on, a negative batching_nudge.context_tokens is invalid.
-// So is any other threshold of the block below 1.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
 	if err != nil {
@@ -110,16 +95,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 		return Config{}, configengine.MarkInvalid(fmt.Errorf("unmarshal codex config: %w", err))
 	}
 	if cfg.SandboxMode != sandboxAuto && cfg.SandboxMode != sandboxWorkspaceWrite && cfg.SandboxMode != sandboxFullAccess {
-		return Config{}, configengine.MarkInvalid(fmt.Errorf("%s %q is none of %s, %s and %s", keyName(sandboxModeConfigKey), cfg.SandboxMode, sandboxAuto, sandboxWorkspaceWrite, sandboxFullAccess))
-	}
-	if cfg.MaxSubagentThreads < 1 {
-		return Config{}, configengine.MarkInvalid(fmt.Errorf("%s %d is below 1", keyName("max_subagent_threads"), cfg.MaxSubagentThreads))
-	}
-	if timeout, err := time.ParseDuration(cfg.PluginHookTimeout); err != nil || timeout <= 0 {
-		return Config{}, configengine.MarkInvalid(fmt.Errorf("%s %q is not a positive Go duration such as 10s", keyName("plugin_hook_timeout"), cfg.PluginHookTimeout))
-	}
-	if err := validateBatchingNudge(cfg.BatchingNudge); err != nil {
-		return Config{}, configengine.MarkInvalid(err)
+		return Config{}, configengine.MarkInvalid(fmt.Errorf("codex.yaml's sandbox_mode %q is none of %s, %s and %s", cfg.SandboxMode, sandboxAuto, sandboxWorkspaceWrite, sandboxFullAccess))
 	}
 	return cfg, nil
 }
@@ -170,12 +146,12 @@ func expandHomePath(key, value string) (string, error) {
 	if rest, ok := strings.CutPrefix(value, "~/"); ok {
 		userHome, err := os.UserHomeDir()
 		if err != nil {
-			return "", fmt.Errorf("codexengine: resolve %s %q: %w", keyName(key), value, err)
+			return "", fmt.Errorf("codexengine: resolve codex.yaml's %s %q: %w", key, value, err)
 		}
 		value = filepath.Join(userHome, rest)
 	}
 	if value == "" || !filepath.IsAbs(value) {
-		return "", fmt.Errorf("codexengine: %s %q is not an absolute path or one under ~/; way forward: set it with lym config codex", keyName(key), value)
+		return "", fmt.Errorf("codexengine: codex.yaml's %s %q is not an absolute path or one under ~/; way forward: set it with lym config codex", key, value)
 	}
 	return filepath.Clean(value), nil
 }
@@ -187,7 +163,7 @@ func expandHomePath(key, value string) (string, error) {
 func configuredWritableRoots(codex Config) ([]string, error) {
 	var roots []string
 	for _, root := range codex.WritableRoots {
-		expanded, err := expandHomePath(writableRootsKey, root)
+		expanded, err := expandHomePath("writable_roots", root)
 		if err != nil {
 			return nil, err
 		}
@@ -196,7 +172,7 @@ func configuredWritableRoots(codex Config) ([]string, error) {
 			continue
 		}
 		if err != nil {
-			return nil, fmt.Errorf("codexengine: resolve %s %q: %w", keyName(writableRootsKey), root, err)
+			return nil, fmt.Errorf("codexengine: resolve codex.yaml's writable_roots %q: %w", root, err)
 		}
 		roots = append(roots, resolved)
 	}
@@ -208,5 +184,5 @@ func validateEffort(effort string, codex Config) error {
 	if effort == "" || slices.Contains(codex.Efforts, effort) {
 		return nil
 	}
-	return fmt.Errorf("codexengine: effort %q is not in %s %v; way forward: name one of them in the model-spec, or add it to %s with lym config codex", effort, keyName(effortsKey), codex.Efforts, keyName(effortsKey))
+	return fmt.Errorf("codexengine: effort %q is not in codex.yaml's efforts %v; way forward: name one of them in the model-spec, or add it to efforts with lym config codex", effort, codex.Efforts)
 }

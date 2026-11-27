@@ -176,6 +176,12 @@ func TestStartGuard_Refuse(t *testing.T) {
 			wantExact:  "some-slug is a draft task, which no run starts; way forward: run `lym board set-status '{\"slug\":\"some-slug\",\"status\":null}'` to release it, then `lym batten {verb} some-slug`",
 		},
 		{
+			name:       "DiscussedTaskRefusesAFreshStartNamingTheRelease",
+			verbs:      []string{"run", "step"},
+			unreleased: boardengine.LegacyStatusDiscussed,
+			wantExact:  "some-slug is a discussed task, which no run starts; way forward: run `lym board set-status '{\"slug\":\"some-slug\",\"status\":null}'` to release it, then `lym batten {verb} some-slug`",
+		},
+		{
 			name:       "UnreleasedTaskWithARunStatusFileResumes",
 			verbs:      []string{"run", "step"},
 			unreleased: boardengine.StatusDraft,

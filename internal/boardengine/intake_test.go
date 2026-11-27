@@ -39,14 +39,6 @@ func testIssueWithComments(number int, labels ...string) boardengine.InboxIssue 
 	return issue
 }
 
-// testIssueWithBody returns a bug issue with body and comments in place of the default body.
-func testIssueWithBody(number int, body string, comments ...boardengine.IssueComment) boardengine.InboxIssue {
-	issue := testIssue(number, "bug")
-	issue.Body = body
-	issue.Comments = comments
-	return issue
-}
-
 func readBoardJSON(t *testing.T, boardPath string) string {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(boardPath, "board.json"))
@@ -68,25 +60,18 @@ func mustUpsert(t *testing.T, b *boardengine.Board, fields map[string]any) {
 // Labels the vocabulary lacks are dropped, and an explicit title, brief and label set are honoured.
 // The issue's comments follow its body as second-level sections in order,
 // and an issue without comments keeps the body without any.
-// A blank body and paths under `.lym/` in the body or comments each get an import note and a result flag.
 func TestImportIssueNewEntry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	const linkLine = "Imported from [issue #7](https://example.test/issues/1)."
-	const plainBody = linkLine + "\n\nIssue body."
-	const pathsBody = "Compare `.lym/shuttle/abc/startup-capture.txt` with wt/.lym/shuttle/def/x.txt. Not _lym/discussion/r.md."
-	const emphasisedPathsBody = `**.lym/a.txt** and |.lym/b|, key=.lym/c and .lym\shuttle\d.txt, foo.lym\e`
-	const pathsComment = "See .lym/x.log, and again `.lym/shuttle/abc/startup-capture.txt`."
+	const plainBody = "Imported from [issue #7](https://example.test/issues/1).\n\nIssue body."
 	tests := []struct {
-		name           string
-		req            boardengine.ImportRequest
-		wantTitle      string
-		wantBrief      string
-		wantLabels     []string
-		wantDropped    []string
-		wantBody       string
-		wantEmptyBody  bool
-		wantLocalPaths []string
+		name        string
+		req         boardengine.ImportRequest
+		wantTitle   string
+		wantBrief   string
+		wantLabels  []string
+		wantDropped []string
+		wantBody    string
 	}{
 		{
 			name:        "issue labels filtered to the vocabulary",
@@ -113,39 +98,6 @@ func TestImportIssueNewEntry(t *testing.T) {
 				"\n\n## Issue comment, 2026-01-03\n\nFirst comment." +
 				"\n\n## Issue comment, 2026-02-01\n\nSecond comment.\n\nWith a paragraph.",
 		},
-		{
-			name:          "blank body flagged with the title",
-			req:           boardengine.ImportRequest{Issue: testIssueWithBody(7, " \n"), Slug: "empty"},
-			wantTitle:     "Issue title",
-			wantLabels:    []string{"bug"},
-			wantEmptyBody: true,
-			wantBody:      linkLine + "\n\nImport note: the issue body was empty; the title \"Issue title\" and any comments below are all the issue carried.",
-		},
-		{
-			name:           "emphasised, delimited and backslash local paths flagged",
-			req:            boardengine.ImportRequest{Issue: testIssueWithBody(7, emphasisedPathsBody), Slug: "marked"},
-			wantTitle:      "Issue title",
-			wantLabels:     []string{"bug"},
-			wantLocalPaths: []string{".lym/a.txt", ".lym/b", ".lym/c", `.lym\shuttle\d.txt`},
-			wantBody: linkLine +
-				"\n\nImport note: the issue names files under `.lym/`, which is deleted with its worktree, so only what the issue quotes of them reached the board:" +
-				" `.lym/a.txt`, `.lym/b`, `.lym/c`, `.lym\\shuttle\\d.txt`." +
-				"\n\n" + emphasisedPathsBody,
-		},
-		{
-			name: "local paths in body and comments flagged",
-			req: boardengine.ImportRequest{
-				Issue: testIssueWithBody(7, pathsBody, boardengine.IssueComment{Body: pathsComment, CreatedAt: time.Date(2026, 3, 4, 0, 0, 0, 0, time.UTC)}),
-				Slug:  "paths",
-			},
-			wantTitle:      "Issue title",
-			wantLabels:     []string{"bug"},
-			wantLocalPaths: []string{".lym/shuttle/abc/startup-capture.txt", "wt/.lym/shuttle/def/x.txt", ".lym/x.log"},
-			wantBody: linkLine +
-				"\n\nImport note: the issue names files under `.lym/`, which is deleted with its worktree, so only what the issue quotes of them reached the board:" +
-				" `.lym/shuttle/abc/startup-capture.txt`, `wt/.lym/shuttle/def/x.txt`, `.lym/x.log`." +
-				"\n\n" + pathsBody + "\n\n## Issue comment, 2026-03-04\n\n" + pathsComment,
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -164,12 +116,6 @@ func TestImportIssueNewEntry(t *testing.T) {
 			}
 			if !slices.Equal(res.Dropped, tt.wantDropped) {
 				t.Errorf("dropped = %v, want %v", res.Dropped, tt.wantDropped)
-			}
-			if res.EmptyBody != tt.wantEmptyBody {
-				t.Errorf("empty body = %v, want %v", res.EmptyBody, tt.wantEmptyBody)
-			}
-			if !slices.Equal(res.LocalPaths, tt.wantLocalPaths) {
-				t.Errorf("local paths = %v, want %v", res.LocalPaths, tt.wantLocalPaths)
 			}
 		})
 	}
@@ -220,26 +166,6 @@ func TestImportIssueFold(t *testing.T) {
 		"\n\n### Issue comment, 2026-02-01\n\nSecond comment.\n\nWith a paragraph."
 	if res.Entry.Body != wantBody {
 		t.Errorf("body with comments = %q, want %q", res.Entry.Body, wantBody)
-	}
-	if res.EmptyBody || len(res.LocalPaths) != 0 {
-		t.Errorf("plain fold flags = empty body %v, local paths %v, want none", res.EmptyBody, res.LocalPaths)
-	}
-
-	mustUpsert(t, b, map[string]any{"slug": "gaps", "kind": "task", "labels": bugLabels})
-	gapIssue := testIssueWithBody(8, " ", boardengine.IssueComment{Body: "See .lym/x.log.", CreatedAt: time.Date(2026, 3, 4, 0, 0, 0, 0, time.UTC)})
-	res, err = b.ImportIssue(boardengine.ImportRequest{Issue: gapIssue, Into: "gaps"})
-	if err != nil {
-		t.Fatalf("fold an issue with a blank body and a local path: %v", err)
-	}
-	wantBody = "## From issue #8\n\nImported from [issue #8](https://example.test/issues/1)." +
-		"\n\nImport note: the issue body was empty; the title \"Issue title\" and any comments below are all the issue carried." +
-		"\n\nImport note: the issue names files under `.lym/`, which is deleted with its worktree, so only what the issue quotes of them reached the board: `.lym/x.log`." +
-		"\n\n### Issue comment, 2026-03-04\n\nSee .lym/x.log."
-	if res.Entry.Body != wantBody {
-		t.Errorf("body with gaps = %q, want %q", res.Entry.Body, wantBody)
-	}
-	if !res.EmptyBody || !slices.Equal(res.LocalPaths, []string{".lym/x.log"}) {
-		t.Errorf("gap fold flags = empty body %v, local paths %v, want true and [.lym/x.log]", res.EmptyBody, res.LocalPaths)
 	}
 }
 

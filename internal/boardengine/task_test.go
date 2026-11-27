@@ -191,7 +191,7 @@ func TestNewTask(t *testing.T) {
 		}{
 			{"project pawl", map[string]any{"slug": "p", "kind": boardengine.KindProject, "labels": []string{"bug"}, "recipe": "pawl"}, nil},
 			{"project tapestry", map[string]any{"slug": "p", "kind": boardengine.KindProject, "labels": []string{"bug"}, "recipe": "tapestry"}, []string{`project "p"`, `recipe "tapestry"`, "pawl"}},
-			{"task pawl", map[string]any{"slug": "t", "kind": boardengine.KindTask, "labels": []string{"bug"}, "recipe": "pawl"}, []string{`task "t"`, "tapestry, motif, darn, hardener or sampler", "beam project"}},
+			{"task pawl", map[string]any{"slug": "t", "kind": boardengine.KindTask, "labels": []string{"bug"}, "recipe": "pawl"}, []string{`task "t"`, "tapestry, motif, darn or sampler", "beam project"}},
 		} {
 			_, err := boardengine.NewTask(tt.fields, 1)
 			if len(tt.wantErr) == 0 {
@@ -261,6 +261,42 @@ func TestNewTask(t *testing.T) {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("refusal %q lacks %q", err.Error(), want)
 			}
+		}
+	})
+
+	t.Run("pull_request on, off and merge-in round-trip in the JSON, empty stores no key and an unknown value is refused", func(t *testing.T) {
+		for _, value := range []string{"on", "off", boardengine.PullRequestMergeIn} {
+			task, err := boardengine.NewTask(map[string]any{"slug": "my-task", "pull_request": value}, 1)
+			if err != nil {
+				t.Fatalf("NewTask(pull_request %q) error = %v; want nil", value, err)
+			}
+			got, err := json.Marshal(task)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			if want := `"pull_request":"` + value + `"`; !strings.Contains(string(got), want) {
+				t.Errorf("JSON = %s; want it to contain %s", got, want)
+			}
+		}
+
+		task, err := boardengine.NewTask(map[string]any{"slug": "my-task", "pull_request": ""}, 1)
+		if err != nil {
+			t.Fatalf("NewTask(empty pull_request) error = %v; want nil", err)
+		}
+		got, err := json.Marshal(task)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if strings.Contains(string(got), `"pull_request"`) {
+			t.Errorf("JSON = %s; want no pull_request key for an empty value", got)
+		}
+
+		_, err = boardengine.NewTask(map[string]any{"slug": "my-task", "pull_request": "maybe"}, 1)
+		if err == nil {
+			t.Fatalf("NewTask(pull_request maybe) error = nil; want a refusal")
+		}
+		if !strings.Contains(err.Error(), "pull_request is on, off, merge-in or empty") {
+			t.Errorf("refusal %q does not name the accepted values", err.Error())
 		}
 	})
 

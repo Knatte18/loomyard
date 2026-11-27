@@ -39,16 +39,7 @@ const (
 	UnansweredNoReply = "no-reply"
 	// UnansweredHolderGone means the holder was removed after reading the message, with no reply.
 	UnansweredHolderGone = "holder-gone"
-	// UnansweredAskerGone means the sender was removed while the message still awaited a reply.
-	UnansweredAskerGone = "asker-gone"
 )
-
-// isOpenQuestion reports whether msg is a question its strand holder has yet to answer or settle:
-// it expects a reply, no reply, unanswered outcome or return to its sender is recorded, and a strand holds it.
-// The holder's answer, the chase clock, or the removal of the holder or the sender settles it.
-func isOpenQuestion(msg *Message) bool {
-	return msg.ExpectReply && !msg.Replied && msg.Unanswered == "" && msg.EndedUnreadBy == "" && isStrandName(msg.Holder)
-}
 
 // isChaseable reports whether the chase clock runs on msg:
 // it expects a reply, its strand holder read it and has not answered it, and no unanswered outcome is recorded.

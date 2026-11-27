@@ -43,13 +43,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
-	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -61,6 +59,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/tendercli"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -606,13 +605,13 @@ func boardRecipe(board *boardengine.Board, task boardengine.Task) string {
 // childRecipeSupported reports whether a task worktree's bootstrap verb can run recipe as the child's own run.
 // The admitted recipes are the ones `lym loom start` serves.
 func childRecipeSupported(recipe string) bool {
-	return recipe == shedrun.RecipeTapestry || recipe == shedrun.RecipeMotif || recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl || recipe == shedrun.RecipeSampler || recipe == shedrun.RecipeRaddle || recipe == shedrun.RecipeArras || recipe == shedrun.RecipeHardener
+	return recipe == shedrun.RecipeTapestry || recipe == shedrun.RecipeMotif || recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl || recipe == shedrun.RecipeSampler || recipe == shedrun.RecipeRaddle || recipe == shedrun.RecipeArras
 }
 
 // unsupportedChildRecipeRefusal returns the refusal for a recipe that a task worktree's bootstrap verb cannot run.
 // It wraps battenshed.ErrUnsupportedChildRecipe and names the admitted recipes.
 func unsupportedChildRecipeRefusal(recipe string) error {
-	return fmt.Errorf("%w: only %q, %q, %q, %q, %q, %q, %q and %q have a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q, %q, %q, %q, %q, %q, %q or empty, and a project entry seeds %q; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeRaddle, shedrun.RecipeArras, shedrun.RecipeHardener, shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipeSampler, shedrun.RecipeRaddle, shedrun.RecipeArras, shedrun.RecipeHardener, shedrun.RecipePawl, recipe)
+	return fmt.Errorf("%w: only %q, %q, %q, %q, %q, %q and %q have a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q, %q, %q, %q, %q, %q or empty, and a project entry seeds %q; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeRaddle, shedrun.RecipeArras, shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipeSampler, shedrun.RecipeRaddle, shedrun.RecipeArras, shedrun.RecipePawl, recipe)
 }
 
 // childSeedParams returns the params of a child's seed.
@@ -1035,12 +1034,6 @@ func (c *battenCLI) commandDeps(location *lymcwd.Location, slug, executable stri
 func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 	// Batten runs in the prime on behalf of one pair, so its network git and GitHub calls wait under that pair's pause entry.
 	pauserecord.SetGateSlug(slug)
-	// A pass catches up over its own run alone, so a hand pass fetches only that run's branches.
-	if c.catchUp == nil {
-		c.catchUp = func() (dobbyengine.CatchUpReport, error) {
-			return dobbyengine.CatchUp(HubCatchUp(location, func() ([]string, error) { return []string{slug}, nil }))
-		}
-	}
 	primeRunLockPath := PrimeRunLock(location)
 	primeLock := battenshed.PrimeLock{
 		Path: primeRunLockPath,
@@ -1104,27 +1097,10 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 		return reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()).Directory()
 	}
 
-	teardownPush, teardownLevel := teardownPushSeams(location, slug, locateTask, fabricengine.EnvSyncOptions)
-
 	env := shedrecipe.Env{
 		Slug:       slug,
 		ScratchDir: BattenDir(location, slug),
 		PrimeLock:  primeLock,
-		// The tree closures open the fabric on each call, since wire() also runs for status and pause.
-		ReviewTreeID: func() (string, error) {
-			handle, err := fabricengine.Open(location)
-			if err != nil {
-				return "", err
-			}
-			return handle.WorktreeTreeID()
-		},
-		ReviewTreeChanges: func(fromID, toID string) ([]string, error) {
-			handle, err := fabricengine.Open(location)
-			if err != nil {
-				return nil, err
-			}
-			return handle.ChangedPathsBetween(fromID, toID)
-		},
 		// The closure takes holdPrime only for the fork-point read, the registry write and a held pair's removal.
 		// Claim, reconcile and push run outside it, and origin probes start before it; a waiting create holds up no other run.
 		CreateWorktree: func(ctx context.Context, holdPrime battenshed.HoldPrimeLock) error {
@@ -1149,8 +1125,6 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				if err := c.refuseHeldMember(ctx, location, slug, holdPrime); err != nil {
 					return err
 				}
-				// A row re-entered after a crash between Add and the pick gets its account here, and one with an entry keeps it.
-				c.pickAccount(location, slug, true)
 				return reconcileTaskPair(location, slug)
 			}
 			cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
@@ -1203,7 +1177,6 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 			if err := reconcileTaskPair(location, slug); err != nil {
 				return err
 			}
-			c.pickAccount(location, slug, false)
 			// Add pushes nothing; the new pair goes out through a detached push the run never waits on.
 			// A failed spawn leaves the branches local for the pair's next detached push, so it only warns.
 			if taskLocation, err := locateTask(); err != nil {
@@ -1247,21 +1220,6 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				res, err := td.RemovePair(teardownRequest(slug))
 				return finishRemoval(res, err, slug)
 			},
-			// Push and Level read the task worktree when they run, and a task pair already gone pushes nothing and reads level.
-			// Push first removes the bench pairs the run's darn writer made, so none outlives the run.
-			// The row calls it with no prime lock held, so their archive pushes and teardowns never hold that lock.
-			// A failed bench removal keeps the task pair, and the resumed row retries it.
-			Push: func(ctx context.Context) error {
-				benchPairs, err := pairteardown.RemoveBenchPairs(ctx, location, slug)
-				if err != nil {
-					return fmt.Errorf("the bench pairs of %q were not all removed: %w", slug, err)
-				}
-				if len(benchPairs) > 0 {
-					logger.Info("battencli: teardown removed the run's bench pairs", "slug", slug, "bench_pairs", benchPairs)
-				}
-				return teardownPush(ctx)
-			},
-			Level: teardownLevel,
 		},
 		Land: landDeps(location, slug, locateTask),
 		InnerRun: battenshed.InnerRunDeps{
@@ -1311,6 +1269,9 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 					return battenshed.OwnerVerdict{}, err
 				}
 				return ownerVerdictOf(report, slug), nil
+			},
+			PauseOwned: func(ctx context.Context, owner string) error {
+				return tendercli.PauseOwnedElsewhere(location, slug)
 			},
 			// ParentHoldsTaskWork marks a Finalize past its parent-side merge, read over the prime and the located task worktree.
 			ParentHoldsTaskWork: func() (bool, error) {
@@ -1437,12 +1398,11 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 					return err
 				}
 				reedEngine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
-				reedEngine.SetRevivalFilter(orchengine.RevivalFilter(fabricengine.ConfigDirs(taskLocation)))
 				rows, err := reedEngine.Directory()
 				if err != nil {
 					return err
 				}
-				engines, err := shuttleengines.NewForWorktree(shuttleCfg, fabricengine.ConfigDirs(taskLocation), hubgeom.EngineWorktree(taskLocation))
+				engines, err := shuttleengines.New(shuttleCfg, fabricengine.ConfigDirs(taskLocation))
 				if err != nil {
 					return err
 				}
@@ -1452,7 +1412,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 					return err
 				}
 				runner.SetPause(pauseGeom)
-				runner.SetSessionEnd(shedadapters.UsageRecorder(taskLocation, shuttleengines.RecordReaders(fabricengine.ConfigDirs(taskLocation))))
+				runner.SetSessionEnd(shedadapters.UsageRecorder(taskLocation, shuttleengines.RecordReaders()))
 				if err := stopDeadArbiterStrands(rows, runner.StopStrand); err != nil {
 					logger.Warn("battencli: stopping the task worktree's dead arbiter strands failed", "slug", slug, "error", err)
 					return err
@@ -1531,7 +1491,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				// the WriteSeed seam below admits no other child recipe, so the two stay consistent by construction.
 				// Dir is the task worktree's AnchorPath(), never its bare worktree root.
 				// The resolver gates a child's working directory to the anchor, and a bare root fails on any subpath-anchored hub.
-				cmd := exec.Command(exe, "loom", "start")
+				cmd := exec.Command(exe, "loom", "start", "--no-attach")
 				cmd.Dir = taskLocation.AnchorPath()
 				// Captured rather than discarded: the child's own envelope is the only
 				// diagnosis this seam can offer for a failed bootstrap.
@@ -1711,7 +1671,6 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 	env.Command = c.commandDeps(location, slug, executable, locateTask)
 
 	c.beam = hubLandingSeams(location, slug)
-	c.pickAccount = PickWorktreeAccount
 	c.clientAttached = func() (bool, error) {
 		taskLocation, err := locateTask()
 		if err != nil {
@@ -1728,25 +1687,14 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 		return reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()).ClientAttached()
 	}
 
-	// A resume starts the prime's pusher and, when the run's pair stands here, the pair's.
-	// A failed read or start only warns, since the next commit, tick or resume starts the pusher again.
-	c.startPusher = func() {
-		start := c.pusherStart
-		if start == nil {
-			start = runpusher.Start
-		}
-		startRunPushers(location, slug, locateTask, start)
-	}
-
 	c.env = env
-	c.commitStatus = battenCommitStatusSeam(location, slug)
 	c.shedPaths = shedbuild.ShedPaths{
 		StatusPath:     StatusFile(location, slug),
 		LockPath:       RunLock(location, slug),
 		StatusLockPath: StatusLock(location, slug),
 		// CommitStatus commits prime's batten status onto prime's fabric pair on every non-no-op transition.
 		// The status file is durable, fabric-synced state, so the seam is required here rather than nil.
-		CommitStatus: c.commitStatus,
+		CommitStatus: battenCommitStatusSeam(location, slug),
 
 		RunID:                   slug,
 		MissingStatusWayForward: fmt.Sprintf("way forward: \"lym batten run %s\" creates the lifecycle's status file", slug),
@@ -1754,88 +1702,6 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 		BudgetWayForward:        fmt.Sprintf("run \"lym batten run %s\": the resume grants the row one more budget", slug),
 	}
 	return nil
-}
-
-// startRunPushers starts the pusher of the prime and, when the pair of slug stands here, the pair's, each through start.
-// A failed read or start only warns, since the next commit, tick or resume starts the pusher again.
-func startRunPushers(location *lymcwd.Location, slug string, locateTask func() (*lymcwd.Location, error), start func(runpusher.Target) (bool, error)) {
-	restartPusher(location, "", start)
-	present, err := taskWorktreePresent(location, slug)
-	if err != nil {
-		logger.Warn("battencli: whether the pair stands is unreadable, so its pusher is not started; the next commit, tick or resume starts one", "slug", slug, "error", err)
-		return
-	}
-	if !present {
-		return
-	}
-	taskLocation, err := locateTask()
-	if err != nil {
-		logger.Warn("battencli: locate the pair to start its pusher failed; the next commit, tick or resume starts one", "slug", slug, "error", err)
-		return
-	}
-	restartPusher(taskLocation, slug, start)
-}
-
-// teardownPushSeams returns the Push and Level halves of the Worktree-Teardown row for the pair of slug.
-// Push pushes the pair until origin holds its tips, and Level reads whether origin holds them.
-// A pair already gone pushes nothing and reads level.
-// With git or pushes off, as syncOptions reports, nothing is pushed and the pair reads level,
-// so the row removes the pair as it does with no pusher.
-func teardownPushSeams(location *lymcwd.Location, slug string, locateTask func() (*lymcwd.Location, error), syncOptions func() fabricengine.SyncOptions) (push func(context.Context) error, level func() (bool, error)) {
-	pushesOff := func() bool {
-		options := syncOptions()
-		return options.SkipGit || options.SkipPush
-	}
-	push = func(ctx context.Context) error {
-		if pushesOff() {
-			return nil
-		}
-		present, err := taskWorktreePresent(location, slug)
-		if err != nil || !present {
-			return err
-		}
-		taskLocation, err := locateTask()
-		if err != nil {
-			return err
-		}
-		return teardownPushError(runpusher.PushUntilLanded(ctx, func() error {
-			_, pushErr := pairteardown.PushRun(location, taskLocation, slug, pairteardown.RunPush{
-				LockWait:       fabricengine.StatusPushLockWait,
-				TeardownWait:   fabricengine.StatusPushLockWait,
-				OwedUnrecorded: true,
-			})
-			return pushErr
-		}, fabricengine.IsPushOwed, time.Sleep, func(error) {}))
-	}
-	level = func() (bool, error) {
-		if pushesOff() {
-			return true, nil
-		}
-		present, err := taskWorktreePresent(location, slug)
-		if err != nil || !present {
-			return true, err
-		}
-		taskLocation, err := locateTask()
-		if err != nil {
-			return false, err
-		}
-		return fabricengine.TipsOnOrigin(taskLocation)
-	}
-	return push, level
-}
-
-// teardownPushError wraps origin's ended entry in battenshed.ErrPushEntryEnded.
-// It wraps a hand-over in battenshed.ErrPushHandedOver.
-// The teardown row tells those two apart from a refused push by the sentinels.
-// Any other error, and nil, pass through unchanged.
-func teardownPushError(err error) error {
-	switch {
-	case errors.Is(err, fabricengine.ErrEntryEnded):
-		return fmt.Errorf("%w: %w", battenshed.ErrPushEntryEnded, err)
-	case errors.Is(err, fabricengine.ErrHandedOver):
-		return fmt.Errorf("%w: %w", battenshed.ErrPushHandedOver, err)
-	}
-	return err
 }
 
 // restepSkips reports whether a child's status is a blocked halt the binary re-step leaves alone:

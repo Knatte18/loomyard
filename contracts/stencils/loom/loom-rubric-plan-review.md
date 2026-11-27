@@ -28,8 +28,6 @@ It appears in neither the artifact list nor the answer key, and it must not be r
 
 `none` means webster has begun no batch, and no card is frozen.
 Otherwise a done card is frozen: a fix never edits its file.
-`00-overview.md` outside its Card Index is frozen too, since it carries the plan's integration verify: a fix edits only its Card Index, and the gate refuses any other edit to it.
-On a run with no recorded overview frame and no baseline copy to take it from, the gate refuses every edit to `00-overview.md`, so a card-set change there needs a fresh run.
 A fix to its work is a follow-up card placed after the last begun batch, with its Card Index line in `00-overview.md`, in the format `{{.specs_dir}}/loom/loom-plan-spec.md` defines.
 A fix inserts or removes a card only with `lym loom insert-card` or `lym loom remove-card`, which renumber the later cards and whose `--help` says what they do, never by renaming, rewriting under a new name or deleting a card file by hand.
 
@@ -55,14 +53,6 @@ Do not flag any of the following as a finding:
   One card per independently reviewable unit, not one card per literal symbol.
   A private supporting type, or a constructor inseparable from its type, belongs in the other symbol's card;
   a symbol that is part of a module's public surface, or reused across packages, gets its own card even when one card is its only consumer, and a helper serving one surface is bundled into that surface's card.
-  A new function is the exception: it goes on the card that adds its first production caller.
-  A card that adds it alone fails its gate on the guard that every production function is reachable from a `main`;
-  the finding names the function and the card that adds its caller.
-- **A repository-wide intent.**
-  A card whose `**Intent:**` covers every instance of one kind across the repository needs a search that proves its targets complete.
-  It is a finding when its Intent names no repository search that found its targets.
-  The reviewer runs the card's search, or one of its own when the card names none;
-  the finding names each instance the search finds outside the card's targets.
 - **Test economy.**
   A card that plans a new test function or file for behavior an existing test already covers, or one test per symbol, is a finding; so is a card that plans a test asserting the static prose of a stencil, spec, doc or other text.
   The finding names the existing test that covers the behavior, or, for a per-symbol test, the public-surface test that covers the symbol;
@@ -121,9 +111,6 @@ Do not flag any of the following as a finding:
   The hub's tiers and gate lists, as the plan writer was given them:
 {{.gate_tiers}}
   A plan-level `## verify:` section is accepted and ignored, so it is no finding.
-- **The plan tier0 budget.**
-  When the tiers above hold a plan tier0 budget line, a card that creates or widens a `tier0` test and states no estimate of the seconds it adds is a finding,
-  and so is a plan whose estimates together pass the budget; the finding names the cards and their sum.
 - **The attack-surface question.**
   For every new verb, flag, escape hatch or routing edge, and every guard that is removed, downgraded or bypassable, the card that introduces the change states in its `**Intent:**` what it can now skip or let through and what bounds it.
   A card that introduces one with no stated bound is a finding.
@@ -147,7 +134,7 @@ The rule narrows only which fix shapes a reviewer proposes; no defect becomes un
 Before writing a finding whose `fix` adds, drops, moves or pairs targets, or changes a verify command, the agent writing the review file checks the fixes against the plan gate with `lym loom validate-plan --overlay`, which checks proposed plan file contents in memory and writes no file.
 `lym loom validate-plan --help` shows the stdin format; this rubric does not restate it.
 It first runs `validate-plan --overlay` with `{}` as a baseline, never the flag-less run, so that no run writes a file.
-It then runs it once with every such fix applied together, with its shell command's timeout raised to cover a type load, and proposes no fix whose run reports a blocking finding the baseline does not.
+It then runs it once with every such fix applied together, with its Bash timeout raised to cover a type load, and proposes no fix whose run reports a blocking finding the baseline does not.
 When the combined run reports a new blocking finding, it re-runs with each fix overlaid alone.
 A fix whose solo run reports a new blocking finding is withheld, and its defect is reported with the constraining check named, as above for a defect with no admissible fix.
 A new blocking finding of the combined run that no solo run reproduces is a joint conflict: the fixes that finding names by card are withheld, and their defects are reported together the same way.

@@ -54,7 +54,7 @@ func TestFinalize_CommitStatus(t *testing.T) {
 		wantEvents []string
 		wantMerges int
 	}{
-		{"runs before the merge-in and again after it", nil, false, []string{"commit", "merge", "commit"}, 1},
+		{"runs before the merge-in", nil, false, []string{"commit", "merge"}, 1},
 		{"failure is an error and never merges", sentinel, false, []string{"commit"}, 0},
 		{"nil seam is not an error", nil, true, []string{"merge"}, 1},
 	}

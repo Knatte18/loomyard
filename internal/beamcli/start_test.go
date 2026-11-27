@@ -15,22 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-func TestStartCmd_HiddenNoPrimeClaimFlagReachesTheBringUpOptions(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	flag := startCmd().Flags().Lookup(NoPrimeClaimFlag)
-	if flag == nil || !flag.Hidden {
-		t.Fatalf("flag %s = %+v; want a hidden flag on beam start", NoPrimeClaimFlag, flag)
-	}
-	for _, noPrimeClaim := range []bool{false, true} {
-		got := startOptions(beamTarget{Label: "prime"}, true, noPrimeClaim)
-		if !got.Prepare || got.NoPrimeClaim != noPrimeClaim {
-			t.Errorf("startOptions(prepare, %v) = Prepare %v, NoPrimeClaim %v; want both carried", noPrimeClaim, got.Prepare, got.NoPrimeClaim)
-		}
-	}
-}
-
 func TestStartBeams(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

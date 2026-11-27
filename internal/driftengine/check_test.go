@@ -168,6 +168,8 @@ func TestCheck(t *testing.T) {
 	deferred.Deferred = true
 	waived.WaivedAt, waived.WaivedReason = "2026-01-02T00:00:00Z", "no profile"
 	off.Scope = ScopeOff
+	partial := countedScope()
+	partial.Scope, partial.Skip = ScopePartial, []string{"skipped"}
 
 	marked := Volatile{Files: []string{"_source.txt"}, Keys: []string{"captured_at"}}
 	metadataBaseline := map[string]string{"_source.txt": "commit=a\n", "a.txt": "x=1\ncaptured_at=1\n"}
@@ -404,6 +406,19 @@ func TestCheck(t *testing.T) {
 			},
 			gatePasses:   true,
 			wantFindings: []string{"exited 2", "/logs/compare.log"},
+		},
+		{
+			name: "an old partial record with a skip list leaves its cases out of the diff",
+			setup: func(f *checkFixture) {
+				f.seed(partial, map[string]string{"a.txt": "x=1\n", "skipped.txt": "x=1\n"})
+				f.current = map[string]string{"a.txt": "x=1\n", "skipped.txt": "x=9\n"}
+			},
+			check: func(t *testing.T, f *checkFixture, report CheckReport) {
+				if len(report.Cells) != 0 {
+					t.Errorf("Cells = %+v; want none, the skipped case left out", report.Cells)
+				}
+			},
+			gatePasses: true,
 		},
 		{
 			name: "the recorded diff wins over a changed config",

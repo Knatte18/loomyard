@@ -138,9 +138,6 @@ func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
 		if c.engine == nil {
 			t.Fatal("c.engine = nil; want a constructed *burlerengine.Engine")
 		}
-		if !c.runner.HasReplyProbe() {
-			t.Error("c.runner.HasReplyProbe() = false; want the reply probe wired in hub mode")
-		}
 		if c.reedUp != nil {
 			t.Error("wireHub armed c.reedUp; want nil -- hub mode's reed session is not run's to boot")
 		}
@@ -855,7 +852,7 @@ fixer-report-path: reviews/fixer-report.md
 		if exitCode == 0 {
 			t.Fatalf("run = exit 0, output: %s; want the requirements refusal", out.String())
 		}
-		for _, want := range []string{`engine \"fake\"`, "set shuttle.engine in shuttle.yaml to an engine that meets them"} {
+		for _, want := range []string{`engine \"fake\"`, "set engine: in shuttle.yaml to an engine that meets them"} {
 			if !strings.Contains(out.String(), want) {
 				t.Errorf("run output = %s; want it to contain %q", out.String(), want)
 			}

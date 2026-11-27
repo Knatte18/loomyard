@@ -7,12 +7,10 @@ and only `internal/shuttleengines` constructs or imports a concrete engine.
   and `shuttleengine` never imports a concrete engine.
 - Only `internal/shuttleengines` imports or constructs a concrete engine;
   the scan in `internal/shuttleengine`'s `seam_enforcement_test.go` covers production files.
-- A package under `internal/shuttleengine/` that holds no engine, such as `bashlookup`, is shared engine-neutral code every engine may import;
-  the scan's `sharedPackages` names each one.
 - An engine's config module reaches `configreg` only through `internal/shuttleengines`.
   That package lists each registered engine's module for it.
 - An engine's name is not a provider specific and may appear outside its directory.
-  Such a name is a registry key, like `shuttle.engine: claude` or a `modelspec` engine name.
+  Such a name is a registry key, like `shuttle.yaml`'s `engine: claude` or a `modelspec` engine name.
 - An engine's scrub keys are the environment keys reed's server spawn strips.
   They reach reed only through `shuttleengines.EnvScrub()`, which every production `reedengine.New` caller passes.
 - reed's strand provider tag is opaque:
@@ -20,10 +18,6 @@ and only `internal/shuttleengines` constructs or imports a concrete engine.
   An engine's session namer reaches reed's watchdog only through `shuttleengines.SessionNamers()`, keyed by that tag.
 - An engine's record-reading capabilities reach a reader outside the engines through `shuttleengines.RecordReaders()`.
   They arrive as adapters that expose reading alone.
-- Claude's user setup reaches `codexengine` only through `shuttleengine.UserSetupSource`, wired in `internal/shuttleengines`.
-  The Codex engine takes that source, the plugin hook runner and the sandbox probe as `codexengine.Seams`.
-  `shuttleengines.NewWithSeams` is the one entry point that builds the set with a caller's hook runner and sandbox probe,
-  for `lym shuttle manifest` and the parity test.
 - A `*Run` issued by `Start` or `StartGated` has already resolved its provider's startup probe.
   No caller outside `internal/shuttleengine` probes provider readiness or plays startup-gate keys.
 
@@ -91,9 +85,6 @@ and an attach probe or a Wait then reads a strand that is gone.
   So a method value handed to a wrapper is caught as well as a call.
 - Bound: the scan sees the selector, not whose strand it removes.
   A call inside an allowed package on a run's strand that bypasses the stop verb is caught by review.
-- The stop verb's relaunch mode marks the run record relaunching and keeps the strand.
-  Until the mark clears or its bound passes, every running-run reader reads the run as live,
-  a step stop stops it, and the orphan sweep keeps it.
 
 ## Completion signal
 
@@ -121,7 +112,6 @@ Only `shuttleengine` fills it, from an ungated run's `OutputFiles`;
 a gated run's strand carries none, since its outputs existing does not mean its gate passed.
 Only `reedengine`'s resume reads it.
 It drops a non-live strand whose list is non-empty and fully present instead of relaunching it.
-It neither drops nor relaunches a strand held for a relaunch.
 Reed cannot know that a gate passed,
 so a finished gated run's strand is still relaunched when shuttle's own teardown did not run,
 and the relaunch types no prompt.

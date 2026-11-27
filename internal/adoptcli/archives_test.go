@@ -66,7 +66,7 @@ func TestRunArchives(t *testing.T) {
 		{name: "NoSubjectIsRefused", wantErr: []string{"lym adopt --archives root"}},
 		{name: "ASlugOffTheBoardIsRefused", req: request{Slugs: []string{"nosuch"}}, wantErr: []string{"lym board list"}},
 		{name: "ATaskIsRefusedNamingItsSubject", req: request{Slugs: []string{"t2"}}, wantErr: []string{"lym adopt --archives alpha"}},
-		{name: "TheTakeHoldFlagIsRefused", req: request{Slugs: []string{"root"}, TakeHold: true}, wantErr: []string{"no other flag"}},
+		{name: "AnotherFlagIsRefused", req: request{Slugs: []string{"root"}, KeepLocal: true}, wantErr: []string{"no other flag"}},
 		{name: "HereBesideItIsRefused", req: request{Slugs: []string{"root"}}, flags: callFlags{Here: true}, wantErr: []string{"no other flag"}},
 		{
 			name: "AFailedReadNamesTheRerun", req: request{Slugs: []string{"root"}}, readErr: errors.New("origin did not answer"),

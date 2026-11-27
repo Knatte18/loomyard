@@ -21,7 +21,7 @@ const ExcludeListKey = "warp_exclude"
 // SecretPathsKey is fabric.yaml's key holding the secret-file patterns a hub adds to the ones lym ships.
 const SecretPathsKey = "secret_paths"
 
-// Config holds fabric's settings:
+// Config holds the settings every pair shares:
 // the warp branch prefix, the weft-sync pathspec, the warp exclude list and the hub's secret-file patterns.
 type Config struct {
 	BranchPrefix string `yaml:"branch_prefix"`
@@ -63,19 +63,16 @@ func (c Config) WarpExcludePaths() []string {
 }
 
 // ConfigSpec returns fabric's layered-load spec.
-// The pathspec and the warp exclude list reach every worktree of the hub, so every pair converges to one value of each.
-// The secret-file key configures the guard on every commit, so every pair converges to one value of it too.
-// The branch prefix is the convention of the person who makes pairs on a machine,
-// so a machine's override may set it over the hub file;
-// a pair keeps the branch name it was made with, whatever prefix another machine uses later.
-// No key may be set in the local layer.
+// A key shapes a pair at creation, or it reaches every worktree through the repository-wide exclude file.
+// The secret-file key configures the guard on every commit.
+// Every pair converges to the same value for each key, so none may be set in the local layer.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     "fabric",
 		Template: []byte(ConfigTemplate()),
 		HubWide:  true,
 		Categories: map[string]configengine.Category{
-			"branch_prefix": configengine.CategoryMachine,
+			"branch_prefix": configengine.CategoryCrossPair,
 			"pathspec":      configengine.CategoryCrossPair,
 			ExcludeListKey:  configengine.CategoryCrossPair,
 			SecretPathsKey:  configengine.CategoryGuard,

@@ -87,7 +87,7 @@ Each finding names the part, or the shared spot's path, and ends in its way forw
 | `parts-missing` | the parts file does not exist | write it |
 | `parts-malformed` | `Parse` refuses the file | correct the line the error names |
 | `parts-none` | the file holds no part | write at least one part, a single part covering the whole task when it does not split |
-| `parts-over-max` | more parts than `tapestry.parts.max` | merge parts until at most the maximum remain |
+| `parts-over-max` | more parts than `tapestry.parts_max` | merge parts until at most the maximum remain |
 | `part-name-invalid` | a name `seatengine.ValidateSeatName` refuses | rename the part to a lower-case name that starts with a letter |
 | `part-name-repeated` | a name an earlier part holds | rename one of them |
 | `part-name-archive` | a name beginning with `archive-`, whose directory the preparations would skip as an earlier archive | rename the part |

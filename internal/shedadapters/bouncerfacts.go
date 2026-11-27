@@ -81,7 +81,6 @@ type lensFacts struct {
 // Lenses is set only for a fanned segment.
 // UsageNote is non-empty when the round's recorded fan names could not be read.
 // Such a round counts as solo for lens exclusions.
-// Section is a caller's text rendered under its own heading after everything else; empty renders none.
 type roundFacts struct {
 	Round             int
 	Rows              []roundFactsRow
@@ -90,7 +89,6 @@ type roundFacts struct {
 	EarlierLedgerErrs []string
 	Lenses            *lensFacts
 	UsageNote         string
-	Section           string
 }
 
 // computeLensFacts reads the fan and the lenses that round ran from its usage record.
@@ -388,9 +386,6 @@ func renderRoundFacts(f roundFacts) []byte {
 	if f.Lenses != nil {
 		renderLensFacts(&b, *f.Lenses)
 	}
-	if f.Section != "" {
-		fmt.Fprintf(&b, "\n## Campaign facts\n\n%s\n", strings.TrimRight(f.Section, "\n"))
-	}
 	return []byte(b.String())
 }
 
@@ -462,18 +457,9 @@ func escapeCell(s string) string {
 // The lens section is computed only when clusterExcludes is true, so a solo segment's file carries none.
 // Its warnings identify the section as name.
 // A non-empty usageNote is rendered as one line saying the round's recorded fan names could not be read.
-// A non-nil section is called for the round, and its text is rendered under its own heading after everything else;
-// its error fails the call.
-func writeRoundFacts(name, runDir string, round int, reportName func(int) string, clusterExcludes bool, usageNote string, section func(int) (string, error)) error {
+func writeRoundFacts(name, runDir string, round int, reportName func(int) string, clusterExcludes bool, usageNote string) error {
 	facts := computeRoundFacts(runDir, round, reportName)
 	facts.UsageNote = usageNote
-	if section != nil {
-		text, err := section(round)
-		if err != nil {
-			return fmt.Errorf("bouncer: round %d facts section: %w", round, err)
-		}
-		facts.Section = text
-	}
 	if clusterExcludes {
 		lenses := computeLensFacts(name, runDir, round, reportName)
 		facts.Lenses = &lenses

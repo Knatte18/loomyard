@@ -19,7 +19,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -58,7 +57,7 @@ type BurlerHalfDeps struct {
 	// RequiresFans makes the fix producer read the review producer's recorded fan names and refuse a round with none.
 	RequiresFans bool
 	// GateFindingsPath is the file an exhausted gate's findings are kept in and the Stuck reason names;
-	// a later call whose gate passed leaves it in place.
+	// the producer removes it on a call whose gate passed.
 	// Empty keeps no findings file.
 	GateFindingsPath string
 	// NotifyParent posts one line to the run's parent.
@@ -72,30 +71,6 @@ type BurlerHalfDeps struct {
 	Assist AssistSettings
 	// Parent is the segment's parent seat, read by the review producer; nil asks the parent nothing.
 	Parent *ParentReviewSeat
-	// Snapshot names the round's review target by an id, read by the review producer.
-	// Nil records no target id, so every round counts as changed and no changes file is built.
-	Snapshot *TargetSnapshot
-	// DecisionRecordPath is the decision record whose added entries the round's start records; empty records none.
-	DecisionRecordPath string
-	// AmendmentTitles reads the titles of the pending amending decision entries.
-	// A later round's review may name findings against them.
-	// Nil for a segment that reads none.
-	AmendmentTitles func() ([]string, error)
-	// HaltConflictDir is the conflict directory holding the plan executor's halt-reason file.
-	// The review producer reads it on every call and puts the reason in the review prompt.
-	// Empty for a segment that reads none.
-	HaltConflictDir string
-	// HardenerRound marks a hardener segment's review.
-	// Its round check holds no finding to the BLOCKING or changed-file rules.
-	HardenerRound bool
-	// Diff reads the unified diff a spawned reviewer is given in pieces, read by the review producer once per spawning call.
-	// Nil gives no diff, and so does a failed read, which is logged.
-	Diff func() (string, error)
-	// Rubric reads the rubric a round's reviewers are given.
-	// The review producer calls it once per Call, before it builds the round's profile.
-	// Its answer replaces the profile's rubric; a read error fails the call, with no reviewer spawned.
-	// Nil keeps the profile's rubric, as a row with a literal rubric does.
-	Rubric func() (string, error)
 }
 
 // AssistSettings is one review segment's assistant reviewer seat: the per-round model and fan lists, the keys they came from and the assistant's run bound.
@@ -161,22 +136,7 @@ type BurlerReviewProducer struct {
 	fans   *RoundFans
 	assist AssistSettings
 	parent *ParentReviewSeat
-	// snapshot, when non-nil, names the target recorded at each round's start.
-	snapshot *TargetSnapshot
-	// decisionRecordPath, when non-empty, is the decision record whose added entries each round's start records.
-	decisionRecordPath string
-	// amendmentTitles, when set, reads the pending amendment titles into each round's context.
-	amendmentTitles func() ([]string, error)
-	// haltConflictDir, when non-empty, is the conflict directory whose halt-reason file each call reads.
-	haltConflictDir string
-	// hardenerRound marks a hardener segment's review.
-	// Its round context holds no finding to the BLOCKING or changed-file rules.
-	hardenerRound bool
-	// diff, when non-nil, reads the diff a spawned reviewer is given.
-	diff func() (string, error)
-	// rubric, when non-nil, reads each round's rubric.
-	rubric func() (string, error)
-	// gateFindingsPath, when non-empty, is the file an exhausted gate's findings are kept in.
+	// gateFindingsPath, when non-empty, is the file cleared once the review's gate has passed.
 	gateFindingsPath string
 	profile          burlerengine.Profile
 	opts             burlerengine.RunOpts
@@ -189,7 +149,6 @@ var _ shedengine.ShedProducer = (*BurlerReviewProducer)(nil)
 
 // NewBurlerReviewProducer returns a BurlerReviewProducer identified as name, driving profile through deps.Runner under opts, with round artifacts under runDir.
 // profile is a template; each round overwrites its per-round fields, such as ReviewPath and FocusDirective.
-// When deps.Rubric is set, it overwrites Rubric too, with that seam's answer.
 // opts is a template whose Round, Review and Fix fields are overwritten per attempt, the last two from deps.Models.
 // A nil now defaults to time.Now.
 // The injected clock resolves the archive filename's same-second collision suffix and stamps a parent-review ask.
@@ -202,46 +161,7 @@ func NewBurlerReviewProducer(name string, deps BurlerHalfDeps, profile burlereng
 	if now == nil {
 		now = time.Now
 	}
-	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, fans: deps.Fans, assist: deps.Assist, parent: deps.Parent, snapshot: deps.Snapshot, decisionRecordPath: deps.DecisionRecordPath, amendmentTitles: deps.AmendmentTitles, haltConflictDir: deps.HaltConflictDir, hardenerRound: deps.HardenerRound, diff: deps.Diff, rubric: deps.Rubric, gateFindingsPath: deps.GateFindingsPath, profile: profile, opts: opts, runDir: runDir, now: now}, nil
-}
-
-// recordRoundStart writes round's snapshot record when none exists yet.
-// It fills the fix scope and target paths from the stored profile.
-// It fills the target id from the snapshot, and the added decisions' digests from the decision record.
-// A record already there is kept.
-// A retried attempt, a resumed reviewer or a half run again therefore never moves the round's start.
-// The start stays before a dead fixer's partial edits.
-// A failed id or digest read leaves that field empty and a failed write is logged;
-// neither fails the round, since a round with no record or no target id only counts as changed.
-// It also writes the round's changes file when the round's start allows one.
-func (p *BurlerReviewProducer) recordRoundStart(round int) {
-	p.recordRoundChanges(round)
-	_, found, err := readRoundSnapshot(p.runDir, round)
-	if err != nil {
-		logger.Warn("shedadapters: burler review could not read the round's snapshot record; none written", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", err)
-		return
-	}
-	if found {
-		return
-	}
-
-	start := roundSnapshot{FixScope: string(p.profile.FixScope), TargetPaths: p.profile.Target.Paths}
-	if p.snapshot != nil {
-		if start.TargetID, err = p.snapshot.Take(); err != nil {
-			logger.Warn("shedadapters: burler review could not take the target snapshot; the round records no target id", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", err)
-		}
-	}
-	if start.AddedDecisions, err = addedDecisionDigests(p.decisionRecordPath); err != nil {
-		logger.Warn("shedadapters: burler review could not digest the decision record's added entries; the round records none", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", err)
-	}
-	err = updateRoundSnapshot(p.runDir, round, func(rec *roundSnapshot, exists bool) {
-		if !exists {
-			*rec = start
-		}
-	})
-	if err != nil {
-		logger.Warn("shedadapters: burler review could not write the round's snapshot record", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", err)
-	}
+	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, fans: deps.Fans, assist: deps.Assist, parent: deps.Parent, gateFindingsPath: deps.GateFindingsPath, profile: profile, opts: opts, runDir: runDir, now: now}, nil
 }
 
 // attemptOpts returns the run options one review attempt of round runs under:
@@ -257,16 +177,14 @@ func (p *BurlerReviewProducer) attemptOpts(round int, attempt roundAttempt, pare
 }
 
 // roundProfile returns a fresh per-round copy of the stored template profile for round running under fan.
-// It fills in the fan, the rubric, the round's own review and fixer-report paths, and the focus directive.
+// It fills in the fan, the round's own review and fixer-report paths, and the focus directive.
 // It also hydrates earlier complete rounds and, from round 2 on, sets the cluster exclusions.
-// A complete round before it gives the profile its round context; a failed build is logged and leaves the round full.
 // The stored template itself is never mutated; every slice field set is a freshly allocated slice.
-func (p *BurlerReviewProducer) roundProfile(round int, fan, rubric string) burlerengine.Profile {
+func (p *BurlerReviewProducer) roundProfile(round int, fan string) burlerengine.Profile {
 	focus := readRoundFocus(p.name, p.runDir, round)
 	priorReviews, priorFixerReports, _ := hydrationPaths(p.runDir, round)
 
 	profile := p.profile
-	profile.Rubric = rubric
 	profile.ClusterFan = fan
 	profile.ReviewPath = roundReviewPath(p.runDir, round)
 	profile.FixerReportPath = roundFixerReportPath(p.runDir, round)
@@ -275,11 +193,6 @@ func (p *BurlerReviewProducer) roundProfile(round int, fan, rubric string) burle
 	profile.PriorFixerReports = append(append([]string{}, p.profile.PriorFixerReports...), priorFixerReports...)
 	profile.ClusterExclude = nil
 	profile.ClusterExcludeHeld = nil
-	roundContext, err := BuildRoundContext(p.runDir, round, RoundContextSources{DecisionRecordPath: p.decisionRecordPath, AmendmentTitles: p.amendmentTitles, ConflictDir: p.haltConflictDir, HardenerRound: p.hardenerRound})
-	if err != nil {
-		logger.Warn("shedadapters: burler review could not build the round context; the round is reviewed in full", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", err)
-	}
-	profile.Round = roundContext
 	switch {
 	case fan != "" && round >= 2:
 		var dropped []string
@@ -311,8 +224,7 @@ func (p *BurlerReviewProducer) roundProfile(round int, fan, rubric string) burle
 // so a restart with the fixer pending resumes at the fix row without re-running the reviewer;
 // that hand-on first settles the round's parent-review ask, as an accepted review does.
 //
-// A row with a parent seat asks the run's parent orch before the probe and before any spawn.
-// A seat that asks before the judge leaves its asks to the segment's Bouncer.
+// A row with a parent seat asks the run's parent orch, through roundParentAsk, before the probe and before any spawn.
 // It tells the round's table the ask's number.
 // A live reviewer is probed before anything is archived, since archiving renames the file it is about to write.
 // On a row with fan lists, the round's reviewer and fixer fan names go into its usage record before the first spawn;
@@ -350,26 +262,9 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: %w", p.name, burlerReviewEngineLabel, round, err)
 	}
 	if _, statErr := os.Stat(reviewPath); accepted && statErr == nil {
-		asker := p.parentAsker()
-		asker.settle(round, asker.heldAsk(round), reviewPath)
+		p.settleRoundParentAsk(round, p.heldParentAsk(round), reviewPath)
 		return p.handOn(ctx, reviewPath, fmt.Sprintf("round %d review is accepted; handing on to the fixer", round))
 	}
-
-	rubric := p.profile.Rubric
-	if p.rubric != nil {
-		if rubric, err = p.rubric(); err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: read the rubric: %w", p.name, burlerReviewEngineLabel, round, err)
-		}
-	}
-
-	haltReason := ""
-	if p.haltConflictDir != "" {
-		if haltReason, err = runplan.ReadHaltReason(p.haltConflictDir); err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: read the halt reason: %w", p.name, burlerReviewEngineLabel, round, err)
-		}
-	}
-
-	p.recordRoundStart(round)
 
 	fan, fixFan := p.profile.ClusterFan, ""
 	probeFan := fan
@@ -381,20 +276,15 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 			probeFan = recordedFan
 		}
 	}
-	profile := p.roundProfile(round, fan, rubric)
-	profile.HaltReason = haltReason
+	profile := p.roundProfile(round, fan)
 	probeProfile := profile
 	if probeFan != fan {
-		probeProfile = p.roundProfile(round, probeFan, rubric)
-		probeProfile.HaltReason = haltReason
+		probeProfile = p.roundProfile(round, probeFan)
 	}
 	paths := []string{profile.ReviewPath, profile.FixerReportPath, roundAcceptancePath(p.runDir, round), burlerengine.AssistCopyPath(profile.ReviewPath, burlerengine.AssistSeatName), burlerengine.ParentCopyPath(profile.ReviewPath)}
 	archiveRound := func() {
 		if archErr := archiveStaleOutputs(paths, p.now); archErr != nil {
 			logger.Warn("shedadapters: archive round outputs on exit failed", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", archErr)
-		}
-		if clearErr := clearFixerRerun(p.runDir, round); clearErr != nil {
-			logger.Warn("shedadapters: burler review could not drop the rerun record of a retired round", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", clearErr)
 		}
 	}
 	failureExit := func(primaryErr error) (shedengine.Outcome, shedengine.OutputPointer, error) {
@@ -405,11 +295,7 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 		return "", shedengine.OutputPointer{}, primaryErr
 	}
 
-	parentAsk := p.parentAsker().roundStartAsk(round)
-	if parentAsk != 0 {
-		withParentReportPath(&profile, p.parent.Files.ReportPath(parentAsk))
-		withParentReportPath(&probeProfile, p.parent.Files.ReportPath(parentAsk))
-	}
+	parentAsk := p.roundParentAsk(round)
 	if outcome, ptr, exitErr, handled := p.probeLiveReview(ctx, round, probeProfile, parentAsk, archiveRound); handled {
 		return outcome, ptr, exitErr
 	}
@@ -422,7 +308,6 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 		}
 	}
 
-	profile.Diff = p.readDiff(round)
 	assist, assistFan := p.assist.pick(round)
 	var priorResult burlerengine.ReviewResult
 	var priorToken string
@@ -503,20 +388,6 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 	return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: attempt loop exited without a verdict", p.name, burlerReviewEngineLabel, round)
 }
 
-// readDiff returns the diff round's spawned reviewer is given, or "" when the row reads none.
-// A failed read is logged and gives no diff: the reviewer then derives the range from its rubric, as without one.
-func (p *BurlerReviewProducer) readDiff(round int) string {
-	if p.diff == nil {
-		return ""
-	}
-	diff, err := p.diff()
-	if err != nil {
-		logger.Warn("shedadapters: burler review could not read the round's diff; the reviewer gets no pieces", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", err)
-		return ""
-	}
-	return diff
-}
-
 // forkMismatchError builds the failure of a round whose two attempts both failed, one of them on the chair's fork count.
 // It names each attempt by its error, or by its outcome when it has none.
 // The message carries the chair's strand and the session states the chair passed through,
@@ -585,9 +456,12 @@ func (p *BurlerReviewProducer) acceptedExit(ctx context.Context, round int, resu
 		}
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: %w", p.name, burlerReviewEngineLabel, round, err)
 	}
-	p.parentAsker().settle(round, parentAsk, roundReviewPath(p.runDir, round))
+	p.settleRoundParentAsk(round, parentAsk, roundReviewPath(p.runDir, round))
 	if cerr := cancelErr(ctx, p.name, burlerReviewEngineLabel); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
+	}
+	if result.Gate != nil && result.Gate.Passed {
+		clearGateFindings(p.gateFindingsPath)
 	}
 	review, _ := p.models.Pick(round)
 	half := reviewHalfUsage(review, result.Review)

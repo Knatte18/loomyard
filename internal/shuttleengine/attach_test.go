@@ -18,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -67,8 +66,6 @@ type seedAttachRunOpts struct {
 	// promptLine and promptOffset seed RunState.PromptLine and PromptOffset, written only when set.
 	promptLine   string
 	promptOffset int64
-	// relaunchingAt seeds RunState.RelaunchingAt, written only when set.
-	relaunchingAt string
 }
 
 // seedAttachRun writes a run.json fixture at <root>/<id>/run.json from a plain map.
@@ -103,9 +100,6 @@ func seedAttachRun(t *testing.T, root, id string, opts seedAttachRunOpts) string
 	}
 	if opts.promptOffset != 0 {
 		fields["promptOffset"] = opts.promptOffset
-	}
-	if opts.relaunchingAt != "" {
-		fields["relaunchingAt"] = opts.relaunchingAt
 	}
 	data, err := json.MarshalIndent(fields, "", "  ")
 	if err != nil {
@@ -197,40 +191,28 @@ func TestAttach_OutcomeDisposition(t *testing.T) {
 		outcome        string
 		includeOutcome bool
 		wantFound      bool
-		// strand is the strand reed reports; nil reports a live one.
-		strand *reedengine.StrandStatus
-		// relaunching seeds a relaunching mark a second old.
-		relaunching bool
 	}{
-		{"terminal_done", "done", true, false, nil, false},
-		{"terminal_died", "died", true, false, nil, false},
-		{"terminal_timeout", "timeout", true, false, nil, false},
-		{"terminal_stopped_is_respawn_eligible_on_a_live_strand", runOutcomeStopped, true, false, nil, false},
-		{"running_attaches", runOutcomeRunning, true, true, nil, false},
-		{"relaunching_attaches_over_a_held_paneless_strand", runOutcomeRunning, true, true, &reedengine.StrandStatus{GUID: "strand-1", Held: true}, true},
-		{"omitted_outcome_is_never_attachable", "", false, false, nil, false},
-		{"unrecognized_outcome", "some-future-value", true, false, nil, false},
+		{"terminal_done", "done", true, false},
+		{"legacy_asking_attaches", "asking", true, true},
+		{"terminal_died", "died", true, false},
+		{"terminal_timeout", "timeout", true, false},
+		{"terminal_stopped_is_respawn_eligible_on_a_live_strand", runOutcomeStopped, true, false},
+		{"running_attaches", runOutcomeRunning, true, true},
+		{"omitted_outcome_is_legacy_upgrade_path", "", false, false},
+		{"unrecognized_outcome", "some-future-value", true, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			status := liveStatus("strand-1", "%1")
-			if tt.strand != nil {
-				status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{*tt.strand}}
-			}
-			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{status}}
+			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
 			fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
 			runner, dotLymDir, runRoot := fx.Runner, fx.DotLym, fx.RunRoot
 			seedPresentReedState(t, dotLymDir)
 
 			outputFile := filepath.Join(runRoot, "out.md")
-			seed := seedAttachRunOpts{
+			runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{
 				strandGUID: "strand-1", sessionID: "session-1",
 				outputFiles: []string{outputFile}, outcome: tt.outcome, includeOutcome: tt.includeOutcome,
-			}
-			if tt.relaunching {
-				seed.relaunchingAt = fx.Runner.clock.Now().Add(-time.Second).UTC().Format(time.RFC3339)
-			}
-			runDir := seedAttachRun(t, runRoot, "run-1", seed)
+			})
 			// Seeded for the one case (running_attaches) that reaches Wait.
 			// It classifies OutcomeDone on its first tick instead of looping to the config deadline.
 			// The seed is harmless for every other case, which never gets past dispositioning.
@@ -368,51 +350,6 @@ func TestAttach_RemovesSupersededStrands(t *testing.T) {
 	}
 }
 
-// TestAttach_RecordsASupersededRunningCandidateAsInterrupted pins how a superseding attach records a candidate.
-// A candidate still reading running is recorded as stopped and interrupted,
-// so the start after the attach resumes its session.
-// A candidate with a terminal outcome keeps it and is not marked interrupted.
-func TestAttach_RecordsASupersededRunningCandidateAsInterrupted(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	deadOwnWindow := func(guid string) reedengine.StrandStatus {
-		return reedengine.StrandStatus{GUID: guid, PaneID: "%" + guid, OwnWindow: true, Present: true}
-	}
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{deadOwnWindow("strand-running"), deadOwnWindow("strand-died")}}}}
-	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
-	seedPresentReedState(t, fx.DotLym)
-	outputFile := filepath.Join(fx.RunRoot, "out.md")
-	runningDir := seedAttachRun(t, fx.RunRoot, "run-running", seedAttachRunOpts{
-		strandGUID: "strand-running", sessionID: "session-1", outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true,
-	})
-	diedDir := seedAttachRun(t, fx.RunRoot, "run-died", seedAttachRunOpts{
-		strandGUID: "strand-died", sessionID: "session-2", outputFiles: []string{outputFile}, outcome: string(OutcomeDied), includeOutcome: true,
-	})
-
-	if _, found, err := fx.Runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute}); err != nil || found {
-		t.Fatalf("Attach() found, error = %v, %v; want false, nil", found, err)
-	}
-
-	tests := []struct {
-		name            string
-		runDir          string
-		wantOutcome     string
-		wantInterrupted bool
-	}{
-		{"running candidate", runningDir, runOutcomeStopped, true},
-		{"died candidate", diedDir, string(OutcomeDied), false},
-	}
-	for _, tt := range tests {
-		record, _, err := loadRunState(tt.runDir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if record.Outcome != tt.wantOutcome || record.Interrupted != tt.wantInterrupted {
-			t.Errorf("%s record Outcome, Interrupted = %q, %v; want %q, %v", tt.name, record.Outcome, record.Interrupted, tt.wantOutcome, tt.wantInterrupted)
-		}
-	}
-}
-
 // TestAttach_Multiplicity covers candidate evaluation order and one-live-match-or-none:
 // the multiplicity rule applies only to the surviving ATTACHABLE set;
 // an error verdict dominates whatever the other candidates say;
@@ -530,7 +467,7 @@ func TestAttach_OutputFilesMismatch(t *testing.T) {
 func TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("Untracked", func(t *testing.T) {
-		for _, outcome := range []string{"done", "died", "timeout", "api-error", runOutcomeStopped} {
+		for _, outcome := range []string{"done", "asking", "died", "timeout", "api-error", runOutcomeStopped} {
 			t.Run(outcome, func(t *testing.T) {
 				reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: nil}}}
 				fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
@@ -555,7 +492,7 @@ func TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge(t *testin
 	})
 
 	t.Run("BindingCleared", func(t *testing.T) {
-		for _, outcome := range []string{"done", "died", "timeout", "api-error", runOutcomeStopped} {
+		for _, outcome := range []string{"done", "asking", "died", "timeout", "api-error", runOutcomeStopped} {
 			t.Run(outcome, func(t *testing.T) {
 				reed := &fakeReed{StatusQueue: []reedengine.StatusResult{deadStatus("strand-1", "")}}
 				fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
@@ -1187,203 +1124,6 @@ func TestAttach_DeliversTheDeferredPrompt(t *testing.T) {
 			}
 			if tt.sendFails && len(reed.SendTextCalls) == 0 {
 				t.Errorf("SendText calls = none; want the failed send attempted")
-			}
-		})
-	}
-}
-
-// turnStartReed records a turn start carrying each typed text as its instruction, as a provider's hook does on submit.
-type turnStartReed struct {
-	*echoReed
-	eventsPath string
-}
-
-func (r *turnStartReed) SendText(guid, text string, submit bool) error {
-	if err := r.echoReed.SendText(guid, text, submit); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(r.eventsPath, os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	_, err = f.WriteString("START:" + text + "\n")
-	return err
-}
-
-// activityReed is an echoReed whose operator-activity reading is scripted: a send is held while active answers true.
-type activityReed struct {
-	*echoReed
-	active func() bool
-}
-
-func (r *activityReed) OperatorActive(guid string) (bool, time.Duration, error) {
-	if r.active() {
-		return true, 5 * time.Second, nil
-	}
-	return r.echoReed.OperatorActive(guid)
-}
-
-// scheduledAction is a step a scheduledClock runs once.
-type scheduledAction struct {
-	at   time.Time
-	run  func()
-	done bool
-}
-
-// scheduledClock wraps a fakeClock and runs each action once.
-// An action runs in the first Sleep that leaves the clock at or past its time.
-type scheduledClock struct {
-	*fakeClock
-	actions []*scheduledAction
-}
-
-func (c *scheduledClock) Sleep(d time.Duration) {
-	c.fakeClock.Sleep(d)
-	for _, action := range c.actions {
-		if !action.done && !c.Now().Before(action.at) {
-			action.done = true
-			action.run()
-		}
-	}
-}
-
-var _ Clock = (*scheduledClock)(nil)
-
-// appendToEvents appends text to the events file at path.
-func appendToEvents(t *testing.T, path, text string) {
-	t.Helper()
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		t.Errorf("open events: %v", err)
-		return
-	}
-	defer f.Close()
-	if _, err := f.WriteString(text); err != nil {
-		t.Errorf("append to events: %v", err)
-	}
-}
-
-// TestWait_RetypesAPromptLineThatStartedNoTurn pins the lost-prompt retype.
-// A prompt line typed through the handle that no turn start follows within the submit window is typed once more.
-// It is never typed a third time.
-// A line whose turn starts is typed once.
-// A turn start from before the typing is not the line's turn.
-// A retype held busy before it typed leaves the retype for a later tick.
-// A pause covering the run types nothing more.
-// Neither does an engine that parses no session signals, nor a timeout inside the submit window.
-func TestWait_RetypesAPromptLineThatStartedNoTurn(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	const promptLine = "Read the task prompt and carry it out."
-	window := submitConfirmTimeout(fastConfig)
-	once := []string{promptLine}
-	twice := []string{promptLine, promptLine}
-	tests := []struct {
-		name string
-		// turnStarts makes every typed text start a turn.
-		turnStarts bool
-		// operatorTurn seeds a finished operator turn past the prompt offset, before the attach types the line.
-		operatorTurn bool
-		// operatorTurnDuringSend appends a finished operator turn while the attach's send waits to type the line.
-		operatorTurnDuringSend bool
-		// holdFirstRetype makes the first send after the submit window find an operator active in the pane.
-		holdFirstRetype bool
-		// pauseCoversRun covers the run with a hub pause after the attach typing, and ends the run while it lasts.
-		pauseCoversRun bool
-		// noSignals gives the engine no session signal parsing.
-		noSignals bool
-		// timeout is the run's timeout, three submit windows when zero.
-		timeout   time.Duration
-		wantTyped []string
-	}{
-		{name: "a line no turn follows is typed once more", wantTyped: twice},
-		{name: "a line whose turn starts is typed once", turnStarts: true, wantTyped: once},
-		{name: "an operator turn from before the typing is not the line's turn", operatorTurn: true, wantTyped: twice},
-		{name: "an operator turn that starts while the send waits is not the line's turn", operatorTurnDuringSend: true, wantTyped: twice},
-		{name: "a retype held busy before it typed is tried again", holdFirstRetype: true, wantTyped: twice},
-		{name: "a pause covering the run holds the retype", pauseCoversRun: true, wantTyped: once},
-		{name: "an engine that parses no session signals never retypes", noSignals: true, wantTyped: once},
-		{name: "a timeout inside the submit window ends the run before a retype", timeout: window / 2, wantTyped: once},
-		{name: "a retype due at the run's deadline is not typed", timeout: window, wantTyped: once},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			echo := &echoReed{fakeReed: &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}, pane: "❯ "}
-			reed := &turnStartReed{echoReed: echo}
-			fc := newFakeClock(time.Now())
-			start := fc.Now()
-			held := false
-			var ops ReedOps = echo
-			switch {
-			case tt.turnStarts:
-				ops = reed
-			case tt.holdFirstRetype:
-				ops = &activityReed{echoReed: echo, active: func() bool {
-					if held || fc.Now().Sub(start) < window {
-						return false
-					}
-					held = true
-					return true
-				}}
-			case tt.operatorTurnDuringSend:
-				appended := false
-				ops = &activityReed{echoReed: echo, active: func() bool {
-					if !appended {
-						appended = true
-						appendToEvents(t, reed.eventsPath, "START:an operator line\nSTOP:answered\n")
-					}
-					return false
-				}}
-			}
-			var engine Engine = &sessionFakeEngine{waitingEngine: waitingEngine{fakeEngine: fakeEngine{StartupScript: []StartupState{StartupReady}}}, liveness: LivenessAlive}
-			if tt.noSignals {
-				engine = &fakeEngine{StartupScript: []StartupState{StartupReady}}
-			}
-			scheduled := &scheduledClock{fakeClock: fc}
-			var clock Clock = fc
-			if tt.pauseCoversRun {
-				clock = scheduled
-			}
-			fx := newFixture(t, ops, engine, withConfig(fastConfig), withSeparateRunDir(), withClock(clock))
-			seedPresentReedState(t, fx.DotLym)
-			outputFile := filepath.Join(fx.RunRoot, "out.md")
-			runDir := seedAttachRun(t, fx.RunRoot, "run-1", seedAttachRunOpts{
-				strandGUID: "strand-1", sessionID: "session-1", outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true,
-				promptLine: promptLine, promptOffset: skillLoadOffset,
-			})
-			reed.eventsPath = filepath.Join(runDir, eventsFileName)
-			events := skillLoadEvents
-			if tt.operatorTurn {
-				events += "START:an operator line\nSTOP:answered\n"
-			}
-			if err := os.WriteFile(reed.eventsPath, []byte(events), 0o644); err != nil {
-				t.Fatalf("seed events: %v", err)
-			}
-			if tt.pauseCoversRun {
-				recordPath := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
-				fx.Runner.SetPause(pauserecord.Geometry{RecordPath: recordPath, Slug: "slug"})
-				scheduled.actions = []*scheduledAction{
-					{at: start.Add(10 * time.Second), run: func() { addLiveEntry(t, recordPath, pauserecord.ScopeHub, fc.Now()) }},
-					{at: start.Add(window + 10*time.Second), run: func() {
-						touchOutputFile(t, outputFile)
-						appendToEvents(t, reed.eventsPath, "STOP:done\n")
-					}},
-				}
-			}
-
-			timeout := tt.timeout
-			if timeout == 0 {
-				timeout = 3 * window
-			}
-			if _, found, err := fx.Runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: timeout}); err != nil || !found {
-				t.Fatalf("Attach() = (_, %v, %v); want found and no error", found, err)
-			}
-
-			if !slices.Equal(echo.typed, tt.wantTyped) {
-				t.Errorf("typed %q; want %q", echo.typed, tt.wantTyped)
 			}
 		})
 	}

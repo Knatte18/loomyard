@@ -14,10 +14,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/machinename"
+	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/tenderengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
@@ -194,7 +196,7 @@ func TestPairOwners(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := pairOwners(tt.owners, tt.slugs, machinename.Identity{Name: here}, tt.parentOf)
+			got, err := pairOwners(tt.owners, tt.slugs, here, tt.parentOf)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("pairOwners() error = %v; want error %v", err, tt.wantErr)
 			}
@@ -235,6 +237,93 @@ func TestSyncBoardIfOwed(t *testing.T) {
 			})
 			if !errors.Is(err, tt.wantErr) || spawns != tt.wantSpawns {
 				t.Errorf("syncBoardIfOwed() = %v with %d spawns; want %v with %d", err, spawns, tt.wantErr, tt.wantSpawns)
+			}
+		})
+	}
+}
+
+func TestOwnedElsewhereEnder(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	failure := errors.New("seam failed")
+	survivors := &runproc.SurvivorsError{Survivors: []runproc.Ended{{PID: 7, Role: runproc.RoleDriver}}}
+	webster := shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Webster"}
+	finalizeRunning := shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Finalize"}
+	finalizeFailed := shedengine.Status{State: shedengine.StateFailed, CurrentProducer: "Finalize", Transient: "git-transport"}
+	runShed := shedengine.Status{State: shedengine.StateRunning, CurrentProducer: battenrecipe.NameRunShed}
+	tests := []struct {
+		name   string
+		status shedengine.Status
+		// battenRun is the batten run record the follow-up reads, absent when nil;
+		// wantFollowUp is whether a failed end must name the cancel after the removal.
+		battenRun    *shedengine.Status
+		wantFollowUp bool
+		noStatus     bool
+		statusErr    error
+		restepped    bool
+		restepErr    error
+		parentHolds  bool
+		parentErr    error
+		endErr       error
+		wantEnds     int
+		wantErr      error
+	}{
+		{name: "StatusOffFinalize_Ends", status: webster, wantEnds: 1},
+		{name: "FinalizeRunningWithParentHoldingTheWork_EndsNothing", status: finalizeRunning, parentHolds: true},
+		{name: "FinalizeRunningWithParentLackingTheWork_Ends", status: finalizeRunning, wantEnds: 1},
+		{name: "FailedTransientWithoutRestepAndHolding_EndsNothing", status: finalizeFailed, parentHolds: true},
+		{name: "FailedTransientWithRestep_Ends", status: finalizeFailed, restepped: true, parentHolds: true, wantEnds: 1},
+		{name: "StatusReadError_EndsNothing", statusErr: failure, wantErr: failure},
+		{name: "RestepReadError_EndsNothing", status: finalizeFailed, restepErr: failure, wantErr: failure},
+		{name: "ParentReadError_EndsNothing", status: finalizeRunning, parentErr: failure, wantErr: failure},
+		{name: "NoStatusFileOrWorktree_Ends", noStatus: true, wantEnds: 1},
+		{name: "SurvivorsError_ReturnedWithTheWayForward", status: webster, endErr: survivors, wantEnds: 1, wantErr: survivors},
+		{name: "EndError_ReturnedWithTheWayForward", status: webster, endErr: failure, wantEnds: 1, wantErr: failure},
+		{name: "EndErrorWithABattenRecordBeforeLand_NamesTheCancelAfterTheRemoval", status: webster, battenRun: &runShed, endErr: failure, wantEnds: 1, wantErr: failure, wantFollowUp: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ends := 0
+			ender := ownedElsewhereEnder{
+				slug: "task",
+				readStatus: func() (shedengine.Status, bool, error) {
+					return tt.status, !tt.noStatus && tt.statusErr == nil, tt.statusErr
+				},
+				restepped:   func(shedengine.Status) (bool, error) { return tt.restepped, tt.restepErr },
+				parentHolds: func() (bool, error) { return tt.parentHolds, tt.parentErr },
+				end: func() ([]runproc.Ended, error) {
+					ends++
+					return nil, tt.endErr
+				},
+				battenRecord: func() (shedengine.Status, bool, error) {
+					if tt.battenRun == nil {
+						return shedengine.Status{}, false, nil
+					}
+					return *tt.battenRun, true, nil
+				},
+				ownerHeld: func() (bool, error) { return false, nil },
+			}
+
+			_, err := ender.run()
+
+			if ends != tt.wantEnds || !errors.Is(err, tt.wantErr) {
+				t.Errorf("run() = %v after %d ends; want %v after %d", err, ends, tt.wantErr, tt.wantEnds)
+			}
+			var survivorsError *runproc.SurvivorsError
+			if tt.endErr == survivors && !errors.As(err, &survivorsError) {
+				t.Errorf("run() = %v; want it to match *runproc.SurvivorsError", err)
+			}
+			if tt.endErr != nil {
+				for _, step := range []string{"`lym fabric remove task`", "`lym tender reap`"} {
+					if !strings.Contains(err.Error(), step) {
+						t.Errorf("run() = %q; want it to name %s", err, step)
+					}
+				}
+				removal, cancel := strings.Index(err.Error(), "`lym fabric remove task`"), strings.Index(err.Error(), "`lym batten cancel task --remove`")
+				if (cancel >= 0) != tt.wantFollowUp || (tt.wantFollowUp && cancel < removal) {
+					t.Errorf("run() = %q; want the cancel named after the removal = %v", err, tt.wantFollowUp)
+				}
 			}
 		})
 	}

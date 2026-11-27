@@ -127,24 +127,6 @@ func Prompts(geom Geometry, table Table) (map[string]string, error) {
 	return prompts, nil
 }
 
-// Specs returns the shuttle spec every seat of table starts with at a fresh start, keyed by seat name.
-// It starts nothing.
-// Each spec is the one the engine starts the seat with, short of the lead's held-turn notice deferral.
-// Each is rendered for its seat's engine, and the prompts are Prompts' own.
-// It validates table against geom.StencilsDir and geom.DefaultEngine,
-// so a table that would be refused at start is refused here.
-func Specs(geom Geometry, table Table) (map[string]shuttleengine.Spec, error) {
-	prompts, err := Prompts(geom, table)
-	if err != nil {
-		return nil, err
-	}
-	specs := make(map[string]shuttleengine.Spec, len(table.Seats))
-	for _, seat := range table.Seats {
-		specs[seat.Name] = seatSpec(table, seat, prompts[seat.Name], seat.stencilEngine(geom.DefaultEngine))
-	}
-	return specs, nil
-}
-
 // CheckMarkers checks that a value fills every top-level marker of every seat's stencil and of every block it includes.
 // The stencil and its blocks are read from stencilsDir, with the engine block for the seat's engine.
 // defaultEngine is the engine a seat whose model choice names none runs on.

@@ -170,7 +170,7 @@ func TestBouncer_Escalation_AwaitsWithTheRecordAndLeavesItUntouched(t *testing.T
 			} else if !strings.Contains(string(brief), "lym loom circling continue my-task") {
 				t.Errorf("escalation brief = %q; want it to offer the continue verb", brief)
 			}
-			if _, err := os.Stat(FocusPath(cfg.RunDir, 3)); err != nil {
+			if _, err := os.Stat(focusPath(cfg.RunDir, 3)); err != nil {
 				t.Errorf("round-3 focus file = %v; want ensureFocus to have written it", err)
 			}
 			if shuttle.Called {
@@ -372,68 +372,9 @@ func TestBouncer_Escalation_MalformedRecordHaltsStuckNamingTheWayForward(t *test
 	}
 }
 
-// TestBouncer_HaltRunsTheHaltSeam covers BouncerConfig.OnHalt.
-// A new circling, budget or hard-cap record calls it once, before the record is written.
-// A decision or stalemate record, and a re-step over a recorded escalation, never call it.
-// A failing seam still escalates, and the brief names the way forward.
-func TestBouncer_HaltRunsTheHaltSeam(t *testing.T) {
-	tiergate.Require(t, 0)
-	tests := []struct {
-		name      string
-		cause     EscalationCause
-		haltErr   error
-		restep    bool
-		wantCalls int
-	}{
-		{name: "circling", cause: EscalationCircling, wantCalls: 1},
-		{name: "budget", cause: EscalationBudget, wantCalls: 1},
-		{name: "hard-cap", cause: EscalationHardCap, wantCalls: 1},
-		{name: "decision", cause: EscalationDecision},
-		{name: "stalemate", cause: EscalationStalemate},
-		{name: "a re-step over a recorded escalation", cause: EscalationCircling, restep: true, wantCalls: 1},
-		{name: "a failing seam", cause: EscalationBudget, haltErr: errors.New("reap refused"), wantCalls: 1},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var calls int
-			recordExistedAtCall := false
-			b, cfg, _ := escalationBouncer(t, "CONTINUE", func(c *BouncerConfig) {
-				c.OnHalt = func() error {
-					calls++
-					if _, err := os.Stat(escalationPath(c.RunDir, 2)); err == nil {
-						recordExistedAtCall = true
-					}
-					return tt.haltErr
-				}
-			})
-
-			rounds := 1
-			if tt.restep {
-				rounds = 2
-			}
-			for range rounds {
-				if outcome, _, err := b.escalate(2, tt.cause, shedengine.OutputPointer{}); err != nil || outcome != shedengine.Awaiting {
-					t.Fatalf("escalate(2, %s) = %q, %v; want awaiting, nil", tt.cause, outcome, err)
-				}
-			}
-			requireEscalation(t, cfg, tt.cause)
-			if calls != tt.wantCalls || recordExistedAtCall {
-				t.Errorf("OnHalt calls = %d, record existed at the call = %v; want %d calls before the record", calls, recordExistedAtCall, tt.wantCalls)
-			}
-			if tt.haltErr != nil {
-				brief, err := os.ReadFile(escalationPath(cfg.RunDir, 2))
-				if err != nil || !strings.Contains(string(brief), "reap refused") || !strings.Contains(string(brief), "lym harden sandbox clear") {
-					t.Errorf("escalation brief = %q, %v; want the failure and `lym harden sandbox clear`", brief, err)
-				}
-			}
-		})
-	}
-}
-
 // TestBouncer_AutoAccept covers BouncerConfig.AutoAccept.
 // A spent budget over a verdict this call's judge just wrote settles as an automatic accept.
-// A replay goes to the soft-cap rule.
-// A BlockingEscalates round whose ledger holds an open BLOCKING entry escalates to the parent with cause budget.
+// A replay and a BlockingEscalates round go to the soft-cap rule.
 // The rule's continue rows run over an untagged MEDIUM entry, which pins that a missing `fix` key reads as design-wrong.
 func TestBouncer_AutoAccept(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -445,12 +386,6 @@ func TestBouncer_AutoAccept(t *testing.T) {
 		autoAccept bool
 		// blockingEscalates is BouncerConfig.BlockingEscalates.
 		blockingEscalates bool
-		// escalateDecisions is BouncerConfig.EscalateDecisions.
-		escalateDecisions bool
-		// hardCap is BouncerConfig.HardCap; 0 sets none.
-		hardCap int
-		// report replaces round 2's review report; empty keeps the report with no findings.
-		report string
 		// ledger is the judged round's ledger; nil holds the one open gating entry.
 		ledger      []evidenceEntry
 		bounces     func() (int, int, bool, error)
@@ -459,18 +394,10 @@ func TestBouncer_AutoAccept(t *testing.T) {
 		wantOutcome shedengine.Outcome
 		// wantCause is the escalation cause an Awaiting row writes.
 		wantCause EscalationCause
-		// liveRed is BouncerConfig.LiveRed; nil tells none.
-		liveRed func(round int) (bool, error)
-		// wantDetail and wantDetailAlso are text the escalation brief must carry.
-		wantDetail, wantDetailAlso string
 		// wantSettled expects a settled accept on disk whose automatic value is wantAutomaticValue.
 		wantSettled        bool
 		wantAutomaticValue bool
 		wantExempt         bool
-		// wantJudgeKept expects round 2's verdict and ledger files still in place, so no rejudge archived them.
-		wantJudgeKept bool
-		// wantSnapshot expects round 2's decision snapshot on disk, which a carry-over reads.
-		wantSnapshot bool
 		// wantContinue expects the rule's pending continue on disk: cause budget, automatic true.
 		wantContinue bool
 		// wantCarried, when non-nil, is the keys of the findings the accept carries over, sorted.
@@ -479,54 +406,12 @@ func TestBouncer_AutoAccept(t *testing.T) {
 		{name: "BlockingEscalates accepts a ledger with no open BLOCKING entry and carries its open findings", verdict: "CONTINUE", harvest: true, autoAccept: true, blockingEscalates: true, bounces: spentBounces,
 			ledger:      []evidenceEntry{{"alpha", "resolved", "design", "MEDIUM"}, {"beta", "open", "design", "MEDIUM"}, {"gone", "resolved", "design", "BLOCKING"}},
 			wantOutcome: shedengine.Done, wantSettled: true, wantAutomaticValue: true, wantCarried: []string{"beta"}},
-		{name: "BlockingEscalates escalates an open BLOCKING entry to the parent instead of accepting", verdict: "CONTINUE", harvest: true, autoAccept: true, blockingEscalates: true, bounces: spentBounces,
+		{name: "BlockingEscalates sends an open BLOCKING entry to the rule, which continues", verdict: "CONTINUE", harvest: true, autoAccept: true, blockingEscalates: true, bounces: spentBounces,
 			ledger:      []evidenceEntry{{"alpha", "resolved", "design", "MEDIUM"}, {"hard", "open", "scope", "BLOCKING"}},
-			wantOutcome: shedengine.Awaiting, wantCause: EscalationBudget, wantDetail: "BLOCKING findings open (hard)"},
-		{name: "BlockingEscalates escalates an open BLOCKING entry without auto-accept instead of running the rule", verdict: "CONTINUE", harvest: true, blockingEscalates: true, bounces: spentBounces,
-			ledger:      []evidenceEntry{{"alpha", "resolved", "design", "MEDIUM"}, {"hard", "open", "scope", "BLOCKING"}},
-			wantOutcome: shedengine.Awaiting, wantCause: EscalationBudget, wantDetail: "BLOCKING findings open (hard)"},
-		{name: "BlockingEscalates below the budget leaves an open BLOCKING entry to the next round", verdict: "CONTINUE", harvest: true, autoAccept: true, blockingEscalates: true, bounces: belowBounces,
-			ledger:      []evidenceEntry{{"alpha", "resolved", "design", "MEDIUM"}, {"hard", "open", "scope", "BLOCKING"}},
-			wantOutcome: shedengine.Stuck, wantJudgeKept: true},
-		{name: "BlockingEscalates escalates with cause budget at the hard cap with the budget unspent", verdict: "CONTINUE", harvest: true, blockingEscalates: true, hardCap: 2, bounces: belowBounces,
-			ledger:      []evidenceEntry{{"alpha", "resolved", "design", "MEDIUM"}, {"hard", "open", "scope", "BLOCKING"}},
-			wantOutcome: shedengine.Awaiting, wantCause: EscalationBudget, wantDetail: "BLOCKING findings open (hard)"},
-		{name: "BlockingEscalates hands a decision finding over an open BLOCKING entry to the parent as a budget escalation", verdict: "CONTINUE", harvest: true, blockingEscalates: true, escalateDecisions: true, bounces: spentBounces,
-			report:      decisionReviewContent(reviewFixtureFinding{"D1", "LOW", "decision"}),
-			ledger:      []evidenceEntry{{"alpha", "resolved", "design", "MEDIUM"}, {"hard", "open", "scope", "BLOCKING"}},
-			wantOutcome: shedengine.Awaiting, wantCause: EscalationBudget, wantDetail: "BLOCKING findings open (hard)",
-			wantDetailAlso: "the review also holds decision findings (D1)", wantSnapshot: true},
-		{name: "an accept over a decision finding below the budget leaves an open BLOCKING entry to the next round", verdict: "CONTINUE", harvest: true, escalateDecisions: true, bounces: belowBounces, decide: CirclingAccept,
-			report:      decisionReviewContent(reviewFixtureFinding{"D1", "LOW", "decision"}),
-			ledger:      []evidenceEntry{{"alpha", "resolved", "design", "MEDIUM"}, {"hard", "open", "scope", "BLOCKING"}},
-			wantOutcome: shedengine.Stuck, wantJudgeKept: true},
-		{name: "an accept over a decision finding at the spent budget escalates an open BLOCKING entry to the parent", verdict: "CONTINUE", harvest: true, escalateDecisions: true, bounces: spentBounces, decide: CirclingAccept,
-			report:      decisionReviewContent(reviewFixtureFinding{"D1", "LOW", "decision"}),
-			ledger:      []evidenceEntry{{"alpha", "resolved", "design", "MEDIUM"}, {"hard", "open", "scope", "BLOCKING"}},
-			wantOutcome: shedengine.Awaiting, wantCause: EscalationBudget, wantDetail: "leaves BLOCKING findings open (hard)"},
-		{name: "BlockingEscalates leaves a decision finding over an open BLOCKING decision entry to the decision escalation", verdict: "CONTINUE", harvest: true, blockingEscalates: true, escalateDecisions: true, bounces: spentBounces,
-			report:      decisionReviewContent(reviewFixtureFinding{"D1", "LOW", "decision"}),
-			ledger:      []evidenceEntry{{"alpha", "resolved", "design", "MEDIUM"}, {"hard", "open", "decision", "BLOCKING"}},
-			wantOutcome: shedengine.Awaiting, wantCause: EscalationDecision},
-		{name: "a CONVERGED verdict over an open BLOCKING entry and a decision finding keeps the decision escalation", verdict: "CONVERGED", harvest: true, blockingEscalates: true, escalateDecisions: true, bounces: spentBounces,
-			report:      decisionReviewContent(reviewFixtureFinding{"D1", "LOW", "decision"}),
-			ledger:      []evidenceEntry{{"alpha", "resolved", "design", "MEDIUM"}, {"hard", "open", "scope", "BLOCKING"}},
-			wantOutcome: shedengine.Awaiting, wantCause: EscalationDecision},
-		{name: "a recorded parent continue over a BlockingEscalates escalation runs another round", verdict: "CONTINUE", harvest: true, autoAccept: true, blockingEscalates: true, bounces: spentBounces, decide: CirclingContinue,
-			ledger:      []evidenceEntry{{"alpha", "resolved", "design", "MEDIUM"}, {"hard", "open", "scope", "BLOCKING"}},
-			wantOutcome: shedengine.Stuck, wantExempt: true},
+			wantOutcome: shedengine.Stuck, wantExempt: true, wantContinue: true},
 		{name: "a harvested CONTINUE at a spent budget settles automatically", verdict: "CONTINUE", harvest: true, autoAccept: true, bounces: spentBounces,
 			wantOutcome: shedengine.Done, wantSettled: true, wantAutomaticValue: true},
 		{name: "a harvested CIRCLING at a spent budget settles automatically", verdict: "CIRCLING", harvest: true, autoAccept: true, bounces: spentBounces,
-			wantOutcome: shedengine.Done, wantSettled: true, wantAutomaticValue: true},
-		{name: "a red live report at a spent budget escalates budget and never accepts", verdict: "CONTINUE", harvest: true, autoAccept: true, bounces: spentBounces,
-			liveRed:     func(int) (bool, error) { return true, nil },
-			wantOutcome: shedengine.Awaiting, wantCause: EscalationBudget, wantDetail: "live report is red"},
-		{name: "a live report that cannot be read escalates budget with its text", verdict: "CONTINUE", harvest: true, autoAccept: true, bounces: spentBounces,
-			liveRed:     func(int) (bool, error) { return false, errors.New("report file vanished") },
-			wantOutcome: shedengine.Awaiting, wantCause: EscalationBudget, wantDetail: "report file vanished"},
-		{name: "a green live report accepts as before", verdict: "CONTINUE", harvest: true, autoAccept: true, bounces: spentBounces,
-			liveRed:     func(int) (bool, error) { return false, nil },
 			wantOutcome: shedengine.Done, wantSettled: true, wantAutomaticValue: true},
 		{name: "the flag false sends the round to the rule, which continues", verdict: "CONTINUE", harvest: true, bounces: spentBounces,
 			wantOutcome: shedengine.Stuck, wantExempt: true, wantContinue: true},
@@ -558,19 +443,11 @@ func TestBouncer_AutoAccept(t *testing.T) {
 			cfg.Bounces = tt.bounces
 			cfg.AutoAccept = tt.autoAccept
 			cfg.BlockingEscalates = tt.blockingEscalates
-			cfg.EscalateDecisions = tt.escalateDecisions
-			if tt.hardCap != 0 {
-				cfg.HardCap = tt.hardCap
-			}
-			cfg.LiveRed = tt.liveRed
 			seams.install(&cfg)
 			carry.install(&cfg)
 			rounds := []bouncerJudgeFixture{
 				{round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONTINUE"), ledger: bouncerLedgerContent(1)},
 				{round: 2, report: bouncerReport(2)},
-			}
-			if tt.report != "" {
-				rounds[1].report = tt.report
 			}
 			if !tt.harvest {
 				rounds[1].verdict = bouncerVerdictContent(tt.verdict)
@@ -612,30 +489,8 @@ func TestBouncer_AutoAccept(t *testing.T) {
 			if ptr.BudgetExempt != tt.wantExempt {
 				t.Errorf("BudgetExempt = %v; want %v", ptr.BudgetExempt, tt.wantExempt)
 			}
-			if tt.wantJudgeKept {
-				for _, path := range []string{verdictPath(cfg.RunDir, 2), ledgerPath(cfg.RunDir, 2)} {
-					if _, err := os.Stat(path); err != nil {
-						t.Errorf("Stat(%s) = %v; want the judge output in place, not archived by a rejudge", path, err)
-					}
-				}
-			}
-			if tt.wantSnapshot {
-				if _, err := os.Stat(decisionSnapshotPath(cfg.RunDir, 2)); err != nil {
-					t.Errorf("Stat(decision snapshot) = %v; want the snapshot written before the escalation", err)
-				}
-			}
 			if tt.wantCause != "" {
 				requireEscalation(t, &cfg, tt.wantCause)
-			}
-			if tt.wantDetail != "" {
-				if brief, err := os.ReadFile(escalationPath(cfg.RunDir, 2)); err != nil || !strings.Contains(string(brief), tt.wantDetail) {
-					t.Errorf("escalation brief = %q, %v; want it to carry %q", brief, err, tt.wantDetail)
-				}
-			}
-			if tt.wantDetailAlso != "" {
-				if brief, err := os.ReadFile(escalationPath(cfg.RunDir, 2)); err != nil || !strings.Contains(string(brief), tt.wantDetailAlso) {
-					t.Errorf("escalation brief = %q, %v; want it to carry %q", brief, err, tt.wantDetailAlso)
-				}
 			}
 			if tt.wantOutcome != shedengine.Awaiting && tt.decide == "" {
 				requireNoEscalation(t, &cfg)
@@ -672,42 +527,19 @@ func TestBouncer_AutoAccept(t *testing.T) {
 				}
 			} else if tt.decide == "" && exists {
 				t.Errorf("decision file exists (%q); want none", decision)
-			} else if tt.decide == CirclingAccept && settled {
-				t.Errorf("decision file = (%q, settled %v); want the held accept not settled", decision, settled)
 			}
 		})
 	}
 }
 
-// TestBouncer_BlockingEscalatesAnUnreadableLedger pins the escalation of a spent budget over an unreadable ledger.
-// The round escalates to the parent with cause budget, and the detail says the ledger could not be read.
-func TestBouncer_BlockingEscalatesAnUnreadableLedger(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	b, cfg, _ := escalationBouncer(t, "CONTINUE", func(c *BouncerConfig) {
-		c.BlockingEscalates = true
-		c.Bounces = spentBounces
-	})
-	if err := os.WriteFile(ledgerPath(cfg.RunDir, 2), []byte("not a ledger\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(ledger round 2) = %v; want nil", err)
-	}
-
-	outcome, _, err := b.settleUndecided(2, verdictContinue, true, shedengine.OutputPointer{})
-
-	if err != nil || outcome != shedengine.Awaiting {
-		t.Fatalf("settleUndecided() = %q, %v; want awaiting, nil", outcome, err)
-	}
-	requireEscalation(t, cfg, EscalationBudget)
-	if brief, err := os.ReadFile(escalationPath(cfg.RunDir, 2)); err != nil || !strings.Contains(string(brief), "could not be read") {
-		t.Errorf("escalation brief = %q, %v; want it to carry %q", brief, err, "could not be read")
-	}
-}
-
-// softCapPath is one of the two ways a round reaches the soft-cap rule.
+// softCapPath is one of the three ways a round reaches the soft-cap rule.
 // A harvest with no auto-accept reaches it, and so does a replay on an auto-accept perch.
+// A harvest on an auto-accept perch reaches it when an open BLOCKING entry is one blocking_escalates sends there.
 type softCapPath struct {
-	name                string
-	harvest, autoAccept bool
+	name                          string
+	harvest, autoAccept, blocking bool
+	// severity replaces MEDIUM in the judged ledger, so the BLOCKING path has the open BLOCKING entry it needs.
+	severity string
 }
 
 // softCapRuleRow is one case of TestBouncer_SoftCapRule, run once on each softCapPath.
@@ -724,8 +556,6 @@ type softCapRuleRow struct {
 	prevDecision bool
 	// badReport overwrites round 2's report; badPrevLedger round 1's ledger; badPrevDecision round 1's decision as accept.
 	badReport, badPrevLedger, badPrevDecision bool
-	// liveRed is BouncerConfig.LiveRed; nil tells none.
-	liveRed func(round int) (bool, error)
 	// preRecord writes round 2's escalation record with this cause before the first Call.
 	preRecord   EscalationCause
 	wantOutcome shedengine.Outcome
@@ -746,8 +576,9 @@ func TestBouncer_SoftCapRule(t *testing.T) {
 	mechanical := taggedEntry{"mech", "open", "design", "MEDIUM", "mechanical"}
 	atFourOfThree := func() (int, int, bool, error) { return 4, 3, true, nil }
 	paths := []softCapPath{
-		{name: "harvest", harvest: true},
-		{name: "replay with auto-accept", autoAccept: true},
+		{name: "harvest", harvest: true, severity: "MEDIUM"},
+		{name: "replay with auto-accept", autoAccept: true, severity: "MEDIUM"},
+		{name: "blocking_escalates", harvest: true, autoAccept: true, blocking: true, severity: "BLOCKING"},
 	}
 	rows := []softCapRuleRow{
 		{name: "no design-wrong entry accepts and carries the open MEDIUM mechanical key", ledger: []taggedEntry{{"low", "open", "design", "LOW", "design-wrong"}, mechanical},
@@ -766,9 +597,6 @@ func TestBouncer_SoftCapRule(t *testing.T) {
 			wantOutcome: shedengine.Stuck, wantExempt: true, wantDecision: CirclingContinue},
 		{name: "a previous continue and a key that was mechanical continues", prevDecision: true, prevLedger: []taggedEntry{{"alpha", "open", "design", "MEDIUM", "mechanical"}}, ledger: []taggedEntry{design},
 			wantOutcome: shedengine.Stuck, wantExempt: true, wantDecision: CirclingContinue},
-		{name: "no design-wrong entry over a red live report escalates budget instead of accepting", ledger: []taggedEntry{mechanical},
-			liveRed:     func(int) (bool, error) { return true, nil },
-			wantOutcome: shedengine.Awaiting, wantCause: EscalationBudget},
 		{name: "a design-wrong entry at the hard cap escalates hard-cap", hardCap: 2, ledger: []taggedEntry{design},
 			wantOutcome: shedengine.Awaiting, wantCause: EscalationHardCap},
 		{name: "no design-wrong entry at the hard cap accepts", hardCap: 2, ledger: []taggedEntry{mechanical},
@@ -809,7 +637,13 @@ func runSoftCapRuleRow(t *testing.T, row softCapRuleRow, path softCapPath) {
 	if bounces == nil {
 		bounces = spentBounces
 	}
-	ledger := row.ledger
+	ledger := make([]taggedEntry, len(row.ledger))
+	for i, entry := range row.ledger {
+		if entry.severity == "MEDIUM" {
+			entry.severity = path.severity
+		}
+		ledger[i] = entry
+	}
 
 	seams := &circlingSeams{}
 	carry := &carryOverRecorder{}
@@ -819,7 +653,7 @@ func runSoftCapRuleRow(t *testing.T, row softCapRuleRow, path softCapPath) {
 	cfg.Bounces = bounces
 	cfg.HardCap = row.hardCap
 	cfg.AutoAccept = path.autoAccept
-	cfg.LiveRed = row.liveRed
+	cfg.BlockingEscalates = path.blocking
 	seams.install(&cfg)
 	carry.install(&cfg)
 	rounds := []bouncerJudgeFixture{
@@ -837,7 +671,7 @@ func runSoftCapRuleRow(t *testing.T, row softCapRuleRow, path softCapPath) {
 		}
 	}
 	if row.prevDecision {
-		if err := createCirclingDecision(cfg.RunDir, 1, CirclingContinue, EscalationBudget, true, nil); err != nil {
+		if err := createCirclingDecision(cfg.RunDir, 1, CirclingContinue, EscalationBudget, true); err != nil {
 			t.Fatalf("createCirclingDecision(round 1) = %v; want nil", err)
 		}
 	}

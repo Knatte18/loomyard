@@ -14,20 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/codexengine"
 )
 
-// LaunchSeams are the collaborators a set built by NewWithSeams runs a launch with, in place of the engines' own.
-// The zero value keeps every engine's own.
-type LaunchSeams struct {
-	// RunHook runs one plugin hook for a Codex launch's user setup; nil runs the Claude engine's own runner.
-	RunHook shuttleengine.HookRunner
-	// SandboxProbe runs executable bin under the Codex home in dir and reports why Codex's sandbox cannot start;
-	// nil runs Codex's own probe.
-	SandboxProbe func(bin, home, dir string) error
-}
-
-// constructor builds one engine from four inputs.
-// They are the shuttle config and the Dirs of the location the engine serves.
-// They also include the launch seams and the worktree the engine's launches run in.
-type constructor func(cfg shuttleengine.Config, dirs configengine.Dirs, seams LaunchSeams, worktree shuttleengine.Worktree) shuttleengine.Engine
+// constructor builds one engine from the shuttle config and the Dirs of the location the engine serves.
+type constructor func(cfg shuttleengine.Config, dirs configengine.Dirs) shuttleengine.Engine
 
 // ConfigModule is one engine's config module as plain data: a config registry can list it without importing the engine.
 type ConfigModule struct {
@@ -37,6 +25,8 @@ type ConfigModule struct {
 	Template func() string
 	// OpenMaps are the template's dotted paths whose entries belong to the operator.
 	OpenMaps []string
+	// Migrate, when non-nil, rewrites a present file's bytes before reconcile compares them to the template.
+	Migrate func(existing []byte) ([]byte, []string, error)
 	// Spec returns the module's layered-load spec.
 	Spec func() configengine.Spec
 	// CheckLoad runs the module's own loader under dirs and returns its error, discarding the loaded config.
@@ -66,8 +56,8 @@ func codexScrub() reedengine.EnvScrub {
 var registry = map[string]entry{
 	"claude": {
 		scrub: claudeScrub(),
-		constructor: func(cfg shuttleengine.Config, dirs configengine.Dirs, _ LaunchSeams, worktree shuttleengine.Worktree) shuttleengine.Engine {
-			return claudeengine.NewForWorktree(cfg, dirs, worktree)
+		constructor: func(cfg shuttleengine.Config, dirs configengine.Dirs) shuttleengine.Engine {
+			return claudeengine.NewFromConfig(cfg, dirs)
 		},
 		config: ConfigModule{
 			Name:     "claude",
@@ -88,16 +78,8 @@ var registry = map[string]entry{
 	},
 	"codex": {
 		scrub: codexScrub(),
-		constructor: func(cfg shuttleengine.Config, dirs configengine.Dirs, seams LaunchSeams, _ shuttleengine.Worktree) shuttleengine.Engine {
-			runHook := seams.RunHook
-			if runHook == nil {
-				runHook = claudeengine.RunPluginHook
-			}
-			return codexengine.NewFromConfig(cfg, dirs, codexengine.Seams{
-				UserSetup:    claudeengine.NewUserSetupSource(dirs),
-				RunHook:      runHook,
-				SandboxProbe: seams.SandboxProbe,
-			})
+		constructor: func(cfg shuttleengine.Config, dirs configengine.Dirs) shuttleengine.Engine {
+			return codexengine.NewFromConfig(cfg, dirs)
 		},
 		config: ConfigModule{
 			Name:     "codex",
@@ -112,47 +94,14 @@ var registry = map[string]entry{
 }
 
 // New builds the set of every registered engine from cfg, with cfg.Engine as the default.
-// Every engine is handed dirs, the layers of the location it serves, and is told no worktree.
+// Every engine is handed dirs, the layers of the location it serves.
 // It refuses a cfg.Engine that names no registered engine.
 func New(cfg shuttleengine.Config, dirs configengine.Dirs) (shuttleengine.EngineSet, error) {
-	return build(cfg, dirs, registeredConstructors(), LaunchSeams{}, shuttleengine.Worktree{})
-}
-
-// NewForWorktree builds the set New builds, with each engine told worktree, the worktree its launches run in.
-// A caller that launches sessions uses it, so each session runs under its worktree's identity.
-func NewForWorktree(cfg shuttleengine.Config, dirs configengine.Dirs, worktree shuttleengine.Worktree) (shuttleengine.EngineSet, error) {
-	return build(cfg, dirs, registeredConstructors(), LaunchSeams{}, worktree)
-}
-
-// NewWithSeams builds the set New builds, with each engine launching under the given seams.
-// It is the one entry point that gives a set a caller's plugin hook runner and sandbox probe.
-// `lym shuttle manifest` and the parity test use it to run each engine's Prepare without running a hook or Codex.
-// A real launch path never calls it.
-func NewWithSeams(cfg shuttleengine.Config, dirs configengine.Dirs, seams LaunchSeams) (shuttleengine.EngineSet, error) {
-	return build(cfg, dirs, registeredConstructors(), seams, shuttleengine.Worktree{})
-}
-
-// AccountKeeper returns the account-keeping capability of the registered engines, built over dirs and told worktree.
-// Each engine is built with a zero shuttle config, in name order.
-// The first that implements the capability is returned.
-// It returns false when no engine has it, and a false answer means no engine spreads its sessions over accounts.
-func AccountKeeper(dirs configengine.Dirs, worktree shuttleengine.Worktree) (shuttleengine.AccountKeeper, bool) {
-	for _, name := range Names() {
-		keeper, ok := registry[name].constructor(shuttleengine.Config{}, dirs, LaunchSeams{}, worktree).(shuttleengine.AccountKeeper)
-		if ok {
-			return keeper, true
-		}
-	}
-	return nil, false
-}
-
-// registeredConstructors returns the constructor of every registered engine, keyed by name.
-func registeredConstructors() map[string]constructor {
 	constructors := make(map[string]constructor, len(registry))
 	for name, registered := range registry {
 		constructors[name] = registered.constructor
 	}
-	return constructors
+	return build(cfg, dirs, constructors)
 }
 
 // ConfigModules returns every registered engine's config module, sorted by name.
@@ -165,16 +114,16 @@ func ConfigModules() []ConfigModule {
 	return modules
 }
 
-// build constructs one engine per entry of constructors from cfg, dirs, seams and worktree.
+// build constructs one engine per entry of constructors from cfg and dirs.
 // It returns them as a set whose default is cfg.Engine.
 // It refuses, before returning a set, a cfg.Engine that is not one of the entries.
 // It also refuses an engine that declares fork support through shuttleengine.RequirementSupporter.
 // Such an engine must also implement shuttleengine.ForkAuditor.
-func build(cfg shuttleengine.Config, dirs configengine.Dirs, constructors map[string]constructor, seams LaunchSeams, worktree shuttleengine.Worktree) (shuttleengine.EngineSet, error) {
+func build(cfg shuttleengine.Config, dirs configengine.Dirs, constructors map[string]constructor) (shuttleengine.EngineSet, error) {
 	engines := make(map[string]shuttleengine.Engine, len(constructors))
 	names := make([]string, 0, len(constructors))
 	for name, construct := range constructors {
-		engines[name] = construct(cfg, dirs, seams, worktree)
+		engines[name] = construct(cfg, dirs)
 		names = append(names, name)
 	}
 	sort.Strings(names)
@@ -189,8 +138,8 @@ func build(cfg shuttleengine.Config, dirs configengine.Dirs, constructors map[st
 	}
 	if _, ok := engines[cfg.Engine]; !ok {
 		return shuttleengine.EngineSet{}, fmt.Errorf(
-			"shuttle: %s %q names no registered engine; registered engines: %s; way forward: set %s in shuttle.yaml to one of them",
-			configengine.KeyName("shuttle", "engine"), cfg.Engine, strings.Join(names, ", "), configengine.KeyName("shuttle", "engine"))
+			"shuttle: shuttle.yaml's engine: %q names no registered engine; registered engines: %s; way forward: set engine: in shuttle.yaml to one of them",
+			cfg.Engine, strings.Join(names, ", "))
 	}
 	return shuttleengine.NewEngineSet(cfg.Engine, engines), nil
 }
@@ -242,11 +191,10 @@ func sortedKeys(set map[string]bool) []string {
 // It is the one place a provider is chosen for reed, which stays provider-blind.
 // The empty tag maps to the claude engine's namer whatever the default engine is:
 // a strand with no tag, whether recorded before tags existed or added outside shuttle, is repaired as Claude's.
-// The engines are built over dirs, so a namer reads a session's name under every config directory dirs lists.
-func SessionNamers(dirs configengine.Dirs) map[string]reedengine.SessionNamer {
+func SessionNamers() map[string]reedengine.SessionNamer {
 	engines := make(map[string]shuttleengine.Engine, len(registry))
 	for name, registered := range registry {
-		engines[name] = registered.constructor(shuttleengine.Config{}, dirs, LaunchSeams{}, shuttleengine.Worktree{})
+		engines[name] = registered.constructor(shuttleengine.Config{}, configengine.Dirs{})
 	}
 	namers := namersOf(engines)
 	if claude, ok := namers["claude"]; ok {
@@ -268,14 +216,13 @@ func namersOf(engines map[string]shuttleengine.Engine) map[string]reedengine.Ses
 
 // RecordReaders returns each registered engine's offline read capabilities, keyed by engine name.
 // It serves a reader that works from finished session records.
-// The engines are built with a zero shuttle config and over dirs.
-// Reading a record therefore needs no shuttle config file and finds sessions under every config directory dirs lists.
+// The engines are built with a zero shuttle config and no config directories, so reading a record needs no config file.
 // Each capability is wrapped in an adapter that exposes reading alone.
 // A reader therefore cannot start, open, send to or stop a run through it.
-func RecordReaders(dirs configengine.Dirs) map[string]shuttleengine.RecordReads {
+func RecordReaders() map[string]shuttleengine.RecordReads {
 	engines := make(map[string]shuttleengine.Engine, len(registry))
 	for name, registered := range registry {
-		engines[name] = registered.constructor(shuttleengine.Config{}, dirs, LaunchSeams{}, shuttleengine.Worktree{})
+		engines[name] = registered.constructor(shuttleengine.Config{}, configengine.Dirs{})
 	}
 	return readsOf(engines)
 }
@@ -341,7 +288,7 @@ func ToolBoundaryRenderer(name string) (shuttleengine.ToolBoundaryContextRendere
 	if !ok {
 		return nil, false
 	}
-	renderer, ok := registered.constructor(shuttleengine.Config{}, configengine.Dirs{}, LaunchSeams{}, shuttleengine.Worktree{}).(shuttleengine.ToolBoundaryContextRenderer)
+	renderer, ok := registered.constructor(shuttleengine.Config{}, configengine.Dirs{}).(shuttleengine.ToolBoundaryContextRenderer)
 	return renderer, ok
 }
 
@@ -354,18 +301,6 @@ func BatchingNudger(name string) (shuttleengine.BatchingNudger, bool) {
 	if !ok {
 		return nil, false
 	}
-	nudger, ok := registered.constructor(shuttleengine.Config{}, configengine.Dirs{}, LaunchSeams{}, shuttleengine.Worktree{}).(shuttleengine.BatchingNudger)
+	nudger, ok := registered.constructor(shuttleengine.Config{}, configengine.Dirs{}).(shuttleengine.BatchingNudger)
 	return nudger, ok
-}
-
-// EditRecorder returns the edit-hook capability of the registered engine named name.
-// It returns false when no engine of that name is registered or the engine has none.
-// The engine is built with a zero shuttle config and no config directories, since recording an edit reads no config.
-func EditRecorder(name string) (shuttleengine.EditRecorder, bool) {
-	registered, ok := registry[name]
-	if !ok {
-		return nil, false
-	}
-	recorder, ok := registered.constructor(shuttleengine.Config{}, configengine.Dirs{}, LaunchSeams{}, shuttleengine.Worktree{}).(shuttleengine.EditRecorder)
-	return recorder, ok
 }

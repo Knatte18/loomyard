@@ -34,9 +34,6 @@ const (
 	// lymLinePrefix opens every line lym's own modules type into a pane without creel.
 	// Examples are shuttle's API-error retry line and tender's resume line.
 	lymLinePrefix = "[lym]"
-	// operatorMarker opens a reply the orch means for the operator.
-	// While the orch's autonomy is on, only a reply that opens with it is forwarded to Slack.
-	operatorMarker = "[operator]"
 )
 
 // The actions a hook run reports, under `action`.
@@ -48,7 +45,6 @@ const (
 	hookActionForward   = "forwarded"
 	hookActionButtonOff = "button-off"
 	hookActionSubagent  = "subagent"
-	hookActionUnmarked  = "unmarked"
 )
 
 // strandClient is the creel client of the orch strand a hook runs in.
@@ -81,7 +77,6 @@ On the end of a turn of the session's main thread while the presence is slack
 and the orch's slack button is on, it posts the turn's final reply to the relay
 as the orch, so it reaches the orch's own Slack channel. A turn that ended with
 no text sends nothing, and a reply over 7000 bytes is cut.
-While the orch's autonomy is on, only a reply that opens with [operator] is posted.
 
 It runs only in an orch's pane, and its output is the hook's to discard.`,
 		Args: cobra.ExactArgs(1),
@@ -164,7 +159,6 @@ func (c *slackCLI) promptHook(prompt string) (map[string]any, error) {
 // replyHook posts reply, a turn's final text, to the relay as the orch while the presence is slack.
 // The relay posts it to that orch's own channel.
 // An empty reply, any presence but slack, and an orch whose slack button is off send nothing.
-// While the orch's autonomy is on, a reply that does not open with operatorMarker sends nothing either.
 func (c *slackCLI) replyHook(reply string) (map[string]any, error) {
 	if reply == "" {
 		return hookAction(hookActionNone), nil
@@ -175,9 +169,6 @@ func (c *slackCLI) replyHook(reply string) (map[string]any, error) {
 	}
 	if presence != slackengine.PresenceSlack {
 		return hookAction(hookActionNone), nil
-	}
-	if c.orchAutonomous != nil && c.orchAutonomous() && !strings.HasPrefix(reply, operatorMarker) {
-		return hookAction(hookActionUnmarked), nil
 	}
 	client, strand, err := c.orchClient()
 	if err != nil {

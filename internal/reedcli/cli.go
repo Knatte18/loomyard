@@ -15,7 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
@@ -100,25 +99,6 @@ type strandOps interface {
 	Status() (reedengine.StatusResult, error)
 }
 
-// wireLocation resolves the engine of the worktree at location, with its hub path and anchor, onto c.
-func (c *reedCLI) wireLocation(location *lymcwd.Location) error {
-	// The _lym/config/ root is anchored at location.AnchorPath(), not at the worktree root or a fabric sibling.
-	// Reed config lives with the worktree the operator is standing in.
-	cfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
-	if err != nil {
-		return err
-	}
-	reedGeom, err := hubgeom.ReedGeometry(location)
-	if err != nil {
-		return err
-	}
-	c.eng = reedengine.New(cfg, reedGeom, shuttleengines.EnvScrub())
-	c.eng.SetRevivalFilter(orchengine.RevivalFilter(fabricengine.ConfigDirs(location)))
-	c.hubPath = location.HubPath
-	c.anchorPath = location.AnchorPath()
-	return nil
-}
-
 // strandEngine returns the test seam when set, else the resolved engine.
 func (c *reedCLI) strandEngine() strandOps {
 	if c.strands != nil {
@@ -190,11 +170,24 @@ rather than booting substrate it cannot reach.`,
 				}
 			}
 
-			if err := c.wireLocation(location); err != nil {
+			// The _lym/config/ root is anchored at location.AnchorPath(), not at the worktree root or a fabric sibling.
+			// Reed config lives with the worktree the operator is standing in.
+			cfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
+			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
+
+			reedGeom, err := hubgeom.ReedGeometry(location)
+			if err != nil {
+				output.Err(out, err.Error())
+				clihelp.Abort(ctx, 1)
+				return nil
+			}
+			c.eng = reedengine.New(cfg, reedGeom, shuttleengines.EnvScrub())
+			c.hubPath = location.HubPath
+			c.anchorPath = location.AnchorPath()
 			return nil
 		},
 	}

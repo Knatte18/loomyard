@@ -252,7 +252,7 @@ func roleEngineRefusalCase(name string, fresh bool, roleKey, engineQuoted string
 			return nil
 		},
 		msgContains: []string{engineQuoted},
-		wayForward:  []string{"set webster." + roleKey + " in webster.yaml", "audits forks"},
+		wayForward:  []string{"set " + roleKey + " in webster.yaml", "audits forks"},
 		check: func(t *testing.T, fx *runFixture, _ error) {
 			stateAfter, outcomeAfter, dirAfter := snapshotWebsterDir(t, fx)
 			if !bytes.Equal(stateAfter, stateBefore) {
@@ -315,7 +315,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			},
 			errIs:       shuttleengine.ErrRequirementsUnmet,
 			msgContains: []string{`engine "fake"`, "master", "lym config webster"},
-			wayForward:  []string{"set webster.master in webster.yaml", "lym config webster"},
+			wayForward:  []string{"set master in webster.yaml", "lym config webster"},
 			check: func(t *testing.T, fx *runFixture, err error) {
 				if strings.Contains(err.Error(), "transient") {
 					t.Errorf("Run() error = %q; want no transient clause on a requirements refusal", err)
@@ -533,9 +533,6 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 		},
 		deadEndRefusalCase("a dead recovery that earns no retry", &websterengine.BatchState{Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: 1},
 			"batch 01-batch1 is dead and its recovery earns no retry"),
-		deadEndRefusalCase("a dead recovery quotes its strand's last message", &websterengine.BatchState{Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: 1,
-			Digest: &websterengine.Digest{Status: websterengine.DigestStatusDead, DeadReason: websterengine.DeadReasonAsking, LastMessage: "Keep the old flag?"}},
-			"batch 01-batch1 is dead and its recovery earns no retry (its last message: Keep the old flag?)"),
 		deadEndRefusalCase("a stuck batch whose recoveries are spent", &websterengine.BatchState{Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusStuck, Recoveries: 2},
 			"batch 01-batch1 is stuck and has had its 2 recoveries"),
 		{
@@ -1542,7 +1539,7 @@ func TestRun_MasterSpawn(t *testing.T) {
 					shuttlefake.EngineName: fake,
 					"master-engine":        fake,
 				})
-				stencilkit.SeedEngineBlockCopies(t, fx.Deps.Geom.StencilsDir, "master-engine")
+				stencilkit.SeedEditDirectiveCopies(t, fx.Deps.Geom.StencilsDir, "master-engine")
 			},
 			check: func(t *testing.T, fx *runFixture) {
 				spec := fx.Starter.startCalls[0]
@@ -1573,34 +1570,6 @@ func TestRun_MasterSpawn(t *testing.T) {
 			},
 		},
 		{
-			// Recovery stays on the fake engine, so a prompt worded for Recovery's engine would carry the Claude copy.
-			name:  "the Master prompt and the verify-fix prompt are worded for Master's engine",
-			cards: 1,
-			prepare: func(t *testing.T, fx *runFixture) {
-				choice := fx.Deps.Roles[websterengine.RoleMaster]
-				choice.Engine = "codex"
-				fx.Deps.Roles[websterengine.RoleMaster] = choice
-				fake := &shuttlefake.Engine{}
-				fx.Deps.Engines = shuttleengine.NewEngineSet(shuttlefake.EngineName, map[string]shuttleengine.Engine{
-					shuttlefake.EngineName: fake,
-					"codex":                fake,
-				})
-			},
-			check: func(t *testing.T, fx *runFixture) {
-				masterPrompt := fx.Starter.startCalls[0].Prompt
-				if !strings.Contains(masterPrompt, "`spawn_agent`") || strings.Contains(masterPrompt, `subagent_type: "fork"`) {
-					t.Errorf("Spec.Prompt = %q; want the Codex fork-spawn wording and not the Claude one", masterPrompt)
-				}
-				verifyFixPrompt, err := os.ReadFile(filepath.Join(fx.Deps.Geom.PromptsDir, "verify-fix.md"))
-				if err != nil {
-					t.Fatalf("read verify-fix prompt: %v", err)
-				}
-				if !strings.Contains(string(verifyFixPrompt), "your developer instructions") || strings.Contains(string(verifyFixPrompt), "your system prompt") {
-					t.Errorf("verify-fix prompt = %q; want the Codex standing-instructions wording and not the Claude one", verifyFixPrompt)
-				}
-			},
-		},
-		{
 			// The default engine is checked only when a role's choice resolves to it.
 			name:  "a default without fork audit does not refuse roles naming an engine that audits",
 			cards: 1,
@@ -1613,7 +1582,7 @@ func TestRun_MasterSpawn(t *testing.T) {
 				})
 				fx.Deps.Roles[websterengine.RoleMaster] = shuttleengine.ModelChoice{Model: "m", Engine: "a"}
 				fx.Deps.Roles[websterengine.RoleRecovery] = shuttleengine.ModelChoice{Model: "r", Engine: "a"}
-				stencilkit.SeedEngineBlockCopies(t, fx.Deps.Geom.StencilsDir, "a")
+				stencilkit.SeedEditDirectiveCopies(t, fx.Deps.Geom.StencilsDir, "a")
 			},
 			check: func(t *testing.T, fx *runFixture) {
 				if got := fx.Starter.startCalls[0].Engine; got != "a" {
@@ -1658,25 +1627,6 @@ func TestRun_MasterSpawn(t *testing.T) {
 				}
 				if st.MasterEngine != shuttlefake.EngineName {
 					t.Errorf("State.MasterEngine = %q; want %q, the engine the Master run record names", st.MasterEngine, shuttlefake.EngineName)
-				}
-			},
-		},
-		{
-			// The parent audit and accept-audit read both after the spawn.
-			name:  "the friction note path and the records side's base are persisted",
-			cards: 1,
-			prepare: func(t *testing.T, fx *runFixture) {
-				fx.Deps.FrictionDir = t.TempDir()
-				writeWorktreeFile(t, fx.Worktree, "_lym/kept.txt", "records")
-			},
-			check: func(t *testing.T, fx *runFixture) {
-				st := loadRunState(t, fx)
-				note := filepath.Join(fx.Deps.FrictionDir, "webster-master.md")
-				if st.MasterNotePath != note || !strings.Contains(fx.Starter.startCalls[0].Prompt, note) {
-					t.Errorf("State.MasterNotePath = %q; want %q, the note the prompt names", st.MasterNotePath, note)
-				}
-				if st.MasterRecordsBase != fx.Git.head {
-					t.Errorf("State.MasterRecordsBase = %q; want the records side's HEAD %q", st.MasterRecordsBase, fx.Git.head)
 				}
 			},
 		},
@@ -2009,25 +1959,6 @@ func TestRun_DoneOutcome(t *testing.T) {
 				}
 				if result.SummaryTitle != "Shipped" {
 					t.Errorf("RunResult.SummaryTitle = %q; want %q", result.SummaryTitle, "Shipped")
-				}
-			},
-		},
-		{
-			name:    "Master's write to the friction note its prompt names leaves the run done",
-			cards:   1,
-			session: "master-session-note",
-			prepare: func(t *testing.T, fx *runFixture) { fx.Deps.FrictionDir = t.TempDir() },
-			state: &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
-				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
-			}}},
-			audit: func(fx *runFixture) shuttleengine.ForkAudit {
-				note := filepath.Join(fx.Deps.FrictionDir, "webster-master.md")
-				return shuttleengine.ForkAudit{ParentWrites: []string{note}, Forks: forkReports(1)}
-			},
-			batchesDone: 1,
-			check: func(t *testing.T, fx *runFixture, result websterengine.RunResult) {
-				if result.Outcome != "done" || warningsContain(result.Warnings, "parent-write") {
-					t.Errorf("RunResult = outcome %q, warnings %v; want done with no parent-write finding", result.Outcome, result.Warnings)
 				}
 			},
 		},

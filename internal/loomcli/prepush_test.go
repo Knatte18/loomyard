@@ -1,5 +1,5 @@
 // prepush_test.go pins the pre-push check's verdicts over stub seams.
-// It covers when a push goes or stops and whether it pauses;
+// It covers when a push goes or stops and which pause it takes;
 // the notices it posts, the skip condition, and how a stop reaches the seams it guards.
 
 package loomcli
@@ -13,6 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -138,8 +140,8 @@ func TestPrePushCheckGuard(t *testing.T) {
 			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryOwnedElsewhere, Owner: "neve"}}},
 			notifyErr:   errors.New("no orch"),
 			wantStop:    true,
-			wantCalls:   []string{"reconcile"},
-			wantNotices: []string{"task: stopped before its push: the run is owned by machine \"neve\"; take it over with `lym adopt task` from this machine's prime"},
+			wantCalls:   []string{"reconcile", "pauseOwned"},
+			wantNotices: []string{"task: paused before its push: the run is owned by machine \"neve\"; take it over with `lym adopt task` from this machine's prime"},
 		},
 		{
 			name:      "EntryOfAnotherSlug",
@@ -150,15 +152,15 @@ func TestPrePushCheckGuard(t *testing.T) {
 			name:        "OwnedElsewhere",
 			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryOwnedElsewhere, Owner: "neve", AdoptSubject: "beam"}}},
 			wantStop:    true,
-			wantCalls:   []string{"reconcile"},
-			wantNotices: []string{"task: stopped before its push: the run is owned by machine \"neve\"; take it over with `lym adopt beam` from this machine's prime"},
+			wantCalls:   []string{"reconcile", "pauseOwned"},
+			wantNotices: []string{"task: paused before its push: the run is owned by machine \"neve\"; take it over with `lym adopt beam` from this machine's prime"},
 		},
 		{
 			name:        "OwnedElsewhereNoSubject",
 			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryOwnedElsewhere, Owner: "neve"}}},
 			wantStop:    true,
-			wantCalls:   []string{"reconcile"},
-			wantNotices: []string{"task: stopped before its push: the run is owned by machine \"neve\"; take it over with `lym adopt task` from this machine's prime"},
+			wantCalls:   []string{"reconcile", "pauseOwned"},
+			wantNotices: []string{"task: paused before its push: the run is owned by machine \"neve\"; take it over with `lym adopt task` from this machine's prime"},
 		},
 		{
 			name: "StoppedOwnBranch",
@@ -242,11 +244,11 @@ func TestPrePushCheckGuard(t *testing.T) {
 		},
 		{
 			name:        "PauseFails",
-			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryStopped, WayForward: "lym fabric pull"}}},
+			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryOwnedElsewhere, Owner: "neve"}}},
 			pauseErr:    errors.New("record locked"),
 			wantStop:    true,
-			wantCalls:   []string{"reconcile", "pause"},
-			wantNotices: []string{"task: paused before its push: origin moved a branch every run shares: lym fabric pull; then `lym tender resume task`; the pause failed (record locked), so the run's next push stops again"},
+			wantCalls:   []string{"reconcile", "pauseOwned"},
+			wantNotices: []string{"task: paused before its push: the run is owned by machine \"neve\"; take it over with `lym adopt task` from this machine's prime; the pause failed (record locked), so the run's next push stops again"},
 		},
 	}
 	for _, tt := range tests {
@@ -270,6 +272,10 @@ func TestPrePushCheckGuard(t *testing.T) {
 				landed: func() (bool, error) {
 					calls = append(calls, "landed")
 					return tt.landed, tt.landedErr
+				},
+				pauseOwned: func() error {
+					calls = append(calls, "pauseOwned")
+					return tt.pauseErr
 				},
 				pause: func() error {
 					calls = append(calls, "pause")
@@ -383,24 +389,37 @@ func stoppingPrePushCheck() prePushCheck {
 		reconcile: func() (fabricengine.OriginReport, error) {
 			return fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "task", State: fabricengine.EntryOwnedElsewhere, Owner: "neve"}}}, nil
 		},
-		notify: func(string) error { return nil },
+		pauseOwned: func() error { return nil },
+		notify:     func(string) error { return nil },
 	}
 }
 
-// TestPrePushCheckWiredIntoDeps asserts the PR-Review row runs behind its check:
-// a stopping check stops PushTask with its error, and it does not reach git.
+// TestPrePushCheckWiredIntoDeps asserts the status deps and the PR-Review row run behind their check:
+// a stopping check stops Commit, Push and PushTask with its error and leaves Spawn a nil no-op;
+// none of them reaches git.
 func TestPrePushCheckWiredIntoDeps(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	location := &lymcwd.Location{RepoName: "repo", HubPath: t.TempDir(), WorktreeName: "task", AnchorRel: "."}
 
-	pullRequest := pullRequestDepsGuardedBy(stoppingPrePushCheck(), location, "main", false)
+	statusDeps := commitStatusDepsGuardedBy(stoppingPrePushCheck(), location, shedrun.SelfRunID)
+	if _, err := statusDeps.Commit("message"); !errors.Is(err, errPushStopped) {
+		t.Errorf("Commit() error = %v; want it to wrap errPushStopped", err)
+	}
+	if err := statusDeps.Spawn(); err != nil {
+		t.Errorf("Spawn() error = %v; want nil, the stopped push left its commits local", err)
+	}
+	if err := statusDeps.Push(); !errors.Is(err, errPushStopped) {
+		t.Errorf("Push() error = %v; want it to wrap errPushStopped", err)
+	}
+
+	pullRequest := pullRequestDepsGuardedBy(stoppingPrePushCheck(), location, "main", false, &shuttleengine.Runner{})
 	if err := pullRequest.PushTask(); !errors.Is(err, errPushStopped) {
 		t.Errorf("PushTask() error = %v; want it to wrap errPushStopped", err)
 	}
 }
 
-// TestPrePushCheckGuardedSeams asserts a stop reaches the commit and push seams it guards as documented;
+// TestPrePushCheckGuardedSeams asserts a stop reaches the commit, spawn and push seams it guards as documented;
 // a passing check runs each seam and returns its result.
 func TestPrePushCheckGuardedSeams(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -414,13 +433,15 @@ func TestPrePushCheckGuardedSeams(t *testing.T) {
 			_, err := check.guardedCommit(func(string) (bool, error) { return true, call() })("message")
 			return err
 		},
-		"Push": func(check prePushCheck, call func() error) error { return check.guardedPush(call)() },
+		"Spawn": func(check prePushCheck, call func() error) error { return check.guardedSpawn(call)() },
+		"Push":  func(check prePushCheck, call func() error) error { return check.guardedPush(call)() },
 	}
 	tests := []struct {
 		seam        string
 		wantStopErr bool
 	}{
 		{seam: "Commit", wantStopErr: true},
+		{seam: "Spawn"},
 		{seam: "Push", wantStopErr: true},
 	}
 	for _, tt := range tests {

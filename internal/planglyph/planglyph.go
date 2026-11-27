@@ -294,11 +294,6 @@ func convertAll(errs []planparser.ValidationError) []Finding {
 // but after canonicalization they are selected by ID, from the reloaded plan when it was rewritten and from plan otherwise, so a respelled handle matches under its new spelling.
 // Their Create targets and Rename New sides join the exclusion sets below, so a pending ref to something a forthcoming card will create is not reported as missing.
 // They are never selected from current, which holds pending cards only.
-//
-// A glyph target can spell the member a Create handle names.
-// Such a target passes for every card at or after the earliest card creating that member,
-// and a forthcoming card creates before every pending card.
-// A missing member of a unit that exists costs one more quarry query, which lists the members beside it in its finding.
 func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming map[string]bool) ([]Finding, error) {
 	if !plan.GlyphLanguage() {
 		return nil, nil
@@ -399,44 +394,13 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 		createIndex[handle] = r
 	}
 
-	created := createdHandleGlyphs(current, forthcomingCards)
-	members, err := missingMemberSiblings(repo, plan, nonCreateResults, created)
-	if err != nil {
-		return findings, err
-	}
-	findings = append(findings, statusFindings(current, worktreeRoot, nonCreateResults, created, members)...)
+	findings = append(findings, statusFindings(current, worktreeRoot, nonCreateResults)...)
 	findings = append(findings, createFindings(current, worktreeRoot, createIndex)...)
 	if plan.GoToolchain() && len(done) == 0 {
 		findings = append(findings, languageMismatchFindings(current, results)...)
 	}
 
 	return findings, nil
-}
-
-// missingMemberSiblings lists the sibling members of the missing targets in results.
-// It maps each target whose member is missing from a unit that exists to the members declared beside it.
-// A target that created names a card creating is left out, since its finding lists no members.
-// It queries quarry once per such target, so a plan that resolves cleanly costs no query.
-func missingMemberSiblings(repo *quarry.Repo, plan *planparser.Plan, results []quarry.ResolveResult, created map[string]int) (map[string][]string, error) {
-	members := make(map[string][]string)
-	for _, r := range results {
-		if r.Status != quarry.StatusNotFound || r.Unit != quarry.StatusFound {
-			continue
-		}
-		if _, isCreated := createdBy(created, r); isCreated {
-			continue
-		}
-		g, err := planparser.ParseRef(plan, r.Target)
-		if err != nil {
-			return nil, fmt.Errorf("planglyph: parse missing target %q: %w", r.Target, err)
-		}
-		names, err := siblingMembers(repo, g)
-		if err != nil {
-			return nil, err
-		}
-		members[r.Target] = names
-	}
-	return members, nil
 }
 
 // renameNewTargetSet returns the set of every Rename pair's New-side ref across plan, matching the

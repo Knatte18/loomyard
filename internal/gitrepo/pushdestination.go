@@ -28,28 +28,25 @@ const PushReflogSubject = "update by push"
 // It is empty when the remote is not configured or no refspec maps the branch.
 // setUpstream is set for a default push of a branch with no upstream yet.
 // Such a push takes the remote's branch as its upstream, as git's push.autoSetupRemote does.
-// namespace maps the branch to its ref name on the remote.
 type pushDestination struct {
 	remote      string
 	branch      string
 	url         string
 	trackingRef string
 	setUpstream bool
-	namespace   RefNamespace
 }
 
 // resolvePushDestination returns where a push of branch to remote lands.
 // An empty remote means the default push of the checked-out branch.
 // Its remote is, in order: the branch's push remote, the repository's push default, the upstream remote, or origin.
 // A remote that is not a configured remote is pushed to as a URL or path, and records nothing.
-// The tracking ref is the one the remote's fetch refspecs map the branch's origin ref name under ns to.
-func (r *Repo) resolvePushDestination(remote, branch string, ns RefNamespace) (pushDestination, error) {
+func (r *Repo) resolvePushDestination(remote, branch string) (pushDestination, error) {
 	dest, err := readGoGit(r, func(repo *git.Repository) (pushDestination, error) {
 		cfg, err := repo.Config()
 		if err != nil {
 			return pushDestination{}, err
 		}
-		dest := pushDestination{remote: remote, branch: branch, namespace: ns}
+		dest := pushDestination{remote: remote, branch: branch}
 		if remote == "" {
 			upstream := cfg.Branches[branch]
 			candidates := []string{cfg.Raw.Section("branch").Subsection(branch).Option("pushRemote"), cfg.Raw.Section("remote").Option("pushDefault")}
@@ -71,7 +68,7 @@ func (r *Repo) resolvePushDestination(remote, branch string, ns RefNamespace) (p
 			dest.setUpstream = false
 			return dest, nil
 		}
-		branchRef := plumbing.ReferenceName(ns.Branch(branch))
+		branchRef := plumbing.NewBranchReferenceName(branch)
 		for _, spec := range remoteConfig.Fetch {
 			if spec.Match(branchRef) {
 				dest.trackingRef = spec.Dst(branchRef).String()
@@ -114,7 +111,7 @@ func (r *Repo) recordPush(dest pushDestination, sha string, keepNewer bool) erro
 		if !dest.setUpstream {
 			return nil
 		}
-		for _, setting := range [][2]string{{"branch." + dest.branch + ".remote", dest.remote}, {"branch." + dest.branch + ".merge", dest.namespace.Branch(dest.branch)}} {
+		for _, setting := range [][2]string{{"branch." + dest.branch + ".remote", dest.remote}, {"branch." + dest.branch + ".merge", "refs/heads/" + dest.branch}} {
 			if _, err := r.runChecked("config", setting[0], setting[1]); err != nil {
 				return fmt.Errorf("gitrepo: set the upstream of %s: %w", dest.branch, err)
 			}

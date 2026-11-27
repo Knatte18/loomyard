@@ -436,7 +436,7 @@ func TestSettle(t *testing.T) {
 		{
 			name:        "FailedActionKeepsTheRecordAndRunsAgainNextCall",
 			records:     map[string]RecordEntry{"fix": {OnLand: ActionAdoptCheck}},
-			steps:       []step{{runErr: errors.New("spawn broke"), wantErr: "run `lym beam status`"}, {}},
+			steps:       []step{{runErr: errors.New("spawn broke"), wantErr: "lym adopt root"}, {}},
 			wantRuns:    2,
 			wantRecords: nil,
 		},

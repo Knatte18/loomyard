@@ -265,7 +265,6 @@ func TestCommand_PositionalArgValidation(t *testing.T) {
 	}{
 		{"StateStrayArgument", []string{"state", "stray"}},
 		{"AwaitNoArgs", []string{"await"}},
-		{"ManifestNoArgs", []string{"manifest"}},
 		{"AwaitForksStrayArgument", []string{"await-forks", "stray"}},
 	}
 
@@ -837,8 +836,8 @@ func (stateEngine) TurnStartInterrupt(shuttleengine.SessionSignal) (time.Time, b
 }
 
 // TestStateCmd_ListsRunningRunsAndNarrowsByStrand drives stateCmd over a run-directory root.
-// The root holds one running record with a stamped turn end and its output file, and one relaunching record.
-// It asserts the envelope's run, state, cause, history and relaunching flag.
+// The root holds one running record with a stamped turn end and its output file.
+// It asserts the envelope's run, state, cause and history.
 // It also asserts that --strand with a name matching no running run prints an empty list.
 func TestStateCmd_ListsRunningRunsAndNarrowsByStrand(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -866,24 +865,9 @@ func TestStateCmd_ListsRunningRunsAndNarrowsByStrand(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(runDir, "run.json"), record, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	relaunchingDir := filepath.Join(root, "run-2")
-	if err := os.MkdirAll(relaunchingDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	relaunchingRecord, err := json.Marshal(shuttleengine.RunState{
-		RunID: "run-2", StrandGUID: "guid-2", StrandName: "hub:task:other", SessionID: "session-2",
-		EventsPath: filepath.Join(relaunchingDir, "events.jsonl"), Outcome: "running",
-		RelaunchingAt: time.Now().Add(-time.Second).UTC().Format(time.RFC3339),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(relaunchingDir, "run.json"), relaunchingRecord, 0o644); err != nil {
-		t.Fatal(err)
-	}
 
 	run := func(args ...string) map[string]any {
-		c := &shuttleCLI{cfg: shuttleengine.Config{RunDir: root, StartupTimeoutS: 30}, anchorPath: t.TempDir(), engines: shuttlefake.EngineSet(stateEngine{&shuttlefake.Engine{}})}
+		c := &shuttleCLI{cfg: shuttleengine.Config{RunDir: root}, anchorPath: t.TempDir(), engines: shuttlefake.EngineSet(stateEngine{&shuttlefake.Engine{}})}
 		cmd := c.stateCmd()
 		var out bytes.Buffer
 		cmd.SetOut(&out)
@@ -897,8 +881,8 @@ func TestStateCmd_ListsRunningRunsAndNarrowsByStrand(t *testing.T) {
 
 	envelope := run()
 	runs, _ := envelope["runs"].([]any)
-	if len(runs) != 2 {
-		t.Fatalf("runs = %v; want the two running records", envelope["runs"])
+	if len(runs) != 1 {
+		t.Fatalf("runs = %v; want exactly the one running record", envelope["runs"])
 	}
 	got, _ := runs[0].(map[string]any)
 	for key, want := range map[string]string{
@@ -907,12 +891,6 @@ func TestStateCmd_ListsRunningRunsAndNarrowsByStrand(t *testing.T) {
 		if got[key] != want {
 			t.Errorf("run[%q] = %v; want %q", key, got[key], want)
 		}
-	}
-	if got["relaunching"] != false {
-		t.Errorf("running run relaunching = %v; want false", got["relaunching"])
-	}
-	if other, _ := runs[1].(map[string]any); other["strand"] != "hub:task:other" || other["relaunching"] != true || other["state"] != "unknown" || other["cause"] != "relaunching" {
-		t.Errorf("relaunching run = %v; want strand hub:task:other, relaunching true, state unknown, cause relaunching", other)
 	}
 	history, _ := got["history"].([]any)
 	if len(history) == 0 {

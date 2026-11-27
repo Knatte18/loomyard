@@ -67,12 +67,6 @@ func TestVerifyFailureFindings(t *testing.T) {
 			wantNot: []string{"failed with exit code", "could not start", "timed out"},
 		},
 		{
-			name:    "a memory pressure stop names the stopped runs and no crash",
-			result:  verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1, MemoryPressure: true, Detail: "gate test stopped for a memory limit other load filled: tier1 (exit 1)"},
-			want:    []string{"stopped for a memory limit other load filled", "tier1 (exit 1)", "the run stops here", "the other load has to end"},
-			wantNot: []string{"failed with exit code", "crashed", "timed out"},
-		},
-		{
 			name:    "a log with the watchdog line names the window and the way forward",
 			result:  verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1},
 			log:     "ok  \texample.com/mod/b\t0.1s\n" + gateslot.WatchdogLine("/tmp/x/a.test", 42, 2*time.Minute) + "\nSIGQUIT: quit\nlast line\n",

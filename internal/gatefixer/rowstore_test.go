@@ -35,8 +35,8 @@ func TestRowStore(t *testing.T) {
 		if err != nil || len(records) != 2 || records[0] != first || records[1].StrandGUID != "b" {
 			t.Errorf("load() = %+v, %v; want a rewritten in place, then b", records, err)
 		}
-		if spent, interrupted, err := store.budget(); err != nil || spent != 2 || interrupted != 0 {
-			t.Errorf("budget() = %d spent, %d interrupted, %v; want 2 and 0", spent, interrupted, err)
+		if count, err := store.count(); err != nil || count != 2 {
+			t.Errorf("count() = %d, %v; want 2", count, err)
 		}
 		if report, reply := store.reportPath(3), store.replyPath(3); !strings.HasSuffix(report, "verify/report-3.md") || !strings.HasSuffix(reply, "verify/reply-3.md") {
 			t.Errorf("reportPath(3) = %q, replyPath(3) = %q; want report-3.md and reply-3.md in the entry directory", report, reply)

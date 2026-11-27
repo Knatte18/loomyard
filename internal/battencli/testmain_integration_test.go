@@ -59,7 +59,7 @@ func TestMain(m *testing.M) {
 	} else {
 		spawnPairPush = func(l *lymcwd.Location) error {
 			pairPushCounts.record(l.WorktreePath())
-			_, err := fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabricengine.PairPush{LockWait: fabricengine.LockWaitUnbounded})
+			_, err := fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabricengine.LockWaitUnbounded)
 			return err
 		}
 	}

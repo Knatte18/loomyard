@@ -38,7 +38,7 @@ func seedHubStencils(t *testing.T, hub string) {
 	t.Helper()
 	stencilsDir := fabricengine.StencilsDir(hub)
 	stencilkit.SeedInto(t, stencilsDir)
-	stencilkit.SeedEngineBlockCopies(t, stencilsDir, shuttlefake.EngineName)
+	stencilkit.SeedEditDirectiveCopies(t, stencilsDir, shuttlefake.EngineName)
 }
 
 // seedPlanDir creates a t.TempDir() seeded with a two-card plan, so the fingerprint gate has something real to hash.

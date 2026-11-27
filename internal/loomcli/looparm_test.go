@@ -70,23 +70,8 @@ func TestRegisterRunProcess(t *testing.T) {
 	}
 }
 
-func TestStepRunsNote_StopsTheStepsRunsAndNamesTheRest(t *testing.T) {
+func TestWatchdogKillNote_StopsTheKilledStepsRunsAndNamesTheRest(t *testing.T) {
 	tiergate.Require(t, 0)
-	type stopFunc = func(shuttleengine.StepTie) (shuttleengine.StepStopReport, error)
-	hooks := []struct {
-		name string
-		note func(stop stopFunc) string
-	}{
-		{"WatchdogKill", func(stop stopFunc) string {
-			return watchdogKillNote(stop, "/steps")(shedverbs.WatchdogKill{TraceID: "trace-9"})
-		}},
-		{"OrphanedStep", func(stop stopFunc) string { return orphanedStepNote(stop, "/steps")("trace-9") }},
-		{"OrphanedSteps", func(stop stopFunc) string {
-			return orphanedStepsNote(func(stepsDir string) (shuttleengine.StepStopReport, error) {
-				return stop(shuttleengine.StepTie{StepsDir: stepsDir, TraceID: "trace-9"})
-			}, "/steps")()
-		}},
-	}
 	tests := []struct {
 		name     string
 		report   shuttleengine.StepStopReport
@@ -100,15 +85,6 @@ func TestStepRunsNote_StopsTheStepsRunsAndNamesTheRest(t *testing.T) {
 			wantNote: "stopped shuttle runs: a:1:plan, a:1:review; left live runs naming no step: a:1:driver",
 		},
 		{
-			name: "finished and held runs are named after the stopped ones",
-			report: shuttleengine.StepStopReport{
-				Stopped:  []string{"a:1:plan"},
-				Finished: []string{"a:1:review"},
-				Held:     []string{"a:1:driver"},
-			},
-			wantNote: "stopped shuttle runs: a:1:plan; left runs whose output files all exist: a:1:review; left running the runs a live process may still hold: a:1:driver",
-		},
-		{
 			name:     "a run whose stop failed names its error",
 			report:   shuttleengine.StepStopReport{Failed: []shuttleengine.StepStopFailure{{Strand: "a:1:plan", Error: "strand busy"}}},
 			wantNote: "could not stop the run a:1:plan: strand busy",
@@ -116,27 +92,25 @@ func TestStepRunsNote_StopsTheStepsRunsAndNamesTheRest(t *testing.T) {
 		{
 			name:     "a failing stop renders its error",
 			stopErr:  errors.New("probe reed: no server"),
-			wantNote: "could not stop the runs: probe reed: no server",
+			wantNote: "could not stop the step's runs: probe reed: no server",
 		},
 	}
 	for _, tt := range tests {
-		for _, hook := range hooks {
-			t.Run(tt.name+"/"+hook.name, func(t *testing.T) {
-				var ties []shuttleengine.StepTie
-				stop := func(tie shuttleengine.StepTie) (shuttleengine.StepStopReport, error) {
-					ties = append(ties, tie)
-					return tt.report, tt.stopErr
-				}
+		t.Run(tt.name, func(t *testing.T) {
+			var ties []shuttleengine.StepTie
+			stop := func(tie shuttleengine.StepTie) (shuttleengine.StepStopReport, error) {
+				ties = append(ties, tie)
+				return tt.report, tt.stopErr
+			}
 
-				note := hook.note(stop)
+			note := watchdogKillNote(stop, "/steps")(shedverbs.WatchdogKill{TraceID: "trace-9"})
 
-				if want := []shuttleengine.StepTie{{StepsDir: "/steps", TraceID: "trace-9"}}; !reflect.DeepEqual(ties, want) {
-					t.Errorf("stop ties = %+v; want %+v", ties, want)
-				}
-				if note != tt.wantNote {
-					t.Errorf("note = %q; want %q", note, tt.wantNote)
-				}
-			})
-		}
+			if want := []shuttleengine.StepTie{{StepsDir: "/steps", TraceID: "trace-9"}}; !reflect.DeepEqual(ties, want) {
+				t.Errorf("stop ties = %+v; want %+v", ties, want)
+			}
+			if note != tt.wantNote {
+				t.Errorf("note = %q; want %q", note, tt.wantNote)
+			}
+		})
 	}
 }

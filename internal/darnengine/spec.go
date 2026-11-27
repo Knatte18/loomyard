@@ -6,7 +6,6 @@ package darnengine
 
 import (
 	"fmt"
-	"path"
 	"strings"
 	"time"
 
@@ -31,9 +30,6 @@ const (
 	makeChangeStencil      = "darn-fragment-make-change"
 	makeChangeGatedStencil = "darn-fragment-make-change-gated"
 )
-
-// reportStencil is the passage that has the writer commit the task's report under the configured directory.
-const reportStencil = "darn-fragment-report"
 
 // darnRole is the agent-name role the darn writer's spawn carries.
 const darnRole = "darn"
@@ -66,16 +62,11 @@ type DarnInputs struct {
 	// LanguageSkills are the hub's language skills the writer loads after the darn role's agents.yaml skills.
 	// Empty means none.
 	LanguageSkills []string
-	// SubagentModel is the model the writer on Claude gives the fresh subagents it hands work to.
-	// A writer on Codex runs them on its own model.
+	// SubagentModel is the model name the writer passes to the Agent tool for the fresh subagents it hands work to.
 	SubagentModel string
 	// GateFixed reports that a cold fixer clears the writer's verify gate,
-	// so the writer and its subagents run no gate, except the writer's single measuring run of one test class,
-	// and the writer asks its parent for a reported failure's single run.
+	// so the writer and its subagents run no gate and the writer asks its parent for a reported failure's single run.
 	GateFixed bool
-	// MeasureCall is the gate call the writer runs to measure one test class, in a form the hub's gate config can run.
-	// Only the Step 4 list of a writer whose verify gate has a cold fixer names it, so only a GateFixed writer needs it.
-	MeasureCall string
 }
 
 // DarnTable builds the seatengine.Table of one darn writer spawn: one lead that writes the change description.
@@ -86,12 +77,9 @@ type DarnInputs struct {
 // and the seat engine renders the parent and edit directives from its geometry.
 // The table carries no gate; the producer entry sets it.
 // With in.GateFixed, the prompt's Step 4 has the writer and its subagents run no gate.
-// The exceptions are the writer's single measuring run of one test class.
-// It serves a value only a test run shows, or a fact about how an external tool behaves.
-// They act only on what the verify gate's fixer leaves.
-// The writer asks its parent for the single run of the test a task's reported failure names.
+// They act only on what the verify gate's fixer leaves,
+// and the writer asks its parent for the single run of the test a task's reported failure names.
 // Otherwise the step has them run the gate after each commit.
-// With cfg.ReportDir set, a passage after the step has the writer commit the task's report under that directory.
 // A friction directive that fails to render is logged and left empty, because the note is optional bookkeeping.
 func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
 	required := []struct{ field, value string }{
@@ -104,9 +92,6 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 		{"StopMarkerPath", in.StopMarkerPath},
 		{"ConditionStopMarkerPath", in.ConditionStopMarkerPath},
 		{"SubagentModel", in.SubagentModel},
-	}
-	if in.GateFixed {
-		required = append(required, struct{ field, value string }{"MeasureCall", in.MeasureCall})
 	}
 	for _, r := range required {
 		if r.value == "" {
@@ -132,14 +117,9 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 		logger.Warn("darn: friction directive failed, continuing without one", "role", darnRole, "stencil", darnStencilName, "error", err)
 		frictionDirective = ""
 	}
-	engine := shuttleengine.NewModelChoice(resolved).Engine
-	makeChange, err := makeChangeList(in.StencilsDir, engine, in.GateFixed, in.SubagentModel, in.MeasureCall)
+	makeChange, err := makeChangeList(in.StencilsDir, in.GateFixed, in.SubagentModel)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("darn: DarnTable: Step 4 list: %w", err)
-	}
-	reportDirective, err := reportPassage(in.StencilsDir, engine, cfg.ReportDir, in.Slug)
-	if err != nil {
-		return seatengine.Table{}, fmt.Errorf("darn: DarnTable: report passage: %w", err)
 	}
 
 	return seatengine.Table{
@@ -155,11 +135,10 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 			"specs_dir":                  in.SpecsDir,
 			"prior_work":                 orNone(in.PriorWork),
 			"make_change":                makeChange,
-			"report_directive":           reportDirective,
 			"pattern_directive":          patternDirective,
 			friction.MarkerName:          frictionDirective,
 		},
-		Optional: []string{"pattern_directive", "project_directive", "report_directive", friction.MarkerName},
+		Optional: []string{"pattern_directive", "project_directive", friction.MarkerName},
 		Seats: []seatengine.Seat{{
 			Stencil:     darnStencilName,
 			ModelChoice: shuttleengine.NewModelChoice(resolved),
@@ -170,43 +149,23 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 	}, nil
 }
 
-// makeChangeList returns the writer prompt's Step 4 list, worded for engine, the engine the writer launches on.
-// It reads the list at call time from stencilsDir and fills subagentModel and measureCall into it;
-// only the Claude wording names that model, and only the gated fragment names the call.
+// makeChangeList returns the writer prompt's Step 4 list.
+// It reads the list at call time from stencilsDir and fills subagentModel into it.
 // It uses the gated fragment when gateFixed is set, and the ungated one otherwise.
-func makeChangeList(stencilsDir, engine string, gateFixed bool, subagentModel, measureCall string) (string, error) {
+func makeChangeList(stencilsDir string, gateFixed bool, subagentModel string) (string, error) {
 	name := makeChangeStencil
 	if gateFixed {
 		name = makeChangeGatedStencil
 	}
-	content, err := stencilstore.ReadForEngine(stencilsDir, engine, name)
+	content, err := stencilstore.Read(stencilsDir, name)
 	if err != nil {
 		return "", err
 	}
-	filled, err := stencil.Fill(content, map[string]string{"subagent_model": subagentModel, "measure_call": measureCall})
+	filled, err := stencil.Fill(content, map[string]string{"subagent_model": subagentModel})
 	if err != nil {
 		return "", fmt.Errorf("fill stencil %s: %w", name, err)
 	}
 	return strings.TrimSpace(string(filled)), nil
-}
-
-// reportPassage returns the passage that has the writer commit the task's report under reportDir, worded for engine.
-// The passage leads with a blank line, so it follows the Step 4 list on that list's line,
-// and it names `<reportDir>/<slug>.md` as the report's path when the task names none.
-// An empty reportDir returns "".
-func reportPassage(stencilsDir, engine, reportDir, slug string) (string, error) {
-	if reportDir == "" {
-		return "", nil
-	}
-	content, err := stencilstore.ReadForEngine(stencilsDir, engine, reportStencil)
-	if err != nil {
-		return "", err
-	}
-	filled, err := stencil.Fill(content, map[string]string{"report_dir": reportDir, "report_path": path.Join(reportDir, slug+".md")})
-	if err != nil {
-		return "", fmt.Errorf("fill stencil %s: %w", reportStencil, err)
-	}
-	return "\n\n" + strings.TrimSpace(string(filled)), nil
 }
 
 // orNone returns value, or noneToken when value is empty.

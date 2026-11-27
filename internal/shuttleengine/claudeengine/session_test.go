@@ -59,11 +59,6 @@ func TestIdleSession(t *testing.T) {
 			want:    true,
 		},
 		{
-			name:    "the prompt Claude Code leaves after an API error",
-			capture: "● API Error: Connection refused (ECONNREFUSED)\n\n" + rule + "\n❯ Resend your message to try again\n" + rule + "\n  ? for shortcuts\n",
-			want:    true,
-		},
-		{
 			name:    "draft line shaped like a labelled rule below the caret",
 			capture: rule + "\n❯ \n  ─── note ─\n  more text\n" + rule + "\n  ? for shortcuts\n",
 			want:    false,
@@ -182,9 +177,6 @@ func TestInputBoxText(t *testing.T) {
 	t.Parallel()
 
 	rule := "────────────────────────────────"
-	doneReplyLayout := "● ok\n\n✻ Cooked for 4s\n\n" + rule + "\n❯ \n" + rule + "\n  ⏵⏵ bypass permissions on (shift+tab to cycle)\n"
-	styledDoneReplyLayout := "● ok\n\n\x1b[2m✻ Cooked for 4s\x1b[0m\n\n" + rule + "\n❯ \n" + rule +
-		"\n  \x1b[2m⏵⏵ bypass permissions on (shift+tab to cycle)\x1b[0m\n"
 	tests := []struct {
 		name     string
 		capture  string
@@ -192,12 +184,7 @@ func TestInputBoxText(t *testing.T) {
 		wantOK   bool
 	}{
 		{"empty box", readPaneFixture(t, "pane-idle-empty.txt"), "", true},
-		{"empty box under a done reply and the bypass-permissions footer", doneReplyLayout, "", true},
-		{"styled empty box under a done reply and the bypass-permissions footer", plainBox(styledDoneReplyLayout), "", true},
 		{"draft in box", readPaneFixture(t, "pane-idle-draft.txt"), "please also run the linter", true},
-		{"the prompt Claude Code leaves after an API error", rule + "\n❯ Resend your message to try again\n" + rule + "\n  ? for shortcuts\n", "", true},
-		{"the API error prompt wrapped over two box lines", rule + "\n❯ Resend your message\n  to try again\n" + rule + "\n  ? for shortcuts\n", "", true},
-		{"a draft that only opens with the API error prompt", rule + "\n❯ Resend your message to try again later\n" + rule + "\n  ? for shortcuts\n", "Resend your message to try again later", true},
 		{"wrapped two-line draft", rule + "\n❯ first half of the draft\n  second half of the draft\n" + rule + "\n  ? for shortcuts\n", "first half of the draft second half of the draft", true},
 		{"collapsed paste placeholder", rule + "\n❯ [Pasted text #1 +42 lines]\n" + rule + "\n  ? for shortcuts\n", "[Pasted text #1 +42 lines]", true},
 		{"turn running over an empty box", readPaneFixture(t, "pane-turn-running.txt"), "", true},
@@ -220,28 +207,6 @@ func TestInputBoxText(t *testing.T) {
 		{"styled typed text followed by faint text", plainBox(styledBox("❯ hello \x1b[2mworld\x1b[0m")), "hello world", true},
 		{"styled faint paste placeholder", plainBox(styledBox("❯ \x1b[2m[Pasted text #1 +4 lines]\x1b[0m")), "[Pasted text #1 +4 lines]", true},
 		{"styled faint placeholder beside a lone percent mark", plainBox(styledBox("❯ \x1b[2mTry this\x1b[0m %")), "", true},
-		{
-			"a label too long for the pane cuts the top rule to the label and one glyph",
-			"✻ Sautéed for 6m 33s · done 11:15\n ly:creel-slack-post-silent-when-off:code-burler… ─\n❯ \n" + rule + "\n  ⏵⏵ bypass permissions on (shift+tab to cycle) ·\n",
-			"",
-			true,
-		},
-		{
-			"a label filling the top rule but for one glyph on each side",
-			"● ok scribe:prose, scribe:code-quality,\n  scribe:testing\n✻ Sautéed for 5s · done 11.08\n" +
-				"─ dop:models-torque-drag-adapter:plan-burler-review ─\n❯ \n" +
-				"─────────────────────────────────────────────────────\n  ⏵⏵ bypass permissions on (shift+tab to cycle) · …\n",
-			"",
-			true,
-		},
-		{
-			"a label filling the pane exactly leaves one rule glyph after it and none before",
-			"● ok\n ly:verify-budget-notice-no-slug:code-burler-review ─\n❯ \n" +
-				"─────────────────────────────────────────────────────\n  ⏵⏵ bypass permissions on (shift+tab to cycle) · …\n",
-			"",
-			true,
-		},
-		{"a cut label with no rule glyph after it is no top rule", " ly:creel-slack-post-silent-when-off:code-burler…\n❯ \n" + rule + "\n", "", false},
 	}
 	c := &Claude{}
 	for _, tt := range tests {

@@ -124,68 +124,14 @@ func (p *BurlerFixProducer) archive(round int, files []string) {
 }
 
 // archiveWholeRound archives round's review, fixer report and acceptance record together, so no record outlives its review.
-// It also drops the round's rerun record, which answered the retired review.
 func (p *BurlerFixProducer) archiveWholeRound(round int) {
 	p.archive(round, []string{roundReviewPath(p.runDir, round), roundFixerReportPath(p.runDir, round), roundAcceptancePath(p.runDir, round)})
-	p.clearRerun(round)
 }
 
 // archiveReport archives round's fixer report alone, keeping the accepted review and its record,
 // so a resume re-spawns the fixer without re-running the reviewer.
-// It records reason, or the cancellation when ctx is done,
-// so the next fixer over the same review is told why it runs again.
-// A call that archived no report keeps the report an earlier call recorded for the same review.
-func (p *BurlerFixProducer) archiveReport(ctx context.Context, round int, reason string) {
-	archived, err := archiveStaleOutput(roundFixerReportPath(p.runDir, round), p.now)
-	if err != nil {
-		logger.Warn("shedadapters: archive round outputs on exit failed", "producer", p.name, "engine", burlerFixEngineLabel, "round", round, "error", err)
-		return
-	}
-	if ctx.Err() != nil {
-		reason = "the run was cancelled while the fixer ran"
-	}
-	p.recordRerun(round, burlerengine.FixRerun{Reason: reason, Report: archived})
-}
-
-// recordRerun keeps rerun in round's snapshot record under the digest of the round's accepted review.
-// A rerun with no report keeps the report the record already holds for that digest.
-// A failed write is logged and never fails the round; the next fixer is then told nothing of the rerun.
-func (p *BurlerFixProducer) recordRerun(round int, rerun burlerengine.FixRerun) {
-	digest, _, err := readAcceptance(p.runDir, round)
-	if err == nil {
-		err = updateRoundSnapshot(p.runDir, round, func(rec *roundSnapshot, _ bool) {
-			report := rerun.Report
-			if report == "" && rec.FixerRerun != nil && rec.FixerRerun.ReviewDigest == digest {
-				report = rec.FixerRerun.Report
-			}
-			rec.FixerRerun = &fixerRerunRecord{ReviewDigest: digest, Reason: rerun.Reason, Report: report}
-		})
-	}
-	if err != nil {
-		logger.Warn("shedadapters: burler fix could not record why it set the fixer report aside", "producer", p.name, "engine", burlerFixEngineLabel, "round", round, "error", err)
-	}
-}
-
-// clearRerun drops the rerun record from round's snapshot record, when the snapshot holds one.
-// A failed write is logged and never fails the round.
-func (p *BurlerFixProducer) clearRerun(round int) {
-	if err := clearFixerRerun(p.runDir, round); err != nil {
-		logger.Warn("shedadapters: burler fix could not drop the rerun record of a retired round", "producer", p.name, "engine", burlerFixEngineLabel, "round", round, "error", err)
-	}
-}
-
-// recordedRerun returns the rerun round's snapshot record keeps for the accepted review whose digest is digest.
-// It returns the zero rerun when the record keeps none for that review, and logs a read failure the same way.
-func (p *BurlerFixProducer) recordedRerun(round int, digest string) burlerengine.FixRerun {
-	rec, _, err := readRoundSnapshot(p.runDir, round)
-	if err != nil {
-		logger.Warn("shedadapters: burler fix could not read why an earlier fixer report was set aside", "producer", p.name, "engine", burlerFixEngineLabel, "round", round, "error", err)
-		return burlerengine.FixRerun{}
-	}
-	if rec.FixerRerun == nil || rec.FixerRerun.ReviewDigest != digest {
-		return burlerengine.FixRerun{}
-	}
-	return burlerengine.FixRerun{Reason: rec.FixerRerun.Reason, Report: rec.FixerRerun.Report}
+func (p *BurlerFixProducer) archiveReport(round int) {
+	p.archive(round, []string{roundFixerReportPath(p.runDir, round)})
 }
 
 // Call runs one fix.
@@ -203,10 +149,6 @@ func (p *BurlerFixProducer) recordedRerun(round int, digest string) burlerengine
 // A live fixer is probed before anything is archived.
 // Archiving would rename the very file that a live fixer is about to write.
 // Only a stale fixer report is archived before an attempt.
-// A fixer that runs again over a review an earlier fixer session worked is told why, with the report that session left:
-// one archived before this attempt, or one an earlier call's failure exit archived for the same review.
-// A failure exit records its halt even when it archived no report, and keeps the report an earlier call recorded.
-// A retry whose first attempt left no report replaces the reason and keeps the report.
 // A fixer that finished with a failed gate archives the review, fixer report and acceptance record together.
 // So does a review that changed since it was accepted.
 // The Bouncer's next round, or the operator's goto to the review row, then reviews afresh.
@@ -252,7 +194,8 @@ func (p *BurlerFixProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 
 	// A row told to require fans runs the fixer fan its reviewer was spawned with,
 	// so a list edited between the halves cannot reach this round.
-	// A round with no recorded names is probed as a single fixer, and the refusal waits for that probe.
+	// A round with no recorded names can only hold a fixer an older binary spawned.
+	// It is probed as the single fixer that binary ran, and the refusal waits for that probe.
 	var unrecorded error
 	if p.requiresFans {
 		_, fixFan, recordedErr := readRecordedFans(p.runDir, round)
@@ -273,42 +216,23 @@ func (p *BurlerFixProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		return "", shedengine.OutputPointer{}, unrecorded
 	}
 
-	routed := p.opts.DecisionsRouted
-	err = updateRoundSnapshot(p.runDir, round, func(rec *roundSnapshot, _ bool) { rec.DecisionsRouted = &routed })
-	if err != nil {
-		logger.Warn("shedadapters: burler fix could not record whether decisions were routed in the round's snapshot record", "producer", p.name, "engine", burlerFixEngineLabel, "round", round, "error", err)
-	}
-
 	p.sendDecisionFindings(round, reviewPath)
 
-	rerun := p.recordedRerun(round, digest)
 	var priorResult burlerengine.FixResult
 	var priorToken string
 	for attempt := 1; attempt <= 2; attempt++ {
 		if attempt == 2 {
 			if cerr := cancelErr(ctx, p.name, burlerFixEngineLabel); cerr != nil {
-				p.archiveReport(ctx, round, "")
+				p.archiveReport(round)
 				return "", shedengine.OutputPointer{}, cerr
 			}
 		}
 
-		archived, err := archiveStaleOutput(profile.FixerReportPath, p.now)
-		if err != nil {
+		if err := archiveStaleOutputs([]string{profile.FixerReportPath}, p.now); err != nil {
 			if cerr := cancelErr(ctx, p.name, burlerFixEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
 			}
 			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: archive stale outputs before attempt %d: %w", p.name, burlerFixEngineLabel, round, attempt, err)
-		}
-		switch {
-		case archived != "" && attempt == 1:
-			rerun = burlerengine.FixRerun{Reason: "that session never finished the round", Report: archived}
-		case archived != "":
-			rerun = burlerengine.FixRerun{Reason: fmt.Sprintf("attempt %s's session ended with outcome %q before the round finished", priorToken, priorResult.Outcome), Report: archived}
-		case attempt == 2:
-			rerun.Reason = fmt.Sprintf("attempt %s's session ended with outcome %q", priorToken, priorResult.Outcome)
-		}
-		if archived != "" {
-			p.recordRerun(round, rerun)
 		}
 
 		attemptToken := strconv.Itoa(round)
@@ -316,7 +240,6 @@ func (p *BurlerFixProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 			attemptToken += "b"
 		}
 		attemptOpts := p.opts
-		attemptOpts.Rerun = rerun
 		attemptOpts.Round = attemptToken
 		attemptOpts.Review, attemptOpts.Fix = p.models.Pick(round)
 		// The run directory's base is the segment's own run_subdir recipe value,
@@ -353,10 +276,10 @@ func (p *BurlerFixProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 	return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: attempt loop exited without a verdict", p.name, burlerFixEngineLabel, round)
 }
 
-// reportFailureExit archives round's fixer report, recording err as the reason the next fixer is told.
+// reportFailureExit archives round's fixer report.
 // It returns the context's error if it was cancelled, and err otherwise.
 func (p *BurlerFixProducer) reportFailureExit(ctx context.Context, round int, err error) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	p.archiveReport(ctx, round, "the round halted: "+err.Error())
+	p.archiveReport(round)
 	if cerr := cancelErr(ctx, p.name, burlerFixEngineLabel); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
 	}
@@ -401,6 +324,9 @@ func (p *BurlerFixProducer) fixedExit(ctx context.Context, round int, result bur
 		}
 		logger.Warn("shedadapters: burler fix's gate did not pass", "producer", p.name, "engine", burlerFixEngineLabel, "round", round, "attempts", result.Gate.Attempts, "findingsPath", result.Gate.FindingsPath)
 		return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate), GateSpans: gateSpansOf(result.Gate), Reason: gateFailedReason(result.Gate, p.gateFindingsPath)}, nil
+	}
+	if result.Gate != nil {
+		clearGateFindings(p.gateFindingsPath)
 	}
 	if cerr := cancelErr(ctx, p.name, burlerFixEngineLabel); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr

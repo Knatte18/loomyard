@@ -79,21 +79,10 @@ type SyncOptions struct {
 	// The warp commit and the env-gated async push still run.
 	SkipGit  bool
 	SkipPush bool // Skip push operations if true; affects push only.
-	// BackoffSleep sleeps one delay of the push backoff between a push's retries; nil means sleep.
+	// BackoffSleep sleeps one push backoff delay before a missing branch or unreachable origin is recorded; nil means sleep.
 	BackoffSleep func(time.Duration)
 	// Notifier mails a failed push's record to the hub's orch; nil mails through the process's installed notifier.
 	Notifier PushNotifier
-	// RunSlug names the run a failed push of these options serves, so its failed-push record lists it in Runs.
-	// Empty means the push serves no run.
-	RunSlug string
-	// AfterRecords marks a task pair's code-side push sent once the run's own records side landed.
-	// Only such a push resets a code tip that no transition of the run names, when origin's code branch is ahead.
-	AfterRecords bool
-	// OwedUnrecorded makes a push of an owed class return its error and write no failed-push record or notice.
-	// The owed classes are transport, deferred and teardown_lock.
-	// A caller that retries the push itself needs no record of them.
-	// Every other class is recorded as without it.
-	OwedUnrecorded bool
 }
 
 // EnvSyncOptions reads FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH and returns the SyncOptions they describe.

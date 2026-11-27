@@ -200,12 +200,17 @@ func TestNewHub(t *testing.T) {
 						}
 					}
 
+					markerRel := filepath.ToSlash(configengine.BaseSparseMarkerRel())
+					if tracked := gitkit.LsFiles(t, h.BoardDir(), "--", markerRel); len(tracked) != 1 || tracked[0] != markerRel {
+						t.Errorf("git ls-files of the base-sparse marker in the board = %v; want [%s]", tracked, markerRel)
+					}
+
 					cfg, err := loomengine.LoadConfig(configengine.Dirs{Anchor: h.WeftBase, Board: h.BoardDir()}, "loom")
 					if err != nil {
 						t.Fatalf("loomengine.LoadConfig over the prime: %v", err)
 					}
-					if cfg.Discussion.Lenses != "twill-discussion" {
-						t.Errorf("Discussion.Lenses = %q; want the template's twill-discussion", cfg.Discussion.Lenses)
+					if cfg.DiscussionLenses != "twill-discussion" {
+						t.Errorf("DiscussionLenses = %q; want the template's twill-discussion", cfg.DiscussionLenses)
 					}
 				}},
 				{"SeedConfigRedundantSeedDoesNotFatal", func(t *testing.T) {
@@ -214,7 +219,7 @@ func TestNewHub(t *testing.T) {
 					// A different seed still lands on disk, which shows that --allow-empty did not turn the helper into a no-op.
 					// The clone leaves no loom file in the prime, so loom is seeded once before it is read back.
 					loomConfigPath := configengine.ConfigFile(h.WeftBase, "loom")
-					SeedConfig(t, h, map[string]string{"loom": "review:\n  max_bounces: 2\n"})
+					SeedConfig(t, h, map[string]string{"loom": "review_max_bounces: 2\n"})
 					original, err := os.ReadFile(loomConfigPath)
 					if err != nil {
 						t.Fatalf("read seeded loom config %s: %v", loomConfigPath, err)

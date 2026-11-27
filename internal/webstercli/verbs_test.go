@@ -55,7 +55,7 @@ func seedHubStencils(t *testing.T, hub string) {
 	t.Helper()
 	stencilsDir := fabricengine.StencilsDir(hub)
 	stencilkit.SeedInto(t, stencilsDir)
-	stencilkit.SeedEngineBlockCopies(t, stencilsDir, shuttlefake.EngineName)
+	stencilkit.SeedEditDirectiveCopies(t, stencilsDir, shuttlefake.EngineName)
 }
 
 func newScratchRepo(t *testing.T) string {
@@ -309,37 +309,6 @@ func TestBeginBatchCmd_HappyPath(t *testing.T) {
 	}
 	if bs.Kind != "fork" {
 		t.Errorf("loaded.Batches[1].Kind = %q; want \"fork\"", bs.Kind)
-	}
-}
-
-// TestBeginBatchCmd_PromptFollowsMasterEngine proves begin-batch words the fork prompt for Master's engine.
-// Master's engine is the one its model choice resolves to.
-// Recovery stays on the default engine, whose copies carry the Claude wording,
-// so a prompt worded for Recovery's engine or the default one fails it.
-func TestBeginBatchCmd_PromptFollowsMasterEngine(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Setenv("FABRIC_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
-	fx.CLI.roles[websterengine.RoleMaster] = shuttleengine.ModelChoice{Engine: "codex", Model: "master-model"}
-	fx.initState(t)
-
-	var out strings.Builder
-	if exitCode := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"1"}); exitCode != 0 {
-		t.Fatalf("begin-batch 1 = %d; want 0, output: %s", exitCode, out.String())
-	}
-	var envelope struct {
-		PromptPath string `json:"prompt_path"`
-	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &envelope); err != nil {
-		t.Fatalf("decode begin-batch envelope %q: %v", out.String(), err)
-	}
-	prompt, err := os.ReadFile(envelope.PromptPath)
-	if err != nil {
-		t.Fatalf("read the fork prompt %q: %v", envelope.PromptPath, err)
-	}
-
-	if !strings.Contains(string(prompt), "your developer instructions") || strings.Contains(string(prompt), "your system prompt") {
-		t.Errorf("fork prompt = %q; want Master's engine wording (your developer instructions) and not the other engine's (your system prompt)", prompt)
 	}
 }
 
@@ -1392,7 +1361,7 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 		t.Errorf("stat of the waiting report = %v; want it archived", err)
 	}
 	var outResume strings.Builder
-	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outResume, []string{"1", "--wait", "1ns", "--answer", "the timeout is raised"}); code != 0 || !strings.Contains(outResume.String(), `"status":"running"`) {
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outResume, []string{"1", "--wait", "1ns"}); code != 0 || !strings.Contains(outResume.String(), `"status":"running"`) {
 		t.Fatalf("recover-batch 1 over a waiting batch at two recoveries = %d, output: %s; want a running respawn", code, outResume.String())
 	}
 	loaded, err = websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
@@ -1664,7 +1633,7 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 					seedPersistentPreRunConfig(t, h, strings.Replace(batcher.ConfigTemplate(), "orientation: 31400", "master_base: 52000", 1))
 				},
 				wantConfig:   true,
-				wantContains: []string{"batcher.yaml did not load", "master_base", `or run \"lym config reconcile --apply\", which removes a key the template lacks, then re-run the verb`},
+				wantContains: []string{"batcher.yaml did not load", "master_base", `way forward: run \"lym config reconcile --apply\", then re-run the verb`},
 			},
 			{
 				name: "an unreadable batcher.yaml",

@@ -4,6 +4,7 @@
 package reportengine
 
 import (
+	"errors"
 	"fmt"
 	"path"
 	"slices"
@@ -12,9 +13,9 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -101,31 +102,11 @@ type landingJoiner struct {
 	// claimed maps a chain index to the claims on it.
 	claimed map[int][]landingClaim
 
-	// pairOpened maps the index in `landingInputs.selected` of a tag the exact join found no task commit for.
-	// The value is the committer time of the commit that opened its pair, zero when the history ended before one.
-	pairOpened map[int]time.Time
-
-	// checkpoints are the committer times of the landing checkpoint commits per slug, oldest first.
-	checkpoints map[string][]time.Time
-
-	// board is the board history the time join and the landing kinds read.
-	board *boardHistory
-}
-
-// landingWalkStart returns the time the walk of the parent branch opens at:
-// Options.FreshDays before Options.Since, so a fix's blamed lines can reach landings just before the window.
-// It is zero, the whole history, for a zero Since.
-func landingWalkStart(opts Options) time.Time {
-	if opts.Since.IsZero() {
-		return time.Time{}
-	}
-	return opts.Since.AddDate(0, 0, -opts.FreshDays)
+	board      []gitrepo.LogCommit
+	boardTasks map[string][]boardengine.Task
 }
 
 // readLandings fills Report.Landings and each run's Landing and landing LLM step.
-// It reads the board's history once.
-// The read starts at the parent walk's start or the oldest time-join window's opening, whichever is older.
-// A landing's slug that the board in effect at that start lacks takes its labels from older board commits.
 func readLandings(src Sources, opts Options, report *Report) error {
 	j := &landingJoiner{
 		src:        src,
@@ -135,13 +116,16 @@ func readLandings(src Sources, opts Options, report *Report) error {
 		absorbed:   map[int]bool{},
 		owner:      map[string]string{},
 		claimed:    map[int][]landingClaim{},
-		pairOpened: map[int]time.Time{},
+		boardTasks: map[string][]boardengine.Task{},
 	}
 	for i := range report.Runs {
 		report.Runs[i].LLMSteps[LLMStepsLanding] = 0
 	}
 
-	since := landingWalkStart(opts)
+	since := opts.Since
+	if !since.IsZero() {
+		since = since.AddDate(0, 0, -opts.FreshDays)
+	}
 	newestFirst, err := src.Code.Log(src.ParentTip, gitrepo.LogQuery{FirstParent: true, Since: since})
 	if err != nil {
 		return fmt.Errorf("reportengine: walk the parent branch: %w", err)
@@ -151,94 +135,23 @@ func readLandings(src Sources, opts Options, report *Report) error {
 		j.chain = append(j.chain, newestFirst[i])
 	}
 
+	board, err := src.Board.Log(src.BoardTip, gitrepo.LogQuery{})
+	if err != nil {
+		return fmt.Errorf("reportengine: walk the board branch: %w", err)
+	}
+	j.board = board
+
 	attempted, err := j.joinExact()
 	if err != nil {
 		return err
 	}
-	if j.checkpoints, err = readCheckpoints(src.Records, src.RecordsTip, j.checkpointFloor(since)); err != nil {
+	if err := j.joinTime(attempted); err != nil {
 		return err
 	}
-	owners := j.timeJoinOwners(attempted)
-	floor := since
-	for _, owner := range owners {
-		if !floor.IsZero() && owner.open.Before(floor) {
-			floor = owner.open
-		}
-	}
-	if j.board, err = readBoardHistory(src.Board, src.BoardTip, floor); err != nil {
+	if err := j.assemble(); err != nil {
 		return err
 	}
-	j.joinTime(owners)
-	if err := j.board.readOlderLabels(j.slugsLackingLabels()); err != nil {
-		return err
-	}
-	j.assemble()
 	return j.judgeFreshness()
-}
-
-// readCheckpoints returns the committer times of the landing checkpoint commits per slug, oldest first.
-// It reads the records branch's first-parent line from floor to the tip.
-// A zero floor reads the whole history.
-func readCheckpoints(records Reader, tip string, floor time.Time) (map[string][]time.Time, error) {
-	commits, err := records.Log(tip, gitrepo.LogQuery{FirstParent: true, Since: floor})
-	if err != nil {
-		return nil, fmt.Errorf("reportengine: walk the records branch for landing checkpoints: %w", err)
-	}
-	checkpoints := map[string][]time.Time{}
-	for i := len(commits) - 1; i >= 0; i-- {
-		subject, _, _ := strings.Cut(commits[i].Message, "\n")
-		if slug, ok := loomengine.LandingCheckpointSlug(subject); ok {
-			checkpoints[slug] = append(checkpoints[slug], commits[i].Committed)
-		}
-	}
-	return checkpoints, nil
-}
-
-// checkpointFloor returns the time the walk for landing checkpoints opens at.
-// That is since, the start of the parent walk.
-// An older opening of a pair a tag found no task commit for moves it back.
-// It is zero, the whole history, when since is zero or such a pair's opening was not reached.
-func (j *landingJoiner) checkpointFloor(since time.Time) time.Time {
-	floor := since
-	for _, opened := range j.pairOpened {
-		if opened.IsZero() {
-			return time.Time{}
-		}
-		if !floor.IsZero() && opened.Before(floor) {
-			floor = opened
-		}
-	}
-	return floor
-}
-
-// slugsLackingLabels returns the slugs, sorted, that claim a landing kept in the report.
-// Each has no entry in the board commits read at the landing's time.
-func (j *landingJoiner) slugsLackingLabels() []string {
-	lacking := map[string]bool{}
-	for index, commit := range j.chain {
-		held := j.claimed[index]
-		if j.absorbed[index] || commit.Committed.Before(j.opts.Since) || len(held) != 1 {
-			continue
-		}
-		if _, found := j.board.labelsAt(held[0].slug, commit.Committed); !found {
-			lacking[held[0].slug] = true
-		}
-	}
-	slugs := make([]string, 0, len(lacking))
-	for slug := range lacking {
-		slugs = append(slugs, slug)
-	}
-	sort.Strings(slugs)
-	return slugs
-}
-
-// taskCommitSearch is the outcome of a walk down a tag's history for a task-commit trailer.
-// It holds the task commit when found.
-// Otherwise openedAt is the committer time of the commit that opened the slug's pair, zero when the history ended first.
-type taskCommitSearch struct {
-	task     string
-	found    bool
-	openedAt time.Time
 }
 
 // taskCommitBelow returns the task commit named by the newest trailer in the first-parent history of tagCommit.
@@ -246,23 +159,23 @@ type taskCommitSearch struct {
 // A trailer below that commit is the parent's and names one of the parent's landings, so the walk never reads it.
 // It walks in growing pages, re-reading from the tag.
 // It stops at a trailer, at the pair's opening commit, or when a page comes back short.
-func (j *landingJoiner) taskCommitBelow(tagCommit, slug string) (taskCommitSearch, error) {
+func (j *landingJoiner) taskCommitBelow(tagCommit, slug string) (string, bool, error) {
 	for limit := firstTrailerPage; ; limit *= 2 {
 		commits, err := j.src.Records.Log(tagCommit, gitrepo.LogQuery{FirstParent: true, Limit: limit})
 		if err != nil {
-			return taskCommitSearch{}, fmt.Errorf("reportengine: walk the history of %s: %w", tagCommit, err)
+			return "", false, fmt.Errorf("reportengine: walk the history of %s: %w", tagCommit, err)
 		}
 		for _, commit := range commits {
 			subject, _, _ := strings.Cut(commit.Message, "\n")
 			if opened, ok := fabricengine.OriginRecordSlug(subject); ok && opened == slug {
-				return taskCommitSearch{openedAt: commit.Committed}, nil
+				return "", false, nil
 			}
 			if sha, ok := fabricengine.TaskCommitOf(commit.Message); ok {
-				return taskCommitSearch{task: sha, found: true}, nil
+				return sha, true, nil
 			}
 		}
 		if len(commits) < limit {
-			return taskCommitSearch{}, nil
+			return "", false, nil
 		}
 	}
 }
@@ -299,17 +212,16 @@ func (j *landingJoiner) joinExact() (map[int]bool, error) {
 	claims := map[int][]int{}
 	var order []int
 	for i, selected := range j.report.inputs.selected {
-		search, err := j.taskCommitBelow(selected.tag.Commit, selected.slug)
+		task, found, err := j.taskCommitBelow(selected.tag.Commit, selected.slug)
 		if err != nil {
 			return nil, err
 		}
-		if !search.found {
-			j.pairOpened[i] = search.openedAt
+		if !found {
 			continue
 		}
 		attempted[i] = true
-		taskOf[i] = search.task
-		index := j.landingOfTask(search.task)
+		taskOf[i] = task
+		index := j.landingOfTask(task)
 		if index < 0 {
 			continue
 		}
@@ -354,6 +266,47 @@ func (j *landingJoiner) absorbBranches(order []int, claims map[int][]int, taskOf
 	}
 }
 
+// boardDoneAfter returns the time of the first board commit after open whose board shows slug's entry done.
+func (j *landingJoiner) boardDoneAfter(slug string, open time.Time) (time.Time, bool, error) {
+	for k := len(j.board) - 1; k >= 0; k-- {
+		commit := j.board[k]
+		if !commit.Committed.After(open) {
+			continue
+		}
+		tasks, err := j.tasksAt(commit.SHA)
+		if err != nil {
+			return time.Time{}, false, err
+		}
+		for _, task := range tasks {
+			if task.Slug == slug && task.Status != nil && *task.Status == boardStatusDone {
+				return commit.Committed, true, nil
+			}
+		}
+	}
+	return time.Time{}, false, nil
+}
+
+// tasksAt returns the board entries at a board commit.
+// A commit holding no board, or one that does not parse, holds none.
+func (j *landingJoiner) tasksAt(sha string) ([]boardengine.Task, error) {
+	if tasks, ok := j.boardTasks[sha]; ok {
+		return tasks, nil
+	}
+	data, err := j.src.Board.FileAtRevision(sha, boardengine.BoardFileRel())
+	var tasks []boardengine.Task
+	switch {
+	case errors.Is(err, gitrepo.ErrPathNotAtRevision):
+	case err != nil:
+		return nil, fmt.Errorf("reportengine: read the board at %s: %w", sha, err)
+	default:
+		if parsed, parseErr := boardengine.ParseBoardTasks(data); parseErr == nil {
+			tasks = parsed
+		}
+	}
+	j.boardTasks[sha] = tasks
+	return tasks, nil
+}
+
 // newestCheckpoint returns the newest of the times that lie after floor and at or before ceiling.
 // A nil floor or ceiling leaves that bound open.
 func newestCheckpoint(times []time.Time, floor, ceiling *time.Time) (time.Time, bool) {
@@ -365,19 +318,17 @@ func newestCheckpoint(times []time.Time, floor, ceiling *time.Time) (time.Time, 
 	return time.Time{}, false
 }
 
-// windowOwner is a run the time join maps: its slug, its tag and index in `landingInputs.selected` when it has one,
-// and the landing checkpoint that opens its window.
-type windowOwner struct {
-	slug     string
-	tag      string
-	selected int
-	open     time.Time
-}
-
-// timeJoinOwners returns the runs the time join maps, each with the checkpoint that opens its window:
+// joinTime maps two groups through their landing checkpoint and the board's done mark:
 // the tags the exact join left unmapped, and the slugs whose pair has checkpoints after their newest tag.
-// A tag whose exact join was attempted is not retried.
-func (j *landingJoiner) timeJoinOwners(attempted map[int]bool) []windowOwner {
+// A tag whose exact join was attempted is not retried;
+// two runs claiming one commit are both left unmapped, and the clash is a finding.
+func (j *landingJoiner) joinTime(attempted map[int]bool) error {
+	type windowOwner struct {
+		slug     string
+		tag      string
+		selected int
+		open     time.Time
+	}
 	var owners []windowOwner
 	taggedSlugs := map[string]bool{}
 	for i, selected := range j.report.inputs.selected {
@@ -386,12 +337,12 @@ func (j *landingJoiner) timeJoinOwners(attempted map[int]bool) []windowOwner {
 			continue
 		}
 		ceiling := selected.tag.Committed
-		if open, ok := newestCheckpoint(j.checkpoints[selected.slug], selected.previous, &ceiling); ok {
+		if open, ok := newestCheckpoint(j.report.inputs.checkpoints[selected.slug], selected.previous, &ceiling); ok {
 			owners = append(owners, windowOwner{slug: selected.slug, tag: selected.tag.Name, selected: i, open: open})
 		}
 	}
 	var untagged []string
-	for slug := range j.checkpoints {
+	for slug := range j.report.inputs.checkpoints {
 		untagged = append(untagged, slug)
 	}
 	sort.Strings(untagged)
@@ -400,22 +351,18 @@ func (j *landingJoiner) timeJoinOwners(attempted map[int]bool) []windowOwner {
 		if newest, ok := j.report.inputs.newestTag[slug]; ok {
 			floor = &newest
 		}
-		if open, ok := newestCheckpoint(j.checkpoints[slug], floor, nil); ok {
+		if open, ok := newestCheckpoint(j.report.inputs.checkpoints[slug], floor, nil); ok {
 			owners = append(owners, windowOwner{slug: slug, selected: -1, open: open})
 		}
 	}
-	return owners
-}
 
-// joinTime maps each owner to the first unclaimed parent-branch commit in its window.
-// The window opens at the owner's opening.
-// It closes at the first board commit after it that shows the slug's entry done.
-// Two runs claiming one commit are both left unmapped, and the clash is a finding.
-func (j *landingJoiner) joinTime(owners []windowOwner) {
 	claims := map[int][]windowOwner{}
 	var order []int
 	for _, owner := range owners {
-		closed, found := j.board.doneAfter(owner.slug, owner.open)
+		closed, found, err := j.boardDoneAfter(owner.slug, owner.open)
+		if err != nil {
+			return err
+		}
 		if !found {
 			continue
 		}
@@ -444,6 +391,26 @@ func (j *landingJoiner) joinTime(owners []windowOwner) {
 		holder := holders[0]
 		j.claimed[index] = append(j.claimed[index], landingClaim{slug: holder.slug, tag: holder.tag, selected: holder.selected, join: JoinTime})
 	}
+	return nil
+}
+
+// labelsOf returns the labels of slug's entry in the newest board commit at or before at that holds it.
+func (j *landingJoiner) labelsOf(slug string, at time.Time) ([]string, bool, error) {
+	for _, commit := range j.board {
+		if commit.Committed.After(at) {
+			continue
+		}
+		tasks, err := j.tasksAt(commit.SHA)
+		if err != nil {
+			return nil, false, err
+		}
+		for _, task := range tasks {
+			if task.Slug == slug {
+				return task.Labels, true, nil
+			}
+		}
+	}
+	return nil, false, nil
 }
 
 // kindOfLabels maps board labels to a landing kind.
@@ -458,7 +425,7 @@ func kindOfLabels(labels []string) string {
 }
 
 // assemble builds Report.Landings from the walk and the claims, and points each mapped full run at its landing.
-func (j *landingJoiner) assemble() {
+func (j *landingJoiner) assemble() error {
 	for index, commit := range j.chain {
 		if j.absorbed[index] || commit.Committed.Before(j.opts.Since) {
 			continue
@@ -469,7 +436,10 @@ func (j *landingJoiner) assemble() {
 		if len(held) == 1 {
 			claim := held[0]
 			landing.Slug, landing.Tag, landing.Join = claim.slug, claim.tag, claim.join
-			labels, found := j.board.labelsAt(claim.slug, commit.Committed)
+			labels, found, err := j.labelsOf(claim.slug, commit.Committed)
+			if err != nil {
+				return err
+			}
 			landing.Kind = kindOfLabels(labels)
 			if !found {
 				j.report.Findings = append(j.report.Findings, Finding{Tag: claim.tag, Error: fmt.Sprintf("no board commit holds an entry for the slug %q", claim.slug)})
@@ -478,6 +448,7 @@ func (j *landingJoiner) assemble() {
 		}
 		j.report.Landings = append(j.report.Landings, landing)
 	}
+	return nil
 }
 
 // applyRun sets what the claiming tag says about its landing:

@@ -52,7 +52,6 @@ func driveConflictedSquashMerge(t *testing.T, dir string) {
 // The probe reads only the weft's own .git state.
 // A live, non-conflicting merge staged in the weft (MERGE_HEAD only) reports true;
 // it is then aborted, so the weft is clean again.
-// A cherry-pick stopped in the weft reports false, since only a merge counts; it is then aborted.
 // A conflicted `git merge --squash` in the weft writes no MERGE_HEAD and reports true;
 // the MERGE_HEAD probe alone cannot reach it, so neither probe kind is redundant.
 // The steps run serially on one pair.
@@ -91,23 +90,6 @@ func TestMergeStateActive(t *testing.T) {
 		requireMergeStateActive(t, true, "a live weft MERGE_HEAD")
 
 		gitkit.MustRun(t, h.PrimeRecords(), "git", "merge", "--abort")
-	})
-
-	t.Run("weft cherry-pick in progress reports false", func(t *testing.T) {
-		weft := h.PrimeRecords()
-		current := gitkit.CurrentBranch(t, weft)
-		gitkit.MustRun(t, weft, "git", "checkout", "-q", "-b", "picked-branch")
-		gitkit.MustRun(t, weft, "git", "commit", "-q", "--allow-empty", "-m", "picked commit")
-		gitkit.MustRun(t, weft, "git", "checkout", "-q", current)
-		pick := exec.Command("git", "cherry-pick", "picked-branch")
-		pick.Dir = weft
-		// An empty pick stops with CHERRY_PICK_HEAD set and exits non-zero, intentionally ignored.
-		_, _ = pick.CombinedOutput()
-		gitkit.MustRun(t, weft, "git", "rev-parse", "--verify", "-q", "CHERRY_PICK_HEAD")
-
-		requireMergeStateActive(t, false, "a weft cherry-pick in progress")
-
-		gitkit.MustRun(t, weft, "git", "cherry-pick", "--abort")
 	})
 
 	t.Run("weft conflicted squash without MERGE_HEAD reports true", func(t *testing.T) {

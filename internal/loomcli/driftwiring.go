@@ -8,15 +8,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
-	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -25,7 +22,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/selfexec"
@@ -79,41 +75,15 @@ func driftRecordsDeps(location *lymcwd.Location) driftengine.Deps {
 	}
 }
 
-// driftJudgeSessionOpen returns the seam that reports whether location's scope record holds an open judge session.
-// A worktree with no scope record has none, and the read then creates no directory.
-func driftJudgeSessionOpen(location *lymcwd.Location) func() (bool, error) {
-	return func() (bool, error) {
-		paths := driftengine.NewPaths(location.AnchorPath())
-		if _, err := os.Stat(paths.Scope); errors.Is(err, fs.ErrNotExist) {
-			return false, nil
-		}
-		scope, found, err := driftengine.ReadScope(paths)
-		if err != nil {
-			return false, fmt.Errorf("read the drift scope record: %w", err)
-		}
-		return found && scope.JudgeSession.Open, nil
-	}
-}
-
-// runAutonomy reports whether autonomy is on for the run of l's worktree, read at the moment of the call.
-func runAutonomy(l *lymcwd.Location) bool {
-	return hubgeom.Autonomy(l, l.WorktreeName)
-}
-
 // driftDeps builds the seams the Drift rows read over location's worktree.
 // statusPath and statusLockPath locate the run status.
-// The config seam answers the loaded config with the run's autonomy applied, read at each call.
-// The seat runner, clock, gate findings file and review base are left unset.
+// The seat runner, clock and gate findings file are left unset.
 // The registry entries fill them from the recipe's environment.
 func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tables driftTables) driftengine.Deps {
 	paths := driftengine.NewPaths(location.AnchorPath())
 	pool, waitDir := hubgeom.GateSlots(location), gateslot.WaitDir(location.AnchorPath())
 	config := func() (driftengine.Config, error) {
-		cfg, err := driftengine.LoadConfig(fabricengine.ConfigDirs(location))
-		if err != nil {
-			return driftengine.Config{}, err
-		}
-		return driftengine.ApplyAutonomy(cfg, runAutonomy(location)), nil
+		return driftengine.LoadConfig(fabricengine.ConfigDirs(location))
 	}
 	status := func() (shedengine.Status, error) {
 		st, found, err := state.ReadJSON[shedengine.Status](statusPath, statusLockPath)
@@ -169,20 +139,10 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 		WorktreeRoot: location.WorktreePath(),
 		Config:       config,
 		Status:       status,
-		// The judge's asks go to the orch NotifyParent's routing resolves.
-		// They are signed as lym's loom program and tagged with the pair's run.
-		JudgeParent: &driftengine.JudgeParentSeat{
-			Files:   burlerengine.ParentReviewFilesOf(location.AnchorPath()),
-			Slug:    seedSlug(location.WorktreeName),
-			Resolve: func() (string, bool, error) { return orchcli.ParentStrand(location) },
-			Post: func(strand, line string) error {
-				return orchcli.PostAsProgram(location, strand, loomProgram, line, creelengine.PostTags{Run: location.WorktreeName})
-			},
-		},
-		Rows:        tables.rows,
-		Head:        head,
-		BranchPoint: branchPoint,
-		DirtyPaths:  dirtyPaths,
+		Rows:         tables.rows,
+		Head:         head,
+		BranchPoint:  branchPoint,
+		DirtyPaths:   dirtyPaths,
 		Commit: func(relPaths []string) error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, relPaths, fmt.Sprintf("loom: drift records for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
@@ -204,27 +164,6 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 				return nil, err
 			}
 			return fabric.CommitLog(base, "HEAD")
-		},
-		ChangedFiles: func(base string) ([]fabricengine.FileDiff, error) {
-			fabric, err := fabricengine.Open(location)
-			if err != nil {
-				return nil, err
-			}
-			return fabric.CommittedFileDiffs(base)
-		},
-		RangeDiff: func(base string) (string, error) {
-			fabric, err := fabricengine.Open(location)
-			if err != nil {
-				return "", err
-			}
-			return fabric.ReadCommittedDiff(base)
-		},
-		CommitMessages: func(base string) ([]string, error) {
-			fabric, err := fabricengine.Open(location)
-			if err != nil {
-				return nil, err
-			}
-			return fabric.CommitMessages(base, "HEAD")
 		},
 		ExpectTable: func(listing string) (seatengine.Table, error) {
 			cfg, err := config()
@@ -307,47 +246,7 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 		},
 		JudgeSnapshotDir: filepath.Join(fabricengine.HubScratchDir(location.HubPath), lymdirs.DriftJudgeDirName, seedSlug(location.WorktreeName)),
 		LoomRecordsDirs:  loomRecordsDirs(location, tables.runID),
-		DecisionRecord:   tables.decisionRecordPath,
-		LockDecisionRecord: func() (func() error, error) {
-			return holdDecisionLock(tables.decisionRecordPath)
-		},
-		ReplacedDecisionRecord: replacedDecisionRecord(location, tables.decisionRecordPath),
-		EndRoles:               tables.endRoles,
-	}
-}
-
-// replacedDecisionRecord returns the seam that reads the decision record at recordPath in location's worktree.
-// It reads the record as the newest records commit whose replace trailer names it wrote it.
-// That commit must have been made after the records commit sinceHead, and an empty sinceHead admits any commit.
-// found is false when no commit's replace trailer names the record, or the newest such commit is not after sinceHead.
-func replacedDecisionRecord(location *lymcwd.Location, recordPath string) func(sinceHead string) ([]byte, bool, error) {
-	return func(sinceHead string) ([]byte, bool, error) {
-		rel, err := filepath.Rel(location.AnchorPath(), recordPath)
-		if err != nil {
-			return nil, false, fmt.Errorf("relate the decision record to the anchor: %w", err)
-		}
-		rel = filepath.ToSlash(rel)
-		commits, err := fabricengine.TrailerCommits(location, recordReplacedTrailerKey)
-		if err != nil {
-			return nil, false, err
-		}
-		for _, commit := range commits {
-			if path, _, ok := parseRecordReplaced(commit.Value); !ok || path != rel {
-				continue
-			}
-			if sinceHead != "" {
-				after, err := fabricengine.RecordsCommitIsAfter(location, sinceHead, commit.SHA)
-				if err != nil {
-					return nil, false, err
-				}
-				// Commits come newest first, so every older replace is before the snapshot too.
-				if !after {
-					return nil, false, nil
-				}
-			}
-			return fabricengine.AnchoredFileAt(location, commit.SHA, rel)
-		}
-		return nil, false, nil
+		EndRoles:         tables.endRoles,
 	}
 }
 

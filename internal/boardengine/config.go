@@ -86,23 +86,17 @@ type Outputs struct {
 	DesignPrefix string
 	// DefaultRecipe is the recipe a task with no recipe field runs.
 	DefaultRecipe string
-	// Types is the configured type-label order, which the renderer sorts note sections by.
+	// Types is the configured type-label order, which the renderer sorts Notes sections by.
 	Types []string
-	// Labels is the configured area-label order, which the view projection lists as the board's areas.
-	Labels []string
-	// BeamModes reads the beam modes a render writes to disk; nil writes no mode line.
-	BeamModes BeamModeReader
 }
 
-// Outputs returns the values a board's rendering reads from c, with the beam mode reader this process installed.
+// Outputs returns the values a board's rendering reads from c.
 func (c Config) Outputs() Outputs {
 	return Outputs{
 		Readme:        c.Readme,
 		DesignPrefix:  c.DesignPrefix,
 		DefaultRecipe: c.DefaultRecipe,
 		Types:         labelNames(c.Types),
-		Labels:        labelNames(c.Labels),
-		BeamModes:     installedReader(),
 	}
 }
 
@@ -213,8 +207,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 // A prefix that starts with "decision-" is refused too.
 func checkDesignPrefix(prefix string) error {
 	if strings.HasPrefix(decisionFilePrefix, prefix) || strings.HasPrefix(prefix, decisionFilePrefix) {
-		name := configengine.KeyName("board", "design_prefix")
-		return fmt.Errorf("%s %q would name a design file %s<slug>%s, the name of an entry's decision record: set %s in board.yaml to another value, such as \"design-\", with \"lym config board --set design_prefix=design-\"", name, prefix, decisionFilePrefix, decisionFileSuffix, name)
+		return fmt.Errorf("board.yaml: design_prefix %q would name a design file %s<slug>%s, the name of an entry's decision record: set design_prefix in board.yaml to another value, such as \"design-\", with \"lym config board --set design_prefix=design-\"", prefix, decisionFilePrefix, decisionFileSuffix)
 	}
 	return nil
 }

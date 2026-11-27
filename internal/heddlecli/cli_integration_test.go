@@ -780,29 +780,6 @@ func TestHeddleCLI(t *testing.T) {
 		}
 	})
 
-	t.Run("RenderRecordsTheImportsInsideTheWorktreeRoot", func(t *testing.T) {
-		t.Parallel()
-		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		cwd := primeCwd(h)
-		seedStore(t, h, map[string][]string{"rules": {"codex-file"}})
-		writeFile(t, filepath.Join(h.PrimeWorktree(), "CLAUDE.md"), "@docs/imported.md\n")
-		if err := os.MkdirAll(filepath.Join(h.PrimeWorktree(), "docs"), 0o755); err != nil {
-			t.Fatalf("MkdirAll: %v", err)
-		}
-		writeFile(t, filepath.Join(h.PrimeWorktree(), "docs", "imported.md"), "imported text\n")
-
-		requireOK(t, runVerb((&recorder{}).cli(), cwd, "", "render"))
-
-		event, err := fabricengine.EventFor(h.Location, nil)
-		if err != nil {
-			t.Fatalf("EventFor: %v", err)
-		}
-		record, err := os.ReadFile(filepath.Join(event.ScratchDir, "heddle", "codex-file-imports.json"))
-		if err != nil || !strings.Contains(string(record), `"docs/imported.md"`) {
-			t.Errorf("import record = %q, %v; want it to list docs/imported.md, which only a render given the worktree root records", record, err)
-		}
-	})
-
 	t.Run("RenderWarnsOfAnUnmarkedFile", func(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

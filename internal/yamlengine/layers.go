@@ -447,59 +447,6 @@ func Prune(template, existing []byte, perNameMaps []string, openMaps ...string) 
 	return pruned, removed, kept, nil
 }
 
-// RemoveKeys removes the value at each dotted key from existing, whatever the template holds, and returns the result.
-// A mapping the removal leaves empty is removed with its key, and an existing left with nothing returns empty bytes.
-// A key existing does not hold is an error naming it, and nothing is removed.
-// A key named more than once is removed once.
-func RemoveKeys(existing []byte, keys []string) ([]byte, error) {
-	doc, root, err := parseMappingRoot(existing, "existing")
-	if err != nil {
-		return nil, err
-	}
-	var missing []string
-	seen := make(map[string]bool, len(keys))
-	for _, key := range keys {
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		if root == nil || !removeKey(root, strings.Split(key, ".")) {
-			missing = append(missing, key)
-		}
-	}
-	if len(missing) > 0 {
-		return nil, fmt.Errorf("no key %s in the file", strings.Join(missing, ", "))
-	}
-	if len(root.Content) == 0 {
-		return []byte{}, nil
-	}
-	removed, err := yaml.Marshal(doc)
-	if err != nil {
-		return nil, fmt.Errorf("marshal YAML: %w", err)
-	}
-	return removed, nil
-}
-
-// removeKey removes the entry at the path of segments under mapping and reports whether the mapping held it.
-// A mapping on the path left empty is removed with its key.
-func removeKey(mapping *yaml.Node, segments []string) bool {
-	at := mappingIndex(mapping, segments[0])
-	if at < 0 {
-		return false
-	}
-	if len(segments) > 1 {
-		child := mapping.Content[at+1]
-		if child.Kind != yaml.MappingNode || !removeKey(child, segments[1:]) {
-			return false
-		}
-		if len(child.Content) > 0 {
-			return true
-		}
-	}
-	mapping.Content = slices.Delete(mapping.Content, at, at+2)
-	return true
-}
-
 // pruneMapping removes in place, from the existing mapping, every unit the template mapping does not know.
 // It records the path of each removed unit.
 // A name under a per-name map stays whole, and one the template lacks is recorded in kept.

@@ -129,12 +129,12 @@ func TestShippedRecipes_FanSettingsAgreeWithinSegment(t *testing.T) {
 			autoAccept      string
 		}
 		perches := []perch{
-			{loom, "Discussion-Review", "loom.discussion.reviewer_fan", "loom.discussion.fixer_fan", "loom.discussion.auto_accept"},
-			{loom, "Plan-Review", "tapestry.plan.reviewer_fan", "tapestry.plan.fixer_fan", "tapestry.plan.auto_accept"},
-			{loom, "Code-Review", "loom.code.reviewer_fan", "loom.code.fixer_fan", "loom.code.auto_accept"},
-			{darn, "Code-Review", "loom.code.reviewer_fan", "loom.code.fixer_fan", "loom.code.auto_accept"},
-			{arras, "Discussion-Review", "loom.discussion.reviewer_fan", "loom.discussion.fixer_fan", "loom.discussion.auto_accept"},
-			{arras, "Raddle-Review", "loom.split.reviewer_fan", "loom.split.fixer_fan", "loom.split.auto_accept"},
+			{loom, "Discussion-Review", "loom.discussion_reviewer_fan", "loom.discussion_fixer_fan", "loom.discussion_auto_accept"},
+			{loom, "Plan-Review", "tapestry.plan_reviewer_fan", "tapestry.plan_fixer_fan", "tapestry.plan_auto_accept"},
+			{loom, "Code-Review", "loom.code_reviewer_fan", "loom.code_fixer_fan", "loom.code_auto_accept"},
+			{darn, "Code-Review", "loom.code_reviewer_fan", "loom.code_fixer_fan", "loom.code_auto_accept"},
+			{arras, "Discussion-Review", "loom.discussion_reviewer_fan", "loom.discussion_fixer_fan", "loom.discussion_auto_accept"},
+			{arras, "Raddle-Review", "loom.split_reviewer_fan", "loom.split_fixer_fan", "loom.split_auto_accept"},
 		}
 		for _, p := range perches {
 			want := map[string]map[string]string{

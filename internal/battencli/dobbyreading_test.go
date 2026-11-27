@@ -85,26 +85,30 @@ func writeDobbyState(pid int, sleeps ...pauserecord.Interval) func(t *testing.T,
 	}
 }
 
-func TestDobbyTasks_ReadsDependenciesAndParent(t *testing.T) {
+func TestDobbyTasks_ReadsDependenciesParentAndNotifyOnLand(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	boardDir := t.TempDir()
 	entries := strings.Join([]string{
-		`{"id":0,"slug":"released","title":"R","kind":"task","labels":["bug"],"depends_on":["open-dep","done-dep","pruned-dep","beam-dep"]}`,
+		`{"id":0,"slug":"released","title":"R","kind":"task","labels":["bug"],"depends_on":["open-dep","done-dep","pruned-dep","beam-dep"],"notify_on_land":true}`,
 		`{"id":1,"slug":"open-dep","title":"O","kind":"task","labels":["bug"],"status":"draft"}`,
 		`{"id":2,"slug":"done-dep","title":"D","kind":"task","labels":["bug"],"status":"done"}`,
 		`{"id":3,"slug":"beam-dep","title":"B","kind":"project","labels":["bug"],"beam":true,"status":"running · Beam-Await"}`,
 		`{"id":4,"slug":"beam-member","title":"M","kind":"task","labels":["bug"],"project":"beam-dep","status":"done"}`,
-		`{"id":5,"slug":"landed","title":"L","kind":"task","labels":["bug"],"status":"done"}`,
+		`{"id":5,"slug":"landed","title":"L","kind":"task","labels":["bug"],"status":"done","notify_on_land":true}`,
+		`{"id":6,"slug":"landed-here","title":"H","kind":"task","labels":["bug"],"status":"done","notify_on_land":true}`,
+		`{"id":7,"slug":"beam-b","title":"B2","kind":"project","labels":["bug"],"beam":true,"owner_machine":"another-machine","status":"running · Beam-Await"}`,
 	}, ",")
-	holds := `[{"kind":"adopt","machine":"oslo","at":"2026-11-17T09:00:00Z","subjects":[]}]`
-	content := `{"version":1,"holds":` + holds + `,"entries":[` + entries + `]}`
+	content := `{"version":1,"entries":[` + entries + `]}`
 	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(content), 0o644); err != nil {
 		t.Fatalf("write board.json: %v", err)
 	}
 	prime := &lymcwd.Location{WorktreeName: "main"}
 	parents := NewDobbyParents(prime)
 	parents.known["released"] = "beam-a"
+	parents.known["landed"] = "beam-b"
+	parents.known["landed-here"] = "beam-a"
+	parents.known["beam-b"] = ""
 
 	views, err := DobbyTasks(prime, boardDir, parents)
 	if err != nil {
@@ -121,14 +125,17 @@ func TestDobbyTasks_ReadsDependenciesAndParent(t *testing.T) {
 	if released.Parent != "beam-a" {
 		t.Errorf("DobbyTasks() released Parent = %q; want %q", released.Parent, "beam-a")
 	}
-	if released.HeldBy != "oslo" || bySlug["open-dep"].HeldBy != "" {
-		t.Errorf("DobbyTasks() HeldBy = %q, %q; want the hold's machine for the released task and none for the draft", released.HeldBy, bySlug["open-dep"].HeldBy)
+	if !released.NotifyOnLand || bySlug["open-dep"].NotifyOnLand {
+		t.Errorf("DobbyTasks() NotifyOnLand = %v, %v; want true for the entry carrying it and false for the other", released.NotifyOnLand, bySlug["open-dep"].NotifyOnLand)
 	}
 	if draft := bySlug["open-dep"]; draft.Parent != "" {
 		t.Errorf("DobbyTasks() draft Parent = %q; want none read for a task with a status", draft.Parent)
 	}
-	if landed := bySlug["landed"]; landed.Parent != "" || landed.OwnedElsewhere {
-		t.Errorf("DobbyTasks() landed Parent, OwnedElsewhere = %q, %v; want none read for a done entry", landed.Parent, landed.OwnedElsewhere)
+	if landed := bySlug["landed"]; landed.Parent != "beam-b" || !landed.OwnedElsewhere {
+		t.Errorf("DobbyTasks() landed Parent, OwnedElsewhere = %q, %v; want %q, true for a done entry carrying notify_on_land under a beam another machine owns", landed.Parent, landed.OwnedElsewhere, "beam-b")
+	}
+	if landed := bySlug["landed-here"]; landed.Parent != "beam-a" || landed.OwnedElsewhere {
+		t.Errorf("DobbyTasks() landed-here Parent, OwnedElsewhere = %q, %v; want %q, false for a done entry carrying notify_on_land under a beam no machine owns", landed.Parent, landed.OwnedElsewhere, "beam-a")
 	}
 }
 
@@ -140,7 +147,7 @@ func TestDobbyTasks_AnUnreadableParentFailsOnlyAReleasedTask(t *testing.T) {
 		entry   string
 		wantErr bool
 	}{
-		{name: "ADoneEntryIsLeftWithNoParent", entry: `{"id":1,"slug":"broken","title":"B","kind":"task","labels":["bug"],"status":"done"}`},
+		{name: "ADoneEntryCarryingTheRequestIsLeftWithNoParent", entry: `{"id":1,"slug":"broken","title":"B","kind":"task","labels":["bug"],"status":"done","notify_on_land":true}`},
 		{name: "AReleasedTaskFailsTheRead", entry: `{"id":1,"slug":"broken","title":"B","kind":"task","labels":["bug"]}`, wantErr: true},
 	}
 	for _, tt := range tests {

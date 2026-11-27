@@ -28,7 +28,17 @@ const (
 	// weftPushLockFile names the push lock that coalescePush holds for the whole loop-until-clean push window.
 	// It sits in .weft/ with weftWriteLockFile, so the .weft/ git exclude already covers it.
 	weftPushLockFile = "fabric.push.lock"
+	// retiredLockFilePattern and retiredSwapLockFilePattern are the broad excludes seedWeftArtifactExcludes removes.
+	// Keeping them would hide a lock file that strays into a tracked tree from git status.
+	retiredLockFilePattern     = "*.lock"
+	retiredSwapLockFilePattern = "*.swaplock"
 )
+
+// legacyLockFileNames are lock files that earlier versions wrote beside tracked files in the weft checkouts:
+// in the Bolt root, and beside the review records of a run directory.
+// No current code writes them.
+// They stay excluded by name, so a leftover one never enters a stage-all board commit or a records commit.
+var legacyLockFileNames = []string{".gitrepo-push.lock", "board.lock", "board.push.lock", "board.json.swaplock", "tasks.json.swaplock", "notes.json.swaplock", "generation-record.json.lock", "settle-record.json.lock", "settle-record.patch.lock"}
 
 // ensureWeftLockDir creates the .weft lock directory and seeds git-exclude
 // entries for fabric's lock artifacts.
@@ -78,8 +88,9 @@ func HoldRecordsWriteLock(recordsWorktreePath string, wait time.Duration) (relea
 }
 
 // seedWeftArtifactExcludes adds the weft repo's never-tracked operational artifacts to its .git/info/exclude.
-// They are the .weft/ lock directory and the lymdirs.DotLymDirName directory.
-// Each missing entry is appended line-exact and idempotently.
+// They are the .weft/ lock directory, the lymdirs.DotLymDirName directory, and the legacy lock file names.
+// Each missing entry is appended line-exact and idempotently;
+// the retired *.lock and *.swaplock lines are removed.
 // Exclude is used instead of a committed .gitignore: it needs no commit and no new file in the weft root.
 // Without these excludes, a weft worktree reports the artifacts as untracked dirt, which makes it look dirty.
 // The exclude file lives in the repo's common gitdir, so one seeding covers every linked weft worktree.
@@ -88,10 +99,18 @@ func HoldRecordsWriteLock(recordsWorktreePath string, wait time.Duration) (relea
 func seedWeftArtifactExcludes(weftPath string) error {
 	_, _, err := mutateGitExclude(weftPath, func(content string) (string, error) {
 		present := map[string]bool{}
+		var kept []string
 		for _, line := range strings.Split(content, "\n") {
-			present[strings.TrimSpace(line)] = true
+			trimmed := strings.TrimSpace(line)
+			if trimmed == retiredLockFilePattern || trimmed == retiredSwapLockFilePattern {
+				continue
+			}
+			present[trimmed] = true
+			kept = append(kept, line)
 		}
-		for _, entry := range []string{weftLockDirName + "/", lymdirs.DotLymDirName + "/"} {
+		content = strings.Join(kept, "\n")
+		entries := append([]string{weftLockDirName + "/", lymdirs.DotLymDirName + "/"}, legacyLockFileNames...)
+		for _, entry := range entries {
 			if present[entry] {
 				continue
 			}
@@ -217,10 +236,8 @@ func CommitEmptyWithTrailers(rec *Mutations, l *lymcwd.Location, relPath, msg st
 // The weft write lock must already be held.
 // When warp has a HEAD, the commit carries a Warp-SHA trailer and Snapshot trailers.
 // On an unborn warp, with zero commits, the tags are dropped.
-// With snapshotTags or trailers set and warp past its first commit, a no-op commit still lands, empty,
-// so the tags and the trailers have a commit to sit on.
-// The already-validated trailers end the message, one line each in order, on a born and an unborn warp alike.
-func (f *Fabric) commitWeftLocked(pathspec []string, message string, trailers []Trailer, opts SyncOptions, snapshotTags ...string) (sha string, committed bool, err error) {
+// With snapshotTags set and warp past its first commit, a no-op commit still records the tags.
+func (f *Fabric) commitWeftLocked(pathspec []string, message string, opts SyncOptions, snapshotTags ...string) (sha string, committed bool, err error) {
 	warpSHA, unborn, err := f.warpHeadSHA()
 	if err != nil {
 		return "", false, fmt.Errorf("fabricengine: warp CurrentSHA: %w", err)
@@ -234,11 +251,8 @@ func (f *Fabric) commitWeftLocked(pathspec []string, message string, trailers []
 			return "", false, err
 		}
 	}
-	for _, trailer := range trailers {
-		commitMessage = appendTrailerLine(commitMessage, trailer.Key, trailer.Value)
-	}
 
-	forceEmptyCommit := (len(snapshotTags) > 0 || len(trailers) > 0) && !unborn
+	forceEmptyCommit := len(snapshotTags) > 0 && !unborn
 
 	filteredPathspec, positive, err := weftPathspecFilter(f.weftPath, pathspec)
 	if err != nil {
@@ -329,12 +343,8 @@ func (f *Fabric) PushWeft(opts SyncOptions) (res PushResult, err error) {
 		return PushResult{}, nil
 	}
 
-	ns, err := originNamespaceAt(f.weftPath)
-	if err != nil {
-		return PushResult{}, err
-	}
 	hadUnpushed, hadUnpushedErr := f.records.HasUnpushed()
-	if err := f.records.PushCoalesced(ns); err != nil {
+	if err := f.records.PushCoalesced(); err != nil {
 		return PushResult{}, err
 	}
 	recordPushIfAdvanced(rec, f.records, "records", f.weftPath, hadUnpushed, hadUnpushedErr)

@@ -45,11 +45,6 @@
 // finalize then evaluates the gate once more over the tree as it stands.
 // Every shell outstanding when the run ends, by whatever exit, is recorded in Result.EndedShells.
 //
-// A turn end that would end the run, or start its gate's evaluation, is held in one case.
-// The case is the runner's reply probe reporting the run's strand awaiting the reply to a question it asked.
-// replyhold.go holds the rules.
-// Any event or turn start read afterwards ends that hold, so the turn the reply starts decides afresh at its end.
-//
 // The events-tick Done branch splits in two, on whether run.gate is empty:
 // An ungated run's Done finalizes without consulting the gate.
 // A gated Done instead evaluates the gate's entries through run.evaluateGate().
@@ -69,7 +64,6 @@
 // the pane reading idle for turnStartIdleOverride restores it too, unless the engine reads that turn in flight.
 // Every gate send goes through sendWithin, so its idle wait and submit window end by the run deadline.
 // A re-prompt that fails busy or unlanded spends no attempt and is re-sent on a later tick, bounded by the run deadline.
-// A re-prompt whose strand is gone resumes the writer's session in a fresh strand.
 // Held maxNoInputBoxReprompts times in a row, a pane with no input box ends the loop with the attempts spent so far.
 // The loop thus ends before a picker that shuttle cannot dismiss holds the run until its deadline.
 // A gated run off the boundary also asks each entry's read-only Expired probe once per gateRecheckEvery.
@@ -308,18 +302,11 @@ func (run *Run) Wait() (Result, error) {
 	// so a reattach never re-notifies a dialog it already did.
 	run.dialog = dialogLatch{cursor: max(run.state.PromptOffset, run.state.DialogNotifiedOffset)}
 	run.apiErrors = apiErrorWatch{cursor: run.state.PromptOffset}
-	// The edit-loop watch reads the edit records file from the last edit-loop-notified offset,
-	// so a reattach never repeats a notice it already sent.
-	run.editLoops = editLoopWatch{cursor: run.state.EditLoopNotifiedOffset}
 
 	run.turnSince = run.clock.Now()
 	for tick := 1; ; tick++ {
 		run.observePause()
-		if result, finished, ferr := run.settleStaleRelaunch(); finished {
-			return result, ferr
-		}
 		run.deliverPromptOnAttach()
-		run.retypeLostPrompt()
 		outcome, held, err := run.pollEventsTick()
 		if err == nil && run.turnStartRead {
 			run.turnSince = run.clock.Now()
@@ -328,9 +315,6 @@ func (run *Run) Wait() (Result, error) {
 		if err == nil && (run.eventsRead || run.turnStartRead) {
 			run.endHeldWait()
 			run.pendingHold = nil
-		}
-		if err == nil && (run.eventsRead || run.turnStartSeen) {
-			run.replyHold = nil
 		}
 		if err != nil {
 			eventsFailures++
@@ -348,21 +332,33 @@ func (run *Run) Wait() (Result, error) {
 				// A turn end without every output file never ends the run.
 				// Log it so the durable trace records each one, and keep polling the same agent.
 				logger.Info("shuttle: turn end held, output files missing", "strandGUID", run.state.StrandGUID, "offset", held.offset, "lastAssistantMessage", held.message)
-				result, finished, switched, serr := run.switchAccountAtLimit(held)
+				continued := run.continueAPIErrorStall(held)
+				// A turn start read past this turn end in the same batch means the next turn is already under way, so no hold shows.
+				if !run.turnStartRead {
+					run.beginHeldWait(held.offset)
+				}
 				switch {
-				case finished:
-					return result, serr
-				case switched:
-					run.reseedAfterRelaunch()
-				default:
-					run.handleHeldTurnEnd(held)
+				case continued:
+				case run.deliverPromptAtHold(held):
+					// The agent never got its task; the turn its prompt now starts is the work, so the parent has nothing to answer.
+				case run.holdNoticePending() && run.usageLimited(held):
+					// The parent cannot act while the account is limited,
+					// and a notice sent now lands in its context as stale clutter after the reset.
+					logger.Info("shuttle: held turn end stopped on the usage limit; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
+				case run.holdNoticePending() && run.operatorStartedTurn(held):
+					// The operator is talking to the agent in its pane, so the turn end is no stall for the parent.
+					logger.Info("shuttle: held turn end of a turn the operator started; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
+				case run.holdNoticePending() && run.wakesOnBackground(held):
+					// The session wakes when its own background work completes, so the parent has nothing to answer.
+					logger.Info("shuttle: held turn end left background work running; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
+				case run.spec.HoldDeferral == nil:
+					run.notifyHeld(held)
+				case !run.turnStartRead:
+					run.pendingHold, run.pendingHoldAt = held, run.clock.Now()
 				}
 			} else if outcome != "" && (outcome != OutcomeDone || len(run.gate) == 0) {
 				// Any other outcome, or a Done with no gate, finalizes at once.
-				// The exception is a Done held while the agent awaits a reply.
-				if outcome != OutcomeDone || !run.holdForReply() {
-					return run.finalizeAndRemoveDiedWindow(outcome)
-				}
+				return run.finalizeAndRemoveDiedWindow(outcome)
 			} else if outcome == OutcomeDone {
 				// A gated Done marks the writer's turn boundary: per-turn gate state resets here.
 				run.endReworkSpans(run.clock.Now())
@@ -374,24 +370,18 @@ func (run *Run) Wait() (Result, error) {
 				if run.covered {
 					// A pause covers the session: nothing is evaluated or sent until the first uncovered tick.
 					run.boundaryHeld = true
-				} else if !run.holdForReply() && run.boundaryIdle() {
-					// A boundary held for a reply is evaluated once the hold ends.
+				} else if run.boundaryIdle() {
 					if result, finished, ferr := run.handleGatedBoundary(); finished {
 						return result, ferr
 					}
 				}
 			} else if run.boundaryHeld && !run.covered && run.gateAtBoundary {
-				// The pause lifted: evaluate the held arrival as if it had come now, unless it is held for a reply.
+				// The pause lifted: evaluate the held arrival as if it had come now.
 				run.boundaryHeld = false
-				if !run.holdForReply() && run.boundaryIdle() {
+				if run.boundaryIdle() {
 					if result, finished, ferr := run.handleGatedBoundary(); finished {
 						return result, ferr
 					}
-				}
-			} else if run.replyHold != nil {
-				// A turn end held for a reply: it ends once no reply is awaited, and nothing else is evaluated meanwhile.
-				if result, finished, ferr := run.releaseReplyHold(); finished {
-					return result, ferr
 				}
 			} else if !run.covered && (run.gatePending || run.unsentReprompt) && run.gateAtBoundary {
 				// No new arrival, an entry is pending or a re-prompt is unsent, and the writer is idle:
@@ -428,7 +418,6 @@ func (run *Run) Wait() (Result, error) {
 		run.sendShellNudge()
 		run.settleDeferredHold()
 		run.watchDialog()
-		run.watchEditLoops()
 		run.logSessionState("", tick%livenessEvery == 0)
 
 		if tick%livenessEvery == 0 {
@@ -570,12 +559,8 @@ func gateEntryError(name, problem string) error {
 // so a later tick re-sends it until the run deadline.
 // When maxNoInputBoxReprompts such failures follow each other from a pane with no input box, the loop finalizes done.
 // The attempts spent so far are kept.
-// A re-prompt whose strand can take no keys resumes the writer's session in a fresh strand.
-// The re-prompt is its first turn and counts as a delivered re-prompt.
-// A resume refused or failed before its strand registers ends the loop, naming both failures.
 // Any other re-prompt send failure ends the loop.
 // A pending result sends its Send text when non-empty and keeps polling.
-// It sets the result's Delivered once the text is delivered.
 // A failed pending send warns once per entry and episode, naming the entry, the error and the closure's way-forward.
 // It logs Debug while it keeps failing and Info when it is delivered.
 // It leaves the entry pending and the writer at the boundary, and never ends the loop.
@@ -597,9 +582,6 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 			return Result{}, false, nil
 		}
 		run.failures.Recover(pendingKey, "shuttle: gate: pending send delivered again", "strandGUID", run.state.StrandGUID, "gate", run.gate[run.gatePendingAt].Name)
-		if run.gatePendingDelivered != nil {
-			*run.gatePendingDelivered = true
-		}
 		run.gateAtBoundary = false
 		run.boundaryHeld = false
 		return Result{}, false, nil
@@ -616,19 +598,7 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 	if render := run.gate[failed].Reprompt; render != nil {
 		reprompt = render(run.gateFindingsPath)
 	}
-	serr := run.sendWithin(reprompt)
-	if errors.Is(serr, errStrandGone) {
-		result, finished, rerr := run.relaunchForReprompt(reprompt)
-		switch {
-		case finished:
-			return result, true, rerr
-		case rerr != nil:
-			serr = fmt.Errorf("%w; resuming the session in a fresh strand failed: %v", serr, rerr)
-		default:
-			serr = nil
-		}
-	}
-	if serr != nil {
+	if serr := run.sendWithin(reprompt); serr != nil {
 		if errors.Is(serr, ErrSessionBusy) || errors.Is(serr, ErrSubmissionNotLanded) || errors.Is(serr, ErrPaused) {
 			var busy *SessionBusyError
 			if errors.As(serr, &busy) && busy.NoInputBox {
@@ -667,9 +637,6 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 	run.boundaryHeld = false
 	run.gateFails[failed]++
 	run.gateSent[failed]++
-	if run.gateReprompted != nil {
-		run.gateReprompted.RecordReprompt()
-	}
 	run.gateReworkSince[failed] = run.clock.Now()
 	for i, entry := range verdict.Entries {
 		if entry.State == GateEntryPassed {
@@ -752,11 +719,8 @@ func startupTickCap(startupTimeout, interval time.Duration) int {
 // Gate keys are spaced by the dismissal gap, not by the probe cadence,
 // so a capture taken before the provider redraws after a dismissal never sends a second key into the next gate.
 //
-// With eventsProof unset the probe never starts a run on its events file.
-// So a launch that keeps the file of an earlier session starts on its pane capture alone.
-//
 // Manual live-substrate verification recipe: docs/reference/claude-trust-dialog-repro.md.
-func (run *Run) awaitStartup(eventsProof bool) (Result, error) {
+func (run *Run) awaitStartup() (Result, error) {
 	cfg := run.runner.cfg
 	base := pollInterval(cfg)
 	ceiling := dismissalGap(cfg)
@@ -778,7 +742,7 @@ func (run *Run) awaitStartup(eventsProof bool) (Result, error) {
 	run.sessionLiveness = sessionLivenessState{}
 	statusFailures := 0
 	for tick := 0; tick < maxTicks; tick++ {
-		outcome, err := run.checkLivenessTick(&started, startupDeadline, eventsProof)
+		outcome, err := run.checkLivenessTick(&started, startupDeadline, true)
 		if err != nil {
 			statusFailures++
 			if statusFailures >= maxStatusRetries {
@@ -833,8 +797,7 @@ func (run *Run) awaitStartup(eventsProof bool) (Result, error) {
 // cause is nil when the provider never reached StartupReady inside its window.
 // Otherwise cause is the error that ended the start, and the returned error wraps it beside ErrNotStarted.
 //
-// In order, it saves lastStartupCapture to startupCaptureFileName:
-// the startup probe's last capture, or the pane at a failed prompt delivery.
+// In order, it saves any capture that checkLivenessTick recorded to startupCaptureFileName.
 // A write failure is a Warn, and the returned error then says no capture was saved.
 // It calls run.finalize(outcome), which persists RunState.Outcome and logs "run finished".
 // It skips the gate and cleanup, since outcome is never OutcomeDone here.
@@ -969,7 +932,6 @@ func startupCaptureExcerpt(capture string) string {
 func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	run.eventsRead = false
 	run.turnStartRead = false
-	run.turnStartSeen = false
 	startOffset := run.offset
 	data, newOffset, err := readEventsFrom(run.state.EventsPath, startOffset)
 	if err != nil {
@@ -986,7 +948,6 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	run.offset = newOffset
 	guardArmed := run.holdGuard
 	turnStarts := turnStartOffsets(run.engine, data, startOffset)
-	run.turnStartSeen = len(turnStarts) > 0
 	if len(turnStarts) > 0 {
 		run.holdGuard = false
 		run.promptTurnStarted = true
@@ -1482,15 +1443,11 @@ func allOutputFilesExist(files []string) bool {
 // Until then the tick stays not started, records the reason on the run for the teardown, and answers as a still-booting pane does.
 // Gate detection and dismissal run as for any run.
 // A session-start line an earlier launch of the same run left satisfies the line half; the pane half still gates it.
-// A resumed strand's startup is the exception: both halves read the events file only past run.startupEventsOffset.
 //
 // With eventsProof set, a record with `RecordsSessionStarts` also starts once the events file holds a session start followed by a turn start.
 // That check runs before the pane capture; a false answer falls through to the capture path, so a recognized gate is still dismissed.
-// Only a strand's own startup wait sets eventsProof.
-// It reads the events file from run.startupEventsOffset.
-// A launch's file is created fresh and its offset is zero, so only that launch's hooks satisfy it.
-// A resume keeps the file, and its offset is the file's size at the resume.
-// So only the resumed session's hooks satisfy it.
+// Only the launch's own startup wait sets eventsProof.
+// Its events file is created fresh for the launch, so only this launch's hooks satisfy it.
 // The wait's probe of a not-yet-started run may read an earlier incarnation's lines, so it leaves eventsProof unset.
 func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time, eventsProof bool) (Outcome, error) {
 	status, err := run.runner.reed.Status()
@@ -1511,10 +1468,6 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time, even
 	if !strand.Live {
 		if allOutputFilesExist(run.spec.OutputFiles) {
 			return OutcomeDone, nil
-		}
-		// A relaunch holds its strand down and paneless while it brings the session up, which is no failure inside its bound.
-		if strand.Held && strand.PaneID == "" && run.relaunchWithinBound() {
-			return "", nil
 		}
 		// Reed reports a strand it holds no pane id for as not live, as it does for a strand whose pane died.
 		// Those are different facts, and only the second is a dead run.
@@ -1538,7 +1491,7 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time, even
 		return "", nil
 	}
 
-	if eventsProof && run.state.RecordsSessionStarts && turnStartedAfterSessionStart(run.engine, run.state.EventsPath, run.startupEventsOffset) {
+	if eventsProof && run.state.RecordsSessionStarts && turnStartedAfterSessionStart(run.engine, run.state.EventsPath) {
 		*started = true
 		run.markStarted()
 		return "", nil
@@ -1560,7 +1513,7 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time, even
 	switch run.engine.Startup(capture) {
 	case StartupReady:
 		if run.state.RecordsSessionStarts {
-			recorded, readErr := sessionStartRecorded(run.engine, run.state.EventsPath, run.startupEventsOffset)
+			recorded, readErr := sessionStartRecorded(run.engine, run.state.EventsPath)
 			switch {
 			case readErr != nil:
 				run.startupHookReason = fmt.Sprintf("the events file %s could not be read for a session-start line: %v", run.state.EventsPath, readErr)
@@ -1683,10 +1636,10 @@ func (run *Run) sessionGone() bool {
 }
 
 // sessionStartRecorded reports whether the events file holds a session-start signal of any source.
-// It reads the file from byte offset onward.
+// It reads the file from its start.
 // An absent file reports false with no error, and an unreadable one returns the read error.
 // An engine that does not parse session signals reports false.
-func sessionStartRecorded(engine Engine, eventsPath string, offset int64) (bool, error) {
+func sessionStartRecorded(engine Engine, eventsPath string) (bool, error) {
 	parser, ok := engine.(SessionSignalParser)
 	if !ok {
 		return false, nil
@@ -1698,7 +1651,7 @@ func sessionStartRecorded(engine Engine, eventsPath string, offset int64) (bool,
 	if err != nil {
 		return false, err
 	}
-	signals, _ := parser.ParseSessionSignals(eventsFrom(data, offset))
+	signals, _ := parser.ParseSessionSignals(data)
 	for _, signal := range signals {
 		if signal.Kind == SessionSignalSessionStart {
 			return true, nil
@@ -1708,10 +1661,10 @@ func sessionStartRecorded(engine Engine, eventsPath string, offset int64) (bool,
 }
 
 // turnStartedAfterSessionStart reports whether the events file holds a turn-start signal after a session-start signal.
-// Signals are taken in file order, from byte offset onward.
+// Signals are taken in file order, from the file's start.
 // An absent or unreadable file, and an engine that does not parse session signals, report false.
 // It reads signals through the engine's parser, never by a provider's hook names.
-func turnStartedAfterSessionStart(engine Engine, eventsPath string, offset int64) bool {
+func turnStartedAfterSessionStart(engine Engine, eventsPath string) bool {
 	parser, ok := engine.(SessionSignalParser)
 	if !ok {
 		return false
@@ -1720,7 +1673,7 @@ func turnStartedAfterSessionStart(engine Engine, eventsPath string, offset int64
 	if err != nil {
 		return false
 	}
-	signals, _ := parser.ParseSessionSignals(eventsFrom(data, offset))
+	signals, _ := parser.ParseSessionSignals(data)
 	sessionStarted := false
 	for _, signal := range signals {
 		switch signal.Kind {
@@ -1733,14 +1686,6 @@ func turnStartedAfterSessionStart(engine Engine, eventsPath string, offset int64
 		}
 	}
 	return false
-}
-
-// eventsFrom returns data from byte offset onward, and nothing when offset is at or past its end.
-func eventsFrom(data []byte, offset int64) []byte {
-	if offset >= int64(len(data)) {
-		return nil
-	}
-	return data[offset:]
 }
 
 // classifyStartupWindow reports the outcome once startupDeadline has passed.
@@ -1866,8 +1811,6 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 	failedAt := -1
 	pendingAt := -1
 	pendingSend, pendingWayForward := "", ""
-	var pendingDelivered *bool
-	var reprompted RepromptRecorder
 	findingsPath, findings := "", ""
 	terminal, reason := false, ""
 	for i, entry := range run.gate {
@@ -1916,7 +1859,6 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 				pendingAt = i
 				pendingSend = result.Send
 				pendingWayForward = result.SendFailedWayForward
-				pendingDelivered = result.Delivered
 				break
 			}
 			if result.Passed {
@@ -1934,7 +1876,6 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 				return nil, writeErr
 			}
 			findings = result.Findings
-			reprompted = result.Reprompted
 			line.State = GateEntryFailed
 			failedAt = i
 			if !entry.PassOnCap {
@@ -1970,14 +1911,12 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 	run.gatePendingAt = pendingAt
 	run.gatePendingSend = pendingSend
 	run.gatePendingWayForward = pendingWayForward
-	run.gatePendingDelivered = pendingDelivered
-	run.gateReprompted = reprompted
 	return outcome, nil
 }
 
 // finalize builds run's terminal Result, persists the classification into the run's RunState.Outcome,
 // and performs cleanup for OutcomeDone.
-// For fork mode, it audits the session's subagents and attaches the result.
+// For fork mode, it audits fork subagents and attaches the result.
 //
 // finalize is the single gate verdict site.
 // On OutcomeDone it evaluates the gate before the Outcome write, the fork audit and cleanup;

@@ -266,7 +266,7 @@ func refuseForeignOwner(deps anchorDeps, location *lymcwd.Location, owner, targe
 			return err
 		}
 	}
-	adopt := fmt.Sprintf("`lym adopt %s` here, which records this machine as the owner and resets a weft stopped by an anchor change to origin's tip", subject)
+	adopt := fmt.Sprintf("`lym adopt %s` here, which records this machine as the owner, or `lym adopt %s --keep-local` over a weft stopped by an anchor change, which records the owner over the stopped weft", subject, subject)
 	if slug == deps.Prime {
 		adopt = "`lym adopt root` here, which records this machine as the owner, and whose refusal over a prime weft stopped by an anchor change names the `--set` to its upstream tip's marker"
 	}

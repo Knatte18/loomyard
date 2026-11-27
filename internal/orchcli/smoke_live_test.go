@@ -157,6 +157,16 @@ func (f *liveFixture) stopOrch(t *testing.T) {
 	}
 }
 
+// sendTurn sends text to guid and waits for the turn it starts to end.
+func (f *liveFixture) sendTurn(t *testing.T, guid, eventsPath, text string, attempts int) {
+	t.Helper()
+	before := turnEnds(eventsPath)
+	if err := f.reed.SendText(guid, text, true); err != nil {
+		t.Fatalf("send turn: %v", err)
+	}
+	waitFor(t, attempts, "the turn to end", func() bool { return turnEnds(eventsPath) > before })
+}
+
 // permissionDialogMarker is the text Claude Code's permission dialog shows.
 const permissionDialogMarker = "Do you want to"
 

@@ -422,17 +422,12 @@ func TestGoto_Guard(t *testing.T) {
 		target    string
 		refusal   string
 		guardErr  error
-		admitErr  error
 		wantErr   string
 		wantCalls int
-		// wantAdmitted is how many times the Admitted hook runs.
-		// A refusal after a run of the hook leaves the move written.
-		wantAdmitted int
 	}{
 		{name: "refusal", current: "B", target: "A", refusal: "the review is settled", wantErr: `goto target "A" refused: the review is settled`, wantCalls: 1},
 		{name: "guard error", current: "B", target: "A", guardErr: errors.New("seam unreadable"), wantErr: "could not be checked: seam unreadable; way forward: re-run goto", wantCalls: 1},
-		{name: "admitting guard moves the run", current: "B", target: "A", wantCalls: 1, wantAdmitted: 1},
-		{name: "admit error comes back with the move already written", current: "B", target: "A", admitErr: errors.New("admit refused"), wantErr: "admit refused", wantCalls: 1, wantAdmitted: 1},
+		{name: "admitting guard moves the run", current: "B", target: "A", wantCalls: 1},
 		{name: "target past the current row never reaches the guard", current: "A", target: "B", refusal: "never asked", wantErr: "lies past the run's current row"},
 	}
 	for _, tt := range tests {
@@ -453,34 +448,14 @@ func TestGoto_Guard(t *testing.T) {
 				}
 				return tt.refusal, tt.guardErr
 			}
-			admitted := 0
-			req.Admitted = func(target string) error {
-				admitted++
-				if target != tt.target {
-					t.Errorf("Admitted target = %q; want %q", target, tt.target)
-				}
-				if held := readStatus(t, shed.StatusPath, shed.StatusLockPath); held.CurrentProducer != tt.target {
-					t.Errorf("status CurrentProducer when Admitted ran = %q; want the written move to %q", held.CurrentProducer, tt.target)
-				}
-				return tt.admitErr
-			}
 			got, err := Goto(req)
 			if calls != tt.wantCalls {
 				t.Errorf("guard called %d times; want %d", calls, tt.wantCalls)
-			}
-			if admitted != tt.wantAdmitted {
-				t.Errorf("Admitted called %d times; want %d", admitted, tt.wantAdmitted)
 			}
 			after := readStatus(t, shed.StatusPath, shed.StatusLockPath)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Goto error = %v; want it to contain %q", err, tt.wantErr)
-				}
-				if tt.wantAdmitted > 0 {
-					if after.CurrentProducer != tt.target {
-						t.Errorf("status CurrentProducer after the Admitted error = %q; want the written move to %q", after.CurrentProducer, tt.target)
-					}
-					return
 				}
 				if !reflect.DeepEqual(before, after) {
 					t.Errorf("status file changed on a refusal: %+v -> %+v", before, after)
@@ -621,9 +596,7 @@ func TestRelaunch(t *testing.T) {
 		wantErr       string
 		wantBusy      bool
 		wantAdmits    int
-		// wantAdmitted is how many times the Admitted hook runs.
-		wantAdmitted int
-		check        func(t *testing.T, got Status)
+		check         func(t *testing.T, got Status)
 	}{
 		{name: "run lock held", seed: seedWith(StateBlocked, "B"), holdLock: true, target: "A", wantBusy: true, wantErr: `"lym shed pause --after <current_producer>"`},
 		{name: "status file absent", target: "A", wantErr: "way forward: told clause"},
@@ -642,7 +615,7 @@ func TestRelaunch(t *testing.T) {
 			wantErr: "could not be checked: seam unreadable; way forward: re-run goto",
 		},
 		{
-			name: "backward target keeps the pause conditions and clears the entered row", seed: enteredSeed(StateBlocked, "B", "B"), target: "A", wantAdmits: 1, wantAdmitted: 1,
+			name: "backward target keeps the pause conditions and clears the entered row", seed: enteredSeed(StateBlocked, "B", "B"), target: "A", wantAdmits: 1,
 			check: func(t *testing.T, got Status) {
 				if got.CurrentProducer != "A" || got.State != StatePaused || got.Error != "" || got.Transient != "" || got.EnteredRow != "" {
 					t.Errorf("CurrentProducer, State, Error, Transient, EnteredRow = %q, %q, %q, %q, %q; want A, paused, cleared", got.CurrentProducer, got.State, got.Error, got.Transient, got.EnteredRow)
@@ -662,7 +635,7 @@ func TestRelaunch(t *testing.T) {
 			},
 		},
 		{
-			name: "target clears a pending label and writes no by", seed: pendingSeed(StateBlocked, "B", "orch"), target: "A", wantAdmits: 1, wantAdmitted: 1,
+			name: "target clears a pending label and writes no by", seed: pendingSeed(StateBlocked, "B", "orch"), target: "A", wantAdmits: 1,
 			check: func(t *testing.T, got Status) {
 				if got.PendingBy != "" {
 					t.Errorf("PendingBy = %q; want cleared", got.PendingBy)
@@ -673,7 +646,7 @@ func TestRelaunch(t *testing.T) {
 			},
 		},
 		{
-			name: "target entry carries the target row's block", seed: seedWith(StateBlocked, "B"), target: "A", wantAdmits: 1, wantAdmitted: 1,
+			name: "target entry carries the target row's block", seed: seedWith(StateBlocked, "B"), target: "A", wantAdmits: 1,
 			check: func(t *testing.T, got Status) {
 				if len(got.History) != 1 || got.History[0].Block != "Outer" {
 					t.Errorf("History = %+v; want one goto entry carrying block Outer", got.History)
@@ -705,7 +678,6 @@ func TestRelaunch(t *testing.T) {
 				defer held.Release()
 			}
 			admits := 0
-			admitted := 0
 			got, err := Relaunch(RelaunchRequest{
 				StatusPath:              shed.StatusPath,
 				LockPath:                shed.LockPath,
@@ -715,19 +687,9 @@ func TestRelaunch(t *testing.T) {
 				Target:                  tt.target,
 				Guard:                   tt.guard,
 				Admit:                   func(Status) (bool, error) { admits++; return tt.admitInEffect, tt.admitErr },
-				Admitted: func(target string) error {
-					admitted++
-					if target != tt.target {
-						t.Errorf("Admitted target = %q; want %q", target, tt.target)
-					}
-					return nil
-				},
 			})
 			if admits != tt.wantAdmits {
 				t.Errorf("Admit called %d times; want %d", admits, tt.wantAdmits)
-			}
-			if admitted != tt.wantAdmitted {
-				t.Errorf("Admitted called %d times; want %d", admitted, tt.wantAdmitted)
 			}
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {

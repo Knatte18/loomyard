@@ -51,7 +51,6 @@ func TestHook(t *testing.T) {
 		stdin        string
 		strand       string
 		presence     slackengine.Presence
-		autonomous   bool
 		entries      []creelengine.LogEntry
 		logErr       error
 		postErr      error
@@ -100,15 +99,6 @@ func TestHook(t *testing.T) {
 		{name: "StopOfABeamOrchWhoseOwnButtonIsOnForwardsToTheSlackProgram", stdin: stopInput("done"), strand: "hub:b:orch",
 			presence: slackengine.PresenceSlack, buttons: []string{"hub:b:orch"},
 			wantAction: "forwarded", wantPresence: slackengine.PresenceSlack, wantPosts: []sentPost{{"hub:SLACK", "done"}}},
-		{name: "StopUnderAutonomyForwardsAReplyOpeningTheOperatorMarker", stdin: stopInput("[operator] severe halt x:"),
-			presence: slackengine.PresenceSlack, autonomous: true, wantAction: "forwarded", wantPresence: slackengine.PresenceSlack,
-			wantPosts: []sentPost{{"hub:SLACK", "[operator] severe halt x:"}}},
-		{name: "StopUnderAutonomyDropsAnUnmarkedReply", stdin: stopInput("settled x"), presence: slackengine.PresenceSlack,
-			autonomous: true, wantAction: "unmarked", wantPresence: slackengine.PresenceSlack},
-		{name: "StopWithAutonomyOffForwardsAnUnmarkedReply", stdin: stopInput("settled x"), presence: slackengine.PresenceSlack,
-			wantAction: "forwarded", wantPresence: slackengine.PresenceSlack, wantPosts: []sentPost{{"hub:SLACK", "settled x"}}},
-		{name: "StopWithAutonomyOffForwardsAMarkedReply", stdin: stopInput("[operator] severe halt x:"), presence: slackengine.PresenceSlack,
-			wantAction: "forwarded", wantPresence: slackengine.PresenceSlack, wantPosts: []sentPost{{"hub:SLACK", "[operator] severe halt x:"}}},
 		{name: "StopWithNoReplyDoesNothing", stdin: stopInput("  "), presence: slackengine.PresenceSlack,
 			wantAction: "none", wantPresence: slackengine.PresenceSlack},
 		{name: "StopWhilePresenceIsTerminalDoesNothing", stdin: stopInput("done"), presence: slackengine.PresenceTerminal,
@@ -136,7 +126,6 @@ func TestHook(t *testing.T) {
 			t.Parallel()
 			h := newHarness(t, nil)
 			h.storePresence(tt.presence)
-			h.autonomous = tt.autonomous
 			buttons := tt.buttons
 			if buttons == nil {
 				buttons = []string{"hub:orch"}

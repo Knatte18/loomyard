@@ -40,7 +40,7 @@ const (
 	// Its Target is the remote ref (`<remote>/<branch>`) and its Detail is the commit the branch was moved to.
 	// The remote ref survives and only its tip moves.
 	KindRemoteBranchUpdated Kind = "remote_branch_updated"
-	// KindWorktreeReset records a worktree reset of either kind, hard or keep.
+	// KindWorktreeReset records resetHardTo's `reset --hard`.
 	KindWorktreeReset Kind = "worktree_reset"
 	// KindDirCreated records a directory creation at a success site, including createExclusiveDir's mint.
 	// It is recorded only for a directory that was absent beforehand.

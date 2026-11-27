@@ -52,9 +52,3 @@ var RaddleRecipe []byte
 //
 //go:embed arras-recipe.yaml
 var ArrasRecipe []byte
-
-// HardenerRecipe is the hardener recipe's producer graph, in internal/shedbuild's recipe format.
-// Its Harden-Review ring drives a lym module against throwaway sandbox hubs round after round and lands the fixes.
-//
-//go:embed hardener-recipe.yaml
-var HardenerRecipe []byte

@@ -41,11 +41,6 @@ func (p posixShell) ExportEnv(key, value string) string {
 	return "export " + key + "=" + p.Quote(value)
 }
 
-// UnsetEnv returns the POSIX `unset key` statement, which succeeds when key is already unset.
-func (p posixShell) UnsetEnv(key string) string {
-	return "unset " + key
-}
-
 // PrependPathEntry returns a POSIX `export PATH=<quoted dir>${PATH:+:$PATH}` statement.
 // The `${PATH:+…}` parameter expansion yields nothing when PATH is unset or empty, which is what
 // keeps a trailing `:` — read by POSIX shells as the current directory — from ever being

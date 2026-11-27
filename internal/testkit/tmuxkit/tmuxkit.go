@@ -34,19 +34,12 @@
 // On every platform it then removes the directory, Windows included.
 // A removal that fails is reported without changing the exit code,
 // and a binary killed before it removes its directory leaves it for the next start's sweep.
-// Main also checks for a `.git` that appears during its run directly in a shared temp directory:
+// Main also fails the package for a `.git` that appeared during its run directly in a shared temp directory:
 // the lym temp root or the system temp directory above it, both shared by every test binary on the machine.
 // Such an entry makes go's VCS stamping and git's repository discovery treat everything below it as one repository.
-// It watches both directories through fswatch, and on Linux it reads /proc the moment such an entry appears.
-// It fails the package only when the package's own binary or one of its descendants was working in that directory then.
-// Otherwise it reports a machine finding and keeps the exit code;
-// the finding names the other test binaries running then and every process working in the directory.
-// The binaries it names are candidates running at that moment, not the writer.
 // It removes the entry when it is an empty directory and names it for removal by hand otherwise.
-// Bound: the finding never fails the package off Linux.
-// It never does so either when the process table does not hold the binary itself.
-// It never does so when no watch saw the entry appear.
-// A writer that exits before the snapshot, or is no test binary, such as a daemon a finished test left, fails no package.
+// Bound: a package running at the same time is failed for the same entry.
+// The check cannot tell which binary wrote it.
 // A test binary re-executed as a helper inherits that environment,
 // and its own run directory is made beside the inherited one, never inside it,
 // so its socket paths do not grow past the limit.
@@ -74,6 +67,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"os"
 	"os/exec"
@@ -133,7 +127,7 @@ func Main(m *testing.M) int {
 
 	if runtime.GOOS == "windows" {
 		setTempEnv(dir)
-		code := runCheckingGitEntries(os.Stderr, shared, snapshotProcesses, m.Run)
+		code := runCheckingGitEntries(os.Stderr, shared, m.Run)
 		return afterRun(os.Stderr, dir, code, leftoverGrace, func() {}, lymtemp.Remove)
 	}
 
@@ -144,9 +138,81 @@ func Main(m *testing.M) int {
 	}
 	setEnv(dir)
 
-	code := runCheckingGitEntries(os.Stderr, shared, snapshotProcesses, m.Run)
+	code := runCheckingGitEntries(os.Stderr, shared, m.Run)
 
 	return afterRun(os.Stderr, dir, code, leftoverGrace, func() { sweep(dir, os.Getuid()) }, lymtemp.Remove)
+}
+
+// gitEntryName is the repository marker.
+// Left directly in a shared temp directory, it turns everything below that directory into one repository.
+const gitEntryName = ".git"
+
+// sharedTempDirs returns the directories above the run directory dir that every test binary on the machine shares.
+// They are the lym temp root holding dir and the system temp directory holding that root.
+func sharedTempDirs(dir string) []string {
+	root := filepath.Dir(dir)
+	return []string{root, filepath.Dir(root)}
+}
+
+// presentGitEntries returns the set of `.git` paths that exist directly in dirs, whatever their type.
+func presentGitEntries(dirs []string) map[string]bool {
+	present := map[string]bool{}
+	for _, dir := range dirs {
+		path := filepath.Join(dir, gitEntryName)
+		if _, err := os.Lstat(path); err == nil {
+			present[path] = true
+		}
+	}
+	return present
+}
+
+// runCheckingGitEntries snapshots the `.git` entries in dirs and calls run.
+// It returns run's exit code, or 1 when the run left a new `.git` in dirs, naming it on w.
+func runCheckingGitEntries(w io.Writer, dirs []string, run func() int) int {
+	before := presentGitEntries(dirs)
+	return checkNewGitEntries(w, dirs, before, run())
+}
+
+// checkNewGitEntries fails the run for each `.git` directly in dirs that before does not hold.
+// It names each on w and returns 1 when it found one, otherwise code.
+// It removes such an entry when it is an empty directory,
+// so the stray breaks no later build, and asks for its removal by hand otherwise.
+// The entries are reported in the order of dirs.
+func checkNewGitEntries(w io.Writer, dirs []string, before map[string]bool, code int) int {
+	for _, dir := range dirs {
+		path := filepath.Join(dir, gitEntryName)
+		if before[path] {
+			continue
+		}
+		info, err := os.Lstat(path)
+		if err != nil {
+			continue
+		}
+		fmt.Fprintf(w, "tmuxkit: %s appeared during the run of this package or one running beside it; a test or the code it drives wrote outside its own t.TempDir, often through a path joined onto an empty or parent directory, and go's VCS stamping and git's discovery read everything below it as one repository\n", path)
+		fmt.Fprintln(w, removeStrayGitEntry(path, info))
+		code = 1
+	}
+	return code
+}
+
+// removeStrayGitEntry removes the `.git` entry at path, described by info, when it is an empty directory.
+// It returns the line that says what became of it.
+// A symlink or file is never removed or followed.
+func removeStrayGitEntry(path string, info fs.FileInfo) string {
+	if !info.IsDir() {
+		return fmt.Sprintf("tmuxkit: %s is not a directory; remove it by hand", path)
+	}
+	err := os.Remove(path)
+	switch {
+	case err == nil:
+		return fmt.Sprintf("tmuxkit: removed the empty directory %s", path)
+	case errors.Is(err, fs.ErrNotExist):
+		return fmt.Sprintf("tmuxkit: %s was already removed by another process", path)
+	}
+	if entries, readErr := os.ReadDir(path); readErr == nil && len(entries) > 0 {
+		return fmt.Sprintf("tmuxkit: %s is not an empty directory; remove it by hand", path)
+	}
+	return fmt.Sprintf("tmuxkit: could not remove %s: %v; remove it by hand", path, err)
 }
 
 // afterRun finishes a package's run: it checks the sockets under dir, then sweeps the servers.
@@ -470,7 +536,7 @@ func ServerEnviron(environ []string) []string {
 	for _, entry := range environ {
 		key, _, _ := strings.Cut(entry, "=")
 		switch {
-		case key == "CLAUDECODE", key == "CLAUDE_CONFIG_DIR", strings.HasPrefix(key, "CLAUDE_CODE_"), strings.HasPrefix(key, "CODEX_"):
+		case key == "CLAUDECODE", strings.HasPrefix(key, "CLAUDE_CODE_"), strings.HasPrefix(key, "CODEX_"):
 		case key == "LYM_TRACE_ID", key == agentname.StrandNameEnv, key == agentname.ParentEnv, key == "LYM_RUN_PROCESS":
 		default:
 			clean = append(clean, entry)
@@ -532,17 +598,13 @@ func checkSocketPath(dir string, uid int) error {
 // setTempEnv points every temporary file at dir: `TMPDIR`, and on Windows `TMP` and `TEMP`.
 // It also makes dir the `GIT_CEILING_DIRECTORIES` ceiling.
 // Git and a repository-root walk then cannot climb above dir to a `.git` the test did not create.
-// `XDG_STATE_HOME` and `XDG_CONFIG_HOME`, and on Windows `LOCALAPPDATA`, point at dir too,
-// so no process a test starts, a `lym creel daemon` included, writes the operator's per-user state or machine file;
+// `XDG_STATE_HOME`, and on Windows `LOCALAPPDATA`, point at dir too,
+// so no process a test starts, a `lym creel daemon` included, writes the operator's per-user state;
 // a test that sets the variable itself still wins.
-// `XDG_DESKTOP_DIR` points at dir on every platform.
-// So no dobby a test starts writes a launcher on the operator's desktop.
 func setTempEnv(dir string) {
 	os.Setenv("TMPDIR", dir)
 	os.Setenv("GIT_CEILING_DIRECTORIES", dir)
 	os.Setenv("XDG_STATE_HOME", dir)
-	os.Setenv("XDG_CONFIG_HOME", dir)
-	os.Setenv("XDG_DESKTOP_DIR", dir)
 	if runtime.GOOS == "windows" {
 		os.Setenv("TMP", dir)
 		os.Setenv("TEMP", dir)

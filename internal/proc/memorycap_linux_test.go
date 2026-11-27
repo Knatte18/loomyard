@@ -1,9 +1,7 @@
 // memorycap_linux_test.go covers what a memory-capped run does on Linux alone.
 // A scope reports the kernel's kill, and a host with no user manager fails the child's own allocation.
 // A kill at the cap, of the child or of one of its children, ends what is left in the scope.
-// The holder that keeps the scope ends with the run and is never a child of the command.
-// A scope that never starts, ignores the cap or lacks setsid is an error,
-// and a cancel still ends a capped run through its process group.
+// A scope that never starts is an error, and a cancel still ends a capped run through its process group.
 
 package proc_test
 
@@ -15,7 +13,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -113,44 +110,22 @@ func TestRunMemoryCappedVia_StartsThroughItsStartAndReportsAChildKilledAtTheCap(
 		t.Skip("this host has no systemd user manager that caps a scope's memory")
 	}
 
-	tests := []struct {
-		name  string
-		start proc.StartFunc
-	}{
-		{"AStartThatReturnsAtOnce", func(cmd *exec.Cmd) (func() error, error) {
-			if err := cmd.Start(); err != nil {
-				return nil, err
-			}
-			return cmd.Wait, nil
-		}},
-		// A start that returns only once the command has ended stands in for a caller slow to read the scope.
-		// The kill must still be seen after the command's own processes are gone.
-		{"AStartThatReturnsOnceTheCommandHasEnded", func(cmd *exec.Cmd) (func() error, error) {
-			if err := cmd.Start(); err != nil {
-				return nil, err
-			}
-			err := cmd.Wait()
-			return func() error { return err }, nil
-		}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			// The shell runs the hog the cap kills as a plain child and exits 0, so only the tree saw a kill.
-			hog := memoryHog(t, hogOverCap)
-			cmd := exec.Command("sh", "-c", `"$0"; echo survived`, hog.Path)
-			cmd.Env = hog.Env
-			var out bytes.Buffer
-			cmd.Stdout = &out
-			starts := 0
-			treeKilled, err := proc.RunMemoryCappedVia(cmd, testMemoryCap, func(cmd *exec.Cmd) (func() error, error) {
-				starts++
-				return tt.start(cmd)
-			})
-			if !treeKilled || err != nil || starts != 1 || out.String() != "survived\n" {
-				t.Errorf("RunMemoryCappedVia of a shell whose child keeps %d MB under %d = tree killed %v, %v, %d starts, output %q; want a tree kill, no error, one start and survived", hogOverCap, testMemoryCap, treeKilled, err, starts, out.String())
-			}
-		})
+	// The shell runs the hog the cap kills as a plain child and exits 0, so only the tree saw a kill.
+	hog := memoryHog(t, hogOverCap)
+	cmd := exec.Command("sh", "-c", `"$0"; echo survived`, hog.Path)
+	cmd.Env = hog.Env
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	starts := 0
+	treeKilled, err := proc.RunMemoryCappedVia(cmd, testMemoryCap, func(cmd *exec.Cmd) (func() error, error) {
+		starts++
+		if err := cmd.Start(); err != nil {
+			return nil, err
+		}
+		return cmd.Wait, nil
+	})
+	if !treeKilled || err != nil || starts != 1 || out.String() != "survived\n" {
+		t.Errorf("RunMemoryCappedVia of a shell whose child keeps %d MB under %d = tree killed %v, %v, %d starts, output %q; want a tree kill, no error, one start and survived", hogOverCap, testMemoryCap, treeKilled, err, starts, out.String())
 	}
 }
 
@@ -175,61 +150,6 @@ func TestRunMemoryCappedVia_ASigkillFromOutsideIsNoKillAtTheCap(t *testing.T) {
 	}
 }
 
-//testtiming:keep pins that the scope is removed once a capped run with no kill returns, which no covering test checks
-func TestRunMemoryCapped_TheHolderEndsOnceACappedRunWithNoKillReturns(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-	if !proc.MemoryCapCoversTree() {
-		t.Skip("this host has no systemd user manager that caps a scope's memory")
-	}
-
-	cmd := exec.Command("cat", proc.SelfCgroupFile)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if killed, err := proc.RunMemoryCapped(cmd, testMemoryCap); killed || err != nil {
-		t.Fatalf("capped run of cat = killed %v, %v; want no kill and no error", killed, err)
-	}
-	var scopeDir string
-	for _, line := range strings.Split(out.String(), "\n") {
-		if cgroup, found := strings.CutPrefix(line, "0::"); found {
-			scopeDir = filepath.Join(proc.CgroupMount, cgroup)
-		}
-	}
-	if scopeDir == "" {
-		t.Fatalf("the capped cat printed %q; want a line for its cgroup v2 path", out.String())
-	}
-	// The scope is removed once its last process, the holder, has ended.
-	for deadline := time.Now().Add(time.Minute); ; time.Sleep(20 * time.Millisecond) {
-		if _, err := os.Stat(scopeDir); errors.Is(err, os.ErrNotExist) {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("the scope %s still existed a minute after the capped run returned", scopeDir)
-		}
-	}
-}
-
-func TestRunMemoryCapped_TheHolderIsNeverAChildOfTheCommand(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-	if !proc.MemoryCapCoversTree() {
-		t.Skip("this host has no systemd user manager that caps a scope's memory")
-	}
-
-	if children, _ := filepath.Glob("/proc/self/task/*/children"); len(children) == 0 {
-		t.Skip("this kernel does not list a process's children in /proc")
-	}
-
-	// The shell becomes cat, which lists the children of its own pid.
-	cmd := exec.Command("sh", "-c", "exec cat /proc/self/task/*/children")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	killed, err := proc.RunMemoryCapped(cmd, testMemoryCap)
-	if killed || err != nil || out.Len() != 0 {
-		t.Errorf("capped run of a command listing its children = killed %v, %v, output %q; want no kill, no error and no children", killed, err, out.String())
-	}
-}
-
 // requireProcessGone fails the test when the process pid is still present a minute from now.
 func requireProcessGone(t *testing.T, pid int) {
 	t.Helper()
@@ -243,59 +163,15 @@ func requireProcessGone(t *testing.T, pid int) {
 	}
 }
 
-func TestRunMemoryCapped_AScopeNotHeldToTheCapIsAnErrorAndNeverRunsTheCommand(t *testing.T) {
-	tiergate.Require(t, 1)
-	// The stand-in that ignores the cap drops systemd-run's options and runs the rest in the test's own cgroup.
-	// That cgroup's memory.max is not the cap, as with a user manager that ignores MemoryMax.
-	// It is written before the test goes parallel:
-	// a parallel test's fork could otherwise inherit the open write and fail its exec with ETXTBSY.
-	ignoringStarter := filepath.Join(t.TempDir(), "systemd-run")
-	script := "#!/bin/sh\nwhile [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n"
-	if err := os.WriteFile(ignoringStarter, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		// starter is the path of the program that stands in for systemd-run.
-		starter string
-	}{
-		// /bin/false stands in for a systemd-run that cannot create the scope: it exits 1 before it runs the command.
-		{"AScopeThatNeverStarts", "/bin/false"},
-		{"AScopeThatIgnoresTheCap", ignoringStarter},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			cmd := exec.Command("echo", "ran")
-			var out bytes.Buffer
-			cmd.Stdout = &out
-			killed, err := proc.RunMemoryCappedWithStarter(cmd, testMemoryCap, tt.starter)
-			var exitErr *exec.ExitError
-			if !errors.Is(err, proc.ErrMemoryCap) || errors.As(err, &exitErr) || killed || out.Len() != 0 {
-				t.Errorf("RunMemoryCapped in a scope not held to the cap = killed %v, %v, output %q; want no kill, no output and an error wrapping proc.ErrMemoryCap, never an *exec.ExitError", killed, err, out.String())
-			}
-		})
-	}
-}
-
-//testtiming:keep pins the ErrMemoryCap refusal of a scope held to the cap whose PATH has no setsid, a shell branch coverage cannot see
-func TestRunMemoryCapped_AScopeWithoutSetsidIsAnErrorAndNeverRunsTheCommand(t *testing.T) {
+func TestRunMemoryCapped_AScopeThatNeverStartsIsAnErrorAndNotTheCommandsExit(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
-	if !proc.MemoryCapCoversTree() {
-		t.Skip("this host has no systemd user manager that caps a scope's memory")
-	}
 
-	cmd := exec.Command("echo", "ran")
-	cmd.Env = append(os.Environ(), "PATH="+t.TempDir())
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	killed, err := proc.RunMemoryCapped(cmd, testMemoryCap)
+	// /bin/false stands in for a systemd-run that cannot create the scope: it exits 1 before it runs the command.
+	killed, err := proc.RunMemoryCappedWithStarter(exec.Command("echo", "never runs"), testMemoryCap, "/bin/false")
 	var exitErr *exec.ExitError
-	if !errors.Is(err, proc.ErrMemoryCap) || errors.As(err, &exitErr) || killed || out.Len() != 0 {
-		t.Errorf("RunMemoryCapped in a scope with no setsid = killed %v, %v, output %q; want no kill, no output and an error wrapping proc.ErrMemoryCap, never an *exec.ExitError", killed, err, out.String())
+	if !errors.Is(err, proc.ErrMemoryCap) || errors.As(err, &exitErr) || killed {
+		t.Errorf("RunMemoryCapped with a starter that fails at once = killed %v, %v; want no kill and an error wrapping proc.ErrMemoryCap, never an *exec.ExitError", killed, err)
 	}
 }
 

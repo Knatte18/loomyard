@@ -56,13 +56,6 @@ type Profile struct {
 	FixerReportPath   string
 	PriorReviews      []string
 	PriorFixerReports []string
-	// Diff is the unified diff the round reviews, empty for a round whose target is no diff.
-	// The review half writes a non-empty Diff beside its instruction files in pieces of one package each.
-	// Every piece is small enough to read whole, and the explore step names them.
-	// The reviewer so never writes or reads the whole diff at once.
-	Diff string
-	// diffPieces are the written pieces of Diff, set by the review half before it composes the prompts.
-	diffPieces []diffPiece
 	// FocusDirective is an optional path to this round's focus directive file.
 	// It is steering input the reviewer reads before forming findings,
 	// and it is exempt from the prior-rounds clean-room rule.
@@ -80,12 +73,6 @@ type Profile struct {
 	// assistant marks the copy of a profile that the review half's assistant seat reviews under.
 	// The copy's fanned cluster rules spawn through its own engine's subagents.
 	assistant bool
-	// Round is what the review is judged against when an earlier round is complete, and what the prior-findings block lists.
-	// Nil is a full round: the prior-rounds text and the round checks of a round with no earlier findings.
-	Round *RoundContext
-	// HaltReason is the stuck reason of the plan executor call that sent the run back to review, empty when none.
-	// A non-empty value makes the review prompt carry it as a finding the reviewer must raise.
-	HaltReason string
 }
 
 // rolePrefix returns base led by the profile's RolePrefix, or base alone when there is none.
@@ -140,8 +127,6 @@ type RunOpts struct {
 	// DecisionsRouted marks a fix whose caller sends the review's decision-class findings to the run's parent.
 	// Those findings are then not fixer work; false keeps every finding as fixer work.
 	DecisionsRouted bool
-	// Rerun, when its Reason is set, tells the fixer why it runs again over a review an earlier fixer session worked.
-	Rerun FixRerun
 	// Assist is the review half's assistant reviewer's model choice; a choice with no model runs no assistant.
 	// AssistFan names the assistant's fan, empty for a solo assistant, and AssistKey the config key its model came from.
 	Assist    shuttleengine.ModelChoice
@@ -157,14 +142,8 @@ type RunOpts struct {
 }
 
 // validateReview normalizes p in place and reports a fail-loud error if the review half is not runnable.
-// A non-nil Round is replaced by a copy rooted at worktreeRoot, so review, probe and resume judge locations alike.
 // Checks run in fixed order; the first failure is returned.
 func (p *Profile) validateReview(worktreeRoot string, cfg lenses.Config) error {
-	if p.Round != nil {
-		round := *p.Round
-		round.WorktreeRoot = worktreeRoot
-		p.Round = &round
-	}
 	p.Target.Paths = resolvePaths(worktreeRoot, p.Target.Paths)
 	p.Fasit.Paths = resolvePaths(worktreeRoot, p.Fasit.Paths)
 	p.PriorReviews = resolvePaths(worktreeRoot, p.PriorReviews)

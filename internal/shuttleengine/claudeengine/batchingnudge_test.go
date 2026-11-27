@@ -484,6 +484,47 @@ func TestEngineConstructorsSetTheTranscriptWait(t *testing.T) {
 	}
 }
 
+// TestReadTranscriptTail pins the window of the transcript the nudge reads.
+// A file under the budget is read whole, and a larger one is cut to its complete lines.
+// A window holding no line end yields nothing.
+func TestReadTranscriptTail(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name    string
+		content string
+		budget  int64
+		want    string
+		wantNil bool
+	}{
+		{name: "FileUnderTheBudgetIsReadWhole", content: "aaa\nbbb\nccc\n", budget: 100, want: "aaa\nbbb\nccc\n"},
+		{name: "FileOverTheBudgetDropsTheCutFirstLine", content: "aaa\nbbb\nccc\n", budget: 6, want: "ccc\n"},
+		{name: "WindowWithoutALineEndIsNil", content: "aaa\nbbb", budget: 2, wantNil: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			transcript := filepath.Join(t.TempDir(), "transcript.jsonl")
+			if err := os.WriteFile(transcript, []byte(tt.content), 0o644); err != nil {
+				t.Fatalf("write transcript: %v", err)
+			}
+			got, err := readTranscriptTail(transcript, tt.budget)
+			if err != nil {
+				t.Fatalf("readTranscriptTail() error: %v", err)
+			}
+			if tt.wantNil {
+				if got != nil {
+					t.Errorf("readTranscriptTail(%q, %d) = %q; want nil", tt.content, tt.budget, got)
+				}
+				return
+			}
+			if string(got) != tt.want {
+				t.Errorf("readTranscriptTail(%q, %d) = %q; want %q", tt.content, tt.budget, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestValidateBatchingNudge pins the bounds of the batching_nudge block:
 // context_tokens may be 0, the other numbers must be at least 1, and a block that is off is not checked.
 func TestValidateBatchingNudge(t *testing.T) {

@@ -26,15 +26,6 @@ func ReconcileGeometry(l *lymcwd.Location) (hubreconcile.Geometry, bool) {
 	return hubreconcile.Geometry{BoardDir: fabricengine.BoltDir(l.HubPath), WorktreePath: l.WorktreePath()}, true
 }
 
-// ReconcileBeforeLoad reconciles the config of l's hub when its build stamp is stale, and does nothing outside a hub.
-// A verb calls it before its first load of a config whose keys a reconcile moves.
-// A failed reconcile is warned about and the caller goes on.
-func ReconcileBeforeLoad(l *lymcwd.Location) {
-	if geometry, inHub := ReconcileGeometry(l); inHub {
-		hubreconcile.EnsureOrWarn(geometry, hubreconcile.Options{})
-	}
-}
-
 // ReedGeometry builds a reedengine.Geometry for l, passing the resolved Location's paths through untouched.
 // It also fills the shortname and parent name that strand names are formed from.
 // It performs no os.Getwd, no git discovery and no path resolution of its own.

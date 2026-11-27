@@ -179,23 +179,6 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 		t.Errorf("record without intents = %+v re-encoded as %s; want nil intents and no cancel or pause_intent key", legacy, reencoded)
 	}
 
-	// A takeover entry round-trips; a file without the key decodes it as nil and re-encodes without it.
-	withTakeover := Status{State: StateRunning, Takeover: &Takeover{Machine: "neve", Subject: "sub", At: "2026-11-16T10:00:00Z"}}
-	takeoverData, err := json.Marshal(withTakeover)
-	if err != nil {
-		t.Fatalf("json.Marshal(withTakeover) = %v", err)
-	}
-	var gotTakeover Status
-	if err := json.Unmarshal(takeoverData, &gotTakeover); err != nil {
-		t.Fatalf("json.Unmarshal(takeoverData) = %v", err)
-	}
-	if !reflect.DeepEqual(gotTakeover, withTakeover) {
-		t.Errorf("takeover round trip = %+v; want %+v", gotTakeover, withTakeover)
-	}
-	if legacy.Takeover != nil || strings.Contains(string(reencoded), "takeover") {
-		t.Errorf("record without takeover = %+v re-encoded as %s; want nil Takeover and no takeover key", legacy, reencoded)
-	}
-
 	// A span object carrying a key this binary does not know decodes both ways, keeping the span's known fields.
 	spanWithUnknownKey := []byte(`{"history":[{"producer":"Plan-Write","outcome":"stuck","output":"","at":"t","gate_spans":[{"gate":"g","kind":"held","start":"s","end":"e","future":1}]}]}`)
 	wantSpan := []GateSpan{{Gate: "g", Kind: GateSpanKindHeld, Start: "s", End: "e"}}

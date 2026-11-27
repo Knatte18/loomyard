@@ -79,23 +79,15 @@ func TestAppendSummarySections(t *testing.T) {
 		},
 		{
 			name:   "integration triage: empty is a no-op",
-			append: func(dir string) error { return websterengine.AppendIntegrationTriage(dir, nil, nil) },
+			append: func(dir string) error { return websterengine.AppendIntegrationTriage(dir, nil) },
 			want:   "# S\n",
 		},
 		{
 			name: "integration triage: flaky tests are listed by identity",
 			append: func(dir string) error {
-				return websterengine.AppendIntegrationTriage(dir, []string{"TestF1", "TestF2"}, nil)
+				return websterengine.AppendIntegrationTriage(dir, []string{"TestF1", "TestF2"})
 			},
 			want: "# S\n" + triageSectionHead + "\nFlaky (passed on rerun):\n\n- `TestF1`\n- `TestF2`\n",
-		},
-		{
-			name: "integration triage: a verify command failure is listed apart by its first run's log",
-			append: func(dir string) error {
-				return websterengine.AppendIntegrationTriage(dir, []string{"TestF1"}, []string{"/v/1.log"})
-			},
-			want: "# S\n" + triageSectionHead + "\nFlaky (passed on rerun):\n\n- `TestF1`\n" +
-				"\nVerify command failed naming no failing test (passed on rerun), first run's log:\n\n- `/v/1.log`\n",
 		},
 		{
 			name: "fix commits: each fix commit and departure line follows the existing content",

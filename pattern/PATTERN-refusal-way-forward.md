@@ -30,7 +30,7 @@ An example is `lym webster reset --to start|pre-fix`.
   No refusal, stencil or spec names a raw module-wide `go` run as a way forward; the way forward is `lym gate test`.
   The raw `go` deny also refuses a command naming the slot, strand or prebuilt-binary variable,
   so no refusal, stencil or spec may spell one.
-- The computed-path `rm` deny, the `systemctl` sleep verbs behind flag words and the `tmux` and `script` deny are pattern-shaped.
+- The computed-path `rm` deny and the `systemctl` sleep verbs behind flag words are pattern-shaped.
   They stay outside the closed list and its token scan.
 - A form matches only as a whole command token sequence, so `git push --force-with-lease` is not `git push --force`.
 - The scanned surface covers `contracts/specs/`, `contracts/stencils/` and `plugins/ly/skills/`.

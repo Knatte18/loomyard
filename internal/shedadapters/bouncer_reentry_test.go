@@ -179,7 +179,7 @@ func reentryInputRow(name string, offset time.Duration, wantAmendment bool) amen
 
 		if wantAmendment {
 			shedfake.RequireOutcome(t, h.b, shedengine.Stuck)
-			if generation := h.generation(); generation.Number != 2 || !generation.Amendment || !hasInputPaths(generation, inputPath) {
+			if generation := h.generation(); generation.Number != 2 || !generation.Amendment || generation.ReviewInput != inputPath {
 				t.Errorf("generation record = %+v; want generation 2, an amendment over %q", generation, inputPath)
 			}
 			return

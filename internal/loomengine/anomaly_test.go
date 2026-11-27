@@ -119,8 +119,6 @@ func TestClassifyHalt(t *testing.T) {
 		state       shedengine.State
 		reason      string
 		interrupted bool
-		buildSkew   bool
-		transient   bool
 		wantKind    AnomalyKind
 		wantOK      bool
 	}{
@@ -158,62 +156,6 @@ func TestClassifyHalt(t *testing.T) {
 			reason:   "arbitrary failure text",
 			wantKind: AnomalyProducerFailure,
 			wantOK:   true,
-		},
-		{
-			name:      "FailedBuildSkew_BuildSkew",
-			state:     shedengine.StateFailed,
-			reason:    "stencilstore: stencil \"burler-assist-consolidation\" was written by lym build newer",
-			buildSkew: true,
-			wantKind:  AnomalyBuildSkew,
-			wantOK:    true,
-		},
-		{
-			name:      "FailedTransient_TransientStop",
-			state:     shedengine.StateFailed,
-			reason:    "landingshed: Finalize: read GitHub's rules for the parent branch: dial tcp: lookup api.github.com: server misbehaving",
-			transient: true,
-			wantKind:  AnomalyTransientStop,
-			wantOK:    true,
-		},
-		{
-			name:      "FailedBuildSkewTransient_BuildSkew",
-			state:     shedengine.StateFailed,
-			buildSkew: true,
-			transient: true,
-			wantKind:  AnomalyBuildSkew,
-			wantOK:    true,
-		},
-		{
-			name:        "FailedInterruptedTransient_InterruptedStop",
-			state:       shedengine.StateFailed,
-			reason:      "loop-exited: loop 1 ended without an envelope",
-			interrupted: true,
-			transient:   true,
-			wantKind:    AnomalyInterrupted,
-			wantOK:      true,
-		},
-		{
-			name:      "NotFailedTransient_NoKind",
-			state:     shedengine.StateRunning,
-			transient: true,
-			wantKind:  "",
-			wantOK:    false,
-		},
-		{
-			name:      "NotFailedBuildSkew_NoKind",
-			state:     shedengine.StateRunning,
-			buildSkew: true,
-			wantKind:  "",
-			wantOK:    false,
-		},
-		{
-			name:        "FailedInterruptedBuildSkew_InterruptedStop",
-			state:       shedengine.StateFailed,
-			reason:      "loop-exited: loop 1 ended without an envelope",
-			interrupted: true,
-			buildSkew:   true,
-			wantKind:    AnomalyInterrupted,
-			wantOK:      true,
 		},
 		{
 			name:        "FailedInterrupted_InterruptedStop",
@@ -277,9 +219,9 @@ func TestClassifyHalt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			kind, ok := ClassifyHalt(tt.state, tt.reason, tt.interrupted, tt.buildSkew, tt.transient)
+			kind, ok := ClassifyHalt(tt.state, tt.reason, tt.interrupted)
 			if kind != tt.wantKind || ok != tt.wantOK {
-				t.Errorf("ClassifyHalt(%q, %q, %v, %v, %v) = (%q, %v); want (%q, %v)", tt.state, tt.reason, tt.interrupted, tt.buildSkew, tt.transient, kind, ok, tt.wantKind, tt.wantOK)
+				t.Errorf("ClassifyHalt(%q, %q, %v) = (%q, %v); want (%q, %v)", tt.state, tt.reason, tt.interrupted, kind, ok, tt.wantKind, tt.wantOK)
 			}
 		})
 	}

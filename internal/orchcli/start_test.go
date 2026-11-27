@@ -159,19 +159,11 @@ type startHarness struct {
 	// claims, when set, wires the prime claim to answer each call with the next entry, the last one repeating; claimCalls counts the calls.
 	claims     []claimAnswer
 	claimCalls int
-	// noPrimeClaim brings the beam up with BeamUpOptions.NoPrimeClaim.
-	noPrimeClaim bool
-	// pauseOwned, when set, wires the end of owned runs to fail with pauseOwnedErr.
-	// It records each slug in ownerPaused with its dobby flag in ownerEndDobby.
-	// It counts the calls callsAtOwnerPause saw of the strand operations.
-	// beams names the slugs the isBeam seam reads as beams, and beamErr fails that read.
+	// pauseOwned, when set, wires the owner pause to fail with pauseOwnedErr, record each slug in ownerPaused and count the calls callsAtOwnerPause saw of the strand operations.
 	pauseOwned        bool
 	pauseOwnedErr     error
 	ownerPaused       []string
-	ownerEndDobby     map[string]bool
 	callsAtOwnerPause int
-	beams             map[string]bool
-	beamErr           error
 }
 
 // claimAnswer is one scripted answer of the fake prime claim.
@@ -232,7 +224,7 @@ const harnessRunsWindowTitle = "harness-runs-window"
 // run brings the beam up with Prepare, unless the test set prepareOff, and decodes the report as the envelope a verb would print.
 func (h *startHarness) run(t *testing.T) (int, map[string]any) {
 	t.Helper()
-	return h.runWith(t, BeamUpOptions{Prepare: !h.prepareOff, NoPrimeClaim: h.noPrimeClaim})
+	return h.runWith(t, BeamUpOptions{Prepare: !h.prepareOff})
 }
 
 // runWith brings the beam up with opts and decodes the report into a map under the report's keys.
@@ -247,17 +239,12 @@ func (h *startHarness) runWith(t *testing.T, opts BeamUpOptions) (int, map[strin
 		}
 	}
 	if h.pauseOwned {
-		h.cli.isBeam = func(slug string) (bool, error) { return h.beams[slug], h.beamErr }
-		h.cli.endOwned = func(_ *lymcwd.Location, slug string, endDobby bool) error {
+		h.cli.pauseOwned = func(_ *lymcwd.Location, slug string) error {
 			h.callsAtOwnerPause = len(h.calls)
 			if h.pauseOwnedErr != nil {
 				return h.pauseOwnedErr
 			}
 			h.ownerPaused = append(h.ownerPaused, slug)
-			if h.ownerEndDobby == nil {
-				h.ownerEndDobby = map[string]bool{}
-			}
-			h.ownerEndDobby[slug] = endDobby
 			return nil
 		}
 	}
@@ -844,55 +831,6 @@ func TestStart_DeadStrandRemovedBeforeStart(t *testing.T) {
 	}
 }
 
-func TestRelaunchOrch_RestartsOverTheLiveLimitedStrand(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	tests := []struct {
-		name  string
-		fresh bool
-		// wantSession is the session id the launch resumed and the saved state records afterwards.
-		wantResume, wantSaved string
-	}{
-		{name: "ResumesTheRecordedSession", wantResume: recordedTestSessionID, wantSaved: recordedTestSessionID},
-		{name: "FreshLaunchesWithNoSessionId", fresh: true, wantSaved: "minted-id"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			h := newStartHarness(t, reedengine.StrandStatus{GUID: "limited", Name: "orch", Live: true})
-			h.starter.holderPID = 777
-			var registered []int
-			h.cli.registerOrch = func(pid int) error {
-				registered = append(registered, pid)
-				return nil
-			}
-			saveSeedState(t, h, orchengine.State{Phase: orchengine.PhaseIdle, Strand: "limited", SessionID: recordedTestSessionID, UsageLimitAt: time.Now()})
-
-			guid, err := h.cli.relaunchOrch(h.state(t), tt.fresh)
-			if err != nil || guid != "new-guid" {
-				t.Fatalf("relaunchOrch = %q, %v; want new-guid and no error", guid, err)
-			}
-			if !slices.Equal(h.strands.removed, []string{"limited"}) || slices.Index(h.calls, "remove") > slices.Index(h.calls, "start") {
-				t.Errorf("removed = %v, calls = %v; want the old strand removed before the start", h.strands.removed, h.calls)
-			}
-			if st := h.state(t); st.Strand != "new-guid" || st.SessionID != tt.wantSaved || !st.UsageLimitAt.IsZero() {
-				t.Errorf("state = %+v; want strand new-guid, session %q and no usage limit", st, tt.wantSaved)
-			}
-			if len(h.starter.specs) != 1 || h.starter.specs[0].ResumeSessionID != tt.wantResume {
-				t.Errorf("started specs = %+v; want one launch resuming %q", h.starter.specs, tt.wantResume)
-			}
-			if !slices.Equal(registered, []int{777}) {
-				t.Errorf("registered orch processes = %v; want the new process 777", registered)
-			}
-			if h.spawns != 0 {
-				t.Errorf("watcher spawns = %d; want none", h.spawns)
-			}
-		})
-	}
-}
-
 // starterFunc adapts a function to sessionStarter.
 type starterFunc func(shuttleengine.Spec) (startedSession, error)
 
@@ -979,7 +917,7 @@ func TestStart_Refusals(t *testing.T) {
 			name: "a beam another machine owns names the owner and the takeover",
 			seed: func(t *testing.T, h *startHarness) {
 				h.cli.readBeamFacts = func() (beamFacts, error) {
-					return beamFacts{slug: "b", here: "desktop", owner: "laptop", elsewhere: true}, nil
+					return beamFacts{slug: "b", here: "desktop", owner: "laptop"}, nil
 				}
 			},
 			wantIn:             []string{`"laptop"`, "lym adopt b"},
@@ -989,7 +927,7 @@ func TestStart_Refusals(t *testing.T) {
 			name: "the prime another machine owns names the root takeover",
 			seed: func(t *testing.T, h *startHarness) {
 				h.cli.readBeamFacts = func() (beamFacts, error) {
-					return beamFacts{here: "desktop", owner: "laptop", elsewhere: true}, nil
+					return beamFacts{here: "desktop", owner: "laptop"}, nil
 				}
 			},
 			wantIn:             []string{`"laptop"`, "lym adopt root"},
@@ -1121,7 +1059,7 @@ func TestStart_ArchivesBeforeRefusingAForeignOwner(t *testing.T) {
 
 			h := newStartHarness(t)
 			h.cli.readBeamFacts = func() (beamFacts, error) {
-				return beamFacts{slug: "b", here: "desktop", owner: tt.owner, elsewhere: tt.owner != "", moveWayForward: tt.move}, nil
+				return beamFacts{slug: "b", here: "desktop", owner: tt.owner, moveWayForward: tt.move}, nil
 			}
 			archives := 0
 
@@ -1325,80 +1263,43 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 			},
 		},
 		{
-			name: "under NoPrimeClaim a hub with no prime owner is reconciled but its prime is left unclaimed",
+			name: "an owned_elsewhere entry is paused once before the launch and named in owner_pauses",
 			prepare: func(t *testing.T, h *startHarness) {
-				h.claims = []claimAnswer{{claimed: "desktop"}}
-				h.noPrimeClaim = true
-			},
-			wantOK: true,
-			check: func(t *testing.T, h *startHarness, env map[string]any) {
-				if h.reconciles != 1 || h.claimCalls != 0 || strings.Contains(warningText(env), "claimed for machine") || len(h.starter.specs) != 1 {
-					t.Errorf("reconciles = %d, claims = %d, warning = %q, starts = %d; want one reconcile, no claim and one launch", h.reconciles, h.claimCalls, warningText(env), len(h.starter.specs))
-				}
-			},
-		},
-		{
-			name: "an owned_elsewhere beam and task are ended once before the launch, the dobby with the beam only, and named in owner_pauses",
-			prepare: func(t *testing.T, h *startHarness) {
-				h.report.Entries = []fabricengine.EntryOutcome{
-					{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"},
-					{Slug: "p2", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"},
-				}
+				h.report.Entries = []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
 				h.pauseOwned = true
-				h.beams = map[string]bool{"p1": true}
 			},
 			wantOK: true,
 			check: func(t *testing.T, h *startHarness, env map[string]any) {
-				ended := envList(t, env, "owner_pauses")
-				if !reflect.DeepEqual(h.ownerPaused, []string{"p1", "p2"}) || !reflect.DeepEqual(h.ownerEndDobby, map[string]bool{"p1": true, "p2": false}) ||
-					len(ended) != 2 || h.callsAtOwnerPause != 0 || len(h.starter.specs) != 1 {
-					t.Errorf("ended = %v, dobby flags = %v, owner_pauses = %v, calls before the end = %d, starts = %d; want p1 with its dobby and p2 without, before any strand call, and one launch",
-						h.ownerPaused, h.ownerEndDobby, ended, h.callsAtOwnerPause, len(h.starter.specs))
-				}
-				for i, want := range []string{"p1", "p2"} {
-					if row, _ := ended[i].(map[string]any); row["slug"] != want || row["owner"] != "laptop" {
-						t.Errorf("owner_pauses[%d] = %v; want slug %s owned by laptop", i, ended[i], want)
-					}
+				pauses := envList(t, env, "owner_pauses")
+				row, _ := pauses[0].(map[string]any)
+				if !reflect.DeepEqual(h.ownerPaused, []string{"p1"}) || len(pauses) != 1 || row["slug"] != "p1" || row["owner"] != "laptop" || h.callsAtOwnerPause != 0 || len(h.starter.specs) != 1 {
+					t.Errorf("paused = %v, owner_pauses = %v, calls before the pause = %d, starts = %d; want p1 paused once before any strand call and one launch", h.ownerPaused, pauses, h.callsAtOwnerPause, len(h.starter.specs))
 				}
 			},
 		},
 		{
-			name: "a failing end warns naming the re-run of beam start and the launch goes on",
+			name: "a failing owner pause warns naming the re-run of beam start and the launch goes on",
 			prepare: func(t *testing.T, h *startHarness) {
 				h.report.Entries = []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
-				h.pauseOwned, h.pauseOwnedErr = true, errors.New("end refused")
+				h.pauseOwned, h.pauseOwnedErr = true, errors.New("tender down")
 			},
 			wantOK: true,
 			check: func(t *testing.T, h *startHarness, env map[string]any) {
 				warning := warningText(env)
-				if !strings.Contains(warning, "p1 is owned by machine laptop and could not be ended (end refused); re-run `lym beam start`, which ends it again") || len(envList(t, env, "owner_pauses")) != 0 || len(h.starter.specs) != 1 {
-					t.Errorf("warning = %q, starts = %d; want the failure and the re-run named, nothing ended and one launch", warning, len(h.starter.specs))
+				if !strings.Contains(warning, "tender down") || !strings.Contains(warning, "re-run `lym beam start`, which pauses it again") || len(envList(t, env, "owner_pauses")) != 0 || len(h.starter.specs) != 1 {
+					t.Errorf("warning = %q, starts = %d; want the failure and the re-run named, nothing paused and one launch", warning, len(h.starter.specs))
 				}
 			},
 		},
 		{
-			name: "a failed beam read ends nothing for that entry and warns, and the launch goes on",
-			prepare: func(t *testing.T, h *startHarness) {
-				h.report.Entries = []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
-				h.pauseOwned, h.beamErr = true, errors.New("board unreadable")
-			},
-			wantOK: true,
-			check: func(t *testing.T, h *startHarness, env map[string]any) {
-				warning := warningText(env)
-				if !strings.Contains(warning, "p1 is owned by machine laptop and could not be ended (board unreadable); re-run `lym beam start`, which ends it again") || len(h.ownerPaused) != 0 || len(envList(t, env, "owner_pauses")) != 0 || len(h.starter.specs) != 1 {
-					t.Errorf("warning = %q, ended = %v, starts = %d; want the read's error named, nothing ended and one launch", warning, h.ownerPaused, len(h.starter.specs))
-				}
-			},
-		},
-		{
-			name: "with no end wired an owned_elsewhere entry is named under the warnings and the launch goes on",
+			name: "with no owner pause wired an owned_elsewhere entry is named under the warnings and the launch goes on",
 			prepare: func(t *testing.T, h *startHarness) {
 				h.report.Entries = []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
 			},
 			wantOK: true,
 			check: func(t *testing.T, h *startHarness, env map[string]any) {
-				if warning := warningText(env); !strings.Contains(warning, "p1 is owned by machine laptop and was not ended; re-run `lym beam start`, which ends it again") || len(h.starter.specs) != 1 {
-					t.Errorf("warning = %q, starts = %d; want p1 and its owner named as not ended and one launch", warning, len(h.starter.specs))
+				if warning := warningText(env); !strings.Contains(warning, "p1 is owned by machine laptop") || len(h.starter.specs) != 1 {
+					t.Errorf("warning = %q, starts = %d; want p1 and its owner named and one launch", warning, len(h.starter.specs))
 				}
 			},
 		},
@@ -1428,7 +1329,7 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 					t.Errorf("reconciles = %d, claims = %d, paused = %v, starts = %d; want none reconciled, claimed or paused and one launch", h.reconciles, h.claimCalls, h.ownerPaused, len(h.starter.specs))
 				}
 				if got := envList(t, env, "mutations"); len(got) != 0 || len(envList(t, env, "owner_pauses")) != 0 || warningText(env) != "" {
-					t.Errorf("env = %v; want no mutation, owner end or warning", env)
+					t.Errorf("env = %v; want no mutation, owner pause or warning", env)
 				}
 			},
 		},
@@ -1517,8 +1418,6 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 		stopFirst bool
 		// presence sets the machine's presence to slack, so the pointer the launch carries ends with the presence line.
 		presence bool
-		// autonomous sets the autonomy seam to on; without it the paths carry no seam, which reads off.
-		autonomous bool
 		// carried is the count of operator instructions the starter reports a launch carried over.
 		carried int
 		// wantWarning is the warning the start adds beside the starter's own.
@@ -1565,15 +1464,6 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 			name: "presence slack: a launch from the last note carries the presence line", note: true, presence: true,
 			wantStarts: 1, wantSource: orchengine.SourceLastHandoff, wantSaved: "minted-id",
 		},
-		{
-			name: "autonomy on: a recorded id is resumed with the reload pointer and the on line", strands: corpse, recorded: recordedTestSessionID, autonomous: true,
-			wantStarts: 1, wantResumeID: recordedTestSessionID, wantSource: orchengine.SourceResume, wantSaved: recordedTestSessionID, wantSessionID: recordedTestSessionID,
-		},
-		{
-			name: "autonomy on: a launch from the last note carries the on line", note: true, autonomous: true,
-			wantStarts: 1, wantSource: orchengine.SourceLastHandoff, wantSaved: "minted-id",
-		},
-		{name: "autonomy on: a fresh launch carries the on line", autonomous: true, wantStarts: 1, wantSource: orchengine.SourceFresh, wantSaved: "minted-id"},
 		{name: "no id recorded and a last note launches from the note", note: true, wantStarts: 1, wantSource: orchengine.SourceLastHandoff, wantSaved: "minted-id"},
 		{name: "no id recorded and no note launches the start stencil", wantStarts: 1, wantSource: orchengine.SourceFresh, wantSaved: "minted-id"},
 		{name: "a launch naming no id records none", noSessionID: true, wantStarts: 1, wantSource: orchengine.SourceFresh, wantSaved: ""},
@@ -1594,9 +1484,6 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 				h.starter.sessionID = ""
 			}
 			h.cli.cfg.PermissionMode = "bypass"
-			if c.autonomous {
-				h.cli.paths.Autonomy = func() bool { return true }
-			}
 			if c.presence {
 				h.cli.paths.SlackPresencePath = filepath.Join(t.TempDir(), "presence.json")
 				if _, err := slackengine.WritePresence(h.cli.paths.SlackPresencePath, slackengine.PresenceSlack, time.Now()); err != nil {
@@ -1653,7 +1540,7 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 					t.Fatal(err)
 				}
 				wantPrompt := orchengine.WithPresence(h.cli.paths, reload)
-				if !strings.HasPrefix(launched.Prompt, wantPrompt) || (c.presence && wantPrompt == reload) {
+				if launched.Prompt != wantPrompt || (c.presence && wantPrompt == reload) {
 					t.Errorf("prompt = %q; want the reload pointer %q, with the presence line when presence is slack", launched.Prompt, wantPrompt)
 				}
 			case orchengine.SourceLastHandoff:
@@ -1670,18 +1557,9 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if !strings.HasPrefix(launched.Prompt, wantPrompt) || launched.ResumeSessionID != "" {
+				if launched.Prompt != wantPrompt || launched.ResumeSessionID != "" {
 					t.Errorf("fresh spec = %+v; want the start stencil %q and no resume id", launched, wantPrompt)
 				}
-			}
-			// The literal fragments of the autonomy line the pointer ends with, one per value.
-			const onFragment, offFragment = "Autonomy is on: settle every halt yourself", "Autonomy is off."
-			wantFragment, otherFragment := offFragment, onFragment
-			if c.autonomous {
-				wantFragment, otherFragment = onFragment, offFragment
-			}
-			if !strings.Contains(launched.Prompt, wantFragment) || strings.Contains(launched.Prompt, otherFragment) {
-				t.Errorf("prompt = %q; want it to hold %q and not %q", launched.Prompt, wantFragment, otherFragment)
 			}
 			wantNote := "/keep/me.md"
 			if c.note {
@@ -1701,7 +1579,7 @@ func TestStart_ResumeOverALiveHolder(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	held := &shuttleengine.SessionHeldError{SessionID: recordedTestSessionID, PID: 4242, TranscriptCopied: true, Err: errors.New("claudeengine: session held by live process 4242")}
+	held := &shuttleengine.SessionHeldError{SessionID: recordedTestSessionID, PID: 4242, Err: errors.New("claudeengine: session held by live process 4242")}
 	tests := []struct {
 		name       string
 		resumeErrs []error
@@ -1757,12 +1635,9 @@ func TestStart_ResumeOverALiveHolder(t *testing.T) {
 			if len(h.starter.specs) != tt.wantStarts {
 				t.Fatalf("starts = %d; want %d", len(h.starter.specs), tt.wantStarts)
 			}
-			for i, spec := range h.starter.specs {
+			for _, spec := range h.starter.specs {
 				if spec.ResumeSessionID != recordedTestSessionID {
 					t.Errorf("started spec resumes %q; want every start to resume %q and none to launch fresh", spec.ResumeSessionID, recordedTestSessionID)
-				}
-				if wantCopied := i > 0; spec.TranscriptCopied != wantCopied {
-					t.Errorf("start %d carries TranscriptCopied = %v; want %v, the held error's copy fact for a retry and none for the first start", i, spec.TranscriptCopied, wantCopied)
 				}
 			}
 			if tt.wantCode != 0 {

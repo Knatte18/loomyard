@@ -24,12 +24,12 @@
 # with the perch on or off.
 #
 # Code-Bouncer, Code-Burler-Review and Code-Burler-Fix are the Code-Review perch, the same perch
-# darn's recipe runs, with the same row names, segment, run_subdir, role_prefix, rubric and
-# loom.code.* keys. Its ring is the shared-segment one: the Bouncer's on_stuck
+# darn's recipe runs, with the same row names, segment, run_subdir, role_prefix, rubric and loom.yaml
+# code_* keys. Its ring is the shared-segment one: the Bouncer's on_stuck
 # names the review row, the review row's on_stuck names the fix row, the fix row's on_stuck names the
 # Bouncer, and each Burler row's on_done names the same row as its on_stuck, since neither ever
-# returns Done. The segment's rows declare no max_bounces: their budget is
-# loom.code.max_bounces, applied by internal/loomrecipe.
+# returns Done. The segment's rows declare no max_bounces: their budget is loom.yaml's
+# code_max_bounces, applied by internal/loomrecipe.
 #
 # The perch's answer key is the decision record alone: its `## Goal` holds the task's board entry, as
 # amended by the record's `Added after Discussion` entries, which win where they differ.
@@ -40,9 +40,8 @@
 # fix halts the run for the orch.
 # Record-Write, the Drift rows, Sampler-Session and Describe carry none either: a Stuck of each halts the run for the parent
 # with the ways forward in its reason.
-# PR-Review carries no on_stuck because its Stuck halts the run, and no on_reroute, since no agent reviews the pull request;
-# Friction-Reflect carries none because it never returns Stuck.
-# Code-Bouncer keeps its sampler.code_review entry gate, so with the review off the verb answers fix-here.
+# PR-Review carries no on_stuck because its Stuck is always a Halt, and Friction-Reflect none because it
+# never returns Stuck.
 # PR-Review carries no entry_gate either: whether it opens a pull request reads the parent's anchor, a
 # board field and the origin, which the row decides in its own call.
 #
@@ -128,8 +127,8 @@ producers:
       run_subdir: code
       subject: code
       role_prefix: code
-      reviewer_fan_setting: loom.code.reviewer_fan
-      auto_accept_setting: loom.code.auto_accept
+      reviewer_fan_setting: loom.code_reviewer_fan
+      auto_accept_setting: loom.code_auto_accept
       # The subject under review is the committed diff, which artifact_paths cannot name; the key
       # names the answer key instead: the decision record. The rubric names the diff as the subject.
       artifact_paths:
@@ -139,18 +138,6 @@ producers:
       # carry_over names this row's own segment: the Bouncer files the round's still-open findings
       # under it in the decision record's Open risks section, and a test pins it equal to segment.
       carry_over: Code-Review
-      # escalate_decisions makes this Bouncer send a round's decision-class findings to the run's
-      # parent and wait for its ruling; Code-Burler-Fix sets decisions_escalated so its fixer is
-      # given none and posts no notice of its own.
-      escalate_decisions: true
-      # scope_closed says the segment runs after the task's scope closed at its first round, so a
-      # decision escalation is answered by ruling findings in scope or filing a note, never by a
-      # decision-record entry, which "lym loom decision add" refuses here.
-      scope_closed: true
-      # blocking_escalates sends a spent budget with an open BLOCKING finding to the run's parent,
-      # which accepts it or orders another round, instead of to the auto-accept; a finding the fixer
-      # reported fixed is first checked against its fix commit, and closed when the check confirms it.
-      blocking_escalates: true
 
   - name: Code-Burler-Review
     engine: BurlerReview
@@ -165,11 +152,8 @@ producers:
       # shared run directory.
       run_subdir: code
       role_prefix: code
-      reviewer_fan_setting: loom.code.reviewer_fan
-      fixer_fan_setting: loom.code.fixer_fan
-      # The reviewer gets the task's diff written out in per-package pieces, each small enough to
-      # read whole, so it never prints or reads the whole diff at once.
-      stage_diff: true
+      reviewer_fan_setting: loom.code_reviewer_fan
+      fixer_fan_setting: loom.code_fixer_fan
       profile:
         target:
           # No paths key: a diff has no file on disk for the profile's path check to stat.
@@ -192,8 +176,8 @@ producers:
         tool-use: true
         # The round reviews code, so its seats load the hub's language skills after their own.
         language-skills: true
-        # No cluster-fan key: the row's reviewer_fan_setting and fixer_fan_setting keys name
-        # loom.code.reviewer_fan and loom.code.fixer_fan.
+        # No cluster-fan key: the row's reviewer_fan_setting and fixer_fan_setting keys name loom.yaml's
+        # code_reviewer_fan and code_fixer_fan.
 
   - name: Code-Burler-Fix
     engine: BurlerFix
@@ -206,16 +190,13 @@ producers:
     config:
       run_subdir: code
       role_prefix: code
-      fixer_fan_setting: loom.code.fixer_fan
+      fixer_fan_setting: loom.code_fixer_fan
       review_row: Code-Burler-Review
-      # decisions_escalated says Code-Bouncer's escalate_decisions sends the round's decision-class
-      # findings to the parent.
-      decisions_escalated: true
       # The verify gate runs the tree-scoped command, or the hub's `code-burler-fix` key, on the
       # committed tree after each round, lints the comments from the merge base on every attempt,
       # and re-prompts the fix session with the findings until it passes. The row runs its own key
       # and shares no pass with the build row; gate_key names another key of the hub's gate.yaml.
-      # Its attempts here is a placeholder: the builder stamps darn.verify_attempts at every build.
+      # Its attempts here is a placeholder: the builder stamps darn.yaml's verify_attempts at every build.
       # The clean gate goes first, so a fixer that left an uncommitted or untracked file commits or
       # deletes it before its session ends.
       gates:
@@ -253,7 +234,7 @@ producers:
           attempts: 3
 
   # PR-Review lands the task through a GitHub pull request when the pull-request resolver says so.
-  # It carries no entry_gate and no on_stuck, because its Stuck halts the run.
+  # It carries no entry_gate and no on_stuck, because its Stuck is always a Halt.
   - name: PR-Review
     engine: PRReview
     on_done: Finalize

@@ -23,8 +23,6 @@ const standInRecordEnv = "TESTCOVER_STAND_IN_RECORD"
 // standInProfileLine is the profile line it writes for a pass.
 const (
 	standInPass        = "TestStandInPass"
-	standInTimed       = "TestStandInTimed"
-	standInSplit       = "TestStandInSplit"
 	standInFail        = "TestStandInFail"
 	standInSkip        = "TestStandInSkip"
 	standInSkipProfile = "TestStandInSkipWithProfile"
@@ -44,6 +42,15 @@ const standInHoardMegabytes = 384
 // standInChildPIDSuffix, appended to a stand-in's record path, names the file standInHoldsPipe records its child's pid into.
 const standInChildPIDSuffix = ".child-pid"
 
+// standInHangBuildEnv makes the stand-in `go test -c` never end.
+const standInHangBuildEnv = "TESTCOVER_STAND_IN_HANG_BUILD"
+
+// standInCompileErrorsEnv makes the stand-in `go test -c` fail with standInCompileErrors on stderr.
+const standInCompileErrorsEnv = "TESTCOVER_STAND_IN_COMPILE_ERRORS"
+
+// standInCompileErrors is what the stand-in build prints when the compiler refuses the package: two errors in two files.
+const standInCompileErrors = "# m/p\n./overlay-1/x.go:4:9: cannot use v (value of type int) as time.Duration value\n/abs/y.go:12:3: mismatched types\n"
+
 // standInChildSleep is how long the child standInHoldsPipe leaves behind holds the output pipe.
 // The test's cleanup kills the child long before.
 const standInChildSleep = 5 * time.Minute
@@ -56,13 +63,20 @@ func TestMain(m *testing.M) {
 	os.Exit(tmuxkit.Main(m))
 }
 
+// standInListOutput is what the stand-in prints as `go list -deps -test`.
+// It holds a package of another module, which the template prints as an empty line.
+// It then holds m/q twice, m/p compiled for its test, its external test package and the generated test main.
+const standInListOutput = "\nm/q\tq\t\nm/p [m/p.test]\tp\tm/p\nm/p_test [m/p.test]\tp_test\tm/p\nm/p.test\tmain\t\nm/q\tq\t\n"
+
+// standInGoEnv is what the stand-in prints as `go env GOVERSION GOOS GOARCH`.
+const standInGoEnv = "go1.26.8\nlinux\namd64\n"
+
 // runStandIn writes args, one per line, to record and acts on them, returning the process exit code.
+// As `go list`, it prints standInListOutput, and as `go env`, standInGoEnv.
 // As `go test -list`, it prints two test names; as `go test -c`, it creates the empty file `-o` names.
+// As `go test -c` with standInCompileErrorsEnv set, it prints standInCompileErrors and fails.
 // As a coverage binary, it reports the outcome of the one test its `-test.run` names.
 // It writes a profile for a passing test, and for a skipped one that standInSkipProfile names, when given a profile flag.
-// The test standInTimed prints its `=== RUN` line and its result line in one write, and reports 0.00s.
-// The test standInSplit writes its `=== RUN` line and an indented subtest result line.
-// It then writes its result line in two writes, and reports 0.00s.
 // Run with a pattern matching no test, it writes the profile with its block uncovered.
 // The test standInHang never ends on its own.
 // The test standInHoldsPipe passes and exits, leaving a child that holds the output pipe for standInChildSleep;
@@ -74,10 +88,23 @@ func runStandIn(record string, args []string) int {
 		return 1
 	}
 	switch {
+	case len(args) > 0 && args[0] == "list":
+		fmt.Print(standInListOutput)
+		return 0
+	case len(args) > 0 && args[0] == "env":
+		fmt.Print(standInGoEnv)
+		return 0
 	case slices.Contains(args, "-list"):
 		fmt.Println("TestAlpha\nExampleBeta\nok  \tm/p\t0.01s")
 		return 0
 	case slices.Contains(args, "-c"):
+		if os.Getenv(standInHangBuildEnv) != "" {
+			time.Sleep(time.Hour)
+		}
+		if os.Getenv(standInCompileErrorsEnv) != "" {
+			fmt.Fprint(os.Stderr, standInCompileErrors)
+			return 1
+		}
 		if i := slices.Index(args, "-o"); i >= 0 && i+1 < len(args) {
 			if err := os.WriteFile(args[i+1], nil, 0o755); err != nil {
 				return 1
@@ -112,19 +139,6 @@ func runStandIn(record string, args []string) int {
 			return 1
 		}
 		fmt.Printf("--- PASS: %s (0.25s)\n", name)
-	case standInTimed:
-		if err := writeProfile("1"); err != nil {
-			return 1
-		}
-		fmt.Printf("=== RUN   %s\n--- PASS: %s (0.00s)\n", name, name)
-	case standInSplit:
-		if err := writeProfile("1"); err != nil {
-			return 1
-		}
-		fmt.Printf("=== RUN   %s\n", name)
-		fmt.Printf("    --- PASS: %s/sub (0.00s)\n", name)
-		fmt.Print("--- PA")
-		fmt.Printf("SS: %s (0.00s)\n", name)
 	case standInSkipProfile:
 		if err := writeProfile("1"); err != nil {
 			return 1

@@ -80,11 +80,6 @@ Imports only the standard library, `internal/logger`, `internal/stencil` and `in
   Returning a bool instead would make every caller duplicate that logging.
   `internal/friction` already reaches `logger` through `internal/stencilstore`, so the admission widens nothing.
 
-## `internal/claudeimports`
-
-Imports only the standard library.
-It is the one expander of Claude instruction-file imports that `claudeengine`, `heddleengine` and `codexengine` share.
-
 ## `internal/durfmt`
 
 Imports only the standard library.

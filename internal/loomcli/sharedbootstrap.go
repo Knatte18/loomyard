@@ -1,11 +1,9 @@
-// sharedbootstrap.go holds the bootstrap helpers that `start`, `step` and `resume` share.
+// sharedbootstrap.go holds the bootstrap steps that `start` and `step` share.
 // Every helper here is lock-agnostic: none acquires or releases loomengine.LoomBootstrapLock.
-// Each verb wraps its own lock window around these calls, so no helper may assume any one window.
+// Each verb wraps its own lock window around these calls, so no helper may assume either window.
 // `start` holds the lock across the strand work, the driver spawn, and the run-lock handshake.
 // `step` holds it around reed Up alone and releases it before it calls the producer.
-// `resume` holds it across its status-pane restore and the driver wake or spawn.
-// ensureStatusStrand is called by `start` and by `resume`'s status-pane restore.
-// `step` never calls it, because `step` touches no strand.
+// ensureStatusStrand is `start`'s alone, because `step` touches no strand.
 
 package loomcli
 
@@ -147,21 +145,12 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 	// A re-entry keeps the record already there.
 	wroteRunUsage := seedErr == nil && c.writeRunUsage(seedRecipe, slug)
 
-	// Step 2d pins the stencils the run may render on the first seed only,
-	// so a later resume can name each one that changed since the run started.
-	// A re-entry keeps the pins already there.
-	if seedErr == nil {
-		c.writeStencilPins()
-	}
-
 	// Step 3: commit the seed and the provenance record into the fabric on every invocation.
 	// The commit does not depend on whether this invocation wrote the origin record.
 	// The origin record's path is always included.
 	// A prior invocation may have written it to disk and crashed before committing it.
 	// On the next call, resolveParentBranch finds the record present and reports write == false while it is untracked.
 	// The status file and the seed are included on every call for the same reason, since WriteSeed is idempotent.
-	// The stencil pins record is included whenever it is on disk, not only when this call wrote it:
-	// a first seed whose commit failed or died left it untracked, and a re-entry must commit it.
 	// Committing a clean path is a no-op (StageAndCommit reports committed == false), so the ordinary path pays nothing.
 	// The commit must precede any producer call.
 	// The phase machine's first precondition row scans the fabric, including untracked files.
@@ -292,22 +281,17 @@ func loomSeedFor(recipe, parent, driver string) shedrun.Seed {
 	}
 }
 
-// bootstrapCommitPaths returns the anchor-relative paths the bootstrap commits.
-// The status file, the seed and the origin record are always included.
-// The friction directory is included when withFriction is set,
+// bootstrapCommitPaths returns the anchor-relative paths the bootstrap commits:
+// the status file, the seed and the origin record always,
+// and the friction directory when withFriction is set,
 // so a first seed's clear of notes the fabric already tracked is committed with the seed.
-// The stencil pins record is included when it is on disk.
-// Git refuses a commit pathspec that matches nothing.
-// So withFriction must be set only when the directory matches tracked or untracked content,
-// and the pins record is added only when its file exists.
-// It only stats that one file, so a Tier 1 test can pin the pathspec's exact shape without a real fabric behind it.
+// Git refuses a commit pathspec that matches nothing;
+// so withFriction must be set only when the directory matches tracked or untracked content.
+// It is a pure function, so a Tier 1 test can pin the pathspec's exact shape without a real fabric behind it.
 func bootstrapCommitPaths(location *lymcwd.Location, withFriction bool) []string {
 	paths := []string{shedrun.StatusRel(location, shedrun.SelfRunID), shedrun.SeedRel(location, shedrun.SelfRunID), fabricengine.OriginRecordRel()}
 	if withFriction {
 		paths = append(paths, loomengine.LoomFrictionDirRel())
-	}
-	if _, err := os.Stat(shedrun.StencilPinsFile(location, shedrun.SelfRunID)); err == nil {
-		paths = append(paths, shedrun.StencilPinsRel(location, shedrun.SelfRunID))
 	}
 	return paths
 }
@@ -333,17 +317,13 @@ func ensureFrictionDirAfterSeed(frictionDir string, seedErr error) {
 	friction.EnsureDir(frictionDir)
 }
 
-// errStatusStrandNotReplaced marks a failed replace of the status strand.
-// It costs the operator the status pane, not the run.
-var errStatusStrandNotReplaced = errors.New("could not replace the status strand")
-
-// ensureStatusStrand keeps, replaces or adds the worktree's status strand.
-// The caller has brought reed up and holds the bootstrap lock, which this function neither acquires nor releases.
+// ensureStatusStrand is `start`'s status-strand work: it keeps, replaces or adds the worktree's status strand.
+// Only `start` calls it, after it has brought reed up.
+// It runs after the bootstrap-lock acquisition and ends before the run-lock probe.
 //
-// It returns nil on success.
-// A failed replace returns an error wrapping errStatusStrandNotReplaced and the cause.
-// A caller treats that error as non-fatal.
-// Any other failure is returned unwrapped.
+// It returns the first error encountered, unwrapped, and nil on success.
+// The caller owns the bootstrap lock: this function must neither acquire nor release it.
+// The lock's position differs between the verbs that run the bootstrap.
 func (c *loomCLI) ensureStatusStrand() error {
 	statusResult, err := c.reed.Status()
 	if err != nil {
@@ -367,9 +347,12 @@ func (c *loomCLI) ensureStatusStrand() error {
 	var strand reedengine.Strand
 	if strandAction == statusStrandReplace {
 		// A replace goes through ReplaceStrand so the status strand keeps its top slot.
+		// A failure is not fatal to the bootstrap;
+		// it costs the operator the status pane for this run, not the run itself.
 		strand, err = c.reed.ReplaceStrand(staleGUID, addSpec)
 		if err != nil {
-			return fmt.Errorf("%w %s: %w", errStatusStrandNotReplaced, staleGUID, err)
+			logger.Warn("loom: could not replace the status strand; the status pane will be missing this run", "guid", staleGUID, "cause", err)
+			return nil
 		}
 	} else {
 		strand, err = c.reed.AddStrand(addSpec)
@@ -379,7 +362,7 @@ func (c *loomCLI) ensureStatusStrand() error {
 	}
 	if buildErr == nil {
 		if err := statuspane.WriteSidecar(sidecarPath, strand.GUID, build); err != nil {
-			logger.Warn("loom: could not record the status strand's build; the next status-pane restore will replace it", "cause", err)
+			logger.Warn("loom: could not record the status strand's build; the next start will replace it", "cause", err)
 		}
 	}
 	return nil
@@ -430,14 +413,17 @@ func (c *loomCLI) wireLanding() error {
 		c.verifySource(),
 		parentLockDeps(c.location, c.runID, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath),
 	)
+	// The PR-Review session's liveness and process registration read reed's strand table.
+	slug := seedSlug(c.location.WorktreeName)
+	registerPane := func(pid int) error {
+		return runproc.Register(fabricengine.RunProcDir(c.location.HubPath), slug, runproc.ChildRecord(pid, runproc.RoleSession, nil))
+	}
+	c.env.Landing.PullRequest.SessionLive = sessionLiveness(c.reed.Status)
+	c.env.Landing.PullRequest.RegisterSession = sessionRegistrar(c.reed.Status, registerPane)
 	// The sampler run's session is checked for liveness and registered, and its row wakes on its record's file event.
-	// Its liveness and process registration read reed's strand table.
 	// The building paths pass through here; status and pause never do.
+	// So the watch opens only for a run that drives the row.
 	if recipeHasEngine(c.recipe, samplerSessionEngine) {
-		slug := seedSlug(c.location.WorktreeName)
-		registerPane := func(pid int) error {
-			return runproc.Register(fabricengine.RunProcDir(c.location.HubPath), slug, runproc.ChildRecord(pid, runproc.RoleSession, nil))
-		}
 		c.env.Sampler.Sessions = c.runner
 		c.env.Sampler.SessionLive = sessionLiveness(c.reed.Status)
 		c.env.Sampler.RegisterSession = sessionRegistrar(c.reed.Status, registerPane)

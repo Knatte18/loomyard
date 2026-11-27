@@ -20,7 +20,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
-	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -72,7 +71,7 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 		return commitStatusDeps{
 			MergeActive: func() (bool, error) { return false, nil },
 			Commit:      func(string) (bool, error) { return false, nil },
-			StartPush:   func() bool { return false },
+			Spawn:       func() error { return nil },
 		}
 	}
 	c.shedPaths = shedbuild.ShedPaths{
@@ -228,11 +227,6 @@ func writeStatus(t *testing.T, c *battenCLI, st shedengine.Status) {
 // a stopped verdict refuses with the branch's way forward verbatim, followed by the re-run;
 // a reconcile error refuses with the error and the re-run.
 // An absent status file never runs the reconcile.
-// Over a fake catch-up, which runs before the reconcile:
-// an unreachable origin refuses with the origin-wait exit and the re-run;
-// a registration refusal passes its way forward;
-// any other failure names its error and the re-run, and a run handed over exits owned elsewhere;
-// a clean catch-up goes on to the reconcile.
 // Over fake owner seams:
 // an owned_elsewhere verdict refuses naming the owner and "lym adopt";
 // a run-held entry with no owner resumes, and the resume writes no owner;
@@ -276,9 +270,9 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		// yieldReason, when set, makes the step yield with the Run-Shed row's stuck-reason file holding it;
 		// the run then stays running.
 		yieldReason string
-		// catchUp, when set, is the receiver's catch-up seam, and wantCatchUps counts its calls.
-		catchUp      func() (dobbyengine.CatchUpReport, error)
-		wantCatchUps int
+		// markerBefore stands an origin-owed marker before the pass; wantMarker is whether one stands after it.
+		markerBefore bool
+		wantMarker   bool
 	}{
 		{name: "running", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1},
 		{name: "yield", state: shedengine.StateRunning, producer: battenrecipe.NameRunShed, wantOutcome: "yielded", wantReconcile: 1, yieldReason: "holding for the child's spawn"},
@@ -308,46 +302,20 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		},
 		{
 			name: "reconcile_unreachable", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1,
-			report: fabricengine.OriginReport{Unreachable: true},
+			report: fabricengine.OriginReport{Unreachable: true}, wantMarker: true,
 		},
 		{
-			name: "catch_up_unreachable_refuses_before_the_reconcile", state: shedengine.StateRunning,
-			catchUp: func() (dobbyengine.CatchUpReport, error) {
-				return dobbyengine.CatchUpReport{}, dobbyengine.ErrOriginUnreachable
-			},
-			wantCatchUps: 1, wantExit: dobbyengine.PassExitOriginWait,
-			wantErrors: []string{"origin is unreachable, so the catch-up acted on no run", "run lym batten run " + slug + " again once origin answers"},
+			name: "a_pass_that_reached_origin_and_exits_0_removes_the_origin_owed_marker", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1,
+			report: activeReport, markerBefore: true,
 		},
 		{
-			name: "catch_up_registration_refusal_passes_its_way_forward", state: shedengine.StateRunning,
-			catchUp: func() (dobbyengine.CatchUpReport, error) {
-				return dobbyengine.CatchUpReport{}, &boardengine.RegistrationError{Reason: "the name is taken", WayForward: "rename this machine"}
-			},
-			wantCatchUps: 1, wantExit: dobbyengine.PassExitOriginWait,
-			wantErrors: []string{"machine registration refused: the name is taken", "way forward: rename this machine"},
+			name: "an_unreachable_pass_that_exits_0_keeps_the_origin_owed_marker", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1,
+			report: unreachableReport, markerBefore: true, wantMarker: true,
 		},
 		{
-			name: "catch_up_failure_names_its_error_and_the_re_run", state: shedengine.StateRunning,
-			catchUp: func() (dobbyengine.CatchUpReport, error) {
-				return dobbyengine.CatchUpReport{}, errors.New("push refused")
-			},
-			wantCatchUps: 1, wantExit: dobbyengine.PassExitOriginWait,
-			wantErrors: []string{"push refused", "fix the cause it names, then run lym batten run " + slug + " again"},
-		},
-		{
-			name: "catch_up_that_handed_the_run_over_exits_owned_elsewhere", state: shedengine.StateRunning,
-			catchUp: func() (dobbyengine.CatchUpReport, error) {
-				return dobbyengine.CatchUpReport{HandedOver: []string{slug}}, nil
-			},
-			wantCatchUps: 1, wantExit: dobbyengine.PassExitOwnedElsewhere,
-			wantErrors: []string{"handed", "`lym adopt " + slug + "`"},
-		},
-		{
-			name: "clean_catch_up_goes_on_to_the_reconcile", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1,
-			catchUp: func() (dobbyengine.CatchUpReport, error) {
-				return dobbyengine.CatchUpReport{OwnedHere: []string{slug}}, nil
-			},
-			wantCatchUps: 1,
+			name: "a_pass_that_reached_origin_and_exits_non_zero_keeps_the_origin_owed_marker", state: shedengine.StateFailed, producer: battenrecipe.NameLand, wantReconcile: 1,
+			lockErr: errors.New("prime lock unavailable"), wantErrors: []string{"prime lock unavailable"},
+			report: activeReport, markerBefore: true, wantMarker: true,
 		},
 		{
 			name: "reconcile_error", state: shedengine.StateRunning, wantReconcile: 1,
@@ -376,7 +344,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		{
 			name: "unreachable_origin_with_an_unowned_run_held_entry_resumes_without_a_write", state: shedengine.StateRunning, producer: land, wantOutcome: "done", wantReconcile: 1,
 			owner:  owning(fakeOwners{machine: "here", owners: ownedBy("here", "", true)}),
-			report: unreachableReport,
+			report: unreachableReport, wantMarker: true,
 		},
 		{
 			name: "hub_with_no_prime_owner_records_this_machine_as_the_prime_owner", state: shedengine.StateRunning, producer: land, wantOutcome: "done", wantReconcile: 1,
@@ -387,7 +355,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		{
 			name: "unreachable_origin_with_no_prime_owner_resumes_without_a_write", state: shedengine.StateRunning, producer: land, wantOutcome: "done", wantReconcile: 1,
 			owner:  owning(fakeOwners{machine: "here", owners: ownedBy("", "", false)}),
-			report: unreachableReport,
+			report: unreachableReport, wantMarker: true,
 		},
 		{
 			name: "failed_prime_claim_warns_and_still_reaches_the_owner_verdict", state: shedengine.StateRunning, producer: land, wantReconcile: 1,
@@ -433,18 +401,6 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 					t.Errorf("run(%s) ran the reconcile %d times; want %d", tt.name, reconciled, tt.wantReconcile)
 				}
 			}()
-			catchUps := 0
-			if tt.catchUp != nil {
-				c.catchUp = func() (dobbyengine.CatchUpReport, error) {
-					catchUps++
-					return tt.catchUp()
-				}
-			}
-			defer func() {
-				if catchUps != tt.wantCatchUps {
-					t.Errorf("run(%s) ran the catch-up %d times; want %d", tt.name, catchUps, tt.wantCatchUps)
-				}
-			}()
 			if tt.lockErr != nil {
 				c.env.PrimeLock.Acquire = func() (func() error, bool, error) { return nil, false, tt.lockErr }
 			}
@@ -471,10 +427,22 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 					PauseAfter:      tt.pauseAfter,
 				})
 			}
+			if tt.markerBefore {
+				marker := shedrun.OriginOwedMarker(c.location, c.slug)
+				if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(marker, []byte("{}"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
 
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(runCommand(c), &out, []string{c.slug})
 
+			if stands, err := OriginOwed(c.location, c.slug); err != nil || stands != tt.wantMarker {
+				t.Errorf("run(%s) origin-owed marker standing = %v, %v; want %v", tt.name, stands, err, tt.wantMarker)
+			}
 			if len(tt.wantErrors) > 0 {
 				wantExit := tt.wantExit
 				if wantExit == 0 {

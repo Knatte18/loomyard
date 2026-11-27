@@ -27,7 +27,7 @@ import (
 // Otherwise the second would archive notes out from under the first one's live agent,
 // and both would hold reflection-report.md as a declared output.
 // The call waits for the lock: the row holds done back until every reflection over these notes has finished.
-// The wait is bounded by the holder's friction.timeout_min.
+// The wait is bounded by the holder's friction_timeout_min.
 // An advisory lock is released on process death.
 // The holder never waits on anything the row holds, so the wait cannot deadlock.
 // The wait is not cancellable.
@@ -52,10 +52,10 @@ func (c *loomCLI) reflectFriction() string {
 		ArchivePrefix: loomengine.LoomFrictionArchivePrefix(c.location),
 		StencilsDir:   c.runDeps.Geom.StencilsDir,
 		ParentName:    c.parentName,
-		FrictionSpec:  c.cfg.Friction.Model,
+		FrictionSpec:  c.cfg.Friction,
 		Registry:      c.registry,
 		TaskSlug:      seedSlug(c.location.WorktreeName),
-		Timeout:       time.Duration(c.cfg.Friction.TimeoutMin) * time.Minute,
+		Timeout:       time.Duration(c.cfg.FrictionTimeoutMin) * time.Minute,
 	})
 	if err != nil {
 		logger.Warn("loom: friction reflection failed", "dir", c.frictionDir, "error", err)
@@ -70,7 +70,7 @@ func (c *loomCLI) reflectFriction() string {
 // The row reflects under step (`lym loom step`, `lym shed step --recipe tapestry`) as under run:
 // every driven run uses step.
 // The reflection agent files public issues during the step with no operator in the loop.
-// The step blocks for at most friction.timeout_min.
+// The step blocks for at most friction_timeout_min.
 func (c *loomCLI) reflectFrictionRow() string {
 	status := frictionengine.StatusSkipped
 	if c.frictionDir != "" {

@@ -25,7 +25,7 @@ const patternHeadroomCheck = "pattern-headroom"
 const patternCardHeadroomCheck = "pattern-card-headroom"
 
 // patternHeadroomWayForward is the fix both headroom findings name.
-const patternHeadroomWayForward = "shorten the prescribed lines or move detail into the entries' background files, and when that is not enough ask the parent to record a `changes` decision that shortens other entries with `lym loom decision add --pattern-entry ... --pattern-action changes --pattern-text ...` and prescribe those lines on a card; once the plan is approved, the parent passes `--amends-plan` as well; once the task's scope is closed no decision enters the record, so only the shortening is left"
+const patternHeadroomWayForward = "shorten the prescribed lines or move detail into the entries' background files, and when that is not enough ask the parent to record a `changes` decision that shortens other entries with `lym loom decision add --pattern-entry ... --pattern-action changes --pattern-text ...` and prescribe those lines on a card; once the plan is approved, the parent passes `--amends-plan` as well"
 
 // patternRemovesPrescribedCheck names the finding reported when a card fences a line for an entry the plan removes.
 const patternRemovesPrescribedCheck = "pattern-removes-prescribed"

@@ -32,8 +32,6 @@ const (
 	primeOrch = "ly:orch"
 	// testMachine is the machine name of the harness's geometry, which prefixes every sender name Slack shows.
 	testMachine = "neve"
-	// testHubMachine is the current name the fake hub gives this machine, which no peer command of a test pairs with.
-	testHubMachine = "home"
 	// primeChannelName and paymentsChannelName are the names the keeper gives the channels of primeOrch and paymentsOrch.
 	// The fake hub names the root project P0 and the payments beam's project P1.
 	primeChannelName    = "neve-ly-p0-root"
@@ -136,121 +134,6 @@ type fakeMailbox struct {
 	readWaitCalls int
 	// releases counts handlers that returned an error and so released their read.
 	releases int
-	// pending are the machine messages creel holds: TakeMachine answers every one, and a settle creel answers drops it.
-	pending []creelengine.MachineOutbound
-	// takeErr fails TakeMachine when set.
-	takeErr error
-	// machineFailures queues, per verb, the errors consumed one per call of that verb, a nil entry succeeding.
-	machineFailures map[string][]error
-	// machineCalls records every report, settle and deliver call, in order.
-	machineCalls []machineCall
-	// delivered are the machine mails DeliverMachine accepted.
-	delivered []creelengine.MachineMail
-}
-
-// machineCall is one report, settle or deliver call the fake mailbox received.
-// Verb is Report, SettleDelivered, SettleReturned or Deliver; Arg is the reason, the Slack timestamp or the sender.
-type machineCall struct {
-	Verb string
-	ID   int64
-	Arg  string
-}
-
-// machineVerb records the call and returns the next error queued for its verb; the caller holds the lock.
-func (m *fakeMailbox) machineVerb(call machineCall) error {
-	m.machineCalls = append(m.machineCalls, call)
-	queue := m.machineFailures[call.Verb]
-	if len(queue) == 0 {
-		return nil
-	}
-	m.machineFailures[call.Verb] = queue[1:]
-	return queue[0]
-}
-
-// dropPending removes message id from the held ones; the caller holds the lock.
-func (m *fakeMailbox) dropPending(id int64) {
-	kept := m.pending[:0:0]
-	for _, message := range m.pending {
-		if message.ID != id {
-			kept = append(kept, message)
-		}
-	}
-	m.pending = kept
-}
-
-func (m *fakeMailbox) TakeMachine() ([]creelengine.MachineOutbound, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.takeErr != nil {
-		return nil, m.takeErr
-	}
-	return append([]creelengine.MachineOutbound(nil), m.pending...), nil
-}
-
-func (m *fakeMailbox) ReportMachine(id int64, reason string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.machineVerb(machineCall{Verb: "Report", ID: id, Arg: reason})
-}
-
-func (m *fakeMailbox) SettleMachineDelivered(id int64, slackTS string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	err := m.machineVerb(machineCall{Verb: "SettleDelivered", ID: id, Arg: slackTS})
-	if err == nil {
-		m.dropPending(id)
-	}
-	return err
-}
-
-func (m *fakeMailbox) SettleMachineReturned(id int64, reason string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	err := m.machineVerb(machineCall{Verb: "SettleReturned", ID: id, Arg: reason})
-	if err == nil {
-		m.dropPending(id)
-	}
-	return err
-}
-
-func (m *fakeMailbox) DeliverMachine(mail creelengine.MachineMail) (int64, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if err := m.machineVerb(machineCall{Verb: "Deliver", Arg: mail.Sender}); err != nil {
-		return 0, err
-	}
-	m.delivered = append(m.delivered, mail)
-	return int64(len(m.delivered)), nil
-}
-
-// setPending replaces the machine messages creel holds.
-func (m *fakeMailbox) setPending(messages ...creelengine.MachineOutbound) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.pending = append([]creelengine.MachineOutbound(nil), messages...)
-}
-
-// failMachine queues errs for the next calls of verb, one per call, a nil entry succeeding.
-func (m *fakeMailbox) failMachine(verb string, errs ...error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.machineFailures == nil {
-		m.machineFailures = map[string][]error{}
-	}
-	m.machineFailures[verb] = append(m.machineFailures[verb], errs...)
-}
-
-// machineLog returns the calls of verb received, in order.
-func (m *fakeMailbox) machineLog(verb string) []machineCall {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	var calls []machineCall
-	for _, call := range m.machineCalls {
-		if call.Verb == verb {
-			calls = append(calls, call)
-		}
-	}
-	return calls
 }
 
 func (m *fakeMailbox) Post(receiver, body string) (int64, error) {
@@ -420,19 +303,6 @@ type fakeSlack struct {
 	onCall func()
 	// onMethod runs at the start of every call with its method name, outside the lock.
 	onMethod func(method string)
-	// bots is the bot directory BotUsersNamed and UserAppID read.
-	bots []fakeBot
-	// botApps maps a bot id to the id of the app it belongs to, which BotAppID reads.
-	botApps map[string]string
-	// memberChannels are the channels MemberChannels answers.
-	memberChannels []slackengine.ChannelInfo
-	// stamps counts the timestamps PostTimestamped has given.
-	stamps int
-}
-
-// fakeBot is one bot user of the fake workspace.
-type fakeBot struct {
-	Name, UserID, AppID string
 }
 
 // begin counts and logs a call, runs the hooks and returns the next error queued for the call's method.
@@ -460,7 +330,7 @@ func (s *fakeSlack) begin(call slackCall) error {
 func newFakeSlack() *fakeSlack {
 	return &fakeSlack{
 		channels: map[string][]slackengine.Message{}, invited: map[string][]string{},
-		failures: map[string][]error{}, channelErr: map[string]error{}, botApps: map[string]string{},
+		failures: map[string][]error{}, channelErr: map[string]error{},
 	}
 }
 
@@ -650,86 +520,6 @@ func (s *fakeSlack) AuthTest(context.Context) (slackengine.Identity, error) {
 	return slackengine.Identity{UserID: "UBOT", BotID: "B1"}, nil
 }
 
-// BotAppID answers the app of the bot botID, empty for a bot the fake does not know.
-func (s *fakeSlack) BotAppID(_ context.Context, botID string) (string, error) {
-	if err := s.begin(slackCall{Method: "BotAppID", Arg: botID}); err != nil {
-		return "", err
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.botApps[botID], nil
-}
-
-// BotUsersNamed answers the bots of the directory called name, or every bot for an empty name, in directory order.
-func (s *fakeSlack) BotUsersNamed(_ context.Context, name string) ([]slackengine.BotUser, error) {
-	if err := s.begin(slackCall{Method: "BotUsersNamed", Arg: name}); err != nil {
-		return nil, err
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var bots []slackengine.BotUser
-	for _, bot := range s.bots {
-		if name == "" || bot.Name == name {
-			bots = append(bots, slackengine.BotUser{UserID: bot.UserID, AppID: bot.AppID})
-		}
-	}
-	return bots, nil
-}
-
-// UserAppID answers the app of the bot user userID, empty for a user the directory does not hold.
-func (s *fakeSlack) UserAppID(_ context.Context, userID string) (string, error) {
-	if err := s.begin(slackCall{Method: "UserAppID", Arg: userID}); err != nil {
-		return "", err
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, bot := range s.bots {
-		if bot.UserID == userID {
-			return bot.AppID, nil
-		}
-	}
-	return "", nil
-}
-
-// MemberChannels answers the member channels the test set.
-func (s *fakeSlack) MemberChannels(context.Context) ([]slackengine.ChannelInfo, error) {
-	if err := s.begin(slackCall{Method: "MemberChannels"}); err != nil {
-		return nil, err
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return append([]slackengine.ChannelInfo(nil), s.memberChannels...), nil
-}
-
-// PostTimestamped logs and records the post as PostAs does and answers a timestamp that grows with each post.
-func (s *fakeSlack) PostTimestamped(_ context.Context, channel, text string, sender slackengine.Sender) (string, error) {
-	err := s.begin(slackCall{Method: "PostTimestamped", Channel: channel, Arg: text, Sender: sender})
-	s.mu.Lock()
-	timestamp := ""
-	if err == nil {
-		s.stamps++
-		timestamp = fmt.Sprintf("1760000000.%06d", s.stamps)
-		s.posted = append(s.posted, postedText{Channel: channel, Text: text, Sender: sender})
-	}
-	onPost := s.onPost
-	s.mu.Unlock()
-	if onPost != nil {
-		onPost()
-	}
-	return timestamp, err
-}
-
-// PostThreadReply logs and records the reply as a post under the bot's default name.
-func (s *fakeSlack) PostThreadReply(_ context.Context, channel, _, text string) error {
-	err := s.begin(slackCall{Method: "PostThreadReply", Channel: channel, Arg: text})
-	s.mu.Lock()
-	if err == nil {
-		s.posted = append(s.posted, postedText{Channel: channel, Text: text})
-	}
-	s.mu.Unlock()
-	return err
-}
-
 // indexByName returns the directory index of the channel called name, or -1; the caller holds the lock.
 func (s *fakeSlack) indexByName(name string) int {
 	for i, info := range s.directory {
@@ -868,7 +658,6 @@ func (h *fakeHub) hub() slackengine.Hub {
 			}
 			return "P1", slug, nil
 		},
-		MachineNames: func() (string, []string, error) { return testHubMachine, []string{"Old_Box"}, nil },
 	}
 }
 
@@ -896,7 +685,6 @@ func newGeometry(t *testing.T) slackengine.Geometry {
 		SocketLockPath: filepath.Join(credentials, slackengine.SocketLockFileName),
 		SetupPath:      filepath.Join(dir, slackengine.SetupFileName),
 		PresencePath:   filepath.Join(credentials, slackengine.PresenceFileName),
-		PeersPath:      filepath.Join(credentials, slackengine.PeersFileName),
 		ForwardingPath: filepath.Join(dir, slackengine.ForwardingFileName),
 		OutboxPath:     filepath.Join(dir, slackengine.OutboxFileName),
 		RelayStatePath: filepath.Join(dir, slackengine.RelayStateFileName),
@@ -904,10 +692,6 @@ func newGeometry(t *testing.T) slackengine.Geometry {
 		LogPath:        filepath.Join(dir, slackengine.RelayLogFileName),
 		RunProcDir:     filepath.Join(root, "runproc"),
 		LymExecutable:  filepath.Join(root, "lym"),
-
-		BridgeMapPath:     filepath.Join(dir, slackengine.BridgeMapFileName),
-		BridgeNoticesPath: filepath.Join(dir, slackengine.BridgeNoticesFileName),
-		BridgePostsPath:   filepath.Join(dir, slackengine.BridgePostsFileName),
 	}
 }
 
@@ -1493,10 +1277,10 @@ func TestInboundRead(t *testing.T) {
 			ts, text     string
 			wantPresence slackengine.Presence
 		}{
-			{"101.000001", "lym away", slackengine.PresenceSlack},
-			{"102.000001", "lym status", slackengine.PresenceSlack},
-			{"103.000001", " LYM Back ", slackengine.PresenceTerminal},
-			{"104.000001", "lym status", slackengine.PresenceTerminal},
+			{"101.000001", "away", slackengine.PresenceSlack},
+			{"102.000001", "status", slackengine.PresenceSlack},
+			{"103.000001", " Back ", slackengine.PresenceTerminal},
+			{"104.000001", "status", slackengine.PresenceTerminal},
 		}
 		for _, step := range steps {
 			h.sayIn(paymentsChannel, step.ts, step.text)
@@ -1506,7 +1290,7 @@ func TestInboundRead(t *testing.T) {
 				t.Fatalf("ReadPresence after %q = %q, %v; want %q", step.text, got, err, step.wantPresence)
 			}
 		}
-		h.wantAnswers("presence is now slack", "presence is slack; this machine's app id is A1", "presence is now terminal", "presence is terminal; this machine's app id is A1")
+		h.wantAnswers("presence is now slack", "presence is slack", "presence is now terminal", "presence is terminal")
 		for _, call := range h.slack.logged("PostAs") {
 			if call.Channel != paymentsChannel {
 				t.Errorf("an answer was posted to %s; want %s", call.Channel, paymentsChannel)
@@ -1515,7 +1299,7 @@ func TestInboundRead(t *testing.T) {
 		h.wantPosts()
 	})
 
-	t.Run("OperatorMessageSetsThePresenceToSlackBeforeItIsForwardedAndRelayCommandsAreNotForwarded", func(t *testing.T) {
+	t.Run("OperatorMessageSetsThePresenceToSlackBeforeItIsForwardedAndBackAndStatusDoNot", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
 			name         string
@@ -1526,12 +1310,8 @@ func TestInboundRead(t *testing.T) {
 			wantPosts  []mail
 		}{
 			{"PlainText", "deploy prod", slackengine.PresenceSlack, slackengine.PresenceSlack, []mail{{primeOrch, "deploy prod"}}},
-			{"BackCommand", "lym back", slackengine.PresenceTerminal, "", nil},
-			{"StatusCommand", "lym status", slackengine.PresenceTerminal, "", nil},
-			{"ABareCommandWordIsForwarded", "status", slackengine.PresenceSlack, slackengine.PresenceSlack, []mail{{primeOrch, "status"}}},
-			{"ApproveInPlainWordsIsForwarded", "approve it", slackengine.PresenceSlack, slackengine.PresenceSlack, []mail{{primeOrch, "approve it"}}},
-			{"ThePrefixBeforeAnUnknownCommandIsForwarded", "lym board list", slackengine.PresenceSlack, slackengine.PresenceSlack, []mail{{primeOrch, "lym board list"}}},
-			{"APresenceCommandWithMoreWordsIsForwarded", "lym back now", slackengine.PresenceSlack, slackengine.PresenceSlack, []mail{{primeOrch, "lym back now"}}},
+			{"BackCommand", "back", slackengine.PresenceTerminal, "", nil},
+			{"StatusCommand", "status", slackengine.PresenceTerminal, "", nil},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -1583,7 +1363,7 @@ func TestInboundRead(t *testing.T) {
 			wantPresence slackengine.Presence
 		}{
 			{"PlainText", "deploy prod", "the slack button of " + primeOrch + " is off, so this message was not forwarded", slackengine.PresenceTerminal},
-			{"AwayCommand", "lym away", "presence is now slack", slackengine.PresenceSlack},
+			{"AwayCommand", "away", "presence is now slack", slackengine.PresenceSlack},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -1625,14 +1405,14 @@ func TestInboundRead(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
 		h.updateEntry(paymentsOrch, func(entry *slackengine.ChannelEntry) { entry.Cursor = "100.000000" })
-		h.sayIn(paymentsChannel, "101.000001", "lym status")
+		h.sayIn(paymentsChannel, "101.000001", "status")
 		h.slack.failPosts(&slackengine.APIError{Method: "chat.postMessage", Code: "not_in_channel"})
 		h.hint(paymentsChannel)
 		h.mustDrain()
 		if joins := h.slack.logged("Join"); len(joins) != 1 || joins[0].Channel != paymentsChannel {
 			t.Errorf("Join calls = %+v; want one for %s", joins, paymentsChannel)
 		}
-		h.wantAnswers("presence is terminal; this machine's app id is A1")
+		h.wantAnswers("presence is terminal")
 	})
 
 	t.Run("RefusedPostHoldsLaterMessagesUntilAcceptedOrFiveMinutes", func(t *testing.T) {
@@ -1643,7 +1423,7 @@ func TestInboundRead(t *testing.T) {
 			h := newHarness(t)
 			h.startAt("100.000000")
 			h.say("101.000001", "m1")
-			h.say("102.000001", "lym away")
+			h.say("102.000001", "away")
 			h.mailbox.setPostErr(errors.New("creel down"))
 			if _, err := h.readC1(); err == nil {
 				t.Fatalf("Drain = nil; want the post error")
@@ -1736,7 +1516,7 @@ func TestInboundRead(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
 		h.startAt("100.000000")
-		h.say("101.000001", "lym away")
+		h.say("101.000001", "away")
 		if err := os.MkdirAll(h.geom.PresencePath, 0o700); err != nil {
 			t.Fatalf("MkdirAll = %v", err)
 		}
@@ -1762,7 +1542,7 @@ func TestInboundRead(t *testing.T) {
 		if err := os.WriteFile(h.geom.PresencePath, []byte(`{"presence":"away"}`), 0o600); err != nil {
 			t.Fatalf("WriteFile = %v", err)
 		}
-		h.say("101.000001", "lym status")
+		h.say("101.000001", "status")
 		if _, err := h.readC1(); err == nil {
 			t.Fatalf("Drain = nil; want the presence read error")
 		}
@@ -1795,7 +1575,7 @@ func TestInboundRead(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
 		h.startAt("100.000000")
-		h.say("101.000001", "lym status")
+		h.say("101.000001", "status")
 		h.slack.failPosts(errors.New("slack down"))
 		h.mustReadC1()
 		h.wantCursorTS("101.000001")
@@ -1816,149 +1596,6 @@ func TestInboundRead(t *testing.T) {
 		}
 		if h.mustDrain() {
 			t.Errorf("Drain over an unchanged presence reported activity")
-		}
-	})
-
-	t.Run("StatusWithNoRecordedAppIDSaysItIsUnknown", func(t *testing.T) {
-		t.Parallel()
-		h := newHarness(t)
-		h.startAt("100.000000")
-		if err := slackengine.WriteCredentials(h.geom.TokenPath, slackengine.Credentials{BotToken: "xoxb-secret", AppToken: "xapp-secret"}); err != nil {
-			t.Fatalf("WriteCredentials = %v", err)
-		}
-		h.say("101.000001", "lym status")
-		h.mustReadC1()
-		h.wantAnswers("presence is terminal; this machine's app id is unknown, run lym slack login")
-	})
-
-	t.Run("PeerCommandsPinAndUnpinMachinesAndRefuseWhatTheyCannotDo", func(t *testing.T) {
-		t.Parallel()
-		neveBot := fakeBot{Name: "lym-neve", UserID: "UNEVE", AppID: "A0NEVE"}
-		pinnedNeve := map[string]slackengine.Peer{"neve": {AppID: "A0NEVE", BotUserID: "UNEVE"}}
-		tests := []struct {
-			name string
-			bots []fakeBot
-			// pinned are the approvals the record holds before the command.
-			pinned map[string]slackengine.Peer
-			text   string
-			// wantAnswer holds fragments of the one answer posted to the channel.
-			wantAnswer []string
-			// wantPinned are the approvals the record holds after the command, their times left out.
-			wantPinned map[string]slackengine.Peer
-		}{
-			{"ApproveWithOneBotPinsItAndNamesItsAppID", []fakeBot{neveBot}, nil, "lym approve neve", []string{"approved neve: app id A0NEVE"}, pinnedNeve},
-			{"ApproveWithNoBotListsNothingAndPinsNothing", nil, nil, "lym approve neve", []string{"found no bot named lym-neve", "type lym approve neve &lt;app id&gt;"}, nil},
-			{
-				"ApproveWithTwoBotsListsTheirAppIDsAndPinsNothing",
-				[]fakeBot{neveBot, {Name: "lym-neve", UserID: "UTWO", AppID: "A0TWO"}}, nil, "lym approve neve",
-				[]string{"A0NEVE", "A0TWO", "type lym approve neve &lt;app id&gt;"}, nil,
-			},
-			{
-				"ApproveWithAnAppIDPinsTheBotOfThatAppWhateverItsNameAndKeepsTheIDAsWritten",
-				[]fakeBot{{Name: "lym-renamed", UserID: "UREN", AppID: "A0UPPER"}}, nil, "Lym APPROVE Neve A0UPPER",
-				[]string{"approved neve: app id A0UPPER"}, map[string]slackengine.Peer{"neve": {AppID: "A0UPPER", BotUserID: "UREN"}},
-			},
-			{"ApproveWithAnAppIDNoBotHoldsIsRefusedNamingStatus", []fakeBot{neveBot}, nil, "lym approve neve A0NONE", []string{"A0NONE", "`lym status`"}, nil},
-			{"RevokeRemovesThePin", nil, pinnedNeve, "lym revoke neve", []string{"revoked neve"}, nil},
-			{"RevokeWithNoPinIsAnsweredAsHavingNone", nil, nil, "lym revoke osl", []string{"osl has no approval to revoke"}, nil},
-			{
-				"ApproveNamingThisMachineIsRefusedNamingTheCommandForTheOtherMachine",
-				[]fakeBot{{Name: "lym-" + testHubMachine, UserID: "UHOME", AppID: "A0HOME"}}, nil, "lym approve " + testHubMachine,
-				[]string{"lym approve and lym revoke name another machine; type lym approve " + testHubMachine + " in a channel of that other machine"}, nil,
-			},
-			{
-				"ApproveNamingAFormerNameIsRefusedNamingTheCommandForTheOtherMachine",
-				nil, nil, "lym approve old_box",
-				[]string{"lym approve and lym revoke name another machine; type lym approve " + testHubMachine + " in a channel of that other machine"}, nil,
-			},
-			{"ApproveWithAnInvalidNameIsRefusedNamingTheRule", nil, nil, "lym approve Bad_Name", []string{`the machine name "bad_name" is invalid`}, nil},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				h := newHarness(t)
-				h.startAt("100.000000")
-				h.slack.bots = tt.bots
-				approvedAt := h.clock.Now()
-				err := slackengine.UpdatePeers(h.geom.PeersPath, func(peers *slackengine.Peers) error {
-					for machine, peer := range tt.pinned {
-						peer.ApprovedAt = approvedAt
-						peers.Machines[machine] = peer
-					}
-					return nil
-				})
-				if err != nil {
-					t.Fatalf("UpdatePeers = %v", err)
-				}
-				h.say("101.000001", tt.text)
-				h.mustReadC1()
-				answers := h.slack.texts()
-				if len(answers) != 1 {
-					t.Fatalf("answers = %q; want exactly one", answers)
-				}
-				for _, fragment := range tt.wantAnswer {
-					if !strings.Contains(answers[0], fragment) {
-						t.Errorf("answer = %q; want it to contain %q", answers[0], fragment)
-					}
-				}
-				peers, err := slackengine.ReadPeers(h.geom.PeersPath)
-				if err != nil {
-					t.Fatalf("ReadPeers = %v", err)
-				}
-				for machine, peer := range peers.Machines {
-					if _, wasPinned := tt.pinned[machine]; !wasPinned && !peer.ApprovedAt.Equal(approvedAt) {
-						t.Errorf("approved_at of %s = %v; want the clock's %v", machine, peer.ApprovedAt, approvedAt)
-					}
-					peer.ApprovedAt = time.Time{}
-					peers.Machines[machine] = peer
-				}
-				if len(peers.Machines) != 0 || len(tt.wantPinned) != 0 {
-					if diff := cmp.Diff(tt.wantPinned, peers.Machines); diff != "" {
-						t.Errorf("peers mismatch (-want +got):\n%s", diff)
-					}
-				}
-				h.wantPosts()
-				h.wantCursorTS("101.000001")
-			})
-		}
-	})
-
-	t.Run("PeerCommandFromAnyoneButTheOperatorIsNotHandled", func(t *testing.T) {
-		t.Parallel()
-		h := newHarness(t)
-		h.startAt("100.000000")
-		h.slack.bots = []fakeBot{{Name: "lym-neve", UserID: "UNEVE", AppID: "A0NEVE"}}
-		h.slack.add(testChannel, slackengine.Message{TS: "101.000001", User: "U2", Text: "lym approve neve"})
-		h.mustReadC1()
-		h.wantAnswers()
-		h.wantPosts()
-		if peers, err := slackengine.ReadPeers(h.geom.PeersPath); err != nil || len(peers.Machines) != 0 {
-			t.Errorf("ReadPeers = %+v, %v; want no approval", peers, err)
-		}
-	})
-
-	t.Run("PeerCommandWhoseSlackCallIsRefusedIsHeldThenAnsweredAfterFiveMinutes", func(t *testing.T) {
-		t.Parallel()
-		h := newHarness(t)
-		h.startAt("100.000000")
-		h.slack.bots = []fakeBot{{Name: "lym-neve", UserID: "UNEVE", AppID: "A0NEVE"}}
-		outage := errors.New("users.list: ratelimited_or_down")
-		h.slack.failNext("BotUsersNamed", outage, outage)
-		h.say("101.000001", "lym approve neve")
-		if _, err := h.readC1(); err == nil {
-			t.Fatalf("Drain = nil; want the users.list refusal")
-		}
-		h.wantAnswers()
-		h.wantCursorTS("100.000000")
-		h.clock.Advance(5 * time.Minute)
-		h.retry()
-		answers := h.slack.texts()
-		if len(answers) != 1 || !strings.Contains(answers[0], "the approve command could not be carried out") || !strings.Contains(answers[0], "ratelimited_or_down") {
-			t.Errorf("answers = %q; want one that names the approve command and Slack's code", answers)
-		}
-		h.wantCursorTS("101.000001")
-		if peers, err := slackengine.ReadPeers(h.geom.PeersPath); err != nil || len(peers.Machines) != 0 {
-			t.Errorf("ReadPeers = %+v, %v; want no approval", peers, err)
 		}
 	})
 }

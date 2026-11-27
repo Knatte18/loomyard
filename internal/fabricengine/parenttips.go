@@ -5,14 +5,12 @@
 package fabricengine
 
 import (
-	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
@@ -171,82 +169,6 @@ func (f *Fabric) CommitLog(from, to string) ([]string, error) {
 	return lines, nil
 }
 
-// CommitMessages lists the whole message of every commit reachable from to and not from from.
-// The commits come from the pair's code repository, newest first.
-// A message keeps its body and trailer paragraphs.
-// An empty range returns an empty slice, and a ref that does not resolve is an error naming it.
-func (f *Fabric) CommitMessages(from, to string) ([]string, error) {
-	fromSHA, err := f.code.ResolveSHA(from)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: commit messages from %s to %s: %w", from, to, err)
-	}
-	toSHA, err := f.code.ResolveSHA(to)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: commit messages from %s to %s: %w", from, to, err)
-	}
-	shas, err := f.code.CommitsNotIn(toSHA, fromSHA)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: commit messages from %s to %s: %w", from, to, err)
-	}
-	messages := make([]string, 0, len(shas))
-	for _, sha := range shas {
-		detail, err := f.code.CommitDetail(sha)
-		if err != nil {
-			return nil, fmt.Errorf("fabricengine: commit messages from %s to %s: %w", from, to, err)
-		}
-		messages = append(messages, detail.Message)
-	}
-	return messages, nil
-}
-
-// ErrBranchUnresolved marks a FirstParentCommits error whose branch resolves to no commit.
-var ErrBranchUnresolved = errors.New("the branch resolves to no commit")
-
-// ErrCommitUnresolved marks a FirstParentCommits error whose since commit resolves to no commit.
-var ErrCommitUnresolved = errors.New("the commit resolves to no commit")
-
-// FirstParentCommit is one commit of a branch's first-parent history with its first parent.
-type FirstParentCommit struct {
-	// SHA is the commit's full SHA.
-	SHA string
-	// Parent is the full SHA of the commit's first parent, empty for a root commit.
-	Parent string
-}
-
-// FirstParentCommits returns the commits of branch's first-parent history newer than since, newest first.
-// branch and since are each resolved to a commit in the pair's code repository.
-// Each may be a branch, a remote-tracking ref or a SHA.
-// The result is true when the walk met since, and holds the commits before it.
-// The walk stops after limit+1 commits it has not met since in, so a longer range returns limit+1 commits and false.
-// A history that ends without meeting since returns false with every commit it holds.
-// A branch or since that resolves to no commit is an error wrapping ErrBranchUnresolved or ErrCommitUnresolved.
-func (f *Fabric) FirstParentCommits(branch, since string, limit int) ([]FirstParentCommit, bool, error) {
-	tip, err := f.code.ResolveSHA(branch)
-	if err != nil {
-		return nil, false, fmt.Errorf("fabricengine: first-parent commits of %q: %w: %v", branch, ErrBranchUnresolved, err)
-	}
-	sinceSHA, err := f.code.ResolveSHA(since)
-	if err != nil {
-		return nil, false, fmt.Errorf("fabricengine: first-parent commits since %q: %w: %v", since, ErrCommitUnresolved, err)
-	}
-	history, err := f.code.Log(tip, gitrepo.LogQuery{FirstParent: true, Limit: limit + 1})
-	if err != nil {
-		return nil, false, fmt.Errorf("fabricengine: first-parent commits of %q: %w", branch, err)
-	}
-	var commits []FirstParentCommit
-	for _, entry := range history {
-		if entry.SHA == sinceSHA {
-			return commits, true, nil
-		}
-		commit := FirstParentCommit{SHA: entry.SHA}
-		if len(entry.Parents) > 0 {
-			commit.Parent = entry.Parents[0]
-		}
-		commits = append(commits, commit)
-	}
-	return commits, false, nil
-}
-
 // HeadHoldsCommitsNotIn reports whether the pair's code HEAD holds a commit that ref lacks.
 // A ref that does not resolve is an error naming it.
 func (f *Fabric) HeadHoldsCommitsNotIn(ref string) (bool, error) {
@@ -401,14 +323,7 @@ func (f *Fabric) FastForwardPair(opts SyncOptions) (res FastForwardResult, err e
 // A weft that carries a move record or an empty own anchor marker is not pulled.
 // Neither is a weft whose upstream carries another anchor marker.
 // For such a weft, the warning names the way forward.
-// A records store whose origin layout cannot be read is not pulled either,
-// and the warning names the refspecs to restore:
-// with no fetch refspec mapping origin's namespace, its upstream would read as missing and the skip would go unsaid.
 func (f *Fabric) fastForwardWeft(rec *Mutations, opts SyncOptions) {
-	if _, err := originNamespaceAt(f.weftPath); err != nil {
-		logger.Warn("fabricengine: fast-forward: the records store's layout cannot be read, continuing to the code side", "weft", f.weftPath, "err", err)
-		return
-	}
 	hasUpstream, err := f.weftHasUpstream()
 	if err != nil {
 		logger.Warn("fabricengine: fast-forward: resolve weft upstream failed, continuing to the code side", "weft", f.weftPath, "err", err)

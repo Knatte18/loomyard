@@ -1,5 +1,5 @@
 // names.go derives facts from the embedded recipes.
-// It gives the engine set, and the row names and rows in file order.
+// It gives the engine set, the row names and rows in file order, and the retired row names.
 // It also gives the amendment target and the entry number of each row.
 
 package loomrecipe
@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// RecipeEngines returns the sorted engine set of the loom module's recipes.
+// RecipeEngines returns the sorted engine set of the tapestry, darn, pawl, sampler, motif, raddle and arras recipes.
 // It parses each recipe, expands its blocks, and collects each row's engine name, without duplicates.
 // The recipes are the loom module's, so the set is their union.
 // It holds the Block engine of the tapestry recipe's Motif block row.
@@ -27,7 +27,7 @@ import (
 func RecipeEngines() []string {
 	seen := map[string]bool{}
 	var engines []string
-	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeMotif, shedrun.RecipeRaddle, shedrun.RecipeArras, shedrun.RecipeHardener} {
+	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeMotif, shedrun.RecipeRaddle, shedrun.RecipeArras} {
 		recipe, err := parseEmbeddedRecipe(name)
 		if err != nil {
 			panic(fmt.Sprintf("loomrecipe: RecipeEngines: %v", err))
@@ -102,6 +102,24 @@ func Rows(recipe string) ([]RecipeRow, error) {
 	return rows, nil
 }
 
+// RetiredRowNames returns the sorted row names the named recipe's `retired` map declares:
+// the rows a run of an earlier version of the recipe may still stand at.
+// It reads only the recipe's `retired` map, not the arm-time renames.
+// It is empty for a recipe that retires none.
+// The recipe names are the shedrun.Recipe* constants; any other name is refused with an error naming it.
+func RetiredRowNames(recipe string) ([]string, error) {
+	parsed, err := parseEmbeddedRecipe(recipe)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(parsed.Retired))
+	for name := range parsed.Retired {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
 // AmendmentTarget returns the optional `amendment_target` of the named recipe:
 // the row a plan amendment routes to, empty when the recipe sets none.
 // The recipe names are the shedrun.Recipe* constants; any other name is refused with an error naming it.
@@ -123,7 +141,6 @@ var embeddedRecipes = map[string][]byte{
 	shedrun.RecipeMotif:    recipes.MotifRecipe,
 	shedrun.RecipeRaddle:   recipes.RaddleRecipe,
 	shedrun.RecipeArras:    recipes.ArrasRecipe,
-	shedrun.RecipeHardener: recipes.HardenerRecipe,
 }
 
 // embeddedRecipeSource returns the source of the embedded recipe the name selects, refusing a name that selects none.

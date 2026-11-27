@@ -107,20 +107,6 @@ func NotifyWorktreeMade(l *lymcwd.Location) string {
 	return fireWorktreeEvent(l, nil, true)
 }
 
-// NotifyWorktreeMadeAt tells the installed seam that the worktree at worktreePath was made.
-// It resolves the worktree only when a seam is installed.
-// It returns the warning text of a failed event or of a path that resolves to no worktree, and "" otherwise.
-func NotifyWorktreeMadeAt(worktreePath string) string {
-	if installedWorktreeSeam.Load() == nil {
-		return ""
-	}
-	l, err := lymcwd.ResolveWorktree(worktreePath)
-	if err != nil {
-		return seamWarning(worktreePath, err)
-	}
-	return NotifyWorktreeMade(l)
-}
-
 // fireTookInOver tells the installed seam that l's worktree took in the commits from..to of the repository at dir.
 // It returns the warning text of a failed event, and "" with no seam installed.
 func fireTookInOver(l *lymcwd.Location, dir, from, to string) string {

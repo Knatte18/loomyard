@@ -7,7 +7,6 @@
 package shuttleengine
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"strings"
@@ -236,78 +235,6 @@ func (r *Runner) UsageLimit(guid string, turnEnd Event) (UsageLimit, error) {
 	return reader.TurnEndActivity(turnEnd).UsageLimit, nil
 }
 
-// SwitchAccountOnLimit asks the engine of the run identified by guid to record the usage limit turnEnd names.
-// It also asks the engine to switch the run's worktree to another account.
-// It reports whether the worktree now resolves to another account, so the caller relaunches the session.
-// An engine without the capability answers false.
-func (r *Runner) SwitchAccountOnLimit(guid string, turnEnd Event) (bool, error) {
-	if r.toldErr != nil {
-		return false, r.toldErr
-	}
-	state, runDir, err := FindRun(r.cfg, r.anchorPath, guid)
-	if err != nil {
-		return false, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
-	}
-	engine, _, err := r.engineFor(state)
-	if err != nil {
-		return false, err
-	}
-	switcher, ok := engine.(AccountSwitcher)
-	if !ok {
-		return false, nil
-	}
-	return switcher.SwitchAccount(runDir, turnEnd)
-}
-
-// RefusedResume reports whether turnEnd is a refused resume's.
-// That is the first turn end past the launch offset of the record of the run identified by guid.
-// The record's launch must have copied a resumed session's transcript.
-// The turn end must be an API error no usage limit caused.
-// It reads the run's events file from the launch offset to turnEnd.
-// The answer is then the one the run's own Wait would give.
-// An engine that parses no session signals answers false.
-func (r *Runner) RefusedResume(guid string, turnEnd Event) (bool, error) {
-	if r.toldErr != nil {
-		return false, r.toldErr
-	}
-	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
-	if err != nil {
-		return false, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
-	}
-	engine, _, err := r.engineFor(state)
-	if err != nil {
-		return false, err
-	}
-	parser, ok := engine.(SessionSignalParser)
-	if !ok {
-		return false, nil
-	}
-	data, _, err := readEventsFrom(state.EventsPath, state.LaunchOffset)
-	if err != nil {
-		return false, fmt.Errorf("shuttle: read the events of strand %q: %w", guid, err)
-	}
-	signals, _ := parser.ParseSessionSignals(data)
-	turnEnds := 0
-	for _, signal := range signals {
-		if signal.Kind != SessionSignalTurnEnd && signal.Kind != SessionSignalAPIErrorTurnEnd {
-			continue
-		}
-		turnEnds++
-		if !bytes.Equal(signal.Raw, turnEnd.Raw) {
-			continue
-		}
-		limited := false
-		if reader, ok := engine.(UsageLimitReader); ok {
-			limited = reader.TurnEndUsageLimited(turnEnd)
-		}
-		if activity, ok := engine.(ActivityReader); ok && activity.TurnEndActivity(turnEnd).APIError {
-			signal.Kind = SessionSignalAPIErrorTurnEnd
-		}
-		return refusedResume(state, signal, turnEnds == 1, limited), nil
-	}
-	return false, nil
-}
-
 // SessionIdle reports whether the run identified by guid can take typed input.
 // The answer is the readiness reading over the run's hook-derived session state and one pane capture.
 // The pane capture is styled where the engine can blank its placeholder.
@@ -441,54 +368,24 @@ func (r *Runner) ReloadPlugins(guid string) error {
 
 // TurnOnRemoteControl sends the provider's remote-control command into the live pane of the run identified by guid.
 // The command carries the session name name.
-// It then reports whether the session's own record shows its remote control connecting within a bounded wait,
-// so a connection the provider refuses, such as by an organization's policy, reports false.
-// A paste not seen to land still waits for the connection, and the call reports it beside ErrSubmissionNotLanded.
-// A failed read of the record after the paste is logged and reports false with no error, since the command has landed.
-// An engine without the RemoteController capability types nothing and reports false.
+// An engine without the RemoteController capability types nothing.
 // It waits for an idle session first,
 // and it fails with ErrSessionBusy while the session or its input box is held.
 // It refuses a name containing a newline, since the name is sent as one line.
-func (r *Runner) TurnOnRemoteControl(guid, name string) (bool, error) {
+func (r *Runner) TurnOnRemoteControl(guid, name string) error {
 	if r.toldErr != nil {
-		return false, r.toldErr
+		return r.toldErr
 	}
 	if strings.ContainsAny(name, "\r\n") {
-		return false, fmt.Errorf("shuttle: remote-control name for strand %q spans several lines; it is typed as one line, so join it into one", guid)
+		return fmt.Errorf("shuttle: remote-control name for strand %q spans several lines; it is typed as one line, so join it into one", guid)
 	}
-	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
-	if err != nil {
-		return false, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
-	}
-	engine, _, err := r.engineFor(state)
-	if err != nil {
-		return false, err
-	}
-	checkpoint, err := r.remoteControlCheckpoint(engine, state.SessionID)
-	if err != nil {
-		return false, err
-	}
-	typed := false
-	err = r.sendSessionSequence(guid, "", func(cycler SessionCycler) []PaneInput {
+	return r.sendSessionSequence(guid, "", func(cycler SessionCycler) []PaneInput {
 		controller, ok := cycler.(RemoteController)
 		if !ok {
 			return nil
 		}
-		typed = true
 		return controller.RemoteControlSequence(name)
 	})
-	if !typed {
-		return false, err
-	}
-	if err != nil && !errors.Is(err, ErrSubmissionNotLanded) {
-		return false, err
-	}
-	connected, awaitErr := r.awaitRemoteControl(engine, state.SessionID, checkpoint)
-	if awaitErr != nil {
-		logger.Warn("shuttle: could not read whether the session's remote control connected after its command landed", "strandGUID", guid, "sessionID", state.SessionID, "err", awaitErr)
-		return false, err
-	}
-	return connected, err
 }
 
 // TypeColor sends the provider's color command for color into the live pane of the run identified by guid.

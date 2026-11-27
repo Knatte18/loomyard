@@ -54,13 +54,10 @@ type fakeRepo struct {
 	blames    map[string]map[int]string
 	// blameCalls logs every BlameLines call in order.
 	blameCalls []blameCall
-	// fileReads counts the FileAtRevision calls per known commit, and logQueries logs every Log query in order.
-	fileReads  map[string]int
-	logQueries []gitrepo.LogQuery
 }
 
 func newFakeRepo() *fakeRepo {
-	return &fakeRepo{commits: map[string]fakeCommit{}, preImages: map[string]map[string][]int{}, blames: map[string]map[int]string{}, fileReads: map[string]int{}}
+	return &fakeRepo{commits: map[string]fakeCommit{}, preImages: map[string]map[string][]int{}, blames: map[string]map[int]string{}}
 }
 
 // commitOnChain appends a commit to the main line whose tree is the previous commit's with set written and remove deleted.
@@ -89,6 +86,11 @@ func (f *fakeRepo) commitOnChainWith(sha string, at time.Time, message string, o
 	}
 	f.commits[sha] = fakeCommit{committed: at, message: message, parents: parents, tree: "tree-" + sha, files: files}
 	f.chain = append(f.chain, sha)
+}
+
+// commitOffChain adds a commit outside the main line holding exactly files, with no parent.
+func (f *fakeRepo) commitOffChain(sha string, at time.Time, files map[string]string) {
+	f.commitOffChainOn(sha, "", at, "", files)
 }
 
 // commitOffChainOn adds a commit outside the main line holding exactly files.
@@ -121,7 +123,6 @@ func (f *fakeRepo) FileAtRevision(rev, relPath string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	f.fileReads[rev]++
 	content, ok := commit.files[relPath]
 	if !ok {
 		return nil, gitrepo.ErrPathNotAtRevision
@@ -195,7 +196,6 @@ func (f *fakeRepo) Log(tip string, q gitrepo.LogQuery) ([]gitrepo.LogCommit, err
 	if _, known := f.commits[tip]; !known {
 		return nil, fmt.Errorf("fakeRepo: unknown commit %q", tip)
 	}
-	f.logQueries = append(f.logQueries, q)
 	var commits []gitrepo.LogCommit
 	for sha := tip; sha != ""; {
 		commit := f.commits[sha]

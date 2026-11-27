@@ -1,6 +1,6 @@
 // dobbydeps.go fills the seams of dobbyengine.Run over a hub.
 // It covers the runs and tasks it reads, the pass it spawns, and the notices it sends.
-// It also covers the board tidy it sends, a beam's description rewrite, and the teardown of the leftover pairs it starts.
+// It also covers the owner pause and board tidy it sends, and the teardown of an ended run's pair it starts.
 // It also covers the hibernate request the prime's dobby carries, and the registration of the dobby process itself.
 
 package beamcli
@@ -11,10 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"maps"
 	"os"
 	"os/exec"
-	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -32,10 +30,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fronttask"
-	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hibernatecli"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -44,39 +40,30 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
-	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
-	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/slackengine"
-	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/tendercli"
 	"github.com/Knatte18/loomyard/internal/tenderengine"
 )
 
 const (
 	// dobbyProgram is the program name dobby signs its notices with, scoped to its beam's slug.
-	dobbyProgram = orchcli.DobbyProgram
+	dobbyProgram = "DOBBY"
 	// runNoticeTopicPrefix leads the creel topic of a run notice, followed by the run's slug.
 	runNoticeTopicPrefix = "dobby-run-notice/"
-	// gateHoldTopicPrefix leads the creel topic of a gate-hold notice, followed by the run's slug.
-	gateHoldTopicPrefix = "dobby-gate-hold/"
 	// defaultNoticeProbe is the probe interval when the batten recipe's Run-Shed row names none.
 	defaultNoticeProbe = 30 * time.Second
 	// defaultNoticeQuiet is the run notices' quiet window when the batten recipe's Run-Shed row names none.
 	defaultNoticeQuiet = 30 * time.Minute
 	// tidyModelSpec is the model spec the board-tidy agent runs on.
 	tidyModelSpec = "sonnet[medium]"
-	// describeGateName labels the gate over the describer agent's draft.
-	describeGateName = "Beam-Describe-Gate"
-	// describeGateAttempts is how many times the gate re-prompts the describer agent over a draft with a finding.
-	describeGateAttempts = 3
 	// passErrorTailBytes bounds how much of a pass's output dobby keeps to read its error text from.
 	passErrorTailBytes = 16 << 10
 	// passErrorTextRunes bounds the error text of a pass that printed no envelope.
@@ -87,38 +74,6 @@ const (
 // The topic lets a newer notice about the run replace an unread one, and the run lets the run's teardown drop it.
 func runNoticeTags(slug string) creelengine.PostTags {
 	return creelengine.PostTags{Topic: runNoticeTopicPrefix + slug, Run: slug}
-}
-
-// gateHoldTags returns the creel tags of dobby's gate-hold notice about the run slug.
-// The topic is its own, so the notice and a notice about the run's child never replace each other,
-// and the run lets the run's teardown drop it.
-func gateHoldTags(slug string) creelengine.PostTags {
-	return creelengine.PostTags{Topic: gateHoldTopicPrefix + slug, Run: slug}
-}
-
-// dobbyGateHolders returns a read of the live gate slot holders of prime's hub, each with its tier's timeout.
-// The timeout is zero for a holder with no tier or with a tier the gate config does not declare.
-// A gate config that does not load and a holder record that does not read each fail the call.
-func dobbyGateHolders(prime *lymcwd.Location) func() ([]dobbyengine.GateHolder, error) {
-	return func() ([]dobbyengine.GateHolder, error) {
-		cfg, err := gateslot.LoadConfig(fabricengine.ConfigDirs(prime))
-		if err != nil {
-			return nil, fmt.Errorf("load the gate config: %w", err)
-		}
-		held, err := hubgeom.GateSlots(prime).Holders()
-		if err != nil {
-			return nil, fmt.Errorf("read the gate slot holders: %w", err)
-		}
-		holders := make([]dobbyengine.GateHolder, len(held))
-		for i, holder := range held {
-			holders[i] = dobbyengine.GateHolder{
-				Slot: holder.Slot, Worktree: holder.Worktree, Site: holder.Site, Tier: holder.Tier, Marker: holder.Marker,
-				PID: holder.PID, Started: holder.Started,
-				TierTimeout: time.Duration(cfg.Tiers[holder.Tier].TimeoutMin) * time.Minute,
-			}
-		}
-		return holders, nil
-	}
 }
 
 // requirePosted turns a notice that no orch strand was recorded to receive into an error, so dobby tries it again.
@@ -136,62 +91,18 @@ func requirePosted(posted bool, err error) error {
 // The owner is the beam's slug, so the pair teardown of a landed beam ends its dobby;
 // the prime's dobby has the hub owner instead.
 func registerDobby(runProcDir string, geom dobbyengine.Geometry) error {
-	return runproc.Register(runProcDir, subjectOwner(geom), runproc.SelfRecord(runproc.RoleDobby))
-}
-
-// subjectOwner returns the owner the processes of geom's subject register under:
-// the beam's slug, or runproc.HubOwner for the prime's dobby.
-func subjectOwner(geom dobbyengine.Geometry) string {
-	if geom.Slug == "" {
-		return runproc.HubOwner
+	owner := geom.Slug
+	if owner == "" {
+		owner = runproc.HubOwner
 	}
-	return geom.Slug
-}
-
-// boltHoldGrace is how long the running turns of a run given a bolt-hold entry get to finish before the Esc.
-const boltHoldGrace = 10 * time.Second
-
-// syncBoltHoldEntries brings the bolt-hold entries of the runs in scope in line with the hold the local Bolt records.
-// Machine and standing come from the Bolt's holds, and a run holding its parent lock gets no entry.
-// A hub whose Bolt records no hold and whose pause record holds no bolt-hold entry has nothing to settle,
-// so the tender deps, which wire every pair of the hub, are built only when there is.
-func syncBoltHoldEntries(prime *lymcwd.Location, recordPath, boardDir string, scope, held []string) error {
-	owners, err := boardengine.ReadOwners(boardDir)
-	if err != nil {
-		return err
-	}
-	locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(prime.HubPath))}
-	req := tenderengine.BoltHoldRequest{Scope: scope, Hold: held, Grace: boltHoldGrace, HoldsParentLock: locks.HeldBy}
-	if len(owners.Holds) > 0 {
-		req.Standing, req.Machine = true, owners.Holds[0].Machine
-	}
-	record, err := pauserecord.Read(recordPath)
-	if err != nil {
-		return err
-	}
-	if !req.Standing && !slices.ContainsFunc(record.Live, func(entry pauserecord.Entry) bool { return entry.Caller == pauserecord.BoltHoldCaller }) {
-		return nil
-	}
-	deps, _, err := tendercli.HubDeps(prime, os.Getenv(agentname.StrandNameEnv))
-	if err != nil {
-		return err
-	}
-	_, err = tenderengine.SyncBoltHold(deps, req)
-	return err
+	return runproc.Register(runProcDir, owner, runproc.SelfRecord(runproc.RoleDobby))
 }
 
 // hubDobbyDeps fills every seam of dobbyengine.Run over the hub of prime, for the dobby of geom.
-// The dobby starts the pushers of the worktrees it drives that are ahead of origin.
-func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengine.Deps, error) {
-	return hubDobbyDepsStarting(prime, geom, runpusher.StartIfAhead)
-}
-
-// hubDobbyDepsStarting fills every seam of dobbyengine.Run over the hub of prime, for the dobby of geom.
-// The dobby's ticks and run reads start the pushers of the worktrees that are ahead of origin through startPusher.
 // Its log lines are appended to the file the dobby tells.
 // The dobby's own working directory is the hub root, so every path comes from prime and geom.
 // Only the pass spawn starts its process in the prime's anchor.
-func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, startPusher func(runpusher.Target) (bool, error)) (dobbyengine.Deps, error) {
+func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengine.Deps, error) {
 	worktree, err := lymcwd.ResolveWorktree(geom.WorktreeRoot)
 	if err != nil {
 		return dobbyengine.Deps{}, err
@@ -227,14 +138,10 @@ func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, sta
 	if geom.Slug == "" {
 		hibernateRequestPath = hibernatecli.RequestPath(prime)
 	}
-	catchUp := battencli.HubCatchUp(prime, func() ([]string, error) {
-		return battencli.DobbyPairSlugs(prime, geom, parents)
-	})
-	underHold := orchcli.UnderOwnHold(prime)
+	underAdopt := orchcli.UnderAdoptWatch(prime)
 	runNotices := battencli.DobbyRunNotices(prime, pause.RecordPath, quiet)
 	runNotices.Post = func(_ context.Context, slug, line string) error {
-		stamped := orchcli.WithRunAutonomy(worktree, slug, line)
-		return requirePosted(orchcli.NotifyRunFrom(worktree, geom.Slug, dobbyProgram, runNoticeTags(slug), stamped))
+		return requirePosted(orchcli.NotifyRunFrom(worktree, geom.Slug, dobbyProgram, runNoticeTags(slug), line))
 	}
 	deps := dobbyengine.Deps{
 		Now:   time.Now,
@@ -243,46 +150,34 @@ func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, sta
 		Watch: func() (<-chan struct{}, func(), error) {
 			return openDobbyWatch(dobbyWatchDirs(prime, pause.RecordPath, boardDir, hibernateRequestPath))
 		},
+		Machine:       machinename.Name,
 		CheckBinary:   selfexec.New().CheckWith,
 		ProbeInterval: probe,
-		Owner: func() (string, bool, error) {
+		Owner: func() (string, error) {
 			read, err := owners()
 			if err != nil {
-				return "", false, err
+				return "", err
 			}
-			here, err := machinename.ReadIdentity()
-			if err != nil {
-				return "", false, err
+			if geom.Slug == "" {
+				return read.Prime, nil
 			}
-			owner := read.Prime
-			if geom.Slug != "" {
-				if owner, err = read.Effective(geom.Slug, parents.Of); err != nil {
-					return "", false, err
-				}
-			}
-			return owner, boardengine.OwnedElsewhere(owner, read.Registry, here), nil
+			return read.Effective(geom.Slug, parents.Of)
 		},
-		UnderAdopt:   func() bool { return underHold(geom.Slug) },
+		UnderAdopt:   func() bool { return underAdopt.Covers(geom.Slug) },
 		PullBolt:     func() error { return pullBolt(geom.HubRoot, boardDir) },
 		ArchiveOwner: func() error { return archiveOwnerTips(prime, geom.WorktreeName) },
-		CatchUp:      catchUp,
-		SyncBoltHold: func(_ context.Context, scope, held []string) error {
-			return syncBoltHoldEntries(prime, pause.RecordPath, boardDir, scope, held)
-		},
-		EndSubject: func() error { return pairteardown.EndSubjectProcesses(prime, subjectOwner(geom), true) },
 		Runs: func() ([]dobbyengine.RunView, error) {
-			return battencli.DobbyRuns(prime, geom, parents, pause.RecordPath, startPusher)
+			return battencli.DobbyRuns(prime, geom, parents, pause.RecordPath)
 		},
 		ClearDoneRun: func(slug string) (bool, error) { return battencli.ClearDoneRun(prime, slug) },
 		SpawnPass: func(slug string, continuePass, noReopen bool) (<-chan dobbyengine.PassExit, error) {
 			return spawnPass(geom, slug, continuePass, noReopen)
 		},
-		TearDownLeftovers: func(pairs []dobbyengine.LeftoverPair) <-chan map[string]error {
-			return tearDownLeftovers(prime, pairs, fabricengine.RunStartReconcileOptions())
-		},
+		TearDownEnded: func(slugs []string) <-chan map[string]error { return tearDownEnded(prime, slugs) },
 		Notice: func(_ context.Context, line string) error {
 			return requirePosted(orchcli.NotifyFromScoped(worktree, geom.Slug, dobbyProgram, line))
 		},
+		PauseOwned: func(_ context.Context, slug string) error { return tendercli.PauseOwnedElsewhere(prime, slug) },
 		ReleaseParentLock: func(_ context.Context, slug string) error {
 			return battencli.ReleaseRunParentLock(prime, slug)
 		},
@@ -293,6 +188,9 @@ func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, sta
 				return "", err
 			}
 			return read.AdoptSubject(slug, parents.Of)
+		},
+		LiftOwnerPause: func(_ context.Context, slug string) error {
+			return liftOwnerPause(prime, pause.RecordPath, slug)
 		},
 		Tasks:      func() ([]dobbyengine.TaskView, error) { return battencli.DobbyTasks(prime, boardDir, parents) },
 		LoadConfig: func() (dobbyengine.Config, error) { return dobbyengine.LoadConfig(dirs) },
@@ -306,48 +204,15 @@ func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, sta
 		},
 		RunNotices:    runNotices,
 		WaitReminders: waitReminderDeps(prime, worktree, geom.Slug, pause.RecordPath, dirs),
-		LandNotice: func(slug string) (bool, error) {
-			chain, err := hubgeom.TaskSettingChain(prime, slug)
+		ClearNotifyOnLand: func(slug string) error {
+			board, err := boardengine.OpenHub(prime.HubPath)
 			if err != nil {
-				return false, err
+				return err
 			}
-			return dobbyengine.LookupLandNotice(chain)
-		},
-		RunWatch: dobbyengine.RunWatchDeps{
-			Level: func(slug string) (string, error) {
-				chain, err := hubgeom.TaskSettingChain(prime, slug)
-				if err != nil {
-					return "", err
-				}
-				return dobbyengine.LookupRunWatch(chain)
-			},
-			// Untagged, so no watch line replaces another unread one and a run's teardown drops none.
-			Post: func(_ context.Context, slug, line string) (bool, error) {
-				stamped := orchcli.WithRunAutonomy(worktree, slug, line)
-				return orchcli.NotifyRunFrom(worktree, geom.Slug, dobbyProgram, creelengine.PostTags{}, stamped)
-			},
-		},
-		GateHolds: dobbyengine.GateHoldDeps{
-			Holders: dobbyGateHolders(prime),
-			TaskWorktree: func(slug string) (string, error) {
-				pair, err := pairLocation(prime, slug)
-				if err != nil {
-					return "", err
-				}
-				return pair.WorktreePath(), nil
-			},
-			Tree:       proc.TreeSample,
-			MarkedPIDs: proc.PIDsWithEnv,
-			Post: func(_ context.Context, slug, line string) error {
-				stamped := orchcli.WithRunAutonomy(worktree, slug, line)
-				return requirePosted(orchcli.NotifyRunFrom(worktree, geom.Slug, dobbyProgram, gateHoldTags(slug), stamped))
-			},
+			return board.ClearNotifyOnLand(slug)
 		},
 		SettleFronts: func() error { return fronttask.Settle(settleFronts) },
-		Landings: machineLandings(func() (string, []string, error) {
-			here, err := pairteardown.ThisMachine(prime.HubPath)
-			return here.Current, here.Former, err
-		}, func(machines []string) ([]string, error) {
+		Landings: machineLandings(machinename.Names, func(machines []string) ([]string, error) {
 			return battencli.DobbyLandings(prime, geom, parents, machines)
 		}),
 		Log: func(path, line string, rotate bool) {
@@ -362,28 +227,19 @@ func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, sta
 		},
 	}
 	if geom.Slug == "" {
-		deps.Orphans = func() ([]dobbyengine.OrphanView, error) { return battencli.DobbyOrphans(prime, boardDir) }
-		deps.OrphanRecord = fabricengine.OrphanFirstSightPath(prime.HubPath)
 		carrier, err := hibernatecli.NewDobbyCarrier(prime)
 		if err != nil {
 			return dobbyengine.Deps{}, err
 		}
 		var relayEpisodes logger.EpisodeSet
 		deps.Tick = func(context.Context, dobbyengine.TickInput) (bool, error) {
-			runpusher.RestartPusher(func() (bool, error) {
-				target, err := runpusher.TargetOf(prime, "")
-				if err != nil {
-					return false, err
-				}
-				return startPusher(target)
-			}, prime.WorktreePath())
 			return false, errors.Join(carrier.Tick(), ensureSlackRelay(prime, &relayEpisodes))
 		}
 		deps.CheckBinary = holdReexec(carrier.HoldsReexec, deps.CheckBinary)
 	}
 	if geom.Slug != "" {
 		// The removed worktree's config is gone by the time this stops a strand, so the runner is built over the prime.
-		deps.PrimeTidyShuttle = &runnerAgentShuttle{worktree: prime}
+		deps.PrimeTidyShuttle = &runnerTidyShuttle{worktree: prime}
 		deps.CanLand = func() (dobbyengine.LandReading, error) { return beamLandReading(prime, geom.Slug) }
 		deps.Land = func() error {
 			_, err := land(hubLandDeps(prime), geom.Slug)
@@ -394,157 +250,43 @@ func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, sta
 			record, found, err := pawlengine.ReadLanding(loomengine.BeamLandingPath(worktree), loomengine.BeamLandingLockPath(worktree), geom.Slug)
 			return found && record.PullRequest != nil, err
 		}
-		if describe, err := beamDescribeDeps(prime, worktree, geom.Slug, dirs); err != nil {
-			logger.Warn("beamcli: the describer agent's model or timeout does not resolve; the beam's description rewrite is off", "beam", geom.Slug, "error", err)
-		} else {
-			deps.BeamDescribe = describe
+		deps.SetNotifyOnLand = func(slug string) error {
+			board, err := boardengine.OpenHub(prime.HubPath)
+			if err != nil {
+				return err
+			}
+			return board.SetNotifyOnLand(slug)
 		}
 	}
-	if choice, err := resolveModel(dirs, tidyModelSpec); err != nil {
+	if choice, err := resolveTidyModel(dirs); err != nil {
 		logger.Warn("beamcli: the board-tidy model does not resolve; the board tidy is off", "spec", tidyModelSpec, "error", err)
 	} else {
 		deps.TidyModel = choice
-		deps.TidyShuttle = &runnerAgentShuttle{worktree: worktree}
+		deps.TidyShuttle = &runnerTidyShuttle{worktree: worktree}
 	}
 	return deps, nil
 }
 
-// beamDescribeDeps fills the description rewrite's seams for the beam slug over the hub of prime.
-// beam is the beam's worktree.
-// The describer agent runs on landing.yaml's describe model for its describe_timeout_min.
-// Its shuttle run is gated on its draft passing as a change description, so a draft with a finding re-prompts it.
-func beamDescribeDeps(prime, beam *lymcwd.Location, slug string, dirs configengine.Dirs) (dobbyengine.BeamDescribeDeps, error) {
-	cfg, err := landingshed.LoadConfig(dirs, "landing")
-	if err != nil {
-		return dobbyengine.BeamDescribeDeps{}, err
-	}
-	choice, err := resolveModel(dirs, cfg.Describe)
-	if err != nil {
-		return dobbyengine.BeamDescribeDeps{}, err
-	}
-	return dobbyengine.BeamDescribeDeps{
-		Shuttle:  &runnerAgentShuttle{worktree: beam, gate: describeGate(cfg.ForbiddenTerms())},
-		Model:    choice,
-		Timeout:  time.Duration(cfg.DescribeTimeoutMin) * time.Minute,
-		Facts:    func() (dobbyengine.BeamDescribeFacts, error) { return beamDescribeFacts(prime, beam, slug) },
-		Findings: func(path string) ([]string, error) { return descriptionFindings(path, cfg.ForbiddenTerms()) },
-		Record: func(ctx context.Context, draftPath string) (bool, error) {
-			_, err := rewriteDescription(ctx, hubLandDeps(prime), slug, draftPath)
-			var afterRecord afterRecordError
-			return errors.As(err, &afterRecord), err
-		},
-	}, nil
-}
-
-// beamDescribeFacts reads what the describer agent's prompt names about the beam slug, whose worktree is beam:
-// its recorded description, its branch, its parent branch and the commits on its line that the parent lacks.
-// The commits leave out the records-only ones, as the beam's draft does.
-func beamDescribeFacts(prime, beam *lymcwd.Location, slug string) (dobbyengine.BeamDescribeFacts, error) {
-	origin, found, err := fabricengine.ReadOriginFor(prime, slug)
-	if err != nil {
-		return dobbyengine.BeamDescribeFacts{}, err
-	}
-	if !found {
-		return dobbyengine.BeamDescribeFacts{}, fmt.Errorf("the pair of the beam %s has no readable origin record; way forward: run `lym fabric reconcile` to restore its records worktree", slug)
-	}
-	pair, err := fabricengine.Open(beam)
-	if err != nil {
-		return dobbyengine.BeamDescribeFacts{}, err
-	}
-	branch, err := pair.CurrentBranch()
-	if err != nil {
-		return dobbyengine.BeamDescribeFacts{}, err
-	}
-	commits, err := beamDraftDeps(beam, slug, origin.ParentBranch).Commits()
-	if err != nil {
-		return dobbyengine.BeamDescribeFacts{}, err
-	}
-	return dobbyengine.BeamDescribeFacts{
-		DescriptionPath: summaryparser.Path(loomengine.LandingDir(beam)),
-		Branch:          branch,
-		ParentBranch:    origin.ParentBranch,
-		Changes:         landingshed.RenderBeamChanges(commits),
-	}, nil
-}
-
-// describeGate returns the gate builder of the describer agent's run, over its one output file, the draft.
-// The gate refuses a line of the draft that one of forbidden matches.
-func describeGate(forbidden []*regexp.Regexp) func(spec shuttleengine.Spec) shuttleengine.GateSpec {
-	return func(spec shuttleengine.Spec) shuttleengine.GateSpec {
-		return shuttleengine.GateSpec{{Name: describeGateName, Gate: landingshed.NewDescriptionGate(spec.OutputFiles[0], forbidden), Attempts: describeGateAttempts}}
-	}
-}
-
-// tearDownLeftovers tears down each of pairs by its kind in a goroutine of its own.
-// opts bounds the origin reconcile that tears down the ended runs' pairs.
-// It then regenerates the hub workspace file once, so it no longer lists a removed pair.
-// The channel delivers once, mapping each slug to nil when its pair was removed and to the reason otherwise.
-func tearDownLeftovers(prime *lymcwd.Location, pairs []dobbyengine.LeftoverPair, opts fabricengine.ReconcileOptions) <-chan map[string]error {
-	result := make(chan map[string]error, 1)
-	go func() {
-		results := make(map[string]error, len(pairs))
-		var ended []string
-		for _, pair := range pairs {
-			if pair.Kind == dobbyengine.LeftoverEnded {
-				ended = append(ended, pair.Slug)
-				continue
-			}
-			results[pair.Slug] = tearDownLeftover(prime, pair)
-		}
-		if len(ended) > 0 {
-			maps.Copy(results, reconcileEnded(prime, ended, opts))
-		}
-		if _, err := fabricengine.RegenerateHubWorkspace(fabricengine.NewMutations(prime.HubPath), prime); err != nil {
-			logger.Warn(`beamcli: the hub workspace file was not regenerated after a leftover teardown; run "lym fabric reconcile" once the cause is fixed`, "error", err)
-		}
-		result <- results
-	}()
-	return result
-}
-
-// tearDownLeftover tears down one leftover pair that is not an ended run's.
-// A handed-over run's local pair is removed in local mode, and an orphan's after its tips are archived.
-// A landed or cancelled run's pair goes through the pair teardown with its task branch on origin;
-// the landed run's claim is marked done, and the cancelled run's batten record goes with its pair.
-// The cancel chose the removal, so the cancelled run's teardown answers dirtiness with force.
-func tearDownLeftover(prime *lymcwd.Location, pair dobbyengine.LeftoverPair) error {
-	switch pair.Kind {
-	case dobbyengine.LeftoverHandedOver:
-		_, err := pairteardown.RemoveHandedOverPair(prime, pair.Slug)
-		return err
-	case dobbyengine.LeftoverOrphan:
-		_, err := pairteardown.RemoveOrphanPair(context.Background(), prime, pair.Slug)
-		return err
-	}
-	teardown, err := pairteardown.New(prime)
-	if err != nil {
-		return err
-	}
-	_, err = teardown.Run(context.Background(), pairteardown.Request{
-		Slug:    pair.Slug,
-		Remote:  true,
-		Force:   pair.Kind == dobbyengine.LeftoverCancelled,
-		Landed:  pair.Kind == dobbyengine.LeftoverLanded,
-		Verdict: fabricengine.EntryEnded,
-	})
-	return err
-}
-
-// reconcileEnded runs the hub-scope origin reconcile from prime, as `lym cleanup --apply` does.
+// tearDownEnded runs the hub-scope origin reconcile from prime in a goroutine of its own, as `lym cleanup --apply` does.
 // That reconcile tears down the local pair of every run origin has ended, and moves the hub's branches behind origin.
 // Each entry of its mutation record is logged at Info.
+// The channel delivers once.
 // It maps each of slugs to nil when the reconcile removed its pair, and to the reason otherwise.
-// opts bounds the reconcile's remote calls and its retries of an unreachable origin.
-func reconcileEnded(prime *lymcwd.Location, slugs []string, opts fabricengine.ReconcileOptions) map[string]error {
-	teardown, err := pairteardown.New(prime)
-	if err != nil {
-		return endedTeardownResults(slugs, fabricengine.OriginReport{}, err)
-	}
-	report, err := fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), opts)
-	for _, mutation := range report.Mutations.Entries() {
-		logger.Info("beamcli: origin reconcile mutation", "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
-	}
-	return endedTeardownResults(slugs, report, err)
+func tearDownEnded(prime *lymcwd.Location, slugs []string) <-chan map[string]error {
+	result := make(chan map[string]error, 1)
+	go func() {
+		teardown, err := pairteardown.New(prime)
+		if err != nil {
+			result <- endedTeardownResults(slugs, fabricengine.OriginReport{}, err)
+			return
+		}
+		report, err := fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
+		for _, mutation := range report.Mutations.Entries() {
+			logger.Info("beamcli: origin reconcile mutation", "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
+		}
+		result <- endedTeardownResults(slugs, report, err)
+	}()
+	return result
 }
 
 // endedTeardownResults maps each of slugs to nil when report shows its pair removed, and to the reason otherwise.
@@ -691,7 +433,7 @@ func beamLandReading(prime *lymcwd.Location, slug string) (dobbyengine.LandReadi
 	if !blockers.Empty() {
 		return dobbyengine.LandReading{}, nil
 	}
-	here, err := machinename.ReadIdentity()
+	here, err := machinename.Name()
 	if err != nil {
 		return dobbyengine.LandReading{}, err
 	}
@@ -714,7 +456,7 @@ func beamLandReading(prime *lymcwd.Location, slug string) (dobbyengine.LandReadi
 		}
 	}
 	reading := dobbyengine.LandReading{Passes: true}
-	if boardengine.OwnedElsewhere(owner, owners.Registry, here) {
+	if boardengine.OwnedElsewhere(owner, here) {
 		reading.ParentOwner, reading.ParentSubject = owner, subject
 	}
 	return reading, nil
@@ -786,6 +528,33 @@ func pairLocation(prime *lymcwd.Location, slug string) (*lymcwd.Location, error)
 		return nil, fmt.Errorf("locate the pair %s: %w", slug, err)
 	}
 	return pair, nil
+}
+
+// liftOwnerPause lifts the live pause entry of slug's own scope that carries the owner caller.
+func liftOwnerPause(prime *lymcwd.Location, recordPath, slug string) error {
+	record, err := pauserecord.Read(recordPath)
+	if err != nil {
+		return err
+	}
+	var refs []tenderengine.EntryRef
+	for _, entry := range record.Live {
+		if entry.Scope == slug && entry.Caller == pauserecord.OwnerCaller {
+			refs = append(refs, tenderengine.EntryRef{Scope: entry.Scope, Caller: entry.Caller, PausedAt: entry.PausedAt})
+		}
+	}
+	if len(refs) == 0 {
+		return nil
+	}
+	deps, _, err := tendercli.HubDeps(prime, os.Getenv(agentname.StrandNameEnv))
+	if err != nil {
+		return err
+	}
+	for _, ref := range refs {
+		if _, err := tenderengine.Lift(deps, ref); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // spawnPass starts `<lym> batten run <slug>` for geom as its own process, in the prime's anchor.
@@ -874,9 +643,9 @@ func passErrorText(printed []byte, waitErr error) string {
 	return ""
 }
 
-// resolveModel resolves the model spec through the hub's model registry.
-func resolveModel(dirs configengine.Dirs, spec string) (shuttleengine.ModelChoice, error) {
-	parsed, err := modelspec.Parse(spec)
+// resolveTidyModel resolves the board-tidy agent's model spec through the hub's model registry.
+func resolveTidyModel(dirs configengine.Dirs) (shuttleengine.ModelChoice, error) {
+	spec, err := modelspec.Parse(tidyModelSpec)
 	if err != nil {
 		return shuttleengine.ModelChoice{}, err
 	}
@@ -884,49 +653,43 @@ func resolveModel(dirs configengine.Dirs, spec string) (shuttleengine.ModelChoic
 	if err != nil {
 		return shuttleengine.ModelChoice{}, err
 	}
-	resolved, err := registry.Resolve(parsed)
+	resolved, err := registry.Resolve(spec)
 	if err != nil {
 		return shuttleengine.ModelChoice{}, err
 	}
 	return shuttleengine.NewModelChoice(resolved), nil
 }
 
-// runnerAgentShuttle adapts the shuttle runner over a worktree to dobbyengine.AgentShuttle, for the agents dobby spawns.
-// The runner is built on the first start, so a config that does not load fails the agent's step and never the dobby.
-type runnerAgentShuttle struct {
+// runnerTidyShuttle adapts the shuttle runner over the dobby's worktree to dobbyengine.TidyShuttle.
+// The runner is built on the first start, so a config that does not load fails the tidy and never the dobby.
+type runnerTidyShuttle struct {
 	worktree *lymcwd.Location
-	// gate builds the gate a started run carries from its spec; nil starts the run ungated.
-	gate   func(spec shuttleengine.Spec) shuttleengine.GateSpec
-	once   sync.Once
-	runner *shuttleengine.Runner
-	err    error
+	once     sync.Once
+	runner   *shuttleengine.Runner
+	err      error
 }
 
 // Start launches spec in a fresh window and returns its strand's GUID once the agent is running.
-// The run is waited on in the background, so shuttle enforces the spec's timeout and gate and settles the run.
-func (s *runnerAgentShuttle) Start(spec shuttleengine.Spec) (string, error) {
+// The run is waited on in the background, so shuttle enforces the spec's timeout and settles the run.
+func (s *runnerTidyShuttle) Start(spec shuttleengine.Spec) (string, error) {
 	s.once.Do(func() { s.runner, s.err = battencli.ShuttleRunner(s.worktree) })
 	if s.err != nil {
 		return "", s.err
 	}
-	var gate shuttleengine.GateSpec
-	if s.gate != nil {
-		gate = s.gate(spec)
-	}
-	run, err := s.runner.StartGated(spec, gate)
+	run, err := s.runner.StartGated(spec, nil)
 	if err != nil {
 		return "", err
 	}
 	go func() {
 		result, err := run.Wait()
-		logger.Debug("beamcli: a dobby agent's run ended", "role", spec.Role, "outcome", result.Outcome, "error", err)
+		logger.Debug("beamcli: the board-tidy agent's run ended", "outcome", result.Outcome, "error", err)
 	}()
 	return run.StrandGUID(), nil
 }
 
 // EngineName names the engine choice launches on under the runner's engine set.
-// A runner that cannot be built returns the build's error, so the step reports it instead of rendering a prompt.
-func (s *runnerAgentShuttle) EngineName(choice shuttleengine.ModelChoice) (string, error) {
+// A runner that cannot be built returns the build's error, so the tidy reports it instead of rendering a prompt.
+func (s *runnerTidyShuttle) EngineName(choice shuttleengine.ModelChoice) (string, error) {
 	s.once.Do(func() { s.runner, s.err = battencli.ShuttleRunner(s.worktree) })
 	if s.err != nil {
 		return "", s.err
@@ -935,7 +698,7 @@ func (s *runnerAgentShuttle) EngineName(choice shuttleengine.ModelChoice) (strin
 }
 
 // StopStrand ends the strand guid names through shuttle's stop verb.
-func (s *runnerAgentShuttle) StopStrand(guid string) error {
+func (s *runnerTidyShuttle) StopStrand(guid string) error {
 	s.once.Do(func() { s.runner, s.err = battencli.ShuttleRunner(s.worktree) })
 	if s.err != nil {
 		return s.err

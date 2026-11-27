@@ -52,6 +52,11 @@ type lockHarness struct {
 	// verdict is the fake owner check's answer to its nth call, counted from one; nil reads as owned here.
 	verdict    func(n int) (OwnerVerdict, error)
 	ownerCalls int
+	// pauseErr is the error the fake owner pause answers its nth call with, counted from one; nil never fails.
+	pauseErr func(n int) error
+	// ownerPauses is the owner each fake owner pause asks for; heldByOwner reports whether one landed as an owner hold.
+	ownerPauses []string
+	heldByOwner bool
 	// parentHolds, restepped and their errors answer the Finalize carve-out seams.
 	parentHolds    bool
 	parentHoldsErr error
@@ -89,6 +94,16 @@ func newLockHarness(t *testing.T, status shedengine.Status) *lockHarness {
 		}
 		return h.verdict(h.ownerCalls)
 	}
+	deps.PauseOwned = func(_ context.Context, owner string) error {
+		h.ownerPauses = append(h.ownerPauses, owner)
+		if h.pauseErr != nil {
+			if err := h.pauseErr(len(h.ownerPauses)); err != nil {
+				return err
+			}
+		}
+		h.heldByOwner = true
+		return nil
+	}
 	deps.ParentHoldsTaskWork = func() (bool, error) { return h.parentHolds, h.parentHoldsErr }
 	deps.Restepped = func(shedengine.Status) (bool, error) { return h.restepped, h.restepErr }
 	deps.ReadStatus = func(string, string) (shedengine.Status, bool, error) { return h.status, true, nil }
@@ -102,6 +117,9 @@ func newLockHarness(t *testing.T, status shedengine.Status) *lockHarness {
 	deps.Pause = func() (pauserecord.Coverage, error) {
 		if h.coverage != nil {
 			return h.coverage(h.clock.sleepCalls), nil
+		}
+		if h.heldByOwner {
+			return pauserecord.Coverage{Covered: true, OwnerHeld: true, Entry: pauserecord.Entry{Scope: "myslug", Caller: pauserecord.OwnerCaller}}, nil
 		}
 		return pauserecord.Coverage{Covered: h.clock.sleepCalls < h.coveredThrough, Entry: pauserecord.Entry{Scope: pauserecord.ScopeHub}}, nil
 	}

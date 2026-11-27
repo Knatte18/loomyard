@@ -55,27 +55,6 @@ type Engine struct {
 	// executablePath resolves the running lym binary's path.
 	// Under go test it refuses the test binary, so a test that wants a pinned line stubs it.
 	executablePath func() (string, error)
-	// reviveFilter rewrites a stored command line before a resume or a relaunch replays it; nil replays it as stored.
-	reviveFilter func(line string) string
-}
-
-// SetRevivalFilter installs filter, which rewrites each stored command line a resume or an absent-pane relaunch replays.
-// A caller uses it to drop from a stored line what its current configuration no longer allows.
-// The filter runs on the line chosen for replay, the resume command or its fallback command, and never on a fresh launch.
-func (e *Engine) SetRevivalFilter(filter func(line string) string) {
-	e.reviveFilter = filter
-}
-
-// revivalCmd returns the line a resume or relaunch of strand replays: its resume command, else its command, filtered.
-func (e *Engine) revivalCmd(strand Strand) string {
-	line := strand.ResumeCmd
-	if line == "" {
-		line = strand.Cmd
-	}
-	if e.reviveFilter != nil {
-		line = e.reviveFilter(line)
-	}
-	return line
 }
 
 // New builds an Engine for the given Config, Geometry and EnvScrub.

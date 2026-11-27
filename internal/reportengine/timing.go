@@ -178,16 +178,12 @@ func ComputeTiming(src Sources, opts TimingOptions) (TimingReport, error) {
 		return report, nil
 	}
 
-	batten, err := newBattenIndex(src, since)
-	if err != nil {
-		return TimingReport{}, err
-	}
 	var scratch Report
-	if err := selectRuns(src, Options{Since: since}, &scratch, batten); err != nil {
+	if err := selectRuns(src, Options{Since: since}, &scratch); err != nil {
 		return TimingReport{}, err
 	}
 	report.Findings = append(report.Findings, scratch.Findings...)
-	inFlight, err := selectInFlight(src, opts, batten, &report.Findings)
+	inFlight, err := selectInFlight(src, opts, &report.Findings)
 	if err != nil {
 		return TimingReport{}, err
 	}
@@ -235,8 +231,7 @@ func ComputeTiming(src Sources, opts TimingOptions) (TimingReport, error) {
 // any other is abandoned, left out with a finding.
 // A pair not seeded yet, or seeded to a recipe a report does not select, is left out silently,
 // and a record that does not decode is a finding.
-// Each run's batten source comes from batten.
-func selectInFlight(src Sources, opts TimingOptions, batten *battenIndex, findings *[]Finding) ([]RunRow, error) {
+func selectInFlight(src Sources, opts TimingOptions, findings *[]Finding) ([]RunRow, error) {
 	live := map[string]bool{}
 	for _, slug := range opts.Live {
 		live[slug] = true
@@ -257,6 +252,7 @@ func selectInFlight(src Sources, opts TimingOptions, batten *battenIndex, findin
 		}
 	}
 
+	var batten *battenIndex
 	var rows []RunRow
 	for _, branch := range src.Branches {
 		if branch.Name == src.RecordsBranch {
@@ -304,6 +300,11 @@ func selectInFlight(src Sources, opts TimingOptions, batten *battenIndex, findin
 			continue
 		}
 
+		if batten == nil {
+			if batten, err = newBattenIndex(src); err != nil {
+				return nil, err
+			}
+		}
 		row := RunRow{
 			Tag:             branch.Name,
 			Slug:            slug,
@@ -321,7 +322,7 @@ func selectInFlight(src Sources, opts TimingOptions, batten *battenIndex, findin
 		if newest, tagged := newestTag[slug]; tagged {
 			earlier = &newest
 		}
-		snapshots, recordCommit, battenFindings, err := batten.snapshotsOfRun(slug, branch.Name, earlier, seed.StartedAt, src.SnapshotAt)
+		snapshots, recordCommit, battenFindings, err := batten.snapshotsOfRun(slug, branch.Name, earlier, src.SnapshotAt)
 		if err != nil {
 			return nil, err
 		}

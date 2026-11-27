@@ -81,43 +81,16 @@ Do not flag any of the following as a finding:
   A difference from the answer key that a `Pattern-Departure:` trailer explains is judged on that reason, and holds when the named entry forbids the answer key's way, read in its declared new text where the directive's declared changes list it.
   A trailer naming an unknown entry, or an entry that does not forbid that way, is a finding.
   A trailer excuses only the difference it names.
-- **Loosened checks.**
-  An assertion, tolerance or limit the diff widens or removes in a test that exists at the review base is a finding, unless a `Loosened-Check:` trailer on any commit of the review range names it and a measured cause.
-  A cause that is no measurement, such as "flaky" or "to make it pass", is a finding too.
-  A removed assertion that a test in another file still holds, on the same behaviour and no looser, is not removed.
-- **Root cause of a bug fix.**
-  A `Root-Cause:` trailer on a commit of the review range names the defect the diff's fix removes.
-  A trailer that names a symptom, or a defect the diff does not touch, is a finding.
-  When the answer key is a decision record alone, asks to fix a bug, and no commit of the range carries the trailer, that is a finding too.
-- **Tests still check what they say.**
-  A test whose limits changed still checks the behaviour its name and doc comment state.
-  A test whose new limits admit the failure its name rules out is a finding.
-- **Claims of agreement or improvement.**
-  A claim in the change description or in a commit message of the range that a result agrees with a reference, or improves, carries before and after figures from the current code.
-  A claim without them is a finding, as is a figure the change itself made obsolete and an agreement claim across a set-up difference it does not name.
-- **A quoted figure whose measured case changed.**
-  A constant or figure that a doc, comment, spec or stencil quotes as measured, where the diff changes the case it was measured on, is a finding unless the diff re-measures it from the current code or drops it.
-  The case is the code, input or setting the figure was taken from; a figure whose case the diff leaves alone is no finding.
 - **Declared PATTERN changes landed.**
   Check that the branch's `PATTERN.md` and `pattern/` diff carries each entry the constraints section's declared changes list, its add, change or remove with the declared text, and raise a BLOCKING finding for each declared entry the diff does not land.
   Read the declarations rendered into your directive, never the plan's or the record's section, so a bullet appended after the gate is checked too.
   Raise nothing when every declared entry lands, or when your directive declares none.
 - **The change description.**
   A claim in `_lym/landing/summary.md` that the diff does not bear out is a finding.
-- **Names of the tooling.**
-  A repository document the diff adds or changes, or the change description, that names the tooling which wrote the change is a finding: LoomYard or lym, the board or a board entry, the Sketch or the decision record, another task, a gate or a tier of that tooling, or what the parent recorded.
-  A name the repository itself holds, as its own subject, is not flagged.
-- **Merge danger.**
-  Check the door the change description's `## Merge danger` section calls against the diff;
-  a `two-way` call earns the most suspicion.
-  A `two-way` call is a finding when the diff changes a record or board format another binary reads,
-  changes what a config setting means, deletes data, or pushes anything outward; the finding names that change.
-  A blast radius that names less than the diff can break is a finding too.
 - **An unrecorded parent correction, with a decision record alone.**
   A deviation from the amended board entry that the change description names as an unrecorded parent correction is never fixed by revert.
   File it as class `decision` at severity MEDIUM.
-  Its fix text tells the fixer to leave the code in place and defer the finding to the run's parent, since its only sound change, a ruling on the correction, is the parent's and lies outside the fixer's write surface.
-  The record takes no new entry once this review has begun, so the parent files a correction the record lacks as a board note for a new task.
+  Its fix text tells the fixer to leave the code in place and defer the finding to the run's parent, since its only sound change, recording or refusing the correction with `lym loom decision add`, is the parent's and lies outside the fixer's write surface.
 - **A step that edits the task's own board entry, with a decision record alone.**
   A step that changes this task's own board entry's body or scope is a finding, because the run's board lock refuses such a change.
   A step writing another entry, the entry's status or its `run_settings`, or changing board-module code is not flagged by this bullet.
@@ -125,7 +98,6 @@ Do not flag any of the following as a finding:
   A decision-record step asking for such a change is evidence only of the request.
   A step left out through the writer's own-entry route is no scope finding once the record carries its `Added after Discussion` entry;
   before then the omission is an unrecorded parent correction, filed under that bullet as a MEDIUM `decision` finding deferred to the parent.
-  An omission first met once this review has begun gets no entry, so it stays under that bullet for the parent to rule.
 - **Stencil wording.**
   A diff that changes a stencil is read against the measuring stick, the plan card's `Intent` with a plan and the amended board entry with a decision record alone; a rule the answer key did not ask to change that the diff drops, weakens or contradicts is a finding.
 - **Wording criteria.**
@@ -138,12 +110,23 @@ Do not flag any of the following as a finding:
   - a per-helper test the public surface's test already covers, naming that public-surface test;
   - a review-fix test added for a finding that was not a coverage gap, naming that finding;
   - a new assertion on the static prose of a stencil, spec, doc or other text, naming the assertion;
-  - a tautological test, whose expected value is computed the way the code computes it,
-    by calling the code under test, a helper it shares or the same formula,
-    naming the test and the independent value it should assert, from a literal, a worked example or the spec;
   - a behavior the diff adds with no coverage, naming the uncovered behavior; the static prose of a stencil, spec, doc or other text is exempt.
 
   A redundancy finding is raised only by naming the existing test that covers the behavior, so it cannot block on a vague suspicion.
+
+  Each test the redundancy report below lists as contained is a test-economy candidate.
+  Coverage blocks do not see assertions, so check the candidate's assertions against those of its covering tests before filing anything.
+  When the covering tests assert what it asserts, file a finding to fold it into one of them or delete it, naming the covering tests.
+  When it pins what coverage cannot see, such as an error message, an output shape, an ordering or a side effect the covering tests never check, accept it:
+  file a finding to mark it `//testtiming:keep <reason>` directly above its `func Test…` line, the reason naming what it pins.
+  A test the report lists as unique or not judged is no finding on that ground; judge it by the bullets above.
+
+## Redundancy report
+
+{{.redundancy_report}}
+
+The note above is the advisory report `lym gate test` writes on the diff's new and changed Go tests, read only when it still matches HEAD's tree.
+When it is `none`, or says no current report exists, judge test economy by the bullets above alone, and raise no finding about the report's absence.
 
 ## Amendment
 
@@ -153,13 +136,9 @@ When the note above is not `none`, this round reviews an amendment: review only 
 
 ## Review input
 
-{{.review_input}}
-
-When the note above is not `none`, this generation reviews the whole range, and each file it lists is a review input written after this perch last settled.
-Read each such file as an input besides the diff.
 When the amendment note names a review input, that file is a report written after this perch last settled: the merge fixer's report of the latest Parent-Align.
 Read it as an input besides the diff: judge from it whether the alignment it reports, and the parent changes it names, keep the code consistent with the answer key.
-A finding about an input file itself is never raised; each finding is about the code.
+A finding about the report itself is never raised; each finding is about the code.
 
 ## Finding class
 

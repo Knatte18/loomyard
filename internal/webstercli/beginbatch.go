@@ -37,12 +37,7 @@ func (c *websterCLI) beginDeps(plan *planparser.Plan, batches []batcher.Batch, s
 	if err != nil {
 		return websterengine.BeginDeps{}, err
 	}
-	choice, ok := c.roles[websterengine.RoleMaster]
-	if !ok {
-		return websterengine.BeginDeps{}, fmt.Errorf("webster: no resolved model-spec for role %q", websterengine.RoleMaster)
-	}
 	return websterengine.BeginDeps{
-		Engine:      c.engines.EngineName(choice),
 		Plan:        plan,
 		Batches:     batches,
 		State:       st,

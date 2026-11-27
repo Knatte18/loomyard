@@ -40,7 +40,7 @@ up is substrate-only: it never launches or relaunches a strand command.
 Bringing strand content back after a server restart is "lym reed resume"'s
 job, not up's.
 
-Setting ` + reedKeyName("debug_log") + ` (or LYM_REED_DEBUG=1) enables server verbose
+Setting debug_log in reed.yaml (or LYM_REED_DEBUG=1) enables server verbose
 logging to <hub>/` + fabricengine.BoltDirName + `/.lym/logs/, as forensics for unexplained server deaths; it
 applies only when this up actually boots the shared per-hub server, and
 an existing reed.yaml lacking the key takes the default until "lym config reconcile" writes it.
@@ -101,65 +101,6 @@ func (c *reedCLI) endPairProcesses(ctx context.Context) ([]runproc.Ended, error)
 	return teardown.EndBeforeSessionDown(ctx, location.WorktreeName)
 }
 
-// DownReport is what one down of a worktree's reed session did.
-type DownReport struct {
-	// Session is the session the down killed.
-	Session string `json:"session"`
-	// Ended holds the pair's registered processes the down ended before the session, empty in the prime.
-	Ended []runproc.Ended `json:"ended_processes"`
-	// AbandonedSession is a different live session the worktree's state recorded, which the down left running.
-	AbandonedSession string `json:"abandoned_session,omitempty"`
-}
-
-// DownWorktree takes down the reed session of the worktree at location, as `lym reed down` run there does.
-// In a pair it first ends the pair's registered processes, and it refuses a run that is running and unpaused.
-// It then kills the session, clears its strand state, and ends the hub's server when that was its last session.
-// It serves a caller that takes down the sessions of several worktrees from one process.
-func DownWorktree(ctx context.Context, location *lymcwd.Location) (DownReport, error) {
-	c := &reedCLI{}
-	if err := c.wireLocation(location); err != nil {
-		return DownReport{}, err
-	}
-	return c.down(ctx)
-}
-
-// down ends the pair's registered processes, kills the session and clears its strand state.
-// When it ended the hub's server it waits for the watchdog daemon to leave its loop.
-func (c *reedCLI) down(ctx context.Context) (DownReport, error) {
-	endProcesses := c.endProcesses
-	if endProcesses == nil {
-		endProcesses = c.endPairProcesses
-	}
-	ended, err := endProcesses(ctx)
-	if err != nil {
-		return DownReport{}, err
-	}
-
-	result, err := c.strandEngine().Down()
-	if err != nil {
-		return DownReport{Ended: ended}, err
-	}
-	if result.EndedServer {
-		// The wait sends nothing to the watchdog: Down already wrote the stop.
-		// It only holds the verb until the daemon has left its loop.
-		wait, poll, probe, sleep := c.downLockWait, c.downLockPoll, c.downLockProbe, c.downLockSleep
-		if wait == 0 {
-			wait = watchdogDownWait
-		}
-		if poll == 0 {
-			poll = watchdogDownPoll
-		}
-		if probe == nil {
-			probe = probeWatchdogLock
-		}
-		if sleep == nil {
-			sleep = time.Sleep
-		}
-		waitWatchdogLockFree(c.hubPath, wait, poll, probe, sleep)
-	}
-	return DownReport{Session: result.Session, Ended: ended, AbandonedSession: result.AbandonedSession}, nil
-}
-
 // endedProcessesField renders the ended processes as the envelope's list of {pid, role}, empty when none.
 func endedProcessesField(ended []runproc.Ended) []map[string]any {
 	list := make([]map[string]any, len(ended))
@@ -207,17 +148,45 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			report, err := c.down(cmd.Context())
+			endProcesses := c.endProcesses
+			if endProcesses == nil {
+				endProcesses = c.endPairProcesses
+			}
+			ended, err := endProcesses(cmd.Context())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
 
-			payload := map[string]any{"session": report.Session, "ended_processes": endedProcessesField(report.Ended)}
+			result, err := c.strandEngine().Down()
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			if result.EndedServer {
+				// The wait sends nothing to the watchdog: Down already wrote the stop.
+				// It only holds the verb until the daemon has left its loop.
+				wait, poll, probe, sleep := c.downLockWait, c.downLockPoll, c.downLockProbe, c.downLockSleep
+				if wait == 0 {
+					wait = watchdogDownWait
+				}
+				if poll == 0 {
+					poll = watchdogDownPoll
+				}
+				if probe == nil {
+					probe = probeWatchdogLock
+				}
+				if sleep == nil {
+					sleep = time.Sleep
+				}
+				waitWatchdogLockFree(c.hubPath, wait, poll, probe, sleep)
+			}
+
+			payload := map[string]any{"session": result.Session, "ended_processes": endedProcessesField(ended)}
 			// The key appears only when there is an abandoned session, so the ordinary teardown envelope stays unchanged.
 			// Its presence alone tells the caller that a session was abandoned.
-			if report.AbandonedSession != "" {
-				payload["abandonedSession"] = report.AbandonedSession
+			if result.AbandonedSession != "" {
+				payload["abandonedSession"] = result.AbandonedSession
 			}
 			clihelp.SetExit(cmd.Context(), output.Ok(out, payload))
 			return nil

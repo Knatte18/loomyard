@@ -1,7 +1,7 @@
 # PATTERN-stencil-ownership
 
-Prompts, specs and stencils are read at call time via `stencilstore`, with one engine's wording only in its engine blocks,
-rendered for the launch's engine, and a spawned role's stencil renders the parent and edit directives.
+Prompts, specs and stencils are read at call time via `stencilstore`, with engine text in engine blocks,
+and a spawned role's stencil renders the parent and edit directives.
 
 ## Stencil ownership
 
@@ -38,28 +38,9 @@ It never restates the format.
 
 ## Engine blocks
 
-Rule: Writing one engine's wording into a stencil, a spec or prompt text Go fills in: in that engine's engine block, with a copy for every registered engine, read for the launch's engine by `internal/stencilstore`'s one resolver; Go text is chosen per engine or worded for any engine. (test)
+Rule: Writing engine-specific text into a stencil more than one engine renders: in an engine block, read for the seat's engine by `internal/stencilstore`'s one resolver.
 
-- An engine block is the bare `{{template "engine-<block>"}}` include, with one copy per engine at `engine/<engine>/<block>.md`.
-  A copy is read without its final newline, so a block can stand inside a sentence as well as on lines of its own.
-- A seat stencil's blocks resolve through `stencilstore.ReadSet`;
-  a producer that fills a stencil or a fragment with no include map reads it through `stencilstore.ReadForEngine`,
-  for the engine its model choice resolves to.
-- A Codex copy says what the Claude copy says in Codex's terms:
-  a fresh subagent is `spawn_agent` with `fork_turns: "none"`, a fork is `spawn_agent` with `fork_turns: "all"`,
-  waiting is `wait_agent`, an edit is `apply_patch`, a read is a read-only shell command,
-  "your system prompt" is "your developer instructions", and a question for the operator in interactive mode is asked in the pane.
-- Text that needs no tool name is worded for any engine instead, such as "spawn no fork or subagent".
-
-`contracts/stencils/engineterms_test.go` holds the rule over a closed term list:
-the Agent tool, `subagent_type`, fork subagents, the Skill, Read, Edit, Write, Grep and Glob tools, `AskUserQuestion`,
-"system prompt", and the Bash tool's `timeout` and `run_in_background`.
-It fails on such a term in a stencil or spec outside `contracts/stencils/engine/claude/`,
-and in a production Go string literal outside `internal/shuttleengine/claudeengine/`.
-It skips the orch's places, `contracts/stencils/orch/`, `contracts/orchrole/` and the `internal/orch*` packages, since the orch stays on Claude,
-and the test-support kits under `internal/testkit/`, whose text reaches no launched prompt.
-An allowlist entry with a reason admits a Go literal that never reaches a Codex session; review holds the reason, not the scan.
-The test also fails on an engine block some registered engine has no copy of.
+Held by review alone; no test enforces it.
 
 ## Parent directive
 
@@ -71,7 +52,7 @@ the agent asks its parent.
 - An interactive role's questions are the one place a question reaches a person,
   and they come from the `{{.mode_rules}}` marker Go fills, not from stencil text.
   The Discussion chair and the raddle agent are such roles,
-  and the judge seat is another when `drift.judge_interactive` is set.
+  and the judge seat is another when drift.yaml sets `judge_interactive`.
 - The orch stencils are exempt: the orch session is the operator's own delegate and has no parent to ask.
 - Enforced by a test over the stencils.
 

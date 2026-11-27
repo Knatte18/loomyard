@@ -42,20 +42,16 @@ var ErrSpawnUnderTest = errors.New("dobbyengine: dobby not spawned under test")
 type BeamPair struct {
 	// Slug is the beam's slug, the name of its worktree.
 	Slug string
-	// Owner is the machine the pair reads as owned by; empty means no owner is recorded.
+	// Owner is the machine the pair reads as owned by; empty means no other machine owns it.
 	Owner string
-	// Elsewhere reports whether Owner reads as a machine other than this one, which the hub wiring judges.
-	Elsewhere bool
 }
 
 // StartDeps holds every seam a start reads and writes through.
 type StartDeps struct {
-	// Machine returns this machine's name, the one a prime claim records.
-	// Its error refuses every dobby of a start, since a machine whose identity does not resolve starts none.
+	// Machine returns this machine's name.
 	Machine func() (string, error)
 	// PrimeOwner returns the machine recorded as the prime's owner, empty when none is recorded.
-	// It also returns whether that owner reads as a machine other than this one.
-	PrimeOwner func() (owner string, elsewhere bool, err error)
+	PrimeOwner func() (string, error)
 	// ClaimPrime records machine as the prime's owner and returns the machine that owns it instead when that claim lost, empty otherwise.
 	ClaimPrime func(machine string) (lostTo string, err error)
 	// PrimeName is the prime worktree's directory name.
@@ -91,11 +87,13 @@ type StartReport struct {
 	Entries []StartEntry
 }
 
-// OwnedWorktrees lists the worktrees this machine may start a dobby for.
-// The prime's name leads when its owner does not read elsewhere or none is recorded.
-// Every local beam pair whose owner does not read elsewhere follows.
+// OwnedWorktrees lists the worktrees this machine may start a dobby for: the prime's name when this machine owns the prime or none is recorded, then every local beam pair not owned by another machine.
 func OwnedWorktrees(deps StartDeps) ([]string, error) {
-	primeOwner, primeElsewhere, err := deps.PrimeOwner()
+	machine, err := deps.Machine()
+	if err != nil {
+		return nil, fmt.Errorf("dobbyengine: this machine's name is unknown: %w", err)
+	}
+	primeOwner, err := deps.PrimeOwner()
 	if err != nil {
 		return nil, fmt.Errorf("dobbyengine: read the prime owner: %w", err)
 	}
@@ -104,11 +102,11 @@ func OwnedWorktrees(deps StartDeps) ([]string, error) {
 		return nil, fmt.Errorf("dobbyengine: list the local beams: %w", err)
 	}
 	var worktrees []string
-	if primeOwner == "" || !primeElsewhere {
+	if primeOwner == "" || primeOwner == machine {
 		worktrees = append(worktrees, deps.PrimeName)
 	}
 	for _, beam := range beams {
-		if !beam.Elsewhere {
+		if beam.Owner == "" || beam.Owner == machine {
 			worktrees = append(worktrees, beam.Slug)
 		}
 	}
@@ -120,24 +118,20 @@ func OwnedWorktrees(deps StartDeps) ([]string, error) {
 // A prime with no recorded owner is claimed for this machine first;
 // a claim that fails is reported for the prime with its cause and the `lym beam start` re-run;
 // the prime's dobby is not started, but the beams go on.
-// A named prime whose owner reads elsewhere is reported with its owner and `lym adopt root`;
-// a named beam whose owner reads elsewhere is reported with its owner and `lym adopt <slug>`, and neither starts a dobby.
-// A prime claim that stood reads here, and one lost to another machine reads elsewhere.
+// A named prime another machine owns is reported with its owner and `lym adopt root`;
+// a named beam another machine owns is reported with its owner and `lym adopt <slug>`, and neither starts a dobby.
 // A named beam whose landing hold stands is reported naming `lym batten status <slug>` and starts no dobby.
-// A machine whose name does not read starts no dobby;
-// each named worktree is reported refused with that failure as its detail.
 // A failed spawn is reported for its worktree and the others still start; the returned error lists every failure.
 // A second call reports every dobby live and changes nothing.
 func EnsureLive(deps StartDeps, worktrees []string) (StartReport, error) {
 	machine, err := deps.Machine()
 	if err != nil {
-		return refuseEvery(deps.PrimeName, worktrees, err), nil
+		return StartReport{}, fmt.Errorf("dobbyengine: this machine's name is unknown: %w", err)
 	}
 	primeNamed := slices.Contains(worktrees, deps.PrimeName)
 	var primeOwner string
-	var primeElsewhere bool
 	if primeNamed {
-		primeOwner, primeElsewhere, err = deps.PrimeOwner()
+		primeOwner, err = deps.PrimeOwner()
 		if err != nil {
 			return StartReport{}, fmt.Errorf("dobbyengine: read the prime owner: %w", err)
 		}
@@ -171,14 +165,14 @@ func EnsureLive(deps StartDeps, worktrees []string) (StartReport, error) {
 					Detail:   fmt.Sprintf("this machine was not recorded as the prime owner: %v; re-run `lym beam start root` once that works", claimErr),
 				})
 			case lostTo != "":
-				primeOwner, primeElsewhere = lostTo, true
+				primeOwner = lostTo
 			default:
-				primeOwner, primeElsewhere = machine, false
+				primeOwner = machine
 			}
 		}
 		switch {
 		case primeClaimFailed:
-		case !primeElsewhere:
+		case primeOwner == machine:
 			startOne(PrimeLabel, deps.PrimeName)
 		default:
 			report.Entries = append(report.Entries, StartEntry{
@@ -193,38 +187,24 @@ func EnsureLive(deps StartDeps, worktrees []string) (StartReport, error) {
 		if slug == deps.PrimeName {
 			continue
 		}
-		var pair BeamPair
+		owner := ""
 		for _, beam := range beams {
 			if beam.Slug == slug {
-				pair = beam
+				owner = beam.Owner
 				break
 			}
 		}
-		if pair.Elsewhere {
+		if owner != "" && owner != machine {
 			report.Entries = append(report.Entries, StartEntry{
 				Worktree: slug,
 				Outcome:  OutcomeRefused,
-				Detail:   fmt.Sprintf("owned by %s; lym adopt %s takes it over here", pair.Owner, slug),
+				Detail:   fmt.Sprintf("owned by %s; lym adopt %s takes it over here", owner, slug),
 			})
 			continue
 		}
 		startOne(slug, slug)
 	}
 	return report, errors.Join(failures...)
-}
-
-// refuseEvery reports each of worktrees as refused with cause as its detail, the prime first when named.
-func refuseEvery(primeName string, worktrees []string, cause error) StartReport {
-	var report StartReport
-	if slices.Contains(worktrees, primeName) {
-		report.Entries = append(report.Entries, StartEntry{Worktree: PrimeLabel, Outcome: OutcomeRefused, Detail: cause.Error()})
-	}
-	for _, slug := range worktrees {
-		if slug != primeName {
-			report.Entries = append(report.Entries, StartEntry{Worktree: slug, Outcome: OutcomeRefused, Detail: cause.Error()})
-		}
-	}
-	return report
 }
 
 // ensureOne starts the dobby of the worktree named worktree unless it is live, and reports it under label.

@@ -29,9 +29,6 @@ var shedrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/discussionparser",
 	"github.com/Knatte18/loomyard/internal/shedadapters",
 	"github.com/Knatte18/loomyard/internal/loomshed",
-	// internal/lymdirs is imported for the directory names of the review snapshot cache;
-	// it is a stdlib-free leaf and resolves no geometry.
-	"github.com/Knatte18/loomyard/internal/lymdirs",
 	// internal/loomengine is imported for the RaddleMode type of RaddleWriteEnv.Table; it resolves no geometry.
 	"github.com/Knatte18/loomyard/internal/loomengine",
 	"github.com/Knatte18/loomyard/internal/modelspec",
@@ -56,9 +53,6 @@ var shedrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/driftengine",
 	// internal/pawlengine is imported for the pawl producers and the told Deps type of Env.Pawl; it resolves no geometry.
 	"github.com/Knatte18/loomyard/internal/pawlengine",
-	// internal/hardenshed is imported for the told Campaign type of Env.Harden and the HardenFix row.
-	// It takes absolute paths and resolves no geometry.
-	"github.com/Knatte18/loomyard/internal/hardenshed",
 }
 
 // shedrecipeDeniedLymcwdImport is the exact import path the Shed Recipe Registry Invariant excludes

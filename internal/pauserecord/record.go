@@ -19,9 +19,17 @@ const RecordFileName = "record.json"
 // ScopeHub is the scope of an entry that covers every pair and the prime.
 const ScopeHub = "hub"
 
-// BoltHoldCaller is the Caller of the slug entry a machine writes for one of its runs while a Bolt hold stands.
-// It holds the run's processes and network calls on that machine, and the machine's dobby lifts it once the hold clears.
-const BoltHoldCaller = "bolt-hold"
+// OwnerCaller is the Caller of every pause entry that holds a run owned by another machine.
+const OwnerCaller = "owner"
+
+// AdoptCaller is the Caller of the pause entry that holds a run, or a released task, that `lym adopt` took over.
+// Only `lym tender resume` or `lym batten cancel` lifts it.
+const AdoptCaller = "adopt"
+
+// HoldCaller is the legacy Caller of the pause entry an older `lym adopt` left on a run it took over.
+// A released task it took over carries it too.
+// Only `lym tender resume` or `lym batten cancel` lifts it now.
+const HoldCaller = "adopt-hold"
 
 // Retention is how long a resumed entry stays in the record.
 // It lets a reader that was away across a pause still see its interval.
@@ -61,8 +69,6 @@ type Entry struct {
 	Sessions []Session `json:"sessions"`
 	// ResumedAt is zero while the entry is live.
 	ResumedAt time.Time `json:"resumed_at"`
-	// Machine is the machine of the hold the entry stands for, set on a BoltHoldCaller entry.
-	Machine string `json:"machine,omitempty"`
 }
 
 // Record is the whole file: at most one live entry per scope.
@@ -85,11 +91,12 @@ type Coverage struct {
 	Entry Entry
 	// Intervals holds every interval of every entry covering the slug, live and resumed.
 	Intervals []Interval
-	// Held reports whether a live entry of the slug's own scope carries BoltHoldCaller.
+	// OwnerHeld reports whether a live entry of the slug's own scope carries OwnerCaller.
+	// It is set even when another entry is the covering one.
+	OwnerHeld bool
+	// Held reports whether a live entry of the slug's own scope carries AdoptCaller or HoldCaller.
 	// It is set even when another entry is the covering one.
 	Held bool
-	// HoldMachine is the Machine of the BoltHoldCaller entry that set Held, empty when none did.
-	HoldMachine string
 }
 
 // Read returns the record at path, or the empty record when the file does not exist.
@@ -224,15 +231,19 @@ func ClaimSession(path, slug string, session Session, now time.Time) (Entry, boo
 
 // CoverageOf returns the covering live entry for slug and the interval of every entry covering it.
 // A live entry's interval runs from its pause to now, a resumed one's to its resume.
-// Held is set when a live entry of slug's own scope carries BoltHoldCaller.
-// HoldMachine then names that entry's machine.
+// OwnerHeld is set when a live entry of slug's own scope carries OwnerCaller.
+// Held is set when one carries AdoptCaller or HoldCaller.
 func (r Record) CoverageOf(slug string, now time.Time) Coverage {
 	var coverage Coverage
 	coverage.Entry, coverage.Covered = r.Covering(slug)
 	for _, entry := range r.Live {
-		if slug != "" && entry.Scope == slug && entry.Caller == BoltHoldCaller {
-			coverage.Held = true
-			coverage.HoldMachine = entry.Machine
+		if slug != "" && entry.Scope == slug {
+			switch entry.Caller {
+			case OwnerCaller:
+				coverage.OwnerHeld = true
+			case AdoptCaller, HoldCaller:
+				coverage.Held = true
+			}
 		}
 		if entry.covers(slug) {
 			coverage.Intervals = append(coverage.Intervals, Interval{Start: entry.PausedAt, End: now})
@@ -287,26 +298,9 @@ func Excluded(intervals []Interval, from, to time.Time) time.Duration {
 	return total
 }
 
-// holdMachineName returns the machine of a BoltHoldCaller entry, "another machine" when the entry records none.
-func holdMachineName(e Entry) string {
-	if e.Machine == "" {
-		return "another machine"
-	}
-	return e.Machine
-}
-
 // CoveredError renders the refusal an entry point returns when entry covers its run.
 // The refusal names the resume that lifts the hold and the retry to make after it.
-// An entry carrying BoltHoldCaller reads as an adopt's hold on its machine instead:
-// the refusal names no resume, since the hold lifts when the adopt's hold clears.
 func CoveredError(e Entry, slug, retry string) error {
-	if e.Caller == BoltHoldCaller {
-		machine := holdMachineName(e)
-		return fmt.Errorf("pause: an adopt on machine %s holds this run since %s; way forward: wait for that adopt's hold to clear, "+
-			"which lifts this entry at the next tick of the worktree's dobby (with no dobby running, `lym beam start` starts one), "+
-			"then %s; if machine %s has stopped, ask the operator",
-			machine, e.PausedAt.Format(time.RFC3339), retry, machine)
-	}
 	pause, resume := "a hub-wide pause", `"lym tender resume"`
 	if e.Scope != ScopeHub {
 		pause, resume = fmt.Sprintf("the pause of %s", slug), fmt.Sprintf(`"lym tender resume %s"`, slug)

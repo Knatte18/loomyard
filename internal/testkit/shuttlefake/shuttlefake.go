@@ -327,16 +327,6 @@ type Reed struct {
 	// AddErr makes AddStrand fail without minting a strand.
 	AddErr error
 
-	// EndedGUIDs, ReleasedGUIDs and RelaunchedStrands record the calls that found their strand, in call order.
-	// They cover EndStrandProcess, ReleaseStrandHold and RelaunchStrand respectively.
-	EndedGUIDs        []string
-	ReleasedGUIDs     []string
-	RelaunchedStrands []RelaunchCall
-	// EndErr, ReleaseErr and RelaunchErr make the matching hold op fail without changing the strand.
-	EndErr      error
-	ReleaseErr  error
-	RelaunchErr error
-
 	SendTextCalls []SendTextCall
 	SendKeyCalls  []SendKeyCall
 	CaptureCalls  []string
@@ -362,12 +352,6 @@ type Reed struct {
 	CapturePaneStyledFn func(guid string) (string, error)
 	PasteSubmitFn       func(guid, text string, submit bool) error
 	OperatorActiveFn    func(guid string) (bool, time.Duration, error)
-}
-
-// RelaunchCall is one recorded RelaunchStrand call.
-type RelaunchCall struct {
-	GUID string
-	Spec reedengine.RelaunchSpec
 }
 
 // PasteSubmitCall is one recorded PasteSubmit call.
@@ -455,78 +439,6 @@ func (r *Reed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, er
 	}
 	r.Strands = kept
 	return removed, nil
-}
-
-// EndStrandProcess answers EndErr, else marks the strand held, not live and unbound, and records its GUID.
-// An unknown GUID wraps reedengine.ErrUnknownStrand.
-func (r *Reed) EndStrandProcess(guid string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.EndErr != nil {
-		return r.EndErr
-	}
-	i, err := r.strandIndexLocked(guid)
-	if err != nil {
-		return err
-	}
-	r.Strands[i].Held = true
-	r.Strands[i].Live = false
-	r.Strands[i].Present = false
-	r.Strands[i].PaneID = ""
-	r.EndedGUIDs = append(r.EndedGUIDs, guid)
-	return nil
-}
-
-// ReleaseStrandHold answers ReleaseErr, else clears the strand's held mark and records its GUID.
-// An unknown GUID wraps reedengine.ErrUnknownStrand.
-func (r *Reed) ReleaseStrandHold(guid string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.ReleaseErr != nil {
-		return r.ReleaseErr
-	}
-	i, err := r.strandIndexLocked(guid)
-	if err != nil {
-		return err
-	}
-	r.Strands[i].Held = false
-	r.ReleasedGUIDs = append(r.ReleasedGUIDs, guid)
-	return nil
-}
-
-// RelaunchStrand answers RelaunchErr, else brings the held strand back live under the same GUID and records the call.
-// An unknown GUID wraps reedengine.ErrUnknownStrand, and a strand that is not held is refused.
-func (r *Reed) RelaunchStrand(guid string, spec reedengine.RelaunchSpec) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.RelaunchErr != nil {
-		return r.RelaunchErr
-	}
-	i, err := r.strandIndexLocked(guid)
-	if err != nil {
-		return err
-	}
-	if !r.Strands[i].Held {
-		return fmt.Errorf("strand %q is not held, so it is not relaunched", guid)
-	}
-	r.next++
-	r.Strands[i].Held = false
-	r.Strands[i].Live = true
-	r.Strands[i].Present = true
-	r.Strands[i].PaneID = fmt.Sprintf("%%%d", r.next)
-	r.RelaunchedStrands = append(r.RelaunchedStrands, RelaunchCall{GUID: guid, Spec: spec})
-	return nil
-}
-
-// strandIndexLocked returns the table index of guid, or an error wrapping reedengine.ErrUnknownStrand.
-// The caller holds r.mu.
-func (r *Reed) strandIndexLocked(guid string) (int, error) {
-	for i, s := range r.Strands {
-		if s.GUID == guid {
-			return i, nil
-		}
-	}
-	return 0, fmt.Errorf("%w %q", reedengine.ErrUnknownStrand, guid)
 }
 
 // Status answers StatusFn, else StatusErr, else the strand table.

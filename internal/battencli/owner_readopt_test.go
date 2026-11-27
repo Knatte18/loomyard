@@ -110,9 +110,9 @@ func TestOwnerPreflight_GoneTaskWorktree(t *testing.T) {
 	active := fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryActive}}}
 	cancel := "lym batten cancel " + slug + " --remove"
 
-	statusRel, err := childStatusRel(slug)
+	statusRels, err := childStatusRels(slug)
 	if err != nil {
-		t.Fatalf("childStatusRel: %v", err)
+		t.Fatalf("childStatusRels: %v", err)
 	}
 	statusOf := func(state shedengine.State) []byte {
 		raw, err := json.Marshal(shedengine.Status{State: state})
@@ -123,10 +123,11 @@ func TestOwnerPreflight_GoneTaskWorktree(t *testing.T) {
 	}
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	archiveTag := func(short string) string { return fabricengine.ArchiveTagPrefix + slug + "/" + short }
-	originDone := fabricengine.RecordsTag{Name: archiveTag("aaaaaaaaaaaa"), Commit: strings.Repeat("a", 40), OnOrigin: true, OriginOnly: true, CommitterTime: base.Add(3 * time.Hour), Files: map[string][]byte{statusRel: statusOf(shedengine.StateDone)}}
-	olderDone := fabricengine.RecordsTag{Name: archiveTag("bbbbbbbbbbbb"), Commit: strings.Repeat("b", 40), OnOrigin: true, CommitterTime: base.Add(time.Hour), Files: map[string][]byte{statusRel: statusOf(shedengine.StateDone)}}
-	newerRunning := fabricengine.RecordsTag{Name: archiveTag("cccccccccccc"), Commit: strings.Repeat("c", 40), CommitterTime: base.Add(4 * time.Hour), Files: map[string][]byte{statusRel: statusOf(shedengine.StateRunning)}}
+	originDone := fabricengine.RecordsTag{Name: archiveTag("aaaaaaaaaaaa"), Commit: strings.Repeat("a", 40), OnOrigin: true, OriginOnly: true, CommitterTime: base.Add(3 * time.Hour), Files: map[string][]byte{statusRels[0]: statusOf(shedengine.StateDone)}}
+	olderDone := fabricengine.RecordsTag{Name: archiveTag("bbbbbbbbbbbb"), Commit: strings.Repeat("b", 40), OnOrigin: true, CommitterTime: base.Add(time.Hour), Files: map[string][]byte{statusRels[0]: statusOf(shedengine.StateDone)}}
+	newerRunning := fabricengine.RecordsTag{Name: archiveTag("cccccccccccc"), Commit: strings.Repeat("c", 40), CommitterTime: base.Add(4 * time.Hour), Files: map[string][]byte{statusRels[0]: statusOf(shedengine.StateRunning)}}
 	newestNoStatus := fabricengine.RecordsTag{Name: archiveTag("dddddddddddd"), Commit: strings.Repeat("d", 40), CommitterTime: base.Add(5 * time.Hour)}
+	legacyDone := fabricengine.RecordsTag{Name: archiveTag("eeeeeeeeeeee"), Commit: strings.Repeat("e", 40), CommitterTime: base.Add(2 * time.Hour), Files: map[string][]byte{statusRels[1]: statusOf(shedengine.StateDone)}}
 	leftoverTip := strings.Repeat("0123456789", 4)
 	leftoverTag := archiveTag(leftoverTip[:fabricengine.ArchiveTagSHALen])
 	notLiveRecords := &fabricengine.ErrNotLive{Branch: recordsBranch, Records: true}
@@ -277,6 +278,18 @@ func TestOwnerPreflight_GoneTaskWorktree(t *testing.T) {
 			wantCommitFailed: 1,
 		},
 		{
+			name:     "LandRecordsNotLiveReadsAFinishedStatusUnderTheLegacySegment",
+			producer: battenrecipe.NameLand,
+			fake: fakeReadopt{gone: true, report: active, addErr: notLiveRecords,
+				tags: []fabricengine.RecordsTag{legacyDone, newerRunning}},
+			wantCalls:        []string{"gone", "reconcile", "prune", "add"},
+			wantErrors:       []string{recordsAt + "branch " + recordsBranch + " " + legacyDone.Name, rerun},
+			notErrors:        []string{"fetch origin tag"},
+			wantState:        shedengine.StateFailed,
+			wantNotices:      1,
+			wantCommitFailed: 1,
+		},
+		{
 			name:             "LandRecordsNotLiveWithNoFinishedTagNamesFinishingByHand",
 			producer:         battenrecipe.NameLand,
 			fake:             fakeReadopt{gone: true, report: active, addErr: notLiveRecords, tags: []fabricengine.RecordsTag{newerRunning, newestNoStatus}},
@@ -314,8 +327,8 @@ func TestOwnerPreflight_GoneTaskWorktree(t *testing.T) {
 			wantErrors: []string{
 				recordsAt + "fetch origin " + leftoverTip,
 				recordsAt + "tag " + leftoverTag + " " + leftoverTip,
-				recordsAt + "push origin refs/tags/" + leftoverTag + ":refs/tags/" + leftoverTag,
-				recordsAt + "push --force-with-lease=refs/heads/" + recordsBranch + ":" + leftoverTip + " origin --delete refs/heads/" + recordsBranch,
+				recordsAt + "push origin " + leftoverTag,
+				recordsAt + "push --force-with-lease=refs/heads/" + recordsBranch + ":" + leftoverTip + " origin --delete " + recordsBranch,
 				recordsAt + "branch --unset-upstream " + recordsBranch,
 				rerun,
 			},
@@ -330,7 +343,7 @@ func TestOwnerPreflight_GoneTaskWorktree(t *testing.T) {
 			producer: battenrecipe.NameLand,
 			fake: fakeReadopt{gone: true, report: active, addErr: leftover,
 				tags: []fabricengine.RecordsTag{{Name: leftoverTag, Commit: leftoverTip}}},
-			wantErrors:       []string{recordsAt + "push origin refs/tags/" + leftoverTag + ":refs/tags/" + leftoverTag, rerun},
+			wantErrors:       []string{recordsAt + "push origin " + leftoverTag, rerun},
 			notErrors:        []string{"--unset-upstream", recordsAt + "tag "},
 			wantCalls:        []string{"gone", "reconcile", "prune", "add"},
 			wantState:        shedengine.StateFailed,
@@ -460,6 +473,9 @@ func TestOwnerPreflight_GoneTaskWorktree(t *testing.T) {
 			}
 			if len(fake.notices) != tt.wantNotices || fake.commitFailed != tt.wantCommitFailed {
 				t.Errorf("notices = %q and failed-stop commits = %d; want %d and %d", fake.notices, fake.commitFailed, tt.wantNotices, tt.wantCommitFailed)
+			}
+			if owed, owedErr := OriginOwed(c.location, c.slug); owedErr != nil || owed {
+				t.Errorf("OriginOwed() = %v, %v; want false, nil", owed, owedErr)
 			}
 		})
 	}

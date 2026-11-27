@@ -1,5 +1,5 @@
 // report_test.go covers Report's round-trip through WriteReport->ParseReport.
-// It covers every status and a renames list carried into the digest.
+// It covers every status, both empty and populated deviation lists, and a renames list carried into the digest.
 // It also covers ParseReport's strict-decode rejections.
 // Those cover an unknown key, a missing head_sha, an unrecognized status, and a need missing or misplaced.
 // They also cover a malformed rename, malformed YAML, an empty file and a missing file.
@@ -28,18 +28,22 @@ func TestReport_RoundTrip(t *testing.T) {
 		want     *Report
 	}{
 		{
-			name:     "OK",
+			name:     "OK with empty deviations",
 			number:   1,
 			slug:     "slug",
 			wantFile: "01-slug.yaml",
-			want:     &Report{Status: ReportStatusOK, HeadSHA: "abc123"},
+			want:     &Report{Status: ReportStatusOK, HeadSHA: "abc123", Deviations: nil},
 		},
 		{
-			name:     "FAILED",
+			name:     "FAILED with populated deviations",
 			number:   3,
 			slug:     "some-slug",
 			wantFile: "03-some-slug.yaml",
-			want:     &Report{Status: ReportStatusFailed, HeadSHA: "def456"},
+			want: &Report{
+				Status:     ReportStatusFailed,
+				HeadSHA:    "def456",
+				Deviations: []string{"internal/foo/bar.go", "docs/notes.md"},
+			},
 		},
 		{
 			name:     "NEEDS_PARENT with its need",
@@ -107,10 +111,9 @@ func TestParseReport_Rejects(t *testing.T) {
 		content string
 		missing bool
 	}{
-		{name: "an unknown key", content: "status: OK\nhead_sha: abc123\nextra_field: surprise\n"},
-		{name: "a retired deviations key", content: "status: OK\nhead_sha: abc123\ndeviations: []\n"},
-		{name: "a missing head_sha", content: "status: OK\nhead_sha: \"\"\n"},
-		{name: "an unrecognized status", content: "status: MAYBE\nhead_sha: abc123\n"},
+		{name: "an unknown key", content: "status: OK\nhead_sha: abc123\ndeviations: []\nextra_field: surprise\n"},
+		{name: "a missing head_sha", content: "status: OK\nhead_sha: \"\"\ndeviations: []\n"},
+		{name: "an unrecognized status", content: "status: MAYBE\nhead_sha: abc123\ndeviations: []\n"},
 		{name: "NEEDS_PARENT without a need", content: "status: NEEDS_PARENT\nhead_sha: abc123\nneed: \"  \"\n"},
 		{name: "a need on an OK report", content: "status: OK\nhead_sha: abc123\nneed: change gate.yaml\n"},
 		{name: "a rename with no new glyph", content: "status: OK\nhead_sha: abc123\nrenames:\n  - old: sub#Old\n    reason: collides\n"},

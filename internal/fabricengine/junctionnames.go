@@ -177,17 +177,11 @@ func HubScratchDir(hub string) string {
 	return filepath.Join(BoltDir(hub), lymdirs.DotLymDirName)
 }
 
-// AdoptScratchDir returns the directory that holds the adopt check's files.
-// It sits beside the log of the test suite an adopt starts.
+// AdoptScratchDir returns the directory that holds the adopt record, its lock and the worker's output.
+// It sits beside the adopt check's record, output and lock, and beside the log of the test suite an adopt starts.
 // It is `.lym/adopt` in the Bolt checkout.
 func AdoptScratchDir(hub string) string {
 	return filepath.Join(HubScratchDir(hub), lymdirs.AdoptDirName)
-}
-
-// ClaudeAccountsDir returns the directory that holds the Claude account file and usage records.
-// It is `.lym/claude` in the Bolt checkout, a cache a fresh machine starts without.
-func ClaudeAccountsDir(hub string) string {
-	return filepath.Join(HubScratchDir(hub), lymdirs.ClaudeAccountsDirName)
 }
 
 // FrontTaskScratchDir returns the directory that holds the front-task record and its lock.
@@ -225,15 +219,9 @@ func HubPath(parent, name string) string {
 	return filepath.Join(parent, name+HubSuffix)
 }
 
-// portalsDirName and launchersDirName are hub-level container names that no verb writes.
-// They stay reserved, so no pair can claim the name of an entry a hub may hold.
-const (
-	portalsDirName   = "_portals"
-	launchersDirName = "_launchers"
-)
-
 // HubReservedNames returns the hub-structural names that must never wire a per-worktree junction:
 // the Bolt checkout, `_portals` and `_launchers`.
+// `_portals` and `_launchers` are retired but stay reserved.
 // `.lym` is not a member: listing it would keep it from being wired into each worktree.
 // It would also keep it from ever being torn down.
 // It is reserved through a separate structural set.

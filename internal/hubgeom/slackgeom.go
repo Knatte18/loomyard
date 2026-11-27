@@ -26,7 +26,6 @@ func SlackMachine() (slackengine.MachinePaths, error) {
 		TokenPath:      filepath.Join(credentialDir, slackengine.TokenFileName),
 		SocketLockPath: filepath.Join(credentialDir, slackengine.SocketLockFileName),
 		PresencePath:   filepath.Join(credentialDir, slackengine.PresenceFileName),
-		PeersPath:      filepath.Join(credentialDir, slackengine.PeersFileName),
 	}, nil
 }
 
@@ -63,7 +62,6 @@ func SlackGeometry(hubPath string) (slackengine.Geometry, error) {
 		SocketLockPath: machinePaths.SocketLockPath,
 		SetupPath:      filepath.Join(dir, slackengine.SetupFileName),
 		PresencePath:   machinePaths.PresencePath,
-		PeersPath:      machinePaths.PeersPath,
 		ForwardingPath: filepath.Join(dir, slackengine.ForwardingFileName),
 		OutboxPath:     filepath.Join(dir, slackengine.OutboxFileName),
 		RelayStatePath: filepath.Join(dir, slackengine.RelayStateFileName),
@@ -71,9 +69,5 @@ func SlackGeometry(hubPath string) (slackengine.Geometry, error) {
 		LogPath:        filepath.Join(dir, slackengine.RelayLogFileName),
 		RunProcDir:     fabricengine.RunProcDir(hubPath),
 		LymExecutable:  executable,
-
-		BridgeMapPath:     filepath.Join(dir, slackengine.BridgeMapFileName),
-		BridgeNoticesPath: filepath.Join(dir, slackengine.BridgeNoticesFileName),
-		BridgePostsPath:   filepath.Join(dir, slackengine.BridgePostsFileName),
 	}, nil
 }

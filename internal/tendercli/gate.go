@@ -85,12 +85,13 @@ func InstallNetworkGate(ctx context.Context, pauseSlug *string, child DetachedCh
 	locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(location.HubPath))}
 	strand := os.Getenv(agentname.StrandNameEnv)
 	pauserecord.InstallGate(pauserecord.Gate{
-		Geometry:  geometry,
-		Strand:    strand,
-		PID:       pid,
-		StartTime: startTime,
-		ExemptAll: !heldByPause(child, strand),
-		Defer:     child.Deferrable && !child.ParentLocked,
+		Geometry:         geometry,
+		Strand:           strand,
+		PID:              pid,
+		StartTime:        startTime,
+		ExemptAll:        !heldByPause(child, strand),
+		Defer:            child.Deferrable && !child.ParentLocked,
+		OwnerEntryExempt: child.ParentLocked,
 		HoldsParentLock: func(slug string) bool {
 			held, err := locks.HeldBy(slug)
 			if err != nil {

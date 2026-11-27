@@ -7,18 +7,6 @@
 // New hands every engine those Dirs, so an engine loads its own config module lazily where it reads it.
 // It refuses a config whose engine: key names no registered engine, whichever config layer set it.
 // Names lists the registered names, which equal modelspec's closed set of engine names.
-// The codex entry builds its engine with the claude engine's user-setup source and plugin hook runner.
-// That is the one route from the user's Claude setup to a Codex launch.
-//
-// NewForWorktree builds the set New builds and tells the claude engine the worktree its launches run in.
-// New and every other builder tell no worktree, so an engine read-only wiring builds serves reading alone.
-// The codex entry ignores the told worktree.
-// AccountKeeper builds each engine over given directories and a told worktree and returns the first that keeps accounts.
-// A CLI verb and a worktree's creation reach the claude engine's account pick only through it.
-//
-// NewWithSeams builds the same set with a caller's plugin hook runner and sandbox probe, held in LaunchSeams.
-// It is the one entry point that does, for `lym shuttle manifest` and the parity test;
-// New and every other builder pass the zero seams, so a real launch is unchanged.
 //
 // Each registry entry carries its engine's config module as plain data.
 // ConfigModules lists them sorted by name for the config registry.
@@ -34,8 +22,7 @@
 // Reed is provider-blind, so this wiring layer chooses the namer that reads and repairs a session's own name.
 // It chooses per strand tag.
 // RecordReaders returns each registered engine's offline read capabilities keyed by engine name.
-// Both it and SessionNamers build their engines with a zero shuttle config and the hub's Dirs they are given.
-// An engine then reads the sessions of every Claude account the hub lists, not only the default directory.
+// It builds them with a zero shuttle config and no config directories, as SessionNamers builds its engines.
 // A capability is set only when the engine implements it.
 // Each set one is its own adapter, one per capability rather than one per engine:
 // a reader of finished session records gets reading alone.
@@ -43,8 +30,10 @@
 // ToolBoundaryRenderer returns one registered engine's creel hook-delivery capability by name, built the same way:
 // the hook-input parse, the hook output and the wake output the creel hook verbs render.
 // BatchingNudger returns one registered engine's batching-nudge capability by name, built the same way.
-// EditRecorder returns one registered engine's edit-hook capability by name, built the same way.
-// KeepWarm is the one keep-warm resolver, reading through the default engine's KeepWarmCaps.
+// The shuttle hook verb that judges a session's tool call uses it.
+// KeepWarm is the one keep-warm resolver.
+// It answers a strand's keep-warm cap, the long cap and shuttle.yaml's break-even.
+// It reads them through the default engine's KeepWarmCaps.
 // A numbered role such as implementer-2 resolves as its base role, implementer.
 // When the strand does not parse, it answers a fallback.
 // It answers the same fallback when the shuttle config, the engine set or the engine's caps cannot be resolved.

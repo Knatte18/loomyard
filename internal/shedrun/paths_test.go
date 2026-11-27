@@ -85,6 +85,8 @@ func TestPathConstructors(t *testing.T) {
 			func(l *lymcwd.Location) string {
 				return lock.TrackedFileLockPath(filepath.Join(RunDir(l, "self"), "pull-request.json"), ".lock")
 			}},
+		{"LegacyPullRequestRecord", func(l *lymcwd.Location) string { return LegacyPullRequestRecord(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "pull-request.json") }},
 		{"ParentNoticeFile", func(l *lymcwd.Location) string { return ParentNoticeFile(l, "self") },
 			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "pre-push-parent-notice") }},
 		{"SamplerRecord", func(l *lymcwd.Location) string { return SamplerRecord(l, "self") },
@@ -93,8 +95,6 @@ func TestPathConstructors(t *testing.T) {
 			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "sampler.json.lock") }},
 		{"WakeRecord", func(l *lymcwd.Location) string { return WakeRecord(l, "self") },
 			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "wake.json") }},
-		{"RowNoticeRecord", func(l *lymcwd.Location) string { return RowNoticeRecord(l, "self") },
-			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "row-notice.json") }},
 		{"LastCommitMarker", func(l *lymcwd.Location) string { return LastCommitMarker(l, "self") },
 			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "last-commit") }},
 		{"BattenWatchedMarker", func(l *lymcwd.Location) string { return BattenWatchedMarker(l, "self") },

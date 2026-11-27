@@ -379,7 +379,7 @@ func hubWorktrees(acting *lymcwd.Location) ([]string, error) {
 // It returns empty when no such machine is the effective owner.
 // The prime reads as the board's prime owner.
 func foreignOwner(prime *lymcwd.Location, boardDir, slug string) (string, error) {
-	machine, err := machinename.ReadIdentity()
+	machine, err := machinename.Name()
 	if err != nil {
 		return "", fmt.Errorf("this machine's name is unknown: %w", err)
 	}
@@ -394,7 +394,7 @@ func foreignOwner(prime *lymcwd.Location, boardDir, slug string) (string, error)
 			return "", err
 		}
 	}
-	if !boardengine.OwnedElsewhere(owner, owners.Registry, machine) {
+	if owner == machine {
 		return "", nil
 	}
 	return owner, nil

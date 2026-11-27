@@ -1,4 +1,4 @@
-// cli.go builds the cobra command for the adopt module and renders the adopt's envelope.
+// cli.go builds the cobra command for the adopt module.
 
 package adoptcli
 
@@ -8,6 +8,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -28,28 +29,28 @@ moves with its pair and the runs whose parent is its worktree; a nested beam kee
 is never named: it moves with its beam or with root. --all names root and every open
 beam. It runs from the prime and from any beam.
 
-It runs every step in this process and prints each as it ends: one pushed Bolt commit writes
-the hold, the owners and this machine's registry entry; each beam's pair is added from origin and
-each run another machine left is taken over from origin with a pushed takeover entry; the catch-up
-over the hub, the deploy when root is a subject and the workspace follow; the hub's adopt gate then
-runs in each subject's worktree with its output on this terminal. Each subject is brought up after
-the check, and --no-orch leaves each orch down; an orch session passes it by default. A green
-check clears the hold. A failing one files a fix task and keeps the hold, with its try counts,
-under it, and the call exits non-zero. Nothing is detached and no record is written: a re-run of
-the same subjects goes on from the tracked state. While another machine holds the hub, a plain
-adopt refuses, naming it and its time. --take-hold moves that hold here and is the operator's alone.
+Steps, in order: reconcile, pairs, pause, owner, deploy, beam, check, done. A hidden worker
+runs the steps and records each in the adopt record; this call follows the record and prints
+each step as it ends. The pause holds each run the call takes over until an operator resumes
+it; a green adopt check only reports. A beam or run whose pair holds local commits origin
+lacks, or is live, stops with both ways forward: --keep-local records the owner over them,
+--drop-local archives each local tip as archive/<slug>/<tip> and moves the branches to
+origin's (refused for a live pair); a project one of whose runs stops is held back whole.
+--no-orch starts each dobby and leaves its orch down; an orch session passes it by default.
+--discard removes a record no worker will finish, and takes no subject.
 
 --here adopts the subject of the worktree it runs in, root in the prime and the beam in a
-beam: it pulls Bolt and ends owned_here when no other machine owns the subject; in any other
-worktree it does nothing. --archives <subject>... lists the archive-owner/ tags the old owner
-pushed whose commit the slug's branch on origin lacks, and runs no step.
+beam: it follows or resumes an unfinished adopt that takes the worktree up, otherwise pulls
+Bolt and ends owned_here when no other machine owns the subject; in any other worktree it does
+nothing. --archives <subject>... lists the archive-owner/ tags the old owner pushed whose
+commit the slug's branch on origin lacks, and runs no step.
 
-The package doc holds the steps, the hold and every field of the envelope.
+The package doc holds the record, the resume and every field of the envelope.
 
 Example:
   lym adopt payments
   lym adopt root
-  lym adopt --all
+  lym adopt --all --keep-local
   lym adopt --here
   lym adopt --archives root`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -84,11 +85,34 @@ Example:
 		},
 	}
 	cmd.Flags().BoolVar(&req.All, "all", false, "adopt root and every open beam project")
-	cmd.Flags().BoolVar(&req.TakeHold, "take-hold", false, "move another machine's hold over the same subjects here; the operator's alone")
+	cmd.Flags().BoolVar(&req.KeepLocal, "keep-local", false, "record the owner over local commits origin lacks and over a live pair")
+	cmd.Flags().BoolVar(&req.DropLocal, "drop-local", false, "keep each local tip origin lacks under an archive tag and move the branches to origin's")
 	cmd.Flags().BoolVar(&req.NoOrch, "no-orch", false, "start each dobby and leave its orch down")
+	cmd.Flags().BoolVar(&flags.Discard, "discard", false, "remove an unfinished adopt record that no worker will finish")
 	cmd.Flags().BoolVar(&flags.Here, "here", false, "adopt the subject of the worktree this runs in when another machine owns it")
 	cmd.Flags().BoolVar(&flags.Archives, "archives", false, "list the owner archive tags of the named subjects whose commits origin's branches lack")
-	cmd.AddCommand(checkCmd())
+	cmd.AddCommand(workerCmd(), checkCmd())
+	return cmd
+}
+
+// workerCmd returns the hidden `worker` subcommand.
+// It runs the steps of an adopt and records each in the adopt record.
+func workerCmd() *cobra.Command {
+	var req request
+	cmd := &cobra.Command{
+		Use:         "worker [<subject>...]",
+		Short:       "run the steps of an adopt and record each in the adopt record",
+		Hidden:      true,
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
+		Args:        cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return driveWorker(cmd, req, args)
+		},
+	}
+	cmd.Flags().BoolVar(&req.All, "all", false, "adopt root and every open beam project")
+	cmd.Flags().BoolVar(&req.KeepLocal, "keep-local", false, "record the owner over local commits origin lacks and over a live pair")
+	cmd.Flags().BoolVar(&req.DropLocal, "drop-local", false, "keep each local tip origin lacks under an archive tag and move the branches to origin's")
+	cmd.Flags().BoolVar(&req.NoOrch, "no-orch", false, "start each dobby and leave its orch down")
 	return cmd
 }
 
@@ -106,34 +130,59 @@ func resolveCall(ctx context.Context) (location, prime *lymcwd.Location, err err
 	return location, prime, err
 }
 
+// driveWorker resolves the prime from the command's working directory and runs the worker for req naming args.
+// It prints the end envelope: ok for a done adopt, an error envelope for a refusal or a stop.
+func driveWorker(cmd *cobra.Command, req request, args []string) error {
+	if clihelp.ShouldAbort(cmd.Context()) {
+		return nil
+	}
+	ctx := cmd.Context()
+	out := cmd.OutOrStdout()
+
+	_, prime, err := resolveCall(ctx)
+	if err != nil {
+		clihelp.SetExit(ctx, output.Err(out, err.Error()))
+		return nil
+	}
+	deps, err := hubWorkerDeps(prime, machinename.Name)
+	if err != nil {
+		clihelp.SetExit(ctx, output.Err(out, err.Error()))
+		return nil
+	}
+
+	req.Slugs = args
+	result, _, err := runWorker(deps, req)
+	fields := adoptFields(result)
+	if err != nil {
+		clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), fields))
+		return nil
+	}
+	clihelp.SetExit(ctx, output.Ok(out, fields))
+	return nil
+}
+
 // adoptFields returns the fields of the adopt envelope for result.
-// The always-present fields are slugs and prime_recorded.
+// The always-present fields are reconcile, mutations, partial, slugs, prime_recorded and runs;
+// runs is an empty array when there are none.
 // Every other field appears only when result holds its value.
-// Those are the hold while one stands, the fix task and the check state of root.
-// The rest are the check's lines, the deploy, the warnings, the prime's beam steps and warning, and the archives call.
 func adoptFields(result outcome) map[string]any {
-	slugs := result.Slugs
-	if slugs == nil {
-		slugs = []slugOutcome{}
+	runs := result.Runs
+	if runs == nil {
+		runs = []runReport{}
 	}
 	fields := map[string]any{
-		"slugs":          slugs,
+		"reconcile":      result.Reconcile,
+		"mutations":      result.Mutations,
+		"partial":        result.Partial,
+		"slugs":          result.Slugs,
 		"prime_recorded": result.PrimeRecorded,
-	}
-	if result.Hold != nil {
-		fields["hold"] = result.Hold
-	}
-	if result.FixTask != "" {
-		fields["fix_task"] = result.FixTask
-	}
-	if result.PrimeCheck != "" {
-		fields["prime_check"] = result.PrimeCheck
-	}
-	if len(result.CheckLines) > 0 {
-		fields["check_lines"] = result.CheckLines
+		"runs":           runs,
 	}
 	if result.Deploy != nil {
 		fields["deploy"] = result.Deploy
+	}
+	if result.PrimeLost != "" {
+		fields["prime_lost_to"] = result.PrimeLost
 	}
 	if len(result.Warnings) > 0 {
 		fields["warnings"] = result.Warnings
@@ -143,6 +192,15 @@ func adoptFields(result outcome) map[string]any {
 	}
 	if result.PrimeBeamWarning != "" {
 		fields["prime_beam_warning"] = result.PrimeBeamWarning
+	}
+	if len(result.Checks) > 0 {
+		fields["checks"] = result.Checks
+	}
+	if result.SuiteMessage != "" {
+		fields["message"] = result.SuiteMessage
+	}
+	if len(result.CheckWarnings) > 0 {
+		fields["check_warnings"] = result.CheckWarnings
 	}
 	if command := archivesCommand(result); command != "" {
 		fields["archives"] = command

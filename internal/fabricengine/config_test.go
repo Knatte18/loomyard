@@ -20,9 +20,7 @@ import (
 // a valid config with all template keys parses both fields and Dirs();
 // an empty branch_prefix stays the empty string;
 // an environment variable in branch_prefix is resolved;
-// a missing `_lym/` returns the fabric-specific not-initialized error, naming the reconcile verb that fixes it;
-// a machine override's branch_prefix wins over the hub file's;
-// and a local pathspec or warp exclude list is refused.
+// and a missing `_lym/` returns the fabric-specific not-initialized error, naming the reconcile verb that fixes it.
 //
 //testtiming:keep LoadConfig parsing both fields and Dirs(), keeping an empty prefix, resolving env references and naming the reconcile verb when uninitialized; coverage of its blocks by other tests does not show an assertion of this
 func TestLoadConfig(t *testing.T) {
@@ -112,29 +110,6 @@ func TestLoadConfig(t *testing.T) {
 			}
 		})
 	}
-
-	t.Run("a machine override's branch_prefix wins over the hub file's", func(t *testing.T) {
-		board, anchor := t.TempDir(), t.TempDir()
-		for _, dir := range []string{configengine.ConfigDir(board), configengine.ScratchDir(board)} {
-			if err := os.MkdirAll(dir, 0755); err != nil {
-				t.Fatalf("failed to create %s: %v", dir, err)
-			}
-		}
-		if err := os.WriteFile(configengine.ConfigFile(board, "fabric"), []byte("branch_prefix: hub/\npathspec: _lym\n"), 0644); err != nil {
-			t.Fatalf("failed to write config: %v", err)
-		}
-		if err := os.WriteFile(configengine.MachineFile(board, "fabric"), []byte("branch_prefix: machine/\n"), 0644); err != nil {
-			t.Fatalf("failed to write machine config: %v", err)
-		}
-
-		cfg, err := fabricengine.LoadConfig(configengine.Dirs{Anchor: anchor, Board: board})
-		if err != nil {
-			t.Fatalf("LoadConfig() error = %v; want the machine override read", err)
-		}
-		if cfg.BranchPrefix != "machine/" || cfg.Pathspec != "_lym" {
-			t.Errorf("LoadConfig() = {BranchPrefix: %q, Pathspec: %q}; want {\"machine/\", \"_lym\"}", cfg.BranchPrefix, cfg.Pathspec)
-		}
-	})
 
 	for _, tt := range []struct{ key, line string }{
 		{"pathspec", "pathspec: docs\n"},

@@ -129,9 +129,7 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	// FixerSeats is filled by wireLanding, from the seat engine wire it builds.
 	// GateKey is filled by each landing row's registry entry, on its own copy of Deps.
 	// LandBlockers and ParentWorktree are a pawl run's, which a tapestry run leaves unset.
-	// Reap is a hardener run's, which reaps its sandbox before Finalize lands.
 	unfilled := map[string]bool{
-		"Reap":           true,
 		"FixerSeats":     true,
 		"GateKey":        true,
 		"LandBlockers":   true,
@@ -147,10 +145,13 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		}
 	}
 
+	// SessionLive and RegisterSession read reed's strand table, which only wireLanding holds, so it fills them.
 	// BeamRecord and DropBeamRecord are a pawl run's, which a tapestry run leaves unset.
 	unfilledPullRequest := map[string]bool{
-		"BeamRecord":     true,
-		"DropBeamRecord": true,
+		"SessionLive":     true,
+		"RegisterSession": true,
+		"BeamRecord":      true,
+		"DropBeamRecord":  true,
 	}
 	pullRequest := reflect.ValueOf(deps.PullRequest)
 	pullRequestType := pullRequest.Type()
@@ -169,11 +170,6 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	}
 	if pawl := build(shedrun.RecipePawl).PullRequest; pawl.BeamRecord == nil || pawl.DropBeamRecord == nil {
 		t.Error("landingDeps(...).PullRequest beam seams are unset for the pawl recipe; want both populated")
-	}
-
-	// Only a hardener run leaves a sandbox, so only its landing reaps one.
-	if deps.Reap != nil || build(shedrun.RecipeHardener).Reap == nil {
-		t.Errorf("landingDeps(...).Reap nil for tapestry = %v, nil for hardener = %v; want nil only for the tapestry recipe", deps.Reap == nil, build(shedrun.RecipeHardener).Reap == nil)
 	}
 }
 
@@ -466,6 +462,49 @@ func TestPRSessionSeams(t *testing.T) {
 	}
 }
 
+// TestPullRequestDeps_ParentReviewWantedReadsThePairsLayers asserts what the setting seam reads.
+// It reads pr_review_ask_parent over the pair's layers.
+// It reads false when no layer sets it, and true when the worktree's loom.yaml or the task's local layer does.
+// The local layer is where a task's run_settings land.
+func TestPullRequestDeps_ParentReviewWantedReadsThePairsLayers(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name       string
+		hubValue   string
+		localLayer string
+		wantWanted bool
+	}{
+		{name: "no layer setting it reads false", wantWanted: false},
+		{name: "the worktree's loom.yaml set to true reads true", hubValue: "true", wantWanted: true},
+		{name: "the task's local layer set to true over a loom.yaml of false reads true", hubValue: "false", localLayer: "pr_review_ask_parent: true\n", wantWanted: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			loc := hubLocation(t, "pair", ".")
+			if tt.hubValue != "" {
+				seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"pr_review_ask_parent": tt.hubValue})
+			}
+			if tt.localLayer != "" {
+				localConfig := configengine.LocalFile(loc.AnchorPath(), "loom")
+				if err := os.MkdirAll(filepath.Dir(localConfig), 0o755); err != nil {
+					t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(localConfig), err)
+				}
+				if err := os.WriteFile(localConfig, []byte(tt.localLayer), 0o644); err != nil {
+					t.Fatalf("WriteFile(%q) = %v; want nil", localConfig, err)
+				}
+			}
+
+			pullRequest := pullRequestDepsGuardedBy(prePushCheck{}, loc, "main", false, &shuttleengine.Runner{})
+			got, err := pullRequest.ParentReviewWanted()
+			if err != nil || got != tt.wantWanted {
+				t.Errorf("ParentReviewWanted() = %v, %v; want %v, nil", got, err, tt.wantWanted)
+			}
+		})
+	}
+}
+
 // TestParentLockDeps_PauseAfterTheWaitingRowEndsTheWait writes Publish's status as running and asserts the pause seam.
 // It reports false with no pause condition, or with pause_after naming another row.
 // It reports true with pause_after naming Publish, and false with only pause_requested set.
@@ -595,7 +634,7 @@ func TestCodeBudgetZero_ReadsTheCodePerchFromLoomYaml(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			loc := hubLocation(t, "pair", ".")
-			seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"code.max_bounces": tt.codeBudget})
+			seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"code_max_bounces": tt.codeBudget})
 			if tt.codeReview != "" {
 				hubConfig := configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "sampler")
 				contents := strings.Replace(samplerengine.ConfigTemplate(), "code_review: false", "code_review: "+tt.codeReview, 1)

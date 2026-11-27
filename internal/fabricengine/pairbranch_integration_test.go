@@ -48,7 +48,7 @@ func pairOnOriginOnly(t *testing.T, slug string) (*hubforge.Hub, *fabricengine.T
 	recordsBranch := fabricengine.RecordsBranchName(slug)
 	gitkit.MustRun(t, h.PairCodeWorktree(slug), "git", "push", "origin", slug)
 	gitkit.MustRun(t, h.PrimeRecords(), "git", "push", "origin", recordsBranch)
-	if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
+	if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
 		t.Fatalf("Remove(%q) under the empty prefix: %v", slug, err)
 	}
 	if parts, err := h.Topology.PairParts(h.Location, slug); err != nil || parts.Any() {
@@ -82,7 +82,7 @@ func TestBranchPrefixChange_PairWithNothingLeftLocally(t *testing.T) {
 				h, top := pairOnOriginOnly(t, tt.slug)
 				recordsBranch := fabricengine.RecordsBranchName(tt.slug)
 
-				res, err := top.Remove(h.Location, tt.slug, false, true, "")
+				res, err := top.Remove(h.Location, tt.slug, false, true)
 				if err != nil {
 					t.Fatalf("Remove(%q, remote) error = %v", tt.slug, err)
 				}
@@ -105,7 +105,7 @@ func TestBranchPrefixChange_PairWithNothingLeftLocally(t *testing.T) {
 		const slug = "pn-discard"
 		h, top := pairOnOriginOnly(t, slug)
 
-		res, err := top.DiscardTaskBranch(h.Location, slug, "")
+		res, err := top.DiscardTaskBranch(h.Location, slug)
 		if err != nil {
 			t.Fatalf("DiscardTaskBranch(%q) error = %v", slug, err)
 		}
@@ -248,73 +248,6 @@ func TestPairTaskBranch_ReadsThePairItself(t *testing.T) {
 		}
 		if _, err := top.PairParts(h.Location, slug); err != nil {
 			t.Errorf("PairParts(%q) error = %v; want none", slug, err)
-		}
-	})
-}
-
-// pairOnOriginUnderPrefixes makes slug's pair and removes it locally.
-// Origin holds its two branches under each of prefixes and not under the bare slug.
-// It returns the hub with a Topology whose branch_prefix is laterBranchPrefix, a prefix none of the pairs carries.
-func pairOnOriginUnderPrefixes(t *testing.T, slug string, prefixes ...string) (*hubforge.Hub, *fabricengine.Topology) {
-	t.Helper()
-
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPair(t, h, slug)
-	recordsBranch := fabricengine.RecordsBranchName(slug)
-	gitkit.MustRun(t, h.PairCodeWorktree(slug), "git", "push", "origin", slug)
-	gitkit.MustRun(t, h.PrimeRecords(), "git", "push", "origin", recordsBranch)
-	for _, prefix := range prefixes {
-		gitkit.MustRun(t, h.PairCodeWorktree(slug), "git", "push", "origin", slug+":refs/heads/"+prefix+slug)
-		gitkit.MustRun(t, h.PrimeRecords(), "git", "push", "origin",
-			recordsBranch+":refs/heads/"+fabricengine.RecordsBranchName(prefix+slug))
-	}
-	// The pair goes by hand, not through Remove, which would archive its records and so end the pair's life.
-	removePairWorktreesByHand(t, h, slug)
-	gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", "-D", slug)
-	gitkit.MustRun(t, h.PrimeRecords(), "git", "branch", "-D", recordsBranch)
-	if parts, err := h.Topology.PairParts(h.Location, slug); err != nil || parts.Any() {
-		t.Fatalf("PairParts(%q) = %+v, %v after the local removal; want nothing left locally", slug, parts, err)
-	}
-	gitkit.Git(t, h.CodeBare, "branch", "-D", slug)
-	gitkit.Git(t, h.RecordsBare, "branch", "-D", recordsBranch)
-	return h, topologyWithPrefix(t, h.Location, laterBranchPrefix)
-}
-
-// TestBranchPrefixChange_PairMadeUnderAnotherMachinesPrefix pins two behaviors for a pair whose branches origin holds.
-// The prefix they carry is one the current machine does not use.
-// The pair is found by its slug and re-adopted on its own branch.
-func TestBranchPrefixChange_PairMadeUnderAnotherMachinesPrefix(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	t.Run("OneOtherPrefixIsFoundAndReAdopted", func(t *testing.T) {
-		t.Parallel()
-
-		const slug = "pm-readopt"
-		h, top := pairOnOriginUnderPrefixes(t, slug, earlierBranchPrefix)
-		want := earlierBranchPrefix + slug
-
-		if got, err := top.PairTaskBranchOrOrigin(h.Location, slug); err != nil || got != want {
-			t.Errorf("PairTaskBranchOrOrigin(%q) = %q, %v; want %q", slug, got, err, want)
-		}
-		if _, err := top.Add(h.Location, slug, fabricengine.AddOptions{AdoptLocal: true, AdoptOnly: true}); err != nil {
-			t.Fatalf("Add(%q, AdoptOnly) error = %v", slug, err)
-		}
-		if !gitkit.BranchExists(t, h.PrimeWorktree(), want) {
-			t.Errorf("Add(%q, AdoptOnly) left no local branch %q; want the pair re-made on it", slug, want)
-		}
-		if gitkit.BranchExists(t, h.PrimeWorktree(), laterBranchPrefix+slug) {
-			t.Errorf("Add(%q, AdoptOnly) made the branch %q; want the pair's own branch only", slug, laterBranchPrefix+slug)
-		}
-	})
-
-	t.Run("TwoOtherPrefixesAreRefused", func(t *testing.T) {
-		t.Parallel()
-
-		const slug = "pm-ambiguous"
-		h, top := pairOnOriginUnderPrefixes(t, slug, earlierBranchPrefix, "second/")
-		if got, err := top.PairTaskBranchOrOrigin(h.Location, slug); err == nil {
-			t.Errorf("PairTaskBranchOrOrigin(%q) = %q, nil; want an error naming both candidates", slug, got)
 		}
 	})
 }

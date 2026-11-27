@@ -250,6 +250,7 @@ func logAttempt(first bool, msg string, args ...any) {
 // A nil deps.ArbiterStop resolves to a reading that is not eligible.
 // A nil deps.ParentLock switches the parent lock step off.
 // A nil deps.OwnerCheck switches the owner check off.
+// A nil deps.PauseOwned resolves to a no-op.
 // A nil deps.ParentHoldsTaskWork or deps.Restepped resolves to reporting false.
 // A nil deps.HandBack resolves to marking no status.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string, driverExitGrace time.Duration) shedengine.ShedProducer {
@@ -303,6 +304,9 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 	if deps.ReviveStrands == nil {
 		deps.ReviveStrands = func(context.Context) error { return errors.New("no strand revive wired") }
 	}
+	if deps.PauseOwned == nil {
+		deps.PauseOwned = func(context.Context, string) error { return nil }
+	}
 	if deps.ParentHoldsTaskWork == nil {
 		deps.ParentHoldsTaskWork = func() (bool, error) { return false, nil }
 	}
@@ -335,7 +339,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 // so a bootstrap that failed or was killed after seeding leaves a running status with no driver behind it.
 // The confirmation is a marker under scratchDir (SpawnConfirmedFile) holding the pid of the process that wrote it.
 // The marker is cleared before every spawn attempt and written only once deps.Spawn returns success.
-// A marker naming another pid reads as unconfirmed.
+// A marker naming another pid, or one in the old layout, reads as unconfirmed.
 // Batten's own run lock means a pid other than this process's belongs to an earlier, dead batten process.
 // An unconfirmed running child is adopted, not spawned, when deps.DriverStrand reports a live or retiring driver.
 // It is also adopted when deps.ChildRunLockHeld reports a held run lock.

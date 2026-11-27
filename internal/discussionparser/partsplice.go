@@ -34,9 +34,7 @@ type PartSplice struct {
 // SectionBullets returns the top-level bullets of the record's `## <heading>` section, in order.
 // The heading is given without its `## `.
 // A bullet is its text without the marker, followed by its continuation lines, each trimmed and joined by a newline;
-// a continuation line follows it with no blank line between.
-// It is either indented, or unindented and none of these: an ATX heading, a thematic break, a blockquote,
-// or the start of an HTML block that can interrupt a paragraph.
+// a continuation line is an indented line that follows it with no blank line between.
 // A bullet inside a fenced block is not read.
 // Neither is a bullet inside a `<!-- lym:carry-over … -->` block of the `## Open risks` section.
 // A record without the section returns none.
@@ -66,7 +64,7 @@ func SectionBullets(record []byte, heading string) []string {
 		case isBulletLine(line):
 			flush()
 			current = []string{bulletBody(line)}
-		case current != nil && continuesItem(line):
+		case current != nil && line != "" && (line[0] == ' ' || line[0] == '\t'):
 			current = append(current, strings.TrimSpace(line))
 		default:
 			flush()

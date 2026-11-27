@@ -103,7 +103,6 @@ func TestRecordWrite_Call(t *testing.T) {
 		{"InlineCodeOnly", "Rename `Foo` to `Bar`"},
 		{"SectionHeadings", "## Decisions\nstay out\n\n## Open risks\nnone\n"},
 		{"InnerFencedBlock", "Before\n```go\n## Decisions\nx := 1\n```\nAfter\n"},
-		{"QuotedErrorEnvelopeInAFence", "The verb failed:\n```json\n{\"ok\":false,\"error\":\"boom\"}\n```\n"},
 		{"UnclosedInnerFence", "Before\n```go\n## Decisions\nnever closed\n"},
 	}
 	for _, tt := range bodies {
@@ -266,25 +265,6 @@ func TestRecordWrite_Call(t *testing.T) {
 		}
 		if !strings.Contains(pointer.Reason, `lym board upsert`) || !strings.Contains(pointer.Reason, `lym loom resume`) {
 			t.Errorf("Reason = %q; want the way forward naming lym board upsert and lym loom resume", pointer.Reason)
-		}
-		if _, err := os.Stat(f.deps.RecordPath); !errors.Is(err, os.ErrNotExist) || f.commits != 0 {
-			t.Errorf("record stat error = %v, commits = %d; want nothing written and nothing committed", err, f.commits)
-		}
-	})
-
-	t.Run("ErrorEnvelopeBodyIsStuckNamingTheEnvelope", func(t *testing.T) {
-		t.Parallel()
-		envelope := `{"error":"invalid json: invalid character 'h' looking for beginning of value","ok":false}`
-		f := newRecordWriteFixture(t, "## From halt-names-missing-findings-path\n\n"+envelope+"\n\n", true)
-
-		outcome, pointer, err := f.producer.Call(context.Background())
-		if err != nil || outcome != shedengine.Stuck {
-			t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
-		}
-		for _, want := range []string{envelope, `lym batten cancel <slug> --remove`, `lym board upsert --body-file <path>`, `lym loom resume`, `lym board set-status '{"slug":"<slug>","status":null}'`, `lym batten run <slug>`} {
-			if !strings.Contains(pointer.Reason, want) {
-				t.Errorf("Reason = %q; want it to name %q", pointer.Reason, want)
-			}
 		}
 		if _, err := os.Stat(f.deps.RecordPath); !errors.Is(err, os.ErrNotExist) || f.commits != 0 {
 			t.Errorf("record stat error = %v, commits = %d; want nothing written and nothing committed", err, f.commits)

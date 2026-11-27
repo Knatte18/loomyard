@@ -6,20 +6,18 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/shellguard"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestBuildLaunchCmd pins the POSIX launch line.
 // CODEX_HOME leads, and the spike's flags carry the sandbox mode and, under workspace-write, the network access.
-// It carries the writable root, model, effort, developer instructions, subagent effort and thread cap when set.
-// It also carries each hook setting, the bypass flag and the first turn.
+// It carries the writable root, model and effort when set, each hook setting, the bypass flag and the first turn.
 // A danger-full-access line carries neither the network access nor the writable roots.
 // It ends with the exit record appended to the events file, and then the shell exit.
 // It also pins an opened session's command.
 // That command has the network access.
 // It has no hook bypass, first turn, exit record or exit when the line has no hooks and no first turn.
-//
-//testtiming:keep pins the literal flag order and shell quoting of the launch line, which TestPrepare_Launch and TestPrepare_SubagentTerms miss since they compare against buildLaunchCmd itself
 func TestBuildLaunchCmd(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -31,8 +29,8 @@ func TestBuildLaunchCmd(t *testing.T) {
 	}{
 		{
 			name: "EveryInput",
-			line: launchLine{bin: "codex", home: "/h", sandboxMode: sandboxWorkspaceWrite, writableRoots: []string{"/links"}, model: "gpt-6-luna", effort: "low", developerInstructions: "say \"hi\"\nnext", subagentEffort: "medium", maxSubagentThreads: 16, projectDocMaxBytes: 40000, hooks: []string{`hooks.Stop=[{hooks=[]}]`}, firstTurn: "Read it", eventsPath: "/run/events.jsonl"},
-			want: `CODEX_HOME='/h' 'codex' --no-alt-screen -a never -s workspace-write -c 'sandbox_workspace_write.network_access=true' -c 'sandbox_workspace_write.writable_roots=["/links"]' -m 'gpt-6-luna' -c 'model_reasoning_effort="low"' -c 'developer_instructions="say \"hi\"\nnext"' -c 'agents.default_subagent_reasoning_effort="medium"' -c 'agents.max_concurrent_threads_per_session=16' -c 'project_doc_fallback_filenames=["CLAUDE.md"]' -c 'project_doc_max_bytes=40000' -c 'hooks.Stop=[{hooks=[]}]' --dangerously-bypass-hook-trust 'Read it'; printf '%s\n' '{"hook_event_name":"LymExit"}' >> '/run/events.jsonl'; exit`,
+			line: launchLine{bin: "codex", home: "/h", sandboxMode: sandboxWorkspaceWrite, writableRoots: []string{"/links"}, model: "gpt-6-luna", effort: "low", hooks: []string{`hooks.Stop=[{hooks=[]}]`}, firstTurn: "Read it", eventsPath: "/run/events.jsonl"},
+			want: `CODEX_HOME='/h' 'codex' --no-alt-screen -a never -s workspace-write -c 'sandbox_workspace_write.network_access=true' -c 'sandbox_workspace_write.writable_roots=["/links"]' -m 'gpt-6-luna' -c 'model_reasoning_effort="low"' -c 'project_doc_fallback_filenames=["CLAUDE.md"]' -c 'hooks.Stop=[{hooks=[]}]' --dangerously-bypass-hook-trust 'Read it'; printf '%s\n' '{"hook_event_name":"LymExit"}' >> '/run/events.jsonl'; exit`,
 		},
 		{
 			name: "NoWritableRootModelOrEffort",
@@ -63,14 +61,10 @@ func TestBuildLaunchCmd(t *testing.T) {
 }
 
 // TestHookSettings pins one setting per recorded hook, in order.
-// A PreToolUse setting follows when the launch has a deny: the question-tool deny on every tool, then every guard entry.
-// Then comes the activity hook on every tool, the edit hook on apply_patch when the launch names an edit records file,
-// and the batching hook when the launch names a state file.
+// A PreToolUse setting holding every guard entry follows when guards are given, then the activity hook on every tool.
 // Each runs the command for the run's events file.
 // A creel delivery swaps the Stop setting for the merged creel Stop command and the async idle waiter.
-// It adds the creel mail hook last.
-//
-//testtiming:keep pins the exact hook setting strings and their order and the literal batching hook command, which TestPrepare_CreelHooksInAHub derives from hookSettings itself
+// It adds the creel mail hook after the activity hook.
 func TestHookSettings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -85,34 +79,26 @@ func TestHookSettings(t *testing.T) {
 	guards := installedGuards(nil, guardInputs{})
 	creel := creelDelivery{flagDir: "/hub/flags", home: "/h", bin: "codex"}
 	waiter := asyncHookEntry(creelWaitHookCommand(creel), creelWaitTimeoutSeconds)
-	const statePath = "/run/batching-nudge.json"
-	batching := hookEntry("*", batchingNudgeHookCommand(statePath))
-	const recordsPath = "/run/edit-records.jsonl"
-	editHook := hookEntry("apply_patch", editRecordHookCommand(recordsPath))
 	tests := []struct {
-		name  string
-		tools toolHooks
-		creel creelDelivery
-		want  []string
+		name   string
+		guards []shellguard.Row
+		creel  creelDelivery
+		want   []string
 	}{
-		{"NoToolHooks", toolHooks{}, creelDelivery{}, append(append([]string{}, recorded...), activity)},
-		{"Guards", toolHooks{guards: guards, lymPath: testLymPath}, creelDelivery{}, append(append([]string{}, recorded...), hookSetting(hookEventPreToolUse, guardEntries(guards, testLymPath)...), activity)},
-		{"QuestionDenyBeforeTheGuards", toolHooks{guards: guards, lymPath: testLymPath, questionDeny: true}, creelDelivery{}, append(append([]string{}, recorded...),
-			hookSetting(hookEventPreToolUse, append([]string{hookEntry("*", questionDenyCommand())}, guardEntries(guards, testLymPath)...)...), activity)},
-		{"BatchingAfterTheActivityHook", toolHooks{batchingStatePath: statePath}, creelDelivery{}, append(append([]string{}, recorded...), hookSetting(hookEventPostToolUse, activityEntry, batching))},
-		{"EditHookBeforeTheBatchingHook", toolHooks{batchingStatePath: statePath, editRecordsPath: recordsPath}, creelDelivery{}, append(append([]string{}, recorded...), hookSetting(hookEventPostToolUse, activityEntry, editHook, batching))},
-		{"CreelMailAfterTheBatchingHook", toolHooks{batchingStatePath: statePath}, creel, []string{
+		{"NoGuards", nil, creelDelivery{}, append(append([]string{}, recorded...), activity)},
+		{"Guards", guards, creelDelivery{}, append(append([]string{}, recorded...), hookSetting(hookEventPreToolUse, guardEntries(guards)...), activity)},
+		{"Creel", nil, creel, []string{
 			sessionStart,
 			promptSubmit,
 			hookSetting(hookEventStop, hookEntry("", creelStopHookCommand(creel.flagDir, events)), waiter),
 			permission,
-			hookSetting(hookEventPostToolUse, activityEntry, batching, hookEntry("*", creelMailHookCommand(creel.flagDir))),
+			hookSetting(hookEventPostToolUse, activityEntry, hookEntry("*", creelMailHookCommand(creel.flagDir))),
 		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := hookSettings(events, tt.tools, tt.creel)
+			got := hookSettings(events, tt.guards, tt.creel)
 			if len(got) != len(tt.want) {
 				t.Fatalf("hookSettings() = %d settings; want %d", len(got), len(tt.want))
 			}
@@ -131,12 +117,6 @@ func TestHookSettings(t *testing.T) {
 	}
 	if got, want := activityCommand(events), `touch '/run/activity-stamp'; printf '{}\n'`; got != want {
 		t.Errorf("activityCommand() = %s; want %s", got, want)
-	}
-	if got, want := batchingNudgeHookCommand(statePath), `out=$(lym shuttle hook-batching codex '/run/batching-nudge.json'); [ -n "$out" ] && printf '%s\n' "$out" || printf '{}\n'`; got != want {
-		t.Errorf("batchingNudgeHookCommand() = %s; want %s", got, want)
-	}
-	if got, want := editRecordHookCommand(recordsPath), `lym shuttle hook-edit codex '/run/edit-records.jsonl'; printf '{}\n'`; got != want {
-		t.Errorf("editRecordHookCommand() = %s; want %s", got, want)
 	}
 	if want := `{hooks=[{type="command",command="CODEX_HOME='/h' LYM_CODEX_BINARY='codex' lym creel hook-wait codex",async=true,timeout=86400}]}`; waiter != want {
 		t.Errorf("idle waiter entry = %s; want %s", waiter, want)

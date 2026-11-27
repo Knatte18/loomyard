@@ -24,17 +24,12 @@ const gitattributesContent = "*.md text eol=lf\n"
 
 // Read reads name's current content from baseDir with a plain os.ReadFile on every call.
 // It does no caching, so an on-disk edit takes effect on the next Read.
-// It never writes.
-// It refuses a board copy that a newer binary wrote, with a *NewerBoardCopyError.
-// That applies once the embedding package has registered its defaults through RegisterShipped.
+// It never falls back to a shipped default and never writes.
 // A missing file is reported as an error, not silently substituted.
 func Read(baseDir, name string) ([]byte, error) {
 	content, err := os.ReadFile(Path(baseDir, name))
 	if err != nil {
 		return nil, fmt.Errorf("stencilstore: read stencil %q from %s: %w", name, baseDir, err)
-	}
-	if err := refuseNewerBoardCopy(name, content); err != nil {
-		return nil, err
 	}
 	return content, nil
 }

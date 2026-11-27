@@ -43,7 +43,6 @@ var registry = map[string]Constructor{
 	"Bouncer":          bouncerEntry,
 	"BurlerReview":     burlerReviewEntry,
 	"BurlerFix":        burlerFixEntry,
-	"HardenFix":        hardenFixEntry,
 	"WorktreeCreate":   worktreeCreateEntry,
 	"InnerRun":         innerRunEntry,
 	"SeedChild":        seedChildEntry,
@@ -66,8 +65,7 @@ var LoomRecordEngines = []string{"DiscussionWrite", "RecordWrite"}
 // LoomBuildEngines are the engines whose row is a loom recipe's build row.
 // That row is the one in the build segment that turns the record into the change.
 // A beam's BeamAwait row is one: the members' runs make the change while it holds the run.
-// A hardener recipe's HardenFix row is one: it sits in the segment ring its Bouncer row gates.
-var LoomBuildEngines = []string{"Implementer", "DarnWrite", "BeamAwait", "SamplerSession", "HardenFix"}
+var LoomBuildEngines = []string{"Implementer", "DarnWrite", "BeamAwait", "SamplerSession"}
 
 // LoomFinalizeEngine is the engine whose row lands a loom recipe's change and ends its on_done path.
 const LoomFinalizeEngine = "Finalize"

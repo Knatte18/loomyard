@@ -6,6 +6,7 @@ package shedbuild
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,7 +19,7 @@ import (
 
 // TestNewShed_FieldCompleteAssembly asserts NewShed copies the passed ShedPaths values verbatim.
 // It asserts the Producers count matches the parsed recipe's row count.
-// It asserts the Transient classifier is wired.
+// It asserts the Retired map is the recipe's own, and the Transient classifier is wired.
 func TestNewShed_FieldCompleteAssembly(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -33,6 +34,8 @@ producers:
     on_done: row2
   - name: row2
     engine: Stub
+retired:
+  gone: row2
 `
 	recipe, err := Parse([]byte(recipeYAML))
 	if err != nil {
@@ -48,6 +51,12 @@ producers:
 		return nil
 	}
 
+	var moved []string
+	retiredMove := func(from, to string, resumed bool) error {
+		moved = append(moved, fmt.Sprintf("%s>%s:%t", from, to, resumed))
+		return nil
+	}
+
 	paths := ShedPaths{
 		StatusPath:     filepath.Join(dir, "status.json"),
 		LockPath:       filepath.Join(dir, "run.lock"),
@@ -59,6 +68,9 @@ producers:
 		MissingStatusWayForward: "way forward: told clause",
 		RerouteCapWayForward:    "way forward: reroute clause",
 		BudgetWayForward:        "budget clause",
+
+		RetiredMove:       retiredMove,
+		RetiredWayForward: "retired clause",
 	}
 
 	shed, err := NewShed([]byte(recipeYAML), env, paths)
@@ -83,6 +95,19 @@ producers:
 	}
 	if shed.RunID != paths.RunID || shed.MissingStatusWayForward != paths.MissingStatusWayForward || shed.RerouteCapWayForward != paths.RerouteCapWayForward || shed.BudgetWayForward != paths.BudgetWayForward {
 		t.Errorf("shed.RunID, MissingStatusWayForward, RerouteCapWayForward, BudgetWayForward = %q, %q, %q, %q; want the told values", shed.RunID, shed.MissingStatusWayForward, shed.RerouteCapWayForward, shed.BudgetWayForward)
+	}
+
+	if !maps.Equal(shed.Retired, recipe.Retired) || shed.RetiredWayForward != paths.RetiredWayForward {
+		t.Errorf("shed.Retired, RetiredWayForward = %v, %q; want %v, %q", shed.Retired, shed.RetiredWayForward, recipe.Retired, paths.RetiredWayForward)
+	}
+	if shed.RetiredMove == nil {
+		t.Fatal("shed.RetiredMove = nil; want the passed closure copied verbatim")
+	}
+	if err := shed.RetiredMove("gone", "row2", true); err != nil {
+		t.Fatalf("shed.RetiredMove(...) = %v; want nil", err)
+	}
+	if len(moved) != 1 || moved[0] != "gone>row2:true" {
+		t.Errorf("moved = %v after calling shed.RetiredMove; want exactly [%q], proving shed.RetiredMove is paths.RetiredMove itself", moved, "gone>row2:true")
 	}
 
 	// The assembled Shed classifies a never-ready agent start as agent-start and a plain error as not transient.

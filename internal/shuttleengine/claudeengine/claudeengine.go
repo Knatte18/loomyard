@@ -8,6 +8,7 @@ package claudeengine
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,15 +19,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
-
-// LymBinary resolves the absolute path of the lym binary that Prepare names in the python guard hook.
-// It defaults to `selfexec.LymBinary`, which refuses a test binary.
-// A test that runs Prepare points it at a stand-in path.
-var LymBinary = selfexec.LymBinary
 
 // engineName is the name the engine registers under.
 // A spec's prompt engine must name it, and a turn hook command is given it as its last argument.
@@ -56,14 +51,11 @@ type Claude struct {
 	submitRedrawSettleMS int
 	// nameReads is a pointer so a copy of the struct shares one set; nil warns on every failure.
 	nameReads *nameReadWarnings
-	// claudeDir, when set, is the config directory a launch reads its plugins, user instructions and skills from.
-	// It replaces the launch's own.
+	// claudeDir is Claude Code's config directory the installed plugins are read from; empty resolves it from the environment when a session starts.
 	claudeDir string
 	// transcriptWait bounds the batching nudge's wait for the call it judges to reach the transcript.
 	// The zero value never waits.
 	transcriptWait batchingTranscriptWait
-	// worktree is the worktree the engine's launches run in; the zero value means none is told.
-	worktree shuttleengine.Worktree
 }
 
 // New returns a Claude engine with the default submit settle.
@@ -73,19 +65,11 @@ func New() *Claude {
 
 // NewFromConfig returns a Claude engine whose submit settle is cfg.SubmitSettleMS and whose redraw settle is cfg.SubmitRedrawSettleMS.
 // The engine reads claude.yaml from the layers dirs locate.
-// It is told no worktree.
 func NewFromConfig(cfg shuttleengine.Config, dirs configengine.Dirs) *Claude {
 	return &Claude{
 		dirs: dirs, now: time.Now, submitSettleMS: cfg.SubmitSettleMS, submitRedrawSettleMS: cfg.SubmitRedrawSettleMS, nameReads: &nameReadWarnings{},
 		transcriptWait: defaultBatchingTranscriptWait(),
 	}
-}
-
-// NewForWorktree returns the engine NewFromConfig returns, told the worktree its launches run in.
-func NewForWorktree(cfg shuttleengine.Config, dirs configengine.Dirs, worktree shuttleengine.Worktree) *Claude {
-	engine := NewFromConfig(cfg, dirs)
-	engine.worktree = worktree
-	return engine
 }
 
 // loadConfigOrRefuse loads claude.yaml from dirs.
@@ -132,24 +116,13 @@ func validateSessionID(id string) error {
 // Prepare writes prompt.md, settings.json and the Bash env file bash-env.sh into runDir and returns the Launch command strings.
 // The launch line carries a pointer to prompt.md rather than the prompt, so a prompt of any size launches.
 // A spec that names skills carries the skill-load message on the launch line instead and returns the pointer as Launch.PromptLine, for shuttle to send after the skills load.
-// A spec that sets SkipSkillLoadTurn keeps the pointer on the launch line, whatever skills it names.
-// It returns no Launch.PromptLine.
-// It loads claude.yaml and the hub gate config's refuse_raw list, which the run's shell guard installs.
-// A gate key the launch does not read never refuses it.
-// It then validates spec.Effort, spec.Model, spec.PermissionMode and spec.ResumeSessionID before writing any artifacts.
-// It validates the prompt-cache TTL config, the keep-warm caps and the batching nudge before then too.
+// It loads claude.yaml and the hub's gate config, whose refuse_raw list the run's shell guard installs and whose failure to load refuses the spawn, then validates spec.Effort, spec.Model, spec.PermissionMode, spec.ResumeSessionID, the prompt-cache TTL config, the keep-warm caps and the batching nudge before writing any artifacts.
 // With the batching nudge on it also seeds the nudge's state file beside the settings.
 // The settings carry the session's scope, resolved from claude.yaml's session_scope, spec.Skills and spec.Role.
 // A spec with no effort takes the one cfg.Agents gives spec.ConfigRole on spec.Model.
 // The settings set the effort a subagent of the role falls back to,
 // and the appended system prompt tells the session the effort and skills to give each subagent it spawns.
 // It first refuses a spec whose prompt was not rendered for Claude, unless the prompt is marked hand-written.
-// It resolves the told worktree's account before writing any artifact, and refuses the launch when that fails.
-// Both launch lines then export or unset CLAUDE_CONFIG_DIR for it.
-// account.json records the directory and account the run launched under.
-// The scope's installed plugins and the manifest's user setup are read from that directory.
-// Last it writes the launch manifest, read back from the artifacts above and the launch line.
-// It refuses the launch when that write fails.
 func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	if err := shuttleengine.CheckPromptEngine(spec, engineName); err != nil {
 		return shuttleengine.Launch{}, err
@@ -159,12 +132,12 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		return shuttleengine.Launch{}, err
 	}
 
-	// The refuse list lives in the hub's gate config; an absent file means the hub refuses nothing.
-	refuseRaw, err := gateslot.LoadRefuseRaw(c.dirs)
-	if err != nil {
+	// The refuse list lives in the hub's gate config; an absent file means the hub refuses nothing, and any other load failure refuses the spawn.
+	gate, err := gateslot.LoadConfig(c.dirs)
+	if err != nil && !errors.Is(err, gateslot.ErrConfigAbsent) {
 		return shuttleengine.Launch{}, fmt.Errorf("claudeengine: %w", err)
 	}
-	cfg.RefuseRaw = refuseRaw
+	cfg.RefuseRaw = gate.RefuseRaw
 
 	// A spec whose model-spec names no effort takes the one agents.yaml gives its role and model.
 	spec.Effort = effortFor(cfg.Agents, spec.ConfigRole, spec.Effort, spec.Model)
@@ -197,10 +170,6 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	if err := ValidateBatchingNudge(claude); err != nil {
 		return shuttleengine.Launch{}, err
 	}
-	account, launched, err := c.resolveLaunchAccount(claude)
-	if err != nil {
-		return shuttleengine.Launch{}, err
-	}
 
 	// An adopted run takes over an existing session; reject a malformed id before any artifact is written.
 	resume := spec.ResumeSessionID != ""
@@ -228,9 +197,8 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 			len(pointer), maxLaunchPromptBytes, promptPath,
 		)
 	}
-	loadsSkills := len(spec.Skills) > 0 && !spec.SkipSkillLoadTurn
 	skillLoadMessage := ""
-	if loadsSkills {
+	if len(spec.Skills) > 0 {
 		skillLoadMessage = c.SkillLoadMessage(spec.Skills)
 		if len(skillLoadMessage) > maxLaunchPromptBytes {
 			return shuttleengine.Launch{}, fmt.Errorf(
@@ -238,11 +206,6 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 				len(skillLoadMessage), maxLaunchPromptBytes, spec.Skills,
 			)
 		}
-	}
-	// The python guard hook runs this binary by path, so a lym of another version on PATH never answers it.
-	lymPath, err := LymBinary()
-	if err != nil {
-		return shuttleengine.Launch{}, fmt.Errorf("resolve the lym binary the python guard hook runs: %w", err)
 	}
 	if err := os.WriteFile(promptPath, []byte(spec.Prompt), 0o644); err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("write prompt: %w", err)
@@ -264,17 +227,11 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		return shuttleengine.Launch{}, err
 	}
 
-	scope := c.sessionScopeFor(claude.SessionScope, spec.Skills, spec.Role, launched.ConfigDir)
+	scope := c.sessionScopeFor(claude.SessionScope, spec.Skills, spec.Role)
 	scope.Env = subagentEffortEnv(cfg.Agents, spec.ConfigRole)
-	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish, spec.AllowRawTmux, spec.ContextAfterCompaction, spec.TurnHookCommand, creelFlagDirForHook, spec.Advisor, lymPath, scope)
+	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish, spec.ContextAfterCompaction, spec.TurnHookCommand, creelFlagDirForHook, spec.Advisor, scope)
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("build settings: %w", err)
-	}
-	if launched.Account != "" {
-		settingsJSON, err = addStatusLine(settingsJSON, statusLineCommand(lymPath, launched.Account))
-		if err != nil {
-			return shuttleengine.Launch{}, fmt.Errorf("add the status line to the settings: %w", err)
-		}
 	}
 	settingsPath := filepath.Join(runDir, settingsFileName)
 	if err := os.WriteFile(settingsPath, settingsJSON, 0o644); err != nil {
@@ -300,16 +257,11 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("resolve append system prompt path: %w", err)
 	}
-	notice := buildDenyNotice(spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish, spec.AllowRawTmux)
+	notice := buildDenyNotice(spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish)
 	// The told Board dir is the hub's Bolt checkout, empty outside a hub.
-	standing := shuttleengine.StandingPassages(c.dirs.Board, "claude", spec.Role)
-	var passages []string
-	for _, passage := range standing.Passages {
-		passages = append(passages, passage.Text)
-	}
-	subagentRule := subagentPassage(cfg.Agents, spec.ConfigRole, spec.Skills)
-	if subagentRule != "" {
-		passages = append([]string{subagentRule}, passages...)
+	passages := shuttleengine.StandingPassages(c.dirs.Board, "claude", spec.Role)
+	if passage := subagentPassage(cfg.Agents, spec.ConfigRole, spec.Skills); passage != "" {
+		passages = append([]string{passage}, passages...)
 	}
 	if err := os.WriteFile(appendPromptPath, []byte(appendPromptText(notice, passages)), 0o644); err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("write append system prompt: %w", err)
@@ -320,33 +272,12 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	sh := shell.ForGOOS()
 	// A spec that names skills launches with the load message as its first turn, and the pointer goes out after the skills as Launch.PromptLine.
 	launchArg, promptLine := pointer, ""
-	if loadsSkills {
+	if len(spec.Skills) > 0 {
 		launchArg, promptLine = skillLoadMessage, pointer
 	}
-	launchLine := buildLaunchCmd(sh, bin, launchArg, settingsPath, sessionID, resolvedModel, spec.Effort, appendPromptPath, envFilePath, promptCacheTTL, spec.RemoteControlName, account, resume, skipPermissions, spec.ForkSubagents)
-	if err := writeLaunchedAccount(runDir, launched); err != nil {
-		return shuttleengine.Launch{}, fmt.Errorf("write the launched account: %w", err)
-	}
-	err = c.writeLaunchManifest(runDir, launchArtifacts{
-		spec:             spec,
-		cfg:              cfg,
-		sessionID:        sessionID,
-		configDir:        launched.ConfigDir,
-		settingsPath:     settingsPath,
-		appendPromptPath: appendPromptPath,
-		launchLine:       launchLine,
-		eventsPathPosix:  eventsPathForHook,
-		lymPath:          lymPath,
-		notice:           notice,
-		subagentPassage:  subagentRule,
-		standing:         standing,
-	})
-	if err != nil {
-		return shuttleengine.Launch{}, err
-	}
 	return shuttleengine.Launch{
-		Cmd:        launchLine,
-		ResumeCmd:  buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, appendPromptPath, envFilePath, promptCacheTTL, spec.RemoteControlName, account, skipPermissions, spec.ForkSubagents),
+		Cmd:        buildLaunchCmd(sh, bin, launchArg, settingsPath, sessionID, resolvedModel, spec.Effort, appendPromptPath, envFilePath, promptCacheTTL, spec.RemoteControlName, resume, skipPermissions, spec.ForkSubagents),
+		ResumeCmd:  buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, appendPromptPath, envFilePath, promptCacheTTL, spec.RemoteControlName, skipPermissions, spec.ForkSubagents),
 		SessionID:  sessionID,
 		PromptLine: promptLine,
 

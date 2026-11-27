@@ -153,7 +153,7 @@ func buttonEntryProblem(entry buttonEntry) string {
 		return placeholder(buttonStrandKey) + " needs window: " + buttonWindowAgents
 	}
 	if entry.Ask == "" && entry.AskDefault != "" {
-		return keyName("buttons.<place>.ask_default") + " needs " + keyName("buttons.<place>.ask")
+		return "the ask_default needs an ask"
 	}
 	if entry.Ask == "" && entry.names(buttonAnswerKey) {
 		return placeholder(buttonAnswerKey) + " needs an ask"

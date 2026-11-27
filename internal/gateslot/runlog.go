@@ -1,5 +1,5 @@
 // runlog.go writes the diagnostic record and log of each tier run under the gate directory;
-// it also renders and finds the timeout, runner crash, memory pressure and tier summary lines that a log carries.
+// it also renders and finds the timeout, runner crash and tier summary lines that a log carries.
 
 package gateslot
 
@@ -30,23 +30,11 @@ const (
 	buildTierName      = "build"
 
 	runnerCrashPrefix = "lym gate test: runner crash: "
-
-	memoryPressurePrefix = "lym gate test: memory pressure stop: "
 )
-
-// TimeoutKeyName returns the full name of the gate.yaml key bounding the run named tier, a tier or the build.
-func TimeoutKeyName(tier string) string {
-	if tier == buildTierName {
-		return keyName("build.timeout_min")
-	}
-	return keyName("tiers." + tier + ".timeout_min")
-}
 
 var (
 	tierSummaryPattern  = regexp.MustCompile(`^gate test: tier(\d+) .* discovered \d+ passed \d+ failed \d+ skipped \d+ wall \S+s exit (-?\d+) log .*$`)
 	buildSummaryPattern = regexp.MustCompile(`^gate test: build before tier(\d+) wall \S+s exit (-?\d+) log .*$`)
-	// tierDiscoveredPattern captures the number of tests a tier summary line reports as discovered.
-	tierDiscoveredPattern = regexp.MustCompile(`^gate test: tier\d+ .* discovered (\d+) passed \d+ failed \d+ skipped \d+ wall \S+s exit -?\d+ log .*$`)
 )
 
 // RunRecord is the diagnostic record of one tier run.
@@ -102,12 +90,8 @@ type RunRecord struct {
 	// RunnerCrash names the signal, such as SIGABRT, that ended a tier run with no failing test.
 	// Such a run judged no code; the field is empty for any other run.
 	RunnerCrash string `json:"runner_crash,omitempty"`
-	// MemoryPressure is set on the record of a tier run, the first or the rerun, that judged no code.
-	// The memory guard's only stops of such a run were for a memory limit other load filled.
-	MemoryPressure bool `json:"memory_pressure,omitempty"`
 	// Rerun is set on the record of a tier's one rerun.
-	// The rerun follows a first run that judged no code:
-	// a runner crash, a resource shortage or a stop for a memory limit other load filled.
+	// The rerun follows a first run that crashed its test runner or failed on a resource shortage.
 	// The first run has its own record.
 	Rerun bool `json:"rerun,omitempty"`
 }
@@ -226,15 +210,15 @@ func pruneRunLog(dir string, now time.Time) {
 // TierTimeoutLine renders the line the gate prints to stderr and into the log when tier outlives timeout.
 // It names the tier, the timeout and the way forward.
 func TierTimeoutLine(tier string, timeout time.Duration) string {
-	return fmt.Sprintf("%s%s%s%s; find the hang in this log; when the tier is slow but healthy, rewrite the tier whole from the prime with \"lym config gate --set 'tiers.%s={...}'\", carrying every key of the tier and the raised %s, since a dotted key under the tier writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it",
-		tierTimeoutPrefix, tier, tierTimeoutMid, timeout, tier, keyName("tiers."+tier+".timeout_min"))
+	return fmt.Sprintf("%s%s%s%s; find the hang in this log; when the tier is slow but healthy, rewrite the tier whole from the prime with \"lym config gate --set 'tiers.%s={...}'\", carrying every key of the tier and the raised timeout_min, since a dotted key under the tier writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it",
+		tierTimeoutPrefix, tier, tierTimeoutMid, timeout, tier)
 }
 
 // BuildTimeoutLine renders the line the gate prints to stderr and into the log when the build step outlives timeout.
 // It names the timeout and the way forward.
 func BuildTimeoutLine(timeout time.Duration) string {
-	return fmt.Sprintf("%s%s%s%s; find the hang in this log; when the build is slow but healthy, rewrite the build whole from the prime with \"lym config gate --set 'build={...}'\", carrying every key of the build and the raised %s, since a dotted key under the build writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it",
-		buildTimeoutPrefix, buildTierName, tierTimeoutMid, timeout, keyName("build.timeout_min"))
+	return fmt.Sprintf("%s%s%s%s; find the hang in this log; when the build is slow but healthy, rewrite the build whole from the prime with \"lym config gate --set 'build={...}'\", carrying every key of the build and the raised timeout_min, since a dotted key under the build writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it",
+		buildTimeoutPrefix, buildTierName, tierTimeoutMid, timeout)
 }
 
 // FindTierTimeout returns the tier of the first tier or build timeout line in log.
@@ -266,28 +250,8 @@ func RunnerCrashLine(runs string) string {
 
 // FindRunnerCrash returns the runs the first runner crash line in log names, and false when log holds none.
 func FindRunnerCrash(log string) (runs string, ok bool) {
-	return findClosingRuns(log, runnerCrashPrefix)
-}
-
-// MemoryPressureLine renders the line a gate call closes with when no failed run judged the code,
-// and the memory guard stopped runs of it in their run and their one rerun for a memory limit other load filled.
-// runs names each such run with its exit code, and holds no semicolon.
-// The line names the way forward, since no change to the code under test frees memory other processes hold.
-func MemoryPressureLine(runs string) string {
-	return fmt.Sprintf("%s%s; the memory guard killed a test binary of each in its run and its one rerun because other load had nearly filled the memory limit the call runs under, so no test judged the code; way forward: wait for that load to end, then re-run the same command",
-		memoryPressurePrefix, runs)
-}
-
-// FindMemoryPressureStop returns the runs the first memory pressure line in log names, and false when log holds none.
-func FindMemoryPressureStop(log string) (runs string, ok bool) {
-	return findClosingRuns(log, memoryPressurePrefix)
-}
-
-// findClosingRuns returns the runs the first line of log opening with prefix names, up to its first semicolon.
-// It reports false when no line opens with prefix.
-func findClosingRuns(log, prefix string) (runs string, ok bool) {
 	for _, line := range strings.Split(log, "\n") {
-		rest, found := strings.CutPrefix(strings.TrimRight(line, "\r"), prefix)
+		rest, found := strings.CutPrefix(strings.TrimRight(line, "\r"), runnerCrashPrefix)
 		if !found {
 			continue
 		}
@@ -368,45 +332,6 @@ func FailedTests(log string) (failed []FailedTest, ok bool) {
 	return failed, true
 }
 
-// NamedFailedTests returns the failed tests the first failure report in log names, each once, in report order.
-// It reads every `  <package> <test>:` line up to the report's end or its cut line, and passes over every other line.
-// So a report that also holds a cause line or unparsed output still yields its named tests.
-// So does one that names a package failed outside any test.
-// A test under a run that is no tier or guard run has Tier -1.
-// A log with no report yields none.
-func NamedFailedTests(log string) []FailedTest {
-	lines := strings.Split(strings.ReplaceAll(log, "\r\n", "\n"), "\n")
-	start := slices.Index(lines, FailureReportHeader)
-	if start < 0 {
-		return nil
-	}
-	var failed []FailedTest
-	tier := -1
-	for _, line := range lines[start+1:] {
-		if line == "" || strings.HasPrefix(line, failureReportEnd) || strings.HasPrefix(line, ReportCutPrefix) {
-			break
-		}
-		switch {
-		case strings.HasPrefix(line, "    "):
-			// A failure's own output.
-		case strings.HasPrefix(line, "  "):
-			if test, isTest := reportTestLine(line); isTest {
-				test.Tier = tier
-				if !slices.Contains(failed, test) {
-					failed = append(failed, test)
-				}
-			}
-		default:
-			number, isRun := reportRunTier(line)
-			if !isRun {
-				number = -1
-			}
-			tier = number
-		}
-	}
-	return failed
-}
-
 // reportRunTier returns the tier of a failure report's run header, such as `tier1 (exit 1), log <path>:`.
 // A guard run's header names its tier too; any other run, such as a build, vet or lint step, names none.
 func reportRunTier(line string) (int, bool) {
@@ -482,64 +407,6 @@ func TierRunFailures(log string) (failures []string, ok bool) {
 	return failures, header != ""
 }
 
-// TierFailureNames returns the failures the first failure report in log names under a tier or guard run.
-// Each comes once, in report order, as the text of its `  <failure>:` line:
-// a Go test reads as `<package> <test>`, and a VSTest test as the name its results give it.
-// A package that failed outside any test, a cause line and a failure under any other run name none.
-// A log with no report names none, and a cut report names only the failures above its cut line.
-func TierFailureNames(log string) []string {
-	lines := strings.Split(strings.ReplaceAll(log, "\r\n", "\n"), "\n")
-	start := slices.Index(lines, FailureReportHeader)
-	if start < 0 {
-		return nil
-	}
-	var names []string
-	underTier := false
-	for _, line := range lines[start+1:] {
-		if line == "" || strings.HasPrefix(line, failureReportEnd) || strings.HasPrefix(line, ReportCutPrefix) {
-			break
-		}
-		switch {
-		case strings.HasPrefix(line, "    "):
-			// A failure's own output.
-		case strings.HasPrefix(line, "  "):
-			failure, isFailure := reportFailureLine(line)
-			if underTier && isFailure && !strings.HasSuffix(failure, ReportOutsideAnyTestSuffix) && !slices.Contains(names, failure) {
-				names = append(names, failure)
-			}
-		default:
-			_, underTier = reportRunTier(line)
-		}
-	}
-	return names
-}
-
-// PackagesFailedOutsideTests returns the packages the first failure report in log names as failed outside any test.
-// Each comes once, in report order; a compile error of a package's tests is such a failure.
-// A log with no report, and a report cut at its line cap past the last such line, name only what they hold.
-func PackagesFailedOutsideTests(log string) []string {
-	lines := strings.Split(strings.ReplaceAll(log, "\r\n", "\n"), "\n")
-	start := slices.Index(lines, FailureReportHeader)
-	if start < 0 {
-		return nil
-	}
-	var packages []string
-	for _, line := range lines[start+1:] {
-		if line == "" || strings.HasPrefix(line, failureReportEnd) || strings.HasPrefix(line, ReportCutPrefix) {
-			break
-		}
-		if !strings.HasPrefix(line, "  ") || strings.HasPrefix(line, "    ") {
-			continue
-		}
-		failure, isFailure := reportFailureLine(line)
-		pkg, outside := strings.CutSuffix(failure, ReportOutsideAnyTestSuffix)
-		if isFailure && outside && !slices.Contains(packages, pkg) {
-			packages = append(packages, pkg)
-		}
-	}
-	return packages
-}
-
 // reportFailureLine returns the failure a failure report's `  <failure>:` line under a run names, without its colon.
 // A failed test, a test with no package and a package that failed outside any test each end with a colon.
 // A cause line and the line that opens unparsed output name none.
@@ -594,19 +461,4 @@ func FailedTier(log string) (tier int, build bool, ok bool) {
 		return number, isBuild, true
 	}
 	return 0, false, false
-}
-
-// TierDiscovered returns the number of tests the tier summary lines in log report as discovered, added up.
-// found is false when log holds no tier summary line; a build summary line is no tier line.
-func TierDiscovered(log string) (discovered int, found bool) {
-	for _, line := range strings.Split(log, "\n") {
-		match := tierDiscoveredPattern.FindStringSubmatch(strings.TrimRight(line, "\r"))
-		if match == nil {
-			continue
-		}
-		count, _ := strconv.Atoi(match[1])
-		discovered += count
-		found = true
-	}
-	return discovered, found
 }

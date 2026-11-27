@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"go/build"
-	"io"
 	"io/fs"
 	"maps"
 	"os"
@@ -78,12 +77,9 @@ type scope struct {
 	// guardDir is the run directory of that guard step, relative to the worktree root.
 	// Empty means the directory of each guard group's own tier.
 	guardDir string
-	// guards maps a tier number to each directory that holds guard tests of it for the guard step, and to their names.
+	// guards maps a tier number to each directory outside the scope that holds its guard tests, and to their names.
 	// The directories are relative to guardDir; nil when no scan has run.
 	guards map[int]map[string][]string
-	// listedTiers are the tiers a --card scope's listed runs run: each listed tier and every tier it covers.
-	// A guard test of any other tier is left to the guard step, even in a package of the scope.
-	listedTiers []int
 	// tagTiers are the declared tiers, ascending, whose build tag adds a file to a --card scope's package.
 	// A build without tags leaves that file out, so the vet step is planned over these tiers.
 	tagTiers []int
@@ -123,7 +119,7 @@ func withGateScope(cfg gateslot.Config, request testRequest) testRequest {
 }
 
 // computeScope returns the scope of request over the worktree at root, for the config cfg.
-// Explicit targets take no computation, and --all takes only allScope's inert check.
+// Explicit targets and --all take no computation.
 // Otherwise the form is --card when a card is named, --base when a base is given, and the computed form otherwise.
 // The computed form takes its base per listed tier.
 // A computed tier's base is the newest ancestor of HEAD that green holds whole-green for the tier.
@@ -143,7 +139,6 @@ func withGateScope(cfg gateslot.Config, request testRequest) testRequest {
 // It leaves the guard tests to the module scan, as a whole tier does.
 // A set that cannot be narrowed falls back to whole, naming the reason on request.stderr.
 // A --card scope is the cards' packages per module.
-// It holds every package of that module whose build or tests reach one of them too.
 // With request.mainPackages it also holds every package main of tier0's module, listed once.
 // It adds the declared tiers whose build tag brings a file into one of those packages.
 // A narrowed share, and a --card scope, skip the `//lym:watch` tests of their packages that no changed file concerns.
@@ -157,7 +152,7 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 	case len(request.targets) > 0:
 		return scope{form: scopeTargets}, nil
 	case request.all:
-		return allScope(ctx, cfg, location, root, request), nil
+		return scope{form: scopeAll, whole: true}, nil
 	}
 	form := scopeComputed
 	if request.base != "" {
@@ -197,19 +192,18 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 		return scope{}, fmt.Errorf("gate test: %w", err)
 	}
 	if form == scopeCard {
-		// The main packages are listed first, so a refused call names no narrowed scope.
-		mainsDir := moduleKey(root, tier0.Dir)
-		var mains []string
-		if request.mainPackages {
-			if mains, err = impactset.ModuleMainPackages(ctx, resolveRunDir(root, tier0.Dir)); err != nil {
-				return scope{}, fmt.Errorf("gate test: --%s cannot list the main packages of the module at %s: %w; way forward: fix the module until \"go list ./...\" succeeds there, then re-run the same command", gateslot.MainPackagesFlag, mainsDir, err)
-			}
-		}
 		modules := make([]moduleTargets, len(cardModules))
 		for i, module := range cardModules {
-			modules[i] = moduleTargets{dir: module.Dir, targets: cardDependents(ctx, root, module, request.stderr)}
+			modules[i] = moduleTargets{dir: module.Dir, targets: module.Packages}
 		}
-		modules = withMainPackages(modules, mainsDir, mains)
+		if request.mainPackages {
+			moduleDir := moduleKey(root, tier0.Dir)
+			mains, err := impactset.ModuleMainPackages(ctx, resolveRunDir(root, tier0.Dir))
+			if err != nil {
+				return scope{}, fmt.Errorf("gate test: --%s cannot list the main packages of the module at %s: %w; way forward: fix the module until \"go list ./...\" succeeds there, then re-run the same command", gateslot.MainPackagesFlag, moduleDir, err)
+			}
+			modules = withMainPackages(modules, moduleDir, mains)
+		}
 		var dirs []string
 		for _, module := range modules {
 			for _, target := range module.targets {
@@ -220,7 +214,7 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 				}
 			}
 		}
-		sc := scope{form: form, modules: modules, guardStep: true, guardDir: tier0.Dir, tagTiers: tagTiers(cfg, root, modules), listedTiers: coveredTiers(cfg, request)}
+		sc := scope{form: form, modules: modules, guardStep: true, guardDir: tier0.Dir, tagTiers: tagTiers(cfg, root, modules)}
 		sc.changed, sc.changesRead = cardChanges(ctx, location, root)
 		if sc.changesRead {
 			watched, err := impactset.FindWatchedTests(root, dirs)
@@ -284,20 +278,6 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 	return scope{form: form, tiers: shares, guardStep: true, guardDir: ".", guards: guardsByTier(guards)}, nil
 }
 
-// cardDependents returns module's packages and every package of that module whose build or tests reach one of them.
-// A test outside the cards' packages that asserts on what a card changes then runs at the card's own gate.
-// When the module's packages cannot be listed it returns the cards' packages alone.
-// It then names the narrowing and its cause in the log and on stderr.
-func cardDependents(ctx context.Context, root string, module planparser.ModulePackages, stderr io.Writer) []string {
-	dependents, err := impactset.DependentPackages(ctx, resolveRunDir(root, module.Dir), module.Packages)
-	if err != nil {
-		logger.Warn("gate test: could not list the packages that depend on the cards' packages; the card scope holds the cards' packages alone", "module", module.Dir, "cause", err)
-		printLine(stderr, fmt.Sprintf("gate test: the card scope holds the cards' packages alone: cannot list the packages that depend on them in %s: %v", module.Dir, err))
-		return module.Packages
-	}
-	return dependents
-}
-
 // withMainPackages returns modules with mains, the main packages of the module at dir, added to that module's targets.
 // A package the cards already name is not added twice, and a module the cards leave out joins the list last.
 func withMainPackages(modules []moduleTargets, dir string, mains []string) []moduleTargets {
@@ -344,28 +324,6 @@ func noneScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Locati
 	return scope{form: form, tiers: shares}
 }
 
-// allScope returns the scope of an --all call, which is whole.
-// A --gate key of scope all gets the empty scope instead when every changed file is inert.
-// The diff is taken from the merge base with the parent branch.
-// A change of inert files alone then runs no tier at any gate key.
-// A worktree with no parent branch, a merge base that cannot be read and an explicit --all stay whole.
-func allScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Location, root string, request testRequest) scope {
-	whole := scope{form: scopeAll, whole: true}
-	if request.gate == "" || len(cfg.InertPaths) == 0 {
-		return whole
-	}
-	base, ok, err := parentMergeBase(location)
-	if err != nil {
-		printLine(request.stderr, fmt.Sprintf("gate test: the scope of --gate %q stays whole: cannot read the merge base with the parent branch: %v", request.gate, err))
-		return whole
-	}
-	if !ok || !allInertSince(ctx, cfg, root, base) {
-		return whole
-	}
-	printLine(request.stderr, fmt.Sprintf("gate test: scope all of --gate %q: every file changed since %s is inert, so the scope is empty", request.gate, base))
-	return scope{form: scopeAll}
-}
-
 // allInertSince reports whether every file that differs between base and the working tree, untracked files included, matches the hub's inert_paths.
 // A hub with no inert_paths, an empty diff and a diff that cannot be read report false.
 // A diff that cannot be read is logged at Warn, and the scope stays as it is.
@@ -375,7 +333,7 @@ func allInertSince(ctx context.Context, cfg gateslot.Config, root, base string) 
 	}
 	paths, err := impactset.ChangedPaths(ctx, root, base)
 	if err != nil {
-		logger.Warn("gate test: could not read the changed files to check them against "+keyName(inertPathsKey)+"; the scope stays as it is", "base", base, "cause", err)
+		logger.Warn("gate test: could not read the changed files to check them against inert_paths; the scope stays as it is", "base", base, "cause", err)
 		return false
 	}
 	return cfg.AllInert(paths)
@@ -464,18 +422,6 @@ func keptTiers(cfg gateslot.Config, request testRequest) []int {
 		}
 	}
 	return dropCovered(listed, declared, silent)
-}
-
-// coveredTiers returns the tiers the request's listed runs run: each kept listed tier and every tier it covers.
-func coveredTiers(cfg gateslot.Config, request testRequest) []int {
-	var numbers []int
-	for _, number := range keptTiers(cfg, request) {
-		numbers = append(numbers, number)
-		if tier, err := cfg.Tier(number); err == nil {
-			numbers = append(numbers, tier.Covers...)
-		}
-	}
-	return numbers
 }
 
 // tierNames returns the names of the tiers numbers, joined by commas.
@@ -580,10 +526,9 @@ func guardScanDir(cfg gateslot.Config, request testRequest, sc scope) (string, e
 	return tier0.Dir, nil
 }
 
-// scanGuards fills sc.guards with the guard tests the scope's listed runs leave out, grouped by their file's tier.
-// Those are the guard tests outside the scope's packages, and those inside one whose tier no listed run runs.
+// scanGuards fills sc.guards with the guard tests outside the scope's packages, grouped by their file's tier.
 // It scans the module at sc.guardDir.
-// A whole scope and an explicit-targets scope hold no package of that module, so every guard test counts as left out.
+// A whole scope and an explicit-targets scope hold no package of that module, so every guard test counts as outside.
 // It scans the guard packages for `//lym:watch` markers too.
 // When the scope read its changes, it drops each watched guard test those changes leave alone.
 // A scan error is returned as the refusal.
@@ -602,24 +547,22 @@ func scanGuards(sc scope, root string) (scope, error) {
 			inside[strings.TrimPrefix(path.Clean(target), "./")] = true
 		}
 	}
-	leftOut := map[string][]impactset.GuardTest{}
+	outside := map[string][]impactset.GuardTest{}
 	for dir, tests := range all {
-		for _, test := range tests {
-			if !inside[path.Clean(dir)] || !slices.Contains(sc.listedTiers, test.Tier) {
-				leftOut[dir] = append(leftOut[dir], test)
-			}
+		if len(tests) > 0 && !inside[path.Clean(dir)] {
+			outside[dir] = tests
 		}
 	}
-	watched, err := impactset.FindWatchedTests(moduleDir, slices.Sorted(maps.Keys(leftOut)))
+	watched, err := impactset.FindWatchedTests(moduleDir, slices.Sorted(maps.Keys(outside)))
 	if err != nil {
 		return scope{}, errors.New(guardScanRefusal(moduleDir, err))
 	}
 	if sc.changesRead {
 		for dir, names := range impactset.UnwatchedTests(watched, moduleRelative(root, sc.guardDir, sc.changed)) {
-			leftOut[dir] = slices.DeleteFunc(leftOut[dir], func(test impactset.GuardTest) bool { return slices.Contains(names, test.Name) })
+			outside[dir] = slices.DeleteFunc(outside[dir], func(test impactset.GuardTest) bool { return slices.Contains(names, test.Name) })
 		}
 	}
-	sc.guards = guardsByTier(leftOut)
+	sc.guards = guardsByTier(outside)
 	return sc, nil
 }
 

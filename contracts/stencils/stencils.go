@@ -21,12 +21,6 @@ var LandingTemplateConflict []byte
 //go:embed landing/landing-template-describe.md
 var LandingTemplateDescribe []byte
 
-// LandingTemplateDescribeReview is the landing Describe reviewer's shipped-default prompt.
-// It is the assistant seat that reviews the change description the Describe lead writes.
-//
-//go:embed landing/landing-template-describe-review.md
-var LandingTemplateDescribeReview []byte
-
 // LandingTemplateFixer is the landing merge fixer's shipped-default prompt.
 //
 //go:embed landing/landing-template-fixer.md
@@ -37,6 +31,12 @@ var LandingTemplateFixer []byte
 //
 //go:embed landing/landing-template-fix-review.md
 var LandingTemplateFixReview []byte
+
+// LandingTemplatePRReview is the PR-Review session's shipped-default prompt.
+// It is the interactive session the operator discusses a run's pull request with.
+//
+//go:embed landing/landing-template-pr-review.md
+var LandingTemplatePRReview []byte
 
 // DarnTemplateWrite is the darn writer's shipped-default prompt.
 // It is the whole instruction set of the one session that makes a board entry's change.
@@ -51,18 +51,11 @@ var DarnTemplateWrite []byte
 var DarnFragmentMakeChange []byte
 
 // DarnFragmentMakeChangeGated is the darn writer prompt's Step 4 list when the verify gate has a cold fixer.
-// The writer and its subagents run no gate in it, except the writer's single measuring run of one test class.
-// That run's call fills its measure_call marker, rendered from the hub's gate config.
+// The writer and its subagents run no gate in it.
 // The writer asks its parent for the single run of the test a task's reported failure names, before it diagnoses it.
 //
 //go:embed darn/darn-fragment-make-change-gated.md
 var DarnFragmentMakeChangeGated []byte
-
-// DarnFragmentReport is the darn writer prompt's passage that has the writer commit the task's report as a file.
-// It is rendered only for a run whose darn.yaml names a report directory.
-//
-//go:embed darn/darn-fragment-report.md
-var DarnFragmentReport []byte
 
 // SamplerTemplateAgent is the sampler agent's shipped-default prompt.
 // It is the whole instruction set of the interactive session the operator works a change out with.
@@ -139,13 +132,13 @@ var LoomBlockPlanCards []byte
 var LoomTemplateParts []byte
 
 // LoomFragmentPartsLight is the light reading depth of the Parts-Write agent.
-// It is filled into the Parts-Write prompt when tapestry.parts.depth is light.
+// It is filled into the Parts-Write prompt when parts_depth is light.
 //
 //go:embed loom/loom-fragment-parts-light.md
 var LoomFragmentPartsLight []byte
 
 // LoomFragmentPartsMedium is the medium reading depth of the Parts-Write agent.
-// It is filled into the Parts-Write prompt when tapestry.parts.depth is medium.
+// It is filled into the Parts-Write prompt when parts_depth is medium.
 //
 //go:embed loom/loom-fragment-parts-medium.md
 var LoomFragmentPartsMedium []byte
@@ -202,18 +195,6 @@ var LoomFragmentArbiterFix []byte
 //go:embed loom/loom-fragment-arbiter-no-fix.md
 var LoomFragmentArbiterNoFix []byte
 
-// LoomFragmentLoosenedCheck is the Loosened-Check commit trailer rule.
-// Every brief of a session that commits code includes it.
-//
-//go:embed loom/loom-fragment-loosened-check.md
-var LoomFragmentLoosenedCheck []byte
-
-// LoomFragmentToolingNames is the rule that a repository file names nothing of the tooling which wrote it.
-// Every brief of a session that commits code includes it.
-//
-//go:embed loom/loom-fragment-tooling-names.md
-var LoomFragmentToolingNames []byte
-
 // LoomRubricDiscussionReview is the Discussion-Review rubric, read by every row of the Discussion-Review perch.
 //
 //go:embed loom/loom-rubric-discussion-review.md
@@ -234,17 +215,6 @@ var LoomRubricRaddleReview []byte
 //
 //go:embed loom/loom-rubric-code-review.md
 var LoomRubricCodeReview []byte
-
-// HardenRubricReview is the Hardener rubric, read by the Harden-Bouncer judge and the Harden-Burler-Review row alike.
-//
-//go:embed harden/harden-rubric-review.md
-var HardenRubricReview []byte
-
-// HardenTemplateSeed is the Harden-Bouncer's shipped-default seed prompt:
-// the pass that reads the campaign's modules and writes its charter into round 1's focus file.
-//
-//go:embed harden/harden-template-seed.md
-var HardenTemplateSeed []byte
 
 // LoomTemplatePriorPlan is the prior-plan block appended to the end of the Plan prompt on a respawn.
 //
@@ -300,13 +270,6 @@ var BurlerFocusDirective []byte
 //go:embed burler/burler-fork-reading.md
 var BurlerForkReading []byte
 
-// BurlerDiffPieces is burler's shipped-default diff-pieces part.
-// It lists a round's diff, written out in per-package pieces, in the explore step.
-// A round whose profile carries no diff renders nothing there.
-//
-//go:embed burler/burler-diff-pieces.md
-var BurlerDiffPieces []byte
-
 // BurlerClusterSolo is burler's shipped-default cluster-rules part of a round that names no fan:
 // the single-reviewer statement.
 //
@@ -343,12 +306,6 @@ var BouncerTemplateSeed []byte
 //go:embed bouncer/bouncer-template-judge.md
 var BouncerTemplateJudge []byte
 
-// BouncerTemplateVerify is the Bouncer's shipped-default verify prompt:
-// the check, at a spent budget, of the BLOCKING findings a round's fixer reported fixed.
-//
-//go:embed bouncer/bouncer-template-verify.md
-var BouncerTemplateVerify []byte
-
 // BouncerTemplateEscalation is the Bouncer's shipped-default escalation brief.
 // A one-shot fork of the run's parent session reads it.
 //
@@ -373,17 +330,26 @@ var BouncerFragmentDecideCapped []byte
 //go:embed bouncer/bouncer-fragment-decision.md
 var BouncerFragmentDecision []byte
 
-// BouncerFragmentParentReview is the Bouncer's shipped-default parent-review section of the judge prompt:
-// it tells a judge whose round asked the run's parent orch to wait for the answer and keep the parent's findings.
-//
-//go:embed bouncer/bouncer-fragment-parent-review.md
-var BouncerFragmentParentReview []byte
-
 // BouncerTemplateParentNotice is the Bouncer's shipped-default one-line parent notice:
 // it points the parent at the escalation brief.
 //
 //go:embed bouncer/bouncer-template-parent-notice.md
 var BouncerTemplateParentNotice []byte
+
+// TreadleTemplateJudgeCircling is treadle's shipped-default per-round circling-check judge prompt.
+//
+//go:embed treadle/treadle-template-judge-circling.md
+var TreadleTemplateJudgeCircling []byte
+
+// TreadleTemplateJudgeMilestone is treadle's shipped-default milestone continuation-gate judge prompt.
+//
+//go:embed treadle/treadle-template-judge-milestone.md
+var TreadleTemplateJudgeMilestone []byte
+
+// TreadleTemplateTargeting is treadle's shipped-default pre-round targeting judge prompt.
+//
+//go:embed treadle/treadle-template-targeting.md
+var TreadleTemplateTargeting []byte
 
 // WebsterTemplateMaster is webster's shipped-default Master-session prompt template.
 //
@@ -630,13 +596,6 @@ var TwillJudgePlain []byte
 //go:embed beam/beam-template-board-tidy.md
 var BeamTemplateBoardTidy []byte
 
-// BeamTemplateDescribe is the beam describer agent's shipped-default opening prompt.
-// It opens the cold session a beam's dobby spawns after a member landing under a recorded pull request.
-// The session rewrites the beam's change description as it now stands.
-//
-//go:embed beam/beam-template-describe.md
-var BeamTemplateDescribe []byte
-
 // RetroTemplateTask is the retro task's shipped-default board body.
 // It is the goal of the darn task `lym retro` files: the scripts to run, the reading cap, the questions and the report.
 //
@@ -760,126 +719,6 @@ var EngineClaudeEditDirective []byte
 //go:embed engine/codex/edit-directive.md
 var EngineCodexEditDirective []byte
 
-// EngineClaudeForkSpawn is the Claude engine's fork-spawn block:
-// the phrase saying how a session on Claude spawns a fork that inherits its whole context.
-//
-//go:embed engine/claude/fork-spawn.md
-var EngineClaudeForkSpawn []byte
-
-// EngineCodexForkSpawn is the Codex engine's fork-spawn block:
-// the phrase saying how a session on Codex spawns a fork that inherits its whole context.
-//
-//go:embed engine/codex/fork-spawn.md
-var EngineCodexForkSpawn []byte
-
-// EngineClaudeForkWait is the Claude engine's fork-wait block:
-// how a session on Claude waits for every fork it spawned.
-//
-//go:embed engine/claude/fork-wait.md
-var EngineClaudeForkWait []byte
-
-// EngineCodexForkWait is the Codex engine's fork-wait block:
-// how a session on Codex waits for every fork it spawned.
-//
-//go:embed engine/codex/fork-wait.md
-var EngineCodexForkWait []byte
-
-// EngineClaudeForkMessage is the Claude engine's fork-message block:
-// the phrase saying how a session on Claude sends a message to a fork it spawned.
-//
-//go:embed engine/claude/fork-message.md
-var EngineClaudeForkMessage []byte
-
-// EngineCodexForkMessage is the Codex engine's fork-message block:
-// the phrase saying how a session on Codex sends a message to a fork it spawned.
-//
-//go:embed engine/codex/fork-message.md
-var EngineCodexForkMessage []byte
-
-// EngineClaudeBackgroundCommand is the Claude engine's background-command block:
-// the phrase saying how a session on Claude runs a long lym command and learns that it ended.
-//
-//go:embed engine/claude/background-command.md
-var EngineClaudeBackgroundCommand []byte
-
-// EngineCodexBackgroundCommand is the Codex engine's background-command block:
-// the phrase saying how a session on Codex runs a long lym command and learns that it ended.
-//
-//go:embed engine/codex/background-command.md
-var EngineCodexBackgroundCommand []byte
-
-// EngineClaudeForegroundTimeout is the Claude engine's foreground-timeout block:
-// the phrase that gives a long foreground wait command on Claude a timeout of an hour.
-//
-//go:embed engine/claude/foreground-timeout.md
-var EngineClaudeForegroundTimeout []byte
-
-// EngineCodexForegroundTimeout is the Codex engine's foreground-timeout block:
-// the phrase that gives a long foreground wait command on Codex a timeout of an hour.
-//
-//go:embed engine/codex/foreground-timeout.md
-var EngineCodexForegroundTimeout []byte
-
-// EngineClaudeStandingInstructions is the Claude engine's standing-instructions block:
-// the phrase naming where a session on Claude finds its standing rules.
-//
-//go:embed engine/claude/standing-instructions.md
-var EngineClaudeStandingInstructions []byte
-
-// EngineCodexStandingInstructions is the Codex engine's standing-instructions block:
-// the phrase naming where a session on Codex finds its standing rules.
-//
-//go:embed engine/codex/standing-instructions.md
-var EngineCodexStandingInstructions []byte
-
-// EngineClaudeAbsolutePaths is the Claude engine's absolute-paths block:
-// the line that keeps the paths a session on Claude passes to its file tools absolute.
-//
-//go:embed engine/claude/absolute-paths.md
-var EngineClaudeAbsolutePaths []byte
-
-// EngineCodexAbsolutePaths is the Codex engine's absolute-paths block:
-// the line that keeps the paths a session on Codex passes to its file tools absolute.
-//
-//go:embed engine/codex/absolute-paths.md
-var EngineCodexAbsolutePaths []byte
-
-// EngineClaudeSubagentLookups is the Claude engine's subagent-lookups block:
-// how a writer on Claude sends its independent lookups to fresh subagents in one batch.
-//
-//go:embed engine/claude/subagent-lookups.md
-var EngineClaudeSubagentLookups []byte
-
-// EngineCodexSubagentLookups is the Codex engine's subagent-lookups block:
-// how a writer on Codex sends its independent lookups to fresh subagents in one batch.
-//
-//go:embed engine/codex/subagent-lookups.md
-var EngineCodexSubagentLookups []byte
-
-// EngineClaudeDarnSubagents is the Claude engine's darn-subagents block:
-// how the darn writer on Claude hands lookups and per-package work to fresh subagents.
-//
-//go:embed engine/claude/darn-subagents.md
-var EngineClaudeDarnSubagents []byte
-
-// EngineCodexDarnSubagents is the Codex engine's darn-subagents block:
-// how the darn writer on Codex hands lookups and per-package work to fresh subagents.
-//
-//go:embed engine/codex/darn-subagents.md
-var EngineCodexDarnSubagents []byte
-
-// EngineClaudeQuestionTool is the Claude engine's question-tool block:
-// the name of the Claude tool that puts a question to the operator in a dialog.
-//
-//go:embed engine/claude/question-tool.md
-var EngineClaudeQuestionTool []byte
-
-// EngineCodexQuestionTool is the Codex engine's question-tool block:
-// the name of the Codex tool that puts a question to the operator in a dialog.
-//
-//go:embed engine/codex/question-tool.md
-var EngineCodexQuestionTool []byte
-
 // GatefixFrameCold is the shared cold frame every gate fixer's prompt opens with:
 // it is joined ahead of one caller body stencil.
 //
@@ -919,13 +758,12 @@ type registryEntry struct {
 var entries = []registryEntry{
 	{"landing-template-conflict", &LandingTemplateConflict},
 	{"landing-template-describe", &LandingTemplateDescribe},
-	{"landing-template-describe-review", &LandingTemplateDescribeReview},
 	{"landing-template-fixer", &LandingTemplateFixer},
 	{"landing-template-fix-review", &LandingTemplateFixReview},
+	{"landing-template-pr-review", &LandingTemplatePRReview},
 	{"darn-template-write", &DarnTemplateWrite},
 	{"darn-fragment-make-change", &DarnFragmentMakeChange},
 	{"darn-fragment-make-change-gated", &DarnFragmentMakeChangeGated},
-	{"darn-fragment-report", &DarnFragmentReport},
 	{"sampler-template-agent", &SamplerTemplateAgent},
 	{"raddle-template-agent", &RaddleTemplateAgent},
 	{"drift-template-expect", &DriftTemplateExpect},
@@ -951,14 +789,10 @@ var entries = []registryEntry{
 	{"loom-template-arbiter", &LoomTemplateArbiter},
 	{"loom-fragment-arbiter-fix", &LoomFragmentArbiterFix},
 	{"loom-fragment-arbiter-no-fix", &LoomFragmentArbiterNoFix},
-	{"loom-fragment-loosened-check", &LoomFragmentLoosenedCheck},
-	{"loom-fragment-tooling-names", &LoomFragmentToolingNames},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
 	{"loom-rubric-raddle-review", &LoomRubricRaddleReview},
 	{"loom-rubric-code-review", &LoomRubricCodeReview},
-	{"harden-rubric-review", &HardenRubricReview},
-	{"harden-template-seed", &HardenTemplateSeed},
 	{"loom-template-prior-plan", &LoomTemplatePriorPlan},
 	{"burler-step-1-explore", &BurlerStep1Explore},
 	{"burler-template-reviewer", &BurlerTemplateReviewer},
@@ -974,20 +808,20 @@ var entries = []registryEntry{
 	{"burler-step-fix", &BurlerStepFix},
 	{"burler-focus-directive", &BurlerFocusDirective},
 	{"burler-fork-reading", &BurlerForkReading},
-	{"burler-diff-pieces", &BurlerDiffPieces},
 	{"burler-cluster-solo", &BurlerClusterSolo},
 	{"burler-cluster-fan", &BurlerClusterFan},
 	{"burler-fix-self-check", &BurlerFixSelfCheck},
 	{"burler-fix-check-rubric", &BurlerFixCheckRubric},
 	{"bouncer-template-seed", &BouncerTemplateSeed},
 	{"bouncer-template-judge", &BouncerTemplateJudge},
-	{"bouncer-template-verify", &BouncerTemplateVerify},
 	{"bouncer-template-escalation", &BouncerTemplateEscalation},
 	{"bouncer-fragment-decide-open", &BouncerFragmentDecideOpen},
 	{"bouncer-fragment-decide-capped", &BouncerFragmentDecideCapped},
 	{"bouncer-fragment-decision", &BouncerFragmentDecision},
-	{"bouncer-fragment-parent-review", &BouncerFragmentParentReview},
 	{"bouncer-template-parent-notice", &BouncerTemplateParentNotice},
+	{"treadle-template-judge-circling", &TreadleTemplateJudgeCircling},
+	{"treadle-template-judge-milestone", &TreadleTemplateJudgeMilestone},
+	{"treadle-template-targeting", &TreadleTemplateTargeting},
 	{"webster-template-master", &WebsterTemplateMaster},
 	{"webster-body-verify-fix", &WebsterBodyVerifyFix},
 	{"webster-prefix-verify-fix-fork", &WebsterPrefixVerifyFixFork},
@@ -1044,28 +878,7 @@ var entries = []registryEntry{
 	{"engine/codex/assist-reading", &EngineCodexAssistReading},
 	{"engine/claude/edit-directive", &EngineClaudeEditDirective},
 	{"engine/codex/edit-directive", &EngineCodexEditDirective},
-	{"engine/claude/fork-spawn", &EngineClaudeForkSpawn},
-	{"engine/codex/fork-spawn", &EngineCodexForkSpawn},
-	{"engine/claude/fork-wait", &EngineClaudeForkWait},
-	{"engine/codex/fork-wait", &EngineCodexForkWait},
-	{"engine/claude/fork-message", &EngineClaudeForkMessage},
-	{"engine/codex/fork-message", &EngineCodexForkMessage},
-	{"engine/claude/background-command", &EngineClaudeBackgroundCommand},
-	{"engine/codex/background-command", &EngineCodexBackgroundCommand},
-	{"engine/claude/foreground-timeout", &EngineClaudeForegroundTimeout},
-	{"engine/codex/foreground-timeout", &EngineCodexForegroundTimeout},
-	{"engine/claude/standing-instructions", &EngineClaudeStandingInstructions},
-	{"engine/codex/standing-instructions", &EngineCodexStandingInstructions},
-	{"engine/claude/absolute-paths", &EngineClaudeAbsolutePaths},
-	{"engine/codex/absolute-paths", &EngineCodexAbsolutePaths},
-	{"engine/claude/subagent-lookups", &EngineClaudeSubagentLookups},
-	{"engine/codex/subagent-lookups", &EngineCodexSubagentLookups},
-	{"engine/claude/darn-subagents", &EngineClaudeDarnSubagents},
-	{"engine/codex/darn-subagents", &EngineCodexDarnSubagents},
-	{"engine/claude/question-tool", &EngineClaudeQuestionTool},
-	{"engine/codex/question-tool", &EngineCodexQuestionTool},
 	{"beam-template-board-tidy", &BeamTemplateBoardTidy},
-	{"beam-template-describe", &BeamTemplateDescribe},
 	{"retro-template-task", &RetroTemplateTask},
 	{"gatefix-frame-cold", &GatefixFrameCold},
 	{"gatefix-body-darn", &GatefixBodyDarn},
@@ -1097,9 +910,11 @@ var roleOpeningStencils = map[string][]string{
 	"conflict":             {"landing-template-conflict"},
 	"fixer":                {"landing-template-fixer"},
 	"fix-reviewer":         {"landing-template-fix-review"},
+	"pr-reviewer":          {"landing-template-pr-review"},
 	"bouncer-judge":        {"bouncer-template-judge"},
-	"bouncer-verify":       {"bouncer-template-verify"},
-	"bouncer-seed":         {"bouncer-template-seed", "harden-template-seed"},
+	"bouncer-seed":         {"bouncer-template-seed"},
+	"treadle-targeting":    {"treadle-template-targeting"},
+	"treadle-judge":        {"treadle-template-judge-circling", "treadle-template-judge-milestone"},
 	"friction":             {"friction-template-reflection"},
 	"describe":             {"landing-template-describe"},
 	"darn":                 {"darn-template-write"},
@@ -1108,7 +923,6 @@ var roleOpeningStencils = map[string][]string{
 	"drift-expect":         {"drift-template-expect"},
 	"drift-judge":          {"drift-template-judge"},
 	"board-tidy":           {"beam-template-board-tidy"},
-	"beam-describe":        {"beam-template-describe"},
 }
 
 // askOperatorPhrases is the closed list of phrases that tell an agent to put a question to the operator in its pane.
@@ -1162,15 +976,7 @@ func (registry) Default(name string) ([]byte, bool) {
 
 // Registry returns the stencilstore.Registry backed by this package's embedded defaults.
 // No engine imports this package outside its tests.
-// An engine reads a stencil at call time via stencilstore.Read.
-// This package registers the registry with stencilstore at init.
-// A read can then detect a board copy that a newer binary wrote.
+// An engine reads a stencil at call time via stencilstore.Read, which needs no registry.
 func Registry() stencilstore.Registry {
 	return registry{}
-}
-
-// init registers the embedded defaults with stencilstore,
-// so a read can refuse a board copy a newer binary wrote instead of rendering text this binary does not understand.
-func init() {
-	stencilstore.RegisterShipped(Registry())
 }

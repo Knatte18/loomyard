@@ -4,7 +4,6 @@ package landingshed
 
 import (
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -28,22 +28,10 @@ type Config struct {
 	ConflictTimeoutMin int `yaml:"conflict_timeout_min"`
 	// Describe is the model-spec string selecting the model the Describe row's session runs under.
 	Describe string `yaml:"describe"`
-	// DescribeTimeoutMin is the wall-clock budget in minutes of the Describe session's writer.
-	// While a reviewer runs, the writer's and the reviewer's runs are each bounded by this plus DescribeReviewTimeoutMin.
+	// DescribeTimeoutMin is the Describe session's wall-clock budget in minutes.
 	DescribeTimeoutMin int `yaml:"describe_timeout_min"`
-	// DescribeForbiddenTerms are the regular expressions a change description's line may not match:
-	// the names of the tooling that wrote the change, which a repository's reader never sees.
-	// An empty list checks no term, for a repository whose own names they are.
-	DescribeForbiddenTerms []string `yaml:"describe_forbidden_terms"`
-	// forbiddenTerms are DescribeForbiddenTerms compiled, set by LoadConfig.
-	forbiddenTerms []*regexp.Regexp
-	// DescribeReview is the model-spec string of the Describe row's reviewer, which reviews the change description.
-	// Empty runs no reviewer.
-	DescribeReview string `yaml:"describe_review"`
-	// DescribeReviewTimeoutMin is the longest unbroken wait of the writer's turn end on the reviewer, in minutes.
-	// The wait begins once the description has passed its check.
-	// While a reviewer runs, it is also added to DescribeTimeoutMin as the limit of both seats' runs.
-	DescribeReviewTimeoutMin int `yaml:"describe_review_timeout_min"`
+	// PRReviewer is the model-spec string selecting the model the PR-Review row's interactive session runs under.
+	PRReviewer string `yaml:"pr_reviewer"`
 	// Credit selects whether the landing commit and the pull request's body end with the credit block.
 	Credit bool `yaml:"credit"`
 	// CreditHeading is the credit block's first line; empty leaves the items without a heading.
@@ -83,8 +71,7 @@ const defaultIdleReleaseMin = 10
 // A parent_lock_idle_release_min below 1, an absent key included, returns the default and logs one Warn naming the key.
 func (c Config) IdleRelease() time.Duration {
 	if c.ParentLockIdleReleaseMin < 1 {
-		name := keyName("parent_lock_idle_release_min")
-		logger.Warn("landingshed: "+name+" is below 1 or absent, using the default", "key", name, "value", c.ParentLockIdleReleaseMin, "defaultMin", defaultIdleReleaseMin)
+		logger.Warn("landingshed: parent_lock_idle_release_min is below 1 or absent, using the default", "key", "parent_lock_idle_release_min", "value", c.ParentLockIdleReleaseMin, "defaultMin", defaultIdleReleaseMin)
 		return defaultIdleReleaseMin * time.Minute
 	}
 	return time.Duration(c.ParentLockIdleReleaseMin) * time.Minute
@@ -122,12 +109,6 @@ func (c Config) CreditBlock(enginesRun []string) string {
 	return strings.Join(lines, "\n")
 }
 
-// ForbiddenTerms returns the compiled describe_forbidden_terms, which a change description's check refuses a line for.
-// It is empty for a Config LoadConfig did not return.
-func (c Config) ForbiddenTerms() []*regexp.Regexp {
-	return c.forbiddenTerms
-}
-
 // creditEnginesKey is the landing.yaml key whose entries map engine names to credit block items.
 const creditEnginesKey = "credit_engines"
 
@@ -153,15 +134,12 @@ func ConfigSpec() configengine.Spec {
 			"conflict_timeout_min": configengine.CategoryNone,
 			"describe":             configengine.CategoryNone,
 			"describe_timeout_min": configengine.CategoryNone,
-			// The forbidden terms shape the text that lands on the parent branch and in the pull request.
-			forbiddenTermsKey:           configengine.CategoryCrossPair,
-			describeReviewKey:           configengine.CategoryNone,
-			describeReviewTimeoutMinKey: configengine.CategoryNone,
-			"credit":                    configengine.CategoryCrossPair,
-			"credit_heading":            configengine.CategoryCrossPair,
-			"credit_loomyard":           configengine.CategoryCrossPair,
-			creditEnginesKey:            configengine.CategoryCrossPair,
-			"deploy":                    configengine.CategoryExecutable,
+			"pr_reviewer":          configengine.CategoryNone,
+			"credit":               configengine.CategoryCrossPair,
+			"credit_heading":       configengine.CategoryCrossPair,
+			"credit_loomyard":      configengine.CategoryCrossPair,
+			creditEnginesKey:       configengine.CategoryCrossPair,
+			"deploy":               configengine.CategoryExecutable,
 			// The idle bound decides when one pair's parent lock frees for the next pair waiting on it.
 			"parent_lock_idle_release_min": configengine.CategoryCrossPair,
 			"fixer":                        configengine.CategoryNone,
@@ -172,14 +150,10 @@ func ConfigSpec() configengine.Spec {
 			"finalize_fix_max_lines":     configengine.CategoryCrossPair,
 			"finalize_fix_review_rounds": configengine.CategoryCrossPair,
 		},
-		// The local layer judges a retired key by the category it held, so it refuses all but landing.pr_reviewer.
-		// The machine layer refuses every retired key here, since none held the machine category.
+		// A file still holding a retired key loads and reconcile prunes it.
 		// publish_verify belongs to the hub's publish gate.
 		// The co-author and trailer keys are not carried into the credit keys, since their values are co-author lines.
-		// landing.pr_reviewer chose the model of the PR-Review session.
-		// No run starts that session now that no agent reviews a pull request.
 		RetiredKeys: map[string]configengine.Category{
-			"pr_reviewer":     configengine.CategoryNone,
 			"publish_verify":  configengine.CategoryExecutable,
 			"co_authored_by":  configengine.CategoryCrossPair,
 			"trailer_text":    configengine.CategoryCrossPair,
@@ -191,12 +165,10 @@ func ConfigSpec() configengine.Spec {
 // LoadConfig loads and unmarshals the landing module's configuration through the hub-wide layer stack under dirs.
 // The load is strict: an absent config file is an error.
 // Its producers are reachable only inside a hub, where a missing config means the hub is broken.
-// It validates the model-spec grammar of the conflict, describe and fixer keys at load time.
-// It validates that of describe_review too when the key is set.
+// It validates the conflict, describe, pr_reviewer and fixer keys' model-spec grammar at load time.
 // A typo in one of them fails at load, not when its session spawns.
-// It refuses a fixer timeout, fixer attempt cap, fixer line cap, fix review round cap or describe review timeout below 1.
-// It also refuses a credit_engines entry whose key names no engine,
-// and a describe_forbidden_terms entry that does not compile as a regular expression or matches the empty string.
+// It refuses a fixer timeout, fixer attempt cap, fixer line cap or fix review round cap below 1.
+// It also refuses a credit_engines entry whose key names no engine.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -214,55 +186,60 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	}
 
 	if _, err := modelspec.Parse(cfg.Conflict); err != nil {
-		return Config{}, fmt.Errorf("config key %q: %w", keyName(conflictKey), err)
+		return Config{}, fmt.Errorf("landing config key %q: %w", "conflict", err)
 	}
 
 	if _, err := modelspec.Parse(cfg.Describe); err != nil {
-		return Config{}, fmt.Errorf("config key %q: %w", keyName(describeKey), err)
+		return Config{}, fmt.Errorf("landing config key %q: %w", "describe", err)
+	}
+
+	if _, err := modelspec.Parse(cfg.PRReviewer); err != nil {
+		return Config{}, fmt.Errorf("landing config key %q: %w", "pr_reviewer", err)
 	}
 
 	if _, err := modelspec.Parse(cfg.Fixer); err != nil {
-		return Config{}, fmt.Errorf("config key %q: %w", keyName(fixerKey), err)
-	}
-	if cfg.DescribeReview != "" {
-		if _, err := modelspec.Parse(cfg.DescribeReview); err != nil {
-			return Config{}, fmt.Errorf("config key %q: %w", keyName(describeReviewKey), err)
-		}
+		return Config{}, fmt.Errorf("landing config key %q: %w", "fixer", err)
 	}
 	for _, positive := range []struct {
 		key   string
 		value int
 	}{
-		{fixerTimeoutMinKey, cfg.FixerTimeoutMin},
+		{"fixer_timeout_min", cfg.FixerTimeoutMin},
 		{"parent_align_fix_attempts", cfg.ParentAlignFixAttempts},
 		{"finalize_fix_attempts", cfg.FinalizeFixAttempts},
 		{"finalize_fix_max_lines", cfg.FinalizeFixMaxLines},
 		{"finalize_fix_review_rounds", cfg.FinalizeFixReviewRounds},
-		{describeReviewTimeoutMinKey, cfg.DescribeReviewTimeoutMin},
 	} {
 		if positive.value < 1 {
-			return Config{}, fmt.Errorf("config key %q: %d is below 1; way forward: lym config landing --set %s=<n> from the prime", keyName(positive.key), positive.value, positive.key)
+			return Config{}, fmt.Errorf("landing config key %q: %d is below 1; way forward: lym config landing --set %s=<n> from the prime", positive.key, positive.value, positive.key)
 		}
 	}
 	engines := modelspec.EngineNames()
 	for name := range cfg.CreditEngines {
 		if !slices.Contains(engines, name) {
-			return Config{}, fmt.Errorf("config key %q: %q is no engine; use one of %v, or remove the entry", keyName(creditEnginesKey+"."+name), name, engines)
+			return Config{}, fmt.Errorf("landing config key %q: %q is no engine; use one of %v, or remove the entry", creditEnginesKey+"."+name, name, engines)
 		}
-	}
-	for i, term := range cfg.DescribeForbiddenTerms {
-		pattern, err := regexp.Compile(term)
-		if err != nil {
-			return Config{}, fmt.Errorf("config key %q: entry %d %q is no regular expression: %w; way forward: fix the entry with lym config landing --set from the prime", keyName(forbiddenTermsKey), i, term, err)
-		}
-		// A line's match of such a pattern may be empty, which the check reads as no match.
-		// The probe's word boundaries catch a pattern that matches empty only at one, such as `\b|term`.
-		probe := pattern.FindStringIndex("a b")
-		if pattern.MatchString("") || probe != nil && probe[0] == probe[1] {
-			return Config{}, fmt.Errorf("config key %q: entry %d %q matches the empty string, so it would let lines holding its term through; way forward: fix the entry with lym config landing --set from the prime", keyName(forbiddenTermsKey), i, term)
-		}
-		cfg.forbiddenTerms = append(cfg.forbiddenTerms, pattern)
 	}
 
 	return cfg, nil
+}
+
+// retiredKeyRenames maps each retired landing.yaml key onto the key that replaced it.
+var retiredKeyRenames = []yamlengine.KeyRename{
+	{From: "require_pr_to_base", To: "deploy_branches"},
+	{From: "merge_fix_attempts", To: "parent_align_fix_attempts"},
+}
+
+// MigrateConfig rewrites a landing.yaml document for lym config reconcile.
+// It returns the rewritten bytes and one line per rewrite.
+// Each retired key is renamed to the key that replaced it, keeping its value, an empty list included.
+// When the document already holds the replacement key, that key is kept and the retired key is dropped.
+// A document without a retired key is returned unchanged, so a migrated file is unchanged on a second pass.
+// A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
+func MigrateConfig(existing []byte) ([]byte, []string, error) {
+	migrated, lines, err := yamlengine.RenameKeys([]byte(ConfigTemplate()), existing, retiredKeyRenames)
+	if err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate landing config: %w", err))
+	}
+	return migrated, lines, nil
 }

@@ -39,7 +39,7 @@ running, and exits 0, telling the caller to run the command again;
 a fork that never reports keeps it answering ready false, so the caller bounds its re-runs.
 
 Run it from the session that spawned the forks, in a message after the one
-that spawned them, with a shell command timeout above --cap (300000 ms), and
+that spawned them, with a Bash tool timeout above --cap (300000 ms), and
 re-run it in a turn that does nothing else, so the prompt cache stays warm
 between calls. It runs from the anchored directory, any directory below it,
 or anywhere in the worktree's records sibling. It is read-only.

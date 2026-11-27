@@ -1,16 +1,15 @@
-// remotecontrol.go holds the RC button's pane mark.
-// The mark shows that an agent's session recorded its remote control connecting.
-// It holds the engine-less pane read a click on the RC button runs.
-// It also holds the engine op that sets the mark once a session's connection is recorded.
+// remotecontrol.go holds the RC button's pane mark, which shows that lym turned remote control on in an agent's session.
+// It holds the engine-less read and write a click on the RC button runs.
+// It also holds the engine op a launch with remote control runs.
 
 package reedengine
 
 import (
 	"fmt"
+	"strings"
 )
 
-// remoteControlPaneOption is the pane user option marking that the pane's session recorded its remote control connecting.
-// A request the provider refused sets no mark.
+// remoteControlPaneOption is the pane user option marking that lym turned remote control on in the pane's session.
 // The RC button is lit while the window's active pane carries it, and the mark dies with the pane.
 const remoteControlPaneOption = "@lym_rc"
 
@@ -33,16 +32,23 @@ func ClientAgentPane(tmuxPath, socketPath, client string) (AgentPane, error) {
 	return clientAgentPaneVia(newTmuxCmdForSocketPath(tmuxPath, socketPath), client)
 }
 
-// clientAgentPaneVia reads the active pane of client's own session over cmd, so a test can replace the tmux command.
+// clientAgentPaneVia reads the active pane of client over cmd, so a test can replace the tmux command.
 func clientAgentPaneVia(cmd TmuxCmd, client string) (AgentPane, error) {
-	fields, err := readClientFormatsVia(cmd, client, "#{pane_id}", "#{"+strandNamePaneOption+"}", "#{"+remoteControlPaneOption+"}")
+	format := "#{pane_id}\t#{" + strandNamePaneOption + "}\t#{" + remoteControlPaneOption + "}"
+	out, err := cmd.output("display-message", "-p", "-c", client, format)
 	if err != nil {
 		return AgentPane{}, fmt.Errorf("reed: read the active pane of client %q: %w", client, err)
 	}
-	if fields[0] == "" {
+	fields := strings.Split(strings.TrimRight(out, "\r\n"), "\t")
+	if len(fields) != 3 || fields[0] == "" {
 		return AgentPane{}, fmt.Errorf("reed: client %q shows no active pane", client)
 	}
 	return AgentPane{PaneID: fields[0], StrandName: fields[1], RemoteControlOn: fields[2] != ""}, nil
+}
+
+// MarkPaneRemoteControlOn sets the RC mark on the pane paneID of the tmux server at socketPath.
+func MarkPaneRemoteControlOn(tmuxPath, socketPath, paneID string) error {
+	return markPaneRemoteControlOnVia(newTmuxCmdForSocketPath(tmuxPath, socketPath), paneID)
 }
 
 // markPaneRemoteControlOnVia sets the RC mark on paneID over cmd, so a test can replace the tmux command.
@@ -54,8 +60,7 @@ func markPaneRemoteControlOnVia(cmd TmuxCmd, paneID string) error {
 }
 
 // MarkRemoteControlOn sets the RC mark on the live pane of the strand guid in this session.
-// Its caller calls it once the strand's session records its remote control connecting,
-// so the RC button shows the strand lit.
+// A launch that started the strand with remote control on calls it, so the RC button shows the strand lit.
 // Nothing is persisted: a failed call returns an error for the caller to log.
 func (e *Engine) MarkRemoteControlOn(guid string) error {
 	return e.withOpLock(func() error {

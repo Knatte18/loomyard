@@ -15,19 +15,18 @@ func setOffParagraph(block string) string {
 }
 
 // modeRules returns the {{.mode_rules}} block for autonomous or interactive mode.
-// It names no engine's tool, so it holds whichever engine the session launches on.
 func modeRules(autonomous bool) string {
 	if autonomous {
 		return "This session is running autonomously: no operator will " +
 			"answer questions. For every decision point, make your own best-judgment " +
-			"choice and proceed — never block waiting for input, and never call a " +
-			"tool that opens a question dialog. Record each self-made pick and its rationale in the " +
+			"choice and proceed — never block waiting for input, and never call the " +
+			"`AskUserQuestion` tool. Record each self-made pick and its rationale in the " +
 			"support log's `## Question ledger`, marked as an auto-pick."
 	}
 	return "This session is running interactively: an operator is present at the pane. " +
 		"Ask questions as plain numbered-list text directly in the pane, and wait for " +
 		"the operator's typed reply before proceeding. Batch related questions together " +
 		"(at most 5 questions per batch) and always list your recommended answer as " +
-		"option 1. Never call a tool that opens a question dialog — the " +
-		"resume mechanism cannot drive one; ask conversationally in the pane instead."
+		"option 1. Never call the `AskUserQuestion` tool — it opens a modal dialog the " +
+		"resume mechanism cannot drive; ask conversationally in the pane instead."
 }

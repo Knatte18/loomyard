@@ -33,12 +33,11 @@ var checkedCallRawTokens = []string{
 // A zero is listed explicitly rather than omitted.
 // A package with no entry counts as pinned zero, not skipped.
 var checkedCallPinnedRawSites = map[string]int{
-	"internal/gitrepo":       4, // run's own body, Pull, Fetch's plain call, Fetch's pruning call
+	"internal/gitrepo":       3, // run's own body, Pull, Fetch
 	"internal/fabricengine":  0,
 	"internal/lymcwd":        0,
 	"internal/fabriccli":     0,
 	"internal/websterengine": 0,
-	"internal/commentlint":   1, // changedGoFiles' cat-file probe of an untracked path at the base
 
 	"internal/gitrepo/internal/gitoracle": 6, // CurrentSHA, SHAExists, ChangedFilesSince, CurrentBranch, HeadRef, verifyQuiet
 }

@@ -1,12 +1,11 @@
-// warpbinding_reconcile_integration_test.go covers the warp-URL binding comparison of Topology.Reconcile:
-// the present, diverged and skipped outcomes of reconcileWarpBinding in reconcile.go.
+// warpbinding_reconcile_integration_test.go covers the warp-URL binding backfill of Topology.Reconcile:
+// the recorded, present, diverged, skipped and deferred outcomes of reconcileWarpBinding in reconcile.go.
 // The check runs exactly once per Reconcile call, however many pairs the hub has.
 // A divergent or transport-only-differing record is reported but never overwritten.
-// A missing record is reported and never written.
 // Unwire leaves a recorded binding untouched.
 //
-// Every test needs a hub built through CloneHub.
-// The comparison reads the warp side's real "origin" remote as CloneHub sets it up.
+// Every test needs a hub built through CloneHub's own backfill path.
+// The backfill reads the warp side's real "origin" remote as CloneHub sets it up.
 // hubforge.NewHub's pre-wired template does not set it up that way.
 // This file therefore builds its own newClonedHubFixture on top of CloneHub.
 // It reuses makeBareRemote from clone_adopt_test.go.
@@ -45,8 +44,11 @@ type clonedHubFixture struct {
 // it therefore carries no .lym-anchor of its own.
 //
 // The fixture leaves the board worktree clean only after a local commit.
+// CloneHub writes the anchor marker and seedRepoWideFabricConfig writes the repo-wide config; neither is committed.
 // CloneHub never commits; only the CLI's Bolt.Commit does, so the board is dirty when CloneHub returns.
 // A local stage-all commit through Bolt, with no push, closes that gap.
+// Every "recorded"-outcome test below depends on that clean board:
+// without it, reconcileWarpBinding's dirty-board guard defers the write instead.
 func newClonedHubFixture(t *testing.T) clonedHubFixture {
 	t.Helper()
 
@@ -94,7 +96,7 @@ func newClonedHubFixture(t *testing.T) clonedHubFixture {
 }
 
 // unbindHub removes the recorded warp-binding file from boardDir's worktree and commits that deletion through a Bolt.
-// That produces an unbound hub, explicitly rather than by assumption.
+// That produces the unbound hub that predates the binding, explicitly rather than by assumption.
 // The commit runs on boardDir itself, which leaves the board clean for the test.
 func unbindHub(t *testing.T, boardDir string) {
 	t.Helper()
@@ -123,10 +125,10 @@ func writeAndCommitBinding(t *testing.T, boardDir, url string) {
 	}
 }
 
-// TestReconcile_UnboundHubIsReportedNotBackfilled asserts that an unbound wired hub gains no record on Reconcile:
-// the outcome is "skipped" with a detail naming the missing record, the board root holds no binding file,
+// TestReconcile_BacksFillsBindingOnce asserts that an unbound wired hub gains the record on its first Reconcile:
+// the outcome is "recorded", the board root holds the file with the warp origin URL,
 // and no pair result carries a binding detail, because the binding is a repo-wide fact.
-func TestReconcile_UnboundHubIsReportedNotBackfilled(t *testing.T) {
+func TestReconcile_BacksFillsBindingOnce(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -137,13 +139,17 @@ func TestReconcile_UnboundHubIsReportedNotBackfilled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	if result.WarpBinding != fabricengine.WarpBindingOutcomeSkipped || result.WarpBindingDetail == "" {
-		t.Fatalf("WarpBinding = %q (detail %q); want %q with a detail", result.WarpBinding, result.WarpBindingDetail, fabricengine.WarpBindingOutcomeSkipped)
+	if result.WarpBinding != fabricengine.WarpBindingOutcomeRecorded {
+		t.Fatalf("WarpBinding = %q (detail %q); want %q", result.WarpBinding, result.WarpBindingDetail, fabricengine.WarpBindingOutcomeRecorded)
 	}
 
 	bindingPath := filepath.Join(fixture.Result.BoardDir, fabricengine.WarpBindingFileName)
-	if _, statErr := os.Stat(bindingPath); statErr == nil {
-		t.Errorf("binding file %s was written; want Reconcile to write nothing", bindingPath)
+	data, err := os.ReadFile(bindingPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", bindingPath, err)
+	}
+	if got, want := strings.TrimSpace(string(data)), filepath.ToSlash(fixture.CodeBare); got != want {
+		t.Errorf("binding content = %q; want %q (the warp origin URL)", got, want)
 	}
 
 	for _, pair := range result.Pairs {
@@ -183,6 +189,44 @@ func TestReconcile_DivergentRecordIsLeftUntouched(t *testing.T) {
 	}
 	if got := strings.TrimSpace(string(data)); got != divergent {
 		t.Errorf("binding content = %q; want unchanged %q", got, divergent)
+	}
+}
+
+// TestReconcile_DirtyBoardDefersWrite asserts that an uncommitted unrelated file defers the write:
+// the outcome is "deferred" and no binding file is written.
+// The unrelated file is neither committed nor pushed: it stays untracked, and the board's HEAD is unchanged.
+func TestReconcile_DirtyBoardDefersWrite(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	fixture := newClonedHubFixture(t)
+	unbindHub(t, fixture.Result.BoardDir)
+
+	headBefore := gitOutput(t, fixture.Result.BoardDir, "rev-parse", "HEAD")
+
+	unrelated := filepath.Join(fixture.Result.BoardDir, "unrelated-scratch.txt")
+	if err := os.WriteFile(unrelated, []byte("scratch"), 0o644); err != nil {
+		t.Fatalf("write unrelated file: %v", err)
+	}
+
+	result, err := fixture.Topology.Reconcile(fixture.Layout)
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if result.WarpBinding != fabricengine.WarpBindingOutcomeDeferred {
+		t.Fatalf("WarpBinding = %q (detail %q); want %q", result.WarpBinding, result.WarpBindingDetail, fabricengine.WarpBindingOutcomeDeferred)
+	}
+
+	bindingPath := filepath.Join(fixture.Result.BoardDir, fabricengine.WarpBindingFileName)
+	if _, statErr := os.Stat(bindingPath); statErr == nil {
+		t.Errorf("binding file %s was written; want the write deferred", bindingPath)
+	}
+
+	if tracked := gitOutput(t, fixture.Result.BoardDir, "ls-files", "--", "unrelated-scratch.txt"); tracked != "" {
+		t.Errorf("unrelated file was committed (tracked as %q); want it left untracked", tracked)
+	}
+	if headAfter := gitOutput(t, fixture.Result.BoardDir, "rev-parse", "HEAD"); headAfter != headBefore {
+		t.Errorf("board HEAD changed from %s to %s; want unchanged (no commit or push attempted)", headBefore, headAfter)
 	}
 }
 

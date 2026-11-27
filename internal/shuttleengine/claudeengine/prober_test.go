@@ -32,18 +32,12 @@ func TestProcessLiveness(t *testing.T) {
 	}
 
 	tests := []struct {
-		name  string
-		files map[string]string
-		noDir bool
-		// second holds the files of a second registry directory, added when it is non-nil;
-		// secondNoDir adds a second registry directory that does not exist.
-		// secondFile adds a second registry path that is a regular file, so it cannot be read as a directory.
-		second      map[string]string
-		secondNoDir bool
-		secondFile  bool
-		alive       func(int) bool
-		start       func(int) (string, bool)
-		wanted      shuttleengine.Liveness
+		name   string
+		files  map[string]string
+		noDir  bool
+		alive  func(int) bool
+		start  func(int) (string, bool)
+		wanted shuttleengine.Liveness
 	}{
 		{
 			name:   "live pid with a matching start time is alive",
@@ -95,42 +89,11 @@ func TestProcessLiveness(t *testing.T) {
 			wanted: shuttleengine.LivenessUnproven,
 		},
 		{
-			name:   "a missing registry is unproven",
+			name:   "an unreadable registry is unproven",
 			noDir:  true,
 			alive:  deadAll,
 			start:  startsAt("", false),
 			wanted: shuttleengine.LivenessUnproven,
-		},
-		{
-			name:   "a live entry in a second registry is alive",
-			second: map[string]string{"a.json": entry(4242, resumeTestID, "100")},
-			alive:  aliveAll,
-			start:  startsAt("100", true),
-			wanted: shuttleengine.LivenessAlive,
-		},
-		{
-			name:        "a dead entry beside a missing second registry is dead",
-			files:       map[string]string{"a.json": entry(4242, resumeTestID, "100")},
-			secondNoDir: true,
-			alive:       deadAll,
-			start:       startsAt("", false),
-			wanted:      shuttleengine.LivenessDead,
-		},
-		{
-			name:        "a live entry beside a missing second registry is alive",
-			files:       map[string]string{"a.json": entry(4242, resumeTestID, "100")},
-			secondNoDir: true,
-			alive:       aliveAll,
-			start:       startsAt("100", true),
-			wanted:      shuttleengine.LivenessAlive,
-		},
-		{
-			name:       "a dead entry beside an unreadable second registry is unproven",
-			files:      map[string]string{"a.json": entry(4242, resumeTestID, "100")},
-			secondFile: true,
-			alive:      deadAll,
-			start:      startsAt("", false),
-			wanted:     shuttleengine.LivenessUnproven,
 		},
 	}
 
@@ -146,28 +109,7 @@ func TestProcessLiveness(t *testing.T) {
 					writeRegistryEntry(t, registryDir, name, content)
 				}
 			}
-			registryDirs := []string{registryDir}
-			if tt.second != nil {
-				second := filepath.Join(t.TempDir(), "sessions")
-				if err := os.MkdirAll(second, 0o755); err != nil {
-					t.Fatal(err)
-				}
-				for name, content := range tt.second {
-					writeRegistryEntry(t, second, name, content)
-				}
-				registryDirs = append(registryDirs, second)
-			}
-			if tt.secondNoDir {
-				registryDirs = append(registryDirs, filepath.Join(t.TempDir(), "sessions"))
-			}
-			if tt.secondFile {
-				second := filepath.Join(t.TempDir(), "sessions")
-				if err := os.WriteFile(second, nil, 0o644); err != nil {
-					t.Fatal(err)
-				}
-				registryDirs = append(registryDirs, second)
-			}
-			if got := processLiveness(resumeTestID, registryDirs, tt.alive, tt.start); got != tt.wanted {
+			if got := processLiveness(resumeTestID, registryDir, tt.alive, tt.start); got != tt.wanted {
 				t.Fatalf("processLiveness = %v, want %v", got, tt.wanted)
 			}
 		})

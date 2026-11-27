@@ -15,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -478,34 +477,6 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 		}
 	})
 
-	t.Run("a dead loop's stop hands its in-flight step to OnStepOrphaned and keeps that step's interrupted record", func(t *testing.T) {
-		w := newWaitWorld(t)
-		w.setStatus("A", shedengine.StateRunning, 0)
-		w.writePID(LoopPIDRecord{LoopID: "dead-1", Child: proc.TreeRecord{PID: 4242}, TraceID: "trace-dead", CurrentProducer: "A"})
-		var orphaned []string
-		w.spec.Loop.OnStepOrphaned = func(traceID string) string {
-			orphaned = append(orphaned, traceID)
-			return "a run stayed held"
-		}
-
-		w.wait()
-
-		if !slices.Equal(orphaned, []string{"trace-dead"}) {
-			t.Errorf("OnStepOrphaned trace ids = %v; want the dead loop's trace-dead", orphaned)
-		}
-		data, err := os.ReadFile(filepath.Join(w.stepsDir, "trace-dead"+envelopeSuffix))
-		if err != nil {
-			t.Fatalf("read the in-flight step's record: %v", err)
-		}
-		var record struct {
-			Kind    string `json:"kind"`
-			TraceID string `json:"trace_id"`
-		}
-		if err := json.Unmarshal(data, &record); err != nil || record.Kind != KindInterrupted || record.TraceID != "trace-dead" {
-			t.Errorf("in-flight step record kind/trace_id = %q/%q (decode err %v); want %s/trace-dead", record.Kind, record.TraceID, err, KindInterrupted)
-		}
-	})
-
 	t.Run("a dead loop's stop waits for the keeper's exit mark that lands after the loop released its lock", func(t *testing.T) {
 		w := deadLoopWorld(t)
 		if err := os.WriteFile(w.spec.Loop.LogPath, []byte(loopLogMark("dead-1", loopStartingMark)), 0o644); err != nil {
@@ -541,12 +512,8 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 			// emptyProducer moves the status file to one whose current_producer is empty.
 			emptyProducer bool
 			// noChild records the child as exited, as the loop does once its child ends.
-			noChild bool
-			// recordedBootID is the boot id the pid file records, and currentBootID the machine's boot id now.
-			// Empty leaves either unknown.
-			recordedBootID string
-			currentBootID  string
-			wantProducer   string
+			noChild      bool
+			wantProducer string
 			// wantCause is what the cause carries after the loop log clause.
 			wantCause string
 			wantFile  func(w *waitWorld) string
@@ -651,45 +618,6 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 				wantFile:     func(w *waitWorld) string { return w.spec.Loop.LogPath },
 			},
 			{
-				name:           "UnmarkedExit_DifferentBootId_NamesAStopOfTheMachine",
-				loopLog:        "lym shed: loop dead-1 starting\n",
-				recordedBootID: "boot-a",
-				currentBootID:  "boot-b",
-				wantProducer:   "A",
-				wantCause: "; step A was in flight; loop exit: not recorded, since no process marked the loop's exit" +
-					", and the machine has booted since the loop started, so a stop of the machine likely ended it",
-				wantFile: func(w *waitWorld) string { return w.spec.Loop.LogPath },
-			},
-			{
-				name:           "UnmarkedExit_SameBootId_NamesAKill",
-				loopLog:        "lym shed: loop dead-1 starting\n",
-				recordedBootID: "boot-a",
-				currentBootID:  "boot-a",
-				wantProducer:   "A",
-				wantCause: "; step A was in flight; loop exit: not recorded, since no process marked the loop's exit" +
-					", and the machine has not booted since the loop started" +
-					", so a kill of the loop and its keeper that no process can catch likely ended it, as by SIGKILL or the out-of-memory killer",
-				wantFile: func(w *waitWorld) string { return w.spec.Loop.LogPath },
-			},
-			{
-				name:           "UnmarkedExit_RecordedBootIdCurrentUnknown_NamesBoth",
-				loopLog:        "lym shed: loop dead-1 starting\n",
-				recordedBootID: "boot-a",
-				wantProducer:   "A",
-				wantCause:      "; step A was in flight; loop exit: not recorded, since no process marked the loop's exit, as after a kill of the loop and its keeper that no process can catch or a stop of the machine",
-				wantFile:       func(w *waitWorld) string { return w.spec.Loop.LogPath },
-			},
-			{
-				name: "ReconciliationMarkOnly_IsNoExitRecord",
-				loopLog: "lym shed: loop dead-1 starting\n" +
-					"lym shed: loop dead-1 reconciled the steps whose process is gone: stopped shuttle runs: a:1:plan\n",
-				wantProducer: "A",
-				wantCause: "; step A was in flight; loop exit: not recorded, since no process marked the loop's exit" +
-					", as after a kill of the loop and its keeper that no process can catch or a stop of the machine" +
-					"; loop marks: lym shed: loop dead-1 reconciled the steps whose process is gone: stopped shuttle runs: a:1:plan",
-				wantFile: func(w *waitWorld) string { return w.spec.Loop.LogPath },
-			},
-			{
 				name:         "NoStartingMark_OnlyTheLoopExitClause",
 				loopLog:      "lym shed: loop old-1 starting\npanic: old crash\nlym shed: loop old-1 process 7 exited: exit status 2\n",
 				wantProducer: "A",
@@ -714,8 +642,7 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 				if tt.noChild {
 					child = proc.TreeRecord{}
 				}
-				w.writePID(LoopPIDRecord{LoopID: "dead-1", Child: child, TraceID: tt.traceID, CurrentProducer: "A", BootID: tt.recordedBootID})
-				w.spec.Loop.BootID = func() (string, bool) { return tt.currentBootID, tt.currentBootID != "" }
+				w.writePID(LoopPIDRecord{LoopID: "dead-1", Child: child, TraceID: tt.traceID, CurrentProducer: "A"})
 				var traceFiles []string
 				traceDir := t.TempDir()
 				for i, body := range tt.traceBodies {
@@ -744,12 +671,6 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 						}
 					}
 				}
-				const orphanedNote = "stopped shuttle runs: a:1:plan"
-				var orphaned []string
-				w.spec.Loop.OnStepOrphaned = func(traceID string) string {
-					orphaned = append(orphaned, traceID)
-					return orphanedNote
-				}
 				var producer, cause, file string
 				w.spec.Hooks.AfterInterrupt = func(_ context.Context, gotProducer, gotCause, gotFile string) string {
 					producer, cause, file = gotProducer, gotCause, gotFile
@@ -771,15 +692,6 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 					t.Errorf("loop status_moved = %v; want %v", got, wantStatusMoved)
 				}
 				wantCause := "loop-exited: loop dead-1 ended without an envelope; its output is in " + w.spec.Loop.LogPath + tt.wantCause
-				// The hook runs only for a child in flight under a recorded trace id.
-				wantOrphaned := ""
-				if tt.traceID != "" && !tt.noChild {
-					wantOrphaned = tt.traceID
-					wantCause += "; " + orphanedNote
-				}
-				if got := strings.Join(orphaned, ","); got != wantOrphaned {
-					t.Errorf("OnStepOrphaned trace ids = %q; want %q", got, wantOrphaned)
-				}
 				if producer != tt.wantProducer || cause != wantCause || file != tt.wantFile(w) {
 					t.Errorf("AfterInterrupt(%q, %q, %q); want (%q, %q, %q)", producer, cause, file, tt.wantProducer, wantCause, tt.wantFile(w))
 				}
@@ -1089,27 +1001,6 @@ func TestUntilStop_LoserWaitsOnWinner(t *testing.T) {
 			t.Errorf("children started = %d; want only the lock holder to step", len(w.requests))
 		}
 		w.assertNotFailed()
-	})
-
-	t.Run("a loop that cannot take the loop lock marks the reason in the loop log and steps nothing", func(t *testing.T) {
-		w := newWaitWorld(t, halting(shedengine.StateDone, "", 1))
-		holder, locked, err := lock.TryAcquireWriteLock(w.spec.Loop.LockPath)
-		if err != nil || !locked {
-			t.Fatalf("hold the loop lock = %v, locked %v; want held", err, locked)
-		}
-		t.Cleanup(func() { _ = holder.Release() })
-		w.spec.Loop.LockGrace = time.Millisecond
-
-		w.runDetached(detachedArgs("loser-1"))
-
-		log, err := os.ReadFile(w.spec.Loop.LogPath)
-		wantMark := loopLogMark("loser-1", "ends without an envelope: could not take the loop lock, so another loop owns the run")
-		if err != nil || string(log) != wantMark {
-			t.Errorf("loop log = %q, %v; want the loser's mark %q", log, err, wantMark)
-		}
-		if len(w.requests) != 0 {
-			t.Errorf("children started = %d; want none from a loop that never held the lock", len(w.requests))
-		}
 	})
 
 	t.Run("a waiter that polls before its loop takes the lock keeps waiting", func(t *testing.T) {

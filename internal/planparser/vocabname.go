@@ -67,7 +67,7 @@ func brokenFabricVocabularyRule(unit, member, last string, goToolchain bool) str
 	dir := unit
 	if goToolchain {
 		// An external test package sits in its package's directory, the directory the owner set is keyed by.
-		dir = GoPackageDir(unit)
+		dir = goPackageDir(unit)
 	}
 	isTestName := hasTestPrefix(last)
 

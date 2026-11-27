@@ -81,28 +81,15 @@ func dotnetEnv() []string {
 	return []string{"DOTNET_CLI_TELEMETRY_OPTOUT=1", "DOTNET_NOLOGO=1", "DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1"}
 }
 
-// writeDotnetFixture commits the files of dotnetFixtureFiles in a fresh git repository outside every hub.
+// writeDotnetFixture commits a .NET solution in a fresh git repository outside every hub.
 // It returns the repository root and the NuGet global-packages folder the restores read.
-// It skips the test when dotnet has no SDK or the test packages are not in the global-packages folder.
-func writeDotnetFixture(t *testing.T, dotnet string) (repo, packages string) {
-	t.Helper()
-	files, packages := dotnetFixtureFiles(t, dotnet)
-	repo = plankit.Repo(t, files)
-	gitkit.Git(t, repo, "init", "-q")
-	gitkit.Git(t, repo, "add", "-A")
-	gitkit.Git(t, repo, "commit", "-q", "-m", "the .NET fixture")
-	return repo, packages
-}
-
-// dotnetFixtureFiles returns the files of a .NET solution by worktree-relative path,
-// and the NuGet global-packages folder the restores read.
 // The solution holds two production projects, Circles with a Circle type and Squares with a Square type.
 // One NUnit test project references both, with a test class naming each type.
 // The fixture is shaped so MSBuild builds two projects in parallel and starts an out-of-process node.
-// The worktree's own gate.yaml, at `_lym/config/gate.yaml`, selects the dotnet scoper.
+// The worktree's own gate.yaml selects the dotnet scoper.
 // It names a shared build of the solution and a vstest tier that runs the test project without building.
 // It skips the test when dotnet has no SDK or the test packages are not in the global-packages folder.
-func dotnetFixtureFiles(t *testing.T, dotnet string) (files map[string]string, packages string) {
+func writeDotnetFixture(t *testing.T, dotnet string) (repo, packages string) {
 	t.Helper()
 
 	versionOut, err := runDotnetProbe(dotnet, t.TempDir(), "--version")
@@ -190,7 +177,7 @@ func dotnetFixtureFiles(t *testing.T, dotnet string) (files map[string]string, p
 		t.Fatal(err)
 	}
 
-	return map[string]string{
+	repo = plankit.Repo(t, map[string]string{
 		".gitignore":                         "bin/\nobj/\n.lym/\n",
 		"_lym/config/gate.yaml":              string(gateYAML),
 		"Fixture.sln":                        dotnetSolution,
@@ -201,7 +188,11 @@ func dotnetFixtureFiles(t *testing.T, dotnet string) (files map[string]string, p
 		"Fixture.Tests/Fixture.Tests.csproj": testProject,
 		"Fixture.Tests/CircleTests.cs":       tests("Circle"),
 		"Fixture.Tests/SquareTests.cs":       tests("Square"),
-	}, packages
+	})
+	gitkit.Git(t, repo, "init", "-q")
+	gitkit.Git(t, repo, "add", "-A")
+	gitkit.Git(t, repo, "commit", "-q", "-m", "the .NET fixture")
+	return repo, packages
 }
 
 // dotnetSolution is the classic solution file of the fixture's three projects.

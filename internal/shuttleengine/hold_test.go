@@ -411,36 +411,6 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 			},
 		},
 		{
-			name: "held turn ends of turns the operator typed remind the agent of its missing output once", events: "START\nSTART:what are you doing?\nSTOP:answered\n", apiError: true,
-			script: func(appendLine func(string), _ func(time.Duration)) []func() {
-				return []func(){func() { appendLine("START:and now?") }, func() { appendLine("STOP:answered again") }}
-			},
-			check: func(t *testing.T, got heldRun) {
-				if len(got.sent) != 1 || !strings.HasPrefix(got.sent[0], "[lym] Your turn ended without these output files: ") || !strings.Contains(got.sent[0], "out.md") || len(got.notices) != 0 {
-					t.Errorf("sent = %q, notices = %q; want one line naming out.md and no notice", got.sent, got.notices)
-				}
-			},
-		},
-		{
-			name: "a reminder whose send fails is typed at the next held turn end of an operator-typed turn", events: "START\nSTART:what are you doing?\nSTOP:answered\n", apiError: true, promptSendFailures: 1,
-			script: func(appendLine func(string), _ func(time.Duration)) []func() {
-				return []func(){func() { appendLine("START:and now?") }, func() { appendLine("STOP:answered again") }}
-			},
-			check: func(t *testing.T, got heldRun) {
-				if len(got.sent) != 1 {
-					t.Errorf("sent = %q; want the line once, typed at the second turn end", got.sent)
-				}
-			},
-		},
-		{
-			name: "a run with no notifier is reminded as well", events: "START\nSTART:what are you doing?\nSTOP:answered\n", apiError: true, noNotifier: true,
-			check: func(t *testing.T, got heldRun) {
-				if len(got.sent) != 1 {
-					t.Errorf("sent = %q; want the line once", got.sent)
-				}
-			},
-		},
-		{
 			name: "a deferred run whose held turn end followed an operator-typed turn neither queues nor sends a notice", events: "START\nSTART:what are you doing?\nSTOP:answered\n", session: true,
 			sleepJump: 5 * time.Minute, timeout: 2 * time.Hour,
 			deferral: func(*testing.T, func() time.Duration) func() bool { return func() bool { return false } },

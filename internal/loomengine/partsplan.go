@@ -46,7 +46,7 @@ const partsPlanLiveStrandsNote = "a resumed row whose chair or writers are still
 // It reads the decision record, the parts file and every part's overview.
 // Each writer writes its part's overview and reads the decision record, the relevant list and the parts file.
 // runTimeout is shuttle's run_timeout_min as a duration, told by the caller.
-// The caller tells it so that a plan.timeout_min of 0 resolves to the effective plan timeout.
+// The caller tells it so that a plan_timeout_min of 0 resolves to the effective plan timeout.
 // It bounds every writer.
 // The chair's seat timeout is cfg.PartsChairTimeout(runTimeout), and an error from it fails the table.
 // gates, accept and findingsPath build each writer's gate, Accept and failed-gate findings path from its part's name.
@@ -64,13 +64,13 @@ func PartsPlanTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg C
 		return seatengine.Table{}, err
 	}
 
-	chairChoice, err := resolveModelChoice(cfg.Parts.Chair, reg)
+	chairChoice, err := resolveModelChoice(cfg.PartsChair, reg)
 	if err != nil {
-		return seatengine.Table{}, fmt.Errorf("loom: PartsPlanTable: %s role model-spec: %w", FullKeyName(partsChairKey), err)
+		return seatengine.Table{}, fmt.Errorf("loom: PartsPlanTable: parts_chair role model-spec: %w", err)
 	}
-	writerChoice, err := resolveModelChoice(cfg.Parts.Writer, reg)
+	writerChoice, err := resolveModelChoice(cfg.PartWriter, reg)
 	if err != nil {
-		return seatengine.Table{}, fmt.Errorf("loom: PartsPlanTable: %s role model-spec: %w", FullKeyName(partsWriterKey), err)
+		return seatengine.Table{}, fmt.Errorf("loom: PartsPlanTable: part_writer role model-spec: %w", err)
 	}
 	chairTimeout, err := cfg.PartsChairTimeout(runTimeout)
 	if err != nil {
@@ -87,7 +87,7 @@ func PartsPlanTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg C
 	}
 
 	var frictionDir string
-	if cfg.Friction.Model != "" {
+	if cfg.Friction != "" {
 		frictionDir = LoomFrictionDir(layout)
 	}
 	seatFriction := func(noteName string) map[string]string {
@@ -120,7 +120,7 @@ func PartsPlanTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg C
 	chair := seatengine.Seat{
 		Stencil:     partsChairStencil,
 		ModelChoice: chairChoice,
-		ModelKey:    shuttleengine.ModelKey{Module: tapestryModule, Key: partsChairKey},
+		ModelKey:    shuttleengine.ModelKey{Module: tapestryModule, Key: "parts_chair"},
 		Inputs:      append([]string{DiscussionDecisionRecord(layout), partsFile}, overviews...),
 		Outputs:     []string{partsparser.JoinRecord(anchor)},
 		ConfigRole:  agentconfig.RolePlan,
@@ -146,7 +146,7 @@ func PartsPlanTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg C
 			Name:             part.Name,
 			Stencil:          partWriterStencil,
 			ModelChoice:      writerChoice,
-			ModelKey:         shuttleengine.ModelKey{Module: tapestryModule, Key: partsWriterKey},
+			ModelKey:         shuttleengine.ModelKey{Module: tapestryModule, Key: "part_writer"},
 			Inputs:           []string{DiscussionDecisionRecord(layout), DiscussionRelevant(layout), partsFile},
 			Outputs:          []string{partsparser.PartOverview(anchor, part.Name)},
 			ConfigRole:       agentconfig.RolePlan,

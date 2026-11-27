@@ -4,7 +4,6 @@
 // It never renders the other branch's phrasing.
 // Each block helper's content lands in its own instruction file.
 // It does not leak into a seat stencil or a sibling instruction file.
-// The fix step's work statement says when and why a fix runs again.
 
 package burlerengine
 
@@ -93,7 +92,7 @@ func composeReview(t *testing.T, stencilsDir string, p *Profile, patternDirectiv
 // It fails the test on error.
 func composeFix(t *testing.T, stencilsDir string, p *Profile, frictionDirective string) halfPrompt {
 	t.Helper()
-	prompt, err := composeFixPrompt(stencilsDir, testSpecsDir, "claude", p, frictionDirective, fixWork(p.ReviewPath, "", false, FixRerun{}), testFixFiles)
+	prompt, err := composeFixPrompt(stencilsDir, testSpecsDir, "claude", p, frictionDirective, fixWork(p.ReviewPath, "", false), testFixFiles)
 	if err != nil {
 		t.Fatalf("composeFixPrompt() = %v; want nil error", err)
 	}
@@ -143,40 +142,6 @@ func fixHalf(t *testing.T, stencilsDir string, p *Profile, frictionDirective str
 // TestComposePrompt_FocusDirective proves a round's focus file reaches the explore step through its own channel.
 // The precedence rule applies, and the file never reaches the review step's prior-rounds block.
 // A round without a directive renders no focus text and no marker residue.
-// TestFixWork_Rerun proves a fix that runs again tells its fixer so and why.
-// It names the earlier session's archived report when there is one; a first fix carries no rerun statement.
-func TestFixWork_Rerun(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	const first = "Fix every finding of the review at `/r/review.md`."
-	const check = "The target may already hold that session's changes: check each finding against the target as it stands, keep each change that holds, and write the fixer-report afresh"
-	tests := []struct {
-		name  string
-		rerun FixRerun
-		want  string
-	}{
-		{name: "a first fix", want: first},
-		{
-			name:  "a rerun over an archived report",
-			rerun: FixRerun{Reason: "the round halted: gate closure failed", Report: "/r/round-1-fixer-report-20260816T151326Z.md"},
-			want:  first + "\n\nThis fix runs again, not for new work. An earlier fixer session over this review wrote a fixer-report, now set aside as `/r/round-1-fixer-report-20260816T151326Z.md`; the reason: the round halted: gate closure failed. " + check + ", carrying over each of its dispositions that still applies.",
-		},
-		{
-			name:  "a rerun after a session that left no report",
-			rerun: FixRerun{Reason: `attempt 1's session ended with outcome "died"`},
-			want:  first + "\n\nThis fix runs again, not for new work. An earlier fixer session over this review ended without a fixer-report; the reason: attempt 1's session ended with outcome \"died\". " + check + ".",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := fixWork("/r/review.md", "", false, tt.rerun); got != tt.want {
-				t.Errorf("fixWork(%+v) = %q; want %q", tt.rerun, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestComposePrompt_FocusDirective(t *testing.T) {
 	tiergate.Require(t, 0)
 	stencilsDir := newTestStencilsDir(t)
@@ -257,24 +222,6 @@ func TestComposePrompt_FocusDirective(t *testing.T) {
 			t.Errorf("focus-marker warning lines = %q; want none", lines)
 		}
 	})
-}
-
-// TestComposeFixPrompt_TargetInstructions proves the profile's target instructions follow the fix step's work statement.
-func TestComposeFixPrompt_TargetInstructions(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	const instructions = "Leave a live regression test for a defect found live."
-	p := newComposableProfile(t)
-	p.Target.Instructions = instructions
-
-	fix := composeFix(t, newTestStencilsDir(t), &p, "")
-
-	content := fix.Files[fixStepFile].Content
-	work, at := fixWork(p.ReviewPath, "", false, FixRerun{}), strings.Index(content, instructions)
-	if at < 0 || at < strings.Index(content, work) {
-		t.Errorf("fix step = %q; want the instructions %q after the work statement %q", content, instructions, work)
-	}
 }
 
 // TestComposePrompt_MinimalProfile proves a minimal valid profile composes both halves cleanly through stencil:
@@ -380,7 +327,7 @@ func TestComposePrompt_ParentDirective(t *testing.T) {
 }
 
 // TestComposePrompt_FixScope proves the fix-scope block switches on p.FixScope.
-// FixScopeSource's output carries a commit rule and not the overlay-exclusive "no git" phrasing.
+// FixScopeSource's output carries the commit-per-fix phrasing and not the overlay-exclusive "no git" phrasing.
 // FixScopeOverlay's output does the reverse.
 // In neither scope does the fixer's rendered write surface list the review file, which only the reviewer writes.
 func TestComposePrompt_FixScope(t *testing.T) {
@@ -405,6 +352,7 @@ func TestComposePrompt_FixScope(t *testing.T) {
 		fix, got := fixHalf(t, stencilsDir, &p, "")
 
 		requireContains(t, got, "no git")
+		requireNotContains(t, got, "commit each fix")
 		writeSurface := findLineContaining(fix.Files[fixStepFile].Content, "Write surface")
 		requireContains(t, writeSurface, "plus the fixer-report (`"+p.FixerReportPath+"`)")
 		requireNotContains(t, writeSurface, p.ReviewPath)
@@ -462,126 +410,6 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 		requireContains(t, got, "deferred and disputed items")
 		requireContains(t, got, "why the dispute's evidence does not hold")
 	})
-
-	// The rows assert the values Go fills into the review step, for the engines whose stencil copies differ.
-	t.Run("round context", func(t *testing.T) {
-		stencilsDir := newTestStencilsDir(t)
-		round := func(prior ...PriorFinding) *RoundContext {
-			return &RoundContext{PriorReviewPath: "/runs/round-1-review.md", PriorFixerReportPath: "/runs/round-1-fixer-report.md", Prior: prior}
-		}
-		earlier := func(id string) Finding {
-			return Finding{ID: id, Severity: SeverityMedium, Class: ClassScope, Location: "a.go:3", Summary: "summary of " + id, Fix: "fix of " + id}
-		}
-		withChanges := round(PriorFinding{Finding: earlier("E1")})
-		withChanges.ChangesPath = "/runs/round-2-changes.md"
-		twoAdded := round()
-		twoAdded.AddedTexts = []string{"first added entry text", "second added entry text"}
-		amended := round()
-		amended.AddedTexts = []string{"first added entry text", "second added entry text"}
-		amended.AmendingTexts = []string{"second added entry text"}
-
-		carried := round()
-		carried.AmendingTexts = []string{"entry from an earlier round"}
-
-		tests := []struct {
-			name  string
-			round *RoundContext
-			// haltReason is the profile's HaltReason.
-			haltReason string
-			want       []string
-			notWant    []string
-			// once holds texts the review step must hold exactly one time.
-			once []string
-		}{
-			{name: "NilContextHasNoBlock", notWant: []string{"\n" + priorFindingsHeading + "\n"}},
-			{name: "ContextHasTheBlock", round: round(), want: []string{"\n" + priorFindingsHeading + "\n"}},
-			{
-				name: "ChangesFileNamed", round: withChanges,
-				want: []string{"/runs/round-1-review.md", "/runs/round-1-fixer-report.md", "/runs/round-2-changes.md"},
-			},
-			{
-				name: "NoChangesFileNamed", round: round(PriorFinding{Finding: earlier("E1")}),
-				want: []string{"/runs/round-1-review.md", "/runs/round-1-fixer-report.md"}, notWant: []string{"round-2-changes.md"},
-			},
-			{
-				name: "DisputedFindingShowsItsDispute",
-				round: round(PriorFinding{Finding: earlier("E1"), Disposition: &FindingDisposition{
-					ID: "E1", Disposition: DispositionDisputed, Ground: disputeGroundPremiseFalse, Rebuttal: "the call site is guarded", Evidence: []string{"a.go:9", "b.go:2"},
-				}}),
-				want: []string{"summary of E1", "fix of E1", "premise false", "the call site is guarded", "a.go:9", "b.go:2"},
-			},
-			{
-				name: "FixedDifferentlyFindingShowsItsReason",
-				round: round(PriorFinding{Finding: earlier("E1"), Disposition: &FindingDisposition{
-					ID: "E1", Disposition: DispositionFixedDifferently, Reason: "moved the check into the caller",
-				}}),
-				want: []string{"fixed-differently", "moved the check into the caller"},
-			},
-			{
-				name: "FindingWithNoDisposition", round: round(PriorFinding{Finding: earlier("E1")}),
-				want: []string{"no disposition"},
-			},
-			{
-				name: "HeldFindingWithARulingIsLabelled",
-				round: round(PriorFinding{Held: true, Finding: earlier("E1"), Disposition: &FindingDisposition{
-					ID: "E1", Disposition: DispositionRuling, Reason: "followed the parent's ruling",
-				}}),
-				want: []string{heldByParentMark, rulingReportLabel, "followed the parent's ruling"},
-			},
-			{
-				name: "HeldFindingRuledInScopeIsMarkedForTheFixer", round: round(PriorFinding{Held: true, InScope: true, Finding: earlier("E1")}),
-				want: []string{inScopeMark}, notWant: []string{heldByParentMark},
-			},
-			{
-				name: "AddedEntriesAreListedOnce", round: twoAdded, notWant: []string{"No entry was added"},
-				once: []string{"first added entry text", "second added entry text"},
-			},
-			{name: "NoAddedEntryIsSaid", round: round(), want: []string{"No entry was added"}},
-			{
-				name: "AmendingEntryIsMarkedAndExplained", round: amended,
-				want:    []string{amendsPlanMark + "second added entry text", "amend the approved plan", "whether or not the changes file lists that card"},
-				notWant: []string{amendsPlanMark + "first added entry text"},
-			},
-			{
-				name: "AmendmentFromAnEarlierRoundStaysMarkedAndExplained", round: carried,
-				want:    []string{"No entry was added", amendsPlanMark + "entry from an earlier round", "amend the approved plan"},
-				notWant: []string{"Entries added to the decision record since the previous round"},
-			},
-			{name: "NoAmendingEntryHasNoParagraph", round: twoAdded, notWant: []string{amendsPlanMark, "amend the approved plan"}},
-			{
-				name: "HaltReasonIsQuotedAsABlockingFinding", round: round(), haltReason: "card 14 misses the retry",
-				want: []string{haltReasonHeading, "> card 14 misses the retry", "`origin: " + WebsterOrigin + "`", "BLOCKING"},
-			},
-			{name: "NoHaltReasonHasNoBlock", round: round(), notWant: []string{haltReasonHeading}},
-		}
-		for _, engine := range []string{"claude", "codex"} {
-			for _, tt := range tests {
-				t.Run(engine+"_"+tt.name, func(t *testing.T) {
-					p := newComposableProfile(t)
-					p.Round = tt.round
-					p.HaltReason = tt.haltReason
-
-					prompt, err := composeReviewPrompt(stencilsDir, testSpecsDir, engine, &p, "", "", "", testReviewFiles)
-					if err != nil {
-						t.Fatalf("composeReviewPrompt(%s) = %v; want nil error", engine, err)
-					}
-
-					got := prompt.Files[reviewStepFile].Content
-					for _, want := range tt.want {
-						requireContains(t, got, want)
-					}
-					for _, notWant := range tt.notWant {
-						requireNotContains(t, got, notWant)
-					}
-					for _, once := range tt.once {
-						if count := strings.Count(got, once); count != 1 {
-							t.Errorf("%q appears %d times; want once", once, count)
-						}
-					}
-				})
-			}
-		}
-	})
 }
 
 // TestComposePrompt_ClusterRules proves the cluster parts switch on p.ClusterFan.
@@ -604,7 +432,7 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 			"fasit":          formatFileSet(p.Fasit),
 			"rubric":         p.Rubric,
 			"tool_use_rules": toolUseRules(p.ToolUse),
-		}, []string{"pattern_directive", focusMarkerName, "diff_pieces"})
+		}, []string{"pattern_directive", focusMarkerName})
 		if err != nil {
 			t.Fatalf("stencil.FillOptional(explore without fork_reading) = %v; want nil", err)
 		}

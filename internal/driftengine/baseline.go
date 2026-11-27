@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -123,7 +124,8 @@ func (p *DriftBaseline) drive(ctx context.Context, commitAll *bool) (shedengine.
 // recordScope returns the scope record, writing it first when none is recorded.
 // The written scope is off when the config key drift.scope sets it so;
 // otherwise it is full, with the config's diff mode and key patterns.
-// A scope already recorded, off or full, is kept whatever the config says now.
+// A config that sets scope partial is recorded full, with one Warn naming the key.
+// A scope already recorded, off, full or an old partial, is kept whatever the config says now.
 func (p *DriftBaseline) recordScope(cfg Config) (ScopeRecord, error) {
 	d := p.deps
 	records, err := ReadRecords(d)
@@ -139,8 +141,11 @@ func (p *DriftBaseline) recordScope(cfg Config) (ScopeRecord, error) {
 		now = d.Now
 	}
 	scope := ScopeRecord{Scope: ScopeFull, Diff: cfg.Diff, KeyPatterns: cfg.KeyPatterns, Volatile: cfg.Volatile, RecordedAt: stamp(now())}
-	if cfg.Scope == ScopeOff {
+	switch {
+	case cfg.Scope == ScopeOff:
 		scope = ScopeRecord{Scope: ScopeOff, ScopeSource: driftScopeKey, RecordedAt: stamp(now())}
+	case cfg.ScopeWasPartial:
+		logger.Warn("drift: the config key sets scope partial, which is retired; the scope is recorded as full", "key", driftScopeKey)
 	}
 	err = WriteRecords(d, func(recorded *ScopeRecord, _ *JudgedRecord) error {
 		*recorded = scope

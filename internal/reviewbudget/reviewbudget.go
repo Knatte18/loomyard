@@ -5,28 +5,27 @@ package reviewbudget
 import (
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
 const (
 	// RunSoftKey is the run-wide bounce budget key.
-	RunSoftKey = "review.max_bounces"
+	RunSoftKey = "review_max_bounces"
 	// RunHardKey is the run-wide hard cap key.
-	RunHardKey = "review.hard_max_bounces"
+	RunHardKey = "review_hard_max_bounces"
 	// RunAmendKey is the run-wide amendment allowance key: the review rounds an amendment generation gets.
-	RunAmendKey = "review.amend_max_bounces"
+	RunAmendKey = "review_amend_max_bounces"
 )
 
 // SoftKey returns the key of perch's own bounce budget.
-func SoftKey(perch string) string { return perch + ".max_bounces" }
+func SoftKey(perch string) string { return perch + "_max_bounces" }
 
 // HardKey returns the key of perch's own hard cap.
-func HardKey(perch string) string { return perch + ".hard_max_bounces" }
+func HardKey(perch string) string { return perch + "_hard_max_bounces" }
 
 // AutoAcceptKey returns the key of perch's auto-accept flag.
-func AutoAcceptKey(perch string) string { return perch + ".auto_accept" }
+func AutoAcceptKey(perch string) string { return perch + "_auto_accept" }
 
 // Categories returns the category of every key of the family for perches.
 // The budget, hard-cap and amendment allowance keys are CategoryNone and the auto-accept keys CategoryGuard.
@@ -106,11 +105,7 @@ func Route(dirs configengine.Dirs, spec configengine.Spec, key string) (string, 
 	if err != nil {
 		return "", err
 	}
-	layer, err := holdingLayer(stack, spec, key)
-	if err != nil {
-		return "", err
-	}
-	switch layer {
+	switch stack.Origins[key].Layer {
 	case configengine.LayerLocal:
 		return fmt.Sprintf(`run "lym config %s --layer local --set %s=<n>" in the task worktree, and correct the task's run_settings with "lym board upsert" too, so a later Seed-Child writes the same value`, spec.Name, key), nil
 	case configengine.LayerWorktree:
@@ -123,48 +118,18 @@ func Route(dirs configengine.Dirs, spec configengine.Spec, key string) (string, 
 	}
 }
 
-// holdingLayer returns the highest layer of stack whose document holds the dotted path key, or "" when none does.
-func holdingLayer(stack configengine.Stack, spec configengine.Spec, key string) (configengine.Layer, error) {
-	// The probe asks whether a document holds a value at exactly this path, which is the move table's own question.
-	probe := configengine.Spec{Name: spec.Name, MovedKeys: map[string]string{key: ""}}
-	for _, doc := range slices.Backward(stack.Layers) {
-		_, _, held, err := configengine.MovedKeyIn(probe, doc.Bytes)
-		if err != nil {
-			return "", err
-		}
-		if held {
-			return doc.Layer, nil
-		}
-	}
-	return "", nil
-}
-
-// valueAt returns the value at the dotted path in set, and whether set holds one.
-func valueAt(set map[string]any, path string) (value any, present bool) {
-	area, rest, nested := strings.Cut(path, ".")
-	value, present = set[area]
-	if !nested || !present {
-		return value, present
-	}
-	mapping, isMapping := value.(map[string]any)
-	if !isMapping {
-		return nil, false
-	}
-	return valueAt(mapping, rest)
-}
-
 // CheckResolved refuses the first value of the family below its bound.
 // It also refuses a resolved hard cap below its resolved soft cap.
-// Each refusal names the key in full and the way forward for its value's layer, through the module that owns the key.
+// Each refusal names the key and the way forward for its value's layer, through the module that owns the key.
 // The three run-wide keys belong to values.RunWideSpec when it is set, and every other key to spec.
 func CheckResolved(dirs configengine.Dirs, spec configengine.Spec, values Values) error {
-	name := func(key string) string { return configengine.KeyName(values.ownerSpec(spec, key).Name, key) }
 	refuse := func(key, detail string) error {
-		route, err := Route(dirs, values.ownerSpec(spec, key), key)
+		owner := values.ownerSpec(spec, key)
+		route, err := Route(dirs, owner, key)
 		if err != nil {
 			return err
 		}
-		return fmt.Errorf("config key %q: %s; way forward: %s, then run \"lym loom resume\"", name(key), detail, route)
+		return fmt.Errorf("%s config key %q: %s; way forward: %s, then run \"lym loom resume\"", owner.Name, key, detail, route)
 	}
 
 	if values.RunSoft < 0 {
@@ -172,7 +137,7 @@ func CheckResolved(dirs configengine.Dirs, spec configengine.Spec, values Values
 	}
 	for _, perch := range values.Perches {
 		if own := values.PerchSoft[perch]; own != nil && *own < 0 {
-			return refuse(SoftKey(perch), fmt.Sprintf("must not be negative, got %d; set it to 0 for no review round, to a positive integer, or to null to take %s", *own, name(RunSoftKey)))
+			return refuse(SoftKey(perch), fmt.Sprintf("must not be negative, got %d; set it to 0 for no review round, to a positive integer, or to null to take %s", *own, RunSoftKey))
 		}
 	}
 	if values.RunAmend < 0 {
@@ -183,7 +148,7 @@ func CheckResolved(dirs configengine.Dirs, spec configengine.Spec, values Values
 	}
 	for _, perch := range values.Perches {
 		if own := values.PerchHard[perch]; own < 0 {
-			return refuse(HardKey(perch), fmt.Sprintf("must not be negative, got %d; set it to 0 to take %s, or to a positive integer", own, name(RunHardKey)))
+			return refuse(HardKey(perch), fmt.Sprintf("must not be negative, got %d; set it to 0 to take %s, or to a positive integer", own, RunHardKey))
 		}
 	}
 
@@ -195,7 +160,8 @@ func CheckResolved(dirs configengine.Dirs, spec configengine.Spec, values Values
 		if caps.Hard >= caps.Soft {
 			continue
 		}
-		hardRoute, err := Route(dirs, values.ownerSpec(spec, caps.HardKey), caps.HardKey)
+		hardOwner := values.ownerSpec(spec, caps.HardKey)
+		hardRoute, err := Route(dirs, hardOwner, caps.HardKey)
 		if err != nil {
 			return err
 		}
@@ -203,7 +169,7 @@ func CheckResolved(dirs configengine.Dirs, spec configengine.Spec, values Values
 		if err != nil {
 			return err
 		}
-		return fmt.Errorf("config key %q: resolved hard cap %d is below %q's resolved soft cap %d; way forward: raise the hard cap: %s, or lower the soft cap: %s, then run \"lym loom resume\"", name(caps.HardKey), caps.Hard, name(caps.SoftKey), caps.Soft, hardRoute, softRoute)
+		return fmt.Errorf("%s config key %q: resolved hard cap %d is below %q's resolved soft cap %d; way forward: raise the hard cap: %s, or lower the soft cap: %s, then run \"lym loom resume\"", hardOwner.Name, caps.HardKey, caps.Hard, caps.SoftKey, caps.Soft, hardRoute, softRoute)
 	}
 	return nil
 }
@@ -211,8 +177,8 @@ func CheckResolved(dirs configengine.Dirs, spec configengine.Spec, values Values
 // CheckLocal refuses a budget key of the family present in set that is below its bound or not an integer.
 // set is a local-layer document decoded into a map; every other key is left alone.
 // A nil value passes only for a perch's own soft key, where null takes the run-wide budget.
-// Every refusal names the key in full as one of module, and is marked configengine.ErrInvalid.
-func CheckLocal(module string, set map[string]any, perches []string) error {
+// Every refusal is marked configengine.ErrInvalid.
+func CheckLocal(set map[string]any, perches []string) error {
 	type bound struct {
 		key     string
 		min     int
@@ -223,7 +189,7 @@ func CheckLocal(module string, set map[string]any, perches []string) error {
 		bounds = append(bounds, bound{SoftKey(perch), 0, true}, bound{HardKey(perch), 0, false})
 	}
 	for _, b := range bounds {
-		value, present := valueAt(set, b.key)
+		value, present := set[b.key]
 		if !present {
 			continue
 		}
@@ -232,10 +198,10 @@ func CheckLocal(module string, set map[string]any, perches []string) error {
 		}
 		number, ok := value.(int)
 		if !ok {
-			return configengine.MarkInvalid(fmt.Errorf("key %q: must be an integer", configengine.KeyName(module, b.key)))
+			return configengine.MarkInvalid(fmt.Errorf("key %q: must be an integer", b.key))
 		}
 		if number < b.min {
-			return configengine.MarkInvalid(fmt.Errorf("key %q: must be at least %d, got %d; correct the task's run_settings with \"lym board upsert\"", configengine.KeyName(module, b.key), b.min, number))
+			return configengine.MarkInvalid(fmt.Errorf("key %q: must be at least %d, got %d; correct the task's run_settings with \"lym board upsert\"", b.key, b.min, number))
 		}
 	}
 	return nil

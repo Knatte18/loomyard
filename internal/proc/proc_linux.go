@@ -48,21 +48,6 @@ func StartTime(pid int) (string, bool) {
 	return fields[19], true
 }
 
-// bootIDPath is the kernel's file holding the random id it draws at each boot.
-const bootIDPath = "/proc/sys/kernel/random/boot_id"
-
-// BootID returns the id the kernel drew when the machine last booted, which changes at a boot and at no other time.
-// A clock step does not move it.
-// It reports false when the file cannot be read or is empty.
-func BootID() (string, bool) {
-	data, err := os.ReadFile(bootIDPath)
-	if err != nil {
-		return "", false
-	}
-	id := strings.TrimSpace(string(data))
-	return id, id != ""
-}
-
 // ParentPID returns the parent process id of the process identified by pid, field 4 of /proc/<pid>/stat.
 // It reports false for a pid of 0 or below, a process that does not exist and a stat that cannot be parsed.
 func ParentPID(pid int) (int, bool) {
@@ -158,48 +143,6 @@ func TreeSample(root int) ([]ProcessSample, error) {
 		pending = append(pending, children[pid]...)
 	}
 	return tree, nil
-}
-
-// ResidentInCgroup returns every process whose cgroup v2 path is cgroup or lies below it.
-// Each entry carries the parent, the executable path and the memory the process holds resident, but no CPU time.
-// A caller under a nearly spent memory limit reads it to name what holds the limit's memory.
-// A process that ends between the /proc listing and its reads, or whose cgroup the caller may not read, is skipped;
-// an unreadable /proc is an error.
-func ResidentInCgroup(cgroup string) ([]ProcessSample, error) {
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		return nil, fmt.Errorf("proc: list /proc: %w", err)
-	}
-
-	pageSize := int64(os.Getpagesize())
-	var held []ProcessSample
-	for _, entry := range entries {
-		pid, err := strconv.Atoi(entry.Name())
-		if err != nil {
-			continue
-		}
-		member, ok := readCgroupV2Path("/proc/" + entry.Name() + "/cgroup")
-		if !ok || !withinCgroup(member, cgroup) {
-			continue
-		}
-		fields, ok := statFieldsAfterName(pid)
-		if !ok || len(fields) < 22 {
-			continue
-		}
-		// The remainder starts at field 3, so field 4 (parent pid) is entry 1 and field 24 (resident pages) is entry 21.
-		parent, parentErr := strconv.Atoi(fields[1])
-		residentPages, residentErr := strconv.ParseInt(fields[21], 10, 64)
-		if parentErr != nil || residentErr != nil {
-			continue
-		}
-		held = append(held, ProcessSample{PID: pid, Parent: parent, Path: executablePath(pid), RSS: residentPages * pageSize})
-	}
-	return held, nil
-}
-
-// withinCgroup reports whether the cgroup v2 path member is cgroup or lies below it.
-func withinCgroup(member, cgroup string) bool {
-	return cgroup == "/" || member == cgroup || strings.HasPrefix(member, cgroup+"/")
 }
 
 // executablePath returns the executable of pid from its /proc exe link.

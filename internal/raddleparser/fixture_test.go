@@ -4,7 +4,6 @@
 package raddleparser
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 )
@@ -77,17 +76,8 @@ func validBoard() BoardContext {
 		LabelVocabulary: []string{"mod-a", "mod-b", "mod-z"},
 		Profiles:        map[string][]string{RecipeTapestry: {"standard"}, RecipeDarn: {"quick"}},
 		LivePattern:     func(id string) bool { return id == "PATTERN-live" },
-		ValidateSlug: func(slug string) error {
-			if slug == refusedSlug {
-				return fmt.Errorf("slug %q is refused", slug)
-			}
-			return nil
-		},
 	}
 }
-
-// refusedSlug is the one slug the board context of validBoard refuses.
-const refusedSlug = "refused-slug"
 
 // checkNames returns the sorted check names of findings.
 func checkNames(findings []Finding) []string {

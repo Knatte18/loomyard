@@ -241,8 +241,8 @@ func TestGlyphChain_RedundantPackage(t *testing.T) {
 	}{
 		{
 			name:      "create handle beside its package self glyph",
-			cards:     []string{createCard(&createLeg{"plan:shapes#Fresh", "type Fresh struct{}", ""}), editCard("shapes#", "plan:shapes#Fresh")},
-			edits:     []codeEdit{appendText(shapesFile, "\ntype Fresh struct{}\n")},
+			cards:     []string{createCard(&createLeg{"plan:shapes#Fresh", "func Fresh() int", ""}), editCard("shapes#", "plan:shapes#Fresh")},
+			edits:     []codeEdit{appendText(shapesFile, "\nfunc Fresh() int { return 1 }\n")},
 			wantGate:  redundant,
 			wantBound: redundant,
 		},

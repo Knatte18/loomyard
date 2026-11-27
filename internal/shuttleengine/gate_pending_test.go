@@ -144,8 +144,7 @@ func TestGatePending_FailedSendWarnsAndStaysPending(t *testing.T) {
 	buf := logcapture.CaptureVerbose(t)
 	logger.SetVerbosity(2)
 	var calls int
-	var delivered bool
-	pending := GateResult{Pending: true, Send: pendingSendText, SendFailedWayForward: "tell the parent by hand", Delivered: &delivered}
+	pending := GateResult{Pending: true, Send: pendingSendText, SendFailedWayForward: "tell the parent by hand"}
 	gate := scriptedPending(&calls, pending, pending, pending, pending, GateResult{Passed: true})
 	// The send heals once two pending sends have failed.
 	healAfterTwoFailures := func(f *pendingFixture) {
@@ -170,9 +169,6 @@ func TestGatePending_FailedSendWarnsAndStaysPending(t *testing.T) {
 	}
 	if calls != 4 {
 		t.Errorf("gate ran %d times, want 4 (two failed sends and the delivered one each re-evaluate at the boundary, then the run settles)", calls)
-	}
-	if !delivered {
-		t.Error("Delivered stayed false, want the loop to set it once the send landed")
 	}
 	logged := buf.String()
 	for _, want := range []string{"parent-review", "pane gone", "tell the parent by hand"} {

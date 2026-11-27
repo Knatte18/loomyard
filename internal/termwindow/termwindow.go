@@ -1,15 +1,12 @@
 // Package termwindow opens a desktop terminal window that runs "lym reed attach" in a worktree,
 // so the operator can watch a run in a window of its own.
 // The launcher is chosen per platform:
-// Windows Terminal (wt.exe) opens on native Windows and, through wsl.exe, on WSL.
-// Konsole opens on any other Linux with a graphical session.
+// Windows Terminal (wt.exe) into wsl.exe on WSL, Konsole on any other Linux with a graphical session.
 // Elsewhere Resolve reports ErrNoLauncher and nothing opens.
 // The window is a detached process: once it starts, lym neither waits for it nor learns whether it stays open.
-// On Linux and WSL it closes itself when the run ends:
+// It closes itself when the run ends:
 // on a 0 attach exit, or on any other attach exit once the run's worktree is removed within a bounded wait.
 // Otherwise it keeps an interactive shell and the attach's output.
-// On native Windows the window runs the attach itself,
-// so the Windows Terminal profile's closeOnExit decides whether it closes when the attach exits.
 package termwindow
 
 import (
@@ -37,8 +34,8 @@ const wslInteropPath = "/proc/sys/fs/binfmt_misc/WSLInterop"
 type Launcher struct {
 	name    string
 	program string
-	// arguments returns the program's arguments for a window titled title, in dir, that runs "<lymPath> reed attach".
-	arguments func(dir, title, lymPath string) []string
+	// arguments returns the program's arguments for a window titled title, in dir, whose shell runs line.
+	arguments func(dir, title, line string) []string
 }
 
 // probe carries the machine facts Resolve reads, so the choice is testable without the machine.
@@ -63,13 +60,6 @@ func Resolve() (Launcher, error) {
 }
 
 func resolve(p probe) (Launcher, error) {
-	if p.goos == "windows" {
-		program, err := p.lookPath("wt.exe")
-		if err != nil {
-			return Launcher{}, fmt.Errorf("%w: wt.exe is not on PATH: %v", ErrNoLauncher, err)
-		}
-		return Launcher{name: "wt.exe", program: program, arguments: nativeWindowsTerminalArguments}, nil
-	}
 	if p.goos != "linux" {
 		return Launcher{}, fmt.Errorf("%w: no launcher for %s", ErrNoLauncher, p.goos)
 	}
@@ -91,36 +81,23 @@ func resolve(p probe) (Launcher, error) {
 }
 
 // konsoleArguments opens a new Konsole window, never a tab, with its tab titled title.
-// Its login shell runs the attach line.
-func konsoleArguments(dir, title, lymPath string) []string {
-	return []string{"--workdir", dir, "-p", "tabtitle=" + title, "-e", "bash", "-lc", attachLine(lymPath, dir)}
+func konsoleArguments(dir, title, line string) []string {
+	return []string{"--workdir", dir, "-p", "tabtitle=" + title, "-e", "bash", "-lc", line}
 }
 
 // windowsTerminalArguments opens a new Windows Terminal window running wsl.exe in dir.
-// Its login shell runs the attach line.
-func windowsTerminalArguments(dir, title, lymPath string) []string {
-	return []string{"-w", "new", "--title", title, "wsl.exe", "--cd", dir, "--", "bash", "-lc", escapeWindowsTerminal(attachLine(lymPath, dir))}
+// Windows Terminal splits its own command line on ";", so each one in line is escaped as "\;".
+func windowsTerminalArguments(dir, title, line string) []string {
+	return []string{"-w", "new", "--title", title, "wsl.exe", "--cd", dir, "--", "bash", "-lc", strings.ReplaceAll(line, ";", `\;`)}
 }
 
-// nativeWindowsTerminalArguments opens a new Windows Terminal window in dir that runs the attach with no shell around it.
-func nativeWindowsTerminalArguments(dir, title, lymPath string) []string {
-	return []string{"-w", "new", "--title", escapeWindowsTerminal(title), "-d", escapeWindowsTerminal(dir), escapeWindowsTerminal(lymPath), "reed", "attach"}
-}
-
-// escapeWindowsTerminal escapes each ";" in argument as "\;", since Windows Terminal splits its own command line on ";".
-func escapeWindowsTerminal(argument string) string {
-	return strings.ReplaceAll(argument, ";", `\;`)
-}
-
-// OpenAttach opens one window titled title that runs "<lymPath> reed attach" in dir.
-// On Linux and WSL the window closes when the attach exits 0.
-// That includes an operator detach and an ended pair session.
+// OpenAttach opens one window titled title whose login shell runs "<lymPath> reed attach" in dir.
+// The window closes when the attach exits 0, which includes an operator detach and an ended pair session.
 // After any other attach exit, it closes as soon as dir is removed within pairGoneWaitSeconds seconds;
 // otherwise it stays open as a shell.
-// On native Windows the Windows Terminal profile decides whether the window closes when the attach exits.
 // It returns once the launcher process has started; an error means it could not start.
 func (l Launcher) OpenAttach(dir, title, lymPath string) error {
-	cmd := exec.Command(l.program, l.arguments(dir, title, lymPath)...)
+	cmd := exec.Command(l.program, l.arguments(dir, title, attachLine(lymPath, dir))...)
 	proc.Detach(cmd)
 	logger.Info("termwindow: spawning terminal window", "launcher", l.name, "dir", dir, "title", title)
 	if err := cmd.Start(); err != nil {

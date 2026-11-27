@@ -12,9 +12,9 @@
 // the plan review is the Bouncer+Burler segment's separate job.
 // The approved settle of `Plan-Bouncer` flips `approved` to `true`, immediately before its commit seam fires.
 //
-// With plan.lenses set, the lead carries the twill directive rendered into the plan template between Step 2 and Step 3.
+// With plan_lenses set, the lead carries the twill directive rendered into the plan template between Step 2 and Step 3.
 // Fork subagents are authorized.
-// The directive's lenses come from the lenses.yaml fan plan.lenses names.
+// The directive's lenses come from the lenses.yaml fan plan_lenses names.
 // The lead explores, spawns one fork, fork0, to write the plan, reads the finished plan in full and self-checks it;
 // then it spawns the lens forks and judges their findings as a critical fixer.
 // The forks hold the exploration and the plan but not fork0's reasoning;
@@ -24,7 +24,7 @@
 // The lead sets ForkSubagents, so the writer may spawn subagents of type fork.
 // Forks run on the writer's model, read-only and without the Agent tool by the stencil's boilerplate.
 // The plan gates and the Plan-Review segment still bound what lands in the plan.
-// With plan.lenses empty, the prompt keeps its bytes and ForkSubagents stays false.
+// With plan_lenses empty, the prompt keeps its bytes and ForkSubagents stays false.
 //
 // PlanTable is a pure builder: it does not stat the decision record,
 // does not stat or create `_lym/plan/`, and does not spawn anything.
@@ -68,7 +68,7 @@ const (
 
 // PlanTable builds the seatengine.Table of one Plan-Write run.
 // The lead writes the plan directory's cards and, last, its overview.
-// When cfg.Plan.Lenses is set, only the lead is authorized to spawn fork subagents,
+// When cfg.PlanLenses is set, only the lead is authorized to spawn fork subagents,
 // and the lead carries the twill lens review directive, whose fan is resolved through lenses.yaml under dirs;
 // otherwise the prompt keeps its bytes.
 // specsDir is told, never derived: this package is bound by the Told-Geometry Invariant.
@@ -84,7 +84,7 @@ const (
 // so the prompt tells the writer to run no validator and the twill directive asks for none;
 // false keeps the writer's own validator run.
 func PlanTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, gateTiers string, fixerOn bool) (seatengine.Table, error) {
-	choice, err := resolveModelChoice(cfg.Plan.Model, reg)
+	choice, err := resolveModelChoice(cfg.Plan, reg)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: PlanTable: plan role model-spec: %w", err)
 	}
@@ -99,7 +99,7 @@ func PlanTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, spe
 	}
 
 	var frictionDir string
-	if cfg.Friction.Model != "" {
+	if cfg.Friction != "" {
 		frictionDir = LoomFrictionDir(layout)
 	}
 	frictionDirective, err := friction.Directive(friction.NotePath(frictionDir, "Plan-Write"), stencilsDir, friction.RoleImplementer)
@@ -113,10 +113,10 @@ func PlanTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, spe
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: PlanTable: self-check step: %w", err)
 	}
-	forks := cfg.Plan.Lenses != ""
+	forks := cfg.PlanLenses != ""
 	leadValues := map[string]string{"self_check": selfCheck}
 	if forks {
-		lensDirective, err := planLensDirective(layout, dirs, stencilsDir, specsDir, cfg.Plan.Lenses, choice.Engine, fixerOn)
+		lensDirective, err := planLensDirective(layout, dirs, stencilsDir, specsDir, cfg.PlanLenses, fixerOn)
 		if err != nil {
 			return seatengine.Table{}, fmt.Errorf("loom: PlanTable: %w", err)
 		}
@@ -126,7 +126,7 @@ func PlanTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, spe
 	lead := seatengine.Seat{
 		Stencil:       planStencil,
 		ModelChoice:   choice,
-		ModelKey:      shuttleengine.ModelKey{Module: loomModule, Key: planModelKey},
+		ModelKey:      shuttleengine.ModelKey{Module: loomModule, Key: "plan"},
 		Outputs:       []string{planparser.PlanOverview(layout.AnchorPath())},
 		ConfigRole:    agentconfig.RolePlan,
 		Values:        leadValues,
@@ -141,7 +141,7 @@ func PlanTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, spe
 	return seatengine.Table{
 		RolePrefix: planRole,
 		Segment:    segmentcolor.Plan,
-		Timeout:    time.Duration(cfg.Plan.TimeoutMin) * time.Minute,
+		Timeout:    time.Duration(cfg.PlanTimeoutMin) * time.Minute,
 		Values: map[string]string{
 			"decision_record_path": DiscussionDecisionRecord(layout),
 			"relevant_path":        DiscussionRelevant(layout),

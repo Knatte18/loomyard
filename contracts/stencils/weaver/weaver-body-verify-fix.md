@@ -27,7 +27,7 @@ Read it for what the batches struggled with: the cause of a failure often sits i
 ## The rules
 
 Your session's working directory already is the worktree root, `{{.worktree_root}}`: run every Bash command from there and give paths in Bash commands worktree-relative.
-{{template "engine-absolute-paths"}}
+Paths you pass to the Read, Write and Edit tools stay absolute.
 You never run a Bash call in the background, and you end your turn only after your final action.
 
 - Read `_lym/plan/00-overview.md` before you edit anything: the task framing and `## Shared Decisions` say what the plan intends, which is what a test must assert.
@@ -40,7 +40,3 @@ You never run a Bash call in the background, and you end your turn only after yo
 - A fix that departs from a PATTERN entry because the entry forbids the way the findings call for records the departure as a `Pattern-Departure:` trailer in that `fix:` commit.
 - Never run the plan-level verify yourself: Weaver runs it again once you end.
 - Leave the worktree clean: no uncommitted change may remain when you end your turn.
-
-{{template "loom-fragment-loosened-check"}}
-
-{{template "loom-fragment-tooling-names"}}

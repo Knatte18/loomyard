@@ -42,7 +42,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
-	"github.com/Knatte18/loomyard/internal/slackengine"
 	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -285,36 +284,6 @@ type rig struct {
 	clientClock *creelfake.Clock
 	// name returns a strand's full name in the hub.
 	short string
-	// bridge is the daemon's told bridge to Slack; a rig made by addHub has none.
-	bridge creelengine.MachineBridge
-}
-
-// readySlackBridge returns the bridge of a hub with shortname short whose orch may post to another machine:
-// its button is on, the machine holds both tokens and the hub has its setup.
-// The machine is called neve.
-func readySlackBridge(t *testing.T, short string) *slackBridge {
-	t.Helper()
-	dir := t.TempDir()
-	geom := slackengine.Geometry{
-		Shortname:      short,
-		TokenPath:      filepath.Join(dir, "slack.json"),
-		SetupPath:      filepath.Join(dir, "setup.json"),
-		ForwardingPath: filepath.Join(dir, "forwarding.json"),
-	}
-	if err := slackengine.WriteCredentials(geom.TokenPath, slackengine.Credentials{BotToken: "xoxb-1", AppToken: "xapp-1", AppID: "A1"}); err != nil {
-		t.Fatalf("WriteCredentials() = %v", err)
-	}
-	if err := slackengine.WriteSetup(geom.SetupPath, slackengine.Setup{OperatorID: "U1"}); err != nil {
-		t.Fatalf("WriteSetup() = %v", err)
-	}
-	if _, err := slackengine.WriteForwarding(geom.ForwardingPath, short+":orch", true, epoch); err != nil {
-		t.Fatalf("WriteForwarding() = %v", err)
-	}
-	return &slackBridge{
-		geometry: func() (slackengine.Geometry, error) { return geom, nil },
-		beams:    func() ([]string, error) { return nil, nil },
-		names:    func() (string, []string, error) { return "neve", nil, nil },
-	}
 }
 
 func (r *rig) name(role string) string { return r.short + ":" + role }
@@ -334,7 +303,6 @@ func newRig(t *testing.T) *rig {
 	r := &rig{
 		hub: hub, cwd: hub.PrimeWorktree(), geometry: geometry, short: geometry.Shortname,
 		delivery: creelfake.NewDelivery(), clock: creelfake.NewClock(epoch), clientClock: creelfake.NewClock(epoch),
-		bridge: readySlackBridge(t, geometry.Shortname),
 	}
 	previous := seam
 	registryDir := t.TempDir()
@@ -383,7 +351,7 @@ func (r *rig) startDaemon(t *testing.T) {
 	go func() {
 		done <- creelengine.Run(ctx, creelengine.Options{
 			Geometry: r.geometry, Delivery: r.delivery, Clock: r.clock, PollClock: creelfake.NewClock(epoch),
-			ParentPID: proc.ParentPID, GOOS: runtime.GOOS, Hubs: hubs, Bridge: r.bridge, Ready: func() { close(ready) },
+			ParentPID: proc.ParentPID, GOOS: runtime.GOOS, Hubs: hubs, Ready: func() { close(ready) },
 		})
 	}()
 	t.Cleanup(func() {
@@ -1879,54 +1847,6 @@ func TestCreelCLI(t *testing.T) {
 		}
 	})
 
-	t.Run("the reply probe reports a strand's unanswered question and no question of another strand", func(t *testing.T) {
-		r, orch, location := orchRig(t)
-		worker := r.name("worker")
-		pane := creelfake.LiveStrand(orch)
-		pane.PanePID = os.Getpid()
-		r.delivery.SetStrands(pane, creelfake.LiveStrand(worker))
-		if post := runCreel(r.cwd, "post", "--expect-reply", worker, "which schema?"); post.code != 0 {
-			t.Fatalf("post --expect-reply exit = %d, output %q; want 0", post.code, post.raw)
-		}
-		probe := AwaitsReplyProbe(location, "LOOM")
-		for _, tt := range []struct {
-			strand string
-			want   bool
-		}{{orch, true}, {worker, false}} {
-			got, err := probe(tt.strand)
-			if err != nil {
-				t.Fatalf("probe(%q) = %v", tt.strand, err)
-			}
-			if got != tt.want {
-				t.Errorf("probe(%q) = %v; want %v", tt.strand, got, tt.want)
-			}
-		}
-	})
-
-	t.Run("the reply probe run from a non-orch strand pane signs as that strand and answers for it", func(t *testing.T) {
-		r := newRig(t)
-		orch, worker := r.name("orch"), r.name("worker")
-		t.Setenv(agentname.StrandNameEnv, worker)
-		pane := creelfake.LiveStrand(worker)
-		pane.PanePID = os.Getpid()
-		r.delivery.SetStrands(creelfake.LiveStrand(orch), pane)
-		r.startDaemon(t)
-		location, err := lymcwd.Resolve(r.cwd)
-		if err != nil {
-			t.Fatalf("Resolve(%q) = %v", r.cwd, err)
-		}
-		if post := runCreel(r.cwd, "post", "--expect-reply", orch, "which schema?"); post.code != 0 {
-			t.Fatalf("post --expect-reply exit = %d, output %q; want 0", post.code, post.raw)
-		}
-		got, err := AwaitsReplyProbe(location, "LOOM")(worker)
-		if err != nil {
-			t.Fatalf("probe(%q) from the worker's pane = %v; want an answer", worker, err)
-		}
-		if !got {
-			t.Errorf("probe(%q) = false; want true for the worker's open question", worker)
-		}
-	})
-
 	t.Run("a program client's ReadAll with a failing handler leaves the reply unread for the next ReadAll", func(t *testing.T) {
 		r, orch, location := orchRig(t)
 		program, err := NewProgramClient(location, "BATTEN")
@@ -2052,73 +1972,6 @@ func TestCreelCLI(t *testing.T) {
 		}
 		if run := runCreel(r.cwd, "log", "--id", strconv.FormatInt(id, 10)); !strings.Contains(run.raw, `"reason":"withdrawn"`) {
 			t.Errorf("creel log --id %d = %q; want the withdrawn reason", id, run.raw)
-		}
-	})
-
-	t.Run("the relay's program client takes an orch's post to another machine, holds it and settles it, and the log shows the machine and Slack timestamp", func(t *testing.T) {
-		r, _, location := orchRig(t)
-		post := runCreel(r.cwd, "post", "osl::zz:orch", "hello over there")
-		if post.code != 0 {
-			t.Fatalf("creel post osl::zz:orch = (%d, %q); want exit 0", post.code, post.raw)
-		}
-		id := int64(post.fields["id"].(float64))
-		relay, err := NewProgramClient(location, "SLACK")
-		if err != nil {
-			t.Fatalf("NewProgramClient() = %v", err)
-		}
-		taken, err := relay.TakeMachine()
-		if err != nil || len(taken) != 1 || taken[0].ID != id || taken[0].To != "osl::zz:orch" || taken[0].ReceivingMachine != "osl" || taken[0].Body != "hello over there" {
-			t.Fatalf("TakeMachine() = %+v, %v; want the one post #%d to osl::zz:orch", taken, err, id)
-		}
-		if err := relay.ReportMachine(id, "peer-unapproved"); err != nil {
-			t.Fatalf("ReportMachine() = %v", err)
-		}
-		if err := relay.SettleMachineDelivered(id, "1760000000.000100"); err != nil {
-			t.Fatalf("SettleMachineDelivered() = %v", err)
-		}
-		entries := runCreel(r.cwd, "log", "--id", strconv.FormatInt(id, 10)).fields["log"].([]any)
-		seen := map[string]map[string]any{}
-		for _, entry := range entries {
-			fields := entry.(map[string]any)
-			seen[fields["event"].(string)] = fields
-		}
-		for _, event := range []string{"machine-held", "machine-delivered"} {
-			if seen[event] == nil || seen[event]["receiving_machine"] != "osl" {
-				t.Errorf("creel log --id %d event %s = %v; want an entry with receiving_machine osl", id, event, seen[event])
-			}
-		}
-		if seen["machine-delivered"]["slack_ts"] != "1760000000.000100" || seen["machine-held"]["reason"] != "peer-unapproved" {
-			t.Errorf("creel log --id %d = %v; want the delivered slack_ts and the held reason", id, seen)
-		}
-	})
-
-	t.Run("the relay's program client delivers mail from another machine, and the orch's read shows its stamp, trust and sending fields", func(t *testing.T) {
-		r, orch, location := orchRig(t)
-		// Busy, so the delivery does not carry the mail into the pane and mark it read before the orch reads it.
-		r.delivery.SetIdle(orch, false)
-		relay, err := NewProgramClient(location, "SLACK")
-		if err != nil {
-			t.Fatalf("NewProgramClient() = %v", err)
-		}
-		first, err := relay.DeliverMachine(creelengine.MachineMail{Sender: "osl::zz:orch", Receiver: orch, SendingID: 7, Body: "hello from osl", Posted: epoch})
-		if err != nil {
-			t.Fatalf("DeliverMachine() = %v", err)
-		}
-		wantHeader := fmt.Sprintf(`#%d from "osl::zz:orch" (other machine, trusted orch)`, first)
-		if read := runCreel(r.cwd, "read"); read.code != 0 || !strings.Contains(read.raw, wantHeader) || !strings.Contains(read.raw, "hello from osl") {
-			t.Errorf("creel read = (%d, %q); want exit 0 with the header %q", read.code, read.raw, wantHeader)
-		}
-		if _, err := relay.DeliverMachine(creelengine.MachineMail{Sender: "osl::zz:orch", Receiver: orch, SendingID: 8, Body: "again", Posted: epoch}); err != nil {
-			t.Fatalf("DeliverMachine() = %v", err)
-		}
-		read := runCreel(r.cwd, "read", "--envelope")
-		messages, _ := read.fields["messages"].([]any)
-		if read.code != 0 || len(messages) != 1 {
-			t.Fatalf("creel read --envelope = (%d, %q); want exit 0 with one message", read.code, read.raw)
-		}
-		message, _ := messages[0].(map[string]any)
-		if message["from"] != "osl::zz:orch" || message["trust"] != "trusted-orch" || message["sending_id"] != float64(8) || message["sending_machine"] != "osl" {
-			t.Errorf("creel read --envelope message = %v; want from osl::zz:orch beside trust trusted-orch, sending_id 8 and sending_machine osl", message)
 		}
 	})
 

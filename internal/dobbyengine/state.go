@@ -38,23 +38,14 @@ type State struct {
 	LandingsMachineOnly bool `json:"landings_machine_only,omitempty"`
 	// Tidy is the board-tidy agent in flight, nil when none is.
 	Tidy *TidyState `json:"tidy,omitempty"`
-	// LandedSinceDescribe holds the slugs of the member landings the beam's description is not yet rewritten after.
-	LandedSinceDescribe []string `json:"landed_since_describe,omitempty"`
-	// Describe is the describer agent in flight, nil when none is.
-	Describe *DescribeState `json:"describe,omitempty"`
 	// LandNotices is the memory of the landing notices of the runs seen ahead of their Land row, keyed by slug.
 	LandNotices map[string]LandNoticeState `json:"land_notices,omitempty"`
-	// Watches is the run watch's memory, keyed by slug.
-	// A run keeps its entry after it leaves Runs.
-	Watches map[string]RunWatchState `json:"watches,omitempty"`
 	// Land is the landing step taken in the current episode: a land request asked for or a notice posted.
 	// It is nil when none was taken or the beam can no longer land.
 	// It stays open to a retry when it holds only a posted refusal of Land.
 	Land *LandState `json:"land,omitempty"`
 	// ReadyHold is the episode in which the beam is flagged ready and the dobby starts no task, nil when the beam is not flagged ready.
 	ReadyHold *ReadyHoldState `json:"ready_hold,omitempty"`
-	// CatchUp is the catch-up from origin the dobby waits on, nil while none is owed or the last one succeeded.
-	CatchUp *CatchUpWait `json:"catch_up,omitempty"`
 }
 
 // ReadyHoldState is the memory of one episode of a beam flagged ready.
@@ -79,6 +70,8 @@ type RunState struct {
 	OwnedElsewhere bool `json:"owned_elsewhere,omitempty"`
 	// OwnerNoticeSent reports whether the owned-elsewhere notice went out.
 	OwnerNoticeSent bool `json:"owner_notice_sent,omitempty"`
+	// OwnerPauseFailed reports whether the pause for an owned-elsewhere run failed.
+	OwnerPauseFailed bool `json:"owner_pause_failed,omitempty"`
 	// LastPassExit is when the last pass of the run exited.
 	LastPassExit time.Time `json:"last_pass_exit,omitzero"`
 	// FailingPassError is the error text of the failing pass and FailingPassCount the passes that failed in a row with it.
@@ -111,19 +104,6 @@ type TidyState struct {
 	StrandGUID string    `json:"strand_guid"`
 	ReportPath string    `json:"report_path"`
 	Deadline   time.Time `json:"deadline"`
-}
-
-// DescribeState is the describer agent in flight.
-// Landings are the member landings its draft covers, which leave the landings to describe once the agent settles.
-// OwedLine is the line for the nearest live orch that the settled agent still owes, empty when none is owed.
-// It is set once the draft is recorded or the deadline has passed.
-// A post that fails is then retried without recording again.
-type DescribeState struct {
-	StrandGUID string    `json:"strand_guid"`
-	DraftPath  string    `json:"draft_path"`
-	Deadline   time.Time `json:"deadline"`
-	Landings   []string  `json:"landings,omitempty"`
-	OwedLine   string    `json:"owed_line,omitempty"`
 }
 
 // ReadState reads the record at path under its lock and reports whether it was found.

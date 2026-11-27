@@ -6,7 +6,6 @@ package shedadapters
 import (
 	"errors"
 	"os"
-	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -92,59 +91,29 @@ func requireReasonContains(t *testing.T, reason string, wants ...string) {
 func TestBouncer_Circling_NoDecisionAwaitsNamingBothVerbs(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
-		name string
-		slug string
-		// hardCap is the HardCap the Bouncer is told; 0 tells none.
-		hardCap   int
+		name      string
+		slug      string
 		wantReasn []string
-		// wantNotice and absentNotice are what the parent notice must and must not name.
-		wantNotice   []string
-		absentNotice []string
 	}{
 		{
-			name:       "a slug is named in both verbs",
-			slug:       "my-task",
-			wantReasn:  []string{"round 2", "lym loom circling accept my-task", "lym loom circling continue my-task", "lym loom resume"},
-			wantNotice: []string{"lym loom circling accept my-task", "lym loom circling continue my-task"},
+			name:      "a slug is named in both verbs",
+			slug:      "my-task",
+			wantReasn: []string{"round 2", "lym loom circling accept my-task", "lym loom circling continue my-task", "lym loom resume"},
 		},
 		{
 			name:      "an empty slug omits the argument",
 			wantReasn: []string{"`lym loom circling accept`", "`lym loom circling continue`"},
 		},
-		{
-			name:         "at the hard cap only the accept verb is named",
-			slug:         "my-task",
-			hardCap:      2,
-			wantReasn:    []string{"round 2", "lym loom circling accept my-task"},
-			wantNotice:   []string{"lym loom circling accept my-task"},
-			absentNotice: []string{"lym loom circling continue"},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b, cfg, shuttle := circlingBouncer(t, func(c *BouncerConfig) {
-				c.Slug, c.HardCap = tt.slug, tt.hardCap
-				if tt.slug != "" {
-					c.WorktreeRoot = t.TempDir()
-					c.DecisionRecordPath = filepath.Join(t.TempDir(), "decision-record.md")
-				}
-			})
+			b, cfg, shuttle := circlingBouncer(t, func(c *BouncerConfig) { c.Slug = tt.slug })
 
 			ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
 			if want := ledgerPath(cfg.RunDir, 2); ptr.Path != want {
 				t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
 			}
 			requireReasonContains(t, ptr.Reason, tt.wantReasn...)
-			for _, want := range tt.wantNotice {
-				if !strings.Contains(ptr.ParentNotice, want) {
-					t.Errorf("ParentNotice = %q; want it to contain %q", ptr.ParentNotice, want)
-				}
-			}
-			for _, absent := range tt.absentNotice {
-				if strings.Contains(ptr.ParentNotice, absent) {
-					t.Errorf("ParentNotice = %q; want it without %q", ptr.ParentNotice, absent)
-				}
-			}
 			if shuttle.Called {
 				t.Error("Call() spawned a run; want none")
 			}
@@ -156,7 +125,7 @@ func TestBouncer_Circling_NoDecisionAwaitsNamingBothVerbs(t *testing.T) {
 // round: continue returns Stuck, runs no seam and writes the next round's focus file; accept
 // settles, approves and commits, returns Done, and the next Call clears the settled generation.
 //
-//testtiming:keep pins settling a decision recorded over a CIRCLING verdict through both verbs
+//testtiming:keep pins settling a decision recorded on a CIRCLING round that never wrote an escalation record, which the escalation tests never reach
 func TestBouncer_Circling_RecordedDecision(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -170,7 +139,9 @@ func TestBouncer_Circling_RecordedDecision(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			seams := &circlingSeams{}
 			b, cfg, shuttle := circlingBouncer(t, seams.install)
-			recordCirclingDecisionOverEscalation(t, cfg.RunDir, 2, tt.decision)
+			if _, _, err := RecordCirclingDecision(cfg.RunDir, tt.decision); err != nil {
+				t.Fatalf("RecordCirclingDecision(%s) = %v; want nil", tt.decision, err)
+			}
 
 			if tt.decision == CirclingContinue {
 				ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
@@ -183,7 +154,7 @@ func TestBouncer_Circling_RecordedDecision(t *testing.T) {
 				if shuttle.Called {
 					t.Error("Call() spawned a run; want none")
 				}
-				if _, err := os.Stat(FocusPath(cfg.RunDir, 3)); err != nil {
+				if _, err := os.Stat(focusPath(cfg.RunDir, 3)); err != nil {
 					t.Errorf("round-3 focus file = %v; want ensureFocus to have written it", err)
 				}
 				return
@@ -230,7 +201,9 @@ func TestBouncer_Circling_AcceptCallsCarryOverBeforeSettling(t *testing.T) {
 		_, _, settled, _, err := readCirclingDecision(cfg.RunDir, 2)
 		settledAtCall = append(settledAtCall, err != nil || settled)
 	}
-	recordCirclingDecisionOverEscalation(t, cfg.RunDir, 2, CirclingAccept)
+	if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
+		t.Fatalf("RecordCirclingDecision(accept) = %v; want nil", err)
+	}
 
 	if _, _, err := b.Call(t.Context()); !errors.Is(err, recorder.err) {
 		t.Fatalf("Call() error = %v; want the carry-over failure", err)
@@ -273,7 +246,9 @@ func TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove(
 	tiergate.Require(t, 0)
 	seams := &circlingSeams{commitErr: errors.New("commit refused")}
 	b, cfg, _ := circlingBouncer(t, seams.install)
-	recordCirclingDecisionOverEscalation(t, cfg.RunDir, 2, CirclingAccept)
+	if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
+		t.Fatalf("RecordCirclingDecision(accept) = %v; want nil", err)
+	}
 
 	if _, _, err := b.Call(t.Context()); err == nil || !strings.Contains(err.Error(), "commit refused") {
 		t.Fatalf("Call() error = %v; want the commit failure", err)
@@ -295,7 +270,9 @@ func TestBouncer_Circling_SettledAcceptReachedInSettleDegrades(t *testing.T) {
 	tiergate.Require(t, 0)
 	seams := &circlingSeams{}
 	b, cfg, _ := circlingBouncer(t, seams.install)
-	recordCirclingDecisionOverEscalation(t, cfg.RunDir, 2, CirclingAccept)
+	if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
+		t.Fatalf("RecordCirclingDecision(accept) = %v; want nil", err)
+	}
 	if err := settleCirclingAccept(cfg.RunDir, 2); err != nil {
 		t.Fatalf("settleCirclingAccept = %v; want nil", err)
 	}
@@ -400,7 +377,7 @@ func TestBouncer_CirclingGuard(t *testing.T) {
 				t.Errorf("readCirclingDecision exists = %v, err = %v; want the guard to record no decision", exists, err)
 			}
 			if tt.want == shedengine.Stuck {
-				if _, err := os.Stat(FocusPath(cfg.RunDir, tt.round+1)); err != nil {
+				if _, err := os.Stat(focusPath(cfg.RunDir, tt.round+1)); err != nil {
 					t.Errorf("next-round focus file = %v; want ensureFocus to have written it", err)
 				}
 			}

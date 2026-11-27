@@ -1,6 +1,6 @@
 # PATTERN-dobby-runs
 
-This cluster guards how a board task's run is started or held: only its parent's dobby, started with its orch bar `lym adopt --no-orch`; front tasks only via `fronttask`; an adopt holds the hub through Bolt's holds until an adopt's check is green.
+This cluster guards how a board task's run is started or held: only its parent's dobby, started with its orch bar `lym adopt --no-orch`; front tasks only via `fronttask`; an adopt pause lifts only by hand.
 
 ## Dobby starts runs
 
@@ -10,16 +10,14 @@ Rule: Starting or driving a board task's run: its parent's dobby, from an empty 
 
 Rule: Starting a worktree's dobby: only with its orch, through `orchcli.BeamUp`, or `orchcli.BeamUpWorktree` or a `lym beam start` child from a verb that needs the dobby live; never `dobbyengine.EnsureLive` or `SpawnDetached` alone.
 
-The one exception is the adopt's last step under `--no-orch`, the `beam` step, which starts the dobby alone through `orchcli.BeamUp` with `SkipOrch`.
+The one exception is the adopt `beam` step under `--no-orch`, which starts the dobby alone through `orchcli.BeamUp` with `SkipOrch`.
 
 ## Front task
 
 Rule: Only fronttask files a front task and writes `front` and `on_land`; while one is open (empty or run status) dobby starts no other task in its worktree, and runs its `on_land` action from fronttask's closed table, on the subject's owner only; its project, kind and slug are fixed.
 
-## Adopt hold
+## Adopt pause
 
-Rule: An adopt holds the hub through Bolt's holds, written only by `boardengine`'s setters, from its owner write until an adopt's check is green.
+Rule: On a takeover, the adopt `pause` step pauses each adopted run, and each unstarted released task of the subject bar a front task, with a `pauserecord.AdoptCaller` entry; only `lym tender resume` or `lym batten cancel` lifts it, never the adopt check, the dobby's owner lift or a hibernate wake.
 
-A green check clears the hold and drops the bolt-hold entries with no hand lift.
-A failing check keeps the hold under an adopt-fix hold, and the fix task's landing checks it again.
-A plain adopt never moves another machine's hold, and `lym adopt --take-hold`, which does, is denied to agents.
+A legacy `adopt-hold` entry reads the same.

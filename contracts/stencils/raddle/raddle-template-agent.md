@@ -3,11 +3,10 @@
      It is read from there at call time via internal/stencilstore.
      internal/seatengine fills it from the table loomengine.RaddleTable builds for the Raddle-Write row.
      Every marker below is a top-level {{.X}} substitution, and every one but return_note must be non-empty:
-     slug, specs_dir, decision_record_path and proposal_path;
+     slug, specs_dir, decision_record_path, proposal_path and subagent_model;
      mode_rules, the mode's text filled by Go;
      parent_directive, rendered by internal/parentdirective;
      and edit_directive, rendered unconditionally by internal/editdirective.
-     The subagent_model marker is declared by the Claude engine block the stencil includes, and filled from loom.subagent_model.
      return_note is the one optional marker:
      empty on a first session, and after a return the reason of the returned filing with the path to start from.
      There are no {{if}}/{{range}} conditionals anywhere in this file. -->
@@ -36,8 +35,8 @@ Read the packages and files the Sketch names, enough to say which packages each 
 Read no more of the code than that.
 
 Start with explore subagents.
-List every question the reading raises, such as where a symbol is used or which package owns a concern.
-{{template "engine-subagent-lookups"}}
+List every question the reading raises, such as where a symbol is used or which package owns a concern, and send the independent ones as one batch to fresh subagents through the Agent tool, each with `subagent_type: "general-purpose"` and `model: "{{.subagent_model}}"`, all launched together in one message.
+Give each Agent call the `effort` that the subagent passage of your system prompt names.
 A fresh subagent sees none of this session, so each prompt carries its whole question and asks for a short answer naming files and spans.
 A fork does not serve here: it inherits this session's whole context.
 
@@ -72,9 +71,9 @@ That spec is authoritative, and this prompt restates none of it.
 
 {{.mode_rules}}
 
-## Never use {{template "engine-question-tool"}}
+## Never use `AskUserQuestion`
 
-Never call the {{template "engine-question-tool"}} tool at any point in this session, in either mode.
+Never call the `AskUserQuestion` tool at any point in this session, in either mode.
 
 ## What you may write
 

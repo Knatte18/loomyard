@@ -159,8 +159,6 @@ type fakeIndex struct {
 	planindex.Index
 	// notDone is what DoneChecks reports.
 	notDone []planindex.Finding
-	// notDoneTarget, when set, limits notDone to the asked cards that still name this Create target.
-	notDoneTarget string
 	// removed is what the delta reports as removed later targets.
 	removed []planindex.Finding
 	// removedOnlyWithLaterCards limits removed to a batch that has a card still to be built after it.
@@ -175,20 +173,8 @@ func (i fakeIndex) ValidateDispatch(*planparser.Plan, string, []planparser.Card,
 	return i.dispatch, nil
 }
 
-// DoneChecks reports notDone.
-// When notDoneTarget is set, it reports notDone only while a Create group of the asked cards still names that target.
-func (i fakeIndex) DoneChecks(_ *planparser.Plan, cards []planparser.Card, _ string) ([]planindex.Finding, error) {
-	if i.notDoneTarget == "" {
-		return i.notDone, nil
-	}
-	for _, c := range cards {
-		for _, g := range c.TargetGroups {
-			if g.Type == planparser.CardTypeCreate && slices.Contains(g.Refs, i.notDoneTarget) {
-				return i.notDone, nil
-			}
-		}
-	}
-	return nil, nil
+func (i fakeIndex) DoneChecks(*planparser.Plan, []planparser.Card, string) ([]planindex.Finding, error) {
+	return i.notDone, nil
 }
 
 func (fakeIndex) RebindResigns(*planparser.Plan, []planparser.Card, string) ([]planindex.Finding, error) {

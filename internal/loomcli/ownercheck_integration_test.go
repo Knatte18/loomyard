@@ -15,7 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -90,7 +89,7 @@ func TestRunOwnerVerdict(t *testing.T) {
 				t.Fatalf("resolve the pair's worktree: %v", err)
 			}
 
-			got, err := loomcli.RunOwnerVerdict(taskLocation, slug, func() (machinename.Identity, error) { return machinename.Identity{Name: here}, nil })
+			got, err := loomcli.RunOwnerVerdict(taskLocation, slug, func() (string, error) { return here, nil })
 
 			if err != nil {
 				t.Fatalf("RunOwnerVerdict() error = %v; want nil", err)

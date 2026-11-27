@@ -8,12 +8,15 @@
 //
 // Neither shedengine.Run nor loomrecipe.New calls Check.
 // Its enforcement point is a go test invariant, not a runtime guard.
-// This is because a legitimately resumed run starts mid-graph from a persisted current_producer.
+// Run cannot assert reachability from entry.
+// A legitimately resumed run starts mid-graph from a persisted current_producer.
+// Reachability from the entry says nothing about in-flight state.
 // A caller assembling a producer list calls Check in its own test suite, before that list reaches a Shed.
 //
 // # Both endpoints are told, never inferred
 //
 // Check takes entry and terminals as explicit arguments rather than deriving them from the producer list.
+// Shed has no entry field and no terminal field of its own.
 // Defaulting either to Producers[0] would give list order a routing meaning it does not have.
 // List order is for display and enumeration only.
 //
@@ -39,6 +42,7 @@
 // A check that keys on a field value reads the raw field,
 // and a check that keys on graph structure reads the post-drop graph, which has every dangling-target edge removed.
 // Dangling-target and unexpected-terminal never both fire for the same edge.
+// Unexpected-terminal keys on the raw OnDone == "", and a dangling OnDone is never empty.
 // A row whose stuck edge is dangling can never be a blind-gate, since the post-drop graph has dropped that edge.
 //
 // # Deterministic output order
@@ -53,16 +57,20 @@
 // A nil or empty producers slice, and a row with an empty Name, are valid input.
 // Check degrades them into ordinary findings rather than rejecting them.
 //
-// A duplicate Name resolves to its first occurrence, as shedengine's first-match producer lookup does.
+// A duplicate Name resolves to its first occurrence, as shedengine.findProducer's linear first-match scan does.
 // The shadowed later row is therefore reported as unreachable, and Check emits no duplicate-specific kind.
-// shedengine rejects a duplicate Name with its own message,
+// shedengine.validate() rejects a duplicate Name with its own message,
 // so a caller who sees only shedcheckkit's diagnosis should not read "unreachable" as the row's actual defect.
 //
 // # One perch mis-wiring Check cannot catch
 //
 // A Burler round producer that hands back to its Bouncer via OnDone instead of OnStuck is invisible to Check:
 // both wirings make the gate reachable from the round producer, so the routing graph is identical either way.
-// The difference is the verdict the round producer returns, which is behaviour inside Call.
+// The difference is the verdict the round producer returns.
+// That is behaviour inside Call, not a property of the graph Check inspects.
 //
-// Check reads only Name, OnDone, and OnStuck off each entry, never ProducerDef.Segment.
+// # What Check never reads or calls
+//
+// Check never reads ProducerDef.Segment and never calls a producer.
+// It reads only Name, OnDone, and OnStuck off each entry.
 package shedcheckkit

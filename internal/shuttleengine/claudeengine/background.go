@@ -30,7 +30,6 @@ import (
 const taskNotificationMarker = "<task-notification>"
 
 // forkSubagentType is the subagent_type of an Agent launch that forks the session.
-// It is also the agentType Claude Code records in a fork's .meta.json.
 // Claude Code runs every fork in the background, so its input carries no run_in_background flag.
 const forkSubagentType = "fork"
 
@@ -41,7 +40,7 @@ const forkSubagentType = "fork"
 // A fork launch whose tool result never reached the transcript stays outstanding, since no notification can name it.
 // A missing or unreadable transcript is an error, since an empty answer would end the wait.
 func (c *Claude) OutstandingForks(sessionID, workdir string) ([]shuttleengine.BackgroundTask, error) {
-	projectDir, err := c.sessionProjectDir(sessionID, workdir)
+	projectDir, err := claudeProjectDirFor(workdir)
 	if err != nil {
 		return nil, err
 	}

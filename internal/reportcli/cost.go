@@ -26,7 +26,7 @@ func costCommand() *cobra.Command {
 and stored-record flag, what the landed runs cost: the mean dollars and hours,
 and, over the runs that landed code, a least-squares fit of a fixed cost plus a
 cost per 100 changed lines, in dollars and in hours, with each fit's correlation.
-A cell with fewer runs than ` + costMinRunsName() + ` reads "too few runs" and
+A cell with fewer runs than report.yaml's cost_min_runs reads "too few runs" and
 carries no figure. A run with an unknown session cost enters no dollar figure.
 
   --since <date>      UTC date (YYYY-MM-DD) the window opens at

@@ -21,17 +21,9 @@ func TestParseJudgement(t *testing.T) {
 		SpawnID:    "spawn-1",
 		CellIDs:    []string{"c1", "c2"},
 		OpenRanges: []OpenRangeNote{{Case: "a.txt", Range: "5-"}},
-		FileIDs:    []string{"f1", "f2"},
 	}
-	command := JudgementWant{Mode: DiffCommand, SpawnID: "spawn-1", CompareFailed: true, FileIDs: []string{"f1", "f2"}}
-	validFiles := "files:\n  - {id: f1, ruling: none, reason: no test change}\n  - id: f2\n    ruling: loosened\n    reason: a limit widened\n    checks:\n      - {test: TestX, loosened: limit 3 to 5, ruling: caused, cause: measured 4.2, reason: trailer names it}\n"
-	wantFiles := []FileRuling{
-		{ID: "f1", Ruling: RulingNone, Reason: "no test change"},
-		{ID: "f2", Ruling: RulingLoosened, Reason: "a limit widened", Checks: []LoosenedRuling{
-			{Test: "TestX", Loosened: "limit 3 to 5", Ruling: RulingCaused, Cause: "measured 4.2", Reason: "trailer names it"},
-		}},
-	}
-	validLines := "spawn_id: spawn-1\ncells:\n  - {id: c1, ruling: matches, reason: fits}\n  - {id: c2, ruling: does not match, reason: wrong value}\nopen_ranges:\n  - {case: a.txt, range: 5-, checked: every later line}\n" + validFiles
+	command := JudgementWant{Mode: DiffCommand, SpawnID: "spawn-1", CompareFailed: true}
+	validLines := "spawn_id: spawn-1\ncells:\n  - {id: c1, ruling: matches, reason: fits}\n  - {id: c2, ruling: does not match, reason: wrong value}\nopen_ranges:\n  - {case: a.txt, range: 5-, checked: every later line}\n"
 
 	tests := []struct {
 		name    string
@@ -49,29 +41,16 @@ func TestParseJudgement(t *testing.T) {
 					{ID: "c2", Ruling: RulingNoMatch, Reason: "wrong value"},
 				},
 				OpenRanges: []OpenRangeNote{{Case: "a.txt", Range: "5-", Checked: "every later line"}},
-				Files:      wantFiles,
 			},
 		},
 		{
 			name: "ValidCommand", want: command,
-			data: "spawn_id: spawn-1\ncases:\n  - {case: a, ruling: unexpected, reason: new failure}\n  - {case: b, ruling: matches, reason: expected}\n" + validFiles,
+			data: "spawn_id: spawn-1\ncases:\n  - {case: a, ruling: unexpected, reason: new failure}\n  - {case: b, ruling: matches, reason: expected}\n",
 			parsed: Judgement{SpawnID: "spawn-1", Cases: []CaseRuling{
 				{Case: "a", Ruling: RulingUnexpected, Reason: "new failure"},
 				{Case: "b", Ruling: RulingMatches, Reason: "expected"},
-			}, Files: wantFiles},
+			}},
 		},
-		{name: "UnknownFileID", want: lines, data: strings.Replace(validLines, "id: f1,", "id: f9,", 1), wantErr: `file "f9" is not a file of this spawn`},
-		{name: "DuplicateFileID", want: lines, data: strings.Replace(validLines, "  - id: f2\n", "  - {id: f1, ruling: none, reason: again}\n  - id: f2\n", 1), wantErr: `file "f1" is ruled on more than once`},
-		{name: "MissingFileRuling", want: lines, data: strings.Replace(validLines, "  - {id: f1, ruling: none, reason: no test change}\n", "", 1), wantErr: `file "f1" has no ruling`},
-		{name: "RulingOutsideFileSet", want: lines, data: strings.Replace(validLines, "ruling: none", "ruling: matches", 1), wantErr: `file "f1" has ruling "matches"`},
-		{name: "EmptyFileReason", want: lines, data: strings.Replace(validLines, "reason: no test change", "reason: ''", 1), wantErr: `file "f1" has an empty reason`},
-		{name: "NoneFileWithChecks", want: lines, data: strings.Replace(validLines, "  - {id: f1, ruling: none, reason: no test change}\n", "  - id: f1\n    ruling: none\n    reason: r\n    checks:\n      - {test: T, loosened: x, ruling: uncaused, reason: r}\n", 1), wantErr: `file "f1" is ruled "none" but carries checks`},
-		{name: "LoosenedFileWithoutChecks", want: lines, data: strings.Replace(validLines, "    checks:\n      - {test: TestX, loosened: limit 3 to 5, ruling: caused, cause: measured 4.2, reason: trailer names it}\n", "", 1), wantErr: `file "f2" is ruled "loosened" but carries no checks`},
-		{name: "EmptyCheckTest", want: command, data: strings.Replace("spawn_id: spawn-1\ncases:\n  - {case: a, ruling: matches, reason: x}\n"+validFiles, "test: TestX", "test: ''", 1), wantErr: `check 1 of file "f2" has an empty test`},
-		{name: "EmptyCheckLoosened", want: lines, data: strings.Replace(validLines, "loosened: limit 3 to 5", "loosened: ''", 1), wantErr: `check "TestX" of file "f2" has an empty loosened text`},
-		{name: "EmptyCheckReason", want: lines, data: strings.Replace(validLines, "reason: trailer names it", "reason: ''", 1), wantErr: `check "TestX" of file "f2" has an empty reason`},
-		{name: "CheckRulingOutsideSet", want: lines, data: strings.Replace(validLines, "ruling: caused", "ruling: maybe", 1), wantErr: `check "TestX" of file "f2" has ruling "maybe"`},
-		{name: "CausedCheckWithoutCause", want: lines, data: strings.Replace(validLines, "cause: measured 4.2", "cause: ''", 1), wantErr: `check "TestX" of file "f2" is "caused" but has an empty cause`},
 		{name: "ValidCommandWithPassingCompareAndNoCases", want: JudgementWant{Mode: DiffCommand, SpawnID: "spawn-1"}, data: "spawn_id: spawn-1\n", parsed: Judgement{SpawnID: "spawn-1"}},
 		{name: "MissingCellID", want: lines, data: "spawn_id: spawn-1\ncells:\n  - {id: c1, ruling: matches, reason: fits}\nopen_ranges:\n  - {case: a.txt, range: 5-, checked: x}\n", wantErr: `cell "c2" has no ruling`},
 		{name: "DuplicateCellID", want: lines, data: strings.Replace(validLines, "  - {id: c2, ruling: does not match, reason: wrong value}\n", "  - {id: c1, ruling: matches, reason: again}\n  - {id: c2, ruling: matches, reason: ok}\n", 1), wantErr: `cell "c1" is ruled on more than once`},

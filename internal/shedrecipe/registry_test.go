@@ -103,7 +103,6 @@ func TestNames(t *testing.T) {
 			"DriftVerify",
 			"Finalize",
 			"FrictionReflect",
-			"HardenFix",
 			"Implementer",
 			"InnerRun",
 			"Land",

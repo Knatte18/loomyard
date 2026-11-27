@@ -36,19 +36,19 @@ type SeamOptions struct {
 	PrimeParentLockFree func() (bool, error)
 	WakeHeld            func(slug string) (bool, error)
 	LiftWakeHold        func(slug string) error
-	Machine             func() (machinename.Identity, error)
+	Machine             func() (string, error)
 	ParentOf            func(slug string) (string, error)
 }
 
 // HubSeamOptions returns the options a call site with only the prime's location needs.
 // HubPaused reads the hub's pause record at each call.
 // PrimeParentLockFree lists the parent lock store once for the prime's branch.
-// Machine reads this machine's identity.
+// Machine reads the machine's name.
 // ParentOf resolves an entry's parent slug through hubgeom.ParentOf over the prime's location.
 // WakeHeld and LiftWakeHold are left nil, which read as no wake hold, for the call site that knows one to fill.
 func HubSeamOptions(prime *lymcwd.Location) SeamOptions {
 	return SeamOptions{
-		Machine: machinename.ReadIdentity,
+		Machine: machinename.Name,
 		ParentOf: func(slug string) (string, error) {
 			return hubgeom.ParentOf(prime, slug)
 		},
@@ -86,13 +86,12 @@ func HubSeamOptions(prime *lymcwd.Location) SeamOptions {
 
 // OwnerReader builds the reader of a slug's owner from one `board.json`:
 // the effective owner, the subject `lym adopt` takes to move it, and whether that owner is another machine.
-// The owner is compared with this machine's identity through the board's machine registry.
-// An identity error, an empty hostname included, a parentOf error and undecodable board bytes are returned,
+// A machine error, an empty hostname included, a parentOf error and undecodable board bytes are returned,
 // so no owner is ever compared with an empty name.
 // parentOf names the slug of a pair's parent in the hub at hubPath, or "" for the prime.
-func OwnerReader(identity func() (machinename.Identity, error), parentOf func(hubPath, slug string) (string, error)) fabricengine.OwnerReader {
+func OwnerReader(machine func() (string, error), parentOf func(hubPath, slug string) (string, error)) fabricengine.OwnerReader {
 	return func(hubPath string, boardJSON []byte, slug string) (string, string, bool, error) {
-		here, err := identity()
+		here, err := machine()
 		if err != nil {
 			return "", "", false, fmt.Errorf("read this machine's name: %w", err)
 		}
@@ -109,7 +108,7 @@ func OwnerReader(identity func() (machinename.Identity, error), parentOf func(hu
 		if err != nil {
 			return "", "", false, fmt.Errorf("read what adopt takes for %s: %w", slug, err)
 		}
-		return owner, subject, boardengine.OwnedElsewhere(owner, owners.Registry, here), nil
+		return owner, subject, boardengine.OwnedElsewhere(owner, here), nil
 	}
 }
 

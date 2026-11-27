@@ -65,15 +65,14 @@ type ReviewResult struct {
 // ErrReviewChanged reports that the review file no longer holds the bytes the review half accepted, so the fix half refuses to act on it.
 var ErrReviewChanged = errors.New("burler: the review file changed after it was accepted")
 
-// reviewTable builds the review half's one-seat table for p under opts:
-// the reviewer as the chair, gated by the review-parse entry and then the round-check entry.
+// reviewTable builds the review half's one-seat table for p under opts: the reviewer as the chair, gated by the review-parse entry alone.
 // The reviewer writes the review file alone and may fork exactly when p names a cluster fan.
 // values carries the marker values the seat's stencil is filled from, and skills names the skills the seat loads.
 func (p *Profile) reviewTable(opts RunOpts, values map[string]string, skills []string) seatengine.Table {
 	return seatengine.Table{
 		RolePrefix: ReviewChairRole(p.RolePrefix),
 		Segment:    p.segment(),
-		Gate:       shuttleengine.GateSpec{ReviewGateEntry(p.ReviewPath), RoundCheckGateEntry(p.ReviewPath, p.Round)},
+		Gate:       shuttleengine.GateSpec{ReviewGateEntry(p.ReviewPath)},
 		Round:      opts.Round,
 		Timeout:    opts.Timeout,
 		Seats: []seatengine.Seat{
@@ -94,7 +93,6 @@ func (p *Profile) reviewTable(opts RunOpts, values map[string]string, skills []s
 // Review runs the review half for p, tuned by opts: one fresh reviewer session that writes the review file.
 // It validates p and resolves the PATTERN directive.
 // It composes the reviewer's instruction files into a fresh directory under the anchor's ephemeral burler directory.
-// It writes p's diff there in per-package pieces that the explore step names.
 // Then it runs the review table.
 // When opts names an assistant, the table also holds the assistant seat.
 // The assistant's own instruction files are composed for its engine into a directory of their own;
@@ -120,10 +118,6 @@ func (e *Engine) Review(p Profile, opts RunOpts) (ReviewResult, error) {
 		return ReviewResult{}, fmt.Errorf("burler: %w", err)
 	}
 	dir, err := e.instructionDir("review")
-	if err != nil {
-		return ReviewResult{}, err
-	}
-	p.diffPieces, err = writeDiffPieces(filepath.Join(dir, diffDirName), p.Diff, pieceCap{maxBytes: diffPieceMaxBytes, maxLines: diffPieceMaxLines})
 	if err != nil {
 		return ReviewResult{}, err
 	}
@@ -161,17 +155,6 @@ func (e *Engine) probeTable(p *Profile, opts RunOpts) seatengine.Table {
 	files := reviewFilesIn(e.probeDirOf())
 	assist := e.assistSeat(p, opts, files, e.seatSkills(p), "")
 	return e.withParentCoverage(withAssistant(p.reviewTable(opts, reviewSeatValues(p, files), e.seatSkills(p)), assist), p, opts)
-}
-
-// SeatTables returns the tables a round of p under opts runs: the review table, then the fix table.
-// The review table holds the assistant seat when opts names one, and the parent coverage entry when opts names an ask.
-// The fix table is the one ProbeFix builds.
-// It composes no prompt and reads or writes nothing, and it runs no validation of p.
-func (e *Engine) SeatTables(p *Profile, opts RunOpts) []seatengine.Table {
-	return []seatengine.Table{
-		e.probeTable(p, opts),
-		p.fixTable(opts, fixSeatValues(p, fixFilesIn(e.probeDirOf())), e.seatSkills(p)),
-	}
 }
 
 // instructionDir creates a fresh instruction directory named from prefix under the anchor's ephemeral burler directory.

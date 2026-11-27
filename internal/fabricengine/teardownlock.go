@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -64,35 +63,6 @@ func ensureTeardownLockDir(hubPath, slug string) error {
 	return nil
 }
 
-// teardownSharedPollInterval is the longest pause between two tries at a teardown lock a push waits for.
-const teardownSharedPollInterval = time.Second
-
-// acquireTeardownShared takes slug's teardown lock shared and returns its release function.
-// A zero wait makes one try.
-// A positive wait polls the lock until it is free or wait has passed, and then reports acquired false.
-// The wait is bounded and short, so it sits outside the unbounded-wait rule of the daemon wakeups.
-func acquireTeardownShared(hubPath, slug string, wait time.Duration) (release func(), acquired bool, err error) {
-	if err := ensureTeardownLockDir(hubPath, slug); err != nil {
-		return nil, false, err
-	}
-	lockPath := TeardownLockPath(hubPath, slug)
-	deadline := time.Now().Add(wait)
-	for {
-		held, ok, err := lock.TryAcquireReadLock(lockPath)
-		if err != nil {
-			return nil, false, fmt.Errorf("fabricengine: take the teardown lock: %w", err)
-		}
-		if ok {
-			return func() { _ = held.Release() }, true, nil
-		}
-		remaining := time.Until(deadline)
-		if remaining <= 0 {
-			return nil, false, nil
-		}
-		time.Sleep(min(teardownSharedPollInterval, remaining))
-	}
-}
-
 // DetachedPush is the body of the detached push child:
 // it pushes the sides req carries under the push lock, yielding to a removal of the pair.
 // With req.TeardownSlug set it holds the pair's teardown lock shared for its whole run.
@@ -103,8 +73,7 @@ func acquireTeardownShared(hubPath, slug string, wait time.Duration) (release fu
 // A child whose pair's parent lock was not held at spawn (req.ParentLocked) exits when a pause covers it.
 // It logs an Info line and returns a nil error before it takes the teardown lock or marks any flag.
 // The commits stay local for the next push.
-// here names this machine for the takeover read of a rejected records push, as CoalescePushRequest reads it.
-func DetachedPush(hubPath string, req PushSpawn, here MachineNames) (PushResult, error) {
+func DetachedPush(hubPath string, req PushSpawn) (PushResult, error) {
 	if !req.ParentLocked && pauserecord.GateCovered() {
 		logger.Info("fabricengine: a pause covers the push; exiting with the commits left local", "slug", req.TeardownSlug)
 		return PushResult{}, nil
@@ -139,7 +108,7 @@ func DetachedPush(hubPath string, req PushSpawn, here MachineNames) (PushResult,
 		}
 	}
 
-	return CoalescePushRequest(req, SyncOptions{}, here)
+	return CoalescePushRequest(req, SyncOptions{})
 }
 
 // lockPairTeardown takes slug's teardown lock exclusive.
@@ -180,4 +149,30 @@ func teardownLockRefusal(slug string, try bool, rerun string) error {
 		return fmt.Errorf("the teardown lock of the pair %q is held by a push or another removal: %w", slug, ErrPairBusy)
 	}
 	return fmt.Errorf("a push or removal of the pair %q is still running or waiting under a pause; %s once it finishes or the pause is resumed, or end the stuck push or teardown child, whose pid `lym tender status` lists under the pair's owner: %w", slug, rerun, ErrPairPushRunning)
+}
+
+// respawnPairPush spawns the push of the pair's worktrees that survive a failed Remove,
+// so a child that exited on the held teardown lock loses nothing.
+// l is the location Remove ran from, the prime, so the pair's own location is built from it.
+// A failed spawn is logged: the pair's next push carries its commits.
+func respawnPairPush(l *lymcwd.Location, slug string) {
+	taskWorktree := WorktreePath(l, slug)
+	recordsWorktree := RecordsWorktreePath(l, slug)
+
+	switch {
+	case pathPresent(taskWorktree):
+		pairLocation, err := lymcwd.ResolveWorktree(taskWorktree)
+		if err != nil {
+			logger.Warn("fabricengine: could not respawn the pair's push after a failed remove", "slug", slug, "error", err)
+			return
+		}
+		if _, err := SpawnStatusPush(pairLocation, ""); err != nil {
+			logger.Warn("fabricengine: respawning the pair's push after a failed remove failed", "slug", slug, "error", err)
+		}
+	case pathPresent(recordsWorktree):
+		req := PushSpawn{WeftPath: recordsWorktree, PauseSlug: slug, TeardownSlug: slug, WorkDir: BoltDir(l.HubPath)}
+		if err := spawnDetachedPushFn(req); err != nil {
+			logger.Warn("fabricengine: respawning the pair's records push after a failed remove failed", "slug", slug, "error", err)
+		}
+	}
 }

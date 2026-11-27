@@ -32,8 +32,7 @@ type readoptSeams struct {
 	SpawnPush func(slug string) error
 	// Notice posts line to the run's parent; nil posts nothing.
 	Notice func(slug, line string) error
-	// CommitFailed commits batten's status file after the failed stop of the row producer and pushes it.
-	// An owed push is logged and returns nil, since the run already halts at the failed stop.
+	// CommitFailed commits batten's status file after the failed stop of the row producer and spawns its push.
 	// A nil CommitFailed commits nothing.
 	CommitFailed func(slug, producer string) error
 	// RecordsRoot returns the root of the records repository, which a way forward names.
@@ -62,15 +61,14 @@ func hubTaskBranch(location *lymcwd.Location, slug string) (string, fabricengine
 }
 
 // hubReadoptSeams builds the re-adoption seams over the prime location of a hub.
-// opts bounds the run-scope reconcile's remote calls and its retries of an unreachable origin.
-func hubReadoptSeams(location *lymcwd.Location, opts fabricengine.ReconcileOptions) readoptSeams {
+func hubReadoptSeams(location *lymcwd.Location) readoptSeams {
 	return readoptSeams{
 		Gone: func(slug string) (bool, error) {
 			present, err := taskWorktreePresent(location, slug)
 			return !present, err
 		},
 		Reconcile: func(slug string) (fabricengine.OriginReport, error) {
-			return reconcileGoneRun(location, slug, opts)
+			return reconcileGoneRun(location, slug)
 		},
 		Prune: func() error { return fabricengine.PruneRegistrations(location) },
 		Add: func(slug string) error {
@@ -97,7 +95,7 @@ func hubReadoptSeams(location *lymcwd.Location, opts fabricengine.ReconcileOptio
 			if _, err := deps.Commit(statuscommit.Message(failedStopCommitPrefix, producer, string(shedengine.StateFailed))); err != nil {
 				return err
 			}
-			return pushRecordsOrOwe(deps, slug)
+			return deps.Spawn()
 		},
 		RecordsRoot: func() (string, error) { return fabricengine.RecordsRepoRoot(location) },
 		Tags: func(slug string) ([]fabricengine.RecordsTag, error) {
@@ -133,15 +131,14 @@ func hubReadoptSeams(location *lymcwd.Location, opts fabricengine.ReconcileOptio
 // reconcileGoneRun runs the run-scope origin reconcile of slug from the prime.
 // It judges a run whose pair worktree is absent.
 // The run scope tears no pair down and moves no ref of the absent pair.
-// opts bounds the reconcile's remote calls and its retries of an unreachable origin.
 // Each entry of the report's mutation record is logged at Info, since a resume has no envelope to carry it.
 // The report is returned with the error, so a partial record is still logged.
-func reconcileGoneRun(location *lymcwd.Location, slug string, opts fabricengine.ReconcileOptions) (fabricengine.OriginReport, error) {
+func reconcileGoneRun(location *lymcwd.Location, slug string) (fabricengine.OriginReport, error) {
 	teardown, err := pairteardown.New(location)
 	if err != nil {
 		return fabricengine.OriginReport{}, err
 	}
-	report, err := fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{Run: slug, PairMayBeAbsent: true}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), opts)
+	report, err := fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{Run: slug, PairMayBeAbsent: true}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), fabricengine.ReconcileOptions{})
 	for _, mutation := range report.Mutations.Entries() {
 		logger.Info("battencli: origin reconcile mutation", "slug", slug, "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
 	}
@@ -151,7 +148,7 @@ func reconcileGoneRun(location *lymcwd.Location, slug string, opts fabricengine.
 // readoptGonePair resumes a run whose task worktree is gone.
 // An origin that ended, stopped or gave the run to another machine is refused as in any resume.
 // That refusal comes before the pair is touched.
-// An unreachable origin refuses, since a pair is never re-made unjudged.
+// An unreachable origin refuses without writing the origin-owed marker, since a pair is never re-made unjudged.
 // Past those checks, it prunes the stale registrations and re-makes the pair over its live branches.
 // It then spawns the pair's push and runs the resume reconcile over the re-made pair.
 // A pair that can never be re-made fails the run once, with a way forward by row.

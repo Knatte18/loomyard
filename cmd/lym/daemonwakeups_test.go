@@ -24,12 +24,12 @@ import (
 
 // unboundedWaitFiles lists the module-relative, slash-separated files holding an unbounded wait or its driving loop.
 var unboundedWaitFiles = []string{
+	"internal/adoptcli/follow.go",
 	"internal/reedengine/watchloop.go",
 	"internal/reedengine/namerepair.go",
 	"internal/reedcli/watchdog.go",
 	"internal/orchengine/watchloop.go",
 	"internal/dobbyengine/loop.go",
-	"internal/boardserve/run.go",
 	"internal/battenshed/land.go",
 	"internal/battenshed/primelockwait.go",
 	"internal/pawlengine/beamawait.go",
@@ -38,6 +38,7 @@ var unboundedWaitFiles = []string{
 	"internal/gatecli/memoryguard.go",
 	"internal/gatecli/detachrun.go",
 	"internal/gatecli/detachfront.go",
+	"internal/gatecli/testmapwait.go",
 	"internal/hibernateengine/watch.go",
 	"internal/driftengine/wait.go",
 	"internal/pauserecord/hold.go",
@@ -45,7 +46,6 @@ var unboundedWaitFiles = []string{
 	"internal/shuttleengine/loadturn.go",
 	"internal/verifytree/verify.go",
 	"internal/websterengine/poll.go",
-	"internal/runpusher/pushuntillanded.go",
 	"internal/shedverbs/status.go",
 	"internal/shedverbs/loopwait.go",
 	"internal/shedverbs/loop.go",
@@ -53,13 +53,11 @@ var unboundedWaitFiles = []string{
 	"internal/statuspane/pane.go",
 	"internal/creelengine/deliver.go",
 	"internal/creelengine/sweep.go",
-	"internal/creelengine/machinemail.go",
 	"internal/creelengine/chase.go",
 	"internal/creelengine/outbound.go",
 	"internal/creelengine/server.go",
 	"internal/creelengine/client.go",
 	"internal/slackengine/relay.go",
-	"internal/slackengine/bridgepoll.go",
 	"internal/slackengine/holder.go",
 }
 

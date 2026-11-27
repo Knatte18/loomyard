@@ -97,8 +97,6 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 
 	s.PaneID = paneID
 	e.killReplacedOwnWindowPaneLocked(previousPaneID, paneID)
-	// The cap comes before anything is typed into the pane, so every process the launch starts runs under it.
-	e.capPaneMemoryLocked(paneID, s)
 	// Both title commands only mirror the display: allow-set-title off stops the agent inside from overwriting the name.
 	// No lookup or delivery resolves through a title, so a failure of either costs display only and never fails the launch.
 	// A tmux that predates allow-set-title skips the option, and the version probe has already logged that fallback once.

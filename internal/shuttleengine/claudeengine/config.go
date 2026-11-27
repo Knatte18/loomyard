@@ -25,10 +25,10 @@ type Config struct {
 	Binary string `yaml:"binary"`
 	// DenyAskUserQuestion switches the PreToolUse deny for the AskUserQuestion tool.
 	DenyAskUserQuestion bool `yaml:"deny_ask_user_question"`
-	// PromptCacheTTL is the main conversation's prompt-cache TTL for a role without a map entry;
+	// PromptCacheTTL is Claude Code's prompt-cache TTL for a role without a map entry;
 	// it is validated where a run starts, not when the config loads.
 	PromptCacheTTL string `yaml:"prompt_cache_ttl"`
-	// PromptCacheTTLRoles maps a strand's role segment to its main conversation's prompt-cache TTL;
+	// PromptCacheTTLRoles maps a strand's role segment to Claude Code's prompt-cache TTL;
 	// it is validated where a run starts, not when the config loads.
 	PromptCacheTTLRoles map[string]string `yaml:"prompt_cache_ttl_roles"`
 	// KeepWarmCap is the longest one keep-warm wait for a role without a map entry, a Go duration;
@@ -42,10 +42,6 @@ type Config struct {
 	BatchingNudge BatchingNudgeConfig `yaml:"batching_nudge"`
 	// SessionScope switches the scope lym writes into every session's settings and names the skills it turns off.
 	SessionScope ScopeConfig `yaml:"session_scope"`
-	// Accounts lists the Claude accounts logged in on this machine; it is a machine-layer key, never tracked.
-	Accounts []AccountConfig `yaml:"accounts"`
-	// AccountPins pins the hub's worktrees or its beams to one listed account; it is a machine-layer key, never tracked.
-	AccountPins AccountPins `yaml:"account_pins"`
 }
 
 // ConfigOpenMaps returns the claude.yaml keys whose entries are the operator's own.
@@ -54,7 +50,8 @@ func ConfigOpenMaps() []string {
 	return []string{"prompt_cache_ttl_roles", "keep_warm_cap_roles"}
 }
 
-// retiredAgentDenyKey is a retired key: no run denies the Agent tool, so the key switches nothing.
+// retiredAgentDenyKey is a retired key: no run denies the Agent tool, so the key switches nothing,
+// and a layer holding it is read without it.
 const retiredAgentDenyKey = "deny_agent_tool"
 
 // retiredAgentDenyWayForward is the way forward a local override setting retiredAgentDenyKey is refused with.
@@ -76,8 +73,6 @@ func ConfigSpec() configengine.Spec {
 			"keep_warm_cap_roles":    configengine.CategoryNone,
 			batchingNudgeKey:         configengine.CategoryNone,
 			sessionScopeKey:          configengine.CategoryNone,
-			accountsKey:              configengine.CategoryMachine,
-			accountPinsKey:           configengine.CategoryMachine,
 		},
 		RetiredKeys:       map[string]configengine.Category{retiredAgentDenyKey: configengine.CategoryGuard},
 		RetiredWayForward: map[string]string{retiredAgentDenyKey: retiredAgentDenyWayForward},
@@ -94,14 +89,6 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
 		return Config{}, configengine.MarkInvalid(fmt.Errorf("unmarshal claude config: %w", err))
-	}
-	if err := refuseTrackedAccountKeys(dirs); err != nil {
-		return Config{}, err
-	}
-	// An unresolvable home leaves it empty, so a `~/` config directory is refused as unresolved.
-	home, _ := claudeHomeDir()
-	if err := validateAccounts(&cfg, home); err != nil {
-		return Config{}, err
 	}
 	return cfg, nil
 }

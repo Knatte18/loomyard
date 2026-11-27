@@ -46,7 +46,7 @@ func TestPairParts(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 		warpBranchCommit(t, h.Location, slug, "work.txt")
-		if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
 			t.Fatalf("Remove(%q): %v", slug, err)
 		}
 		gitkit.MustRun(t, h.PrimeWorktree(), "git", "push", "origin", slug)
@@ -137,7 +137,7 @@ func TestTaskBranchSlugs(t *testing.T) {
 	}{
 		{"LocalAndOriginTrackingBranches", "", "adopt-fix-x-t", []string{"adopt-fix-x-t1", "adopt-fix-x-t3"}},
 		{"NoMatch", "", "nothing-", nil},
-		{"BareAndPrefixedAndOtherMachinesBranchesUnderABranchPrefix", "hanf/", "adopt-fix-x-t", []string{"adopt-fix-x-t1", "adopt-fix-x-t3", "adopt-fix-x-t4", "adopt-fix-x-t5"}},
+		{"BareAndPrefixedBranchesUnderABranchPrefix", "hanf/", "adopt-fix-x-t", []string{"adopt-fix-x-t1", "adopt-fix-x-t3", "adopt-fix-x-t4"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -154,7 +154,6 @@ func TestTaskBranchSlugs(t *testing.T) {
 			gitkit.MustRun(t, prime, "git", "push", "origin", "adopt-fix-x-t3")
 			gitkit.MustRun(t, prime, "git", "branch", "-D", "adopt-fix-x-t3")
 			gitkit.MustRun(t, prime, "git", "branch", "hanf/adopt-fix-x-t4")
-			gitkit.MustRun(t, prime, "git", "branch", "other-machine/adopt-fix-x-t5")
 
 			got, err := fabricengine.TaskBranchSlugs(h.Location, tt.prefix)
 			if err != nil {

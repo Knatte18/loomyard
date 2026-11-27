@@ -27,9 +27,7 @@ const (
 )
 
 // fakeHubs stands in for the hub seams of deps, keyed by board directory.
-// It records each registration and owner write request and answers what its fields hold.
-// A hub it holds nothing for gets the zero value.
-// registry is the machine record's list of hubs, and machines is each hub's board registry.
+// It records each owner write request and answers what its fields hold, the zero value for a hub it holds nothing for.
 type fakeHubs struct {
 	mu          sync.Mutex
 	registry    []string
@@ -41,22 +39,11 @@ type fakeHubs struct {
 	unpushedErr map[string]error
 	ahead       map[string]bool
 	owners      map[string]boardengine.Owners
-	machines    map[string]boardengine.Registry
 	readErr     map[string]error
 	writeErr    map[string]error
 	write       map[string]boardengine.OwnerWrite
 	requests    map[string][]boardengine.OwnerRequest
-	// registerErr fails a hub's registration, and registered is whether a hub's registration writes.
-	registerErr   map[string]error
-	registered    map[string]bool
-	registrations map[string][]boardengine.Registration
-	// references and referencesErr answer a hub's references seam, keyed by hub path.
-	references    map[string][]formerReference
-	referencesErr map[string]error
 }
-
-// freshID is the id the fake draws for a machine file with none or a copied one.
-const freshID = "fresh-id"
 
 // newFakeHubs returns a fakeHubs whose machine record lists registry.
 func newFakeHubs(registry ...string) *fakeHubs {
@@ -67,36 +54,11 @@ func newFakeHubs(registry ...string) *fakeHubs {
 		unpushedErr: map[string]error{},
 		ahead:       map[string]bool{},
 		owners:      map[string]boardengine.Owners{},
-		machines:    map[string]boardengine.Registry{},
 		readErr:     map[string]error{},
 		writeErr:    map[string]error{},
 		write:       map[string]boardengine.OwnerWrite{},
 		requests:    map[string][]boardengine.OwnerRequest{},
-
-		registerErr:   map[string]error{},
-		registered:    map[string]bool{},
-		registrations: map[string][]boardengine.Registration{},
-		references:    map[string][]formerReference{},
-		referencesErr: map[string]error{},
 	}
-}
-
-// registrationsFor returns the registrations the hub received.
-func (f *fakeHubs) registrationsFor(hub string) []boardengine.Registration {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.registrations[f.board(hub)]
-}
-
-// registrationTotal returns how many registrations every hub received.
-func (f *fakeHubs) registrationTotal() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	total := 0
-	for _, registrations := range f.registrations {
-		total += len(registrations)
-	}
-	return total
 }
 
 // board returns the board directory the seams are keyed by for hub.
@@ -130,25 +92,13 @@ func (f *fakeHubs) attach(d deps) deps {
 		return f.skip[boardDir], "skip detail", f.pullErr[boardDir]
 	}
 	d.unpushed = func(boardDir string) (bool, error) { return f.ahead[boardDir], f.unpushedErr[boardDir] }
-	d.readOwners = func(boardDir string) (boardengine.Owners, error) {
-		owners := f.owners[boardDir]
-		owners.Registry = f.machines[boardDir]
-		return owners, f.readErr[boardDir]
-	}
+	d.readOwners = func(boardDir string) (boardengine.Owners, error) { return f.owners[boardDir], f.readErr[boardDir] }
 	d.setOwners = func(boardDir string, req boardengine.OwnerRequest) (boardengine.OwnerWrite, error) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		f.requests[boardDir] = append(f.requests[boardDir], req)
 		return f.write[boardDir], f.writeErr[boardDir]
 	}
-	d.register = func(boardDir string, reg boardengine.Registration) (bool, error) {
-		f.mu.Lock()
-		defer f.mu.Unlock()
-		f.registrations[boardDir] = append(f.registrations[boardDir], reg)
-		return f.registered[boardDir], f.registerErr[boardDir]
-	}
-	d.newID = func() (string, error) { return freshID, nil }
-	d.references = func(hub, _ string) ([]formerReference, error) { return f.references[hub], f.referencesErr[hub] }
 	return d
 }
 
@@ -222,19 +172,9 @@ func hubOutcomes(t *testing.T, envelope map[string]any) []map[string]any {
 	return outcomes
 }
 
-// requireSweepRequest fails the test unless hub received exactly one registration of name.
-// That registration has replace among its former names.
-// It also fails unless hub received exactly one owner write that sweeps replace for name and carries that identity.
+// requireSweepRequest fails the test unless hub received exactly one owner write that sweeps replace for name.
 func requireSweepRequest(t *testing.T, f *fakeHubs, hub, name string, replace []string) {
 	t.Helper()
-	registrations := f.registrationsFor(hub)
-	if len(registrations) != 1 {
-		t.Fatalf("hub %s received %d registrations; want 1", hub, len(registrations))
-	}
-	identity := registrations[0].Identity
-	if identity.ID == "" || identity.Name != name || !slices.Equal(identity.Former, replace) {
-		t.Errorf("hub %s registration = %+v; want an id, name %q and former names %v", hub, identity, name, replace)
-	}
 	requests := f.requestsFor(hub)
 	if len(requests) != 1 {
 		t.Fatalf("hub %s received %d owner writes; want 1", hub, len(requests))
@@ -242,9 +182,6 @@ func requireSweepRequest(t *testing.T, f *fakeHubs, hub, name string, replace []
 	req := requests[0]
 	if req.Machine != name || !slices.Equal(req.Replace, replace) {
 		t.Errorf("hub %s request = Machine %q, Replace %v; want %q, %v", hub, req.Machine, req.Replace, name, replace)
-	}
-	if req.Identity.ID != identity.ID || req.Identity.Name != name {
-		t.Errorf("hub %s request identity = %+v; want the registered identity %+v", hub, req.Identity, identity)
 	}
 	if req.Takeover || req.Prime || req.Claim != "" || len(req.Slugs) != 0 {
 		t.Errorf("hub %s request = %+v; want no takeover, prime, claim or slugs", hub, req)
@@ -291,10 +228,6 @@ func TestName_Set(t *testing.T) {
 		wantDropped        int
 		wantInvalidDropped bool
 		wantNamesLost      bool
-		// wantID is the id the written file holds; empty asserts none.
-		wantID string
-		// wantForgotten is the forgotten names the written file holds.
-		wantForgotten []string
 	}{
 		{name: "InvalidNameIsRefusedAndWritesNothing", arg: "Bad_Name", wantRefusal: []string{"is invalid"}},
 		{name: "NoDirectoryIsRefusedNamingTheVariables", noDirectory: true, wantRefusal: []string{wantNoDirectoryVariable(), "absolute path"}},
@@ -329,58 +262,8 @@ func TestName_Set(t *testing.T) {
 			wantNames: []string{"osl-1046", "osl46"}, wantWritten: true,
 		},
 		{
-			name: "AlreadySetWritesNothing", content: `{"name":"osl46","names":["box","osl46"],"id":"id1"}`,
+			name: "AlreadySetWritesNothing", content: `{"name":"osl46","names":["box","osl46"]}`,
 			wantNames: []string{"box", "osl46"},
-		},
-		{
-			name: "ANewNameAnotherMachineHoldsAsItsCurrentNameIsRefusedNamingItAndTheRename", arg: "neve",
-			setup: func(f *fakeHubs) {
-				f.machines[f.board(hubA)] = boardengine.Registry{"id2": {Name: "neve"}}
-			},
-			wantRefusal: []string{hubA, "neve", "lym machine name <new>"},
-		},
-		{
-			name: "ANewNameAnotherMachineHoldsAsAFormerNameIsRefusedNamingItAndTheRename",
-			setup: func(f *fakeHubs) {
-				f.machines[f.board(hubA)] = boardengine.Registry{"id2": {Name: "other", Former: []string{"osl46"}}}
-			},
-			wantRefusal: []string{hubA, "other", "lym machine name <new>"},
-		},
-		{
-			name: "ARefusedCurrentNameIsKeptOutOfTheWrittenNamesWhenALaterFreeNameLands", content: `{"name":"neve","names":["neve"],"id":"id1"}`,
-			setup: func(f *fakeHubs) {
-				f.machines[f.board(hubA)] = boardengine.Registry{"id2": {Name: "neve"}}
-			},
-			wantNames: []string{"box", "osl46"}, wantWritten: true, wantID: "id1",
-		},
-		{
-			name: "ARefusedHostnameNameOnAMachineWithNoFileIsKeptOutAndTheRegistrationLands",
-			setup: func(f *fakeHubs) {
-				f.machines[f.board(hubA)] = boardengine.Registry{"id2": {Name: "box"}}
-			},
-			wantNames: []string{"osl46"}, wantWritten: true, wantID: freshID,
-		},
-		{
-			name: "AForgottenNameIsNotAddedBack", content: `{"name":"neve","names":["neve"],"id":"id1","forgotten":["box"]}`,
-			wantNames: []string{"neve", "osl46"}, wantWritten: true, wantID: "id1", wantForgotten: []string{"box"},
-		},
-		{
-			name: "ACopiedIdIsReplacedAndTheVerbIsNotRefusedAsACopy", content: `{"name":"osl45","names":["osl45"],"id":"copied"}`,
-			setup: func(f *fakeHubs) {
-				f.machines[f.board(hubA)] = boardengine.Registry{"copied": {Name: "box"}}
-			},
-			wantNames: []string{"osl45", "osl46"}, wantWritten: true, wantID: freshID,
-		},
-		{
-			name: "AKeptIdIsWrittenBack", content: `{"name":"box","names":["box"],"id":"id1"}`,
-			setup: func(f *fakeHubs) {
-				f.machines[f.board(hubA)] = boardengine.Registry{"id1": {Name: "box"}}
-			},
-			wantNames: []string{"box", "osl46"}, wantWritten: true, wantID: "id1",
-		},
-		{
-			name: "AFileWithNoIdGetsOne", content: `{"name":"box","names":["box"]}`,
-			wantNames: []string{"box", "osl46"}, wantWritten: true, wantID: freshID,
 		},
 		{
 			name: "NoHostnameAddsNone", content: `{"name":"neve","names":["neve"]}`, hostErr: true,
@@ -448,8 +331,8 @@ func TestName_Set(t *testing.T) {
 				if after != before {
 					t.Errorf("machine file after a refusal = %q; want it unchanged from %q", after, before)
 				}
-				if total := f.requestTotal() + f.registrationTotal(); total != 0 {
-					t.Errorf("a refused set sent %d registrations and owner writes; want none", total)
+				if total := f.requestTotal(); total != 0 {
+					t.Errorf("a refused set sent %d owner writes; want none", total)
 				}
 				return
 			}
@@ -467,9 +350,6 @@ func TestName_Set(t *testing.T) {
 				}
 				if file.Name != arg || !slices.Equal(file.Names, tt.wantNames) {
 					t.Errorf("written file = name %q, names %v; want %q, %v", file.Name, file.Names, arg, tt.wantNames)
-				}
-				if tt.wantID != "" && file.ID != tt.wantID || !slices.Equal(file.Forgotten, tt.wantForgotten) {
-					t.Errorf("written file = id %q, forgotten %v; want %q, %v", file.ID, file.Forgotten, tt.wantID, tt.wantForgotten)
 				}
 			} else if after != before {
 				t.Errorf("machine file = %q; want it unchanged from %q", after, before)
@@ -563,32 +443,6 @@ func TestName_Set(t *testing.T) {
 		if after := fileState(t, path); after != afterFirst {
 			t.Errorf("machine file after the re-run = %q; want it unchanged from %q", after, afterFirst)
 		}
-	})
-
-	t.Run("FailedRegistrationIsReportedWithTheRerunAndTheOtherHubsRegister", func(t *testing.T) {
-		t.Parallel()
-		f := newFakeHubs(hubA, hubB)
-		f.registerErr[f.board(hubA)] = errors.New("push boom")
-		f.registered[f.board(hubB)] = true
-		path := machineFileAt(t, "", false)
-
-		code, envelope := runName(t, seams{path: path, host: "box"}.deps(f), t.TempDir(), "osl46")
-
-		if code == 0 || envelope["ok"] != false || !strings.Contains(envelope["error"].(string), "lym machine name osl46") {
-			t.Fatalf("set exit %d, envelope %v; want a non-zero exit naming the re-run", code, envelope)
-		}
-		outcomes := hubOutcomes(t, envelope)
-		if outcomes[0]["outcome"] != outcomeFailed || !strings.Contains(outcomes[0]["error"].(string), "push boom") ||
-			!strings.Contains(outcomes[0]["way_forward"].(string), "lym machine name osl46") {
-			t.Errorf("failed hub outcome = %v; want the registration error and the re-run", outcomes[0])
-		}
-		if registered, _ := outcomes[1]["registered"].(bool); !registered {
-			t.Errorf("second hub outcome = %v; want it registered despite the first hub's failure", outcomes[1])
-		}
-		if swept := f.requestsFor(hubA); len(swept) != 0 {
-			t.Errorf("hub %s received owner writes %+v after its failed registration; want none", hubA, swept)
-		}
-		requireSweepRequest(t, f, hubB, "osl46", []string{"box"})
 	})
 
 	t.Run("LostEntryIsReportedPerEntry", func(t *testing.T) {

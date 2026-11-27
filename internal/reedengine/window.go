@@ -53,7 +53,7 @@ const windowReadBackFormat = "#{window_id} #{remain-on-exit}"
 // The window is never selected, so it takes no focus.
 // It carries @lym_hidden, so the status bar gives it no button, and it closes when its command exits.
 // It opens after the highest-index window, so every hidden window sits behind the shell window.
-// The shell window is first renamed and moved into place when it is not.
+// When the session predates the window order, the shell window is first renamed and moved into place.
 //
 // A hidden window of that exact name whose pane is live is returned as existing and nothing is started;
 // one whose pane is dead is killed and replaced.
