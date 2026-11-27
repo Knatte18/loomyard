@@ -12,9 +12,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/boardserve"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 )
 
 // refuseRunAgent refuses verb for a run agent's strand name; an orch's name and an empty one pass.
@@ -54,17 +56,25 @@ type openResult struct {
 
 // runOpen opens the page of the hub's board server, starting the server when none runs.
 func runOpen(deps openDeps) (openResult, error) {
+	started := false
+	start := func() error {
+		primeAnchor, err := deps.Prime()
+		if err != nil {
+			return err
+		}
+		if err := deps.Spawn(primeAnchor, deps.Paths.Log); err != nil {
+			return fmt.Errorf("start the board server: %w: way forward: check that lym runs from this shell and read the server log %s, then run lym board open again", err, deps.Paths.Log)
+		}
+		started = true
+		return nil
+	}
 	live, err := boardserve.Live(deps.Paths)
 	if err != nil {
 		return openResult{}, err
 	}
 	if !live {
-		primeAnchor, err := deps.Prime()
-		if err != nil {
+		if err := start(); err != nil {
 			return openResult{}, err
-		}
-		if err := deps.Spawn(primeAnchor, deps.Paths.Log); err != nil {
-			return openResult{}, fmt.Errorf("start the board server: %w: way forward: check that lym runs from this shell and read the server log %s, then run lym board open again", err, deps.Paths.Log)
 		}
 	}
 
@@ -84,6 +94,11 @@ func runOpen(deps openDeps) (openResult, error) {
 			if found && deps.Running(read.PID) && deps.Probe(read) == nil {
 				server, answered = read, true
 				continue
+			}
+		} else if !started {
+			// The server that held the lock exited during the wait.
+			if err := start(); err != nil {
+				return openResult{}, err
 			}
 		}
 		select {
@@ -115,10 +130,19 @@ func runOpen(deps openDeps) (openResult, error) {
 		}
 	case <-capped:
 	}
-	return openResult{Address: boardserve.PageAddress(server.Port), Launcher: launcher, Started: !live}, nil
+	return openResult{Address: boardserve.PageAddress(server.Port), Launcher: launcher, Started: started}, nil
 }
 
-// spawnServer starts `lym board serve` detached in primeAnchor, with its stderr appended to the log at logPath.
+// openerCap is how long an open under the strand name strand waits on the opener; zero waits until it exits.
+// An agent's call must return within its keep-warm cap, and the operator's, with no strand name, has none.
+func openerCap(dirs configengine.Dirs, strand string) time.Duration {
+	if strand == "" {
+		return 0
+	}
+	return shuttleengines.KeepWarm(dirs, strand).Cap
+}
+
+// spawnServer starts `lym board serve` detached in primeAnchor, with its output appended to the log at logPath.
 func spawnServer(primeAnchor, logPath string) error {
 	exe, err := selfexec.LymBinary()
 	if err != nil {
@@ -134,6 +158,8 @@ func spawnServer(primeAnchor, logPath string) error {
 	defer logFile.Close()
 	cmd := exec.Command(exe, "board", "serve")
 	cmd.Dir = primeAnchor
+	// The server and its pre-run report their failures on stdout.
+	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	proc.Detach(cmd)
 	logger.Info("boardcli: spawning the detached board server", "exe", exe, "dir", primeAnchor, "log", logPath)

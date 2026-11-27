@@ -21,6 +21,7 @@ func TestServeOpenRefusals(t *testing.T) {
 		want   string
 	}{
 		{"BoardPath", "", "run it from a worktree of the hub"},
+		{"OrchAgentPasses", "ly:some-task:orch", "run it from a worktree of the hub"},
 		{"RunAgent", "ly:some-task:webster", "the board viewer and its server are the operator's tools"},
 	}
 	for _, tt := range tests {

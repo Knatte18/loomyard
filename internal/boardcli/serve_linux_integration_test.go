@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -18,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -103,5 +105,19 @@ func TestBoardServeScenario(t *testing.T) {
 	}
 	if err := boardserve.Probe(server); err != nil {
 		t.Errorf("Probe of the first server = %v; want it still answering", err)
+	}
+
+	records, err := runproc.List(fabricengine.RunProcDir(hub.Path), runproc.HubOwner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var serving []int
+	for _, record := range records {
+		if record.Role == runproc.RoleBoardServer {
+			serving = append(serving, record.PID)
+		}
+	}
+	if !slices.Equal(serving, []int{server.PID}) {
+		t.Errorf("board server records under the hub owner = %v; want the one of pid %d", serving, server.PID)
 	}
 }

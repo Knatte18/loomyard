@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardserve"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -186,6 +188,42 @@ func TestRunOpen(t *testing.T) {
 		h.writeState(10, 1111, "previous")
 		h.deps.StartBound = 20 * time.Millisecond
 		h.wantRefused("did not answer", h.deps.Paths.Log)
+	})
+
+	t.Run("StartsAServerWhenTheHolderExitsDuringTheWait", func(t *testing.T) {
+		t.Parallel()
+		h := newOpenHarness(t)
+		held, err := lock.AcquireWriteLock(h.deps.Paths.Lock)
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.writeState(10, 1111, "previous")
+		probe := h.deps.Probe
+		h.deps.Probe = func(server boardserve.State) error {
+			err := probe(server)
+			if err != nil {
+				if releaseErr := held.Release(); releaseErr != nil {
+					t.Error(releaseErr)
+				}
+				h.writeState(11, 2222, answeringToken)
+			}
+			return err
+		}
+		h.wantOpened("2222", true)
+		if len(h.spawned) != 1 {
+			t.Errorf("spawned %v; want one", h.spawned)
+		}
+	})
+
+	t.Run("OnlyAStrandNameCapsTheOpenerWait", func(t *testing.T) {
+		t.Parallel()
+		if got := openerCap(configengine.Dirs{}, ""); got != 0 {
+			t.Errorf("openerCap with no strand = %s; want 0", got)
+		}
+		// No config resolves from the empty dirs, so the keep-warm resolver answers its fallback.
+		if got := openerCap(configengine.Dirs{}, "ly:some-task:orch"); got != shuttleengine.DefaultAwaitCap {
+			t.Errorf("openerCap with a strand = %s; want %s", got, shuttleengine.DefaultAwaitCap)
+		}
 	})
 
 	t.Run("PrimeFails", func(t *testing.T) {

@@ -40,7 +40,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/runprofile"
 	"github.com/Knatte18/loomyard/internal/selfexec"
-	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/spf13/cobra"
 )
 
@@ -459,10 +458,7 @@ Example:
 				StartBound:  15 * time.Second,
 				Poll:        time.Second,
 			}
-			// An agent's call must return within its keep-warm cap; the operator's waits for the opener.
-			if strand := strandNameFromEnv(); strand != "" {
-				deps.OpenerCap = shuttleengines.KeepWarm(fabricengine.ConfigDirs(hub), strand).Cap
-			}
+			deps.OpenerCap = openerCap(fabricengine.ConfigDirs(hub), strandNameFromEnv())
 			result, err := runOpen(deps)
 			if err != nil {
 				return outputError(out, err.Error())
