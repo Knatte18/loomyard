@@ -31,7 +31,9 @@
 //   - MultiLLMProducer: the chair's done outcome is Done with the chair's first output as the path.
 //     A done chair whose gate failed is Stuck.
 //     A chair that started and timed out is Stuck with an empty path, because its outputs may not exist.
-//     Its reason names the elapsed time, the limit and the last session state.
+//     The seat engine has already stopped that chair,
+//     so its reason says the session was stopped and that a resume starts the row over;
+//     it also names the elapsed time, the limit and the last session state.
 //     A chair that never started, or that started and died, is an engine-level error
 //     wrapping shuttleengine.ErrNotStarted or ErrAgentDied.
 //     A writer seat that ended the step decides it instead of the chair.

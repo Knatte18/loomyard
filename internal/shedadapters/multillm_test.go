@@ -357,14 +357,14 @@ func TestMultiLLMProducer_MapsTheLeadResult(t *testing.T) {
 			wantAttempts:  &two,
 			wantOutcome:   shedengine.Stuck,
 			wantEmptyPath: true,
-			wantReason:    "multi (seats): the chair's session timed out; elapsed 30m0s, limit 30m0s, last session state idle-stalled (cause interrupted); way forward: run lym loom resume, which re-attaches the session while it is live and otherwise starts the row over",
+			wantReason:    "multi (seats): the chair's session timed out and was stopped; elapsed 30m0s, limit 30m0s, last session state idle-stalled (cause interrupted); way forward: run lym loom resume, which starts the row over in a fresh session",
 		},
 		{
 			name:          "a timeout with no times, no states and no limit reads unknown and none recorded",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout},
 			wantOutcome:   shedengine.Stuck,
 			wantEmptyPath: true,
-			wantReason:    "multi (seats): the chair's session timed out; elapsed unknown, limit unknown, last session state none recorded; way forward: run lym loom resume, which re-attaches the session while it is live and otherwise starts the row over",
+			wantReason:    "multi (seats): the chair's session timed out and was stopped; elapsed unknown, limit unknown, last session state none recorded; way forward: run lym loom resume, which starts the row over in a fresh session",
 		},
 		{
 			name:          "a timeout names the chair seat's own limit over the table's",
@@ -373,7 +373,7 @@ func TestMultiLLMProducer_MapsTheLeadResult(t *testing.T) {
 			chairTimeout:  45 * time.Minute,
 			wantOutcome:   shedengine.Stuck,
 			wantEmptyPath: true,
-			wantReason:    "multi (seats): the chair's session timed out; elapsed 45m0s, limit 45m0s, last session state busy; way forward: run lym loom resume, which re-attaches the session while it is live and otherwise starts the row over",
+			wantReason:    "multi (seats): the chair's session timed out and was stopped; elapsed 45m0s, limit 45m0s, last session state busy; way forward: run lym loom resume, which starts the row over in a fresh session",
 		},
 		{name: "a timeout of a chair that never started", result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout, NotStarted: true}, wantErr: "shuttle run outcome timeout", wantNotStarted: true},
 		{

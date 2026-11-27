@@ -207,7 +207,7 @@ func (p *MultiLLMProducer) mapOutcome(ctx context.Context, table seatengine.Tabl
 		if chair.Outcome == shuttleengine.OutcomeDied {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): shuttle run outcome %s: %w", p.name, multiLLMEngineLabel, chair.Outcome, shuttleengine.ErrAgentDied)
 		}
-		reason := fmt.Sprintf("%s (%s): the chair's session timed out; %s; %s", p.name, multiLLMEngineLabel, timeoutDetail(chair, table.Chair().Timeout, table.Timeout), timeoutWayForward)
+		reason := fmt.Sprintf("%s (%s): the chair's session timed out and was stopped; %s; %s", p.name, multiLLMEngineLabel, timeoutDetail(chair, table.Chair().Timeout, table.Timeout), timeoutWayForward)
 		return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(chair.Gate), GateSpans: gateSpansOf(chair.Gate), Reason: reason}, nil
 
 	default:
@@ -223,7 +223,8 @@ func (p *MultiLLMProducer) mapOutcome(ctx context.Context, table seatengine.Tabl
 const writerResumeWayForward = "way forward: re-run the row with lym loom resume, which starts every part over unless the chair is still live"
 
 // timeoutWayForward is the way forward a chair timeout's Stuck reason ends with.
-const timeoutWayForward = "way forward: run lym loom resume, which re-attaches the session while it is live and otherwise starts the row over"
+// The seat engine stops a timed-out chair before the step ends, so a resume never finds it live.
+const timeoutWayForward = "way forward: run lym loom resume, which starts the row over in a fresh session"
 
 // timeoutDetail describes how a timed-out run went: the elapsed time, the limit it had and its last session state.
 // The limit is seatTimeout when non-zero, else tableTimeout.
