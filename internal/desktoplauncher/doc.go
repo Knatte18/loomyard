@@ -16,6 +16,9 @@
 //
 // A hub's launcher is named by the hub's shortname, `lym-hub-<shortname>` with the form's extension,
 // and the all-hubs launcher is `lym-hubs`.
+// A `.desktop` launcher shows its `Name=` key.
+// That key is `lym: <shortname>` for a hub and `lym: start every hub` for the all-hubs launcher.
+// A `.cmd` launcher shows its file name and carries the same title on its `rem` line.
 // Remove removes the all-hubs launcher once no hub's launcher stands.
 // Add and Remove hold one lock per desktop, kept in the per-user state directory,
 // so concurrent processes never leave a hub launcher standing without the all-hubs one.

@@ -102,7 +102,7 @@ func TestAdd_WritesLaunchersRunningMachineStart(t *testing.T) {
 			desktop: desktoplauncher.Desktop{Form: desktoplauncher.FormFreedesktop},
 			lymPath: "/opt/lym dev/lym",
 			file:    "lym-hub-ly.desktop",
-			want: "[Desktop Entry]\nType=Application\nName=lym: start the hub ly\nComment=Runs lym machine start ly on this machine\n" +
+			want: "[Desktop Entry]\nType=Application\nName=lym: ly\nComment=Runs lym machine start ly on this machine\n" +
 				`Exec=bash -lc "'/opt/lym dev/lym' machine start ly; echo; read -r -p 'Press Enter to close this window' _"` +
 				"\nTerminal=true\nIcon=utilities-terminal\n",
 			allFile: "lym-hubs.desktop",
@@ -115,7 +115,7 @@ func TestAdd_WritesLaunchersRunningMachineStart(t *testing.T) {
 			desktop: desktoplauncher.Desktop{Form: desktoplauncher.FormFreedesktop},
 			lymPath: `/opt/100%$x\lym`,
 			file:    "lym-hub-ly.desktop",
-			want: "[Desktop Entry]\nType=Application\nName=lym: start the hub ly\nComment=Runs lym machine start ly on this machine\n" +
+			want: "[Desktop Entry]\nType=Application\nName=lym: ly\nComment=Runs lym machine start ly on this machine\n" +
 				`Exec=bash -lc "'/opt/100%%\\$x\\\\lym' machine start ly; echo; read -r -p 'Press Enter to close this window' _"` +
 				"\nTerminal=true\nIcon=utilities-terminal\n",
 		},
@@ -124,7 +124,7 @@ func TestAdd_WritesLaunchersRunningMachineStart(t *testing.T) {
 			desktop: desktoplauncher.Desktop{Form: desktoplauncher.FormWindowsWSL, Distro: "Ubuntu-24.04"},
 			lymPath: "/home/u/go/bin/lym",
 			file:    "lym-hub-ly.cmd",
-			want:    "@echo off\r\nrem lym: start the hub ly\r\nwsl.exe -d \"Ubuntu-24.04\" -- bash -lc \"'/home/u/go/bin/lym' machine start ly\"\r\npause\r\n",
+			want:    "@echo off\r\nrem lym: ly\r\nwsl.exe -d \"Ubuntu-24.04\" -- bash -lc \"'/home/u/go/bin/lym' machine start ly\"\r\npause\r\n",
 			allFile: "lym-hubs.cmd",
 			wantAll: "@echo off\r\nrem lym: start every hub\r\nwsl.exe -d \"Ubuntu-24.04\" -- bash -lc \"'/home/u/go/bin/lym' machine start\"\r\npause\r\n",
 		},
@@ -133,7 +133,7 @@ func TestAdd_WritesLaunchersRunningMachineStart(t *testing.T) {
 			desktop: desktoplauncher.Desktop{Form: desktoplauncher.FormWindowsWSL},
 			lymPath: "/opt/50%/lym",
 			file:    "lym-hub-ly.cmd",
-			want:    "@echo off\r\nrem lym: start the hub ly\r\nwsl.exe -- bash -lc \"'/opt/50%%/lym' machine start ly\"\r\npause\r\n",
+			want:    "@echo off\r\nrem lym: ly\r\nwsl.exe -- bash -lc \"'/opt/50%%/lym' machine start ly\"\r\npause\r\n",
 		},
 		{
 			name:    "WindowsWSLRefusesADoubleQuote",
@@ -164,7 +164,7 @@ func TestAdd_WritesLaunchersRunningMachineStart(t *testing.T) {
 			desktop: desktoplauncher.Desktop{Form: desktoplauncher.FormWindows},
 			lymPath: `C:\Program Files\lym\lym.exe`,
 			file:    "lym-hub-ly.cmd",
-			want:    "@echo off\r\nrem lym: start the hub ly\r\n\"C:\\Program Files\\lym\\lym.exe\" machine start ly\r\npause\r\n",
+			want:    "@echo off\r\nrem lym: ly\r\n\"C:\\Program Files\\lym\\lym.exe\" machine start ly\r\npause\r\n",
 		},
 	}
 	for _, tt := range tests {
