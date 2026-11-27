@@ -59,8 +59,8 @@
 // It ends each of the subject's runs, then the subject's own records but its dobby.
 // The dobby is ended last, and only when the caller asks.
 // It leaves every teardown child alone.
-// In the subject's own pass it also leaves alone what serves the whole hub:
-// the board syncs, the detached pushes and the Slack relay.
+// In the subject's own pass it also leaves alone the board syncs, the detached pushes and the Slack relay.
+// A board server registered under the subject is ended in that pass.
 // EndProcess runs the same sequence on one unregistered pid, for the orphans `lym tender reap` ends.
 //
 // On Windows no start time can be read and no group can be signalled.
