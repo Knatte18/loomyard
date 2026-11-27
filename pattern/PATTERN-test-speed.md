@@ -218,7 +218,7 @@ so every run takes its slots, its timeout and its log.
 - Tests run only through `lym gate test` over `gate.yaml`'s tiers.
   Two things run outside it: a card `**Verify:**` line and `cmd/testtiming`'s runs in every mode.
 - Three redundancy runs take a tier's `env` and a gate slot as a tier run does.
-  `lym gate testmap` rebuilds the per-package coverage maps at the HEAD of the worktree it runs in,
+  `lym gate test --map` rebuilds the per-package coverage maps at the HEAD of the worktree it runs in,
   into the hub's shared maps from the prime and into the worktree's anchor `.lym` elsewhere.
   The `redundancy` report step a gate key's `reports` lists runs after the key's tiers released their slots.
   Both run every test alone under a coverage binary, since coverage counters are process-wide.
@@ -286,16 +286,13 @@ this section keeps only what is project-specific or stricter here.
 
 ### The coverage map and the gate's redundancy report
 
-- `lym gate testmap` keeps one coverage map per package under `internal/testcover`.
+- `lym gate test --map` keeps one coverage map per package under `internal/testcover`.
   A map records, for each tier0 and tier1 test, its function hash, the blocks it covers of its own package's files,
   the functions it covers of each other in-module package its test binary links, and its spawn scan verdict.
   It also records the hashes of the package's files and of each linked package's files at the commit it was built from.
   The maps are built only on command: no dobby, landing or gate builds them, and the gate selects no test from them.
-  A call naming no package plans every map at the HEAD of the worktree it runs in through the coverage selector, building nothing:
-  a current map moves to HEAD with its entries, an affected one drops the affected tests' entries, which are re-measured,
-  and a miss rebuilds the package whole.
-  A failed build keeps the map's entries and is not retried at the same HEAD.
-  A self-check re-measures a kept entry a fresh build cannot place, and an audit round re-measures the oldest entries.
+  A call measures every package of its scope whole and replaces its map.
+  A failed build keeps the map's entries and records the failure beside them.
 - `lym gate redundant <package>` judges a whole package's map by the same package-scoped verdict,
   then confirms each candidate by mutation inside a gate slot.
   It mutates the candidates' blocks and keeps a candidate only when its covering tests kill every mutant it kills;

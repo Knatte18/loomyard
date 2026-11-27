@@ -236,12 +236,12 @@ func TestGateRedundant(t *testing.T) {
 	t.Run("ListsTheCandidatesMutationConfirmsAndSetsApartTheRefutedKeptAndUnjudgedOnes", func(t *testing.T) {
 		t.Parallel()
 		var built bytes.Buffer
-		if code := clihelp.ExecuteIn(Command(), prime, &built, []string{"testmap", "cov"}); code != 0 {
-			t.Fatalf("testmap cov = %d, %s; want exit 0", code, built.Bytes())
+		if code := clihelp.ExecuteIn(Command(), prime, &built, []string{"test", "--wait", "--map", "cov"}); code != 0 {
+			t.Fatalf("test --wait --map cov = %d, %s; want exit 0", code, built.Bytes())
 		}
 		m, found, err := testcover.ReadMap(mapsDir, "cov")
 		if err != nil || !found {
-			t.Fatalf("ReadMap(cov) = found %v, %v; want the map testmap built", found, err)
+			t.Fatalf("ReadMap(cov) = found %v, %v; want the map the map run built", found, err)
 		}
 		m.Failure = &testcover.MapFailure{Commit: "deadbeef", Error: "later build broke"}
 		if err := testcover.WriteMap(mapsDir, "cov", m); err != nil {

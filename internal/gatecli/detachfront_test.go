@@ -458,6 +458,8 @@ func TestTestRequestWords_MainPackages(t *testing.T) {
 	}{
 		{"Set", testRequest{cards: []string{"1"}, mainPackages: true}, []string{"--card=1", "--main-packages"}},
 		{"Unset", testRequest{cards: []string{"1"}}, []string{"--card=1"}},
+		{"MapSet", testRequest{mapMode: true, targets: []string{"./pkg"}}, []string{"--map", "./pkg"}},
+		{"MapUnset", testRequest{targets: []string{"./pkg"}}, []string{"./pkg"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

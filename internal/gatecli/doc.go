@@ -2,7 +2,7 @@
 // Its verb `test` is the sanctioned route for running the hub's test tiers.
 // Its verb `status` shows who holds the hub's gate slots, and its verb `report` totals the run records per gate key.
 // Its verb `card-verify` runs a plan card's `**Verify:**` line.
-// Its verb `testmap` builds the per-package coverage maps on command at the HEAD of the worktree it runs in,
+// `test --map` builds the per-package coverage maps on command at the HEAD of the worktree it runs in,
 // and its verb `redundant` lists one package's redundancy candidates from its map, confirmed by mutation.
 //
 // The module is not standalone-capable and does not go through internal/cliwire.
@@ -10,7 +10,7 @@
 //
 // # Verb
 //
-// The form is `lym gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--main-packages] [--base <rev>] [--all] [--guards] [--stop-on-fail] [--wait] [<targets>...] [-- <args>]`.
+// The form is `lym gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--main-packages] [--base <rev>] [--all] [--guards] [--stop-on-fail] [--map] [--wait] [<targets>...] [-- <args>]`.
 // It runs the tiers the hub declares in gate.yaml in ascending tier number.
 // It then runs the vet step and the guard step below when they are planned.
 // A run that fails does not stop the call: every later tier, vet and guard run still runs.
@@ -563,7 +563,7 @@
 // So does a call outside every hub, a hub whose `scoper` is not `go`, or a worktree with no parent branch.
 // Each such report carries a note.
 //
-// The step judges the module of the lowest declared of tier0 and tier1, as `lym gate testmap` maps it.
+// The step judges the module of the lowest declared of tier0 and tier1, as `lym gate test --map` maps it.
 // It diffs the working tree from the merge base with the parent branch through `impactset.ChangedPaths`.
 // It reads the test files of each package holding a changed `_test.go` file at the merge base.
 // The reads go through `Fabric.CodeDirAt` and `Fabric.CodeFileAt`.
@@ -584,7 +584,7 @@
 // Once it is spent the step starts no further build or test.
 // It lists each test it did not run as not judged for the spent budget.
 // Per package it builds the coverage binary under the slot's `gateslot.HolderEnv`.
-// It runs each test alone under its tier's env, as `lym gate testmap` does.
+// It runs each test alone under its tier's env, as `lym gate test --map` does.
 // It builds `lym` once for a tier with `prebuilt_lym`.
 // Each build is bounded by `redundancy_build_timeout_min` and each test by `redundancy_test_timeout_sec`.
 // Each test is also capped at `redundancy_test_memory_mb` of memory.
@@ -717,12 +717,12 @@
 // The line also names the `-test.run` value the binary was given and the reason.
 // The tier's log and failure report carry the line, and the tier is never rerun.
 // A go-json tier's log and failure report also name the tests that had started and never passed, failed or skipped.
-// `lym gate redundant`, `lym gate testmap` and the redundancy report step of `lym gate test` run the same guard.
+// `lym gate redundant`, `lym gate test --map` and the redundancy report step of `lym gate test` run the same guard.
 // It watches their own process tree for the whole call, or for the step alone.
 // It runs beside the kernel cap of `redundancy_test_memory_mb` on each test run, and each kill's line goes to stderr.
 // A test run the guard kills in the redundancy report step or `lym gate redundant` is not judged,
 // and a mutant run it kills counts as no mutant kill.
-// `lym gate testmap` records the entry of a test run the guard kills as failed.
+// `lym gate test --map` records the entry of a test run the guard kills as failed.
 // The guard is off when `memory_quit_mb` is 0.
 // It is also off when `LYM_GATE_TEST_PID` names a live ancestor, whose own guard already sees these test binaries.
 // Off Linux `proc.TreeSample` reports `errors.ErrUnsupported`, and the guard logs that and ends.
@@ -1020,10 +1020,18 @@
 //
 // # Coverage maps
 //
-// `lym gate testmap [--max <n>] [<package>...]` builds the `internal/testcover` maps.
+// `lym gate test --map [<targets>...]` builds the `internal/testcover` maps instead of running tiers.
 // It builds them at the HEAD of the worktree it runs in.
 // It runs only on command: no dobby, landing or gate starts it, and the gate selects no test from the maps.
 // The operator runs it before `lym gate redundant`, and over the whole module before a sweep of redundant tests.
+// It goes with none of `--tier`, `--upto`, `--gate`, `--guards`, `--stop-on-fail`, `--tags`, `-C` and words after `--`,
+// and each of those is refused with the way forward `lym gate test --map` with targets or a scope flag.
+// It also refuses a hub whose tier0 or tier1 counts its tests with another counter than `go-json`.
+// It runs no tier command, shared build, lint, report, guard step, green carry or card fixer,
+// and it writes nothing but the maps and its log.
+// A tier's command, filter, memory cap and timeouts bound nothing here.
+// A capped call runs in the detached runner, and `--map` is one of the words that run is keyed on and replayed from.
+//
 // The module root is the dir of the lowest declared of tier0 and tier1, and its go.mod names the import path.
 // A package is a directory relative to that root holding a Go file, found as `go list ./...` finds one:
 // testdata, a directory whose name opens with a dot or an underscore, and a nested module are left out.
@@ -1033,41 +1041,21 @@
 // From any other worktree it reads and writes that worktree's own maps.
 // Those are `testcover.Dir` of its anchor; they go with the worktree and never touch the shared maps.
 // A task's call therefore builds at the HEAD only its own session moves.
-// The build lock of a package lies beside its map, so it is per worktree as the maps are.
-// It reads HEAD through `Fabric.HeadSHA` before its walk, and plans and measures every package at that HEAD.
-// It reads HEAD again before each package job and once a job's tests ran.
-// Once HEAD moved it ends, counting the jobs it left as queued, so the next call plans at the new HEAD.
+//
+// The scope is chosen as for any call, except that no green record is read,
+// so a computed scope diffs from the merge base with the parent branch.
+// Explicit targets resolve against the module root, and `./...` or a `/...` suffix reaches every package below.
+// A whole scope, or a whole tier0 or tier1 share, reaches every package.
+// Any other scope reaches the packages of the tier0 and tier1 shares that lie inside the module.
+// Of those, a package is mapped when it has a map, or tracks a Go file at HEAD and holds a tier0 or tier1 test.
+// A package named on the command line that is not mapped is listed under `left_out` with its reason.
+//
+// It reads HEAD through `Fabric.HeadSHA` before its walk and measures every package at that HEAD, in import path order.
+// Each package is measured whole, and its map replaced whole.
+// It reads HEAD again before each package and once a package's tests ran.
+// Once HEAD moved it ends, counting the packages it left as queued.
 // It reads the tracked files through `Fabric.CodeDirAt`, `Fabric.CodeTreeAt` and `Fabric.CodeFileAt`.
-// It reads the uncommitted and untracked files through `Fabric.Status`.
-// It reads them once before its walk, and twice afresh per package it builds.
-// A package with an uncommitted or untracked Go file is skipped naming the file, since a map records HEAD.
-// So is a package named on the command line that tracks no Go file at HEAD.
-//
-// With no package named, the call first plans every package, building nothing, running no test and holding no gate slot.
-// It plans a package under the package's build lock, beside its map;
-// a package whose lock another call holds is skipped and counted as queued.
-// A package whose map records a failed build at HEAD, told by `testcover.Map.FailedAt`, is left alone.
-// Any other map goes to `testcover.Selector` with HEAD as target.
-// It uses `go env` and `go env GOROOT` read under the call's environment.
-// `testcover.PlanUpkeep` turns the selection into the plan.
-// A miss leaves the map as it is and queues the package for a whole rebuild, and the plan counts it by its reason.
-// Otherwise the map moves to HEAD with HEAD's file hashes, its own and each linked package's.
-// It keeps every entry but the affected tests' and, when one of the package's own files changed, the outcome entries.
-// A declared tier0 or tier1 test then left with no entry is queued, unless the spawn scan marks it;
-// such a test gets an entry with its verdict and is never run.
-// The plan writes a map it changed at once, and counts it current with no affected test and affected otherwise.
-// So a landing that changes no function a test covered keeps every entry and builds nothing.
-// A named package is queued for a whole rebuild whatever its map holds.
-//
-// The call then measures the queued packages, all of them unless `--max` caps the count.
-// It orders the packages by their summed test elapsed seconds in the retained `gateslot.RunRecord`s.
-// The longest come first, then every other package in import path order.
-// The rest count as queued, and so does a package whose build lock another call holds by then.
-// A call naming packages instead waits for each named package's build lock.
-// It polls from one second and doubles to thirty.
-// A whole rebuild starts from an empty map at HEAD.
-// Any other job measures its queued tests into the map the plan wrote, each replacing its entry.
-// It skips the package, counted as queued, when that map no longer stands at HEAD.
+// It reads the uncommitted and untracked files through `Fabric.Status`, twice per package it builds.
 // A package owns every tracked file under its directory, testdata included.
 // Its files stop at the next package directory or nested module.
 // The map holds the hashes of its Go files in `Files` and of the others it owns in `OtherFiles`.
@@ -1080,11 +1068,13 @@
 // and the map holds the hashes of the files each other one owns in `Linked`.
 // It builds the package's coverage binary with a coverpkg naming every linked package.
 // The build runs under the slot's `gateslot.HolderEnv`.
-// The listing and build of the next queued package start once the current package's binary is ready,
+// The listing and build of the next package start once the current package's binary is ready,
 // so they run while the current package's tests run; a build whose package then needs no binary is cancelled and dropped.
 // Once a package's build is taken up the call reads the worktree status afresh.
 // A modified or untracked file owned by any linked package, the package itself included, skips the package.
-// The skip cause names the file, and the package does not count against `--max`.
+// The skip cause names the file.
+// Bound: some packages are written with no such check, under HEAD's hashes.
+// They are one with no mapped test or only spawn-marked ones, and one whose scan or build failed.
 // It runs each test alone in its own process with its own profile, in the package directory under its tier's env.
 // It runs them through `testcover.Toolchain.RunAlone`, up to the slot's tier0 parallel side by side.
 // Fewer go side by side when memory is short, as in `lym gate redundant`.
@@ -1106,9 +1096,8 @@
 // A readable map of the package that holds test entries keeps its commit, entries and marker.
 // It records the failure and HEAD in its `Failure`.
 // With no such map the call writes a map of the file hashes with no tests and the failure as its `BuildFailure`.
-// No later call at that HEAD queues the package again.
 // A test the `testcover.ScanSpawns` scan marks out of process or unresolved is never run;
-// a whole rebuild records it with its verdict.
+// it enters the map with its verdict.
 // A timed-out test is listed.
 // Each run enters the map.
 // A passing test enters with its coverage when it covers a block of the package's own files.
@@ -1119,19 +1108,16 @@
 // and the commit and time it was measured at.
 // A linked function is named by its package's import path, its file and the name a block key gives it;
 // no block of another package is stored.
-// A run or build that a terminating signal ends records nothing, and nor does the rest of its package's job.
-// A job that is no whole rebuild self-checks the entries it keeps against the first fresh profile.
-// Each kept passing entry's block keys must lie among the blocks of the package's own files in that profile.
-// Its linked functions must lie among the functions that profile holds of each linked package.
-// Those functions are named through `testcover.FuncIndex.ProfiledFuncs`.
-// An entry that fails is dropped, re-run in the same job and counted as a self-check mismatch.
+// A run or build that a terminating signal ends records nothing, and nor does the rest of its package's measurement.
 // Once the package's tests ran the call reads the worktree status afresh, then HEAD.
-// A dirty file a linked package owns discards the runs; the call writes nothing for the package and ends the job.
+// A dirty file a linked package owns discards the runs; the call writes nothing for the package.
 // A HEAD move does the same, and the skip names the linked files whose hashes differ.
 // It also counts the package as queued.
-// The package is reported skipped, and it counts against `--max`.
+// The package is reported skipped.
 // Bound: an edit made after the first status read and reverted before the second goes unseen,
 // so the map holds coverage measured on the edited code under the committed hashes.
+// Two calls over one package from one worktree each write its map, and the later write wins;
+// a failed build's write keeps the entries it read, which may come from the other call.
 // Every map the call writes, a failed build's included, carries a `testcover.MapFormat` marker.
 // Each write sets the map's build time to the time of the write,
 // and the marker to the map's commit and build time and the current environment stamp;
@@ -1139,26 +1125,15 @@
 // The stamp holds the toolchain's Go version and platform and the hashes of go.mod and go.sum at the commit.
 // It also holds digests of the mapped tiers' commands and env as configured and of the hub's env.yaml variables.
 //
-// Once nothing is left queued, the call runs one audit round.
-// It takes the `testMapAuditTests` oldest-measured passing entries.
-// Only maps that stand at HEAD and record no failure there count.
-// An entry with no recorded measurement time counts as the oldest.
-// It runs only when the call holds a gate slot already or gets one at once through `gateslot.Pool.TryAcquire`.
-// A HEAD move ends the round.
-// It re-measures them as a job of their package, and each fresh entry replaces the kept one;
-// one whose outcome, block keys or linked functions differ counts as an audit mismatch.
-//
-// The call prints `built`, the packages whose map a measurement wrote.
-// It prints `skipped` with each cause, `failed` with each failure and `timed_out`.
-// It also prints `planned_head`, `queued` and `plan`.
-// The `plan` holds its `current` and `affected` counts and its `misses` by reason.
-// It also prints `self_check_mismatches` and `audit_mismatches`.
+// The call prints `built`, the packages whose map it wrote.
+// It prints `skipped` with each cause, `failed` with each failure, `timed_out` and `left_out`.
+// It also prints `head` and `queued`.
 // Its `packages` holds each measured package's build seconds, run seconds and test count.
 // It exits 0 once it walked its packages, and 1 for a refusal or a read, slot or write failure that ends the walk.
 //
 // `lym gate redundant <package>` judges the map of one package and confirms its redundancy candidates by mutation.
 // It runs from any worktree of the hub and resolves the module as the redundancy report step does.
-// It reads the map as it stands where `lym gate testmap` from the same worktree writes it.
+// It reads the map as it stands where `lym gate test --map` from the same worktree writes it.
 // The redundancy report step reads the hub's shared maps from every worktree.
 // It judges through `testcover.JudgeMap`.
 // It leaves out the tests the keep scan of the package's directory in this worktree names.

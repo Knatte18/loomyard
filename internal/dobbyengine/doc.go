@@ -503,7 +503,7 @@
 //
 // The coverage maps:
 //
-//   - The dobby builds no coverage maps; the operator builds them on command with `lym gate testmap`.
+//   - The dobby builds no coverage maps; the operator builds them on command with `lym gate test --map`.
 //
 // The view:
 //

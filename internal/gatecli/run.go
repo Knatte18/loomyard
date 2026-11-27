@@ -43,6 +43,12 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	if refusal := flagShapeRefusal(request); refusal != "" {
 		return output.Err(out, refusal)
 	}
+	if request.mapMode {
+		return runTestMap(ctx, out, testMapRequest{
+			scope: request, goBinary: request.goBinary, environ: os.Environ(), secondUnit: request.secondUnit, minuteUnit: request.timeoutUnit,
+			grace: request.pipeWaitDelay, cappedParallel: memoryCappedParallel, stderr: request.stderr,
+		})
+	}
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("gate test: cannot read the working directory: %v; way forward: re-run the same command", err))
@@ -338,6 +344,20 @@ func runLabel(run tierRun) string {
 // flagShapeRefusal returns the refusal for a malformed combination of flags, or "" when the call is well-formed.
 // It needs no config and runs before hub resolution.
 func flagShapeRefusal(request testRequest) string {
+	if request.mapMode {
+		for _, other := range []struct {
+			flag  string
+			given bool
+		}{
+			{"--tier", len(request.tiers) > 0}, {"--upto", request.uptoGiven}, {"--gate", request.gate != ""},
+			{"--guards", request.guards}, {"--stop-on-fail", request.stopOnFail}, {"--tags", request.tags != ""},
+			{"-C", request.dir != ""}, {"the words after --", len(request.args) > 0},
+		} {
+			if other.given {
+				return fmt.Sprintf("gate test: --map measures tier0 and tier1 over its scope, so it goes with none of --tier, --upto, --gate, --guards, --stop-on-fail, --tags, -C and words after --; way forward: drop %s and run lym gate test --map with targets or a scope flag", other.flag)
+			}
+		}
+	}
 	if request.tags != "" {
 		return fmt.Sprintf("gate test: --tags %q is refused, since a tier's own command sets its build tags; way forward: name the tier that compiles them with --tier, for example --tier 1, and re-run the same command", request.tags)
 	}

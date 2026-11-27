@@ -34,8 +34,6 @@
 // It fills each Holder's slot number from its record's file name, which the record itself never carries.
 // Pool.Draining reports whether the drain lock is held, and creates no file in a pool that never had one.
 //
-// Pool.TryAcquire takes a free slot at once or none, and takes none while the drain lock is held.
-//
 // # Inheritance
 //
 // A slot's environment is Lease.InheritEnv for a tier run and HolderEnv for a non-tier holder.
@@ -64,9 +62,8 @@
 // The non-tier holders hold one slot and set their own Go flags through HolderEnv.
 // Each passes the `-p` value it reads from the pool's Limits at its acquire,
 // so a hub that declares `tier0` bounds them by its parallel and a hub that declares none adds no `-p`.
-// `lym gate testmap` is one: it waits for its slot and holds it from its first build to its end.
-// The redundancy report step of `lym gate test` is another: it takes one slot after the call's tiers released theirs.
-// `lym gate redundant` is a third.
+// The redundancy report step of `lym gate test` is one: it takes one slot after the call's tiers released theirs.
+// `lym gate redundant` is another.
 // It waits for its slot once it has a candidate to check by mutation, and holds it to its end.
 //
 // # Prebuilt store
@@ -84,7 +81,7 @@
 // The override is never reconciled and is read at every acquire; every other key stays hub-file only.
 // `cli_wait_sec`, `go_parallel`, `guard_tier` and `test_map_max_age_days` are retired keys:
 // every load drops them, in the hub and machine layers alike, and reconcile prunes them.
-// `lym gate testmap` rebuilds no map for its age, so `test_map_max_age_days` bounds nothing.
+// `lym gate test --map` rebuilds every map of its scope whatever its age, so `test_map_max_age_days` bounds nothing.
 // The slot wait of a call that runs in this process has no cap,
 // and a capped call's front is bounded by the caller role's keep-warm cap.
 // `tier_parallel` replaces `go_parallel`.
@@ -174,14 +171,14 @@
 // Only the `card` key may hold one; the template sets `sonnet[medium]` there, and an empty value turns the fixer off.
 // `fixer_timeout_min` bounds how long the callers of a cold gate fixer wait for it.
 // LoadConfig refuses a value below 1, and Config.FixerTimeout returns it as a duration.
-// `lym gate testmap` builds coverage maps under three bounds.
+// `lym gate test --map` builds coverage maps under three bounds.
 // `redundancy_build_timeout_min` bounds each build in minutes.
 // `redundancy_test_timeout_sec` bounds each test in seconds.
 // `redundancy_test_memory_mb` caps the memory of each test and of every process it starts, in megabytes.
 // Config.RedundancyTestMemory returns it in bytes.
 // The redundancy report step of `lym gate test` and the mutation check of `lym gate redundant` take the three bounds too.
 // A mutant run past the test bound or the memory cap counts as a kill in `lym gate redundant`.
-// `lym gate testmap` and `lym gate redundant` run fewer tests side by side when memory is short.
+// `lym gate test --map` and `lym gate redundant` run fewer tests side by side when memory is short.
 // That is when the limit they sit under leaves less than the caps of those tests together.
 // The report step has two bounds of its own.
 // `redundancy_max_tests` caps the tests it judges in one call.

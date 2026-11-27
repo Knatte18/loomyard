@@ -1,12 +1,11 @@
-// testmappackage.go measures one queued package for `lym gate testmap`, inside the call's slot.
+// testmappackage.go measures one package in the map run of `lym gate test --map`, inside the call's slot.
 // It runs the package's tests under a coverage binary over every in-module package the test binary links.
 // Each test runs alone in its own process, up to the slot's tier0 parallel side by side, fewer when memory is short.
 // It reads each run's profile once.
 // It keys the blocks covered of the package's own files and names the functions covered of the others.
 // It merges the runs into the package's map and writes it once.
-// It then re-measures the kept entries the fresh build cannot place.
 // It discards the runs when a linked package's files are dirty or HEAD moved under its tests.
-// It starts the next job's coverage build while the current job's tests run.
+// It starts the next package's coverage build while the current package's tests run.
 
 package gatecli
 
@@ -51,25 +50,19 @@ type blockTable struct {
 	keys []testcover.BlockKey
 	// positions maps each of those blocks' profile positions to its index in keys.
 	positions map[string]int
-	// profiled holds every function the build instruments in the linked packages; nil for a job that self-checks nothing.
-	profiled map[testcover.FuncKey]bool
 }
 
 // packageRun is one job's state once its package's coverage binary is built.
 type packageRun struct {
 	job                     testMapJob
 	pkgDir, importPath, bin string
-	mapped                  []testcover.TestFunc
 	trees                   map[string]packageTree
 	// indexes name the functions of each linked package but the job's own, by import path.
 	indexes map[string]*testcover.FuncIndex
-	// m is the package's map as the job started, less the kept entries the self-check dropped.
+	// m is the package's map as the job started: its hashes and the entries of its spawn-marked tests.
 	m testcover.Map
 	// table is read from the first profile a run of the job wrote, nil until then.
 	table *blockTable
-	// checked is set once the kept entries were checked against a fresh profile; a whole rebuild keeps none to check.
-	// probed is set once a kept entry ran to give the check its profile.
-	checked, probed bool
 	// measure holds the job's build and run time.
 	measure testMapMeasure
 }
@@ -92,111 +85,90 @@ type coverageBuild struct {
 	seconds float64
 }
 
-// mapPackage measures the job's package at the call's HEAD and writes its map once its tests ran.
-// It reports whether the package was skipped before its build, which then does not count against the call's cap.
-// A whole job starts from an empty map at HEAD:
-// it runs every mapped test but those the spawn scan marks, which enter with their verdict, unrun.
-// Any other job runs its tests into the map the plan wrote at HEAD, each replacing its entry;
-// the package is skipped and counted as queued when that map no longer stands at HEAD.
+// mapPackage measures the job's package whole at the call's HEAD and replaces its map once its tests ran.
+// It runs every mapped test but those the spawn scan marks, which enter with their verdict, unrun.
 // A package with no mapped test gets a map of its file hashes and no tests, with no build.
 // A failed build is recorded through writeFailed.
 // A package gets no map and is reported skipped when a linked package's file is dirty once its build is taken up.
-// With the binary ready, it starts the coverage build of the job the walk measures next.
+// With the binary ready, it starts the coverage build of the package the walk measures next.
 // The error reports a slot, read or write failure that ends the call.
 // After a terminating signal it is the call context's error.
-func (r *testMapRun) mapPackage(job testMapJob) (bool, error) {
+func (r *testMapRun) mapPackage(job testMapJob) error {
 	pkg, head := job.pkg, r.head
 	pkgDir := filepath.Join(r.location.WorktreePath(), filepath.FromSlash(job.dir))
 	importPath := r.importPath(pkg)
 	own, err := r.readPackageTree(head, job.dir)
 	if err != nil {
-		return false, err
+		return err
 	}
 	m := testcover.Map{Commit: head, Files: job.files, OtherFiles: own.otherFiles()}
-	if !job.whole {
-		planned, found, err := testcover.ReadMap(r.mapsDir, pkg)
-		if err != nil || !found || planned.Commit != head {
-			r.skip(pkg, "its map no longer stands at the planned HEAD")
-			r.queued++
-			return true, nil
-		}
-		m = planned
-	}
 	mapped, err := r.mappedTests(pkgDir)
 	if err != nil {
-		return false, r.writeFailed(pkg, m, err)
+		return r.writeFailed(pkg, m, err)
+	}
+	if len(mapped) == 0 {
+		return r.write(pkg, m)
+	}
+	spawns, err := r.scanSpawns(pkgDir)
+	if err != nil {
+		return r.writeFailed(pkg, m, fmt.Errorf("spawn scan: %w", err))
 	}
 	var toRun []testcover.TestFunc
-	if job.whole {
-		if len(mapped) == 0 {
-			return false, r.write(pkg, m)
+	for _, fn := range mapped {
+		if verdict := spawns[fn.Name]; verdict.OutOfProcess || verdict.Unresolved {
+			m.Tests = append(m.Tests, testcover.MapTest{Name: fn.Name, Tier: fn.Tier, FuncHash: fn.Hash, Spawn: verdict, Commit: head, MeasuredAt: time.Now()})
+			continue
 		}
-		spawns, err := r.scanSpawns(pkgDir)
-		if err != nil {
-			return false, r.writeFailed(pkg, m, fmt.Errorf("spawn scan: %w", err))
-		}
-		for _, fn := range mapped {
-			if verdict := spawns[fn.Name]; verdict.OutOfProcess || verdict.Unresolved {
-				m.Tests = append(m.Tests, testcover.MapTest{Name: fn.Name, Tier: fn.Tier, FuncHash: fn.Hash, Spawn: verdict, Commit: head, MeasuredAt: time.Now()})
-				continue
-			}
-			toRun = append(toRun, fn)
-		}
-		if len(toRun) == 0 {
-			return false, r.write(pkg, m)
-		}
-	} else {
-		for _, fn := range mapped {
-			if slices.Contains(job.tests, fn.Name) {
-				toRun = append(toRun, fn)
-			}
-		}
+		toRun = append(toRun, fn)
+	}
+	if len(toRun) == 0 {
+		return r.write(pkg, m)
 	}
 
 	if err := r.holdSlot(); err != nil {
-		return false, err
+		return err
 	}
 	build := r.takeBuild(pkg)
 	defer os.Remove(build.bin)
 	if build.linked == nil {
 		if err := r.ctx.Err(); err != nil {
-			return false, err
+			return err
 		}
-		return false, r.writeFailed(pkg, m, build.err)
+		return r.writeFailed(pkg, m, build.err)
 	}
 	trees, err := r.linkedTrees(head, importPath, own, build.linked)
 	if err != nil {
-		return false, err
+		return err
 	}
 	m.Linked = linkedHashes(trees, importPath)
 	file, err := r.dirtyOwnedFile(trees)
 	if err != nil {
-		return false, err
+		return err
 	}
 	if file != "" {
 		r.skip(pkg, "modified or untracked file "+file)
-		return true, nil
+		return nil
 	}
 	if build.err != nil {
 		// A signal ends the build for a cause outside the package, so no failure is recorded.
 		if err := r.ctx.Err(); err != nil {
-			return false, err
+			return err
 		}
-		return false, r.writeFailed(pkg, m, build.err)
+		return r.writeFailed(pkg, m, build.err)
 	}
 	if r.next.pkg != "" && r.ahead == nil {
 		r.ahead = r.startBuild(r.next.pkg)
 	}
 	p := &packageRun{
-		job: job, pkgDir: pkgDir, importPath: importPath, bin: build.bin, mapped: mapped, trees: trees, m: m, checked: job.whole,
+		job: job, pkgDir: pkgDir, importPath: importPath, bin: build.bin, trees: trees, m: m,
 		indexes: map[string]*testcover.FuncIndex{}, measure: testMapMeasure{Package: pkg, BuildSeconds: build.seconds},
 	}
 	if slices.ContainsFunc(mapped, func(fn testcover.TestFunc) bool { return r.tiers[fn.Tier].PrebuiltLym }) {
 		if err := r.buildLym(); err != nil {
 			if stop := r.ctx.Err(); stop != nil {
-				return false, stop
+				return stop
 			}
-			return false, r.writeFailed(pkg, m, err)
+			return r.writeFailed(pkg, m, err)
 		}
 	}
 	for _, other := range build.linked {
@@ -204,7 +176,7 @@ func (r *testMapRun) mapPackage(job testMapJob) (bool, error) {
 			p.indexes[other] = testcover.NewFuncIndex(filepath.Join(r.location.WorktreePath(), filepath.FromSlash(trees[other].dir)), other)
 		}
 	}
-	return false, r.measureTests(p, toRun)
+	return r.measureTests(p, toRun)
 }
 
 // startBuild starts the coverage build of pkg in the background.
@@ -256,86 +228,35 @@ func (r *testMapRun) takeBuild(pkg string) *coverageBuild {
 }
 
 // measureTests runs queue, the job's tests, and writes the package's map once they ran.
-// A job that is no whole rebuild self-checks its kept entries against the first profile a run writes.
-// It drops each entry that fails, runs its test in a further batch and counts a self-check mismatch.
-// When no queued run wrote a profile, it runs one kept passing entry to get one.
 // Once the runs end it reads the worktree status and HEAD.
 // A dirty file a linked package owns, or a HEAD move, discards the runs and ends the job with the package skipped.
-// An audit job counts each re-run entry whose fresh coverage differs from the kept one as an audit mismatch.
 // The error reports a read or write failure, or a signal, that ends the job.
 func (r *testMapRun) measureTests(p *packageRun, queue []testcover.TestFunc) error {
-	var runs []mappedRun
-	for len(queue) > 0 || !(p.checked || p.probed) {
-		if len(queue) == 0 {
-			probe, found := keptEntryTest(p.m, p.mapped)
-			if !found {
-				break
-			}
-			p.probed = true
-			queue = []testcover.TestFunc{probe}
+	start := time.Now()
+	runs, err := r.runBatch(p, queue)
+	if err != nil {
+		if stop := r.ctx.Err(); stop != nil {
+			return stop
 		}
-		start := time.Now()
-		batch, err := r.runBatch(p, queue)
-		if err != nil {
-			if stop := r.ctx.Err(); stop != nil {
-				return stop
-			}
-			return r.writeFailed(p.job.pkg, p.m, err)
-		}
-		p.measure.RunSeconds += time.Since(start).Seconds()
-		runs = append(runs, batch...)
-		queue = nil
-		if !p.checked && p.table != nil {
-			p.checked = true
-			failing := selfCheck(p.m, p.table, ranNames(runs))
-			r.selfCheckMismatches += len(failing)
-			p.m.Tests = slices.DeleteFunc(p.m.Tests, func(test testcover.MapTest) bool { return slices.Contains(failing, test.Name) })
-			for _, fn := range p.mapped {
-				if slices.Contains(failing, fn.Name) {
-					queue = append(queue, fn)
-				}
-			}
-		}
+		return r.writeFailed(p.job.pkg, p.m, err)
 	}
-	if len(runs) == 0 {
-		return nil
-	}
+	p.measure.RunSeconds = time.Since(start).Seconds()
 	ended, err := r.endJob(p)
 	if err != nil || ended {
 		return err
 	}
-	before := p.m
 	fillMapTests(&p.m, p.table, runs, r.head, time.Now())
-	if p.job.audit {
-		for _, run := range runs {
-			if slices.Contains(p.job.tests, run.fn.Name) && entryCoverage(before, run.fn.Name) != entryCoverage(p.m, run.fn.Name) {
-				r.auditMismatches++
-			}
-		}
-	}
-	p.m.Failure = nil
-	if err := r.writeMap(p.job.pkg, p.m); err != nil {
+	if err := r.write(p.job.pkg, p.m); err != nil {
 		return err
-	}
-	if !slices.Contains(r.built, p.job.pkg) {
-		r.built = append(r.built, p.job.pkg)
 	}
 	p.measure.Tests = len(runs)
 	r.addMeasure(p.measure)
 	return nil
 }
 
-// addMeasure adds m to the call's measures, summing it into the entry of its package when the call measured it before.
-// A package the audit round re-measures is therefore reported once.
+// addMeasure adds m, one package's measurement, to the call's measures.
 func (r *testMapRun) addMeasure(m testMapMeasure) {
-	at := slices.IndexFunc(r.measures, func(held testMapMeasure) bool { return held.Package == m.Package })
-	if at < 0 {
-		r.measures = append(r.measures, m)
-		return
-	}
-	r.measures[at].BuildSeconds += m.BuildSeconds
-	r.measures[at].RunSeconds += m.RunSeconds
-	r.measures[at].Tests += m.Tests
+	r.measures = append(r.measures, m)
 }
 
 // runBatch runs each test of queue alone in its own process and returns their runs.
@@ -430,7 +351,7 @@ func (p *packageRun) reduce(run *mappedRun) error {
 	groups := testcover.ProfileByPackage(profile)
 	own := groups[p.importPath]
 	if p.table == nil {
-		table, err := p.newBlockTable(own, groups)
+		table, err := p.newBlockTable(own)
 		if err != nil {
 			return err
 		}
@@ -450,10 +371,9 @@ func (p *packageRun) reduce(run *mappedRun) error {
 	return nil
 }
 
-// newBlockTable reads the job's block table from one profile, grouped by package.
+// newBlockTable reads the job's block table from one profile.
 // own are the profile's blocks of the package's own files, keyed from the package directory.
-// For a job that still self-checks, it also names every function the build instruments in each linked package.
-func (p *packageRun) newBlockTable(own []testcover.ProfileBlock, groups map[string][]testcover.ProfileBlock) (*blockTable, error) {
+func (p *packageRun) newBlockTable(own []testcover.ProfileBlock) (*blockTable, error) {
 	var located []testcover.ProfileBlock
 	positions := map[string]int{}
 	for _, block := range own {
@@ -466,21 +386,7 @@ func (p *packageRun) newBlockTable(own []testcover.ProfileBlock, groups map[stri
 	if err != nil {
 		return nil, fmt.Errorf("key the covered blocks: %w", err)
 	}
-	table := &blockTable{keys: keys, positions: positions}
-	if p.checked {
-		return table, nil
-	}
-	table.profiled = map[testcover.FuncKey]bool{}
-	for importPath, index := range p.indexes {
-		funcs, err := index.ProfiledFuncs(groups[importPath])
-		if err != nil {
-			return nil, fmt.Errorf("name the fresh build's functions: %w", err)
-		}
-		for _, key := range funcs {
-			table.profiled[key] = true
-		}
-	}
-	return table, nil
+	return &blockTable{keys: keys, positions: positions}, nil
 }
 
 // endJob reads the worktree status and HEAD once the job's tests ran, and reports whether they end the job.
@@ -702,49 +608,12 @@ func ranNames(runs []mappedRun) map[string]bool {
 	return ran
 }
 
-// keptEntryTest returns the test of m's first passing entry that mapped still declares, and reports whether there is one.
-// A job whose own runs wrote no profile runs it to get the fresh build's blocks for the self-check.
-func keptEntryTest(m testcover.Map, mapped []testcover.TestFunc) (testcover.TestFunc, bool) {
-	for _, test := range m.Tests {
-		if !test.Measured() {
-			continue
-		}
-		if i := slices.IndexFunc(mapped, func(fn testcover.TestFunc) bool { return fn.Name == test.Name }); i >= 0 {
-			return mapped[i], true
-		}
-	}
-	return testcover.TestFunc{}, false
-}
-
-// selfCheck returns the names of m's passing entries that a fresh build, whose block table is table, cannot place.
-// An entry fails when one of its block keys is absent from the table's keys of the package's own blocks.
-// It also fails when one of its linked functions is absent from the functions the build instruments.
-// The entries ran names are measured afresh anyway, so they are not checked.
-func selfCheck(m testcover.Map, table *blockTable, ran map[string]bool) []string {
-	blocks := map[string]bool{}
-	for _, key := range table.keys {
-		blocks[key.String()] = true
-	}
-	var failing []string
-	for _, test := range m.Tests {
-		if ran[test.Name] || !test.Measured() {
-			continue
-		}
-		lostBlock := slices.ContainsFunc(test.Blocks, func(i int) bool { return !blocks[m.Blocks[i].String()] })
-		lostFunc := slices.ContainsFunc(test.Funcs, func(i int) bool { return !table.profiled[m.Funcs[i]] })
-		if lostBlock || lostFunc {
-			failing = append(failing, test.Name)
-		}
-	}
-	return failing
-}
-
 // fillMapTests merges runs, the job's reduced runs, into m and sets its block key and function tables.
 // An entry of m that a run names is replaced by the run's; every other entry is kept.
 // The block table is table's keys, the fresh build's blocks of the package's own files;
 // m's own table stands when table is nil, since no run wrote a profile.
-// A kept entry is re-indexed by its blocks' keys and its functions.
-// Its keys must therefore lie in the fresh tables, which the self-check makes sure of.
+// A kept entry is re-indexed by its blocks' keys and its functions,
+// so its keys must lie in the fresh tables.
 // The function table holds the kept entries' functions and those the passing runs cover.
 // A passing run that covers a block of the package or a function of a linked package enters with that coverage;
 // one that covers neither enters as OutcomeNoCoverage, and any other run with its outcome.
@@ -824,27 +693,6 @@ func reindexed(indexes []int, to func(int) int) []int {
 	return mapped
 }
 
-// entryCoverage renders what m's entry for the test name records as comparable text:
-// its outcome, its block keys and its linked functions, each sorted; it is "" when m holds no entry for the test.
-func entryCoverage(m testcover.Map, name string) string {
-	at := slices.IndexFunc(m.Tests, func(test testcover.MapTest) bool { return test.Name == name })
-	if at < 0 {
-		return ""
-	}
-	test := m.Tests[at]
-	var blocks, funcs []string
-	for _, i := range test.Blocks {
-		blocks = append(blocks, m.Blocks[i].String())
-	}
-	for _, i := range test.Funcs {
-		key := m.Funcs[i]
-		funcs = append(funcs, key.Package+" "+key.File+" "+key.Func)
-	}
-	slices.Sort(blocks)
-	slices.Sort(funcs)
-	return strings.Join(slices.Concat([]string{"outcome " + string(test.Outcome)}, blocks, funcs), "\n")
-}
-
 // write writes m as the map of pkg and reports pkg built.
 func (r *testMapRun) write(pkg string, m testcover.Map) error {
 	if err := r.writeMap(pkg, m); err != nil {
@@ -917,7 +765,6 @@ func (r *testMapRun) environmentStamp(commit string) (testcover.EnvironmentStamp
 // tiers are the mapped tiers the hub declares, by number, and hubEnv the hub's env.yaml variables.
 // The tiers digest covers each tier's command and env as configured, before the `{parallel}` substitution,
 // so a changed parallel count leaves it as it was.
-// The plan's selector stamps through it too, so a map built at the call's HEAD compares equal there.
 func stampEnvironment(toolchain testcover.EnvironmentStamp, tiers map[int]gateslot.Tier, hubEnv envconfig.Config) testcover.EnvironmentStamp {
 	var lines []string
 	for _, number := range slices.Sorted(maps.Keys(tiers)) {

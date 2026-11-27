@@ -1,4 +1,4 @@
-// testmaptree.go reads, for `lym gate testmap`, the files a package owns at a commit by the path-to-package rule.
+// testmaptree.go reads, for a map run, the files a package owns at a commit by the path-to-package rule.
 // It hashes them, finds the uncommitted and untracked ones, and tells which of them changed between two commits.
 
 package gatecli
