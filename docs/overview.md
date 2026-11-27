@@ -295,6 +295,7 @@ github.com/Knatte18/loomyard/
 ├── internal/dobbyengine/         dobby, the daemon of a beam worktree: it starts released tasks, drives their batten runs in passes and spawns the board-tidy agent
 ├── internal/boardcli/            the board CLI command
 ├── internal/boardengine/         the board domain kernel
+├── internal/boardserve/          the board's loopback server: the viewer page, the board's projection and its live changes, and the page's writes
 ├── internal/hubissues/           the GitHub issues of the hub's own repository that `lym board intake` lists, reads, comments on and closes
 ├── internal/pullrequest/         the run's pull-request record and its GitHub calls, for PR-Review, Finalize and pair teardown
 ├── internal/cleanupcli/          the cleanup CLI command (`lym cleanup`, the routine cleanups of the hub prime's leftover state, a dry run by default)
