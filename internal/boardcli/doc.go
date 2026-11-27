@@ -5,8 +5,19 @@
 //   - From `storeVerbs`:
 //     `upsert`, `upsert-batch`, `set-status`, `remove`, `get`, `list`, `list-full`, `merge` and `set-deps`.
 //   - `promote`, `raddle`, `rename`, `prune`, `find`, `labels`, `profiles` and `retire-legacy` are built in `Command`.
-//     The `rerender` and `sync` maintenance verbs are built there too.
+//     The `rerender` and `sync` maintenance verbs are built there too, as are `open` and `serve`.
 //   - `intake` (list, import, close) comes from `intakeCommand`.
+//
+// `open` opens the hub's board viewer in the default browser and `serve` is the server behind it, `boardserve.Run`.
+// Both refuse a run agent's session first, then `--board-path`, since the server needs the hub's board config.
+// `open` reads the server's lock to learn whether one runs.
+// When none does, it starts `serve` in the prime's anchored directory.
+// It waits for a server whose state answers its token, writes the launcher and hands its path to the platform's opener,
+// so the token reaches no command line.
+// For a caller with a strand name the wait on the opener ends at the keep-warm cap, and the opener is left running.
+// It prints `{"ok":true,"address":…,"launcher":…,"started":…}`, and the address holds no token.
+// `serve` writes the board with an empty strand name, so every write of the page is the operator's.
+// While another server holds the hub's lock it prints `{"ok":true,"running":true}` and succeeds.
 //
 // `prune` and `retire-legacy` are read-only dry runs without `--apply`.
 // Each prints the fields an applied run prints, filled with what it would change, plus `"applied": false`;

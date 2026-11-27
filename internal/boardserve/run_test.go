@@ -125,7 +125,8 @@ func newLifecycle(t *testing.T) *lifecycle {
 		Paths:     paths,
 		Board:     l.board.board,
 		BoardPath: l.board.dir,
-		LockWait:  10 * time.Millisecond,
+		// A free lock is taken at once; a short wait could run out before the first attempt on a loaded machine.
+		LockWait:  time.Minute,
 		IdleBound: 30 * time.Minute,
 		PollBound: time.Minute,
 		Log:       log,
@@ -261,6 +262,7 @@ func TestRun(t *testing.T) {
 		defer held.Release()
 		var logged strings.Builder
 		l.opts.Log = &logged
+		l.opts.LockWait = 10 * time.Millisecond
 		if err := Run(context.Background(), l.opts); !errors.Is(err, ErrRunning) {
 			t.Errorf("Run = %v; want ErrRunning", err)
 		}

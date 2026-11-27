@@ -2,7 +2,7 @@
 //
 // Command() returns the root "board" command over one store, board.json, whose entries carry a kind and labels.
 // The verbs upsert, upsert-batch, set-status, remove, get, list, list-full, merge and set-deps come from storeVerbs.
-// Command itself builds the remaining verbs, such as promote, rename, raddle and sync.
+// Command itself builds the remaining verbs, such as promote, rename, raddle, sync, open and serve.
 // The intake group (list, import, close) comes from intakeCommand in intake.go, over the hub repository the hubRepo closure opens from the resolved location.
 // list and find take --text to print the compact listing from text.go instead of JSON.
 // Configuration resolution happens once in a PersistentPreRunE.
@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/boardserve"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -34,7 +35,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/runprofile"
+	"github.com/Knatte18/loomyard/internal/selfexec"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/spf13/cobra"
 )
 
@@ -401,9 +406,115 @@ Example:
 	}
 	retireLegacyCmd.Flags().BoolVar(&retireLegacyApply, "apply", false, "delete the legacy files (default is dry-run/report)")
 
+	openCmd := &cobra.Command{
+		Use:         "open",
+		Short:       "open the board viewer in the default browser, starting its server when none runs",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Open the hub's board viewer, a page that filters and edits the board and refreshes live.
+When no board server of the hub runs, one is started in the prime; it exits on its own once no page has asked it
+anything for ` + serverIdleBound.String() + `. The page opens through a launcher file that only you can read, which carries the
+server's token to the browser. The printed address holds no token, so opening it by hand shows no board:
+open the printed launcher instead. Run it from a worktree of the hub; a run's agent session is refused.
+
+Output:
+  {"ok":true,"address":"http://127.0.0.1:<port>/","launcher":"<path>","started":true}
+
+Example:
+  lym board open`,
+		Args: cobra.NoArgs,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			strand := strandNameFromEnv()
+			if err := refuseRunAgent("open", strand); err != nil {
+				return outputError(out, err.Error())
+			}
+			if location == nil {
+				return outputError(out, refuseWithoutHubConfig("open").Error())
+			}
+			var openerCap time.Duration
+			if strand != "" {
+				answer := shuttleengines.KeepWarm(fabricengine.ConfigDirs(location), strand)
+				if answer.Fallback != nil {
+					logger.Debug("boardcli: the keep-warm cap is the fallback", "strand", strand, "cause", answer.Fallback)
+				}
+				openerCap = answer.Cap
+			}
+			result, err := runOpen(openDeps{
+				Paths: boardserve.Paths(fabricengine.HubScratchDir(location.HubPath)),
+				Prime: func() (string, error) {
+					prime, err := fabricengine.PrimeName(location)
+					if err != nil {
+						return "", err
+					}
+					named, err := lymcwd.NamedWorktree(location.HubPath, prime)
+					if err != nil {
+						return "", err
+					}
+					return named.AnchorPath(), nil
+				},
+				Spawn:       spawnServer,
+				Probe:       boardserve.Probe,
+				Running:     proc.IsRunning,
+				StartOpener: startOpener,
+				StartBound:  openStartBound,
+				Poll:        openPoll,
+				OpenerCap:   openerCap,
+			})
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			return output.Ok(out, map[string]any{"address": result.Address, "launcher": result.Launcher, "started": result.Started})
+		}),
+	}
+
+	serveCmd := &cobra.Command{
+		Use:         "serve",
+		Short:       "serve the board viewer on a loopback port, one server per hub",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
+		Long: `Serve the hub's board viewer until it is idle or its binary is replaced. "lym board open" starts it.
+While another server of the hub runs, it exits at once with {"ok":true,"running":true}.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return clihelp.WrapRun(func(out io.Writer, args []string) int {
+				if err := refuseRunAgent("serve", strandNameFromEnv()); err != nil {
+					return outputError(out, err.Error())
+				}
+				if location == nil {
+					return outputError(out, refuseWithoutHubConfig("serve").Error())
+				}
+				hub := location.HubPath
+				// Every write of the page is the operator's, whoever started the server.
+				served := config
+				served.StrandName = ""
+				err := boardserve.Run(cmd.Context(), boardserve.Options{
+					Paths:     boardserve.Paths(fabricengine.HubScratchDir(hub)),
+					Board:     boardengine.New(served),
+					BoardPath: served.Path,
+					LockWait:  serverLockWait,
+					IdleBound: serverIdleBound,
+					PollBound: serverPollBound,
+					Log:       cmd.ErrOrStderr(),
+					Register: func() error {
+						return runproc.Register(fabricengine.RunProcDir(hub), runproc.HubOwner, runproc.SelfRecord(runproc.RoleBoardServer))
+					},
+					Replaced: selfexec.New().Replaced,
+					Watch:    watchDirectory,
+					Now:      time.Now,
+					After:    time.After,
+				})
+				if errors.Is(err, boardserve.ErrRunning) {
+					return output.Ok(out, map[string]any{"running": true})
+				}
+				if err != nil {
+					return outputError(out, err.Error())
+				}
+				return outputSuccess(out)
+			})(cmd, args)
+		},
+	}
+
 	rerenderCmd := &cobra.Command{
 		Use:         "rerender",
-		Short:       "rebuild the README and design docs from board.json",
+		Short:       "rebuild the board's rendered files from board.json",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if err := b.Rerender(); err != nil {
@@ -501,6 +612,8 @@ Example:
 		rerenderCmd,
 		syncCmd,
 		intakeCommand(board, hubRepo),
+		openCmd,
+		serveCmd,
 	)
 
 	return cmd
