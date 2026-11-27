@@ -559,10 +559,10 @@ func (r *testMapRun) runTest(p *packageRun, fn testcover.TestFunc, profile strin
 	run := mappedRun{fn: fn, result: result}
 	switch {
 	case err != nil:
-		logger.Warn("gate testmap: a test that could not run is recorded as failed", "package", p.job.pkg, "test", fn.Name, "cause", err)
+		logger.Warn("gate test --map: a test that could not run is recorded as failed", "package", p.job.pkg, "test", fn.Name, "cause", err)
 		run.outcome = testcover.OutcomeFailed
 	case result.GuardKilled:
-		logger.Warn("gate testmap: a test the memory guard killed is recorded as failed", "package", p.job.pkg, "test", fn.Name)
+		logger.Warn("gate test --map: a test the memory guard killed is recorded as failed", "package", p.job.pkg, "test", fn.Name)
 		run.outcome = testcover.OutcomeFailed
 	case result.TimedOut:
 		run.outcome = testcover.OutcomeTimedOut
@@ -574,48 +574,19 @@ func (r *testMapRun) runTest(p *packageRun, fn testcover.TestFunc, profile strin
 	return run
 }
 
-// ranNames returns the names of the tests runs ran.
-func ranNames(runs []mappedRun) map[string]bool {
-	ran := map[string]bool{}
-	for _, run := range runs {
-		ran[run.fn.Name] = true
-	}
-	return ran
-}
-
-// fillMapTests merges runs, the job's reduced runs, into m and sets its block key and function tables.
-// An entry of m that a run names is replaced by the run's; every other entry is kept.
+// fillMapTests adds runs, the job's reduced runs, to m and sets its block key and function tables.
+// The entries m already holds have no coverage and stay as they are.
 // The block table is table's keys, the fresh build's blocks of the package's own files;
-// m's own table stands when table is nil, since no run wrote a profile.
-// A kept entry is re-indexed by its blocks' keys and its functions,
-// so its keys must lie in the fresh tables.
-// The function table holds the kept entries' functions and those the passing runs cover.
+// table is nil when no run wrote a profile.
+// The function table holds the functions the passing runs cover.
 // A passing run that covers a block of the package or a function of a linked package enters with that coverage;
 // one that covers neither enters as OutcomeNoCoverage, and any other run with its outcome.
 // Every entry a run gives carries commit and at.
 func fillMapTests(m *testcover.Map, table *blockTable, runs []mappedRun, commit string, at time.Time) {
-	ran := ranNames(runs)
-	var kept []testcover.MapTest
-	for _, test := range m.Tests {
-		if !ran[test.Name] {
-			kept = append(kept, test)
-		}
-	}
-	blocks := m.Blocks
 	if table != nil {
-		blocks = table.keys
+		m.Blocks = table.keys
 	}
-	blockIndex := map[string]int{}
-	for i, key := range blocks {
-		blockIndex[key.String()] = i
-	}
-
 	funcIndex := map[testcover.FuncKey]int{}
-	for _, test := range kept {
-		for _, i := range test.Funcs {
-			funcIndex[m.Funcs[i]] = 0
-		}
-	}
 	for _, run := range runs {
 		for _, key := range run.funcs {
 			funcIndex[key] = 0
@@ -626,12 +597,6 @@ func fillMapTests(m *testcover.Map, table *blockTable, runs []mappedRun, commit 
 		funcIndex[key] = i
 	}
 
-	tests := make([]testcover.MapTest, 0, len(kept)+len(runs))
-	for _, test := range kept {
-		test.Blocks = reindexed(test.Blocks, func(i int) int { return blockIndex[m.Blocks[i].String()] })
-		test.Funcs = reindexed(test.Funcs, func(i int) int { return funcIndex[m.Funcs[i]] })
-		tests = append(tests, test)
-	}
 	for _, run := range runs {
 		entry := testcover.MapTest{
 			Name: run.fn.Name, Tier: run.fn.Tier, FuncHash: run.fn.Hash, Seconds: run.result.Elapsed,
@@ -652,20 +617,10 @@ func fillMapTests(m *testcover.Map, table *blockTable, runs []mappedRun, commit 
 				entry.Outcome = testcover.OutcomeNoCoverage
 			}
 		}
-		tests = append(tests, entry)
+		m.Tests = append(m.Tests, entry)
 	}
-	slices.SortStableFunc(tests, func(a, b testcover.MapTest) int { return strings.Compare(a.Name, b.Name) })
-	m.Blocks, m.Funcs, m.Tests = blocks, funcs, tests
-}
-
-// reindexed returns indexes mapped through to, sorted, or nil for none.
-func reindexed(indexes []int, to func(int) int) []int {
-	var mapped []int
-	for _, i := range indexes {
-		mapped = append(mapped, to(i))
-	}
-	slices.Sort(mapped)
-	return mapped
+	slices.SortStableFunc(m.Tests, func(a, b testcover.MapTest) int { return strings.Compare(a.Name, b.Name) })
+	m.Funcs = funcs
 }
 
 // write writes m as the map of pkg and reports pkg built.
