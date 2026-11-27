@@ -113,8 +113,7 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 	}
 
 	// Migrated before fn mutates, so a write that releases a task to an empty status is not re-drafted by the migration.
-	migrateDraftStatus(store)
-	migrateDiscussedStatus(store)
+	migrateLoaded(store)
 	loaded := cloneTasks(store.Tasks())
 	// Read before fn mutates, so the slug rule judges the raddle store as it stood before the write.
 	raddleStore, raddleStoreErr := ReadRaddleStore(b.boardPath)
@@ -198,6 +197,12 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 	}
 
 	return result, recordErr
+}
+
+// migrateLoaded applies to a loaded store, in memory, the migrations a write persists.
+func migrateLoaded(store *Store) {
+	migrateDraftStatus(store)
+	migrateDiscussedStatus(store)
 }
 
 // UpsertTask creates or updates the task identified by fields["slug"] under the write lock;
