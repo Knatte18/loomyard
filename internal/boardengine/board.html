@@ -241,7 +241,6 @@ textarea { min-height: 6rem; }
 
   function fieldValue(name, text) {
     if (name === "labels" || name === "depends_on") { return splitList(text); }
-    if (name === "project" && text === "") { return null; }
     return text;
   }
 
