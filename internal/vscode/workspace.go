@@ -1,5 +1,5 @@
 // workspace.go builds the content of a VS Code .code-workspace file.
-// It sets the workspace look in the settings it splices.
+// It sets the workspace look in the settings it splices, and builds the file's tasks member.
 // It owns VS Code format knowledge only: folder names and paths arrive as values,
 // and no hub geometry is known here.
 
@@ -77,6 +77,35 @@ func BuildWorkspace(folders []WorkspaceFolder, settings []byte, members map[stri
 	}
 	out.WriteString("\n}\n")
 	return out.Bytes(), nil
+}
+
+// workspaceTasksKey is the top-level key of a .code-workspace file that holds its workspace-scoped tasks.
+const workspaceTasksKey = "tasks"
+
+// WorkspaceTasks returns the name and value of a .code-workspace member holding one on-demand "beam start" task.
+// The task runs lym beam start <beam> in the directory cwd.
+// A window with several folders so holds the task once, where a folder's tasks.json would repeat it.
+// An empty lymPath becomes "lym".
+func WorkspaceTasks(lymPath, beam, cwd string) (name string, value json.RawMessage) {
+	tasks := map[string]any{
+		"version": tasksVersion,
+		"tasks": []map[string]any{
+			{
+				"label": beamStartTaskLabel,
+				// A workspace file admits only shell and process tasks.
+				"type":         "process",
+				"command":      lymCommand(lymPath),
+				"args":         []string{"beam", "start", beam},
+				"options":      map[string]any{"cwd": cwd},
+				"presentation": newPanelPresentation(),
+			},
+		},
+	}
+	value, err := json.MarshalIndent(tasks, "  ", "  ")
+	if err != nil {
+		panic(fmt.Sprintf("vscode: encode the workspace tasks: %v", err))
+	}
+	return workspaceTasksKey, value
 }
 
 // WorkspaceSettings returns settings with the keys lym owns set to the look of a workspace window titled title,

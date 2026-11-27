@@ -600,6 +600,8 @@ User-facing modules each get one `lym <module>` namespace:
   Each has the workspace look:
   `window.title` names the hub shortname, then the repository or beam followed by `workspace`,
   and the activity bar takes the workspace's blue-grey, which no worktree takes.
+  Each also carries one `beam start` task, `lym beam start root` for the hub's and `lym beam start <beam>` for a beam's,
+  which `alt+shift+0` runs.
   `lym ide seed` writes the same config and, for the prime, the hub workspace file, and launches nothing;
   with no slug it seeds the worktree it runs in, the prime included.
   It keeps `.vscode/` out of git through the repository's shared `info/exclude` at the anchor subpath, not `.gitignore`.

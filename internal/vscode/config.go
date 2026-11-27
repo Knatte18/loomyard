@@ -68,10 +68,7 @@ type Look struct {
 // so a resolution failure upstream still produces a runnable, PATH-dependent task file rather than a broken one.
 // Returns an error if I/O fails.
 func WriteConfig(worktreeDir, relpath string, look Look, renderMarkdown bool, lymPath string) error {
-	if lymPath == "" {
-		lymPath = "lym"
-	}
-
+	lymPath = lymCommand(lymPath)
 	vscodePath := filepath.Join(worktreeDir, relpath, ".vscode")
 	if err := os.MkdirAll(vscodePath, 0o755); err != nil {
 		return err
@@ -178,6 +175,27 @@ const (
 	beamStartTaskLabel = "beam start"
 )
 
+// tasksVersion is the version of VS Code's task schema that lym writes.
+const tasksVersion = "2.0.0"
+
+// lymCommand returns the command a task runs lym by: lymPath, or the bare binary name when lymPath is empty.
+func lymCommand(lymPath string) string {
+	if lymPath == "" {
+		return "lym"
+	}
+	return lymPath
+}
+
+// newPanelPresentation returns the presentation of a task whose terminal opens in a new panel and takes focus.
+func newPanelPresentation() map[string]any {
+	return map[string]any{
+		"reveal": "always",
+		"panel":  "new",
+		"echo":   true,
+		"focus":  true,
+	}
+}
+
 // writeWorktreeTasks writes a tasks.json holding the on-demand "reed attach" and "board open" tasks.
 // It overwrites any existing file.
 // Neither task carries runOptions.
@@ -185,19 +203,14 @@ const (
 // The board open terminal comes forward without taking focus, so its refusals and errors are seen.
 func writeWorktreeTasks(tasksPath, lymPath string) error {
 	tasks := map[string]any{
-		"version": "2.0.0",
+		"version": tasksVersion,
 		"tasks": []map[string]any{
 			{
-				"label":   attachTaskLabel,
-				"type":    "shell",
-				"command": lymPath,
-				"args":    []string{"reed", "attach"},
-				"presentation": map[string]any{
-					"reveal": "always",
-					"panel":  "new",
-					"echo":   true,
-					"focus":  true,
-				},
+				"label":        attachTaskLabel,
+				"type":         "shell",
+				"command":      lymPath,
+				"args":         []string{"reed", "attach"},
+				"presentation": newPanelPresentation(),
 			},
 			{
 				"label":   boardOpenTaskLabel,
