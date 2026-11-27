@@ -55,6 +55,14 @@ Do not flag any of the following as a finding:
   One card per independently reviewable unit, not one card per literal symbol.
   A private supporting type, or a constructor inseparable from its type, belongs in the other symbol's card;
   a symbol that is part of a module's public surface, or reused across packages, gets its own card even when one card is its only consumer, and a helper serving one surface is bundled into that surface's card.
+  A new function is the exception: it goes on the card that adds its first production caller.
+  A card that adds it alone fails its gate on the guard that every production function is reachable from a `main`;
+  the finding names the function and the card that adds its caller.
+- **A repository-wide intent.**
+  A card whose `**Intent:**` covers every instance of one kind across the repository needs a search that proves its targets complete.
+  It is a finding when its Intent names no repository search that found its targets.
+  The reviewer runs the card's search, or one of its own when the card names none;
+  the finding names each instance the search finds outside the card's targets.
 - **Test economy.**
   A card that plans a new test function or file for behavior an existing test already covers, or one test per symbol, is a finding; so is a card that plans a test asserting the static prose of a stencil, spec, doc or other text.
   The finding names the existing test that covers the behavior, or, for a per-symbol test, the public-surface test that covers the symbol;

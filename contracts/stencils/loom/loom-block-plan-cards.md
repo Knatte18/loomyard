@@ -50,6 +50,12 @@ A propagated raw I/O error, which `refusal-spec.md` exempts as transient, is exe
 A branch that upstream validation already rules out is not prescribed: drop it, or, when it guards an invariant, write it as a fail-loud wiring guard in `refusal-spec.md`'s sense, which takes no reaching test.
 A test that calls only the refusal's error constructor does not reach it.
 
+A card whose `**Intent:**` covers every instance of one kind across the repository lists every file holding one.
+Its Intent names the repository search that found them, so a reviewer can re-run it to prove the list complete.
+
+A new function goes on the card that adds its first production caller, even when it is part of a module's public surface:
+a card that adds it alone fails its gate on the guard that every production function is reachable from a `main`.
+
 A field with no content is omitted entirely — never write a `none` sentinel on any field.
 
 **`Uses:` names what the card reads but does not change — never a target.**

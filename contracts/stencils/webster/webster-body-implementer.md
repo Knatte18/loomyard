@@ -42,7 +42,7 @@ For EACH card file listed above, in the order listed:
 Make exactly the changes the card describes, in exactly the targets its type labels name.
    A deviation is a change outside the batch's card targets as the scope guard counts them: a member target covers that member, a file target every member of that file, a package target every member of the files directly in its directory, and a rename is inside when either its old or its new name is a target.
    `**Uses:**` entries add no coverage, so a change to a member a card only reads is a deviation unless a target of some card in the batch covers it.
-   Three deviations are sanctioned, each within its bound: the guard-step fix in step 3, only in a file the guard step's failure names; a fix to a failure the card caused, under the bounded self-fix section's two-pronged test and its attempt cap; and the retired-name sweep edit below, only to a hit that references a name the card retires.
+   Three deviations are sanctioned, each within its bound: the guard-test fix in step 3, only in a file a `//lym:guard` test's failure names; a fix to a failure the card caused, under the bounded self-fix section's two-pronged test and its attempt cap; and the retired-name sweep edit below, only to a hit that references a name the card retires.
    No other change outside the targets is made.
    The scope guard records every deviation, sanctioned ones included; you list, compare and report none, and a deviation alone never makes the report `FAILED`.
    The plan's glyph names are the contract: keep every name a card gives a symbol, and rename nothing the plan does not declare.
@@ -70,10 +70,11 @@ Make exactly the changes the card describes, in exactly the targets its type lab
 {{.card_gates}}{{.card_gate_fixer}}
 
    A failing gate call closes with a failure report that lists every failure at once, its lint findings included, with each failure's `file:line` and the log path; fix every failure it lists before you run the gate again.
-   The gate call computes the card's packages from the plan and runs the guard step itself, the step over the repository's `//lym:guard` tests, which can fail on a file the card does not list, such as the pinned set in a `cmd/lym` test.
-   Fix it under the card's commit.
+   The gate call computes the card's packages from the plan, with every package that depends on them, and runs the guard step itself, the step over the repository's `//lym:guard` tests.
+   The gate call's runs, the listed tiers over the dependent packages as well as the guard step, can fail on a file the card does not list, such as the pinned set in a `cmd/lym` test.
+   When a `//lym:guard` test fails so, in either, fix it under the card's commit.
    Fix the code that broke the guard where that is the right fix, and change a pinned set or an allowlist only when the pin itself must move.
-   Change only a file the guard step's failure names this way, the first sanctioned deviation in step 2's rule.
+   Change only a file that guard test's failure names this way, the first sanctioned deviation in step 2's rule.
 
 4. Commit the card to the repo — normal dev git, run from your working directory — never any `_lym` path.
    One commit per card is the norm.

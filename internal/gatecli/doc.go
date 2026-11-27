@@ -137,8 +137,10 @@
 // Under the `none` scoper each scoped form is whole, so a tier takes its `all_targets`, and no guard step is planned.
 // Under the `go` scoper a computed or `--base` scope is `impactset.DeriveTargets` of the base-to-working-tree diff.
 // It falls back to whole wherever the derivation does, naming the reason on stderr.
-// A `--card` scope is the cards' packages;
-// with `--main-packages` it also holds every `package main` package of tier0's module.
+// A `--card` scope is the cards' packages and, per module, every package whose build or tests reach one of them.
+// So a test outside the cards that asserts on what they change runs at the card's gate;
+// a module `go list` cannot list keeps the cards' packages alone, which the call names on stderr.
+// With `--main-packages` it also holds every `package main` package of tier0's module.
 // A narrower scope runs each listed tier once per module, in that module's directory.
 // One slot hold and one `timeout_min` cover every invocation.
 // An empty scope, such as a diff of Markdown files only, runs no listed tier's command, bar a tier with `carry: false`:
@@ -206,19 +208,24 @@
 // # Vet step
 //
 // Under the `go` scoper a `--card` scope also plans vet runs, after the listed tiers and before the guard step.
-// Each declared tier whose build tag `tierN` brings a `.go` file into a card package gets a `go vet -tags tierN` run.
-// The run covers the card's packages, once per module.
+// Each declared tier whose tag `tierN` adds a `.go` file to a card-scope package gets a `go vet -tags tierN` run.
+// The run covers the card scope's packages, once per module.
 // A listed tier and a tier a listed tier covers get none.
 // So a card that breaks the compile under another tier's tag fails at its own gate.
 // The run holds one slot, takes part in the green record under its own fingerprint, and stops no later run.
 // Bound: it does not vet a break visible only under a combination of tags.
-// Nor does it vet one visible only under a tag that adds no file to a card package; the batch gate finds both.
+// Nor does it vet one visible only under a tag that adds no file to a package of the card scope;
+// the batch gate finds both.
 //
 // # Guard step
 //
 // The verb runs the guard step after the listed tiers when given `--guards`.
 // Under the `go` scoper it also runs after any computed, `--base` or `--card` scope.
 // It covers the module's `//lym:guard` tests outside the scope, so a narrower gate keeps full guard coverage.
+// Under `--card` it also covers a scope package's guard test whose tier no listed tier is or covers.
+// The listed runs skip that test.
+// Bound: a computed or `--base` scope leaves every guard test of an impacted package to the listed runs,
+// so one of a tier they do not run is not run there.
 // A guard test's tier comes from its file's `tierN` build tag, a file naming none counting as `tier0`.
 // The step plans one run per tier holding guard tests, ascending.
 // Each run is the tier's command with the group's packages as `{targets}`;

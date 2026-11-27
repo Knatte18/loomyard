@@ -402,9 +402,9 @@ func TestGateTest_Scopes(t *testing.T) {
 	}}}
 	plankit.Write(t, planparser.PlanDir(pair), plan)
 
-	t.Run("--card runs a card's packages once per module, then the guard step over the guard tests outside them", func(t *testing.T) {
+	t.Run("--card runs a card's packages and the packages that import them once per module, then the guard step over the guard tests outside them", func(t *testing.T) {
 		g := gate(t, pair, nil, "--card", "1")
-		wantArgs(t, g, []string{"./lib"}, []string{"."}, guardInvocation)
+		wantArgs(t, g, []string{"./lib", "./user"}, []string{"."}, guardInvocation)
 		var cwds []string
 		for _, record := range g.tierRecords(t) {
 			cwds = append(cwds, record.Cwd)
@@ -415,6 +415,23 @@ func TestGateTest_Scopes(t *testing.T) {
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "card" {
 			t.Errorf("tier0 run record scope form = %q; want card", run.ScopeForm)
 		}
+	})
+
+	t.Run("--card runs a dependent package's guard in the guard step unless a listed tier is or covers its tier", func(t *testing.T) {
+		plankit.WriteTree(t, pair, map[string]string{
+			"consumer/c.go":      "package consumer\n\nimport \"example.com/scopes/lib\"\n\nvar One = lib.One\n",
+			"consumer/c_test.go": "//go:build tier1\n\npackage consumer\n\nimport \"testing\"\n\n//lym:guard\nfunc TestConsumerGuard(t *testing.T) {}\n",
+			// The listed tier0, and tier1 which covers it, both run this one, so the guard step never names it.
+			"consumer/c0_test.go": "package consumer\n\nimport \"testing\"\n\n//lym:guard\nfunc TestConsumerTierZeroGuard(t *testing.T) {}\n",
+		})
+		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(pair, "consumer")) })
+		scoped := []string{"./lib", "./consumer", "./user"}
+
+		wantArgs(t, gate(t, pair, nil, "--card", "1"),
+			scoped, []string{"."},
+			append([]string{"vet", "-tags", "tier1"}, scoped...), []string{"vet", "-tags", "tier1", "."},
+			guardInvocation, []string{"./consumer", "-run", "^(TestConsumerGuard)$"})
+		wantArgs(t, gate(t, pair, nil, "--card", "1", "--tier", "1"), scoped, []string{"."}, guardInvocation)
 	})
 
 	t.Run("--card under dotnet runs the project of the test class naming a card's member glyph target", func(t *testing.T) {
@@ -490,7 +507,7 @@ func TestGateTest_Scopes(t *testing.T) {
 	t.Run("--card vets a card's packages per module under the tag of a tier that adds a file to one, between the listed tier and the guard step", func(t *testing.T) {
 		edit(t, "lib/use_test.go", fmt.Sprintf(tier1File, "One"))
 		g := gate(t, pair, nil, "--card", "1")
-		wantArgs(t, g, []string{"./lib"}, []string{"."}, []string{"vet", "-tags", "tier1", "./lib"}, []string{"vet", "-tags", "tier1", "."}, guardInvocation)
+		wantArgs(t, g, []string{"./lib", "./user"}, []string{"."}, []string{"vet", "-tags", "tier1", "./lib", "./user"}, []string{"vet", "-tags", "tier1", "."}, guardInvocation)
 		if line := vetSummary(t, g.stdout.String()); !strings.Contains(line, " exit 0 ") {
 			t.Errorf("vet summary line = %q; want exit 0", line)
 		}
@@ -541,7 +558,7 @@ func TestGateTest_Scopes(t *testing.T) {
 			}
 		})
 		// The timed-out tier stops its own invocations, but not the guard step after it.
-		if got, want := g.tierArgs(t), [][]string{{"./lib"}, guardInvocation}; !reflect.DeepEqual(got, want) {
+		if got, want := g.tierArgs(t), [][]string{{"./lib", "./user"}, guardInvocation}; !reflect.DeepEqual(got, want) {
 			t.Errorf("tier invocations = %q; want the first module's run alone, killed before the second starts, then the guard step: %q", got, want)
 		}
 		if tier, ok := gateslot.FindTierTimeout(g.stdout.String()); g.exit != 1 || !ok || tier != "tier0" {
@@ -569,7 +586,7 @@ func TestGateTest_Scopes(t *testing.T) {
 	t.Run("--gate with scope card runs the --card packages and records the key", func(t *testing.T) {
 		edit(t, "docs/note.md", "a dirtying note\n")
 		g := gate(t, pair, nil, "--gate", "card", "--card", "1")
-		wantArgs(t, g, []string{"./lib"}, []string{"."}, guardInvocation)
+		wantArgs(t, g, []string{"./lib", "./user"}, []string{"."}, guardInvocation)
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "card" || run.GateKey != "card" {
 			t.Errorf("tier0 run record = %+v; want the card scope form and gate key card", run)
 		}
@@ -581,7 +598,7 @@ func TestGateTest_Scopes(t *testing.T) {
 	t.Run("--card with --main-packages adds the module's main packages to the card's packages", func(t *testing.T) {
 		plankit.WriteTree(t, pair, map[string]string{"tool/main.go": "package main\n\nfunc main() {}\n"})
 		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(pair, "tool")) })
-		wantArgs(t, gate(t, pair, nil, "--card", "1", "--main-packages"), []string{"./lib", "./tool"}, []string{"."}, guardInvocation)
+		wantArgs(t, gate(t, pair, nil, "--card", "1", "--main-packages"), []string{"./lib", "./user", "./tool"}, []string{"."}, guardInvocation)
 	})
 
 	t.Run("--card with --main-packages is refused naming the module and the way forward when go list fails there", func(t *testing.T) {

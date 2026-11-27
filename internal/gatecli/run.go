@@ -133,7 +133,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		return output.Err(out, err.Error())
 	}
 	if (request.guards || sc.guardStep) && len(sc.guards) == 0 {
-		logger.Info("gate test: no guard test found outside the scope; the guard step runs nothing")
+		logger.Info("gate test: no guard test is left for the guard step; it runs nothing")
 	}
 
 	exe := &execution{

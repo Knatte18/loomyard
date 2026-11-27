@@ -29,6 +29,9 @@
 // The context is checked before each git read, and cancelling it kills a stalled `go list`;
 // a local git read already in flight runs to its end.
 //
+// DependentPackages widens a named set of a module's packages, such as a plan card's, over the same graph and rules.
+// It adds every package whose build or tests reach one of them, and keeps a named package the module does not hold yet.
+//
 // Every top-level test marked `//lym:guard` runs by name in its own package, even outside the set.
 // A repository-scanning test can fail on a change far from its package.
 // Guards holds, per directory, the `//lym:guard` tests of the packages outside the set, sorted by name.

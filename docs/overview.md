@@ -957,7 +957,8 @@ User-facing modules each get one `lym <module>` namespace:
   ✅ Implemented. See the `internal/slackengine` and `internal/slackcli` package documentation.
 - **gate** — the tier runner:
   `lym gate test` runs the numbered tiers the hub declares in `gate.tiers` over explicit targets or `--all`, each tier taking the hub-wide gate slots it asks for, bounded by its `gate.tiers.<tier>.timeout_min`, counted by its `go-json` or `vstest` counter, and logged with a summary line and a run record under the board;
-  a `--card` scope under the `go` scoper also vets the card's packages under each other tier tag that adds a file to one of them,
+  a `--card` scope under the `go` scoper takes the cards' packages and every package whose build or tests reach one of them,
+  and it also vets those packages under each other tier tag that adds a file to one of them,
   so a tag-set compile break fails at the card;
   a failing tier stops no later tier, vet or guard run;
   the gate key's lint steps run after the tiers;

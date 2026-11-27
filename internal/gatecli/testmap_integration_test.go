@@ -746,7 +746,7 @@ func readTestMap(t *testing.T, mapsDir, pkg string) testcover.Map {
 // TestGateTestMapInATaskWorktreeKeepsItsOwnMaps builds a map from a task worktree at that worktree's HEAD.
 // The call writes the map under the worktree's own `.lym` and leaves the hub's shared maps alone,
 // and `lym gate redundant` from the same worktree reads the map it wrote.
-// A card scope there maps the card's packages inside the module alone.
+// A card scope there maps the card's packages and their importers, inside the module alone.
 func TestGateTestMapInATaskWorktreeKeepsItsOwnMaps(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -805,11 +805,13 @@ func TestGateTestMapInATaskWorktreeKeepsItsOwnMaps(t *testing.T) {
 
 	// The card names a package of the backend module and a file outside it.
 	plankit.WriteTree(t, anchor, map[string]string{
-		"other/other.go":      testMapSource("other"),
-		"other/other_test.go": testMapTestFile("other", map[string]int{"TestOtherOne": 0}),
+		"other/other.go":            testMapSource("other"),
+		"other/other_test.go":       testMapTestFile("other", map[string]int{"TestOtherOne": 0}),
+		"importer/importer.go":      "package importer\n\nimport \"" + module + "/solo\"\n\nfunc One() int { return solo.One() }\n\nfunc Two() int { return 2 }\n",
+		"importer/importer_test.go": testMapTestFile("importer", map[string]int{"TestImporterOne": 0}),
 	})
 	gitkit.Git(t, pair, "add", "backend")
-	gitkit.Git(t, pair, "commit", "-q", "-m", "add the other package")
+	gitkit.Git(t, pair, "commit", "-q", "-m", "add the other and importer packages")
 	plankit.Write(t, planparser.PlanDir(anchor), plankit.Plan{Approved: true, Cards: []plankit.Card{{
 		Number: 1, Slug: "span", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"backend/solo/solo.go", "tools/gen.go"}}},
 	}}})
@@ -817,11 +819,11 @@ func TestGateTestMapInATaskWorktreeKeepsItsOwnMaps(t *testing.T) {
 		scope: testRequest{cards: []string{"1"}}, goBinary: standIn, environ: env,
 		secondUnit: testMapSecondUnit, minuteUnit: time.Minute, grace: time.Second, cappedParallel: unclampedParallel,
 	})
-	if diff := cmp.Diff(testMapOutcome{Built: []string{"solo"}}, decodeTestMap(t, code, out2), cmpopts.EquateEmpty()); diff != "" {
+	if diff := cmp.Diff(testMapOutcome{Built: []string{"importer", "solo"}}, decodeTestMap(t, code, out2), cmpopts.EquateEmpty()); diff != "" {
 		t.Errorf("runTestMap() --card 1 from the task worktree mismatch (-want +got):\n%s", diff)
 	}
 	if _, found, err := testcover.ReadMap(testcover.Dir(anchor), "other"); err != nil || found {
-		t.Errorf("ReadMap(other) = found %v, err %v; want no map, since the card names solo alone", found, err)
+		t.Errorf("ReadMap(other) = found %v, err %v; want no map, since the card names solo alone and other does not import it", found, err)
 	}
 }
 
