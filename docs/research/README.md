@@ -7,6 +7,10 @@ A folder inside a topic groups a series of near-identical studies.
 Each report records its own runs at a point in time and is not rewritten when the code changes.
 A study's script finds the repository root with `git rev-parse --show-toplevel`, so it runs from any folder depth.
 
+## autonomy — runs without an operator
+
+- [stop-classes-2026-11-27](autonomy/stop-classes-2026-11-27.md) — which stops runs hit over two weeks, who settled them, a proposed settlement table, and the notices that fired for correct waits.
+
 ## burler — review rounds, lenses and fixers
 
 - [burler-fan-tuning-bench-2026-10-16](burler/burler-fan-tuning-bench-2026-10-16/report.md) — whether a tuned lens fan broadens a Burler review.
