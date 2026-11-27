@@ -1801,6 +1801,12 @@
 // Each file splices its settings with the workspace look `vscode.WorkspaceSettings` sets.
 // The title is `[<shortname>] <name> workspace` through `internal/consoletitle`, named after the repository or the beam,
 // so a workspace window is told apart from the worktree whose settings it carries.
+// A file may carry further top-level members, from the process's installed `WorkspaceContent` hook.
+// The hook is a general seam: it is handed the hub path, the file's beam and that worktree's anchor path.
+// Fabric names no workspace key but its own mark, which it refuses as a member name,
+// and it passes the members on unread to the workspace builder.
+// A beam whose anchor cannot be read logs a Warn, and its file carries no hook member.
+// Every file is built before any is written, so a refused member leaves them all as they were.
 // A regeneration runs under `HubWorkspaceLockPath(hub)`, a leaf lock under the hub scratch directory.
 // It lists the folders only after taking the lock, so a pair created while the regeneration waits is listed.
 // It reads the folder names before taking the lock, so the namer's own locks never nest inside it.

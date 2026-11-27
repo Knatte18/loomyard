@@ -2,6 +2,7 @@ package fabricengine
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -69,8 +70,10 @@ func HubWorkspaceLockPath(hubPath string) string {
 // Each file is rewritten only when its bytes change; a write or removal is recorded in rec.
 // When the hub has a board, the regeneration runs under the hub workspace lock:
 // two callers never interleave their listing and write.
+// Each file also carries the top-level members the installed WorkspaceContent returns for it.
 // The regeneration returns an error and writes nothing when:
-// the prime cannot be resolved, its settings cannot be read, the lock stays held for the wait, or a write fails.
+// the prime cannot be resolved, its settings cannot be read, the lock stays held for the wait, a file cannot be built,
+// or a write fails.
 func RegenerateHubWorkspace(rec *Mutations, l *lymcwd.Location) (string, error) {
 	return regenerateHubWorkspace(rec, l, hubWorkspaceLockWait)
 }
@@ -96,6 +99,36 @@ func pairFolderNames(hubPath string) map[string]string {
 		return nil
 	}
 	return (*namer)(hubPath)
+}
+
+// WorkspaceContent returns extra top-level members of a workspace file, as raw JSON keyed by name.
+// beam is the slug of the beam the file belongs to, "" for the hub's own file;
+// anchorPath is that worktree's anchor path, the prime's for the hub's file.
+// It runs under the hub workspace lock, so it takes no lock of its own.
+type WorkspaceContent func(hubPath, beam, anchorPath string) map[string]json.RawMessage
+
+var installedWorkspaceContent atomic.Pointer[WorkspaceContent]
+
+// InstallWorkspaceContent stores content as the process's workspace-content hook.
+// It returns a function that reinstates the previous one.
+// With no hook installed a workspace file carries no extra member.
+func InstallWorkspaceContent(content WorkspaceContent) (restore func()) {
+	previous := installedWorkspaceContent.Swap(&content)
+	return func() { installedWorkspaceContent.Store(previous) }
+}
+
+// workspaceMembers returns the installed hook's members for one workspace file, and nil with none installed.
+// A member carrying the generated mark's name is an error, since only fabric writes that key.
+func workspaceMembers(hubPath, beam, anchorPath string) (map[string]json.RawMessage, error) {
+	content := installedWorkspaceContent.Load()
+	if content == nil {
+		return nil, nil
+	}
+	members := (*content)(hubPath, beam, anchorPath)
+	if _, marked := members[beamWorkspaceMark]; marked {
+		return nil, fmt.Errorf("the workspace-content hook returned a member named %q, the mark fabric owns on a beam's workspace file", beamWorkspaceMark)
+	}
+	return members, nil
 }
 
 // beamWorkspaceSettings returns the settings a beam's workspace file splices.
@@ -175,20 +208,18 @@ func regenerateHubWorkspace(rec *Mutations, l *lymcwd.Location, lockWait time.Du
 	if err != nil {
 		return "", fmt.Errorf("set the hub workspace look: %w", err)
 	}
-	content, err := vscode.BuildWorkspace(layout.hub, hubSettings)
+	hubMembers, err := workspaceMembers(l.HubPath, "", primeLoc.AnchorPath())
 	if err != nil {
 		return "", fmt.Errorf("build workspace: %w", err)
 	}
-	path := HubWorkspacePath(l)
-	wrote, err := writeHubWorkspace(l, path, content)
+	content, err := vscode.BuildWorkspace(layout.hub, hubSettings, hubMembers)
 	if err != nil {
-		return "", fmt.Errorf("write workspace: %w", err)
-	}
-	if wrote {
-		rec.Append(KindFileWritten, path, "")
+		return "", fmt.Errorf("build workspace: %w", err)
 	}
 
+	// Every file is built before any is written, so a file that cannot be built leaves them all as they were.
 	kept := map[string]bool{}
+	beamContents := map[string][]byte{}
 	for _, beam := range layout.beams {
 		kept[beam.slug] = true
 		beamSettings, err := beamWorkspaceSettings(l, beam.slug, settings)
@@ -200,12 +231,30 @@ func regenerateHubWorkspace(rec *Mutations, l *lymcwd.Location, lockWait time.Du
 		if err != nil {
 			return "", fmt.Errorf("set the workspace look of beam %s: %w", beam.slug, err)
 		}
-		beamContent, err := vscode.BuildWorkspace(beam.folders, beamSettings)
+		var members map[string]json.RawMessage
+		if beamLoc, err := lymcwd.NamedWorktree(l.HubPath, beam.slug); err != nil {
+			logger.Warn("fabricengine: a beam's anchor could not be read, so its workspace file carries no hook member", "beam", beam.slug, "error", err)
+		} else if members, err = workspaceMembers(l.HubPath, beam.slug, beamLoc.AnchorPath()); err != nil {
+			return "", fmt.Errorf("build workspace of beam %s: %w", beam.slug, err)
+		}
+		beamContent, err := vscode.BuildWorkspace(beam.folders, beamSettings, members)
 		if err != nil {
 			return "", fmt.Errorf("build workspace of beam %s: %w", beam.slug, err)
 		}
+		beamContents[beam.slug] = markBeamWorkspace(beamContent)
+	}
+
+	path := HubWorkspacePath(l)
+	wrote, err := writeHubWorkspace(l, path, content)
+	if err != nil {
+		return "", fmt.Errorf("write workspace: %w", err)
+	}
+	if wrote {
+		rec.Append(KindFileWritten, path, "")
+	}
+	for _, beam := range layout.beams {
 		beamPath := BeamWorkspacePath(l, beam.slug)
-		wrote, err := writeHubWorkspace(l, beamPath, markBeamWorkspace(beamContent))
+		wrote, err := writeHubWorkspace(l, beamPath, beamContents[beam.slug])
 		if err != nil {
 			return "", fmt.Errorf("write workspace of beam %s: %w", beam.slug, err)
 		}

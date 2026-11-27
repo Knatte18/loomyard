@@ -158,8 +158,8 @@ func recordedFileWrite(rec *fabricengine.Mutations, hubPath, path string) bool {
 
 // TestRegenerateHubWorkspace covers the folder list, skip exits, mutation record, lock and failures.
 // The top level is not parallel.
-// The lock-ordering, folder-naming and log-capture cases touch process-global state:
-// a test hook, the pair folder namer and the logger output.
+// The lock-ordering, folder-naming, workspace-content and log-capture cases touch process-global state:
+// a test hook, the pair folder namer, the workspace-content hook and the logger output.
 // They run before the parallel cases are released, so no regeneration runs beside them.
 func TestRegenerateHubWorkspace(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -182,6 +182,75 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		prime := primeBranch(t, h)
 		requireFolderNames(t, path, prime, "Bolt", "b", "P1: m", "plain")
 		requireFolderNames(t, fabricengine.BeamWorkspacePath(h.Location, "b"), "b", prime, "Bolt", "m")
+	})
+
+	t.Run("HandsTheContentHookEachFilesBeamAndAnchor", func(t *testing.T) {
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		hubforge.AddPairWith(t, h, "b", beamAddOptions)
+		type call struct{ hubPath, beam, anchorPath string }
+		var calls []call
+		t.Cleanup(fabricengine.InstallWorkspaceContent(func(hubPath, beam, anchorPath string) map[string]json.RawMessage {
+			calls = append(calls, call{hubPath, beam, anchorPath})
+			return map[string]json.RawMessage{"x": []byte(`"for ` + beam + `"`)}
+		}))
+
+		path, _ := regenerateHub(t, h)
+
+		want := []call{{h.Path, "", h.PrimeWorktree()}, {h.Path, "b", h.PairCodeWorktree("b")}}
+		if !slices.Equal(calls, want) {
+			t.Errorf("hook calls = %q; want %q", calls, want)
+		}
+		for file, member := range map[string]string{path: "for ", fabricengine.BeamWorkspacePath(h.Location, "b"): "for b"} {
+			data, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatalf("read %s: %v", file, err)
+			}
+			var ws map[string]any
+			if err := json.Unmarshal(data, &ws); err != nil {
+				t.Fatalf("%s is not valid JSON: %v\n%s", file, err, data)
+			}
+			if ws["x"] != member {
+				t.Errorf("%s member x = %v; want %q", filepath.Base(file), ws["x"], member)
+			}
+		}
+	})
+
+	t.Run("WritesNoFileWhenTheContentHookReturnsAReservedMember", func(t *testing.T) {
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		hubforge.AddPairWith(t, h, "b", beamAddOptions)
+		hubPath, _ := regenerateHub(t, h)
+		beamPath := fabricengine.BeamWorkspacePath(h.Location, "b")
+		before := map[string][]byte{}
+		for _, file := range []string{hubPath, beamPath} {
+			data, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatalf("read %s: %v", file, err)
+			}
+			before[file] = data
+		}
+		// New prime settings change the hub file's bytes, so a hub file written before the refusal would show.
+		writeSettingsAt(t, h.PrimeWorktree(), `{"source": "changed"}`)
+
+		for _, name := range []string{"lym.generated", "folders", "settings"} {
+			restore := fabricengine.InstallWorkspaceContent(func(_, beam, _ string) map[string]json.RawMessage {
+				if beam != "b" {
+					return nil
+				}
+				return map[string]json.RawMessage{name: []byte("true")}
+			})
+			t.Cleanup(restore)
+
+			_, err := fabricengine.RegenerateHubWorkspace(fabricengine.NewMutations(h.Path), h.Location)
+
+			if err == nil || !strings.Contains(err.Error(), `"`+name+`"`) {
+				t.Errorf("error with a member %q = %v; want one naming the member", name, err)
+			}
+			for file, want := range before {
+				if got, err := os.ReadFile(file); err != nil || !slices.Equal(got, want) {
+					t.Errorf("%s after a member %q = %q, %v; want it unchanged", filepath.Base(file), name, got, err)
+				}
+			}
+		}
 	})
 
 	t.Run("ListsFolderAddedWhileWaitingForTheLock", func(t *testing.T) {
@@ -358,6 +427,9 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 			}
 			if _, marked := ws["lym.generated"]; marked != want {
 				t.Errorf("%s carries the generated mark = %v; want %v", filepath.Base(file), marked, want)
+			}
+			if tasks, ok := ws["tasks"]; ok {
+				t.Errorf("%s tasks = %v with no content hook installed; want no such key", filepath.Base(file), tasks)
 			}
 		}
 	})

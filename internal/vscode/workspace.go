@@ -8,6 +8,9 @@ package vscode
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -26,8 +29,15 @@ var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 // It splices settings verbatim as the value of the "settings" key.
 // A leading BOM is stripped and trailing whitespace trimmed from settings first;
 // settings holding no JSON value (empty, whitespace, or only comments) become {}.
-// The only error is the folder encoding's.
-func BuildWorkspace(folders []WorkspaceFolder, settings []byte) ([]byte, error) {
+// Each of members follows as a top-level key of its own, in name order.
+// A member's value is spliced verbatim, with trailing whitespace trimmed.
+// It returns an error for a member named "folders" or "settings", or when the folders do not encode.
+func BuildWorkspace(folders []WorkspaceFolder, settings []byte, members map[string]json.RawMessage) ([]byte, error) {
+	for _, name := range []string{"folders", "settings"} {
+		if _, taken := members[name]; taken {
+			return nil, fmt.Errorf("workspace member %q is a key the workspace builder writes itself", name)
+		}
+	}
 	if folders == nil {
 		folders = []WorkspaceFolder{}
 	}
@@ -48,6 +58,15 @@ func BuildWorkspace(folders []WorkspaceFolder, settings []byte) ([]byte, error) 
 	out.Write(bytes.TrimRight(enc.Bytes(), "\n"))
 	out.WriteString(",\n  \"settings\": ")
 	out.Write(value)
+	for _, name := range slices.Sorted(maps.Keys(members)) {
+		// A string always encodes.
+		key, _ := json.Marshal(name)
+		// The comma opens its own line, because settings may end in a line comment that would swallow it.
+		out.WriteString("\n  , ")
+		out.Write(key)
+		out.WriteString(": ")
+		out.Write(bytes.TrimRight(members[name], " \t\r\n"))
+	}
 	out.WriteString("\n}\n")
 	return out.Bytes(), nil
 }
