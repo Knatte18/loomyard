@@ -45,6 +45,8 @@ var testSupportPackages = []scankit.Entry{
 // A kit cannot hold it because it reads its package's own state or writes a record its package alone writes.
 // The reason names the tests that use it.
 var testOnlyCodeAllowed = []scankit.Entry{
+	{Key: "internal/boardengine.BoardRevision", Why: "temporary until lym board serve calls it; used by internal/boardengine's view tests"},
+	{Key: "internal/boardengine.Board.View", Why: "temporary until lym board serve calls it; used by internal/boardengine's view tests"},
 	{Key: "internal/loomrecipe.RecipeEngines", Why: "oracle of internal/shedrecipe's coverage guard test"},
 	{Key: "internal/shedrecipe.Names", Why: "oracle of internal/shedbuild's engine test and internal/shedrecipe's coverage guard test"},
 	{Key: "internal/driftengine.UpdateScope", Why: "writes the scope record driftengine alone writes, for internal/driftcli's and internal/loomcli's tests"},
