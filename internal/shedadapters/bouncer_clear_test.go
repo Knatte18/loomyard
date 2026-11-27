@@ -213,7 +213,7 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 		b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 		seeded := "---\nround: 1\nexclude_lenses: []\nfocus: [\"already seeded\"]\n---\n"
-		if err := os.WriteFile(FocusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
+		if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
 			t.Fatalf("WriteFile(...) = %v; want nil", err)
 		}
 
@@ -432,7 +432,7 @@ func TestBouncer_Clear_EndToEndSequence(t *testing.T) {
 		t.Error("Call() (re-entry) did not invoke the shuttle seam; want the seed spawn")
 	}
 
-	freshRaw, err := os.ReadFile(FocusPath(cfg.RunDir, 1))
+	freshRaw, err := os.ReadFile(focusPath(cfg.RunDir, 1))
 	if err != nil {
 		t.Fatalf("ReadFile(round-1-focus.md in the fresh run dir) = %v; want nil", err)
 	}

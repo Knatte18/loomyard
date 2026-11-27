@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/runplan"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -65,29 +64,6 @@ func writeFixRound(t *testing.T, runDir string) {
 	// A fix row told a fixer fan key reads the names its reviewer recorded, so the round carries a record with the flag.
 	if err := os.WriteFile(filepath.Join(runDir, "round-1-usage.yaml"), []byte("round: 1\nfan: \"\"\nfix_fan: \"\"\nfans_recorded: true\n"), 0o644); err != nil {
 		t.Fatalf("write the round-1 usage record: %v", err)
-	}
-}
-
-// writeJudgedRoundOne writes the files of a complete round 1 the segment's Bouncer judged CONTINUE into runDir,
-// so the next review call builds a round-2 context.
-// The fixer-report is the one the engine writes itself when no fixer is spawned.
-func writeJudgedRoundOne(t *testing.T, runDir string) {
-	t.Helper()
-	if err := os.MkdirAll(runDir, 0o755); err != nil {
-		t.Fatalf("create the run directory: %v", err)
-	}
-	files := map[string]string{
-		"round-1-review.md":          "---\nverdict: BLOCKING\nfindings:\n  - id: F1\n    severity: BLOCKING\n    class: design\n    location: a.go:1\n    summary: s1\n    fix: f1\n---\n",
-		"round-1-fixer-report.md":    "---\nspawned: false\ndispositions: []\n---\nnothing fixed\n",
-		"round-1-acceptance.md":      "---\nround: 1\ndigest: digest\n---\n",
-		"round-1-bouncer-verdict.md": "---\nverdict: CONTINUE\nrationale: because reasons\n---\n",
-		"round-1-bouncer-ledger.md":  "---\nround: 1\nledger: []\n---\nno open findings\n",
-		"round-1-snapshot.json":      `{"fix_scope":"source","target_paths":[],"decisions_routed":false}`,
-	}
-	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(runDir, name), []byte(content), 0o644); err != nil {
-			t.Fatalf("write %s: %v", name, err)
-		}
 	}
 }
 
@@ -178,70 +154,6 @@ func TestBurlerReviewEntry_ProfileMapping(t *testing.T) {
 		t.Errorf("opts.Gate = %+v; want none, the review row's only gate is the engine's review parse", opts.Gate)
 	}
 
-	// Only the plan segment's review row reads the plan executor's halt reason.
-	t.Run("HaltReasonReachesOnlyThePlanReviewRow", func(t *testing.T) {
-		const reason = "card 14 misses the retry"
-		tests := []struct{ row, want string }{
-			{"Plan-Burler-Review", reason},
-			{"review-row", ""},
-		}
-		for _, tt := range tests {
-			t.Run(tt.row, func(t *testing.T) {
-				env := newTestEnv(t)
-				env.HaltConflictDir = t.TempDir()
-				if err := runplan.WriteHaltReason(env.HaltConflictDir, reason); err != nil {
-					t.Fatalf("WriteHaltReason() error = %v; want nil", err)
-				}
-
-				profile, _ := captureReview(t, tt.row, minimalReviewConfig(), env)
-
-				if profile.HaltReason != tt.want {
-					t.Errorf("%s: profile.HaltReason = %q; want %q", tt.row, profile.HaltReason, tt.want)
-				}
-			})
-		}
-	})
-
-	// Only the plan segment's review row reads the plan amendment record.
-	t.Run("AmendmentReaderReachesOnlyThePlanReviewRow", func(t *testing.T) {
-		const amendedBody = "swap cards 3 and 4"
-		tests := []struct {
-			row         string
-			wantAmended bool
-		}{
-			{"Plan-Burler-Review", true},
-			{"review-row", false},
-		}
-		for _, tt := range tests {
-			t.Run(tt.row, func(t *testing.T) {
-				env := newTestEnv(t)
-				env.AmendmentPath = filepath.Join(t.TempDir(), "amendment.yaml")
-				entry := "### Added after Discussion (parent, 2026-11-17): Fix the batch order\n\nDecision: " + amendedBody + "\n"
-				if err := os.WriteFile(env.DecisionRecordPath, []byte("# Record\n\n## Decisions\n\n"+entry), 0o644); err != nil {
-					t.Fatalf("write the decision record: %v", err)
-				}
-				if err := os.WriteFile(env.AmendmentPath, []byte("titles:\n  - Fix the batch order\nwritten_at: 2026-11-17T10:00:00Z\n"), 0o644); err != nil {
-					t.Fatalf("write the amendment record: %v", err)
-				}
-				runDir := filepath.Join(env.RunRoot, "review-segment")
-				writeJudgedRoundOne(t, runDir)
-
-				profile, _ := captureReview(t, tt.row, minimalReviewConfig(), env)
-
-				if profile.Round == nil {
-					t.Fatalf("%s: profile.Round = nil; want the round-2 context", tt.row)
-				}
-				texts := profile.Round.AmendingTexts
-				if tt.wantAmended && (len(texts) != 1 || !strings.Contains(texts[0], amendedBody)) {
-					t.Errorf("%s: Round.AmendingTexts = %q; want the one listed entry", tt.row, texts)
-				}
-				if !tt.wantAmended && len(texts) != 0 {
-					t.Errorf("%s: Round.AmendingTexts = %q; want none", tt.row, texts)
-				}
-			})
-		}
-	})
-
 	t.Run("OverlayTargetRecordsTheRoundSnapshot", func(t *testing.T) {
 		env := newTestEnv(t)
 		if err := os.WriteFile(filepath.Join(env.WorktreeRoot, "target.md"), []byte("one\n"), 0o644); err != nil {
@@ -325,46 +237,6 @@ func TestBurlerReviewEntry_ProfileMapping(t *testing.T) {
 		}
 	})
 
-	// Only a harden_round row's round check admits a new finding outside the changed files.
-	t.Run("HardenRoundMarksTheRoundContext", func(t *testing.T) {
-		const review = "---\nverdict: BLOCKING\nfindings:\n" +
-			"  - id: F2\n    severity: BLOCKING\n    class: decision\n    origin: focus\n    location: z.go:1\n    summary: s2\n    fix: f2\n" +
-			"prior:\n  - id: F1\n    status: resolved\n---\n\n### [BLOCKING] s2\n\n**Location:** z.go:1\n\n**Issue:** an undriven focus entry.\n"
-		tests := []struct {
-			name        string
-			hardenRound bool
-			wantErr     string
-		}{
-			{name: "HardenRoundAdmitsIt", hardenRound: true},
-			{name: "OtherRowRefusesIt", wantErr: "does not list"},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				env := hardenTestEnv(t)
-				writeJudgedRoundOne(t, filepath.Join(env.RunRoot, "review-segment"))
-				cfg := minimalReviewConfig()
-				if tt.hardenRound {
-					cfg["harden_round"] = true
-				}
-
-				profile, _ := captureReview(t, "review-row", cfg, env)
-
-				if profile.Round == nil {
-					t.Fatal("profile.Round = nil; want the round-2 context")
-				}
-				ctx := *profile.Round
-				ctx.HasChanges, ctx.Changed = true, []string{"c.go"}
-				err := burlerengine.CheckReviewRound([]byte(review), &ctx)
-				if tt.wantErr == "" && err != nil {
-					t.Errorf("CheckReviewRound() = %v; want the off-changes finding admitted", err)
-				}
-				if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
-					t.Errorf("CheckReviewRound() = %v; want a refusal containing %q", err, tt.wantErr)
-				}
-			})
-		}
-	})
-
 	t.Run("NoStageDiffGivesNoDiff", func(t *testing.T) {
 		profile, _ := captureReview(t, "review-row", minimalReviewConfig(), newTestEnv(t))
 
@@ -402,6 +274,29 @@ func TestBurlerReviewEntry_RubricStencil(t *testing.T) {
 		profile, _ := captureReview(t, "review-row", stencilCfg, env)
 		if profile.Rubric != "Record: A known note.\n" {
 			t.Errorf("profile.Rubric = %q; want the env's webster record note filled into the marker", profile.Rubric)
+		}
+	})
+
+	t.Run("FillsTheRedundancyReportNote", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.RedundancyReport = func() string { return "No current redundancy report: none written." }
+		writeStencil(t, env.StencilsDir, "round-rubric", "Redundancy: {{.redundancy_report}}\n")
+
+		profile, _ := captureReview(t, "review-row", stencilCfg, env)
+		if profile.Rubric != "Redundancy: No current redundancy report: none written.\n" {
+			t.Errorf("profile.Rubric = %q; want the env's redundancy report note filled into the marker", profile.Rubric)
+		}
+	})
+
+	t.Run("FillsTheReachAndMutationReportNotes", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.ReachReport = func() string { return "No current reach report: none written." }
+		env.MutationReport = func() string { return "No current mutation report: none written." }
+		writeStencil(t, env.StencilsDir, "round-rubric", "Reach: {{.reach_report}}\nMutation: {{.mutation_report}}\n")
+
+		profile, _ := captureReview(t, "review-row", stencilCfg, env)
+		if profile.Rubric != "Reach: No current reach report: none written.\nMutation: No current mutation report: none written.\n" {
+			t.Errorf("profile.Rubric = %q; want the env's reach and mutation report notes filled into their markers", profile.Rubric)
 		}
 	})
 
@@ -783,7 +678,6 @@ func TestBurlerHalfEntries_StrictUnknownKeys(t *testing.T) {
 		{"ReviewRowKeyColorSegmentTypo", "BurlerReview", func() Config { cfg := minimalReviewConfig(); cfg["colour_segment"] = "merge"; return cfg }, "colour_segment"},
 		{"FixRowKeyColorSegmentTypo", "BurlerFix", func() Config { cfg := minimalFixConfig(); cfg["colour_segment"] = "merge"; return cfg }, "colour_segment"},
 		{"FixRowKeyModel", "BurlerFix", func() Config { cfg := minimalFixConfig(); cfg["model"] = "value"; return cfg }, "model"},
-		{"FixRowKeyHardenRound", "BurlerFix", func() Config { cfg := minimalFixConfig(); cfg["harden_round"] = true; return cfg }, "harden_round"},
 		{"FixTargetInnerKey", "BurlerFix", func() Config {
 			cfg := minimalFixConfig()
 			cfg["profile"].(map[string]any)["target"] = map[string]any{"paths": []string{"t.md"}, "unexpected": "value"}
@@ -822,14 +716,6 @@ func TestBurlerHalfEntries_StrictUnknownKeys(t *testing.T) {
 			assertErrContains(t, err, tt.want)
 		})
 	}
-
-	t.Run("ReviewRowAdmitsHardenRound", func(t *testing.T) {
-		cfg := minimalReviewConfig()
-		cfg["harden_round"] = true
-		if _, err := lookupEntry(t, "BurlerReview")(reviewRow("a-row"), cfg, hardenTestEnv(t)); err != nil {
-			t.Errorf("BurlerReview with harden_round and a campaign error = %v; want nil", err)
-		}
-	})
 
 	t.Run("ReviewProfileAcceptsFixFan", func(t *testing.T) {
 		cfg := minimalReviewConfig()
@@ -956,7 +842,7 @@ func TestBurlerHalfEntries_RunDirectory(t *testing.T) {
 		})
 	}
 
-	t.Run("ReviewWhoseGatePassedKeepsTheRowsFindingsFile", func(t *testing.T) {
+	t.Run("ReviewWhoseGatePassedRemovesTheRowsFindingsFile", func(t *testing.T) {
 		env := newTestEnv(t)
 		withGateFindingsFile(&env, t.TempDir())
 		env.Burler = &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{{
@@ -978,9 +864,8 @@ func TestBurlerHalfEntries_RunDirectory(t *testing.T) {
 
 		shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 
-		const earlierFindings = "an earlier call's findings"
-		if got, err := os.ReadFile(findings); err != nil || string(got) != earlierFindings {
-			t.Errorf("os.ReadFile(%q) = %q, %v; want the earlier findings %q kept", findings, got, err, earlierFindings)
+		if _, err := os.Stat(findings); !os.IsNotExist(err) {
+			t.Errorf("os.Stat(%q) error = %v; want the findings file removed", findings, err)
 		}
 	})
 
@@ -1131,17 +1016,17 @@ func TestBurlerFixEntry_GateConfig(t *testing.T) {
 			named      bool
 			wantFanKey string
 		}{
-			{"RowNamingTheSettingCarriesItsKeyAsTheFanKey", true, "loom.discussion.fixer_fan"},
+			{"RowNamingTheSettingCarriesItsKeyAsTheFanKey", true, "discussion_fixer_fan"},
 			{"RowNamingNoSettingHasNoFanKey", false, ""},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				env := newTestEnv(t)
 				env.Segments[testReviewSegment] = SegmentSettings{FixKey: wantKey}
-				env.Setting = fakeSetting(map[string]any{"loom.discussion.fixer_fan": "a-fan"})
+				env.Setting = fakeSetting(map[string]any{"loom.discussion_fixer_fan": "a-fan"})
 				cfg := minimalFixConfig()
 				if tt.named {
-					cfg["fixer_fan_setting"] = "loom.discussion.fixer_fan"
+					cfg["fixer_fan_setting"] = "loom.discussion_fixer_fan"
 				}
 
 				_, opts := captureFix(t, "fix-row", cfg, env)
@@ -1159,16 +1044,16 @@ func TestBurlerFixEntry_GateConfig(t *testing.T) {
 			named   bool
 			wantErr string
 		}{
-			{"NamedNullSettingIsRefusedAsUnrecorded", true, "loom.discussion.fixer_fan"},
+			{"NamedNullSettingIsRefusedAsUnrecorded", true, "discussion_fixer_fan"},
 			{"NoSettingRunsTheSingleFixer", false, ""},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				env := newTestEnv(t)
-				env.Setting = fakeSetting(map[string]any{"loom.discussion.fixer_fan": nil})
+				env.Setting = fakeSetting(map[string]any{"loom.discussion_fixer_fan": nil})
 				cfg := minimalFixConfig()
 				if tt.named {
-					cfg["fixer_fan_setting"] = "loom.discussion.fixer_fan"
+					cfg["fixer_fan_setting"] = "loom.discussion_fixer_fan"
 				}
 				producer, err := burlerFixEntry(reviewRow("fix-row"), cfg, env)
 				if err != nil {

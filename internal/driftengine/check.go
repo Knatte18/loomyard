@@ -71,8 +71,9 @@ type CheckReport struct {
 	// Their cells are left out of Cells, and under DiffCommand a case they name is no drift.
 	Metadata Volatile
 
-	// patterns are what the diff of the current capture ran with, so a second capture is diffed alike.
+	// patterns and leaveOut are what the diff of the current capture ran with, so a second capture is diffed alike.
 	patterns []*regexp.Regexp
+	leaveOut []string
 }
 
 // Unexpected returns the cells no entry of the expectation covers, bar the unchangeable ones.
@@ -190,7 +191,7 @@ func Check(ctx context.Context, d Deps) (CheckReport, error) {
 
 	switch mode {
 	case DiffLines:
-		return report, classifyCurrent(ctx, d, compiled, volatile.union(report.Metadata), baselineListings, &report)
+		return report, classifyCurrent(ctx, d, rec.Scope, compiled, volatile.union(report.Metadata), baselineListings, &report)
 	case DiffCommand:
 		if err := requireSeams("the drift check under diff command", seam{"Compare", d.Compare != nil}); err != nil {
 			return report, err
@@ -260,7 +261,7 @@ func sealedAndAmended(sealed []byte, amendments []Amendment, mode string, baseli
 // classifyCurrent takes the current capture and diffs it against the baseline.
 // It classifies each cell that ignored does not name into report.
 // A capture that did not pass is a capture fault and ends the check with no error.
-func classifyCurrent(ctx context.Context, d Deps, patterns []*regexp.Regexp, ignored Volatile, baseline []CaseListing, report *CheckReport) error {
+func classifyCurrent(ctx context.Context, d Deps, scope ScopeRecord, patterns []*regexp.Regexp, ignored Volatile, baseline []CaseListing, report *CheckReport) error {
 	if err := requireSeams("the drift check under diff lines", seam{"CaptureCurrent", d.CaptureCurrent != nil}); err != nil {
 		return err
 	}
@@ -274,8 +275,14 @@ func classifyCurrent(ctx context.Context, d Deps, patterns []*regexp.Regexp, ign
 		return nil
 	}
 
-	report.patterns = patterns
-	cells, err := DiffCaptures(d.Paths.BaselineDir, capture.Dir, patterns)
+	var leaveOut []string
+	if scope.Scope == ScopePartial {
+		if leaveOut, err = skippedCases(scope.Skip, d.Paths.BaselineDir, capture.Dir); err != nil {
+			return err
+		}
+	}
+	report.patterns, report.leaveOut = patterns, leaveOut
+	cells, err := DiffCaptures(d.Paths.BaselineDir, capture.Dir, patterns, leaveOut)
 	if err != nil {
 		return err
 	}
@@ -291,6 +298,21 @@ func classifyCurrent(ctx context.Context, d Deps, patterns []*regexp.Regexp, ign
 	}
 	report.Uncovered = report.Expectation.Uncovering(cells)
 	return nil
+}
+
+// skippedCases returns the cases of dirs that hold a skipped test's profile.
+func skippedCases(skip []string, dirs ...string) ([]string, error) {
+	var cases []string
+	for _, dir := range dirs {
+		for _, test := range skip {
+			files, err := testFiles(dir, test)
+			if err != nil {
+				return nil, err
+			}
+			cases = append(cases, files...)
+		}
+	}
+	return cases, nil
 }
 
 // caseKey names a key within a case.
@@ -425,7 +447,7 @@ func settleUnchangeable(ctx context.Context, d Deps, report *CheckReport) error 
 	if !second.Passed {
 		return nil
 	}
-	cells, err := DiffCaptures(d.Paths.BaselineDir, second.Dir, report.patterns)
+	cells, err := DiffCaptures(d.Paths.BaselineDir, second.Dir, report.patterns, report.leaveOut)
 	if err != nil {
 		return err
 	}

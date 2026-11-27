@@ -2,8 +2,8 @@
 // fork-count mismatch, Agent call in a fork, write in a fork, git mutation in a fork, and named spawns.
 // It also covers the warning-only case where ReportReturned is false,
 // and a twill fixer's fresh subagent, which the fix-round audit neither checks nor counts.
-// It matrixes mutatingGitCommands against mutating and non-mutating Bash command strings.
-// It also runs it on fork command sequences that create their own repositories and push between them.
+// It matrixes firstMutatingGitCommand against mutating and non-mutating Bash command strings.
+// It also runs it on fork command sequences that create their own repositories.
 
 package burlerengine
 
@@ -25,12 +25,6 @@ func cleanFork(path string) shuttleengine.ForkReport {
 	}
 }
 
-// revertWayForward is the fix-round halt's way forward when a fork may have changed the target.
-const revertWayForward = "way forward: inspect the target's working-tree changes, revert what the fork wrote, and resume the run"
-
-// untouchedPushWayForward is the fix-round halt's way forward when no fork changed the target and one pushed from /tmp/r.
-const untouchedPushWayForward = "no target change was found: no fork wrote a file or ran a state-changing git command in the target's working tree, and the push from /tmp/r went to a destination the audit could not place; way forward: check that destination is neither the target's repository nor one of its remotes, and resume the run"
-
 func TestAuditClusterRound(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -44,8 +38,6 @@ func TestAuditClusterRound(t *testing.T) {
 		// fix runs the case through the fix-round audit, and wantForks is the fork count that audit must report.
 		fix       bool
 		wantForks int
-		// wantWayForward is the text a fix-round violation's error ends with.
-		wantWayForward string
 	}{
 		{
 			name:      "fix: exact count is clean",
@@ -99,55 +91,10 @@ func TestAuditClusterRound(t *testing.T) {
 			audit: &shuttleengine.ForkAudit{
 				Forks: []shuttleengine.ForkReport{cleanFork("a"), {TranscriptPath: "b", ReportReturned: true, WriteCalls: 2}},
 			},
-			wantN:          2,
-			wantErr:        true,
-			errSubstr:      `twill fixer fork "b" attempted 2 write/edit tool call(s)`,
-			fix:            true,
-			wantWayForward: revertWayForward,
-		},
-		{
-			name: "fix: a push from a fork-made repository to a destination it did not make finds no target change",
-			audit: &shuttleengine.ForkAudit{
-				Forks: []shuttleengine.ForkReport{cleanFork("a"), {TranscriptPath: "b", ReportReturned: true, BashCommands: []string{"git init /tmp/r", "git -C /tmp/r push /srv/target.git main"}}},
-			},
-			wantN:          2,
-			wantErr:        true,
-			errSubstr:      `twill fixer fork "b" ran a git-mutating command ("git -C /tmp/r push /srv/target.git main")`,
-			fix:            true,
-			wantWayForward: untouchedPushWayForward,
-		},
-		{
-			name: "fix: a nested spawn beside a push from a fork-made repository still says where the push came from",
-			audit: &shuttleengine.ForkAudit{
-				Forks: []shuttleengine.ForkReport{{TranscriptPath: "a", ReportReturned: true, AgentCalls: 1}, {TranscriptPath: "b", ReportReturned: true, BashCommands: []string{"git init /tmp/r && git -C /tmp/r push origin main"}}},
-			},
-			wantN:          2,
-			wantErr:        true,
-			errSubstr:      `twill fixer fork "a" attempted 1 nested spawn call(s)`,
-			fix:            true,
-			wantWayForward: untouchedPushWayForward,
-		},
-		{
-			name: "fix: a command that pushes from a fork-made repository and commits in the target keeps the revert way forward",
-			audit: &shuttleengine.ForkAudit{
-				Forks: []shuttleengine.ForkReport{cleanFork("a"), {TranscriptPath: "b", ReportReturned: true, BashCommands: []string{"git init /tmp/r && git -C /tmp/r push /srv/target.git main && git commit -am x"}}},
-			},
-			wantN:          2,
-			wantErr:        true,
-			errSubstr:      "git-mutating command",
-			fix:            true,
-			wantWayForward: revertWayForward,
-		},
-		{
-			name: "fix: a nested spawn beside a fork's commit in the target keeps the revert way forward",
-			audit: &shuttleengine.ForkAudit{
-				Forks: []shuttleengine.ForkReport{{TranscriptPath: "a", ReportReturned: true, BashCommands: []string{"git commit -am x"}}, {TranscriptPath: "b", ReportReturned: true, AgentCalls: 1}},
-			},
-			wantN:          2,
-			wantErr:        true,
-			errSubstr:      `twill fixer fork "b" attempted 1 nested spawn call(s)`,
-			fix:            true,
-			wantWayForward: revertWayForward,
+			wantN:     2,
+			wantErr:   true,
+			errSubstr: `twill fixer fork "b" attempted 2 write/edit tool call(s)`,
+			fix:       true,
 		},
 		{
 			name: "fix: a fresh subagent that wrote is neither a violation nor a fork",
@@ -176,11 +123,10 @@ func TestAuditClusterRound(t *testing.T) {
 				NamedSpawns:     1,
 				NamedForkSpawns: 1,
 			},
-			wantN:          2,
-			wantErr:        true,
-			errSubstr:      "twill fixer 1 fork(s) were spawned with a name",
-			fix:            true,
-			wantWayForward: "no target change was found: no fork wrote a file or ran a state-changing git command outside a repository it created; way forward: resume the run",
+			wantN:     2,
+			wantErr:   true,
+			errSubstr: "twill fixer 1 fork(s) were spawned with a name",
+			fix:       true,
 		},
 		{
 			name: "exact N passes clean",
@@ -296,8 +242,8 @@ func TestAuditClusterRound(t *testing.T) {
 				if !tt.wantErr && forks != tt.wantForks {
 					t.Errorf("auditFixRound() forks = %d; want %d", forks, tt.wantForks)
 				}
-				if tt.wantErr && (err == nil || !strings.HasSuffix(err.Error(), "; "+tt.wantWayForward)) {
-					t.Errorf("auditFixRound() error = %v; want it to end with %q", err, tt.wantWayForward)
+				if wayForward := "; way forward: inspect the target's working-tree changes, revert what the fork wrote, and resume the run"; tt.wantErr && (err == nil || !strings.Contains(err.Error(), wayForward)) {
+					t.Errorf("auditFixRound() error = %v; want it to contain %q", err, wayForward)
 				}
 			} else {
 				warnings, err = auditClusterRound(tt.audit, tt.wantN)
@@ -334,7 +280,7 @@ func TestAuditClusterRound(t *testing.T) {
 	}
 }
 
-// TestFirstMutatingGitCommand checks mutatingGitCommands against one Bash command per case.
+// TestFirstMutatingGitCommand checks firstMutatingGitCommand against one Bash command per case.
 // Every mutating subcommand matches, whether it has a leading path, a chain prefix, a later line or global options.
 // Read-only subcommands never match, even when their arguments name a mutating verb.
 // Help requests, and the list forms of git tag and git branch, never match either.
@@ -489,17 +435,16 @@ func TestFirstMutatingGitCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := len(mutatingGitCommands([]string{tt.cmd})) > 0; got != tt.want {
-				t.Errorf("mutatingGitCommands([%q]) found = %v; want %v", tt.cmd, got, tt.want)
+			if _, got := firstMutatingGitCommand([]string{tt.cmd}); got != tt.want {
+				t.Errorf("firstMutatingGitCommand([%q]) found = %v; want %v", tt.cmd, got, tt.want)
 			}
 		})
 	}
 }
 
 // TestFirstMutatingGitCommandScopesToForkRepositories pins that a mutating git call in a fork-made repository passes.
-// This holds whether the call reaches that repository by -C, by cd, or as a worktree or clone made from it.
-// A push passes when its destination leads into a fork-made repository, by a remote the fork pointed there or by a path.
-// A call that may reach any other repository is the first one returned.
+// This holds whether the call reaches that repository by -C, by cd or through a worktree added from it.
+// A call that may reach any other repository is returned.
 func TestFirstMutatingGitCommandScopesToForkRepositories(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -544,132 +489,14 @@ func TestFirstMutatingGitCommandScopesToForkRepositories(t *testing.T) {
 		{"anchored cd after a bare cd", []string{"git init /tmp/r && cd && cd /tmp/r && git commit -m x"}, ""},
 		{"cd in an earlier command does not carry over", []string{"git init /tmp/r && cd /tmp/r", "git commit -m x"}, "git commit -m x"},
 		{"worktree added from an uncreated repository", []string{"git worktree add /tmp/w", "git -C /tmp/w commit -m x"}, "git -C /tmp/w commit -m x"},
-		{
-			"scratch push probe between a bare and a work repository",
-			[]string{"cd .scratch/probe && git init --bare remote.git && git init work && cd work && git commit --allow-empty -m init && git remote add origin ../remote.git && git push --force-with-lease origin HEAD:main"},
-			"",
-		},
-		{"push to a path inside a created repository", []string{"git init --bare /tmp/remote.git", "git init /tmp/w", "git -C /tmp/w push /tmp/remote.git HEAD:main"}, ""},
-		{"push to the origin of a clone of a created repository", []string{"git init --bare /tmp/remote.git && git clone /tmp/remote.git /tmp/w && git -C /tmp/w commit --allow-empty -m x && git -C /tmp/w push origin HEAD"}, ""},
-		{"push from a clone in its derived directory", []string{"cd /tmp/p && git init --bare src.git && git clone src.git && git -C src commit --allow-empty -m x && git -C src push origin HEAD"}, ""},
-		{"push to a clone's remote named by --origin", []string{"git init --bare /tmp/b.git && git clone --origin up /tmp/b.git /tmp/w && git -C /tmp/w push up HEAD"}, ""},
-		{"commit in a clone of an uncreated repository", []string{"git clone /srv/target /tmp/c && git -C /tmp/c commit --allow-empty -m x"}, ""},
-		{"push to the origin of a clone of an uncreated repository", []string{"git clone /srv/target /tmp/c", "git -C /tmp/c push origin HEAD"}, "git -C /tmp/c push origin HEAD"},
-		{"push to a remote pointed outside", []string{"git init /tmp/r && git -C /tmp/r remote add origin /srv/target.git && git -C /tmp/r push origin main"}, "git init /tmp/r && git -C /tmp/r remote add origin /srv/target.git && git -C /tmp/r push origin main"},
-		{"push to a remote whose URL was set outside", []string{"git init --bare /tmp/b.git && git init /tmp/r && git -C /tmp/r remote add origin /tmp/b.git", "git -C /tmp/r remote set-url origin /srv/target.git", "git -C /tmp/r push origin main"}, "git -C /tmp/r push origin main"},
-		{"push to a remote given a second URL outside", []string{"git init --bare /tmp/b.git && git init /tmp/r && git -C /tmp/r remote add origin /tmp/b.git", "git -C /tmp/r remote set-url --add --push origin /srv/target.git", "git -C /tmp/r push origin main"}, "git -C /tmp/r push origin main"},
-		{"push to a renamed remote", []string{"git init --bare /tmp/b.git && git init /tmp/r && git -C /tmp/r remote add origin /tmp/b.git && git -C /tmp/r remote rename origin up", "git -C /tmp/r push up main"}, "git -C /tmp/r push up main"},
-		{"push to a remote name the fork never pointed", []string{"git init /tmp/r", "git -C /tmp/r push origin main"}, "git -C /tmp/r push origin main"},
-		{"push with no destination", []string{"git init /tmp/r", "git -C /tmp/r push"}, "git -C /tmp/r push"},
-		{"push with --repo", []string{"git init --bare /tmp/b.git && git init /tmp/r", "git -C /tmp/r push --repo=/tmp/b.git"}, "git -C /tmp/r push --repo=/tmp/b.git"},
-		{"push to a URL", []string{"git init /tmp/r", "git -C /tmp/r push file:///tmp/r main"}, "git -C /tmp/r push file:///tmp/r main"},
-		{"push after a config key that may redirect it", []string{"git init --bare /tmp/b.git && git init /tmp/r", "git -C /tmp/r config url./srv/target.git.insteadOf /tmp/b.git", "git -C /tmp/r push /tmp/b.git main"}, "git -C /tmp/r push /tmp/b.git main"},
-		{"push under a -c key that may redirect it", []string{"git init --bare /tmp/b.git && git init /tmp/r", "git -C /tmp/r -c remote.pushDefault=x push /tmp/b.git"}, "git -C /tmp/r -c remote.pushDefault=x push /tmp/b.git"},
-		{
-			"push after a push URL set outside and a plain URL set inside",
-			[]string{"git init --bare /tmp/b.git && git init /tmp/r && git -C /tmp/r remote add origin /tmp/b.git", "git -C /tmp/r remote set-url --push origin /srv/target.git", "git -C /tmp/r remote set-url origin /tmp/b.git", "git -C /tmp/r push origin main"},
-			"git -C /tmp/r push origin main",
-		},
-		{
-			"push after a URL set outside from a worktree of the pushing repository",
-			[]string{"git init --bare /tmp/b.git && git init /tmp/r && git -C /tmp/r remote add origin /tmp/b.git && git -C /tmp/r worktree add /tmp/w", "git -C /tmp/w remote set-url origin /srv/target.git", "git -C /tmp/r push origin main"},
-			"git -C /tmp/r push origin main",
-		},
-		{
-			"push after a URL set outside under --git-dir",
-			[]string{"git init --bare /tmp/b.git && git init /tmp/r && git -C /tmp/r remote add origin /tmp/b.git", "git --git-dir=/tmp/r/.git remote set-url origin /srv/target.git", "git -C /tmp/r push origin main"},
-			"git -C /tmp/r push origin main",
-		},
-		{
-			"push under a --config-env key that may redirect it",
-			[]string{"git init --bare /tmp/b.git && git init /tmp/r && git -C /tmp/r remote add origin /tmp/b.git", "git -C /tmp/r --config-env=remote.origin.pushurl=E push origin main"},
-			"git -C /tmp/r --config-env=remote.origin.pushurl=E push origin main",
-		},
-		{
-			"push under a -c include that may redirect it",
-			[]string{"git init --bare /tmp/b.git && git init /tmp/r && git -C /tmp/r remote add origin /tmp/b.git", "git -C /tmp/r -c include.path=/tmp/x push origin main"},
-			"git -C /tmp/r -c include.path=/tmp/x push origin main",
-		},
-		{
-			"push to the directory above the repository from a subdirectory",
-			[]string{"git init r && mkdir r/x && git -C r/x push .. HEAD:refs/heads/x"},
-			"git init r && mkdir r/x && git -C r/x push .. HEAD:refs/heads/x",
-		},
-		{
-			"push to a remote added from a subdirectory with a relative URL above the repository",
-			[]string{"git init r && git -C r/x remote add origin .. && git -C r push origin HEAD"},
-			"git init r && git -C r/x remote add origin .. && git -C r push origin HEAD",
-		},
-		{"push to a relative path inside a created repository", []string{"git init --bare remote.git && git init r && git -C r push ../remote.git HEAD"}, ""},
-		{
-			"clone of a repository named remote.git sets no redirect",
-			[]string{"cd /tmp/p && git init --bare remote.git && git clone remote.git work && git -C work commit --allow-empty -m x && git -C work push origin HEAD"},
-			"",
-		},
-		{
-			"clone with a config key that may redirect pushes",
-			[]string{"cd /tmp/p && git init --bare remote.git && git clone -c remote.origin.pushurl=/srv/t.git remote.git work && git -C work push origin HEAD"},
-			"cd /tmp/p && git init --bare remote.git && git clone -c remote.origin.pushurl=/srv/t.git remote.git work && git -C work push origin HEAD",
-		},
-		{
-			"clone with a --config key that may redirect pushes",
-			[]string{"git init --bare /tmp/b.git && git clone --config=url.x.insteadOf=y /tmp/b.git /tmp/w", "git -C /tmp/w push /tmp/b.git HEAD"},
-			"git -C /tmp/w push /tmp/b.git HEAD",
-		},
-		{"push to a clone's remote named by an attached --origin", []string{"git init --bare /tmp/b.git && git clone --origin=up /tmp/b.git /tmp/w && git -C /tmp/w push up HEAD"}, ""},
-		{"push from a clone inside a created repository", []string{"git init /tmp/r && git init --bare /tmp/b.git && git clone /tmp/b.git /tmp/r/sub && git -C /tmp/r/sub push origin HEAD"}, ""},
-		{
-			"push after a branch key that may redirect it",
-			[]string{"git init --bare /tmp/b.git && git init /tmp/r", "git -C /tmp/r config branch.main.remote x", "git -C /tmp/r push /tmp/b.git main"},
-			"git -C /tmp/r push /tmp/b.git main",
-		},
-		{
-			"push to a remote removed after it was added",
-			[]string{"git init --bare /tmp/b.git && git init /tmp/r && git -C /tmp/r remote add origin /tmp/b.git && git -C /tmp/r remote remove origin", "git -C /tmp/r push origin main"},
-			"git -C /tmp/r push origin main",
-		},
-		{
-			"push to a remote removed by rm after it was added",
-			[]string{"git init --bare /tmp/b.git && git init /tmp/r && git -C /tmp/r remote add origin /tmp/b.git && git -C /tmp/r remote rm origin", "git -C /tmp/r push origin main"},
-			"git -C /tmp/r push origin main",
-		},
-		{
-			"push to a remote whose URL was deleted",
-			[]string{"git init --bare /tmp/b.git && git init /tmp/r && git -C /tmp/r remote add origin /tmp/b.git", "git -C /tmp/r remote set-url --delete origin /tmp/b.git", "git -C /tmp/r push origin main"},
-			"git -C /tmp/r push origin main",
-		},
-		{
-			"push through a symlink inside a created repository",
-			[]string{"git init --bare /tmp/b.git && ln -s /srv/target.git /tmp/b.git/t && git init /tmp/r && git -C /tmp/r push /tmp/b.git/t main"},
-			"git init --bare /tmp/b.git && ln -s /srv/target.git /tmp/b.git/t && git init /tmp/r && git -C /tmp/r push /tmp/b.git/t main",
-		},
-		{
-			"git init of an ancestor of a directory an earlier call ran in",
-			[]string{"git -C /srv/target log && git init /srv && git -C /srv/target commit -m x"},
-			"git -C /srv/target log && git init /srv && git -C /srv/target commit -m x",
-		},
-		{
-			"git clone into a directory an earlier call ran in",
-			[]string{"git -C /srv/target status && git clone /tmp/b.git /srv/target && git -C /srv/target commit -m x"},
-			"git -C /srv/target status && git clone /tmp/b.git /srv/target && git -C /srv/target commit -m x",
-		},
-		{
-			"push with -u from outside every created repository",
-			[]string{"git init --bare /tmp/b.git", "git push -u /tmp/b.git main"},
-			"git push -u /tmp/b.git main",
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			found := mutatingGitCommands(tt.commands)
-			got := ""
-			if len(found) > 0 {
-				got = found[0].command
-			}
-			if got != tt.want {
-				t.Errorf("mutatingGitCommands(%q) first command = %q; want %q", tt.commands, got, tt.want)
+			got, found := firstMutatingGitCommand(tt.commands)
+			if got != tt.want || found != (tt.want != "") {
+				t.Errorf("firstMutatingGitCommand(%q) = (%q, %v); want (%q, %v)", tt.commands, got, found, tt.want, tt.want != "")
 			}
 		})
 	}

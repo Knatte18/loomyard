@@ -96,6 +96,18 @@ func TestPreMerge_ClearsOwnParkedMergeIn(t *testing.T) {
 			wantReason: "a fabric merge (merge-in of other) is in progress in the task worktree; way forward: " + mergeWayForwardClause,
 		},
 		{
+			name:         "the row's own unsettled merge-in is aborted and merged afresh",
+			state:        fabricengine.MidMergeState{Kind: fabricengine.MidMergeRecordsUnsettled, Verb: "merge-in", Source: "main", SourceSHA: "sourcesha", StartSHA: "startsha"},
+			wantCalls:    "stop,abort",
+			wantResolver: true,
+			wantLog:      []string{"source=main", "source_sha=sourcesha", "start_sha=startsha"},
+		},
+		{
+			name:       "an unsettled merge-in of another source names only the abort",
+			state:      fabricengine.MidMergeState{Kind: fabricengine.MidMergeRecordsUnsettled, Verb: "merge-in", Source: "other"},
+			wantReason: `a fabric merge (merge-in of other) is in progress in the task worktree with its records unsettled; way forward: discard it with "lym fabric merge --abort", then resume; a session lym refuses the verb from reports status: FAILED and the orch runs it`,
+		},
+		{
 			name:       "foreign git merge state is never touched",
 			state:      fabricengine.MidMergeState{Kind: fabricengine.MidMergeForeign, Conflicts: []string{"a.txt"}},
 			wantReason: "a git merge, cherry-pick or squash that fabric did not start is in progress in the task worktree; way forward: conclude or abort it with git, then resume",

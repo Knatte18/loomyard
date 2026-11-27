@@ -1,12 +1,11 @@
 // strand.go reads a fixer strand's state from outside:
-// whether reed still tracks it as live, whether its newest turn has ended, and the message it ended on.
+// whether reed still tracks it as live, and whether its newest turn has ended.
 
 package gatefixer
 
 import (
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -26,33 +25,6 @@ func StrandLive(reed shuttleengine.ReedOps, guid string) (bool, error) {
 		}
 	}
 	return false, nil
-}
-
-// LastTurnMessage returns the trimmed final message of a strand's newest stop event.
-// It reads the events file from byte offset on.
-// It is "" when no stop event follows offset or the newest carries no message, and when the events file is missing.
-// ParseEvents errors propagate.
-func LastTurnMessage(eventsPath string, offset int64, engine shuttleengine.Engine) (string, error) {
-	data, err := os.ReadFile(eventsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", nil
-		}
-		return "", fmt.Errorf("gatefixer: read events file %s: %w", eventsPath, err)
-	}
-	if offset > int64(len(data)) {
-		offset = int64(len(data))
-	}
-	events, err := engine.ParseEvents(data[offset:])
-	if err != nil {
-		return "", fmt.Errorf("gatefixer: parse events %s: %w", eventsPath, err)
-	}
-	for i := len(events) - 1; i >= 0; i-- {
-		if events[i].Kind == shuttleengine.EventStop {
-			return strings.TrimSpace(events[i].Message), nil
-		}
-	}
-	return "", nil
 }
 
 // turnEndSettle is how long a strand's newest turn end must stand before it counts:

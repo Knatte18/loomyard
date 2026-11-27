@@ -18,21 +18,6 @@ import (
 // listPageSize is the page size the list calls request, GitHub's maximum.
 const listPageSize = 100
 
-// planGatedMessagePrefix opens GitHub's message on a 403 for a feature the repository's plan lacks.
-// Repository rules on a private repository under a free plan are one such feature.
-const planGatedMessagePrefix = "Upgrade to GitHub"
-
-// rulesFeatureUnavailable reports whether err is GitHub's 403 for a repository whose plan has no repository rules.
-// GitHub answers it for every token, so it says nothing about the token;
-// a repository without the rules feature has no rules.
-func rulesFeatureUnavailable(err error) bool {
-	var resp *github.ErrorResponse
-	if !errors.As(err, &resp) || resp.Response == nil {
-		return false
-	}
-	return resp.Response.StatusCode == http.StatusForbidden && strings.HasPrefix(resp.Message, planGatedMessagePrefix)
-}
-
 // State is where a pull request stands on GitHub.
 type State string
 
@@ -45,7 +30,7 @@ const (
 	StateMerged State = "merged"
 )
 
-// Status is a pull request's state, head commit, standing review verdicts, title and body as GitHub reports them.
+// Status is a pull request's state, head commit and standing review verdicts as GitHub reports them.
 type Status struct {
 	State State
 	// HeadSHA is the pull request's current head commit.
@@ -59,10 +44,6 @@ type Status struct {
 	// MergeableState is GitHub's mergeable_state of the pull request:
 	// clean, dirty, blocked, behind, unstable, has_hooks, unknown or draft.
 	MergeableState string
-	// Title is the pull request's title as GitHub holds it.
-	Title string
-	// Body is the pull request's body as GitHub holds it, with the line endings GitHub stored.
-	Body string
 }
 
 // CheckMissing is the conclusion of a required check that neither a check run nor a commit status carries at the head.
@@ -91,8 +72,8 @@ const (
 	RefusalMethod RefusalKind = "method"
 	// RefusalPending means the base branch moved or GitHub is still computing mergeability, so a retry may succeed.
 	RefusalPending RefusalKind = "pending"
-	// RefusalOther covers every other refusal, such as a moved head, a missing approval, a required check or a conflict.
-	// It also covers GitHub's "not mergeable" while mergeability is still being computed, which a retry can clear.
+	// RefusalOther covers every other refusal:
+	// a moved head, a missing approval, a required check or a conflict, none of which a retry clears.
 	RefusalOther RefusalKind = "other"
 )
 
@@ -117,7 +98,7 @@ type API interface {
 	Create(ctx context.Context, head, base, title, body string) (Ref, error)
 	// Edit sets the title and body of an open pull request.
 	Edit(ctx context.Context, number int, title, body string) error
-	// Status reads a pull request's state, head, standing reviews, title and body.
+	// Status reads a pull request's state, head and standing reviews.
 	Status(ctx context.Context, number int) (Status, error)
 	// Close comments on a pull request, then closes it without merging.
 	Close(ctx context.Context, number int, comment string) error
@@ -207,21 +188,14 @@ func (c *Client) Edit(ctx context.Context, number int, title, body string) error
 	return nil
 }
 
-// Status reads a pull request's state, with merged winning over closed, its head commit, title and body.
+// Status reads a pull request's state, with merged winning over closed, and its head commit.
 // It reads the standing verdict across every page of its reviews.
 func (c *Client) Status(ctx context.Context, number int) (Status, error) {
 	pull, _, err := c.gh.PullRequests.Get(ctx, c.owner, c.repo, number)
 	if err != nil {
 		return Status{}, fmt.Errorf("pullrequest: read pull request #%d: %w", number, err)
 	}
-	status := Status{
-		State:          StateOpen,
-		HeadSHA:        pull.GetHead().GetSHA(),
-		Draft:          pull.GetDraft(),
-		MergeableState: pull.GetMergeableState(),
-		Title:          pull.GetTitle(),
-		Body:           pull.GetBody(),
-	}
+	status := Status{State: StateOpen, HeadSHA: pull.GetHead().GetSHA(), Draft: pull.GetDraft(), MergeableState: pull.GetMergeableState()}
 	switch {
 	case pull.GetMerged():
 		status.State = StateMerged
@@ -322,14 +296,10 @@ func (c *Client) graphQL(ctx context.Context, query string, variables map[string
 
 // RequiresPullRequest reports whether the repository rules active on branch include a pull_request rule.
 // It reads the rules one page at a time and stops at the first page with a pull_request rule.
-// A repository whose plan has no repository rules has none, so GitHub's 403 for it reads as false.
 func (c *Client) RequiresPullRequest(ctx context.Context, branch string) (bool, error) {
 	opts := &github.ListOptions{PerPage: listPageSize}
 	for {
 		rules, resp, err := c.gh.Repositories.GetRulesForBranch(ctx, c.owner, c.repo, branch, opts)
-		if rulesFeatureUnavailable(err) {
-			return false, nil
-		}
 		if err != nil {
 			return false, fmt.Errorf("pullrequest: read the rules active on branch %s: %w", branch, err)
 		}
@@ -349,15 +319,11 @@ func (c *Client) RequiresPullRequest(ctx context.Context, branch string) (bool, 
 // A pending commit status reads as unfinished, with an empty conclusion.
 // A context with neither is reported as missing.
 // When base requires no status checks, it returns no checks, without reading check runs or commit statuses.
-// A repository whose plan has no repository rules requires none, so GitHub's 403 for it reads as no checks.
 func (c *Client) RequiredChecks(ctx context.Context, base, head string) ([]Check, error) {
 	var contexts []string
 	ruleOpts := &github.ListOptions{PerPage: listPageSize}
 	for {
 		rules, resp, err := c.gh.Repositories.GetRulesForBranch(ctx, c.owner, c.repo, base, ruleOpts)
-		if rulesFeatureUnavailable(err) {
-			return nil, nil
-		}
 		if err != nil {
 			return nil, fmt.Errorf("pullrequest: read the rules active on branch %s: %w", base, err)
 		}

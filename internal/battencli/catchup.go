@@ -212,7 +212,6 @@ func catchUpPair(prime *lymcwd.Location, slug string) (*lymcwd.Location, bool, e
 
 // fetchRunForCatchUp fetches the branches of the run of slug from origin.
 // A fetch that fails reads as an unreachable origin.
-// A records layout the fetch cannot read is returned as is, with the refspecs that restore it.
 // A fetch folds git's exit into its message and names no transport failure.
 func fetchRunForCatchUp(prime *lymcwd.Location, slug string) error {
 	pair, stands, err := catchUpPair(prime, slug)
@@ -223,9 +222,6 @@ func fetchRunForCatchUp(prime *lymcwd.Location, slug string) error {
 		err = fabricengine.FetchPairTips(pair)
 	} else {
 		err = gitrepo.New(fabricengine.RecordsWorktree(prime)).Fetch()
-	}
-	if errors.Is(err, fabricengine.ErrRecordsLayout) {
-		return err
 	}
 	if err != nil {
 		return fmt.Errorf("%w: %v", dobbyengine.ErrOriginUnreachable, err)

@@ -90,7 +90,7 @@ func raddleReturnNote(mode RaddleMode, returnReason, proposalPath, returnedPath 
 }
 
 // RaddleTable builds the seatengine.Table of one Raddle-Write run: one lead that writes the raddle proposal.
-// The lead's model is cfg.Raddle.Model resolved through reg, and the seat is interactive in interactive mode.
+// The lead's model is cfg.Raddle resolved through reg, and the seat is interactive in interactive mode.
 // Its one output is the approval record in interactive mode, written by `lym loom raddle-approve`.
 // In auto and perch mode the output is the proposal file,
 // so the session ends on the operator's approval or on the finished proposal.
@@ -105,7 +105,7 @@ func RaddleTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg Conf
 	if slug == "" {
 		return seatengine.Table{}, fmt.Errorf("loom: RaddleTable: slug must not be empty")
 	}
-	choice, err := resolveModelChoice(cfg.Raddle.Model, reg)
+	choice, err := resolveModelChoice(cfg.Raddle, reg)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: RaddleTable: raddle role model-spec: %w", err)
 	}
@@ -118,7 +118,7 @@ func RaddleTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg Conf
 	return seatengine.Table{
 		RolePrefix:  raddleRole,
 		Segment:     segmentcolor.Discussion,
-		Timeout:     time.Duration(cfg.Discussion.TimeoutMin) * time.Minute,
+		Timeout:     time.Duration(cfg.DiscussionTimeoutMin) * time.Minute,
 		Interactive: interactive,
 		Values: map[string]string{
 			"slug":                 slug,
@@ -135,7 +135,7 @@ func RaddleTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg Conf
 			ModelChoice: choice,
 			Outputs:     []string{output},
 			ConfigRole:  agentconfig.RoleRaddle,
-			ModelKey:    shuttleengine.ModelKey{Module: loomModule, Key: raddleModelKey},
+			ModelKey:    shuttleengine.ModelKey{Module: loomModule, Key: "raddle"},
 		}},
 	}, nil
 }

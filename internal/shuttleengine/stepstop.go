@@ -49,8 +49,6 @@ func (r *Runner) SetStepTie(tie StepTie) {
 // StopStepRuns stops every run under the runner's run-directory root that is still running.
 // A run qualifies when its record names tie as its step.
 // Each is stopped through the stop verb, which records the stop before removing the strand.
-// The stop is recorded as interrupted, since the step ended before the run's work did,
-// so a later start of the run's role resumes its session.
 // A strand is removable when it is live, held for a relaunch, or an own-window strand whose pane is present but not live.
 // That covers a dead pane or one showing only its shell.
 // So a step stop ends the window of a run whose own-window agent died.
@@ -155,7 +153,7 @@ func (r *Runner) stopStepRunsWhere(selects func(RunState) bool, listUntied bool)
 		if err != nil || !found || current.Outcome != runOutcomeRunning || current.Step == nil || !selects(current) {
 			continue
 		}
-		if err := r.stopRecorded(candidate.runDir, rs.StrandGUID, true); err != nil {
+		if err := r.stopRecorded(candidate.runDir, rs.StrandGUID); err != nil {
 			report.Failed = append(report.Failed, StepStopFailure{Strand: name, Error: err.Error()})
 			continue
 		}

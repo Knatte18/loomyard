@@ -51,30 +51,11 @@ func batchSlugFor(batches []batcher.Batch, batchNumber int) string {
 // The recovery in session did not recover the batch.
 // The way forward is one more recovery when the batch has one left, else ending the run stuck.
 // Naming the session tells two consecutive refusals over different strands apart.
-// A non-empty lastMessage, the strand's final message, is quoted after the status.
-func recoveryNotDoneMessage(batchName string, batchNumber int, status, session, lastMessage string, retry bool) string {
-	ended := status + lastMessageClause(lastMessage)
+func recoveryNotDoneMessage(batchName string, batchNumber int, status, session string, retry bool) string {
 	if retry {
-		return fmt.Sprintf("webster: batch %s recovery (session %s) ended %s; way forward: run `lym webster recover-batch %d` once more", batchName, session, ended, batchNumber)
+		return fmt.Sprintf("webster: batch %s recovery (session %s) ended %s; way forward: run `lym webster recover-batch %d` once more", batchName, session, status, batchNumber)
 	}
-	return fmt.Sprintf("webster: batch %s recovery (session %s) ended %s and the batch has no recovery left; way forward: end the run stuck, naming batch %s", batchName, session, ended, batchName)
-}
-
-// batchFailedMessage returns the refusal of a recovery the post-batch checks failed.
-// A non-empty lastMessage is quoted ahead of errText, so it never reads as part of the way forward errText ends in.
-func batchFailedMessage(errText, lastMessage string) string {
-	if lastMessage == "" {
-		return errText
-	}
-	return fmt.Sprintf("webster: the recovery's last message was %q; %s", lastMessage, errText)
-}
-
-// lastMessageClause renders a recovery strand's final message as a clause of a refusal, empty when it has none.
-func lastMessageClause(lastMessage string) string {
-	if lastMessage == "" {
-		return ""
-	}
-	return fmt.Sprintf(" (its last message: %s)", lastMessage)
+	return fmt.Sprintf("webster: batch %s recovery (session %s) ended %s and the batch has no recovery left; way forward: end the run stuck, naming batch %s", batchName, session, status, batchName)
 }
 
 // lastRecoverySession returns the session of the newest recovery strand st records for batch number, empty when it records none.
@@ -119,14 +100,13 @@ func (c *websterCLI) recoverDeps(plan *planparser.Plan, batches []batcher.Batch,
 // recoverBatchCmd builds the `recover-batch <nn>` subcommand.
 func (c *websterCLI) recoverBatchCmd() *cobra.Command {
 	var wait time.Duration
-	var answer string
 
 	cmd := &cobra.Command{
 		Use:         "recover-batch <nn>",
 		Short:       "escalate one batch to a cold recovery strand and long-poll it for a terminal digest",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
-		Long: `recover-batch <nn> spawns a cold recovery strand for a batch a fork
-reported stuck or never reported -- or, re-entrant, attaches to
+		Long: `recover-batch <nn> spawns a cold, fresh recovery strand for a batch a fork
+reported stuck (or never reported at all) -- or, re-entrant, attaches to
 the strand a prior call spawned. A call that
 spawns the recovery strand first waits for its provider to come up,
 and every call then blocks for up to --wait watching it for a terminal
@@ -138,8 +118,7 @@ work of its own. A stuck or dead digest exits non-zero with the same fields
 and "recovery_session", the strand's session, its message naming the way
 forward: "lym webster recover-batch NN" once more when recovery_retry is
 true, else ending the run stuck. A NEEDS_PARENT report leaves the batch
-waiting, exiting 0 with its "need"; the next call, which needs the
-parent's reply in --answer, resumes it uncounted.
+waiting, exiting 0 with its "need"; the next call resumes it uncounted.
 A call that would spawn a third counted recovery refuses with
 {"recovery_exhausted": true}. A recovery the post-batch checks reject takes
 the batch terminal failed, saved and committed, and exits non-zero with
@@ -234,7 +213,7 @@ Example:
 			// Booting the session under it therefore adds no new hold.
 			if c.reedUp != nil {
 				if err := c.reedUp(); err != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lym webster recover-batch %02d` with the same flags", err, batchNumber)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lym webster recover-batch %02d`", err, batchNumber)))
 					return nil
 				}
 			}
@@ -244,7 +223,6 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			deps.Answer = answer
 
 			bs, spawned, err := websterengine.RecoverSpawnOrAttach(deps, batchNumber, recoverRealClock{})
 			if err != nil {
@@ -350,8 +328,7 @@ Example:
 				_ = terminalLock.Release()
 				terminalHeld = false
 				if batchFailed {
-					// The failed record's digest replaces the strand's, so the message is quoted here.
-					msg := batchFailedMessage(err.Error(), result.Digest.LastMessage)
+					msg := err.Error()
 					if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("recover-batch %s failed", batchName)); syncErr != nil {
 						msg = fmt.Sprintf("%s; additionally, the fabric sync failed: %v; %s", msg, syncErr, fabricSyncWayForward)
 					}
@@ -381,7 +358,7 @@ Example:
 				default:
 					session := lastRecoverySession(fresh, batchNumber)
 					fields["recovery_session"] = session
-					clihelp.SetExit(cmd.Context(), output.ErrFields(out, recoveryNotDoneMessage(batchName, batchNumber, result.Digest.Status, session, result.Digest.LastMessage, retry), fields))
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, recoveryNotDoneMessage(batchName, batchNumber, result.Digest.Status, session, retry), fields))
 					return nil
 				}
 				clihelp.SetExit(cmd.Context(), output.Ok(out, fields))
@@ -398,9 +375,7 @@ Example:
 		},
 	}
 
-	cmd.Flags().DurationVar(&wait, "wait", 0, "operator override of the wait budget; a shorter wait can return a running snapshot; 0 blocks until a terminal digest or "+recoveryTimeoutName())
-
-	cmd.Flags().StringVar(&answer, "answer", "", "the parent's reply to a waiting batch's need, rendered into the resumed recovery's prompt")
+	cmd.Flags().DurationVar(&wait, "wait", 0, "operator override of the wait budget; a shorter wait can return a running snapshot; 0 blocks until a terminal digest or recovery_timeout_min")
 
 	return cmd
 }

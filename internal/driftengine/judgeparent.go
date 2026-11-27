@@ -102,7 +102,6 @@ func (s *JudgeParentSeat) heldJudgeAsk(spawnID string) (bool, error) {
 // an open ask is set timeout, and a new ask naming the new rulings goes out in its place.
 // A satisfied answer to the current rulings passes, and so does an ask that never reached the parent:
 // the judge goes on without it.
-// A held ask that was cleared answers nothing, so a new ask of the next round goes out in its place.
 func ParentAgreementGateEntry(seat *JudgeParentSeat, want JudgementWant, judgementPath string, wait time.Duration, limit time.Time, now func() time.Time) shuttleengine.GateEntry {
 	return shuttleengine.GateEntry{Name: ParentAgreementEntryName, Gate: seat.agreementGate(want, judgementPath, wait, limit, now), Attempts: parentAgreementAttempts}
 }
@@ -134,9 +133,6 @@ func (s *JudgeParentSeat) agreementGate(want JudgementWant, judgementPath string
 		}
 		ask, held := record.LatestOfSeed(seed)
 		round := judgeAskRound
-		if held && ask.Cleared {
-			held, round = false, ask.Round+1
-		}
 		if held && ask.Digest != digest {
 			switch {
 			case !ask.State.Ended():
@@ -171,7 +167,7 @@ func (s *JudgeParentSeat) sendJudgeAsk(seed string, round int, digest string, wa
 	deadline := now.Add(wait)
 	capped := !limit.IsZero() && deadline.After(limit)
 	if capped && !limit.After(now) {
-		ask.State, ask.Reason = burlerengine.ParentAskNotSent, fmt.Sprintf("%s leaves the parent no time: the judge's own timeout ends its session by %s", keyName(judgeParentTimeoutKey), limit.UTC().Format(time.RFC3339))
+		ask.State, ask.Reason = burlerengine.ParentAskNotSent, fmt.Sprintf("judge_parent_timeout_min leaves the parent no time: the judge's own timeout ends its session by %s", limit.UTC().Format(time.RFC3339))
 	} else {
 		strand, recorded, err := s.Resolve()
 		switch {
@@ -181,7 +177,7 @@ func (s *JudgeParentSeat) sendJudgeAsk(seed string, round int, digest string, wa
 			ask.State, ask.Reason = burlerengine.ParentAskNoParent, "no orch strand is recorded at the run's parent"
 		default:
 			if capped {
-				logger.Warn("drift: "+keyName(judgeParentTimeoutKey)+" is capped to leave the judge room to end its turn before its own timeout", "key", keyName(judgeParentTimeoutKey), "value", wait, "capped", limit.Sub(now))
+				logger.Warn("drift: judge_parent_timeout_min is capped to leave the judge room to end its turn before its own timeout", "key", "judge_parent_timeout_min", "value", wait, "capped", limit.Sub(now))
 				deadline = limit
 			}
 			ask.State, ask.Strand, ask.Deadline = burlerengine.ParentAskPendingPost, strand, deadline
@@ -199,15 +195,15 @@ func (s *JudgeParentSeat) sendJudgeAsk(seed string, round int, digest string, wa
 }
 
 // postJudgeAsk posts line to the strand ask records and returns ask set open.
-// A failed post sets the ask undelivered with the error as its reason, and the judge goes on without the parent.
+// A failed post sets the ask no-parent with the error as its reason, and the judge goes on without the parent.
 func (s *JudgeParentSeat) postJudgeAsk(ask burlerengine.ParentAsk, line string) burlerengine.ParentAsk {
 	if err := s.Post(ask.Strand, line); err != nil {
 		reason := fmt.Sprintf("the request was not delivered: %s", err)
 		logger.Warn("drift: the judge's ask to the parent was not delivered; the judge goes on without the parent", "ask", ask.Number, "error", err)
-		if _, _, endErr := burlerengine.EndParentAsk(s.Files, ask.Number, burlerengine.ParentAskUndelivered, reason); endErr != nil {
-			logger.Warn("drift: the undelivered ask to the parent was not set undelivered", "ask", ask.Number, "error", endErr)
+		if _, _, endErr := burlerengine.EndParentAsk(s.Files, ask.Number, burlerengine.ParentAskNoParent, reason); endErr != nil {
+			logger.Warn("drift: the undelivered ask to the parent was not set no-parent", "ask", ask.Number, "error", endErr)
 		}
-		ask.State, ask.Reason = burlerengine.ParentAskUndelivered, reason
+		ask.State, ask.Reason = burlerengine.ParentAskNoParent, reason
 		return ask
 	}
 	if err := burlerengine.MarkParentAskPosted(s.Files, ask.Number); err != nil {

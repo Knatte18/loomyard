@@ -4,20 +4,25 @@
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// concludeMergeSides lands the conclude-commit on the warp side of an in-progress merge.
-// The caller already holds the write lock.
-// The weft is not a merge participant, so no commit lands there.
-// The warp side is skipped when its recorded outcome is fast_forwarded or up_to_date, so no commit is fabricated on it.
-// It is skipped too when its committed SHA is already recorded, which keeps a resumed MergeContinue idempotent.
-// A crash or I/O failure between the warp side's `git commit` and the record re-save leaves the commit landed unrecorded.
+// concludeMergeSides lands the conclude-commit on both sides of an in-progress merge, under the
+// caller's already-held write lock: warp first, then weft.
+// The weft arm covers records an older binary wrote, where WeftOutcome can be "staged".
+// Records this binary writes carry mergeOutcomeAlreadyUpToDate on the weft side, so the arm's guard skips it.
+// A side whose recorded outcome is fast_forwarded or up_to_date is skipped, so no commit is fabricated on it.
+// A side whose committed SHA is already recorded is skipped too, which keeps a resumed MergeContinue idempotent.
+// A crash or I/O failure between a side's `git commit` and the record re-save leaves the commit landed unrecorded.
 // A re-run `git commit` then fails on the clean tree.
 // The conclude check adopts such a commit into the record when git parentage shows it is this merge's conclude.
 // MergeContinue then finishes the states that MergeAbort must not destroy.
@@ -25,11 +30,11 @@ import (
 // An empty outcome means the merge never started on that side.
 // Concluding it would commit one side of a merge whose other side does not exist.
 // MergeContinue enforces this before the call.
-// The effective message is the explicit msg, then the record's Message, then empty.
-// An empty message makes git use the message it prepared for the merge.
-// After the warp side lands, its SHA is saved to the record and KindMergeCommitted is recorded.
+// The effective message is the explicit msg, then the record's Message, then the message git prepared for the merge.
+// The warp side's message ends in a MergeTrailerKey trailer naming the record's Source.
+// After each side lands, its SHA is saved to the record and KindMergeCommitted is recorded.
 // Its target is the checkout path and its detail is the SHA.
-// If the conclude fails, nothing is rolled back.
+// If a conclude fails on either side, nothing is rolled back.
 // The record is kept, the git failure is logged, and *ErrMergeIncomplete is returned.
 func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) error {
 	effectiveMsg := msg
@@ -43,7 +48,12 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 			return err
 		}
 		if !landed {
-			if err := f.code.MergeConclude(effectiveMsg); err != nil {
+			message, messageErr := mergeCommitMessage(f.code, effectiveMsg, st)
+			if messageErr != nil {
+				logger.Warn("fabricengine: read the merge message failed", "side", "warp", "error", messageErr)
+				return &ErrMergeIncomplete{}
+			}
+			if err := f.code.MergeConclude(message); err != nil {
 				logger.Warn("fabricengine: merge conclude failed", "side", "warp", "error", err)
 				return &ErrMergeIncomplete{}
 			}
@@ -60,7 +70,78 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 		rec.Append(KindMergeCommitted, f.warpPath, sha)
 	}
 
+	if st.WeftOutcome != mergeOutcomeFastForwarded && st.WeftOutcome != mergeOutcomeAlreadyUpToDate && st.WeftCommitted == "" {
+		sha, landed, err := sideConcludeAlreadyLanded(f.records, st.WeftStart, st.WeftSource, st.Squash)
+		if err != nil {
+			return err
+		}
+		if !landed {
+			if err := f.records.MergeConclude(effectiveMsg); err != nil {
+				logger.Warn("fabricengine: merge conclude failed", "side", "weft", "error", err)
+				return &ErrMergeIncomplete{}
+			}
+			sha, err = f.records.CurrentSHA()
+			if err != nil {
+				logger.Warn("fabricengine: resolve weft HEAD after conclude failed", "error", err)
+				return &ErrMergeIncomplete{}
+			}
+		}
+		st.WeftCommitted = sha
+		if err := f.saveMergeState(st); err != nil {
+			return err
+		}
+		rec.Append(KindMergeCommitted, f.weftPath, sha)
+	}
+
 	return nil
+}
+
+// mergeCommitMessage returns the message of the conclude commit of the merge st records in the repo.
+// base is the explicit message.
+// An empty one takes the message git prepared for the merge, comment lines left out,
+// and a merge git prepared none for is named after its source.
+// The message ends in a MergeTrailerKey trailer naming the source, which marks the commit as a fabric merge.
+func mergeCommitMessage(repo *gitrepo.Repo, base string, st *mergeState) (string, error) {
+	message := base
+	if message == "" {
+		prepared, err := preparedMergeMessage(repo, st.Squash)
+		if err != nil {
+			return "", err
+		}
+		message = prepared
+	}
+	if message == "" {
+		message = "Merge " + st.Source
+	}
+	return appendTrailerLine(message, MergeTrailerKey, st.Source), nil
+}
+
+// preparedMergeMessage reads the message git prepared for the merge in progress in the repo, comment lines left out.
+// A squash merge has its own prepared message.
+// It returns an empty message when git prepared none.
+func preparedMergeMessage(repo *gitrepo.Repo, squash bool) (string, error) {
+	gitDir, err := repo.GitDir()
+	if err != nil {
+		return "", fmt.Errorf("fabricengine: locate the prepared merge message: %w", err)
+	}
+	name := "MERGE_MSG"
+	if squash {
+		name = "SQUASH_MSG"
+	}
+	data, err := os.ReadFile(filepath.Join(gitDir, name))
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("fabricengine: read the prepared merge message %s: %w", name, err)
+	}
+	var kept []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "#") {
+			kept = append(kept, line)
+		}
+	}
+	return strings.TrimSpace(strings.Join(kept, "\n")), nil
 }
 
 // sideConcludeAlreadyLanded reports whether one side already carries this merge's conclude-commit
@@ -80,10 +161,11 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 // fabric starts a non-squash merge with `git merge --ff --no-commit <sourceSHA>`, so MERGE_HEAD holds
 // exactly that SHA, and the conclude-commit has exactly two parents: the pre-merge start first, the
 // merge source second.
-// All four of these must hold before a commit is adopted:
+// All five of these must hold before a commit is adopted:
 //   - HEAD moved off the recorded pre-merge start,
 //   - no live MERGE_HEAD (the merge is finished, not still concludable),
 //   - the record is not a squash (see below),
+//   - the record carries a resolved source SHA for this side,
 //   - HEAD is a merge commit with exactly two parents: the recorded start first, the recorded
 //     source SHA second.
 //
@@ -98,6 +180,8 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 // Its conclude is an ordinary one-parent commit, with no evidence separating it from other commits.
 // Refusing leaves the re-run `git commit` to fail on the clean tree.
 // It returns *ErrMergeIncomplete with the record retained.
+// An empty recorded source SHA, which a record without one carries, refuses too.
+// No evidence is not satisfied evidence.
 //
 // The caller records an adoption as KindMergeCommitted, although this call ran no `git commit`.
 // The commit is this merge's own conclude.
@@ -117,7 +201,7 @@ func sideConcludeAlreadyLanded(repo *gitrepo.Repo, start, sourceSHA string, squa
 	if mergeHeadPresent {
 		return "", false, nil
 	}
-	if squash {
+	if squash || sourceSHA == "" {
 		return "", false, nil
 	}
 
@@ -198,7 +282,8 @@ func mergeAttemptIncompleteReason(st *mergeState) []string {
 // Unmerged entries remaining on either side refuse with a *MergeGuardError carrying mergeReasonUnresolvedConflicts.
 // A record whose attempt never reached both sides refuses with mergeReasonAttemptIncomplete.
 // A side whose live git merge differs from the one the record describes refuses with mergeReasonRecordedMergeGone.
-// All three are aggregated into one error, so which precondition failed never discloses evaluation order.
+// A merge that stopped before its records step refuses with mergeReasonRecordsUnsettled, naming the abort.
+// All of them are aggregated into one error, so which precondition failed never discloses evaluation order.
 // The combined write lock is acquired before the record is read and the guards run,
 // so no concurrent lifecycle verb can retire or advance the record between the checks and the action.
 // It runs concludeMergeSides with msg as the message override.
@@ -260,8 +345,13 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 		return MergeResult{}, err
 	}
 	reasons = append(reasons, recordedMergeGone...)
+	if st.RecordsUnsettled {
+		reasons = append(reasons, mergeReasonRecordsUnsettled)
+	}
 	if len(reasons) > 0 {
-		return MergeResult{Conflicts: stillConflicted}, newMergeGuardError(reasons)
+		guardErr := newMergeGuardError(reasons)
+		guardErr.Parked = st.RecordsUnsettled
+		return MergeResult{Conflicts: stillConflicted}, guardErr
 	}
 
 	if err := concludeMergeSides(f, rec, st, msg); err != nil {
@@ -301,6 +391,8 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 // MergeContinue recovers that shape, and it is idempotent across a resumed run.
 // The combined write lock is acquired before the record is read and that guard runs,
 // so the guard sees a conclude that lands while this call waits, rather than the reset destroying it.
+// In a one-repository worktree it first commits the uncommitted records around the merge by the rule matching its state.
+// A merge that stopped before its records step ends with that commit.
 // It then resets the warp side via resetMergeSides.
 // That reset covers a side that fast-forwarded or never moved.
 // It deletes the merge-state record and returns MergeResult{} with Committed false.
@@ -338,6 +430,25 @@ func (f *Fabric) MergeAbort() (res MergeResult, err error) {
 	}
 	if len(reasons) > 0 {
 		return MergeResult{}, newMergeGuardError(reasons)
+	}
+
+	// In a one-repository worktree the uncommitted records are committed first, so the reset below keeps them.
+	// The commit moves the record's start onto itself, and an unsettled merge ends with it.
+	if oneRepositoryAt(f.warpPath) {
+		aborted, err := f.commitRecordsBeforeAbort(rec)
+		if err != nil {
+			return MergeResult{}, err
+		}
+		if aborted {
+			return MergeResult{Conflicts: mergeNoConflicts}, nil
+		}
+		st, err = f.loadMergeState()
+		if err != nil {
+			return MergeResult{}, err
+		}
+		if st == nil {
+			return MergeResult{}, f.mergeStateOrForeignErr()
+		}
 	}
 
 	if err := f.resetMergeSides(rec, st.WarpStart); err != nil {

@@ -6,12 +6,15 @@
 // It also holds the role, the command line and the registration time.
 // The role is one of the `Role` constants.
 // The hub's own processes register under `HubOwner`.
-// Their roles are `RoleSync`, `RoleSlackRelay` and `RoleBoardServer`.
+// Their roles are `RoleSync` and `RoleSlackRelay`.
+// `RoleAdopt` is a third, which only an older lym's detached adopt worker registered under.
+// The prime's orch provider process also registers there, as `RoleOrch`.
 // A fixer strand role that `internal/gatefixer` declares is also valid; its `Registrar` registers it.
 // The provider process of a worktree's orch session registers through `RegisterOrch` as `RoleOrch`.
 // Its owner is the beam's slug, or `HubOwner` for the prime.
 // The orch's start registers it, not the process itself, so the record reads the process's group from the process table.
 // `IsRegistered` reports whether a live record names a pid under a role.
+// The orch's start reads it to tell its own earlier process from any other holder of its session.
 // Register writes `<dir>/<owner>/<pid>-<start time>.json` through `internal/state`,
 // so a key the record does not declare survives a rewrite by an older binary.
 // The package is told its directory and derives no path.
@@ -31,9 +34,16 @@
 // End, EndSparing, EndRole and EndSubject are the only ways an owner's registered processes are ended;
 // End is the base sequence.
 // For an owner's live records, leaving out the caller and its ancestors, End reads every process once.
-// It then sends SIGTERM to each recorded leader's group and each recorded non-leader by pid.
-// It sends SIGTERM to every process below a record too.
+// It then sends SIGTERM to three targets:
+// each recorded leader's group;
+// each recorded non-leader, by pid;
+// every process below a record.
+// A process below a record is signalled through its own group when it leads one and by pid otherwise;
+// it is not signalled at all when a group already signalled holds it.
+// A signalled group's other live processes are watched like its leader, so each is awaited, sent SIGKILL and reported;
+// a signal call that fails still counts as sent, so its processes are reported while they live.
 // It waits up to `endGrace` for the signalled processes to disappear, then sends SIGKILL to what is left.
+// Afterwards it waits `killBound`.
 // Every signal follows a comparison with the last reading:
 // a pid is signalled only while its start time matches;
 // a group only while a live process still reports it with a start time at or after the recorded one.
@@ -44,15 +54,14 @@
 // The session end that is not a teardown uses it to spare `RoleDobby`.
 // EndRole is End for one role.
 // It ends only the live records of that role under the owner, and the processes below them.
-// It leaves every other record and the processes below it alone.
+// It uses End's signals, grace, kill bound and passes, and leaves every other record and the processes below it alone.
 // EndSubject ends every process this machine runs for a subject another machine owns.
 // It ends each of the subject's runs, then the subject's own records but its dobby.
 // The dobby is ended last, and only when the caller asks.
 // It leaves every teardown child alone.
 // In the subject's own pass it also leaves alone what serves the whole hub:
 // the board syncs, the detached pushes and the Slack relay.
-// EndProcess runs the same sequence on one unregistered pid.
-// It serves the orphans `lym tender reap` ends and those the Hardener sandbox reaper ends under a sandbox root.
+// EndProcess runs the same sequence on one unregistered pid, for the orphans `lym tender reap` ends.
 //
 // On Windows no start time can be read and no group can be signalled.
 // End, EndSparing, EndRole, EndSubject and EndProcess therefore signal nothing.

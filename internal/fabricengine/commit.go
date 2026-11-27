@@ -92,27 +92,6 @@ var spawnDetachedPushFn = SpawnDetachedPush
 // A call that lands nothing spawns no detached child.
 // SpawnDetachedPush itself honors the skip environment variables.
 func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts SyncOptions) (res CommitResult, err error) {
-	return f.commit(files, msg, snapshotTags, nil, opts)
-}
-
-// CommitWithTrailers commits files as Commit does with no snapshot tags.
-// The weft commit's message ends with one `Key: Value` line per trailer, in order, after its Warp-SHA trailer.
-// The warp commit carries none of them.
-// With a born warp and a trailer given, the weft commit always lands, empty when the files are unchanged,
-// so the trailers have a commit to sit on.
-// A trailer whose key falls outside [A-Za-z][A-Za-z0-9-]* is refused before anything is staged.
-// So is one whose value is blank or spans lines.
-func (f *Fabric) CommitWithTrailers(files []string, msg string, trailers []Trailer, opts SyncOptions) (CommitResult, error) {
-	for _, trailer := range trailers {
-		if err := validateTrailer(trailer); err != nil {
-			return CommitResult{}, err
-		}
-	}
-	return f.commit(files, msg, nil, trailers, opts)
-}
-
-// commit is the body of Commit and CommitWithTrailers: trailers end the weft commit's message and must already be valid.
-func (f *Fabric) commit(files []string, msg string, snapshotTags []string, trailers []Trailer, opts SyncOptions) (res CommitResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
 
@@ -122,19 +101,26 @@ func (f *Fabric) commit(files []string, msg string, snapshotTags []string, trail
 	// The two refusals return different typed errors on purpose.
 	// Fabric has no merge of its own in the foreign case, so *ErrMergeInProgress would misdirect the operator.
 	// *ErrForeignMergeState names what clears that state, plain git, as every merge verb does.
+	// A one-repository worktree commits a records-only list around the merge instead,
+	// so its refusal waits for the file classification below.
+	var mergeRefusal error
 	recordExists, err := f.mergeRecordExists()
 	if err != nil {
 		return CommitResult{}, err
 	}
 	if recordExists {
-		return CommitResult{}, &ErrMergeInProgress{}
+		mergeRefusal = &ErrMergeInProgress{}
+	} else {
+		foreignState, err := f.foreignMergeStatePresent()
+		if err != nil {
+			return CommitResult{}, err
+		}
+		if foreignState {
+			mergeRefusal = &ErrForeignMergeState{}
+		}
 	}
-	foreignState, err := f.foreignMergeStatePresent()
-	if err != nil {
-		return CommitResult{}, err
-	}
-	if foreignState {
-		return CommitResult{}, &ErrForeignMergeState{}
+	if mergeRefusal != nil && !oneRepositoryAt(f.warpPath) {
+		return CommitResult{}, mergeRefusal
 	}
 
 	l, err := lymcwd.ResolveWorktree(f.warpPath)
@@ -157,6 +143,9 @@ func (f *Fabric) commit(files []string, msg string, snapshotTags []string, trail
 	if len(neverCommittedFiles) > 0 {
 		return CommitResult{}, fmt.Errorf("fabricengine: refusing to commit %q: paths under %s are never committed", neverCommittedFiles[0], lymdirs.DotLymDirName)
 	}
+	if mergeRefusal != nil && len(warpFiles) > 0 {
+		return CommitResult{}, mergeRefusal
+	}
 	weftSide := (len(weftFiles) > 0 || len(snapshotTags) > 0) && !opts.SkipGit
 
 	secretPaths, err := cfg.SecretPathMatcher()
@@ -167,7 +156,7 @@ func (f *Fabric) commit(files []string, msg string, snapshotTags []string, trail
 		return CommitResult{}, err
 	}
 
-	result, partialErr, err := f.commitBothSides(warpFiles, weftFiles, weftSide, msg, snapshotTags, trailers, opts)
+	result, partialErr, err := f.commitBothSides(warpFiles, weftFiles, weftSide, msg, snapshotTags, opts)
 	if err != nil {
 		return result, err
 	}
@@ -225,7 +214,7 @@ func (f *Fabric) refuseSecretPaths(secretPaths secretpath.Matcher, warpFiles, we
 // Otherwise, once the weft side, if any, has been attempted, its outcome maps onto a *PartialCommitError:
 // the weft commit landed but failed to record, or it failed and did not land.
 // On the non-error path the weft commit either landed or was a no-op.
-func (f *Fabric) commitBothSides(warpFiles, weftFiles []string, weftSide bool, msg string, snapshotTags []string, trailers []Trailer, opts SyncOptions) (CommitResult, *PartialCommitError, error) {
+func (f *Fabric) commitBothSides(warpFiles, weftFiles []string, weftSide bool, msg string, snapshotTags []string, opts SyncOptions) (CommitResult, *PartialCommitError, error) {
 	committing := len(warpFiles) > 0 || weftSide
 
 	if committing {
@@ -253,7 +242,7 @@ func (f *Fabric) commitBothSides(warpFiles, weftFiles []string, weftSide bool, m
 
 	var partialErr *PartialCommitError
 	if weftSide {
-		weftSHA, weftCommitted, err := f.commitWeftLocked(weftFiles, msg, trailers, opts, snapshotTags...)
+		weftSHA, weftCommitted, err := f.commitWeftLocked(weftFiles, msg, opts, snapshotTags...)
 		switch {
 		case err != nil && weftCommitted:
 			result.WeftSHA = weftSHA

@@ -8,6 +8,11 @@ import (
 	"strings"
 )
 
+// ConfigsyncOwnerDir is the owner directory allowed to name the side tokens in string literals and comments.
+// It may not name them in identifiers.
+// Its literals are the on-disk legacy config filenames its migration must read by name.
+const ConfigsyncOwnerDir = "internal/configsync"
+
 // owners is the set of directories permitted to use the bare side tokens.
 // It governs the bare-token rule only; the fabric-sense host-phrase rule applies inside these directories too.
 // internal/hubforge names fabric's own geometry in its non-test .go files, so it owns the tokens.
@@ -18,12 +23,13 @@ var owners = map[string]bool{
 	"internal/weftname":     true,
 	"internal/gitkit":       true,
 	"internal/boardengine":  true,
+	ConfigsyncOwnerDir:      true,
 	"internal/hubforge":     true,
 	"internal/fabricvocab":  true,
 }
 
 // docRoots are the roots whose .md, .yaml and .go files the bare-token scan covers.
-var docRoots = map[string]bool{"contracts": true, "docs": true, "plugins": true, "cmd": true}
+var docRoots = map[string]bool{"contracts": true, "docs": true, "plugins": true, "crucible": true, "cmd": true}
 
 // hostGeometryIdentifiers are the fabric-geometry identifiers that compound the host noun with a repo or geometry noun.
 // They are matched case-insensitively against an identifier's name.
@@ -97,9 +103,9 @@ func IsOwner(dir string) bool {
 }
 
 // SkipsBareCheck reports whether dir is exempt from the bare-token check entirely.
-// Every owner directory is exempt.
+// Every owner directory is exempt except internal/configsync, which is still checked for identifier hits.
 func SkipsBareCheck(dir string) bool {
-	return owners[dir]
+	return owners[dir] && dir != ConfigsyncOwnerDir
 }
 
 // IsDocRoot reports whether first, a path's first segment, is a doc root.

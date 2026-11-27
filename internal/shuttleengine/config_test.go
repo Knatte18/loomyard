@@ -132,8 +132,8 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		if !errors.Is(err, configengine.ErrInvalid) {
 			t.Fatalf("err = %v, want ErrInvalid", err)
 		}
-		if !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), `"shuttle.deny_python"`) {
-			t.Errorf("err = %q, want it to name %s and key shuttle.deny_python", err, localFile)
+		if !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), `"deny_python"`) {
+			t.Errorf("err = %q, want it to name %s and key deny_python", err, localFile)
 		}
 	})
 }
@@ -284,8 +284,7 @@ func TestLoadConfig_AgentsYAML(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_RetiredClaudeKeys pins the local layer's handling of a retired Claude key.
-// The key is refused there when its category guards it, and admitted otherwise.
+// TestLoadConfig_RetiredClaudeKeys pins that retired Claude keys still load from an unreconciled layer and are dropped.
 func TestLoadConfig_RetiredClaudeKeys(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -297,8 +296,8 @@ func TestLoadConfig_RetiredClaudeKeys(t *testing.T) {
 	}{
 		{name: "retired TTL roles map in the local layer loads", localBody: "claude_prompt_cache_ttl_roles:\n  a: 1h\n  b: 5m\n"},
 		{name: "retired TTL map in the local layer loads", localBody: "claude_prompt_cache_ttl: {a: 1}\n"},
-		{name: "retired executable key in the local layer is refused", localBody: "claude: /opt/claude\n", wantErr: `"shuttle.claude"`},
-		{name: "retired guard key in the local layer is refused", localBody: "claude_deny_agent_tool: false\n", wantErr: `"shuttle.claude_deny_agent_tool"`},
+		{name: "retired executable key in the local layer is refused", localBody: "claude: /opt/claude\n", wantErr: `"claude"`},
+		{name: "retired guard key in the local layer is refused", localBody: "claude_deny_agent_tool: false\n", wantErr: `"claude_deny_agent_tool"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -323,6 +322,87 @@ func TestLoadConfig_RetiredClaudeKeys(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("LoadConfig: %v", err)
+			}
+
+			merged, err := configengine.LoadOrTemplate(dirs, shuttleengine.ConfigSpec())
+			if err != nil {
+				t.Fatalf("LoadOrTemplate: %v", err)
+			}
+			if strings.Contains(string(merged), "claude_prompt_cache_ttl") {
+				t.Errorf("merged document keeps a retired key:\n%s", merged)
+			}
+		})
+	}
+
+	t.Run("worktree file holding every retired key loads with the python switch at its default", func(t *testing.T) {
+		t.Parallel()
+
+		anchor := t.TempDir()
+		seedLymConfig(t, anchor, "shuttle", shuttleengine.ConfigTemplate()+
+			"claude: /opt/claude\nclaude_deny_agent_tool: false\nclaude_deny_ask_user_question: false\n"+
+			"claude_prompt_cache_ttl: 1h\nclaude_prompt_cache_ttl_roles:\n  orch: 1h\nclaude_deny_python: false\n")
+
+		cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: anchor}, "shuttle")
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if !cfg.DenyPython {
+			t.Error("DenyPython = false, want true: claude_deny_python is renamed by a reconcile walk, not read by the loader")
+		}
+	})
+}
+
+// TestMigrateConfig_RenamesDenyPython pins the claude_deny_python to deny_python rename.
+// The rename keeps the value and the comment.
+func TestMigrateConfig_RenamesDenyPython(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		in        string
+		wantDoc   string
+		wantLines []string
+	}{
+		{
+			name:      "rename keeps value and comment",
+			in:        "run_timeout_min: 30\nclaude_deny_python: false  # off here\nengine: claude\n",
+			wantDoc:   "run_timeout_min: 30\ndeny_python: false # off here\nengine: claude\n",
+			wantLines: []string{"claude_deny_python: renamed to deny_python"},
+		},
+		{
+			name:    "document without the key is unchanged",
+			in:      "run_timeout_min: 30\n",
+			wantDoc: "run_timeout_min: 30\n",
+		},
+		{
+			name:      "both keys keep deny_python and report the dropped value",
+			in:        "deny_python: true\nclaude_deny_python: false\n",
+			wantDoc:   "deny_python: true\n",
+			wantLines: []string{"claude_deny_python: false dropped, deny_python already set"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, lines, err := shuttleengine.MigrateConfig([]byte(tt.in))
+			if err != nil {
+				t.Fatalf("MigrateConfig: %v", err)
+			}
+			if string(got) != tt.wantDoc {
+				t.Errorf("MigrateConfig document = %q, want %q", got, tt.wantDoc)
+			}
+			if !slices.Equal(lines, tt.wantLines) {
+				t.Errorf("MigrateConfig lines = %q, want %q", lines, tt.wantLines)
+			}
+
+			again, againLines, err := shuttleengine.MigrateConfig(got)
+			if err != nil {
+				t.Fatalf("second MigrateConfig: %v", err)
+			}
+			if string(again) != string(got) || len(againLines) != 0 {
+				t.Errorf("second pass = %q with lines %q, want the first pass's output and no lines", again, againLines)
 			}
 		})
 	}

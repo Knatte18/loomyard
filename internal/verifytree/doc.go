@@ -3,37 +3,109 @@
 //
 // Verify checks that the worktree is clean.
 // It skips a run when the verified-tree record holds an entry of the same command naming HEAD's tree.
-// Otherwise it runs the command and records the pass; only Verify writes the record, and only after a pass.
+// Otherwise it runs the command and records the pass.
+// The record holds one entry per command, each with the command, HEAD's tree, HEAD's commit and the time of its pass.
+// A pass replaces its own command's entry.
+// It drops every other command's entry naming a different tree.
+// The entry of the base command the caller names on Site is kept.
+// LatestPass returns the entry of one command, which a caller uses as a diff base.
 // A record in an older format, or a malformed one, reads as no record.
+// The record is written only by Verify and only after a pass.
+// A crash before that write leaves a mismatch, and the next call runs again.
 // A caller's own cancel is a returned error and no record.
-// Every site of one worktree shares one directory, Dir(anchorRoot), so a pass at one site lets the next site skip.
+// While a command runs, Verify keeps a running marker that loom status reads through ReadMarker.
 //
 // Verify takes no gate slot and applies no timeout.
-// Each command is one `lym gate test --wait` call, or such calls joined by `&&`, bounded by the gate.
-// A failed command whose log holds a tier timeout line is a failed result with TimedOut set.
-// One whose log holds the runner crash line is a failed result with RunnerCrash set.
-// One whose log holds the memory pressure line is a failed result with MemoryPressure set.
-// Either judged no code, which Result.Unjudged reports.
-// A site stops on an unjudged result rather than hand it to a fixer.
-// The command's environment drops the strand-name variable and gateslot.PrebuiltLymEnv.
+// Every command it runs is one `lym gate test --wait` call, or such calls joined by `&&`.
+// They take their own slots and are bounded by the gate's pre-tier ceiling and the tiers' timeouts.
+// A failed command whose log holds the gate's tier timeout line (gateslot.FindTierTimeout) is read as timed out.
+// The result is a failed one with the command's own exit code, TimedOut set and the tier and its timeout in Detail.
+// A failed command whose log lacks a tier timeout line may hold the runner crash line (gateslot.FindRunnerCrash).
+// It is then read as a runner crash, which judged no code.
+// The result is a failed one with the command's own exit code, RunnerCrash set and the crashed runs in Detail.
+// A site then stops rather than hand it to a fixer.
+// The marker is written as running from the start, and a waiting gate shows through the gate's own wait record.
+// A marker in the waiting state, or without a state, stays readable.
+// The command's environment drops the strand-name variable (agentname.StrandNameEnv),
+// so a test that drives `lym fabric` never meets the sandboxed-role guard.
 // Bound: a test is code the fork writes, which could clear the variable itself.
+// A verify command never sees gateslot.PrebuiltLymEnv.
+// Verify strips an inherited value, so the command's own `go test` builds lym once per test binary.
 //
-// A site may tell Verify a PauseHold, built by NewPauseHold; a nil hold runs as above.
-// Under a covering pause Verify starts no command until the resume, then starts over from the dirty check.
-// A command running past a covering entry's grace end is stopped by signal on its process group.
-// The stopped run is neither a pass nor a failure and reruns after the resume.
+// A site tells Verify a PauseHold, built by NewPauseHold over the pause record, and a nil hold runs exactly as above.
+// The hold is two functions and two timing seams.
+// PastGrace reports whether a covering live entry has passed its grace end.
+// Wait returns once no live entry covers the scope.
+// Poll is how often Verify asks PastGrace while the command runs, and Sleep spaces Wait's record reads.
+// A Verify entered under a covering pause writes a marker in the `paused` state.
+// It starts no command until the pause is resumed.
+// It then starts over from the dirty check.
+// A tree dirtied during the pause is reported dirty, and a record written during it skips.
+// A command running when a covering entry passes its grace end gets SIGTERM on its process group.
+// It gets SIGKILL after the wait delay.
+// The stopped run is neither a pass nor a failure, keeps its log, and reruns from the dirty check after the resume.
+// A pause resumed before its grace end lets the running command finish and record its result.
+// A held Verify removes its marker on every return, its dirty and skipped returns included.
 // The hold reads an unreadable record as uncovered, so a corrupt file never stops a verify.
+// While the site's slug-entry exemption reports true, only a hub entry holds it.
+// The exemption reports true for a run holding its parent lock.
 //
 // DirtyPaths is the dirty check every caller shares.
-// UncommittedFindings is the one finding a producing session gets when its turn ends with dirty paths.
+// UncommittedFindings is the one finding a producing session gets when its turn ends with dirty paths:
+// commit what belongs to the change and delete the rest.
 //
-// Each spawned run writes its own `verify-<n>.log` in the verify directory, named on Result.Log and never overwritten.
+// Each run that spawns its command writes its own log, `verify-<n>.log` in the verify directory.
+// The number n is one above the highest existing number, and the log is named on Result.Log.
+// A later verify therefore never overwrites an earlier run's evidence.
+// After each such run the directory keeps the newest verifyLogKeep logs plus the one the landing failure record names.
+// It removes the rest.
 //
-// The landing failure record is the never-tracked file `landing-failure.yaml` in the verify directory.
+// The landing failure record is the never-tracked file `landing-failure.yaml`.
 // Parent-Align and Finalize leave it when a verify of their own gate key fails.
-// It names the failing gate, tier, tests, log, HEAD and merge-in commit.
-// It adds an optional trace of the failure to the plan.
-// A later passing gate at either row removes it through RemoveLandingFailure.
+// A file named `publish-failure.yaml` is neither read nor kept from pruning.
+// The record names the failing gate as a FailureKind and the failing tier of that gate.
+// It also names the failing tests, the failing run's own log, HEAD and the merge-in commit the row made.
+// Its optional `build` field is true when the gate failed in its build step before any test ran.
+// The record then holds the first tier the build blocked and no tests.
+// A record without the field reads as a test failure.
+// A record may carry the retired kinds `plan_verify` and `publish_verify` and no tier.
+// A reader maps them onto the two gates.
+// A record carrying the retired kind `landing` reads as the key of the row that reads it:
+// Parent-Align, Finalize or the merge fixer they spawn.
+// The record names no row, and only those rows read it.
+// The record may also carry a trace of the failure to the plan.
+// `cards` holds one TracedCard per card, with the card's number and the glyphs and `path:line` locations matched to it.
+// A TracedCard also holds its Webster batch (0 when Webster holds no record of the card) and that batch's commit range.
+// `later_range` holds the commits made after the traced batches.
+// `untraced` holds the locations no card holds.
+// The trace fields are optional and omitted when empty.
+// The record stores no slug or intent text, since a reader takes them from the live plan.
+// Parent-Align and Finalize write it through WriteLandingFailure and the fixer's prompt names it.
+// A later passing gate at either row removes it through RemoveLandingFailure, which leaves the log to pruning.
+// ReadLandingFailure reads it, and IsLogPath checks a log path against the verify directory.
+// The record sits in the verify directory beside the logs.
 //
+// WithReachTurn is the reach turn.
+// It is a decorator over any verify gate that hands a writer the reach note through its own gate.
+// A ReachTurn tells it a source of the pending report and the entry's attempt budget.
+// It also tells it the entry's shuttleengine.RerunMark and the listed file.
+// `ReachListedPath` names the listed file in the verify directory.
+// A failing result of the inner gate is returned as it is and counts one failing arrival.
+// A passing result reads the pending report.
+// The turn runs when the report holds a function whose id and hash the listed file lacks.
+// The count plus one must also be below the budget.
+// The turn then adds the report's functions to those the listed file holds.
+// It returns one failing result marked WriterOnly.
+// Its findings are the note and the way forward: add the missing tests and commit them, or end the turn unchanged.
+// Any other pass is returned and resets the count.
+// So a function listed once brings no second turn, and an arrival one failure short of the budget passes without one.
+// A call inside the turn's RerunMark, the re-run after a cold fixer, adds nothing to the count.
+// That arrival's first, failing call counted already.
+// The pending source's error is the gate's error.
+// A listed file that cannot be read or written is logged at Warn, and the gate returns the pass without the turn.
+// Bound: the turn costs one writer turn and one gate attempt per arrival.
+// Only an arrival whose report lists an unreached function no earlier turn listed costs them.
+//
+// Every site of one worktree shares one directory, Dir(anchorRoot), so a pass at one site lets the next site skip.
 // The package imports no resolver: the worktree and the directory are told through Paths.
 package verifytree

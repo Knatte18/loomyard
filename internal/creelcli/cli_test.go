@@ -1879,54 +1879,6 @@ func TestCreelCLI(t *testing.T) {
 		}
 	})
 
-	t.Run("the reply probe reports a strand's unanswered question and no question of another strand", func(t *testing.T) {
-		r, orch, location := orchRig(t)
-		worker := r.name("worker")
-		pane := creelfake.LiveStrand(orch)
-		pane.PanePID = os.Getpid()
-		r.delivery.SetStrands(pane, creelfake.LiveStrand(worker))
-		if post := runCreel(r.cwd, "post", "--expect-reply", worker, "which schema?"); post.code != 0 {
-			t.Fatalf("post --expect-reply exit = %d, output %q; want 0", post.code, post.raw)
-		}
-		probe := AwaitsReplyProbe(location, "LOOM")
-		for _, tt := range []struct {
-			strand string
-			want   bool
-		}{{orch, true}, {worker, false}} {
-			got, err := probe(tt.strand)
-			if err != nil {
-				t.Fatalf("probe(%q) = %v", tt.strand, err)
-			}
-			if got != tt.want {
-				t.Errorf("probe(%q) = %v; want %v", tt.strand, got, tt.want)
-			}
-		}
-	})
-
-	t.Run("the reply probe run from a non-orch strand pane signs as that strand and answers for it", func(t *testing.T) {
-		r := newRig(t)
-		orch, worker := r.name("orch"), r.name("worker")
-		t.Setenv(agentname.StrandNameEnv, worker)
-		pane := creelfake.LiveStrand(worker)
-		pane.PanePID = os.Getpid()
-		r.delivery.SetStrands(creelfake.LiveStrand(orch), pane)
-		r.startDaemon(t)
-		location, err := lymcwd.Resolve(r.cwd)
-		if err != nil {
-			t.Fatalf("Resolve(%q) = %v", r.cwd, err)
-		}
-		if post := runCreel(r.cwd, "post", "--expect-reply", orch, "which schema?"); post.code != 0 {
-			t.Fatalf("post --expect-reply exit = %d, output %q; want 0", post.code, post.raw)
-		}
-		got, err := AwaitsReplyProbe(location, "LOOM")(worker)
-		if err != nil {
-			t.Fatalf("probe(%q) from the worker's pane = %v; want an answer", worker, err)
-		}
-		if !got {
-			t.Errorf("probe(%q) = false; want true for the worker's open question", worker)
-		}
-	})
-
 	t.Run("a program client's ReadAll with a failing handler leaves the reply unread for the next ReadAll", func(t *testing.T) {
 		r, orch, location := orchRig(t)
 		program, err := NewProgramClient(location, "BATTEN")

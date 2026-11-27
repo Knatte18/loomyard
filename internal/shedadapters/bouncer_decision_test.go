@@ -285,31 +285,6 @@ func TestBouncer_DecisionEscalation(t *testing.T) {
 		}
 	})
 
-	t.Run("AClosedScopeNamesTheInScopeRulingAndABoardNoteInPlaceOfADecisionEntry", func(t *testing.T) {
-		t.Parallel()
-		b, cfg, _ := decisionBouncerFor(t, "CONTINUE", decisionReviewContent(lowDecision), bouncerLedgerContent(2), func(c *BouncerConfig) { c.ScopeClosed = true })
-
-		ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-		requireReasonContains(t, ptr.Reason, "cause: decision", "board note for a new task", "lym loom circling continue my-task")
-		if strings.Contains(ptr.Reason, "lym loom decision add") {
-			t.Errorf("Reason = %q; want no decision entry named", ptr.Reason)
-		}
-		for _, want := range []string{"the task's scope is closed", `"lym loom circling continue my-task --in-scope <finding-id>"`, "board note"} {
-			if !strings.Contains(ptr.ParentNotice, want) {
-				t.Errorf("ParentNotice = %q; want it to contain %q", ptr.ParentNotice, want)
-			}
-		}
-		brief := requireDecisionEscalation(t, cfg)
-		for _, want := range []string{"D1", "`lym loom decision add` refuses", "lym loom circling continue my-task --in-scope <finding-id>", "`lym board upsert` and kind note"} {
-			if !strings.Contains(brief, want) {
-				t.Errorf("escalation brief = %q; want it to contain %q", brief, want)
-			}
-		}
-		if strings.Contains(brief, "Record the answer with `lym loom decision add") {
-			t.Errorf("escalation brief = %q; want no decision entry as the answer's route", brief)
-		}
-	})
-
 	t.Run("AHeldFindingCarriedByTheReviewIsTheOnlyOneTheDetailNames", func(t *testing.T) {
 		t.Parallel()
 		review := "---\nverdict: APPROVED\nprior:\n  - id: H1\n    status: resolved\n    answer: settled by the added entry\n  - id: H2\n    status: open\n" +
@@ -410,7 +385,7 @@ func TestBouncer_DecisionEscalation(t *testing.T) {
 				if ptr.BudgetExempt != tt.wantExempt {
 					t.Errorf("BudgetExempt = %v; want %v", ptr.BudgetExempt, tt.wantExempt)
 				}
-				if _, err := os.Stat(FocusPath(cfg.RunDir, 3)); err != nil {
+				if _, err := os.Stat(focusPath(cfg.RunDir, 3)); err != nil {
 					t.Errorf("round-3 focus file = %v; want it present", err)
 				}
 				assertNoArchivedRunDirSibling(t, cfg.RunDir)
@@ -478,7 +453,7 @@ func TestBouncer_DecisionEscalation(t *testing.T) {
 			t.Error("the re-judge Stuck is BudgetExempt; want a counted bounce unit")
 		}
 		requireReasonContains(t, ptr.Reason, `review finding "F1" is BLOCKING`)
-		for _, path := range []string{verdictPath(cfg.RunDir, 2), ledgerPath(cfg.RunDir, 2), FocusPath(cfg.RunDir, 3)} {
+		for _, path := range []string{verdictPath(cfg.RunDir, 2), ledgerPath(cfg.RunDir, 2), focusPath(cfg.RunDir, 3)} {
 			requireFileAbsent(t, path)
 		}
 		for _, path := range []string{escalationPath(cfg.RunDir, 2), circlingDecisionPath(cfg.RunDir, 2)} {
@@ -561,7 +536,7 @@ func TestBouncer_DecisionEscalation(t *testing.T) {
 					return
 				}
 				shedfake.RequireOutcome(t, b, shedengine.Stuck)
-				focus, err := os.ReadFile(FocusPath(cfg.RunDir, 3))
+				focus, err := os.ReadFile(focusPath(cfg.RunDir, 3))
 				if err != nil {
 					t.Fatalf("ReadFile(round-3 focus) = %v; want nil", err)
 				}
@@ -631,27 +606,6 @@ func TestBouncer_DecisionEscalation(t *testing.T) {
 			}
 			if !strings.Contains(brief, "lym loom circling accept my-task") {
 				t.Errorf("escalation brief = %q; want the accept verb", brief)
-			}
-		})
-		t.Run("at the cap on a closed scope", func(t *testing.T) {
-			t.Parallel()
-			b, cfg, _ := decisionBouncerFor(t, "CONVERGED", decisionReviewContent(lowDecision), bouncerLedgerContent(2), func(c *BouncerConfig) {
-				c.HardCap = 2
-				c.ScopeClosed = true
-			})
-			ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-			requireReasonContains(t, ptr.Reason, "board note for a new task", "lym loom circling accept my-task")
-			brief := requireDecisionEscalation(t, cfg)
-			for _, got := range []string{ptr.Reason, ptr.ParentNotice, brief} {
-				if strings.Contains(got, "--in-scope") || strings.Contains(got, "lym loom circling continue") {
-					t.Errorf("escalation text = %q; want the accept verb alone and no in-scope ruling", got)
-				}
-			}
-			if !strings.Contains(ptr.ParentNotice, "file each call as a board note") {
-				t.Errorf("ParentNotice = %q; want every call filed as a board note", ptr.ParentNotice)
-			}
-			if !strings.Contains(brief, "File every call as a board note") {
-				t.Errorf("escalation brief = %q; want every call filed as a board note", brief)
 			}
 		})
 		t.Run("a continue settled after the cap is lowered", func(t *testing.T) {

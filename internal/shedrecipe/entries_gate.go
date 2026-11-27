@@ -7,14 +7,13 @@ package shedrecipe
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // gateEntryKeys are the keys one element of a row's "gates" list may carry.
@@ -38,12 +37,12 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // "plan" requires env.AnchorPath, env.WorktreeRoot and a non-nil env.PlanIndex;
 // it returns loomshed.NewPlanGate over them;
 // "parts" requires env.AnchorPath, env.WorktreeRoot, env.DecisionRecordPath and a non-nil env.Setting;
-// it returns loomshed.NewPartsGate over them, capped by the tapestry.parts.max setting;
+// it returns loomshed.NewPartsGate over them, capped by the tapestry.parts_max setting;
 // "raddle" requires the absolute env.RaddleWrite.Check.ProposalPath and env.RaddleWrite.Check.RecordPath;
 // it also requires the non-nil env.RaddleWrite.Check.Board and env.RaddleWrite.Deps.StoreCold;
 // it returns loomshed.NewRaddleGate over them;
 // "description" requires env.DescriptionPath to pass requireAbsRoot;
-// it returns landingshed.NewDescriptionGate over it and the patterns env.DescriptionTerms returns, none when it is nil;
+// it returns landingshed.NewDescriptionGate over it;
 // "verify" requires the absolute env.WorktreeRoot and env.VerifyDir and a non-nil env.VerifyCommand;
 // it takes the optional env.VerifyMergeBase and env.VerifyTreeScope, and returns loomshed.NewVerifyGate over them;
 // the site label is "<row name> gate";
@@ -52,16 +51,12 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // env.VerifyTreeScope alone selects the darn form;
 // it requires env.VerifyMergeBase, the base of both lints in that form;
 // otherwise env.VerifyMergeBase is the base of the headroom lint;
+// with env.VerifyReach set, the gate runs under verifytree.WithReachTurn and its entry carries a re-run mark;
 // "drift" requires the env.Drift seams Config, Status, Head, CaptureCurrent, TrailerCommit, FileAt and Compare;
 // it returns driftengine.NewDriftGate over them;
 // "expectation" requires the env.Drift seams Config, TrailerCommit and FileAt;
 // it returns driftengine.NewExpectationGate over them;
 // "judgement" returns driftengine.NewJudgementGate over env.Drift, which reads only its Paths and requires no seam;
-// "red-first" requires the absolute env.WorktreeRoot, env.VerifyDir and env.DecisionRecordPath,
-// and the non-nil env.EntryLabels and env.RedFirstCommand;
-// it returns loomshed.NewRedFirstGate's closures over the call env.RedFirstCommand renders for the row's gate key;
-// the site label is "<row name> red-first gate" and the hold is env.VerifyHold;
-// its entry is MayHold, since the gate holds the run on a refusal its writer may not lift, and carries the gate's Final;
 // any other value is an error naming the key and every legal value.
 // A name may appear once per list.
 //
@@ -100,7 +95,7 @@ func resolveRowGateSpec(entry, row string, cfg Config, env Env) (shuttleengine.G
 	if raw, ok := cfg["gate_key"]; ok {
 		named, isString := raw.(string)
 		if !isString {
-			return nil, fmt.Errorf("shedrecipe: %s: row %q config key %q must be a string, got %T; way forward: set %q to the name of a key of %s, a string, or remove it to run the key named for the row", entry, row, "gate_key", raw, "gate_key", configengine.KeyName("gate", "gates"))
+			return nil, fmt.Errorf("shedrecipe: %s: row %q config key %q must be a string, got %T; way forward: set %q to the name of a gate.yaml key, a string, or remove it to run the key named for the row", entry, row, "gate_key", raw, "gate_key")
 		}
 		if named != "" {
 			gateKey = named
@@ -148,21 +143,20 @@ func resolveGateEntry(entry, row, gateKey string, index int, elem Config, env En
 	if err != nil {
 		return shuttleengine.GateEntry{}, wrap(err)
 	}
-	var closure, final shuttleengine.Gate
-	if name == "red-first" {
-		redFirst, err := resolveRedFirstGate(entry, row, gateKey, env)
-		if err != nil {
-			return shuttleengine.GateEntry{}, err
-		}
-		closure, final = redFirst.Gate, redFirst.Final
-	} else {
-		closure, err = resolvePlainGateClosure(entry, row, gateKey, index, name, env)
-		if err != nil {
-			return shuttleengine.GateEntry{}, err
-		}
+	closure, err := resolvePlainGateClosure(entry, row, gateKey, index, name, env)
+	if err != nil {
+		return shuttleengine.GateEntry{}, err
 	}
-	// Only the red-first gate carries a Final closure, and its Gate answers pending, so its entry holds.
-	resolved := shuttleengine.GateEntry{Name: name, Gate: closure, Final: final, MayHold: final != nil, Attempts: attempts, PassOnCap: passOnCap}
+	resolved := shuttleengine.GateEntry{Name: name, Gate: closure, Attempts: attempts, PassOnCap: passOnCap}
+	if name == "verify" && env.VerifyReach != nil {
+		resolved.Rerun = &shuttleengine.RerunMark{}
+		resolved.Gate = verifytree.WithReachTurn(closure, verifytree.ReachTurn{
+			Pending:    func() (verifytree.ReachPending, bool, error) { return env.VerifyReach(gateKey) },
+			Attempts:   attempts,
+			Rerun:      resolved.Rerun,
+			ListedPath: verifytree.ReachListedPath(env.VerifyDir, row+" gate"),
+		})
+	}
 	return resolved, nil
 }
 
@@ -184,7 +178,7 @@ func planContextOf(env Env) loomshed.PlanContext {
 
 // resolvePlainGateClosure resolves the validator names of the gate vocabulary.
 // The "parts" gate requires the absolute env.AnchorPath and env.DecisionRecordPath and a non-nil env.Setting.
-// It reads its cap from the tapestry.parts.max setting.
+// It reads its cap from the tapestry.parts_max setting.
 // The "verify" gate is told env.VerifyHold, which holds its verify under a pause, and env.VerifyBudget.
 func resolvePlainGateClosure(entry, row, gateKey string, index int, name string, env Env) (shuttleengine.Gate, error) {
 	switch name {
@@ -248,13 +242,13 @@ func resolvePlainGateClosure(entry, row, gateKey string, index int, name string,
 		if err := requireSeam(entry, "Setting", env.Setting); err != nil {
 			return nil, err
 		}
-		value, err := env.Setting("tapestry", "parts.max")
+		value, err := env.Setting("tapestry", "parts_max")
 		if err != nil {
-			return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: setting tapestry.parts.max: %w", entry, "gates", index, err)
+			return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: setting tapestry.parts_max: %w", entry, "gates", index, err)
 		}
 		max, ok := value.(int)
 		if !ok || max < 1 {
-			return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: setting tapestry.parts.max holds %v, want an integer of 1 or more; way forward: set tapestry.parts.max in tapestry.yaml to the most parts a parts file may hold", entry, "gates", index, value)
+			return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: setting tapestry.parts_max holds %v, want an integer of 1 or more; way forward: set tapestry.parts_max in tapestry.yaml to the most parts a parts file may hold", entry, "gates", index, value)
 		}
 		return loomshed.NewPartsGate(env.AnchorPath, env.WorktreeRoot, env.DecisionRecordPath, max), nil
 	case "raddle":
@@ -275,15 +269,7 @@ func resolvePlainGateClosure(entry, row, gateKey string, index int, name string,
 		if err := requireAbsRoot(entry, "DescriptionPath", env.DescriptionPath); err != nil {
 			return nil, err
 		}
-		var forbidden []*regexp.Regexp
-		if env.DescriptionTerms != nil {
-			terms, err := env.DescriptionTerms()
-			if err != nil {
-				return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: read the forbidden terms: %w", entry, "gates", index, err)
-			}
-			forbidden = terms
-		}
-		return landingshed.NewDescriptionGate(env.DescriptionPath, forbidden), nil
+		return landingshed.NewDescriptionGate(env.DescriptionPath), nil
 	case "verify":
 		if err := requireAbsRoot(entry, "WorktreeRoot", env.WorktreeRoot); err != nil {
 			return nil, err
@@ -329,25 +315,6 @@ func resolvePlainGateClosure(entry, row, gateKey string, index int, name string,
 	case "judgement":
 		return driftengine.NewJudgementGate(driftDepsFrom(env)), nil
 	default:
-		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q, %q, %q, %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "clean", "discussion", "plan", "parts", "raddle", "description", "verify", "drift", "expectation", "judgement", "red-first", name)
+		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q, %q, %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "clean", "discussion", "plan", "parts", "raddle", "description", "verify", "drift", "expectation", "judgement", name)
 	}
-}
-
-// resolveRedFirstGate checks the Env the "red-first" gate requires and returns its closures.
-// They run the call env.RedFirstCommand renders for gateKey, labelled "<row> red-first gate" and held by env.VerifyHold.
-func resolveRedFirstGate(entry, row, gateKey string, env Env) (loomshed.RedFirstGate, error) {
-	for _, root := range []struct{ field, value string }{
-		{"WorktreeRoot", env.WorktreeRoot}, {"VerifyDir", env.VerifyDir}, {"DecisionRecordPath", env.DecisionRecordPath},
-	} {
-		if err := requireAbsRoot(entry, root.field, root.value); err != nil {
-			return loomshed.RedFirstGate{}, err
-		}
-	}
-	if err := requireSeam(entry, "EntryLabels", env.EntryLabels); err != nil {
-		return loomshed.RedFirstGate{}, err
-	}
-	if err := requireSeam(entry, "RedFirstCommand", env.RedFirstCommand); err != nil {
-		return loomshed.RedFirstGate{}, err
-	}
-	return loomshed.NewRedFirstGate(env.WorktreeRoot, env.VerifyDir, row+" red-first gate", env.RedFirstCommand(gateKey), env.EntryLabels, env.DecisionRecordPath, env.VerifyHold), nil
 }

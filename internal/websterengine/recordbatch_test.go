@@ -582,22 +582,6 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 			},
 		},
 		{
-			name:   "a Master write to the saved friction note path is no finding",
-			audits: oneFork,
-			prepare: func(t *testing.T, fx *recordFixture) {
-				note := filepath.Join(t.TempDir(), "webster-master.md")
-				fx.Deps.State.MasterNotePath = note
-				fx.Audit.scripted[0].ParentWrites = []string{note}
-			},
-			report: okReport,
-			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
-				requireDone(t, result)
-				if len(result.Warnings) != 0 {
-					t.Errorf("RecordResult.Warnings = %v; want none", result.Warnings)
-				}
-			},
-		},
-		{
 			name:   "a done report over an unrendered amendment fails the batch with card_amended",
 			audits: oneFork,
 			prepare: func(t *testing.T, fx *recordFixture) {
@@ -829,7 +813,7 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 				fx.Deps.Engines = shuttleengine.NewEngineSet(shuttlefake.EngineName, map[string]shuttleengine.Engine{shuttlefake.EngineName: struct{ shuttleengine.Engine }{fx.Audit.engine()}})
 			},
 			report:  okReport,
-			wantErr: []string{"shuttle.engine", "set shuttle.engine in shuttle.yaml back to an engine with fork audit"},
+			wantErr: []string{"engine:", "set engine: in shuttle.yaml back to an engine with fork audit"},
 			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
 				archived(t, fx, 0)
 			},
@@ -1631,8 +1615,6 @@ func TestFailCardNotDone_WayForward(t *testing.T) {
 
 	const (
 		amend        = "amend the card's Create target or Rename new side to the unit, owner or parameter list the finding names the member declared with, run `lym webster rebaseline --card NN` naming each card you edited, then `lym webster recover-batch 01`"
-		createWays   = amend + "; or, when a parent decision drops the Create, the run's parent records it with `lym loom decision add <slug> --by parent … --drops-create <target>`, then `lym webster recover-batch 01`, and the done-check skips that target; or `lym webster recover-batch 01` to build the target as the card names it; once the task's scope is closed no decision records a drop, so the run's parent files it as a board note for a new task with `lym board upsert` and kind note, and one of the other steps is taken"
-		renameWays   = amend + "; or `lym webster recover-batch 01` to build the target as the card names it"
 		amendGlyph   = "amend the card's target to a spelling `lym quarry resolve` answers, run `lym webster rebaseline --card NN` naming each card you edited, then `lym webster recover-batch 01`"
 		moveDelete   = "move the delete to a card after the one that still references it, run `lym webster rebaseline --card NN` naming each card you edited, then `lym webster recover-batch 01`"
 		freshRestart = "1) lym webster reset --to start; 2) lym webster run"
@@ -1659,22 +1641,24 @@ func TestFailCardNotDone_WayForward(t *testing.T) {
 		amended     []websterengine.AmendedCard
 	}{
 		{"SignatureMismatchAmendsAlone", []planindex.Finding{signatureMismatch}, "record-batch", 0, nil, nil, amend, nil},
-		{"CreateNotDoneOffersAmendDropAndRecover", []planindex.Finding{createNotDone}, "record-batch", 0, nil, nil, createWays, nil},
-		{"RenameNotDoneOffersAmendAndRecoverWithoutTheDrop", []planindex.Finding{renameNotDone}, "record-batch", 0, nil, nil, renameWays, nil},
-		{"RenameBesideCreateNotDoneOffersTheDrop", []planindex.Finding{renameNotDone, createNotDone}, "record-batch", 0, nil, nil, createWays, nil},
-		{"CreateNotDoneAfterARecoveryOffersTheSameWays", []planindex.Finding{createNotDone}, "recover-batch", 0, nil, nil, createWays, nil},
+		{"CreateNotDoneOffersRecoverAndAmend", []planindex.Finding{createNotDone}, "record-batch", 0, nil, nil,
+			"lym webster recover-batch 01 to build the target as the card names it; or, when the member is declared where the finding names it, " + amend, nil},
+		{"RenameNotDoneOffersRecoverAndAmend", []planindex.Finding{renameNotDone}, "record-batch", 0, nil, nil,
+			"lym webster recover-batch 01 to build the target as the card names it; or, when the member is declared where the finding names it, " + amend, nil},
+		{"CreateNotDoneAfterARecoveryAmendsAlone", []planindex.Finding{createNotDone}, "recover-batch", 0, nil, nil, amend, nil},
 		{"UncheckableRestartsTheRun", []planindex.Finding{createNotDone}, "record-batch", 0, []string{"fabric-reference: Bash command references the fabric"}, nil, freshRestart, nil},
 		{"UncheckableSignatureMismatchRestartsTheRun", []planindex.Finding{signatureMismatch}, "record-batch", 0, []string{"fabric-reference: Bash command references the fabric"}, nil, freshRestart, nil},
 		{"ExhaustedRecoveriesTakeTheExhaustedSteps", []planindex.Finding{createNotDone}, "recover-batch", websterengine.MaxRecoveries, nil, nil, exhausted, nil},
 		{"ExhaustedRecoveriesBeatRenameNotDone", []planindex.Finding{renameNotDone}, "recover-batch", websterengine.MaxRecoveries, nil, nil, exhausted, nil},
-		{"ExhaustedBatchWithAnUnrenderedAmendmentOffersTheSameWays", []planindex.Finding{createNotDone}, "recover-batch", websterengine.MaxRecoveries, nil, nil, createWays,
+		{"ExhaustedBatchWithAnUnrenderedAmendmentAmendsAlone", []planindex.Finding{createNotDone}, "recover-batch", websterengine.MaxRecoveries, nil, nil, amend,
 			[]websterengine.AmendedCard{{Card: "1-json-flag", Rendered: false}}},
 		{"ExhaustedRecoveriesBeatSignatureMismatch", []planindex.Finding{signatureMismatch}, "recover-batch", websterengine.MaxRecoveries, nil, nil, exhausted, nil},
 		{"ExhaustedRecoveriesBeatGlyphRejected", []planindex.Finding{glyphRejected}, "recover-batch", websterengine.MaxRecoveries, nil, nil, exhausted, nil},
 		{"ExhaustedRecoveriesBeatReferencedDelete", []planindex.Finding{deleteNotDone}, "recover-batch", websterengine.MaxRecoveries, nil, stillReferenced, exhausted, nil},
 		{"GlyphRejectedBeatsCreateNotDone", []planindex.Finding{createNotDone, glyphRejected}, "record-batch", 0, nil, nil, amendGlyph, nil},
 		{"ReferencedDeleteBeatsCreateNotDone", []planindex.Finding{createNotDone, deleteNotDone}, "record-batch", 0, nil, stillReferenced, moveDelete, nil},
-		{"UnreferencedDeleteLeavesCreateNotDone", []planindex.Finding{deleteNotDone, createNotDone}, "record-batch", 0, nil, nil, createWays, nil},
+		{"UnreferencedDeleteLeavesCreateNotDone", []planindex.Finding{deleteNotDone, createNotDone}, "record-batch", 0, nil, nil,
+			"lym webster recover-batch 01 to build the target as the card names it; or, when the member is declared where the finding names it, " + amend, nil},
 	}
 
 	for _, tt := range tests {
@@ -1735,41 +1719,11 @@ func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))); !os.IsNotExist(statErr) {
 		t.Errorf("report still at its live path (stat err %v); want it archived", statErr)
 	}
-	for _, want := range []string{"way forward: amend the card's Create target", "lym webster rebaseline --card NN", "--drops-create <target>", "lym webster recover-batch 01` to build the target as the card names it"} {
+	for _, want := range []string{"way forward: lym webster recover-batch 01 to build the target as the card names it", "amend the card's Create target", "lym webster rebaseline --card NN"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("RecordBatch() error = %q; want it to contain %q", err.Error(), want)
 		}
 	}
-
-	// A decision record that drops the unresolved target lets the batch record, with a warning naming the drop.
-	t.Run("DroppedTargetRecordsTheBatchWithAWarning", func(t *testing.T) {
-		fx := newRecordFixture(t, []shuttleengine.ForkAudit{
-			{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
-		})
-		writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
-		const target = "internal/foo#NeverLanded"
-		fx.Deps.Plan.Cards[0].TargetGroups = []planparser.TargetGroup{
-			{Type: planparser.CardTypeCreate, Refs: []string{target}},
-		}
-		record := filepath.Join(t.TempDir(), "decision.md")
-		text := "## Decisions\n\n### Added after Discussion (parent, 2026-11-21): Drop it\n\nDecision: drop it.\nRationale: unneeded.\nDrops Create: `" + target + "`\n"
-		if err := os.WriteFile(record, []byte(text), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		fx.Deps.Geom.DecisionRecordPath = record
-
-		result, err := websterengine.RecordBatch(fx.Deps, 1)
-		if err != nil {
-			t.Fatalf("RecordBatch() error = %v; want the batch recorded", err)
-		}
-		wantWarning := `Create target "` + target + `" is dropped by the decision "Drop it", so its done-check did not run`
-		if !strings.Contains(strings.Join(result.Warnings, "\n"), wantWarning) {
-			t.Errorf("RecordBatch() warnings = %q; want one containing %q", result.Warnings, wantWarning)
-		}
-		if bs := fx.Deps.State.Batches[1]; !bs.Terminal || bs.Status == websterengine.DigestStatusFailed {
-			t.Errorf("BatchState = terminal %v status %q; want terminal and not failed", bs.Terminal, bs.Status)
-		}
-	})
 
 	t.Run("ReasonsOpenWithTheBatchAndItsCards", func(t *testing.T) {
 		fx := newRecordFixture(t, []shuttleengine.ForkAudit{

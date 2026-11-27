@@ -19,21 +19,13 @@ func (c *loomCLI) loomConsumeAttempt(_ context.Context, attempt string) error {
 	if err != nil || number < 1 {
 		return fmt.Errorf("loom: arbiter attempt %q is not a positive integer; way forward: report the stop to the run's parent in the stop report, and the parent decides", attempt)
 	}
-	return shedarbiter.ConsumeAttempt(shedrun.ArbiterAttemptDir(c.location, c.runID, number), c.relaunchRequest(shedrun.ResolveRunID(c.location, c.runID), c.settledGuard()))
-}
-
-// relaunchRequest builds the request that relaunches the run runID over the receiver's status files.
-// Its guard ends the run's fixers once guard admits the move,
-// and its Admitted hook sets aside the interrupted shuttle runs and resets a PR-Review review that the move lands on.
-func (c *loomCLI) relaunchRequest(runID string, guard shedengine.GotoGuard) shedengine.RelaunchRequest {
-	return shedengine.RelaunchRequest{
+	return shedarbiter.ConsumeAttempt(shedrun.ArbiterAttemptDir(c.location, c.runID, number), shedengine.RelaunchRequest{
 		StatusPath:              c.shedPaths.StatusPath,
 		LockPath:                c.shedPaths.LockPath,
 		StatusLockPath:          c.shedPaths.StatusLockPath,
 		Producers:               c.routing.Producers,
-		RunID:                   runID,
+		RunID:                   shedrun.ResolveRunID(c.location, c.runID),
 		MissingStatusWayForward: c.shedPaths.MissingStatusWayForward,
-		Guard:                   c.gotoGuardEndingFixers(guard),
-		Admitted:                c.gotoAdmitted(),
-	}
+		Guard:                   c.gotoGuardEndingFixers(c.settledGuard()),
+	})
 }

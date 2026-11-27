@@ -167,7 +167,6 @@ func checkRecordable(in recordInputs) (recordOutcome, error) {
 		Batches:                batches,
 		Number:                 number,
 		Cards:                  in.Batch.Cards,
-		DecisionRecordPath:     in.Geom.DecisionRecordPath,
 		StartSHA:               in.Record.StartSHA,
 		HeadSHA:                head,
 		Label:                  in.Label,

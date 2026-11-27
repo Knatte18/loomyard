@@ -368,9 +368,6 @@ func parityLightweightWiringStatusSucceedsWhenRunRefuses(t *testing.T, h *hubfor
 	// without touching YAML syntax. wireLightweight never loads this file at all, so status must
 	// still succeed.
 	cfgPath := filepath.Join(location.AnchorPath(), "_lym", "config", "loom.yaml")
-	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
-		t.Fatalf("create the pair's config dir: %v", err)
-	}
 	if err := os.WriteFile(cfgPath, []byte("discussion: \"::not-a-valid-modelspec::\"\n"), 0o644); err != nil {
 		t.Fatalf("write broken loom.yaml: %v", err)
 	}

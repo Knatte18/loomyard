@@ -15,8 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomrecipe"
-	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -62,14 +60,6 @@ func TestValidateReviewVerb_RoundChecks(t *testing.T) {
 		t.Fatalf("ResolveWithin(%s) = %v; want nil", worktree, err)
 	}
 	reviews := loomengine.LoomReviewsDir(location)
-	hardenSubdir, found, err := loomrecipe.BouncerRunSubdir(loomshed.NameHardenBouncer)
-	if err != nil || !found {
-		t.Fatalf("BouncerRunSubdir(%s) = %q, %v, %v; want a run_subdir", loomshed.NameHardenBouncer, hardenSubdir, found, err)
-	}
-	codeSubdir, found, err := loomrecipe.BouncerRunSubdir(loomshed.NameCodeBouncer)
-	if err != nil || !found {
-		t.Fatalf("BouncerRunSubdir(%s) = %q, %v, %v; want a run_subdir", loomshed.NameCodeBouncer, codeSubdir, found, err)
-	}
 
 	tests := []struct {
 		name string
@@ -77,10 +67,6 @@ func TestValidateReviewVerb_RoundChecks(t *testing.T) {
 		runDir       string
 		bare         bool
 		brokenRecord bool
-		// offChangesReview writes a review with a complete prior list.
-		// Its one new finding is BLOCKING, class decision and origin focus, and sits outside the changed files.
-		// The changes file lists only a.go.
-		offChangesReview bool
 		// cwd is the seam cwd the verb runs from; empty is the worktree.
 		cwd string
 		// wantRefusal is the substring of the refusal an exit 1 carries, empty for exit 0.
@@ -93,8 +79,6 @@ func TestValidateReviewVerb_RoundChecks(t *testing.T) {
 		{name: "SeamCwdOutsideAGitRepository", runDir: filepath.Join(reviews, "run-no-repo"), cwd: t.TempDir()},
 		{name: "RunDirectoryOutsideTheReviewRunRoot", runDir: filepath.Join(worktree, "elsewhere")},
 		{name: "BuilderErrorFallsBackToTheParse", runDir: filepath.Join(reviews, "run-broken"), brokenRecord: true, wantNote: "round context could not be built"},
-		{name: "OffChangesFindingAdmittedInTheHardenerRunDirectory", runDir: filepath.Join(reviews, hardenSubdir), offChangesReview: true},
-		{name: "OffChangesFindingRefusedInTheCodeRunDirectory", runDir: filepath.Join(reviews, codeSubdir), offChangesReview: true, wantRefusal: "does not list"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -105,16 +89,7 @@ func TestValidateReviewVerb_RoundChecks(t *testing.T) {
 				t.Fatalf("MkdirAll(%s) = %v; want nil", tt.runDir, err)
 			}
 			review := filepath.Join(tt.runDir, "round-2-review.md")
-			content := "---\nverdict: APPROVED\n---\nnothing found\n"
-			if tt.offChangesReview {
-				content = "---\nverdict: BLOCKING\nfindings:\n" +
-					"  - id: F2\n    severity: BLOCKING\n    class: decision\n    origin: focus\n    location: z.go:1\n    summary: s2\n    fix: f2\n" +
-					"prior:\n  - id: F1\n    status: resolved\n---\n\n### [BLOCKING] s2\n\n**Location:** z.go:1\n\n**Issue:** an undriven focus entry.\n"
-				if err := os.WriteFile(filepath.Join(tt.runDir, "round-2-changes.md"), []byte("a.go\n"), 0o644); err != nil {
-					t.Fatalf("WriteFile(changes file) = %v; want nil", err)
-				}
-			}
-			if err := os.WriteFile(review, []byte(content), 0o644); err != nil {
+			if err := os.WriteFile(review, []byte("---\nverdict: APPROVED\n---\nnothing found\n"), 0o644); err != nil {
 				t.Fatalf("WriteFile(%s) = %v; want nil", review, err)
 			}
 			cwd := tt.cwd

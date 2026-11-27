@@ -95,11 +95,6 @@ type RecoverDeps struct {
 	// CardFixer sends a failed card gate call through a cold fixer first.
 	// The recovery prompt states this.
 	CardFixer bool
-
-	// Answer is what the run's parent answered a waiting batch's need.
-	// Only a spawn resuming a waiting batch records it; every other spawn and every attach ignores it.
-	// Resuming a waiting recovery refuses when it is blank.
-	Answer string
 }
 
 // RecoverResult is what one RecoverAwait call returns.
@@ -186,17 +181,6 @@ func failureDigestBlock(prior *BatchState) string {
 	return strings.Join(lines, "\n")
 }
 
-// parentAnswersBlock renders each need a batch waited on beside the parent's answer, for the recovery prompt.
-// A further line of a multi-line answer is indented under its entry.
-// It returns "" when there is none.
-func parentAnswersBlock(answers []ParentAnswer) string {
-	lines := make([]string, 0, len(answers))
-	for _, a := range answers {
-		lines = append(lines, fmt.Sprintf("- need: %s\n  answer: %s", a.Need, strings.ReplaceAll(a.Answer, "\n", "\n  ")))
-	}
-	return strings.Join(lines, "\n")
-}
-
 // uncommittedPathsBlock renders the uncommitted worktree paths for the recovery prompt.
 // It groups them by whether this run wrote them.
 // A path the run's write evidence cannot attribute counts as not written by this run;
@@ -247,15 +231,6 @@ func writtenUnder(written []string, uncommitted string) bool {
 		return slices.ContainsFunc(written, func(w string) bool { return strings.HasPrefix(w, dir+"/") })
 	}
 	return slices.Contains(written, uncommitted)
-}
-
-// keepAnswerOnRerun adds to a failed spawn's error that its re-run needs the answer again.
-// That holds while prior is a waiting recovery, since the failed spawn recorded nothing.
-func keepAnswerOnRerun(prior *BatchState, err error) error {
-	if !waitsOnParent(prior) || prior.Kind != "recovery" {
-		return err
-	}
-	return fmt.Errorf("%w; the batch still waits on its parent, so pass the same --answer on the re-run", err)
 }
 
 // rendersNewAmendment reports whether prior holds an amendment no earlier recovery spawn rendered into its prompt.
@@ -339,14 +314,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, fmt.Errorf("webster: no resolved model-spec for role %q", RoleRecovery)
 	}
 	engine := deps.Engines.EngineName(choice)
-	var answers []ParentAnswer
-	if prior != nil {
-		answers = slices.Clone(prior.ParentAnswers)
-	}
-	if answer := strings.TrimSpace(deps.Answer); answer != "" && waitsOnParent(prior) {
-		answers = append(answers, ParentAnswer{Need: waitingNeed(prior), Answer: answer})
-	}
-	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), parentAnswersBlock(answers), uncommittedPaths, reportPath, deps.Geom.WorktreeRoot, deps.Geom.PlanDir, deps.Geom.PaneCwd, deps.Geom.StencilsDir, engine, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, patternChanges, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName, deps.CardFixer)
+	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.WorktreeRoot, deps.Geom.PlanDir, deps.Geom.PaneCwd, deps.Geom.StencilsDir, engine, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, patternChanges, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName, deps.CardFixer)
 	if err != nil {
 		return nil, err
 	}
@@ -425,7 +393,6 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		Cards:            runplan.BatchCardIDs(batch),
 		CardHashes:       cardHashes,
 		AmendedCards:     amended,
-		ParentAnswers:    answers,
 		StartSHA:         start,
 		AuditWarnings:    priorWarnings,
 		SuspectPaths:     priorSuspects,
@@ -447,8 +414,6 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 // It also reports how many counted recoveries the batch has.
 // It is true for a terminal dead recovery record with no counted recovery, the state a `reset --to batch-start` leaves.
 // That record still owes the batch its first counted recovery.
-// It is true at any count for a record holding an amendment no spawn rendered.
-// The spawn that renders such an amendment counts no recovery.
 // Below the cap it is otherwise true only when the recovery committed work of its own:
 // HEAD descends from the record's non-empty RecoveryStartSHA,
 // and the first-parent range from it to HEAD holds a commit that is not a merge.
@@ -475,13 +440,7 @@ func recoveryRetryRead(geom Geometry, st *State, n int) (retry bool, recoveries 
 		return false, 0, nil
 	}
 	recoveries = bs.Recoveries
-	if bs.Kind != "recovery" || !bs.Terminal || bs.Status != DigestStatusDead {
-		return false, recoveries, nil
-	}
-	if rendersNewAmendment(bs) {
-		return true, recoveries, nil
-	}
-	if recoveries >= maxRecoveries {
+	if bs.Kind != "recovery" || !bs.Terminal || bs.Status != DigestStatusDead || recoveries >= maxRecoveries {
 		return false, recoveries, nil
 	}
 	if recoveries == 0 {
@@ -534,8 +493,6 @@ func committedSince(geom Geometry, start string) (bool, error) {
 // The bound: it refuses only while that check fires for the batch's own cards against the current plan and tree;
 // moving the delete and rebaselining clears it.
 // A record waiting on its parent is never attached to and never refused as exhausted: the spawn resumes it uncounted.
-// Resuming a waiting recovery record refuses while deps.Answer is blank,
-// so no resumed strand starts without what it waited for.
 func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *BatchState, spawned bool, err error) {
 	batch, err := findBatch(deps.Batches, batchNumber)
 	if err != nil {
@@ -545,9 +502,6 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 	prior := deps.State.Batches[batchNumber]
 	if prior != nil && prior.Kind == "recovery" && !prior.Terminal && prior.StrandGUID != "" && !waitsOnParent(prior) {
 		return prior, false, nil
-	}
-	if waitsOnParent(prior) && prior.Kind == "recovery" && strings.TrimSpace(deps.Answer) == "" {
-		return nil, false, fmt.Errorf("webster: batch %02d waits on its parent (%s), so its resume needs the parent's answer; way forward: once the parent has answered, `%s`", batchNumber, waitingNeed(prior), resumeStep(prior, batchNumber))
 	}
 	// The recovery key can change mid-run, so the spawn re-checks it ahead of anything that archives or stops.
 	if choice, ok := deps.Roles[RoleRecovery]; ok {
@@ -603,7 +557,7 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 
 	referenced, err := runplan.LaterDeleteReferenceReasons(deps.Plan, deps.Batches, &deps.State.State, batch.Cards, deps.Geom.runPlan())
 	if err != nil {
-		return nil, false, keepAnswerOnRerun(prior, fmt.Errorf("%w; way forward: transient, re-run `lym webster recover-batch %d`", err, batchNumber))
+		return nil, false, fmt.Errorf("%w; way forward: transient, re-run `lym webster recover-batch %d`", err, batchNumber)
 	}
 	if len(referenced) > 0 {
 		return nil, false, fmt.Errorf("%w: batch %02d: %s; way forward: %s", ErrRecoveryDeleteReferenced, batchNumber, strings.Join(referenced, "; "), deleteReferencedWayForward(batchNumber, prior != nil && len(prior.Uncheckable) > 0, false))
@@ -613,7 +567,7 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 
 	fresh, err := recoverSpawn(deps, batch, prior, prevDigest, clk)
 	if err != nil {
-		return nil, false, keepAnswerOnRerun(prior, err)
+		return nil, false, err
 	}
 	if deps.State.Batches == nil {
 		deps.State.Batches = map[int]*BatchState{}
@@ -839,8 +793,6 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 
 // awaitTerminal drives one bounded long-poll wait for bs's recovery strand.
 // Each poll classifies the batch report, the turn ends and the strand's liveness into a digest.
-// A dead asking digest carries the strand's final message when it has one;
-// a failed read of it is a warning.
 // Every terminal digest removes the recovery strand if still live, even when the call then refuses;
 // only a done digest also removes the run dir.
 // Cleanup failures are warnings, not fatal errors.
@@ -918,14 +870,6 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 	// so a terminal digest that then refuses leaves no live strand.
 	if err := deps.Stopper.StopStrand(bs.StrandGUID); err != nil {
 		warnings = append(warnings, fmt.Sprintf("recover-batch: stop strand %s: %v", bs.StrandGUID, err))
-	}
-
-	if digest.Status == DigestStatusDead && digest.DeadReason == DeadReasonAsking {
-		message, err := gatefixer.LastTurnMessage(bs.EventsPath, bs.EventsOffset, engine)
-		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("recover-batch: read the strand's last message: %v", err))
-		}
-		digest.LastMessage = strings.Join(strings.Fields(message), " ")
 	}
 
 	// A merge in progress leaves the batch non-terminal and retryable.

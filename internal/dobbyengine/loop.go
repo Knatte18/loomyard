@@ -73,6 +73,9 @@ type Deps struct {
 	// A CatchUp whose PullBolt is nil means no catch-up, as a nil PullBolt pulls nothing.
 	// Its Launcher also names the hub's desktop launcher the dobby's start adds.
 	CatchUp CatchUpDeps
+	// Upgrade is the seams of the first read after an upgrade, which the dobby runs before its first catch-up that succeeds.
+	// An Upgrade whose Entries is nil means no first read.
+	Upgrade UpgradeDeps
 	// SyncBoltHold brings the bolt-hold entries of the runs in scope in line with the hold, held being the slugs it holds.
 	// A nil SyncBoltHold syncs nothing.
 	SyncBoltHold func(ctx context.Context, scope, held []string) error
@@ -85,9 +88,8 @@ type Deps struct {
 	CheckBinary func(beforeExec func(), failed func(error))
 	// StartTicks returns the start time `proc.StartTime` reads, empty when unreadable; nil reads this process's pid.
 	StartTicks func() string
-	// PrimeTidyShuttle stops the board-tidy and describer agents of a beam with no worktree, at the prime's location;
-	// nil stops nothing.
-	PrimeTidyShuttle AgentShuttle
+	// PrimeTidyShuttle stops the board-tidy agent of a beam with no worktree, at the prime's location; nil stops nothing.
+	PrimeTidyShuttle TidyShuttle
 	// ReexecLockWait is how long a re-exec waits for the dobby lock; zero means ten seconds.
 	ReexecLockWait time.Duration
 	// Locked runs once the lock is held, before the state record is written; nil does nothing.
@@ -114,6 +116,12 @@ type Deps struct {
 	// The channel delivers once, mapping each slug to nil when its pair was removed and to the reason otherwise.
 	// A nil TearDownLeftovers tears nothing down.
 	TearDownLeftovers func(pairs []LeftoverPair) <-chan map[string]error
+	// MarkKeptCancels marks each run of this worktree cancelled with keep before cancel intents existed.
+	// Each marked run, whose pair stands here, gets its finished keep cancel intent.
+	// A finished keep intent of this machine whose commit failed is committed again.
+	// It returns the slugs it committed.
+	// A nil MarkKeptCancels marks nothing.
+	MarkKeptCancels func() ([]string, error)
 	// Orphans lists the hub's orphan pairs, the pairs neither a board entry nor a batten record names.
 	// The hub wiring gives it to the prime's dobby only; a nil Orphans or an empty OrphanRecord notices no orphan.
 	Orphans func() ([]OrphanView, error)
@@ -142,7 +150,7 @@ type Deps struct {
 	// A nil Landings, or a nil TidyShuttle, leaves the board tidy off.
 	Landings func() ([]string, error)
 	// TidyShuttle starts and stops the board-tidy agent.
-	TidyShuttle AgentShuttle
+	TidyShuttle TidyShuttle
 	// TidyModel is the model the board-tidy agent runs on, resolved by the hub wiring.
 	TidyModel shuttleengine.ModelChoice
 	// StencilsDir is the hub's stencils directory, where the board-tidy stencil is read at call time.
@@ -151,11 +159,6 @@ type Deps struct {
 	NearestOrch func() (string, error)
 	// RunNotices are the seams the run notices of the runs this dobby drives read; a nil RunNotices.ReadChild sends none.
 	RunNotices RunNoticeDeps
-	// RunWatch are the seams of the run watch; a nil RunWatch.Level or RunWatch.Post watches nothing.
-	// The child it reads comes through RunNotices.ReadChild.
-	RunWatch RunWatchDeps
-	// GateHolds are the seams of the gate-hold notice; a nil GateHolds.Holders or GateHolds.Post checks nothing.
-	GateHolds GateHoldDeps
 	// WaitReminders are the seams the reminders of a child waiting on the operator read; nil WaitReminders.Post sends none.
 	WaitReminders WaitReminderDeps
 	// CanLand reads whether the beam of this dobby is flagged ready with nothing working under it, and who owns its parent.
@@ -169,15 +172,14 @@ type Deps struct {
 	// A nil BeamReady, as on the prime, holds nothing.
 	BeamReady func() (bool, error)
 	// PullRequestRecorded reads whether the beam's landing record holds a pull request.
-	// While it does, a member landing gets the beam's description rewritten.
+	// While it does, the dobby flags the beam's open members and their landed line carries the beam's follow-up.
 	// A nil PullRequestRecorded, as on the prime, reads none.
 	PullRequestRecorded func() (bool, error)
-	// BeamDescribe are the seams of the beam's description rewrite after a member landing; a nil Record rewrites nothing.
-	BeamDescribe BeamDescribeDeps
-	// LandNotice reports whether land_notice is on for the run slug.
-	// It reads through the per-task lookup from the run's worktree up.
-	// A nil LandNotice reads every run as off.
-	LandNotice func(slug string) (bool, error)
+	// SetNotifyOnLand sets notify_on_land on the entry slug, a member of a beam whose pull request is recorded.
+	// A nil SetNotifyOnLand sets nothing.
+	SetNotifyOnLand func(slug string) error
+	// ClearNotifyOnLand clears notify_on_land after the notice; nil clears nothing, and flagged entries recur each tick.
+	ClearNotifyOnLand func(slug string) error
 	// SettleFronts settles the front tasks of this dobby's worktree, running the land action of each one that landed.
 	// It runs each tick before the start step, so an unrecorded front entry is recorded before it starts; nil does nothing.
 	SettleFronts func() error
@@ -323,11 +325,9 @@ type daemon struct {
 	startTicks string
 	// held is the dobby lock once taken, nil before.
 	held *lock.FileLock
-	// keptTidy and keptDescribe are the tidy and describer agents in flight the state record last showed.
-	// A beam dobby whose worktree is gone stops them.
-	keptTidy     *TidyState
-	keptDescribe *DescribeState
-	stateRead    logger.Episode
+	// keptTidy is the tidy agent in flight the state record last showed, which a beam dobby whose worktree is gone stops.
+	keptTidy  *TidyState
+	stateRead logger.Episode
 	// loggedRuns holds the label last logged for each listed run, by slug, in memory only.
 	loggedRuns map[string]string
 	// primeOwed reports that a heartbeat failed to read the runs, so the next listing records labels silently.
@@ -356,6 +356,8 @@ type daemon struct {
 	catchUpReason string
 	// catchUpNoticed holds the failure classes whose notice went out this episode.
 	catchUpNoticed map[string]bool
+	// upgraded reports whether the first read after an upgrade succeeded in this process.
+	upgraded bool
 	// handedOver holds the slugs whose hand-over verdict already owed the catch-up, until they stop answering hand over.
 	handedOver map[string]bool
 	// syncFailures is the failure episode of the bolt-hold sync; syncFailing reports whether its line was logged.
@@ -379,22 +381,15 @@ type daemon struct {
 	// readyRead and readyPost are the failure episodes of the ready record's read and of the member notices a beam owes.
 	readyRead logger.Episode
 	readyPost logger.Episode
-	// describePullRequest is the failure episode of the description rewrite's read of the beam's landing record.
-	describePullRequest logger.Episode
-	// describeFailures is the failure episode of the description step, whose error never holds the steps after it.
-	describeFailures logger.Episode
-	// landNoticeLookup guards each run's land_notice lookup by its slug.
-	landNoticeLookup logger.EpisodeSet
+	// landNoticeConfig, landNoticeBoard and landNoticePullRequest are the failure episodes of the landing notices' reads:
+	// beam.yaml, the board and the beam's landing record.
+	landNoticeConfig      logger.Episode
+	landNoticeBoard       logger.Episode
+	landNoticePullRequest logger.Episode
+	// landNoticeFlag is the failure episode of the writes that flag a beam's members for the landing notice.
+	landNoticeFlag logger.Episode
 	// landNoticePosts guards each owed landing notice's post by its slug.
 	landNoticePosts logger.EpisodeSet
-	// watchRecordFailed reports that the tick's run watch step could not read or write the state record.
-	watchRecordFailed bool
-	// watchLevelReads guards each run's beam.run_watch lookup by its slug, and watchPosts each owed watch line's post.
-	watchLevelReads logger.EpisodeSet
-	watchPosts      logger.EpisodeSet
-	// gateHoldReads guards each read of the gate-hold check, and gateHoldPosts each run's notice and its record.
-	gateHoldReads logger.EpisodeSet
-	gateHoldPosts logger.EpisodeSet
 	// listedRuns is the run listing of the tick's pass step, done runs included.
 	listedRuns []RunView
 	// landed is the slugs whose landing the tick's landing count read, nil while Deps.Landings is nil.
@@ -432,6 +427,10 @@ type daemon struct {
 	leftoverRetries map[string]leftoverRetry
 	// keptNoticeOwed reports whether this fresh start still owes its one notice of the kept pairs.
 	keptNoticeOwed bool
+	// keptMarked reports whether this process marked the kept cancels from before the upgrade.
+	// keptMarkFailing reports whether the failure episode of that step logged its line.
+	keptMarked      bool
+	keptMarkFailing bool
 	// orphansRead reports whether a probe tick of this process read the orphan pairs, and orphansDue the due ones it found.
 	orphansRead bool
 	orphansDue  []string
@@ -487,7 +486,7 @@ func (d *daemon) recordStart() error {
 	if err != nil {
 		return err
 	}
-	d.keptTidy, d.keptDescribe = record.Tidy, record.Describe
+	d.keptTidy = record.Tidy
 	own := found && record.PID == os.Getpid()
 	if own && record.StartTicks == d.startTicks {
 		return nil
@@ -520,34 +519,34 @@ func (d *daemon) worktreeGone() bool {
 	return errors.Is(err, fs.ErrNotExist)
 }
 
-// readKeptAgents reads the state record's tidy and describer agents in flight without creating a directory.
+// readKeptTidy reads the state record's tidy in flight without creating a directory.
 // The prime's dobby, which never takes the exit, reads nothing.
 // A record that does not decode reads as absent with one Warn.
-func (d *daemon) readKeptAgents() (*TidyState, *DescribeState, error) {
+func (d *daemon) readKeptTidy() (*TidyState, error) {
 	if d.geom.Slug == "" {
-		return d.keptTidy, d.keptDescribe, nil
+		return d.keptTidy, nil
 	}
 	record, _, err := state.ReadJSON[State](d.geom.StatePath, lockPath(d.geom.StatePath))
 	if errors.Is(err, state.ErrDecode) {
 		logger.Warn("dobbyengine: the state record does not decode and reads as absent", "path", d.geom.StatePath, "error", err)
-		return nil, nil, nil
+		return nil, nil
 	}
-	return record.Tidy, record.Describe, err
+	return record.Tidy, err
 }
 
-// rememberKeptAgents keeps the agents a read found, so a dobby whose worktree vanishes can stop those the last tick saw.
-// A failed read is logged once per episode and keeps the earlier ones.
-func (d *daemon) rememberKeptAgents(tidy *TidyState, describe *DescribeState, readErr error) {
+// rememberKeptTidy keeps the tidy a read found, so a dobby whose worktree vanishes can stop the agent the last tick saw.
+// A failed read is logged once per episode and keeps the earlier one.
+func (d *daemon) rememberKeptTidy(kept *TidyState, readErr error) {
 	if readErr != nil {
 		d.stateRead.Fail("dobbyengine: the state record is unreadable; the dobby goes on", "worktree", d.geom.WorktreeName, "error", readErr)
 		return
 	}
 	d.stateRead.Recover("dobbyengine: the state record reads again", "worktree", d.geom.WorktreeName)
-	d.keptTidy, d.keptDescribe = tidy, describe
+	d.keptTidy = kept
 }
 
 // exitWorktreeGone writes the reason a beam dobby ends to the prime's dobby log.
-// It also stops the tidy and describer agents the dobby last saw in flight.
+// It also stops the tidy agent the dobby last saw in flight.
 // It touches nothing at the removed worktree's path.
 func (d *daemon) exitWorktreeGone() {
 	logPrime := func(text string) {
@@ -556,22 +555,15 @@ func (d *daemon) exitWorktreeGone() {
 		}
 	}
 	logPrime(fmt.Sprintf("stop: the worktree of beam %s is gone", d.geom.Slug))
-	if d.deps.PrimeTidyShuttle == nil {
+	if d.keptTidy == nil || d.deps.PrimeTidyShuttle == nil {
 		return
 	}
-	stop := func(kind, guid string) {
-		if err := d.deps.PrimeTidyShuttle.StopStrand(guid); err != nil {
-			logPrime(fmt.Sprintf("the %s agent %s of beam %s did not stop: %v; way forward: lym reed remove %s", kind, guid, d.geom.Slug, err, guid))
-			return
-		}
-		logPrime(fmt.Sprintf("stopped the %s agent %s of beam %s", kind, guid, d.geom.Slug))
+	guid := d.keptTidy.StrandGUID
+	if err := d.deps.PrimeTidyShuttle.StopStrand(guid); err != nil {
+		logPrime(fmt.Sprintf("the board-tidy agent %s of beam %s did not stop: %v; way forward: lym reed remove %s", guid, d.geom.Slug, err, guid))
+		return
 	}
-	if d.keptTidy != nil {
-		stop("board-tidy", d.keptTidy.StrandGUID)
-	}
-	if d.keptDescribe != nil {
-		stop("describer", d.keptDescribe.StrandGUID)
-	}
+	logPrime(fmt.Sprintf("stopped the board-tidy agent %s of beam %s", guid, d.geom.Slug))
 }
 
 // loop ticks and waits until ctx ends or another machine owns the beam.
@@ -614,12 +606,12 @@ func (d *daemon) loop(ctx context.Context, events <-chan struct{}) error {
 			break
 		}
 
-		keptTidy, keptDescribe, readErr := d.readKeptAgents()
+		kept, readErr := d.readKeptTidy()
 		if d.worktreeGone() {
 			d.exitWorktreeGone()
 			return nil
 		}
-		d.rememberKeptAgents(keptTidy, keptDescribe, readErr)
+		d.rememberKeptTidy(kept, readErr)
 
 		// A re-exec would cut a teardown in flight short, half done, so the check waits for it to end.
 		if d.teardown == nil {
@@ -677,12 +669,11 @@ func (d *daemon) standingMove() string {
 // It records the sleeps the watch saw and fills in the state record's pid when none is set.
 // A sleep the watch sees, and a record found without a pid, owe every run a full pass until a tick returns nil.
 // An anchor-move record of the geometry holds the scheduling.
-// While one exists, a tick spawns no pass, starts no task and runs no tidy or description step.
+// While one exists, a tick spawns no pass, starts no task and runs no tidy step.
 // It still owes what it owed before.
 // That is logged once per episode,
 // and the state record's upkeep and the landing count go on.
 // The adopt hold holds the scheduling the same way, and the beam's landing step too.
-// An error of the description step is logged once per episode and holds neither the tidy step nor the landing step.
 // A sleep the watch sees owes the catch-up from origin, which runs first, before any scheduling.
 // While it stands owed the tick holds the scheduling and the landing step as under an anchor change.
 func (d *daemon) tick(ctx context.Context, now time.Time) error {
@@ -720,6 +711,7 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 	}
 	scheduling := moving == "" && !d.adoptHolds && !catchingUp
 	if scheduling {
+		d.markKeptCancels(now)
 		if err := d.drivePasses(ctx, now); err != nil {
 			return err
 		}
@@ -730,8 +722,6 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 		d.runNotices(ctx, now)
 		d.waitReminders(ctx, now)
 		d.landNotices(ctx, now, d.listedRuns)
-		d.runWatch(ctx, now)
-		d.gateHolds(ctx, now)
 		d.settleFronts(ctx)
 		if err := d.startReady(ctx, now); err != nil {
 			return err
@@ -742,11 +732,6 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 	}
 	if scheduling {
 		d.clearDoneRuns(now)
-		if err := d.describeStep(ctx, now); err != nil {
-			d.describeFailures.Fail("dobbyengine: the description step failed; the loop goes on", "worktree", d.geom.WorktreeName, "error", err)
-		} else {
-			d.describeFailures.Recover("dobbyengine: the description step succeeds again", "worktree", d.geom.WorktreeName)
-		}
 		if err := d.tidyStep(ctx, now); err != nil {
 			return err
 		}

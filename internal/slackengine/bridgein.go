@@ -63,9 +63,9 @@ type bridgeReader struct {
 	keeper   *channelKeeper
 	in       *inbound
 
-	// operatorID and bot are the setup's operator and this machine's bot, loaded at the start of each read.
+	// operatorID and botUserID are the setup's operator and this machine's bot, loaded at the start of each read.
 	operatorID string
-	bot        Identity
+	botUserID  string
 	// botApps caches the app each bot id belongs to.
 	botApps map[string]string
 	// failingKey names the operator message whose command cannot be carried out yet.
@@ -99,14 +99,8 @@ func (r *bridgeReader) load(ctx context.Context) error {
 	if found {
 		r.operatorID = setup.OperatorID
 	}
-	r.bot, err = r.keeper.botIdentity(ctx)
+	r.botUserID, err = r.keeper.botUser(ctx)
 	return err
-}
-
-// isOwnPost reports whether bot, this machine's bot, posted message.
-// A post under a name of its own, as every bridge post is, carries the bot id and no user id, so both are compared.
-func isOwnPost(message Message, bot Identity) bool {
-	return (bot.UserID != "" && message.User == bot.UserID) || (bot.BotID != "" && message.BotID == bot.BotID)
 }
 
 // read reads each open channel of the bridge map and its threads.
@@ -264,7 +258,7 @@ func (r *bridgeReader) isOperator(message Message) bool {
 // A message held for an approval or a button keeps the cursor before it.
 // An error leaves the cursor before the message too.
 func (r *bridgeReader) handle(ctx context.Context, channelID string, entry BridgeEntry, message Message) (bool, bool, error) {
-	if isOwnPost(message, r.bot) {
+	if message.User == r.botUserID {
 		return true, false, nil
 	}
 	if r.isOperator(message) {
@@ -310,13 +304,13 @@ func (r *bridgeReader) handleEnvelope(ctx context.Context, channelID string, ent
 	if pinned && pin.AppID != appID {
 		r.notice(ctx, channelID, wrongAppKind, fmt.Sprintf(
 			"a message from the app %s claims the machine %s, which is approved with another app, and was not delivered; "+
-				"way forward: compare %s with the other machine's `lym status`, and if it is the real peer, type lym approve %s %s here to pin it",
+				"way forward: compare %s with the other machine's `status`, and if it is the real peer, type approve %s %s here to pin it",
 			appID, envelope.From.Machine, appID, envelope.From.Machine, appID))
 		return r.passed(channelID, wrongAppKind), false, nil
 	}
 	if !pinned {
 		r.notice(ctx, channelID, unpinnedHoldKind, fmt.Sprintf(
-			"mail from the machine %s waits because the machine is not approved; way forward: type lym approve %s here",
+			"mail from the machine %s waits because the machine is not approved; way forward: type approve %s here",
 			envelope.From.Machine, envelope.From.Machine))
 		return false, false, nil
 	}
@@ -488,7 +482,7 @@ func (r *bridgeReader) handleOperator(ctx context.Context, channelID string, ent
 }
 
 // operator handles one text of the operator in a bridge channel, in thread when thread is set.
-// A `lym approve` or `lym revoke` naming the channel's peer machine is carried out and answered.
+// An `approve` or `revoke` naming the channel's peer machine is carried out and answered.
 // One naming this machine, by its current or a former name, is left to the other machine's relay.
 // Any other text is answered once as not delivered, by the relay of the end that sorts first in the channel's name.
 // It returns the error of a command that could not be carried out.
@@ -682,7 +676,7 @@ func (r *bridgeReader) resync(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	bot, err := r.keeper.botIdentity(ctx)
+	bot, err := r.keeper.botUser(ctx)
 	if err != nil {
 		return err
 	}
@@ -726,12 +720,12 @@ func (r *bridgeReader) orchChannelIDs() (map[string]bool, error) {
 // An envelope is authored when this bot, or the app pinned for its `from` machine, posted it.
 // A channel made by an app no pin names is reported when its newest envelope, whoever posted it, names this hub.
 // Every other channel is left alone.
-func (r *bridgeReader) resyncChannel(ctx context.Context, info ChannelInfo, bot Identity) error {
+func (r *bridgeReader) resyncChannel(ctx context.Context, info ChannelInfo, bot string) error {
 	peers, err := ReadPeers(r.geom.PeersPath)
 	if err != nil {
 		return err
 	}
-	creatorTrusted := info.Creator == bot.UserID
+	creatorTrusted := info.Creator == bot
 	for _, pin := range peers.Machines {
 		creatorTrusted = creatorTrusted || pin.BotUserID == info.Creator
 	}
@@ -774,8 +768,8 @@ func (r *bridgeReader) resyncChannel(ctx context.Context, info ChannelInfo, bot 
 }
 
 // authored reports whether this bot posted the message, or the app pinned for the envelope's `from` machine did.
-func (r *bridgeReader) authored(ctx context.Context, message Message, envelope BridgeEnvelope, bot Identity, peers Peers) (bool, error) {
-	if isOwnPost(message, bot) {
+func (r *bridgeReader) authored(ctx context.Context, message Message, envelope BridgeEnvelope, bot string, peers Peers) (bool, error) {
+	if message.User == bot {
 		return true, nil
 	}
 	pin, pinned := peers.Machines[envelope.From.Machine]
@@ -852,7 +846,7 @@ func (r *bridgeReader) reportUnapprovedBot(ctx context.Context, info ChannelInfo
 	}
 	line := fmt.Sprintf(
 		"the channel %s (%s) was made by the app %s, which no approved machine owns, and it carries mail from the machine %s; "+
-			"way forward: if that app is the machine %s, type lym approve %s, or lym approve %s %s to pin exactly this app, in the orch channel of this hub",
+			"way forward: if that app is the machine %s, type approve %s, or approve %s %s to pin exactly this app, in the orch channel of this hub",
 		info.Name, info.ID, appID, machine, machine, machine, machine, appID)
 	text := relayNoticePrefix + " " + line
 

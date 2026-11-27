@@ -37,7 +37,7 @@ var InterruptPolicies = map[string]string{
 	NameCodeBouncer:       shedverbs.InterruptPolicyReinvoke,
 	NameDescribe:          shedverbs.InterruptPolicyReinvoke,
 	NameParentAlign:       shedverbs.InterruptPolicyReinvoke, // spawns only the conflict session the resolver reattaches
-	// PR-Review spawns no session, and its re-call finds the recorded pull request and waits on it again.
+	// PR-Review reattaches the live interactive session or resumes its recorded one, rather than spawning a second one.
 	NamePRReview:        shedverbs.InterruptPolicyReinvoke,
 	NameDarnWrite:       shedverbs.InterruptPolicyReinvoke, // the single-session adapter reattaches rather than double-spawns
 	NameFinalize:        shedverbs.InterruptPolicyReinvoke,
@@ -50,11 +50,6 @@ var InterruptPolicies = map[string]string{
 	NamePlanBurlerFix:          shedverbs.InterruptPolicyReinvoke,
 	NameCodeBurlerReview:       shedverbs.InterruptPolicyReinvoke,
 	NameCodeBurlerFix:          shedverbs.InterruptPolicyReinvoke,
-
-	// The Harden ring's rows probe for a live session and resume it, as every review segment's rows do.
-	NameHardenBouncer:      shedverbs.InterruptPolicyReinvoke,
-	NameHardenBurlerReview: shedverbs.InterruptPolicyReinvoke,
-	NameHardenBurlerFix:    shedverbs.InterruptPolicyReinvoke,
 
 	// Record-Write writes its files only when missing and commits the pair; a re-invocation completes what a crash left.
 	NameRecordWrite: shedverbs.InterruptPolicyReinvoke,

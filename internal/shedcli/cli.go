@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -161,7 +160,6 @@ Example:
 // It returns at once for the bare "shed" group and for "seed"; neither needs a git repository or an existing seed.
 // Otherwise it resolves the working directory through lymcwd.CwdFrom;
 // it resolves the git location through lymcwd.Resolve, whose not-a-git-repository error passes through bare;
-// it reconciles the hub's config after a binary change, before any recipe's arm loads one;
 // it arms the run through armFromSeed, which reads the seed and looks up its recipe;
 // and it stores the armed Spec in c.spec.
 func (c *shedCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
@@ -187,7 +185,6 @@ func (c *shedCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 		clihelp.Abort(ctx, 1)
 		return nil
 	}
-	hubgeom.ReconcileBeforeLoad(location)
 
 	armed, err := armFromSeed(location, cmd.Name(), args)
 	if err != nil {

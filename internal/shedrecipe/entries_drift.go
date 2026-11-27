@@ -189,7 +189,6 @@ func driftVerifyEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProd
 		{"Drift.Compare", d.Compare},
 		{"Drift.ChangedFiles", d.ChangedFiles},
 		{"Drift.CommitMessages", d.CommitMessages},
-		{"Drift.RangeDiff", d.RangeDiff},
 	})
 	if err != nil {
 		return nil, err

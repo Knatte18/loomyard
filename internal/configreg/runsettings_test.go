@@ -1,27 +1,28 @@
-// runsettings_test.go — tests for the run-settings validation step.
+// runsettings_test.go — tests for the run-settings migrate-then-validate step.
 
 package configreg
 
 import (
 	"errors"
 	"os"
-	"reflect"
-	"slices"
 	"strings"
 	"testing"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/runprofile"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+// renamedCodeMaxBounces is the line loom's Migrate writes for a retired webster_max_bounces of 2.
+// It carries the comment the loom template holds on code_max_bounces.
+const renamedCodeMaxBounces = "code_max_bounces: 2 # bounce budget of the Code-Review perch: N gives N judged Burler rounds, 1 by default; null takes review_max_bounces; 0 runs no review round: the perch's Bouncer settles approved at once; a checkpoint above this budget means the perch never rules CIRCLING and reaches the soft-cap rule, or the accept, instead\n"
+
 // TestPrepareRunSettings pins PrepareRunSettings over the real registry:
 // the documents it returns and the refusals that name the module and key.
+// It is not parallel: its Warn subtest reads the process-global logger, which parallel tests would also write to.
 func TestPrepareRunSettings(t *testing.T) {
 	tiergate.Require(t, 0)
-	t.Parallel()
 	tests := []struct {
 		name         string
 		settings     map[string]any
@@ -32,116 +33,33 @@ func TestPrepareRunSettings(t *testing.T) {
 		wantNoModule string
 		// wantWayForwardOf names the retired key whose RetiredWayForward text the refusal must end with.
 		wantWayForwardOf string
-		// wantNoWayForward pins that the refusal carries no way forward clause of its own.
-		wantNoWayForward bool
 	}{
 		{
-			name:             "a moved key is refused naming both full names and no way forward",
-			settings:         map[string]any{"loom": map[string]any{"code_max_bounces": float64(2)}},
-			wantRefusal:      "key loom.code_max_bounces was moved to loom.code.max_bounces",
-			wantModule:       "loom",
-			wantInvalid:      true,
-			wantNoWayForward: true,
-		},
-		{
-			name:     "the area an old key names is admitted as an object",
-			settings: map[string]any{"loom": map[string]any{"discussion": map[string]any{"timeout_min": float64(60)}}},
-			wantDocs: map[string]string{"loom": "discussion:\n    timeout_min: 60\n"},
-		},
-		{
 			name:     "whole number becomes a YAML integer",
-			settings: map[string]any{"loom": map[string]any{"review": map[string]any{"max_bounces": float64(2)}}},
-			wantDocs: map[string]string{"loom": "review:\n    max_bounces: 2\n"},
+			settings: map[string]any{"loom": map[string]any{"review_max_bounces": float64(2)}},
+			wantDocs: map[string]string{"loom": "review_max_bounces: 2\n"},
 		},
 		{
 			name:     "a soft and a hard review cap are both settable through run_settings",
-			settings: map[string]any{"loom": map[string]any{"review": map[string]any{"max_bounces": float64(2), "hard_max_bounces": float64(3)}}},
-			wantDocs: map[string]string{"loom": "review:\n    hard_max_bounces: 3\n    max_bounces: 2\n"},
+			settings: map[string]any{"loom": map[string]any{"review_max_bounces": float64(2), "review_hard_max_bounces": float64(3)}},
+			wantDocs: map[string]string{"loom": "review_hard_max_bounces: 3\nreview_max_bounces: 2\n"},
 		},
 		{
-			name:     "a tapestry plan.max_bounces keeps its zero-rounds meaning",
-			settings: map[string]any{"tapestry": map[string]any{"plan": map[string]any{"max_bounces": float64(0)}}},
-			wantDocs: map[string]string{"tapestry": "plan:\n    max_bounces: 0\n"},
-		},
-		{
-			name:             "a loom plan_max_bounces is refused with the tapestry way forward, since it lives in tapestry's config",
-			settings:         map[string]any{"loom": map[string]any{"plan_max_bounces": float64(0)}},
-			wantRefusal:      "plan_max_bounces",
-			wantModule:       "loom",
-			wantInvalid:      true,
-			wantWayForwardOf: "plan_max_bounces",
+			name:     "a loom.plan_max_bounces lands in the tapestry document and keeps its zero-rounds meaning",
+			settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(0)}},
+			wantDocs: map[string]string{"tapestry": "plan_max_bounces: 0\n"},
 		},
 		{
 			name:        "a review hard cap of zero is refused by loom's CheckValues",
-			settings:    map[string]any{"loom": map[string]any{"review": map[string]any{"hard_max_bounces": float64(0)}}},
-			wantRefusal: configengine.KeyName("loom", "review.hard_max_bounces"),
+			settings:    map[string]any{"loom": map[string]any{"review_hard_max_bounces": float64(0)}},
+			wantRefusal: "review_hard_max_bounces",
 			wantModule:  "loom",
 			wantInvalid: true,
 		},
 		{
-			name:        "a beam pull_request the lookup refuses is refused at the run settings",
-			settings:    map[string]any{"beam": map[string]any{"pull_request": "required"}},
-			wantRefusal: "pull_request",
-			wantModule:  "beam",
-			wantInvalid: true,
-		},
-		{
-			name:        "a beam land_notice the lookup refuses is refused at the run settings",
-			settings:    map[string]any{"beam": map[string]any{"land_notice": "per-task"}},
-			wantRefusal: "land_notice",
-			wantModule:  "beam",
-			wantInvalid: true,
-		},
-		{
-			name:     "a beam autonomy boolean is admitted into a beam local document",
-			settings: map[string]any{"beam": map[string]any{"autonomy": true}},
-			wantDocs: map[string]string{"beam": "autonomy: true\n"},
-		},
-		{
-			name:        "a beam autonomy the lookup refuses is refused at the run settings",
-			settings:    map[string]any{"beam": map[string]any{"autonomy": "yes"}},
-			wantRefusal: "autonomy",
-			wantModule:  "beam",
-			wantInvalid: true,
-		},
-		{
-			name:     "a beam run_watch of rows is admitted into a beam local document",
-			settings: map[string]any{"beam": map[string]any{"run_watch": "rows"}},
-			wantDocs: map[string]string{"beam": "run_watch: rows\n"},
-		},
-		{
-			name:        "a beam run_watch the lookup refuses is refused at the run settings",
-			settings:    map[string]any{"beam": map[string]any{"run_watch": "all"}},
-			wantRefusal: "run_watch",
-			wantModule:  "beam",
-			wantInvalid: true,
-		},
-		{
-			name:     "hardener packages and llm_driving pass",
-			settings: map[string]any{"hardener": map[string]any{"packages": []any{"internal/foo"}, "llm_driving": true}},
-			wantDocs: map[string]string{"hardener": "llm_driving: true\npackages:\n    - internal/foo\n"},
-		},
-		{
-			name: "hardener reviewer and fixer lists set a per-run model rotation",
-			settings: map[string]any{"hardener": map[string]any{
-				"reviewer": []any{"opus[high]", "sonnet[high]"},
-				"fixer":    []any{"sonnet[high]", "opus"},
-			}},
-			wantDocs: map[string]string{"hardener": "fixer:\n    - sonnet[high]\n    - opus\nreviewer:\n    - opus[high]\n    - sonnet[high]\n"},
-		},
-		{
-			name:        "hardener auto_accept is refused naming the hub file write",
-			settings:    map[string]any{"hardener": map[string]any{"auto_accept": true}},
-			wantRefusal: `lym config hardener --set auto_accept=<value>`,
-			wantModule:  "hardener",
-			wantInvalid: true,
-		},
-		{
-			name:        "hardener concurrency below one is refused naming the key",
-			settings:    map[string]any{"hardener": map[string]any{"concurrency": float64(0)}},
-			wantRefusal: `"hardener.concurrency"`,
-			wantModule:  "hardener",
-			wantInvalid: true,
+			name:     "below-floor step_idle_timeout_min is raised by loom's Migrate",
+			settings: map[string]any{"loom": map[string]any{"step_idle_timeout_min": float64(0)}},
+			wantDocs: map[string]string{"loom": "step_idle_timeout_min: 1\n"},
 		},
 		{
 			name:     "models alias the template lacks passes",
@@ -154,38 +72,58 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantDocs: map[string]string{"models": "opus:\n    defaults:\n        version: \"5\"\n"},
 		},
 		{
-			name:        "non-object shuttle value is refused",
+			name:         "role under an open map moves from shuttle to claude",
+			settings:     map[string]any{"shuttle": map[string]any{"claude_prompt_cache_ttl_roles": map[string]any{"worker": "1h"}}},
+			wantDocs:     map[string]string{"claude": "prompt_cache_ttl_roles:\n    worker: 1h\n"},
+			wantNoModule: "shuttle",
+		},
+		{
+			name:         "a moved key yields to the value claude already holds",
+			settings:     map[string]any{"shuttle": map[string]any{"claude_prompt_cache_ttl": "1h"}, "claude": map[string]any{"prompt_cache_ttl": "5m"}},
+			wantDocs:     map[string]string{"claude": "prompt_cache_ttl: 5m\n"},
+			wantNoModule: "shuttle",
+		},
+		{
+			name:        "non-object shuttle value is still refused",
 			settings:    map[string]any{"shuttle": "fast"},
 			wantRefusal: "shuttle",
 			wantModule:  "shuttle",
 			wantInvalid: true,
 		},
 		{
-			name:        "the old python switch name is refused naming the key",
+			name:        "the legacy python switch is renamed by shuttle's Migrate and refused as a guard key",
 			settings:    map[string]any{"shuttle": map[string]any{"claude_deny_python": true}},
-			wantRefusal: "claude_deny_python",
+			wantRefusal: "deny_python",
 			wantModule:  "shuttle",
 			wantInvalid: true,
 		},
 		{
-			name:        "a retired shuttle claude binary key is refused as an executable key",
-			settings:    map[string]any{"shuttle": map[string]any{"claude": "/x"}},
-			wantRefusal: `"shuttle.claude"`,
-			wantModule:  "shuttle",
-			wantInvalid: true,
-		},
-		{
-			name:        "a retired loom fan key is refused naming the key",
+			name:        "a retired loom fan key is renamed by loom's Migrate and refused as a guard key",
 			settings:    map[string]any{"loom": map[string]any{"discussion_fan": "standard"}},
-			wantRefusal: "discussion_fan",
+			wantRefusal: "discussion_reviewer_fan",
 			wantModule:  "loom",
 			wantInvalid: true,
 		},
 		{
-			name:        "a retired darn fan key is refused naming the key",
+			name:     "a retired webster model key is renamed to its code key by loom's Migrate",
+			settings: map[string]any{"loom": map[string]any{"webster_review": "sonnet[high]"}},
+			wantDocs: map[string]string{"loom": "code_reviewer_model: sonnet[high] # model-spec for the Code-Review reviewer, sonnet[medium] by default; empty takes reviewer_model, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment\n"},
+		},
+		{
+			name:     "a retired webster_max_bounces is renamed and a retired merge_max_bounces is dropped by loom's Migrate",
+			settings: map[string]any{"loom": map[string]any{"webster_max_bounces": float64(2), "merge_max_bounces": float64(1)}},
+			wantDocs: map[string]string{"loom": renamedCodeMaxBounces},
+		},
+		{
+			name:     "a retired merge_max_bounces is dropped by loom's Migrate and never refused",
+			settings: map[string]any{"loom": map[string]any{"merge_max_bounces": float64(1), "code_max_bounces": float64(2)}},
+			wantDocs: map[string]string{"loom": "code_max_bounces: 2\n"},
+		},
+		{
+			name:        "a retired darn fan key moves to loom's code_fixer_fan and is refused as a guard key",
 			settings:    map[string]any{"darn": map[string]any{"review_fix_fan": "fix-code"}},
-			wantRefusal: "review_fix_fan",
-			wantModule:  "darn",
+			wantRefusal: "code_fixer_fan",
+			wantModule:  "loom",
 			wantInvalid: true,
 		},
 		{
@@ -203,9 +141,16 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
-			name:        "a module that is not registered is refused, even one that held keys once",
+			name:        "a burler object holding lenses is refused with the way forward",
 			settings:    map[string]any{"burler": map[string]any{"lenses": map[string]any{"generic": map[string]any{"prose": "x"}}}},
-			wantRefusal: "not registered",
+			wantRefusal: "not registered: its keys moved to another module; way forward: remove the burler object from run_settings",
+			wantModule:  "burler",
+			wantInvalid: true,
+		},
+		{
+			name:        "an empty burler object is refused with the way forward",
+			settings:    map[string]any{"burler": map[string]any{}},
+			wantRefusal: "not registered: its keys moved to another module; way forward: remove the burler object from run_settings",
 			wantModule:  "burler",
 			wantInvalid: true,
 		},
@@ -225,15 +170,57 @@ func TestPrepareRunSettings(t *testing.T) {
 		},
 		{
 			name:        "mapping where the template holds a scalar",
-			settings:    map[string]any{"loom": map[string]any{"driver": map[string]any{"a": "b"}}},
-			wantRefusal: "driver",
+			settings:    map[string]any{"loom": map[string]any{"discussion": map[string]any{"a": "b"}}},
+			wantRefusal: "discussion",
 			wantModule:  "loom",
 			wantInvalid: true,
 		},
 		{
-			name:     "a solo code.reviewer_fan is admitted as a profile block or run_settings carries it",
-			settings: map[string]any{"loom": map[string]any{"code": map[string]any{"reviewer_fan": ""}}},
-			wantDocs: map[string]string{"loom": "code:\n    reviewer_fan: \"\"\n"},
+			name:         "a retired darn review budget of zero moves to loom's code_max_bounces",
+			settings:     map[string]any{"darn": map[string]any{"review_max_bounces": float64(0)}},
+			wantDocs:     map[string]string{"loom": "code_max_bounces: 0\n"},
+			wantNoModule: "darn",
+		},
+		{
+			name:     "a retired darn review budget and hard cap move to loom's code keys",
+			settings: map[string]any{"darn": map[string]any{"review_max_bounces": float64(2), "review_hard_max_bounces": float64(3)}},
+			wantDocs: map[string]string{"loom": "code_hard_max_bounces: 3\ncode_max_bounces: 2\n"},
+		},
+		{
+			name: "a retired darn model and amend key moves to loom's code key",
+			settings: map[string]any{"darn": map[string]any{
+				"darn_reviewer_model":      "opus[high]",
+				"darn_fixer_model":         "opus[low]",
+				"review_amend_max_bounces": float64(0),
+			}},
+			wantDocs: map[string]string{"loom": "code_fixer_model: opus[low]\ncode_reviewer_model: opus[high]\nreview_amend_max_bounces: 0\n"},
+		},
+		{
+			name:         "a retired darn reviewer fan key moves to loom's code_reviewer_fan and is admitted",
+			settings:     map[string]any{"darn": map[string]any{"darn_reviewer_fan": "review-code"}},
+			wantDocs:     map[string]string{"loom": "code_reviewer_fan: review-code\n"},
+			wantNoModule: "darn",
+		},
+		{
+			name:         "a retired darn review_fan moves to loom's code_reviewer_fan and is admitted",
+			settings:     map[string]any{"darn": map[string]any{"review_fan": "review-code"}},
+			wantDocs:     map[string]string{"loom": "code_reviewer_fan: review-code\n"},
+			wantNoModule: "darn",
+		},
+		{
+			name:     "a retired webster_fan is renamed to code_reviewer_fan and admitted by loom's Migrate",
+			settings: map[string]any{"loom": map[string]any{"webster_fan": "review-code"}},
+			wantDocs: map[string]string{"loom": "code_reviewer_fan: review-code # fan name from lenses.yaml, such as review-code, that turns the lens fan on for Code-Review; one fan name, or a YAML list with one fan name per round, the last entry serving every later round; the default fans round one out over review-code and runs later rounds solo; an empty entry runs that round solo\n"},
+		},
+		{
+			name:     "a retired webster_reviewer_fan is renamed to code_reviewer_fan and admitted by loom's Migrate",
+			settings: map[string]any{"loom": map[string]any{"webster_reviewer_fan": "review-code"}},
+			wantDocs: map[string]string{"loom": "code_reviewer_fan: review-code # fan name from lenses.yaml, such as review-code, that turns the lens fan on for Code-Review; one fan name, or a YAML list with one fan name per round, the last entry serving every later round; the default fans round one out over review-code and runs later rounds solo; an empty entry runs that round solo\n"},
+		},
+		{
+			name:     "a solo code_reviewer_fan is admitted as a profile block or run_settings carries it",
+			settings: map[string]any{"loom": map[string]any{"code_reviewer_fan": ""}},
+			wantDocs: map[string]string{"loom": "code_reviewer_fan: \"\"\n"},
 		},
 		{
 			name:        "D4-closed key of a hub-wide module",
@@ -244,28 +231,18 @@ func TestPrepareRunSettings(t *testing.T) {
 		},
 		{
 			name:        "D4-closed key of a per-worktree module",
-			settings:    map[string]any{"loom": map[string]any{"discussion": map[string]any{"advisors": []any{}}}},
-			wantRefusal: "discussion.advisors",
+			settings:    map[string]any{"loom": map[string]any{"discussion_advisors": []any{}}},
+			wantRefusal: "discussion_advisors",
 			wantModule:  "loom",
 			wantInvalid: true,
 		},
 		{
-			name:     "a task's beam pull_request and land_notice prepare into a beam local document",
-			settings: map[string]any{"beam": map[string]any{"pull_request": "merge-in", "land_notice": "on"}},
-			wantDocs: map[string]string{"beam": "land_notice: \"on\"\npull_request: merge-in\n"},
+			name:     "a retired loom key migrates away at read time",
+			settings: map[string]any{"loom": map[string]any{"skip_alignment": true, "code_max_bounces": float64(2)}},
+			wantDocs: map[string]string{"loom": "code_max_bounces: 2\n"},
 		},
 		{
-			name:     "a task's retired loom pr area is admitted",
-			settings: map[string]any{"loom": map[string]any{"pr": map[string]any{"review_small_max": float64(5)}}},
-			wantDocs: map[string]string{"loom": "pr:\n    review_small_max: 5\n"},
-		},
-		{
-			name:     "a task's retired flat pr_review_small_max is admitted",
-			settings: map[string]any{"loom": map[string]any{"pr_review_small_max": float64(5)}},
-			wantDocs: map[string]string{"loom": "pr_review_small_max: 5\n"},
-		},
-		{
-			name:     "a task's retired drift skip and verify_max_runs are admitted as retired keys of category none",
+			name:     "a task's retired drift skip and verify_max_runs seed, and the load drops them",
 			settings: map[string]any{"drift": map[string]any{"skip": []any{"t"}, "verify_max_runs": float64(3)}},
 			wantDocs: map[string]string{"drift": "skip:\n    - t\nverify_max_runs: 3\n"},
 		},
@@ -288,30 +265,35 @@ func TestPrepareRunSettings(t *testing.T) {
 		{
 			name:        "a drift diff is refused naming the hub's drift.yaml",
 			settings:    map[string]any{"drift": map[string]any{"diff": "command"}},
-			wantRefusal: "key \"drift.diff\" is set only in the hub's config; way forward: set it in the hub's drift.yaml",
+			wantRefusal: "key \"diff\" of module \"drift\" is set only in the hub's config; way forward: set it in the hub's drift.yaml",
 			wantModule:  "drift",
 			wantInvalid: true,
 		},
 		{
 			name:        "a drift key_patterns is refused naming the hub's drift.yaml",
 			settings:    map[string]any{"drift": map[string]any{"key_patterns": []any{}}},
-			wantRefusal: "key \"drift.key_patterns\" is set only in the hub's config; way forward: set it in the hub's drift.yaml",
+			wantRefusal: "key \"key_patterns\" of module \"drift\" is set only in the hub's config; way forward: set it in the hub's drift.yaml",
 			wantModule:  "drift",
 			wantInvalid: true,
 		},
 		{
 			name:        "a drift volatile_files is refused naming the hub's drift.yaml",
 			settings:    map[string]any{"drift": map[string]any{"volatile_files": []any{"_source.txt"}}},
-			wantRefusal: "key \"drift.volatile_files\" is set only in the hub's config; way forward: set it in the hub's drift.yaml",
+			wantRefusal: "key \"volatile_files\" of module \"drift\" is set only in the hub's config; way forward: set it in the hub's drift.yaml",
 			wantModule:  "drift",
 			wantInvalid: true,
 		},
 		{
 			name:        "a drift volatile_keys is refused naming the hub's drift.yaml",
 			settings:    map[string]any{"drift": map[string]any{"volatile_keys": []any{"captured_at"}}},
-			wantRefusal: "key \"drift.volatile_keys\" is set only in the hub's config; way forward: set it in the hub's drift.yaml",
+			wantRefusal: "key \"volatile_keys\" of module \"drift\" is set only in the hub's config; way forward: set it in the hub's drift.yaml",
 			wantModule:  "drift",
 			wantInvalid: true,
+		},
+		{
+			name:     "a retired drift verify_model is renamed to judge_model by drift's Migrate",
+			settings: map[string]any{"drift": map[string]any{"verify_model": "opus"}},
+			wantDocs: map[string]string{"drift": "judge_model: opus # model-spec for the judge, which rules on each expected value against its old and new value (see contracts/specs/llm-model-spec.md)\n"},
 		},
 		{
 			name:     "shed's driver_kind go is open to run settings",
@@ -373,9 +355,6 @@ func TestPrepareRunSettings(t *testing.T) {
 				if errors.Is(err, configengine.ErrInvalid) != tt.wantInvalid {
 					t.Errorf("errors.Is(err, ErrInvalid) = %v; want %v", !tt.wantInvalid, tt.wantInvalid)
 				}
-				if tt.wantNoWayForward && strings.Contains(err.Error(), "way forward:") {
-					t.Errorf("error = %q; want no way forward clause", err)
-				}
 				if tt.wantWayForwardOf != "" {
 					module, _ := Lookup(tt.wantModule)
 					if want := module.Spec().RetiredWayForward[tt.wantWayForwardOf]; want == "" || !strings.HasSuffix(err.Error(), want) {
@@ -400,78 +379,29 @@ func TestPrepareRunSettings(t *testing.T) {
 			}
 		})
 	}
-}
 
-// TestMoveSettings pins how the old keys of a module-keyed settings object move, below a prefix and from the root.
-func TestMoveSettings(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	const line = "moved loom.code_max_bounces to loom.code.max_bounces"
-	tests := []struct {
-		name      string
-		document  string
-		prefix    []string
-		want      string
-		wantLines []string
-	}{
-		{
-			name:      "a null old key is dropped and said",
-			document:  "{loom: {code_max_bounces: null}}\n",
-			want:      "{loom: {}}\n",
-			wantLines: []string{"dropped loom.code_max_bounces, which was null"},
-		},
-		{
-			name:      "an old key whose new path is set is dropped and said",
-			document:  "{loom: {code_max_bounces: 2, code: {max_bounces: 3}}}\n",
-			want:      "{loom: {code: {max_bounces: 3}}}\n",
-			wantLines: []string{"dropped loom.code_max_bounces, since loom.code.max_bounces is set"},
-		},
-		{
-			name:      "an old key moves under its module and other modules stay",
-			document:  "{loom: {code_max_bounces: 3}, drift: {scope: full}}\n",
-			want:      "{loom: {code: {max_bounces: 3}}, drift: {scope: full}}\n",
-			wantLines: []string{line},
-		},
-		{
-			name:      "a prefix moves only below it",
-			document:  "a:\n  loom: {code_max_bounces: 3}\nloom: {code_max_bounces: 1}\n",
-			prefix:    []string{"a"},
-			want:      "a: {loom: {code: {max_bounces: 3}}}\nloom: {code_max_bounces: 1}\n",
-			wantLines: []string{line},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got, lines, err := MoveSettings([]byte(tt.document), tt.prefix)
-			if err != nil {
-				t.Fatalf("MoveSettings() error = %v; want none", err)
-			}
-			if !slices.Equal(lines, tt.wantLines) {
-				t.Errorf("MoveSettings() lines = %q; want %q", lines, tt.wantLines)
-			}
-			var gotValue, wantValue any
-			if err := yaml.Unmarshal(got, &gotValue); err != nil {
-				t.Fatalf("parse the moved document %q: %v", got, err)
-			}
-			if err := yaml.Unmarshal([]byte(tt.want), &wantValue); err != nil {
-				t.Fatalf("parse the wanted document: %v", err)
-			}
-			if !reflect.DeepEqual(gotValue, wantValue) {
-				t.Errorf("MoveSettings() = %q; want the value of %q", got, tt.want)
-			}
-		})
-	}
-
-	t.Run("a JSON-decoded run settings object moves with its whole numbers kept as integers", func(t *testing.T) {
-		t.Parallel()
-		got, lines, err := MoveRunSettings(map[string]any{"loom": map[string]any{"code_max_bounces": float64(2)}, "drift": map[string]any{"scope": "full"}})
-		if err != nil {
-			t.Fatalf("MoveRunSettings() error = %v; want none", err)
+	// The logger's output is process-global, so this subtest is not parallel: it runs before the parallel rows above resume.
+	t.Run("each migration line is logged at Warn naming the module, the key and the way forward", func(t *testing.T) {
+		logs := logcapture.Capture(t)
+		settings := map[string]any{"loom": map[string]any{"webster_max_bounces": float64(2), "merge_max_bounces": float64(1)}}
+		if _, err := PrepareRunSettings(settings); err != nil {
+			t.Fatalf("PrepareRunSettings error = %v; want none", err)
 		}
-		want := map[string]any{"loom": map[string]any{"code": map[string]any{"max_bounces": 2}}, "drift": map[string]any{"scope": "full"}}
-		if !reflect.DeepEqual(got, want) || !slices.Equal(lines, []string{line}) {
-			t.Errorf("MoveRunSettings() = %#v, %q; want %#v, %q", got, lines, want, []string{line})
+		const wayForward = "way forward: rename or remove the key in profiles.yaml or in the entry's run_settings"
+		for _, line := range []string{"webster_max_bounces: renamed to code_max_bounces", "merge_max_bounces: retired, removed"} {
+			want := "run_settings for module loom: " + line + "; " + wayForward
+			if got := strings.Count(logs.String(), want); got != 1 {
+				t.Errorf("log holds %d lines %q; want 1; log: %s", got, want, logs.String())
+			}
+		}
+		if _, err := PrepareRunSettings(map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1)}}); err != nil {
+			t.Fatalf("PrepareRunSettings error = %v; want none", err)
+		}
+		if got := strings.Count(logs.String(), "run_settings for module"); got != 2 {
+			t.Errorf("log holds %d migration lines after a document with nothing to migrate; want the 2 from before", got)
+		}
+		if !strings.Contains(logs.String(), "WARN") {
+			t.Errorf("log = %s; want the lines at Warn", logs.String())
 		}
 	})
 }
@@ -490,15 +420,27 @@ func TestLayerRunSettings(t *testing.T) {
 	}{
 		{
 			name:     "a task key replaces the profile's and a profile key the task lacks stays",
-			profile:  map[string]any{"tapestry": map[string]any{"plan": map[string]any{"max_bounces": float64(1)}}, "loom": map[string]any{"code": map[string]any{"max_bounces": float64(1)}}},
-			settings: map[string]any{"tapestry": map[string]any{"plan": map[string]any{"max_bounces": float64(3)}}},
-			wantDocs: map[string]string{"loom": "code:\n    max_bounces: 1\n", "tapestry": "plan:\n    max_bounces: 3\n"},
+			profile:  map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1), "code_max_bounces": float64(1)}},
+			settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(3)}},
+			wantDocs: map[string]string{"loom": "code_max_bounces: 1\n", "tapestry": "plan_max_bounces: 3\n"},
+		},
+		{
+			name:     "a profile's retired merge_max_bounces is dropped rather than refused",
+			profile:  map[string]any{"loom": map[string]any{"code_max_bounces": float64(1), "merge_max_bounces": float64(1)}},
+			settings: map[string]any{"loom": map[string]any{"code_max_bounces": float64(3)}},
+			wantDocs: map[string]string{"loom": "code_max_bounces: 3\n"},
+		},
+		{
+			name:     "a task's retired webster_max_bounces layers as code_max_bounces and its merge_max_bounces is dropped",
+			profile:  map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1)}},
+			settings: map[string]any{"loom": map[string]any{"webster_max_bounces": float64(2), "merge_max_bounces": float64(1)}},
+			wantDocs: map[string]string{"loom": renamedCodeMaxBounces, "tapestry": "plan_max_bounces: 1\n"},
 		},
 		{
 			name:     "a module only one side names is written as that side has it",
 			profile:  map[string]any{"darn": map[string]any{"verify_attempts": float64(2)}},
-			settings: map[string]any{"tapestry": map[string]any{"plan": map[string]any{"max_bounces": float64(2)}}},
-			wantDocs: map[string]string{"darn": "verify_attempts: 2\n", "tapestry": "plan:\n    max_bounces: 2\n"},
+			settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(2)}},
+			wantDocs: map[string]string{"darn": "verify_attempts: 2\n", "tapestry": "plan_max_bounces: 2\n"},
 		},
 		{
 			name:     "no task settings writes the profile alone",
@@ -517,9 +459,9 @@ func TestLayerRunSettings(t *testing.T) {
 		},
 		{
 			name:        "a refused task key names the module and the key",
-			profile:     map[string]any{"tapestry": map[string]any{"plan": map[string]any{"max_bounces": float64(1)}}},
-			settings:    map[string]any{"loom": map[string]any{"discussion": map[string]any{"lenses": []any{}}}},
-			wantRefusal: []string{"loom", "discussion.lenses"},
+			profile:     map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1)}},
+			settings:    map[string]any{"loom": map[string]any{"discussion_lenses": []any{}}},
+			wantRefusal: []string{"loom", "discussion_lenses"},
 		},
 	}
 	for _, tt := range tests {
@@ -564,10 +506,9 @@ func TestProfilesCheckLoad(t *testing.T) {
 		wantRefusal []string
 	}{
 		{name: "the template's starting profiles pass"},
-		{name: "a valid hub file passes", hubFile: "light:\n  tapestry:\n    tapestry: {plan: {max_bounces: 1}}\n  darn:\n    darn: {writer: opus}\n"},
-		{name: "a moved key is refused naming the profile, the recipe and both full names", hubFile: "odd:\n  tapestry:\n    loom: {code_max_bounces: 2}\n", wantRefusal: []string{`run profile "odd", recipe "tapestry"`, "loom.code_max_bounces", "loom.code.max_bounces"}},
-		{name: "a plan key under loom is refused naming the profile and the recipe", hubFile: "odd:\n  tapestry:\n    loom: {plan_max_bounces: 1}\n", wantRefusal: []string{`run profile "odd", recipe "tapestry"`, "plan_max_bounces"}},
-		{name: "an unknown key is refused naming the profile and the recipe", hubFile: "light:\n  tapestry:\n    tapestry: {plan: {max_bounces: 1}}\nodd:\n  tapestry:\n    tapestry: {plan: {max_bounces: 1}}\n  darn:\n    loom: {no_such_key: 1}\n", wantRefusal: []string{`run profile "odd", recipe "darn"`, "no_such_key"}},
+		{name: "a valid hub file passes", hubFile: "light:\n  loom:\n    loom: {plan_max_bounces: 1}\n  darn:\n    darn: {writer: opus}\n"},
+		{name: "a profile holding the retired webster_max_bounces and merge_max_bounces passes", hubFile: "light:\n  loom:\n    loom: {webster_max_bounces: 1, merge_max_bounces: 1}\n"},
+		{name: "an unknown key is refused naming the profile and the recipe", hubFile: "light:\n  loom:\n    loom: {plan_max_bounces: 1}\nodd:\n  loom:\n    loom: {plan_max_bounces: 1}\n  darn:\n    loom: {no_such_key: 1}\n", wantRefusal: []string{`run profile "odd", recipe "darn"`, "no_such_key"}},
 		{name: "an unknown module is refused naming the profile and the recipe", hubFile: "odd:\n  tapestry:\n    bogus: {x: 1}\n", wantRefusal: []string{`run profile "odd", recipe "tapestry"`, "bogus"}},
 	}
 	module, _ := Lookup(runprofile.ModuleName)

@@ -23,15 +23,14 @@ const (
 // reconcileRun runs the run-scope origin reconcile of slug from the prime, with the hub seams the pair teardown builds.
 // The run scope tears no pair down.
 // With judgeOnly the reconcile only judges: it moves no ref and tears nothing down.
-// opts bounds the reconcile's remote calls and its retries of an unreachable origin.
 // Each entry of the report's mutation record is logged at Info, since a resume has no envelope to carry it.
 // The report is returned with the error, so a partial record is still logged.
-func reconcileRun(location *lymcwd.Location, slug string, judgeOnly bool, opts fabricengine.ReconcileOptions) (fabricengine.OriginReport, error) {
+func reconcileRun(location *lymcwd.Location, slug string, judgeOnly bool) (fabricengine.OriginReport, error) {
 	teardown, err := pairteardown.New(location)
 	if err != nil {
 		return fabricengine.OriginReport{}, err
 	}
-	report, err := fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{Run: slug, JudgeOnly: judgeOnly}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), opts)
+	report, err := fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{Run: slug, JudgeOnly: judgeOnly}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), fabricengine.ReconcileOptions{})
 	for _, mutation := range report.Mutations.Entries() {
 		logger.Info("battencli: origin reconcile mutation", "slug", slug, "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
 	}

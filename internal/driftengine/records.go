@@ -17,8 +17,28 @@ import (
 const (
 	// ScopeOff records that the task is not regression-checked.
 	ScopeOff = "off"
+	// ScopePartial records that the task is checked with some tests skipped.
+	ScopePartial = "partial"
 	// ScopeFull records that the task is checked whole.
 	ScopeFull = "full"
+)
+
+// Who accepted a drifted test.
+const (
+	// AcceptedByAgent marks an acceptance the Drift-Verify agent made.
+	AcceptedByAgent = "agent"
+	// AcceptedByCaller marks an acceptance a caller at a halt made.
+	AcceptedByCaller = "caller"
+	// AcceptedByOperator marks an acceptance the operator decided in an interactive Drift-Verify session.
+	AcceptedByOperator = "operator"
+)
+
+// Whether an acceptance under scope full was ruled on by the run's parent.
+const (
+	// RulingUnruled marks an acceptance the Drift-Verify agent session made that the run's parent has not yet ruled on.
+	RulingUnruled = "unruled"
+	// RulingRuled marks an acceptance the run's parent has ruled on or made itself, or the operator decided.
+	RulingRuled = "ruled"
 )
 
 // The state of a capture.
@@ -31,11 +51,27 @@ const (
 	CaptureFailed = "failed"
 )
 
+// Acceptance is one drifted test accepted as intended.
+type Acceptance struct {
+	// Test is the accepted test.
+	Test string `json:"test"`
+	// Reason is why the drift is intended.
+	Reason string `json:"reason"`
+	// By is AcceptedByAgent, AcceptedByOperator or AcceptedByCaller.
+	By string `json:"by"`
+	// Ruling is RulingUnruled or RulingRuled under scope full, and empty otherwise.
+	Ruling string `json:"ruling"`
+	// At is the RFC 3339 time of the acceptance.
+	At string `json:"at"`
+}
+
 // ScopeRecord is the task's recorded regression scope and what has been decided about its drift.
 // The zero ScopeRecord is not valid: a record that was never written is absent, not zero.
 type ScopeRecord struct {
-	// Scope is ScopeOff or ScopeFull.
+	// Scope is ScopeOff, ScopePartial or ScopeFull.
 	Scope string `json:"scope"`
+	// Skip is the tests the scope leaves out of the capture and the compare.
+	Skip []string `json:"skip"`
 	// RecordedAt is the RFC 3339 time the scope was recorded.
 	RecordedAt string `json:"recorded_at"`
 	// AwaitedAt is the RFC 3339 time a passed Drift-Await or a deferral set.
@@ -46,8 +82,26 @@ type ScopeRecord struct {
 	WaivedReason string `json:"waived_reason"`
 	// WaivedAt is the RFC 3339 time of the waiver.
 	WaivedAt string `json:"waived_at"`
-	// BaselineHead is the commit of the baseline the counted capture read, the task's branch point.
+	// Accepted is the drifted tests accepted as intended.
+	Accepted []Acceptance `json:"accepted"`
+	// Withdrawn is the tests moved off Accepted, which the compare runs again.
+	Withdrawn []string `json:"withdrawn"`
+	// HaltNamed is the unruled tests a Drift-Verify decision halt last named.
+	HaltNamed []string `json:"halt_named"`
+	// HaltNamedAt is the time of that halt, formatted as time.RFC3339 in UTC.
+	HaltNamedAt string `json:"halt_named_at"`
+	// GateHaltAt is the RFC 3339 time, in UTC, that the dirty-tree or test-gate Stuck Drift-Verify last returned.
+	GateHaltAt string `json:"gate_halt_at"`
+	// BaselineHead is the commit of the baseline the last compare read, the task's branch point.
 	BaselineHead string `json:"baseline_head"`
+	// ComparedHead is the commit the last compare ran on.
+	ComparedHead string `json:"compared_head"`
+	// ComparedAt is the time of the last compare, formatted as time.RFC3339 in UTC, and empty before the first.
+	ComparedAt string `json:"compared_at"`
+	// ComparePassed reports whether the last compare showed no drift.
+	ComparePassed bool `json:"compare_passed"`
+	// AcceptedProfileHead is the commit the accepted-profile compare last passed at; a change to the acceptances empties it.
+	AcceptedProfileHead string `json:"accepted_profile_head"`
 	// ScopeSource is the config key that set scope off, such as drift.scope, and empty for any other scope.
 	ScopeSource string `json:"scope_source,omitempty"`
 	// Diff is the config's diff mode, DiffLines or DiffCommand, recorded once so a later config change never moves a running task.
@@ -171,16 +225,10 @@ type JudgedRecord struct {
 type JudgedFile struct {
 	Path string `json:"path"`
 	// Key identifies the judged diff and commit messages, so a later check reuses the ruling only while they are unchanged.
-	Key string `json:"key"`
-	// RangeKey identifies the full diff of the range the ruling was given over.
-	// A ruling that holds an uncaused check or names a carrying file is reused only while it is unchanged,
-	// so a later change to any file the range adds, modifies or deletes has the file judged again.
-	RangeKey string           `json:"range_key,omitempty"`
-	Ruling   Ruling           `json:"ruling"`
-	Reason   string           `json:"reason"`
-	Checks   []LoosenedRuling `json:"checks,omitempty"`
-	// CarriedBy are the paths of the other files whose tests held an assertion this file's diff removes.
-	CarriedBy []string `json:"carried_by,omitempty"`
+	Key    string           `json:"key"`
+	Ruling Ruling           `json:"ruling"`
+	Reason string           `json:"reason"`
+	Checks []LoosenedRuling `json:"checks,omitempty"`
 	// Strand is the judge's strand name.
 	Strand string `json:"strand"`
 	// At is the RFC 3339 time of the ruling.
@@ -235,6 +283,8 @@ type CaptureRecord struct {
 	Pid int `json:"pid"`
 	// Head is the commit the capture ran on.
 	Head string `json:"head"`
+	// Skip is the tests the capture left out; a scope replacement reads it to tell whether the capture profiled each test.
+	Skip []string `json:"skip"`
 	// SlotAcquiredAt is the RFC 3339 time the capture got its gate slot.
 	SlotAcquiredAt string `json:"slot_acquired_at"`
 	// CommandStartedAt is the RFC 3339 time the capture command started.

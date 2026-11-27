@@ -76,7 +76,7 @@ func withAmendConfig(allowance, hardCap int, bounces func() (int, int, bool, err
 	}
 }
 
-// withReviewInput makes the Bouncer read path as its one review input, stamped offset after the harness's clock.
+// withReviewInput makes the Bouncer read path as its one non-full review input, stamped offset after the harness's clock.
 func withReviewInput(path string, offset time.Duration) reentryOption {
 	return withReviewInputs(offset, ReviewInput{Path: path})
 }
@@ -455,24 +455,100 @@ func TestBouncer_Amendment(t *testing.T) {
 				t.Errorf("AmendmentNote() = %q; want the amendment scope and no input named", note)
 			}
 		}},
-		{"ReviewInputStartsAFullGenerationWhenFullGenerationSays", func(t *testing.T) {
-			const input = "/scratch/Parent-Align-fixer-report.md"
+		{"RecordWithOnlyReviewInputReadsAsThatOnePath", func(t *testing.T) {
 			verdict := "CONVERGED"
-			h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil), withReviewInputs(time.Hour, ReviewInput{Path: input}), func(h *reentry, cfg *BouncerConfig) {
+			h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil))
+			legacy := `{"number":2,"amendment":true,"base":"base-1","review_input":"/review/legacy.md"}`
+			if err := os.MkdirAll(h.cfg.RunDir, 0o755); err != nil {
+				t.Fatalf("create run directory = %v; want nil", err)
+			}
+			if err := os.WriteFile(filepath.Join(h.cfg.RunDir, generationRecordFile), []byte(legacy), 0o644); err != nil {
+				t.Fatalf("write generation record = %v; want nil", err)
+			}
+			if generation := h.generation(); !hasInputPaths(generation, "/review/legacy.md") {
+				t.Errorf("generation record = %+v; want the one review input /review/legacy.md", generation)
+			}
+			if note := AmendmentNote(h.cfg.RunDir); !strings.Contains(note, "/review/legacy.md") {
+				t.Errorf("AmendmentNote() = %q; want it to name /review/legacy.md", note)
+			}
+		}},
+		{"SendBackInputOverAnUnchangedSubjectStartsAFullGeneration", func(t *testing.T) {
+			const sendBack = "/scratch/pr-findings-1.md"
+			verdict := "CONVERGED"
+			h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil), withReviewInputs(time.Hour, ReviewInput{Path: sendBack, Full: true}))
+			if err := h.settleRoundOne(nil); err != nil {
+				t.Fatalf("first Call() error = %v; want nil", err)
+			}
+
+			if ptr := shedfake.RequireOutcome(t, h.b, shedengine.Stuck); !ptr.GenerationStart {
+				t.Error("seed Stuck GenerationStart = false; want true")
+			}
+			requireFullGenerationOver(t, h, sendBack)
+		}},
+		{"SendBackInputAfterAnAllowanceZeroSettleStartsAFullGeneration", func(t *testing.T) {
+			const sendBack = "/scratch/pr-findings-1.md"
+			verdict := "CONVERGED"
+			var inputs []ReviewInput
+			h := newAmendment(t, &verdict, nil, withAmendConfig(0, 0, nil), func(h *reentry, cfg *BouncerConfig) {
+				cfg.ReviewInputs = func() ([]ReviewInput, error) { return inputs, nil }
+			})
+			h.layoutSettledRound1(h.subject, nil)
+			h.subject = amendmentChangedSubject
+			shedfake.RequireOutcome(t, h.b, shedengine.Done)
+			if record := h.settleRecord(); record.Generation != 2 || record.Round != 0 {
+				t.Fatalf("settle record = generation %d round %d; want the round-0 record of generation 2", record.Generation, record.Round)
+			}
+
+			inputs = []ReviewInput{{Path: sendBack, WrittenAt: h.now.Add(time.Hour), Full: true}}
+			if ptr := shedfake.RequireOutcome(t, h.b, shedengine.Stuck); !ptr.GenerationStart {
+				t.Error("seed Stuck GenerationStart = false; want true")
+			}
+			generation := h.generation()
+			if generation.Number != 3 || generation.Amendment || !hasInputPaths(generation, sendBack) {
+				t.Errorf("generation record = %+v; want generation 3, not an amendment, over %q", generation, sendBack)
+			}
+		}},
+		{"SendBackInputStartsAFullGenerationWhateverFullGenerationSays", func(t *testing.T) {
+			const sendBack = "/scratch/pr-findings-1.md"
+			verdict := "CONVERGED"
+			h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil), withReviewInputs(time.Hour, ReviewInput{Path: sendBack, Full: true}), func(h *reentry, cfg *BouncerConfig) {
 				cfg.FullGeneration = true
 			})
 			if err := h.settleRoundOne(nil); err != nil {
 				t.Fatalf("first Call() error = %v; want nil", err)
 			}
-			h.subject = amendmentChangedSubject
 
 			shedfake.RequireOutcome(t, h.b, shedengine.Stuck)
-			requireFullGenerationOver(t, h, input)
+			requireFullGenerationOver(t, h, sendBack)
+		}},
+		{"SendBackInputAndFixerReportBothStartAFullGenerationHoldingBoth", func(t *testing.T) {
+			const sendBack = "/scratch/pr-findings-1.md"
+			const fixerReport = "/scratch/Parent-Align-fixer-report.md"
+			verdict := "CONVERGED"
+			h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil), withReviewInputs(time.Hour, ReviewInput{Path: fixerReport}, ReviewInput{Path: sendBack, Full: true}))
+			if err := h.settleRoundOne(nil); err != nil {
+				t.Fatalf("first Call() error = %v; want nil", err)
+			}
+
+			shedfake.RequireOutcome(t, h.b, shedengine.Stuck)
+			requireFullGenerationOver(t, h, fixerReport, sendBack)
+		}},
+		{"SendBackInputOverAChangedSubjectStartsAFullGeneration", func(t *testing.T) {
+			const sendBack = "/scratch/pr-findings-1.md"
+			verdict := "CONVERGED"
+			h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil), withReviewInputs(time.Hour, ReviewInput{Path: sendBack, Full: true}))
+			h.layoutSettledRound1(h.subject, nil)
+			h.subject = amendmentChangedSubject
+
+			if ptr := shedfake.RequireOutcome(t, h.b, shedengine.Stuck); !ptr.GenerationStart {
+				t.Error("seed Stuck GenerationStart = false; want true")
+			}
+			requireFullGenerationOver(t, h, sendBack)
 		}},
 		{"AmendmentRecordHoldingAReviewInputRendersNoReviewInputNote", func(t *testing.T) {
 			verdict := "CONVERGED"
 			h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil))
-			held := `{"number":2,"amendment":true,"base":"base-1","review_inputs":["/review/held.md"]}`
+			held := `{"number":2,"amendment":true,"base":"base-1","review_input":"/review/legacy.md"}`
 			if err := os.MkdirAll(h.cfg.RunDir, 0o755); err != nil {
 				t.Fatalf("create run directory = %v; want nil", err)
 			}
@@ -480,8 +556,8 @@ func TestBouncer_Amendment(t *testing.T) {
 				t.Fatalf("write generation record = %v; want nil", err)
 			}
 
-			if generation := h.generation(); !generation.Amendment || !hasInputPaths(generation, "/review/held.md") {
-				t.Fatalf("generation record = %+v; want an amendment holding the review input /review/held.md", generation)
+			if generation := h.generation(); !generation.Amendment || !hasInputPaths(generation, "/review/legacy.md") {
+				t.Fatalf("generation record = %+v; want an amendment holding the review input /review/legacy.md", generation)
 			}
 			if note := ReviewInputNote(h.cfg.RunDir); note != noNote {
 				t.Errorf("ReviewInputNote() = %q; want %q for an amendment, whatever input it holds", note, noNote)

@@ -30,7 +30,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
@@ -54,65 +53,15 @@ type tierResult struct {
 	// processCapped is set when the process cap killed the run's processes; such a run is never rerun.
 	processCapped bool
 	// memoryStopped is set when the memory guard or the tier's memory cap killed a process of the run;
-	// such a run is never rerun, bar one whose stops were all slice-pressure kills.
+	// such a run is never rerun.
 	memoryStopped bool
-	// slicePressure is set when other load filled the memory limit, so the run judged no code and is rerun once.
-	// Every stop of such a run was a slice-pressure kill of the memory guard.
-	// No test of it failed, and no package of it failed without its test binary being killed.
-	slicePressure bool
-	// pressureStop is set on a rerun when the run and its rerun both ended on slice-pressure kills alone; false otherwise.
-	pressureStop bool
 	// failures, causes and unparsed feed the failure report: failed tests, lines the verb states, and unparsed output.
 	failures []runFailure
 	causes   []string
 	unparsed []string
-	// strayLine is the stray-file line the run failed on, empty when it left no new untracked file.
-	strayLine string
-	// copies holds the result of each copy when the tier ran as --copies copies; empty for a tier run that ran once.
-	copies []tierResult
 }
 
-// runTier runs the tier of run in ctx with its slots held, once or as copies.
-// A request with copiesRun above 0 runs that many copies of the tier side by side, each under the same bounds.
-// A run with an invocation lists the worktree's untracked, non-ignored files before and after it.
-// It fails when the run left a file the first listing lacked.
-// A worktree git cannot list is not checked.
-// A run with an invocation first prints envOverrideLine for the tier's env against the session's.
-// The line is printed once, whatever the copies, and heads the result's log.
-func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, request testRequest) tierResult {
-	before, listed := untrackedBeforeRun(run, request.root)
-	return runTierChecked(ctx, out, run, env, request, before, listed)
-}
-
-// runTierChecked runs the tier of run in ctx with its slots held, once or as copies, and fails it on a stray file.
-// before is the worktree's untracked, non-ignored files from before the tier's first attempt.
-// listed says that listing could be taken; without it the run is not checked.
-// A caller that reruns the tier passes the same listing to every attempt,
-// so a file an earlier attempt left still fails the run.
-func runTierChecked(ctx context.Context, out io.Writer, run tierRun, env []string, request testRequest, before map[string]bool, listed bool) tierResult {
-	envLine := ""
-	if len(run.invocations) > 0 {
-		envLine = envOverrideLine(tierName(run.number), renderTierEnv(run.tier), request.sessionEnv)
-	}
-	if envLine != "" {
-		printLine(request.stderr, envLine)
-	}
-	var result tierResult
-	if request.copiesRun > 0 {
-		result = runTierCopies(ctx, run, env, request)
-	} else {
-		result = runTierCommands(ctx, out, run, env, request)
-	}
-	if envLine != "" && result.refusal == "" {
-		result.log = append([]byte(envLine+"\n"), result.log...)
-	}
-	if !listed || result.refusal != "" {
-		return result
-	}
-	return checkStrayFiles(result, before, tierName(run.number), request)
-}
-
-// runTierCommands runs the tier of run once in ctx with its slots held.
+// runTier runs the tier of run in ctx with its slots held.
 // It prebuilds `lym` when the tier asks.
 // Each invocation's command then runs through the platform shell as a tied child.
 // The run stops at the first non-zero exit.
@@ -123,10 +72,8 @@ func runTierChecked(ctx context.Context, out io.Writer, run tierRun, env []strin
 // and it returns that line for the caller to print.
 // Every command's GOFLAGS then opens with gateslot.TestCacheOffFlag, so `go test` keeps no test result cache.
 // A passing `vstest` invocation that reported no test prints the line naming it to stderr and the log.
-// A failed run prints and logs each run-level message its test results files report, such as a test host crash.
-// It counts each among the causes.
 // A run with no invocation passes at once with nothing discovered.
-func runTierCommands(ctx context.Context, out io.Writer, run tierRun, env []string, request testRequest) tierResult {
+func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, request testRequest) tierResult {
 	started := time.Now()
 	timeout := time.Duration(run.tier.TimeoutMin) * request.timeoutUnit
 	record := gateslot.RunRecord{Tier: run.number, ScopeForm: run.scopeForm, Slots: run.tier.Slots, GuardStep: run.guardStep, Start: started}
@@ -137,7 +84,7 @@ func runTierCommands(ctx context.Context, out io.Writer, run tierRun, env []stri
 		return tierResult{refusal: fmt.Sprintf("gate test: %v; way forward: fix the counter of %s with \"lym config gate\" from the prime%s", err, tierName(run.number), roleClause)}
 	}
 
-	tierCtx, cancel := withTimeoutMin(ctx, timeout, elapsedSinceNow(), time.After)
+	tierCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	tierEnv := slices.Concat(env, renderTierEnv(run.tier))
@@ -161,15 +108,7 @@ func runTierCommands(ctx context.Context, out io.Writer, run tierRun, env []stri
 	}
 
 	var causes []string
-	if exit != 0 {
-		// A crashed test host fails the run with no failed test, so its results file's message is the only cause.
-		for _, line := range resultsFileLines(counter, tierName(run.number)) {
-			logBuffer.WriteString(line + "\n")
-			printLine(request.stderr, line)
-			causes = append(causes, line)
-		}
-	}
-	timedOut := ctx.Err() == nil && errors.Is(context.Cause(tierCtx), errTimeoutMinPassed) && exit != 0
+	timedOut := ctx.Err() == nil && errors.Is(tierCtx.Err(), context.DeadlineExceeded) && exit != 0
 	if timedOut {
 		exit = 1
 		line := gateslot.TierTimeoutLine(tierName(run.number), timeout)
@@ -232,129 +171,27 @@ func runTierCommands(ctx context.Context, out io.Writer, run tierRun, env []stri
 	return tierResult{
 		record: record, log: logBuffer.Bytes(), trimpathNote: trimpathNote,
 		processCapped: stops.processCap != "", memoryStopped: len(stops.memoryLines()) > 0,
-		slicePressure: stops.slicePressureOnly() && record.Failed == 0 && !failedBeyondKills(failures),
-		failures:      failures, causes: causes, unparsed: counter.Unparsed(),
+		failures: failures, causes: causes, unparsed: counter.Unparsed(),
 	}
-}
-
-// timeoutMinPoll is the longest a timeout_min bound goes without reading the clock.
-const timeoutMinPoll = 10 * time.Second
-
-// errTimeoutMinPassed is the cause of a context its timeout_min bound ended.
-var errTimeoutMinPassed = errors.New("the timeout_min bound passed")
-
-// withTimeoutMin returns a context under ctx that ends with the cause errTimeoutMinPassed once timeout has passed.
-// The time passed counts from the call on the monotonic clock and on the wall clock, whichever has run further.
-// The monotonic clock stands still while the host sleeps,
-// so a bound the host slept through still ends the context within timeoutMinPoll of its waking.
-// elapsed reads the time passed since the call on both clocks, and after waits as time.After does.
-// The cancel it returns ends the context and the goroutine that watches the bound.
-func withTimeoutMin(ctx context.Context, timeout time.Duration, elapsed func() (monotonic, wall time.Duration), after func(time.Duration) <-chan time.Time) (context.Context, context.CancelFunc) {
-	bounded, cancel := context.WithCancelCause(ctx)
-	go func() {
-		for {
-			monotonic, wall := elapsed()
-			left := timeout - max(monotonic, wall)
-			if left <= 0 {
-				cancel(errTimeoutMinPassed)
-				return
-			}
-			select {
-			case <-bounded.Done():
-				return
-			case <-after(min(left, timeoutMinPoll)):
-			}
-		}
-	}()
-	return bounded, func() { cancel(context.Canceled) }
-}
-
-// elapsedSinceNow returns a reading of the time passed since this call, on the monotonic clock and on the wall clock.
-func elapsedSinceNow() func() (monotonic, wall time.Duration) {
-	start := time.Now()
-	return func() (time.Duration, time.Duration) {
-		// Round(0) strips the monotonic reading, so the second difference is the wall clock's.
-		return time.Since(start), time.Now().Round(0).Sub(start.Round(0))
-	}
-}
-
-// envOverrideLine returns the line naming each entry of tierEnv whose variable session sets to another value.
-// tierEnv holds the tier's own env entries, and session the environment of the session that started the call.
-// A result the tier gives reflects the tier's values, so a session that measures through the gate must know them.
-// The line names each variable with the tier's value only, since the session's value may be a secret the tier overrides.
-// A variable the session leaves unset is not named, since the session reads no value of its own for it.
-// Variable names compare without case on Windows, where the environment does.
-// It returns "" when no entry differs.
-func envOverrideLine(tier string, tierEnv, session []string) string {
-	envName := func(name string) string {
-		if runtime.GOOS == "windows" {
-			return strings.ToUpper(name)
-		}
-		return name
-	}
-	sessionValues := make(map[string]string, len(session))
-	for _, entry := range session {
-		if name, value, ok := strings.Cut(entry, "="); ok {
-			sessionValues[envName(name)] = value
-		}
-	}
-	var differing []string
-	for _, entry := range tierEnv {
-		name, value, _ := strings.Cut(entry, "=")
-		if held, set := sessionValues[envName(name)]; set && held != value {
-			differing = append(differing, name+"="+value)
-		}
-	}
-	if len(differing) == 0 {
-		return ""
-	}
-	return fmt.Sprintf("gate test: %s runs with env values that differ from this session's environment: %s; "+
-		"a result of %s reflects the tier's values, not the session's; "+
-		"way forward: read the result under those values, or change tiers.%s.env with \"lym config gate\" from the prime",
-		tier, strings.Join(differing, ", "), tier, tier)
 }
 
 // runStops is what the guards over a tier's commands stopped.
 type runStops struct {
 	// processCap is the process cap's line once it killed the run's processes, empty otherwise.
 	processCap string
-	// guardKills holds the memory guard's kill of each test binary it killed.
-	guardKills []guardKill
+	// guardKills holds the memory guard's line for each test binary it killed.
+	guardKills []string
 	// memoryCap is the line of a kill at the tier's memory cap, empty otherwise.
 	memoryCap string
 }
 
 // memoryLines returns the memory guard's lines followed by the tier's memory cap line, when there is one.
 func (s runStops) memoryLines() []string {
-	var lines []string
-	for _, kill := range s.guardKills {
-		lines = append(lines, kill.line)
-	}
+	lines := slices.Clone(s.guardKills)
 	if s.memoryCap != "" {
 		lines = append(lines, s.memoryCap)
 	}
 	return lines
-}
-
-// slicePressureOnly reports whether the guards' only stops of the run were the memory guard's slice-pressure kills.
-func (s runStops) slicePressureOnly() bool {
-	if len(s.guardKills) == 0 || s.memoryCap != "" || s.processCap != "" {
-		return false
-	}
-	for _, kill := range s.guardKills {
-		if !kill.slicePressure {
-			return false
-		}
-	}
-	return true
-}
-
-// failedBeyondKills reports whether failures holds a failure a killed test binary does not explain:
-// a failed test, or a package that failed outside any test with its binary not killed.
-func failedBeyondKills(failures []runFailure) bool {
-	return slices.ContainsFunc(failures, func(failure runFailure) bool {
-		return failure.test != "" || !failure.killed
-	})
 }
 
 // stopped reports whether any guard stopped part of the run.
@@ -362,13 +199,12 @@ func (s runStops) stopped() bool {
 	return s.processCap != "" || len(s.memoryLines()) > 0
 }
 
-// tierMemoryCapLine is the line a tier run prints and logs once the kernel killed a process of it at its memory cap.
+// tierMemoryCapLine is the line a tier run prints and logs once the kernel killed a process of it at its memory_mb.
 func tierMemoryCapLine(tier string, memoryMB int) string {
-	capKey := tierKeyName(tier, tierMemoryMBLeaf)
-	return fmt.Sprintf("gate test: %s held more than its %s of %d MB, its builds and test binaries together, "+
+	return fmt.Sprintf("gate test: %s held more than its memory_mb of %d MB, its builds and test binaries together, "+
 		"so the kernel killed the largest of them and the run fails; "+
 		"way forward: find the package whose tests hold memory without bound and fix it, then re-run the same command, "+
-		"or raise %s with \"lym config gate\" from the prime%s", tier, capKey, memoryMB, capKey, roleClause)
+		"or raise tiers.%s.memory_mb with \"lym config gate\" from the prime%s", tier, memoryMB, tier, roleClause)
 }
 
 // unfinishedTestsShown caps the tests the line of unfinished tests names per package.
@@ -394,13 +230,12 @@ func unfinishedTestsLine(unfinished map[string][]string) string {
 	return "gate test: the tests running when the memory kill ended their test binary, which never reported a result: " + strings.Join(packages, "; ")
 }
 
-// tierMemoryCapRefusal is the refusal of a tier whose command did not run under its memory cap of memoryMB.
+// tierMemoryCapRefusal is the refusal of a tier whose command did not run under its memory_mb of memoryMB.
 // err wraps proc.ErrMemoryCap and says why: a scope that never ran the command, or a cap that could not be set.
 func tierMemoryCapRefusal(tier string, memoryMB int, dir string, err error) string {
-	capKey := tierKeyName(tier, tierMemoryMBLeaf)
-	return fmt.Sprintf("gate test: the command of %s in %s did not run under its %s of %d MB: %v; "+
+	return fmt.Sprintf("gate test: the command of %s in %s did not run under its memory_mb of %d MB: %v; "+
 		"way forward: run from a session that reaches the systemd user manager, which must hand the memory controller to its scopes, "+
-		"or remove %s with \"lym config gate\" from the prime, then re-run the same command%s", tier, dir, capKey, memoryMB, err, capKey, roleClause)
+		"or remove tiers.%s.memory_mb with \"lym config gate\" from the prime, then re-run the same command%s", tier, dir, memoryMB, err, tier, roleClause)
 }
 
 // testFailures returns the failed tests of failures as the run record carries them.
@@ -470,44 +305,31 @@ func runnerCrash(result tierResult) string {
 	return crashSignals[syscall.Signal(result.record.ExitCode-128)]
 }
 
-// stoppedOnSlicePressure reports whether a tier run that ran and did not time out ended on slice-pressure kills alone.
-func stoppedOnSlicePressure(result tierResult) bool {
-	return result.refusal == "" && !result.buildFailed && !result.record.TimedOut && result.slicePressure
-}
-
 // retryTier runs attempt, the tier named tier, and returns its result.
 // It reruns the tier after delay if the run failed on a shortage, or crashed its test runner with no failing test.
-// It does so too if the memory guard stopped the run for a memory limit other load filled.
-// None of them judges the code under test.
-// The record of every attempt stopped so, the first or the rerun, carries MemoryPressure.
+// Neither judges the code under test.
 // The line announcing the rerun goes to stderr and opens the rerun's log.
 // Once the delay has passed, recordFirst gets the first run's result,
 // so its record stays on file beside the rerun's, which is marked Rerun.
 // A rerun that fails on a shortage again carries its marker in shortage,
 // and a rerun that crashes after a first run that crashed carries its signal in crash and its record's RunnerCrash.
-// A rerun that the guard stops so after a first run it stopped so carries pressureStop.
 // A rerun that crashes after a first run that failed on a shortage carries no crash:
 // only one of the two runs crashed.
 // A ctx cancelled before or during the delay returns the first result.
 func retryTier(ctx context.Context, stderr io.Writer, tier string, delay time.Duration, attempt func() tierResult, recordFirst func(tierResult)) tierResult {
 	result := attempt()
-	result.record.MemoryPressure = stoppedOnSlicePressure(result)
 	marker := failedOnShortage(result)
 	signal := ""
 	if marker == "" {
 		signal = runnerCrash(result)
 	}
-	pressured := marker == "" && signal == "" && stoppedOnSlicePressure(result)
-	if (marker == "" && signal == "" && !pressured) || ctx.Err() != nil {
+	if (marker == "" && signal == "") || ctx.Err() != nil {
 		return result
 	}
 	cause := fmt.Sprintf("failed on a resource shortage (%q in its output), an environment error a rerun clears", marker)
 	if signal != "" {
 		cause = fmt.Sprintf("crashed its test runner (exit %d, %s) with no failing test, which judges no code", result.record.ExitCode, signal)
 		result.record.RunnerCrash = signal
-	}
-	if pressured {
-		cause = "had a test binary killed by the memory guard for a memory limit other load filled, which judges no code"
 	}
 	line := fmt.Sprintf("gate test: %s %s; running it once more in %s", tier, cause, delay)
 	printLine(stderr, line)
@@ -527,8 +349,6 @@ func retryTier(ctx context.Context, stderr io.Writer, tier string, delay time.Du
 		retried.crash = runnerCrash(retried)
 		retried.record.RunnerCrash = retried.crash
 	}
-	retried.pressureStop = pressured && stoppedOnSlicePressure(retried)
-	retried.record.MemoryPressure = stoppedOnSlicePressure(retried)
 	retried.log = append([]byte(line+"\n"), retried.log...)
 	return retried
 }
@@ -541,19 +361,12 @@ func retryTier(ctx context.Context, stderr io.Writer, tier string, delay time.Du
 // While a command runs, the process cap watches every process carrying env's run marker, when env sets one,
 // and the memory guard watches its test binaries, when the request turns it on.
 // A tier with memory_mb runs each command under that cap, and a command that cannot be started under it is a refusal.
-// A tier with `results: trx` opens each invocation's {args} with vstestResultsArgs over a fresh temp directory.
-// It refuses a call whose own args hold a results directory or a trx logger, since the gate owns those words.
-// Once the command ends, the counter reads its whole output.
-// The results files there then replace the counts and failures its console output gave, and the directory is removed.
 // After each passing invocation it hands notice the line of noTestNotice, when that line is not empty.
 // It returns that exit code, the commands it rendered, what the guards stopped,
 // and a refusal when a command could not be run at all.
 func runInvocations(ctx context.Context, run tierRun, counter counter, env []string, request testRequest, notice func(string)) (exit int, commands []string, stops runStops, refusal string) {
 	if len(run.invocations) == 0 {
 		return 0, nil, runStops{}, ""
-	}
-	if refusal := resultsArgsRefusal(run.number, run.tier, run.args); refusal != "" {
-		return 0, nil, runStops{}, refusal
 	}
 	if run.tier.PrebuiltLym {
 		bin, cleanup, err := prebuildLym(ctx, request.goBinary, request.root, run.tier.Parallel, request.prebuiltStore, request.pipeWaitDelay, nil)
@@ -589,23 +402,8 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 				continue
 			}
 		}
-		args, resultsDir := run.args, ""
-		// A summary or a failure block the last invocation left open ends here, with or without a results file.
-		vstest, _ := counter.(*vstestCounter)
-		if vstest != nil {
-			vstest.startInvocation()
-		}
-		if run.tier.Results == gateslot.ResultsTRX {
-			if dir, err := lymtemp.MkdirTemp("gate-vstest-"); err != nil {
-				logger.Warn("gate test: could not make the vstest results directory; the console counts stand", "tier", tierName(run.number), "cause", err)
-			} else {
-				resultsDir = dir
-				args = append(vstestResultsArgs(dir), run.args...)
-			}
-		}
-		command, err := renderTierCommand(run.number, run.tier, invocation.targets, testTargets, invocation.terms, args)
+		command, err := renderTierCommand(run.number, run.tier, invocation.targets, testTargets, invocation.terms, run.args)
 		if err != nil {
-			removeResultsDir(resultsDir)
 			return 0, commands, runStops{}, err.Error()
 		}
 		commands = append(commands, command)
@@ -650,16 +448,6 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 		}
 		exit = tierExitCodeOf(runErr)
 		logger.Info("gate test: tier command ended", "tier", tierName(run.number), "exit", exit, "error", runErr, "memory_cap_kill", capKilled)
-		if resultsDir != "" {
-			// A last console line without a newline is still pending, and would count on top of the file's results.
-			if err := counter.Flush(); err != nil {
-				logger.Warn("gate test: could not flush the tier's output", "tier", tierName(run.number), "cause", err)
-			}
-			if results, read := readTRXResults(resultsDir); read {
-				vstest.replaceInvocation(results)
-			}
-			removeResultsDir(resultsDir)
-		}
 		if errors.Is(runErr, proc.ErrMemoryCap) && ctx.Err() == nil {
 			return 0, commands, runStops{}, tierMemoryCapRefusal(tierName(run.number), run.tier.MemoryMB, dir, runErr)
 		}
@@ -676,16 +464,6 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 	return 0, commands, runStops{}, ""
 }
 
-// removeResultsDir removes a vstest invocation's results directory, doing nothing for an empty dir.
-func removeResultsDir(dir string) {
-	if dir == "" {
-		return
-	}
-	if err := os.RemoveAll(dir); err != nil {
-		logger.Warn("gate test: could not remove the vstest results directory", "dir", dir, "cause", err)
-	}
-}
-
 // noTestNotice returns the line of a passing `vstest` invocation whose output reported no test, or "" for any other.
 // discovered is the number of tests the invocation's output reported, and dir is its run directory.
 // A test project that sets IsTestProject false unless an MSBuild property is passed builds and exits 0 this way,
@@ -693,7 +471,6 @@ func removeResultsDir(dir string) {
 // The line reads only the invocation's total, so it names no MSBuild property.
 // It sees no skip inside an invocation that ran some test.
 // The hand run is offered only while the hub's `refuse_raw` does not list `dotnet test`.
-// A run whose args carry a test filter gets the line of filteredNoTestNotice instead.
 func noTestNotice(run tierRun, inv invocation, dir string, discovered int) string {
 	if run.tier.Counter != counterVSTest || discovered > 0 {
 		return ""
@@ -706,27 +483,7 @@ func noTestNotice(run tierRun, inv invocation, dir string, discovered int) strin
 	if len(inv.terms) > 0 {
 		classes = " under the class filter " + strings.Join(inv.terms, "|")
 	}
-	if holdsCallerFilter(run.args) {
-		return filteredNoTestNotice(run, project, classes)
-	}
-	return fmt.Sprintf("gate test: %s ran no test of %s%s: dotnet test exited 0 and reported no test, as a test project does that sets IsTestProject false unless an MSBuild property is passed, so the gate's pass covers none of its tests; the gate reads only the invocation's total, so it names no property and sees no skip inside an invocation that ran some test; way forward: when those tests must run and the hub's %s does not list dotnet test, run them by hand with dotnet test <project> -p:<property>=true, the property its project file's IsTestProject condition names, and check that the run's summary line reports them; otherwise report the skipped tests to your parent", tierName(run.number), project, classes, keyName(refuseRawKey))
-}
-
-// filteredNoTestNotice returns the line of a passing `vstest` invocation of project that reported no test.
-// It covers the case where the call's own words carried a test filter.
-// classes is the clause naming the scope's class filter, empty when it set none.
-// The filter most likely names a test of a tier the call does not run,
-// so the line names the declared tiers of run.otherTiers and the call that runs the test through its own tier.
-func filteredNoTestNotice(run tierRun, project, classes string) string {
-	tier := tierName(run.number)
-	others := "the hub declares no tier besides those this call runs"
-	wayForward := "check that the filter selects a test of the project, then re-run the same command"
-	if len(run.otherTiers) > 0 {
-		others = fmt.Sprintf("the hub also declares %s, which this call does not run, and the test may belong to one of them", tierNames(run.otherTiers))
-		wayForward = "run the test through the tier that holds it, with lym gate test --tier <N> <its package or test project> -- <args> and the same words after \"--\""
-	}
-	return fmt.Sprintf("gate test: %s ran no test of %s%s: dotnet test exited 0 and no test of %s matched the filter among the words after \"--\"; %s; way forward: %s",
-		tier, project, classes, project, others, wayForward)
+	return fmt.Sprintf("gate test: %s ran no test of %s%s: dotnet test exited 0 and reported no test, as a test project does that sets IsTestProject false unless an MSBuild property is passed, so the gate's pass covers none of its tests; the gate reads only the invocation's total, so it names no property and sees no skip inside an invocation that ran some test; way forward: when those tests must run and the hub's refuse_raw does not list dotnet test, run them by hand with dotnet test <project> -p:<property>=true, the property its project file's IsTestProject condition names, and check that the run's summary line reports them; otherwise report the skipped tests to your parent", tierName(run.number), project, classes)
 }
 
 // tierTestTargets returns the packages of targets in the module at moduleDir that hold a test run's tier executes.

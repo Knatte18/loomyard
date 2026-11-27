@@ -879,7 +879,11 @@ func (e *Engine) Resume() (ResumeResult, error) {
 			if !launch[st.Strands[i].GUID] {
 				continue
 			}
-			if err := e.launchStrandLocked(st, &st.Strands[i], e.revivalCmd(st.Strands[i])); err != nil {
+			resumeCmd := st.Strands[i].ResumeCmd
+			if resumeCmd == "" {
+				resumeCmd = st.Strands[i].Cmd
+			}
+			if err := e.launchStrandLocked(st, &st.Strands[i], resumeCmd); err != nil {
 				return fmt.Errorf("resume strand %s: %w", st.Strands[i].GUID, err)
 			}
 			// Persist after each launch, before the apply below, so the pane is tracked at once.

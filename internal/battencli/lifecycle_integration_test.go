@@ -24,7 +24,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -204,36 +203,6 @@ func seedBoardTask(t *testing.T, h *hubforge.Hub, slug, recipeType string) {
 	}
 }
 
-// madeRecorder is a worktree seam that records the roots of the worktrees it was told were made.
-type madeRecorder struct {
-	mu    sync.Mutex
-	roots []string
-}
-
-// Made records event's root.
-func (r *madeRecorder) Made(event fabricengine.WorktreeEvent) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.roots = append(r.roots, event.Root)
-	return nil
-}
-
-// TookIn records nothing.
-func (r *madeRecorder) TookIn(fabricengine.WorktreeEvent) error { return nil }
-
-// madeCount returns how many times the seam was told the worktree at root was made.
-func (r *madeRecorder) madeCount(root string) int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	count := 0
-	for _, got := range r.roots {
-		if filepath.Clean(got) == filepath.Clean(root) {
-			count++
-		}
-	}
-	return count
-}
-
 // pathExists reports whether path exists on disk.
 func pathExists(path string) bool {
 	_, err := os.Stat(path)
@@ -241,12 +210,12 @@ func pathExists(path string) bool {
 }
 
 // TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating pins both reconcile calls of `lym batten run`.
-// With a fresh stamp the first call is a no-op.
-// A second worktree-made notification for the new pair comes only from the unconditional pair call after the create row.
+// With a fresh stamp the first call is a no-op,
+// so the new pair losing the prime's retired key can only come from the unconditional pair call after the create row.
 // Against an absent stamp, `arm` for run reconciles ahead of armAt's non-prime refusal and its auto-seed.
-// It does not call t.Parallel: it installs the process-wide worktree seam.
 func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *testing.T) {
 	tiergate.Require(t, 1)
+	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "batten-reconcile-pair"
@@ -262,8 +231,9 @@ func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *t
 		t.Fatalf("write stamp: %v", err)
 	}
 
-	seam := &madeRecorder{}
-	t.Cleanup(fabricengine.InstallWorktreeSeam(seam))
+	batcher, _ := configreg.Lookup("batcher")
+	retired := strings.Replace(batcher.Template(), "orientation: 31400", "master_base: 52000", 1)
+	gitkit.CommitFile(t, h.PrimeRecords(), configengine.ConfigFileRel("batcher"), retired, "fixture: retired key")
 
 	c := &battenCLI{location: h.Location}
 	if err := c.wire(h.Location, slug); err != nil {
@@ -289,8 +259,8 @@ func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *t
 	if got := pairPushCounts.count(pair); got != 1 {
 		t.Errorf("pair pushes spawned for %s = %d; want 1", pair, got)
 	}
-	if got := seam.madeCount(pair); got < 2 {
-		t.Errorf("worktree-made notifications for the new pair = %d; want the create row's and the pair reconcile's", got)
+	if data, err := os.ReadFile(configengine.ConfigFile(pair, "batcher")); err != nil || strings.Contains(string(data), "master_base") {
+		t.Errorf("new pair's batcher.yaml still carries the retired key (err %v)", err)
 	}
 	if status := gitkit.GitStatusPorcelain(t, h.PairRecordsSibling(slug)); status != "" {
 		t.Errorf("new pair's records worktree is dirty after the create row:\n%s", status)
@@ -359,7 +329,6 @@ func TestBattenIntegration_Rows(t *testing.T) {
 		{"Teardown_FailedRemoteDeletionHaltsResumably", stepTeardown_FailedRemoteDeletionHaltsResumably},
 		{"Teardown_UnreachableRemoteHaltsBeforeRemovalResumably", stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably},
 		{"Teardown_AlreadyGonePairWithNoBranchIsDone", stepTeardown_AlreadyGonePairWithNoBranchIsDone},
-		{"Teardown_ResumedRowWhosePairIsGoneFinishesDone", stepTeardown_ResumedRowWhosePairIsGoneFinishesDone},
 		{"StepDrivenRunShed_ReturnsOnTheChildsStateChange", stepStepDrivenRunShed_ReturnsOnTheChildsStateChange},
 		{"RunShedPausedChild_WaitsThenTearsDownOnceDone", stepRunShedPausedChild_WaitsThenTearsDownOnceDone},
 		{"CreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree", stepCreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree},
@@ -705,7 +674,7 @@ func stepTeardown_AlreadyGonePairFinishesItsBranchDeletion(t *testing.T, h *hubf
 				t.Fatalf("precondition: %q not on the remote after the create", recordsBranch)
 			}
 			// Both worktrees are removed and the remote copy kept: the state a kill between the local and remote deletions leaves.
-			if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
+			if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
 				t.Fatalf("remove the pair without its remote copy: %v", err)
 			}
 			recordsRepoRoot, err := fabricengine.RecordsRepoRoot(h.Location)
@@ -758,26 +727,6 @@ func refuseRemoteBranchDeletions(t *testing.T, bareDir string) func() {
 func remoteArchiveTagExists(bareDir, slug string) bool {
 	out, err := exec.Command("git", "-C", bareDir, "for-each-ref", "--format=%(refname)", "refs/tags/archive/"+slug+"/").Output()
 	return err == nil && strings.TrimSpace(string(out)) != ""
-}
-
-// stepTeardown_ResumedRowWhosePairIsGoneFinishesDone runs the Worktree-Teardown row over a pair already removed.
-// The row's push has nothing to push and its level read reads level, so the row goes on to its removal and finishes Done.
-func stepTeardown_ResumedRowWhosePairIsGoneFinishesDone(t *testing.T, h *hubforge.Hub) {
-	slug := "batten-teardown-resumed-gone"
-	hubforge.AddPair(t, h, slug)
-	if _, err := h.Topology.Remove(h.Location, slug, false, true, ""); err != nil {
-		t.Fatalf("remove the pair: %v", err)
-	}
-	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
-		return shedengine.Status{State: shedengine.StateDone}, true, nil
-	})
-	producer := battenshed.NewWorktreeTeardown(battenrecipe.NameWorktreeTeardown, slug, c.env.Teardown, c.env.PrimeLock, c.env.ScratchDir)
-
-	outcome, pointer, err := producer.Call(context.Background())
-
-	if err != nil || outcome != shedengine.Done {
-		t.Errorf("Worktree-Teardown over a gone pair = %q, reason %q, error %v; want Done", outcome, pointer.Reason, err)
-	}
 }
 
 // stepTeardown_FailedRemoteDeletionHaltsResumably makes the records origin refuse branch deletions during teardown.
@@ -868,7 +817,7 @@ func stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably(t *testing.T, h *
 func stepTeardown_AlreadyGonePairWithNoBranchIsDone(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-teardown-finished"
 	hubforge.AddPair(t, h, slug)
-	if _, err := h.Topology.Remove(h.Location, slug, false, true, ""); err != nil {
+	if _, err := h.Topology.Remove(h.Location, slug, false, true); err != nil {
 		t.Fatalf("remove the pair: %v", err)
 	}
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
@@ -1208,7 +1157,7 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 	if err != nil {
 		t.Fatalf("load fabric config: %v", err)
 	}
-	if _, err := fabricengine.NewTopology(cfg).Remove(h.Location, slug, true, false, ""); err != nil {
+	if _, err := fabricengine.NewTopology(cfg).Remove(h.Location, slug, true, false); err != nil {
 		t.Fatalf("%s: %v", removeCommand, err)
 	}
 	if exec.Command("git", "-C", h.PrimeWorktree(), "rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run() == nil {
@@ -1360,9 +1309,6 @@ func stepCommandRows_IgnoreACommandSetInTheTasksTrackedLayer(t *testing.T, h *hu
 	c, markers, pair := newCommandRowFixture(t, h, slug)
 	trackedMarker := filepath.Join(t.TempDir(), "tracked")
 	tracked := "open_window_command: " + strconv.Quote("printf %s tracked > "+trackedMarker) + "\n"
-	if err := os.MkdirAll(configengine.ConfigDir(pair), 0o755); err != nil {
-		t.Fatalf("create the pair's config dir: %v", err)
-	}
 	if err := os.WriteFile(configengine.ConfigFile(pair, "batten"), []byte(tracked), 0o644); err != nil {
 		t.Fatalf("write the tracked batten.yaml: %v", err)
 	}
@@ -1987,7 +1933,7 @@ func stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer(t *testing.T, h *h
 
 	t.Run("a valid setting lands in the pair's local layer", func(t *testing.T) {
 		const slug = "batten-run-settings"
-		result := runWorktreeCreateAndSeedChild(t, slug, map[string]any{"loom": map[string]any{"review": map[string]any{"max_bounces": 2}}})
+		result := runWorktreeCreateAndSeedChild(t, slug, map[string]any{"loom": map[string]any{"review_max_bounces": 2}})
 		if result.Outcome != shedengine.Done {
 			t.Fatalf("Seed-Child outcome = %q (reason %q); want done", result.Outcome, result.Reason)
 		}
@@ -1996,15 +1942,15 @@ func stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer(t *testing.T, h *h
 			t.Fatalf("resolve child location: %v", err)
 		}
 		local, err := os.ReadFile(configengine.LocalFile(pair.AnchorPath(), "loom"))
-		if err != nil || !strings.Contains(string(local), "max_bounces: 2") {
-			t.Fatalf("pair loom.local.yaml = %q, %v; want review.max_bounces: 2", local, err)
+		if err != nil || !strings.Contains(string(local), "review_max_bounces: 2") {
+			t.Fatalf("pair loom.local.yaml = %q, %v; want review_max_bounces: 2", local, err)
 		}
 		cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(pair), "loom")
 		if err != nil {
 			t.Fatalf("load the pair's loom config: %v", err)
 		}
-		if cfg.Review.MaxBounces != 2 {
-			t.Errorf("resolved review.max_bounces = %d; want 2", cfg.Review.MaxBounces)
+		if cfg.ReviewMaxBounces != 2 {
+			t.Errorf("resolved review_max_bounces = %d; want 2", cfg.ReviewMaxBounces)
 		}
 
 		pairFabric, err := fabricengine.Open(pair)

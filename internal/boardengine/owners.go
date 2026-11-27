@@ -115,7 +115,7 @@ func (s *Store) effectiveOwner(slug string) (string, error) {
 
 // checkOwnerPayload judges the owner_machine key of an upsert payload against the entry's effective owner.
 // A value equal to it is a no-op and is dropped from fields;
-// any other value is refused, since an upsert never writes an owner.
+// any other value is refused, since only the owner setter writes an owner.
 // A payload without the key passes untouched.
 func checkOwnerPayload(s *Store, fields map[string]any) error {
 	value, carried := fields["owner_machine"]
@@ -135,7 +135,7 @@ func checkOwnerPayload(s *Store, fields map[string]any) error {
 	if err != nil {
 		return fmt.Errorf("entry %q: resolve what adopt takes: %w", slug, err)
 	}
-	return fmt.Errorf("entry %q is owned by %q, and an upsert never changes an owner: run `lym adopt %s` from this machine's prime to take it over", slug, effective, subject)
+	return fmt.Errorf("entry %q is owned by %q, and a board write never changes an owner: run `lym adopt %s` from this machine's prime to take it over", slug, effective, subject)
 }
 
 // Effective returns the owner machine the entry slug reads as, where "" means owned by no other machine.

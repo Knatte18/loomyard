@@ -129,3 +129,66 @@ func TestGateFailedReason_NamesAttemptsAndFindingsPath(t *testing.T) {
 		})
 	}
 }
+
+// TestClearGateFindings pins that an existing file is removed, that an absent file or an empty path is no error,
+// and that a removal failure leaves the target in place without panicking.
+func TestClearGateFindings(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name string
+		// setup builds the path under dir, creating what the case needs.
+		setup func(t *testing.T, dir string) string
+		// wantGone reports whether the path must not exist afterwards.
+		wantGone bool
+	}{
+		{
+			name: "an existing file is removed",
+			setup: func(t *testing.T, dir string) string {
+				t.Helper()
+				path := filepath.Join(dir, "row.md")
+				if err := os.WriteFile(path, []byte("findings"), 0o644); err != nil {
+					t.Fatalf("WriteFile() error = %v", err)
+				}
+				return path
+			},
+			wantGone: true,
+		},
+		{
+			name:     "an absent file is no error",
+			setup:    func(t *testing.T, dir string) string { return filepath.Join(dir, "absent.md") },
+			wantGone: true,
+		},
+		{
+			name:  "an empty path does nothing",
+			setup: func(t *testing.T, dir string) string { return "" },
+		},
+		{
+			name: "a non-empty directory fails the removal and stays",
+			setup: func(t *testing.T, dir string) string {
+				t.Helper()
+				path := filepath.Join(dir, "row.md")
+				if err := os.MkdirAll(filepath.Join(path, "inner"), 0o755); err != nil {
+					t.Fatalf("MkdirAll() error = %v", err)
+				}
+				return path
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			path := tt.setup(t, t.TempDir())
+
+			clearGateFindings(path)
+
+			if path == "" {
+				return
+			}
+			_, err := os.Stat(path)
+			if gone := os.IsNotExist(err); gone != tt.wantGone {
+				t.Errorf("after clearGateFindings(%q) path gone = %v; want %v", path, gone, tt.wantGone)
+			}
+		})
+	}
+}

@@ -42,5 +42,3 @@ You never run a Bash call in the background, and you end your turn only after yo
 - Leave the worktree clean: no uncommitted change may remain when you end your turn.
 
 {{template "loom-fragment-loosened-check"}}
-
-{{template "loom-fragment-tooling-names"}}

@@ -13,7 +13,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -28,7 +27,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/secretpath"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
@@ -98,8 +96,7 @@ func (c *websterCLI) wire(loc *lymcwd.Location, mode preflight.Mode, cwd, stenci
 }
 
 // wireHub builds the engine stack for hub mode.
-// It reconciles the hub's config after a binary change.
-// It then loads the module configs and the model registry from the anchor path.
+// It loads the module configs and the model registry from the anchor path.
 // It builds the geometry with hubgeom, and it wires a real fabricengine.RefScanner and a lazy fabricengine.Open closure.
 //
 // stencilsDir and planDir arrive already absolute or empty, because wire made them so.
@@ -114,13 +111,12 @@ func (c *websterCLI) wireHub(loc *lymcwd.Location, stencilsDir, planDir, targetD
 	// Master runs `lym webster begin-batch <NN>` and `lym webster recover-batch <NN>` as separate processes,
 	// so their prompts are composed here.
 	// See the webstercli-resolves-the-friction-directory-in-hub-mode Shared Decision.
-	// A load error or an empty friction.model leaves it empty.
+	// A load error or an empty Friction key leaves it empty.
 	// A `lym webster` verb must never fail over an unrelated module's config, since the value is optional bookkeeping.
 	c.frictionDir = ""
-	hubgeom.ReconcileBeforeLoad(loc)
 	if loomCfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(loc), "loom"); err != nil {
 		logger.Warn("webstercli: could not load loom config; Tier 2 friction notes are disabled for this invocation", "error", err)
-	} else if loomCfg.Friction.Model != "" {
+	} else if loomCfg.Friction != "" {
 		c.frictionDir = loomengine.LoomFrictionDir(loc)
 	}
 
@@ -204,7 +200,6 @@ func (c *websterCLI) wireHub(loc *lymcwd.Location, stencilsDir, planDir, targetD
 		_, err := orchcli.NotifyAsker(loc, websterProgram, line)
 		return err
 	})
-	runner.SetReplyProbe(creelcli.AwaitsReplyProbe(loc, websterProgram))
 
 	c.setRunner(runner, engines, reedEngine)
 	c.shuttleCfg = shuttleCfg
@@ -216,7 +211,6 @@ func (c *websterCLI) wireHub(loc *lymcwd.Location, stencilsDir, planDir, targetD
 	geom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
 	c.geom = geom
 	c.anchorRel = loc.AnchorRel
-	c.runID = shedrun.ResolveRunID(loc, shedrun.SelfRunID)
 	// The matcher is built eagerly because NewRefScanner only compiles a regexp and cannot fail.
 	// The fabric handle stays a closure and must not be opened here.
 	// fabricengine.Open stat-checks the paired sibling, and a healthy location can lack one.
@@ -353,7 +347,6 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	geom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
 	c.geom = geom
 	c.anchorRel = ""
-	c.runID = ""
 	// standalone has no fabric repo by construction: the matcher never sees a fabric reference
 	// because there is nothing to reference, and the opener is left nil rather than a closure that
 	// would panic or stat-fail if ever called.
@@ -381,7 +374,7 @@ func (r configLoadRefusal) Unwrap() error { return r.cause }
 // configLoadError wraps the error of loading the named config file (such as "batcher.yaml") as a configLoadRefusal.
 // The refusal names the file and the way forward.
 // A content failure (configengine.ErrInvalid) is invalid and names the fix.
-// A retired batcher key (batcher.ErrRetiredKey) is invalid too, and its cause already ends in its own way forward.
+// A retired batcher key (batcher.ErrRetiredKey) is invalid too, and its cause already ends in the reconcile way forward.
 // A languageconfig.ErrUnusable cause is invalid and ends in its own way forward.
 // The hub-wide language.yaml never lives under a worktree's _lym/config.
 // That is why this cause gets its own way forward.
@@ -393,7 +386,7 @@ func configLoadError(file string, cause error) error {
 	case errors.Is(cause, languageconfig.ErrUnusable):
 		return configLoadRefusal{message: fmt.Sprintf("webster: %s did not load: %v, then re-run the verb", file, cause), invalid: true, cause: cause}
 	case errors.Is(cause, batcher.ErrRetiredKey):
-		// The retired-key cause already ends in its own way forward.
+		// The retired-key cause already ends in the reconcile way forward.
 		return configLoadRefusal{message: fmt.Sprintf("webster: %s did not load: %v, then re-run the verb", file, cause), invalid: true, cause: cause}
 	case errors.Is(cause, configengine.ErrInvalid):
 		return configLoadRefusal{message: fmt.Sprintf("webster: %s did not load: %v; way forward: fix %s under _lym/config, then re-run the verb", file, cause, file), invalid: true, cause: cause}

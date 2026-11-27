@@ -54,8 +54,6 @@ No site spells a tier list, a scope or a test command.
 | `parent-align`, `finalize` | Parent-Align and Finalize | `all` |
 | `adopt` | `lym adopt check <subject>`, in-process through `gatecli.RunGate` in the subject's worktree | `all` |
 | `darn-write`, `code-burler-fix` | darn's writer and the Code-Burler-Fix rows | `diff` |
-| `harden-burler-fix` | Harden-Burler-Fix's `verify` gate | `diff` |
-| `harden-live` | Harden-Burler-Fix's `live` gate: its merge-bar run and its concurrent copies | `diff` |
 | `pr-review` | PR-Review's gate over the agent's commits | `diff` |
 | By hand | the `tier3` tier | |
 
@@ -134,7 +132,7 @@ Bound: a forged value misleads only an ungated raw run, since `lym gate test` se
   The whole verify catches it at the sites that keep it for a diff touching production code, never on `main`.
   For a tree-scoped darn diff, a site runs its row's key over the trees' targets,
   so such a violation can reach the parent.
-  What the hub lists as non-production in `darn.tree_scope` bounds that.
+  What the hub lists as non-production in `darn.yaml`'s `tree_scope` bounds that.
 
 ## Reflective tests carry `//lym:seam`
 
@@ -219,15 +217,22 @@ so every run takes its slots, its timeout and its log.
 
 - Tests run only through `lym gate test` over `gate.yaml`'s tiers.
   Two things run outside it: a card `**Verify:**` line and `cmd/testtiming`'s runs in every mode.
-- `cmd/testtiming` holds one gate slot in every mode, with its Go flags from `gateslot.HolderEnv` and `LYM_TEST_TIER` from its tags.
-  Its `-redundancy` mode runs every test alone under a coverage binary, since coverage counters are process-wide.
+- The redundancy runs take a tier's `env` and a gate slot as a tier run does.
+  `lym gate test --map` rebuilds the per-package coverage maps over its scope at the HEAD of the worktree it runs in,
+  into the hub's shared maps from the prime and into the worktree's anchor `.lym` elsewhere.
+  The `redundancy` report step a gate key's `reports` lists runs after the key's tiers released their slots.
+  The `reach` report step refreshes a task worktree's own anchor maps by the same measurement, in the map run's slot ask.
+  The map run, the refresh and the `redundancy` step run every test alone under a coverage binary, since coverage counters are process-wide.
+  `lym gate redundant` runs each test alone under a binary holding the mutants of its package, one mutant on per run.
+  `lym gate mutate` and the `mutation` report step do the same for the tests covering each mutant of a changed line,
+  after they refreshed the worktree's own maps.
 - A card `**Verify:**` line runs through the shared `internal/cardverify` runner,
   and `cmd/testtiming` measures outside the gate because its modes measure what a tier run hides.
 - A site or stencil names a gate key, never a tier list, scope form, test command or target list.
 - Darn's tree-scoped sites add the touched trees' targets to the key's call.
-- The shell guard refuses a command with a prefix in `gate.refuse_raw`,
+- The shell guard refuses a command with a prefix in `gate.yaml`'s `refuse_raw`,
   so an agent's raw test run is steered to the gate.
-- The plan gate's `verify-raw-command` finding flags a card `**Verify:**` line that starts with a `gate.refuse_raw` prefix.
+- The plan gate's `verify-raw-command` finding flags a card `**Verify:**` line that starts with a `refuse_raw` prefix.
 
 ## Test economy
 
@@ -239,11 +244,8 @@ this section keeps only what is project-specific or stricter here.
 - A test targets behavior and contract at a module's public surface, not each helper.
   The surface is the exported API, a CLI verb or a file contract.
   An unexported helper is tested through the surface that uses it.
-- A behavior is tested at the lowest tier its real modules run in.
-  An in-memory or temp-dir fixture of the module's own state, or a stand-in for something outside the repository,
-  keeps it at `tier0`; such a behavior is never tested through a real hub.
-  Another module is never faked to lower a tier:
-  when the real one spawns, the test takes its tier, per [PATTERN-test-stand-ins](PATTERN-test-stand-ins.md).
+- A behavior testable with a fake or an in-memory fixture is tested at tier0 that way, never through a real hub.
+  Integration tests stay the exception.
 - A new test function or file must cover a behavior no existing test covers.
   Otherwise it becomes a row in an existing table-driven test, or an assertion in an existing test of that behavior.
 - Many items of one kind (refusals, claims, rows, verbs) are covered by one table-driven or contract-level test.
@@ -284,3 +286,74 @@ this section keeps only what is project-specific or stricter here.
   and a tier0 test is always judged.
 - The scan does not see a hook, alias or helper a test installs so that git runs module code,
   so the hand check before deleting a candidate also asks whether the candidate makes git run module code.
+
+### The coverage map and the gate's redundancy report
+
+- `lym gate test --map` keeps one coverage map per package under `internal/testcover`.
+  A map records, for each tier0 and tier1 test, its function hash, the blocks it covers of its own package's files,
+  the functions it covers of each other in-module package its test binary links, and its spawn scan verdict.
+  It also records the hashes of the package's files and of each linked package's files at the commit it was built from.
+  The hub's shared maps are built only on command: no dobby, landing or gate builds them, and the gate selects no test from them.
+  The `reach` step refreshes a task worktree's own anchor maps of the packages holding changed functions,
+  under its budget and the map run's clean checks.
+  A call measures each package of its scope's set whole at the HEAD of the worktree it runs in, and replaces the package's map.
+  A failed build keeps the map's entries.
+  The map run bounds its test processes by the tiers' own limits:
+  a package's tier0 tests run before its tier1 tests, each tier's tests up to its `parallel` side by side,
+  clamped to the memory its limit leaves and, for a tier that sets `memory_mb`, to that memory divided by `redundancy_test_memory_mb`.
+  A hub whose tier0 or tier1 sets a `memory_mb` below `redundancy_test_memory_mb` is refused.
+  A test that fails, times out or is ended by the memory guard or its cap beside others runs again alone, and that run stands.
+  A test that passed only alone is listed as `passed_alone` and logged, and enters the map as a plain pass.
+  The run holds the larger of tier0's and tier1's slot asks, where `slots: all` ranks above any count, and builds no `lym`.
+  It writes every map that passes its checks, failed entries included,
+  and exits 1 when a build failed, a package was left unmeasured or an entry records a failed or timed-out test.
+  A map is written only when HEAD is still the commit the call read at its start and no file the package or a linked package owns is modified or untracked.
+  The check runs once the build ended and again before the write, and guards every write path, a failed build's included.
+  A package that fails it writes no map and is listed under `unmeasured` with its reason, and a moved HEAD ends the walk.
+  Bound: an edit made before a package's first check, or between its two checks, and reverted before the next goes unseen,
+  and a gitignored file is seen by neither check, so a gitignored Go file the build compiles enters the map under HEAD's hashes.
+  It writes no run record or green record, and a green record never stands in for a map run.
+- `lym gate redundant <package>` judges a whole package's map by the same package-scoped verdict,
+  then confirms each candidate by mutation inside a gate slot.
+  It mutates the candidates' blocks and keeps a candidate only when its covering tests kill every mutant it kills;
+  one that kills a mutant they miss is listed as refuted, with those mutants.
+  A run that ends at its time bound or the memory cap is no kill,
+  and a candidate whose answer rests on one is listed as unconfirmed, with those mutants.
+  A `//lym:guard` test and one reaching `internal/testkit/scankit` are never candidates:
+  their check reads source files, which no mutant changes.
+  It lists the candidates with their seconds, covering tests and kills, and the refuted, unconfirmed, keep-marked and unjudged tests.
+  Bound: a mutant changes the package's own code only,
+  so a candidate whose check differs from its covers only in another package's result is confirmed falsely.
+- A gate key whose `reports` lists `reach` runs the report step after its lints and before the redundancy step.
+  It finds the functions the diff changes against the merge base with the parent branch, or against HEAD in the prime,
+  and writes `reach.json` in the worktree's gate directory with the tests of the maps that reach each one.
+  It prints a note of the report.
+  A task worktree first refreshes its own anchor maps of the packages holding a changed function whose map is absent or stale,
+  within `reach_budget_min`; a package with an uncommitted file of its own or of a linked package keeps its map and is listed.
+  The prime refreshes nothing and answers from the shared maps.
+  The step is advisory: it never changes the gate's result.
+  Bound: a map older than the files, or a test that runs the function in another process, can make a function read as unreached.
+- A gate key whose `reports` lists `mutation` runs the report step after its other report steps.
+  It runs `lym gate mutate`'s refresh and check over the diff from the reach step's base,
+  and writes `mutation.json` in the worktree's gate directory.
+  The report lists every survivor, unjudged mutant, uncovered changed block and package not judged.
+  The step prints one summary line of their counts, and it never changes the gate's result.
+  Bound: a survivor is a check the diff's tests lack or a line no test can reasonably check, and review tells them apart.
+- A gate key whose `reports` lists `redundancy` runs the report step after its tiers and lints.
+  It takes the diff's new and changed top-level tests against the merge base with the parent branch,
+  leaving out tier2 and tier3 tests, tests marked `//testtiming:keep` and tests that may run module code in another process.
+  It judges each against its package's map, package-scoped like `cmd/testtiming`'s verdict,
+  and writes `redundancy.json` in the worktree's gate directory with each test contained, unique or not judged.
+- The step is advisory and bounded: it never changes the gate's result,
+  and `redundancy_max_tests` and `redundancy_budget_min` cap what it judges.
+  Bound: it lets a redundant test through when an edited block is uncovered or a test lies past the cap or the budget.
+  Bound: it can flag a test falsely, since a map test whose own text is unchanged counts as a cover
+  even when a helper or callee change stops it reaching a block.
+  Bound: a map rebuilt since the report can make a contained verdict stale.
+- Code-Review's rubric reads the report when it matches the reviewed HEAD's tree:
+  every judged package's Go files hash the same and the step's selection over HEAD gives the recorded tests with the recorded hashes.
+  A report written on a red tier never matches, and the rubric then reads a line naming that gate key.
+- A gate finding is evidence for Code-Review exactly as a report candidate is:
+  the reviewer checks a contained test's assertions against its covering tests,
+  then files a finding to fold or delete it, naming the covering tests,
+  or accepts it with a `//testtiming:keep <reason>` finding when it pins what coverage cannot see.

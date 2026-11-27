@@ -61,12 +61,6 @@ func TestCommand_RefusesBeforeAnyHubWork(t *testing.T) {
 			wantErrorContains: "usage: lym fabric clone",
 		},
 		{
-			name:              "CloneSingleRepoWithTwoUrls",
-			args:              []string{"clone", "--single-repo", "https://example.com/code", "https://example.com/code"},
-			wantExit:          1,
-			wantErrorContains: "give --single-repo one URL, the code repository",
-		},
-		{
 			name:              "MergeContinueRejectsExtraArg",
 			args:              []string{"merge", "--continue", "extra-arg"},
 			wantExit:          1,

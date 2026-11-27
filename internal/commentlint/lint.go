@@ -59,37 +59,20 @@ func wordSet(words ...string) map[string]bool {
 	return set
 }
 
-// Lint returns the comment line findings of the `.go` files in worktree's working tree that differ from base:
+// Lint returns the comment line findings of the `.go` files that differ in worktree:
 // the new fixed-column-wrapped breaks in their `//` comment blocks,
 // and the new or changed comment lines whose text reaches LineLengthLimit.
-// It reads the working tree, uncommitted edits and untracked files included,
-// so a fix is checked before it is committed.
-// An empty base is HEAD.
+// An empty base compares the working tree, untracked files included, against HEAD;
+// a base commit compares it against HEAD.
 // Findings are ordered by file path, then line.
 func Lint(worktree, base string) ([]Finding, error) {
-	if base == "" {
-		base = "HEAD"
-	}
-	return lintChanges(worktree, base, true)
-}
-
-// LintCommitRange returns the comment line findings that the commits from base to HEAD create in worktree:
-// the new fixed-column-wrapped breaks and the new or changed comment lines whose text reaches LineLengthLimit.
-// It reads HEAD, never the working tree, so it checks the committed tree a gate verifies.
-func LintCommitRange(worktree, base string) ([]Finding, error) {
-	return lintChanges(worktree, base, false)
-}
-
-// lintChanges returns the findings of every changed `.go` file between baseRevision and the new side:
-// the working tree with workingTree, and HEAD otherwise.
-func lintChanges(worktree, baseRevision string, workingTree bool) ([]Finding, error) {
-	changes, err := changedGoFiles(worktree, baseRevision, workingTree)
+	changes, err := changedGoFiles(worktree, base)
 	if err != nil {
 		return nil, err
 	}
 	var findings []Finding
 	for _, change := range changes {
-		baseText, newText, err := readChange(worktree, baseRevision, workingTree, change)
+		baseText, newText, err := readChange(worktree, base, change)
 		if err != nil {
 			return nil, err
 		}
@@ -98,20 +81,10 @@ func lintChanges(worktree, baseRevision string, workingTree bool) ([]Finding, er
 	return findings, nil
 }
 
-// IsGenerated reports whether src holds a `// Code generated ... DO NOT EDIT.` line, the mark of a generated Go file.
-func IsGenerated(src string) bool {
-	return generatedPattern.MatchString(src)
-}
-
-// IsDirective reports whether a `//` comment line, given as its text after `//`, is a directive such as `//go:generate`.
-func IsDirective(raw string) bool {
-	return directivePattern.MatchString(strings.TrimSpace(raw))
-}
-
 // findFileFindings returns the findings of every rule in path's new text against its base text, ordered by line.
 // It returns nil for a generated file.
 func findFileFindings(path, baseText, newText string) []Finding {
-	if IsGenerated(newText) {
+	if generatedPattern.MatchString(newText) {
 		return nil
 	}
 	findings := append(findNewWrappedBreaks(path, baseText, newText), findNewLongLines(path, baseText, newText)...)
@@ -158,7 +131,7 @@ func commentBlocks(src string) [][]commentLine {
 		}
 		literal = strings.TrimRight(literal, "\r\n")
 		line := file.Position(pos).Line
-		if !startsLine(src, file.Offset(pos)) || IsDirective(strings.TrimPrefix(literal, "//")) {
+		if !startsLine(src, file.Offset(pos)) || directivePattern.MatchString(strings.TrimSpace(strings.TrimPrefix(literal, "//"))) {
 			flush()
 			continue
 		}
@@ -200,21 +173,15 @@ func paragraphs(block []commentLine) [][]commentLine {
 // isProseParagraph reports whether the paragraph holds only prose lines: no indented code, list item or heading.
 func isProseParagraph(paragraph []commentLine) bool {
 	for _, line := range paragraph {
-		if !IsProseLine(line.raw()) {
+		raw := line.raw()
+		if strings.HasPrefix(raw, "\t") || strings.HasPrefix(line.content, " ") || strings.HasPrefix(line.content, "\t") {
+			return false
+		}
+		if headingPattern.MatchString(line.content) || listItemPattern.MatchString(line.content) {
 			return false
 		}
 	}
 	return true
-}
-
-// IsProseLine reports whether a `//` comment line, given as its text after `//`, is prose:
-// not indented code, a doc-comment list item or a heading.
-func IsProseLine(raw string) bool {
-	content := strings.TrimPrefix(raw, " ")
-	if strings.HasPrefix(raw, "\t") || strings.HasPrefix(content, " ") || strings.HasPrefix(content, "\t") {
-		return false
-	}
-	return !headingPattern.MatchString(content) && !listItemPattern.MatchString(content)
 }
 
 // lineEndPair names the two words either side of the break between two prose lines.
@@ -283,17 +250,15 @@ func countEqualPositions(first, second []string) int {
 	return count
 }
 
-// IsSemanticBreak reports whether a prose comment line may end where it does:
+// endsSemanticBreak reports whether a line may end where it does:
 // at a sentence end, a semicolon, or a comma before a coordinating conjunction that opens a clause.
-// before and after are the texts of the line and of the next line, without `//` and its one space;
-// after holds at least one word.
-func IsSemanticBreak(before, after string) bool {
-	trimmed := strings.TrimRight(before, " \t")
+func endsSemanticBreak(before, after commentLine) bool {
+	trimmed := strings.TrimRight(before.content, " \t")
 	if sentenceEndPattern.MatchString(trimmed) || strings.HasSuffix(trimmed, ";") {
 		return true
 	}
 	if strings.HasSuffix(trimmed, ",") {
-		words := strings.Fields(after)
+		words := strings.Fields(after.content)
 		return conjunctions[strings.ToLower(words[0])] && opensClause(clauseWords(words[1:]))
 	}
 	return false
@@ -363,7 +328,7 @@ func findNewWrappedBreaks(path, baseText, newText string) []Finding {
 			}
 			for i := 0; i+1 < len(paragraph); i++ {
 				before, after := paragraph[i], paragraph[i+1]
-				if IsSemanticBreak(before.content, after.content) || known.carriesOver(before, after) {
+				if endsSemanticBreak(before, after) || known.carriesOver(before, after) {
 					continue
 				}
 				findings = append(findings, Finding{File: path, Line: before.number, Rule: RuleWrappedBreak, Text: strings.TrimSpace(before.literal)})

@@ -212,9 +212,8 @@ orchestrator's line comes from its own watcher.
 
 A lift also spawns what a pause deferred: the detached push of each pair the
 lifted entries covered whose push a pause deferred, such as an anchor change's,
-the prime's records push and the board sync. A lift spawns no push for a run's
-transition commits: the dobby's tick restarts the pair's pusher once no pause
-covers it. A pair a live entry still
+the prime's records push and the board sync. A run's transition pushes
+synchronously, so no pair push is spawned for one. A pair a live entry still
 covers, one another machine owns and one that is gone is not pushed. The
 report's "spawned" lists the spawns and "spawn_failed" the ones that failed;
 neither fails the resume.

@@ -12,42 +12,16 @@
 // An engine therefore quotes each pattern for its shell rather than wrapping it in bare single quotes.
 //
 // A command-shaped row reads the command from the start of the "command" value as the shell would, one unit at a time:
-// unquoted text, a single-quoted string, a double-quoted string, and at most one heredoc operator plus its line,
-// bar the shell-edit row's in-place edit match, which reads past closed heredocs.
+// unquoted text, a single-quoted string, a double-quoted string, and at most one heredoc operator plus its line.
 // It matches its command word only in command position reached that way.
-// Any of env, exec, xargs, sudo, time and the shell keywords that open a command, such as do and then, may come first.
-// The script of a sh, bash, dash, ksh or zsh -c in command position is read the same way, one level deep.
-// A guard thus refuses inside the script what it refuses outside it,
-// and the agent gets the row's way forward rather than an engine dialog.
-// Text inside other quotes, a heredoc body or another payload field does not trip it, bar the quotes the scan misreads.
-// The in-place edit match skips a closed heredoc's body and reads the lines after its closing line.
-// It reads the script of a shell -c on those lines too.
-// It thus refuses sed -i or perl -pi on the line after a heredoc that writes its script.
-// It does not read the later lines of a shell -c script after a heredoc closed inside that script.
-// It reads nothing after two heredoc operators on one line.
-// Nor does it read after a delimiter word that opens with a digit or a dash.
-// The same holds for a quoted delimiter word with a space in it.
-// So it does for a closing word holding anything but letters, digits, _, . and -.
-// It ties the closing line to the operator's word for a closed set of common words, heredocDelimiterWords.
-// For another word a line holding a bare word alone closes the body,
-// so a later body line that opens with an in-place edit spelling is falsely denied.
-// For every other match, the write-then-run shape leaves the later lines unguarded:
+// Text inside quotes, a heredoc body or another payload field does not trip it, bar the quotes the scan misreads.
+// Nothing after a heredoc operator's line is read.
+// The write-then-run shape leaves the later lines unguarded:
 // a heredoc that writes a script, followed by a line that runs it.
 // A command substitution inside a double-quoted string is not read as command position, so a command behind it passes.
 // The same holds for a < before a quote or a backslash, as in <"f" or <<<"f".
 // Every row is a guardrail over static text and not a barrier;
 // each pattern's comment states what it lets through and what it falsely denies.
-//
-// A row's patterns combine by AND alone, and grep -E has no negation.
-// A row states an exception inside the pattern that matches the command.
-// One such exception refuses a command unless it carries a flag.
-// A separate pattern that must not match would be matched anywhere in the payload,
-// so a second command carrying the flag would let a refused first command through.
-// The pattern instead scans the command's words with unquotedWordOtherThan, as the session bus row's dbus-send form does.
-// The scan crosses unquoted words other than the flag and is ended by unquotedWordRunEnd.
-// That end matches the payload's end and every character, whitespace aside, that a word cannot hold.
-// Only the flag, reached through unquoted words of the same command, stops the match,
-// so a command the scan cannot read is refused.
 //
 // Every steer, plain and per engine, opens with one shared clause:
 // nothing in the command ran, since a deny refuses the whole command for one part,
@@ -60,6 +34,7 @@
 // The steers of the raw go and refuse-raw rows each carry the full rule, so a denied call has the way forward at hand.
 // The raw go row's steer and notice also name a package-scoped go build or go vet as the compile check.
 // Each is named only while no refuse-raw prefix refuses it.
+// A refused ./... run thus has a way forward short of a gate run.
 // The edit rule, reading a file with Read and changing it with Edit or Write, is stated likewise:
 // once in the system prompt, in the shell-edit row's notice;
 // and in full in the steers of the shell-edit and python rows.
@@ -75,6 +50,7 @@
 // A row whose text names a tool another engine lacks carries that engine's own text in EngineTexts.
 // EngineTexts is keyed by the engine's registry name.
 // SteerFor and NoticeFor return that text, or the plain text for an engine without one.
+// The Codex texts name Codex's apply_patch tool for the edit rule and Codex's own subagents for the headless claude row.
 //
 // A row hangs on a Switch.
 // A SwitchNone row is installed for every run, and so is a SwitchDenyPython row.
@@ -82,18 +58,8 @@
 // SwitchDenyPublish, which the publish row hangs on, is turned on only by a launch spec.
 // Only the session that sets it cannot run git push or a gh call outside what the row's table lets through:
 // reads, comments, and title and body edits.
+// The row's pattern refuses every gh command and subcommand the table does not list.
 // A generated pattern matches any word but the listed ones, so a new gh subcommand is refused until listed.
-// A SwitchDenyRawTmux row is installed and announced for every run whose launch spec does not set `AllowRawTmux`.
-// The tmux and script row hangs on it, so an interactive session carries it too.
-// A tmux server or a script an agent starts outlives the command and every memory cap,
-// and the row's way forward is a tmux-tier test run through `lym gate test --tier`.
-//
-// Two SwitchNone rows close the routes out of lym's process tree that a session's own tmux servers leave open.
-// The session bus row refuses systemd-run, busctl --user, gdbus and a dbus-send without --system.
-// The user session bus they reach starts processes outside every memory cap.
-// lym's own use of the bus runs from Go and never meets a row.
-// The hub tmux server row refuses a tmux -L or -S aimed at a server named as lym names every hub's,
-// so a session that may start tmux servers of its own still reaches no hub's agents.
 //
 // It imports the standard library and the packages that own the environment variables the raw go row's pattern names.
 package shellguard

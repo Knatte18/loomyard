@@ -1,6 +1,7 @@
 // configreg.go declares the registry of config modules and their templates, which the config CLI and its callers read.
 // The config modules of the registered shuttle engines come from shuttleengines.ConfigModules.
-// It also marks which modules are hub-wide, so callers branch on the registry rather than on a module name.
+// It also marks which modules are hub-wide, so callers branch on the registry rather than on a module name,
+// and it declares the cross-module key-move table, which carries a key's value from one module's file to another's.
 
 package configreg
 
@@ -8,13 +9,13 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"sort"
 	"strconv"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/battenshed"
-	"github.com/Knatte18/loomyard/internal/beamsetting"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelconfig"
@@ -25,9 +26,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/envconfig"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
-	"github.com/Knatte18/loomyard/internal/hardenshed"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/hibernateconfig"
+	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/ideconfig"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
@@ -44,11 +45,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/slackengine"
+	"github.com/Knatte18/loomyard/internal/standalonestate"
 	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// Module describes one config module: its name, default template, and the hooks that check and load its file.
+// Module describes one config module: its name, default template, and the hooks that migrate, check and load its file.
 type Module struct {
 	// Name is the module identifier (e.g., "board", "fabric").
 	Name string
@@ -63,13 +65,9 @@ type Module struct {
 	// SeedOnly marks a module whose key set is open-ended and owned by the operator (e.g. models.yaml aliases).
 	// configsync materializes a seed-only module's template when its file is absent,
 	// and it never prunes a present file down to the template or strips it sparse.
-	// The board dir's reconcile merges each template change into a present file against its base;
-	// it keeps every value the operator set. A worktree's copy is never rewritten.
+	// The board dir's reconcile runs Migrate on a present file, then merges each template change into it against its base;
+	// it keeps every value the operator set, then runs Unsettled. A worktree's copy is never rewritten.
 	SeedOnly bool
-	// RunSettingsBlocks marks a seed-only module whose file holds module-keyed settings objects.
-	// Each second-level mapping, such as <profile>.<recipe>, is one such object.
-	// The reconcile moves their old keys before the file follows its template.
-	RunSettingsBlocks bool
 	// HubWide marks a module that describes a hub-level fact.
 	// Its one file lives at configengine.ConfigFile(<BoardDir>, name)
 	// and is never read or written in a worktree's _lym/config/.
@@ -77,6 +75,16 @@ type Module struct {
 	// SeedsFromPrime marks a hub-wide module whose absent hub file is seeded from the prime's worktree copy.
 	// The seed is sparse.
 	SeedsFromPrime bool
+	// Migrate, when non-nil, rewrites a present config file's bytes before reconcile compares them to the template.
+	// It returns the rewritten bytes and one line per rewrite, changing only retired keys and keys raised to a floor.
+	Migrate func(existing []byte) ([]byte, []string, error)
+	// Unsettled, when non-nil, lists the pairs a seed-only module's present file holds for the operator to settle.
+	// It runs after the migration; reconcile reports these pairs and changes none, since only the operator can settle them.
+	Unsettled func(existing []byte) ([]string, error)
+	// MigrateHubBase, when non-nil, runs only over the module's hub base file:
+	// over a present file after the module's own migration, and over the prime or legacy seed on an absent one.
+	// It adds what only that file may gain, returns one line per addition, and leaves the registry fingerprint unchanged.
+	MigrateHubBase func(existing []byte) ([]byte, []string, error)
 	// CheckValues, when non-nil, checks the values of a local-layer document after its keys pass configengine.ValidateLocal.
 	// It checks only the keys its module names, and returns an error marked configengine.ErrInvalid that names the key.
 	CheckValues func(document []byte) error
@@ -104,13 +112,41 @@ type Module struct {
 type Reinterpretation struct {
 	// ID names the change; once applied, the hub-wide reconcile records it as a board marker, so each hub applies it once.
 	ID string
-	// Rewrite receives the hub base file's bytes, nil when the file is absent and RunsWithoutFile is set,
-	// and the hub's code worktrees, the prime first.
+	// Rewrite receives the hub base file's bytes and the prime's worktree root and anchored directory.
 	// It returns the bytes, rewritten only if a value changed; one line per change or unsettled value, naming a way forward.
-	Rewrite func(existing []byte, worktrees []configengine.HubWorktree) (rewritten []byte, rewrote, flagged []string, err error)
-	// RunsWithoutFile marks a change that also reads the hub beyond its base file, such as the worktrees' own files.
-	// The walk then runs Rewrite with no bytes when the base file is absent, instead of writing only the marker.
-	RunsWithoutFile bool
+	Rewrite func(existing []byte, worktreeRoot, anchorDir string) (rewritten []byte, rewrote, flagged []string, err error)
+}
+
+// repositoryOfShortname answers the repository name of the hub that shortname names in this machine's record of hubs.
+// A shortname that names no hub or several matches creelconfig.ErrShortnameUnresolvable.
+// So does a hub with no valid repository.
+// A failure to read the machine's state matches it not, so the rewrite that asked ends instead of dropping the entry.
+func repositoryOfShortname(shortname string) (string, error) {
+	registryDir, err := standalonestate.UserStateDir()
+	if err != nil {
+		return "", err
+	}
+	repository, err := hubregistry.LookupRepository(registryDir, shortname)
+	return repository, markUnresolvable(err)
+}
+
+// markUnresolvable wraps err as creelconfig.ErrShortnameUnresolvable.
+// It does so when err refuses a shortname for want of a repository.
+// It returns every other err, nil included, unchanged.
+func markUnresolvable(err error) error {
+	if errors.Is(err, hubregistry.ErrUnresolved) || errors.Is(err, hubregistry.ErrNoRepository) {
+		return unresolvableShortname{err}
+	}
+	return err
+}
+
+// unresolvableShortname carries a refusal's own text and matches creelconfig.ErrShortnameUnresolvable.
+type unresolvableShortname struct{ error }
+
+func (e unresolvableShortname) Unwrap() error { return e.error }
+
+func (e unresolvableShortname) Is(target error) bool {
+	return target == creelconfig.ErrShortnameUnresolvable
 }
 
 // withLocalBounds fills the module's LocalKeys or LocalDenied from its Spec, so the registry never restates a key.
@@ -145,42 +181,41 @@ func checkLoadNamed[T any](load func(configengine.Dirs, string) (T, error), modu
 // Keep new entries in sort order.
 func Modules() []Module {
 	modules := []Module{
-		{Name: agentconfig.ModuleName, Template: agentconfig.ConfigTemplate, OpenMaps: agentconfig.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoad(agentconfig.Load), Reinterpretations: []Reinterpretation{{ID: agentconfig.PRReviewerRetiredReinterpretationID, Rewrite: agentconfig.DropPRReviewerRole, RunsWithoutFile: true}}, Spec: agentconfig.ConfigSpec},
-		{Name: "batcher", Template: batcher.ConfigTemplate, PerNameMaps: batcher.ConfigPerNameMaps(), CheckLoad: checkLoad(batcher.Active), Spec: batcher.ConfigSpec},
+		{Name: agentconfig.ModuleName, Template: agentconfig.ConfigTemplate, OpenMaps: agentconfig.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoad(agentconfig.Load), Spec: agentconfig.ConfigSpec},
+		{Name: "batcher", Template: batcher.ConfigTemplate, PerNameMaps: batcher.ConfigPerNameMaps(), Migrate: batcher.MigrateConfig, CheckLoad: checkLoad(batcher.Active), Spec: batcher.ConfigSpec},
 		{Name: "batten", Template: battenshed.ConfigTemplate, CheckValues: battenshed.ValidateLocalValues, CheckLoad: checkLoad(battenshed.LoadConfig), Spec: battenshed.ConfigSpec},
-		{Name: beamsetting.Module, Template: dobbyengine.ConfigTemplate, CheckValues: dobbyengine.CheckLocalValues, CheckLoad: checkLoad(dobbyengine.LoadConfig), Reinterpretations: []Reinterpretation{{ID: dobbyengine.PerTaskSettingsReinterpretationID, Rewrite: dobbyengine.ReinterpretPerTaskSettings, RunsWithoutFile: true}, {ID: dobbyengine.PullRequestModesReinterpretationID, Rewrite: dobbyengine.ReinterpretPullRequestModes, RunsWithoutFile: true}}, Spec: dobbyengine.ConfigSpec},
+		{Name: "beam", Template: dobbyengine.ConfigTemplate, CheckLoad: checkLoad(dobbyengine.LoadConfig), Spec: dobbyengine.ConfigSpec},
 		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoadNamed(boardengine.LoadConfig, "board"), Spec: boardengine.ConfigSpec},
-		{Name: "creel", Template: creelconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(creelconfig.LoadConfig), Spec: creelconfig.ConfigSpec},
-		{Name: "darn", Template: darnengine.ConfigTemplate, OpenMaps: darnengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoadNamed(darnengine.LoadConfig, "darn"), Spec: darnengine.ConfigSpec},
+		{Name: "creel", Template: creelconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(creelconfig.LoadConfig), Reinterpretations: []Reinterpretation{{ID: creelconfig.TrustedHubsRepositoryReinterpretation, Rewrite: creelconfig.RewriteShortnamesToRepositories(repositoryOfShortname)}}, Spec: creelconfig.ConfigSpec},
+		{Name: "darn", Template: darnengine.ConfigTemplate, OpenMaps: darnengine.ConfigOpenMaps(), HubWide: true, Migrate: darnengine.MigrateConfig, CheckLoad: checkLoadNamed(darnengine.LoadConfig, "darn"), Spec: darnengine.ConfigSpec},
 		{Name: "desktop", Template: desktophook.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(desktophook.LoadConfig), Spec: desktophook.ConfigSpec},
-		{Name: "drift", Template: driftengine.ConfigTemplate, OpenMaps: driftengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoad(driftengine.LoadConfig), CheckDirs: driftengine.CheckDirs, Spec: driftengine.ConfigSpec},
+		{Name: "drift", Template: driftengine.ConfigTemplate, OpenMaps: driftengine.ConfigOpenMaps(), HubWide: true, Migrate: driftengine.MigrateConfig, CheckLoad: checkLoad(driftengine.LoadConfig), CheckDirs: driftengine.CheckDirs, Reinterpretations: []Reinterpretation{{ID: driftengine.DirBaseReinterpretation, Rewrite: driftengine.RebaseDirsOntoRoot}, {ID: driftengine.DiffModeReinterpretation, Rewrite: driftengine.FlagDiffMode}}, Spec: driftengine.ConfigSpec},
 		{Name: "env", Template: envconfig.ConfigTemplate, PerNameMaps: envconfig.ConfigPerNameMaps(), HubWide: true, CheckLoad: checkLoad(envconfig.LoadConfig), Spec: envconfig.ConfigSpec},
-		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(fabricengine.LoadConfig), Spec: fabricengine.ConfigSpec},
-		{Name: "gate", Template: gateslot.ConfigTemplate, OpenMaps: gateslot.ConfigOpenMaps(), PerNameMaps: gateslot.ConfigPerNameMaps(), HubWide: true, CheckLoad: checkLoad(gateslot.LoadConfig), CheckDirs: gateslot.CheckDirs, Reinterpretations: []Reinterpretation{{ID: gateslot.RetiredCopiesReinterpretationID, Rewrite: gateslot.RetireHardenLiveCopies}}, Spec: gateslot.ConfigSpec},
-		{Name: hardenshed.ConfigModule, Template: hardenshed.ConfigTemplate, OpenMaps: hardenshed.ConfigOpenMaps(), HubWide: true, CheckValues: hardenshed.CheckValues, CheckLoad: checkLoadNamed(hardenshed.LoadConfig, hardenshed.ConfigModule), Spec: hardenshed.ConfigSpec},
+		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(fabricengine.LoadConfig), Reinterpretations: []Reinterpretation{{ID: heddleengine.SettingsExcludeReinterpretation, Rewrite: fabricengine.AppendExcludePaths(heddleengine.ClaudeSettingsFile)}}, Spec: fabricengine.ConfigSpec},
+		{Name: "gate", Template: gateslot.ConfigTemplate, OpenMaps: gateslot.ConfigOpenMaps(), PerNameMaps: gateslot.ConfigPerNameMaps(), HubWide: true, Migrate: gateslot.MigrateConfig, MigrateHubBase: gateslot.SeedAdoptGate, CheckLoad: checkLoad(gateslot.LoadConfig), CheckDirs: gateslot.CheckDirs, Spec: gateslot.ConfigSpec},
 		{Name: "heddle", Template: heddleengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(heddleengine.LoadConfig), Spec: heddleengine.ConfigSpec},
 		{Name: "hibernate", Template: hibernateconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(hibernateconfig.LoadConfig), Spec: hibernateconfig.ConfigSpec},
 		{Name: "ide", Template: ideconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(ideconfig.LoadConfig), Spec: ideconfig.ConfigSpec},
-		{Name: "landing", Template: landingshed.ConfigTemplate, OpenMaps: landingshed.ConfigOpenMaps(), HubWide: true, SeedsFromPrime: true, CheckLoad: checkLoadNamed(landingshed.LoadConfig, "landing"), Spec: landingshed.ConfigSpec},
+		{Name: "landing", Template: landingshed.ConfigTemplate, OpenMaps: landingshed.ConfigOpenMaps(), HubWide: true, SeedsFromPrime: true, Migrate: landingshed.MigrateConfig, CheckLoad: checkLoadNamed(landingshed.LoadConfig, "landing"), Spec: landingshed.ConfigSpec},
 		{Name: "language", Template: languageconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(languageconfig.Load), Spec: languageconfig.ConfigSpec},
 		{Name: "lenses", Template: lenses.ConfigTemplate, PerNameMaps: lenses.ConfigPerNameMaps(), CheckLoad: lenses.CheckLoad, Spec: lenses.ConfigSpec},
 		{Name: "logger", Template: loggerconfig.ConfigTemplate, CheckLoad: checkLoad(loggerconfig.Load), Spec: loggerconfig.ConfigSpec},
-		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps(), CheckValues: loomengine.ValidateLocalValues, CheckLoad: checkLoadNamed(loomengine.LoadConfig, "loom"), Reinterpretations: []Reinterpretation{{ID: loomengine.CodeAutoAcceptBlockingReinterpretationID, Rewrite: loomengine.FlagCodeAutoAccept, RunsWithoutFile: true}}, Spec: loomengine.ConfigSpec},
+		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps(), Migrate: loomengine.MigrateConfig, CheckValues: loomengine.ValidateLocalValues, CheckLoad: checkLoadNamed(loomengine.LoadConfig, "loom"), Spec: loomengine.ConfigSpec},
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true, CheckLoad: checkLoad(modelspec.LoadRegistry), Spec: modelspec.ConfigSpec},
-		{Name: "orch", Template: orchengine.ConfigTemplate, CheckLoad: checkLoadNamed(orchengine.LoadConfig, "orch"), Reinterpretations: []Reinterpretation{{ID: orchengine.RemoteControlOffReinterpretationID, Rewrite: orchengine.FlagRemoteControlDefault}}, Spec: orchengine.ConfigSpec},
-		{Name: runprofile.ModuleName, Template: runprofile.ConfigTemplate, HubWide: true, SeedOnly: true, RunSettingsBlocks: true, CheckLoad: checkProfiles, Reinterpretations: []Reinterpretation{{ID: dobbyengine.ProfilePullRequestModesReinterpretationID, Rewrite: dobbyengine.ReinterpretProfilePullRequestModes}}, Spec: runprofile.ConfigSpec},
+		{Name: "orch", Template: orchengine.ConfigTemplate, Migrate: orchengine.MigrateConfig, CheckLoad: checkLoadNamed(orchengine.LoadConfig, "orch"), Spec: orchengine.ConfigSpec},
+		{Name: runprofile.ModuleName, Template: runprofile.ConfigTemplate, HubWide: true, SeedOnly: true, Migrate: runprofile.MigrateConfig, Unsettled: runprofile.UnsettledFormerBlocks, CheckLoad: checkProfiles, Spec: runprofile.ConfigSpec},
 		{Name: "reed", Template: reedengine.ConfigTemplate, OpenMaps: reedengine.ConfigOpenMaps(), CheckLoad: checkLoadNamed(reedengine.LoadConfig, "reed"), Spec: reedengine.ConfigSpec},
 		{Name: "report", Template: reportconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(reportconfig.LoadConfig), Spec: reportconfig.ConfigSpec},
 		{Name: "sampler", Template: samplerengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoadNamed(samplerengine.LoadConfig, "sampler"), Spec: samplerengine.ConfigSpec},
 		{Name: "shed", Template: sheddriver.ConfigTemplate, CheckValues: sheddriver.ValidateLocalValues, CheckLoad: checkLoad(sheddriver.LoadConfig), Spec: sheddriver.ConfigSpec},
-		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, CheckLoad: checkLoadNamed(shuttleengine.LoadConfig, "shuttle"), Spec: shuttleengine.ConfigSpec},
+		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, Migrate: shuttleengine.MigrateConfig, CheckLoad: checkLoadNamed(shuttleengine.LoadConfig, "shuttle"), Reinterpretations: []Reinterpretation{{ID: shuttleengine.EditLoopRepeatsReinterpretation, Rewrite: shuttleengine.DropEditLoopEdits}}, Spec: shuttleengine.ConfigSpec},
 		{Name: "slack", Template: slackengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(slackengine.LoadConfig), Spec: slackengine.ConfigSpec},
 		{Name: "tapestry", Template: loomengine.TapestryConfigTemplate, OpenMaps: loomengine.TapestryConfigOpenMaps(), CheckValues: loomengine.ValidateTapestryLocalValues, CheckLoad: checkLoadNamed(loomengine.LoadTapestryConfig, "tapestry"), Spec: loomengine.TapestryConfigSpec},
 		{Name: "weaver", Template: weaverengine.ConfigTemplate, OpenMaps: weaverengine.ConfigOpenMaps(), CheckLoad: checkLoadNamed(weaverengine.LoadConfig, "weaver"), Spec: weaverengine.ConfigSpec},
 		{Name: "webster", Template: websterengine.ConfigTemplate, CheckLoad: checkLoadNamed(websterengine.LoadConfig, "webster"), Spec: websterengine.ConfigSpec},
 	}
 	for _, engine := range shuttleengines.ConfigModules() {
-		modules = append(modules, Module{Name: engine.Name, Template: engine.Template, OpenMaps: engine.OpenMaps, CheckLoad: engine.CheckLoad, Spec: engine.Spec})
+		modules = append(modules, Module{Name: engine.Name, Template: engine.Template, OpenMaps: engine.OpenMaps, Migrate: engine.Migrate, CheckLoad: engine.CheckLoad, Spec: engine.Spec})
 	}
 	sort.Slice(modules, func(i, j int) bool { return modules[i].Name < modules[j].Name })
 	for i := range modules {
@@ -223,7 +258,7 @@ func Names() []string {
 
 // Fingerprint returns a hex digest of the registry.
 // It changes whenever a registered module's name, flags, open maps, per-name maps, template text, or overlay changes.
-// A change that only swaps a module's hook function leaves it unchanged, since a function value has no stable bytes.
+// A change that only swaps a module's Migrate hook leaves it unchanged, since a function value has no stable bytes.
 func Fingerprint() string {
 	return fingerprintOf(Modules())
 }

@@ -44,11 +44,15 @@ func (m preMerge) clear(producer, parentBranch string) (string, error) {
 		return "", fmt.Errorf("landingshed: %s: probe merge state: %w", producer, err)
 	}
 	const mergeWayForward = `conclude it with "lym fabric merge --continue" or discard it with "lym fabric merge --abort", then resume; a session lym refuses the verb from reports status: FAILED and the orch runs it`
+	const unsettledWayForward = `discard it with "lym fabric merge --abort", then resume; a session lym refuses the verb from reports status: FAILED and the orch runs it`
 	switch state.Kind {
 	case fabricengine.MidMergeNone:
 		return "", nil
-	case fabricengine.MidMergeParked:
+	case fabricengine.MidMergeParked, fabricengine.MidMergeRecordsUnsettled:
 		if state.Verb != fabricengine.MergeVerbMergeIn || state.Source != parentBranch {
+			if state.Kind == fabricengine.MidMergeRecordsUnsettled {
+				return fmt.Sprintf("a fabric merge (%s of %s) is in progress in the task worktree with its records unsettled; way forward: %s", state.Verb, state.Source, unsettledWayForward), nil
+			}
 			return fmt.Sprintf("a fabric merge (%s of %s) is in progress in the task worktree; way forward: %s", state.Verb, state.Source, mergeWayForward), nil
 		}
 	default:

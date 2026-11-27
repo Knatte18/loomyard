@@ -832,11 +832,11 @@ func TestPause(t *testing.T) {
 			p := newPair("p1", "a")
 			e := newEnv(t, p)
 
-			first, err := Pause(e.deps(), PauseRequest{Slug: "p1", Caller: "first"})
+			first, err := Pause(e.deps(), PauseRequest{Slug: "p1", Caller: pauserecord.OwnerCaller})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if record := e.record(); first.AlreadyPaused || len(record.Live) != 1 || record.Live[0].Caller != "first" {
+			if record := e.record(); first.AlreadyPaused || len(record.Live) != 1 || record.Live[0].Caller != pauserecord.OwnerCaller {
 				t.Errorf("record = %+v, already paused %v; want one entry carrying the request's caller", record, first.AlreadyPaused)
 			}
 
@@ -844,7 +844,7 @@ func TestPause(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if record := e.record(); !second.AlreadyPaused || len(record.Live) != 1 || record.Live[0].Caller != "first" {
+			if record := e.record(); !second.AlreadyPaused || len(record.Live) != 1 || record.Live[0].Caller != pauserecord.OwnerCaller {
 				t.Errorf("record = %+v, already paused %v; want the standing entry kept and none added", record, second.AlreadyPaused)
 			}
 		}},

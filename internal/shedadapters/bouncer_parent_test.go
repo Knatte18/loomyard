@@ -116,8 +116,6 @@ func TestBouncer_JudgeCall_AsksTheParentBeforeJudging(t *testing.T) {
 // The verdict is CONVERGED and already on disk at Call entry, with the subject unchanged since it was judged.
 // It is refused when the round's parent ask holds findings.
 // The refusal archives the verdict, spawns no judge, and approves nothing.
-//
-//testtiming:keep pins the recovered CONVERGED verdict's refusal over parent findings: its reason, the verdict's archive, and that no judge or commit runs
 func TestBouncer_Call_RefusesARecoveredConvergedOverParentFindings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

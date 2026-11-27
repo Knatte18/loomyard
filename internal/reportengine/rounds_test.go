@@ -67,12 +67,12 @@ func TestCompute_RepairsAndRounds(t *testing.T) {
 			setup: func(w *world) map[string]roundFigures {
 				w.fullRun("a", "ta", 100,
 					[]shedengine.Status{battenStatusOf(running, "",
-						stateChange(running, blocked, "Parent-Align", 4),
-						stateChange(blocked, running, "Parent-Align", 6),
+						stateChange(running, blocked, "Publish", 4),
+						stateChange(blocked, running, "Publish", 6),
 						stateChange(running, failed, "Plan-Write", 7),
 						stateChange(failed, running, "Plan-Write", 8))},
 					[]shedengine.HistoryEntry{
-						{Producer: "Parent-Align", Outcome: shedengine.OutcomeGoto, At: hourAt(5)},
+						{Producer: "Publish", Outcome: shedengine.OutcomeGoto, At: hourAt(5)},
 						{Producer: "Plan-Write", Outcome: shedengine.OutcomeGoto, At: hourAt(30)},
 						{Producer: "Plan-Review", Outcome: shedengine.OutcomeReroute, At: hourAt(31)},
 					}, nil)
@@ -208,13 +208,16 @@ func TestCompute_RepairsAndRounds(t *testing.T) {
 	}
 }
 
-func TestReadSegments_CodeSubdirAndItsArchivedGeneration(t *testing.T) {
+func TestReadSegments_CodeAndRetiredSubdirs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	w := newWorld(t)
-	w.fullRun("new", "tn", 100, nil, nil, mergeFiles(
-		reviewFiles("code", "round-1-review.md", "round-2-review.md"),
-		reviewFiles("code-20261012T101500Z", "round-1-review.md")))
+	w.fullRun("new", "tn", 100, nil, nil, reviewFiles("code", "round-1-review.md", "round-2-review.md"))
+	w.fullRun("old", "to", 101, nil, nil, mergeFiles(
+		reviewFiles("webster", "round-1-review.md"),
+		reviewFiles("webster-20261012T101500Z", "round-1-review.md", "round-2-review.md"),
+		reviewFiles("merge", "round-1-review.md"),
+		reviewFiles("merge-20261012T101500Z", "round-1-review.md")))
 
 	report, err := Compute(w.sources(), Options{})
 	if err != nil {
@@ -222,7 +225,8 @@ func TestReadSegments_CodeSubdirAndItsArchivedGeneration(t *testing.T) {
 	}
 
 	want := map[string]map[string]*SegmentRounds{
-		"new": {"code": {Rounds: 3, Outcome: "accepted"}},
+		"new": {"code": {Rounds: 2, Outcome: "accepted"}},
+		"old": {"code": {Rounds: 3, Outcome: "accepted"}},
 	}
 	if len(report.Runs) != len(want) {
 		t.Fatalf("runs = %d; want %d (findings %+v)", len(report.Runs), len(want), report.Findings)

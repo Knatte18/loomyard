@@ -1,10 +1,10 @@
 # PATTERN-owner-machine
 
-Starting, resuming, pushing or landing a run, a Finalize past its merge included, or picking a pair's parent: only on the entry's owner machine, read via hubgeom's `ParentOf` and Bolt's machine registry; a loom pusher reconciles first; after absence, a catch-up from origin first.
+Starting, resuming, pushing or landing a run, a Finalize past its merge included, or picking a pair's parent: only on the entry's owner machine, read through hubgeom's one `ParentOf` and Bolt's machine registry; after an absence, a catch-up from origin first.
 
 ## Owner machine
 
-Rule: Run start, resume, push or landing, a Finalize past its merge included: only if no other machine owns its entry, read through Bolt's machine registry; a loom pusher reconciles run-scope origin first; owners only on roots and beams, set only by `boardengine`'s setter; others read their `hubgeom.ParentOf` owner; a dobby continue is no resume; after an absence, a catch-up from origin first.
+Rule: Run start, resume, push or landing, a Finalize past its merge included: only if no other machine owns its entry, read through Bolt's machine registry; a loom push reconciles run-scope origin first; owners only on roots and beams, set only by `boardengine`'s setter; others read their `hubgeom.ParentOf` owner; a dobby continue is no resume; after an absence, a catch-up from origin first.
 
 A run starts, resumes, pushes or lands only on a machine that does not read its entry as owned by another.
 The same holds for acting on an entry after a wake.
@@ -13,9 +13,8 @@ The rest of a Finalize already past its parent-side merge finishes on the run's 
 - Every comparison of a recorded machine name with this machine goes through `boardengine.OwnedElsewhere` over the registry.
   A former name of a registered machine reads as that machine.
 - A start, a resume, a claim and a landing proceed only when the entry does not read as owned by another machine.
-- A pair's pusher runs the run-scope origin reconcile before each push, and the push proceeds only once it reads the entry as active.
-  A pause covering the run stops the pusher's push, and the commit runs no check.
-  The exceptions are a run with git or pushes off, a run in the prime, and Finalize, which judges itself.
+- A loom run's commit and push of its pair proceed only after a run-scope origin reconcile reads its entry as active.
+  The exceptions are a run with git or pushes off, a run in the prime, Finalize, which judges itself, and a paused run.
   The reconcile judges.
   The push also goes when the check itself fails.
   That covers an unreachable origin, a failed reconcile, and a failed read of whether the check applies.
@@ -26,8 +25,7 @@ The rest of a Finalize already past its parent-side merge finishes on the run's 
 - The rest of a Finalize already past its parent-side merge finishes on the run's owner.
   A landing in flight is therefore never stranded.
 - An owner is recorded for a beam project as `owner_machine` and for the root as `prime_owner`.
-  Only `boardengine`'s owner setter records either.
-  `Board.EndBeam` alone also clears one: the owner of a beam whose life ends with no landing.
+  Only `boardengine`'s owner setter writes either.
   It takes a project or the prime another machine owns only when `lym adopt` asks for it, or when `lym machine name`'s sweep names that recorded owner among this machine's former names.
   A task and a grouping project record none, and a load drops the key an older machine recorded on one.
 - Every other entry reads the owner of its parent, and so does a beam project with no owner recorded.
@@ -50,7 +48,7 @@ The rest of a Finalize already past its parent-side merge finishes on the run's 
 Acting on a run or a hub after an absence starts with a catch-up from origin:
 a sleep the dobby sees, a dobby start and a hand pass each run it before any act rule answer.
 Every verdict above therefore reads the state origin holds.
-A pair's pusher starts each push with the run-scope origin reconcile.
+A loom run's commit and push of its pair start with the run-scope origin reconcile.
 The one exception is a resume at Worktree-Teardown whose task worktree is gone.
 It runs no origin reconcile and judges the owner on the local board alone.
 The teardown only finishes what is left of the pair.
@@ -75,7 +73,7 @@ A run is driven in passes, one `lym batten run` each, and a pass is either full 
 - `internal/machinename`'s sole-source scan fails on a production file outside the package that reads the hostname.
 - The reconcile, batten, loom, `InnerRun` and Finalize tests reach each check.
   They cover `ReconcileOrigin`'s owned-elsewhere outcome and batten's start, resume and claim refusals.
-  They cover loom's `owned_elsewhere` start refusal and the pusher's pre-push stops.
+  They cover loom's `owned_elsewhere` start refusal and loom's pre-push stops.
   They cover `InnerRun`'s owner hold and Finalize's `owner check:` halts.
 - `TestReadsAsHere` and `TestRegistryCheck` cover the registry comparison.
   `TestCatchUp` and `TestRun_CatchUp` cover the catch-up after an absence.

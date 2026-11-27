@@ -1,12 +1,13 @@
 // classify_test.go pins Classify's decision order.
 // A present Report short-circuits to terminal regardless of every other field, and its head SHA carries through.
-// The digest's deviation list stays empty, since record-batch fills it from the scope guard.
+// A report's deviations are ignored: they never change the mapped status or fill the digest's list.
 // Absent a report, the dead-reason precedence runs TurnEnded, then timeout, then strand-died, then running.
 // Tier 1: no git, inputs constructed directly.
 
 package websterengine
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -16,6 +17,11 @@ import (
 func TestClassify(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
+
+	var many []string
+	for i := 0; i < 500; i++ {
+		many = append(many, fmt.Sprintf("internal/pkg%d/file.go", i))
+	}
 
 	tests := []struct {
 		name         string
@@ -28,8 +34,15 @@ func TestClassify(t *testing.T) {
 		wantElapsedS int
 	}{
 		{
-			name:         "a FAILED report is terminal stuck",
-			in:           ClassifyInputs{BatchNumber: 1, BatchSlug: "x", Report: &Report{Status: ReportStatusFailed, HeadSHA: "def"}},
+			name:         "a report's deviations are ignored and never change an OK status",
+			in:           ClassifyInputs{BatchNumber: 1, BatchSlug: "x", Report: &Report{Status: ReportStatusOK, HeadSHA: "abc", Deviations: many}},
+			wantTerminal: true,
+			wantStatus:   DigestStatusDone,
+			wantHeadSHA:  "abc",
+		},
+		{
+			name:         "a report's deviations are ignored and never change a FAILED status",
+			in:           ClassifyInputs{BatchNumber: 1, BatchSlug: "x", Report: &Report{Status: ReportStatusFailed, HeadSHA: "def", Deviations: many}},
 			wantTerminal: true,
 			wantStatus:   DigestStatusStuck,
 			wantHeadSHA:  "def",

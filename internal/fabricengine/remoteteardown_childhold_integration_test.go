@@ -154,9 +154,9 @@ func (s *recordingStdin) Close() error {
 }
 
 // TestChildHold_Finish covers the parent's side of the handover:
-// a job is recorded as a pending teardown, written to the child and handed over at once;
-// a job that cannot be written still closes the input and stays recorded;
-// no job records nothing, closes the input and waits for the child to exit.
+// a job is written to the child and handed over at once;
+// a job that cannot be written still closes the input;
+// no job closes the input and waits for the child to exit.
 func TestChildHold_Finish(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -167,27 +167,22 @@ func TestChildHold_Finish(t *testing.T) {
 		writeErr      error
 		wantHandedOff bool
 		wantWritten   bool
-		wantPending   bool
 	}{
-		{"NilJobWaitsForTheChild", nil, nil, false, false, false},
-		{"JobIsWrittenAndHandedOff", &job, nil, true, true, true},
-		{"UnwritableJobStillHandsOff", &job, errors.New("broken pipe"), true, false, true},
+		{"NilJobWaitsForTheChild", nil, nil, false, false},
+		{"JobIsWrittenAndHandedOff", &job, nil, true, true},
+		{"UnwritableJobStillHandsOff", &job, errors.New("broken pipe"), true, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			hub := t.TempDir()
 			cmd := exec.Command("git", "--version")
 			if err := cmd.Start(); err != nil {
 				t.Fatalf("start the stand-in child: %v", err)
 			}
 			stdin := &recordingStdin{writeErr: tt.writeErr}
 
-			out := (&childHold{hubPath: hub, slug: "pair", cmd: cmd, stdin: stdin}).finish(tt.job)
+			out := (&childHold{slug: "pair", cmd: cmd, stdin: stdin}).finish(tt.job)
 
-			if _, err := os.Stat(pendingTeardownPath(hub, "pair")); (err == nil) != tt.wantPending {
-				t.Errorf("pending teardown record stat error = %v; want a record %v", err, tt.wantPending)
-			}
 			if !stdin.closed {
 				t.Errorf("finish() left the child's input open; want it closed")
 			}

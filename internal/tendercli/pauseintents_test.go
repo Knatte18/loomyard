@@ -1,5 +1,6 @@
-// pauseintents_test.go pins the pause-intent step the catch-up wires:
-// the pause entries written from the intents of the runs a machine owns.
+// pauseintents_test.go pins the two pause-intent steps the catch-up and the upgrade's first read wire:
+// the pause entries written from the intents of the runs a machine owns,
+// and a recorded intent whose owed push is an error.
 // The tests run over a hubforge hub and set the strand-name variable, so none calls t.Parallel.
 
 package tendercli
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -48,7 +51,7 @@ func TestPauseIntentEntries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	seeded := pauserecord.Entry{Scope: "already-paused", Caller: "operator", PausedAt: time.Unix(1000, 0)}
+	seeded := pauserecord.Entry{Scope: "already-paused", Caller: pauserecord.AdoptCaller, PausedAt: time.Unix(1000, 0)}
 	if _, err := pauserecord.Update(geometry.RecordPath, time.Now(), func(record *pauserecord.Record) error {
 		record.Live = []pauserecord.Entry{seeded}
 		return nil
@@ -72,7 +75,22 @@ func TestPauseIntentEntries(t *testing.T) {
 	if entry, ok := byScope["with-intent"]; !ok || entry.Caller != agentname.External {
 		t.Errorf("entry of the run with an intent = %+v, %v; want one under the default caller", entry, ok)
 	}
-	if entry := byScope["already-paused"]; entry.Caller != seeded.Caller || !entry.PausedAt.Equal(seeded.PausedAt) {
+	if entry := byScope["already-paused"]; entry.Caller != pauserecord.AdoptCaller || !entry.PausedAt.Equal(seeded.PausedAt) {
 		t.Errorf("entry of the run with a live entry = %+v; want the seeded entry unchanged", entry)
+	}
+}
+
+func TestRecordPauseIntent_ReturnsAnOwedPush(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Setenv(agentname.StrandNameEnv, "")
+	h := newHub(t)
+	writeBattenRecord(t, h, "run", pausedNoIntent)
+	// The hub's records branch has no upstream, so the push goes once with no backoff and the unreachable origin is owed.
+	gitkit.Git(t, h.PrimeRecords(), "remote", "set-url", "origin", "http://127.0.0.1:1/x")
+
+	err := RecordPauseIntent(h.Location, "run")
+
+	if err == nil || !fabricengine.IsPushOwed(err) {
+		t.Errorf("RecordPauseIntent() error = %v; want the owed push's error", err)
 	}
 }

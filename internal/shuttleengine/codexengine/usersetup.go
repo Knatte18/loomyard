@@ -9,16 +9,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// skillListingItemName labels the skill listing in a refusal that names the largest item.
-const skillListingItemName = "the skill listing"
-
-var (
+const (
+	// skillListingItemName labels the skill listing in a refusal that names the largest item.
+	skillListingItemName = "the skill listing"
 	// skillListingWayForward shrinks the skill listing.
 	skillListingWayForward = "list fewer plugins in the session scope: drop plugin skills from the role's skills in agents.yaml (`lym config agents`) or the spec, " +
-		"or, while " + otherKeyName("claude", "session_scope.enabled") + " is off, turn it on (`lym config claude`)"
+		"or, while claude.yaml's session_scope is off, turn it on (`lym config claude`)"
 	// pluginScopeWayForward stops a plugin's hook from contributing to a session.
 	pluginScopeWayForward = "turn its plugin off in the session scope: drop its skills from the role's skills in agents.yaml (`lym config agents`) or from the spec, " +
-		"or, while " + otherKeyName("claude", "session_scope.enabled") + " is off, turn it on (`lym config claude`)"
+		"or, while claude.yaml's session_scope is off, turn it on (`lym config claude`)"
 )
 
 // resolveUserSetup resolves the user's Claude setup for the launch req describes.

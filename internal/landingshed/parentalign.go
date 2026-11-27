@@ -6,7 +6,10 @@ package landingshed
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -18,6 +21,10 @@ import (
 // parentAlignName is the producer name that Parent-Align's log lines and error text carry.
 // It is also the row name its failure record carries.
 const parentAlignName = "Parent-Align"
+
+// retiredMergeInName is the retired row name of Parent-Align.
+// A run parked on that row still holds the name in its status file and attempt record.
+const retiredMergeInName = "Merge-In"
 
 // mergeBefore is what a landing row reads before it merges the parent into the task, which the merge record carries.
 type mergeBefore struct {
@@ -122,7 +129,7 @@ func NewParentAlign(deps Deps) (*ParentAlign, error) {
 // After the merge and the `landing` gate it aligns:
 // it runs the merge fixer when the parent brought in commits or the gate fails,
 // and every halt of that alignment is a Stuck with Halt whose reason opens with LandingStopPrefix.
-// A gate whose result is a runner crash or a memory pressure stop judged no code:
+// A gate whose every failed run crashed its test runner judged no code:
 // it halts the same way before any alignment, with no fixer.
 // A fixer's escalate on a tapestry, darn or sampler run (Deps.EscalateJudgedFirst) opens with EscalateStopPrefix.
 // A failed record write and every infrastructure fault are errors.
@@ -193,11 +200,11 @@ func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 	if end := gateEnding(ctx, parentAlignName, reason, err); end != nil {
 		return end.result()
 	}
-	gateReason, unjudged, err := m.gate.check(ctx, parentAlignName, m.deps.ParentBranch)
+	gateReason, crashed, err := m.gate.check(ctx, parentAlignName, m.deps.ParentBranch)
 	if err != nil {
 		return fail(ctx, parentAlignName, err).result()
 	}
-	if unjudged {
+	if crashed {
 		return halt(ctx, parentAlignName, gateReason).result()
 	}
 	if gateReason == "" {
@@ -258,12 +265,19 @@ func (m *ParentAlign) mergeTip(ctx context.Context) (string, string, error) {
 	return tips.Local, "", nil
 }
 
-// removeAttempts removes the row's fixer attempt record.
+// removeAttempts removes the row's fixer attempt record and the one stored under the retired row name `Merge-In`.
 func (m *ParentAlign) removeAttempts() error {
-	return RemoveFixerAttempts(FixerAttemptsPath(m.deps.RecordsDir, parentAlignName))
+	for _, row := range []string{parentAlignName, retiredMergeInName} {
+		if err := RemoveFixerAttempts(FixerAttemptsPath(m.deps.RecordsDir, row)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // readAttempts reads the entry's fixer attempt record into `m.attempts` and fixes the entry's fork point.
+// A run halted under the retired row name `Merge-In` leaves its record there,
+// so the record under that name is read when the row's own is absent.
 // readAttempts writes `AlignFrom` only when the merge record has no aligned tip and the attempt record no fork point.
 // The value is the task's fork point from the parent, read before the merge,
 // so a resumed entry whose merge is already up to date still reads the parent commits the first merge brought in.
@@ -273,8 +287,20 @@ func (m *ParentAlign) readAttempts() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: read the row entry: %w", parentAlignName, err)
 	}
+	for _, row := range []string{parentAlignName, retiredMergeInName} {
+		if err := moveScratchAttempts(m.deps.ScratchDir, m.deps.RecordsDir, row); err != nil {
+			return "", err
+		}
+	}
 	ownPath := FixerAttemptsPath(m.deps.RecordsDir, parentAlignName)
-	rec, reason, err := readRowAttempts(parentAlignName, ownPath, entry)
+	path := ownPath
+	if _, statErr := os.Stat(ownPath); errors.Is(statErr, fs.ErrNotExist) {
+		retired := FixerAttemptsPath(m.deps.RecordsDir, retiredMergeInName)
+		if _, retiredErr := os.Stat(retired); retiredErr == nil {
+			path = retired
+		}
+	}
+	rec, reason, err := readRowAttempts(parentAlignName, path, entry)
 	if err != nil || reason != "" {
 		return reason, err
 	}

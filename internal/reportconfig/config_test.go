@@ -26,7 +26,7 @@ func TestLoadConfig(t *testing.T) {
 	}{
 		{name: "TemplateValue", hub: "", want: reportconfig.Config{CostMinRuns: 5}},
 		{name: "HubValue", hub: "cost_min_runs: 9\n", want: reportconfig.Config{CostMinRuns: 9}},
-		{name: "ZeroRefused", hub: "cost_min_runs: 0\n", wantErr: `config key "report.cost_min_runs" holds 0`},
+		{name: "ZeroRefused", hub: "cost_min_runs: 0\n", wantErr: `report config key "cost_min_runs" holds 0`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

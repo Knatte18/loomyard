@@ -16,11 +16,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
@@ -33,12 +33,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/treadleengine"
 	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // The strand roles that production launch literals spell as unexported constants of their own packages.
 const (
+	judgeStrandRole     = "judge"
+	targetingStrandRole = "targeting"
 	planFixerStrandRole = "plan-fixer"
 )
 
@@ -95,19 +98,20 @@ func producers(t *testing.T, fx parityFixture) []producer {
 		build    producerBuild
 	}{
 		{"internal/sheddriver#tacklerSpec", buildTackler},
+		{"internal/treadleengine#runJudgeCall", buildTreadleJudge},
+		{"internal/treadleengine#runTargeting", buildTreadleTargeting},
 		{"internal/websterengine#FixPlanSpawnOrAttach", buildPlanFixer},
 		{"internal/websterengine#recoverSpawn", buildRecovery},
 		{"internal/websterengine#Run", buildMerriam},
 		{"internal/samplerengine#SessionSpec", buildSampler},
+		{"internal/landingshed#PRReview.sessionSpec", buildPRReview},
 		{"internal/loomcli#driverSpec", buildDriver},
 		{"internal/dobbyengine#TidySpec", buildBoardTidy},
-		{"internal/dobbyengine#BeamDescribeSpec", buildBeamDescribe},
 		{"internal/mergeresolve#buildConflictSpec", buildConflict},
 		{"internal/shedarbiter#Spec", buildArbiter},
 		{"internal/weaverengine#attemptSpec", buildWeaverAttempt},
 		{"internal/shedadapters#Bouncer.runSeedSpawn", buildBouncerSeed},
 		{"internal/shedadapters#Bouncer.judgeCall", buildBouncerJudge},
-		{"internal/shedadapters#Bouncer.runVerifier", buildBouncerVerify},
 		{"internal/gatefixer#SpawnOrAttach", buildGateFixer},
 		{"internal/frictionengine#buildReflectionSpec", buildReflection},
 	}
@@ -175,6 +179,43 @@ func buildTackler(fx parityFixture, engine string) (shuttleengine.Spec, error) {
 	}), nil
 }
 
+// treadleJudgeInputs returns the inputs the treadle judge prompt renders from.
+func treadleJudgeInputs(env SeatEnv, engine string) treadleengine.JudgePromptInputs {
+	return treadleengine.JudgePromptInputs{
+		Engine:       engine,
+		StencilsDir:  env.StencilsDir,
+		ParentName:   env.ParentName,
+		Round:        1,
+		HardCap:      3,
+		PriorReviews: []string{standInPath(env, "prior-review.md")},
+		VerdictPath:  standInPath(env, "verdict.md"),
+		HandoffPath:  standInPath(env, "handoff.md"),
+	}
+}
+
+func buildTreadleJudge(fx parityFixture, engine string) (shuttleengine.Spec, error) {
+	prompt, err := treadleengine.RenderCirclingJudgePrompt(treadleJudgeInputs(fx.env, engine))
+	if err != nil {
+		return shuttleengine.Spec{}, err
+	}
+	return promptSpec(engine, prompt, shuttleengine.Spec{
+		ConfigRole: agentconfig.RoleTreadleJudge,
+		Role:       judgeStrandRole,
+	}), nil
+}
+
+func buildTreadleTargeting(fx parityFixture, engine string) (shuttleengine.Spec, error) {
+	env := fx.env
+	prompt, err := treadleengine.RenderTargetingPrompt(env.StencilsDir, env.ParentName, engine, 1, standInPath(env, "handoff.md"), standInPath(env, "seed.md"))
+	if err != nil {
+		return shuttleengine.Spec{}, err
+	}
+	return promptSpec(engine, prompt, shuttleengine.Spec{
+		ConfigRole: agentconfig.RoleTreadleTargeting,
+		Role:       targetingStrandRole,
+	}), nil
+}
+
 func buildPlanFixer(fx parityFixture, engine string) (shuttleengine.Spec, error) {
 	env := fx.env
 	prompt, err := websterengine.RenderPlanFixPrompt(standInPath(env, "conflict-record.json"), standInPath(env, "plan-fix-reply.md"),
@@ -195,7 +236,7 @@ func buildRecovery(fx parityFixture, engine string) (shuttleengine.Spec, error) 
 		return shuttleengine.Spec{}, err
 	}
 	worktree := env.Location.WorktreePath()
-	prompt, err := websterengine.RenderRecoveryPrompt(batcher.Batch{Cards: []planparser.Card{standInCard}}, "the card gates", "the batch gate", "", "", "", "",
+	prompt, err := websterengine.RenderRecoveryPrompt(batcher.Batch{Cards: []planparser.Card{standInCard}}, "the card gates", "the batch gate", "", "", "",
 		standInPath(env, "report.yaml"), worktree, standInPath(env, "plan"), worktree, env.StencilsDir, engine, env.SpecsDir, "", nil, nil, 2, "", env.ParentName, false)
 	if err != nil {
 		return shuttleengine.Spec{}, err
@@ -231,10 +272,6 @@ func buildMerriam(fx parityFixture, engine string) (shuttleengine.Spec, error) {
 
 func buildSampler(fx parityFixture, engine string) (shuttleengine.Spec, error) {
 	env := fx.env
-	skills, err := languageSkillsOf(env)
-	if err != nil {
-		return shuttleengine.Spec{}, err
-	}
 	prompt, err := samplerengine.RenderSessionPrompt(samplerengine.SessionInputs{
 		StencilsDir:        env.StencilsDir,
 		ParentName:         env.ParentName,
@@ -250,8 +287,37 @@ func buildSampler(fx parityFixture, engine string) (shuttleengine.Spec, error) {
 		Unawaited:   true,
 		DenyPublish: true,
 		ConfigRole:  agentconfig.RoleSampler,
-		Skills:      skills,
 		Role:        samplerengine.Role,
+	}), nil
+}
+
+func buildPRReview(fx parityFixture, engine string) (shuttleengine.Spec, error) {
+	env := fx.env
+	skills, err := languageSkillsOf(env)
+	if err != nil {
+		return shuttleengine.Spec{}, err
+	}
+	prompt, err := landingshed.RenderPRReviewPrompt(landingshed.Deps{
+		WorktreeRoot:       env.Location.WorktreePath(),
+		TaskBranch:         "task",
+		ParentBranch:       "parent",
+		DescriptionPath:    standInPath(env, "description.md"),
+		StencilsDir:        env.StencilsDir,
+		ParentName:         env.ParentName,
+		Slug:               env.Slug,
+		DecisionRecordPath: standInPath(env, "decision-record.md"),
+		PlanDir:            standInPath(env, "plan"),
+	}, "https://example.test/pull/1", engine)
+	if err != nil {
+		return shuttleengine.Spec{}, err
+	}
+	return promptSpec(engine, prompt, shuttleengine.Spec{
+		Interactive: true,
+		Unawaited:   true,
+		DenyPublish: true,
+		ConfigRole:  agentconfig.RolePRReviewer,
+		Skills:      skills,
+		Role:        string(agentconfig.RolePRReviewer),
 	}), nil
 }
 
@@ -282,28 +348,6 @@ func buildBoardTidy(fx parityFixture, engine string) (shuttleengine.Spec, error)
 	return promptSpec(engine, prompt, shuttleengine.Spec{
 		ConfigRole: agentconfig.RoleBoardTidy,
 		Role:       dobbyengine.BoardTidyRole,
-	}), nil
-}
-
-func buildBeamDescribe(fx parityFixture, engine string) (shuttleengine.Spec, error) {
-	env := fx.env
-	prompt, err := dobbyengine.BeamDescribePrompt(env.StencilsDir, engine, dobbyengine.BeamDescribePromptInput{
-		Slug:      env.Slug,
-		DraftPath: standInPath(env, "describe-draft.md"),
-		Parent:    env.ParentName,
-		Facts: dobbyengine.BeamDescribeFacts{
-			DescriptionPath: standInPath(env, "summary.md"),
-			Branch:          "beam-stand-in",
-			ParentBranch:    "main",
-			Changes:         "- stand-in change",
-		},
-	})
-	if err != nil {
-		return shuttleengine.Spec{}, err
-	}
-	return promptSpec(engine, prompt, shuttleengine.Spec{
-		ConfigRole: agentconfig.RoleDescriber,
-		Role:       dobbyengine.BeamDescribeRole,
 	}), nil
 }
 
@@ -431,22 +475,6 @@ func buildBouncerJudge(fx parityFixture, engine string) (shuttleengine.Spec, err
 	return promptSpec(engine, prompt, shuttleengine.Spec{
 		ConfigRole: agentconfig.RoleBouncerJudge,
 		Role:       string(agentconfig.RoleBouncerJudge),
-	}), nil
-}
-
-func buildBouncerVerify(fx parityFixture, engine string) (shuttleengine.Spec, error) {
-	bouncer, err := standInBouncer(fx.env)
-	if err != nil {
-		return shuttleengine.Spec{}, err
-	}
-	fixed := []burlerengine.Finding{{ID: "F1", Severity: burlerengine.SeverityBlocking, Summary: "stand-in finding", Fix: "stand-in fix"}}
-	prompt, err := bouncer.RenderVerifyPrompt(engine, 1, []string{"stand-in-key"}, fixed)
-	if err != nil {
-		return shuttleengine.Spec{}, err
-	}
-	return promptSpec(engine, prompt, shuttleengine.Spec{
-		ConfigRole: agentconfig.RoleBouncerJudge,
-		Role:       "bouncer-verify",
 	}), nil
 }
 

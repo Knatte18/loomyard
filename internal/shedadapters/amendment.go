@@ -19,9 +19,11 @@ import (
 
 // ReviewInput is a file a re-entered review is told to read besides the subject's change.
 // WrittenAt is when the file was written.
+// Full marks an input that forces a full generation, reviewing the whole range, instead of an amendment.
 type ReviewInput struct {
 	Path      string
 	WrittenAt time.Time
+	Full      bool
 }
 
 // startNextGeneration starts the generation that follows settled.
@@ -29,7 +31,7 @@ type ReviewInput struct {
 // A read error is returned before anything is archived.
 // It then archives the run directory with the records travelling along.
 // It writes the generation record with the next number and the kept inputs' paths.
-// A generation is full when cfg.FullGeneration selects it;
+// A generation is full when cfg.FullGeneration selects it or a kept input is marked full;
 // it then carries no Amendment mark and no base.
 // Any other generation is an amendment and carries the Amendment mark and base.
 // An amendment with an allowance of 0 settles through approveWithoutReview, and every other generation seeds.
@@ -41,7 +43,7 @@ func (b *Bouncer) startNextGeneration(ctx context.Context, settled settleRecord,
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
-	amendment := !b.cfg.FullGeneration
+	amendment := !b.cfg.FullGeneration && !hasFullInput(kept)
 
 	next := settled.Generation + 1
 	logger.Warn("shedadapters: bouncer starting a new review generation", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "generation", next, "amendment", amendment, "runDir", b.cfg.RunDir)
@@ -87,6 +89,16 @@ func (b *Bouncer) keptReviewInput(settledAt string) ([]ReviewInput, error) {
 		}
 	}
 	return kept, nil
+}
+
+// hasFullInput reports whether any of inputs is marked full.
+func hasFullInput(inputs []ReviewInput) bool {
+	for _, input := range inputs {
+		if input.Full {
+			return true
+		}
+	}
+	return false
 }
 
 // amendment returns the run directory's generation record and true when it marks an amendment.

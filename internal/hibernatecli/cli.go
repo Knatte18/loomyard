@@ -17,9 +17,6 @@ import (
 // resumeOnWakeFlag is the `hibernate request` flag that chooses, for one request, whether its wake lifts the hub pause.
 const resumeOnWakeFlag = "resume-on-wake"
 
-// resumeOnWakeName is the full name of the key that flag overrides for one request.
-var resumeOnWakeName = configengine.KeyName("hibernate", "resume_on_wake")
-
 // Command returns the cobra command for `lym hibernate`: the bare group and its request, cancel and status verbs.
 func Command() *cobra.Command {
 	hibernate := &cobra.Command{
@@ -85,7 +82,7 @@ posts creel mail to the orch when it is done or failed. The request stays on
 disk, so a prime's dobby that is not running takes it up once it starts; the
 envelope says whether it runs and names "lym beam start root" when it does not.
 
-The wake lifts the request's pause only when ` + resumeOnWakeName + ` is
+The wake lifts the request's pause only when hibernate.yaml's resume_on_wake is
 on or --resume-on-wake is given; --resume-on-wake=false keeps the pause for this
 request whatever the config holds. A kept pause stands until "lym tender resume"
 or "lym hibernate cancel" lifts it, and a new request is refused meanwhile.
@@ -112,12 +109,12 @@ Example:
 	}
 	cmd.Flags().StringVar(&after, "after", "", "hibernate once the batten run of this slug has finished its Land row")
 	cmd.Flags().BoolVar(&afterAll, "after-all", false, "hibernate once no batten run is in flight")
-	cmd.Flags().BoolVar(&resume, resumeOnWakeFlag, false, "lift the hub pause on the wake, so paused runs go on by themselves; overrides "+resumeOnWakeName+" for this request")
+	cmd.Flags().BoolVar(&resume, resumeOnWakeFlag, false, "lift the hub pause on the wake, so paused runs go on by themselves; overrides hibernate.yaml's resume_on_wake for this request")
 	return cmd
 }
 
 // chooseResumeOnWake reports whether a request's wake lifts the hub pause.
-// It returns the flag's value when the flag was given, else hibernate.resume_on_wake read from dirs.
+// It returns the flag's value when the flag was given, else hibernate.yaml's resume_on_wake read from dirs.
 func chooseResumeOnWake(flagGiven, flag bool, dirs configengine.Dirs) (bool, error) {
 	if flagGiven {
 		return flag, nil

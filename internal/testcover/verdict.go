@@ -4,6 +4,7 @@
 package testcover
 
 import (
+	"slices"
 	"sort"
 )
 
@@ -14,6 +15,7 @@ const (
 	ReasonUnresolved   = "unclassifiable call"
 	ReasonNoBlocks     = "no blocks"
 	ReasonFailed       = "failed"
+	ReasonKept         = "kept"
 )
 
 // Run is one top-level test as Judge sees it.
@@ -50,8 +52,18 @@ type Verdict struct {
 // The removable set is a greedy pass over the contained tests, slowest first, then by name.
 // It re-checks each contained test against the tests still kept.
 func Judge(runs []Run) []Verdict {
+	return JudgeAgainst(runs, nil)
+}
+
+// JudgeAgainst returns the verdict of every run, in the order given.
+// It counts the runs of kept as covering tests that are never judged or removed themselves.
+// A kept run covers its blocks for every run,
+// and the greedy pass drops a contained run only while the runs left keep its blocks covered.
+// A caller judging new tests against tests it already holds passes those as kept.
+func JudgeAgainst(runs, kept []Run) []Verdict {
+	all := slices.Concat(runs, kept)
 	counts := map[string]int{}
-	for _, r := range runs {
+	for _, r := range all {
 		if notJudgedReason(r) == "" {
 			for b := range r.Blocks {
 				counts[b]++
@@ -67,30 +79,30 @@ func Judge(runs []Run) []Verdict {
 		return true
 	}
 
-	out := make([]Verdict, len(runs))
+	out := make([]Verdict, len(all))
 	var contained []int
-	for i, r := range runs {
+	for i, r := range all {
 		out[i].Name = r.Name
 		out[i].Reason = notJudgedReason(r)
-		if out[i].Reason == "" && covered(r) {
+		if i < len(runs) && out[i].Reason == "" && covered(r) {
 			out[i].Contained = true
 			contained = append(contained, i)
 		}
 	}
 
 	sort.SliceStable(contained, func(a, b int) bool {
-		ra, rb := runs[contained[a]], runs[contained[b]]
+		ra, rb := all[contained[a]], all[contained[b]]
 		if ra.Elapsed != rb.Elapsed {
 			return ra.Elapsed > rb.Elapsed
 		}
 		return ra.Name < rb.Name
 	})
 	for _, i := range contained {
-		if !covered(runs[i]) {
+		if !covered(all[i]) {
 			continue
 		}
 		out[i].Removable = true
-		for b := range runs[i].Blocks {
+		for b := range all[i].Blocks {
 			counts[b]--
 		}
 	}
@@ -100,7 +112,41 @@ func Judge(runs []Run) []Verdict {
 		if !out[i].Removable {
 			inPool = func(j int) bool { return out[j].Reason == "" }
 		}
-		out[i].Covering = coveringTests(i, runs, inPool)
+		out[i].Covering = coveringTests(i, all, inPool)
+	}
+	return out[:len(runs)]
+}
+
+// JudgeMap returns the verdict of every test of the coverage map m, in the map's order.
+// It judges by the blocks of the package's own files, each entry's seconds ordering the greedy pass.
+// A test that keeps names, one marked `//testtiming:keep`, is neither judged nor counted as a cover;
+// its reason is ReasonKept.
+// An entry that records a TestOutcome is not judged either, and the outcome is its reason.
+// Nor is an entry whose spawn verdict marks the test.
+// Every block index of m must lie inside its block table.
+func JudgeMap(m Map, keeps map[string]string) []Verdict {
+	out := make([]Verdict, len(m.Tests))
+	var runs []Run
+	var at []int
+	for i, test := range m.Tests {
+		out[i].Name = test.Name
+		if _, kept := keeps[test.Name]; kept {
+			out[i].Reason = ReasonKept
+			continue
+		}
+		if test.Outcome != "" {
+			out[i].Reason = string(test.Outcome)
+			continue
+		}
+		blocks := BlockSet{}
+		for _, index := range test.Blocks {
+			blocks[m.Blocks[index].String()] = struct{}{}
+		}
+		runs = append(runs, Run{Name: test.Name, Elapsed: test.Seconds, Action: ActionPass, Blocks: blocks, Spawn: test.Spawn})
+		at = append(at, i)
+	}
+	for j, verdict := range Judge(runs) {
+		out[at[j]] = verdict
 	}
 	return out
 }
@@ -120,6 +166,13 @@ func notJudgedReason(r Run) string {
 		return ReasonNoBlocks
 	}
 	return ""
+}
+
+// CoveringTests names the runs of pool that together cover blocks, as a contained verdict names its covering tests.
+// It takes the largest overlap first, then by name, and skips a run that adds no block still uncovered.
+func CoveringTests(blocks BlockSet, pool []Run) []string {
+	runs := append([]Run{{Blocks: blocks}}, pool...)
+	return coveringTests(0, runs, func(int) bool { return true })
 }
 
 // coveringTests names the tests of the pool that together cover runs[self]'s blocks.

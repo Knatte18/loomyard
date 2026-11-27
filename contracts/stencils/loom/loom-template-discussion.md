@@ -21,7 +21,7 @@
      self_check is a required marker: the body of Step 6 up to its closing two lines.
      DiscussionTable fills it with the fragment that has the writer run the validator or,
      when the gate has a cold fixer, the one that has it run none.
-     The subagent_model marker is declared by the Claude engine block the stencil includes, and filled from loom.subagent_model.
+     The subagent_model marker is declared by the Claude engine block the stencil includes, and filled from loom.yaml's subagent_model.
      The literal `{` / `}` characters around {{.slug}} in the board-read example below are ordinary JSON punctuation, not template syntax;
      only `{{` begins a template action. -->
 
@@ -98,15 +98,6 @@ Cover:
 - **Testing** — approach per module, key scenarios to cover.
   Phrase each acceptance criterion as behavior a test can check;
   a criterion about wording in a stencil, spec, doc or other prose is a review check, marked as the discussion spec's acceptance-criteria rule says, never a test of that prose.
-- **What the reviewer will check** — settle now, and record under `## Acceptance criteria` as the discussion spec says,
-  each figure the change must measure and state and the case it is measured on, each doc statement the change must make true, and each new test's intent and tier.
-
-When the entry is labelled `bug`, the design also settles the observed fault and how to reproduce it,
-its root cause or what is still unknown about it,
-and the test that will fail on the merge base and pass after the fix,
-why no test seam exists, or that the entry fixes no bug.
-The fault and its cause are facts Step 2 researches, never interview questions;
-the record states all three as the discussion spec's bug-entry rule says.
 
 For every question, give your **recommended answer**.
 Where there are distinct viable approaches, propose 2–3 with explicit trade-offs, leading with the recommendation.
@@ -168,7 +159,7 @@ Everything else in the worktree is read-only to you. In particular, never write,
 - **`_lym/config/`** — this is the driver's own configuration, read fresh on every invocation.
   Editing it changes how the run that spawned you behaves, and how the next one does.
   `lym config reconcile --apply` counts as editing it.
-- **`_lym/shed/<slug>/`** — the phase machine's status file. The driver owns it; a write from here corrupts orchestration state.
+- **`_lym/shed/<slug>/`** (and the legacy `_lym/shed/self/`) — the phase machine's status file. The driver owns it; a write from here corrupts orchestration state.
 - **`_lym/plan/`** — a later phase's artifact, not yours.
 - **repository source files**, and **git history**: no `git add`, `git commit`, `git checkout`, `git restore`, or any other mutating git command.
   Committing your two files is the loop owner's job, not yours.

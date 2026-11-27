@@ -114,7 +114,7 @@ Examples:
 
 	closeCmd := &cobra.Command{
 		Use:         "close {issue, reason, completed?}",
-		Short:       "close a hub repository issue that is noise or already fixed, with a stated reason",
+		Short:       "close a hub repository issue that is noise, with a stated reason",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Comment on an open issue of the hub's repository with the reason and close it.
 It writes nothing to the board and never edits the issue's content. A pull request and an
@@ -125,11 +125,8 @@ Fields:
   "reason"    string  — the comment posted before closing (required, non-empty)
   "completed" bool    — close as completed instead of not planned (optional)
 
-An issue already fixed is closed as completed, its reason naming the fixing commit.
-
-Examples:
-  lym board intake close '{"issue":14,"reason":"Duplicate of #12."}'
-  lym board intake close '{"issue":15,"reason":"Already fixed by 6fa7f1740 on main: it guards the nil fabric.","completed":true}'`,
+Example:
+  lym board intake close '{"issue":14,"reason":"Duplicate of #12."}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")

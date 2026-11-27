@@ -4,7 +4,6 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"slices"
 	"syscall"
@@ -172,44 +171,6 @@ func TestProcessTreeReads(t *testing.T) {
 	}
 	if selfListed, found := findListed(os.Getpid()); !found || selfListed.Exe != executable {
 		t.Errorf("ListProcesses test process = %+v, found %v; want Exe %q", selfListed, found, executable)
-	}
-
-	ownCgroup, ok := readCgroupV2Path(selfCgroupFile)
-	if !ok {
-		t.Fatalf("readCgroupV2Path(%s) unreadable; want the test process's cgroup v2 path", selfCgroupFile)
-	}
-	for _, cgroup := range []string{ownCgroup, path.Dir(ownCgroup)} {
-		held, err := ResidentInCgroup(cgroup)
-		if err != nil {
-			t.Fatalf("ResidentInCgroup(%q): %v", cgroup, err)
-		}
-		if self, found := find(held, os.Getpid()); !found || self.Path != executable || self.RSS <= 0 || self.Parent != os.Getppid() {
-			t.Errorf("ResidentInCgroup(%q) test process = %+v, found %v; want Path %q, RSS above zero and Parent %d", cgroup, self, found, executable, os.Getppid())
-		}
-		if sleeper, found := find(held, childPID); !found || sleeper.Parent != os.Getpid() {
-			t.Errorf("ResidentInCgroup(%q) child = %+v, found %v; want the child with Parent %d", cgroup, sleeper, found, os.Getpid())
-		}
-	}
-	if held, err := ResidentInCgroup(ownCgroup + "/lym-no-such-child"); err != nil || len(held) != 0 {
-		t.Errorf("ResidentInCgroup(a cgroup no process is in) = %+v, %v; want no process and no error", held, err)
-	}
-	held, err := ResidentInCgroup("/")
-	if err != nil {
-		t.Fatalf("ResidentInCgroup(/): %v", err)
-	}
-	if _, found := find(held, os.Getpid()); !found {
-		t.Errorf("ResidentInCgroup(/) lists %d processes without the test process; want it listed below the root", len(held))
-	}
-	// A cgroup whose path is a bare prefix of the test process's own is a sibling, which holds none of it.
-	if len(path.Base(ownCgroup)) > 1 {
-		sibling := ownCgroup[:len(ownCgroup)-1]
-		held, err := ResidentInCgroup(sibling)
-		if err != nil {
-			t.Fatalf("ResidentInCgroup(%q): %v", sibling, err)
-		}
-		if _, found := find(held, os.Getpid()); found {
-			t.Errorf("ResidentInCgroup(%q) lists the test process of %q; want a shared name prefix not to count", sibling, ownCgroup)
-		}
 	}
 
 	if parent, ok := ParentPID(childPID); !ok || parent != os.Getpid() {

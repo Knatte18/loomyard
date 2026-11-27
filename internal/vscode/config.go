@@ -1,6 +1,6 @@
 // config.go writes a worktree's VS Code configuration under .vscode.
 // settings.json sets the window's title and colours, and the markdown editor association when asked;
-// tasks.json holds the reed attach and board open tasks.
+// tasks.json holds the reed attach task.
 // Every other settings key is the operator's and is kept.
 // Limitation: the hub workspace file at <hub>/<RepoName>.code-workspace carries the prime's settings,
 // so a relative path value (starting with ./ or ../) resolves against the hub directory, not the prime's own folder.
@@ -11,7 +11,6 @@ package vscode
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -61,7 +60,7 @@ type Look struct {
 // A setting held in its array form is left as it is.
 // With renderMarkdown off, that entry is removed while it names the preview, so an editor the operator chose stays.
 // tasks.json is always written, overwriting any existing file.
-// It holds a "reed attach" task and a "board open" task, each run on demand or by its seeded key binding;
+// It holds one "reed attach" task, run on demand or by its seeded key binding;
 // no task runs on folder open, so opening the folder starts no session and no agent.
 // Neither file touches .gitignore; the caller keeps .vscode/ out of git through info/exclude.
 // lymPath is the resolved absolute lym path stamped into the task.
@@ -80,7 +79,7 @@ func WriteConfig(worktreeDir, relpath string, look Look, renderMarkdown bool, ly
 	if err := writeSettings(filepath.Join(vscodePath, "settings.json"), look, renderMarkdown); err != nil {
 		return err
 	}
-	return writeWorktreeTasks(filepath.Join(vscodePath, "tasks.json"), lymPath)
+	return writeAttachTask(filepath.Join(vscodePath, "tasks.json"), lymPath)
 }
 
 // writeSettings creates settingsPath with lym's defaults, look and the markdown association renderMarkdown asks for.
@@ -172,54 +171,13 @@ func applyMarkdownPreview(settings map[string]any, render bool) {
 	}
 }
 
-// The labels of the tasks lym defines; each seeded key binding finds its task by label.
-const (
-	attachTaskLabel    = "reed attach"
-	boardOpenTaskLabel = "board open"
-	beamStartTaskLabel = "beam start"
-)
+// attachTaskLabel names the reed attach task; the seeded key binding finds the task by this label.
+const attachTaskLabel = "reed attach"
 
-// WorkspaceTasks returns the name and value of the "tasks" member of a workspace file:
-// a tasks document holding one "beam start" task that runs "lym beam start <beam>" in cwd.
-// A workspace file admits only shell and process tasks, so the task is a process task.
-// It is presented like the reed attach task and carries no runOptions, so it runs only on demand.
-// An empty lymPath becomes "lym".
-func WorkspaceTasks(lymPath, beam, cwd string) (string, json.RawMessage) {
-	if lymPath == "" {
-		lymPath = "lym"
-	}
-	tasks := map[string]any{
-		"version": "2.0.0",
-		"tasks": []map[string]any{
-			{
-				"label":   beamStartTaskLabel,
-				"type":    "process",
-				"command": lymPath,
-				"args":    []string{"beam", "start", beam},
-				"options": map[string]any{"cwd": cwd},
-				"presentation": map[string]any{
-					"reveal": "always",
-					"panel":  "new",
-					"echo":   true,
-					"focus":  true,
-				},
-			},
-		},
-	}
-	data, err := json.MarshalIndent(tasks, "  ", "  ")
-	if err != nil {
-		panic(fmt.Sprintf("vscode: encode the workspace tasks: %v", err))
-	}
-	return "tasks", data
-}
-
-// writeWorktreeTasks writes a tasks.json holding the on-demand "reed attach" and "board open" tasks.
-// It overwrites any existing file.
-// Neither task carries runOptions, so VS Code never runs them on folder open.
-// They run only from "Tasks: Run Task" or a seeded key binding.
-// The board open task shows its terminal on every run without taking focus,
-// so a refusal or a failed opener's error is visible.
-func writeWorktreeTasks(tasksPath, lymPath string) error {
+// writeAttachTask writes a tasks.json holding the single on-demand "reed attach" task, overwriting any existing file.
+// The task carries no runOptions.
+// VS Code runs it only from "Tasks: Run Task" or its seeded key binding, never on folder open.
+func writeAttachTask(tasksPath, lymPath string) error {
 	tasks := map[string]any{
 		"version": "2.0.0",
 		"tasks": []map[string]any{
@@ -233,18 +191,6 @@ func writeWorktreeTasks(tasksPath, lymPath string) error {
 					"panel":  "new",
 					"echo":   true,
 					"focus":  true,
-				},
-			},
-			{
-				"label":   boardOpenTaskLabel,
-				"type":    "shell",
-				"command": lymPath,
-				"args":    []string{"board", "open"},
-				"presentation": map[string]any{
-					"reveal": "always",
-					"focus":  false,
-					"echo":   true,
-					"panel":  "shared",
 				},
 			},
 		},

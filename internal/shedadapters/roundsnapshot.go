@@ -1,6 +1,5 @@
 // roundsnapshot.go implements the per-round snapshot record, round-<n>-snapshot.json in the run directory.
-// The review producer writes the round's start into it.
-// The fix producer adds whether decisions were routed, and why its fixer ran again.
+// The review producer writes the round's start into it, and the fix producer adds whether decisions were routed.
 // The record is tracked with the run, and every write goes through internal/state so unknown keys survive.
 
 package shedadapters
@@ -22,7 +21,6 @@ const roundSnapshotLockSuffix = ".lock"
 // roundSnapshot is the record of one round's start.
 // TargetID is empty when the round had no target snapshot or its id could not be read.
 // DecisionsRouted is a pointer so an absent flag is told apart from false.
-// FixerRerun is nil until a fix exit records why its fixer ran again, and is cleared when its round is retired.
 type roundSnapshot struct {
 	FixScope        string                `json:"fix_scope"`
 	TargetPaths     []string              `json:"target_paths"`
@@ -30,17 +28,6 @@ type roundSnapshot struct {
 	PostFixTargetID string                `json:"post_fix_target_id,omitempty"`
 	AddedDecisions  []addedDecisionDigest `json:"added_decisions,omitempty"`
 	DecisionsRouted *bool                 `json:"decisions_routed,omitempty"`
-	FixerRerun      *fixerRerunRecord     `json:"fixer_rerun,omitempty"`
-}
-
-// fixerRerunRecord keeps the latest reason a round's fixer ran again, for the next fixer over the same accepted review.
-// Report is the fixer report set aside, "" when no session left one.
-// ReviewDigest is the digest of the accepted review the reason answered;
-// a record under any other digest belongs to an earlier review and is never told.
-type fixerRerunRecord struct {
-	ReviewDigest string `json:"review_digest"`
-	Reason       string `json:"reason"`
-	Report       string `json:"report"`
 }
 
 // addedDecisionDigest names one `Added after Discussion` entry of the decision record by title and content hash.
@@ -65,16 +52,6 @@ func updateRoundSnapshot(runDir string, n int, mutate func(rec *roundSnapshot, f
 		mutate(&cur, found)
 		return cur, nil
 	})
-}
-
-// clearFixerRerun drops round n's rerun record under runDir, when its snapshot holds one.
-// An absent snapshot stays absent, so the round's start is still recorded afresh.
-func clearFixerRerun(runDir string, n int) error {
-	rec, found, err := readRoundSnapshot(runDir, n)
-	if err != nil || !found || rec.FixerRerun == nil {
-		return err
-	}
-	return updateRoundSnapshot(runDir, n, func(rec *roundSnapshot, _ bool) { rec.FixerRerun = nil })
 }
 
 // addedDecisionDigests returns one digest per `Added after Discussion` entry of the decision record at recordPath.

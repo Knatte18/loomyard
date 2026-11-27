@@ -432,7 +432,7 @@ func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 					claude.DenyAskUserQuestion = denyAsk
 					cfg := shuttleengine.Config{DenyPython: denyPython}
 					spec := shuttleengine.Spec{Prompt: "do the thing", PromptEngine: engineName, Interactive: interactive, ForkSubagents: fork}
-					notice := buildDenyNotice(interactive, cfg, claude, fork, false, false)
+					notice := buildDenyNotice(interactive, cfg, claude, fork, false)
 
 					runDir := t.TempDir()
 					launch, err := engineWith(t, claude).Prepare(runDir, spec, cfg)
@@ -683,7 +683,7 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 			runDir := t.TempDir()
 			claude := templateConfig(t)
 			spec := shuttleengine.Spec{Prompt: "do the thing", PromptEngine: engineName, Role: tt.role}
-			notice := buildDenyNotice(spec.Interactive, shuttleengine.Config{}, claude, false, false, false)
+			notice := buildDenyNotice(spec.Interactive, shuttleengine.Config{}, claude, false, false)
 			if _, err := engine.Prepare(runDir, spec, shuttleengine.Config{}); err != nil {
 				t.Fatalf("Prepare() error: %v; want nil", err)
 			}

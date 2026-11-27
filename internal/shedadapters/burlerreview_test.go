@@ -54,8 +54,6 @@ type halfProducerSpec struct {
 	diff func() (string, error)
 	// rubric is the deps' rubric reader; nil keeps the profile's rubric.
 	rubric func() (string, error)
-	// haltConflictDir is the deps' conflict directory holding the plan executor's halt reason; empty reads none.
-	haltConflictDir string
 }
 
 // newHalfSpec returns a spec over the minimal profile and a fixed clock.
@@ -66,7 +64,7 @@ func newHalfSpec() halfProducerSpec {
 // newReviewProducer builds a BurlerReviewProducer over runDir, failing the test on constructor error.
 func newReviewProducer(t *testing.T, runDir string, runner *shedfake.BurlerHalfRunner, spec halfProducerSpec) *BurlerReviewProducer {
 	t.Helper()
-	p, err := NewBurlerReviewProducer("burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans, GateFindingsPath: spec.gateFindingsPath, NotifyParent: spec.notifyParent, DecisionsEscalated: spec.decisionsEscalated, Assist: spec.assist, Parent: spec.parent, Snapshot: spec.snapshot, DecisionRecordPath: spec.decisionRecordPath, Diff: spec.diff, Rubric: spec.rubric, HaltConflictDir: spec.haltConflictDir}, spec.profile, spec.opts, runDir, spec.now)
+	p, err := NewBurlerReviewProducer("burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans, GateFindingsPath: spec.gateFindingsPath, NotifyParent: spec.notifyParent, DecisionsEscalated: spec.decisionsEscalated, Assist: spec.assist, Parent: spec.parent, Snapshot: spec.snapshot, DecisionRecordPath: spec.decisionRecordPath, Diff: spec.diff, Rubric: spec.rubric}, spec.profile, spec.opts, runDir, spec.now)
 	if err != nil {
 		t.Fatalf("NewBurlerReviewProducer() error = %v; want nil", err)
 	}
@@ -768,8 +766,8 @@ func requireAcceptedReviewRecorded(t *testing.T, engine string) {
 
 	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 
-	if got, err := os.ReadFile(spec.gateFindingsPath); err != nil || string(got) != "x" {
-		t.Errorf("findings file = %q, %v; want the earlier halt's %q kept by a review whose gate passed", got, err, "x")
+	if _, err := os.Stat(spec.gateFindingsPath); !os.IsNotExist(err) {
+		t.Errorf("findings file stat error = %v; want it removed by a review whose gate passed", err)
 	}
 	if ptr.Path != roundReviewPath(runDir, 1) || !ptr.BudgetExempt || ptr.GateAttempts == nil || *ptr.GateAttempts != 1 {
 		t.Errorf("Call() pointer = %+v; want round 1's review, BudgetExempt and the review gate's one attempt", ptr)

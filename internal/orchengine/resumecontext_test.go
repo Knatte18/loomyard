@@ -46,16 +46,11 @@ func TestResumeContext_RendersPointerPerPhaseAndWritesMark(t *testing.T) {
 		presence     slackengine.Presence
 		// wantLine says the rendered pointer is followed by the presence line.
 		wantLine bool
-		// autonomyOn sets the autonomy seam to on, and autonomyOff sets it to off; with neither the seam is nil, which reads off.
-		autonomyOn, autonomyOff bool
-		// verbatim says the pending pointer is returned as stored, so no autonomy line is added.
-		verbatim bool
 	}{
 		{
 			name:     "resuming returns the pending pointer verbatim and renders no role file",
 			state:    State{Strand: "s1", Phase: PhaseResuming, PendingResume: "read the note at /n"},
 			wantText: func(*testing.T, Paths, string) string { return "read the note at /n" },
-			verbatim: true,
 		},
 		{
 			name:         "compacting renders the resume prompt naming the note",
@@ -83,28 +78,12 @@ func TestResumeContext_RendersPointerPerPhaseAndWritesMark(t *testing.T) {
 			state:        State{Strand: "s1", Phase: PhaseIdle},
 			presenceFile: true, presence: slackengine.PresenceTerminal, wantRoleFile: true,
 		},
-		{
-			name:         "autonomy on ends the reload pointer with the on line under slack",
-			state:        State{Strand: "s1", Phase: PhaseIdle},
-			presenceFile: true, presence: slackengine.PresenceSlack, wantLine: true, autonomyOn: true, wantRoleFile: true,
-		},
-		{
-			name:         "autonomy on ends the resume pointer with the on line under terminal",
-			state:        State{Strand: "s1", Phase: PhaseCompacting, LastHandoff: "/handoffs/h.md"},
-			wantText:     resumeText,
-			presenceFile: true, presence: slackengine.PresenceTerminal, autonomyOn: true, wantRoleFile: true,
-		},
-		{
-			name:         "autonomy off through the seam ends the reload pointer with the off line under slack",
-			state:        State{Strand: "s1", Phase: PhaseIdle},
-			presenceFile: true, presence: slackengine.PresenceSlack, wantLine: true, autonomyOff: true, wantRoleFile: true,
-		},
 		{name: "no presence file carries no line", state: State{Strand: "s1", Phase: PhaseIdle}, presenceFile: true, wantRoleFile: true},
 		{
 			name:         "resuming with a pending pointer that carries the line returns it unchanged",
 			state:        State{Strand: "s1", Phase: PhaseResuming, PendingResume: "read the note at /n" + presenceLine},
 			wantText:     func(*testing.T, Paths, string) string { return "read the note at /n" + presenceLine },
-			presenceFile: true, presence: slackengine.PresenceSlack, verbatim: true,
+			presenceFile: true, presence: slackengine.PresenceSlack,
 		},
 	}
 	for _, tt := range tests {
@@ -113,9 +92,6 @@ func TestResumeContext_RendersPointerPerPhaseAndWritesMark(t *testing.T) {
 			p, stencils := testPaths(t), seedStencils(t)
 			if tt.presenceFile {
 				p.SlackPresencePath = presenceFileIn(t, tt.presence)
-			}
-			if tt.autonomyOn || tt.autonomyOff {
-				p.Autonomy = func() bool { return tt.autonomyOn }
 			}
 			if err := SaveState(p, tt.state); err != nil {
 				t.Fatal(err)
@@ -132,13 +108,6 @@ func TestResumeContext_RendersPointerPerPhaseAndWritesMark(t *testing.T) {
 
 			if tt.wantLine {
 				want += presenceLine
-			}
-			if !tt.verbatim {
-				if tt.autonomyOn {
-					want += autonomyOnLine
-				} else {
-					want += autonomyOffLine
-				}
 			}
 
 			got, err := ResumeContext(p, stencils, now)

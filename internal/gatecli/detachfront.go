@@ -370,11 +370,8 @@ func (r testRequest) words() []string {
 	if r.guards {
 		words = append(words, "--guards")
 	}
-	if r.noCarry {
-		words = append(words, "--"+gateslot.NoCarryFlag)
-	}
-	if r.copies > 0 {
-		add("copies", strconv.Itoa(r.copies))
+	if r.mapMode {
+		words = append(words, "--"+mapFlag)
 	}
 	words = append(words, r.targets...)
 	if len(r.args) > 0 {

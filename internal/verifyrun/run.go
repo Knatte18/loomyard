@@ -28,6 +28,7 @@ import (
 
 // waitDelay bounds Wait's read after the shell exits or its context is cancelled,
 // so a child still holding the output pipe cannot hang the call.
+// Its value matches the gate wait in internal/treadleengine.
 const waitDelay = 10 * time.Second
 
 // Run runs command through the platform shell (sh -c, or cmd /C on Windows) with dir as its working directory.

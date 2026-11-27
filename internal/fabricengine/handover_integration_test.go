@@ -233,44 +233,6 @@ func TestHandOverTips(t *testing.T) {
 		requireHandOverMark(t, d, entry, false)
 	})
 
-	t.Run("ThePrimesLocalRecordsTipIsTaggedForTheRunBeforeTheMarkIsWritten", func(t *testing.T) {
-		d := newDivergedPair(t, slug, entry)
-		primeRecordsTip := gitkit.CommitFile(t, d.hub.PrimeRecords(), "prime.txt", "prime\n", "prime batten commit")
-		hookCalls := 0
-		fabricengine.SetArchiveTagPushHookForTest(t, func(string) error {
-			hookCalls++
-			requireHandOverMark(t, d, entry, false)
-			return nil
-		})
-
-		res, err := fabricengine.HandOverTips(d.hub.Location, fabricengine.HandOverRequest{Slug: slug, PrimeRecords: d.hub.Location, Entry: entry})
-
-		if err != nil {
-			t.Fatalf("HandOverTips() error = %v", err)
-		}
-		tag := fabricengine.OwnerArchiveTagName(slug, primeRecordsTip)
-		if hookCalls != 1 || !slices.Equal(res.Tags, []string{tag}) {
-			t.Fatalf("HandOverTips() = %+v with %d tag pushes; want the one tag %s", res, hookCalls, tag)
-		}
-		if got := tagTargetAt(t, d.hub.RecordsBare, tag); got != primeRecordsTip {
-			t.Errorf("origin tag %s points at %q; want the prime's local records tip %s", tag, got, primeRecordsTip)
-		}
-		requireHandOverMark(t, d, entry, true)
-	})
-
-	t.Run("ATagPushOriginRefusesForThePrimesRecordsTipLeavesNoMark", func(t *testing.T) {
-		d := newDivergedPair(t, slug, entry)
-		gitkit.CommitFile(t, d.hub.PrimeRecords(), "prime.txt", "prime\n", "prime batten commit")
-		installPreReceive(t, d.hub.RecordsBare, "#!/bin/sh\nwhile read old new ref; do\n  case \"$ref\" in refs/tags/*) echo 'tags are refused' >&2; exit 1;; esac\ndone\nexit 0\n")
-
-		_, err := fabricengine.HandOverTips(d.hub.Location, fabricengine.HandOverRequest{Slug: slug, PrimeRecords: d.hub.Location, Entry: entry})
-
-		if !errors.Is(err, fabricengine.ErrArchiveFailed) {
-			t.Fatalf("HandOverTips() error = %v; want one wrapping ErrArchiveFailed", err)
-		}
-		requireHandOverMark(t, d, entry, false)
-	})
-
 	t.Run("ADroppedPauseIntentPostsOneNoticeNamingTheMachineAndTheIntent", func(t *testing.T) {
 		d := newDivergedPair(t, slug, entry)
 		t.Cleanup(fabricengine.InstallPushNotifier(d.fake.notify))

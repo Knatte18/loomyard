@@ -41,21 +41,6 @@ func fileRulingKey(diff string, trailerLines []string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// rangeRulingKey returns the sha256, in hex, of the range's full diff.
-// That diff covers every file the range adds, modifies or deletes.
-// The key tells whether a ruling that depends on other files of the range still stands.
-func rangeRulingKey(rangeDiff string) string {
-	sum := sha256.Sum256([]byte(rangeDiff))
-	return hex.EncodeToString(sum[:])
-}
-
-// dependsOnRange reports whether a later change to another file of the range may overturn a ruling.
-// A change may answer a check with no measured cause, such as by adding it to another test,
-// and it may drop the check that another file carried.
-func dependsOnRange(held JudgedFile) bool {
-	return len(held.CarriedBy) > 0 || slices.ContainsFunc(held.Checks, func(check LoosenedRuling) bool { return check.Ruling == RulingUncaused })
-}
-
 // listedFile is one file of the review range that no stored ruling covers under its current key.
 type listedFile struct {
 	path string
@@ -64,19 +49,15 @@ type listedFile struct {
 }
 
 // listedFiles is what a pass read of the review range.
-// It holds the files the judge still rules on and the stored rulings that cover the other files.
-// It also holds the range's commit messages and ruling key.
+// It holds the files the judge still rules on, the stored rulings that cover the other files,
+// and the range's commit messages.
 type listedFiles struct {
 	unruled  []listedFile
 	reused   []JudgedFile
 	messages []string
-	rangeKey string
 }
 
-// listFiles reads the review range's changed files, commit messages and full diff.
-// It splits the changed files by their stored rulings.
-// A stored ruling covers a file while its key is unchanged.
-// One that holds an uncaused check or names a carrying file also requires an unchanged range key.
+// listFiles reads the review range's changed files and commit messages and splits the files by their stored rulings.
 // A run whose review base is not told has no review range and lists no file.
 func (p *DriftVerify) listFiles(rec Records) (listedFiles, error) {
 	d := p.deps
@@ -95,18 +76,12 @@ func (p *DriftVerify) listFiles(rec Records) (listedFiles, error) {
 	if err != nil {
 		return listedFiles{}, fmt.Errorf("drift: %s: read the commit messages since %s: %w", p.name, base, err)
 	}
-	rangeDiff, err := d.RangeDiff(base)
-	if err != nil {
-		return listedFiles{}, fmt.Errorf("drift: %s: read the diff since %s: %w", p.name, base, err)
-	}
 
 	trailers := loosenedTrailerLines(messages)
-	listed := listedFiles{messages: messages, rangeKey: rangeRulingKey(rangeDiff)}
+	listed := listedFiles{messages: messages}
 	for _, file := range files {
 		key := fileRulingKey(file.Diff, trailers)
-		stored := slices.IndexFunc(rec.Judged.Files, func(held JudgedFile) bool {
-			return held.Path == file.Path && held.Key == key && (!dependsOnRange(held) || held.RangeKey == listed.rangeKey)
-		})
+		stored := slices.IndexFunc(rec.Judged.Files, func(held JudgedFile) bool { return held.Path == file.Path && held.Key == key })
 		if stored >= 0 {
 			listed.reused = append(listed.reused, rec.Judged.Files[stored])
 			continue
@@ -139,8 +114,8 @@ func loosenedChecksOf(path string, rulings []LoosenedRuling) []LoosenedCheck {
 	return checks
 }
 
-// newRulings returns the judge's rulings on the unruled files and the loosened checks those rulings hold.
-// Each ruling carries the key of what it judged and the range's key.
+// newRulings returns the file rulings the judge gave the unruled files, each stored with the key of what it judged,
+// and the loosened checks those rulings hold.
 func (l listedFiles) newRulings(judgement Judgement, strand, at string) ([]JudgedFile, []LoosenedCheck) {
 	byID := make(map[string]listedFile, len(l.unruled))
 	for i, file := range l.unruled {
@@ -150,7 +125,7 @@ func (l listedFiles) newRulings(judgement Judgement, strand, at string) ([]Judge
 	var checks []LoosenedCheck
 	for _, ruling := range judgement.Files {
 		file := byID[ruling.ID]
-		rulings = append(rulings, JudgedFile{Path: file.path, Key: file.key, RangeKey: l.rangeKey, Ruling: ruling.Ruling, Reason: ruling.Reason, Checks: ruling.Checks, CarriedBy: ruling.CarriedBy, Strand: strand, At: at})
+		rulings = append(rulings, JudgedFile{Path: file.path, Key: file.key, Ruling: ruling.Ruling, Reason: ruling.Reason, Checks: ruling.Checks, Strand: strand, At: at})
 		checks = append(checks, loosenedChecksOf(file.path, ruling.Checks)...)
 	}
 	return rulings, checks
@@ -180,15 +155,13 @@ func uncausedChecks(checks []LoosenedCheck) []LoosenedCheck {
 }
 
 // uncausedReason words the Stuck over loosened checks with no measured cause.
-// It names each check and the three ways forward:
-// a trailer naming the cause, a revert of the loosening, or a commit that adds the dropped checks to a test.
-// A commit that changes a file of the range has the judge rule on the uncaused files again.
+// It names each check and the two ways forward: a trailer naming the cause, or a revert of the loosening.
 func uncausedReason(checks []LoosenedCheck) string {
 	described := make([]string, len(checks))
 	for i, check := range checks {
 		described[i] = fmt.Sprintf("%s: %s: %s: %s", check.Path, check.Test, check.Loosened, check.Reason)
 	}
-	return fmt.Sprintf("a test the change loosened has no measured cause: %s; way forward: commit a \"%s: <test> — <what was loosened> — <measured cause>\" trailer on any commit of the range, with no change if need be, or commit a revert of the loosening, or commit the dropped checks in a test, then lym loom resume, which has the judge rule again on a file whose stored ruling the new commits may answer",
+	return fmt.Sprintf("a test the change loosened has no measured cause: %s; way forward: commit a \"%s: <test> — <what was loosened> — <measured cause>\" trailer on any commit of the range, with no change if need be, or commit a revert of the loosening, then lym loom resume",
 		strings.Join(described, "; "), LoosenedCheckTrailerKey)
 }
 

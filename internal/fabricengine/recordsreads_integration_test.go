@@ -157,7 +157,7 @@ func TestSlugRecordsTags(t *testing.T) {
 			t.Errorf("RecordsBranchFile(local) = %q, %v, %v; want %q", content, found, err, want)
 		}
 
-		if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
 			t.Fatalf("Remove: %v", err)
 		}
 		if gitkit.BranchExists(t, root, weftBranch) {

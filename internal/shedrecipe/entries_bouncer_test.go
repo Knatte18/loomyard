@@ -81,8 +81,15 @@ func TestBouncerEntry_HappyPath(t *testing.T) {
 	const note = "Webster has begun these batches."
 	env.WebsterRecord = func() string { return note }
 	env.GateTiers = "- tier1: build first\n- gate card: [1]"
+	const redundancyReport = "No current redundancy report: none written."
+	env.RedundancyReport = func() string { return redundancyReport }
+	const reachReport = "No current reach report: none written."
+	env.ReachReport = func() string { return reachReport }
+	const mutationReport = "No current mutation report: none written."
+	env.MutationReport = func() string { return mutationReport }
 	writeStencil(t, env.StencilsDir, "bouncer-template-seed", "{{.rubric}}\n")
-	writeStencil(t, env.StencilsDir, "bouncer-rubric", "Record: {{.webster_record}}\nTiers:\n{{.gate_tiers}}\n")
+	writeStencil(t, env.StencilsDir, "bouncer-rubric",
+		"Record: {{.webster_record}}\nTiers:\n{{.gate_tiers}}\nRedundancy: {{.redundancy_report}}\nReach: {{.reach_report}}\nMutation: {{.mutation_report}}\n")
 	producer, err = bouncerEntry(reviewRow("review-bounce"), cfg, env)
 	if err != nil {
 		t.Fatalf("bouncerEntry() error = %v; want nil", err)
@@ -96,6 +103,15 @@ func TestBouncerEntry_HappyPath(t *testing.T) {
 	}
 	if len(fake.Specs) != 1 || !strings.Contains(fake.Specs[0].Prompt, env.GateTiers) {
 		t.Errorf("seed specs = %+v; want one whose prompt carries the env's gate tier lines", fake.Specs)
+	}
+	if len(fake.Specs) != 1 || !strings.Contains(fake.Specs[0].Prompt, "Redundancy: "+redundancyReport) {
+		t.Errorf("seed specs = %+v; want one whose prompt carries the env's redundancy report note", fake.Specs)
+	}
+	if len(fake.Specs) != 1 || !strings.Contains(fake.Specs[0].Prompt, "Reach: "+reachReport) {
+		t.Errorf("seed specs = %+v; want one whose prompt carries the env's reach report note", fake.Specs)
+	}
+	if len(fake.Specs) != 1 || !strings.Contains(fake.Specs[0].Prompt, "Mutation: "+mutationReport) {
+		t.Errorf("seed specs = %+v; want one whose prompt carries the env's mutation report note", fake.Specs)
 	}
 }
 
@@ -353,7 +369,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		{"ReferenceWithEmptyModule", "reviewer_fan_setting", ".x", nil, false, []string{`row "review-bounce"`, "reviewer_fan_setting", `".x"`, "way forward: set reviewer_fan_setting to a module.key"}},
 		{"ReferenceWithEmptyKey", "reviewer_fan_setting", "loom.", nil, false, []string{`row "review-bounce"`, "reviewer_fan_setting", `"loom."`, "way forward: set reviewer_fan_setting to a module.key"}},
 		{"ReferenceNotAString", "reviewer_fan_setting", 3, nil, false, []string{"reviewer_fan_setting", "must be a string"}},
-		{"NamedSettingWithNilLookup", "auto_accept_setting", "loom.discussion.auto_accept", nil, true, []string{`row "review-bounce"`, "auto_accept_setting", "loom.discussion.auto_accept", "way forward: fill Env.Setting in the caller that builds this recipe"}},
+		{"NamedSettingWithNilLookup", "auto_accept_setting", "loom.discussion_auto_accept", nil, true, []string{`row "review-bounce"`, "auto_accept_setting", "loom.discussion_auto_accept", "way forward: fill Env.Setting in the caller that builds this recipe"}},
 		{"UnknownReference", "reviewer_fan_setting", "loom.unknown", map[string]any{}, false, []string{`row "review-bounce"`, "reviewer_fan_setting", "loom.unknown", "fake setting lookup: unknown setting loom.unknown"}},
 		{"FanValueNotAFanOrList", "reviewer_fan_setting", "loom.fan", map[string]any{"loom.fan": 3}, false, []string{`row "review-bounce"`, "reviewer_fan_setting", "loom.fan", "fan in loom.yaml", "int", "way forward: point reviewer_fan_setting at"}},
 		{"FanListHoldingANonString", "reviewer_fan_setting", "loom.fan", map[string]any{"loom.fan": []any{"a", 1}}, false, []string{`row "review-bounce"`, "reviewer_fan_setting", "loom.fan", "entry 1", "int"}},
@@ -630,28 +646,6 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 		}
 	})
 
-	t.Run("HardenResolvesToTheCampaignsFinalLedgerArchive", func(t *testing.T) {
-		env := newTestEnv(t)
-		env.Shuttle = judgeSeamShuttle()
-		var recorder *campaignRecorder
-		env.Harden, recorder = newTestCampaign(t, env)
-		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
-		cfg := minimalBouncerConfig(t, env)
-		cfg["commit_seam"] = "harden"
-		layoutBouncerRound1Report(t, env)
-
-		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
-		if err != nil {
-			t.Fatalf("bouncerEntry() error = %v; want nil", err)
-		}
-		if _, _, err := producer.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if want := [][]string{{"_lym/harden/round-1-bouncer-ledger.md"}}; !reflect.DeepEqual(recorder.commits, want) {
-			t.Errorf("campaign commits = %v; want %v", recorder.commits, want)
-		}
-	})
-
 	t.Run("DiscussionResolvesToCommitDiscussion", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.Shuttle = judgeSeamShuttle()
@@ -712,7 +706,6 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 
 		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "commit_seam")
-		assertErrContains(t, err, `"plan", "discussion" or "harden"`)
 	})
 
 	t.Run("PresentButMissingEnvClosureIsConstructionError", func(t *testing.T) {
@@ -734,15 +727,6 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 
 			_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 			assertErrContains(t, err, "CommitDiscussion")
-		})
-
-		t.Run("Harden", func(t *testing.T) {
-			env := newTestEnv(t)
-			cfg := minimalBouncerConfig(t, env)
-			cfg["commit_seam"] = "harden"
-
-			_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
-			assertErrContains(t, err, "Env.Harden")
 		})
 	})
 
@@ -1396,7 +1380,6 @@ func callStalemateBouncer(t *testing.T, stalemateRounds int) (shedengine.Outcome
 // TestBouncerEntry_BlockingEscalatesAndColorSegment covers the two optional keys the Merge-Review perch's Bouncer row carries.
 // A round-1 judge call writes a CONTINUE verdict over a ledger holding an open BLOCKING entry, with the row's budget spent and its auto-accept set.
 // blocking_escalates turns that auto-accept into an escalation, and color_segment colors the judge's session, the review color where absent.
-// scope_closed changes what a decision escalation tells the parent to do.
 func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -1408,14 +1391,11 @@ func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 		decisionReview bool
 		wantOutcome    shedengine.Outcome
 		wantSegment    segmentcolor.Segment
-		// wantReason, when set, is text the escalation reason holds.
-		wantReason string
 	}{
-		{name: "scope_closed names the closed-scope route in a decision escalation", extra: Config{"escalate_decisions": true, "scope_closed": true}, autoAccept: true, decisionReview: true, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review, wantReason: "since the task's scope is closed"},
 		{name: "absent keys auto-accept in the review color", autoAccept: true, wantOutcome: shedengine.Done, wantSegment: segmentcolor.Review},
 		{name: "a decision finding without escalate_decisions settles as today", autoAccept: true, decisionReview: true, wantOutcome: shedengine.Done, wantSegment: segmentcolor.Review},
 		{name: "escalate_decisions escalates a decision finding to the parent", extra: Config{"escalate_decisions": true}, autoAccept: true, decisionReview: true, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review},
-		{name: "blocking_escalates escalates the open BLOCKING entry to the parent", extra: Config{"blocking_escalates": true}, autoAccept: true, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review},
+		{name: "blocking_escalates sends the open BLOCKING entry to the rule, which continues", extra: Config{"blocking_escalates": true}, autoAccept: true, wantOutcome: shedengine.Stuck, wantSegment: segmentcolor.Review},
 		{name: "a null auto-accept is false, so the soft-cap rule runs", autoAccept: nil, wantOutcome: shedengine.Stuck, wantSegment: segmentcolor.Review},
 		{name: "a hard cap of 1 offers only accept", extra: Config{"blocking_escalates": true}, autoAccept: true, hardCap: 1, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review},
 		{name: "color_segment colors the judge", extra: Config{"color_segment": "merge"}, autoAccept: true, wantOutcome: shedengine.Done, wantSegment: segmentcolor.Merge},
@@ -1468,9 +1448,6 @@ func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 			}
 			if len(segments) != 1 || segments[0] != tt.wantSegment {
 				t.Errorf("judge spawn segments = %v; want [%s]", segments, tt.wantSegment)
-			}
-			if !strings.Contains(ptr.Reason, tt.wantReason) {
-				t.Errorf("Reason = %q; want it to contain %q", ptr.Reason, tt.wantReason)
 			}
 		})
 	}

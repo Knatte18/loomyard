@@ -91,8 +91,8 @@ func TestLoadConfig(t *testing.T) {
 			board := t.TempDir()
 			writeBattenLayer(t, configengine.ConfigFile(board, "batten"), strings.Replace(ConfigTemplate(), key+": ~", key+": -1", 1))
 			_, err := LoadConfig(configengine.Dirs{Board: board})
-			if err == nil || !strings.Contains(err.Error(), "batten."+key) {
-				t.Errorf("LoadConfig() with %s: -1 = _, %v; want a refusal naming %q", key, err, "batten."+key)
+			if err == nil || !strings.Contains(err.Error(), "batten config key") || !strings.Contains(err.Error(), key) {
+				t.Errorf("LoadConfig() with %s: -1 = _, %v; want a refusal naming %q and the key", key, err, "batten config key")
 			}
 		}
 	})
@@ -119,7 +119,7 @@ func TestLoadConfig(t *testing.T) {
 		if err == nil {
 			t.Fatal("LoadConfig() = _, nil; want a refusal")
 		}
-		for _, want := range []string{`config key "batten.driver_kind"`, "always go", "remove the key from batten.yaml"} {
+		for _, want := range []string{`batten config key "driver_kind"`, "always go", "remove the key from batten.yaml"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
 			}

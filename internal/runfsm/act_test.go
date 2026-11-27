@@ -31,24 +31,16 @@ func TestAct(t *testing.T) {
 	const (
 		pushOwed      = `run "slug" cannot act: a push to origin is owed (last error: dial tcp: refused); way forward: run ` + "`lym fabric push`" + ` in /wt/slug once origin answers, then run the verb again`
 		pushOwedBare  = `run "slug" cannot act: a push to origin is owed; way forward: run the verb again once the owed push lands`
-		pushOwedNamed = `run "slug" cannot act: a push to origin is owed (last error: refused); way forward: run ` + "`lym fabric push`" + ` in /hub/task to retry the push; then run the verb again`
+		pushOwedNamed = `run "slug" cannot act: a push to origin is owed (last error: refused); way forward: run ` + "`git push`" + ` in /hub/main to send your commits; then run the verb again`
 		owned         = "run \"slug\" cannot act: machine neve owns the run; way forward: run the same verb on neve, or run `lym adopt sub` on this machine first"
 		codeTip       = `run "slug" cannot act: the code tip abc123 the run's last transition names is not on origin yet; machine neve owes it; way forward: run ` +
 			"`lym fabric push`" + ` in the task worktree on machine neve, then run the verb again once the code push lands`
 		codeTipNoMachine = `run "slug" cannot act: the code tip abc123 the run's last transition names is not on origin yet; way forward: run the verb again once the code push lands`
-		codeTipNoPair    = `run "slug" cannot act: the code tip abc123 the run's last transition names is not on origin yet; machine neve owes it; ` +
-			`no pair of the run stands on this machine, so the transition may be read from a records branch origin has deleted, as ` + "`lym batten cancel slug --remove`" + ` does; ` +
-			`way forward: run ` + "`lym fabric pull`" + ` in the prime, which fetches origin's records and drops the ref of a deleted records branch, then run the verb again; ` +
-			`if the refusal stays, run ` + "`lym fabric push`" + ` in the task worktree on machine neve, then run the verb again once the code push lands`
-		codeTipNoPairNoTip = `run "slug" cannot act: the code tip the run's last transition names is not on origin yet; ` +
-			`no pair of the run stands on this machine, so the transition may be read from a records branch origin has deleted, as ` + "`lym batten cancel slug --remove`" + ` does; ` +
-			`way forward: run ` + "`lym fabric pull`" + ` in the prime, which fetches origin's records and drops the ref of a deleted records branch, then run the verb again; ` +
-			`if the refusal stays, run the verb again once the code push lands`
-		held         = `run "slug" cannot act: an adopt on machine another machine holds the hub; way forward: wait for that adopt's hold to clear, then run the verb again; if machine another machine has stopped, ask the operator`
-		heldNamed    = `run "slug" cannot act: an adopt on machine neve holds the hub; way forward: wait for that adopt's hold to clear, then run the verb again; if machine neve has stopped, ask the operator`
-		pauseCover   = "run \"slug\" cannot act: a pause covers the run; way forward: run `lym tender resume slug`, then run the verb again"
-		pausedIntent = "run \"slug\" cannot act: the run is paused; way forward: run `lym tender resume slug`, then run the verb again"
-		pausedShed   = "run \"slug\" cannot act: the run is paused; way forward: run `lym batten run slug` from the prime to resume the run, " +
+		held             = `run "slug" cannot act: an adopt on machine another machine holds the hub; way forward: wait for that adopt's hold to clear, then run the verb again; if machine another machine has stopped, ask the operator`
+		heldNamed        = `run "slug" cannot act: an adopt on machine neve holds the hub; way forward: wait for that adopt's hold to clear, then run the verb again; if machine neve has stopped, ask the operator`
+		pauseCover       = "run \"slug\" cannot act: a pause covers the run; way forward: run `lym tender resume slug`, then run the verb again"
+		pausedIntent     = "run \"slug\" cannot act: the run is paused; way forward: run `lym tender resume slug`, then run the verb again"
+		pausedShed       = "run \"slug\" cannot act: the run is paused; way forward: run `lym batten run slug` from the prime to resume the run, " +
 			"or `lym loom resume` in the task worktree to resume the inner run"
 		cancelKeep   = "run \"slug\" cannot act: a cancel started on machine neve has not finished; way forward: run `lym batten cancel slug` on machine neve to finish it"
 		cancelRemove = "run \"slug\" cannot act: a cancel started on machine neve has not finished; way forward: run `lym batten cancel slug --remove` on machine neve to finish it"
@@ -66,13 +58,11 @@ func TestAct(t *testing.T) {
 		}{
 			{"PushOwedWaitsFirst", runfsm.Inputs{State: runfsm.Running, PushOwed: true, PushOwedError: "dial tcp: refused", PushOwedWorktree: "/wt/slug", OwnedElsewhere: true, Owner: "neve", AdoptSubject: "sub"}, runfsm.AnswerWait, runfsm.ReasonPushOwed, pushOwed},
 			{"PushOwedWithoutErrorOrWorktreeIsBare", runfsm.Inputs{State: runfsm.Running, PushOwed: true}, runfsm.AnswerWait, runfsm.ReasonPushOwed, pushOwedBare},
-			{"PushOwedNamesTheRecordsOwnWayForwardInPlaceOfTheOwedWorktree", runfsm.Inputs{State: runfsm.Running, PushOwed: true, PushOwedError: "refused", PushOwedWorktree: "/hub/task-records", PushOwedWayForward: "run `lym fabric push` in /hub/task to retry the push"}, runfsm.AnswerWait, runfsm.ReasonPushOwed, pushOwedNamed},
+			{"PushOwedNamesTheRecordsOwnWayForwardInPlaceOfFabricPush", runfsm.Inputs{State: runfsm.Running, PushOwed: true, PushOwedError: "refused", PushOwedWorktree: "/wt/slug", PushOwedWayForward: "run `git push` in /hub/main to send your commits"}, runfsm.AnswerWait, runfsm.ReasonPushOwed, pushOwedNamed},
 			{"OwnedElsewhereHandsOver", runfsm.Inputs{State: runfsm.Running, OwnedElsewhere: true, Owner: "neve", AdoptSubject: "sub"}, runfsm.AnswerHandOver, runfsm.ReasonOwnedElsewhere, owned},
 			{"OwnedElsewhereLandingPastMergeHandsOver", runfsm.Inputs{State: runfsm.Landing, PastParentMerge: true, OwnedElsewhere: true, Owner: "neve", AdoptSubject: "sub"}, runfsm.AnswerHandOver, runfsm.ReasonOwnedElsewhere, owned},
 			{"MissingCodeTipWaits", runfsm.Inputs{State: runfsm.Running, CodeTipMissing: true, CodeTip: "abc123", CodeTipMachine: "neve"}, runfsm.AnswerWait, runfsm.ReasonCodeTip, codeTip},
 			{"MissingCodeTipWithoutMachineLeavesOutThePushClause", runfsm.Inputs{State: runfsm.Running, CodeTipMissing: true, CodeTip: "abc123"}, runfsm.AnswerWait, runfsm.ReasonCodeTip, codeTipNoMachine},
-			{"MissingCodeTipWithNoPairHereNamesTheRecordsFetchFirst", runfsm.Inputs{State: runfsm.Running, CodeTipMissing: true, CodeTip: "abc123", CodeTipMachine: "neve", CodeTipPairAbsent: true}, runfsm.AnswerWait, runfsm.ReasonCodeTip, codeTipNoPair},
-			{"MissingCodeTipWithNoPairAndNoTipOrMachineKeepsTheBareRetryClause", runfsm.Inputs{State: runfsm.Running, CodeTipMissing: true, CodeTipPairAbsent: true}, runfsm.AnswerWait, runfsm.ReasonCodeTip, codeTipNoPairNoTip},
 			{"HeldLandingPastMergeActs", runfsm.Inputs{State: runfsm.Landing, PastParentMerge: true, Held: true}, runfsm.AnswerAct, "", ""},
 			{"HeldLandingPastMergeWithCoveringPauseWaits", runfsm.Inputs{State: runfsm.Landing, PastParentMerge: true, Held: true, PauseCovers: true}, runfsm.AnswerWait, runfsm.ReasonHeld, held},
 			{"LandingPastMergeWithCoveringPauseWaits", runfsm.Inputs{State: runfsm.Landing, PastParentMerge: true, PauseCovers: true}, runfsm.AnswerWait, runfsm.ReasonPauseCovers, pauseCover},

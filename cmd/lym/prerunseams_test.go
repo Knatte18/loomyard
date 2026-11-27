@@ -16,7 +16,7 @@ import (
 
 // TestPersistentPreRunE_InstallsSeams parses cmd/lym/main.go and checks root's PersistentPreRunE.
 // It fails naming the missing call unless the body installs the worktree seam.
-// The pair folder namer, the workspace-content hook and the passage reader must be installed too.
+// The pair folder namer and the passage reader must be installed too.
 // It also requires one Bolt replayer from boardengine and one from heddleengine to be registered.
 func TestPersistentPreRunE_InstallsSeams(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -52,7 +52,7 @@ func TestPersistentPreRunE_InstallsSeams(t *testing.T) {
 		return true
 	})
 
-	for _, want := range []string{"fabricengine.InstallWorktreeSeam", "fabricengine.InstallPairFolderNamer", "fabricengine.InstallWorkspaceContent", "shuttleengine.InstallPassageReader"} {
+	for _, want := range []string{"fabricengine.InstallWorktreeSeam", "fabricengine.InstallPairFolderNamer", "shuttleengine.InstallPassageReader"} {
 		if len(calls[want]) == 0 {
 			t.Errorf("root's PersistentPreRunE never calls %s", want)
 		}

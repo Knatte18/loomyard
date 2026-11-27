@@ -196,7 +196,7 @@ func TestComputeLayers(t *testing.T) {
 // It also asserts the priority order within a task layer, among open notes and among done entries;
 // and the ID order within a bucket.
 //
-//testtiming:keep pins the bucket order, the task-before-note order and the ID sort within a bucket, which no other test asserts
+//testtiming:keep pins the bucket order, the task-before-note order and the ID sort within a bucket, which the render goldens do not assert
 func TestRenderOrder(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {

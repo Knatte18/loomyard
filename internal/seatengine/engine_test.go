@@ -218,9 +218,9 @@ func TestEngine_Run_StartFailureEndingTheRunStopsEveryStartedSeat(t *testing.T) 
 		key      shuttleengine.ModelKey
 		wantText string
 	}{
-		{name: "the discussion chair", forks: true, requires: forkWake, key: shuttleengine.ModelKey{Module: "loom", Key: "discussion.model"}, wantText: "set loom.discussion.model in loom.yaml to an alias whose engine meets them"},
-		{name: "the plan chair", forks: true, requires: forkWake, key: shuttleengine.ModelKey{Module: "tapestry", Key: "plan.model"}, wantText: "set tapestry.plan.model in tapestry.yaml to an alias whose engine meets them"},
-		{name: "the cluster-fan reviewer", forks: true, key: shuttleengine.ModelKey{Module: "loom", Key: "review.reviewer_model"}, wantText: "set loom.review.reviewer_model in loom.yaml to an alias whose engine meets them"},
+		{name: "the discussion chair", forks: true, requires: forkWake, key: shuttleengine.ModelKey{Module: "loom", Key: "discussion"}, wantText: "set discussion in loom.yaml to an alias whose engine meets them"},
+		{name: "the plan chair", forks: true, requires: forkWake, key: shuttleengine.ModelKey{Module: "loom", Key: "plan"}, wantText: "set plan in loom.yaml to an alias whose engine meets them"},
+		{name: "the cluster-fan reviewer", forks: true, key: shuttleengine.ModelKey{Module: "loom", Key: "discussion_reviewer_model"}, wantText: "set discussion_reviewer_model in loom.yaml to an alias whose engine meets them"},
 		{name: "a recipe seat of a two-seat table", advisors: 1, requires: forkWake, wantText: "set the seat's model to an alias whose engine meets them"},
 	}
 	for _, tt := range unmet {
@@ -302,7 +302,7 @@ func TestEngine_Run_AdvisorStartFailureIsRecordedAndNamedToTheChair(t *testing.T
 				t.Errorf("failed advisor result = %+v, want the start error %q, no strand and Notified", got, tt.wantError)
 			}
 			if tt.unmetKey {
-				if got, want := end.result.Advisors[0].StartError, "the model of "+advisorName(1)+" in loom.discussion_advisors"; !strings.Contains(got, want) {
+				if got, want := end.result.Advisors[0].StartError, "the model of "+advisorName(1)+" in discussion_advisors"; !strings.Contains(got, want) {
 					t.Errorf("failed advisor start error = %q, want it to contain %q", got, want)
 				}
 				if len(reed.AddedSpecs) != 0 {

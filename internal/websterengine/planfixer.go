@@ -123,7 +123,7 @@ func FixPlanSpawnOrAttach(deps FixPlanDeps, st *State, clk Clock) (*PlanFixerSta
 
 	choice, ok := deps.Roles[RoleMaster]
 	if !ok {
-		return nil, false, fmt.Errorf("webster: no resolved model-spec for role %q; way forward: set %s in webster.yaml with lym config webster, then re-run `%s`", RoleMaster, keyName(string(RoleMaster)), fixPlanCommand)
+		return nil, false, fmt.Errorf("webster: no resolved model-spec for role %q; way forward: set %s in webster.yaml with lym config webster, then re-run `%s`", RoleMaster, RoleMaster, fixPlanCommand)
 	}
 	if err := roleAuditEngine(deps.Engines, RoleMaster, choice); err != nil {
 		return nil, false, err
@@ -214,14 +214,7 @@ func FixPlanAwait(deps FixPlanDeps, rec *PlanFixerState, wait time.Duration, clk
 		EventsOffset:  rec.EventsOffset,
 		ReplyPath:     PlanFixReplyPath(deps.Geom.ScratchDir),
 	}
-	waited, err := awaitFixerStrand(gatefixer.Deps{
-		Stopper:    deps.Stopper,
-		Reed:       deps.Reed,
-		Engines:    deps.Engines,
-		ShuttleCfg: deps.ShuttleCfg,
-		AnchorRoot: deps.Geom.AnchorRoot,
-		Clock:      clk,
-	}, strand, "fix-plan", time.Duration(deps.Config.RecoveryTimeoutMin)*time.Minute, wait)
+	waited, err := awaitFixerStrand(deps.Engines, deps.Reed, deps.Stopper, strand, "fix-plan", time.Duration(deps.Config.RecoveryTimeoutMin)*time.Minute, wait, clk)
 	if err != nil {
 		return nil, err
 	}

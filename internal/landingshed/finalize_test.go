@@ -184,29 +184,6 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 		lacks    []string
 		lacksErr error
 	}
-	for _, tt := range []struct {
-		name  string
-		reaps bool
-	}{{"a set Reap runs before the merge", true}, {"a nil Reap is skipped", false}} {
-		t.Run(tt.name, func(t *testing.T) {
-			var order []string
-			deps := newTestDeps(t)
-			if tt.reaps {
-				deps.Reap = func() error { order = append(order, "reap"); return nil }
-			}
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}, headSHA: "squash111", order: &order}
-			fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, parentOpener: func() (parentMerger, error) { return merger, nil }}
-
-			shedfake.RequireOutcome(t, fz, shedengine.Done)
-			reapAt, mergeAt := slices.Index(order, "reap"), slices.Index(order, "merge")
-			if tt.reaps && (reapAt < 0 || reapAt > mergeAt) {
-				t.Errorf("call order = %v; want the reap before the merge", order)
-			}
-			if !tt.reaps && reapAt >= 0 {
-				t.Errorf("call order = %v; want no reap", order)
-			}
-		})
-	}
 	squash := "squash111"
 	tests := []struct {
 		name        string
@@ -239,16 +216,16 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 			[]string{"git rebase --onto " + squash + "~1 " + squash + " main", "git rebase --abort", `lym fabric remove me`},
 		},
 		{
-			"a protected branch refusal names the trail mode and the hand landing", false,
+			"a protected branch refusal names the merge mode and the hand landing", false,
 			errors.New("gitrepo: push rejected: ! [remote rejected] main -> main (protected branch hook declined)"), nil, shedengine.Stuck,
 			protectedParentWayForward("task-branch", "main", false), nil,
-			[]string{"protected branch hook declined", `"lym config beam --set pull_request=trail"`, "--layer default", `"git reset --keep origin/main"`, `"lym loom resume"`},
+			[]string{"protected branch hook declined", `"lym config beam --set pull_request=merge"`, "--layer default", `"git reset --keep origin/main"`, `"lym loom resume"`},
 		},
 		{
-			"a classified repository-rules refusal names the trail mode in place of its class's way forward", false,
+			"a classified repository-rules refusal names the merge mode in place of its class's way forward", false,
 			&fabricengine.PushFailedError{Record: fabricengine.FailedPush{Class: fabricengine.PushFailureOther}, Err: errors.New("gitrepo: push rejected: ! [remote rejected] main -> main (push declined due to repository rule violations)")},
 			nil, shedengine.Stuck, protectedParentWayForward("task-branch", "main", false), &repairSeams{holds: true, lacks: []string{squash}},
-			[]string{"repository rule violations", "pull_request=trail"},
+			[]string{"repository rule violations", "pull_request=merge"},
 		},
 		{"origin's parent lacking the work names no repair", false, errors.New("remote rejected"), nil, shedengine.Stuck, "", &repairSeams{lacks: []string{squash}}, nil},
 		{"a failed read of origin's parent names no repair", false, errors.New("remote rejected"), nil, shedengine.Stuck, "", &repairSeams{holdsErr: errors.New("fetch failed")}, nil},
@@ -670,7 +647,7 @@ func TestFinalize_RecordsWhetherTheLandedDiffIsEmpty(t *testing.T) {
 			t.Parallel()
 			var recorded []bool
 			deps := newTestDeps(t)
-			deps.ChangedPaths = func(from, to string) ([]string, error) {
+			deps.ChangedCodePaths = func(from, to string) ([]string, error) {
 				if from == "parent0" && to == "landed1" {
 					return tt.landedPaths, tt.pathsErr
 				}
@@ -727,8 +704,6 @@ func TestFinalize_StuckReasons(t *testing.T) {
 		// followUp is what Deps.RemoveFollowUp returns, empty wiring none; parentHolds makes Deps.ParentHoldsTaskWork read true.
 		followUp    string
 		parentHolds bool
-		// reapErr is what Deps.Reap returns, nil wiring none.
-		reapErr error
 	}{
 		{
 			name:     "run origin ended after its landing halts naming the landing and the cleanup from the prime",
@@ -818,6 +793,15 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			wantNotInReason: `"a b.go"`,
 		},
 		{
+			name:            "UnsettledParkedMergeNamesOnlyAbort",
+			resolved:        mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
+			mergeErr:        guardWith("merge already in progress", "worktree dirty"),
+			midMerge:        fabricengine.MidMergeState{Kind: fabricengine.MidMergeRecordsUnsettled, Verb: fabricengine.MergeVerbMergeIn, Source: "task-x"},
+			wantMerges:      1,
+			wantInOrder:     []string{"merge already in progress; worktree dirty", "/hub/parent", "merge-in of task-x", "lym fabric merge --abort", gotoResume, "lym loom resume"},
+			wantNotInReason: "merge --continue",
+		},
+		{
 			name:            "merge already in progress with an unreadable parked merge names no verb and keeps the way forward",
 			resolved:        mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
 			mergeErr:        guardWith("merge already in progress", "worktree dirty"),
@@ -878,15 +862,6 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			resolved:     mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: "conflict could not be resolved"},
 			wantInReason: func(Deps) string { return "conflict could not be resolved" },
 		},
-		{
-			name:     "a failing sandbox reap halts naming the reap's error and the clear verb, and merges nothing",
-			resolved: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
-			reapErr:  errors.New("a reed server would not stop"),
-			wantHalt: true,
-			wantInReason: func(Deps) string {
-				return "a reed server would not stop; way forward: run `lym harden sandbox clear` in the task worktree, then `lym loom resume`"
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -894,9 +869,6 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			markCalled := false
 			deps.MarkTaskDone = func() error { markCalled = true; return nil }
 			deps.RecordLanding = func(string, bool) error { markCalled = true; return nil }
-			if tt.reapErr != nil {
-				deps.Reap = func() error { return tt.reapErr }
-			}
 			if tt.recordsErr != nil {
 				deps.CommitParentRecords = func() error { return tt.recordsErr }
 			}
@@ -1019,18 +991,6 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 			"loom.yaml": {Base: []byte("a: 1\n"), Tip: []byte("a: [1\n"), Parent: []byte("a: 1\n")},
 		},
 	}
-	autonomyOnly := fabricengine.ConfigChanges{
-		Files: []string{"beam.yaml"}, Base: "base111", Tip: "tip222", ParentTip: "parent333",
-		Contents: map[string]fabricengine.ConfigFileContents{
-			"beam.yaml": {Base: []byte("autonomy: false\n"), Tip: []byte("autonomy: true\n"), Parent: []byte("autonomy: false\n")},
-		},
-	}
-	autonomyAndMaxRuns := fabricengine.ConfigChanges{
-		Files: []string{"beam.yaml"}, Base: "base111", Tip: "tip222", ParentTip: "parent333",
-		Contents: map[string]fabricengine.ConfigFileContents{
-			"beam.yaml": {Base: []byte("autonomy: false\nmax_runs: 3\n"), Tip: []byte("autonomy: true\nmax_runs: 5\n"), Parent: []byte("autonomy: false\nmax_runs: 3\n")},
-		},
-	}
 	tests := []struct {
 		name        string
 		changes     fabricengine.ConfigChanges
@@ -1041,8 +1001,6 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 		wantOutcome shedengine.Outcome
 		// wantInNotice is empty when no notice may be queued.
 		wantInNotice []string
-		// wantNotInNotice names text the queued notice must not carry.
-		wantNotInNotice []string
 	}{
 		{
 			name:         "changed keys queue one notice naming the branch, each file and module, each key with its base, tip and parent values, absent included, and the re-apply instruction",
@@ -1058,18 +1016,6 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 			name:        "a comments-only change queues none",
 			changes:     commentsOnly,
 			wantOutcome: shedengine.Done,
-		},
-		{
-			name:        "a beam.yaml whose only changed key is autonomy queues none",
-			changes:     autonomyOnly,
-			wantOutcome: shedengine.Done,
-		},
-		{
-			name:            "a beam.yaml changing autonomy and max_runs names only max_runs",
-			changes:         autonomyAndMaxRuns,
-			wantOutcome:     shedengine.Done,
-			wantInNotice:    []string{"beam.max_runs: base 3, tip 5, parent 3"},
-			wantNotInNotice: []string{"autonomy"},
 		},
 		{
 			name:         "a file that does not parse is reported as not compared and still reaches Done",
@@ -1134,11 +1080,6 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 			for _, want := range tt.wantInNotice {
 				if !strings.Contains(notices[0], want) {
 					t.Errorf("notice %q does not carry %q", notices[0], want)
-				}
-			}
-			for _, unwanted := range tt.wantNotInNotice {
-				if strings.Contains(notices[0], unwanted) {
-					t.Errorf("notice %q carries %q; want it left out", notices[0], unwanted)
 				}
 			}
 			if strings.ContainsAny(notices[0], "\r\n") {

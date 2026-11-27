@@ -33,7 +33,8 @@ func TestRecord_RoundTripAndUpdate(t *testing.T) {
 	}
 
 	want := Record{
-		Number: 7, URL: "https://github.com/o/r/pull/7", Base: "main", Head: "task", GatedHead: "abc", Continue: true, ReviewEnded: true,
+		Number: 7, URL: "https://github.com/o/r/pull/7", Base: "main", Head: "task", GatedHead: "abc", StrandGUID: "g", StrandName: "n", SessionID: "s", Engine: "claude",
+		SendBack: "/run/pr-findings-2.md", FixHereCount: 2, SendBacks: 2, CountedSets: []string{"aa", "bb"},
 	}
 	if err := WriteRecord(path, lockPath, want); err != nil {
 		t.Fatalf("WriteRecord() error: %v", err)
@@ -43,23 +44,16 @@ func TestRecord_RoundTripAndUpdate(t *testing.T) {
 		t.Fatalf("ReadRecord() = %+v, %v, %v; want %+v, true, nil", got, found, err, want)
 	}
 
-	// A record from an older run holds keys Record no longer declares: they read as nothing and survive a rewrite.
-	if err := os.WriteFile(path, []byte(`{"number": 7, "parent_review_asked": true, "send_backs": 2}`), 0o644); err != nil {
+	// A record from an older run, without the send-back keys, reads them as zero.
+	if err := os.WriteFile(path, []byte(`{"number": 7, "parent_review_asked": true}`), 0o644); err != nil {
 		t.Fatalf("write older record file: %v", err)
 	}
 	older, _, err := ReadRecord(path, lockPath)
-	if wantOlder := (Record{Number: 7}); err != nil || !reflect.DeepEqual(older, wantOlder) {
-		t.Fatalf("ReadRecord(older) = %+v, %v; want %+v", older, err, wantOlder)
+	if wantOlder := (Record{Number: 7, ParentReviewAsked: true}); err != nil || !reflect.DeepEqual(older, wantOlder) {
+		t.Fatalf("ReadRecord(older) = %+v, %v; want %+v with the send-back fields zero", older, err, wantOlder)
 	}
 	if err := WriteRecord(path, lockPath, want); err != nil {
 		t.Fatalf("WriteRecord() error: %v", err)
-	}
-	rewrittenOlder, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read record file: %v", err)
-	}
-	if !strings.Contains(string(rewrittenOlder), `"parent_review_asked": true`) || !strings.Contains(string(rewrittenOlder), `"send_backs": 2`) {
-		t.Errorf("record file after WriteRecord = %s; want the removed keys kept", rewrittenOlder)
 	}
 
 	// A key a newer binary wrote is kept across the rewrite.

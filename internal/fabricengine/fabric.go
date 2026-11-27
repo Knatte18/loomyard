@@ -42,6 +42,11 @@ type Fabric struct {
 
 	warpPath string
 	weftPath string
+
+	// afterMergeStart runs in a one-repository merge between the merge start and the settling of the records.
+	// It is nil in production.
+	// An error it returns ends the merge verb with that error and leaves the merge parked.
+	afterMergeStart func() error
 }
 
 // newPaired returns a Fabric over the git checkouts at warpPath and weftPath.
@@ -89,11 +94,6 @@ type SyncOptions struct {
 	// AfterRecords marks a task pair's code-side push sent once the run's own records side landed.
 	// Only such a push resets a code tip that no transition of the run names, when origin's code branch is ahead.
 	AfterRecords bool
-	// OwedUnrecorded makes a push of an owed class return its error and write no failed-push record or notice.
-	// The owed classes are transport, deferred and teardown_lock.
-	// A caller that retries the push itself needs no record of them.
-	// Every other class is recorded as without it.
-	OwedUnrecorded bool
 }
 
 // EnvSyncOptions reads FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH and returns the SyncOptions they describe.
@@ -105,9 +105,13 @@ func EnvSyncOptions() SyncOptions {
 	}
 }
 
-// RecordsWorktree returns the path to the weft worktree paired with l's warp worktree.
-// Code outside this package uses it to find the weft sibling, so that path stays fabric-owned.
+// RecordsWorktree returns the path to the records worktree of l's worktree.
+// It is the weft sibling paired with l's warp worktree, and in a one-repository hub l's worktree itself.
+// Code outside this package uses it to find the records worktree, so that path stays fabric-owned.
 func RecordsWorktree(l *lymcwd.Location) string {
+	if oneRepositoryAt(l.WorktreePath()) {
+		return l.WorktreePath()
+	}
 	return weftname.SiblingPath(l.HubPath, filepath.Base(l.WorktreePath()))
 }
 

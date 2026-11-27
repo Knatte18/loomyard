@@ -13,36 +13,67 @@
 // so a layer holds only the profiles and keys it tunes.
 // `lym config batcher --set profiles.<name>.<key>=<value>` sets one key of any profile.
 // Active resolves the active profile at config-load time and builds it through the registry.
+// An empty active: and active: identity resolve to the identity batcher.
+// This holds even when no profile of that name is configured, so a batcher.yaml without profiles: keeps working.
+// A configured profile named identity wins over that default.
 // A load error names batcher.yaml and the offending profile or key.
-// A cost profile's budget must be present and positive;
+// It arises from an active: naming no profile, an unknown batchifier kind, or a retired key.
+// It also arises from a cost profile that breaks a validation rule.
+// The budget must be present and positive;
 // max_cards must be at least 2;
 // and every weights coefficient must be present, non-negative and known.
 // The retired keys are alone_above, and master_base and startup_context in weights:.
 // A retired-key error wraps ErrRetiredKey and names the highest layer file holding the profile.
 // It ends with the way forward that file calls for.
-// For a worktree or local file the way forward is deleting the key by hand or running "lym config reconcile --apply".
-// For the repo default, only a reconcile of the default layer rewrites it.
-// The way forward there is deleting the key by hand.
-// It is also running "lym config reconcile --layer default --apply" from the hub's prime worktree.
+// For a worktree or local file the way forward is running "lym config reconcile --apply", which migrates the profile.
+// For the repo default, which only the hub-wide reconcile rewrites, it is running "lym fabric reconcile".
 // A session lym refuses that verb and reports status: FAILED, so the orch runs it.
-// Reconcile keeps a profile the template does not name whole.
-// For such a profile the way forward is the hand delete alone.
-// Any layer may hold the active: and profiles: keys, so a retired key in any layer reaches the retired-key refusal.
+// Active loads batcher.yaml through the layer stack under a configengine.Dirs.
+// ConfigSpec classifies the active: and profiles: keys as meeting no category, so any layer may hold them,
+// and a retired key in any layer reaches the retired-key refusal.
+// Every load error is marked configengine.ErrInvalid, so a caller tells a file's content from an unreadable file.
+// MigrateConfig is a pure rewrite of a batcher.yaml document that drops the retired keys from every profile.
+// It adds weights.orientation at the template's value where a retired weights key stood and the profile had none.
+// It touches only those keys and carries every other entry and comment through yaml node editing.
+// The loader never calls it.
 // The template ships active: wide, so a fresh repo groups cards with the cost batchifier without configuring it.
 // Its cautious profile is the same cost batchifier at a tighter budget, kept for a repo that chooses it.
+// The budget trial behind that default is recorded in docs/research/webster/batch-budget/batch-budget-trial-2026-11-01.
+// It found wide cost no more per card than cautious and showed no quality loss.
 // An operator who wants one card per batch sets active: to identity or to an empty value.
 //
 // The identity batcher (identity.go), one card per batch, is a production library entry.
+// The Batcher interface lets a further grouping batchifier join the registry without changing webster's call sites.
 //
 // The estimator (estimate.go) predicts how full a fork's context gets without running it,
 // so a cost-model batchifier can keep every fork inside the model's window.
 // A SizeSource supplies the worktree facts it weighs: a file's line count and a directory's test files.
 // DiskSizes reads them from a given worktree root.
+// A card's read set holds one entry per target and Uses ref that planparser.RefFile maps to an existing file,
+// and each such entry weighs its lines times context_per_line.
+// It also holds a package entry and a tests entry for each directory the card's targets live in.
+// Each of those weighs package_context.
+// It holds the card's own text too, weighing its lines times context_per_line.
+// A card's messages are the sum of these terms: target_messages per target (a Rename pair counts once);
+// test_file_messages per test file in its target directories;
+// and uses_messages per Uses entry.
+// Its write allowance is its messages times message_context, which covers the tool calls and output they add.
+// It also adds its card-text lines times write_per_card_line, the code the card carries that the fork writes back out.
+// PeakContext of a segment at a 1-based batch position is the sum of these terms:
+// the start base's context plus orientation;
+// (position - 1) times batch_growth;
+// fork_messages times message_context;
+// the weight of the distinct read-set entries of all its cards;
+// and every card's write allowance.
+// The start base (StartBase) is what the orchestrating session loads at start.
+// Webster computes it from the loaded text's line count and a fixed system-prompt-and-tools figure.
+// Its context is its lines times context_per_line plus the fixed part, and the zero value adds nothing.
 // A fork inherits the orchestrating session's context.
-// That context is the start base, what the session loads at start, plus orientation when the first fork spawns,
+// That context is the start base plus orientation when the first fork spawns,
 // and it grows by batch_growth for every batch that finished before the fork, so a later batch starts deeper.
-// The estimate predicts a fork's peak context, so a batch fits the model's window.
+// Context only grows within a fork, so the peak is the context after its last card.
 // A file two cards share counts once, and adding a card never lowers the peak.
+// A card's own estimate is the PeakContext of its one-card segment.
 // The coefficients are a Weights value, read by ProfileWeights from a profile's weights: map in batcher.yaml.
 //
 // The template's cost profiles share their coefficients.
@@ -54,9 +85,11 @@
 // The in-fork coefficients are fitted under a constant start, not against the position model.
 // tools/tokencount's calibration produces that fit.
 // It compares each one-card estimate with the measured peak context of the fork that ran the card.
+// The comparison covers the one-card forks of past runs.
 // The measured peak is the largest input plus cache tokens of any of the fork's messages.
 // The card text is not in a run's base tree, so write_per_card_line and the card-text read are unfitted.
 // Each batch records its estimate's components (Breakdown), which webster keeps in state.json.
+// Later runs can fit all the coefficients from them.
 //
 // The cost-model batchifier (cost.go) is built by NewCost from CostParams.
 // It splits the card sequence into the fewest contiguous batches that fit.
@@ -75,6 +108,8 @@
 // A remaining tie leaves the last batch shortest.
 // Batch takes the number of batches the run executes ahead of its cards,
 // so the k-th batch of the result is at position before + k, and a segment's peak depends on the batch it forms.
+// An exact dynamic program over (batches so far, last card placed) finds the split.
+// It takes O(cards² x MaxCards) segment evaluations.
 // Each batch carries the profile name and its PeakContext at its own position as its estimate.
 // The estimate's Breakdown records that position.
 //

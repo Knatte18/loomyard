@@ -46,7 +46,7 @@ func TestPairParts(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 		warpBranchCommit(t, h.Location, slug, "work.txt")
-		if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
 			t.Fatalf("Remove(%q): %v", slug, err)
 		}
 		gitkit.MustRun(t, h.PrimeWorktree(), "git", "push", "origin", slug)

@@ -19,6 +19,9 @@ const (
 	MidMergeParked
 	// MidMergeForeign means no fabric record exists, but foreign git-level merge state sits on either side of the pair.
 	MidMergeForeign
+	// MidMergeRecordsUnsettled means the fabric merge-state record exists and its merge stopped before the records step.
+	// Only an abort ends such a merge.
+	MidMergeRecordsUnsettled
 )
 
 // The verbs a fabric merge-state record carries, as MidMergeState.Verb reports them.
@@ -33,8 +36,9 @@ const (
 // Conflicts lists the still-conflicted paths in the pair's one-repo form, which is the form fabric merge verbs use,
 // so every listed path is accepted by `lym fabric merge-stage`.
 // It is an empty slice, never nil.
-// Verb, Source, SourceSHA and StartSHA are filled only when Kind is MidMergeParked, and are empty otherwise:
-// the parked record's verb (`merge-in` or `merge`), its caller-supplied source branch,
+// Verb, Source, SourceSHA and StartSHA are filled only when Kind is MidMergeParked or MidMergeRecordsUnsettled.
+// They are empty otherwise.
+// They hold the parked record's verb (`merge-in` or `merge`), its caller-supplied source branch,
 // and the code side's resolved source SHA and pre-merge HEAD SHA.
 // The probe is read-only and carries no mutation record.
 type MidMergeState struct {
@@ -66,11 +70,18 @@ func MidMerge(l *lymcwd.Location) (MidMergeState, error) {
 	if err != nil {
 		return MidMergeState{}, fmt.Errorf("fabricengine: mid-merge probe: read git merge state: %w", err)
 	}
+	// A one-repository worktree is its own records worktree, so its records readings repeat the code ones.
+	if oneRepositoryAt(f.weftPath) {
+		r.weftMergeHead, r.weftConflicted = false, nil
+	}
 
 	state := MidMergeState{Kind: MidMergeNone, Conflicts: []string{}}
 	switch {
 	case record != nil:
 		state.Kind = MidMergeParked
+		if record.RecordsUnsettled {
+			state.Kind = MidMergeRecordsUnsettled
+		}
 		state.Verb = record.Verb
 		state.Source = record.Source
 		state.SourceSHA = record.WarpSource

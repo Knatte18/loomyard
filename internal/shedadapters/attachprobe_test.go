@@ -63,7 +63,7 @@ func TestBouncer_JudgeCall_AttachesToLiveJudgeInsteadOfRespawning(t *testing.T) 
 	// The round's report is a file the archive step would not touch.
 	// The focus file for round 2 is one it would.
 	// Pre-writing that focus file proves the archive did not run on the attach branch.
-	staleNextFocus := FocusPath(cfg.RunDir, 2)
+	staleNextFocus := focusPath(cfg.RunDir, 2)
 	if err := os.WriteFile(staleNextFocus, []byte("---\nround: 2\nexclude_lenses: []\nfocus: []\n---\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(stale next focus) = %v; want nil", err)
 	}
@@ -140,7 +140,7 @@ func TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfClearingOrReplaying(t *
 			// and a replay would have synthesized two empty lists over this path before it ever landed.
 			realFocus := "---\nround: 2\nexclude_lenses: []\nfocus: [\"the finding the judge actually targeted\"]\n---\n"
 			attach.DuringAttach = func() {
-				_ = os.WriteFile(FocusPath(cfg.RunDir, 2), []byte(realFocus), 0o644)
+				_ = os.WriteFile(focusPath(cfg.RunDir, 2), []byte(realFocus), 0o644)
 			}
 
 			ptr := shedfake.RequireOutcome(t, b, tt.wantOutcome)
@@ -156,14 +156,14 @@ func TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfClearingOrReplaying(t *
 			if _, err := os.Stat(verdictPath(cfg.RunDir, 1)); err != nil {
 				t.Errorf("round 1's verdict file was moved (stat = %v); want it untouched -- the clear would archive it out from under the live judge", err)
 			}
-			got, err := os.ReadFile(FocusPath(cfg.RunDir, 2))
+			got, err := os.ReadFile(focusPath(cfg.RunDir, 2))
 			if err != nil {
 				t.Fatalf("ReadFile(round-2-focus.md) = %v; want nil", err)
 			}
 			if string(got) != realFocus {
 				t.Errorf("round-2-focus.md = %q; want the live judge's own targeting %q -- a synthetic file written over it drops the judge's targeting for the next round", got, realFocus)
 			}
-			if n := stampedSiblingCount(t, cfg.RunDir, filepath.Base(FocusPath(cfg.RunDir, 2))); n != 0 {
+			if n := stampedSiblingCount(t, cfg.RunDir, filepath.Base(focusPath(cfg.RunDir, 2))); n != 0 {
 				t.Errorf("stamped archive siblings = %d; want 0 -- the attached branch must not archive the live judge's own output", n)
 			}
 			assertNoArchivedRunDirSibling(t, cfg.RunDir)
@@ -223,7 +223,7 @@ func TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles(t *testing.T) {
 
 			shedfake.CallOK(t, b)
 
-			want := []string{verdictPath(cfg.RunDir, 1), ledgerPath(cfg.RunDir, 1), FocusPath(cfg.RunDir, 2)}
+			want := []string{verdictPath(cfg.RunDir, 1), ledgerPath(cfg.RunDir, 1), focusPath(cfg.RunDir, 2)}
 			got := attach.GotAttachSpec.OutputFiles
 			if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
 				t.Errorf("attach spec OutputFiles = %v; want %v", got, want)
@@ -256,7 +256,7 @@ func TestBouncer_SeedCall_ProbesForALiveSeed(t *testing.T) {
 			b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
 			// A parseable round-1 focus file would make Call take its re-bounce branch instead of seeding,
 			// so the in-progress file here is unparseable, the way a half-written focus file is.
-			focus := FocusPath(cfg.RunDir, 1)
+			focus := focusPath(cfg.RunDir, 1)
 			if err := os.WriteFile(focus, []byte("---\nround: 1\n"), 0o644); err != nil {
 				t.Fatalf("WriteFile(partial focus) = %v; want nil", err)
 			}

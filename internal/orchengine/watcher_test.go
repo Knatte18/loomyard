@@ -690,13 +690,12 @@ func TestWatcher_HandoffCompleteClearsThenResumes(t *testing.T) {
 			e := newWatchEnv(t)
 			if slack {
 				e.paths.SlackPresencePath = presenceFileIn(t, slackengine.PresenceSlack)
+				e.w = e.newWatcher()
 			}
-			e.paths.Autonomy = func() bool { return true }
-			e.w = e.newWatcher()
 			e.reachClearing()
 			handoff := e.state().PendingHandoff
-			if pending := e.state().PendingResume; strings.Count(pending, presenceLine) != wantLines || !strings.HasSuffix(pending, autonomyOnLine) {
-				t.Errorf("stored resume pointer = %q, want the presence line %d times and the autonomy line last", pending, wantLines)
+			if pending := e.state().PendingResume; strings.Count(pending, presenceLine) != wantLines {
+				t.Errorf("stored resume pointer = %q, want the presence line %d times", pending, wantLines)
 			}
 			if e.s.count("clear") != 1 {
 				t.Fatalf("calls = %v", e.s.calls)
@@ -722,8 +721,8 @@ func TestWatcher_HandoffCompleteClearsThenResumes(t *testing.T) {
 			}
 			e.tick()
 			last := e.s.calls[len(e.s.calls)-1]
-			if !strings.HasPrefix(last, "send:") || !strings.Contains(last, handoff) || strings.Count(last, presenceLine) != wantLines || !strings.HasSuffix(last, autonomyOnLine) {
-				t.Errorf("resume prompt = %q, want one naming %s with the presence line %d times and the autonomy line last", last, handoff, wantLines)
+			if !strings.HasPrefix(last, "send:") || !strings.Contains(last, handoff) || strings.Count(last, presenceLine) != wantLines {
+				t.Errorf("resume prompt = %q, want one naming %s with the presence line %d times", last, handoff, wantLines)
 			}
 			if got := e.c.count("hold:"); got != holds+3 || e.c.count("release:") != 0 {
 				t.Errorf("holds = %d releases = %d, want the hold renewed on each of the three ticks and still kept", got, e.c.count("release:"))
@@ -1536,7 +1535,6 @@ func TestWatcher_ReloadReadsAnUnreadableStepAsThePointer(t *testing.T) {
 	}
 }
 
-//testtiming:keep pins the auto-reload path's skip of a mark after the boundary and its typing of a mark with other text
 func TestWatcher_HookDeliveredPointerIsSkippedAndAnythingElseIsTyped(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1572,7 +1570,6 @@ func TestWatcher_HookDeliveredPointerIsSkippedAndAnythingElseIsTyped(t *testing.
 			if tt.slack {
 				e.paths.SlackPresencePath = presenceFileIn(t, slackengine.PresenceSlack)
 			}
-			e.paths.Autonomy = func() bool { return true }
 			baseline := e.clock.now.Add(-time.Minute)
 			e.setState(func(st *State) { st.CompactionBaseline = baseline })
 			e.w = e.newWatcher()
@@ -1586,7 +1583,6 @@ func TestWatcher_HookDeliveredPointerIsSkippedAndAnythingElseIsTyped(t *testing.
 			if tt.slack {
 				pointer += presenceLine
 			}
-			pointer += autonomyOnLine
 			if mark, ok := tt.mark(baseline, boundary, pointer); ok {
 				if err := WriteResumeMark(e.paths, mark); err != nil {
 					t.Fatal(err)
@@ -1599,9 +1595,6 @@ func TestWatcher_HookDeliveredPointerIsSkippedAndAnythingElseIsTyped(t *testing.
 			wantCalls := []string{reloadPluginsCall}
 			if tt.wantTyped {
 				wantCalls = append(wantCalls, "send:"+pointer)
-				if !strings.HasSuffix(pointer, autonomyOnLine) {
-					t.Fatalf("pointer = %q, want the autonomy line last", pointer)
-				}
 				if st := e.state(); st.Phase != PhaseResuming {
 					t.Fatalf("phase = %s, want resuming until a turn end", st.Phase)
 				}
@@ -1652,8 +1645,6 @@ func TestWatcher_AutoCompactionReloadsPluginsThenPointer(t *testing.T) {
 
 	e := newWatchEnv(t)
 	e.withSkills()
-	e.paths.Autonomy = func() bool { return true }
-	e.w = e.newWatcher()
 	boundary := e.clock.now.Add(time.Second)
 	e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(boundary)}
 	e.s.usage["a"] = 100
@@ -1677,8 +1668,8 @@ func TestWatcher_AutoCompactionReloadsPluginsThenPointer(t *testing.T) {
 		t.Fatalf("calls = %v, want the plugins reload then the pointer and no skills load", got)
 	}
 	pointer := e.s.calls[len(e.s.calls)-1]
-	if !strings.Contains(pointer, e.paths.RolePath) || strings.Contains(pointer, "note") || !strings.HasSuffix(pointer, autonomyOnLine) {
-		t.Errorf("pointer = %q, want the role file, no note and the autonomy line last", pointer)
+	if !strings.Contains(pointer, e.paths.RolePath) || strings.Contains(pointer, "note") {
+		t.Errorf("pointer = %q, want the role file and no note", pointer)
 	}
 	if st := e.state(); st.Phase != PhaseIdle {
 		t.Errorf("phase = %s, want idle", st.Phase)

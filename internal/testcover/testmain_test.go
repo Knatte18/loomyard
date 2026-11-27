@@ -44,6 +44,17 @@ const standInHoardMegabytes = 384
 // standInChildPIDSuffix, appended to a stand-in's record path, names the file standInHoldsPipe records its child's pid into.
 const standInChildPIDSuffix = ".child-pid"
 
+// standInHangBuildEnv makes the stand-in `go test -c` never end.
+const standInHangBuildEnv = "TESTCOVER_STAND_IN_HANG_BUILD"
+
+// standInCompileErrorsEnv makes the stand-in `go test -c` fail with standInCompileErrors on stderr.
+const standInCompileErrorsEnv = "TESTCOVER_STAND_IN_COMPILE_ERRORS"
+
+// standInCompileErrors is what the stand-in build prints when the compiler refuses the package:
+// three errors in three files, the last with no column.
+const standInCompileErrors = "# m/p\n./overlay-1/x.go:4:9: cannot use v (value of type int) as time.Duration value\n/abs/y.go:12:3: mismatched types\n" +
+	"/abs/overlay-3/z.go:62: invalid operation: digits[0] == lymMutantInt('0', 275) (mismatched types byte and rune)\n"
+
 // standInChildSleep is how long the child standInHoldsPipe leaves behind holds the output pipe.
 // The test's cleanup kills the child long before.
 const standInChildSleep = 5 * time.Minute
@@ -56,8 +67,18 @@ func TestMain(m *testing.M) {
 	os.Exit(tmuxkit.Main(m))
 }
 
+// standInListOutput is what the stand-in prints as `go list -deps -test`.
+// It holds a package of another module, which the template prints as an empty line.
+// It then holds m/q twice, m/p compiled for its test, its external test package and the generated test main.
+const standInListOutput = "\nm/q\tq\t\nm/p [m/p.test]\tp\tm/p\nm/p_test [m/p.test]\tp_test\tm/p\nm/p.test\tmain\t\nm/q\tq\t\n"
+
+// standInGoEnv is what the stand-in prints as `go env GOVERSION GOOS GOARCH`.
+const standInGoEnv = "go1.26.8\nlinux\namd64\n"
+
 // runStandIn writes args, one per line, to record and acts on them, returning the process exit code.
+// As `go list`, it prints standInListOutput, and as `go env`, standInGoEnv.
 // As `go test -list`, it prints two test names; as `go test -c`, it creates the empty file `-o` names.
+// As `go test -c` with standInCompileErrorsEnv set, it prints standInCompileErrors and fails.
 // As a coverage binary, it reports the outcome of the one test its `-test.run` names.
 // It writes a profile for a passing test, and for a skipped one that standInSkipProfile names, when given a profile flag.
 // The test standInTimed prints its `=== RUN` line and its result line in one write, and reports 0.00s.
@@ -74,10 +95,23 @@ func runStandIn(record string, args []string) int {
 		return 1
 	}
 	switch {
+	case len(args) > 0 && args[0] == "list":
+		fmt.Print(standInListOutput)
+		return 0
+	case len(args) > 0 && args[0] == "env":
+		fmt.Print(standInGoEnv)
+		return 0
 	case slices.Contains(args, "-list"):
 		fmt.Println("TestAlpha\nExampleBeta\nok  \tm/p\t0.01s")
 		return 0
 	case slices.Contains(args, "-c"):
+		if os.Getenv(standInHangBuildEnv) != "" {
+			time.Sleep(time.Hour)
+		}
+		if os.Getenv(standInCompileErrorsEnv) != "" {
+			fmt.Fprint(os.Stderr, standInCompileErrors)
+			return 1
+		}
 		if i := slices.Index(args, "-o"); i >= 0 && i+1 < len(args) {
 			if err := os.WriteFile(args[i+1], nil, 0o755); err != nil {
 				return 1

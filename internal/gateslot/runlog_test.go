@@ -199,37 +199,3 @@ func testFailedTier(t *testing.T) {
 		})
 	}
 }
-
-// TestTierDiscovered pins that the discovered counts of a log's tier summary lines are added up.
-// A build summary line counts none.
-func TestTierDiscovered(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	line := func(tier, discovered, exit int) string {
-		return TierSummaryLine(RunRecord{Tier: tier, ScopeForm: "--base main", Discovered: discovered, WallSec: 1.5, ExitCode: exit}, "/runs/x.log")
-	}
-	build := BuildSummaryLine(RunRecord{Tier: 0, Build: true, ScopeForm: "build", WallSec: 2.5}, "/runs/b.log")
-	tests := []struct {
-		name      string
-		log       string
-		want      int
-		wantFound bool
-	}{
-		{"one tier line", line(0, 4, 0) + "\n", 4, true},
-		{"a tier line that discovered none is found", line(0, 0, 0) + "\n", 0, true},
-		{"tier lines add up", line(0, 2, 0) + "\n" + line(1, 3, 1) + "\n", 5, true},
-		{"a build line and other text are no tier line", build + "\nPassed!\n", 0, false},
-		{"no summary line", "FAIL\n", 0, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got, found := TierDiscovered(tt.log)
-			if got != tt.want || found != tt.wantFound {
-				t.Errorf("TierDiscovered() = %d, %v; want %d, %v", got, found, tt.want, tt.wantFound)
-			}
-		})
-	}
-}

@@ -119,11 +119,11 @@ func (k *channelKeeper) adoptBridge(ctx context.Context, localOrch, name, peerAd
 	if info.IsArchived {
 		return "", bridgeArchivedReason, nil
 	}
-	bot, err := k.botIdentity(ctx)
+	bot, err := k.botUser(ctx)
 	if err != nil {
 		return "", "", err
 	}
-	if info.Creator != bot.UserID && info.Creator != pin.BotUserID {
+	if info.Creator != bot && info.Creator != pin.BotUserID {
 		return "", bridgeNameTakenReason, nil
 	}
 	if !info.IsMember {

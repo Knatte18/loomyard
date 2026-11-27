@@ -8,7 +8,6 @@ package loomcli
 import (
 	"errors"
 	"fmt"
-	"regexp"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -119,16 +118,7 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			var forbidden []*regexp.Regexp
-			if c.env.DescriptionTerms != nil {
-				terms, err := c.env.DescriptionTerms()
-				if err != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: read the landing config: "+err.Error()+"; way forward: fix landing.yaml with lym config landing from the prime, then run lym loom validate-description again"))
-					return nil
-				}
-				forbidden = terms
-			}
-			findings, err := summaryparser.ValidateDescription(c.env.DescriptionPath, forbidden)
+			findings, err := summaryparser.ValidateDescription(c.env.DescriptionPath)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate change description "+c.env.DescriptionPath+": "+err.Error()))
 				return nil
@@ -416,7 +406,7 @@ func (c *loomCLI) validatePartsCmd() *cobra.Command {
 		Long: `validate-parts runs partsparser.Validate against the current worktree's
 parts file -- the identical check the Parts-Write row's own gate runs: the
 file's format, the part and shared-spot rules, the decision ids each part
-names against the decision record, the most parts tapestry.parts.max allows, and that
+names against the decision record, the most parts parts_max allows, and that
 each export is new to the worktree, a plan: handle passing the name checks a
 part's plan runs on it -- and
 reports the result as one JSON envelope. It takes no arguments and no flags,
@@ -437,7 +427,7 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-parts: "+err.Error()))
 				return nil
 			}
-			findings, err := partsparser.Validate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.DecisionRecordPath, tapestry.Parts.Max)
+			findings, err := partsparser.Validate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.DecisionRecordPath, tapestry.PartsMax)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-parts: "+err.Error()))
 				return nil

@@ -56,9 +56,6 @@ func ConfigSpec() configengine.Spec {
 		RetiredKeys: map[string]configengine.Category{
 			retiredVerifyTiersKey: configengine.CategoryGuard,
 		},
-		RetiredWayForward: map[string]string{
-			retiredVerifyTiersKey: `set the verify tiers in gate.yaml with "lym config gate" from the prime`,
-		},
 	}
 }
 

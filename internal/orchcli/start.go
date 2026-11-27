@@ -782,11 +782,13 @@ func (c *orchCLI) relaunchStrand(st orchengine.State, strand reedengine.StrandSt
 		return "", "", err
 	}
 	remoteControlName := c.launchRemoteControlName(strand, hasStrand)
-	checkpoint, checkpointRead := c.launchRemoteControlCheckpoint(st.SessionID, remoteControlName)
 	started, source, abandoned, err := c.launchOrch(st, note, remoteControlName)
 	report.AbandonedSession = abandoned
 	if err != nil {
 		return "", "", err
+	}
+	if remoteControlName != "" {
+		c.markLaunchedRemoteControl(started.GUID)
 	}
 	report.Strand = started.GUID
 	if started.Warning != "" {
@@ -802,9 +804,6 @@ func (c *orchCLI) relaunchStrand(st orchengine.State, strand reedengine.StrandSt
 	next.SessionID = started.SessionID
 	if err := c.saveFreshLaunch(next, firstFailure, creel, receiver); err != nil {
 		return "", "", err
-	}
-	if remoteControlName != "" && checkpointRead {
-		c.markLaunchedRemoteControl(started, st.SessionID, checkpoint)
 	}
 	logger.Info("orch: launched orchestrator session", "strandGUID", started.GUID, "sessionID", started.SessionID, "promptSource", source, "abandonedSessionID", abandoned)
 	if source == orchengine.SourceResume {
@@ -834,7 +833,7 @@ func (c *orchCLI) launchOrch(st orchengine.State, note, remoteControlName string
 	if err != nil {
 		return startedSession{}, "", abandoned, err
 	}
-	prompt = orchengine.WithLaunchFacts(c.paths, prompt)
+	prompt = orchengine.WithPresence(c.paths, prompt)
 	if note != "" {
 		prompt += "\n\n" + note
 	}
@@ -852,7 +851,7 @@ func (c *orchCLI) resumeOrch(sessionID, remoteControlName string) (startedSessio
 	if err != nil {
 		return startedSession{}, err
 	}
-	spec := c.orchSpec(orchengine.WithLaunchFacts(c.paths, reload), time.Now(), remoteControlName)
+	spec := c.orchSpec(orchengine.WithPresence(c.paths, reload), time.Now(), remoteControlName)
 	spec.ResumeSessionID = sessionID
 	started, err := c.starter.StartSession(spec)
 	var held *shuttleengine.SessionHeldError

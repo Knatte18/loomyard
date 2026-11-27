@@ -41,7 +41,7 @@ How webster groups cards into batches is no card property; `internal/batcher`'s 
 A valid plan is executable strictly in card-number order: a card never depends on anything a later card does.
 Webster runs the cards in that order and never sorts them,
 so a card that needs a symbol, file or fixture a later card creates is a defect of the plan.
-`uses-later-target`, `delete-before-reference` and `create-caller-later` refuse the cases a card's own refs show;
+`uses-later-target` and `delete-before-reference` refuse the cases a card's own refs show;
 every other dependency on a later card is the writer's to avoid and the plan reviewer's to flag.
 
 ## On-disk layout
@@ -109,10 +109,6 @@ Rules on targets:
 - A new test file is a `**Create:**` file target.
   The card's Intent states its tier, such as `tier0`, on a line that names no other test file (`test-tier-unstated`).
   The tier is the one its test functions name in their opening `tiergate.Require` call.
-- When the tiers the planner is given hold a plan tier0 budget line, set by `gate.plan_tier0_budget_sec`,
-  a card that creates or widens a `tier0` test states, in its Intent, the seconds the test adds to one `tier0` run.
-  The plan's estimates together stay within that budget;
-  a test that cannot fit moves to a higher tier or shares an existing test.
 - A card that touches a struct a `//lym:seam` test marks lists that test by its member glyph (`seam-test-unlisted`).
   The test goes under `Edit` when the card changes it and under `Uses` when it stays as is.
 - A card that changes a package's non-test Go code covers the package's `doc.go` (`doc-go-unlisted`):
@@ -146,7 +142,7 @@ an `Extends` against any other label, and a `Uses` against an `Extends` target, 
 | Edit | existing symbol(s) | impact on the symbol changed; `caller-uncovered` for a re-signed member | required |
 | Extends | existing symbol(s) or file(s) the card only adds to | `extends-overlap`, `extends-resign` | required |
 | Delete | existing symbol(s) or whole file(s) | assert-no-callers, mechanically `caller-uncovered` for a member | required |
-| Rename | existing symbol(s), `old -> new` pairs | the hub's structure-aware rename tool (`language.rename_tools`) + grep verify, never text or regex replace | not required |
+| Rename | existing symbol(s), `old -> new` pairs | the hub's structure-aware rename tool (`language.yaml` `rename_tools`) + grep verify, never text or regex replace | not required |
 | Move | existing symbol or whole file relocated | `git mv` + import fixup; destination stated in `Intent`, not the target list | not required |
 | Prosa | file(s), no symbol target | none | not required |
 | Custom | either | none — explicit escape hatch | as applicable |
@@ -245,10 +241,10 @@ The section is reproduced verbatim:
    into the `Rename` pair.
 4. Never write the relocated file from scratch and delete the original — that loses
    git history exactly as an unstructured create+delete pair would.
-5. For a symbol pair, run the hub's structure-aware rename tool the implementer prompt names (`language.rename_tools`), never a text or regex replace, then grep for zero remaining old-name references and confirm the symbol's doc comment opening names the new name.
+5. For a symbol pair, run the hub's structure-aware rename tool the implementer prompt names (`language.yaml` `rename_tools`), never a text or regex replace, then grep for zero remaining old-name references and confirm the symbol's doc comment opening names the new name.
 ```
 
-A hub with an empty `language.rename_tools` list cannot run a symbol pair (`rename-tool-missing`).
+A hub with an empty `rename_tools` list cannot run a symbol pair (`rename-tool-missing`).
 
 ## Plan: handles
 
@@ -328,7 +324,7 @@ The hub's tests run through `lym gate test`.
 It runs the numbered tiers `gate.yaml` declares over a scope lym computes.
 A gate key names a site's tiers and scope, `card`, `diff` or `all`.
 A Go site runs `lym gate test --wait --gate <key>`; an agent's card, batch and `webster-fix` calls carry no `--wait`.
-The `card` key runs per card and the `batch` key per batch, both over the cards' packages and the packages that depend on them;
+The `card` key runs per card and the `batch` key per batch, both over the cards' packages;
 `webster-fix` in Webster's verify fixers;
 `webster` once for the whole plan;
 `parent-align` and `finalize` at Parent-Align and Finalize.
@@ -336,8 +332,7 @@ The plan writer and reviewer get the hub's tiers and gate keys in their prompts,
 so a plan names no gate, tier list or target list.
 
 - **Per card.** The fork runs `lym gate test --gate card --card <card id>`.
-  The call computes the card's packages from the plan and adds every package whose build or tests reach one of them.
-  It runs the `//lym:guard` tests and the lints the key lists.
+  The call computes the card's packages from the plan and runs the `//lym:guard` tests and the lints the key lists.
   It does not test the rest of the module or the tiers the key leaves out,
   and a passing call names the declared tiers it did not run.
 - **Per batch.** The fork runs `lym gate test --gate batch` after its last card.
@@ -363,12 +358,6 @@ One card per independently reviewable unit, never one card per symbol.
 A private supporting type or a constructor inseparable from its type goes on the card of the symbol it serves,
 and so does a helper serving one surface.
 A symbol of a module's public surface, or one reused across packages, gets its own card.
-A new function is the exception: it goes on the card that adds its first production caller,
-since a card that adds it alone fails its gate on the guard that every production function is reachable from a `main`
-(`create-caller-later`).
-
-A card whose `**Intent:**` covers every instance of one kind across the repository lists every file holding one.
-Its Intent names the repository search that found them, so a reviewer can re-run it to prove the list complete.
 
 Removing a symbol's last caller and deleting the symbol are separate cards:
 each caller's `Edit` card, then one `Delete`.

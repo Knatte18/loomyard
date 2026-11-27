@@ -54,8 +54,8 @@ func ReadConfigChanges(l *lymcwd.Location, taskBranch, parentBranch string, conf
 		return ConfigChanges{}, fmt.Errorf("read config changes of %q against %q: %w", taskBranch, parentBranch, err)
 	}
 
-	taskWeft := RecordsBranchName(taskBranch)
-	parentWeft := RecordsBranchName(parentBranch)
+	taskWeft := recordsBranchIn(l, taskBranch)
+	parentWeft := recordsBranchIn(l, parentBranch)
 	fail := func(step string, err error) (ConfigChanges, error) {
 		return ConfigChanges{}, fmt.Errorf("read config changes of weft branch %q against %q: %s: %w", taskWeft, parentWeft, step, err)
 	}

@@ -50,19 +50,25 @@ func TestLandNotice_ReachesAnOrchStrandListedAfterTheLanding(t *testing.T) {
 
 	h := newPassHarness(t)
 	var posts int
-	h.d.deps.LandNotice = func(string) (bool, error) { return true, nil }
+	var clears []string
+	h.d.deps.LoadConfig = func() (Config, error) { return Config{MaxRuns: 3, LandNotice: LandNoticePerTask}, nil }
 	h.d.deps.Notice = func(_ context.Context, line string) error {
 		posts++
 		_, err := store.PostWith(creelengine.ProgramSender("ly:DOBBY"), orchName, line, creelengine.PostOptions{})
 		return err
 	}
-	h.fake.runs = []RunView{{Slug: "task", State: runStateRunning, Producer: producerRunShed}}
-	h.tick(false)
+	h.d.deps.ClearNotifyOnLand = func(slug string) error {
+		clears = append(clears, slug)
+		h.fake.tasks = nil
+		return nil
+	}
+	done := "done"
 	h.fake.runs = []RunView{{Slug: "task", State: runStateDone, Producer: "Worktree-Teardown", PastLand: true, Landed: true, LandingCommit: "0123456789abcdef0123456789abcdef01234567"}}
+	h.fake.tasks = []TaskView{{Slug: "task", Kind: "task", Status: &done, NotifyOnLand: true, Parent: "prime"}}
 	h.tick(false)
 
-	if posts != 1 {
-		t.Fatalf("landing tick posted %d lines; want one", posts)
+	if posts != 1 || !slices.Equal(clears, []string{"task"}) {
+		t.Fatalf("landing tick posted %d lines and cleared %q; want one line and one clear of task", posts, clears)
 	}
 	if memory := h.stateRecord().LandNotices; len(memory) != 0 {
 		t.Errorf("state LandNotices = %+v; want none once the notice is settled", memory)
@@ -79,9 +85,6 @@ func TestLandNotice_ReachesAnOrchStrandListedAfterTheLanding(t *testing.T) {
 		sweepWaits(len(waits) + 1)
 	}
 
-	// Stopping waits for the delivery workers the last advance woke.
-	// One still probing once the orch is listed would type the notice into its pane ahead of the read.
-	scheduler.Stop()
 	delivery.SetStrands(creelfake.LiveStrand(driver), creelfake.LiveStrand(peer), creelfake.LiveStrand(orchName))
 	reading, err := store.Read(creelengine.StrandSender(orchName), "")
 	if err != nil {

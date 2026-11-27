@@ -247,6 +247,37 @@ func TestKeptPairs(t *testing.T) {
 		}
 	})
 
+	t.Run("the notice waits for the kept cancels from before the upgrade, which are marked once", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t, keptWithSince("k"))
+		lines := h.recordLog()
+		h.d.keptNoticeOwed = true
+		marks := 0
+		h.d.deps.MarkKeptCancels = func() ([]string, error) {
+			marks++
+			if marks == 1 {
+				return nil, errors.New("origin is unreachable")
+			}
+			return []string{"k"}, nil
+		}
+
+		h.tick(false)
+		noticesAfterFailure := len(h.fake.notices)
+		h.tick(false)
+		h.tick(false)
+
+		if noticesAfterFailure != 0 || len(h.fake.notices) != 1 || marks != 2 {
+			t.Errorf("notices after the failed mark, notices, marks = %d, %d, %d; want 0, 1, 2", noticesAfterFailure, len(h.fake.notices), marks)
+		}
+		want := []string{
+			"kept cancel marking failing: origin is unreachable",
+			"run k: a cancel that kept the pair before the upgrade now records its finished keep cancel intent",
+		}
+		if got := slices.DeleteFunc(slices.Clone(*lines), func(line string) bool { return strings.HasPrefix(line, "run k: cancelled") }); !slices.Equal(got, want) {
+			t.Errorf("log lines = %q; want %q", got, want)
+		}
+	})
+
 	t.Run("the view lists each kept pair that stands with when its cancel finished", func(t *testing.T) {
 		t.Parallel()
 		gone := cancelledRun("gone", true)

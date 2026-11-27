@@ -55,15 +55,7 @@ Frontmatter rules, all strict:
 - In a cluster round, each finding also carries an `origin:` key — `lens:<name>` for a finding kept from a named fork, or `handler` for one you found yourself.
 - A finding kept from the parent orch's report carries `origin: parent` and an optional `parent_ids` list naming the report ids it covers, such as `parent_ids: [P1, P3]`.
   No other finding carries `parent_ids`.
-- A finding that raises the plan executor's halt reason, when the review step quotes one, carries `origin: webster`.
-- A finding that records a focus entry the round left undriven or marked WARN carries `origin: focus` and the class `decision`.
-  The rubric says when a round raises one, and a cluster round's consolidation keeps that origin.
 - A finding's `location` opens with the file's path, followed by `:<line>` or `#<symbol>`.
-  It names the site the fix changes, which may lie apart from where the defect shows:
-  a wrong value that one file prints and another sets is located where it is set.
-  When you did not find that site, `location` names where the defect shows,
-  and the `fix` key opens with `site not found —` and names what the fixer must find.
-  A carried finding keeps the location path the carry rules allow and names a fix site outside it in its `summary` and `fix`.
 - `prior` is a list, written only when the review step's prior-rounds section lists prior findings.
   It holds one entry per listed finding, each with its `id`, a `status` and an optional `answer`.
   `status` is exactly one of `resolved`, `open`, `outdated`, `withdrawn`.
@@ -74,9 +66,6 @@ Frontmatter rules, all strict:
   Every `open` entry is carried by exactly one finding, and a finding with no `carries` is new.
   A carried finding keeps its `class`, keeps or lowers its `severity`, and keeps its location path or moves to a file the changes file lists.
 - In an incremental round a new finding is `BLOCKING` and sits on a changed hunk, in a file the changes file lists.
-  A card a listed added entry marked as amending the plan names is exempt from the file rule, and so is a new `origin: webster` finding.
-- A hardener round's findings are exempt from the incremental round's rule above and from a carried finding's file rule:
-  a new finding takes the severity it has and sits where the fault lives, and a carried finding may move to any file.
 
 Below the closing `---`, write prose: exactly one `### [SEVERITY] <title>` block per finding, each carrying `**Location:**` and `**Issue:**` lines.
 The change lives in the finding's `fix` key; no prose `**Fix:**` line restates it.

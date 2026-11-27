@@ -1493,10 +1493,10 @@ func TestInboundRead(t *testing.T) {
 			ts, text     string
 			wantPresence slackengine.Presence
 		}{
-			{"101.000001", "lym away", slackengine.PresenceSlack},
-			{"102.000001", "lym status", slackengine.PresenceSlack},
-			{"103.000001", " LYM Back ", slackengine.PresenceTerminal},
-			{"104.000001", "lym status", slackengine.PresenceTerminal},
+			{"101.000001", "away", slackengine.PresenceSlack},
+			{"102.000001", "status", slackengine.PresenceSlack},
+			{"103.000001", " Back ", slackengine.PresenceTerminal},
+			{"104.000001", "status", slackengine.PresenceTerminal},
 		}
 		for _, step := range steps {
 			h.sayIn(paymentsChannel, step.ts, step.text)
@@ -1515,7 +1515,7 @@ func TestInboundRead(t *testing.T) {
 		h.wantPosts()
 	})
 
-	t.Run("OperatorMessageSetsThePresenceToSlackBeforeItIsForwardedAndRelayCommandsAreNotForwarded", func(t *testing.T) {
+	t.Run("OperatorMessageSetsThePresenceToSlackBeforeItIsForwardedAndBackAndStatusDoNot", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
 			name         string
@@ -1526,12 +1526,8 @@ func TestInboundRead(t *testing.T) {
 			wantPosts  []mail
 		}{
 			{"PlainText", "deploy prod", slackengine.PresenceSlack, slackengine.PresenceSlack, []mail{{primeOrch, "deploy prod"}}},
-			{"BackCommand", "lym back", slackengine.PresenceTerminal, "", nil},
-			{"StatusCommand", "lym status", slackengine.PresenceTerminal, "", nil},
-			{"ABareCommandWordIsForwarded", "status", slackengine.PresenceSlack, slackengine.PresenceSlack, []mail{{primeOrch, "status"}}},
-			{"ApproveInPlainWordsIsForwarded", "approve it", slackengine.PresenceSlack, slackengine.PresenceSlack, []mail{{primeOrch, "approve it"}}},
-			{"ThePrefixBeforeAnUnknownCommandIsForwarded", "lym board list", slackengine.PresenceSlack, slackengine.PresenceSlack, []mail{{primeOrch, "lym board list"}}},
-			{"APresenceCommandWithMoreWordsIsForwarded", "lym back now", slackengine.PresenceSlack, slackengine.PresenceSlack, []mail{{primeOrch, "lym back now"}}},
+			{"BackCommand", "back", slackengine.PresenceTerminal, "", nil},
+			{"StatusCommand", "status", slackengine.PresenceTerminal, "", nil},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -1583,7 +1579,7 @@ func TestInboundRead(t *testing.T) {
 			wantPresence slackengine.Presence
 		}{
 			{"PlainText", "deploy prod", "the slack button of " + primeOrch + " is off, so this message was not forwarded", slackengine.PresenceTerminal},
-			{"AwayCommand", "lym away", "presence is now slack", slackengine.PresenceSlack},
+			{"AwayCommand", "away", "presence is now slack", slackengine.PresenceSlack},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -1625,7 +1621,7 @@ func TestInboundRead(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
 		h.updateEntry(paymentsOrch, func(entry *slackengine.ChannelEntry) { entry.Cursor = "100.000000" })
-		h.sayIn(paymentsChannel, "101.000001", "lym status")
+		h.sayIn(paymentsChannel, "101.000001", "status")
 		h.slack.failPosts(&slackengine.APIError{Method: "chat.postMessage", Code: "not_in_channel"})
 		h.hint(paymentsChannel)
 		h.mustDrain()
@@ -1643,7 +1639,7 @@ func TestInboundRead(t *testing.T) {
 			h := newHarness(t)
 			h.startAt("100.000000")
 			h.say("101.000001", "m1")
-			h.say("102.000001", "lym away")
+			h.say("102.000001", "away")
 			h.mailbox.setPostErr(errors.New("creel down"))
 			if _, err := h.readC1(); err == nil {
 				t.Fatalf("Drain = nil; want the post error")
@@ -1736,7 +1732,7 @@ func TestInboundRead(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
 		h.startAt("100.000000")
-		h.say("101.000001", "lym away")
+		h.say("101.000001", "away")
 		if err := os.MkdirAll(h.geom.PresencePath, 0o700); err != nil {
 			t.Fatalf("MkdirAll = %v", err)
 		}
@@ -1762,7 +1758,7 @@ func TestInboundRead(t *testing.T) {
 		if err := os.WriteFile(h.geom.PresencePath, []byte(`{"presence":"away"}`), 0o600); err != nil {
 			t.Fatalf("WriteFile = %v", err)
 		}
-		h.say("101.000001", "lym status")
+		h.say("101.000001", "status")
 		if _, err := h.readC1(); err == nil {
 			t.Fatalf("Drain = nil; want the presence read error")
 		}
@@ -1795,7 +1791,7 @@ func TestInboundRead(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
 		h.startAt("100.000000")
-		h.say("101.000001", "lym status")
+		h.say("101.000001", "status")
 		h.slack.failPosts(errors.New("slack down"))
 		h.mustReadC1()
 		h.wantCursorTS("101.000001")
@@ -1826,7 +1822,7 @@ func TestInboundRead(t *testing.T) {
 		if err := slackengine.WriteCredentials(h.geom.TokenPath, slackengine.Credentials{BotToken: "xoxb-secret", AppToken: "xapp-secret"}); err != nil {
 			t.Fatalf("WriteCredentials = %v", err)
 		}
-		h.say("101.000001", "lym status")
+		h.say("101.000001", "status")
 		h.mustReadC1()
 		h.wantAnswers("presence is terminal; this machine's app id is unknown, run lym slack login")
 	})
@@ -1846,32 +1842,32 @@ func TestInboundRead(t *testing.T) {
 			// wantPinned are the approvals the record holds after the command, their times left out.
 			wantPinned map[string]slackengine.Peer
 		}{
-			{"ApproveWithOneBotPinsItAndNamesItsAppID", []fakeBot{neveBot}, nil, "lym approve neve", []string{"approved neve: app id A0NEVE"}, pinnedNeve},
-			{"ApproveWithNoBotListsNothingAndPinsNothing", nil, nil, "lym approve neve", []string{"found no bot named lym-neve", "type lym approve neve &lt;app id&gt;"}, nil},
+			{"ApproveWithOneBotPinsItAndNamesItsAppID", []fakeBot{neveBot}, nil, "approve neve", []string{"approved neve: app id A0NEVE"}, pinnedNeve},
+			{"ApproveWithNoBotListsNothingAndPinsNothing", nil, nil, "approve neve", []string{"found no bot named lym-neve", "approve neve &lt;app id&gt;"}, nil},
 			{
 				"ApproveWithTwoBotsListsTheirAppIDsAndPinsNothing",
-				[]fakeBot{neveBot, {Name: "lym-neve", UserID: "UTWO", AppID: "A0TWO"}}, nil, "lym approve neve",
-				[]string{"A0NEVE", "A0TWO", "type lym approve neve &lt;app id&gt;"}, nil,
+				[]fakeBot{neveBot, {Name: "lym-neve", UserID: "UTWO", AppID: "A0TWO"}}, nil, "approve neve",
+				[]string{"A0NEVE", "A0TWO", "approve neve &lt;app id&gt;"}, nil,
 			},
 			{
 				"ApproveWithAnAppIDPinsTheBotOfThatAppWhateverItsNameAndKeepsTheIDAsWritten",
-				[]fakeBot{{Name: "lym-renamed", UserID: "UREN", AppID: "A0UPPER"}}, nil, "Lym APPROVE Neve A0UPPER",
+				[]fakeBot{{Name: "lym-renamed", UserID: "UREN", AppID: "A0UPPER"}}, nil, "APPROVE Neve A0UPPER",
 				[]string{"approved neve: app id A0UPPER"}, map[string]slackengine.Peer{"neve": {AppID: "A0UPPER", BotUserID: "UREN"}},
 			},
-			{"ApproveWithAnAppIDNoBotHoldsIsRefusedNamingStatus", []fakeBot{neveBot}, nil, "lym approve neve A0NONE", []string{"A0NONE", "`lym status`"}, nil},
-			{"RevokeRemovesThePin", nil, pinnedNeve, "lym revoke neve", []string{"revoked neve"}, nil},
-			{"RevokeWithNoPinIsAnsweredAsHavingNone", nil, nil, "lym revoke osl", []string{"osl has no approval to revoke"}, nil},
+			{"ApproveWithAnAppIDNoBotHoldsIsRefusedNamingStatus", []fakeBot{neveBot}, nil, "approve neve A0NONE", []string{"A0NONE", "`status`"}, nil},
+			{"RevokeRemovesThePin", nil, pinnedNeve, "revoke neve", []string{"revoked neve"}, nil},
+			{"RevokeWithNoPinIsAnsweredAsHavingNone", nil, nil, "revoke osl", []string{"osl has no approval to revoke"}, nil},
 			{
 				"ApproveNamingThisMachineIsRefusedNamingTheCommandForTheOtherMachine",
-				[]fakeBot{{Name: "lym-" + testHubMachine, UserID: "UHOME", AppID: "A0HOME"}}, nil, "lym approve " + testHubMachine,
-				[]string{"lym approve and lym revoke name another machine; type lym approve " + testHubMachine + " in a channel of that other machine"}, nil,
+				[]fakeBot{{Name: "lym-" + testHubMachine, UserID: "UHOME", AppID: "A0HOME"}}, nil, "approve " + testHubMachine,
+				[]string{"approve and revoke name another machine; type approve " + testHubMachine + " in a channel of that other machine"}, nil,
 			},
 			{
 				"ApproveNamingAFormerNameIsRefusedNamingTheCommandForTheOtherMachine",
-				nil, nil, "lym approve old_box",
-				[]string{"lym approve and lym revoke name another machine; type lym approve " + testHubMachine + " in a channel of that other machine"}, nil,
+				nil, nil, "approve old_box",
+				[]string{"approve and revoke name another machine; type approve " + testHubMachine + " in a channel of that other machine"}, nil,
 			},
-			{"ApproveWithAnInvalidNameIsRefusedNamingTheRule", nil, nil, "lym approve Bad_Name", []string{`the machine name "bad_name" is invalid`}, nil},
+			{"ApproveWithAnInvalidNameIsRefusedNamingTheRule", nil, nil, "approve Bad_Name", []string{`the machine name "bad_name" is invalid`}, nil},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -1928,7 +1924,7 @@ func TestInboundRead(t *testing.T) {
 		h := newHarness(t)
 		h.startAt("100.000000")
 		h.slack.bots = []fakeBot{{Name: "lym-neve", UserID: "UNEVE", AppID: "A0NEVE"}}
-		h.slack.add(testChannel, slackengine.Message{TS: "101.000001", User: "U2", Text: "lym approve neve"})
+		h.slack.add(testChannel, slackengine.Message{TS: "101.000001", User: "U2", Text: "approve neve"})
 		h.mustReadC1()
 		h.wantAnswers()
 		h.wantPosts()
@@ -1944,7 +1940,7 @@ func TestInboundRead(t *testing.T) {
 		h.slack.bots = []fakeBot{{Name: "lym-neve", UserID: "UNEVE", AppID: "A0NEVE"}}
 		outage := errors.New("users.list: ratelimited_or_down")
 		h.slack.failNext("BotUsersNamed", outage, outage)
-		h.say("101.000001", "lym approve neve")
+		h.say("101.000001", "approve neve")
 		if _, err := h.readC1(); err == nil {
 			t.Fatalf("Drain = nil; want the users.list refusal")
 		}

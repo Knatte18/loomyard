@@ -82,7 +82,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	for _, place := range places {
 		for _, entry := range place.entries {
 			if !filepath.IsLocal(filepath.FromSlash(entry)) {
-				return Config{}, configengine.MarkInvalid(fmt.Errorf("config key %q holds %q; want a path relative to the worktree's anchored directory that stays inside it", configengine.KeyName(configModule, openFilesKey+"."+place.name), entry))
+				return Config{}, configengine.MarkInvalid(fmt.Errorf("ide config key %q holds %q; want a path relative to the worktree's anchored directory that stays inside it", openFilesKey+"."+place.name, entry))
 			}
 		}
 	}

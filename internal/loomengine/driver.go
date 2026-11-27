@@ -26,9 +26,17 @@ const LoomDriverStrandName = agentname.RoleDriver
 // so every add and lookup must use it.
 const LoomStatusStrandName = "loom-status"
 
-// IsDriverStrand reports whether a strand recorded under name is the run's driver, by the driver role.
+// LegacyLoomDriverStrandName names a driver strand recorded before agent names existed.
+// No add ever uses it.
+// It exists because agentname.Matches reaches a legacy name only by equality,
+// so a "driver" query alone never sees it,
+// and a run in flight across the deploy would otherwise miss its own live driver and spawn a second one.
+const LegacyLoomDriverStrandName = "loom-driver"
+
+// IsDriverStrand reports whether a strand recorded under name is the run's driver:
+// it matches the driver role through agentname.Matches, or is exactly the legacy literal.
 func IsDriverStrand(name string) bool {
-	return agentname.Matches(name, LoomDriverStrandName)
+	return agentname.Matches(name, LoomDriverStrandName) || name == LegacyLoomDriverStrandName
 }
 
 // ResolveDriver parses and resolves the driver role's model-spec from cfg.

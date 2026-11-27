@@ -2,7 +2,7 @@
 // a Discussion-Review or Code-Review round's, and the drift judge's.
 // `answer` writes the parent's report for the run's latest ask and sets the ask done.
 // `await` is the asking agent's capped wait for that ask to end, setting it timeout once its deadline passed.
-// Each moves the ask only through burlerengine's ask record, under its one lock.
+// Both move the ask only through burlerengine's ask record, under its one lock.
 // The caller check guards against a mistaken call, not a forged strand name.
 
 package loomcli
@@ -145,7 +145,6 @@ func parentAnswerCallerRefusal(caller string, parent hubgeom.Parent, parentErr e
 
 // parentReviewWayDecision returns the way forward of a refused answer that no later answer can take:
 // a call the parent still wants made goes in with `lym loom decision add`.
-// Once the task's scope is closed, it is filed as a board note instead.
 // It names who runs that verb as its guard resolves it: the run's parent orch,
 // or the operator's own unnamed shell when no parent orch resolves or the resolved one has no name.
 func parentReviewWayDecision(slug string, parent hubgeom.Parent, parentErr error) string {
@@ -153,7 +152,7 @@ func parentReviewWayDecision(slug string, parent hubgeom.Parent, parentErr error
 	if parentErr == nil && parent.Name != "" {
 		who = "the run's parent orch " + parent.Name
 	}
-	return fmt.Sprintf(`way forward: a call the parent still wants made goes in with "lym loom decision add %s --by parent", run by %s; once the task's scope is closed, as from Code-Review on, file it instead as a board note for a new task with "lym board upsert" and kind note`, slug, who)
+	return fmt.Sprintf(`way forward: a call the parent still wants made goes in with "lym loom decision add %s --by parent", run by %s`, slug, who)
 }
 
 // parentAnswerRefusalText returns the refusal text of an answer to the ask numbered number that refusal turned down.
@@ -227,7 +226,7 @@ func parentReviewAnswerVerb(out io.Writer, slug string, deps parentReviewDeps, i
 // It reads the ask record once per poll interval.
 // An ask still pending-post or open at or past its deadline is set timeout, which ends it.
 // It answers ready true with the ask's state once the ask has ended.
-// That answer carries the reason of a not-sent or undelivered ask and the report of a done one.
+// That answer carries the reason of a not-sent ask and the report of a done one.
 // It answers ready false once the cap runs out first, and the caller runs it again.
 // A run with no ask is refused.
 func parentReviewAwaitVerb(ctx context.Context, out io.Writer, deps parentReviewDeps) int {
@@ -245,7 +244,7 @@ func parentReviewAwaitVerb(ctx context.Context, out io.Writer, deps parentReview
 		}
 		if ask.State.Ended() {
 			result := map[string]any{"ready": true, "ask": ask.Number, "state": string(ask.State)}
-			if ask.State == burlerengine.ParentAskNotSent || ask.State == burlerengine.ParentAskUndelivered {
+			if ask.State == burlerengine.ParentAskNotSent {
 				result["reason"] = ask.Reason
 			}
 			if ask.State == burlerengine.ParentAskDone {
@@ -361,8 +360,7 @@ in the file's order.
 It answers only the run's latest ask while that ask is pending-post or open
 and before its deadline; an ask at or past its deadline is set timeout and the
 answer refused. A call the parent still wants made after a refusal goes in with
-"lym loom decision add <slug> --by parent"; once the task's scope is closed, as
-from Code-Review on, it is filed as a board note for a new task instead.
+"lym loom decision add <slug> --by parent".
 
 The callers are the run's parent orch, resolved at call time, the orch strand
 the ask went to, and the operator's own unnamed shell; the strand name is not
@@ -388,8 +386,8 @@ Example:
 		Short:       "wait, capped, until the run's latest parent-review ask has ended",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `await waits until the run's latest parent-review ask has ended, and prints ok
-with ready true, the ask's state, the reason of a not-sent or undelivered ask
-and the report of a done one. An ask still pending-post or open at or past its deadline is set
+with ready true, the ask's state, the reason of a not-sent ask and the report
+of a done one. An ask still pending-post or open at or past its deadline is set
 timeout, which ends it. When the calling session's keep-warm cap elapses first
 it prints ok with ready false and exits 0: run it again, in a turn that does
 nothing else, with a shell command timeout above the cap. A run with no ask is

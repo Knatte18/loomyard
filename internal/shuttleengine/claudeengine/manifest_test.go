@@ -132,7 +132,7 @@ func TestPrepare_WritesTheManifest(t *testing.T) {
 	}{
 		{
 			name: "AutonomousSpecWithSkills", spec: base,
-			want: append(guards(slices.Concat(shellRowNames(shellguard.SwitchNone), shellRowNames(shellguard.SwitchDenyPython), shellRowNames(shellguard.SwitchDenyRawTmux))),
+			want: append(guards(append(shellRowNames(shellguard.SwitchNone), shellRowNames(shellguard.SwitchDenyPython)...)),
 				item(shuttleengine.ChannelPromptEngine, "prompt-engine", shuttleengine.DeliveryDelivered),
 				guard("question-deny"),
 				item(shuttleengine.ChannelSkillLoad, "scribe:prose", shuttleengine.DeliveryDelivered),
@@ -159,21 +159,12 @@ func TestPrepare_WritesTheManifest(t *testing.T) {
 			wantAbsent: []shuttleengine.ManifestItem{item(shuttleengine.ChannelPromptEngine, "prompt-engine", shuttleengine.DeliveryDelivered)},
 		},
 		{
-			name: "InteractiveSpecHoldsNoQuestionDenyAndTheTmuxScriptRow", spec: func() shuttleengine.Spec {
+			name: "InteractiveSpecHoldsNoQuestionDeny", spec: func() shuttleengine.Spec {
 				spec := base
 				spec.Interactive = true
 				return spec
 			}(),
-			want:       guards(shellRowNames(shellguard.SwitchDenyRawTmux)),
 			wantAbsent: []shuttleengine.ManifestItem{guard("question-deny")},
-		},
-		{
-			name: "AllowRawTmuxSpecHoldsNoTmuxScriptRow", spec: func() shuttleengine.Spec {
-				spec := base
-				spec.AllowRawTmux = true
-				return spec
-			}(),
-			wantAbsent: guards(shellRowNames(shellguard.SwitchDenyRawTmux)),
 		},
 		{
 			name: "ForkSubagentsHoldsTheWebsterForkDeny", spec: func() shuttleengine.Spec {

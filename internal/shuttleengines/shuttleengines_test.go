@@ -138,7 +138,7 @@ func TestNew(t *testing.T) {
 			return forksWithoutAuditEngine{}
 		},
 	}
-	unregistered := []string{"bogus", "registered engines: claude", "shuttle.engine in shuttle.yaml"}
+	unregistered := []string{"bogus", "registered engines: claude", "engine: in shuttle.yaml"}
 	invalidClaudeCfg, invalidClaudeDirs := invalidClaudeConfigFixture(t)
 	tests := []struct {
 		name         string

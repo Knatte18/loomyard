@@ -37,8 +37,6 @@ type Deps struct {
 	ReviewBase func() (string, error)
 	// ChangedFiles lists the files that exist at base and that the commits from base to HEAD change, each with its diff.
 	ChangedFiles func(base string) ([]fabricengine.FileDiff, error)
-	// RangeDiff reads the full diff of the commits from base to HEAD, added files included.
-	RangeDiff func(base string) (string, error)
 	// CommitMessages lists the whole message of every commit from base to HEAD.
 	CommitMessages func(base string) ([]string, error)
 	// Commit commits the told anchor-relative paths under the durable drift directory with the run's records.
@@ -97,7 +95,7 @@ type Deps struct {
 	CaptureCurrent func(ctx context.Context) (CurrentCapture, error)
 	// Sleep waits d or until ctx ends; it is the clock of the capture wait.
 	Sleep func(ctx context.Context, d time.Duration) error
-	// Compare runs the mechanical compare against the baseline and returns how it ended.
+	// Compare runs the mechanical compare against the baseline over the scope's skip list and returns how it ended.
 	Compare func(ctx context.Context) (CompareResult, error)
 	// GateFindingsFile is the file an exhausted gate entry's findings are kept in; empty keeps none.
 	GateFindingsFile string

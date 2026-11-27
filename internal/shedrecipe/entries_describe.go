@@ -6,9 +6,6 @@
 package shedrecipe
 
 import (
-	"slices"
-
-	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -27,9 +24,7 @@ import (
 // The table arrives as an injected shedadapters.TableSource closure.
 // Building it needs the fabric's landing geometry.
 // The Shed Recipe Registry Invariant bars this package from deriving that geometry.
-// The resolved gate is put ahead of the gate entries each table the source returns carries,
-// so the row's "gates" key guards the lead before the table's own entries are consulted.
-// A fresh spawn first resets what an earlier session recorded about its review.
+// The resolved gate is stamped onto each table the source returns, so the row's "gates" key guards the lead.
 func describeEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	gate, err := resolveGateSpec("Describe", cfg, env)
 	if err != nil {
@@ -47,18 +42,14 @@ func describeEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduce
 	if err := requireSeam("Describe", "Seats", env.Seats); err != nil {
 		return nil, err
 	}
-	// The producer builds the table before it prepares a fresh spawn, in the same call.
-	var built seatengine.Table
 	tables := func() (seatengine.Table, error) {
 		table, err := env.DescribeTable()
 		if err != nil {
 			return seatengine.Table{}, err
 		}
-		table.Gate = append(slices.Clone(gate), table.Gate...)
-		built = table
+		table.Gate = gate
 		return table, nil
 	}
-	resetReview := func() (string, error) { return "", landingshed.ResetDescribeReview(built) }
-	inner := shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, resetReview).KeepGateFindings(env.gateFindingsPath(row.Name))
+	inner := shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, nil).KeepGateFindings(env.gateFindingsPath(row.Name))
 	return loomshed.NewDiscussionWrite(row.Name, inner, env.CommitDescription), nil
 }

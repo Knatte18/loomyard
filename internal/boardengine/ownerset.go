@@ -1,4 +1,4 @@
-// ownerset.go holds the owner write, which alone records a beam project's owner machine and the hub's prime owner.
+// ownerset.go holds the owner write, the only writer of a beam project's owner machine and of the hub's prime owner.
 //
 // SetOwners records a machine as the owner of named beam projects in one pull-first Bolt commit and pushes it;
 // ReadOwners reads the owners a board directory's local board.json records;

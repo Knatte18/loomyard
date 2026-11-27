@@ -2,36 +2,35 @@
 
 ## Code
 
-- `PATTERN-code-conventions` — Writing code: a package's `doc.go` documents only that package; a name or path that can go stale is one named constant; no language, engine or code branch is hard-coded, and a branch lym owns in its records namespace is one named constant in fabric. — [background](pattern/PATTERN-code-conventions.md)
+- `PATTERN-code-conventions` — Writing code: a package's `doc.go` documents only that package; a name or path that can go stale is one named constant; no language, engine or branch is hard-coded. — [background](pattern/PATTERN-code-conventions.md)
 
 ## Paths and geometry
 
-- `PATTERN-cwd-resolution` — Resolving a cwd, worktree root or anchor: only `lymcwd`, from the worktree's weft-root `.lym-anchor`; only `fabricengine` writes or git-reads it; engines get absolute paths, never import lymcwd; hub containers and workspace files stay hub-reachable only. (test) — [background](pattern/PATTERN-cwd-resolution.md)
+- `PATTERN-cwd-resolution` — Resolving a cwd, worktree root or anchor: only `lymcwd`, from the `.lym-anchor` at the worktree's records root; only `fabricengine` writes or git-reads it; engines get absolute paths, never import lymcwd; hub containers and workspace files stay hub-reachable only. (test) — [background](pattern/PATTERN-cwd-resolution.md)
 - `PATTERN-lym-files` — Placing a file, temp dir, lock or link: tracked under `_lym`, never-tracked under `.lym` as a cache a fresh machine rebuilds or starts without; named only by `lymdirs`; temp under `lymtemp`, lock paths via `lock`, links via `fslink`. (test) — [background](pattern/PATTERN-lym-files.md)
 - `PATTERN-leaf-packages` — Importing into a leaf package: only closed import set. — [background](pattern/PATTERN-leaf-packages.md)
 
 ## CLI and config
 
 - `PATTERN-cli-cobra` — Adding or wiring a CLI module: a cobra subtree under one root in `cmd/lym/main.go`; standalone wiring only through `internal/cliwire`. (test) — [background](pattern/PATTERN-cli-cobra.md)
-- `PATTERN-config-layers` — Loading, writing or changing config: layers only through `configengine`; a hub base file holds only tuned units; a meaning change ships a reinterpretation, a key move a move table, both run by `hubreconcile`; a per-task beam setting is read only via `dobbyengine`'s one lookup. — [background](pattern/PATTERN-config-layers.md)
-- `PATTERN-config-key-names` — Naming a config key in a message, comment, doc or stencil: in full, `<module>.<dotted path>`, rendered in Go by `configengine`'s one key-name helper from named constants.
+- `PATTERN-config-layers` — Loading, writing or changing the meaning of config: layers only through `configengine`; a hub base file holds only tuned units; a meaning change ships a reinterpretation `hubreconcile` applies. — [background](pattern/PATTERN-config-layers.md)
 - `PATTERN-refusal-way-forward` — Adding webster, shed or loom refusal: message names the way forward and a test reaches it; no refusal, stencil or spec names a step agents' settings deny. (test) — [background](pattern/PATTERN-refusal-way-forward.md)
 
 ## Fabric and git
 
 - `PATTERN-fabric-boundary` — Changing fabric or running git on warp or weft: only `internal/fabricengine`, called "fabric", which learns nothing of IDEs, shuttle, the board or heddle. (test) — [background](pattern/PATTERN-fabric-boundary.md)
-- `PATTERN-single-repo-hub` — Running a hub as one repository: a code store and a records store of one origin, records and the board under origin's `refs/lym/`, mapped by the records store's refspecs; only fabric reads the layout. — [background](pattern/PATTERN-single-repo-hub.md)
 - `PATTERN-gitrepo-client-boundary` — Running git or writing remote-tracking refs: through `gitexec` and `gitrepo`, raw only at pinned sites; fetch, pull and push under the remote-refs lock. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
-- `PATTERN-pair-remote` — Pushing run records or tearing down a pair: the code branch goes along after the records side, from the worktree's background pusher, which no transition waits for; a pair's remote steps hold the slug's teardown lock; teardown only via `internal/pairteardown`. (test) — [background](pattern/PATTERN-pair-remote.md)
-- `PATTERN-owner-machine` — Starting, resuming, pushing or landing a run, a Finalize past its merge included, or picking a pair's parent: only on the entry's owner machine, read via hubgeom's `ParentOf` and Bolt's machine registry; a loom pusher reconciles first; after absence, a catch-up from origin first. — [background](pattern/PATTERN-owner-machine.md)
-- `PATTERN-landing` — Landing on a local parent branch or deciding on a pull request: only in a run's Finalize under `internal/parentlock`'s lock; landingshed's one resolver decides the pull request; only the operator ends a pull request's review, whatever the run's autonomy. — [background](pattern/PATTERN-landing.md)
+- `PATTERN-single-repo-hub` — Running a hub as one repository: records on each code branch, the board on `lym-bolt`; merges, pull request views and code identity strip the records paths. — [background](pattern/PATTERN-single-repo-hub.md)
+- `PATTERN-pair-remote` — Pushing run records or tearing down a pair: the code branch goes along after the records side, both before the run acts; a pair's remote steps hold the slug's teardown lock; teardown only via `internal/pairteardown`. (test) — [background](pattern/PATTERN-pair-remote.md)
+- `PATTERN-owner-machine` — Starting, resuming, pushing or landing a run, a Finalize past its merge included, or picking a pair's parent: only on the entry's owner machine, read through hubgeom's one `ParentOf` and Bolt's machine registry; after an absence, a catch-up from origin first. — [background](pattern/PATTERN-owner-machine.md)
+- `PATTERN-landing` — Landing on a local parent branch or deciding on a pull request: only in a run's Finalize under `internal/parentlock`'s lock; landingshed's one resolver decides the pull request. — [background](pattern/PATTERN-landing.md)
 - `PATTERN-github-auth` — Calling GitHub: auth only via internal/githubclient; no other production package runs gh; only lym selfreport create files an issue; only PR-Review, Finalize, `lym beam pr` and pair teardown open, reopen, merge or close a pull request; `lym beam pr` never merges. (test)
 
 ## Shed and loom
 
 - `PATTERN-shed-recipe-registry` — Adding a producer, recipe row, block gate or loom recipe: one `shedrecipe` map, row values by key; a loom recipe declares `contract: loom`. — [background](pattern/PATTERN-shed-recipe-registry.md)
 - `PATTERN-shed-driver` — Driving or stopping a shed run: verbs in `shedverbs`, the loop in `sheddriver`, paths in `shedrun`, shared machinery in shed; one stop chain; transient marks only via `shedengine`. (test) — [background](pattern/PATTERN-shed-driver.md)
-- `PATTERN-run-fsm` — Reading or acting on a run's lifecycle state: only `internal/runfsm`'s states and act rule; a transition commits and the run acts at once, a background pusher bringing every commit to origin in order; a run whose record holds another machine's takeover hands over, never replays. — [background](pattern/PATTERN-run-fsm.md)
+- `PATTERN-run-fsm` — Reading or acting on a run's lifecycle state: only `internal/runfsm`'s states and act rule; a transition commits and pushes before the run acts, bar a prime push failing `protected`; an `operator_unpushed` push is owed; another machine's takeover hands over, never replays. — [background](pattern/PATTERN-run-fsm.md)
 - `PATTERN-dobby-runs` — Starting or holding a board task's run: only its parent's dobby, started with its orch bar `lym adopt --no-orch`; front tasks only via `fronttask`; an adopt holds the hub through Bolt's holds until an adopt's check is green. — [background](pattern/PATTERN-dobby-runs.md)
 - `PATTERN-run-records` — Writing a run's friction note, usage record or project record: only its one writer, `internal/friction`, shed's usage writer or `lym loom decision add` or `replace`. (test) — [background](pattern/PATTERN-run-records.md)
 - `PATTERN-tolerant-records` — Go-written JSON records: never refuse an unknown key; rewrite via `internal/state`. (test) — [background](pattern/PATTERN-tolerant-records.md)
@@ -50,12 +49,12 @@
 
 ## Processes and waits
 
-- `PATTERN-child-processes` — Starting or ending a process: log the spawn via `internal/logger`; its starter waits on it, bar a double fork's intermediate; a run's processes register in `internal/runproc` and end only via it, orphans via `EndProcess`; a pinned or spawned lym is named via `selfexec.LymBinary`. — [background](pattern/PATTERN-child-processes.md)
+- `PATTERN-child-processes` — Starting or ending a process: log the spawn via `internal/logger`; its starter waits on it, bar a double fork's intermediate; a run's processes register in `internal/runproc` and end only through it; a pinned or spawned lym command names its binary via `selfexec.LymBinary`. — [background](pattern/PATTERN-child-processes.md)
 - `PATTERN-daemon-wakeups` — Waiting: an unbounded wait wakes at most once a second and backs off while idle; a wait an agent blocks on takes its cap from the keep-warm resolver. (test) — [background](pattern/PATTERN-daemon-wakeups.md)
 
 ## Testing
 
-- `PATTERN-test-speed` — Writing or running a test: via `lym gate test` by key; one `tiergate.Require` tier, lowest that fits; it pins behavior no other test covers; skips, clocks, `t.Parallel`, `//lym:seam` and `//lym:watch` per the background. (test) — [background](pattern/PATTERN-test-speed.md)
-- `PATTERN-test-stand-ins` — A test's stand-in: never for a repository module's state, records, config or output; drive the real module or move the test there. For something outside: below the one module reaching it, one per boundary, answering only recordings, held to it by a contract test. — [background](pattern/PATTERN-test-stand-ins.md)
+- `PATTERN-test-speed` — Writing or running a test: via `lym gate test` by key; one `tiergate.Require` tier, lowest that fits; it pins behavior no other test covers, which the redundancy and reach reports check; skips, clocks, `t.Parallel`, `//lym:seam` and `//lym:watch` per the background. (test) — [background](pattern/PATTERN-test-speed.md)
+- `PATTERN-coverage-map-reader` — Reading the coverage maps across packages or finding a diff's changed functions: only through `internal/testreach`; only the prime's `--map` run writes its index; a report step's review note is used only when it matches HEAD's tree. (test) — [background](pattern/PATTERN-coverage-map-reader.md)
 - `PATTERN-test-isolation` — Testing package: hermetic git and `tmuxkit.Main`; shared support in one `internal/testkit/<kit>/`; a read-only or unreadable directory via `permkit.Chmod`; hub fixtures via `hubforge`. (test) — [background](pattern/PATTERN-test-isolation.md)
 - `PATTERN-test-only-code` — Writing a function only tests call: it lives in a `_test.go` file or a test-support package (`internal/testkit`, `gitkit`, `hubforge`), never a production file; every other function is reachable from a `main` package. (test) — [background](pattern/PATTERN-test-only-code.md)

@@ -21,14 +21,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/runfsm"
-	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
-	"github.com/Knatte18/loomyard/internal/statuscommit"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -39,11 +36,6 @@ const (
 	taskSlug     = "alpha"
 )
 
-// TestAdoptIntegration_SecondCloneTakesOver moves a run from the first clone's machine to the second clone.
-// The first clone commits one more transition of the run after its last push.
-// Under go test that commit starts no pusher, so origin lacks it.
-// The second clone reads the run at the last transition origin holds.
-// Its resume re-runs that row.
 func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -98,10 +90,6 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	second := hubforge.CloneSecond(t, first)
 	seedAdoptGate(t, second)
 	firstState := runStateOf(t, first)
-	commitTransitionLocally(t, first.Location)
-	if ahead, err := fabricengine.RunCommitsAhead(first.Location); err != nil || !ahead {
-		t.Fatalf("RunCommitsAhead(first clone) = %v, %v; want true, since the transition's pusher did not start and origin lacks the commit", ahead, err)
-	}
 
 	machine, err := machinename.Name()
 	if err != nil {
@@ -134,39 +122,6 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	}
 	if secondState := runStateOf(t, second); secondState != firstState {
 		t.Errorf("the run reads %v on the second clone, want the %v it read on the first", secondState, firstState)
-	}
-}
-
-// commitTransitionLocally commits one more running transition of the task's run at the prime l.
-// It goes through the status commit core, as a batten transition does.
-// The core commits and starts the pusher, which under go test spawns nothing.
-func commitTransitionLocally(t *testing.T, l *lymcwd.Location) {
-	t.Helper()
-	status, err := json.Marshal(shedengine.Status{CurrentProducer: "Seed-Child", State: shedengine.StateRunning, History: []shedengine.HistoryEntry{}})
-	if err != nil {
-		t.Fatalf("marshal the run status: %v", err)
-	}
-	if err := os.WriteFile(shedrun.StatusFile(l, taskSlug), status, 0o644); err != nil {
-		t.Fatalf("write the run status: %v", err)
-	}
-	target, err := runpusher.TargetOf(l, taskSlug)
-	if err != nil {
-		t.Fatalf("TargetOf(%q): %v", taskSlug, err)
-	}
-	seam := statuscommit.New(statuscommit.Deps{
-		MergeActive: func() (bool, error) { return fabricengine.MergeStateActive(l) },
-		Commit: func(msg string) (bool, error) {
-			trailers := []fabricengine.Trailer{{Key: fabricengine.TransitionTrailerKey, Value: taskSlug}}
-			_, committed, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(""), l, []string{shedrun.StatusRel(l, taskSlug)}, msg, trailers, fabricengine.EnvSyncOptions())
-			return committed, err
-		},
-		StartPush: func() bool {
-			started, err := runpusher.Start(target)
-			return err == nil && started
-		},
-	}, "batten", "adopttest", nil)
-	if err := seam("Seed-Child", "running"); err != nil {
-		t.Fatalf("commit the transition: %v", err)
 	}
 }
 

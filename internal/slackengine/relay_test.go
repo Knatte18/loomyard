@@ -328,9 +328,12 @@ func TestRunRelay(t *testing.T) {
 	t.Run("RefusedHubMailsTheOperatorOnceAndExitsWithTheRefusal", func(t *testing.T) {
 		t.Parallel()
 		bothTokens := slackengine.Credentials{BotToken: "xoxb-secret", AppToken: "xapp-secret", AppID: "A1"}
-		withNoChannelMap := func(r *relayRun) {
+		withOnlyAnOlderSetupChannel := func(r *relayRun) {
 			if err := os.Remove(r.geom.ChannelMapPath); err != nil {
 				r.t.Fatalf("Remove = %v", err)
+			}
+			if err := slackengine.WriteSetup(r.geom.SetupPath, slackengine.Setup{ChannelID: "C7", OperatorID: testOperator}); err != nil {
+				r.t.Fatalf("WriteSetup = %v", err)
 			}
 		}
 		tests := []struct {
@@ -344,11 +347,14 @@ func TestRunRelay(t *testing.T) {
 			{"BotTokenAloneNamesTheAppLevelTokenAndPostsToThePrimeChannel",
 				slackengine.Credentials{BotToken: "xoxb-secret"}, nil,
 				[]string{"app-level token (xapp-)", "lym slack login", "lym slack start"}, testChannel},
-			{"BotTokenAloneWithNoChannelMapPostsNothing",
-				slackengine.Credentials{BotToken: "xoxb-secret"}, withNoChannelMap,
-				[]string{"app-level token (xapp-)", "lym slack login", "lym slack start"}, ""},
+			{"BotTokenAloneWithOnlyAnOlderSetupChannelPostsThere",
+				slackengine.Credentials{BotToken: "xoxb-secret"}, withOnlyAnOlderSetupChannel,
+				[]string{"app-level token (xapp-)", "lym slack login", "lym slack start"}, "C7"},
 			{"AppLevelTokenAloneNamesTheBotTokenAndPostsNothing",
 				slackengine.Credentials{AppToken: "xapp-secret", AppID: "A1"}, nil,
+				[]string{"bot token (xoxb-)", "lym slack login", "lym slack start"}, ""},
+			{"AppLevelTokenAloneWithOnlyAnOlderSetupChannelPostsNothing",
+				slackengine.Credentials{AppToken: "xapp-secret", AppID: "A1"}, withOnlyAnOlderSetupChannel,
 				[]string{"bot token (xoxb-)", "lym slack login", "lym slack start"}, ""},
 			{"BothTokensAndNoSetupNamesTheOperatorVerbAndPostsToThePrimeChannel",
 				bothTokens, func(r *relayRun) {
@@ -1100,8 +1106,7 @@ func TestRunRelay(t *testing.T) {
 		r := newRelayRun(t)
 		r.startAt("100.000000")
 		r.deps.Watch = func(string, ...string) (*fswatch.Watcher, error) { return nil, errors.New("inotify is unavailable") }
-		// The first outbound read's wake drains the inbox too, so the hint waits until it is done.
-		r.settle()
+		r.start()
 		for _, wait := range []time.Duration{time.Second, 2 * time.Second} {
 			r.clock.awaitWait(t, wait)
 			r.clock.Advance(wait)

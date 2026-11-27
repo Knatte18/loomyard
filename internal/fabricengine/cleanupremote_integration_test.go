@@ -14,7 +14,6 @@ package fabricengine_test
 
 import (
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -198,74 +197,34 @@ func TestCleanup_NeverPushedOrphanIsIdempotentOnRemote(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-never-pushed-weft"
-	tests := []struct {
-		name  string
-		build func(t *testing.T) *hubforge.Hub
-		// plantCodeBranch creates a code branch named like the orphan on origin and returns its tip, or "" for none.
-		plantCodeBranch func(t *testing.T, h *hubforge.Hub) string
-	}{
-		{
-			name:  "TwoRepository",
-			build: func(t *testing.T) *hubforge.Hub { return hubforge.CopyHub(t, hubforge.Shape{Anchor: "."}) },
-		},
-		{
-			name:  "OneRepository",
-			build: func(t *testing.T) *hubforge.Hub { return hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{}) },
-			// A tip read that ignored the namespace would find this code branch and delete it as the orphan's origin copy.
-			plantCodeBranch: func(t *testing.T, h *hubforge.Hub) string {
-				tip := gitkit.RevParse(t, h.CodeBare, "refs/heads/main")
-				gitkit.Git(t, h.CodeBare, "update-ref", "refs/heads/"+branch, tip)
-				return tip
-			},
-		},
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	l := h.Location
+	weftRoot := mustRecordsRepoRoot(t, l)
+
+	mustCreateOrphanWeftBranch(t, weftRoot, branch)
+	// Never pushed, so the remote has no ref to delete.
+
+	topology := h.Topology
+	res, err := topology.Cleanup(l, true, false, true)
+	if err != nil {
+		t.Fatalf("Cleanup(apply=true, remote=true) error = %v", err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 
-			h := tt.build(t)
-			l := h.Location
-			weftRoot := mustRecordsRepoRoot(t, l)
+	entry := findCleanupEntry(t, res.Entries, branch)
+	if !entry.Deleted {
+		t.Errorf("entry.Deleted = false; want true")
+	}
+	if entry.RemoteDeleted {
+		t.Errorf("entry.RemoteDeleted = true; want false — the ref was never on the remote")
+	}
+	if entry.RemoteError != "" {
+		t.Errorf("entry.RemoteError = %q; want empty — an already-absent remote ref is idempotent success", entry.RemoteError)
+	}
 
-			mustCreateOrphanWeftBranch(t, weftRoot, branch)
-			// Never pushed, so the remote has no ref to delete.
-			codeTip := ""
-			if tt.plantCodeBranch != nil {
-				codeTip = tt.plantCodeBranch(t, h)
-			}
-			headsBefore := refLines(t, h.RecordsBare, "%(refname) %(objectname)", "refs/heads/", "refs/lym/heads/")
-
-			topology := h.Topology
-			res, err := topology.Cleanup(l, true, false, true)
-			if err != nil {
-				t.Fatalf("Cleanup(apply=true, remote=true) error = %v", err)
-			}
-
-			entry := findCleanupEntry(t, res.Entries, branch)
-			if !entry.Deleted {
-				t.Errorf("entry.Deleted = false; want true")
-			}
-			if entry.RemoteDeleted {
-				t.Errorf("entry.RemoteDeleted = true; want false — the ref was never on the remote")
-			}
-			if entry.RemoteError != "" {
-				t.Errorf("entry.RemoteError = %q; want empty — an already-absent remote ref is idempotent success", entry.RemoteError)
-			}
-
-			for _, m := range res.Mutated().Entries() {
-				if m.Kind == fabricengine.KindRemoteBranchDeleted && m.Target == branch {
-					t.Errorf("mutation record has a %s entry for %q; want none, since nothing was deleted on the remote", fabricengine.KindRemoteBranchDeleted, branch)
-				}
-			}
-			if codeTip != "" {
-				if got := gitkit.RevParse(t, h.CodeBare, "refs/heads/"+branch); got != codeTip {
-					t.Errorf("origin's code branch %s = %s; want it kept at %s", branch, got, codeTip)
-				}
-			}
-			if got := refLines(t, h.RecordsBare, "%(refname) %(objectname)", "refs/heads/", "refs/lym/heads/"); !slices.Equal(got, headsBefore) {
-				t.Errorf("origin's branches = %v; want them as they were, %v", got, headsBefore)
-			}
-		})
+	for _, m := range res.Mutated().Entries() {
+		if m.Kind == fabricengine.KindRemoteBranchDeleted && m.Target == branch {
+			t.Errorf("mutation record has a %s entry for %q; want none, since nothing was deleted on the remote", fabricengine.KindRemoteBranchDeleted, branch)
+		}
 	}
 }
 

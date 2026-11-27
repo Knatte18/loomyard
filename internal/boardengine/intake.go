@@ -250,7 +250,7 @@ func (s *Store) importNote(req ImportRequest) (ImportResult, error) {
 		case len(typeLabels) > 1:
 			return ImportResult{}, fmt.Errorf("issue #%d carries more than one type label (%s), and a note takes exactly one: pass labels naming the one to use", issue.Number, strings.Join(typeLabels, ", "))
 		case len(typeLabels) == 0:
-			return ImportResult{}, fmt.Errorf("issue #%d carries no type label the board knows (%s): pass labels with one type label of %s in board.yaml", issue.Number, strings.Join(vocab.Types, ", "), typesName())
+			return ImportResult{}, fmt.Errorf("issue #%d carries no type label the board knows (%s): pass labels with one type label from the types list of board.yaml", issue.Number, strings.Join(vocab.Types, ", "))
 		}
 	}
 

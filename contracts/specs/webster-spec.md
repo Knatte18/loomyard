@@ -69,7 +69,6 @@ A long-lived Master session alone has full oversight of what shipped, which is w
 A `summary.md` may additionally carry two sections the verify gate produces.
 When the gate's rerun passes a failing plan-level verify, the identities that failed once are flaky.
 `internal/websterengine`'s `AppendIntegrationTriage` appends an `## Integration suite triage` section listing them.
-A first run whose output named no failing test or package is listed apart, by its log, as a failure of the verify command.
 The run keeps its outcome.
 When the gate sends a failure back to Merriam, Merriam answers with one fixer, a fork or the cold fixer.
 Merriam then rewrites `summary.md` with a `## Verify gate fixes` section.
@@ -86,8 +85,7 @@ A `gate.yaml` that cannot be loaded, or a `webster` key naming an undeclared tie
 The error names `lym config gate`.
 Merriam's strand role is `webster`, so its agent name is `<shortname>:<slug>:webster`.
 A failing run is rerun once;
-a pass on the rerun passes the gate and records the failing identities as flaky,
-each with the first run's log path and output tail, which the `webster-verify-triage` friction note keeps.
+a pass on the rerun passes the gate and records the failing identities as flaky.
 A run that exceeds the verify timeout is not rerun, since a hang is not flakiness:
 it fails the gate at once with the timeout, the log path and the log tail as findings.
 A failure that survives the rerun, or a tree that is not clean, is returned to Merriam as findings.
@@ -97,7 +95,7 @@ The gate routes each failure to a fixer and records it as `fixer` in `verify-gat
 The default fixer is a fork in Merriam's session, on Merriam's model.
 The cold fixer takes the last attempt, and every attempt after a fixer that committed nothing.
 `lym webster fix-verify` spawns the cold fixer as its own strand at the `recovery` role.
-`webster.verify_gate_attempts` bounds the attempts;
+`verify_gate_attempts` in `webster.yaml` bounds the attempts;
 an exhausted gate ends the run `stuck`, as does a fixer commit the gate rejects.
 Nothing runs the suite after the session ends.
 

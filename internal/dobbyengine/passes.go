@@ -34,12 +34,6 @@ type RunView struct {
 	// State is batten's status state and Producer its current producer.
 	State    string
 	Producer string
-	// HistoryLen is the length of batten's status history.
-	// LastRepeats is the folded repeats of its last entry, zero for an empty history.
-	HistoryLen  int
-	LastRepeats int
-	// Error is batten's status reason.
-	Error string
 	// StatusModified is the modification time of batten's own status file and ChildStatusModified that of the child's status file.
 	StatusModified      time.Time
 	ChildStatusModified time.Time
@@ -54,8 +48,9 @@ type RunView struct {
 	DriverLockHeld bool
 	// Covered reports whether a pause entry covers the hub or the slug.
 	Covered bool
-	// Held reports whether a live pause entry of the run's own scope is a bolt-hold entry.
-	// It carries pauserecord.BoltHoldCaller, and the dobby lifts it itself.
+	// Held reports whether a live pause entry of the run's own scope is an adopt pause or a bolt-hold entry.
+	// An adopt pause carries pauserecord.AdoptCaller, or the legacy pauserecord.HoldCaller, and only a hand lifts it.
+	// A bolt-hold entry carries pauserecord.BoltHoldCaller, and the dobby lifts it itself.
 	Held bool
 	// NoSlot reports whether the run takes no slot under max_runs: a pawl run whose landing hold does not stand.
 	NoSlot bool

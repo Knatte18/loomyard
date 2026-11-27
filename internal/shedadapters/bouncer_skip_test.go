@@ -46,7 +46,7 @@ func TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit(t *testing.T) {
 	if shuttle.Called || shuttle.AttachCalled {
 		t.Errorf("shuttle called = %v, attach called = %v; want neither", shuttle.Called, shuttle.AttachCalled)
 	}
-	if _, err := os.Stat(FocusPath(cfg.RunDir, 1)); !os.IsNotExist(err) {
+	if _, err := os.Stat(focusPath(cfg.RunDir, 1)); !os.IsNotExist(err) {
 		t.Errorf("round 1 focus file stat error = %v; want not-exist", err)
 	}
 	if len(callLog) != 2 || callLog[0] != "approve" || callLog[1] != "commit" {
@@ -93,7 +93,7 @@ func TestBouncer_Skip_FalseOrErrorSeedsRoundOne(t *testing.T) {
 			if approveCalls != 0 {
 				t.Errorf("Approve call count = %d; want 0", approveCalls)
 			}
-			if _, err := os.Stat(FocusPath(cfg.RunDir, 1)); err != nil {
+			if _, err := os.Stat(focusPath(cfg.RunDir, 1)); err != nil {
 				t.Errorf("round 1 focus file stat error = %v; want it present", err)
 			}
 		})

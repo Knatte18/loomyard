@@ -61,7 +61,7 @@ const parentDeadlineLayout = "2006-01-02 15:04:05 MST"
 // The time is in RFC 3339 with nanoseconds.
 // A fresh start, a new generation and a clear each write that file anew; a goto, a resume and a restarted row keep it.
 func roundSeed(runDir string) (string, error) {
-	info, err := os.Stat(FocusPath(runDir, 1))
+	info, err := os.Stat(focusPath(runDir, 1))
 	if err != nil {
 		return "", err
 	}
@@ -218,13 +218,13 @@ func (a *parentAsker) send(seed string, round int) int {
 }
 
 // post posts ask's line to the strand it records and sets the ask open.
-// A failed post sets the ask undelivered with the error as its reason, and the round goes on without the parent.
+// A failed post sets the ask no-parent with the error as its reason, and the round goes on without the parent.
 func (a *parentAsker) post(ask burlerengine.ParentAsk) {
 	seat := a.seat
 	if err := seat.Post(ask.Strand, ParentAskLine(seat.Tag, seat.Slug, a.subject(ask.Round), ask)); err != nil {
 		logger.Warn("shedadapters: the parent-review request was not delivered; the round goes on without the parent", "producer", a.name, "engine", a.engine, "round", ask.Round, "ask", ask.Number, "error", err)
-		if _, _, endErr := burlerengine.EndParentAsk(seat.Files, ask.Number, burlerengine.ParentAskUndelivered, fmt.Sprintf("the request was not delivered: %s", err)); endErr != nil {
-			logger.Warn("shedadapters: the undelivered parent-review ask was not set undelivered", "producer", a.name, "engine", a.engine, "ask", ask.Number, "error", endErr)
+		if _, _, endErr := burlerengine.EndParentAsk(seat.Files, ask.Number, burlerengine.ParentAskNoParent, fmt.Sprintf("the request was not delivered: %s", err)); endErr != nil {
+			logger.Warn("shedadapters: the undelivered parent-review ask was not set no-parent", "producer", a.name, "engine", a.engine, "ask", ask.Number, "error", endErr)
 		}
 		return
 	}

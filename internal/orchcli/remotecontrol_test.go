@@ -1,5 +1,5 @@
 // remotecontrol_test.go covers remote control without a live session:
-// the name a launch passes and the pane it marks once the session connects, and the RC click over a fake inject.
+// the name a launch passes and the pane it marks, and the RC click over a fake inject and mark.
 
 package orchcli
 
@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -27,8 +26,7 @@ import (
 const remoteControlTemplate = "{machine}::{name}"
 
 // TestStart_LaunchPassesAndMarksRemoteControl pins the name a relaunch passes on the orch spec.
-// It also pins the pane mark the relaunch asks for:
-// the new strand's guid once the session records its connection past the pre-launch checkpoint, and none otherwise.
+// It also pins the pane mark the relaunch asks for: the new strand's guid when the name is set, and none otherwise.
 func TestStart_LaunchPassesAndMarksRemoteControl(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -48,31 +46,16 @@ func TestStart_LaunchPassesAndMarksRemoteControl(t *testing.T) {
 		markErr error
 		// recordedSession seeds the orch state with this session id, so the launch resumes it.
 		recordedSession string
-		// resumeErr fails the resume of recordedSession, so the launch falls back to a fresh session.
-		resumeErr error
-		// notConnected makes the session record no remote-control connection, as when the provider refuses it.
-		notConnected bool
-		// checkpointErr fails the read of the record's end before a resume.
-		checkpointErr error
-		wantName      string
-		// wantAwait is the session and checkpoint the connection was awaited from, empty for no wait.
-		wantAwait string
-		wantMark  bool
+		wantName        string
 	}{
-		{name: "SwitchOn", switchOn: true, wantName: "neve::tst:orch", wantAwait: "minted-id@0", wantMark: true},
-		{name: "RefusedConnectionLeavesThePaneUnmarked", switchOn: true, notConnected: true, wantName: "neve::tst:orch", wantAwait: "minted-id@0"},
-		{name: "FailedMarkStillLaunches", switchOn: true, markErr: errors.New("tmux is gone"), wantName: "neve::tst:orch", wantAwait: "minted-id@0", wantMark: true},
+		{name: "SwitchOn", switchOn: true, wantName: "neve::tst:orch"},
+		{name: "FailedMarkStillLaunches", switchOn: true, markErr: errors.New("tmux is gone"), wantName: "neve::tst:orch"},
 		{name: "SwitchOff"},
 		{name: "EngineWithoutRemoteControl", switchOn: true, noRemoteControl: true},
-		{name: "CodexDefaultEngineStillTakesTheOrchsPinnedEngine", switchOn: true, codexDefault: true, wantName: "neve::tst:orch", wantAwait: "minted-id@0", wantMark: true},
+		{name: "CodexDefaultEngineStillTakesTheOrchsPinnedEngine", switchOn: true, codexDefault: true, wantName: "neve::tst:orch"},
 		{name: "NoListedStrandWithoutAFixedName", switchOn: true, unlisted: true},
 		{name: "MachineNameFails", switchOn: true, machineErr: errors.New("no hostname")},
-		{name: "ResumedSessionCountsOnlyPastTheCheckpoint", switchOn: true, recordedSession: "sess-1", wantName: "neve::tst:orch", wantAwait: "sess-1@42", wantMark: true},
-		{
-			name: "ResumeFallingBackToAFreshLaunchCountsTheWholeTranscript", switchOn: true, recordedSession: "sess-1", resumeErr: noTranscriptErr,
-			wantName: "neve::tst:orch", wantAwait: "minted-id@0", wantMark: true,
-		},
-		{name: "UnreadableCheckpointLeavesThePaneUnmarked", switchOn: true, recordedSession: "sess-1", checkpointErr: errors.New("transcript unreadable"), wantName: "neve::tst:orch"},
+		{name: "ResumedSession", switchOn: true, recordedSession: "sess-1", wantName: "neve::tst:orch"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -82,18 +65,12 @@ func TestStart_LaunchPassesAndMarksRemoteControl(t *testing.T) {
 				listed = append(listed, reedengine.StrandStatus{GUID: "old-guid", Name: "tst:orch"})
 			}
 			h := newStartHarness(t, listed...)
-			h.starter.resumeErr = tt.resumeErr
 			h.cli.cfg.RemoteControl, h.cli.cfg.RemoteControlName = tt.switchOn, remoteControlTemplate
 			h.cli.machineName = func() (string, error) { return "neve", tt.machineErr }
-			var marked, awaited []string
+			var marked []string
 			h.cli.markRemoteControl = func(guid string) error {
 				marked = append(marked, guid)
 				return tt.markErr
-			}
-			h.cli.remoteControlCheckpoint = func(string) (int64, error) { return 42, tt.checkpointErr }
-			h.cli.awaitRemoteControl = func(sessionID string, checkpoint int64) (bool, error) {
-				awaited = append(awaited, fmt.Sprintf("%s@%d", sessionID, checkpoint))
-				return !tt.notConnected, nil
 			}
 			if tt.noRemoteControl {
 				h.cli.engines = shuttleengine.NewEngineSet("none", nil)
@@ -109,25 +86,18 @@ func TestStart_LaunchPassesAndMarksRemoteControl(t *testing.T) {
 				t.Fatalf("beamUp exit %d, env %v; want 0", code, env)
 			}
 
-			wantStarts, wantResume := 1, tt.recordedSession
-			if tt.resumeErr != nil {
-				wantStarts, wantResume = 2, ""
+			if len(h.starter.specs) != 1 {
+				t.Fatalf("started %d sessions; want 1", len(h.starter.specs))
 			}
-			if len(h.starter.specs) != wantStarts {
-				t.Fatalf("started %d sessions; want %d", len(h.starter.specs), wantStarts)
-			}
-			spec := h.starter.specs[len(h.starter.specs)-1]
+			spec := h.starter.specs[0]
 			if spec.RemoteControlName != tt.wantName {
 				t.Errorf("orch spec RemoteControlName = %q; want %q", spec.RemoteControlName, tt.wantName)
 			}
-			if spec.ResumeSessionID != wantResume {
-				t.Errorf("orch spec ResumeSessionID = %q; want %q", spec.ResumeSessionID, wantResume)
-			}
-			if got := strings.Join(awaited, "; "); got != tt.wantAwait {
-				t.Errorf("awaited the connection from %q; want %q", got, tt.wantAwait)
+			if spec.ResumeSessionID != tt.recordedSession {
+				t.Errorf("orch spec ResumeSessionID = %q; want %q", spec.ResumeSessionID, tt.recordedSession)
 			}
 			var wantMarked []string
-			if tt.wantMark {
+			if tt.wantName != "" {
 				wantMarked = []string{"new-guid"}
 			}
 			if !slices.Equal(marked, wantMarked) {
@@ -137,10 +107,10 @@ func TestStart_LaunchPassesAndMarksRemoteControl(t *testing.T) {
 	}
 }
 
-// TestRemoteControlOnVerb_QueuesForTheClientsPaneWithoutMarkingIt runs the rc-on verb against a fake tmux script.
-// An agent pane gets the command queued and is left unmarked, since only its session's recorded connection lights it,
+// TestRemoteControlOnVerb_ReadsTheClientsPaneAndMarksItsID runs the rc-on verb against a fake tmux script.
+// An agent pane is marked by its own id after the command is queued,
 // and a client whose active pane cannot be read fails the verb naming the client, with nothing queued or marked.
-func TestRemoteControlOnVerb_QueuesForTheClientsPaneWithoutMarkingIt(t *testing.T) {
+func TestRemoteControlOnVerb_ReadsTheClientsPaneAndMarksItsID(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	if runtime.GOOS == "windows" {
@@ -148,13 +118,14 @@ func TestRemoteControlOnVerb_QueuesForTheClientsPaneWithoutMarkingIt(t *testing.
 	}
 	tests := []struct {
 		name string
-		// paneReadFails makes the fake tmux fail the list-clients that reads the active pane.
+		// paneReadFails makes the fake tmux fail the display-message that reads the active pane.
 		paneReadFails bool
 		wantCode      int
 		wantError     string
 		wantInject    string
+		wantMark      bool
 	}{
-		{name: "AgentPaneIsQueuedAndLeftUnmarked", wantInject: "tst:orch neve::tst:orch"},
+		{name: "AgentPaneIsMarkedByItsID", wantInject: "tst:orch neve::tst:orch", wantMark: true},
 		{name: "UnreadablePaneNamesTheClient", paneReadFails: true, wantCode: 1, wantError: `read the active pane of client "/dev/pts/3"`},
 	}
 	for _, tt := range tests {
@@ -162,11 +133,11 @@ func TestRemoteControlOnVerb_QueuesForTheClientsPaneWithoutMarkingIt(t *testing.
 			t.Parallel()
 			dir := t.TempDir()
 			log := filepath.Join(dir, "calls.log")
-			paneRead := "printf '%s\\t%s\\t%s\\t\\n' '/dev/pts/3' '%7' 'tst:orch'"
+			paneRead := "printf '%s\\t%s\\t\\n' '%7' 'tst:orch'"
 			if tt.paneReadFails {
-				paneRead = "echo no server >&2; exit 1"
+				paneRead = "echo no such client >&2; exit 1"
 			}
-			script := "#!/bin/sh\necho \"$*\" >> '" + log + "'\ncase \"$*\" in\n*'list-clients -F '*) " + paneRead + " ;;\nesac\n"
+			script := "#!/bin/sh\necho \"$*\" >> '" + log + "'\ncase \"$*\" in\n*' display-message -p '*) " + paneRead + " ;;\nesac\n"
 			tmuxPath := filepath.Join(dir, "tmux")
 			if err := os.WriteFile(tmuxPath, []byte(script), 0o755); err != nil {
 				t.Fatalf("write the fake tmux: %v", err)
@@ -200,37 +171,43 @@ func TestRemoteControlOnVerb_QueuesForTheClientsPaneWithoutMarkingIt(t *testing.
 			if err != nil {
 				t.Fatalf("read the fake tmux's call log: %v", err)
 			}
-			if strings.Contains(string(calls), "set-option") {
-				t.Errorf("tmux calls %q; want the pane mark left alone", calls)
+			marked := strings.Contains(string(calls), "set-option -p -t %7 @lym_rc 1\n")
+			if marked != tt.wantMark {
+				t.Errorf("tmux calls %q; want the pane mark set: %v", calls, tt.wantMark)
 			}
 		})
 	}
 }
 
 // TestTurnOnRemoteControl pins the RC click:
-// it queues the command under the name remote_control_name forms for the clicked agent,
-// and every refusal queues nothing.
+// it queues the command under the name remote_control_name forms for the clicked agent and marks its pane,
+// and every refusal queues nothing and marks nothing.
 func TestTurnOnRemoteControl(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	injectFailed := errors.New("creel is down")
+	markFailed := errors.New("tmux is gone")
 	tests := []struct {
 		name      string
 		pane      reedengine.AgentPane
 		injectErr error
+		markErr   error
 		// wantInject is the receiver and name queued, empty for none.
 		wantInject string
+		wantMarks  int
 		wantErr    string
+		// wantWarning expects the success to carry a warning field.
+		wantWarning bool
 	}{
 		{
-			name:       "Queues",
+			name:       "QueuesAndMarks",
 			pane:       reedengine.AgentPane{PaneID: "%1", StrandName: "tst:orch"},
-			wantInject: "tst:orch neve::tst:orch",
+			wantInject: "tst:orch neve::tst:orch", wantMarks: 1,
 		},
 		{
 			name:       "ServesAnAgentOtherThanTheOrch",
 			pane:       reedengine.AgentPane{PaneID: "%2", StrandName: "tst:slug:darn"},
-			wantInject: "tst:slug:darn neve::tst:slug:darn",
+			wantInject: "tst:slug:darn neve::tst:slug:darn", wantMarks: 1,
 		},
 		{name: "PaneWithNoAgentRefuses", pane: reedengine.AgentPane{PaneID: "%3"}, wantErr: "runs no agent"},
 		{
@@ -244,10 +221,16 @@ func TestTurnOnRemoteControl(t *testing.T) {
 			wantErr: "does not parse",
 		},
 		{
-			name:       "FailedInjectFails",
+			name:       "FailedInjectFailsAndMarksNothing",
 			pane:       reedengine.AgentPane{PaneID: "%1", StrandName: "tst:orch"},
 			injectErr:  injectFailed,
 			wantInject: "tst:orch neve::tst:orch", wantErr: injectFailed.Error(),
+		},
+		{
+			name:       "FailedMarkStillSucceedsWithAWarning",
+			pane:       reedengine.AgentPane{PaneID: "%1", StrandName: "tst:orch"},
+			markErr:    markFailed,
+			wantInject: "tst:orch neve::tst:orch", wantMarks: 1, wantWarning: true,
 		},
 	}
 	for _, tt := range tests {
@@ -261,9 +244,17 @@ func TestTurnOnRemoteControl(t *testing.T) {
 				injected = append(injected, receiver+" "+name)
 				return tt.injectErr
 			}
+			marks := 0
+			mark := func() error {
+				marks++
+				return tt.markErr
+			}
 
-			_, err := c.turnOnRemoteControl(tt.pane)
+			fields, err := c.turnOnRemoteControl(tt.pane, mark)
 
+			if _, hasWarning := fields["warning"]; hasWarning != tt.wantWarning {
+				t.Errorf("fields = %v; want a warning field: %v", fields, tt.wantWarning)
+			}
 			if tt.wantErr == "" && err != nil {
 				t.Fatalf("turnOnRemoteControl() = %v; want nil", err)
 			}
@@ -272,6 +263,9 @@ func TestTurnOnRemoteControl(t *testing.T) {
 			}
 			if got := strings.Join(injected, "; "); got != tt.wantInject {
 				t.Errorf("injected %q; want %q", got, tt.wantInject)
+			}
+			if marks != tt.wantMarks {
+				t.Errorf("mark called %d times; want %d", marks, tt.wantMarks)
 			}
 		})
 	}

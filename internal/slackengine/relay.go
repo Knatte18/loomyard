@@ -327,7 +327,7 @@ func firstRead(ctx context.Context, geom Geometry, deps RelayDeps, heldLock *rel
 // Neither the login nor a dobby tick while presence is `terminal` starts a relay that has exited.
 // The same line is first posted to the hub's prime channel.
 // That needs a bot token on the machine and the channel in the channel map.
-// With no prime entry nothing is posted to Slack.
+// With no prime entry it is posted to the channel id an older binary's setup file holds, the only read of that key.
 func missingTokenExit(ctx context.Context, geom Geometry, deps RelayDeps, refusal error) error {
 	line := fmt.Sprintf("%v, then `lym slack start`", refusal)
 	credentials, credentialsErr := ReadCredentials(geom.TokenPath)
@@ -351,7 +351,7 @@ func missingTokenExit(ctx context.Context, geom Geometry, deps RelayDeps, refusa
 }
 
 // missingTokenChannel returns the channel a refused relay posts its line to and reports whether there is one.
-// It is the prime's open channel in the hub's map.
+// It is the prime's open channel in the hub's map, otherwise the channel id of an older binary's setup file.
 func missingTokenChannel(geom Geometry) (string, bool) {
 	channelMap, err := ReadChannelMap(geom.ChannelMapPath)
 	if err != nil {
@@ -362,11 +362,14 @@ func missingTokenChannel(geom Geometry) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	entry, held := channelMap.Channels[prime]
-	if !held {
+	if entry, held := channelMap.Channels[prime]; held {
+		return entry.ID, !entry.Archived
+	}
+	setup, found, err := ReadSetup(geom.SetupPath)
+	if err != nil || !found || setup.ChannelID == "" {
 		return "", false
 	}
-	return entry.ID, !entry.Archived
+	return setup.ChannelID, true
 }
 
 // relayStart ensures the channel of each orch of the hub whose slack button is on.

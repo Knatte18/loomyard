@@ -12,7 +12,7 @@ and only `internal/shuttleengines` constructs or imports a concrete engine.
 - An engine's config module reaches `configreg` only through `internal/shuttleengines`.
   That package lists each registered engine's module for it.
 - An engine's name is not a provider specific and may appear outside its directory.
-  Such a name is a registry key, like `shuttle.engine: claude` or a `modelspec` engine name.
+  Such a name is a registry key, like `shuttle.yaml`'s `engine: claude` or a `modelspec` engine name.
 - An engine's scrub keys are the environment keys reed's server spawn strips.
   They reach reed only through `shuttleengines.EnvScrub()`, which every production `reedengine.New` caller passes.
 - reed's strand provider tag is opaque:

@@ -6,6 +6,8 @@ package websterengine
 import (
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"slices"
 	"sort"
 	"strconv"
@@ -25,6 +27,13 @@ var ErrRebaselineCardSetChanged = errors.New("webster: the edited plan changes t
 // The landing asks for a follow-up card after the last begun batch.
 // It carries no "way forward: " prefix.
 const followUpCardLanding = "add a follow-up card after the last begun batch that carries the decision, with its Card Index line in " + runplan.PlanOverviewFile + ", then run `lym webster rebaseline --card NN` naming it"
+
+// The three causes of an empty recorded overview frame.
+const (
+	causeNoOverviewHash     = "no overview hash was recorded"
+	causeBaselineCopyAbsent = "the baseline copy of the recorded overview is absent"
+	causeNoCardIndex        = "the baseline copy of the recorded overview has no parseable Card Index"
+)
 
 // followUpLanding renders the landing for a decision that reaches a done batch's card.
 // The decision can also reach an overview outside its Card Index.
@@ -47,6 +56,38 @@ func transientWayForward(step, manual string) string {
 		return manual
 	}
 	return "transient, " + step
+}
+
+// recordedOverviewFrame returns the overview frame hash the run recorded.
+// A state without State.PlanOverviewFrameHash takes the frame of the baseline copy of its recorded 00-overview.md.
+// That copy lies under websterDir.
+// The function returns "" when the run has no recorded frame:
+// no overview hash recorded, the copy absent, or a copy without a parseable Card Index.
+// For an empty frame, cause is one of the three causes of an empty frame, and path is the baseline copy's path.
+// Path is empty when no hash was recorded; both are empty beside a frame.
+// It logs nothing.
+// A read failure other than an absent copy is returned.
+func recordedOverviewFrame(st *State, websterDir string) (frame, cause, path string, err error) {
+	if st.PlanOverviewFrameHash != "" {
+		return st.PlanOverviewFrameHash, "", "", nil
+	}
+	hash := st.PlanFileHashes[runplan.PlanOverviewFile]
+	if hash == "" {
+		return "", causeNoOverviewHash, "", nil
+	}
+	path = runplan.PlanBaselinePath(websterDir, hash)
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", causeBaselineCopyAbsent, path, nil
+	}
+	if err != nil {
+		return "", "", "", fmt.Errorf("websterengine: recorded overview frame: read plan baseline copy %s: %w", hash, err)
+	}
+	frame, err = runplan.OverviewFrameHashOf(data)
+	if err != nil {
+		return "", causeNoCardIndex, path, nil
+	}
+	return frame, "", "", nil
 }
 
 // logEmptyOverviewFrame logs at Info why the run has no recorded overview frame.
@@ -206,8 +247,7 @@ func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 // A record without hashes compares ids only.
 // A card named in deps.Cards is accepted instead when its batch is in flight or terminal failed, dead or stuck.
 // A failed batch whose record lists Uncheckable entries still refuses it.
-// It also refuses a changed card file whose number is not in deps.Cards.
-// That refusal does not apply when the state records no State.PlanFileHashes.
+// It also refuses a changed card file whose number is not in deps.Cards, unless the state predates State.PlanFileHashes.
 // A change to 00-overview.md is accepted only when it is confined to the Card Index.
 // The recorded overview frame must still equal the file's frame hash.
 // That frame is State.PlanOverviewFrameHash, or else the frame of the stored baseline copy.
@@ -217,12 +257,8 @@ func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 // The start commit a refusal names is picked by git ancestry.
 // A begun card's reworded one-line intent in the Card Index passes.
 // Its card file stays pinned by the recorded hash.
-// An accepted card of an in-flight or terminal dead batch is also recorded in its AmendedCards with Rendered false.
-// So is one of a failed or stuck batch that already holds an entry, so its next recovery re-reads every edited card.
+// A card accepted in an in-flight batch is also recorded in the batch's AmendedCards with Rendered false.
 // An entry already there is reset.
-// The next recovery renders it and counts no recovery for it,
-// so an accepted edit re-arms a dead batch whose recoveries are spent.
-// Only an in-flight batch's cards are listed as amended in the result.
 // A dead batch's strand, kept alive when classified dead, may still work on the old card.
 // So may the fork or recovery strand of an in-flight batch.
 // The restamp stops no strand.
@@ -254,7 +290,7 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 		var unnamed []string
 		for _, name := range changedFiles {
 			if name == runplan.PlanOverviewFile {
-				recorded, cause, path, overviewErr := runplan.RecordedOverviewFrame(&deps.State.State, deps.Geom.WebsterDir)
+				recorded, cause, path, overviewErr := recordedOverviewFrame(deps.State, deps.Geom.WebsterDir)
 				indexOnly := false
 				if overviewErr == nil {
 					if cause != "" {
@@ -368,11 +404,10 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 		sort.Strings(ids)
 		for _, id := range ids {
 			bs.CardHashes[id] = restamps[n][id]
-			if !bs.Terminal {
-				cardsAmended = append(cardsAmended, id)
-			} else if bs.Status != DigestStatusDead && len(bs.AmendedCards) == 0 {
+			if bs.Terminal {
 				continue
 			}
+			cardsAmended = append(cardsAmended, id)
 			if i := slices.IndexFunc(bs.AmendedCards, func(a AmendedCard) bool { return a.Card == id }); i >= 0 {
 				bs.AmendedCards[i].Rendered = false
 			} else {

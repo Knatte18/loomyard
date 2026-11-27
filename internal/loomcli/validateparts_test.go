@@ -76,7 +76,7 @@ func partsFixture(t *testing.T, anchorPath, partsText, partsMax string) *loomCLI
 
 	seedLoomConfig(t, anchorPath)
 	configDir := filepath.Join(anchorPath, "_lym", "config")
-	tapestry := strings.Replace(loomengine.TapestryConfigTemplate(), "  max: 6", "  max: "+partsMax, 1)
+	tapestry := strings.Replace(loomengine.TapestryConfigTemplate(), "parts_max: 6", "parts_max: "+partsMax, 1)
 	if err := os.WriteFile(filepath.Join(configDir, "tapestry.yaml"), []byte(tapestry), 0o644); err != nil {
 		t.Fatalf("WriteFile(tapestry.yaml) = %v; want nil", err)
 	}
@@ -126,7 +126,7 @@ func TestValidatePartsCmd(t *testing.T) {
 			partsText: strings.Replace(splitPartsText, "  - `plan:internal/x#NewThing`\n", "  - `plan:internal/x#NewThing`\n  - `internal/x/x.go`\n", 1),
 			partsMax:  "6", wantExit: 1, wantErrMsg: "loom: parts file is not yet valid", wantInBody: "export-existing",
 		},
-		{name: "AnInvalidPartsMaxIsTheConfigError", partsText: splitPartsText, partsMax: "0", wantExit: 1, wantErrMsg: "parts.max"},
+		{name: "AnInvalidPartsMaxIsTheConfigError", partsText: splitPartsText, partsMax: "0", wantExit: 1, wantErrMsg: "parts_max"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

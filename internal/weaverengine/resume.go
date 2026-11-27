@@ -445,7 +445,6 @@ func checkStoppedBatch(deps RunDeps, st *State, plan *planparser.Plan, batch *ru
 		Batches:                batches,
 		Number:                 number,
 		Cards:                  stopped.Cards,
-		DecisionRecordPath:     geom.DecisionRecordPath,
 		StartSHA:               batch.StartSHA,
 		HeadSHA:                head,
 		Label:                  label,

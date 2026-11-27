@@ -19,10 +19,6 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 - dobby's loop in `internal/dobbyengine/loop.go`:
   it wakes on a file event or its timer, at most one tick a second,
   and it doubles the timer from batten's probe interval to a minute while no run is in flight,
-- the board server's watch loop in `internal/boardserve/run.go`:
-  it wakes on an `internal/fswatch` event on `board.json`, never within a second of its previous read, or on its timer,
-  from one second doubling to eight while the board is unchanged,
-  and each wake checks whether the binary was replaced and whether the idle bound passed,
 - batten's Land row land-lock wait in `internal/battenshed/land.go`:
   it polls from one second and doubles to thirty seconds,
 - the parent lock wait in `internal/parentlock/acquire.go`:
@@ -35,9 +31,6 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 - the current capture's lock wait in `internal/driftengine/capture.go`:
   it polls the capture lock from one second and takes it once free,
   and it doubles to thirty seconds while the lock stays held,
-- the autonomous judge's wait for the parent's answer in `internal/driftengine/verify.go`:
-  it waits from one second and doubles to a minute while the ask record is unchanged,
-  and returns to one second when it changes,
 - the pause hold in `internal/pauserecord/hold.go`:
   it polls from one second and doubles to five seconds while the covering entry is unchanged,
 - shuttle's `Wait`,
@@ -50,7 +43,8 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
   it samples once per period, 5 seconds in production, for as long as go test runs;
   it spawns nothing,
 - the gate memory guard in `internal/gatecli/memoryguard.go`:
-  it samples once a second for as long as a tier's command runs;
+  it samples once a second for as long as a tier's command, `lym gate redundant`, `lym gate test --map`
+  or the redundancy report step of `lym gate test` runs;
   it spawns nothing,
 - the detached gate runner's lease read in `internal/gatecli/detachrun.go`:
   it wakes once a second for as long as the run's lease lasts,
@@ -96,7 +90,7 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
   `post --wait-reply`, `inject --wait`, `read --wait` and `hook-wait` wait on their connection;
   they reconnect from one second;
   the client's connect wait after a spawn also ends when the daemon it started exits, except a lost start race,
-- the pusher's owed retry in `internal/runpusher`:
+- the owed transition push's retry in `internal/statuscommit/statuscommit.go`:
   it waits from one second, doubling to a minute while the push stays owed,
 - the Slack relay's loops:
   the outbound read in `internal/slackengine/relay.go`, with the binary check and the retried work after it, from five seconds doubling to sixty;

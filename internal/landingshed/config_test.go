@@ -10,14 +10,13 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"regexp"
-	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"gopkg.in/yaml.v3"
 )
 
 // seedLandingConfig creates <baseDir>/_lym/config/landing.yaml with the given contents.
@@ -35,8 +34,6 @@ func seedLandingConfig(t *testing.T, baseDir, contents string) {
 
 // TestLoadConfig_TemplateDefaults verifies the template's default values round-trip.
 // It covers the single-entry base-branch list, the squash default and the Describe-related keys.
-//
-//testtiming:keep pins the template default values and that a hub file holding the retired keys loads, which TestLoadConfig_InvalidKeys never asserts
 func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -66,18 +63,8 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	if cfg.DescribeTimeoutMin != 30 {
 		t.Errorf("cfg.DescribeTimeoutMin = %d; want 30", cfg.DescribeTimeoutMin)
 	}
-	if cfg.DescribeReview != "sonnet[medium]" || cfg.DescribeReviewTimeoutMin != 15 {
-		t.Errorf("cfg.DescribeReview, cfg.DescribeReviewTimeoutMin = %q, %d; want %q, 15", cfg.DescribeReview, cfg.DescribeReviewTimeoutMin, "sonnet[medium]")
-	}
-	for _, line := range []string{"Built by LoomYard.", "Run lym loom resume.", "The Sketch says so.", "Item 3 of the task.", "The parent recorded it."} {
-		if !slices.ContainsFunc(cfg.ForbiddenTerms(), func(p *regexp.Regexp) bool { return p.MatchString(line) }) {
-			t.Errorf("cfg.ForbiddenTerms() matches no pattern in %q; want the template's terms to refuse it", line)
-		}
-	}
-	for _, line := range []string{"The sketch of a design.", "The lymph node.", "Ship the parser."} {
-		if slices.ContainsFunc(cfg.ForbiddenTerms(), func(p *regexp.Regexp) bool { return p.MatchString(line) }) {
-			t.Errorf("cfg.ForbiddenTerms() matches %q; want the template's terms to admit it", line)
-		}
+	if cfg.PRReviewer != "opus[high]" {
+		t.Errorf("cfg.PRReviewer = %q; want %q", cfg.PRReviewer, "opus[high]")
 	}
 	if !cfg.Credit {
 		t.Error("cfg.Credit = false; want true")
@@ -112,7 +99,7 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	if cfg.FinalizeFixMaxLines != 40 {
 		t.Errorf("cfg.FinalizeFixMaxLines = %d; want 40", cfg.FinalizeFixMaxLines)
 	}
-	retiredKeys := []string{"publish_verify", "co_authored_by", "trailer_text", "engine_trailers", "pr_reviewer"}
+	retiredKeys := []string{"publish_verify", "co_authored_by", "trailer_text", "engine_trailers"}
 	for _, key := range retiredKeys {
 		if strings.Contains(ConfigTemplate(), key) {
 			t.Errorf("ConfigTemplate() holds %s; want the retired key gone from the template", key)
@@ -120,7 +107,7 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	}
 
 	retiredDir := t.TempDir()
-	seedLandingConfig(t, retiredDir, ConfigTemplate()+"publish_verify: go test -tags tmux ./...\nco_authored_by: Someone <s@x>\ntrailer_text: Fixed\nengine_trailers:\n  claude: \"Co-Authored-By: Someone <s@x>\"\npr_reviewer: opus[high]\n")
+	seedLandingConfig(t, retiredDir, ConfigTemplate()+"publish_verify: go test -tags tmux ./...\nco_authored_by: Someone <s@x>\ntrailer_text: Fixed\nengine_trailers:\n  claude: \"Co-Authored-By: Someone <s@x>\"\n")
 	retired, err := LoadConfig(configengine.Dirs{Board: retiredDir}, "landing")
 	if err != nil {
 		t.Fatalf("LoadConfig() over a file holding the retired keys %v = _, %v; want nil error", retiredKeys, err)
@@ -197,6 +184,107 @@ func TestConfig_CreditBlock(t *testing.T) {
 	}
 }
 
+// TestMigrateConfig verifies the migration of retired keys, keeping their values:
+// require_pr_to_base moves to deploy_branches, and merge_fix_attempts to parent_align_fix_attempts.
+// The retired co-author and trailer keys are left for reconcile's prune, with no value carried into credit_engines.
+// A migrated document passes unchanged.
+func TestMigrateConfig(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		existing  string
+		wantLines int
+		// wantDeploy is deploy_branches as fmt.Sprint renders the decoded value; empty skips the check.
+		wantDeploy string
+		// wantAttempts is parent_align_fix_attempts as fmt.Sprint renders the decoded value; empty skips the check.
+		wantAttempts string
+	}{
+		{"RetiredCoAuthorAndTrailerKeysLeftToReconcilesPrune", "squash: true\nco_authored_by: Someone <s@x>\ntrailer_text: Fixed\nengine_trailers:\n  claude: \"Co-Authored-By: Kept <k@x>\"\n", 0, "", ""},
+		{"RetiredPublishVerifyLeftToReconcilesPrune", "publish_verify: go test -tags tmux ./...\n", 0, "", ""},
+		{"RequirePRToBaseListMovesToDeployBranches", "require_pr_to_base: [main, develop]\nsquash: true\n", 1, "[main develop]", ""},
+		{"RequirePRToBaseEmptyListStaysEmpty", "require_pr_to_base: []\nsquash: true\n", 1, "[]", ""},
+		{"ExistingDeployBranchesWins", "require_pr_to_base: [old]\ndeploy_branches: [main]\n", 1, "[main]", ""},
+		{"CoAuthoredByLeftAndRequirePRToBaseMoves", "co_authored_by: Someone <s@x>\nrequire_pr_to_base: [main]\n", 1, "[main]", ""},
+		{"MergeFixAttemptsMovesToParentAlignFixAttempts", "merge_fix_attempts: 5\nsquash: true\n", 1, "", "5"},
+		{"ExistingParentAlignFixAttemptsWins", "merge_fix_attempts: 5\nparent_align_fix_attempts: 3\n", 1, "", "3"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			migrated, lines, err := MigrateConfig([]byte(tt.existing))
+			if err != nil {
+				t.Fatalf("MigrateConfig() error = %v; want nil", err)
+			}
+			if len(lines) != tt.wantLines {
+				t.Errorf("MigrateConfig() lines = %q; want %d line(s)", lines, tt.wantLines)
+			}
+			if tt.wantLines == 0 && string(migrated) != tt.existing {
+				t.Errorf("MigrateConfig() = %q; want the document unchanged", migrated)
+			}
+			var got map[string]any
+			if err := yaml.Unmarshal(migrated, &got); err != nil {
+				t.Fatalf("unmarshal migrated document: %v", err)
+			}
+			if _, ok := got[creditEnginesKey]; ok {
+				t.Errorf("migrated document %q holds %s; want no value carried into it", migrated, creditEnginesKey)
+			}
+			if _, ok := got["require_pr_to_base"]; ok {
+				t.Errorf("migrated document %q still holds require_pr_to_base", migrated)
+			}
+			if _, ok := got["merge_fix_attempts"]; ok {
+				t.Errorf("migrated document %q still holds merge_fix_attempts", migrated)
+			}
+			if tt.wantAttempts != "" {
+				if gotAttempts := fmt.Sprint(got["parent_align_fix_attempts"]); gotAttempts != tt.wantAttempts {
+					t.Errorf("migrated parent_align_fix_attempts = %s; want %s", gotAttempts, tt.wantAttempts)
+				}
+			}
+			if tt.wantDeploy != "" {
+				if gotDeploy := fmt.Sprint(got["deploy_branches"]); gotDeploy != tt.wantDeploy {
+					t.Errorf("migrated deploy_branches = %s; want %s", gotDeploy, tt.wantDeploy)
+				}
+			}
+			again, againLines, err := MigrateConfig(migrated)
+			if err != nil || len(againLines) != 0 || string(again) != string(migrated) {
+				t.Errorf("second MigrateConfig() = %q, %q, %v; want the document unchanged with no lines", again, againLines, err)
+			}
+		})
+	}
+	t.Run("MergeFixAttemptsRenameLine", func(t *testing.T) {
+		t.Parallel()
+		_, lines, err := MigrateConfig([]byte("merge_fix_attempts: 5\n"))
+		const want = "merge_fix_attempts: renamed to parent_align_fix_attempts"
+		if err != nil || len(lines) != 1 || lines[0] != want {
+			t.Errorf("MigrateConfig() lines = %q, %v; want [%q]", lines, err, want)
+		}
+	})
+}
+
+// TestMigrateConfig_InvalidDocument verifies that MigrateConfig rejects invalid documents:
+// an unparsable one and a non-mapping root, each with an error marked configengine.ErrInvalid.
+func TestMigrateConfig_InvalidDocument(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		existing string
+	}{
+		{"Unparsable", "co_authored_by: [unclosed\n"},
+		{"NonMappingRoot", "- co_authored_by\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if _, _, err := MigrateConfig([]byte(tt.existing)); !errors.Is(err, configengine.ErrInvalid) {
+				t.Errorf("MigrateConfig(%q) error = %v; want one marked configengine.ErrInvalid", tt.existing, err)
+			}
+		})
+	}
+}
+
 // TestLoadConfig_InvalidKeys verifies that LoadConfig fails loud at load time on a hand-edited landing.yaml:
 // an ungrammatical model spec, or a credit_engines key naming no engine.
 // The error names the key, rather than the value being silently carried into the site that reads it.
@@ -205,18 +293,14 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 	t.Parallel()
 
 	const wellFormed = "deploy_branches: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
-		"describe: sonnet[medium]\ndescribe_timeout_min: 30\ndescribe_review_timeout_min: 15\nfixer: opus[high]\nfixer_timeout_min: 60\nparent_align_fix_attempts: 2\n" +
+		"describe: sonnet[medium]\ndescribe_timeout_min: 30\npr_reviewer: opus[high]\nfixer: opus[high]\nfixer_timeout_min: 60\nparent_align_fix_attempts: 2\n" +
 		"finalize_fix_attempts: 2\nfinalize_fix_max_lines: 40\nfinalize_fix_review_rounds: 3\ncredit_engines:\n  claude: \"Claude Code <noreply@anthropic.com>\"\n"
 	cases := []struct {
 		name, valid, invalid, key string
 	}{
 		{"malformed conflict", "conflict: opus[high]", "conflict: \"opus[high\"", "conflict"},
 		{"malformed describe", "describe: sonnet[medium]", "describe: \"sonnet[medium\"", "describe"},
-		{"malformed describe review", "describe: sonnet[medium]", "describe: sonnet[medium]\ndescribe_review: \"sonnet[medium\"", "describe_review"},
-		{"describe review timeout below 1", "describe_review_timeout_min: 15", "describe_review_timeout_min: 0", "describe_review_timeout_min"},
-		{"forbidden term that is no regular expression", "describe_timeout_min: 30", "describe_timeout_min: 30\ndescribe_forbidden_terms: ['(']", "describe_forbidden_terms"},
-		{"forbidden term that matches the empty string", "describe_timeout_min: 30", "describe_timeout_min: 30\ndescribe_forbidden_terms: ['lym|']", "matches the empty string"},
-		{"forbidden term that matches empty at a word boundary", "describe_timeout_min: 30", "describe_timeout_min: 30\ndescribe_forbidden_terms: ['\\b|lym']", "matches the empty string"},
+		{"malformed pr_reviewer", "pr_reviewer: opus[high]", "pr_reviewer: not-a-spec[", "pr_reviewer"},
 		{"credit_engines key naming no engine", "  claude:", "  claud:", "credit_engines.claud"},
 		{"malformed fixer", "fixer: opus[high]", "fixer: \"opus[high\"", "fixer"},
 		{"fixer timeout below 1", "fixer_timeout_min: 60", "fixer_timeout_min: 0", "fixer_timeout_min"},
@@ -257,40 +341,23 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 		}
 	})
 
-	t.Run("a local pr_reviewer is admitted", func(t *testing.T) {
+	t.Run("a local publish_verify is refused naming the local file and the key", func(t *testing.T) {
 		t.Parallel()
 
 		board, anchor := t.TempDir(), t.TempDir()
 		seedLandingConfig(t, board, ConfigTemplate())
-		writeLocalLandingConfig(t, anchor, "pr_reviewer: opus[high]\n")
+		localPath := writeLocalLandingConfig(t, anchor, "publish_verify: rm -rf .\n")
 
-		if _, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "landing"); err != nil {
-			t.Errorf("LoadConfig() = _, %v; want nil error", err)
+		_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "landing")
+		if !errors.Is(err, configengine.ErrInvalid) {
+			t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
+		}
+		for _, want := range []string{localPath, "publish_verify"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+			}
 		}
 	})
-
-	retiredLocalKeys := []struct{ key, line string }{
-		{"publish_verify", "publish_verify: rm -rf .\n"},
-	}
-	for _, tc := range retiredLocalKeys {
-		t.Run("a local "+tc.key+" is refused naming the local file and the key", func(t *testing.T) {
-			t.Parallel()
-
-			board, anchor := t.TempDir(), t.TempDir()
-			seedLandingConfig(t, board, ConfigTemplate())
-			localPath := writeLocalLandingConfig(t, anchor, tc.line)
-
-			_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "landing")
-			if !errors.Is(err, configengine.ErrInvalid) {
-				t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
-			}
-			for _, want := range []string{localPath, tc.key} {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
-				}
-			}
-		})
-	}
 }
 
 // writeLocalLandingConfig writes contents as anchor's local landing override and returns its path.
@@ -343,7 +410,6 @@ func TestLoadConfig_OptionalStringKeys(t *testing.T) {
 		{"credit_engines empty names no engine", withoutKeys + "credit_engines: {}\n", "map[]", func(c Config) string { return fmt.Sprint(c.CreditEngines) }},
 		{"deploy set", withoutKeys + "deploy: ./update-plugins.sh\n", "./update-plugins.sh", func(c Config) string { return c.Deploy }},
 		{"deploy absent", withoutKeys, "", func(c Config) string { return c.Deploy }},
-		{"describe_review empty runs no reviewer", withoutKeys + "describe_review: \"\"\n", "", func(c Config) string { return c.DescribeReview }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

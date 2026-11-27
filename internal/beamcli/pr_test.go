@@ -574,10 +574,10 @@ func TestPRClose(t *testing.T) {
 			},
 		},
 		{
-			name: "MergeReportsFinalizeLandsThroughAPullRequest",
+			name: "MergeParentReportsFinalizeLandsThroughAPullRequest",
 			setup: func(w *landWorld) {
 				recordPullRequest(w)
-				w.mode = "trail"
+				w.mode = "merge"
 				w.api.Script(prkit.MethodStatus, prkit.Answer{Status: openPullRequestAtBeamHead})
 			},
 			wantCloses:     []string{"5|" + closeOnlyComment},
@@ -585,10 +585,20 @@ func TestPRClose(t *testing.T) {
 			noWayForward:   []string{"refuses"},
 		},
 		{
+			name: "RequiredParentReportsReadyRefusesUntilOpen",
+			setup: func(w *landWorld) {
+				recordPullRequest(w)
+				w.mode = "required"
+				w.api.Script(prkit.MethodStatus, prkit.Answer{Status: openPullRequestAtBeamHead})
+			},
+			wantCloses:     []string{"5|" + closeOnlyComment},
+			wantWayForward: []string{"`lym beam ready b` refuses", "lym beam pr open b"},
+		},
+		{
 			name: "RulesRequiredOnParentReportsReadyRefusesUntilOpen",
 			setup: func(w *landWorld) {
 				recordPullRequest(w)
-				w.mode = "review"
+				w.mode = "on"
 				w.rulesRequired = true
 				w.api.Script(prkit.MethodStatus, prkit.Answer{Status: openPullRequestAtBeamHead})
 			},
@@ -596,11 +606,10 @@ func TestPRClose(t *testing.T) {
 			wantWayForward: []string{"GitHub's rules", "`lym beam ready b` refuses", "lym beam pr open b"},
 		},
 		{
-			name: "RulesRequiredWithNoCommitsBeyondItsParentCommentsTheOperatorsChoiceAndReportsNoRefusal",
+			name: "RequiredParentWithNoCommitsBeyondItsParentCommentsTheOperatorsChoiceAndReportsNoRefusal",
 			setup: func(w *landWorld) {
 				recordPullRequest(w)
-				w.mode = "review"
-				w.rulesRequired = true
+				w.mode = "required"
 				w.hasCommits = false
 				w.api.Script(prkit.MethodStatus, prkit.Answer{Status: openPullRequestAtBeamHead})
 			},

@@ -130,7 +130,7 @@ A test package never reaches the operator's global gitconfig or default tmux soc
     so the operator's rc files still run and the login profile does not.
   - `exit-empty off`, so the server outlives having no session.
   - `@lym_test_server on`.
-- A server reed starts sources the file `reed.tmux_conf` names.
+- A server reed starts sources the file `tmux_conf` names.
   `tmuxkit.Main` empties that setting by unsetting `LYM_REED_TMUX_CONF`,
   so a test that exercises it sets `LYM_REED_TMUX_CONF` to a file it wrote and registers its key after reed's first boot.
 - The pre-start applies the environment hygiene reed's own server spawn applies:
@@ -164,10 +164,8 @@ A test package never reaches the operator's global gitconfig or default tmux soc
 ## Testkit
 
 Test support used by two or more packages lives in one kit package under `internal/testkit/<kit>/`.
-Such support covers builders, fixtures, the scan harness and stand-ins for things outside the repository.
-It is never duplicated per package, and a stand-in is never placed under the package whose seam it fills.
-[PATTERN-test-stand-ins](PATTERN-test-stand-ins.md) bars a stand-in for a repository module.
-The kits that hold one, such as `shedfake`, predate it and last until a sweep removes them.
+Such support covers fakes, builders, fixtures and the scan harness.
+It is never duplicated per package and never placed under the package it fakes.
 
 - No non-test file outside `internal/testkit/` imports a path under it, so every kit is reachable only from tests.
   Files under `internal/testkit/` are exempt, so a kit may build on another kit.

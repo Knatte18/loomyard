@@ -328,7 +328,7 @@ type SeedChildDeps struct {
 	ChildDriver func(recipe string) (string, error)
 	// ReadRunSettings returns the Board task's run profile and settings, read afresh each call; SeedChild sets the Recipe.
 	ReadRunSettings func(ctx context.Context) (RunSettings, error)
-	// PrepareRunSettings returns each module's local-layer document, the task's keys laid over the profile's block.
+	// PrepareRunSettings returns each module's migrated local-layer document, the task's keys laid over the profile's block.
 	// An empty profile takes the recipe's default profile, and a recipe with none takes the task's settings alone.
 	// An error wrapping ErrInvalidRunSettings (unknown profile, no block, bad key) goes to Stuck; other errors are hard.
 	PrepareRunSettings func(settings RunSettings) (map[string][]byte, error)
@@ -356,34 +356,15 @@ type SeedChildDeps struct {
 	MarkWatched func(ctx context.Context) (held bool, err error)
 }
 
-// ErrPushEntryEnded is the sentinel a teardown push wraps when origin ended the pair's records branch.
-// Nothing is left to push then, and the teardown removes the pair without reading whether origin holds its tips.
-var ErrPushEntryEnded = errors.New("battenshed: origin ended the pair's entry, so nothing is left to push")
-
-// ErrPushHandedOver is the sentinel a teardown push wraps when this machine already handed the run over.
-// The hand-over removed the pair, and the run belongs to the other machine.
-var ErrPushHandedOver = errors.New("battenshed: the run was handed over to another machine")
-
-// TeardownDeps carries the closures a worktree teardown calls in sequence:
-// Shutdown strictly before Push, Push before Level, and Level before Remove.
-// They are separate fields so that Remove never runs when Shutdown, Push or Level fails,
-// and the stuck reason names which of them failed.
+// TeardownDeps carries the two closures a worktree teardown calls in sequence: Shutdown strictly before Remove.
+// They are separate fields so that Remove never runs when Shutdown fails,
+// and the stuck reason names which of the two failed.
 // The abandoned-session value Shutdown returns must surface on an otherwise Done row.
-// Shutdown and Remove are expected to wrap the two phases of the pair-teardown composite, EndSession and RemovePair.
+// Both closures are expected to wrap the two phases of the pair-teardown composite, EndSession and RemovePair.
 type TeardownDeps struct {
 	// Shutdown ends the loom session's own driving process, if one is still attached.
 	// It returns the name of any session it had to abandon rather than cleanly end.
 	Shutdown func(ctx context.Context) (abandonedSession string, err error)
-	// Push brings the pair's commits to origin and returns once they landed, with no prime lock held.
-	// An error wrapping ErrPushEntryEnded means origin ended the pair's entry.
-	// One wrapping ErrPushHandedOver means the run was handed over.
-	// Any other error, from the push or from a step the closure runs ahead of it, keeps the pair.
-	// A nil Push pushes nothing.
-	Push func(ctx context.Context) error
-	// Level reports whether origin's tracking refs hold the pair's tips.
-	// A false read means origin lacks a tip, so the teardown pushes again, a bounded number of times.
-	// A nil Level reads level.
-	Level func() (bool, error)
-	// Remove deletes the task worktree pair, and runs only after Shutdown, Push and Level succeeded.
+	// Remove deletes the task worktree pair, and runs only after Shutdown has succeeded.
 	Remove func(ctx context.Context) error
 }

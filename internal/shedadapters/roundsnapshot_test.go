@@ -1,5 +1,4 @@
 // roundsnapshot_test.go tests the round snapshot record the review producer writes at a round's start.
-// It also tests that the review producer drops the record's rerun when it retires the round.
 
 package shedadapters
 
@@ -108,31 +107,5 @@ func TestBurlerReviewProducer_Call_RecordsRoundSnapshot(t *testing.T) {
 				t.Errorf("record added decisions = %+v; want %+v", got.AddedDecisions, wantDecisions)
 			}
 		})
-	}
-}
-
-// TestBurlerReviewProducer_Call_FailureExitDropsTheRoundsRerunRecord proves a rerun is dropped.
-// The review producer's failure exit retires the round's review.
-// The rerun a fixer left in the round's snapshot record goes with it.
-func TestBurlerReviewProducer_Call_FailureExitDropsTheRoundsRerunRecord(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	runDir := filepath.Join(t.TempDir(), "run")
-	runner := &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{{}}, ReviewErrs: []error{errors.New("runner failed")}}
-	runner.DuringReview = func(int) {
-		planted := &fixerRerunRecord{ReviewDigest: "d1", Reason: "the round halted: x", Report: "old.md"}
-		if err := updateRoundSnapshot(runDir, 1, func(rec *roundSnapshot, _ bool) { rec.FixerRerun = planted }); err != nil {
-			t.Errorf("updateRoundSnapshot: %v", err)
-		}
-	}
-	p := newReviewProducer(t, runDir, runner, newHalfSpec())
-
-	if _, _, err := p.Call(context.Background()); err == nil {
-		t.Fatal("Call() error = nil; want the runner's failure")
-	}
-
-	snapshot, found, err := readRoundSnapshot(runDir, 1)
-	if err != nil || !found || snapshot.FixerRerun != nil {
-		t.Errorf("round 1 snapshot = %+v, found %v, %v; want the record kept with no rerun", snapshot, found, err)
 	}
 }

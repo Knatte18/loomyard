@@ -44,14 +44,6 @@ Do not flag any of the following as a finding:
   A Decision or Constraint that rests on how git or another tool behaves states the observed result and where it is pinned:
   a test, a recorded command and its output, or the tool's documentation.
   One that states the behavior without the result or the pin is a finding, because every later round repeats the experiment to check it.
-- **A bug entry's record without its fault, cause or test.**
-  For a board entry labelled `bug`, the record states the observed fault and how to reproduce it,
-  the root cause or what is still unknown about it,
-  and the test that fails on the merge base, why no test seam exists, or that the entry fixes no bug.
-  A record that omits one of them is a finding.
-- **A check left for the reviewer to infer.**
-  A record whose change must measure a figure, make a doc statement true or add a test, and whose `## Acceptance criteria` does not name the figure and its measured case, the doc statement, or the test's intent and tier, is a finding.
-  The fix names each in the criteria, as the discussion spec says.
 - **A Decision that edits the task's own board entry.**
   A Decision that asks the run to change this task's own board entry's body or scope, through `lym board` or otherwise, is a finding, because the run's board lock refuses such a change.
   A Decision that writes another entry, the entry's status or its `run_settings`, or changes board-module code is not flagged by this bullet.

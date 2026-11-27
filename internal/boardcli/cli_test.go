@@ -125,11 +125,13 @@ func TestCLI(t *testing.T) {
 		{"TaskSessionFilesNotesOnly", stepTaskSessionFilesNotesOnly},
 		{"Rename", stepRename},
 		{"Prune", stepPrune},
+		{"NotifyOnLandOnALandedEntry", stepNotifyOnLandOnALandedEntry},
 		{"Find", stepFind},
 		{"ListAndFindLabelFilter", stepListAndFindLabelFilter},
 		{"Find_NoArgumentRefused", stepFind_NoArgumentRefused},
 		{"ListAndFindText", stepListAndFindText},
 		{"ListShowsASketch", stepListShowsASketch},
+		{"RetireLegacy", stepRetireLegacy},
 		{"GetAndRemoveByID", stepGetAndRemoveByID},
 		{"Owners", stepOwners},
 		{"FrontTask", stepFrontTask},
@@ -230,7 +232,7 @@ func stepSiblingWarning(t *testing.T, f *cliFixture) {
 	})
 	t.Run("a batch joins the run-settings notice and the sibling line", func(t *testing.T) {
 		seed(t, `{"slug":"rs","title":"RS","kind":"task","labels":["bug"],"status":"running · Discussion-Write"}`)
-		result := runJSON(t, 0, "upsert-batch", `{"tasks":[{"slug":"rs","run_settings":{"loom":{"review":{"max_bounces":4}}}},{"slug":"X","depends_on":["D"]}]}`)
+		result := runJSON(t, 0, "upsert-batch", `{"tasks":[{"slug":"rs","run_settings":{"loom":{"review_max_bounces":4}}},{"slug":"X","depends_on":["D"]}]}`)
 		notice, _ := result["notice"].(string)
 		if !strings.Contains(notice, "--layer local") || !strings.Contains(notice, `"X" now waits on D`) {
 			t.Errorf("notice = %q; want the run-settings line and the sibling line", notice)
@@ -854,45 +856,6 @@ func stepLookupContract(t *testing.T, f *cliFixture) {
 					t.Errorf("get t1: got %v; want task-a", task)
 				}
 			},
-		},
-		{
-			name: "get_by_bare_slug",
-			setup: func(t *testing.T) {
-				f.reset(t)
-				runCLI(t, "upsert", `{"slug":"halt-escalation-messages","title":"H","kind":"task","labels":["bug"]}`)
-			},
-			verb:         "get",
-			payload:      `halt-escalation-messages`,
-			wantExitCode: 0,
-			wantOK:       true,
-			assertResult: func(t *testing.T, result map[string]any) {
-				task, _ := result["task"].(map[string]any)
-				if task["slug"] != "halt-escalation-messages" {
-					t.Errorf("get halt-escalation-messages: got %v; want halt-escalation-messages", task)
-				}
-			},
-		},
-		{
-			name: "get_bare_payload_with_leading_digit_is_invalid_json",
-			setup: func(t *testing.T) {
-				f.reset(t)
-			},
-			verb:         "get",
-			payload:      `1abc`,
-			wantExitCode: 1,
-			wantOK:       false,
-			wantError:    "invalid json:",
-		},
-		{
-			name: "get_bare_payload_with_space_is_invalid_json",
-			setup: func(t *testing.T) {
-				f.reset(t)
-			},
-			verb:         "get",
-			payload:      `my task`,
-			wantExitCode: 1,
-			wantOK:       false,
-			wantError:    "invalid json:",
 		},
 		{
 			name: "set_status_bare_handle_lacks_status",

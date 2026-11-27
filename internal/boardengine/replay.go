@@ -28,8 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fsx"
 )
 
-// File names a replay recognises at the Bolt root:
-// the rendered overview, board-data.js and board.html, and the per-entry design and decision files.
+// File names a replay recognises at the Bolt root: the rendered overview and the per-entry design and decision files.
 // Per-project overviews use projectFilePrefix, and the entry store is boardFile.
 const (
 	overviewFile       = "README.md"
@@ -47,10 +46,9 @@ type FabricReplay struct{}
 func (FabricReplay) Name() string { return "board" }
 
 // Claims reports whether path, a Bolt-root-relative slash path, is a file of the board:
-// the entry store, a rendered overview file, the view projection or the viewer page;
-// a design file, a decision record or a file of a raddle store directory.
+// the entry store, a rendered overview file, a design file, a decision record or a file of a raddle store directory.
 func (FabricReplay) Claims(path string) bool {
-	if path == boardFile || path == BoardDataFile || path == BoardPageFile || isBoardOverview(path) {
+	if path == boardFile || isBoardOverview(path) {
 		return true
 	}
 	if _, design := boardDesignSlug(path); design {
@@ -207,6 +205,8 @@ var replayFields = entrymerge.Table[Task]{
 		{Name: "short_name", Get: func(t Task) any { return t.ShortName }, Set: func(dst *Task, src Task) { dst.ShortName = src.ShortName }},
 		{Name: "run_settings", Get: func(t Task) any { return orNilSettings(t.RunSettings) }, Set: func(dst *Task, src Task) { dst.RunSettings = cloneSettings(src.RunSettings) }},
 		{Name: "profile", Get: func(t Task) any { return t.Profile }, Set: func(dst *Task, src Task) { dst.Profile = src.Profile }},
+		{Name: pullRequestKey, Get: func(t Task) any { return t.PullRequest }, Set: func(dst *Task, src Task) { dst.PullRequest = src.PullRequest }},
+		{Name: "notify_on_land", Get: func(t Task) any { return t.NotifyOnLand }, Set: func(dst *Task, src Task) { dst.NotifyOnLand = src.NotifyOnLand }},
 		{Name: "owner_machine", Get: func(t Task) any { return t.OwnerMachine }, Set: func(dst *Task, src Task) { dst.OwnerMachine = src.OwnerMachine }},
 		{Name: "project", Get: func(t Task) any { return t.Project }, Set: func(dst *Task, src Task) { dst.Project = src.Project }},
 		{Name: "order", Get: func(t Task) any { return orEmpty(t.Order) }, Set: func(dst *Task, src Task) { dst.Order = slices.Clone(src.Order) }},
@@ -256,6 +256,21 @@ func parsePrimeOwner(data []byte) (string, error) {
 		return "", err
 	}
 	return decoded.PrimeOwner, nil
+}
+
+// parseDraftStatus decodes the top-level draft_status of a board.json read from a commit.
+// An absent or empty file, or an absent key, yields false.
+func parseDraftStatus(data []byte) (bool, error) {
+	if len(bytes.TrimSpace(data)) == 0 {
+		return false, nil
+	}
+	var decoded struct {
+		DraftStatus bool `json:"draft_status"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return false, err
+	}
+	return decoded.DraftStatus, nil
 }
 
 // parseReplayBoard decodes a board.json read from a commit, an absent or empty file being a board with no entry.
@@ -491,6 +506,11 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 		return fabricengine.ReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
 	}
 
+	commitDraft, err := parseDraftStatus(commitJSON)
+	if err != nil {
+		return fabricengine.ReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
+	}
+
 	store := NewStore(req.Dir)
 	store.vocab = &vocabulary
 	if err := store.Load(); err != nil {
@@ -533,6 +553,10 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 		}
 
 		run.changePrimeOwner(basePrime, parentPrime, commitPrime)
+		if commitDraft && !store.draftStatus {
+			store.draftStatus = true
+			run.applied = true
+		}
 		run.changeHolds()
 		run.changeRegistry()
 	}

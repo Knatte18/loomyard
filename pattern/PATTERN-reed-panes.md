@@ -41,7 +41,7 @@ an interrupt key only via shuttle's guards, the guarded picker close and dismiss
 a covered session held; the orch pane and creel journal only via creel. (test)
 
 Text lym types into an agent pane never merges with, submits or wipes an operator's draft.
-Its picker dismissal holds while an operator was active in the pane within `reed.operator_quiet_s`.
+Its picker dismissal holds while an operator was active in the pane within `operator_quiet_s`.
 That protects an operator's open menu.
 The bounded exception is a lone stray character in an idle box:
 the guard clears it once per send attempt, behind a full guard reading.
@@ -55,14 +55,14 @@ A character that survives is submitted at the head of the message.
 - Shuttle's pre-write guard stands in front of every such write.
   One fresh reading takes these facts:
   the session is ready;
-  no operator was active in the pane within `reed.operator_quiet_s`;
+  no operator was active in the pane within `operator_quiet_s`;
   and the input box is empty and readable.
   After a clear of a lone stray character, the reading taken after the clear is the write's guard reading.
   It takes the same facts.
   A write the guard holds fails wrapping `ErrSessionBusy` and writes nothing, and the caller retries later.
   The provider's box reading defines empty.
   Claude's reads a lone `%`, the shell's end-of-line mark left on screen, as empty.
-  So an operator draft of exactly `%` typed outside `reed.operator_quiet_s` reads as empty, and a write can merge with it.
+  So an operator draft of exactly `%` typed outside `operator_quiet_s` reads as empty, and a write can merge with it.
   Claude's box reading goes through a styled capture and takes a box holding only placeholder-styled text as empty.
   That holds only when every non-blank cell is drawn in the placeholder style.
   The caret, the side bars and a lone `%` are stripped first.
@@ -115,7 +115,7 @@ Every other path refuses it.
   the engine names the keys; for Claude's autocompact picker they are one `Escape` that keeps the current setting.
   It fires only into a capture the provider reads as that known picker with no input box.
   It also needs the provider's running-turn check to read no running turn.
-  It fires only when no operator was active in the pane within `reed.operator_quiet_s`.
+  It fires only when no operator was active in the pane within `operator_quiet_s`.
   It plays at most once per send attempt, then waits the provider's interrupt settle and reads the pane again.
   It never selects an entry.
 - `Runner.Inject` skips the ready-pane check.

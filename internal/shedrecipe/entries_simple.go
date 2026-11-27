@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/preflightshed"
@@ -16,7 +15,7 @@ import (
 
 // preflightEntry is the Constructor for the "Preflight" registry row.
 // It validates Env.Cwd and returns preflightshed.NewPreflightWithChecks(name, env.Cwd, checks);
-// its checks are env.PreflightBatcher, env.PreflightStencils, env.PreflightDrift and env.PreflightHarden.
+// its checks are env.PreflightBatcher, env.PreflightStencils and env.PreflightDrift.
 func preflightEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
@@ -24,7 +23,7 @@ func preflightEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	if err := requireAbsRoot("Preflight", "Cwd", env.Cwd); err != nil {
 		return nil, err
 	}
-	return preflightshed.NewPreflightWithChecks(row.Name, env.Cwd, preflightshed.Checks{Batcher: env.PreflightBatcher, Stencils: env.PreflightStencils, Drift: env.PreflightDrift, Harden: env.PreflightHarden}), nil
+	return preflightshed.NewPreflightWithChecks(row.Name, env.Cwd, preflightshed.Checks{Batcher: env.PreflightBatcher, Stencils: env.PreflightStencils, Drift: env.PreflightDrift}), nil
 }
 
 // landingRowDeps returns a copy of env.Landing whose GateKey is the key the row's optional "gate_key" string names.
@@ -38,7 +37,7 @@ func landingRowDeps(entry string, row RowIdentity, cfg Config, env Env) (landing
 	if raw, ok := cfg["gate_key"]; ok {
 		named, isString := raw.(string)
 		if !isString {
-			return landingshed.Deps{}, fmt.Errorf("shedrecipe: %s: row %q config key %q must be a string, got %T; way forward: set %q to the name of a key of %s, a string, or remove it to run the key named for the row", entry, row.Name, "gate_key", raw, "gate_key", configengine.KeyName("gate", "gates"))
+			return landingshed.Deps{}, fmt.Errorf("shedrecipe: %s: row %q config key %q must be a string, got %T; way forward: set %q to the name of a gate.yaml key, a string, or remove it to run the key named for the row", entry, row.Name, "gate_key", raw, "gate_key")
 		}
 		if named != "" {
 			gateKey = named

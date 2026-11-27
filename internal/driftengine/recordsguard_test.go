@@ -175,13 +175,13 @@ func TestRecords(t *testing.T) {
 		t.Parallel()
 		store := newCommitStore(t)
 		d := store.deps(NewPaths(store.root))
-		writeFileString(t, d.Paths.Scope, `{"scope":"full","skip":["slow"],"accepted":[{"test":"t1"}]}`)
+		writeFileString(t, d.Paths.Scope, `{"scope":"partial"}`)
 
 		records, err := ReadRecords(d)
 		if err != nil {
 			t.Fatalf("ReadRecords() = %v; want nil", err)
 		}
-		if records.Committed || records.Mismatch || !records.ScopeFound || records.JudgedFound || records.Scope.Scope != ScopeFull {
+		if records.Committed || records.Mismatch || !records.ScopeFound || records.JudgedFound || records.Scope.Scope != ScopePartial {
 			t.Errorf("ReadRecords() = %+v; want the file as it is, uncommitted, with no mismatch and no judged file", records)
 		}
 	})

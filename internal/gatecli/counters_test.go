@@ -58,48 +58,6 @@ func goPackageEvent(pkg, action, output string, offset, elapsed float64) string 
 	return string(line)
 }
 
-// TestVSTestCounterInvocationClosesAnOpenSummary pins that an invocation boundary closes a `Total tests:` summary.
-// An outcome line after the boundary then adds nothing, whether the invocation starts or its results file replaces it.
-func TestVSTestCounterInvocationClosesAnOpenSummary(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		// boundary is the counter step taken between the opening line and the outcome line.
-		boundary   func(c *vstestCounter)
-		wantCounts tierCounts
-	}{
-		{name: "AStartedInvocation", boundary: func(c *vstestCounter) { c.startInvocation() }, wantCounts: tierCounts{discovered: 9}},
-		{
-			name:       "AResultsFileThatReplacesTheInvocation",
-			boundary:   func(c *vstestCounter) { c.replaceInvocation(trxResults{counts: tierCounts{discovered: 1, passed: 1}}) },
-			wantCounts: tierCounts{discovered: 1, passed: 1},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			c, err := newCounter(counterVSTest, &bytes.Buffer{})
-			if err != nil {
-				t.Fatalf("newCounter(vstest) error = %v", err)
-			}
-			vstest := c.(*vstestCounter)
-			vstest.startInvocation()
-			if _, err := c.Write([]byte("Total tests: 9\n")); err != nil {
-				t.Fatal(err)
-			}
-			tt.boundary(vstest)
-			if _, err := c.Write([]byte("     Passed: 4\n")); err != nil {
-				t.Fatal(err)
-			}
-			if got := c.Counts(); got != tt.wantCounts {
-				t.Errorf("Counts() = %+v; want %+v", got, tt.wantCounts)
-			}
-		})
-	}
-}
-
 func TestCounters(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -107,8 +65,6 @@ func TestCounters(t *testing.T) {
 	splitEvent := goEvent("output", "TestA", "=== RUN   TestA\n") + "\n"
 	vstestPassed := "Passed!  - Failed:     0, Passed:    12, Skipped:     0, Total:    12, Duration: 1 s - x.dll (net8.0)\n"
 	vstestFailed := "Failed!  - Failed:     2, Passed:     3, Skipped:     1, Total:     6, Duration: 2 s - y.dll (net8.0)\n"
-	vstestDetailedPassed := "Test Run Successful.\nTotal tests: 1\n     Passed: 1\n Total time: 0.6 Seconds\n"
-	vstestDetailedFailed := "Test Run Failed.\nTotal tests: 6\n     Passed: 3\n     Failed: 2\n    Skipped: 1\n Total time: 2.1 Seconds\n"
 	vstestFailedBlocks := "  Passed Ns.Tests.Kept [3 ms]\n" +
 		"  Failed Ns.Tests.EnumeratesTree [12 ms]\n  Error Message:\n   System.UnauthorizedAccessException : Access to the path '/r/bin/t' is denied.\n" +
 		"  Stack Trace:\n     at System.IO.Enumeration.FileSystemEnumerator`1.Init()\n\n" +
@@ -309,13 +265,6 @@ func TestCounters(t *testing.T) {
 			wantCounts: tierCounts{discovered: 24, passed: 24},
 		},
 		{
-			name:       "a detailed console logger's summary of several lines is summed per outcome",
-			kind:       "vstest",
-			writes:     []string{vstestDetailedPassed + vstestDetailedFailed},
-			wantOut:    vstestDetailedPassed + vstestDetailedFailed,
-			wantCounts: tierCounts{discovered: 7, passed: 4, failed: 2, skipped: 1},
-		},
-		{
 			name:       "a VSTest Failed! summary",
 			kind:       "vstest",
 			writes:     []string{vstestFailed},
@@ -341,23 +290,6 @@ func TestCounters(t *testing.T) {
 			wantFailures: []runFailure{
 				{test: "Ns.Tests.Long", lines: []string{"l1", "l2", "l3", "l4", "l5", "l6", "l7", "l8"}},
 			},
-		},
-		{
-			name:       "a Total tests line closes a failed test's block with no blank line between",
-			kind:       "vstest",
-			writes:     []string{"  Failed Ns.Tests.One [1 ms]\n  Error Message:\n   boom\nTotal tests: 1\n     Failed: 1\n Total time: 1.0 Seconds\n"},
-			wantOut:    "  Failed Ns.Tests.One [1 ms]\n  Error Message:\n   boom\nTotal tests: 1\n     Failed: 1\n Total time: 1.0 Seconds\n",
-			wantCounts: tierCounts{discovered: 1, failed: 1},
-			wantFailures: []runFailure{
-				{test: "Ns.Tests.One", lines: []string{"boom"}},
-			},
-		},
-		{
-			name:       "a foreign line inside a Total tests summary is passed over, and Total time closes it",
-			kind:       "vstest",
-			writes:     []string{"Total tests: 2\nbuild output of another project\n     Passed: 2\n Total time: 1.0 Seconds\n     Passed: 5\n"},
-			wantOut:    "Total tests: 2\nbuild output of another project\n     Passed: 2\n Total time: 1.0 Seconds\n     Passed: 5\n",
-			wantCounts: tierCounts{discovered: 2, passed: 2},
 		},
 		{
 			name:    "a VSTest result line closes a failed test's block with no blank line between",

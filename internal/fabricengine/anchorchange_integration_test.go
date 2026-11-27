@@ -252,10 +252,6 @@ func TestAnchorChange(t *testing.T) {
 		h := newAnchorHub(t)
 		hubforge.AddPair(t, h, mover)
 		hubforge.ReanchorPair(t, h, h.Location.WorktreeName, "sub")
-		// The re-anchored prime keeps its scratch link at the old anchor, and an entry there keeps the line.
-		if err := fslink.Remove(filepath.Join(h.PrimeWorktree(), ".scratch")); err != nil {
-			t.Fatalf("remove the prime's scratch link at the old anchor: %v", err)
-		}
 
 		c, err := beginAnchorChange(t, h, mover, "other")
 		if err != nil {
@@ -785,6 +781,7 @@ func TestAnchorChange(t *testing.T) {
 			{name: "A checked-out status that reads unfinished and an upstream that reads finished is finished", upstreamRel: statusRel, upstreamState: "done", want: false},
 			{name: "An upstream status that reads unfinished is unfinished", upstreamRel: statusRel, upstreamState: "running", want: true},
 			{name: "An upstream with no status is finished", want: false},
+			{name: "An upstream status in the legacy self directory counts", upstreamRel: "_lym/shed/self/status.json", upstreamState: "paused", want: true},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

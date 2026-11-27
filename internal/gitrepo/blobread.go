@@ -1,5 +1,5 @@
 // blobread.go implements the read-only queries that resolve repository state through go-git, without running git.
-// They read file contents and directory listings at a revision, write a revision's files out, and walk commit history.
+// They read file contents and directory listings at a revision, and walk commit history.
 // They also check whether HEAD's history holds a commit and resolve the current branch's upstream.
 // They also read one commit's message and changed paths.
 
@@ -8,16 +8,12 @@ package gitrepo
 import (
 	"errors"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/storer"
 )
@@ -207,63 +203,6 @@ func (r *Repo) FilesUnderDirAtRevision(rev, dir string) ([]string, error) {
 	})
 }
 
-// WriteTreeAtRevision writes every regular and executable file of rev's tree under dest.
-// Each lands at its path below the tree's root.
-// It reads the stored blobs, so the working tree's copies never reach dest.
-// An executable file is written with mode 0o755 and any other with 0o644, and the directories are created.
-// A symbolic link and a submodule are not written.
-// It returns ErrInvalidSHA when rev is not a valid hex object name.
-func (r *Repo) WriteTreeAtRevision(rev, dest string) error {
-	if !validSHA(rev) {
-		return ErrInvalidSHA
-	}
-
-	_, err := readGoGit(r, func(repo *git.Repository) (struct{}, error) {
-		tree, err := treeForRev(repo, rev)
-		if err != nil {
-			return struct{}{}, fmt.Errorf("gitrepo: resolve tree for %s: %w", rev, err)
-		}
-		err = tree.Files().ForEach(func(file *object.File) error {
-			switch file.Mode {
-			case filemode.Regular, filemode.Deprecated, filemode.Executable:
-				return writeBlobFile(file, filepath.Join(dest, filepath.FromSlash(file.Name)))
-			}
-			return nil
-		})
-		if err != nil {
-			return struct{}{}, fmt.Errorf("gitrepo: write the tree of %s into %s: %w", rev, dest, err)
-		}
-		return struct{}{}, nil
-	})
-	return err
-}
-
-// writeBlobFile writes file's stored contents to target, creating its directory.
-// An executable file gets mode 0o755 and any other 0o644.
-func writeBlobFile(file *object.File, target string) error {
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return err
-	}
-	mode := os.FileMode(0o644)
-	if file.Mode == filemode.Executable {
-		mode = 0o755
-	}
-	reader, err := file.Reader()
-	if err != nil {
-		return fmt.Errorf("open %s: %w", file.Name, err)
-	}
-	defer reader.Close()
-	out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, reader); err != nil {
-		out.Close()
-		return fmt.Errorf("write %s: %w", file.Name, err)
-	}
-	return out.Close()
-}
-
 // SubjectCommit identifies a commit by its full SHA and committer time.
 type SubjectCommit struct {
 	// SHA is the commit's full hex object name.
@@ -362,7 +301,6 @@ var ErrNoUpstream = errors.New("gitrepo: no upstream configured")
 // UpstreamSHA returns the SHA of the remote-tracking ref that the current branch's upstream names.
 // The upstream comes from the branch.<name>.remote and branch.<name>.merge settings.
 // A detached HEAD or a branch with no upstream returns ErrNoUpstream bare.
-// A set upstream whose tracking ref is absent returns an error that also wraps ErrRefNotFound.
 // It reads the ref as last fetched and never contacts the remote.
 func (r *Repo) UpstreamSHA() (string, error) {
 	return readGoGit(r, func(repo *git.Repository) (string, error) {
@@ -382,35 +320,16 @@ func (r *Repo) UpstreamSHA() (string, error) {
 			return "", fmt.Errorf("gitrepo: read config: %w", err)
 		}
 		branch, ok := cfg.Branches[head.Name().Short()]
-		if !ok || branch.Remote == "" || branch.Merge == "" {
-			return "", ErrNoUpstream
-		}
-		trackingRef, mapped := remoteTrackingRef(cfg, branch.Remote, branch.Merge)
-		if !mapped {
+		if !ok || branch.Remote == "" || !branch.Merge.IsBranch() {
 			return "", ErrNoUpstream
 		}
 
-		tracking, err := repo.Reference(trackingRef, true)
+		tracking, err := repo.Reference(plumbing.NewRemoteReferenceName(branch.Remote, branch.Merge.Short()), true)
 		if err != nil {
-			resolveErr := fmt.Errorf("gitrepo: resolve upstream %s: %w", trackingRef, err)
-			if errors.Is(err, plumbing.ErrReferenceNotFound) {
-				return "", absentUpstreamRefError{resolveErr}
-			}
-			return "", resolveErr
+			return "", fmt.Errorf("gitrepo: resolve upstream %s/%s: %w", branch.Remote, branch.Merge.Short(), err)
 		}
 		return tracking.Hash().String(), nil
 	})
-}
-
-// absentUpstreamRefError is the error of an upstream whose remote-tracking ref is absent, as after a fetch pruned it.
-// Its text is the wrapped error's, and it also satisfies errors.Is(err, ErrRefNotFound).
-type absentUpstreamRefError struct {
-	error
-}
-
-// Unwrap returns the underlying error and ErrRefNotFound.
-func (e absentUpstreamRefError) Unwrap() []error {
-	return []error{e.error, ErrRefNotFound}
 }
 
 // CommitDetail is one commit's full message and the repo-relative, slash-separated paths its tree changes.

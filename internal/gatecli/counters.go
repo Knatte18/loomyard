@@ -25,18 +25,7 @@ const (
 )
 
 // vstestSummary matches a VSTest summary line, whose `Passed!` and `Failed!` forms carry the same four counts.
-// The minimal console logger, the default of `dotnet test`, prints it.
 var vstestSummary = regexp.MustCompile(`(?:Passed|Failed)!\s+-\s+Failed:\s*(\d+),\s*Passed:\s*(\d+),\s*Skipped:\s*(\d+),\s*Total:\s*(\d+)`)
-
-// vstestTotalTests matches the line `Total tests: N` that opens the summary of the normal and detailed console loggers.
-var vstestTotalTests = regexp.MustCompile(`^\s*Total tests:\s*(\d+)\s*$`)
-
-// vstestOutcomeCount matches one outcome's line of that summary, such as `     Passed: 1`.
-// Its first group is the outcome and its second the count.
-var vstestOutcomeCount = regexp.MustCompile(`^\s*(Passed|Failed|Skipped):\s*(\d+)\s*$`)
-
-// vstestTotalTime matches the `Total time:` line that closes that summary.
-var vstestTotalTime = regexp.MustCompile(`^\s*Total time:`)
 
 // vstestResult matches the VSTest console line that reports one test's result, such as `  Failed Ns.Tests.A [12 ms]`.
 // Its first group is the result and its second the test's display name.
@@ -91,8 +80,13 @@ type runFailure struct {
 	// lines are the failure's first printed lines, trimmed and without go test's status lines, at most failureLines.
 	// A lint finding has its one line.
 	lines []string
-	// killed is set on a package failure whose test binary go test reported as ended by SIGKILL.
-	killed bool
+	// triage holds the failure's triage lines, each opening with gateslot.TriageLinePrefix; empty when it has none.
+	triage []string
+}
+
+// isTest reports whether the failure is a failed test of a named package, the kind a coverage map can hold.
+func (f runFailure) isTest() bool {
+	return f.pkg != "" && f.test != ""
 }
 
 const (
@@ -101,10 +95,6 @@ const (
 	// unparsedLines caps the lines a counter keeps of output no test event carried.
 	unparsedLines = 12
 )
-
-// killedBinaryLine is the output go test adds to a package whose test binary SIGKILL ended.
-// The event carries the test that was running, when one was.
-const killedBinaryLine = "signal: killed"
 
 // newCounter returns the counter for kind, which writes the tier's text output to out.
 // Any kind but `go-json` and `vstest` is an error.
@@ -190,8 +180,6 @@ type goJSONCounter struct {
 	buildLines   map[string][]string
 	// failedPackages holds the packages with a failed test, whose own fail event the test explains.
 	failedPackages map[string]bool
-	// killedPackages holds the packages whose output carried killedBinaryLine.
-	killedPackages map[string]bool
 	// failures holds every failed test, parents of failed subtests included, and each failed package no test explains.
 	failures []runFailure
 	// unparsed holds the first non-empty lines that were no JSON event.
@@ -342,12 +330,6 @@ func (c *goJSONCounter) observeTest(event goTestEvent) {
 // On a package's fail event that no failed test explains, it adds a failure for the package.
 // The failure carries the package's own lines and those of its failed build.
 func (c *goJSONCounter) observePackageOutcome(event goTestEvent) {
-	if event.Action == "output" && strings.TrimSpace(event.Output) == killedBinaryLine {
-		if c.killedPackages == nil {
-			c.killedPackages = map[string]bool{}
-		}
-		c.killedPackages[event.Package] = true
-	}
 	switch {
 	case event.Action == "build-output" && event.ImportPath != "":
 		c.buildLines = appendCapped(c.buildLines, event.ImportPath, strings.TrimSpace(event.Output))
@@ -359,7 +341,7 @@ func (c *goJSONCounter) observePackageOutcome(event goTestEvent) {
 		if len(lines) > failureLines {
 			lines = lines[:failureLines]
 		}
-		c.failures = append(c.failures, runFailure{pkg: event.Package, lines: lines, killed: c.killedPackages[event.Package]})
+		c.failures = append(c.failures, runFailure{pkg: event.Package, lines: lines})
 	}
 }
 
@@ -467,11 +449,9 @@ func (c *goJSONCounter) handle(line []byte, terminated bool) error {
 	return err
 }
 
-// vstestCounter passes every line through and sums the counts of the VSTest summaries.
-// It reads the minimal logger's one-line summary and the normal and detailed loggers' summary of several lines.
+// vstestCounter passes every line through and sums the counts of the VSTest summary lines.
 // It also reads each failed test's block, which opens with the `Failed <name> [<duration>]` line.
 // The block runs up to a blank line, the next result line or a summary line.
-// An invocation whose results file the gate read has its console counts and failures replaced by the file's.
 type vstestCounter struct {
 	lines  lineReader
 	counts tierCounts
@@ -479,45 +459,6 @@ type vstestCounter struct {
 	failures []runFailure
 	// inFailure is set while the lines read belong to the block of the last failed test.
 	inFailure bool
-	// inTotals is set while the lines read belong to a summary that opened with `Total tests: N`.
-	inTotals bool
-	// invocationCounts and invocationFailures are the counts and the number of failures before the invocation in progress.
-	// Its results file replaces whatever its console output added past them.
-	invocationCounts   tierCounts
-	invocationFailures int
-	// runMessages holds the run-level messages of every results file read, in order.
-	runMessages []string
-}
-
-// startInvocation marks the counts and failures so far as those before the invocation about to run.
-func (c *vstestCounter) startInvocation() {
-	c.lines.mu.Lock()
-	defer c.lines.mu.Unlock()
-	c.invocationCounts, c.invocationFailures = c.counts, len(c.failures)
-	c.inFailure, c.inTotals = false, false
-}
-
-// replaceInvocation replaces what the invocation since startInvocation counted from its console output with results.
-func (c *vstestCounter) replaceInvocation(results trxResults) {
-	c.lines.mu.Lock()
-	defer c.lines.mu.Unlock()
-	before := c.invocationCounts
-	c.counts = tierCounts{
-		discovered: before.discovered + results.counts.discovered,
-		passed:     before.passed + results.counts.passed,
-		failed:     before.failed + results.counts.failed,
-		skipped:    before.skipped + results.counts.skipped,
-	}
-	c.failures = append(c.failures[:c.invocationFailures:c.invocationFailures], results.failures...)
-	c.runMessages = append(c.runMessages, results.runMessages...)
-	c.inFailure, c.inTotals = false, false
-}
-
-// RunMessages returns a copy of the run-level messages of every results file read.
-func (c *vstestCounter) RunMessages() []string {
-	c.lines.mu.Lock()
-	defer c.lines.mu.Unlock()
-	return slices.Clone(c.runMessages)
 }
 
 func (c *vstestCounter) Write(p []byte) (int, error) { return c.lines.Write(p) }
@@ -554,19 +495,8 @@ func (c *vstestCounter) Unfinished() map[string][]string { return nil }
 // handle runs under the line reader's lock.
 func (c *vstestCounter) handle(line []byte, terminated bool) error {
 	c.observeFailure(string(line))
-	c.observeSummary(line)
-	return c.lines.passThrough(line, terminated)
-}
-
-// observeSummary folds a summary line into the counts.
-// A one-line summary carries all four counts.
-// A `Total tests: N` line adds N tests and opens a summary.
-// Each following outcome line of that summary adds its count.
-// The summary ends at its `Total time:` line, at a one-line summary or at an invocation boundary.
-// Any other line, such as one another project writes into the same stream, is passed over.
-// The patterns hold only digit groups, so the conversions cannot fail.
-func (c *vstestCounter) observeSummary(line []byte) {
 	if match := vstestSummary.FindSubmatch(line); match != nil {
+		// The pattern holds only digit groups, so the conversions cannot fail.
 		failed, _ := strconv.Atoi(string(match[1]))
 		passed, _ := strconv.Atoi(string(match[2]))
 		skipped, _ := strconv.Atoi(string(match[3]))
@@ -575,35 +505,8 @@ func (c *vstestCounter) observeSummary(line []byte) {
 		c.counts.passed += passed
 		c.counts.skipped += skipped
 		c.counts.discovered += total
-		c.inTotals = false
-		return
 	}
-	if match := vstestTotalTests.FindSubmatch(line); match != nil {
-		total, _ := strconv.Atoi(string(match[1]))
-		c.counts.discovered += total
-		c.inTotals = true
-		return
-	}
-	if !c.inTotals {
-		return
-	}
-	if vstestTotalTime.Match(line) {
-		c.inTotals = false
-		return
-	}
-	match := vstestOutcomeCount.FindSubmatch(line)
-	if match == nil {
-		return
-	}
-	count, _ := strconv.Atoi(string(match[2]))
-	switch string(match[1]) {
-	case "Passed":
-		c.counts.passed += count
-	case "Failed":
-		c.counts.failed += count
-	case "Skipped":
-		c.counts.skipped += count
-	}
+	return c.lines.passThrough(line, terminated)
 }
 
 // observeFailure folds line into the failed tests.
@@ -619,7 +522,7 @@ func (c *vstestCounter) observeFailure(line string) {
 		}
 		return
 	}
-	if text == "" || vstestSummary.MatchString(text) || vstestTotalTests.MatchString(text) {
+	if text == "" || vstestSummary.MatchString(text) {
 		c.inFailure = false
 		return
 	}

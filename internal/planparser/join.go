@@ -42,7 +42,7 @@ const canonicalRenameMechanic = `1. For a file pair (both sides file self glyphs
    into the ` + "`Rename`" + ` pair.
 4. Never write the relocated file from scratch and delete the original — that loses
    git history exactly as an unstructured create+delete pair would.
-5. For a symbol pair, run the hub's structure-aware rename tool the implementer prompt names (` + "`language.rename_tools`" + `), never a text or regex replace, then grep for zero remaining old-name references and confirm the symbol's doc comment opening names the new name.`
+5. For a symbol pair, run the hub's structure-aware rename tool the implementer prompt names (` + "`language.yaml` `rename_tools`" + `), never a text or regex replace, then grep for zero remaining old-name references and confirm the symbol's doc comment opening names the new name.`
 
 // topLevelCardFileRe matches the name of a card file directly under a plan directory.
 var topLevelCardFileRe = regexp.MustCompile(`^\d+-.+\.md$`)
