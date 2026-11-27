@@ -107,7 +107,9 @@
 // whether or not the gate passed.
 // Its way forward says when the audit found no target change: no fork wrote a file or changed the target's repository.
 // A wrong fork count or a fork that returned no report is a warning only, since the fix is on disk.
-// Subagents the fixer starts to make its fixes are not audited; only the self-check forks are held to the read-only rule.
+// Subagents the fixer starts to make its fixes are not audited.
+// Such a subagent may spawn forks of its own: they are part of its work, so the audit neither checks nor counts them.
+// Only the self-check forks, and whatever they spawn, are held to the read-only rule.
 //
 // # Review before fix
 //

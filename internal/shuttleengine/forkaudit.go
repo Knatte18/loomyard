@@ -23,7 +23,7 @@ type WriteEvent struct {
 // It counts Agent tool invocations (SpawnCalls) and named spawns (NamedSpawns).
 // A named spawn is a defect signal, since named forks lose inherited context;
 // NamedForkSpawns counts the named spawns that are forks, leaving out a named fresh subagent.
-// Forks holds one report per subagent the parent spawned, forks and fresh subagents alike.
+// Forks holds one report per subagent of the session, fork or fresh, whether the session or a subagent spawned it.
 type ForkAudit struct {
 	Forks              []ForkReport // One ForkReport per subagent, in discovery order.
 	SpawnCalls         int          // Agent tool invocations in parent's transcript (attempts, not confirmations).
@@ -53,4 +53,6 @@ type ForkReport struct {
 	ReportReturned bool           // Whether fork produced a final assistant message ("report returned" signal).
 	// FreshSubagent is true for a subagent started with a fresh context and false for a fork.
 	FreshSubagent bool
+	// SpawnerTranscriptPath is the spawning subagent's TranscriptPath, empty when the parent session spawned this one.
+	SpawnerTranscriptPath string
 }

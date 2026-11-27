@@ -38,8 +38,9 @@ func TestAuditForkTranscript_SpawnBoundaryAgentCallExcluded(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	transcript := writeSpawnBoundaryFixture(t, forkMeta)
+	meta, metaFound := readSubagentMeta(transcript)
 
-	report, err := auditForkTranscript(transcript)
+	report, err := auditForkTranscript(transcript, meta, metaFound, nil)
 	if err != nil {
 		t.Fatalf("auditForkTranscript() error: %v", err)
 	}
@@ -71,7 +72,7 @@ func TestAuditForkTranscript_MissingMetaFallsBackToCountingEverything(t *testing
 	t.Parallel()
 	transcript := writeSpawnBoundaryFixture(t, "")
 
-	report, err := auditForkTranscript(transcript)
+	report, err := auditForkTranscript(transcript, subagentMeta{}, false, nil)
 	if err != nil {
 		t.Fatalf("auditForkTranscript() error: %v", err)
 	}

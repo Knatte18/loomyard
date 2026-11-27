@@ -159,6 +159,51 @@ func TestAuditClusterRound(t *testing.T) {
 			wantForks: 2,
 		},
 		{
+			name: "fix: the forks under a fresh subagent are neither violations nor self-check forks",
+			audit: &shuttleengine.ForkAudit{
+				Forks: []shuttleengine.ForkReport{
+					cleanFork("a"),
+					{TranscriptPath: "deeper", WriteCalls: 1, SpawnerTranscriptPath: "nested"},
+					{TranscriptPath: "fresh", AgentCalls: 1, FreshSubagent: true},
+					{TranscriptPath: "nested", AgentCalls: 1, WriteCalls: 1, BashCommands: []string{"git commit -am x"}, SpawnerTranscriptPath: "fresh"},
+					cleanFork("b"),
+				},
+			},
+			wantN:     2,
+			fix:       true,
+			wantForks: 2,
+		},
+		{
+			name: "fix: a write by a fork a self-check fork spawned keeps the revert way forward",
+			audit: &shuttleengine.ForkAudit{
+				Forks: []shuttleengine.ForkReport{
+					{TranscriptPath: "a", ReportReturned: true, AgentCalls: 1},
+					{TranscriptPath: "nested", WriteCalls: 1, SpawnerTranscriptPath: "a"},
+				},
+			},
+			wantN:          1,
+			wantErr:        true,
+			errSubstr:      `twill fixer fork "a" attempted 1 nested spawn call(s)`,
+			fix:            true,
+			wantForks:      2,
+			wantWayForward: revertWayForward,
+		},
+		{
+			name: "fix: a commit by a fresh subagent a self-check fork spawned keeps the revert way forward",
+			audit: &shuttleengine.ForkAudit{
+				Forks: []shuttleengine.ForkReport{
+					{TranscriptPath: "a", ReportReturned: true, AgentCalls: 1},
+					{TranscriptPath: "fresh", BashCommands: []string{"git commit -am x"}, FreshSubagent: true, SpawnerTranscriptPath: "a"},
+				},
+			},
+			wantN:          1,
+			wantErr:        true,
+			errSubstr:      `twill fixer fork "a" attempted 1 nested spawn call(s)`,
+			fix:            true,
+			wantForks:      2,
+			wantWayForward: revertWayForward,
+		},
+		{
 			name: "fix: a named fresh delegate is no named-fork violation",
 			audit: &shuttleengine.ForkAudit{
 				Forks:           []shuttleengine.ForkReport{cleanFork("a"), cleanFork("b"), {TranscriptPath: "fresh", FreshSubagent: true}},

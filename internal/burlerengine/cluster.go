@@ -929,6 +929,9 @@ func unreturnedForkWarnings(audit *shuttleengine.ForkAudit) []string {
 // A fresh subagent the fixer started to make its fixes writes on the fixer's behalf:
 // it is no self-check fork, so this audit neither checks nor counts it.
 // A name given to it is no named-fork violation.
+// A subagent belongs to whichever subagent the session itself spawned at the head of its spawner chain.
+// Under a fresh subagent it is part of that subagent's work, so it is neither checked nor counted.
+// Under a fork it is checked like that fork, so what it changed in the target reaches the way forward.
 func auditFixRound(audit *shuttleengine.ForkAudit, wantN int) (warnings []string, forks int, err error) {
 	if audit == nil {
 		return []string{fmt.Sprintf("twill fixer spawned 0 fork(s) for %d lens(es)", wantN)}, 0, nil
@@ -936,8 +939,16 @@ func auditFixRound(audit *shuttleengine.ForkAudit, wantN int) (warnings []string
 	selfCheck := *audit
 	selfCheck.Forks = nil
 	selfCheck.NamedSpawns = audit.NamedForkSpawns
+	reports := map[string]shuttleengine.ForkReport{}
 	for _, fork := range audit.Forks {
-		if !fork.FreshSubagent {
+		reports[fork.TranscriptPath] = fork
+	}
+	for _, fork := range audit.Forks {
+		head := fork
+		for head.SpawnerTranscriptPath != "" {
+			head = reports[head.SpawnerTranscriptPath]
+		}
+		if !head.FreshSubagent {
 			selfCheck.Forks = append(selfCheck.Forks, fork)
 		}
 	}
