@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/Knatte18/loomyard/internal/beamsetting"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
@@ -21,7 +20,7 @@ type BeamModes struct {
 	Root BeamMode
 	// Beams holds each beam's settings and landing facts by slug.
 	// A beam whose read failed, or whose worktree is not on this machine, is absent.
-	// The sections of an absent beam show no mode line.
+	// The mode line of an open absent beam says its settings were not read.
 	Beams map[string]BeamMode
 }
 
@@ -98,7 +97,11 @@ const (
 // hubWideSourceText names the hub-wide default as the place an inherited value comes from.
 const hubWideSourceText = "hub-wide"
 
-// modeHeader is the README's statement of the hub-wide defaults and the legend of the mode lines.
+// unreadModesText is the mode line of an open beam whose settings the render could not read.
+// A beam whose worktree is on another machine is one such beam.
+const unreadModesText = autonomyLabel + " and " + pullRequestLabel + " not read on this machine"
+
+// modeHeader is the README's statement of the hub-wide defaults and the blank line after it.
 // It is empty when the render has no modes.
 func (b boardView) modeHeader() []string {
 	if b.modes == nil {
@@ -108,40 +111,35 @@ func (b boardView) modeHeader() []string {
 	return []string{
 		fmt.Sprintf("Hub-wide default: %s %s · %s %s.",
 			strings.ToLower(autonomyLabel), codeSpan(hubWide.Autonomy.Value), pullRequestLabel, codeSpan(hubWide.PullRequest.Value)),
-		"On the mode line of a beam or the root, a **bold** value is that project's own setting,",
-		"and an _italic_ value is inherited from the place in brackets.",
-		"A setting that the root and every beam read by this render take from the hub-wide default is stated here alone.",
-		fmt.Sprintf("%s %s opens a pull request that waits for the operator to approve or merge it, %s opens one and merges it at once with no review, "+
-			"%s opens none unless GitHub's rules for the parent branch require one, and %s lands by a true merge with no pull request;",
-			pullRequestLabel, codeSpan(beamsetting.PullRequestReview), codeSpan(beamsetting.PullRequestTrail), codeSpan(beamsetting.PullRequestOff), codeSpan(beamsetting.PullRequestMergeIn)),
-		"no agent reviews a pull request under any of them.",
-		"A beam the render could not read, such as one whose worktree is on another machine, has no mode line,",
-		"and its settings may differ.",
-		beamPRLabel + " links the pull request the beam's landing record names; it may already be closed or merged on GitHub.",
 		"",
 	}
 }
 
 // modeLines are project's mode line and the blank line after it.
-// They are empty for a project that is neither the root nor a beam the modes hold, and for a line with no part.
+// The root and every open beam have one, which always shows autonomy and the PR setting;
+// an open beam the modes do not hold gets a line saying its settings were not read.
+// They are empty for any other project and for a render with no modes.
 func (b boardView) modeLines(project Task) []string {
 	if b.modes == nil {
 		return nil
 	}
 	mode, own := b.modes.Root, RootSubject
 	if project.Slug != "" {
-		beamMode, found := b.modes.Beams[project.Slug]
-		if !project.Beam || !found {
+		if !project.Beam {
 			return nil
+		}
+		beamMode, found := b.modes.Beams[project.Slug]
+		if !found {
+			if isDone(project) {
+				return nil
+			}
+			return []string{unreadModesText, ""}
 		}
 		mode, own = beamMode, project.Slug
 	}
-	var parts []string
-	if !b.everyPlaceHubWide(func(m BeamMode) SettingValue { return m.Autonomy }) {
-		parts = append(parts, autonomyLabel+" "+b.settingText(mode.Autonomy, own))
-	}
-	if !b.everyPlaceHubWide(func(m BeamMode) SettingValue { return m.PullRequest }) {
-		parts = append(parts, pullRequestLabel+" "+b.settingText(mode.PullRequest, own))
+	parts := []string{
+		autonomyLabel + " " + b.settingText(mode.Autonomy, own),
+		pullRequestLabel + " " + b.settingText(mode.PullRequest, own),
 	}
 	if mode.ParentBranch != "" {
 		parts = append(parts, parentBranchLabel+" "+codeSpan(mode.ParentBranch))
@@ -149,24 +147,7 @@ func (b boardView) modeLines(project Task) []string {
 	if mode.PullRequestNumber > 0 {
 		parts = append(parts, fmt.Sprintf("%s [#%d](%s)", beamPRLabel, mode.PullRequestNumber, mode.PullRequestURL))
 	}
-	if len(parts) == 0 {
-		return nil
-	}
 	return []string{strings.Join(parts, " · "), ""}
-}
-
-// everyPlaceHubWide reports whether the hub-wide default decides the setting pick selects in every place.
-// The places are the root and every beam the modes hold.
-func (b boardView) everyPlaceHubWide(pick func(BeamMode) SettingValue) bool {
-	if pick(b.modes.Root).SetBy != "" {
-		return false
-	}
-	for _, mode := range b.modes.Beams {
-		if pick(mode).SetBy != "" {
-			return false
-		}
-	}
-	return true
 }
 
 // settingText is setting's value as a mode line shows it:

@@ -150,16 +150,15 @@
 // RenderToDisk reads the beam modes through the BeamModeReader its Outputs carry.
 // Config.Outputs takes that reader from InstallBeamModeReader;
 // the lym root installs it, and a test binary installs none.
-// With modes, the README's header states the hub-wide default of autonomy and of the pull-request setting,
-// and the legend of the mode lines.
+// With modes, the README's header states the hub-wide default of autonomy and of the pull-request setting.
 // The section and file header of the root and of each open beam carry a mode line.
-// A beam the reader leaves out of its answer, such as one whose worktree is not on this machine, carries none,
-// and the legend says its settings may differ.
-// It shows autonomy and the pull-request setting, then a beam's parent branch and its recorded pull request as a link.
-// The link is the one the landing record names, so GitHub may already have closed or merged that pull request,
-// and the legend says so.
-// A setting is bold when the project sets it itself, and it is italic with the place it inherits from otherwise.
-// A setting that the root and every beam read take from the hub-wide default stands in the README's header alone.
+// It always shows autonomy and the pull-request setting.
+// A beam's line then names its parent branch and links its recorded pull request.
+// The link is the one the landing record names, so GitHub may already have closed or merged that pull request.
+// A setting is bold when the project sets it itself.
+// Otherwise it is italic with the place it inherits from, the hub-wide default included.
+// A beam the reader leaves out of its answer carries a mode line saying its settings were not read.
+// A beam whose worktree is not on this machine is one such beam.
 // A failed read renders the board with no mode line and logs a warning.
 // board-data.js is the board's view projection as `window.BOARD = <JSON>;`.
 // Each entry in it carries a revision, the SHA-256 of its stored encoding, which Board.View and the render both take.
