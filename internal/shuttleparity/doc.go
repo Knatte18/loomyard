@@ -31,4 +31,5 @@
 //
 // Report prepares one seat of the catalog on every engine of a set, in a temporary directory it removes.
 // It returns each engine's manifest, the missing compared items and each engine's unmet requirements.
+// A burler role led by a recipe's role prefix is reported as the catalog seat of that role.
 package shuttleparity

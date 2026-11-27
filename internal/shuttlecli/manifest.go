@@ -57,6 +57,8 @@ func (c *shuttleCLI) manifestCmd() *cobra.Command {
 configuration, and prints each engine's launch manifest with the parity
 verdict: the items of Claude's manifest that Codex's lacks, listed as missing.
 A seat is named by its strand role; an unknown name is refused listing the seats.
+A burler role, such as code-burler-review, is accepted under any role prefix or
+none, and is shown as the listed seat built for that role.
 
 It exits non-zero when an item is missing. An engine that cannot start the seat
 is named with its unmet requirements, which alone never fail the verb.

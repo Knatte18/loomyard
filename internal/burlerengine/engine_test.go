@@ -507,7 +507,7 @@ const (
 	malformedReview = "not frontmatter at all\n"
 
 	reviewHalfRole = ReviewRolePrefix
-	fixHalfRole    = fixRolePrefix
+	fixHalfRole    = FixRolePrefix
 )
 
 // clusterTestConfig is a one-lens, one-fan config, so a cluster profile resolves to exactly one fork.

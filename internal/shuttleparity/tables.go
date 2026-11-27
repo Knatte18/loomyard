@@ -348,8 +348,22 @@ func raddleSeatTables(env SeatEnv) ([]seatengine.Table, error) {
 	return oneTable(loomengine.RaddleTable(env.Location, env.StencilsDir, env.SpecsDir, cfg, env.Registry, env.Slug, loomengine.RaddleModeAuto, ""))
 }
 
-// burlerSeatTables builds the review and fix tables of a solo round and of a fanned one, each with an assistant,
-// so the forking reviewer and fixer and both assistant stencils are covered.
+// assistedSoloPrefix leads the roles of the catalog's assisted solo burler round.
+const assistedSoloPrefix = "solo"
+
+// burlerAssistRole is the role of a burler review's assistant seat under no role prefix.
+var burlerAssistRole = seatengine.SeatRole(burlerengine.ReviewRolePrefix, burlerengine.AssistSeatName)
+
+// burlerRoles maps each role of a burler round, without a recipe's role prefix, to the catalog seat built for it.
+var burlerRoles = map[string]string{
+	burlerengine.ReviewRolePrefix: burlerengine.ReviewRolePrefix,
+	burlerengine.FixRolePrefix:    burlerengine.FixRolePrefix,
+	burlerAssistRole:              seatengine.SeatRole(burlerengine.ReviewChairRole(assistedSoloPrefix), burlerengine.AssistSeatName),
+}
+
+// burlerSeatTables builds the review and fix tables of a solo round and of a fanned one, each without and with an assistant,
+// so both reviewer chairs, the forking reviewer and fixer and both assistant stencils are covered.
+// The unassisted solo round has no role prefix, so its seats carry the burler roles themselves.
 func burlerSeatTables(env SeatEnv) ([]seatengine.Table, error) {
 	library, err := lenses.Load(env.Dirs)
 	if err != nil {
@@ -380,11 +394,21 @@ func burlerSeatTables(env SeatEnv) ([]seatengine.Table, error) {
 			LanguageSkills:  true,
 		}
 	}
-	opts := burlerengine.RunOpts{Round: "1", Assist: shuttleengine.ModelChoice{Model: "stand-in"}}
-	tables := engine.SeatTables(profile("solo"), opts)
+	fanned := func(prefix string) burlerengine.Profile {
+		p := profile(prefix)
+		p.ClusterFan, p.FixFan = fan, fan
+		return p
+	}
+	unassisted := burlerengine.RunOpts{Round: "1"}
+	assisted := unassisted
+	assisted.Assist = shuttleengine.ModelChoice{Model: "stand-in"}
+	assistedFanned := assisted
+	assistedFanned.AssistFan = fan
 
-	fanned := profile("fanned")
-	fanned.ClusterFan, fanned.FixFan = fan, fan
-	opts.AssistFan = fan
-	return append(tables, engine.SeatTables(fanned, opts)...), nil
+	return slices.Concat(
+		engine.SeatTables(profile(""), unassisted),
+		engine.SeatTables(fanned("unassisted-fanned"), unassisted),
+		engine.SeatTables(profile(assistedSoloPrefix), assisted),
+		engine.SeatTables(fanned("fanned"), assistedFanned),
+	), nil
 }

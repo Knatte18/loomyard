@@ -17,7 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestReport pins what a seat's report holds, its refusal of an unknown seat and the removal of its temporary directory.
+// TestReport pins what a seat's report holds, which seat a name finds, its refusal of an unknown seat
+// and the removal of its temporary directory.
 func TestReport(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -36,6 +37,9 @@ func TestReport(t *testing.T) {
 		compared    []shuttleengine.ManifestItem
 		forks       bool
 		brokenEntry bool
+		// rolePrefix replaces the fixture table's, and wantSeat is the reported seat when it is not seat.
+		rolePrefix  string
+		wantSeat    string
 		wantMissing []shuttleengine.ManifestItem
 		wantUnmet   map[string][]shuttleengine.Requirement
 		wantErr     []string
@@ -47,6 +51,7 @@ func TestReport(t *testing.T) {
 		{name: "an unknown seat", seat: "nobody", wantErr: []string{`"nobody"`, "fixture"}},
 		{name: "a seat beside a failed builder", seat: "fixture", brokenEntry: true},
 		{name: "the seat of a failed builder", seat: "broken", brokenEntry: true, wantErr: []string{"second#Table", "no stand-in"}},
+		{name: "a burler role under a recipe's prefix", seat: "code-burler-review", rolePrefix: "burler-review", wantSeat: "burler-review"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -54,6 +59,13 @@ func TestReport(t *testing.T) {
 			env := seatsEnv(t, stencilkit.Seed(t))
 			table := fixtureTable()
 			table.Seats[0].ForkSubagents = tt.forks
+			if tt.rolePrefix != "" {
+				table.RolePrefix = tt.rolePrefix
+			}
+			wantSeat := tt.seat
+			if tt.wantSeat != "" {
+				wantSeat = tt.wantSeat
+			}
 			var dir string
 			tables := []seatTable{{Builder: "first#Table", Build: func(env SeatEnv) ([]seatengine.Table, error) {
 				dir = env.Dir
@@ -83,8 +95,8 @@ func TestReport(t *testing.T) {
 			if err != nil {
 				t.Fatalf("report() error = %v", err)
 			}
-			if got.Seat != tt.seat || len(got.Manifests) != 2 {
-				t.Errorf("report() = seat %q with %d manifests; want %q with 2", got.Seat, len(got.Manifests), tt.seat)
+			if got.Seat != wantSeat || len(got.Manifests) != 2 {
+				t.Errorf("report() = seat %q with %d manifests; want %q with 2", got.Seat, len(got.Manifests), wantSeat)
 			}
 			if len(got.Missing) != len(tt.wantMissing) || len(tt.wantMissing) > 0 && !reflect.DeepEqual(got.Missing, tt.wantMissing) {
 				t.Errorf("report() missing = %+v; want %+v", got.Missing, tt.wantMissing)

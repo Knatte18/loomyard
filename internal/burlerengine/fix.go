@@ -22,8 +22,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// fixRolePrefix is the role prefix of the fix half's one seat; the seats engine forms its strand role from it.
-const fixRolePrefix = "burler-fix"
+// FixRolePrefix is the role prefix of the fix half's one seat; the seats engine forms its strand role from it.
+const FixRolePrefix = "burler-fix"
 
 // skippedFixerReport is the fixer report written when the fix half is skipped.
 // It says nothing was fixed, because the review held no findings and the round's gates passed.
@@ -80,7 +80,7 @@ func (p *Profile) fixTable(opts RunOpts, values map[string]string, skills []stri
 		fixGate = append(fixGate, entry)
 	}
 	return seatengine.Table{
-		RolePrefix: p.rolePrefix(fixRolePrefix),
+		RolePrefix: p.rolePrefix(FixRolePrefix),
 		Segment:    p.segment(),
 		Gate:       fixGate,
 		Round:      opts.Round,

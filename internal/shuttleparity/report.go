@@ -79,14 +79,23 @@ func report(env SeatEnv, tables []seatTable, name string, engines shuttleengine.
 }
 
 // LookupSeat returns the first seat of seats whose Name is name.
-// A name no seat holds is refused, naming the seats there are and every error of failures,
+// With none, a burler role, alone or led by a recipe's role prefix, returns the seat built for that role.
+// Any other name no seat holds is refused, naming the seats there are and every error of failures,
 // so a seat that is missing because its builder failed points at that builder.
 func LookupSeat(seats []Seat, failures []error, name string) (Seat, error) {
+	wanted := []string{name}
+	for role, catalogName := range burlerRoles {
+		if name == role || strings.HasSuffix(name, "-"+role) {
+			wanted = append(wanted, catalogName)
+		}
+	}
+	for _, want := range wanted {
+		if index := slices.IndexFunc(seats, func(seat Seat) bool { return seat.Name == want }); index >= 0 {
+			return seats[index], nil
+		}
+	}
 	var names []string
 	for _, seat := range seats {
-		if seat.Name == name {
-			return seat, nil
-		}
 		names = append(names, seat.Name)
 	}
 	slices.Sort(names)
