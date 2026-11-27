@@ -200,6 +200,13 @@
 // It never skips the checkout root or a directory that holds the anchor.
 // A directory it cannot read is skipped with a warning.
 //
+// Prepare writes the launch manifest into the run directory, after the prompt file and the batching state.
+// The manifest lists an item only when the composed launch line holds the text or hook command its delivery writes.
+// A heddle file entry is listed instead when the anchor's marked AGENTS.override.md holds it.
+// A delivery that did not reach the launch therefore leaves no item.
+// A plugin hook the user setup left out is listed as omitted with its reason.
+// The sandbox mode and the developer-instructions size are listed as settings, keyed to codex.
+//
 // OpenLaunch opens a named interactive session with no prompt, for `lym shuttle open`:
 // it validates the model choice and readies the lym home as Prepare does,
 // and its line runs Codex with no hooks and no first turn,

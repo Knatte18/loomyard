@@ -139,6 +139,8 @@ func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, cod
 // It runs the settled sandbox mode, and under workspace-write it turns on the sandbox's network access,
 // so the session reaches the creel daemon's socket.
 // Once Codex exits, the launch appends the exit record to the run's events file.
+// It writes the launch manifest into runDir, listing what the composed line and the rendered AGENTS.override.md hold,
+// and a failed write refuses the launch.
 // A board directory adds creel's hook delivery and marks the launch CreelHooks.
 // A spec with skills starts with the skill load as its first turn.
 // It returns the prompt pointer as Launch.PromptLine, for shuttle to send once the skills load.
@@ -164,17 +166,19 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 		questionDeny: !spec.Interactive,
 	}
 	// The told Board dir is the hub's Bolt checkout, empty outside a hub.
-	passages := shuttleengine.StandingPassages(c.dirs.Board, engineName, spec.Role).Passages
-	items := []instructionItem{creelHeadItem(denyNotice(tools.questionDeny, tools.guards))}
+	standing := shuttleengine.StandingPassages(c.dirs.Board, engineName, spec.Role)
+	notice := denyNotice(tools.questionDeny, tools.guards)
+	items := []instructionItem{creelHeadItem(notice)}
 	subagentEffort := c.subagentEffort(cfg.Agents, spec.ConfigRole, codex)
-	if passage := subagentPassage(subagentEffort, spec.Skills); passage != "" {
+	passageToSubagents := subagentPassage(subagentEffort, spec.Skills)
+	if passageToSubagents != "" {
 		items = append(items, instructionItem{
 			name:       "the subagent passage",
-			text:       passage,
+			text:       passageToSubagents,
 			wayForward: "shorten the role's skills in agents.yaml with lym config agents, since the passage lists them",
 		})
 	}
-	items = append(items, passageItems(passages)...)
+	items = append(items, passageItems(standing.Passages)...)
 	home, writableRoots, found, err := c.readyHome(codex)
 	if err != nil {
 		return shuttleengine.Launch{}, err
@@ -211,9 +215,10 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 		return shuttleengine.Launch{}, err
 	}
 	items = append(items, instructionItemsOf(setup.InstructionFiles)...)
+	pointers := instructionPointers(c.unreadClaudeFiles(found, workDir))
 	items = append(items, instructionItem{
 		name:       instructionPointersItemName,
-		text:       instructionPointers(c.unreadClaudeFiles(found, workDir)),
+		text:       pointers,
 		wayForward: instructionPointersWayForward,
 	})
 	items = append(items, instructionItem{name: skillListingItemName, text: setup.SkillListing, wayForward: skillListingWayForward})
@@ -233,9 +238,13 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 		}
 	}
 	firstTurn, promptLine := launchPointer(promptPath), ""
+	var skillRoots []string
+	skillLoad := ""
 	if len(spec.Skills) > 0 {
 		// The roots come from the codex.yaml this launch already loaded, so one load serves the whole launch.
-		firstTurn, promptLine = skillLoadOver(spec.Skills, c.expandSkillRoots(codex)), firstTurn
+		skillRoots = c.expandSkillRoots(codex)
+		skillLoad = skillLoadOver(spec.Skills, skillRoots)
+		firstTurn, promptLine = skillLoad, firstTurn
 	}
 
 	sh := shell.ForGOOS()
@@ -244,22 +253,54 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 	if c.dirs.Board != "" {
 		creel = creelDelivery{flagDir: shuttleengine.CreelFlagDir(c.dirs.Board), home: home, bin: codexBinary(codex)}
 	}
+	launchCmd := buildLaunchCmd(sh, launchLine{
+		bin:                   codexBinary(codex),
+		home:                  home,
+		sandboxMode:           sandboxMode,
+		writableRoots:         writableRoots,
+		model:                 spec.Model,
+		effort:                spec.Effort,
+		developerInstructions: instructions,
+		subagentEffort:        subagentEffort,
+		maxSubagentThreads:    codex.MaxSubagentThreads,
+		projectDocMaxBytes:    docMaxBytes,
+		hooks:                 hookSettings(eventsPath, tools, creel),
+		firstTurn:             firstTurn,
+		eventsPath:            eventsPath,
+	})
+	// An absent or unreadable file lists no heddle entry.
+	override, _ := os.ReadFile(filepath.Join(workDir, agentsOverrideFile))
+	manifest := codexManifest(manifestInputs{
+		role:                  spec.Role,
+		promptEngine:          spec.PromptEngine,
+		handWritten:           spec.HandWrittenPrompt,
+		sh:                    sh,
+		launchCmd:             launchCmd,
+		passages:              standing.Passages,
+		instructionFiles:      setup.InstructionFiles,
+		claudeFiles:           claudeFileCandidates(found.root, workDir),
+		pointers:              pointers,
+		fileEntries:           standing.FileEntries,
+		agentsOverride:        string(override),
+		skills:                spec.Skills,
+		skillRoots:            skillRoots,
+		skillLoad:             skillLoad,
+		skillListing:          setup.SkillListing,
+		listedSkills:          setup.ListedSkills,
+		pluginContexts:        setup.PluginContexts,
+		omittedHooks:          setup.Omitted,
+		guards:                guardCandidates(gate.RefuseRaw),
+		batchingCommand:       batchingNudgeHookCommand(filepath.Join(absRunDir, batchingNudgeStateFileName)),
+		denyNotice:            notice,
+		subagentPassage:       passageToSubagents,
+		sandboxMode:           sandboxMode,
+		developerInstructions: instructions,
+	})
+	if err := shuttleengine.WriteManifest(absRunDir, manifest); err != nil {
+		return shuttleengine.Launch{}, fmt.Errorf("codexengine: write the launch manifest %s: %w", filepath.Join(absRunDir, shuttleengine.ManifestFileName), err)
+	}
 	return shuttleengine.Launch{
-		Cmd: buildLaunchCmd(sh, launchLine{
-			bin:                   codexBinary(codex),
-			home:                  home,
-			sandboxMode:           sandboxMode,
-			writableRoots:         writableRoots,
-			model:                 spec.Model,
-			effort:                spec.Effort,
-			developerInstructions: instructions,
-			subagentEffort:        subagentEffort,
-			maxSubagentThreads:    codex.MaxSubagentThreads,
-			projectDocMaxBytes:    docMaxBytes,
-			hooks:                 hookSettings(eventsPath, tools, creel),
-			firstTurn:             firstTurn,
-			eventsPath:            eventsPath,
-		}),
+		Cmd:                  launchCmd,
 		ResumeCmd:            buildResumeCmd(sh),
 		PromptLine:           promptLine,
 		RecordsSessionStarts: true,

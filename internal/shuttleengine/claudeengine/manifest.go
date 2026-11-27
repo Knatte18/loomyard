@@ -22,9 +22,6 @@ import (
 // localInstructionFileName is the file at a worktree's anchor that heddle renders and Claude Code loads.
 const localInstructionFileName = "CLAUDE.local.md"
 
-// heddleFileKeyPrefix opens the key of an instruction source that is a heddle entry rendered into a file.
-const heddleFileKeyPrefix = "heddle-file/"
-
 // guardCandidate is one PreToolUse deny a launch could carry: its manifest key and its hook command.
 type guardCandidate struct {
 	key     string
@@ -130,7 +127,7 @@ func claudeManifest(in manifestInputs) shuttleengine.Manifest {
 	if strings.HasPrefix(in.localInstructions, heddleengine.Marker) {
 		for _, entry := range in.fileEntries {
 			if entry.Text != "" && strings.Contains(in.localInstructions, entry.Text) {
-				items = append(items, shuttleengine.ManifestItem{Channel: shuttleengine.ManifestChannelInstructionSource, Key: heddleFileKeyPrefix + entry.Slug, Engine: entry.Engine, Delivery: shuttleengine.ManifestNative})
+				items = append(items, shuttleengine.ManifestItem{Channel: shuttleengine.ManifestChannelInstructionSource, Key: shuttleengine.HeddleFileKeyPrefix + entry.Slug, Engine: entry.Engine, Delivery: shuttleengine.ManifestNative})
 			}
 		}
 	}

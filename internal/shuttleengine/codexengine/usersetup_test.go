@@ -47,6 +47,8 @@ func TestPrepare_UserSetup(t *testing.T) {
 		wantErr []string
 		// wantWarn holds the texts the warnings carry.
 		wantWarn []string
+		// wantSilent requires that nothing is warned.
+		wantSilent bool
 		// throughLink reaches the worktree through a symlink to it, so the engine's anchor is not its resolved path.
 		throughLink bool
 	}{
@@ -66,6 +68,13 @@ func TestPrepare_UserSetup(t *testing.T) {
 				Omitted:  []shuttleengine.OmittedHook{{Name: "plugin p@m SessionStart hook run.sh", Reason: "exit status 3"}},
 			},
 			wantWarn: []string{"a source warning", "plugin p@m SessionStart hook run.sh", "exit status 3", "session scope"},
+		},
+		{
+			name: "UnrunHookWarnsOfNothing",
+			setup: shuttleengine.UserSetup{
+				Omitted: []shuttleengine.OmittedHook{{Name: "plugin p@m SessionStart hook run.sh", Reason: shuttleengine.ErrHookUnrun.Error()}},
+			},
+			wantSilent: true,
 		},
 		{
 			name:    "SourceErrorRefuses",
@@ -117,6 +126,9 @@ func TestPrepare_UserSetup(t *testing.T) {
 				if !strings.Contains(warnings.String(), want) {
 					t.Errorf("warnings = %q; want them to hold %q", warnings, want)
 				}
+			}
+			if tt.wantSilent && warnings.String() != "" {
+				t.Errorf("warnings = %q; want none", warnings)
 			}
 			promptPath := filepath.Join(runDir, "prompt.md")
 			if len(tt.wantErr) > 0 {

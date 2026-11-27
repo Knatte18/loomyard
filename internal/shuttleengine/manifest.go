@@ -67,6 +67,10 @@ const (
 	SubagentPassageKey = "subagent-passage"
 )
 
+// HeddleFileKeyPrefix opens the key of an instruction source that is a heddle entry rendered into a file;
+// the entry's slug follows it.
+const HeddleFileKeyPrefix = "heddle-file/"
+
 // ErrHookUnrun is the error a hook runner returns for a hook it lists without running.
 var ErrHookUnrun = errors.New("shuttle: the hook is listed and not run")
 
