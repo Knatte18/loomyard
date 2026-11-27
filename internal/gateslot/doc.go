@@ -72,6 +72,8 @@
 // `tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier.
 // `gates` is a per-name map from a gate key to a GateKey,
 // so a hub file that sets one key keeps the template's value for every other.
+// A GateKey's scope is `card`, `diff`, `all` or ScopeMarked, and only the `card` and `batch` keys take `card`.
+// UpkeepGateKey names the key of the upkeep run, whose template scope is ScopeMarked.
 // A GateKey may hold `lints`, which run after its tiers.
 // It may also hold a `fixer` on the `card` key only.
 // Config load fills a template key a tuned `gates` entry lacks into that entry.

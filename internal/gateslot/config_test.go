@@ -80,6 +80,7 @@ var templateDefaults = Config{
 		"darn-write":      {Tiers: []int{0}, Scope: "diff"},
 		"code-burler-fix": {Tiers: []int{0}, Scope: "diff"},
 		"pr-review":       {Tiers: []int{0}, Scope: "diff"},
+		"upkeep":          {Tiers: []int{0}, Scope: "marked"},
 
 		"harden-live":       {Tiers: []int{0}, Scope: "diff"},
 		"harden-burler-fix": {Tiers: []int{0}, Scope: "diff"},
@@ -325,7 +326,7 @@ func TestLoadConfig(t *testing.T) {
 			}), "",
 		},
 		{"scope card on a key but card and batch", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: card}\n", Config{}, `config key "gate.gates.parent-align": scope card is only for the card and batch keys` + fixIt},
-		{"an unknown scope", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: some}\n", Config{}, `config key "gate.gates.parent-align": scope "some"; want card, diff or all` + fixIt},
+		{"an unknown scope", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: some}\n", Config{}, `config key "gate.gates.parent-align": scope "some"; want card, diff, all or marked` + fixIt},
 		{
 			"the retired scope coverage names the migrating way forward", baseKeys + "gates:\n  webster-fix: {tiers: [0], scope: coverage}\n", Config{},
 			`config key "gate.gates.webster-fix": scope coverage is retired, since the gate no longer selects tests from the coverage maps; set gate.gates.webster-fix.scope to diff with "lym config gate" from the prime` + roleClause,

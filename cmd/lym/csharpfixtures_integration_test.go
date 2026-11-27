@@ -47,10 +47,11 @@ const csharpFixtureProject = `<Project Sdk="Microsoft.NET.Sdk">
 // TestCSharpFixtures_CompileWithDotnet builds each `testdata/` directory of `.cs` files as one C# project.
 // It fails on a compiler error.
 // It skips when `dotnet` is not on PATH or has no SDK installed, so a machine without .NET stays green.
-// A narrowed gate runs it only when a C# file changes; a whole gate always runs it.
+// Only the upkeep gate key runs it.
 //
 //lym:watch *.cs
 //lym:guard
+//lym:only upkeep
 func TestCSharpFixtures_CompileWithDotnet(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

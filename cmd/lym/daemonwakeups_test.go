@@ -165,6 +165,7 @@ func tickerCallPositions(fset *token.FileSet, file *ast.File) []string {
 // TestDaemonWakeups_UnboundedWaitsStayAboveTheFloor enforces `PATTERN-daemon-wakeups`.
 //
 //lym:guard
+//lym:only parent-align finalize
 func TestDaemonWakeups_UnboundedWaitsStayAboveTheFloor(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("detector", func(t *testing.T) {

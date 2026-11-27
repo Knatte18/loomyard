@@ -630,6 +630,17 @@ var TwillJudgePlain []byte
 //go:embed beam/beam-template-board-tidy.md
 var BeamTemplateBoardTidy []byte
 
+// BeamFragmentBoardTidyUpkeep is the board-tidy prompt's upkeep step for the prime's agent, on the main branch.
+// It has the agent run the upkeep gate call and file a board note for each failure.
+//
+//go:embed beam/beam-fragment-board-tidy-upkeep.md
+var BeamFragmentBoardTidyUpkeep []byte
+
+// BeamFragmentBoardTidyNoUpkeep is the board-tidy prompt's upkeep step for an agent that runs no upkeep checks.
+//
+//go:embed beam/beam-fragment-board-tidy-no-upkeep.md
+var BeamFragmentBoardTidyNoUpkeep []byte
+
 // BeamTemplateDescribe is the beam describer agent's shipped-default opening prompt.
 // It opens the cold session a beam's dobby spawns after a member landing under a recorded pull request.
 // The session rewrites the beam's change description as it now stands.
@@ -1065,6 +1076,8 @@ var entries = []registryEntry{
 	{"engine/claude/question-tool", &EngineClaudeQuestionTool},
 	{"engine/codex/question-tool", &EngineCodexQuestionTool},
 	{"beam-template-board-tidy", &BeamTemplateBoardTidy},
+	{"beam-fragment-board-tidy-upkeep", &BeamFragmentBoardTidyUpkeep},
+	{"beam-fragment-board-tidy-no-upkeep", &BeamFragmentBoardTidyNoUpkeep},
 	{"beam-template-describe", &BeamTemplateDescribe},
 	{"retro-template-task", &RetroTemplateTask},
 	{"gatefix-frame-cold", &GatefixFrameCold},

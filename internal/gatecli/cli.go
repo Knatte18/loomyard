@@ -72,6 +72,8 @@ func newCommand(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, reru
 		Long: `test runs the tiers of gate.tiers, in ascending tier number, going on past a failed one unless --stop-on-fail ends the call there.
 --gate K runs the tiers and the scope that key K of ` + keyName(gatesKey) + ` names, and goes with none of --tier, --upto, --all and --base.
 A key of scope card needs --card <id> per card, scope all runs every tier whole, and scope diff takes the default diff scope.
+Scope marked runs only the key's //lym:only tests.
+While ` + keyName(scoperKey) + ` is go, a --gate call skips other keys' //lym:only tests.
 Explicit <targets> beside --gate replace the key's scope.
 --tier N names a tier and may repeat; the default is tier0 without --upto or --gate.
 --upto N adds every declared tier from 0 through N, bar a manual one, which --tier alone runs.
@@ -218,6 +220,13 @@ type testRequest struct {
 	memoryQuit int64
 	// memoryGuarding is whether the memory guard applies to this run.
 	memoryGuarding bool
+	// held are the sorted names of the `//lym:only` tests whose marker does not name the call's --gate key.
+	// Every listed tier run skips them and the guard step leaves them out; empty without --gate or under another scoper.
+	held []string
+	// marked holds the `//lym:only` tests whose marker names the call's --gate key.
+	// It groups them by their file's tier, then by package directory relative to the scanned module;
+	// a key of scope marked runs them in its guard step.
+	marked map[int]map[string][]string
 	// observer hears each tier start and end; its zero value observes nothing.
 	observer TierObserver
 	// phase, when set, hears where the call stands as each tier waits for slots and runs; only a detached runner sets it.

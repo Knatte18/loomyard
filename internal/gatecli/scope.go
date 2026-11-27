@@ -116,10 +116,35 @@ func withGateScope(cfg gateslot.Config, request testRequest) testRequest {
 	case "all":
 		request.all = true
 		request.cards = nil
-	case "diff":
+	case "diff", gateslot.ScopeMarked:
 		request.cards = nil
 	}
 	return request
+}
+
+// isMarkedCall reports whether request runs a --gate key of scope marked, with no explicit targets to replace it.
+func isMarkedCall(cfg gateslot.Config, request testRequest) bool {
+	return request.gate != "" && len(request.targets) == 0 && cfg.Gates[request.gate].Scope == gateslot.ScopeMarked
+}
+
+// skippedInside returns the guard tests of inside whose tier is none of numbers, nor a tier one of them covers.
+// The runs of numbers leave such a test out although its package is in their set, so the guard step takes it.
+func skippedInside(cfg gateslot.Config, numbers []int, inside map[string][]impactset.GuardTest) map[string][]impactset.GuardTest {
+	run := slices.Clone(numbers)
+	for _, number := range numbers {
+		if tier, err := cfg.Tier(number); err == nil {
+			run = append(run, tier.Covers...)
+		}
+	}
+	left := map[string][]impactset.GuardTest{}
+	for dir, tests := range inside {
+		for _, test := range tests {
+			if !slices.Contains(run, test.Tier) {
+				left[dir] = append(left[dir], test)
+			}
+		}
+	}
+	return left
 }
 
 // computeScope returns the scope of request over the worktree at root, for the config cfg.
@@ -149,10 +174,15 @@ func withGateScope(cfg gateslot.Config, request testRequest) testRequest {
 // A narrowed share, and a --card scope, skip the `//lym:watch` tests of their packages that no changed file concerns.
 // A --card scope reads its changed files as the diff from the merge base with the parent branch.
 // With no parent branch or an unreadable diff it skips none.
+// A narrowed share's guard step also takes each guard test inside its set whose tier no tier of its base is or covers.
+// A --gate key of scope marked takes markedScope instead, whatever the scoper.
 // A guard or watch scan error refuses with its file, line and way forward.
 // ctx bounds the derivation, so a stalled `go list` is killed when it ends.
 func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Location, root string, request testRequest, green *greenRun) (scope, error) {
 	request = withGateScope(cfg, request)
+	if isMarkedCall(cfg, request) {
+		return markedScope(cfg, request)
+	}
 	switch {
 	case len(request.targets) > 0:
 		return scope{form: scopeTargets}, nil
@@ -265,7 +295,7 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Loc
 			for i, module := range targets.Modules {
 				share.modules[i] = moduleTargets{dir: module.Dir, targets: module.Packages}
 			}
-			guards = mergeGuards(guards, targets.Guards)
+			guards = mergeGuards(mergeGuards(guards, targets.Guards), skippedInside(cfg, group.tiers, targets.InsideGuards))
 		}
 		for _, number := range group.tiers {
 			shares[number] = share
@@ -392,7 +422,8 @@ type baseGroup struct {
 // The second result holds the tiers with no base, which run whole.
 // A --base call gives every tier its one base.
 // Under the computed form, a tier's base is the newest ancestor of HEAD that the green record holds whole-green for it.
-// Otherwise it is the merge base with the parent branch.
+// Only an entry that held back no test the request runs counts for this.
+// With no such ancestor, the base is the merge base with the parent branch.
 // A dirty worktree holds no green record, so every tier takes the merge base.
 func diffBaseGroups(cfg gateslot.Config, location *lymcwd.Location, root string, request testRequest, form string, green *greenRun) (groups []baseGroup, wholeTiers []int) {
 	numbers := keptTiers(cfg, request)
@@ -433,7 +464,7 @@ func diffBaseGroups(cfg gateslot.Config, location *lymcwd.Location, root string,
 		var base string
 		ok := false
 		if tier, err := cfg.Tier(number); err == nil && green != nil {
-			base, ok = green.record.newestWholeAncestor(green.fingerprint(tier), moduleKey(root, tier.Dir), isAncestor)
+			base, ok = green.record.newestWholeAncestor(green.fingerprint(tier), moduleKey(root, tier.Dir), request.held, isAncestor)
 		}
 		if !ok {
 			base, ok = parentMerge()

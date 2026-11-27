@@ -111,7 +111,7 @@ const DefaultTestTimeoutMin = 20
 type GateKey struct {
 	// Tiers are the tier numbers the key runs, in order.
 	Tiers []int `yaml:"tiers"`
-	// Scope is card, diff or all.
+	// Scope is card, diff, all or ScopeMarked.
 	Scope string `yaml:"scope"`
 	// Lints are the lint steps the key's call runs after its tiers, in order, each LintComments or LintPattern; empty runs none.
 	Lints []string `yaml:"lints"`
@@ -128,7 +128,13 @@ const (
 	scopeCard = "card"
 	scopeDiff = "diff"
 	scopeAll  = "all"
+	// ScopeMarked runs only the tests whose `//lym:only` marker names the key, each under its file's tier.
+	ScopeMarked = "marked"
 )
+
+// UpkeepGateKey is the gate key of the upkeep run: the checks that need not stop a task, run on the main branch.
+// Its template scope is ScopeMarked, so it runs the tests marked `//lym:only` for it and nothing else.
+const UpkeepGateKey = "upkeep"
 
 // retiredScopeCoverage is the gate key scope that once narrowed importing packages to the tests a coverage map selected.
 // The load refuses it, naming scopeDiff.

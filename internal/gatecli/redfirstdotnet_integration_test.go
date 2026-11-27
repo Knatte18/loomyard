@@ -28,6 +28,8 @@ import (
 // It skips when `dotnet` is not on PATH, has no SDK, or the global-packages folder lacks the test packages.
 //
 // The build leaves an MSBuild node running until the SDK's idle timeout, as TestGateTest_DotnetFixture says.
+//
+//lym:only upkeep
 func TestGateRedFirst_Dotnet(t *testing.T) {
 	tiergate.Require(t, 1)
 	// The rows run one after another: each rewrites the one working tree that the next row's diff starts from.

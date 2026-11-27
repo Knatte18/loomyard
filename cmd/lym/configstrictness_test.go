@@ -100,6 +100,7 @@ const configStrictnessMinScannedFiles = 50
 // so a pinned member with no matching call fails as loudly as an unpinned package that gained a call.
 //
 //lym:guard
+//lym:only parent-align finalize
 func TestConfigStrictness_PinnedCallSiteSets(t *testing.T) {
 	tiergate.Require(t, 0)
 	collectedDegrading := map[string]bool{}

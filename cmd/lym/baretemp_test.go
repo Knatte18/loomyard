@@ -107,6 +107,7 @@ func bareTempFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowli
 // A creation is bare when its directory is "" or os.TempDir(); the allowlist admits the exceptions.
 //
 //lym:guard
+//lym:only parent-align finalize
 func TestBareTemp_NoCreationInTheBareSystemTempDirectory(t *testing.T) {
 	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(allowedBareTemp)

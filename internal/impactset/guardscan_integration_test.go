@@ -1,11 +1,14 @@
-// guardscan_integration_test.go drives ModuleGuardTests over a real module, whose package listing spawns `go list`.
+// guardscan_integration_test.go drives ModuleGuardTests and ModuleOnlyTests over a real module.
+// Listing that module's packages spawns `go list`.
 
 package impactset
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -26,7 +29,7 @@ func TestModuleGuardTests_OverAModule(t *testing.T) {
 	writeRepoFile(t, moduleDir, "g/g.go", "package g\n")
 	writeRepoFile(t, moduleDir, "g/g_test.go", "package g\n\nimport \"testing\"\n\n//lym:guard\nfunc TestGuard(t *testing.T) {}\n")
 	writeRepoFile(t, moduleDir, "p/p.go", "package p\n")
-	writeRepoFile(t, moduleDir, "p/p_test.go", "package p\n\nimport \"testing\"\n\nfunc TestPlain(t *testing.T) {}\n")
+	writeRepoFile(t, moduleDir, "p/p_test.go", "package p\n\nimport \"testing\"\n\nfunc TestPlain(t *testing.T) {}\n\n//lym:only upkeep\nfunc TestHeld(t *testing.T) {}\n")
 
 	t.Run("the guards of every package are keyed by directory", func(t *testing.T) {
 		got, err := ModuleGuardTests(moduleDir)
@@ -35,6 +38,17 @@ func TestModuleGuardTests_OverAModule(t *testing.T) {
 		}
 		if !slices.Equal(got["g"], []GuardTest{{Name: "TestGuard", Tier: 0}}) || len(got["p"]) != 0 {
 			t.Errorf("ModuleGuardTests() = %v; want {g: [{TestGuard 0}]}", got)
+		}
+	})
+
+	t.Run("the only-marked tests of every package are keyed by directory", func(t *testing.T) {
+		got, err := ModuleOnlyTests(context.Background(), moduleDir)
+		if err != nil {
+			t.Fatalf("ModuleOnlyTests() error = %v; want nil", err)
+		}
+		want := map[string][]OnlyTest{"p": {{Name: "TestHeld", Tier: 0, Keys: []string{"upkeep"}}}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("ModuleOnlyTests() = %v; want %v", got, want)
 		}
 	})
 

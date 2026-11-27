@@ -263,6 +263,7 @@ func tmuxIsolationFailures(t *testing.T, opts scankit.Options, allow *scankit.Al
 // and every TestMain in it calls tmuxkit.Main.
 //
 //lym:guard
+//lym:only parent-align finalize
 func TestTmuxIsolation_EveryTestPackageRunsThroughTmuxkitMain(t *testing.T) {
 	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(allowedNoTmuxMain)

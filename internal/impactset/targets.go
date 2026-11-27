@@ -26,6 +26,10 @@ type Targets struct {
 	// Guards maps the directory of each package outside the set to its `//lym:guard` tests, sorted by name.
 	// Each test carries its file's tier.
 	Guards map[string][]GuardTest
+	// InsideGuards maps the directory of each package inside the set to its `//lym:guard` tests, sorted by name.
+	// Each test carries its file's tier, and a watched test the diff leaves alone is left out.
+	// A run whose tiers skip a test's tier leaves it to the guard step; the map is nil when there is none.
+	InsideGuards map[string][]GuardTest
 	// BinaryTests are the sorted worktree-relative directories of each package whose tests import `internal/testkit/lymbin`.
 	// It includes packages inside the set and outside it,
 	// and it is empty with Whole.
@@ -142,12 +146,17 @@ func targetsFor(graph moduleGraph, changedPaths []string, guards map[string][]Gu
 	}
 	unwatched := UnwatchedTests(watched, changedPaths)
 	for dir, tests := range guards {
-		if len(tests) == 0 || set[graph.byDir[dir].ImportPath] {
+		kept := slices.DeleteFunc(slices.Clone(tests), func(test GuardTest) bool { return slices.Contains(unwatched[dir], test.Name) })
+		if len(kept) == 0 {
 			continue
 		}
-		kept := slices.DeleteFunc(slices.Clone(tests), func(test GuardTest) bool { return slices.Contains(unwatched[dir], test.Name) })
-		if len(kept) > 0 {
-			sort.Slice(kept, func(i, j int) bool { return kept[i].Name < kept[j].Name })
+		sort.Slice(kept, func(i, j int) bool { return kept[i].Name < kept[j].Name })
+		if set[graph.byDir[dir].ImportPath] {
+			if targets.InsideGuards == nil {
+				targets.InsideGuards = map[string][]GuardTest{}
+			}
+			targets.InsideGuards[dir] = slices.Compact(kept)
+		} else {
 			targets.Guards[dir] = slices.Compact(kept)
 		}
 	}

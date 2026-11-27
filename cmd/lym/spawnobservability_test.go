@@ -107,6 +107,7 @@ const spawnObservabilityMinScannedFiles = 200
 // A file listed in spawnObservabilityAllowedSpawners is exempt.
 //
 //lym:guard
+//lym:only parent-align finalize
 func TestSpawnObservability_ProductionSpawnsAreLogged(t *testing.T) {
 	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(spawnObservabilityAllowedSpawners)

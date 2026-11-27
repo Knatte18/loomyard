@@ -521,11 +521,11 @@ func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 			if name != cardGateKey && name != "batch" {
 				return nil, guidedError{fmt.Errorf("config key %q: scope card is only for the card and batch keys; fix it with \"lym config gate\" from the prime%s", path, roleClause)}
 			}
-		case scopeDiff, scopeAll:
+		case scopeDiff, scopeAll, ScopeMarked:
 		case retiredScopeCoverage:
 			return nil, guidedError{fmt.Errorf("config key %q: scope coverage is retired, since the gate no longer selects tests from the coverage maps; set %s to diff with \"lym config gate\" from the prime%s", path, path+".scope", roleClause)}
 		default:
-			return nil, guidedError{fmt.Errorf("config key %q: scope %q; want card, diff or all; fix it with \"lym config gate\" from the prime%s", path, key.Scope, roleClause)}
+			return nil, guidedError{fmt.Errorf("config key %q: scope %q; want card, diff, all or marked; fix it with \"lym config gate\" from the prime%s", path, key.Scope, roleClause)}
 		}
 		for _, lint := range key.Lints {
 			if lint != LintComments && lint != LintPattern {

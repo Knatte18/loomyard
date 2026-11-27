@@ -407,6 +407,19 @@ func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, sta
 		deps.TidyModel = choice
 		deps.TidyShuttle = &runnerAgentShuttle{worktree: worktree}
 	}
+	if geom.Slug == "" {
+		deps.UpkeepCall = func() (string, error) {
+			cfg, err := gateslot.LoadConfig(fabricengine.ConfigDirs(prime))
+			if err != nil {
+				return "", fmt.Errorf("load the gate config: %w", err)
+			}
+			// Only the go scoper finds the marked tests, so under any other the call would always be refused.
+			if cfg.Scoper != "go" {
+				return "", nil
+			}
+			return cfg.AgentGateCall(gateslot.UpkeepGateKey)
+		}
+	}
 	return deps, nil
 }
 

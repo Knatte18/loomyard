@@ -48,6 +48,7 @@ func isCommandFunc(fd *ast.FuncDecl) bool {
 // TestRegistration_AllModulesRegistered asserts every Command() package is registered in newRoot().
 //
 //lym:guard
+//lym:only parent-align finalize
 func TestRegistration_AllModulesRegistered(t *testing.T) {
 	tiergate.Require(t, 0)
 	repoRoot := scankit.Root(t)

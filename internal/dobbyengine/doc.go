@@ -202,6 +202,10 @@
 //   - At every `board_tidy_every` landings, 0 meaning never, dobby spawns the board-tidy agent unless one is in flight.
 //     The agent's one output is the report `.lym/beam/tidy/<UTC timestamp>.md`, which dobby posts to the nearest live orch.
 //     Past `board_tidy_timeout_min` dobby ends the agent and posts a no-report line.
+//   - On the prime's dobby, whose worktree is on the main branch, the agent also runs the upkeep checks before its report.
+//     Deps.UpkeepCall renders their gate call, and the agent files a board note for each failure they report.
+//     With no call the agent runs no upkeep checks: the hub's wiring renders none under a scoper other than go,
+//     and a call that does not render is logged.
 //   - A landing whose run records `lym batten cleanup --apply` removed before dobby read them is not counted.
 //
 // The description rewrite:

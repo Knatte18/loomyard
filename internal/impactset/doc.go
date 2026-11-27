@@ -35,6 +35,7 @@
 // Every top-level test marked `//lym:guard` runs by name in its own package, even outside the set.
 // A repository-scanning test can fail on a change far from its package.
 // Guards holds, per directory, the `//lym:guard` tests of the packages outside the set, sorted by name.
+// InsideGuards holds those of the packages inside it, which a run of another tier than theirs leaves out.
 // Each GuardTest carries the tier of its file.
 // FileTier reads it from the `tiergate.Require` call opening the file's test functions.
 // For a file making no such call, the tier is the N of the `tierN` tag in its `//go:build` line.
@@ -57,6 +58,11 @@
 // A whole run still runs them.
 // A watch line outside the comment block of a top-level `func Test…` is a GuardMisplaced error.
 // A watch line naming no pattern, or a pattern `path.Match` rejects, is a WatchMalformed error.
+//
+// A top-level test marked `//lym:only <key>...` runs only at the gate keys the marker names.
+// FindOnlyTests and ModuleOnlyTests find such tests with their tier and keys; the caller decides what a key runs.
+// An only line outside the comment block of a top-level `func Test…` is a GuardMisplaced error.
+// An only line naming no key is an OnlyMalformed error.
 //
 // FindSeamTests is the same static parse for `//lym:seam <unit>#<Type>`.
 // That marker belongs to a test that reflects over a struct's fields.

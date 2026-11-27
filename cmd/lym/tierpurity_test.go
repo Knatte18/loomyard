@@ -85,6 +85,7 @@ var bannedTokens = []string{
 // A support file holding no test function is skipped.
 //
 //lym:guard
+//lym:only parent-align finalize
 func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 	tiergate.Require(t, 0)
 	spawners := scankit.NewAllowlist(allowedSpawners)

@@ -104,6 +104,24 @@ func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
 		t.Errorf("prime BeamDescribe.Record is set; want the prime's dobby to rewrite no description")
 	}
 
+	// Only the prime's dobby runs the upkeep checks, and only under the scoper that finds the marked tests.
+	if beamDeps.UpkeepCall != nil {
+		t.Errorf("beam UpkeepCall is set; want nil, since the upkeep checks run on the main branch alone")
+	}
+	if primeDeps.UpkeepCall == nil {
+		t.Fatal("prime UpkeepCall = nil; want the upkeep call's renderer")
+	}
+	if call, err := primeDeps.UpkeepCall(); call != "" || err != nil {
+		t.Errorf("prime UpkeepCall() under the template's none scoper = %q, %v; want no call and nil", call, err)
+	}
+	scoper := []yamlengine.KV{{Key: "scoper", Value: "go"}}
+	if _, err := configengine.Set(fabricengine.ConfigDirs(prime), gateslot.ConfigSpec(), configengine.LayerDefault, scoper); err != nil {
+		t.Fatalf("set the gate scoper: %v", err)
+	}
+	if call, err := primeDeps.UpkeepCall(); call != "lym gate test --gate upkeep" || err != nil {
+		t.Errorf("prime UpkeepCall() under the go scoper = %q, %v; want %q and nil", call, err, "lym gate test --gate upkeep")
+	}
+
 	// The watch opens only a directory that exists, and a tick creates it as a side effect.
 	// So the check comes before any tick.
 	if info, err := os.Stat(filepath.Dir(hibernatecli.RequestPath(prime))); err != nil || !info.IsDir() {

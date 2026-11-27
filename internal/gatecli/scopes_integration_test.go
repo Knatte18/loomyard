@@ -435,6 +435,88 @@ func TestGateTest_Scopes(t *testing.T) {
 		wantArgs(t, gate(t, pair, nil, "--card", "1", "--tier", "1"), scoped, []string{"."}, guardInvocation)
 	})
 
+	t.Run("a computed scope runs an impacted package's guard in the guard step unless a listed tier is or covers its tier", func(t *testing.T) {
+		plankit.WriteTree(t, pair, map[string]string{
+			"consumer/c.go":      "package consumer\n\nimport \"example.com/scopes/lib\"\n\nvar One = lib.One\n",
+			"consumer/c_test.go": "//go:build tier1\n\npackage consumer\n\nimport \"testing\"\n\n//lym:guard\nfunc TestConsumerGuard(t *testing.T) {}\n",
+		})
+		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(pair, "consumer")) })
+		edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 3 }\n")
+		scoped := []string{"./consumer", "./lib", "./user"}
+
+		wantArgs(t, gate(t, pair, nil), scoped, guardInvocation, []string{"./consumer", "-run", "^(TestConsumerGuard)$"})
+		wantArgs(t, gate(t, pair, nil, "--tier", "1"), scoped, guardInvocation)
+	})
+
+	t.Run("a --gate call skips a //lym:only test its marker does not name, a marked key runs only its marked tests or is refused, and a marker naming no gate key is refused", func(t *testing.T) {
+		plankit.WriteTree(t, pair, map[string]string{
+			"heldpkg/h.go": "package heldpkg\n",
+			"heldpkg/h_test.go": "package heldpkg\n\nimport \"testing\"\n\n//lym:only upkeep\nfunc TestHeld(t *testing.T) {}\n\n" +
+				"//lym:guard\n//lym:only finalize\nfunc TestLandingGuard(t *testing.T) {}\n",
+			"nested/n_test.go": "package nested\n\nimport \"testing\"\n\n//lym:only upkeep\nfunc TestNestedHeld(t *testing.T) {}\n",
+		})
+		t.Cleanup(func() {
+			_ = os.RemoveAll(filepath.Join(pair, "heldpkg"))
+			_ = os.Remove(filepath.Join(pair, "nested", "n_test.go"))
+		})
+
+		finalize := gate(t, pair, nil, "--gate", "finalize")
+		wantArgs(t, finalize, []string{"./...", "-skip", "^(TestHeld)$"})
+		if want := `tier0 skips TestHeld, since their //lym:only markers do not name --gate "finalize"`; !strings.Contains(finalize.stdout.String(), want) {
+			t.Errorf("stdout = %q; want the held line %q", finalize.stdout.String(), want)
+		}
+		wantArgs(t, gate(t, pair, nil, "--gate", "upkeep"), []string{"./heldpkg", "-run", "^(TestHeld)$"})
+		// A test of the same name that another package holds back leaves the marked one running.
+		plankit.WriteTree(t, pair, map[string]string{
+			"samename/s_test.go": "package samename\n\nimport \"testing\"\n\n//lym:only finalize\nfunc TestHeld(t *testing.T) {}\n",
+		})
+		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(pair, "samename")) })
+		wantArgs(t, gate(t, pair, nil, "--gate", "upkeep"), []string{"./heldpkg", "-run", "^(TestHeld)$"})
+		if err := os.RemoveAll(filepath.Join(pair, "samename")); err != nil {
+			t.Fatal(err)
+		}
+		wantArgs(t, gate(t, pair, nil, "--all"), []string{"./..."})
+
+		// The card scope leaves heldpkg out, so only the guard step could run its held guard.
+		skip := "^(TestHeld|TestLandingGuard)$"
+		wantArgs(t, gate(t, pair, nil, "--gate", "card", "--card", "1"),
+			[]string{"./lib", "./user", "-skip", skip}, []string{".", "-skip", skip}, guardInvocation)
+
+		wantArgs(t, gate(t, pair, nil, "--gate", "upkeep", "./heldpkg"), []string{"./heldpkg", "-skip", "^(TestLandingGuard)$"})
+		wantArgs(t, gate(t, pair, nil, "--gate", "finalize", "-C", "nested", "."), []string{".", "-skip", "^(TestNestedHeld)$"})
+
+		writeScoper(t, "none")
+		defer writeScoper(t, "go")
+		wantRefusal(t, gate(t, pair, nil, "--gate", "upkeep"), "needs the go scoper", `"none"`)
+		writeScoper(t, "go")
+
+		unlisted := filepath.Join(pair, "heldpkg", "h1_test.go")
+		plankit.WriteTree(t, pair, map[string]string{
+			"heldpkg/h1_test.go": "//go:build tier1\n\npackage heldpkg\n\nimport \"testing\"\n\n//lym:only upkeep\nfunc TestHeldTierOne(t *testing.T) {}\n",
+		})
+		wantRefusal(t, gate(t, pair, nil, "--gate", "upkeep"), "lists no tier that is or covers tier1", "TestHeldTierOne", "gate.gates.upkeep", "way forward")
+		if err := os.Remove(unlisted); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.Remove(filepath.Join(pair, "nested", "n_test.go")); err != nil {
+			t.Fatal(err)
+		}
+		edit(t, "heldpkg/h_test.go", "package heldpkg\n\nimport \"testing\"\n\n//lym:only finalize\nfunc TestHeld(t *testing.T) {}\n")
+		wantRefusal(t, gate(t, pair, nil, "--gate", "upkeep"), "is marked //lym:only upkeep", "way forward")
+
+		edit(t, "heldpkg/h_test.go", "package heldpkg\n\nimport \"testing\"\n\n//lym:only nosuch\nfunc TestHeld(t *testing.T) {}\n")
+		wantRefusal(t, gate(t, pair, nil, "--gate", "finalize"), `TestHeld in heldpkg names the gate key "nosuch"`, "way forward")
+
+		edit(t, "go.mod", "this is not a go.mod\n")
+		unlistable := gate(t, pair, nil, "--gate", "finalize")
+		wantArgs(t, unlistable, []string{"./..."})
+		if want := "cannot list the //lym:only tests of"; !strings.Contains(unlistable.stdout.String(), want) {
+			t.Errorf("stdout = %q; want it to hold %q", unlistable.stdout.String(), want)
+		}
+		wantRefusal(t, gate(t, pair, nil, "--gate", "upkeep"), "cannot list the packages of", "way forward")
+	})
+
 	t.Run("--card under dotnet runs the project of the test class naming a card's member glyph target", func(t *testing.T) {
 		writeDotnet(t, nil)
 		defer writeScoper(t, "go")
@@ -897,6 +979,36 @@ func TestGateTest_Scopes(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
+	t.Run("the green entry of a run that held tests back, and the one an inert carry writes, name them", func(t *testing.T) {
+		writeInert(t, "go", nil)
+		defer writeScoper(t, "go")
+		before := gitkit.RevParse(t, pair, "HEAD")
+		t.Cleanup(func() { gitkit.Git(t, pair, "reset", "-q", "--hard", before) })
+		commitChange(t, "heldpkg/h.go", "package heldpkg\n")
+		held := commitChange(t, "heldpkg/h_test.go", "package heldpkg\n\nimport \"testing\"\n\n//lym:only upkeep\nfunc TestHeld(t *testing.T) {}\n")
+		removeGreen(t)
+		// wantHeld checks the one entry written for commit.
+		wantHeld := func(commit string) {
+			t.Helper()
+			var got [][]string
+			for _, entry := range readGreen(greenPath).Entries {
+				if entry.Commit == commit {
+					got = append(got, entry.Held)
+				}
+			}
+			if want := [][]string{{"TestHeld"}}; !reflect.DeepEqual(got, want) {
+				t.Errorf("held tests of the entries for %s = %q; want %q", commit, got, want)
+			}
+		}
+
+		wantArgs(t, real(t, "--gate", "finalize"), []string{"./...", "-skip", "^(TestHeld)$"})
+		wantHeld(held)
+
+		carried := commitChange(t, "docs/note.md", "an inert commit over held tests\n")
+		wantCarried(t, real(t, "--gate", "finalize"))
+		wantHeld(carried)
+	})
 
 	t.Run("a diff run diffs from the newest whole-green ancestor, else from the parent merge base", func(t *testing.T) {
 		removeGreen(t)

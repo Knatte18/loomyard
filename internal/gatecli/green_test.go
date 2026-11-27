@@ -90,6 +90,7 @@ func TestGreenRecord(t *testing.T) {
 			{Fingerprint: "s", Tree: "t", ModuleDir: ".", Args: watchSkip, Packages: []string{"./y"}},
 			{Fingerprint: "h", Tree: "t", ModuleDir: ".", Packages: []string{"./b"}},
 			{Fingerprint: "h", Tree: "t", ModuleDir: ".", Packages: []string{"./a", "./b"}},
+			{Fingerprint: "k", Tree: "t", ModuleDir: ".", Held: []string{"TestH"}, Whole: true},
 		}}
 		tests := []struct {
 			name         string
@@ -97,9 +98,13 @@ func TestGreenRecord(t *testing.T) {
 			tree         string
 			moduleDir    string
 			args         []string
+			held         []string
 			wantWhole    bool
 			wantPackages []string
 		}{
+			{name: "an entry that held a test back covers a request that holds it back too", fingerprint: "k", tree: "t", moduleDir: ".", held: []string{"TestH", "TestI"}, wantWhole: true},
+			{name: "an entry that held a test back never covers a request that runs it", fingerprint: "k", tree: "t", moduleDir: ".", held: []string{"TestI"}},
+			{name: "an entry that held nothing back covers a request that holds tests back", fingerprint: "f", tree: "t", moduleDir: ".", held: []string{"TestH"}, wantWhole: true},
 			{name: "a whole entry covers an empty-args request", fingerprint: "f", tree: "t", moduleDir: ".", wantWhole: true},
 			{name: "an empty-args entry covers the guard step's own -run filter", fingerprint: "f", tree: "t", moduleDir: ".", args: guardFilter, wantWhole: true},
 			{name: "an empty-args entry covers a request under the watch skip", fingerprint: "f", tree: "t", moduleDir: ".", args: watchSkip, wantWhole: true},
@@ -116,9 +121,9 @@ func TestGreenRecord(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				whole, packages := record.covered(tt.fingerprint, tt.tree, tt.moduleDir, tt.args)
+				whole, packages := record.covered(tt.fingerprint, tt.tree, tt.moduleDir, tt.args, tt.held)
 				if whole != tt.wantWhole || !slices.Equal(packages, tt.wantPackages) {
-					t.Errorf("covered(%q, %q, %q, %q) = %v, %q; want %v, %q", tt.fingerprint, tt.tree, tt.moduleDir, tt.args, whole, packages, tt.wantWhole, tt.wantPackages)
+					t.Errorf("covered(%q, %q, %q, %q, %q) = %v, %q; want %v, %q", tt.fingerprint, tt.tree, tt.moduleDir, tt.args, tt.held, whole, packages, tt.wantWhole, tt.wantPackages)
 				}
 			})
 		}
@@ -249,6 +254,17 @@ func TestGreenRecord(t *testing.T) {
 		}
 	})
 
+	t.Run("entries that held different tests back are kept apart", func(t *testing.T) {
+		t.Parallel()
+		now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+		held := greenEntry{Fingerprint: "f", Tree: "t", Commit: "c", ModuleDir: ".", Held: []string{"TestH"}, Packages: []string{"./a"}}
+		unheld := greenEntry{Fingerprint: "f", Tree: "t", Commit: "c", ModuleDir: ".", Packages: []string{"./b"}}
+		entries := greenRecord{}.with(held, now).with(unheld, now).Entries
+		if len(entries) != 2 || !slices.Equal(entries[0].Packages, []string{"./a"}) || !slices.Equal(entries[1].Packages, []string{"./b"}) {
+			t.Errorf("entries = %+v; want the two entries, neither joined into the other", entries)
+		}
+	})
+
 	t.Run("a malformed file reads as empty and a write replaces it", func(t *testing.T) {
 		t.Parallel()
 		path := filepath.Join(t.TempDir(), greenFileName)
@@ -300,26 +316,30 @@ func TestGreenRecord_NewestWholeAncestor(t *testing.T) {
 		}
 	}
 
+	heldBack := func(e *greenEntry) { e.Held = []string{"TestH"} }
 	tests := []struct {
 		name       string
 		entries    []greenEntry
+		held       []string
 		isAncestor func(commit, of string) bool
 		want       string
 	}{
-		{"the newest whole-green ancestor by write time among unrelated commits", []greenEntry{whole("old", 0), whole("new", time.Hour), whole("mid", time.Minute)}, everyCommit, "new"},
-		{"a commit that is not an ancestor is skipped", []greenEntry{whole("old", 0), whole("new", time.Hour)}, func(commit, of string) bool { return of == "HEAD" && commit == "old" }, "old"},
-		{"the newest by history wins over a later write of an older commit", []greenEntry{whole("new", 0), whole("old", time.Hour)}, linear("old", "new"), "new"},
-		{"the newest by history wins when the older commit was written first", []greenEntry{whole("old", 0), whole("new", time.Hour)}, linear("old", "new"), "new"},
-		{"a narrowed entry is never a base", []greenEntry{with(whole("narrow", time.Hour), func(e *greenEntry) { e.Whole, e.Packages = false, []string{"./a"} })}, everyCommit, ""},
-		{"a whole entry under args is never a base", []greenEntry{with(whole("run", time.Hour), func(e *greenEntry) { e.Args = []string{"-run", "X"} })}, everyCommit, ""},
-		{"a whole entry under another fingerprint is never a base", []greenEntry{with(whole("changed", time.Hour), func(e *greenEntry) { e.Fingerprint = "other" })}, everyCommit, ""},
-		{"a whole entry in another module directory is never a base", []greenEntry{with(whole("nested", time.Hour), func(e *greenEntry) { e.ModuleDir = "nested" })}, everyCommit, ""},
-		{"an empty record holds no base", nil, everyCommit, ""},
+		{"the newest whole-green ancestor by write time among unrelated commits", []greenEntry{whole("old", 0), whole("new", time.Hour), whole("mid", time.Minute)}, nil, everyCommit, "new"},
+		{"a commit that is not an ancestor is skipped", []greenEntry{whole("old", 0), whole("new", time.Hour)}, nil, func(commit, of string) bool { return of == "HEAD" && commit == "old" }, "old"},
+		{"the newest by history wins over a later write of an older commit", []greenEntry{whole("new", 0), whole("old", time.Hour)}, nil, linear("old", "new"), "new"},
+		{"the newest by history wins when the older commit was written first", []greenEntry{whole("old", 0), whole("new", time.Hour)}, nil, linear("old", "new"), "new"},
+		{"a narrowed entry is never a base", []greenEntry{with(whole("narrow", time.Hour), func(e *greenEntry) { e.Whole, e.Packages = false, []string{"./a"} })}, nil, everyCommit, ""},
+		{"a whole entry under args is never a base", []greenEntry{with(whole("run", time.Hour), func(e *greenEntry) { e.Args = []string{"-run", "X"} })}, nil, everyCommit, ""},
+		{"a whole entry under another fingerprint is never a base", []greenEntry{with(whole("changed", time.Hour), func(e *greenEntry) { e.Fingerprint = "other" })}, nil, everyCommit, ""},
+		{"a whole entry in another module directory is never a base", []greenEntry{with(whole("nested", time.Hour), func(e *greenEntry) { e.ModuleDir = "nested" })}, nil, everyCommit, ""},
+		{"a whole entry that held a test back is a base for a request that holds it back too", []greenEntry{with(whole("held", time.Hour), heldBack)}, []string{"TestH"}, everyCommit, "held"},
+		{"a whole entry that held a test back is never a base for a request that runs it", []greenEntry{whole("old", 0), with(whole("held", time.Hour), heldBack)}, nil, everyCommit, "old"},
+		{"an empty record holds no base", nil, nil, everyCommit, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, found := greenRecord{Entries: tt.entries}.newestWholeAncestor(fingerprint, ".", tt.isAncestor)
+			got, found := greenRecord{Entries: tt.entries}.newestWholeAncestor(fingerprint, ".", tt.held, tt.isAncestor)
 			if got != tt.want || found != (tt.want != "") {
 				t.Errorf("newestWholeAncestor() = (%q, %v); want (%q, %v)", got, found, tt.want, tt.want != "")
 			}

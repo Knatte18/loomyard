@@ -56,11 +56,24 @@ type tierRun struct {
 	vetStep bool
 	// buildOnly marks a shared_build tier whose share selected no test class: it runs only the build step.
 	buildOnly bool
-	// skip names the `//lym:watch` tests whose `-skip` filter args carries, so the empty-tier check discounts them.
+	// skip names the `//lym:watch` and held tests whose `-skip` filter args carries, so the empty-tier check discounts them.
 	skip []string
+	// held names the `//lym:only` tests of skip that the call's key holds back, sorted; empty when none is skipped so.
+	// A green entry of the run records them apart from its args.
+	held []string
+	// unheldArgs are args without the held tests in the skip filter, which a green entry records; read only when held is set.
+	unheldArgs []string
 	// otherTiers are the declared tiers no listed run of the call's plan is or covers, ascending.
 	// A run that reports no test under a filter of the call's own names them.
 	otherTiers []int
+}
+
+// greenArgs returns the args a green entry of run records and matches on: args without the held tests' skip.
+func (run tierRun) greenArgs() []string {
+	if len(run.held) == 0 {
+		return run.args
+	}
+	return run.unheldArgs
 }
 
 // tierName returns the gate.yaml key and the label of tier number.
@@ -76,8 +89,9 @@ func tierName(number int) string {
 // one guard run per tier that sc.guards holds guard tests for, ascending.
 // It leaves out a tier the listed tiers already ran whole.
 // A narrowed tier whose share names watched tests to skip gets `-skip '^(<names>)$'` after the call's own words.
+// The skip also names every test request.held holds, under every scope form.
 // It gets none when those words carry a filter flag or the command holds no {args}.
-// A line on request.stderr names the tests.
+// A line on request.stderr names the watched tests, and another the held ones.
 // A guard run is a placeholder whose packages and names the run fills from sc.guards.
 // A covered tier is named on request.stderr when it has one.
 // A tier a no-test-class scope runs whole is named on request.stderr when it has one.
@@ -149,11 +163,25 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 			args:        request.args,
 			buildOnly:   tier.SharedBuild && share.noTests && len(invocations) == 0,
 		}
-		// A caller's own filter decides what runs, so the watch skip stays out of it.
-		if !share.whole && len(share.skip) > 0 && len(invocations) > 0 && strings.Contains(tier.Command, "{args}") && !slices.ContainsFunc(request.args, isFilterFlag) {
-			run.args = append(slices.Clone(request.args), watchSkipArgs(share.skip)...)
-			run.skip = share.skip
-			printLine(request.stderr, fmt.Sprintf("gate test: %s skips %s, since no changed file matches their //lym:watch patterns", tierName(number), strings.Join(share.skip, ", ")))
+		var watched []string
+		if !share.whole {
+			watched = share.skip
+		}
+		// A caller's own filter decides what runs, so neither skip goes into it.
+		if names := unionSorted(watched, request.held); len(names) > 0 && len(invocations) > 0 && strings.Contains(tier.Command, "{args}") && !slices.ContainsFunc(request.args, isFilterFlag) {
+			run.args = append(slices.Clone(request.args), watchSkipArgs(names)...)
+			run.skip = names
+			if len(watched) > 0 {
+				printLine(request.stderr, fmt.Sprintf("gate test: %s skips %s, since no changed file matches their //lym:watch patterns", tierName(number), strings.Join(watched, ", ")))
+			}
+			if len(request.held) > 0 {
+				run.held = request.held
+				run.unheldArgs = slices.Clone(request.args)
+				if len(watched) > 0 {
+					run.unheldArgs = append(run.unheldArgs, watchSkipArgs(watched)...)
+				}
+				printHeldLine(request.stderr, number, request.gate, request.held)
+			}
 		}
 		runs = append(runs, run)
 	}
@@ -256,9 +284,12 @@ func watchSkipArgs(names []string) []string {
 // A tier with carry: false runs whole under every scope form but explicit targets, the empty scope included.
 // A command holding neither {targets} nor {test_targets} runs once, whole.
 // It does so under explicit targets and under a non-empty narrower scope.
+// A marked scope makes none, whatever the tier's settings, since only its guard step runs tests.
 func scopeInvocations(tier gateslot.Tier, request testRequest, sc scope) (invocations []invocation, ignoresTargets bool) {
 	runsWhole := []invocation{{dir: tier.Dir, targets: strings.Fields(tier.AllTargets)}}
 	switch {
+	case sc.form == scopeMarked:
+		return nil, false
 	case sc.form == scopeTargets:
 		dir := tier.Dir
 		if request.dir != "" {

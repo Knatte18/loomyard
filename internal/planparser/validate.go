@@ -91,7 +91,6 @@ func validate(plan *Plan, worktreeRoot string, requireApproved bool) []Validatio
 	findings = append(findings, checkExtendsOverlap(plan)...)
 	findings = append(findings, checkExtendsResign(plan)...)
 	findings = append(findings, checkUsesLaterTarget(plan)...)
-	findings = append(findings, checkCreateCallerLater(plan)...)
 	findings = append(findings, checkRedundantPackageTarget(plan)...)
 	findings = append(findings, checkImpactSummaryMultiline(plan)...)
 	findings = append(findings, checkProsaSymbolTarget(plan)...)

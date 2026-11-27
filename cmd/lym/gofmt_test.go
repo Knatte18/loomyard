@@ -47,6 +47,7 @@ func gofmtFinding(file string, src []byte) (string, bool) {
 // TestGofmt_ModuleFilesAreFormatted fails for every Go file in the module that differs from its gofmt form.
 //
 //lym:guard
+//lym:only parent-align finalize
 func TestGofmt_ModuleFilesAreFormatted(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

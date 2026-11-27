@@ -37,6 +37,8 @@ func removedVerbHits(content string) []string {
 	return hits
 }
 
+//lym:guard
+//lym:only parent-align finalize
 func TestRemovedVerbs_NamedNowhere(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

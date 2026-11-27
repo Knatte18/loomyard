@@ -5,11 +5,13 @@ package gatecli
 import (
 	"bytes"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
@@ -65,6 +67,9 @@ func describe(run tierRun) string {
 	if len(run.skip) > 0 {
 		line += " skip=" + strings.Join(run.skip, ",")
 	}
+	if len(run.held) > 0 {
+		line += " held=" + strings.Join(run.held, ",") + " recorded=" + strings.Join(run.greenArgs(), " ")
+	}
 	return line
 }
 
@@ -117,6 +122,10 @@ func TestPlanTierRuns(t *testing.T) {
 		t0.Command = "make test {args}"
 		cfg.Tiers["tier0"] = t0
 	}
+	finalizeKey := func(cfg *gateslot.Config) {
+		cfg.Gates = map[string]gateslot.GateKey{"finalize": {Tiers: []int{0}, Scope: "all"}}
+	}
+	heldLine := `gate test: tier0 skips TestH, since their //lym:only markers do not name --gate "finalize"`
 	tests := []struct {
 		name    string
 		mutate  func(*gateslot.Config)
@@ -399,6 +408,12 @@ func TestPlanTierRuns(t *testing.T) {
 			want:    []string{"tier0 computed none buildonly", "tier1 computed dir=sub ./... ./x/..."},
 		},
 		{
+			name:    "a marked scope's listed tier runs no command under --no-carry",
+			request: testRequest{noCarry: true},
+			scope:   scope{form: scopeMarked, guardStep: true, guardDir: ".", guards: tier1Guards},
+			want:    []string{"tier0 marked none", "tier1 guard dir=. guard"},
+		},
+		{
 			name:    "a --no-carry call runs a carrying tier whole under a narrowed computed scope",
 			request: testRequest{noCarry: true},
 			scope:   narrower,
@@ -456,8 +471,30 @@ func TestPlanTierRuns(t *testing.T) {
 			want:  []string{"tier0 computed dir=. ./..."},
 		},
 		{
-			name:    "a call whose args carry -run gets no -skip",
-			request: testRequest{args: []string{"-run", "X"}},
+			name:       "a held test joins a narrowed share's watch skip, and the recorded args keep the watch skip alone",
+			mutate:     finalizeKey,
+			request:    testRequest{gate: "finalize", args: []string{"-v"}, held: []string{"TestH"}},
+			scope:      scope{form: scopeComputed, modules: narrower.modules, skip: []string{"TestA"}},
+			want:       []string{"tier0 computed dir=. ./a ./b | dir=nested . args=-v -skip ^(TestA|TestH)$ skip=TestA,TestH held=TestH recorded=-v -skip ^(TestA)$"},
+			wantStderr: heldLine,
+		},
+		{
+			name:       "a whole run skips a held test, recording no args",
+			mutate:     finalizeKey,
+			request:    testRequest{gate: "finalize", held: []string{"TestH"}},
+			want:       []string{"tier0 all dir=. ./... args=-skip ^(TestH)$ skip=TestH held=TestH recorded="},
+			wantStderr: heldLine,
+		},
+		{
+			name:       "explicit targets beside --gate skip a held test",
+			mutate:     finalizeKey,
+			request:    testRequest{gate: "finalize", targets: []string{"./a"}, held: []string{"TestH"}},
+			want:       []string{"tier0 targets dir=. ./a args=-skip ^(TestH)$ skip=TestH held=TestH recorded="},
+			wantStderr: heldLine,
+		},
+		{
+			name:    "a call whose args carry -run gets no -skip, for a watched or a held test",
+			request: testRequest{args: []string{"-run", "X"}, held: []string{"TestH"}},
 			scope:   scope{form: scopeComputed, modules: narrower.modules, skip: []string{"TestA"}},
 			want:    []string{"tier0 computed dir=. ./a ./b | dir=nested . args=-run X"},
 		},
@@ -644,6 +681,18 @@ func TestPlanTierRuns(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSkippedInside_LeavesOutATierAListedTierCovers(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	inside := map[string][]impactset.GuardTest{"d": {{Name: "TestCovered", Tier: 0}, {Name: "TestListed", Tier: 1}, {Name: "TestSkipped", Tier: 2}}}
+	got := skippedInside(planConfig(), []int{1}, inside)
+	want := map[string][]impactset.GuardTest{"d": {{Name: "TestSkipped", Tier: 2}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("skippedInside() = %v; want %v", got, want)
 	}
 }
 

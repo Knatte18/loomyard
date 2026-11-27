@@ -16,7 +16,8 @@ const (
 	scoperKey       = "scoper"
 	gatesKey        = "gates"
 	tiersKey        = "tiers"
-	// tierMemoryMBLeaf, tierTimeoutMinLeaf and tierFilterLeaf are keys of one tier's mapping.
+	// tierDirLeaf, tierMemoryMBLeaf, tierTimeoutMinLeaf and tierFilterLeaf are keys of one tier's mapping.
+	tierDirLeaf        = "dir"
 	tierMemoryMBLeaf   = "memory_mb"
 	tierTimeoutMinLeaf = "timeout_min"
 	tierFilterLeaf     = "filter"

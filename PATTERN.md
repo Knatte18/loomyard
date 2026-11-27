@@ -55,7 +55,7 @@
 
 ## Testing
 
-- `PATTERN-test-speed` — Writing or running a test: via `lym gate test` by key; one `tiergate.Require` tier, lowest that fits; it pins behavior no other test covers; skips, clocks, `t.Parallel`, `//lym:seam` and `//lym:watch` per the background. (test) — [background](pattern/PATTERN-test-speed.md)
+- `PATTERN-test-speed` — Writing or running a test: via `lym gate test` by key; one `tiergate.Require` tier, lowest that fits; it pins behavior no other test covers; skips, clocks, `t.Parallel`, `//lym:seam`, `//lym:watch` and `//lym:only` per the background. (test) — [background](pattern/PATTERN-test-speed.md)
 - `PATTERN-test-stand-ins` — A test's stand-in: never for a repository module's state, records, config or output; drive the real module or move the test there. For something outside: below the one module reaching it, one per boundary, answering only recordings, held to it by a contract test. — [background](pattern/PATTERN-test-stand-ins.md)
 - `PATTERN-test-isolation` — Testing package: hermetic git and `tmuxkit.Main`; shared support in one `internal/testkit/<kit>/`; a read-only or unreadable directory via `permkit.Chmod`; hub fixtures via `hubforge`. (test) — [background](pattern/PATTERN-test-isolation.md)
 - `PATTERN-test-only-code` — Writing a function only tests call: it lives in a `_test.go` file or a test-support package (`internal/testkit`, `gitkit`, `hubforge`), never a production file; every other function is reachable from a `main` package. (test) — [background](pattern/PATTERN-test-only-code.md)

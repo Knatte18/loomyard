@@ -145,6 +145,10 @@ type Deps struct {
 	TidyShuttle AgentShuttle
 	// TidyModel is the model the board-tidy agent runs on, resolved by the hub wiring.
 	TidyModel shuttleengine.ModelChoice
+	// UpkeepCall renders the gate call of the upkeep checks the board-tidy agent runs before its report.
+	// The hub wiring sets it on the prime's dobby alone, whose worktree is on the main branch.
+	// Nil, and an empty call with no error, run no upkeep.
+	UpkeepCall func() (string, error)
 	// StencilsDir is the hub's stencils directory, where the board-tidy stencil is read at call time.
 	StencilsDir string
 	// NearestOrch returns the name of the nearest live orch the tidy agent's parent directive names; empty means none.

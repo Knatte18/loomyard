@@ -57,6 +57,7 @@ No site spells a tier list, a scope or a test command.
 | `harden-burler-fix` | Harden-Burler-Fix's `verify` gate | `diff` |
 | `harden-live` | Harden-Burler-Fix's `live` gate: its merge-bar run and its concurrent copies | `diff` |
 | `pr-review` | PR-Review's gate over the agent's commits | `diff` |
+| `upkeep` | the board-tidy agent of the prime's dobby, on the main branch | `marked` |
 | By hand | the `tier3` tier | |
 
 ### No gate runs `tier3`
@@ -119,8 +120,9 @@ Bound: a forged value misleads only an ungated raw run, since `lym gate test` se
   The marker sits directly above the test's `func Test…` line, the way `//testtiming:keep` sits above a kept test.
 - A narrowed gate's guard step runs every marked test by name under its file's tier, whatever the impacted set.
   A guard's result depends on files no import edge names.
-  The one exception is a guard test that also carries `//lym:watch`:
-  the step leaves it out when no changed file concerns it.
+  It runs a marked test inside the impacted set too when no listed tier is or covers that test's tier.
+  The exceptions are a guard test that also carries `//lym:watch`, left out when no changed file concerns it,
+  and one that carries `//lym:only` without the call's key.
 - A test carrying both markers stacks them as contiguous directive lines directly above its `func Test…` line.
   Either order works.
   `//lym:guard` counts as directly above when only `//testtiming:keep` and other `//lym:` lines lie between.
@@ -135,6 +137,29 @@ Bound: a forged value misleads only an ungated raw run, since `lym gate test` se
   For a tree-scoped darn diff, a site runs its row's key over the trees' targets,
   so such a violation can reach the parent.
   What the hub lists as non-production in `darn.tree_scope` bounds that.
+
+## Slow whole-repository checks carry `//lym:only`
+
+- A test carrying `//lym:only <key>...` runs only in a `--gate` call whose key the marker names.
+  Every other key's call skips it in its listed runs and leaves it out of its guard step.
+  A call without `--gate` runs it, so a hand run reaches every test.
+- A whole-repository guard of `cmd/lym`, one that carries no `//lym:watch`, names `parent-align finalize`.
+  So do the tree-sitter link check and the Linux cross-compile.
+  Each catches a break, runs once at landing over the whole tree, and leaves the task gates,
+  where `cmd/lym`'s test binary would otherwise run it on nearly every change.
+  Naming both landing keys lets Finalize carry Parent-Align's pass over an unchanged tree.
+- A check that need not stop a task names `upkeep`:
+  the dead-code guard of [PATTERN-test-only-code](PATTERN-test-only-code.md),
+  and every test that builds a real .NET project, whatever its package and whether or not it is watched.
+  The `upkeep` key's scope `marked` runs only the tests marked for it,
+  and refuses a call that would leave a marked test out or run none.
+  The prime's board-tidy agent runs it on the main branch every `beam.board_tidy_every` landings
+  and files a board note per failure: one per dead function, and a bug note for any other test.
+- A watched guard that reads a bounded set of files, and a guard of any package but `cmd/lym`, stays at the task gates.
+- A marker naming a key `gate.gates` does not hold refuses the gate, naming the test.
+- The marker stacks with the other directive lines in any order.
+- Bound: a break only a landing check sees fails a task first at Parent-Align, which costs a landing round.
+- Bound: dead code lands on `main` and waits for the next upkeep run to become a note.
 
 ## Reflective tests carry `//lym:seam`
 
@@ -163,7 +188,7 @@ Bound: a forged value misleads only an ungated raw run, since `lym gate test` se
   So does one whose inputs no pattern set bounds, such as a link check whose targets come from the link text.
 - A narrowed gate runs the test only when a changed file matches a pattern or the test's own file changed.
   A diff-scoped key narrows over its diff, and a `card` key over the diff from the merge base with the parent branch.
-- A whole gate always runs it.
+- A whole gate always runs it, unless its `//lym:only` marker does not name the gate's key.
 - The marker stacks with `//lym:guard`, `//lym:seam` and `//testtiming:keep` lines in any order.
 - A misplaced marker, or one with no pattern or a malformed one, refuses the gate.
 - Bound: the skip matches by test name, so a test of the same name in another package of the run is skipped too.

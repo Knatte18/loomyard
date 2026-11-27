@@ -37,6 +37,8 @@ const dotnetPackageReferences = `    <PackageReference Include="Microsoft.NET.Te
 // That is process-global state that outlives the test.
 // `dotnet build-server shutdown` would also end the nodes of other gate runs.
 // So the test leaves them to the idle timeout.
+//
+//lym:only upkeep
 func TestGateTest_DotnetFixture(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

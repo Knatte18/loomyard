@@ -175,6 +175,7 @@ func llmTierFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowlis
 // A kit file that uses `os/exec` beyond LookPath also fails.
 //
 //lym:guard
+//lym:only parent-align finalize
 func TestLLMTier_OnlyLLMFilesReachAnLLM(t *testing.T) {
 	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(allowedLLMTierScanData)

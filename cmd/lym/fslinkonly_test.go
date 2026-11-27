@@ -77,6 +77,7 @@ func linkCallFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowli
 // Calls named in allowedLinkCalls are exempt.
 //
 //lym:guard
+//lym:only parent-align finalize
 func TestFslinkOnly_NoRawLinkCalls(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

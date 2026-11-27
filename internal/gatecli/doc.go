@@ -36,6 +36,7 @@
 // In a hub that declares no tier at all, a `--gate` call runs the key's lints and no tier.
 // A key of scope `card` takes the `--card` ids and is refused without one.
 // A key of scope `all` is the `--all` form, and `diff` is the computed form.
+// A key of scope `marked` runs only the tests marked for it, as Held tests below says.
 // Explicit `<targets>` beside `--gate` replace the key's scope.
 // Each run record carries the key as `gate_key`.
 // `--gate` opens no flag combination the manual flags lack, except the key's lint steps.
@@ -224,10 +225,8 @@
 // The verb runs the guard step after the listed tiers when given `--guards`.
 // Under the `go` scoper it also runs after any computed, `--base` or `--card` scope.
 // It covers the module's `//lym:guard` tests outside the scope, so a narrower gate keeps full guard coverage.
-// Under `--card` it also covers a scope package's guard test whose tier no listed tier is or covers.
-// The listed runs skip that test.
-// Bound: a computed or `--base` scope leaves every guard test of an impacted package to the listed runs,
-// so one of a tier they do not run is not run there.
+// It also covers a scope package's guard test whose tier no listed tier is or covers, which the listed runs skip:
+// under `--card` for the cards' scope, and under a computed or `--base` scope for each base's impacted set and tiers.
 // A guard test's tier comes from its file's `tierN` build tag, a file naming none counting as `tier0`.
 // The step plans one run per tier holding guard tests, ascending.
 // Each run is the tier's command with the group's packages as `{targets}`;
@@ -253,6 +252,28 @@
 // A whole scope and explicit targets skip nothing.
 // A misplaced or malformed watch marker refuses the call, as a guard scan error does.
 // Bound: `-skip` matches by name in every package of the run, so a test of the same name elsewhere is skipped too.
+//
+// # Held tests
+//
+// A top-level test marked `//lym:only <key>...` runs only in a `--gate` call whose key the marker names,
+// so a slow whole-repository check runs at the gate key that needs it and leaves the others.
+// Under the `go` scoper every `--gate` call scans the module of its guard step for the markers.
+// A call holds back each marked test whose marker does not name its key, under every scope form.
+// Each listed tier's run gets it in its `-skip` after the words from `--`, beside the watched tests.
+// A line names it, and the guard step leaves it out.
+// A call whose words after `--` carry a filter flag, and a tier whose command holds no `{args}`, hold nothing back.
+// A call without `--gate` holds nothing back, so a hand run reaches every test.
+// A marker that names a key `gate.gates` does not hold refuses the call, naming the test and the key.
+// A directory with no `go.mod` holds nothing back.
+// A module whose packages `go list` cannot list holds nothing back and says so on stderr, so its tiers report the break.
+//
+// A key of scope `marked` runs no package in its listed tiers, under any flag or tier setting.
+// Its guard step runs every test marked for the key under its file's tier, the guard step's way.
+// A marked test whose tier no listed tier is or covers refuses the call, naming the tests and the key to set.
+// In a hub that declares tiers, so does a call that would run no test:
+// no test is marked for the key, or the scanned directory holds no `go.mod`.
+// The scope needs the `go` scoper, and a listing failure refuses the call, since the scope would run nothing.
+// The template's `gateslot.UpkeepGateKey` is such a key.
 //
 // # Hub resolution
 //
@@ -305,6 +326,8 @@
 // Under the `none` and `dotnet` scopers only a whole entry carries.
 // An entry with empty args covers a request with empty args, the guard step's own `-run` filter and the watch skip;
 // any other args need an exact match, so `-- -count=1` reruns.
+// An entry records the held tests apart from its args.
+// It covers a request, or serves as its base, only when that request holds back each test the entry held back.
 // A tier with nothing left is carried: it takes no slot, runs no command and writes a run record with `carried` set.
 // A tier with `carry: false` is never carried and writes no entry.
 //

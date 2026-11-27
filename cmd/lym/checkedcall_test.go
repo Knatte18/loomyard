@@ -62,6 +62,7 @@ const checkedCallMinScannedFiles = 200
 // and a package not listed there counts as pinned zero.
 //
 //lym:guard
+//lym:only parent-align finalize
 func TestCheckedCallInvariant_RawSitesMarkedAndPinned(t *testing.T) {
 	tiergate.Require(t, 0)
 	var markerFailures []string

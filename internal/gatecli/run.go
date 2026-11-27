@@ -101,6 +101,13 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	if request.checkoutRoot != "" {
 		request.root = request.checkoutRoot
 	}
+	request, err = withOnlyTests(preCtx, cfg, request)
+	if refusal := preTierExpiry(preCtx, runCtx, request, "scanning the //lym:only tests"); refusal != "" {
+		return output.Err(out, refusal)
+	}
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
 	sc, err := computeScope(preCtx, cfg, location, request.root, request, green)
 	if refusal := preTierExpiry(preCtx, runCtx, request, "computing the scope"); refusal != "" {
 		return output.Err(out, refusal)
@@ -120,6 +127,11 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		if refusal := preTierExpiry(preCtx, runCtx, request, "scanning the guard tests"); refusal != "" {
 			return output.Err(out, refusal)
 		}
+	}
+	// A marked scope's guards are already the call's own tests per directory.
+	// Dropping by bare name would lose one that shares its name with a held test elsewhere.
+	if sc.form != scopeMarked {
+		sc.guards = withoutHeld(sc.guards, request.held)
 	}
 	plan, err := planTierRuns(cfg, request, sc)
 	if err != nil {

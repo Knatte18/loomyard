@@ -28,6 +28,10 @@ const (
 	BoardTidyRole = "board-tidy"
 	// tidyStencilName is the registered name of the board-tidy agent's opening stencil.
 	tidyStencilName = "beam-template-board-tidy"
+	// tidyUpkeepStencilName is the registered name of the board-tidy prompt's step that runs the upkeep checks.
+	tidyUpkeepStencilName = "beam-fragment-board-tidy-upkeep"
+	// tidyNoUpkeepStencilName is the registered name of the board-tidy prompt's step that runs no upkeep checks.
+	tidyNoUpkeepStencilName = "beam-fragment-board-tidy-no-upkeep"
 )
 
 // AgentShuttle is the part of shuttle the agents dobby spawns run through: the board-tidy agent and the describer agent.
@@ -49,13 +53,20 @@ type TidyPromptInput struct {
 	ReportPath string
 	// Parent is the name of the nearest live orch, empty when there is none.
 	Parent string
+	// UpkeepCall is the gate call of the upkeep checks the agent runs and files notes from; empty runs none.
+	UpkeepCall string
 }
 
 // TidyPrompt composes the board-tidy agent's launch prompt for the engine named engine.
 // It reads the board-tidy stencil from stencilsDir at call time and fills its markers from in.
 // The parent directive names in.Parent, and the edit directive is the one of engine.
+// The upkeep step runs in.UpkeepCall, and a prompt with no call gets the step that runs no upkeep.
 // A stencil read or fill error is returned wrapped with the stencil's name.
 func TidyPrompt(stencilsDir, engine string, in TidyPromptInput) (string, error) {
+	upkeep, err := tidyUpkeepStep(stencilsDir, in.UpkeepCall)
+	if err != nil {
+		return "", err
+	}
 	directive, err := parentdirective.Directive(stencilsDir, in.Parent, false)
 	if err != nil {
 		return "", err
@@ -75,6 +86,7 @@ func TidyPrompt(stencilsDir, engine string, in TidyPromptInput) (string, error) 
 	filled, err := stencil.Fill(template, map[string]string{
 		"landed":                   strings.TrimSuffix(landed.String(), "\n"),
 		"report_path":              in.ReportPath,
+		"upkeep":                   upkeep,
 		parentdirective.MarkerName: directive,
 		editdirective.MarkerName:   editDirective,
 	})
@@ -82,6 +94,29 @@ func TidyPrompt(stencilsDir, engine string, in TidyPromptInput) (string, error) 
 		return "", fmt.Errorf("dobby: board-tidy prompt: fill stencil %q: %w", tidyStencilName, err)
 	}
 	return string(filled), nil
+}
+
+// tidyUpkeepStep returns the board-tidy prompt's upkeep step.
+// The step is the upkeep fragment filled with call, or the no-upkeep fragment when call is empty.
+// A stencil read or fill error is returned wrapped with the fragment's name.
+func tidyUpkeepStep(stencilsDir, call string) (string, error) {
+	name := tidyNoUpkeepStencilName
+	if call != "" {
+		name = tidyUpkeepStencilName
+	}
+	template, err := stencilstore.Read(stencilsDir, name)
+	if err != nil {
+		return "", fmt.Errorf("dobby: board-tidy prompt: read stencil %q: %w", name, err)
+	}
+	values := map[string]string{}
+	if call != "" {
+		values["upkeep_call"] = call
+	}
+	filled, err := stencil.Fill(template, values)
+	if err != nil {
+		return "", fmt.Errorf("dobby: board-tidy prompt: fill stencil %q: %w", name, err)
+	}
+	return strings.TrimSpace(string(filled)), nil
 }
 
 // TidySpec composes the shuttle spec the board-tidy agent launches from.
@@ -196,7 +231,7 @@ func (d *daemon) spawnTidy(now time.Time, cfg Config, landed []string) error {
 	if err != nil {
 		return fmt.Errorf("resolve the board-tidy agent's engine: %w", err)
 	}
-	prompt, err := TidyPrompt(d.deps.StencilsDir, engine, TidyPromptInput{Landed: landed, ReportPath: reportPath, Parent: orch})
+	prompt, err := TidyPrompt(d.deps.StencilsDir, engine, TidyPromptInput{Landed: landed, ReportPath: reportPath, Parent: orch, UpkeepCall: d.upkeepCall()})
 	if err != nil {
 		return err
 	}
@@ -216,6 +251,20 @@ func (d *daemon) spawnTidy(now time.Time, cfg Config, landed []string) error {
 	logger.Info("dobbyengine: the board-tidy agent started", "worktree", d.geom.WorktreeName, "landings", len(landed), "report", reportPath)
 	d.logLine(now, fmt.Sprintf("board tidy started over %d landings: %s", len(landed), reportPath))
 	return nil
+}
+
+// upkeepCall returns the upkeep checks' gate call for the board-tidy agent, empty when the dobby runs none.
+// A call that does not render is logged, and the tidy runs without the upkeep checks.
+func (d *daemon) upkeepCall() string {
+	if d.deps.UpkeepCall == nil {
+		return ""
+	}
+	call, err := d.deps.UpkeepCall()
+	if err != nil {
+		logger.Warn("dobbyengine: the upkeep gate call does not render; the board tidy runs no upkeep checks", "worktree", d.geom.WorktreeName, "error", err)
+		return ""
+	}
+	return call
 }
 
 // settleTidy ends the agent in flight once its report exists or its deadline has passed.

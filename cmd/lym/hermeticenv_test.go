@@ -74,6 +74,7 @@ type pkgHermeticStatus struct {
 // So skipping the tiered files would make this guard vacuous.
 //
 //lym:guard
+//lym:only parent-align finalize
 func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
 	tiergate.Require(t, 0)
 	var fileEntries, dirEntries []scankit.Entry

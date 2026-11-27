@@ -37,6 +37,7 @@ const treeSitterLinkMinTestBinaries = 100
 // A binary that links tree-sitter only through a tier test file counts.
 //
 //lym:guard
+//lym:only parent-align finalize
 func TestTreeSitterLink_OnlyAllowedTestBinariesLinkIt(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

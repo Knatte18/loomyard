@@ -89,6 +89,7 @@ type unreachableFunction struct {
 // It also fails for an allowlist entry that matches no unreachable function, so the list tracks the tree.
 //
 //lym:guard
+//lym:only upkeep
 func TestTestOnlyCode_EveryProductionFunctionIsReachableFromAMain(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
