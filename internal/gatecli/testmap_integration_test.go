@@ -66,6 +66,7 @@ const helperRoleTestMapCLI = "testmap-cli"
 // testMapLandFileEnv, when set, names the file of that package, creating it, instead of its `<package>.go`.
 // testMapRemoveFileEnv, when set, names the file of that package the commit removes instead.
 // testMapHangListEnv names the file the stand-in appends a line to before every `go list` it acts as never ends.
+// testMapOrderEnv names the file a coverage run appends its test's name to.
 const (
 	testMapModuleEnv      = "GATECLI_TESTMAP_MODULE"
 	testMapFailBuildEnv   = "GATECLI_TESTMAP_FAIL_BUILD"
@@ -88,6 +89,7 @@ const (
 	testMapRemoveFileEnv = "GATECLI_TESTMAP_REMOVE_FILE"
 
 	testMapHangListEnv = "GATECLI_TESTMAP_HANG_LIST"
+	testMapOrderEnv    = "GATECLI_TESTMAP_ORDER"
 
 	// testMapCollideEnv names the directory a test ending in Collides records itself in, as a file of its own name.
 	testMapCollideEnv = "GATECLI_TESTMAP_COLLIDE"
@@ -240,7 +242,7 @@ func testMapTestFile(pkg string, tiers map[string]int) string {
 // One ending in LandsLinked first commits a change to a file of the package testMapLandEnv names, when it names one:
 // the file testMapLandFileEnv names, its removal when testMapRemoveFileEnv names a file, or else the package's own file.
 // One ending in Dirties first writes the file testMapDirtyEnv names, when it names one.
-// One ending in Meets, when testMapMeetEnv names a file, records itself there.
+// One ending in Meets or MeetsTwo, when testMapMeetEnv names a file, records itself there once its profile is written.
 // It fails unless another test records itself there within testMapMeetWait, so it passes only beside another.
 // One ending in Excludes, when testMapExcludeEnv names a directory, records itself there for testMapExcludeWait.
 // It fails if another test recorded itself there meanwhile, so it passes only apart from another.
@@ -285,6 +287,11 @@ func runTestMapStandIn() int {
 			return 1
 		}
 	}
+	if order := os.Getenv(testMapOrderEnv); order != "" {
+		if appendLine(order, name) != nil {
+			return 1
+		}
+	}
 	dir, err := os.Getwd()
 	if err != nil {
 		return 1
@@ -321,11 +328,6 @@ func runTestMapStandIn() int {
 		}
 	case strings.HasSuffix(name, "Dirties"):
 		if dirty := os.Getenv(testMapDirtyEnv); dirty != "" && os.WriteFile(dirty, []byte("dirty\n"), 0o644) != nil {
-			return 1
-		}
-	case strings.HasSuffix(name, "Meets"):
-		if meet := os.Getenv(testMapMeetEnv); meet != "" && !meetsAnother(meet, name) {
-			fmt.Printf("--- FAIL: %s (0.00s)\n", name)
 			return 1
 		}
 	case strings.HasSuffix(name, "Excludes"):
@@ -369,6 +371,11 @@ func runTestMapStandIn() int {
 		lines += fmt.Sprintf("%s:3.16,3.28 1 %d\n%s:5.16,5.28 1 0\n", linkedFile, calls, linkedFile)
 	}
 	if err := os.WriteFile(profile, []byte(lines), 0o644); err != nil {
+		return 1
+	}
+	meets := strings.HasSuffix(name, "Meets") || strings.HasSuffix(name, "MeetsTwo")
+	if meet := os.Getenv(testMapMeetEnv); meets && meet != "" && !meetsAnother(meet, name) {
+		fmt.Printf("--- FAIL: %s (0.00s)\n", name)
 		return 1
 	}
 	fmt.Printf("--- PASS: %s (0.01s)\n", name)
@@ -634,7 +641,7 @@ func testMapMoved(t *testing.T, prime, from string, pkgs ...string) []testMapSki
 
 // testMapScope returns the scope of a call naming targets, or of an `--all` call when it names none.
 func testMapScope(targets []string) testRequest {
-	return testRequest{targets: targets, all: len(targets) == 0}
+	return testRequest{targets: targets, all: len(targets) == 0, preTierCeiling: time.Minute}
 }
 
 // runTestMapIn runs `lym gate test --map` over the worktree prime and returns the call's exit code, output and stderr.
@@ -770,6 +777,29 @@ func TestGateTestMapInATaskWorktreeKeepsItsOwnMaps(t *testing.T) {
 		t.Errorf("redundant solo from the task worktree = %d, %s; want exit 0 and map_commit %s", code, out.Bytes(), head)
 	}
 
+	// A failed listing leaves no linked set, so the check covers the module, which lies below the worktree root here.
+	failList := append(slices.Clone(env), testMapFailListEnv+"=1")
+	// callBeside calls solo with a failing listing beside the untracked file rel of the worktree, then removes the file.
+	callBeside := func(rel string) testMapOutcome {
+		t.Helper()
+		file := filepath.Join(pair, filepath.FromSlash(rel))
+		if err := os.WriteFile(file, []byte("stray\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got := callTestMap(t, pair, standIn, failList, time.Minute, "solo")
+		if err := os.Remove(file); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	wantUnmeasured := testMapOutcome{Unmeasured: []testMapSkip{testMapDirty("solo", "backend/stray.txt")}, Exit: 1}
+	if diff := cmp.Diff(wantUnmeasured, callBeside("backend/stray.txt"), cmpopts.EquateEmpty(), cmpopts.IgnoreFields(testMapOutcome{}, "Stderr")); diff != "" {
+		t.Errorf("runTestMap() beside a dirty file of the module mismatch (-want +got):\n%s", diff)
+	}
+	if outside := callBeside("stray.txt"); len(outside.Unmeasured) != 0 || len(outside.Failed) != 1 || outside.Failed[0].Package != "solo" {
+		t.Errorf("runTestMap() beside a dirty file outside the module = unmeasured %v, failed %+v; want solo alone failed", outside.Unmeasured, outside.Failed)
+	}
+
 	// A card scope maps its cards' packages of the module alone: other is untouched, and tools lies outside the module.
 	plankit.WriteTree(t, pair, map[string]string{
 		"backend/other/other.go":      testMapSource("other"),
@@ -783,7 +813,7 @@ func TestGateTestMapInATaskWorktreeKeepsItsOwnMaps(t *testing.T) {
 		Cards: []plankit.Card{{Number: 1, Slug: "solo", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"backend/solo/solo.go", "tools/gen.go"}}}}},
 	})
 	code, output := runTestMapRequest(pair, testMapRequest{
-		scope: testRequest{cards: []string{"1"}}, goBinary: standIn, environ: env,
+		scope: testRequest{cards: []string{"1"}, preTierCeiling: time.Minute}, goBinary: standIn, environ: env,
 		secondUnit: time.Second, minuteUnit: time.Minute, grace: time.Second, cappedParallel: unclampedParallel,
 	})
 	if diff := cmp.Diff(testMapOutcome{Built: []string{"solo"}}, decodeTestMap(t, code, output), cmpopts.EquateEmpty()); diff != "" {
@@ -847,6 +877,9 @@ func TestGateTestMap(t *testing.T) {
 	files["nested/nested.go"] = "package nested\n"
 	files["ignored/ignored.go"] = testMapSource("ignored")
 	files["ignored/ignored_test.go"] = testMapTestFile("ignored", map[string]int{"TestIgnoredOne": 0})
+	// Neither holds a test: one lies below outcomes, and the other only shares its name as a prefix.
+	files["outcomes/below/below.go"] = "package below\n"
+	files["outcomeskin/outcomeskin.go"] = "package outcomeskin\n"
 	plankit.WriteTree(t, prime, files)
 	excludeOut, err := exec.Command("git", "-C", prime, "rev-parse", "--git-path", "info/exclude").Output()
 	if err != nil {
@@ -863,7 +896,7 @@ func TestGateTestMap(t *testing.T) {
 	if err := appendLine(excludePath, "ignored/"); err != nil {
 		t.Fatal(err)
 	}
-	gitkit.Git(t, prime, append([]string{"add", "go.mod", "testdata", ".dot", "nested"}, slices.Sorted(maps.Keys(packageTests))...)...)
+	gitkit.Git(t, prime, append([]string{"add", "go.mod", "testdata", ".dot", "nested", "outcomeskin"}, slices.Sorted(maps.Keys(packageTests))...)...)
 	gitkit.Git(t, prime, "commit", "-q", "-m", "seed the mapped module")
 
 	mapsDir := testcover.Dir(fabricengine.BoltDir(h.Location.HubPath))
@@ -902,6 +935,7 @@ func TestGateTestMap(t *testing.T) {
 	callScope := func(t *testing.T, scope testRequest) testMapOutcome {
 		t.Helper()
 		req := request(environ, 150*time.Millisecond)
+		scope.preTierCeiling = req.scope.preTierCeiling
 		req.scope = scope
 		code, out := runTestMapRequest(prime, req)
 		return decodeTestMap(t, code, out)
@@ -1016,7 +1050,7 @@ func TestGateTestMap(t *testing.T) {
 		})
 		wantBrokenFailed(t, got)
 
-		// TestAlphaOne and TestAlphaTwo each keep their own blocks.
+		// Each entry holds the blocks its own run covered.
 		alpha := readMap(t, "alpha")
 		wantTests := []testcover.MapTest{
 			{Name: "TestAlphaHangs", Tier: 1, Outcome: testcover.OutcomeTimedOut},
@@ -1141,6 +1175,17 @@ func TestGateTestMap(t *testing.T) {
 			FailedTests: []string{"alpha.TestAlphaHangs", "outcomes.TestOutcomesFails"}, Exit: 1,
 		})
 		wantBrokenFailed(t, got)
+
+		// A map of each puts the packages with no test in a call's packages, for this subtest alone.
+		for _, pkg := range []string{"outcomes/below", "outcomeskin"} {
+			if err := testcover.WriteMap(mapsDir, pkg, testcover.Map{Commit: "c0ffee"}); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { os.Remove(testcover.MapPath(mapsDir, pkg)) })
+		}
+		wantOutcome(t, call(t, "outcomes/..."), testMapOutcome{
+			Built: []string{"outcomes", "outcomes/below"}, FailedTests: []string{"outcomes.TestOutcomesFails"}, Exit: 1,
+		})
 	})
 
 	t.Run("ACardScopeMapsItsCardsPackages", func(t *testing.T) {
@@ -1302,11 +1347,13 @@ func TestGateTestMap(t *testing.T) {
 			"lingers/lingers.go":        testMapSource("lingers"),
 			"lingers/lingers_test.go":   testMapTestFile("lingers", map[string]int{"TestLingersOverlaps": 0}),
 			"meets/meets.go":            testMapSource("meets"),
-			"meets/meets_test.go":       testMapTestFile("meets", map[string]int{"TestMeetsFirstMeets": 0, "TestMeetsSecondMeets": 0}),
+			"meets/meets_test.go":       testMapTestFile("meets", map[string]int{"TestMeetsFirstMeets": 0, "TestMeetsSecondMeetsTwo": 0}),
 		})
 		gitkit.Git(t, prime, "add", "excludes", "lingers", "meets")
 		gitkit.Git(t, prime, "commit", "-q", "-m", "add packages whose tests pass only beside, or only apart from, another")
 		// A Meets test passes only while another test runs beside it, so a serial run would fail both.
+		// Each writes its profile before it waits, and the two cover different blocks,
+		// so runs sharing a profile would give both entries the same blocks.
 		// A Collides test fails beside another, so the side-by-side run fails both and each run alone stands.
 		// An Overlaps test passes only while the coverage build of the next package, meets, runs beside it.
 		env := append(withEnv(testMapMeetEnv, filepath.Join(t.TempDir(), "meet")), testMapCollideEnv+"="+t.TempDir(),
@@ -1322,7 +1369,7 @@ func TestGateTestMap(t *testing.T) {
 		wantEntries := map[string][]testcover.MapTest{
 			"excludes": {{Name: "TestExcludesFirstCollides", Blocks: []int{0}}, {Name: "TestExcludesSecondCollides", Blocks: []int{0}}},
 			"lingers":  {{Name: "TestLingersOverlaps", Blocks: []int{0}}},
-			"meets":    {{Name: "TestMeetsFirstMeets", Blocks: []int{0}}, {Name: "TestMeetsSecondMeets", Blocks: []int{0}}},
+			"meets":    {{Name: "TestMeetsFirstMeets", Blocks: []int{0}}, {Name: "TestMeetsSecondMeetsTwo", Blocks: []int{0, 1}}},
 		}
 		for pkg, want := range wantEntries {
 			if diff := cmp.Diff(want, readMap(t, pkg).Tests, cmpopts.EquateEmpty(), ignoreRunFields); diff != "" {
@@ -1342,9 +1389,10 @@ func TestGateTestMap(t *testing.T) {
 		gitkit.Git(t, prime, "commit", "-q", "-m", "add the "+pkg+" package")
 	}
 	// wantApart maps pkg, whose two tests each fail beside the other, and wants both to pass on their first run.
-	wantApart := func(t *testing.T, pkg string) {
+	// The call's environment also holds env.
+	wantApart := func(t *testing.T, pkg string, env ...string) {
 		t.Helper()
-		got := callWith(t, withEnv(testMapExcludeEnv, t.TempDir()), time.Minute, pkg)
+		got := callWith(t, append(withEnv(testMapExcludeEnv, t.TempDir()), env...), time.Minute, pkg)
 		wantOutcome(t, got, testMapOutcome{Built: []string{pkg}})
 	}
 
@@ -1356,8 +1404,25 @@ func TestGateTestMap(t *testing.T) {
 	})
 
 	t.Run("ATiersTestsRunBeforeTheNextTiers", func(t *testing.T) {
-		addPackage(t, "tiered", map[string]int{"TestTieredFirstExcludes": 0, "TestTieredSecondExcludes": 1})
-		wantApart(t, "tiered")
+		// The tier0 test sorts after the tier1 one, so only the tier order runs it first.
+		addPackage(t, "tiered", map[string]int{"TestTieredAExcludes": 1, "TestTieredBExcludes": 0})
+		order := filepath.Join(t.TempDir(), "order")
+		wantApart(t, "tiered", testMapOrderEnv+"="+order)
+		ran, err := os.ReadFile(order)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := "TestTieredBExcludes\nTestTieredAExcludes\n"; string(ran) != want {
+			t.Errorf("tests ran in the order %q; want %q, tier0 first", ran, want)
+		}
+	})
+
+	t.Run("EachTierRunsAsManyTestsAtOnceAsItsOwnParallel", func(t *testing.T) {
+		// The first "parallel: 2" is tier0's, so tier0 runs one test at a time and tier1 two.
+		writeGate(t, strings.Replace(gateYAML("parallel: 2, "), "parallel: 2, ", "parallel: 1, ", 1))
+		t.Cleanup(func() { writeGate(t, gateYAML("parallel: 2, ")) })
+		addPackage(t, "solitary", map[string]int{"TestSolitaryFirstExcludes": 0, "TestSolitarySecondExcludes": 0})
+		wantApart(t, "solitary")
 	})
 
 	if runtime.GOOS == "linux" {
@@ -1718,8 +1783,13 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 		followerBefore := readTestMap(t, mapsDir, "follower")
 		writeStray(t, "linked/linked.go", files["linked/linked.go"]+"// edited\n")
 		// No dirty file keeps linked/inner from building.
-		got := call(t, environ, "caller", "follower", "linked/inner")
+		ran := filepath.Join(t.TempDir(), "ran")
+		got := call(t, withEnv(testMapLymSeenEnv, ran), "caller", "follower", "linked/inner")
 		writeStray(t, "linked/linked.go", files["linked/linked.go"])
+		// Every coverage run records itself there, and linked/inner has no test.
+		if _, err := os.Stat(ran); !os.IsNotExist(err) {
+			t.Errorf("Stat(coverage runs) = %v; want no test of caller or follower run", err)
+		}
 		wantOutcome(t, got, testMapOutcome{
 			Built:      []string{"linked/inner"},
 			Unmeasured: []testMapSkip{testMapDirty("caller", "linked/linked.go"), testMapDirty("follower", "linked/linked.go")},
@@ -1866,6 +1936,22 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 
 	t.Run("AFailedSpawnScanOverADirtyFileWritesNoMap", func(t *testing.T) {
 		wantDirtyLeaves(t, environ, "garbled", "garbled/notes.txt")
+	})
+
+	t.Run("APackageWithNoMapAndAnUnparsableTestFileIsMappedAsFailed", func(t *testing.T) {
+		plankit.WriteTree(t, prime, map[string]string{
+			"mangled/mangled.go":      testMapSource("mangled"),
+			"mangled/mangled_test.go": "package mangled\n\nfunc (\n",
+		})
+		gitkit.Git(t, prime, "add", "mangled")
+		gitkit.Git(t, prime, "commit", "-q", "-m", "add a package whose test file does not parse")
+		got := call(t, environ, "mangled")
+		if got.Exit != 1 || len(got.LeftOut) != 0 || len(got.Failed) != 1 || got.Failed[0].Package != "mangled" || !strings.Contains(got.Failed[0].Failure, "mangled_test.go") {
+			t.Fatalf("runTestMap() = exit %d, left out %v, failed %+v; want exit 1, none left out and mangled alone failed, naming its test file", got.Exit, got.LeftOut, got.Failed)
+		}
+		if failed := readTestMap(t, mapsDir, "mangled"); failed.BuildFailure != got.Failed[0].Failure {
+			t.Errorf("mangled map failure = %q; want %q", failed.BuildFailure, got.Failed[0].Failure)
+		}
 	})
 
 	t.Run("AGoEnvFailureEndsTheWalk", func(t *testing.T) {

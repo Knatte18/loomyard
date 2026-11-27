@@ -84,6 +84,7 @@ func TestMapSideBySide(t *testing.T) {
 		want     int
 	}{
 		{"NoMemoryLimitGivesTheCappedParallel", 0, cappedTo(3), 3},
+		{"TheTiersParallelIsWhatGetsCapped", 0, asGiven, 4},
 		{"ALimitOfTwoTestCapsGivesAtMostTwo", 256, asGiven, 2},
 		{"ALimitOfOneTestCapGivesOne", 128, asGiven, 1},
 		{"ACappedCountBelowTheQuotientWins", 1024, cappedTo(2), 2},

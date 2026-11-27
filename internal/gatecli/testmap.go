@@ -184,7 +184,13 @@ func runTestMap(ctx context.Context, out io.Writer, request testMapRequest) int 
 	if refusal := run.prepare(); refusal != "" {
 		return output.Err(out, refusal)
 	}
-	sc, err := computeScope(runCtx, run.cfg, location, location.WorktreePath(), request.scope, nil)
+	// Computing the scope can run `go list`, which only its context ends when it stalls.
+	scopeCtx, cancelScope := context.WithTimeout(runCtx, request.scope.preTierCeiling)
+	defer cancelScope()
+	sc, err := computeScope(scopeCtx, run.cfg, location, location.WorktreePath(), request.scope, nil)
+	if refusal := preTierExpiry(scopeCtx, runCtx, request.scope, "computing the scope"); refusal != "" {
+		return output.Err(out, refusal)
+	}
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
