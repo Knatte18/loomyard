@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardserve"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -117,6 +118,19 @@ func (f *openFixture) wantRefused(err error, parts ...string) {
 	}
 	if len(f.opened) != 0 {
 		f.t.Errorf("opened %q; want nothing", f.opened)
+	}
+}
+
+func TestOpenerCapFor(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	dir := t.TempDir()
+	dirs := configengine.Dirs{Anchor: dir, Board: dir, Records: dir}
+	if got := openerCapFor(dirs, ""); got != 0 {
+		t.Errorf("openerCapFor with no strand = %s; want no cap", got)
+	}
+	if got := openerCapFor(dirs, "ly:some-task:orch"); got <= 0 {
+		t.Errorf("openerCapFor of an orch strand = %s; want a cap", got)
 	}
 }
 

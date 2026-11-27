@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -82,6 +84,12 @@ func TestBoardServeScenario(t *testing.T) {
 	}
 	if opened, err := os.ReadFile(record); err != nil || string(opened) != paths.Launcher+"\n" || first.Raw["launcher"] != paths.Launcher {
 		t.Errorf("the opener was handed %q, %v; want %q", opened, err, paths.Launcher)
+	}
+	records, err := runproc.List(fabricengine.RunProcDir(hub.Path), runproc.HubOwner)
+	if err != nil || !slices.ContainsFunc(records, func(r runproc.Record) bool {
+		return r.Role == runproc.RoleBoardServer && r.PID == server.PID
+	}) {
+		t.Errorf("the hub's run processes = %+v, %v; want the board server %d", records, err, server.PID)
 	}
 	prime, err := filepath.EvalSymlinks(hub.PrimeWorktree())
 	if err != nil {

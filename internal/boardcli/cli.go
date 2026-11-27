@@ -39,7 +39,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/runprofile"
 	"github.com/Knatte18/loomyard/internal/selfexec"
-	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/spf13/cobra"
 )
 
@@ -430,14 +429,6 @@ Example:
 			if location == nil {
 				return outputError(out, refuseWithoutHubConfig("open").Error())
 			}
-			var openerCap time.Duration
-			if strand != "" {
-				answer := shuttleengines.KeepWarm(fabricengine.ConfigDirs(location), strand)
-				if answer.Fallback != nil {
-					logger.Debug("boardcli: the keep-warm cap is the fallback", "strand", strand, "cause", answer.Fallback)
-				}
-				openerCap = answer.Cap
-			}
 			result, err := runOpen(openDeps{
 				Paths: boardserve.Paths(fabricengine.HubScratchDir(location.HubPath)),
 				Prime: func() (string, error) {
@@ -457,7 +448,7 @@ Example:
 				StartOpener: startOpener,
 				StartBound:  openStartBound,
 				Poll:        openPoll,
-				OpenerCap:   openerCap,
+				OpenerCap:   openerCapFor(fabricengine.ConfigDirs(location), strand),
 			})
 			if err != nil {
 				return outputError(out, err.Error())
