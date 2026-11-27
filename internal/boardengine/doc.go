@@ -340,6 +340,8 @@
 // Every project, open or done, renders to project-<slug>.md beside it, and the root to project-root.md.
 // Every write also renders board-data.js, the board's view projection (BoardView) for a viewer page.
 // Its content is `window.BOARD = `, the projection's JSON, `;` and a newline.
+// Every write renders that page too, as board.html.
+// It is a fixed render output whose bytes no board change alters.
 // The projection takes its order, sections, waits and owners from the view the README renders from.
 // Each entry carries its revision (EntryRevision), taken over the entry as board.json stores it.
 // The rest of the entry reads as the board files show it.
@@ -817,6 +819,7 @@
 // The lym root pre-run registers it with `fabricengine.RegisterBoltReplayer`.
 // It claims these paths:
 // `board.json` and `README.md`;
+// `board-data.js` and `board.html` at the Bolt root;
 // the `project-<slug>.md` files, of which `project-root.md` is the root project's and not a project's;
 // the `design-<slug>.md` and `decision-<slug>.md` files at the Bolt root;
 // the files directly in a raddle store directory, `raddle/<sketch>/<name>`.

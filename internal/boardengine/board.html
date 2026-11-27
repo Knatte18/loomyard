@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Board</title>
+<style>
+:root { color-scheme: light dark; --bg: #ffffff; --fg: #1f2328; --muted: #656d76; --line: #d0d7de; --panel: #f6f8fa; --accent: #0969da; --warn: #9a6700; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0d1117; --fg: #e6edf3; --muted: #8d96a0; --line: #30363d; --panel: #161b22; --accent: #4493f8; --warn: #d29922; }
+}
+body { margin: 0; padding: 1rem; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-serif; }
+a { color: var(--accent); }
+h1 { margin: 0; font-size: 1.4rem; }
+h2 { margin: 1.2rem 0 0.3rem; font-size: 1.15rem; }
+h3 { margin: 0.7rem 0 0.2rem; font-size: 0.95rem; color: var(--muted); }
+.muted { color: var(--muted); }
+.notice { color: var(--warn); font-weight: 600; }
+.controls { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin: 0.8rem 0; }
+.group { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+button, input, select, textarea { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 0.2rem 0.5rem; }
+button { cursor: pointer; }
+button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.row { border-top: 1px solid var(--line); }
+.row-head { display: flex; flex-wrap: wrap; gap: 0.5rem; width: 100%; text-align: left; background: none; border: 0; padding: 0.3rem 0; }
+.tag { border: 1px solid var(--line); border-radius: 999px; padding: 0 0.5rem; font-size: 0.85rem; color: var(--muted); }
+.detail { padding: 0 0 0.8rem 1rem; }
+.body { background: var(--panel); border-radius: 6px; padding: 0.2rem 0.8rem; overflow-wrap: anywhere; }
+pre { overflow-x: auto; }
+form { display: flex; flex-direction: column; gap: 0.4rem; max-width: 44rem; margin: 0.5rem 0; }
+label { display: flex; flex-direction: column; font-size: 0.85rem; color: var(--muted); }
+textarea { min-height: 6rem; }
+.fresh { border-left: 3px solid var(--warn); padding-left: 0.6rem; white-space: pre-wrap; }
+[hidden] { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Board</h1>
+  <div id="meta" class="muted"></div>
+  <div id="notice" class="notice" hidden></div>
+</header>
+<div class="controls">
+  <input id="search" type="search" placeholder="Search" aria-label="Search">
+  <div id="kinds" class="group"></div>
+  <div id="types" class="group"></div>
+  <div id="areas" class="group"></div>
+</div>
+<details id="create" hidden><summary>New entry</summary></details>
+<main id="board"></main>
+<section id="kept"></section>
+<script src="board-data.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var served = location.protocol === "http:";
+  var ROOT = "P0";
+  var RETRY_BOUND_MS = 60000;
+  var token = "";
+  var board = null;
+  var revision = "";
+  var expanded = new Set();
+  var panels = new Map();
+  var selected = { kinds: new Set(), types: new Set(), areas: new Set() };
+  var query = "";
+
+  function byId(id) { return document.getElementById(id); }
+
+  function element(tag, text, className) {
+    var node = document.createElement(tag);
+    if (text !== undefined && text !== null) { node.textContent = text; }
+    if (className) { node.className = className; }
+    return node;
+  }
+
+  function showNotice(text) {
+    byId("notice").textContent = text;
+    byId("notice").hidden = text === "";
+  }
+
+  function sleep(ms) { return new Promise(function (done) { setTimeout(done, ms); }); }
+
+  // Markdown subset. Every body is escaped before any markup is added.
+  function escapeHTML(text) {
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  function safeTarget(raw) {
+    var target = raw.replace(/^[\u0000- ]+|[\u0000- ]+$/g, "").replace(/[\t\r\n]/g, "");
+    var scheme = /^([A-Za-z][A-Za-z0-9+.\-]*):/.exec(target);
+    if (scheme) {
+      var name = scheme[1].toLowerCase();
+      return name === "http" || name === "https" ? target : null;
+    }
+    return /^[\/\\]{2}/.test(target) ? null : target;
+  }
+
+  function inline(text) {
+    var pattern = /`([^`]+)`|\[([^\]]*)\]\(([^)]*)\)|\*\*([^*]+)\*\*|\*([^*\s][^*]*)\*/g;
+    var out = "";
+    var last = 0;
+    var match;
+    while ((match = pattern.exec(text)) !== null) {
+      out += text.slice(last, match.index);
+      last = pattern.lastIndex;
+      if (match[1] !== undefined) {
+        out += "<code>" + match[1] + "</code>";
+      } else if (match[2] !== undefined) {
+        var target = safeTarget(match[3]);
+        out += target === null ? match[0] : '<a href="' + target + '" rel="noopener noreferrer" target="_blank">' + inline(match[2]) + "</a>";
+      } else if (match[4] !== undefined) {
+        out += "<strong>" + inline(match[4]) + "</strong>";
+      } else {
+        out += "<em>" + inline(match[5]) + "</em>";
+      }
+    }
+    return out + text.slice(last);
+  }
+
+  function markdown(body) {
+    var lines = escapeHTML(body).split(/\r?\n/);
+    var out = [];
+    var paragraph = [];
+    var list = "";
+    var code = null;
+    function flushParagraph() {
+      if (paragraph.length) { out.push("<p>" + inline(paragraph.join("\n")) + "</p>"); paragraph = []; }
+    }
+    function closeList() {
+      if (list) { out.push("</" + list + ">"); list = ""; }
+    }
+    lines.forEach(function (line) {
+      if (code !== null) {
+        if (/^\s*```/.test(line)) { out.push("<pre><code>" + code.join("\n") + "</code></pre>"); code = null; } else { code.push(line); }
+        return;
+      }
+      var heading = /^(#{1,6})\s+(.*)$/.exec(line);
+      var bullet = /^\s*[-*+]\s+(.*)$/.exec(line);
+      var numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+      if (/^\s*```/.test(line)) {
+        flushParagraph(); closeList(); code = [];
+      } else if (heading) {
+        flushParagraph(); closeList();
+        var level = Math.min(heading[1].length + 2, 6);
+        out.push("<h" + level + ">" + inline(heading[2]) + "</h" + level + ">");
+      } else if (bullet || numbered) {
+        flushParagraph();
+        var kind = bullet ? "ul" : "ol";
+        if (list !== kind) { closeList(); list = kind; out.push("<" + kind + ">"); }
+        out.push("<li>" + inline((bullet || numbered)[1]) + "</li>");
+      } else if (line.trim() === "") {
+        flushParagraph(); closeList();
+      } else {
+        closeList(); paragraph.push(line);
+      }
+    });
+    if (code !== null) { out.push("<pre><code>" + code.join("\n") + "</code></pre>"); }
+    flushParagraph(); closeList();
+    return out.join("");
+  }
+
+  function fileLink(name, text) {
+    var link = element("a", text);
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.href = served ? "/file/" + encodeURIComponent(name) + "?t=" + encodeURIComponent(token) : "./" + name;
+    return link;
+  }
+
+  function age(stamp) {
+    if (!stamp) { return "unknown"; }
+    var minutes = Math.max(0, Math.floor((Date.now() - Date.parse(stamp)) / 60000));
+    if (minutes < 60) { return minutes + "m"; }
+    if (minutes < 1440) { return Math.floor(minutes / 60) + "h"; }
+    var days = Math.floor(minutes / 1440);
+    if (days < 14) { return days + "d"; }
+    if (days < 61) { return Math.floor(days / 7) + "w"; }
+    if (days < 365) { return Math.floor(days / 30) + "mo"; }
+    return Math.floor(days / 365) + "y";
+  }
+
+  function labelsOf(entry) { return entry.types.concat(entry.areas); }
+
+  function matches(entry) {
+    function any(set, values) {
+      return set.size === 0 || values.some(function (value) { return set.has(value); });
+    }
+    if (!any(selected.kinds, [entry.kind]) || !any(selected.types, entry.types) || !any(selected.areas, entry.areas)) { return false; }
+    return query === "" || [entry.handle, entry.slug, entry.title, entry.brief, entry.body].join("\n").toLowerCase().indexOf(query) >= 0;
+  }
+
+  function toggles(id, values, set) {
+    var group = byId(id);
+    group.textContent = "";
+    values.forEach(function (value) {
+      var button = element("button", value);
+      button.type = "button";
+      button.setAttribute("aria-pressed", String(set.has(value)));
+      button.addEventListener("click", function () {
+        if (set.has(value)) { set.delete(value); } else { set.add(value); }
+        button.setAttribute("aria-pressed", String(set.has(value)));
+        render();
+      });
+      group.appendChild(button);
+    });
+  }
+
+  // Forms. A field's baseline is the value it was filled with, so only what the operator changed is sent.
+  function projectOptions(select, current) {
+    var value = current === undefined ? select.value : current;
+    select.textContent = "";
+    board.projects.forEach(function (project) {
+      var option = element("option", project.handle === ROOT ? "root" : project.handle + " " + project.title);
+      option.value = project.handle === ROOT ? "" : project.slug;
+      select.appendChild(option);
+    });
+    select.value = value;
+  }
+
+  function slugOfHandle(handle) {
+    var found = board.entries.concat(board.projects).find(function (item) { return item.handle === handle; });
+    return found ? found.slug : handle;
+  }
+
+  function valuesOf(entry) {
+    var project = entry.project === ROOT ? "" : slugOfHandle(entry.project);
+    return {
+      title: entry.title,
+      labels: labelsOf(entry).join(", "),
+      brief: entry.brief,
+      body: entry.body,
+      project: project,
+      depends_on: entry.waits_on.map(slugOfHandle).join(", ")
+    };
+  }
+
+  function splitList(text) {
+    return text.split(",").map(function (item) { return item.trim(); }).filter(Boolean);
+  }
+
+  function fieldValue(name, text) {
+    if (name === "labels" || name === "depends_on") { return splitList(text); }
+    if (name === "project" && text === "") { return null; }
+    return text;
+  }
+
+  function input(form, name, caption, tag) {
+    var wrapper = element("label", caption);
+    var control = document.createElement(tag);
+    control.name = name;
+    wrapper.appendChild(control);
+    form.appendChild(wrapper);
+    return control;
+  }
+
+  function editFields(form, isTask) {
+    var inputs = {
+      title: input(form, "title", "Title", "input"),
+      labels: input(form, "labels", "Labels, comma separated", "input"),
+      brief: input(form, "brief", "Brief", "input"),
+      body: input(form, "body", "Body", "textarea"),
+      project: input(form, "project", "Project", "select")
+    };
+    if (isTask) { inputs.depends_on = input(form, "depends_on", "Depends on, comma separated slugs", "input"); }
+    return inputs;
+  }
+
+  function fill(panel, entry) {
+    var values = valuesOf(entry);
+    Object.keys(panel.inputs).forEach(function (name) {
+      var control = panel.inputs[name];
+      var untouched = panel.baseline === null || control.value === panel.baseline[name];
+      if (name === "project") { projectOptions(control); }
+      if (untouched) { control.value = values[name]; }
+    });
+    panel.baseline = values;
+    panel.revision = entry.revision;
+  }
+
+  function isDirty(panel) {
+    return Object.keys(panel.inputs).some(function (name) { return panel.inputs[name].value !== panel.baseline[name]; });
+  }
+
+  function panelFor(entry) {
+    var panel = panels.get(entry.slug);
+    if (panel && panel.kind === entry.kind) {
+      // A form holding an unsent edit keeps the revision it was filled from, so the write is judged against it.
+      if (!isDirty(panel)) { fill(panel, entry); }
+      return panel;
+    }
+    var node = element("div");
+    var form = document.createElement("form");
+    panel = {
+      kind: entry.kind, slug: entry.slug, node: node, baseline: null, revision: "",
+      message: element("div", "", "notice"), fresh: element("div", "", "fresh"),
+      actions: element("div", null, "group")
+    };
+    panel.inputs = editFields(form, entry.kind === "task");
+    var save = element("button", "Save");
+    save.type = "submit";
+    form.appendChild(save);
+    panel.fresh.hidden = true;
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      var fields = {};
+      Object.keys(panel.inputs).forEach(function (name) {
+        var value = panel.inputs[name].value;
+        if (value !== panel.baseline[name]) { fields[name] = fieldValue(name, value); }
+      });
+      send(panel, { op: "edit", slug: panel.slug, revision: panel.revision, fields: fields });
+    });
+    node.appendChild(panel.actions);
+    node.appendChild(panel.message);
+    node.appendChild(panel.fresh);
+    node.appendChild(form);
+    panels.set(entry.slug, panel);
+    fill(panel, entry);
+    return panel;
+  }
+
+  function isRunStatus(status) {
+    var parts = status.split(" · ");
+    return parts.length > 1 && parts[0] !== "" && parts.slice(1).join(" · ") !== "";
+  }
+
+  function actionsOf(entry) {
+    if (entry.kind === "note") { return ["promote"]; }
+    var actions = [];
+    if (entry.status !== "" && !isRunStatus(entry.status)) { actions.push("release"); }
+    if (entry.status === "") { actions.push("draft"); }
+    if (entry.status === "draft") { actions.push("undraft"); }
+    return actions;
+  }
+
+  function showFresh(panel, entry) {
+    panel.fresh.textContent = "Entry on the board now:\n" + [
+      "title: " + entry.title,
+      "status: " + (entry.status || "none"),
+      "labels: " + labelsOf(entry).join(", "),
+      "brief: " + entry.brief,
+      "body:",
+      entry.body
+    ].join("\n");
+    panel.fresh.hidden = false;
+  }
+
+  function upsertEntry(entry) {
+    var index = board.entries.findIndex(function (item) { return item.slug === entry.slug; });
+    if (index < 0) { board.entries.push(entry); } else { board.entries[index] = entry; }
+    if (board.sections.indexOf(entry.section) < 0) { board.sections.push(entry.section); }
+  }
+
+  function removeEntry(slug) {
+    board.entries = board.entries.filter(function (item) { return item.slug !== slug; });
+  }
+
+  // Requests. A failed request is retried with a doubling delay for a bounded time before the page gives up.
+  async function request(path, options) {
+    var delay = 1000;
+    var started = Date.now();
+    for (;;) {
+      try {
+        var headers = Object.assign({ "Authorization": "Bearer " + token }, options.headers || {});
+        var response = await fetch(path, Object.assign({}, options, { headers: headers }));
+        var answer = await response.json();
+        if (response.status !== 401 && response.status !== 421) { return { status: response.status, answer: answer }; }
+      } catch (error) {
+        // The server did not answer; the delay below retries.
+      }
+      if (Date.now() - started >= RETRY_BOUND_MS) {
+        showNotice("The board server does not answer. Run lym board open to start it and open the page again.");
+        throw new Error("board server unreachable");
+      }
+      await sleep(delay);
+      delay = Math.min(delay * 2, 8000);
+    }
+  }
+
+  async function write(body) {
+    return request("/api/write", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  }
+
+  async function send(panel, body) {
+    var result;
+    try { result = await write(body); } catch (error) { return; }
+    var answer = result.answer;
+    panel.message.textContent = answer.ok ? "" : answer.error;
+    panel.fresh.hidden = true;
+    if (answer.ok) {
+      if (answer.entry) {
+        upsertEntry(answer.entry);
+        if (body.op === "edit") { panel.baseline = null; }
+        if (body.op === "edit" || !isDirty(panel)) { fill(panel, answer.entry); } else { panel.revision = answer.entry.revision; }
+      }
+    } else if (result.status === 409) {
+      if (answer.entry) {
+        upsertEntry(answer.entry);
+        showFresh(panel, answer.entry);
+        fill(panel, answer.entry);
+      } else {
+        removeEntry(body.slug);
+      }
+    }
+    render();
+  }
+
+  function createForm() {
+    var form = document.createElement("form");
+    var slug = input(form, "slug", "Slug", "input");
+    var kind = input(form, "kind", "Kind", "select");
+    ["task", "note"].forEach(function (value) { kind.appendChild(element("option", value)); });
+    var inputs = editFields(form, true);
+    kind.addEventListener("change", function () { inputs.depends_on.parentNode.hidden = kind.value !== "task"; });
+    var save = element("button", "Create");
+    save.type = "submit";
+    form.appendChild(save);
+    var message = element("div", "", "notice");
+    var fresh = element("div", "", "fresh");
+    fresh.hidden = true;
+    form.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      var fields = { kind: kind.value, title: inputs.title.value, labels: splitList(inputs.labels.value) };
+      if (inputs.brief.value) { fields.brief = inputs.brief.value; }
+      if (inputs.body.value) { fields.body = inputs.body.value; }
+      if (inputs.project.value) { fields.project = inputs.project.value; }
+      if (kind.value === "task" && inputs.depends_on.value) { fields.depends_on = splitList(inputs.depends_on.value); }
+      var result;
+      try { result = await write({ op: "create", slug: slug.value.trim(), fields: fields }); } catch (error) { return; }
+      var answer = result.answer;
+      message.textContent = answer.ok ? "" : answer.error;
+      fresh.hidden = true;
+      if (answer.ok) {
+        form.reset();
+        inputs.depends_on.parentNode.hidden = false;
+        if (answer.entry) { upsertEntry(answer.entry); }
+      } else if (result.status === 409 && answer.entry) {
+        upsertEntry(answer.entry);
+        showFresh({ fresh: fresh }, answer.entry);
+      }
+      render();
+    });
+    byId("create").appendChild(message);
+    byId("create").appendChild(fresh);
+    byId("create").appendChild(form);
+    byId("create").hidden = false;
+    return inputs.project;
+  }
+
+  function row(entry) {
+    var node = element("div", null, "row");
+    var head = element("button", null, "row-head");
+    head.type = "button";
+    head.setAttribute("aria-expanded", String(expanded.has(entry.slug)));
+    head.appendChild(element("span", entry.handle, "muted"));
+    head.appendChild(element("span", entry.title));
+    if (entry.status) { head.appendChild(element("span", entry.status, "tag")); }
+    labelsOf(entry).forEach(function (label) { head.appendChild(element("span", label, "tag")); });
+    head.addEventListener("click", function () {
+      if (expanded.has(entry.slug)) { expanded.delete(entry.slug); } else { expanded.add(entry.slug); }
+      render();
+    });
+    node.appendChild(head);
+    if (!expanded.has(entry.slug)) { return node; }
+
+    var detail = element("div", null, "detail");
+    detail.appendChild(element("p", entry.brief));
+    var facts = [entry.slug, entry.kind, "owner " + (entry.owner || "none")];
+    if (entry.recipe) { facts.push("recipe " + entry.recipe); }
+    facts.push("age " + age(entry.created), "revised " + age(entry.revised));
+    if (entry.waits_on.length) { facts.push("after " + entry.waits_on.join(", ")); }
+    detail.appendChild(element("div", facts.join(" · "), "muted"));
+    var links = element("div", null, "group");
+    if (entry.design_file) { links.appendChild(fileLink(entry.design_file, "design")); }
+    if (entry.decision_file) { links.appendChild(fileLink(entry.decision_file, "decision record")); }
+    detail.appendChild(links);
+    if (entry.body) {
+      var body = element("div", null, "body");
+      body.innerHTML = markdown(entry.body);
+      detail.appendChild(body);
+    }
+    if (served) {
+      var panel = panelFor(entry);
+      panel.actions.textContent = "";
+      actionsOf(entry).forEach(function (op) {
+        var button = element("button", op);
+        button.type = "button";
+        button.addEventListener("click", function () {
+          send(panel, { op: op, slug: entry.slug, revision: entry.revision, fields: {} });
+        });
+        panel.actions.appendChild(button);
+      });
+      detail.appendChild(panel.node);
+    }
+    node.appendChild(detail);
+    return node;
+  }
+
+  // A project's group holds its own entries by section, then the groups of the projects under it.
+  function projectGroup(project, depth, entriesOf, childrenOf) {
+    var group = element("section");
+    group.style.marginLeft = depth ? "1rem" : "0";
+    var own = entriesOf.get(project.handle) || [];
+    var count = 0;
+    var sections = [];
+    board.sections.forEach(function (name) {
+      var inSection = own.filter(function (entry) { return entry.section === name; });
+      if (!inSection.length) { return; }
+      count += inSection.length;
+      sections.push(element("h3", name + " (" + inSection.length + ")"));
+      inSection.forEach(function (entry) { sections.push(row(entry)); });
+    });
+    var children = (childrenOf.get(project.handle) || []).map(function (child) {
+      return projectGroup(child, depth + 1, entriesOf, childrenOf);
+    }).filter(Boolean);
+    if (!count && !children.length) { return null; }
+    var heading = element("h2", project.handle + " " + project.title + " (" + count + ")");
+    if (project.design_file) {
+      heading.appendChild(document.createTextNode(" "));
+      heading.appendChild(fileLink(project.design_file, "design"));
+    }
+    group.appendChild(heading);
+    if (project.brief) { group.appendChild(element("div", project.brief, "muted")); }
+    sections.concat(children).forEach(function (node) { group.appendChild(node); });
+    return group;
+  }
+
+  function render() {
+    var active = document.activeElement;
+    byId("meta").textContent = "Rendered " + board.rendered + " · prime owner " + (board.prime_owner || "none");
+
+    var listed = new Set(board.projects.map(function (project) { return project.handle; }));
+    var entriesOf = new Map();
+    board.entries.filter(matches).forEach(function (entry) {
+      var handle = listed.has(entry.project) ? entry.project : ROOT;
+      if (!entriesOf.has(handle)) { entriesOf.set(handle, []); }
+      entriesOf.get(handle).push(entry);
+    });
+    var childrenOf = new Map();
+    var top = [];
+    var root = null;
+    board.projects.forEach(function (project) {
+      if (project.handle === ROOT) { root = project; return; }
+      if (project.parent === ROOT) { top.push(project); return; }
+      if (!childrenOf.has(project.parent)) { childrenOf.set(project.parent, []); }
+      childrenOf.get(project.parent).push(project);
+    });
+
+    var main = byId("board");
+    main.textContent = "";
+    top.concat(root ? [root] : []).forEach(function (project) {
+      var group = projectGroup(project, 0, entriesOf, childrenOf);
+      if (group) { main.appendChild(group); }
+    });
+
+    // An unsent edit of an entry the board no longer holds stays in its form.
+    var kept = byId("kept");
+    kept.textContent = "";
+    var present = new Set(board.entries.map(function (entry) { return entry.slug; }));
+    panels.forEach(function (panel, slug) {
+      if (present.has(slug)) { return; }
+      if (!isDirty(panel) && !panel.message.textContent) {
+        panels.delete(slug);
+        return;
+      }
+      panel.actions.textContent = "";
+      panel.fresh.hidden = true;
+      kept.appendChild(element("h3", "Removed from the board: " + slug));
+      kept.appendChild(panel.node);
+    });
+
+    if (active && active !== document.body && active.isConnected) { active.focus(); }
+  }
+
+  function show(next) {
+    var first = board === null;
+    board = next;
+    if (first) {
+      toggles("kinds", ["task", "note"], selected.kinds);
+      toggles("types", board.types, selected.types);
+      toggles("areas", board.areas, selected.areas);
+    }
+    render();
+  }
+
+  async function follow() {
+    var createProject = null;
+    for (;;) {
+      var asked = Date.now();
+      var result = await request(revision === "" ? "/api/board" : "/api/board?after=" + encodeURIComponent(revision), {});
+      var answer = result.answer;
+      if (!answer.ok) {
+        showNotice(answer.error);
+        await sleep(8000);
+        continue;
+      }
+      showNotice("");
+      revision = answer.revision;
+      if (!answer.unchanged) {
+        show(answer.board);
+        if (createProject === null) {
+          createProject = createForm();
+          projectOptions(createProject, "");
+        } else {
+          projectOptions(createProject);
+        }
+      } else if (Date.now() - asked < 1000) {
+        await sleep(1000);
+      }
+      if (revision === "" && Date.now() - asked < 1000) { await sleep(1000); }
+    }
+  }
+
+  byId("search").addEventListener("input", function () {
+    query = byId("search").value.trim().toLowerCase();
+    if (board) { render(); }
+  });
+
+  if (served) {
+    token = location.hash.slice(1) || sessionStorage.getItem("board-token") || "";
+    sessionStorage.setItem("board-token", token);
+    history.replaceState(null, "", location.pathname + location.search);
+    follow().catch(function () {});
+  } else if (window.BOARD === undefined) {
+    showNotice("No board data was loaded. Run lym board rerender to write it.");
+  } else {
+    show(window.BOARD);
+  }
+})();
+</script>
+</body>
+</html>
