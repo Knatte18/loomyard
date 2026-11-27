@@ -61,7 +61,8 @@ type DarnInputs struct {
 	StopMarkerPath string
 	// ConditionStopMarkerPath is the absolute path of the marker the writer creates when a task-named condition stops it.
 	ConditionStopMarkerPath string
-	// PriorWork names what an earlier spawn left unfinished or broken; empty on a first spawn.
+	// PriorWork tells of an earlier spawn's outcome or interruption and of the work already on the branch or in scratch.
+	// It is empty when there is none of these to tell.
 	PriorWork string
 	// LanguageSkills are the hub's language skills the writer loads after the darn role's agents.yaml skills.
 	// Empty means none.

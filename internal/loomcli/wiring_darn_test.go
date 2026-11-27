@@ -78,7 +78,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	darnSeams := []string{"DarnTable", "Darn.Commit", "Darn.LatestOutcome", "Darn.CommittedRecord", "RecordWrite.ReadBody", "RecordWrite.ReadStored", "RecordWrite.Commit"}
+	darnSeams := []string{"DarnTable", "Darn.Commit", "Darn.LatestOutcome", "Darn.CommittedRecord", "Darn.BranchCommits", "RecordWrite.ReadBody", "RecordWrite.ReadStored", "RecordWrite.Commit"}
 
 	t.Run("a darn seed fills the darn seams, the verify source and the attempts", func(t *testing.T) {
 		t.Parallel()

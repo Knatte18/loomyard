@@ -151,6 +151,7 @@ var intentionallyNil = map[string]string{
 	"Darn.Commit":                        "darn-only seam, batten has no darn segment",
 	"Darn.LatestOutcome":                 "darn-only seam, batten has no darn segment",
 	"Darn.CheckRecord":                   "darn-only seam, batten has no darn segment",
+	"Darn.BranchCommits":                 "darn-only seam, batten has no darn segment",
 	"Darn.CommittedRecord":               "darn-only seam, batten has no darn segment",
 	"EntryLabels":                        "darn-only seam, batten has no red-first gate",
 	"RedFirstCommand":                    "darn-only seam, batten has no red-first gate",

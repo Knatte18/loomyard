@@ -64,6 +64,11 @@ func scratchLinkPath(l *lymcwd.Location, slug string) string {
 	return filepath.Join(WorktreePath(l, slug), l.AnchorRel, scratchDirName)
 }
 
+// ScratchLinkPath returns the `.scratch` link at the anchor of the worktree at l, under which agents keep scratch files.
+func ScratchLinkPath(l *lymcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), scratchDirName)
+}
+
 // scratchLinkTarget returns the weft-side directory the `.scratch` link of slug's warp worktree points at.
 // It is built like every weft-side junction target and never by resolving the warp `.lym` link.
 func scratchLinkTarget(l *lymcwd.Location, slug string) string {

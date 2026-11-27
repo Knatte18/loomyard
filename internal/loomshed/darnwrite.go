@@ -56,10 +56,23 @@ func DarnGateReprompt(decisionRecordPath string) func(findingsPath string) strin
 	}
 }
 
+// priorWorkListLimit is how many commits or scratch entries the prior-work note lists before it counts the rest.
+const priorWorkListLimit = 20
+
 // DarnTold carries the token text the producer decides for one darn writer spawn, empty when it has nothing to tell.
 type DarnTold struct {
-	// PriorWork is the note that the change is already under way on the task branch.
+	// PriorWork is the note on what is already on the task branch and in the scratch directory.
 	PriorWork string
+}
+
+// branchWork is what the task branch and the scratch directory already hold, whether or not a spawn recorded an outcome.
+type branchWork struct {
+	// commits are the task branch's commits beyond its merge base, newest first, each a short SHA and its subject.
+	commits []string
+	// scratchDir is the absolute path of the scratch directory.
+	scratchDir string
+	// scratchEntries are the names of the direct children of scratchDir, a directory's name ending in a slash.
+	scratchEntries []string
 }
 
 // DarnOutcome is the latest Darn-Write history entry as the producer reads it.
@@ -90,6 +103,12 @@ type DarnDeps struct {
 	// LatestOutcome returns the latest Darn-Write history entry of the run that records a spawn;
 	// found is false when the row has no such entry yet.
 	LatestOutcome func() (DarnOutcome, bool, error)
+	// BranchCommits lists the task branch's commits beyond its merge base, newest first, each a short SHA and its subject.
+	// A spawn interrupted before it recorded an outcome leaves no history entry, but its commits stay on the branch.
+	BranchCommits func() ([]string, error)
+	// ScratchDir is the absolute path of the task's scratch directory, which the writer shares with other agents.
+	// It may be a link, and it need not exist.
+	ScratchDir string
 	// CheckRecord validates the decision record once the writer session returns, returning the findings that halt the run;
 	// it commits nothing.
 	CheckRecord func() ([]discussionparser.Finding, error)
@@ -155,7 +174,12 @@ func (p *darnWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: read the latest outcome: %w", p.name, err)
 	}
 
-	told := DarnTold{PriorWork: renderPriorWork(latest, found)}
+	work, err := p.readBranchWork()
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+
+	told := DarnTold{PriorWork: renderPriorWork(latest, found, work)}
 
 	outcome, pointer, err := runAndCommit(ctx, p.name, p.session(told), p.deps.Commit)
 	if err != nil || pointer.Path == "" {
@@ -212,12 +236,14 @@ func (p *darnWrite) checkSeams() error {
 		{"session factory", p.session == nil},
 		{"Commit", p.deps.Commit == nil},
 		{"LatestOutcome", p.deps.LatestOutcome == nil},
+		{"BranchCommits", p.deps.BranchCommits == nil},
 		{"CheckRecord", p.deps.CheckRecord == nil},
 		{"CommittedRecord", p.deps.CommittedRecord == nil},
 		{"RecordPath", p.deps.RecordPath == ""},
 		{"SupportLogPath", p.deps.SupportLogPath == ""},
 		{"StopMarkerPath", p.deps.StopMarkerPath == ""},
 		{"ConditionStopMarkerPath", p.deps.ConditionStopMarkerPath == ""},
+		{"ScratchDir", p.deps.ScratchDir == ""},
 	}
 	for _, s := range seams {
 		if s.missing {
@@ -277,25 +303,103 @@ func readStopReport(path string) (string, error) {
 	return strings.TrimSpace(string(data)), nil
 }
 
-// renderPriorWork returns the note that the change is already under way on the task branch.
-// The note names the latest outcome and its kept gate findings file.
-// It tells the writer that a decision recorded after the Discussion wins over a finding it forbids fixing,
-// so a resumed spawn never works against the parent's call.
-// It is empty when the row has no earlier entry.
-func renderPriorWork(latest DarnOutcome, found bool) string {
-	if !found {
+// readBranchWork reads the task branch's commits beyond its base and the entries of the scratch directory.
+func (p *darnWrite) readBranchWork() (branchWork, error) {
+	commits, err := p.deps.BranchCommits()
+	if err != nil {
+		return branchWork{}, fmt.Errorf("loomshed: %s: read the task branch's commits: %w", p.name, err)
+	}
+	entries, err := listScratchEntries(p.deps.ScratchDir)
+	if err != nil {
+		return branchWork{}, fmt.Errorf("loomshed: %s: list the scratch directory %s: %w", p.name, p.deps.ScratchDir, err)
+	}
+	return branchWork{commits: commits, scratchDir: p.deps.ScratchDir, scratchEntries: entries}, nil
+}
+
+// listScratchEntries returns the names of the direct children of dir in lexical order.
+// A directory's name ends in a slash.
+// It reads no subdirectory, so one deep tree takes a single place in the list.
+// A dir that is a link is followed; an absent dir holds nothing.
+func listScratchEntries(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() {
+			name += "/"
+		}
+		names = append(names, name)
+	}
+	return names, nil
+}
+
+// renderPriorWork returns the note on what is already on the task branch and in the scratch directory.
+// After a recorded outcome, the note names that outcome and its kept gate findings file.
+// When commits or scratch entries are listed, it adds that a later spawn may have been interrupted.
+// With no recorded outcome, commits beyond the base mean an earlier spawn was interrupted,
+// and the note says its work may be present.
+// Scratch entries with neither are listed without that claim, since other agents of the task write there too.
+// Every note lists the commits and scratch entries there are.
+// It also tells the writer that a decision recorded after the Discussion wins over a finding it forbids fixing.
+// A resumed spawn therefore never works against the parent's call.
+// It is empty when the row has no earlier entry, the branch has no commit and the scratch directory holds nothing.
+func renderPriorWork(latest DarnOutcome, found bool, work branchWork) string {
+	if !found && len(work.commits) == 0 && len(work.scratchEntries) == 0 {
 		return ""
 	}
-	lines := []string{
-		"An earlier spawn of this task already began the change, and its work is committed on the task branch.",
-		"Read that work first and continue it instead of starting over.",
-		fmt.Sprintf("That spawn ended %s.", latest.Outcome),
+	var lines []string
+	switch {
+	case found:
+		lines = append(lines,
+			"An earlier spawn of this task already began the change, and its work is committed on the task branch.",
+			"Read that work first and continue it instead of starting over.",
+			fmt.Sprintf("That spawn ended %s.", latest.Outcome))
+		if latest.FindingsPath != "" {
+			lines = append(lines, fmt.Sprintf("Its last gate findings are kept at %s: read them and fix what they name.", latest.FindingsPath))
+		}
+		if len(work.commits) > 0 || len(work.scratchEntries) > 0 {
+			lines = append(lines, "A later spawn may have been interrupted before it recorded an outcome, so what is listed below can go beyond the spawn that ended so.")
+		}
+	case len(work.commits) > 0:
+		lines = append(lines,
+			"An earlier spawn of this task was interrupted before it recorded an outcome, and its work may be present on the task branch and in the scratch directory.",
+			"Read that work first and continue it instead of starting over.")
+	default:
+		lines = append(lines,
+			"No earlier spawn of this task recorded an outcome, and the task branch holds no commits beyond its base.",
+			"An interrupted spawn or another agent of this task may have left the scratch entries below.",
+			"Read those that bear on the change before you redo or overwrite them.")
 	}
-	if latest.FindingsPath != "" {
-		lines = append(lines, fmt.Sprintf("Its last gate findings are kept at %s: read them and fix what they name.", latest.FindingsPath))
+	if len(work.commits) > 0 {
+		lines = append(lines, "The task branch holds these commits beyond its base, newest first:")
+		lines = append(lines, bulletList(work.commits)...)
+	}
+	if len(work.scratchEntries) > 0 {
+		lines = append(lines, fmt.Sprintf("These entries survive under the scratch directory %s:", work.scratchDir))
+		lines = append(lines, bulletList(work.scratchEntries)...)
 	}
 	lines = append(lines, decisionsWinLine)
 	return strings.Join(lines, "\n")
+}
+
+// bulletList renders at most priorWorkListLimit of the items as markdown list lines.
+// When items are left out, a closing line counts them.
+func bulletList(items []string) []string {
+	shown := items[:min(len(items), priorWorkListLimit)]
+	lines := make([]string, 0, len(shown)+1)
+	for _, item := range shown {
+		lines = append(lines, "- "+item)
+	}
+	if left := len(items) - len(shown); left > 0 {
+		lines = append(lines, fmt.Sprintf("- and %d more", left))
+	}
+	return lines
 }
 
 // nonEmpty returns the values that are not empty, in order.

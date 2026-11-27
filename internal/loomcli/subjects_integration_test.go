@@ -1,5 +1,5 @@
-// subjects_integration_test.go drives codeSubject and taskMergeBase against a real fabric pair and real git.
-// Their identity is the task's diff against the merge base that the pair's history leaves.
+// subjects_integration_test.go drives codeSubject, taskMergeBase and darnDeps' branch reads against a real fabric pair.
+// Each reads the task's diff against the merge base that the pair's real git history leaves.
 
 package loomcli
 
@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
@@ -162,6 +163,39 @@ func TestTaskMergeBase_FollowsTheMergedTip(t *testing.T) {
 		if got, err := mergeBase(); err != nil || got != tt.want {
 			t.Errorf("taskMergeBase() with %s = %q, %v; want %q, nil", tt.name, got, err, tt.want)
 		}
+	}
+}
+
+// TestDarnDeps_BranchWorkSeams pins the Darn-Write row's reads of the task's own work.
+// BranchCommits lists the commits beyond the task's merge base and no other.
+// A merged parent tip that the local parent branch has not reached is therefore left out.
+// ScratchDir is the anchor's `.scratch`.
+func TestDarnDeps_BranchWorkSeams(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	const slug = "darnbranchwork"
+	hubforge.AddPair(t, hub, slug)
+	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
+	if err != nil {
+		t.Fatalf("ResolveWorktree error = %v; want nil", err)
+	}
+	_, mergedTip, _ := mergeUnreachedParentTip(t, hub, slug)
+	writeMergeRecordNaming(t, location, mergedTip)
+	sha := gitkit.CommitFile(t, hub.PairCodeWorktree(slug), "solver.txt", "branch table\n", "solver: add the branch table")
+
+	deps := darnDeps(location, shedrun.SelfRunID, shedrun.RecipeDarn)
+
+	// The three commits are the task's newest, the one before it and the merge; the parent's commit is not among them.
+	newest := sha[:7] + " solver: add the branch table"
+	got, err := deps.BranchCommits()
+	if err != nil || len(got) != 3 || got[0] != newest ||
+		!strings.HasSuffix(got[1], " task: work after the merge") || !strings.HasSuffix(got[2], " merge the parent tip") {
+		t.Errorf("BranchCommits() = %q, %v; want %q, the task commit after the merge and the merge, nil", got, err, newest)
+	}
+	if want := filepath.Join(location.AnchorPath(), ".scratch"); deps.ScratchDir != want {
+		t.Errorf("ScratchDir = %q; want %q", deps.ScratchDir, want)
 	}
 }
 

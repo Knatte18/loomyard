@@ -96,6 +96,10 @@
 // A condition stop marker beside it marks a stop on a condition the task body names;
 // the stop report's own way forward then stands instead.
 // A gate-failed Stuck keeps its record and gains the resume way forward.
+// Prior work told to a spawn is the latest recorded outcome, the branch's commits beyond base and the scratch entries.
+// A spawn interrupted before it recorded an outcome is still named by those commits.
+// Scratch entries with no commit and no outcome are listed with no claim of who wrote them.
+// Every agent of the task shares the scratch directory.
 // A Done session is then guarded by DarnDeps.CheckRecord, and findings halt the run Stuck with no re-prompt.
 // Every restore keeps each `Added after Discussion` entry the record held.
 //

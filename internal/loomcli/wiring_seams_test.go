@@ -53,6 +53,7 @@ var intentionallyNil = map[string]string{
 	"Darn.Commit":                        "darn-only seam, filled by wire for a darn seed",
 	"Darn.LatestOutcome":                 "darn-only seam, filled by wire for a darn seed",
 	"Darn.CheckRecord":                   "darn-only seam, filled by wire for a darn seed",
+	"Darn.BranchCommits":                 "darn-only seam, filled by wire for a darn seed",
 	"Darn.CommittedRecord":               "darn-only seam, filled by wire for a darn seed",
 	"CreateWorktree":                     "batten-only seam, filled by battencli",
 	"ExecutableSetting":                  "no tapestry or darn row is a Command row; battencli alone fills it",

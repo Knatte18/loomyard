@@ -183,6 +183,7 @@ func discussionRecordCheck(l *lymcwd.Location, recipe string) func() ([]discussi
 // darnDeps assembles the Darn-Write row's seams for location and the run addressed by runID, whose recipe is recipe.
 // Every closure reads or writes on demand and opens nothing at build time.
 func darnDeps(l *lymcwd.Location, runID, recipe string) loomshed.DarnDeps {
+	mergeBase := taskMergeBase(l)
 	return loomshed.DarnDeps{
 		RecordPath:              loomengine.DiscussionDecisionRecord(l),
 		SupportLogPath:          loomengine.DiscussionSupportLog(l),
@@ -196,6 +197,18 @@ func darnDeps(l *lymcwd.Location, runID, recipe string) loomshed.DarnDeps {
 		LatestOutcome: func() (loomshed.DarnOutcome, bool, error) {
 			return latestDarnOutcome(shedrun.StatusFile(l, runID), shedrun.StatusLock(l, runID), shedrun.GateFindingsFile(l, runID, loomshed.NameDarnWrite))
 		},
+		BranchCommits: func() ([]string, error) {
+			base, err := mergeBase()
+			if err != nil {
+				return nil, err
+			}
+			handle, err := fabricengine.Open(l)
+			if err != nil {
+				return nil, err
+			}
+			return handle.CommitLog(base, "HEAD")
+		},
+		ScratchDir:  fabricengine.ScratchLinkPath(l),
 		CheckRecord: discussionRecordCheck(l, recipe),
 	}
 }

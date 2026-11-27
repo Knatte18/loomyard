@@ -35,11 +35,12 @@ The record's format is defined at `{{.specs_dir}}/loom/loom-discussion-spec.md`;
 
 ## Step 2 — This spawn's work
 
-Prior work, which you continue from when it is not `(none)`:
+Prior work:
 
 {{.prior_work}}
 
-When the prior work is not `(none)`, the commits already on the task branch are yours from an earlier spawn: continue from them and fix what the prior work names, never restart the change.
+When the prior work is not `(none)`, it names what is already on the task branch or in the scratch directory: continue from an earlier spawn's work and fix what the prior work names, never restart the change.
+When it says a spawn was interrupted or may have been, read the commits and scratch entries it lists before you continue, since an interrupted spawn records no outcome.
 When it is `(none)`, this is the first spawn and the branch holds no work of yours yet.
 
 ## Step 3 — Check the entry before any code

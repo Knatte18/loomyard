@@ -581,6 +581,8 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			CommittedRecord: func() (bool, error) { return false, nil },
 			Commit:          func() error { return nil },
 			LatestOutcome:   func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
+			BranchCommits:   func() ([]string, error) { return nil, nil },
+			ScratchDir:      filepath.Join(dir, "darn-scratch"),
 			CheckRecord:     func() ([]discussionparser.Finding, error) { return nil, nil },
 
 			ConditionStopMarkerPath: filepath.Join(dir, "condition-stop-marker"),
