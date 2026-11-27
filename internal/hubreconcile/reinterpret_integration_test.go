@@ -1,5 +1,5 @@
 // reinterpret_integration_test.go covers the reinterpretations a stale-build walk applies to the board's hub base files.
-// No module registers a reinterpretation of its own, so each test registers a test-only one on the slack module:
+// No module registers a reinterpretation of its own, so the test registers a test-only one on the slack module:
 // the rewrite, its marker, and the one mail to the orch.
 
 package hubreconcile_test
@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -22,35 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
-
-// notice is one mail a walk sent through the installed notifier.
-type notice struct {
-	boardDir string
-	line     string
-}
-
-// recordNotices replaces the process's notifier with a recorder of the mails it is asked to send.
-// It restores the previous notifier when the test ends.
-func recordNotices(t *testing.T) *[]notice {
-	t.Helper()
-
-	return recordNoticesAnswering(t, true, nil)
-}
-
-// recordNoticesAnswering replaces the process's notifier with a recorder that answers each mail with posted and err.
-func recordNoticesAnswering(t *testing.T, posted bool, err error) *[]notice {
-	t.Helper()
-
-	var mu sync.Mutex
-	var sent []notice
-	t.Cleanup(hubreconcile.InstallNotifier(func(boardDir, line string) (bool, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		sent = append(sent, notice{boardDir: boardDir, line: line})
-		return posted, err
-	}))
-	return &sent
-}
 
 // fakeReinterpretationID names the test-only reinterpretation of the slack module.
 const fakeReinterpretationID = "test-slack-reminder-seconds"
@@ -89,19 +59,59 @@ func registerFakeReinterpretation(t *testing.T) {
 	}))
 }
 
-// TestEnsure_ReinterpretedValueIsRewrittenOnceAndMailed does not call t.Parallel:
-// it installs the process-global notifier and registry and swaps the package-global detached board sync.
-func TestEnsure_ReinterpretedValueIsRewrittenOnceAndMailed(t *testing.T) {
+// TestEnsure_Reinterpretation does not call t.Parallel:
+// it installs the process-global registry, whose test-only reinterpretation every other walk of the binary would apply.
+// Its subtests share that registry and run in parallel, bar the one that removes the process's notifier.
+func TestEnsure_Reinterpretation(t *testing.T) {
 	tiergate.Require(t, 1)
+	registerFakeReinterpretation(t)
+
+	t.Run("no installed notifier leaves the walk done", func(t *testing.T) {
+		uninstallOrchMail()
+		t.Cleanup(func() { uninstallOrchMail = hubreconcile.InstallNotifier(orchMail.send) })
+		runMarkedWalk(t, markedWalk{slack: "remind_after_min: 0\n"})
+	})
+	t.Run("a rewritten value is rewritten once and mailed", func(t *testing.T) {
+		t.Parallel()
+		runRewrittenOnce(t)
+	})
+	t.Run("a failed walk leaves no marker and the next walk commits it once", func(t *testing.T) {
+		t.Parallel()
+		runFailedWalkAfterAReinterpretation(t)
+	})
+	for _, tt := range []struct {
+		name string
+		walk markedWalk
+	}{
+		{name: "a value the rewrite leaves alone is marked and not mailed", walk: markedWalk{slack: "remind_after_min: 5\n"}},
+		{name: "a flagged value is kept and mailed", walk: markedWalk{slack: "remind_after_min: 0\n", wantLine: "remind_after_min 0 needs a decision"}},
+		{
+			name: "a mail the notifier reports not posted leaves the walk done",
+			walk: markedWalk{slack: "remind_after_min: 0\n", wantLine: "remind_after_min 0 needs a decision", answer: mailAnswer{unposted: true}},
+		},
+		{
+			name: "a notifier error leaves the walk done",
+			walk: markedWalk{slack: "remind_after_min: 0\n", wantLine: "remind_after_min 0 needs a decision", answer: mailAnswer{err: errors.New("creel is down")}},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			runMarkedWalk(t, tt.walk)
+		})
+	}
+}
+
+// runRewrittenOnce walks a board whose slack.yaml holds the value the reinterpretation rewrites.
+// It asserts the rewrite, the marker and the one mail.
+// It then asserts that a later walk leaves the old value alone beside the marker and mails nothing.
+func runRewrittenOnce(t *testing.T) {
+	t.Helper()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	geom := geometryOf(h)
 	board := h.BoardDir()
 	slackRel := configengine.ConfigFileRel("slack")
 	gitkit.CommitFile(t, board, slackRel, "remind_after_min: 10\n", "fixture: slack.yaml holding the value the reinterpretation rewrites")
-	registerFakeReinterpretation(t)
-	recordBoardSyncs(t)
-	sent := recordNotices(t)
 
 	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
 		t.Fatalf("Ensure: %v", err)
@@ -117,18 +127,15 @@ func TestEnsure_ReinterpretedValueIsRewrittenOnceAndMailed(t *testing.T) {
 		}
 	}
 	assertClean(t, board)
-	if len(*sent) != 1 {
-		t.Fatalf("notifier called %d times; want once: %v", len(*sent), *sent)
+	mailed := orchMail.lines(board)
+	if len(mailed) != 1 {
+		t.Fatalf("notifier called %d times; want once: %v", len(mailed), mailed)
 	}
-	got := (*sent)[0]
-	if got.boardDir != board {
-		t.Errorf("notice sent for board %q; want %q", got.boardDir, board)
+	if !strings.HasPrefix(mailed[0], "[reconcile notice]") {
+		t.Errorf("notice line %q; want it to open with [reconcile notice]", mailed[0])
 	}
-	if !strings.HasPrefix(got.line, "[reconcile notice]") {
-		t.Errorf("notice line %q; want it to open with [reconcile notice]", got.line)
-	}
-	if !strings.Contains(got.line, "slack.yaml remind_after_min 10 rewritten to 600") {
-		t.Errorf("notice line %q; want it to name the rewritten value of slack.yaml", got.line)
+	if !strings.Contains(mailed[0], "slack.yaml remind_after_min 10 rewritten to 600") {
+		t.Errorf("notice line %q; want it to name the rewritten value of slack.yaml", mailed[0])
 	}
 
 	// With the marker present, a slack.yaml written with the old value afterwards is left alone, and nothing is mailed.
@@ -142,15 +149,17 @@ func TestEnsure_ReinterpretedValueIsRewrittenOnceAndMailed(t *testing.T) {
 	if got, err := os.ReadFile(configengine.ConfigFile(board, "slack")); err != nil || string(got) != "remind_after_min: 10\n" {
 		t.Errorf("board slack.yaml = %q, %v after the second walk; want it left alone beside the marker", got, err)
 	}
-	if len(*sent) != 1 {
-		t.Errorf("notifier called %d times after the second walk; want no further mail", len(*sent))
+	if got := orchMail.lines(board); len(got) != 1 {
+		t.Errorf("notifier called %d times after the second walk; want no further mail", len(got))
 	}
 }
 
-// TestEnsure_FailedWalkAfterAReinterpretationLeavesNoMarkerAndTheNextWalkCommitsItOnce does not call t.Parallel:
-// it installs the process-global notifier and registry and swaps the package-global detached board sync.
-func TestEnsure_FailedWalkAfterAReinterpretationLeavesNoMarkerAndTheNextWalkCommitsItOnce(t *testing.T) {
-	tiergate.Require(t, 1)
+// runFailedWalkAfterAReinterpretation fails a walk once the hub-wide files, a template base and the marker are written.
+// It asserts the failure names the board and restores its config files.
+// That restore removes the marker and the base, and leaves the board's status and the stamp as they were.
+// The next walk then commits the marker once, stamps the build and leaves the board clean.
+func runFailedWalkAfterAReinterpretation(t *testing.T) {
+	t.Helper()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	geom := geometryOf(h)
@@ -159,16 +168,17 @@ func TestEnsure_FailedWalkAfterAReinterpretationLeavesNoMarkerAndTheNextWalkComm
 	// The profiles template base is dropped from the board, so the failed walk writes it and must remove it again.
 	gitkit.Git(t, board, "rm", "-q", "--ignore-unmatch", "--", filepath.ToSlash(configengine.TemplateBaseFileRel("profiles")))
 	gitkit.Git(t, board, "commit", "-q", "--allow-empty", "-m", "fixture: no profiles template base")
-	registerFakeReinterpretation(t)
-	recordBoardSyncs(t)
-	recordNotices(t)
 	filesBefore := configFilesOf(t, board)
+	statusBefore := gitkit.GitStatusPorcelain(t, board)
 
 	err := hubreconcile.EnsureFailingAfterHubWideWrite(geom, hubreconcile.Options{}, errors.New("fixture: failure after the hub-wide write"))
 
 	var worktreeErr *hubreconcile.WorktreeError
 	if !errors.As(err, &worktreeErr) {
 		t.Fatalf("EnsureFailingAfterHubWideWrite error = %v; want *WorktreeError", err)
+	}
+	if worktreeErr.Worktree != board {
+		t.Errorf("WorktreeError names worktree %q; want the board %q", worktreeErr.Worktree, board)
 	}
 	if filesAfter := configFilesOf(t, board); !maps.Equal(filesBefore, filesAfter) {
 		t.Errorf("the failed walk changed the board's config files:\nbefore: %v\nafter: %v", filesBefore, filesAfter)
@@ -178,6 +188,12 @@ func TestEnsure_FailedWalkAfterAReinterpretationLeavesNoMarkerAndTheNextWalkComm
 			t.Errorf("%s exists after the failed walk (stat error %v); want it removed", path, statErr)
 		}
 	}
+	if status := gitkit.GitStatusPorcelain(t, board); status != statusBefore {
+		t.Errorf("board status changed by the failed walk:\nbefore:\n%s\nafter:\n%s", statusBefore, status)
+	}
+	if _, found := stampKey(t, geom); found {
+		t.Errorf("stamp written after a failed walk")
+	}
 
 	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
 		t.Fatalf("Ensure after the failed walk: %v", err)
@@ -185,73 +201,48 @@ func TestEnsure_FailedWalkAfterAReinterpretationLeavesNoMarkerAndTheNextWalkComm
 	if commits := strings.Fields(gitkit.Git(t, board, "log", "--format=%H", "--", fakeMarkerRel())); len(commits) != 1 {
 		t.Errorf("commits touching %s = %v; want exactly one", fakeMarkerRel(), commits)
 	}
+	if _, found := stampKey(t, geom); !found {
+		t.Errorf("stamp absent after the walk that followed the failed one")
+	}
+	assertClean(t, board)
 }
 
-// TestEnsure_ReinterpretationMarkerIsCommittedAndMailsOnlyWhatItRewroteOrFlagged does not call t.Parallel:
-// it installs the process-global notifier and registry and swaps the package-global detached board sync.
-func TestEnsure_ReinterpretationMarkerIsCommittedAndMailsOnlyWhatItRewroteOrFlagged(t *testing.T) {
-	tiergate.Require(t, 1)
+// markedWalk is the board a walk that applies the reinterpretation starts from, and what it expects.
+type markedWalk struct {
+	// slack is the board's slack.yaml, which the walk is expected to leave as it is.
+	slack string
+	// wantLine is the text the one mailed line must hold; empty expects no mail.
+	wantLine string
+	// answer is how the notifier answers the board's mail.
+	answer mailAnswer
+}
 
-	tests := []struct {
-		name string
-		// slack is the board's slack.yaml; empty leaves the hub's board as forged.
-		slack string
-		// wantSlack is the slack.yaml the board holds after the walk; ignored when slack is empty.
-		wantSlack string
-		// wantMail is whether the walk mails the orch.
-		wantMail bool
-		// wantLine is the text the one mailed line must hold.
-		wantLine string
-		// unposted makes the notifier report a mail not posted.
-		unposted bool
-		// notifierError makes the notifier fail.
-		notifierError error
-		// noNotifier leaves the process with no notifier installed, which holds once every earlier test has restored its own.
-		noNotifier bool
-	}{
-		{name: "a hub file with no value to carry is only marked"},
-		{name: "a value the rewrite leaves alone is marked and not mailed", slack: "remind_after_min: 5\n", wantSlack: "remind_after_min: 5\n"},
-		{name: "a rewritten value is mailed", slack: "remind_after_min: 10\n", wantSlack: "remind_after_min: 600\n", wantMail: true, wantLine: "remind_after_min 10 rewritten to 600"},
-		{name: "a flagged value is kept and mailed", slack: "remind_after_min: 0\n", wantSlack: "remind_after_min: 0\n", wantMail: true, wantLine: "remind_after_min 0 needs a decision"},
-		{name: "a mail the notifier reports not posted leaves the walk done", slack: "remind_after_min: 0\n", wantSlack: "remind_after_min: 0\n", wantMail: true, wantLine: "remind_after_min 0 needs a decision", unposted: true},
-		{name: "a notifier error leaves the walk done", slack: "remind_after_min: 0\n", wantSlack: "remind_after_min: 0\n", wantMail: true, wantLine: "remind_after_min 0 needs a decision", notifierError: errors.New("creel is down")},
-		{name: "no installed notifier leaves the walk done", slack: "remind_after_min: 0\n", wantSlack: "remind_after_min: 0\n", noNotifier: true},
+// runMarkedWalk walks a board holding walk's slack.yaml and asserts that the walk ends done.
+// The board tracks the marker, is clean, keeps slack.yaml, and its orch got the mail walk expects.
+func runMarkedWalk(t *testing.T, walk markedWalk) {
+	t.Helper()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	board := h.BoardDir()
+	gitkit.CommitFile(t, board, configengine.ConfigFileRel("slack"), walk.slack, "fixture: slack.yaml")
+	orchMail.answer(board, walk.answer)
+
+	if err := hubreconcile.Ensure(geometryOf(h), hubreconcile.Options{}); err != nil {
+		t.Fatalf("Ensure: %v", err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-			board := h.BoardDir()
-			if tt.slack != "" {
-				gitkit.CommitFile(t, board, configengine.ConfigFileRel("slack"), tt.slack, "fixture: slack.yaml")
-			}
-			registerFakeReinterpretation(t)
-			recordBoardSyncs(t)
-			sent := new([]notice)
-			if !tt.noNotifier {
-				sent = recordNoticesAnswering(t, !tt.unposted, tt.notifierError)
-			}
 
-			if err := hubreconcile.Ensure(geometryOf(h), hubreconcile.Options{}); err != nil {
-				t.Fatalf("Ensure: %v", err)
-			}
-
-			if !slices.Contains(gitkit.LsFiles(t, board), fakeMarkerRel()) {
-				t.Errorf("the board does not track %s after the walk", fakeMarkerRel())
-			}
-			assertClean(t, board)
-			if tt.slack != "" {
-				if got, err := os.ReadFile(configengine.ConfigFile(board, "slack")); err != nil || string(got) != tt.wantSlack {
-					t.Errorf("board slack.yaml = %q, %v; want %q", got, err, tt.wantSlack)
-				}
-			}
-			if gotMail := len(*sent) > 0; gotMail != tt.wantMail {
-				t.Fatalf("notifier called %d times; want a mail: %v", len(*sent), tt.wantMail)
-			}
-			if tt.wantMail {
-				if len(*sent) != 1 || !strings.Contains((*sent)[0].line, tt.wantLine) {
-					t.Errorf("notices = %v; want one line holding %q", *sent, tt.wantLine)
-				}
-			}
-		})
+	if !slices.Contains(gitkit.LsFiles(t, board), fakeMarkerRel()) {
+		t.Errorf("the board does not track %s after the walk", fakeMarkerRel())
+	}
+	assertClean(t, board)
+	if got, err := os.ReadFile(configengine.ConfigFile(board, "slack")); err != nil || string(got) != walk.slack {
+		t.Errorf("board slack.yaml = %q, %v; want %q", got, err, walk.slack)
+	}
+	mailed := orchMail.lines(board)
+	if walk.wantLine == "" && len(mailed) != 0 {
+		t.Errorf("notices = %q; want none", mailed)
+	}
+	if walk.wantLine != "" && (len(mailed) != 1 || !strings.Contains(mailed[0], walk.wantLine)) {
+		t.Errorf("notices = %q; want one line holding %q", mailed, walk.wantLine)
 	}
 }
