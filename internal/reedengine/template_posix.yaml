@@ -8,7 +8,6 @@ watchdog: ${env:LYM_REED_WATCHDOG:-on}  # per-worktree name repair gate (on/off;
 operator_quiet_s: 5  # seconds since an attached client's last activity on a strand's pane within which lym types nothing into that pane; an already-materialized reed.yaml lacking this key takes this default until "lym config reconcile" writes it
 window_share_max: 2  # the largest group of strands, as their spawner declares it, that share one window; a larger group gives each strand a window of its own, and 0 gives every grouped strand its own; an integer of at least 0, and a negative value fails "lym reed up", "lym reed resume" and every add, naming the key; a group keeps the choice its first strand made, so an edit reaches only groups started after it; an already-materialized reed.yaml lacking this key takes this default until "lym config reconcile" writes it
 window_split: width  # how a shared window lays out its strands: width puts them side by side, height stacks them; any other value fails "lym reed up", "lym reed resume" and every add, naming the key, and a remove still removes and reports it; an already-materialized reed.yaml lacking this key takes this default until "lym config reconcile" writes it
-pane_memory_max_mib: 8192  # the memory cap, in MiB with no swap, of the systemd user scope each agent pane runs in; the kernel kills a process that takes the pane past it, and the pane and the rest of its processes live on; a test lym gate test runs sits in a capped scope of its own, outside this one; 0 or less takes this default; a pane the cap cannot reach starts uncapped with a warning in the hub log naming the cause; an edit reaches panes launched after it; an already-materialized reed.yaml lacking this key takes this default until "lym config reconcile" writes it
 tmux_conf: ${env:LYM_REED_TMUX_CONF:-}  # a tmux config file reed sources into a hub server on the boot that starts that server, before reed's own option pins, so reed's values win; empty, the default, sources nothing and keeps the hermetic server; a leading ~/ expands to the home directory, and the value must be an absolute path to an existing regular file holding no whitespace and none of * ? [ \ ' " ; # { } $; a changed value takes effect at the hub server's next start; an already-materialized reed.yaml lacking this key takes the default until "lym config reconcile" writes it; set LYM_REED_TMUX_CONF in the shell profile instead of committing a personal path
 segment_colors:  # tmux color per loom segment; each value must be a palette color (blue, purple, cyan, green, orange, yellow, pink, red), a value outside it fails "lym reed up" and is no color everywhere else
   coordinator: blue
@@ -20,7 +19,7 @@ segment_colors:  # tmux color per loom segment; each value must be a palette col
   landing: pink
   darn: red
   merge: red
-buttons:  # status-bar buttons in the groups reed.buttons.task, reed.buttons.beam and reed.buttons.prime; an entry has label, run, optional confirm (a prompt asked before run), optional ask (a prompt asked before confirm, holding no comma, whose answer fills {answer}; an empty answer takes the optional ask_default, and Escape cancels the click) and optional window: agents (the button shows only in a strand pane's window); run, confirm and ask take the placeholders {slug}, {worktree}, {beam}, {session} and {strand}, and run and confirm also {answer}, valid only in an entry with ask; the prime uses reed.buttons.prime when that is non-empty and otherwise falls back to reed.buttons.beam; a group written in a layer replaces the default whole; an edit reaches a live session at its next attach or boot
+buttons:  # status-bar buttons in the groups task, beam and prime; an entry has label, run, optional confirm (a prompt asked before run), optional ask (a prompt asked before confirm, holding no comma, whose answer fills {answer}; an empty answer takes the optional ask_default, and Escape cancels the click) and optional window: agents (the button shows only in a strand pane's window); run, confirm and ask take the placeholders {slug}, {worktree}, {beam}, {session} and {strand}, and run and confirm also {answer}, valid only in an entry with ask; the prime uses its own group when that is non-empty and otherwise falls back to beam; a group written in a layer replaces the default whole; an edit reaches a live session at its next attach or boot
   task:
     - label: HALT
       run: lym tender pause {slug}
@@ -75,6 +74,3 @@ buttons:  # status-bar buttons in the groups reed.buttons.task, reed.buttons.bea
     - label: refresh
       run: lym orch refresh
       confirm: Refresh the orch?
-    - label: stop
-      run: lym beam stop --all
-      confirm: Stop every orch, dobby, run and reed session of the hub on this machine?

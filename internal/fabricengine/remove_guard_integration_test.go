@@ -48,7 +48,7 @@ func TestRemove_RefusesForeignWorktreeWithoutDeletingIt(t *testing.T) {
 			return false, false, nil
 		},
 		func(time.Duration) { sleepCalls++ })
-	_, err := topology.Remove(l, slug, false, false, "")
+	_, err := topology.Remove(l, slug, false, false)
 	if err == nil {
 		t.Fatalf("Remove(%q) = nil error; want a refusal naming git's own reason", slug)
 	}

@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -402,9 +401,9 @@ func TestGateTest_Scopes(t *testing.T) {
 	}}}
 	plankit.Write(t, planparser.PlanDir(pair), plan)
 
-	t.Run("--card runs a card's packages and the packages that import them once per module, then the guard step over the guard tests outside them", func(t *testing.T) {
+	t.Run("--card runs a card's packages once per module, then the guard step over the guard tests outside them", func(t *testing.T) {
 		g := gate(t, pair, nil, "--card", "1")
-		wantArgs(t, g, []string{"./lib", "./user"}, []string{"."}, guardInvocation)
+		wantArgs(t, g, []string{"./lib"}, []string{"."}, guardInvocation)
 		var cwds []string
 		for _, record := range g.tierRecords(t) {
 			cwds = append(cwds, record.Cwd)
@@ -415,23 +414,6 @@ func TestGateTest_Scopes(t *testing.T) {
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "card" {
 			t.Errorf("tier0 run record scope form = %q; want card", run.ScopeForm)
 		}
-	})
-
-	t.Run("--card runs a dependent package's guard in the guard step unless a listed tier is or covers its tier", func(t *testing.T) {
-		plankit.WriteTree(t, pair, map[string]string{
-			"consumer/c.go":      "package consumer\n\nimport \"example.com/scopes/lib\"\n\nvar One = lib.One\n",
-			"consumer/c_test.go": "//go:build tier1\n\npackage consumer\n\nimport \"testing\"\n\n//lym:guard\nfunc TestConsumerGuard(t *testing.T) {}\n",
-			// The listed tier0, and tier1 which covers it, both run this one, so the guard step never names it.
-			"consumer/c0_test.go": "package consumer\n\nimport \"testing\"\n\n//lym:guard\nfunc TestConsumerTierZeroGuard(t *testing.T) {}\n",
-		})
-		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(pair, "consumer")) })
-		scoped := []string{"./lib", "./consumer", "./user"}
-
-		wantArgs(t, gate(t, pair, nil, "--card", "1"),
-			scoped, []string{"."},
-			append([]string{"vet", "-tags", "tier1"}, scoped...), []string{"vet", "-tags", "tier1", "."},
-			guardInvocation, []string{"./consumer", "-run", "^(TestConsumerGuard)$"})
-		wantArgs(t, gate(t, pair, nil, "--card", "1", "--tier", "1"), scoped, []string{"."}, guardInvocation)
 	})
 
 	t.Run("--card under dotnet runs the project of the test class naming a card's member glyph target", func(t *testing.T) {
@@ -507,7 +489,7 @@ func TestGateTest_Scopes(t *testing.T) {
 	t.Run("--card vets a card's packages per module under the tag of a tier that adds a file to one, between the listed tier and the guard step", func(t *testing.T) {
 		edit(t, "lib/use_test.go", fmt.Sprintf(tier1File, "One"))
 		g := gate(t, pair, nil, "--card", "1")
-		wantArgs(t, g, []string{"./lib", "./user"}, []string{"."}, []string{"vet", "-tags", "tier1", "./lib", "./user"}, []string{"vet", "-tags", "tier1", "."}, guardInvocation)
+		wantArgs(t, g, []string{"./lib"}, []string{"."}, []string{"vet", "-tags", "tier1", "./lib"}, []string{"vet", "-tags", "tier1", "."}, guardInvocation)
 		if line := vetSummary(t, g.stdout.String()); !strings.Contains(line, " exit 0 ") {
 			t.Errorf("vet summary line = %q; want exit 0", line)
 		}
@@ -558,7 +540,7 @@ func TestGateTest_Scopes(t *testing.T) {
 			}
 		})
 		// The timed-out tier stops its own invocations, but not the guard step after it.
-		if got, want := g.tierArgs(t), [][]string{{"./lib", "./user"}, guardInvocation}; !reflect.DeepEqual(got, want) {
+		if got, want := g.tierArgs(t), [][]string{{"./lib"}, guardInvocation}; !reflect.DeepEqual(got, want) {
 			t.Errorf("tier invocations = %q; want the first module's run alone, killed before the second starts, then the guard step: %q", got, want)
 		}
 		if tier, ok := gateslot.FindTierTimeout(g.stdout.String()); g.exit != 1 || !ok || tier != "tier0" {
@@ -586,7 +568,7 @@ func TestGateTest_Scopes(t *testing.T) {
 	t.Run("--gate with scope card runs the --card packages and records the key", func(t *testing.T) {
 		edit(t, "docs/note.md", "a dirtying note\n")
 		g := gate(t, pair, nil, "--gate", "card", "--card", "1")
-		wantArgs(t, g, []string{"./lib", "./user"}, []string{"."}, guardInvocation)
+		wantArgs(t, g, []string{"./lib"}, []string{"."}, guardInvocation)
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "card" || run.GateKey != "card" {
 			t.Errorf("tier0 run record = %+v; want the card scope form and gate key card", run)
 		}
@@ -598,7 +580,7 @@ func TestGateTest_Scopes(t *testing.T) {
 	t.Run("--card with --main-packages adds the module's main packages to the card's packages", func(t *testing.T) {
 		plankit.WriteTree(t, pair, map[string]string{"tool/main.go": "package main\n\nfunc main() {}\n"})
 		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(pair, "tool")) })
-		wantArgs(t, gate(t, pair, nil, "--card", "1", "--main-packages"), []string{"./lib", "./user", "./tool"}, []string{"."}, guardInvocation)
+		wantArgs(t, gate(t, pair, nil, "--card", "1", "--main-packages"), []string{"./lib", "./tool"}, []string{"."}, guardInvocation)
 	})
 
 	t.Run("--card with --main-packages is refused naming the module and the way forward when go list fails there", func(t *testing.T) {
@@ -645,76 +627,7 @@ func TestGateTest_Scopes(t *testing.T) {
 		}
 	})
 
-	t.Run("--gate with scope all over an inert-only diff from the parent branch runs no tier's command", func(t *testing.T) {
-		writeInert(t, "go", nil)
-		defer writeScoper(t, "go")
-		edit(t, "docs/note.md", "inert note for finalize\n")
-		g := gate(t, pair, nil, "--gate", "finalize")
-		wantArgs(t, g)
-		if out := g.stdout.String(); !strings.Contains(out, `scope all of --gate "finalize": every file changed since`) || !strings.Contains(out, "the scope is empty, so tier0 runs no command") {
-			t.Errorf("stdout = %q; want the inert-only diff named and tier0 running no command", out)
-		}
-	})
-
-	t.Run("--gate with scope all runs whole over an inert-only edit in the prime, which has no parent branch", func(t *testing.T) {
-		writeInert(t, "go", nil)
-		defer writeScoper(t, "go")
-		note := filepath.Join(prime, "docs", "note.md")
-		original, err := os.ReadFile(note)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() {
-			if err := os.WriteFile(note, original, 0o644); err != nil {
-				t.Error(err)
-			}
-		})
-		if err := os.WriteFile(note, []byte("inert note edited in the prime\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		g := gate(t, prime, nil, "--gate", "finalize")
-		wantArgs(t, g, []string{"./..."})
-		if strings.Contains(g.stdout.String(), "the scope is empty") {
-			t.Errorf("stdout = %q; want no empty-scope line, since the prime has no parent branch to diff from", g.stdout.String())
-		}
-	})
-
-	t.Run("--gate with scope all runs whole and names why when the parent branch's merge base cannot be read", func(t *testing.T) {
-		writeInert(t, "go", nil)
-		defer writeScoper(t, "go")
-		recorded, found, err := fabricengine.ReadOriginFor(h.Location, hubforge.TemplatePairSlug)
-		if err != nil || !found {
-			t.Fatalf("read the pair's origin record = %v, found %v; want it present", err, found)
-		}
-		vanished := recorded
-		vanished.ParentBranch = "vanished-parent-branch"
-		rewrite := func(origin fabricengine.Origin) error {
-			return fabricengine.WriteOrigin(new(fabricengine.Mutations), h.Location, hubforge.TemplatePairSlug, origin)
-		}
-		if err := rewrite(vanished); err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() {
-			if err := rewrite(recorded); err != nil {
-				t.Error(err)
-			}
-		})
-		edit(t, "docs/note.md", "inert note with a vanished parent\n")
-		g := gate(t, pair, nil, "--gate", "finalize")
-		wantArgs(t, g, []string{"./..."})
-		if out := g.stdout.String(); !strings.Contains(out, `the scope of --gate "finalize" stays whole: cannot read the merge base`) || strings.Contains(out, "the scope is empty") {
-			t.Errorf("stdout = %q; want the stays-whole line and no empty-scope line", out)
-		}
-	})
-
 	t.Run("--gate with scope diff runs the computed scope", func(t *testing.T) {
-		config := scopesConfigWith(t, "go", func(cfg map[string]any) {
-			cfg["gates"] = map[string]any{"pr-review": map[string]any{"tiers": []int{0}, "scope": "diff"}}
-		})
-		if err := os.WriteFile(configPath, config, 0o644); err != nil {
-			t.Fatal(err)
-		}
-		defer writeScoper(t, "go")
 		edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 5 }\n")
 		g := gate(t, pair, nil, "--gate", "pr-review")
 		wantArgs(t, g, []string{"./lib", "./user"}, guardInvocation)

@@ -33,7 +33,7 @@ func gateConfigWithTwoTiers() string {
 	return strings.NewReplacer(
 		"tiers: {}", tiers,
 		"  finalize: {tiers: [0], scope: all}", "  finalize: {tiers: [0, 1], scope: all}",
-		"  code-burler-fix: {tiers: [0], scope: diff}", "  code-burler-fix: {tiers: [0, 1], scope: diff}",
+		"  code-burler-fix: {tiers: [0], scope: diff, reports: [redundancy]}", "  code-burler-fix: {tiers: [0, 1], scope: diff, reports: [redundancy]}",
 	).Replace(gateslot.ConfigTemplate())
 }
 

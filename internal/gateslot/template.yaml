@@ -1,46 +1,45 @@
 slots: 2  # how many gate builds and test runs the hub executes at once; a lowered count takes effect on the next acquire while a running holder finishes
 busy_quit_sec: 120  # seconds a Go test binary under lym gate test may keep a CPU core at least 90 percent busy before it gets one SIGQUIT and dumps its goroutine stacks; 0 turns the watchdog off; raise it for a package that is CPU-bound but healthy
-memory_quit_mb: 4096  # megabytes a Go test binary that lym gate test runs may hold, with every process it starts, before the memory guard kills them all and names its package; the guard also kills the largest test binary of 1024 MB or more once the memory limit lym sits under has less than a tenth left; 0 turns the guard off
-fixer_timeout_min: 30  # minutes a cold gate fixer may run before the call that spawned it stops waiting; it bounds the card gate's fixer and the row gate fixers, and webster's fix-verify keeps webster.recovery_timeout_min
-plan_tier0_budget_sec: 60  # seconds a plan's new and changed tier0 tests may add to one tier0 run; the planner states each card's estimate in its test Intent and the plan review flags a plan past it; 0 sets no budget
+memory_quit_mb: 4096  # megabytes a Go test binary that lym gate test (its redundancy report step included), lym gate redundant or lym gate testmap runs may hold, with every process it starts, before the memory guard kills them all and names its package; the guard also kills the largest test binary of 1024 MB or more once the memory limit lym sits under has less than a tenth left; 0 turns the guard off
+fixer_timeout_min: 30  # minutes a cold gate fixer may run before the call that spawned it stops waiting; it bounds the card gate's fixer and the row gate fixers, and webster's fix-verify keeps its own recovery_timeout_min
+redundancy_build_timeout_min: 10  # minutes each coverage, mutant and lym build of a coverage map run, the redundancy report step or lym gate redundant may take before its process group is killed and the build counts as failed
+redundancy_test_timeout_sec: 120  # seconds each test of those runs alone may take before its process group is killed; the test is left out, except a mutant run in lym gate redundant, which then counts as a kill
+redundancy_test_memory_mb: 2048  # megabytes each test of those runs alone may hold, with every process it starts, before the kernel ends it or fails its allocation; the test is left out, recorded as failed by lym gate testmap, and a mutant run in lym gate redundant counts as a kill; lym gate redundant and lym gate testmap run fewer tests side by side when the memory limit they sit under leaves less than their caps together
+redundancy_max_tests: 40  # the most new and changed tests the redundancy report step judges in one call, taken in file then name order; the rest are listed as not judged
+redundancy_budget_min: 10  # minutes the redundancy report step may spend on its builds and tests once it holds its gate slot; past it the step starts no further build or test
 
 # The hub's test tiers, keyed tier0, tier1, and so on; the template declares none.
 # A tier is written whole with one flow mapping: lym config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}'
-# A gate.tiers.<tier> entry holds command (with {targets}, {test_targets}, {parallel}, {args} and {test_timeout} placeholders; {test_targets} is {targets} narrowed to the packages holding a test of the tier, for go test), timeout_min (at least 1) and counter (go-json or vstest), and all_targets when the command holds {targets} or {test_targets}.
-# It may also hold about, dir (absolute or relative to the worktree root, the base drift.capture.dir uses too; default the worktree's anchor; a hub write refuses one that is no existing directory in the prime), env, parallel (at least 1, default 1), covers (lower tier numbers its command runs anyway), slots (a count of at least 1, or all; default 1), prebuilt_lym and manual (true keeps a tier above tier0 out of lym gate test --upto, so it runs only when --tier names it).
-# Five more keys: filter (the tier's own test-filter expression, allowed only when the command holds {filter}), shared_build (true runs the hub's gate.build step first, once per call), carry (false keeps a green run from being carried over an unchanged tree; default true), test_timeout_min (the minutes {test_timeout} renders as, such as 20m for go test -timeout {test_timeout}, at least 1, allowed only when the command holds {test_timeout}; default 20) and memory_mb (the megabytes the tier's command may hold with every process it starts, its builds and test binaries together, before the kernel kills the largest of them and the run fails; at least 1; default uncapped; on a host whose user manager cannot cap a scope, each process gets memory_mb alone as its data segment limit, nothing is killed and no cap line prints).
-# A tier with counter vstest and {args} in its command may hold results: trx, which makes the gate put the options that write a TRX results file at the front of {args} and take the run's counts, failed tests and a crashed test host's cause from that file; a call's own words after -- may then hold no results directory and no trx logger.
+# It holds command (with {targets}, {test_targets}, {parallel}, {args} and {test_timeout} placeholders; {test_targets} is {targets} narrowed to the packages holding a test of the tier, for go test), timeout_min (at least 1) and counter (go-json or vstest), and all_targets when the command holds {targets} or {test_targets}.
+# It may also hold about, dir (absolute or relative to the worktree root, the base drift.yaml's dir uses too; default the worktree's anchor; a hub write refuses one that is no existing directory in the prime), env, parallel (at least 1, default 1), covers (lower tier numbers its command runs anyway), slots (a count of at least 1, or all; default 1), prebuilt_lym and manual (true keeps a tier above tier0 out of lym gate test --upto, so it runs only when --tier names it).
+# Five more keys: filter (the tier's own test-filter expression, allowed only when the command holds {filter}), shared_build (true runs the hub's build step first, once per call), carry (false keeps a green run from being carried over an unchanged tree; default true), test_timeout_min (the minutes {test_timeout} renders as, such as 20m for go test -timeout {test_timeout}, at least 1, allowed only when the command holds {test_timeout}; default 20) and memory_mb (the megabytes the tier's command may hold with every process it starts, its builds and test binaries together, before the kernel kills the largest of them and the run fails; at least 1; default uncapped; on a host whose user manager cannot cap a scope, each process gets memory_mb alone as its data segment limit, nothing is killed and no cap line prints).
 # Inside the mapping a value holding a brace, comma or bracket is a double-quoted string.
 # One key of a declared tier is set alone with its dotted path: lym config gate --set tiers.tier0.env.LYM_TEST_TIER=0
 tiers: {}
 
-# gate.gates maps a gate key to the tiers that site runs and the scope it runs them over, written {tiers: [<n>...], scope: card|diff|all}.
-# The keys lym reads: card and batch (scope card, the cards' packages and the packages that depend on them), webster, parent-align, finalize and adopt (scope all, the whole tree, or no tier once gate.inert_paths is set and every changed file matches it), and webster-fix, darn-write, code-burler-fix, harden-burler-fix, harden-live and pr-review (scope diff, the diff from the merge base).
-# The two harden keys name tier 0, the tier a key may name before the hub declares more, so a hardener run needs no gate write; a hub whose live tests sit in a higher tier may point harden-live at one tier below tier3, since the run's concurrent copies call runs that same key.
+# Gate key to the tiers that site runs and the scope it runs them over, written {tiers: [<n>...], scope: card|diff|all}.
+# The keys lym reads: card and batch (scope card, the card's own packages), webster, parent-align, finalize and adopt (scope all, the whole tree), and webster-fix, darn-write, code-burler-fix and pr-review (scope diff, the diff from the merge base).
 # The scope card is only for the card and batch keys.
-# The darn-write key's scope is not card and its tiers all hold {args} in their command, since the darn writer's measuring call passes the words that select one test class there.
 # A key may also hold lints, the lint steps its call runs after the tiers against HEAD: comments (fixed-column-wrapped breaks and over-long lines in // comments) and pattern (PATTERN.md grown past its headroom line).
+# A key may also hold reports, the advisory steps its call runs after the lints, which never change its result: redundancy (judges the diff's new and changed Go tests against the coverage maps and writes the verdicts into the worktree's gate directory); reports: [] turns them off.
 # The card key alone may also hold fixer, a model-spec such as sonnet[medium]: the cold fixer an agent's red lym gate test --gate card call hands its failures to; "" turns it off.
-# No tier list may be empty.
-# While gate.tiers is empty, every key runs with nothing to run; once any tier is declared, each tier a key names must be declared too.
+# No tier list may be empty, and a tier a key names must be declared above when the gate runs.
 gates:
   card: {tiers: [0], scope: card, lints: [comments, pattern], fixer: "sonnet[medium]"}
   batch: {tiers: [0], scope: card}
-  webster: {tiers: [0], scope: all}
-  parent-align: {tiers: [0], scope: all}
+  webster: {tiers: [0], scope: all, reports: [redundancy]}
+  parent-align: {tiers: [0], scope: all, reports: [redundancy]}
   finalize: {tiers: [0], scope: all}
   adopt: {tiers: [0], scope: all}
   webster-fix: {tiers: [0], scope: diff}
-  darn-write: {tiers: [0], scope: diff}
-  code-burler-fix: {tiers: [0], scope: diff}
-  harden-live: {tiers: [0], scope: diff}
-  harden-burler-fix: {tiers: [0], scope: diff}
+  darn-write: {tiers: [0], scope: diff, reports: [redundancy]}
+  code-burler-fix: {tiers: [0], scope: diff, reports: [redundancy]}
   pr-review: {tiers: [0], scope: diff}
 
 # How a computed, base or card scope maps to {targets}: go derives the impacted Go packages per module, dotnet derives the impacted C# test projects and classes from the type-name closure over test classes, none runs every tier whole.
 scoper: none
 
-# The build a gate.tiers.<tier> entry with shared_build runs once per call; {} declares none.
+# The build a tier with shared_build runs once per call; {} declares none.
 # It holds command and timeout_min (at least 1), and may hold about, dir (absolute or relative to the worktree root; default the worktree's anchor; a hub write refuses one that is no existing directory in the prime) and env.
 build: {}
 
@@ -51,6 +50,6 @@ inert_paths: []
 # Command prefixes the shell guard refuses, each one or more words of letters, digits, dot, underscore and dash separated by single spaces, such as "go test".
 refuse_raw: []
 
-# This machine's parallel for a tier, tier name to a count of at least 1; it beats gate.tiers.<tier>.parallel.
+# This machine's parallel for a tier, tier name to a count of at least 1; it beats the tier's own parallel.
 # Set it inside a hub with lym config gate --layer machine --set tier_parallel.tier0=2, and in a standalone worktree, which has no machine layer, with plain lym config gate.
 tier_parallel: {}

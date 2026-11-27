@@ -28,10 +28,6 @@ type Shell interface {
 	// This differs deliberately from WithEnv, which is command-scoped on POSIX and therefore
 	// emits nothing usable for a pane whose command is empty.
 	ExportEnv(key, value string) string
-	// UnsetEnv returns a standalone statement that removes key from the shell session, so a later command sees it unset.
-	// An absent key is no error in either dialect.
-	// key is an environment name the caller owns and is written unquoted, as ExportEnv writes it.
-	UnsetEnv(key string) string
 	// PrependPathEntry returns a standalone statement that prepends dir to the shell's own live
 	// PATH.
 	// The statement references the live PATH variable rather than baking in a value computed by

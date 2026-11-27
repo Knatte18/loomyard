@@ -5,7 +5,7 @@
 //	go run ./tools/codestats -root ../some-other-repo
 //	go run ./tools/codestats -out .scratch/codestats.md
 //	go run ./tools/codestats -json -out .scratch/codestats.json
-//	go run ./tools/codestats -exclude docs/research -exclude '*.pb.go'
+//	go run ./tools/codestats -exclude crucible -exclude '*.pb.go'
 //
 // The two launchers beside this file, codestats.sh and codestats.cmd, are the intended entry points.
 // Each writes .scratch/codestats.md, one fixed path overwritten per run;

@@ -26,9 +26,6 @@ const (
 	// remoteHub and remoteOrch are a hub of another shortname and its orch, the far side of mail across hubs.
 	remoteHub  = "/hubs/xx"
 	remoteOrch = "xx:orch"
-	// remoteMachine and remoteMachineOrch are another machine and its orch's address, the far side of mail across machines.
-	remoteMachine     = "osl"
-	remoteMachineOrch = "osl::zz:orch"
 )
 
 // testClock is a Clock that stands still until a test moves it.
@@ -123,7 +120,7 @@ func TestJournal_Fold(t *testing.T) {
 			},
 		},
 		{
-			name: "posted, forwarded, read, and returned fold to holder, path, status and ended-unread receiver",
+			name: "posted, forwarded, read, returned and withheld fold to holder, path, status and ended-unread receiver",
 			files: map[string]string{"2026-10-01.jsonl": strings.Join([]string{
 				posted(1, alpha, beta, "first line\nsecond line"),
 				line(record{Event: eventForwarded, ID: 1, By: beta, To: gamma}),
@@ -134,6 +131,7 @@ func TestJournal_Fold(t *testing.T) {
 				line(record{Event: eventReturned, ID: 3, To: gamma, Receiver: delta}),
 				posted(4, "ly:BATTEN", orch, "from a program"),
 				posted(5, "ly:EXTERNAL", beta, "from outside"),
+				line(record{Event: eventWithheld, To: orch, Notice: "creel-notices"}),
 			}, "\n") + "\n"},
 			check: func(t *testing.T, p *pool) {
 				want := map[int64]messageShape{
@@ -456,75 +454,6 @@ func TestJournal_Fold(t *testing.T) {
 			check: func(t *testing.T, p *pool) {
 				if got := p.injects[1].Consumed; got != 90*time.Second {
 					t.Errorf("consumed TTL = %v, want 1m30s", got)
-				}
-			},
-		},
-		{
-			name: "a machine-outbound line folds into its own map with its receiving machine and marks the local message it answers replied",
-			files: map[string]string{"2026-10-01.jsonl": strings.Join([]string{
-				line(record{Event: eventPosted, ID: 1, From: beta, To: alpha, Body: "question", ExpectReply: true}),
-				line(record{Event: eventMachineOutbound, ID: 2, From: alpha, To: remoteMachineOrch, ReceivingMachine: remoteMachine, Body: "answer", Answers: 1}),
-			}, "\n") + "\n"},
-			check: func(t *testing.T, p *pool) {
-				entry := p.machineOutbound[2]
-				if len(p.machineOutbound) != 1 || entry == nil || entry.ReceivingMachine != remoteMachine || entry.To != remoteMachineOrch ||
-					entry.State != outboundPending || entry.Kind != kindMail {
-					t.Errorf("machineOutbound = %+v, want only message 2 pending for %s", p.machineOutbound, remoteMachine)
-				}
-				if len(p.outbound) != 0 || len(p.messages) != 1 || !p.messages[1].Replied {
-					t.Errorf("outbound = %+v, messages = %+v; want none in outbound and only the answered message 1, marked replied", p.outbound, shapesOf(p))
-				}
-			},
-		},
-		{
-			name: "machine-held lines set the hold reason and the later one stands",
-			files: map[string]string{"2026-10-01.jsonl": strings.Join([]string{
-				line(record{Event: eventMachineOutbound, ID: 1, From: alpha, To: remoteMachineOrch, ReceivingMachine: remoteMachine, Body: "held"}),
-				line(record{Event: eventMachineHeld, ID: 1, Reason: "no-token"}),
-				line(record{Event: eventMachineHeld, ID: 1, Reason: "not-approved"}),
-			}, "\n") + "\n"},
-			check: func(t *testing.T, p *pool) {
-				if entry := p.machineOutbound[1]; entry == nil || entry.HoldReason != "not-approved" || entry.State != outboundPending {
-					t.Errorf("machineOutbound[1] = %+v, want it pending with the hold reason not-approved", entry)
-				}
-			},
-		},
-		{
-			name: "machine-delivered after machine-returned leaves the entry delivered, and a later machine-returned changes nothing",
-			files: map[string]string{"2026-10-01.jsonl": strings.Join([]string{
-				line(record{Event: eventMachineOutbound, ID: 1, From: alpha, To: remoteMachineOrch, ReceivingMachine: remoteMachine, Body: "late"}),
-				line(record{Event: eventMachineReturned, ID: 1, Reason: "hour-ended"}),
-				line(record{Event: eventMachineDelivered, ID: 1, SlackTS: "1700000000.000100"}),
-				line(record{Event: eventMachineOutbound, ID: 2, From: alpha, To: remoteMachineOrch, ReceivingMachine: remoteMachine, Body: "sent"}),
-				line(record{Event: eventMachineDelivered, ID: 2, SlackTS: "1700000001.000200"}),
-				line(record{Event: eventMachineReturned, ID: 2, Reason: "hour-ended"}),
-			}, "\n") + "\n"},
-			check: func(t *testing.T, p *pool) {
-				for id, ts := range map[int64]string{1: "1700000000.000100", 2: "1700000001.000200"} {
-					if entry := p.machineOutbound[id]; entry == nil || entry.State != outboundDelivered || entry.SlackTS != ts {
-						t.Errorf("machineOutbound[%d] = %+v, want it delivered with Slack timestamp %s", id, entry, ts)
-					}
-				}
-			},
-		},
-		{
-			name: "a machine-inbound line folds as unread mail with its sending machine, and its reply marks the machine-outbound message replied",
-			files: map[string]string{"2026-10-01.jsonl": strings.Join([]string{
-				line(record{Event: eventMachineOutbound, ID: 1, From: alpha, To: remoteMachineOrch, ReceivingMachine: remoteMachine, Body: "ask", ExpectReply: true}),
-				line(record{Event: eventMachineInbound, ID: 2, From: remoteMachineOrch, To: alpha, Body: "hello", SendingMachine: remoteMachine, SendingID: 40, Trusted: true, DeliveredTo: alpha}),
-				line(record{Event: eventMachineInbound, ID: 3, From: remoteMachineOrch, To: alpha, Kind: kindReply, ReplyTo: 1, Body: "answer", SendingMachine: remoteMachine, SendingID: 41}),
-			}, "\n") + "\n"},
-			check: func(t *testing.T, p *pool) {
-				hello := p.messages[2]
-				if hello == nil || hello.Status != StatusUnread || hello.SendingMachine != remoteMachine || hello.SendingID != 40 || !hello.Trusted ||
-					hello.Holder != alpha || hello.SendingHub != "" {
-					t.Errorf("message 2 = %+v, want unread mail to %s from machine %s with its sending id and trust", hello, alpha, remoteMachine)
-				}
-				if reply := p.messages[3]; reply == nil || reply.Kind != kindReply || reply.SendingMachine != remoteMachine || reply.Trusted {
-					t.Errorf("message 3 = %+v, want an untrusted reply from machine %s", reply, remoteMachine)
-				}
-				if entry := p.machineOutbound[1]; entry == nil || !entry.Replied {
-					t.Errorf("machineOutbound[1] = %+v, want it marked replied", entry)
 				}
 			},
 		},
@@ -918,14 +847,6 @@ func TestJournal_Retention(t *testing.T) {
 			{Event: eventInbound, ID: 5, From: remoteOrch, To: beta, Body: "read", SendingHub: remoteHub, SendingID: 13, RemotePosted: remotePosted, DeliveredTo: beta, ExpectReply: true},
 			{Event: eventRead, ID: 5, By: beta},
 			{Event: eventChaseAged, ID: 5, ConsumedSeconds: 600},
-			{Event: eventMachineOutbound, ID: 11, From: alpha, To: remoteMachineOrch, ReceivingMachine: remoteMachine, Body: "pending machine mail"},
-			{Event: eventMachineHeld, ID: 11, Reason: "no-token"},
-			{Event: eventMachineHeld, ID: 11, Reason: "not-approved"},
-			{Event: eventMachineOutbound, ID: 12, From: alpha, To: remoteMachineOrch, ReceivingMachine: remoteMachine, Body: "delivered machine mail"},
-			{Event: eventMachineDelivered, ID: 12, SlackTS: "1700000000.000100"},
-			{Event: eventMachineOutbound, ID: 13, From: alpha, To: remoteMachineOrch, ReceivingMachine: remoteMachine, Body: "returned machine mail"},
-			{Event: eventMachineReturned, ID: 13, Reason: "hour-ended"},
-			{Event: eventMachineInbound, ID: 14, From: remoteMachineOrch, To: beta, Body: "machine unread", SendingMachine: remoteMachine, SendingID: 41, Trusted: true, RemotePosted: remotePosted, DeliveredTo: beta},
 		} {
 			if err := writer.append(rec); err != nil {
 				t.Fatalf("append %s: %v", rec.Event, err)
@@ -941,18 +862,8 @@ func TestJournal_Retention(t *testing.T) {
 			t.Fatalf("append: %v", err)
 		}
 
-		check := func(label string, p *pool, wantOutbound, wantMachineOutbound int) {
+		check := func(label string, p *pool, wantOutbound int) {
 			t.Helper()
-			machinePending := p.machineOutbound[11]
-			if len(p.machineOutbound) != wantMachineOutbound || machinePending == nil || machinePending.State != outboundPending || machinePending.ReceivingMachine != remoteMachine ||
-				machinePending.HoldReason != "not-approved" || !machinePending.Posted.Equal(journalEpoch) || machinePending.To != remoteMachineOrch {
-				t.Errorf("%s: machineOutbound = %+v, want %d entries with 11 pending for %s, holding for not-approved", label, p.machineOutbound, wantMachineOutbound, remoteMachine)
-			}
-			machineUnread := p.messages[14]
-			if machineUnread == nil || machineUnread.Status != StatusUnread || machineUnread.SendingMachine != remoteMachine || machineUnread.SendingID != 41 || !machineUnread.Trusted ||
-				!machineUnread.RemotePosted.Equal(remotePosted) || machineUnread.DeliveredTo != beta || machineUnread.SendingHub != "" {
-				t.Errorf("%s: machine-inbound message = %+v, want it back unread with its sending machine and id", label, machineUnread)
-			}
 			pending := p.outbound[1]
 			if len(p.outbound) != wantOutbound || pending == nil || pending.State != outboundPending || !pending.Posted.Equal(postedAt) || pending.ReceivingHub != remoteHub ||
 				pending.ReplyTo != 9 || pending.Answers != 8 || pending.Kind != kindReply || !pending.ExpectReply || pending.To != remoteOrch {
@@ -965,17 +876,11 @@ func TestJournal_Retention(t *testing.T) {
 			if read == nil || read.Status != StatusRead || !read.ReadAt.Equal(journalEpoch) || read.ChaseConsumed != 10*time.Minute || read.SendingID != 13 || read.SendingRepository != "" || read.Trusted || !isChaseable(read) {
 				t.Errorf("%s: read inbound message = %+v, want it back read, chaseable, with its read time, chase clock and hub fields", label, read)
 			}
-			if len(p.messages) != 4 {
-				t.Errorf("%s: messages = %+v, want only 4, 5, 6 and 14", label, shapesOf(p))
+			if len(p.messages) != 3 {
+				t.Errorf("%s: messages = %+v, want only 4, 5 and 6", label, shapesOf(p))
 			}
 		}
-		check("the writer's pool", state, 1, 1)
-		if got := carriedEntries(state, 11); len(got) != 1 || got[0].ReceivingMachine != remoteMachine || got[0].Kind != kindMail || got[0].Reason != "not-approved" {
-			t.Errorf("carried entries of machine-outbound message 11 = %+v, want one showing its receiving machine and last hold reason", got)
-		}
-		if got := carriedEntries(state, 14); len(got) != 1 || got[0].SendingMachine != remoteMachine || got[0].SendingID != 41 || got[0].Kind != kindMail {
-			t.Errorf("carried entries of machine-inbound message 14 = %+v, want one showing its sending machine and id", got)
-		}
+		check("the writer's pool", state, 1)
 		if got := carriedEntries(state, 4); len(got) != 1 || got[0].SendingHub != remoteHub || got[0].SendingID != 12 || got[0].Kind != kindMail {
 			t.Errorf("carried entries of inbound message 4 = %+v, want one showing its sending hub and id", got)
 		}
@@ -986,7 +891,7 @@ func TestJournal_Retention(t *testing.T) {
 		if err != nil {
 			t.Fatalf("foldJournal after retention: %v", err)
 		}
-		check("the refolded journal", refolded, 1, 1)
+		check("the refolded journal", refolded, 1)
 
 		// A crash between the carry and the deletion leaves the old file beside the carried lines:
 		// each entry folds once, and the settled outbound messages return with it.
@@ -997,7 +902,7 @@ func TestJournal_Retention(t *testing.T) {
 		if err != nil {
 			t.Fatalf("foldJournal after a crash between carry and delete: %v", err)
 		}
-		check("after a crash between carry and delete", crashed, 3, 3)
+		check("after a crash between carry and delete", crashed, 3)
 	})
 }
 

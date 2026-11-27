@@ -21,14 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// assertAbsent fails the test when path exists; a link counts as present even when its target is missing.
-func assertAbsent(t *testing.T, path string) {
-	t.Helper()
-	if _, err := os.Lstat(path); !os.IsNotExist(err) {
-		t.Errorf("%s stat err = %v; want it removed", path, err)
-	}
-}
-
 // TestRemove_TearsDownNestedJunction wires a junction one level below the worktree root, at RelPath "sub".
 // It asserts Remove leaves no junction at that nested path.
 func TestRemove_TearsDownNestedJunction(t *testing.T) {
@@ -74,7 +66,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 	// Remove loads the repo-wide config, best-effort, to find the nested junctions to tear down.
 	// The hub fixture seeds that config, so the name-load finds the configured junctions for any RelPath,
 	// and this test exercises the nested teardown rather than the path that removes nothing.
-	if _, err := topology.Remove(nestedLayout, slug, true, false, ""); err != nil {
+	if _, err := topology.Remove(nestedLayout, slug, true, false); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
 
@@ -93,7 +85,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 		hubforge.AddPairWith(t, h, reanchored, fabricengine.AddOptions{SkipPush: true})
 		hubforge.ReanchorPair(t, h, reanchored, "sub")
 
-		result, err := h.Topology.Remove(h.Location, reanchored, true, false, "")
+		result, err := h.Topology.Remove(h.Location, reanchored, true, false)
 		if err != nil {
 			t.Fatalf("Remove: %v", err)
 		}
@@ -119,7 +111,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 		if _, found, err := fabricengine.ReadOriginFor(h.Location, reanchored); found || err != nil {
 			t.Errorf("ReadOriginFor() = found %v, err %v; want not found with no error", found, err)
 		}
-		result, err := h.Topology.Remove(h.Location, reanchored, true, false, "")
+		result, err := h.Topology.Remove(h.Location, reanchored, true, false)
 		if err != nil {
 			t.Fatalf("Remove: %v", err)
 		}
@@ -172,7 +164,7 @@ func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 		t.Fatalf("setup: %s is not a junction (isLink=%v err=%v)", lymLink, isLink, linkErr)
 	}
 
-	result, err := topology.Remove(l, slug, true, false, "")
+	result, err := topology.Remove(l, slug, true, false)
 	if err != nil {
 		t.Fatalf("Remove: %v", err)
 	}

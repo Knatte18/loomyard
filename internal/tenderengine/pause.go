@@ -9,7 +9,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
-	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -48,8 +47,6 @@ type PauseRequest struct {
 	// Record, when set, is called once the entry is on disk, an already-paused scope included, and before the grace.
 	// An error ends the pause at once with it wrapped; the entry stays live, so the run's processes stay held.
 	Record func() error
-	// HoldMachine, when set, is recorded as the added entry's Machine: the machine of the hold the entry stands for.
-	HoldMachine string
 }
 
 // OwnerRefusal is the refusal of a pause of slug that machine owner owns.
@@ -87,7 +84,6 @@ type PauseReport struct {
 	// Refused holds the sessions refused on interrupt or reading, with the error's message.
 	Refused []SessionNote `json:"refused"`
 	// Skipped holds the sessions left alone: the caller's own and those owned by another live entry.
-	// It also holds each covered pair with no reed session, with no strand named.
 	Skipped []SessionNote `json:"skipped"`
 	// NetOps holds the covered network operations still in flight.
 	NetOps []NetOpReport `json:"net_ops"`
@@ -153,7 +149,7 @@ func Pause(deps Deps, req PauseRequest) (PauseReport, error) {
 		if caller == "" {
 			caller = externalCaller
 		}
-		entry = pauserecord.Entry{Scope: scope, PausedAt: now, GraceEnd: now.Add(req.Grace), Caller: caller, Sessions: []pauserecord.Session{}, Machine: req.HoldMachine}
+		entry = pauserecord.Entry{Scope: scope, PausedAt: now, GraceEnd: now.Add(req.Grace), Caller: caller, Sessions: []pauserecord.Session{}}
 		record.Live = append(record.Live, entry)
 		return nil
 	})
@@ -172,11 +168,10 @@ func Pause(deps Deps, req PauseRequest) (PauseReport, error) {
 		}
 	}
 
-	covered, noSession, err := coveredSessions(deps, scope)
+	covered, err := coveredSessions(deps, scope)
 	if err != nil {
 		return report, err
 	}
-	report.Skipped = append(report.Skipped, noSession...)
 	covers := func(slug string) bool { return scope == pauserecord.ScopeHub || slug == scope }
 
 	for {
@@ -233,25 +228,21 @@ func Pause(deps Deps, req PauseRequest) (PauseReport, error) {
 }
 
 // coveredSessions lists the live sessions of every pair scope covers.
-// A pair with no reed session has no running turn, so it lists no session and is returned in noSession instead.
-func coveredSessions(deps Deps, scope string) (sessions []session, noSession []SessionNote, err error) {
+func coveredSessions(deps Deps, scope string) ([]session, error) {
+	var sessions []session
 	for _, pair := range deps.Pairs {
 		if scope != pauserecord.ScopeHub && pair.Slug() != scope {
 			continue
 		}
 		infos, err := pair.Sessions()
-		if errors.Is(err, reedengine.ErrNoSession) {
-			noSession = append(noSession, noReedSessionNote(pair.Slug(), err))
-			continue
-		}
 		if err != nil {
-			return nil, nil, fmt.Errorf("pause: list the sessions of %s: %w", pair.Slug(), err)
+			return nil, fmt.Errorf("pause: list the sessions of %s: %w", pair.Slug(), err)
 		}
 		for _, info := range infos {
 			sessions = append(sessions, session{SessionInfo: info, pair: pair})
 		}
 	}
-	return sessions, noSession, nil
+	return sessions, nil
 }
 
 // anyBusy reports whether a session reads busy; a session whose busy reading fails does not hold the grace.

@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/treadleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -92,6 +93,9 @@ var pathRules = []pathRule{
 	{name: "loomengine.LoomBootstrapLock", class: classTransient, path: loomengine.LoomBootstrapLock},
 	{name: "loomengine.LoomFrictionLock", class: classTransient, path: loomengine.LoomFrictionLock},
 	{name: "logger.LogsDir", class: classTransient, path: logger.LogsDir},
+	{name: "treadleengine.PauseFlagPath", class: classTransient, path: func(l *lymcwd.Location) string {
+		return treadleengine.PauseFlagPath(filepath.Join(websterengine.ScratchDir(l.AnchorPath()), "blk"))
+	}},
 	{name: "battencli.BattenDir", class: classTransient, path: func(l *lymcwd.Location) string { return battencli.BattenDir(l, "slug") }},
 	{name: "battencli.RunLock", class: classTransient, path: func(l *lymcwd.Location) string { return battencli.RunLock(l, "slug") }},
 	{name: "battencli.StatusLock", class: classTransient, path: func(l *lymcwd.Location) string { return battencli.StatusLock(l, "slug") }},

@@ -36,7 +36,7 @@ func TestRunTierMemoryCapThatCannotBeSetRefusesWithItsWayForward(t *testing.T) {
 	// With only PATH, systemd-run cannot reach the user manager's bus, so the scope never runs the command.
 	result := runTier(context.Background(), io.Discard, run, []string{"PATH=" + os.Getenv("PATH")}, request)
 
-	for _, want := range []string{"did not run under its gate.tiers.tier1.memory_mb of 64 MB", "remove gate.tiers.tier1.memory_mb"} {
+	for _, want := range []string{"did not run under its memory_mb of 64 MB", "remove tiers.tier1.memory_mb"} {
 		if !strings.Contains(result.refusal, want) {
 			t.Errorf("runTier() refusal = %q; want it to hold %q", result.refusal, want)
 		}
@@ -54,13 +54,14 @@ func TestRunTierMemoryCapKillsARunawayCommandAndNamesTheCap(t *testing.T) {
 	dir := t.TempDir()
 	var stderr bytes.Buffer
 	request := testRequest{root: dir, stderr: &stderr, timeoutUnit: 30 * time.Second, pipeWaitDelay: defaultPipeWaitDelay}
-	// tail keeps a line with no newline in memory, and the zero bytes hold none, so it grows past the cap.
+	// tail keeps a line with no newline in memory, and the zero bytes hold none, so it grows past any cap.
 	// They reach it through a pipe, as tail seeks past a device file it can size.
-	// head stops them at a fixed 256 MB, so a cap that does not hold fails the test and never the machine.
+	// A sleep in the background keeps the scope alive after the shell exits.
+	// The kernel's OOM-kill count is then still readable.
 	run := tierRun{
 		number: 1,
 		tier: gateslot.Tier{
-			Command: "head -c 268435456 /dev/zero | tail", Counter: counterGoJSON, TimeoutMin: 1, MemoryMB: memoryMB,
+			Command: "sleep 300 >/dev/null 2>&1 & cat /dev/zero | tail", Counter: counterGoJSON, TimeoutMin: 1, MemoryMB: memoryMB,
 		},
 		invocations: []invocation{{dir: dir}},
 	}

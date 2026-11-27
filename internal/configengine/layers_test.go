@@ -4,6 +4,7 @@
 package configengine_test
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"maps"
@@ -71,14 +72,6 @@ func machineSpec() configengine.Spec {
 		"run":  configengine.CategoryExecutable,
 	}
 	return spec
-}
-
-// areaTemplate holds one area, the new home of the keys areaMoves names.
-const areaTemplate = "area:\n  key: 0\n  model: \"\"\n"
-
-// areaMoves is a move table over areaTemplate: a flat key, and a key that became its own area.
-func areaMoves() map[string]string {
-	return map[string]string{"old_key": "area.key", "area": "area.model"}
 }
 
 // geometry is how a case lays out its anchor and board dir.
@@ -188,10 +181,9 @@ func TestLoad_LayerStack(t *testing.T) {
 		strictErr string
 		// wantFill is the keys of the one template fill line; empty means no fill line.
 		wantFill string
-		// retired is the spec's retired keys.
-		retired map[string]configengine.Category
-		// movedKeys is the spec's move table; a row that sets it loads over the template with areaTemplate appended.
-		movedKeys map[string]string
+		// retired is the spec's retired keys, and wantAbsent the top-level keys the resolved document must lack.
+		retired    map[string]configengine.Category
+		wantAbsent []string
 		// wantUnknown maps each layer with keys the template lacks to their warning, from both loaders; empty means none.
 		wantUnknown map[configengine.Layer]string
 		// perNameMaps is the spec's per-name maps; a row that sets it loads over the template with perNameTail appended.
@@ -254,7 +246,7 @@ func TestLoad_LayerStack(t *testing.T) {
 				configengine.LayerWorktree: "pick: x\n",
 			},
 			overlay: true,
-			refusal: []string{"mod.yaml holds mod.pick, which only the base file", "delete the mod.pick line from", "--layer default", "the orch runs it"},
+			refusal: []string{"mod.yaml holds pick, which only the base file", "delete the pick line from", "--layer default", "the orch runs it"},
 		},
 		{
 			name:    "a hub default picking an unknown layer is refused naming the shipped ones",
@@ -283,24 +275,7 @@ func TestLoad_LayerStack(t *testing.T) {
 				configengine.LayerWorktree: "pick: [x]\n",
 			},
 			overlay: true,
-			refusal: []string{"mod.yaml holds mod.pick", "delete the mod.pick line from"},
-		},
-		{
-			name:      "a default file holding a moved key is refused naming the default reconcile and who runs it",
-			movedKeys: areaMoves(),
-			files:     map[configengine.Layer]string{configengine.LayerDefault: "old_key: 2\n"},
-			refusal:   []string{"mod.yaml: key mod.old_key was moved to mod.area.key", `"lym config reconcile --layer default --apply"`, "the orch runs it"},
-		},
-		{
-			name:      "a worktree file holding a moved key is refused naming the reconcile and the commit",
-			movedKeys: areaMoves(),
-			files:     map[configengine.Layer]string{configengine.LayerDefault: fullDefault, configengine.LayerWorktree: "old_key: 2\n"},
-			refusal: []string{
-				"key mod.old_key was moved to mod.area.key",
-				`"lym config reconcile --apply" in this worktree`,
-				"then commit the moved " + filepath.Join("_lym", "config", "mod.yaml"),
-			},
-			refusalLacks: []string{"the orch runs it"},
+			refusal: []string{"mod.yaml holds pick", "delete the pick line from"},
 		},
 		{
 			name:    "a machine value wins over the hub file",
@@ -342,11 +317,12 @@ func TestLoad_LayerStack(t *testing.T) {
 			want:    map[string]string{"name": "d", "port": "1"},
 		},
 		{
-			name:    "a retired machine key in the machine file is admitted and changes no key",
-			machine: true,
-			files:   map[configengine.Layer]string{configengine.LayerDefault: fullDefault, configengine.LayerMachine: "gone_machine: 1\n"},
-			retired: map[string]configengine.Category{"gone_machine": configengine.CategoryMachine},
-			want:    map[string]string{"name": "d", "port": "1"},
+			name:       "a retired machine key in the machine file resolves as absent",
+			machine:    true,
+			files:      map[configengine.Layer]string{configengine.LayerDefault: fullDefault, configengine.LayerMachine: "gone_machine: 1\n"},
+			retired:    map[string]configengine.Category{"gone_machine": configengine.CategoryMachine},
+			wantAbsent: []string{"gone_machine"},
+			want:       map[string]string{"name": "d", "port": "1"},
 		},
 		{
 			name: "a name the template lacks under a per-name map never warns while a key outside it still does",
@@ -370,15 +346,24 @@ func TestLoad_LayerStack(t *testing.T) {
 			want: map[string]string{"name": "d", "port": "5"},
 		},
 		{
-			name: "a retired key in the worktree layer is warned as an unknown key and a none-category one in the local layer loads",
+			name: "retired keys of the worktree and local layers resolve as absent",
 			files: map[configengine.Layer]string{
 				configengine.LayerDefault:  fullDefault,
 				configengine.LayerWorktree: "gone: 1\nport: 5\n",
 				configengine.LayerLocal:    "gone_map:\n  a: 1\nname: l\n",
 			},
-			retired:     map[string]configengine.Category{"gone": configengine.CategoryNone, "gone_map": configengine.CategoryNone},
-			wantUnknown: map[configengine.Layer]string{configengine.LayerWorktree: "gone"},
-			want:        map[string]string{"name": "l", "port": "5", "nested": "map[deep:2]", "list": "[x y]", "run": "sh"},
+			retired:    map[string]configengine.Category{"gone": configengine.CategoryNone, "gone_map": configengine.CategoryNone},
+			wantAbsent: []string{"gone", "gone_map"},
+			want:       map[string]string{"name": "l", "port": "5", "nested": "map[deep:2]", "list": "[x y]", "run": "sh"},
+		},
+		{
+			name: "a dotted retired key drops only its own entry",
+			files: map[configengine.Layer]string{
+				configengine.LayerDefault:  fullDefault,
+				configengine.LayerWorktree: "nested:\n  deep: 3\n  gone: 1\n",
+			},
+			retired: map[string]configengine.Category{"nested.gone": configengine.CategoryNone},
+			want:    map[string]string{"nested": "map[deep:3]"},
 		},
 		{
 			name:  "template fills every depth the layers lack and a hub's sparse base logs nothing",
@@ -524,10 +509,6 @@ func TestLoad_LayerStack(t *testing.T) {
 			spec.HubWide = tc.hubWide || tc.machine
 			spec.SeedOnly = tc.seedOnly
 			spec.RetiredKeys = tc.retired
-			spec.MovedKeys = tc.movedKeys
-			if tc.movedKeys != nil {
-				spec.Template = append(spec.Template, areaTemplate...)
-			}
 			if !tc.overlay {
 				spec.PerNameMaps = tc.perNameMaps
 				if len(tc.perNameMaps) > 0 {
@@ -597,9 +578,7 @@ func TestLoad_LayerStack(t *testing.T) {
 				configengine.LayerWorktree: `lym config reconcile --apply\" in this worktree`,
 			}
 			for layer, keys := range tc.wantUnknown {
-				// The warning names each key in full.
-				fullKeys := layerModule + "." + strings.ReplaceAll(keys, ",", ","+layerModule+".")
-				for _, want := range []string{"layer=" + string(layer) + " ", "keys=" + fullKeys + " ", wayForward[layer]} {
+				for _, want := range []string{"layer=" + string(layer) + " ", "keys=" + keys + " ", wayForward[layer]} {
 					if !strings.Contains(log, want) {
 						t.Errorf("unknown-keys warning for layer %s lacks %q\nlog:\n%s", layer, want, log)
 					}
@@ -612,8 +591,103 @@ func TestLoad_LayerStack(t *testing.T) {
 					t.Errorf("%s = %q; want %q\nresolved:\n%s", key, got[key], want, resolved)
 				}
 			}
+			for _, key := range tc.wantAbsent {
+				if _, held := got[key]; held {
+					t.Errorf("resolved document holds retired key %q\nresolved:\n%s", key, resolved)
+				}
+			}
 		})
 	}
+}
+
+// migrateSpec is a per-worktree spec whose template holds on, with old retired and a MigrateLayer hook.
+// The hook rewrites a layer's old: 0 line to on: false and fails on a layer holding bad.
+func migrateSpec() configengine.Spec {
+	return configengine.Spec{
+		Name:        layerModule,
+		Template:    []byte("on: true\n"),
+		Categories:  map[string]configengine.Category{"on": configengine.CategoryNone},
+		RetiredKeys: map[string]configengine.Category{"old": configengine.CategoryNone},
+		MigrateLayer: func(layer []byte) ([]byte, []string, error) {
+			if bytes.Contains(layer, []byte("bad")) {
+				return nil, nil, errors.New("hook refused the layer")
+			}
+			return bytes.ReplaceAll(layer, []byte("old: 0"), []byte("on: false")), []string{"old -> on"}, nil
+		},
+	}
+}
+
+// TestLoad_MigrateLayer pins that Load runs the spec's MigrateLayer over each present layer in memory.
+// A value a retired key carried resolves into the template key the hook moves it to, in any layer, and no file changes.
+// A failing hook fails Load marked ErrInvalid and naming the layer file it failed on.
+func TestLoad_MigrateLayer(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	const base = "on: true\n"
+	tests := []struct {
+		name  string
+		files map[configengine.Layer]string
+		// holder is the layer whose file holds the retired key, and so the one that must stay as written.
+		holder configengine.Layer
+		want   string
+	}{
+		{
+			name:   "a base layer's retired key resolves into the template key",
+			files:  map[configengine.Layer]string{configengine.LayerDefault: "old: 0\n"},
+			holder: configengine.LayerDefault,
+			want:   "false",
+		},
+		{
+			name:   "a worktree layer's retired key resolves into the template key",
+			files:  map[configengine.Layer]string{configengine.LayerDefault: base, configengine.LayerWorktree: "old: 0\n"},
+			holder: configengine.LayerWorktree,
+			want:   "false",
+		},
+		{
+			name:   "a local layer's retired key resolves into the template key",
+			files:  map[configengine.Layer]string{configengine.LayerDefault: base, configengine.LayerLocal: "old: 0\n"},
+			holder: configengine.LayerLocal,
+			want:   "false",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newLayerFixture(t, geometryHub, tc.files)
+			holderPath, _ := configengine.LayerFile(fx.dirs, migrateSpec(), tc.holder)
+
+			resolved, err := configengine.Load(fx.dirs, migrateSpec())
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if got := decodeTopLevel(t, resolved); !mapsEqual(got, map[string]string{"on": tc.want}) {
+				t.Errorf("Load = %v; want on = %s alone\nresolved:\n%s", got, tc.want, resolved)
+			}
+			onDisk, err := os.ReadFile(holderPath)
+			if err != nil {
+				t.Fatalf("read %s: %v", holderPath, err)
+			}
+			if string(onDisk) != tc.files[tc.holder] {
+				t.Errorf("%s = %q after Load; want %q unchanged", holderPath, onDisk, tc.files[tc.holder])
+			}
+		})
+	}
+
+	t.Run("a failing hook fails Load marked ErrInvalid and naming the layer file", func(t *testing.T) {
+		t.Parallel()
+		fx := newLayerFixture(t, geometryHub, map[configengine.Layer]string{
+			configengine.LayerDefault:  base,
+			configengine.LayerWorktree: "bad: 1\n",
+		})
+		worktreePath := configengine.ConfigFile(fx.anchor, layerModule)
+		_, err := configengine.Load(fx.dirs, migrateSpec())
+		if err == nil || !errors.Is(err, configengine.ErrInvalid) {
+			t.Fatalf("Load error = %v; want one marked ErrInvalid", err)
+		}
+		if want := "config file " + worktreePath + ": hook refused the layer"; err.Error() != want {
+			t.Errorf("Load error = %q; want %q", err, want)
+		}
+	})
 }
 
 // TestValidateLocal pins the machine-layer rule: the local layer refuses a machine key.
@@ -654,8 +728,6 @@ func TestValidateLocal(t *testing.T) {
 	}
 	const removal = "remove it from the machine override"
 
-	moved := configengine.Spec{Name: "mod", Template: []byte(areaTemplate), MovedKeys: areaMoves()}
-
 	profiles := configengine.Spec{
 		Name:        "profiles",
 		Template:    []byte("profiles:\n  plain:\n    kind: identity\n  costed:\n    kind: cost\n    budget: 200\n"),
@@ -695,9 +767,6 @@ func TestValidateLocal(t *testing.T) {
 		{name: "retired guard key without a text keeps the plain message", spec: retired, doc: "gone_guard: x\n", wantErr: "gone_guard", wantSuffix: "cannot be set in a local override"},
 		{name: "longest retired key admits its none entry", spec: retired, doc: "old:\n  open:\n    a: 1\n"},
 		{name: "longest retired key refuses the guard remainder", spec: retired, doc: "old:\n  shut: 1\n", wantErr: "old"},
-		{name: "moved key", spec: moved, doc: "old_key: 2\n", wantErr: "mod.old_key", wantMore: []string{"mod.area.key", `"lym config reconcile --apply"`}},
-		{name: "a scalar under a key that became its own area", spec: moved, doc: "area: x\n", wantErr: "mod.area was moved to mod.area.model"},
-		{name: "a mapping under a key that became its own area", spec: moved, doc: "area:\n  key: 1\n"},
 		{name: "empty document", spec: layerSpec(), doc: ""},
 		{name: "comment-only document", spec: layerSpec(), doc: "# nothing\n"},
 		{name: "unclassified keys of a per-worktree module", spec: layerSpec(), doc: "name: x\nport: 81\n"},
@@ -708,7 +777,7 @@ func TestValidateLocal(t *testing.T) {
 		{name: "unknown nested key", spec: layerSpec(), doc: "nested:\n  other: 1\n", wantErr: "nested.other"},
 		{name: "scalar where the template holds a mapping", spec: layerSpec(), doc: "nested: 5\n", wantErr: "nested"},
 		{name: "mapping where the template holds a scalar", spec: layerSpec(), doc: "port:\n  a: 1\n", wantErr: "port"},
-		{name: "guard category", spec: layerSpec(), doc: "list: [x]\n", wantErr: `"` + configengine.KeyName(layerModule, "list") + `"`},
+		{name: "guard category", spec: layerSpec(), doc: "list: [x]\n", wantErr: "list"},
 		{name: "executable category", spec: layerSpec(), doc: "run: evil\n", wantErr: "run"},
 		{name: "hub-wide classified none", spec: hubWide, doc: "name: x\n"},
 		{name: "hub-wide unclassified key", spec: hubWide, doc: "port: 81\n", wantErr: "port"},
@@ -841,9 +910,36 @@ func TestLayers(t *testing.T) {
 		}
 	})
 
-	t.Run("TemplateUnder composes the template the base layer's selector picks", func(t *testing.T) {
+	t.Run("BelowLayer merges the template under the layers below, unexpanded, and ignores the layer and those above", func(t *testing.T) {
 		t.Parallel()
+		fx := newLayerFixture(t, geometryHub, all)
+		const templateRest = "map[deep:1]"
+		tests := []struct {
+			layer configengine.Layer
+			want  map[string]string
+		}{
+			{configengine.LayerDefault, map[string]string{"name": "tpl", "port": "80", "nested": templateRest, "list": "[a b]", "labels": "map[bug:a bug]", "run": "echo"}},
+			{configengine.LayerWorktree, map[string]string{"name": "d", "port": "1", "nested": templateRest, "list": "[a b]", "labels": "map[bug:a bug]", "run": "echo"}},
+			{configengine.LayerLocal, map[string]string{"name": "w", "port": "1", "nested": templateRest, "list": "[a b]", "labels": "map[bug:a bug]", "run": "echo"}},
+		}
+		for _, tt := range tests {
+			below, err := configengine.BelowLayer(fx.dirs, layerSpec(), tt.layer)
+			if err != nil {
+				t.Fatalf("BelowLayer(%s): %v", tt.layer, err)
+			}
+			if got := decodeTopLevel(t, below); !mapsEqual(got, tt.want) {
+				t.Errorf("BelowLayer(%s) = %v; want %v", tt.layer, got, tt.want)
+			}
+		}
+
 		overlayFx := newLayerFixture(t, geometryHub, map[configengine.Layer]string{configengine.LayerDefault: "pick: x\n"})
+		below, err := configengine.BelowLayer(overlayFx.dirs, overlaySpec(), configengine.LayerWorktree)
+		if err != nil {
+			t.Fatalf("BelowLayer over the overlay spec: %v", err)
+		}
+		if got := decodeTopLevel(t, below)["lenses"]; got != "map[a:X b:B]" {
+			t.Errorf("BelowLayer over the overlay spec holds lenses %q; want map[a:X b:B]", got)
+		}
 		under, err := configengine.TemplateUnder(overlayFx.dirs, overlaySpec())
 		if err != nil {
 			t.Fatalf("TemplateUnder over the overlay spec: %v", err)
@@ -858,6 +954,23 @@ func TestLayers(t *testing.T) {
 		}
 		if string(bare) != string(overlaySpec().Template) {
 			t.Errorf("TemplateUnder with no default file = %q; want the template %q", bare, overlaySpec().Template)
+		}
+
+		machineFx := newLayerFixture(t, geometryHub, allFour)
+		for _, tt := range []struct {
+			layer    configengine.Layer
+			wantPort string
+		}{
+			{configengine.LayerLocal, "8"},
+			{configengine.LayerMachine, "1"},
+		} {
+			below, err := configengine.BelowLayer(machineFx.dirs, machineSpec(), tt.layer)
+			if err != nil {
+				t.Fatalf("BelowLayer(%s) over the machine spec: %v", tt.layer, err)
+			}
+			if got := decodeTopLevel(t, below)["port"]; got != tt.wantPort {
+				t.Errorf("BelowLayer(%s) over the machine spec holds port %q; want %q", tt.layer, got, tt.wantPort)
+			}
 		}
 	})
 
@@ -936,117 +1049,6 @@ func TestLayers(t *testing.T) {
 				if got := stack.Origins[key].Layer; got != want {
 					t.Errorf("origin of %s = %q; want %q", key, got, want)
 				}
-			}
-		})
-	}
-}
-
-// TestTopLevelValue pins the one-key reader over the file layers:
-// the highest present layer setting the key decides and its file is named;
-// a key no file sets reads unset though the template holds it;
-// telling the board dir alone reads the default layer alone; an invalid layer file is an error.
-func TestTopLevelValue(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	tests := []struct {
-		name  string
-		geo   geometry
-		files map[configengine.Layer]string
-		key   string
-		// wantLayer is the layer whose file must be named; ignored when wantSet is false.
-		wantLayer configengine.Layer
-		wantValue any
-		wantSet   bool
-		wantErr   bool
-	}{
-		{
-			name: "the local layer wins over the worktree file",
-			geo:  geometryHub,
-			files: map[configengine.Layer]string{
-				configengine.LayerDefault:  "name: d\n",
-				configengine.LayerWorktree: "name: w\n",
-				configengine.LayerLocal:    "name: l\n",
-			},
-			key:       "name",
-			wantLayer: configengine.LayerLocal,
-			wantValue: "l",
-			wantSet:   true,
-		},
-		{
-			name: "a key only the worktree file sets reads from it",
-			geo:  geometryHub,
-			files: map[configengine.Layer]string{
-				configengine.LayerDefault:  "name: d\n",
-				configengine.LayerWorktree: "port: 5\n",
-			},
-			key:       "port",
-			wantLayer: configengine.LayerWorktree,
-			wantValue: 5,
-			wantSet:   true,
-		},
-		{
-			name:  "a key no file sets reads unset though the template holds it",
-			geo:   geometryHub,
-			files: map[configengine.Layer]string{configengine.LayerDefault: "name: d\n"},
-			key:   "port",
-		},
-		{
-			name: "the board dir alone reads the default layer alone",
-			geo:  geometryBoardOnly,
-			files: map[configengine.Layer]string{
-				configengine.LayerDefault:  "name: d\n",
-				configengine.LayerWorktree: "name: w\n",
-				configengine.LayerLocal:    "name: l\n",
-			},
-			key:       "name",
-			wantLayer: configengine.LayerDefault,
-			wantValue: "d",
-			wantSet:   true,
-		},
-		{
-			name: "an invalid local file is an error",
-			geo:  geometryHub,
-			files: map[configengine.Layer]string{
-				configengine.LayerDefault: "name: d\n",
-				configengine.LayerLocal:   "run: evil\n",
-			},
-			key:     "name",
-			wantErr: true,
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			fx := newLayerFixture(t, tc.geo, tc.files)
-			wantPaths := map[configengine.Layer]string{
-				configengine.LayerDefault:  configengine.ConfigFile(fx.board, layerModule),
-				configengine.LayerWorktree: configengine.ConfigFile(fx.anchor, layerModule),
-				configengine.LayerLocal:    configengine.LocalFile(fx.anchor, layerModule),
-			}
-			value, path, set, err := configengine.TopLevelValue(fx.dirs, layerSpec(), tc.key)
-			if tc.wantErr {
-				if err == nil || !errors.Is(err, configengine.ErrInvalid) {
-					t.Fatalf("TopLevelValue(%q) error = %v; want one marked ErrInvalid", tc.key, err)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("TopLevelValue(%q): %v", tc.key, err)
-			}
-			if set != tc.wantSet {
-				t.Fatalf("TopLevelValue(%q) set = %v; want %v", tc.key, set, tc.wantSet)
-			}
-			if !set {
-				if value != nil || path != "" {
-					t.Errorf("TopLevelValue(%q) = (%v, %q); want neither value nor path when unset", tc.key, value, path)
-				}
-				return
-			}
-			if value != tc.wantValue {
-				t.Errorf("TopLevelValue(%q) value = %v; want %v", tc.key, value, tc.wantValue)
-			}
-			if want := wantPaths[tc.wantLayer]; path != want {
-				t.Errorf("TopLevelValue(%q) path = %q; want %q", tc.key, path, want)
 			}
 		})
 	}
@@ -1222,6 +1224,39 @@ func TestProvenance(t *testing.T) {
 			}
 			if got := annotationsOf(provenance); !maps.Equal(got, tt.want) {
 				t.Fatalf("annotations = %v, want %v\n%s", got, tt.want, provenance)
+			}
+		})
+	}
+}
+
+// TestDropRetired pins that a retired key leaves the document, and a mapping it empties leaves with it.
+// A sibling key, an unknown key and a document holding no retired key stay as written.
+func TestDropRetired(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	spec := configengine.Spec{
+		Name:        layerModule,
+		RetiredKeys: map[string]configengine.Category{"gone": configengine.CategoryNone, "old.inner": configengine.CategoryNone},
+	}
+	tests := []struct {
+		name string
+		doc  string
+		want string
+	}{
+		{name: "top-level retired key", doc: "gone: 1\nkeep: 2\n", want: "keep: 2\n"},
+		{name: "nested retired key beside a sibling keeps the parent", doc: "old:\n  inner: 1\n  other: 2\n", want: "old:\n  other: 2\n"},
+		{name: "nested retired key that was the only child drops the emptied parent", doc: "old:\n  inner: 1\nnewer_key: 3\n", want: "newer_key: 3\n"},
+		{name: "document holding no retired key is returned byte for byte", doc: "newer_key:   3\n", want: "newer_key:   3\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := configengine.DropRetired([]byte(tt.doc), spec)
+			if err != nil {
+				t.Fatalf("DropRetired(%q): %v", tt.doc, err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("DropRetired(%q) = %q; want %q", tt.doc, got, tt.want)
 			}
 		})
 	}

@@ -1,5 +1,5 @@
 // verbs_test.go tests the board verbs beyond the store verbs:
-// promote, rename, prune, find, the --text listing on list and find, and list's --sort.
+// promote, rename, prune, find, retire-legacy, the --text listing on list and find, and list's --sort.
 // The steps run from TestCLI in cli_test.go, which also defines cliFixture; runCLI is in cli_unit_test.go, same package.
 
 package boardcli_test
@@ -242,6 +242,38 @@ func stepPrune(t *testing.T, f *cliFixture) {
 	}
 }
 
+// stepNotifyOnLandOnALandedEntry pins notify_on_land set after the run landed.
+// The write on a done entry says so, prune keeps the entry while it carries the request,
+// and a bare request on a slug the board does not hold is refused.
+func stepNotifyOnLandOnALandedEntry(t *testing.T, f *cliFixture) {
+	mustUpsert(t, `{"slug":"landed","title":"Landed","kind":"task","labels":["bug"]}`)
+	runJSON(t, 0, "set-status", `{"slug":"landed","status":"done"}`)
+
+	result := runJSON(t, 0, "upsert", `{"slug":"landed","notify_on_land":true}`)
+	const wantNotice = `"landed" is done, so its run already landed: its parent's dobby sends the landing line at its next tick, or only clears notify_on_land when land_notice is off`
+	if notice, _ := result["notice"].(string); notice != wantNotice {
+		t.Errorf("notice = %q; want %q", notice, wantNotice)
+	}
+
+	result = runJSON(t, 0, "upsert", `{"slug":"landed","title":"Landed again"}`)
+	if notice, _ := result["notice"].(string); notice != "" {
+		t.Errorf("notice of a title-only upsert = %q; want none", notice)
+	}
+
+	result = runJSON(t, 0, "prune", "--apply")
+	if removed, ok := result["removed"].([]any); !ok || len(removed) != 0 {
+		t.Errorf("prune removed = %v; want [] while the done entry carries notify_on_land", result["removed"])
+	}
+
+	result = runJSON(t, 1, "upsert", `{"slug":"pruned","notify_on_land":true}`)
+	if message, _ := result["error"].(string); !strings.Contains(message, `no entry "pruned" is on the board`) || !strings.Contains(message, "lym batten status pruned") {
+		t.Errorf("error %q does not name the absent entry and lym batten status pruned", message)
+	}
+	if got := slugsOf(t, runJSON(t, 0, "list")); !slices.Equal(got, []string{"landed"}) {
+		t.Errorf("slugs = %v; want [landed], the refused write filing nothing", got)
+	}
+}
+
 func stepFind(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"needle-slug","title":"A","labels":["bug"]}`)
 	mustUpsert(t, `{"slug":"b","title":"has Needle title","labels":["bug"]}`)
@@ -305,46 +337,27 @@ func stepFind_NoArgumentRefused(t *testing.T, f *cliFixture) {
 	}
 }
 
-// textListingRows splits a --text listing into its first line and the handle (first field) of each row after it.
-func textListingRows(stdout string) (firstLine string, handles []string) {
-	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
-	for _, line := range lines[1:] {
-		if fields := strings.Fields(line); len(fields) > 0 {
-			handles = append(handles, fields[0])
-		}
-	}
-	return lines[0], handles
-}
-
 func stepListAndFindText(t *testing.T, f *cliFixture) {
 	seedUndecidedLabel(t, f.cwd)
 	mustUpsert(t, `{"slug":"later","title":"Later thing","kind":"note","labels":["enhancement","undecided"]}`)
 	mustUpsert(t, `{"slug":"soon","title":"Soon thing","kind":"task","labels":["bug"]}`)
 	runJSON(t, 0, "set-status", `{"slug":"soon","status":"active"}`)
 
-	// The root project's P0 row stands before the first project, note or done entry.
+	wantList := "prime owner: none\n" +
+		"T1  task  0m  0m  soon   Soon thing   bug                    [active]\n" +
+		"E1  note  0m  0m  later  Later thing  enhancement,undecided\n"
 	exitCode, stdout := runCLI(t, "list", "--text")
-	firstLine, handles := textListingRows(stdout)
-	if exitCode != 0 || firstLine != "prime owner: none" || !slices.Equal(handles, []string{"T1", "P0", "E1"}) {
-		t.Fatalf("list --text: exit %d, first line %q, row handles %v, want exit 0, %q and [T1 P0 E1]",
-			exitCode, firstLine, handles, "prime owner: none")
+	if exitCode != 0 || stdout != wantList {
+		t.Fatalf("list --text: exit %d, stdout %q, want %q", exitCode, stdout, wantList)
 	}
 	if got, present := runJSON(t, 0, "list")["prime_owner"]; !present || got != "" {
 		t.Errorf("list: prime_owner = %v (present %t), want an empty string", got, present)
 	}
 
+	wantFind := "E1  note  0m  0m  later  Later thing  enhancement,undecided\n"
 	exitCode, stdout = runCLI(t, "find", "--text", "later")
-	if lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n"); exitCode != 0 || len(lines) != 1 ||
-		!strings.HasPrefix(lines[0], "E1 ") || !strings.Contains(lines[0], "later") {
-		t.Fatalf("find --text later: exit %d, stdout %q, want exit 0 and the one E1 later row", exitCode, stdout)
-	}
-
-	// A label filter keeps only entries carrying the label, so the root row is left out.
-	exitCode, stdout = runCLI(t, "list", "--text", "--label", "bug")
-	firstLine, handles = textListingRows(stdout)
-	if exitCode != 0 || firstLine != "prime owner: none" || !slices.Equal(handles, []string{"T1"}) {
-		t.Fatalf("list --text --label bug: exit %d, first line %q, row handles %v, want exit 0, %q and [T1]",
-			exitCode, firstLine, handles, "prime owner: none")
+	if exitCode != 0 || stdout != wantFind {
+		t.Fatalf("find --text: exit %d, stdout %q, want %q", exitCode, stdout, wantFind)
 	}
 
 	// A backfilled creation date reorders --sort age, oldest first, and leaves --sort revised in README order.
@@ -360,22 +373,10 @@ func stepListAndFindText(t *testing.T, f *cliFixture) {
 	if result := runJSON(t, 1, "list", "--sort", "newest"); !strings.Contains(fmt.Sprint(result["error"]), "newest") {
 		t.Fatalf("list --sort newest: result = %v, want a refusal naming the value", result)
 	}
-
-	// The root row goes last under --sort, and ahead of the done entries when no open project or note stands.
-	_, stdout = runCLI(t, "list", "--text", "--sort", "age")
-	if lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n"); !strings.HasPrefix(lines[len(lines)-1], "P0 ") {
-		t.Errorf("list --text --sort age = %q; want the P0 row last", stdout)
-	}
-	runJSON(t, 0, "set-status", `{"slug":"later","status":"done"}`)
-	runJSON(t, 0, "set-status", `{"slug":"soon","status":"done"}`)
-	_, stdout = runCLI(t, "list", "--text")
-	if lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n"); len(lines) != 4 || !strings.HasPrefix(lines[1], "P0 ") {
-		t.Errorf("list --text with only done entries = %q; want the P0 row ahead of them", stdout)
-	}
 }
 
 // stepListShowsASketch asserts the hub's board takes a note of the built-in sketch type, whatever its board.yaml lists,
-// and that list --text lists it with handle S1.
+// and that list --text lists it last under the sketches: line with handle S1.
 func stepListShowsASketch(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"sketched","title":"Sketched thing","kind":"note","labels":["sketch"]}`)
 
@@ -383,12 +384,54 @@ func stepListShowsASketch(t *testing.T, f *cliFixture) {
 	if exitCode != 0 {
 		t.Fatalf("list --text: exit %d, stdout %q", exitCode, stdout)
 	}
-	for _, line := range strings.Split(stdout, "\n") {
-		if strings.HasPrefix(line, "S1 ") && strings.Contains(line, "sketched") {
-			return
+	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
+	if len(lines) < 2 || lines[len(lines)-2] != "sketches:" || !strings.HasPrefix(lines[len(lines)-1], "S1 ") || !strings.Contains(lines[len(lines)-1], "sketched") {
+		t.Errorf("list --text = %q; want it to end with a sketches: line and the S1 sketched line", stdout)
+	}
+}
+
+func stepRetireLegacy(t *testing.T, f *cliFixture) {
+	cwd := f.cwd
+	boardDir := fabricengine.BoardDir(filepath.Dir(cwd))
+
+	// A board with no legacy files refuses.
+	mustUpsert(t, `{"slug":"x","title":"X","labels":["bug"]}`)
+	for _, args := range [][]string{{"retire-legacy"}, {"retire-legacy", "--apply"}} {
+		result := runJSON(t, 1, args...)
+		if ok, _ := result["ok"].(bool); ok {
+			t.Fatalf("%v: expected refusal without legacy files, got %v", args, result)
 		}
 	}
-	t.Errorf("list --text = %q; want an S1 row for the sketched note", stdout)
+
+	// Seeded legacy files are reported by a bare run and left on disk.
+	for _, name := range []string{"tasks.json", "notes.json"} {
+		if err := os.WriteFile(filepath.Join(boardDir, name), []byte(`[]`), 0o644); err != nil {
+			t.Fatalf("seed %s: %v", name, err)
+		}
+	}
+	dry := runJSON(t, 0, "retire-legacy")
+	if files, _ := dry["legacy_files"].([]any); len(files) != 2 || files[0] != "tasks.json" || files[1] != "notes.json" || dry["applied"] != false {
+		t.Fatalf("dry run: legacy_files = %v applied = %v, want [tasks.json notes.json] false", dry["legacy_files"], dry["applied"])
+	}
+	for _, name := range []string{"tasks.json", "notes.json"} {
+		if _, err := os.Stat(filepath.Join(boardDir, name)); err != nil {
+			t.Fatalf("%s removed by a dry run: %v", name, err)
+		}
+	}
+
+	// --apply reports them again and removes them.
+	applied := runJSON(t, 0, "retire-legacy", "--apply")
+	if files, _ := applied["legacy_files"].([]any); len(files) != 2 || applied["applied"] != true {
+		t.Fatalf("retire-legacy --apply: legacy_files = %v applied = %v, want two files and true", applied["legacy_files"], applied["applied"])
+	}
+	for _, name := range []string{"tasks.json", "notes.json"} {
+		if _, err := os.Stat(filepath.Join(boardDir, name)); !os.IsNotExist(err) {
+			t.Fatalf("%s still present after retire-legacy (stat err: %v)", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(boardDir, "board.json")); err != nil {
+		t.Fatalf("board.json missing after retire-legacy: %v", err)
+	}
 }
 
 func stepGetAndRemoveByID(t *testing.T, f *cliFixture) {
@@ -534,7 +577,7 @@ func stepProjectRelease(t *testing.T, f *cliFixture) {
 
 // stepProjects drives the project kind through a seeded hub:
 // list and get carry parent_beam.
-// It is root under a grouping project, and it names the beam once the project is hand-marked a beam.
+// It is empty under a grouping project, and it names the beam once the project is hand-marked a beam.
 // A task slug ending in the records suffix, or one equal to a configured junction name, is refused with fabric's reason.
 // A member's project change is refused while a worktree stands at its pair path;
 // the refusal names `lym batten cancel <slug> --remove`.
@@ -552,11 +595,11 @@ func stepProjects(t *testing.T, f *cliFixture) {
 		t.Fatalf("list: no entry %q", slug)
 		return nil
 	}
-	if got := runJSON(t, 0, "get", `{"slug":"member"}`)["parent_beam"]; got != boardengine.RootSubject {
-		t.Errorf("get member under a grouping project: parent_beam = %v, want %s", got, boardengine.RootSubject)
+	if got := runJSON(t, 0, "get", `{"slug":"member"}`)["parent_beam"]; got != "" {
+		t.Errorf("get member under a grouping project: parent_beam = %v, want empty", got)
 	}
-	if got := parentBeamOfListed("member"); got != boardengine.RootSubject {
-		t.Errorf("list member under a grouping project: parent_beam = %v, want %s", got, boardengine.RootSubject)
+	if got := parentBeamOfListed("member"); got != nil {
+		t.Errorf("list member under a grouping project: parent_beam = %v, want none", got)
 	}
 
 	seedBoardFile(t, f.cwd, `{"version":1,"entries":[`+
@@ -569,8 +612,8 @@ func stepProjects(t *testing.T, f *cliFixture) {
 	if got := parentBeamOfListed("member"); got != "proj" {
 		t.Errorf("list member of a beam: parent_beam = %v, want proj", got)
 	}
-	if got := runJSON(t, 0, "get", `{"slug":"proj"}`)["parent_beam"]; got != boardengine.RootSubject {
-		t.Errorf("get the beam itself: parent_beam = %v, want %s", got, boardengine.RootSubject)
+	if got := runJSON(t, 0, "get", `{"slug":"proj"}`)["parent_beam"]; got != "" {
+		t.Errorf("get the beam itself: parent_beam = %v, want empty", got)
 	}
 
 	if err := os.WriteFile(configengine.ConfigFile(fabricengine.BoardDir(filepath.Dir(f.cwd)), "fabric"), []byte("branch_prefix: \"\"\npathspec: docs\n"), 0o644); err != nil {
@@ -1094,16 +1137,15 @@ func stepProfiles(t *testing.T, f *cliFixture) {
 // A beam's orch changes the entries of its own beam and no other, and its refusal names its beam's parent orch.
 // A change on an entry past Seed-Child returns the notice.
 func stepRunSettings(t *testing.T, f *cliFixture) {
-	const loomBounces = `{"slug":"rs","title":"RS","kind":"task","labels":["bug"],"run_settings":{"loom":{"review":{"max_bounces":2}}}}`
+	const loomBounces = `{"slug":"rs","title":"RS","kind":"task","labels":["bug"],"run_settings":{"loom":{"review_max_bounces":2}}}`
 
 	t.Run("a valid setting is stored", func(t *testing.T) {
 		result := runJSON(t, 0, "upsert", loomBounces)
 		task, _ := result["task"].(map[string]any)
 		settings, _ := task["run_settings"].(map[string]any)
 		loom, _ := settings["loom"].(map[string]any)
-		review, _ := loom["review"].(map[string]any)
-		if review["max_bounces"] != float64(2) {
-			t.Errorf("stored run_settings = %v, want loom.review.max_bounces 2", task["run_settings"])
+		if loom["review_max_bounces"] != float64(2) {
+			t.Errorf("stored run_settings = %v, want loom.review_max_bounces 2", task["run_settings"])
 		}
 	})
 
@@ -1115,8 +1157,8 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 		{name: "a non-object value", payload: `{"slug":"bad","run_settings":3}`, wantErr: []string{"run_settings"}},
 		{name: "an unknown module", payload: `{"slug":"bad","run_settings":{"bogus":{"x":1}}}`, wantErr: []string{"bogus"}},
 		{name: "a key absent from the template", payload: `{"slug":"bad","run_settings":{"loom":{"no_such_key":1}}}`, wantErr: []string{"loom", "no_such_key"}},
-		{name: "a shape mismatch", payload: `{"slug":"bad","run_settings":{"loom":{"review":{"max_bounces":{"a":1}}}}}`, wantErr: []string{"loom", "review.max_bounces"}},
-		{name: "a closed key", payload: `{"slug":"bad","run_settings":{"loom":{"discussion":{"advisors":[{"name":"critic","model":"sonnet[low]"}]}}}}`, wantErr: []string{"loom", "discussion.advisors"}},
+		{name: "a shape mismatch", payload: `{"slug":"bad","run_settings":{"loom":{"review_max_bounces":{"a":1}}}}`, wantErr: []string{"loom", "review_max_bounces"}},
+		{name: "a closed key", payload: `{"slug":"bad","run_settings":{"loom":{"discussion_advisors":[{"name":"critic","model":"sonnet[low]"}]}}}`, wantErr: []string{"loom", "discussion_advisors"}},
 		{name: "a profile that is not a string", payload: `{"slug":"bad","profile":3}`, wantErr: []string{"profile must be a string"}},
 		{name: "an unknown profile", payload: `{"slug":"bad","profile":"heavy"}`, wantErr: []string{`"heavy"`, "known: docs, light, solid, speed, wide", "lym config profiles --set heavy="}},
 	}
@@ -1131,19 +1173,6 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 			}
 		})
 	}
-
-	t.Run("refuses a moved key by both full names and writes nothing", func(t *testing.T) {
-		result := runJSON(t, 1, "upsert", `{"slug":"moved","title":"M","kind":"task","labels":["bug"],"run_settings":{"loom":{"code_max_bounces":2}}}`)
-		message, _ := result["error"].(string)
-		for _, want := range []string{"loom.code_max_bounces", "loom.code.max_bounces"} {
-			if !strings.Contains(message, want) {
-				t.Errorf("error %q lacks %q", message, want)
-			}
-		}
-		if task := runJSON(t, 0, "get", `{"slug":"moved"}`)["task"]; task != nil {
-			t.Errorf("stored task = %v; want the refused upsert to write nothing", task)
-		}
-	})
 
 	batchAndMerge := []struct {
 		name    string
@@ -1169,7 +1198,7 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 		mustUpsert(t, loomBounces)
 		t.Setenv(agentname.StrandNameEnv, "ly:task-a:loom")
 		runJSON(t, 0, "upsert", loomBounces)
-		result := runJSON(t, 1, "upsert", strings.Replace(loomBounces, `"max_bounces":2`, `"max_bounces":3`, 1))
+		result := runJSON(t, 1, "upsert", strings.Replace(loomBounces, `"review_max_bounces":2`, `"review_max_bounces":3`, 1))
 		if message, _ := result["error"].(string); !strings.Contains(message, "ly:task-a:loom") {
 			t.Errorf("error %q does not name the session", message)
 		}
@@ -1257,7 +1286,7 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 			f.reset(t)
 			mustUpsert(t, loomBounces)
 			runJSON(t, 0, "set-status", `{"slug":"rs","status":"`+tt.status+`"}`)
-			result := runJSON(t, 0, "upsert", `{"slug":"rs","run_settings":{"loom":{"review":{"max_bounces":4}}}}`)
+			result := runJSON(t, 0, "upsert", `{"slug":"rs","run_settings":{"loom":{"review_max_bounces":4}}}`)
 			notice, hasNotice := result["notice"].(string)
 			if hasNotice != tt.wantNotice || (tt.wantNotice && !strings.Contains(notice, "--layer local")) {
 				t.Errorf("notice = %q (present %v), want present %v naming --layer local", notice, hasNotice, tt.wantNotice)

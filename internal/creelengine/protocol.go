@@ -36,9 +36,6 @@ const (
 	// VerbHookWait holds a strand's idle waiter until the daemon rings it or a newer waiter supersedes it.
 	// A ring to a waiter whose request set takes_mail carries the claimed messages, which the client acknowledges.
 	VerbHookWait = "hook-wait"
-	// VerbAwaitsReply answers whether the strand in From awaits the reply to a question it asked.
-	// Only the Go client sends it.
-	VerbAwaitsReply = "awaits-reply"
 )
 
 // CodeStrandClaimOutsidePane is the Response.Code of a refused strand claim for a listed strand, from no strand pane.
@@ -64,7 +61,7 @@ type Request struct {
 	Argument string      `json:"argument,omitempty"`
 	// ID is the message or inject a verb concerns: a reply or forward target, a wait's id, or the log id filter.
 	ID int64 `json:"id,omitempty"`
-	// From is the sender filter of read and log, and the strand awaits-reply asks about.
+	// From is the sender filter of read and log.
 	From string `json:"from,omitempty"`
 	// Wait makes the verb wait: post for its reply, inject for its outcome, read for unread mail, hook-wait for a ring.
 	Wait bool `json:"wait,omitempty"`
@@ -90,14 +87,6 @@ type Request struct {
 	TakesMail bool `json:"takes_mail,omitempty"`
 	// Mail is the message a deliver offers and the tuple a confirm asks about; no other verb reads it.
 	Mail *HubMail `json:"mail,omitempty"`
-	// Machine is the mail a machine-deliver offers; no other verb reads it.
-	Machine *MachineMail `json:"machine,omitempty"`
-	// Reason is the hold reason a machine-report names and the return reason a machine-settle gives.
-	Reason string `json:"reason,omitempty"`
-	// Delivered makes a machine-settle a delivery, with SlackTS the Slack timestamp of the post.
-	// Absent, the settle returns the message.
-	Delivered bool   `json:"delivered,omitempty"`
-	SlackTS   string `json:"slack_ts,omitempty"`
 }
 
 // Response is what the daemon answers on a connection; every one carries the hub path.
@@ -128,23 +117,15 @@ type Response struct {
 	AckRequired bool         `json:"ack_required,omitempty"`
 	Inbox       *InboxResult `json:"inbox,omitempty"`
 	Log         []LogEntry   `json:"log,omitempty"`
-	// AwaitsReply is the answer of awaits-reply.
-	AwaitsReply bool `json:"awaits_reply,omitempty"`
 	// Outcome is how a waited-on thing settled, with the reply or returned message in Message.
 	Outcome OutcomeKind `json:"outcome,omitempty"`
 	Message *Message    `json:"message,omitempty"`
 	// Sent says an interrupt stopped a running turn, and Interrupted that an inject or a post did.
 	Sent        bool `json:"sent,omitempty"`
 	Interrupted bool `json:"interrupted,omitempty"`
-	// ReceiverLive answers a post or reply whether its receiver had a live pane.
-	// For the hub's Slack relay it answers whether the relay runs.
-	// It is absent when creel cannot tell.
+	// ReceiverLive answers a post whether its receiver had a live pane, and is absent when creel cannot tell.
 	ReceiverLive *bool `json:"receiver_live,omitempty"`
-	// Delivered answers a post or reply to the hub's Slack relay program whether the relay was running to take the mail.
-	// False means the mail waits for the relay to start.
-	// It is absent for every other receiver.
-	Delivered *bool `json:"delivered,omitempty"`
-	// Warning names the receiver of a post or reply that is not live or running and the command that starts it.
+	// Warning names a post's receiver that is not live and the command that starts it.
 	// A waiting post carries it in a progress response right after its pending one.
 	Warning string `json:"warning,omitempty"`
 	// Hold is the hold a hold verb set; Released says a release ended one.
@@ -159,8 +140,6 @@ type Response struct {
 	Reason   string `json:"reason,omitempty"`
 	// Confirmed is a confirm's answer, yes or no.
 	Confirmed string `json:"confirmed,omitempty"`
-	// MachineOutbound is what a machine-take answers: the pending messages to other machines, oldest first.
-	MachineOutbound []MachineOutbound `json:"machine_outbound,omitempty"`
 }
 
 // ackLine is the client's acknowledgement that it wrote the messages a read, a claim or a marked hook ring handed out.

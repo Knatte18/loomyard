@@ -5,7 +5,6 @@ package battencli
 
 import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/machinename"
 )
 
 // fakeOwners is a working in-memory stand-in for the hub's board:
@@ -14,8 +13,6 @@ type fakeOwners struct {
 	// machine is the name Machine returns; machineErr, when set, replaces it.
 	machine    string
 	machineErr error
-	// identity is what Identity returns; its zero value reads as the machine named by machine.
-	identity machinename.Identity
 	// pullErr is what Pull returns.
 	pullErr error
 	// owners is what Read returns, and a prime write lands in its Prime.
@@ -41,19 +38,8 @@ type fakeOwners struct {
 func (f *fakeOwners) seams() ownerSeams {
 	return ownerSeams{
 		Machine: func() (string, error) { return f.machine, f.machineErr },
-		Identity: func() (machinename.Identity, error) {
-			if f.machineErr != nil {
-				return machinename.Identity{}, f.machineErr
-			}
-			if f.identity.Name == "" {
-				identity := f.identity
-				identity.Name = f.machine
-				return identity, nil
-			}
-			return f.identity, nil
-		},
-		Pull: func() error { f.pulls++; return f.pullErr },
-		Read: func() (boardengine.Owners, error) { return f.owners, f.readErr },
+		Pull:    func() error { f.pulls++; return f.pullErr },
+		Read:    func() (boardengine.Owners, error) { return f.owners, f.readErr },
 		ParentOf: func(slug string) (string, error) {
 			if _, held := f.owners.Entries["some-beam"]; held && slug == "some-slug" {
 				return "some-beam", nil

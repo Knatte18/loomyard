@@ -30,7 +30,10 @@ type Paths struct {
 	CycleRequestPath string // Marker file a `refresh` or `distill` request writes.
 	ResumeMarkPath   string // Delivery mark the session-start hook's verb writes after rendering the pointer.
 	HandoffsDir      string // One timestamped handoff file per cycle.
-	WatchLogPath     string // Detached watcher's stdout and stderr.
+	NoticesDir       string // The retired notice queue's directory, which nothing writes any longer.
+	// RetiredNoticeLogPath is the retired `.lym/notices.log` of the prime, which nothing writes any longer.
+	RetiredNoticeLogPath string
+	WatchLogPath         string // Detached watcher's stdout and stderr.
 
 	RolePath         string // Role file rendered from the orch role before every delivery.
 	NoteTemplatePath string // Note template file rendered before every note request.
@@ -38,9 +41,6 @@ type Paths struct {
 
 	// SlackPresencePath is the machine's presence record, which every rendered pointer reads; empty means no presence line.
 	SlackPresencePath string
-
-	// Autonomy reports whether the orch's autonomy is on, read each time a pointer is built; nil reads off.
-	Autonomy func() bool
 }
 
 // PendingStep is one post or inject the watcher persisted before sending it to creel.

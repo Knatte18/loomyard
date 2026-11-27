@@ -21,7 +21,6 @@ import (
 // A ResolveWorktree caller holds a worktree root, which sits above a subpath anchor the gate would reject.
 // buildLocation is exercised directly, so the file spawns no git and stays untagged;
 // ResolveWorktree reaches the same applyGate=false path after finding the worktree root.
-// A row with wantMessage also pins the refusal's whole text, cause and way forward included.
 //
 //testtiming:keep pins the gate's accept and reject verdicts per triple as pure path math, which the resolution scenario covering its blocks only reaches through a real checkout
 func TestCheckCwdAnchorGate(t *testing.T) {
@@ -32,11 +31,10 @@ func TestCheckCwdAnchorGate(t *testing.T) {
 	hubPath := filepath.Dir(worktreePath)
 
 	tests := []struct {
-		name        string
-		cwd         string
-		anchorRel   string
-		wantErr     bool
-		wantMessage string
+		name      string
+		cwd       string
+		anchorRel string
+		wantErr   bool
 	}{
 		{
 			name:      "exact match at root resolves",
@@ -55,11 +53,6 @@ func TestCheckCwdAnchorGate(t *testing.T) {
 			cwd:       filepath.Join(worktreePath, "sub"),
 			anchorRel: ".",
 			wantErr:   true,
-			wantMessage: "cwd is not at the recorded fabric anchor: cwd " + filepath.Join("home", "user", "repo", "sub") +
-				" does not equal the anchored directory " + filepath.Join("home", "user", "repo") + " (recorded by .lym-anchor); " +
-				"a shell keeps the directory a cd moved it to for every later command, so an earlier cd likely moved it; " +
-				"way forward: cd \"" + filepath.Join("home", "user", "repo") +
-				"\" and run the command again, and reach other directories through absolute paths or git -C instead of cd",
 		},
 		{
 			name:      "parent of the worktree root errors",
@@ -78,12 +71,6 @@ func TestCheckCwdAnchorGate(t *testing.T) {
 			cwd:       worktreePath,
 			anchorRel: "backend",
 			wantErr:   true,
-			wantMessage: "cwd is not at the recorded fabric anchor: cwd " + filepath.Join("home", "user", "repo") +
-				" does not equal the anchored directory " + filepath.Join("home", "user", "repo", "backend") +
-				" (recorded by .lym-anchor); " +
-				"a shell keeps the directory a cd moved it to for every later command, so an earlier cd likely moved it; " +
-				"way forward: cd \"" + filepath.Join("home", "user", "repo", "backend") +
-				"\" and run the command again, and reach other directories through absolute paths or git -C instead of cd",
 		},
 	}
 
@@ -100,9 +87,6 @@ func TestCheckCwdAnchorGate(t *testing.T) {
 			}
 			if !tt.wantErr {
 				return
-			}
-			if tt.wantMessage != "" && (err == nil || err.Error() != tt.wantMessage) {
-				t.Errorf("checkCwdAnchorGate(%q, %q, %q) = %v; want %q", tt.cwd, tt.anchorRel, worktreePath, err, tt.wantMessage)
 			}
 
 			loc, err := buildLocation(tt.cwd, worktreePath, hubPath, tt.anchorRel, false)

@@ -3,13 +3,18 @@
 package boardengine_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	flock "github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -145,6 +150,7 @@ func TestHealthCheck(t *testing.T) {
 		{name: "healthy board", upsert: true},
 		{name: "board dir absent", boardDirAbsent: true, wantErr: true},
 		{name: "no store file", wantErr: true},
+		{name: "legacy file alone", files: map[string]string{"notes.json": "[]"}},
 		{name: "corrupt but readable board.json", files: map[string]string{"board.json": "{invalid json"}},
 	}
 	for _, tt := range tests {
@@ -173,10 +179,20 @@ func TestHealthCheck(t *testing.T) {
 	}
 }
 
-// newTestBoard returns a board over an empty temp directory, with git skipped, and that directory.
-func newTestBoard(t *testing.T) (*boardengine.Board, string) {
+// legacyTasksJSON and legacyNotesJSON are pre-upgrade store files: one task and one note, both with id 0.
+const (
+	legacyTasksJSON = `[{"id":0,"slug":"alpha","title":"Alpha","depends_on":[],"isolated":false,"deferred":false,"brief":"","body":"","type":"tapestry"}]`
+	legacyNotesJSON = `[{"id":0,"slug":"idea","title":"Idea","depends_on":[],"isolated":false,"deferred":false,"brief":"","body":""}]`
+)
+
+func newLegacyBoard(t *testing.T, files map[string]string) (*boardengine.Board, string) {
 	t.Helper()
 	boardPath := t.TempDir()
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(boardPath, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
 	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true}
 	return boardengine.New(cfg), boardPath
 }
@@ -214,10 +230,196 @@ func assertSameFiles(t *testing.T, before, after map[string]string) {
 	}
 }
 
-//testtiming:keep pins that promoting a task again changes no data file and leaves board.json's mtime unchanged, and that a missing entry is refused
+func TestLegacyBoardReadsMigratedWithoutWriting(t *testing.T) {
+	tiergate.Require(t, 0)
+	w, boardPath := newLegacyBoard(t, map[string]string{"tasks.json": legacyTasksJSON, "notes.json": legacyNotesJSON})
+	before := dataFiles(t, boardPath)
+
+	tasks, err := w.ListTasksFull()
+	if err != nil {
+		t.Fatalf("ListTasksFull: %v", err)
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("expected 2 migrated entries, got %d: %+v", len(tasks), tasks)
+	}
+	got := map[string]boardengine.Task{}
+	for _, task := range tasks {
+		got[task.Slug] = task
+	}
+	if got["alpha"].Kind != boardengine.KindTask || got["alpha"].Recipe != "tapestry" {
+		t.Errorf("alpha: kind=%q recipe=%q; want task recipe tapestry", got["alpha"].Kind, got["alpha"].Recipe)
+	}
+	if got["idea"].Kind != boardengine.KindNote {
+		t.Errorf("idea: kind=%q; want note", got["idea"].Kind)
+	}
+	if got["alpha"].ID == got["idea"].ID {
+		t.Errorf("migrated entries share id %d", got["alpha"].ID)
+	}
+	if _, found, err := w.GetTask("idea"); err != nil || !found {
+		t.Errorf("GetTask(idea) found=%v err=%v; want found", found, err)
+	}
+	if _, err := w.ListTasksBrief(nil); err != nil {
+		t.Errorf("ListTasksBrief: %v", err)
+	}
+	found, err := w.Find("IDEA", nil)
+	if err != nil {
+		t.Fatalf("Find: %v", err)
+	}
+	if len(found) != 1 || found[0].Slug != "idea" {
+		t.Errorf("Find(IDEA) = %+v; want only idea", found)
+	}
+
+	assertSameFiles(t, before, dataFiles(t, boardPath))
+	if _, err := os.Stat(filepath.Join(boardPath, "board.json")); !os.IsNotExist(err) {
+		t.Errorf("board.json must stay absent after a read; stat err = %v", err)
+	}
+}
+
+// TestFirstWriteCreatesBoardJSONAndLeavesLegacyFilesAlone asserts a first write creates board.json;
+// it keeps the legacy files byte-identical, and it creates none on a board that had none.
+func TestFirstWriteCreatesBoardJSONAndLeavesLegacyFilesAlone(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name        string
+		files       map[string]string
+		wantEntries int
+	}{
+		{"legacy files present", map[string]string{"tasks.json": legacyTasksJSON, "notes.json": legacyNotesJSON}, 3},
+		{"fresh board", nil, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			w, boardPath := newLegacyBoard(t, tt.files)
+
+			if _, err := w.UpsertTask(map[string]any{"slug": "beta", "title": "Beta", "labels": bugLabels}); err != nil {
+				t.Fatalf("UpsertTask: %v", err)
+			}
+
+			files := dataFiles(t, boardPath)
+			if _, ok := files["board.json"]; !ok {
+				t.Fatalf("board.json not created")
+			}
+			for _, legacy := range []string{"tasks.json", "notes.json"} {
+				want, existed := tt.files[legacy]
+				got, ok := files[legacy]
+				if ok != existed || got != want {
+					t.Errorf("%s = %q (present %v); want %q (present %v), left as it was", legacy, got, ok, want, existed)
+				}
+			}
+			tasks, err := w.ListTasksFull()
+			if err != nil || len(tasks) != tt.wantEntries {
+				t.Errorf("ListTasksFull = %d entries, err %v; want %d", len(tasks), err, tt.wantEntries)
+			}
+		})
+	}
+}
+
+func TestDuplicateLegacySlugRefusesReadsAndWrites(t *testing.T) {
+	tiergate.Require(t, 0)
+	dupNotes := `[{"id":5,"slug":"alpha","title":"Dup","depends_on":[]}]`
+	w, boardPath := newLegacyBoard(t, map[string]string{"tasks.json": legacyTasksJSON, "notes.json": dupNotes})
+	before := dataFiles(t, boardPath)
+
+	if _, _, err := w.GetTask("alpha"); err == nil || !strings.Contains(err.Error(), "alpha") {
+		t.Errorf("GetTask error = %v; want one naming alpha", err)
+	}
+	if _, err := w.ListTasksBrief(nil); err == nil || !strings.Contains(err.Error(), "alpha") {
+		t.Errorf("ListTasksBrief error = %v; want one naming alpha", err)
+	}
+	if _, err := w.UpsertTask(map[string]any{"slug": "beta", "title": "Beta", "labels": bugLabels}); err == nil || !strings.Contains(err.Error(), "alpha") {
+		t.Errorf("UpsertTask error = %v; want one naming alpha", err)
+	}
+
+	assertSameFiles(t, before, dataFiles(t, boardPath))
+}
+
+func TestReadFoldsLegacyDoneWithoutWriting(t *testing.T) {
+	tiergate.Require(t, 0)
+	w, boardPath := newLegacyBoard(t, nil)
+	if _, err := w.UpsertTask(map[string]any{"slug": "alpha", "title": "Alpha", "labels": bugLabels}); err != nil {
+		t.Fatalf("UpsertTask: %v", err)
+	}
+	doneTasks := `[{"id":0,"slug":"alpha","title":"Alpha","depends_on":[],"status":"done"}]`
+	if err := os.WriteFile(filepath.Join(boardPath, "tasks.json"), []byte(doneTasks), 0o644); err != nil {
+		t.Fatalf("write tasks.json: %v", err)
+	}
+	before := dataFiles(t, boardPath)
+
+	task, found, err := w.GetTask("alpha")
+	if err != nil || !found {
+		t.Fatalf("GetTask found=%v err=%v", found, err)
+	}
+	if task.Status == nil || *task.Status != "done" {
+		t.Errorf("alpha status = %v; want done", task.Status)
+	}
+
+	assertSameFiles(t, before, dataFiles(t, boardPath))
+}
+
+// TestPreUpgradeDoneMarkSurvivesNewWrite plays a pre-upgrade binary's SetStatus (rewrite tasks.json under board.lock)
+// and checks the next new-binary write keeps the entry done in board.json.
+func TestPreUpgradeDoneMarkSurvivesNewWrite(t *testing.T) {
+	tiergate.Require(t, 0)
+	w, boardPath := newLegacyBoard(t, map[string]string{"tasks.json": legacyTasksJSON})
+	if _, err := w.UpsertTask(map[string]any{"slug": "beta", "title": "Beta", "labels": bugLabels}); err != nil {
+		t.Fatalf("UpsertTask beta: %v", err)
+	}
+
+	type legacyRec struct {
+		ID        int      `json:"id"`
+		Slug      string   `json:"slug"`
+		Title     string   `json:"title"`
+		DependsOn []string `json:"depends_on"`
+		Status    string   `json:"status,omitempty"`
+	}
+	boardLockPath, err := fabricengine.BoltLockPath(boardPath, fabricengine.BoardWriteLockFile)
+	if err != nil {
+		t.Fatalf("locate board.lock: %v", err)
+	}
+	l, err := flock.AcquireWriteLock(boardLockPath)
+	if err != nil {
+		t.Fatalf("acquire board.lock: %v", err)
+	}
+	tasksPath := filepath.Join(boardPath, "tasks.json")
+	err = state.WriteJSON(tasksPath, tasksPath+".swaplock", []legacyRec{{ID: 0, Slug: "alpha", Title: "Alpha", DependsOn: []string{}, Status: "done"}})
+	l.Release()
+	if err != nil {
+		t.Fatalf("pre-upgrade SetStatus: %v", err)
+	}
+
+	if _, err := w.UpsertTask(map[string]any{"slug": "gamma", "title": "Gamma", "labels": bugLabels}); err != nil {
+		t.Fatalf("UpsertTask gamma: %v", err)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(boardPath, "board.json"))
+	if err != nil {
+		t.Fatalf("read board.json: %v", err)
+	}
+	var file struct {
+		Entries []struct {
+			Slug   string  `json:"slug"`
+			Status *string `json:"status"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(raw, &file); err != nil {
+		t.Fatalf("unmarshal board.json: %v", err)
+	}
+	for _, e := range file.Entries {
+		if e.Slug == "alpha" {
+			if e.Status == nil || *e.Status != "done" {
+				t.Errorf("alpha status in board.json = %v; want done", e.Status)
+			}
+			return
+		}
+	}
+	t.Errorf("alpha missing from board.json: %s", raw)
+}
+
 func TestPromoteMakesNoteATaskAndIsIdempotent(t *testing.T) {
 	tiergate.Require(t, 0)
-	w, boardPath := newTestBoard(t)
+	w, boardPath := newLegacyBoard(t, nil)
 	if _, err := w.UpsertTask(map[string]any{"slug": "idea", "title": "Idea", "labels": bugLabels}); err != nil {
 		t.Fatalf("UpsertTask: %v", err)
 	}
@@ -260,11 +462,9 @@ func TestPromoteMakesNoteATaskAndIsIdempotent(t *testing.T) {
 
 // TestPromotePreservesRecipeAndLabels checks that promoting an entry to a task keeps its recipe and labels;
 // an id selects the entry the same way a slug does.
-//
-//testtiming:keep pins that a promoted entry keeps its recipe and its labels in order, and that an id selects it, which no covering test asserts
 func TestPromotePreservesRecipeAndLabels(t *testing.T) {
 	tiergate.Require(t, 0)
-	w, _ := newTestBoard(t)
+	w, _ := newLegacyBoard(t, nil)
 	created, err := w.UpsertTask(map[string]any{"slug": "typed", "title": "Typed", "recipe": "batten", "labels": []string{"bug", "undecided"}})
 	if err != nil {
 		t.Fatalf("UpsertTask: %v", err)
@@ -281,11 +481,9 @@ func TestPromotePreservesRecipeAndLabels(t *testing.T) {
 
 // TestBoardRefusesUnconfiguredLabel checks that a config-built Board validates labels on every write;
 // a status write is validated too.
-//
-//testtiming:keep pins that a refused label write names the label and board.yaml and creates no board.json, and that a status write over a label that left board.yaml is refused
 func TestBoardRefusesUnconfiguredLabel(t *testing.T) {
 	tiergate.Require(t, 0)
-	w, boardPath := newTestBoard(t)
+	w, boardPath := newLegacyBoard(t, nil)
 	_, err := w.UpsertTask(map[string]any{"slug": "x", "title": "X", "labels": []string{"bug", "mystery"}})
 	if err == nil || !strings.Contains(err.Error(), "mystery") || !strings.Contains(err.Error(), "board.yaml") {
 		t.Errorf("expected refusal naming mystery and board.yaml, got %v", err)
@@ -295,7 +493,7 @@ func TestBoardRefusesUnconfiguredLabel(t *testing.T) {
 	}
 
 	// An entry whose label left board.yaml cannot take a status write either.
-	stale, staleDir := newTestBoard(t)
+	stale, staleDir := newLegacyBoard(t, nil)
 	if _, err := stale.UpsertTask(map[string]any{"slug": "x", "title": "X", "labels": bugLabels}); err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +506,7 @@ func TestBoardRefusesUnconfiguredLabel(t *testing.T) {
 
 func TestPruneRemovesDoneEntryAndDesignDocKeepsAbandoned(t *testing.T) {
 	tiergate.Require(t, 0)
-	w, boardPath := newTestBoard(t)
+	w, boardPath := newLegacyBoard(t, nil)
 	for _, slug := range []string{"finished", "dropped"} {
 		if _, err := w.UpsertTask(map[string]any{"slug": slug, "title": slug, "labels": bugLabels, "body": "design of " + slug}); err != nil {
 			t.Fatalf("UpsertTask %s: %v", slug, err)
@@ -361,6 +559,105 @@ func TestPruneRemovesDoneEntryAndDesignDocKeepsAbandoned(t *testing.T) {
 	}
 	if _, found, _ := w.GetTask("dropped"); !found {
 		t.Errorf("abandoned entry must survive prune")
+	}
+}
+
+func TestRetireLegacyFoldsDoneMarkAndRemovesLegacyFiles(t *testing.T) {
+	tiergate.Require(t, 0)
+	doneTasks := `[{"id":0,"slug":"alpha","title":"Alpha","depends_on":[],"status":"done"}]`
+	w, boardPath := newLegacyBoard(t, map[string]string{"tasks.json": doneTasks, "notes.json": legacyNotesJSON})
+	// A locked read or write leaves swap locks beside the legacy files.
+	for _, name := range []string{"tasks.json.swaplock", "notes.json.swaplock"} {
+		if err := os.WriteFile(filepath.Join(boardPath, name), nil, 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	wantFiles := []string{"tasks.json", "notes.json"}
+	dry, err := w.RetireLegacy(false)
+	if err != nil {
+		t.Fatalf("RetireLegacy(false): %v", err)
+	}
+	if !slices.Equal(dry, wantFiles) {
+		t.Errorf("dry run reported %v; want %v", dry, wantFiles)
+	}
+	for _, name := range []string{"tasks.json", "notes.json", "tasks.json.swaplock", "notes.json.swaplock"} {
+		if _, err := os.Stat(filepath.Join(boardPath, name)); err != nil {
+			t.Errorf("dry run removed %s: %v", name, err)
+		}
+	}
+
+	retired, err := w.RetireLegacy(true)
+	if err != nil {
+		t.Fatalf("RetireLegacy: %v", err)
+	}
+	if !slices.Equal(retired, wantFiles) {
+		t.Errorf("retired = %v; want %v", retired, wantFiles)
+	}
+
+	for _, name := range []string{"tasks.json", "notes.json", "tasks.json.swaplock", "notes.json.swaplock"} {
+		if _, err := os.Stat(filepath.Join(boardPath, name)); !os.IsNotExist(err) {
+			t.Errorf("%s must be removed; stat err = %v", name, err)
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(boardPath, "board.json"))
+	if err != nil {
+		t.Fatalf("read board.json: %v", err)
+	}
+	if strings.Contains(string(raw), "legacy_done") {
+		t.Errorf("board.json must not carry legacy_done: %s", raw)
+	}
+	alpha, found, err := w.GetTask("alpha")
+	if err != nil || !found || alpha.Status == nil || *alpha.Status != "done" {
+		t.Errorf("alpha = %+v found=%v err=%v; want the folded done mark kept", alpha, found, err)
+	}
+}
+
+func TestRetireLegacyWithoutLegacyFilesRefusesAndWritesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
+	w, boardPath := newLegacyBoard(t, nil)
+	if _, err := w.UpsertTask(map[string]any{"slug": "alpha", "title": "Alpha", "labels": bugLabels}); err != nil {
+		t.Fatalf("UpsertTask: %v", err)
+	}
+	before := dataFiles(t, boardPath)
+
+	for _, apply := range []bool{false, true} {
+		_, err := w.RetireLegacy(apply)
+		if err == nil || !strings.Contains(err.Error(), "nothing to retire") {
+			t.Fatalf("RetireLegacy(%v) error = %v; want one saying nothing to retire", apply, err)
+		}
+		assertSameFiles(t, before, dataFiles(t, boardPath))
+	}
+}
+
+// TestRetireLegacyFailedDeletionKeepsLegacyDone forces the deletion to fail after board.json is saved;
+// it checks that the surviving legacy file folds nothing twice:
+// an entry done at migration and reopened since must stay reopened.
+func TestRetireLegacyFailedDeletionKeepsLegacyDone(t *testing.T) {
+	tiergate.Require(t, 0)
+	doneNotes := `[{"id":0,"slug":"beta","title":"Beta","depends_on":[],"status":"done"}]`
+	w, boardPath := newLegacyBoard(t, map[string]string{"notes.json": doneNotes})
+	active := "active"
+	if err := w.SetStatus("beta", &active); err != nil {
+		t.Fatalf("SetStatus: %v", err)
+	}
+	// tasks.json is absent, so no load locks its swap lock;
+	// a non-empty directory there makes its removal fail before notes.json is reached.
+	blocker := filepath.Join(boardPath, "tasks.json.swaplock")
+	if err := os.MkdirAll(filepath.Join(blocker, "keep"), 0o755); err != nil {
+		t.Fatalf("mkdir blocker: %v", err)
+	}
+
+	if _, err := w.RetireLegacy(true); err == nil {
+		t.Fatal("RetireLegacy succeeded; want the blocked deletion to fail")
+	}
+
+	if _, err := os.Stat(filepath.Join(boardPath, "notes.json")); err != nil {
+		t.Fatalf("notes.json must survive the failed deletion; stat err = %v", err)
+	}
+	beta, found, err := w.GetTask("beta")
+	if err != nil || !found || beta.Status == nil || *beta.Status != active {
+		t.Errorf("beta = %+v found=%v err=%v; want it to stay %q", beta, found, err, active)
 	}
 }
 
@@ -479,6 +776,111 @@ func TestSetRunStatus(t *testing.T) {
 	}
 }
 
+// TestNotifyOnLand pins the notify_on_land field: an upsert stores it only when true, and a note carrying it is refused.
+// SetNotifyOnLand sets it, and leaves board.json byte-identical when the entry is absent or already carries it.
+// ClearNotifyOnLand clears it, and leaves board.json byte-identical when the entry is absent or does not carry it.
+func TestNotifyOnLand(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	rows := []struct {
+		name string
+		// seed is the entry written first; act runs on the board after it.
+		seed       map[string]any
+		act        func(b *boardengine.Board) error
+		wantErr    string
+		wantStored bool
+		// unchanged requires board.json to read byte-identical after act.
+		unchanged bool
+		// wantGone requires the entry x to be off the board after act.
+		wantGone bool
+	}{
+		{name: "upsert sets it on a task", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels},
+			act: func(b *boardengine.Board) error {
+				_, err := b.UpsertTask(map[string]any{"slug": "x", "notify_on_land": true})
+				return err
+			}, wantStored: true},
+		{name: "upsert sets it on a project", seed: map[string]any{"slug": "x", "kind": "project", "labels": bugLabels},
+			act: func(b *boardengine.Board) error {
+				_, err := b.UpsertTask(map[string]any{"slug": "x", "notify_on_land": true})
+				return err
+			}, wantStored: true},
+		{name: "upsert false clears it", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels, "notify_on_land": true},
+			act: func(b *boardengine.Board) error {
+				_, err := b.UpsertTask(map[string]any{"slug": "x", "notify_on_land": false})
+				return err
+			}},
+		{name: "a note carrying it is refused", seed: map[string]any{"slug": "x", "kind": "note", "labels": bugLabels},
+			act: func(b *boardengine.Board) error {
+				_, err := b.UpsertTask(map[string]any{"slug": "x", "notify_on_land": true})
+				return err
+			}, wantErr: `note "x" has notify_on_land`, unchanged: true},
+		{name: "set sets it", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels},
+			act: func(b *boardengine.Board) error { return b.SetNotifyOnLand("x") }, wantStored: true},
+		{name: "set of an entry carrying it writes nothing", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels, "notify_on_land": true},
+			act: func(b *boardengine.Board) error { return b.SetNotifyOnLand("x") }, wantStored: true, unchanged: true},
+		{name: "set of an absent slug writes nothing", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels},
+			act: func(b *boardengine.Board) error { return b.SetNotifyOnLand("ghost") }, unchanged: true},
+		{name: "clear clears it", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels, "notify_on_land": true},
+			act: func(b *boardengine.Board) error { return b.ClearNotifyOnLand("x") }},
+		{name: "clear of an entry without it writes nothing", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels},
+			act: func(b *boardengine.Board) error { return b.ClearNotifyOnLand("x") }, unchanged: true},
+		{name: "clear of an absent slug writes nothing", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels, "notify_on_land": true},
+			act: func(b *boardengine.Board) error { return b.ClearNotifyOnLand("ghost") }, wantStored: true, unchanged: true},
+		{name: "prune keeps a done entry carrying it", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels, "notify_on_land": true, "status": "done"},
+			act: func(b *boardengine.Board) error {
+				_, err := b.Prune(true)
+				return err
+			}, wantStored: true},
+		{name: "prune drops the done entry once it is cleared", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels, "notify_on_land": true, "status": "done"},
+			act: func(b *boardengine.Board) error {
+				if err := b.ClearNotifyOnLand("x"); err != nil {
+					return err
+				}
+				_, err := b.Prune(true)
+				return err
+			}, wantGone: true},
+	}
+	for _, tc := range rows {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			boardPath := t.TempDir()
+			b := boardengine.New(boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
+			if _, err := b.UpsertTask(tc.seed); err != nil {
+				t.Fatalf("seed: %v", err)
+			}
+			before, err := os.ReadFile(filepath.Join(boardPath, "board.json"))
+			if err != nil {
+				t.Fatalf("read board.json: %v", err)
+			}
+
+			err = tc.act(b)
+			switch {
+			case tc.wantErr == "" && err != nil:
+				t.Fatalf("act = %v; want nil", err)
+			case tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)):
+				t.Fatalf("act = %v; want an error containing %q", err, tc.wantErr)
+			}
+
+			after, err := os.ReadFile(filepath.Join(boardPath, "board.json"))
+			if err != nil {
+				t.Fatalf("read board.json: %v", err)
+			}
+			if tc.unchanged && string(after) != string(before) {
+				t.Errorf("board.json changed:\n%s\nwant:\n%s", after, before)
+			}
+			if got := strings.Contains(string(after), `"notify_on_land": true`); got != tc.wantStored {
+				t.Errorf("board.json stores notify_on_land = %v; want %v:\n%s", got, tc.wantStored, after)
+			}
+			if strings.Contains(string(after), `"notify_on_land": false`) {
+				t.Errorf("board.json stores a false notify_on_land:\n%s", after)
+			}
+			if _, found, err := b.GetTask("x"); err != nil || found == tc.wantGone {
+				t.Errorf("GetTask(x) found = %v, error = %v; want found %v", found, err, !tc.wantGone)
+			}
+		})
+	}
+}
+
 // TestPriorityRoundTrip pins that every Board write path keeps a note's priority.
 // It also pins that board.json names the priority only on a high or low note.
 // It also pins that a write giving a task a priority is refused and that a promote clears the priority.
@@ -567,12 +969,10 @@ func TestPriorityRoundTrip(t *testing.T) {
 }
 
 // TestEntryDates pins how every write stamps an entry's dates from the configured clock:
-// a new entry gets both; a status change or a promote revises nothing;
+// a new entry gets both; a status change, a promote or a notify_on_land change revises nothing;
 // a scope change revises (an upsert flipping a note to a task included);
 // an upsert's own dates are kept even on a run-held entry;
 // and a merge keeps the oldest creation date of the entries it joins.
-//
-//testtiming:keep pins the created and revised stamps of each write path, which the tests covering its blocks never read
 func TestEntryDates(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -618,6 +1018,10 @@ func TestEntryDates(t *testing.T) {
 		}, "n", start.Add(6 * time.Hour), start.Add(6 * time.Hour)},
 		{"upsert flips a note to a task", func() error {
 			_, err := b.UpsertTask(map[string]any{"slug": "n", "kind": boardengine.KindTask})
+			return err
+		}, "n", start.Add(6 * time.Hour), start.Add(7 * time.Hour)},
+		{"notify_on_land revises nothing", func() error {
+			_, err := b.UpsertTask(map[string]any{"slug": "n", "notify_on_land": true})
 			return err
 		}, "n", start.Add(6 * time.Hour), start.Add(7 * time.Hour)},
 	}

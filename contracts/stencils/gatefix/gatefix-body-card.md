@@ -25,5 +25,3 @@ You never run a Bash call in the background.
 - Leave every failure whose fix would add, remove or change a decision, an acceptance criterion, a PATTERN change, a card or a card's scope, or a test's intended assertion, or that needs a choice the plan or the card does not make.
   Name each one you leave in your reply, with why.
 - Re-run the check that failed first, then run `{{.gate_call}}` as a foreground Bash call under the gate rule in {{template "engine-standing-instructions"}}, and fix what it still reports.
-
-{{template "loom-fragment-tooling-names"}}

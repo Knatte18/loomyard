@@ -35,7 +35,6 @@ func TestReadyToStart(t *testing.T) {
 		{"CoveringPauseDoesNotStart", nil, true, false},
 		{"OwnedElsewhereDoesNotStart", func(task *TaskView) { task.OwnedElsewhere = true }, false, false},
 		{"AStartRefusalDoesNotStart", func(task *TaskView) { task.StartRefusal = "already completed" }, false, false},
-		{"AnAdoptHoldDoesNotStart", func(task *TaskView) { task.HeldBy = "oslo" }, false, false},
 		{"AnotherBeamsTaskDoesNotStart", func(task *TaskView) { task.Parent = "other-beam" }, false, false},
 		{"AProjectDoesNotStart", func(task *TaskView) { task.Kind = "project" }, false, false},
 	}
@@ -204,15 +203,15 @@ func TestStartReady_RefusalsAndBackoff(t *testing.T) {
 		}
 	})
 
-	t.Run("an owned-elsewhere first pass with no status file is a refused start with one notice", func(t *testing.T) {
+	t.Run("an owned-elsewhere first pass with no status file is a refused start with one notice and no pause", func(t *testing.T) {
 		t.Parallel()
 		h := newPassHarness(t)
 		h.fake.tasks = []TaskView{readyTask("a")}
 		h.fake.exits = []PassExit{{Code: PassExitOwnedElsewhere, Error: "owned by m2"}}
 		h.tick(true)
 		h.tick(true)
-		if len(h.fake.notices) != 1 {
-			t.Errorf("notices = %d; want 1", len(h.fake.notices))
+		if len(h.fake.notices) != 1 || h.fake.pauses != 0 {
+			t.Errorf("notices, pauses = %d, %d; want 1, 0", len(h.fake.notices), h.fake.pauses)
 		}
 	})
 
@@ -502,7 +501,7 @@ func TestStartReady_TaskLimitHold(t *testing.T) {
 		if starts := h.stateRecord().Starts; len(starts) != 0 {
 			t.Errorf("start records under the hold = %+v; want none", starts)
 		}
-		want := []string{"hold starts: 2997 of 3000 tasks in /user.slice/user-1000.slice, below beam.task_headroom 500"}
+		want := []string{"hold starts: 2997 of 3000 tasks in /user.slice/user-1000.slice, below task_headroom 500"}
 		if !slices.Equal(*lines, want) {
 			t.Fatalf("log lines under the hold = %q; want %q", *lines, want)
 		}
@@ -528,7 +527,7 @@ func TestStartReady_TaskLimitHold(t *testing.T) {
 		h.tick(true)
 		h.fake.taskHeadroom = 0
 		h.tick(true)
-		want := []string{"hold starts: 2997 of 3000 tasks in /user.slice/user-1000.slice, below beam.task_headroom 500", "starts resume: no task limit applies", "start a"}
+		want := []string{"hold starts: 2997 of 3000 tasks in /user.slice/user-1000.slice, below task_headroom 500", "starts resume: no task limit applies", "start a"}
 		if !slices.Equal(*lines, want) {
 			t.Errorf("log lines = %q; want %q", *lines, want)
 		}
@@ -553,7 +552,7 @@ func TestStartReady_TaskLimitHold(t *testing.T) {
 		if got := h.fake.spawned; len(got) != 1 || got[0].slug != "a" {
 			t.Errorf("first passes = %+v; want only the first task", got)
 		}
-		want := []string{"start a", "hold starts: 2997 of 3000 tasks in /user.slice/user-1000.slice, below beam.task_headroom 500"}
+		want := []string{"start a", "hold starts: 2997 of 3000 tasks in /user.slice/user-1000.slice, below task_headroom 500"}
 		if !slices.Equal(*lines, want) {
 			t.Errorf("log lines = %q; want %q", *lines, want)
 		}

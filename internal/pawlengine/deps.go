@@ -21,7 +21,7 @@ type Step struct {
 type Deps struct {
 	// Slug is the beam's slug, which names its landing and start in a notice.
 	Slug string
-	// Paths holds the run's land request, dobby-stop marker, await marker, hand-off marker and drain marker.
+	// Paths holds the run's land and reopen requests, dobby-stop marker, await marker and hand-off marker.
 	Paths Paths
 	// RunID is the pawl run's seed id, which a land request names.
 	RunID string
@@ -29,6 +29,9 @@ type Deps struct {
 	SetStatus func(producer string) error
 	// EntryProducer reads the producer the entry's run status names.
 	EntryProducer func() (string, error)
+	// RetiredRows are the names of the rows the pawl recipe retired, told by the wiring; nil reads as none.
+	// An entry status naming one is a landing hold an older binary wrote.
+	RetiredRows []string
 	// OwnedElsewhere reports whether another machine owns the beam.
 	OwnedElsewhere func() (bool, error)
 	// MarkBeam marks the pair a beam; it is a no-op on a marked pair.
@@ -57,12 +60,6 @@ type Deps struct {
 	Notify func(line string) (posted bool, err error)
 	// Down takes the beam's dobby and orch down.
 	Down func() error
-	// Autonomous reports whether the beam's orch is autonomous, read at call time.
-	Autonomous func() bool
-	// HoldsCommits reports whether the beam holds commits beyond its parent.
-	HoldsCommits func() (bool, error)
-	// WorkRemains reports whether any member task of the beam is open, drafts included, or any child pair of the beam exists.
-	WorkRemains func() (bool, error)
 	// Watch delivers a value whenever the land request's directory changes; nil leaves the timer alone.
 	Watch <-chan struct{}
 	// Now reads the clock.
@@ -91,6 +88,7 @@ func requireSeams(producer string, seams ...seam) error {
 func (d Deps) pathsSeams() []seam {
 	return []seam{
 		{"Paths.LandRequest", d.Paths.LandRequest != ""},
+		{"Paths.ReopenRequest", d.Paths.ReopenRequest != ""},
 		{"Paths.DobbyStopMarker", d.Paths.DobbyStopMarker != ""},
 		{"Paths.AwaitMarker", d.Paths.AwaitMarker != ""},
 		{"Paths.HandOffMarker", d.Paths.HandOffMarker != ""},

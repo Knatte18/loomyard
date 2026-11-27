@@ -1,5 +1,5 @@
 // green.go is the green end of the adopt check.
-// It removes the subject's fix task; it clears no hold and starts no run.
+// It removes the subject's fix task and resets its fix-try count; it lifts no pause and starts no run.
 
 package adoptcli
 
@@ -13,13 +13,12 @@ import (
 )
 
 // greenDeps holds the seams of one subject's green end:
-// the subject, its worktree name (the prime's for `root`) and its project (none for `root`).
-// Rerun is the command that checks the hold's subjects again, which the end's way forward lines name.
+// the subject, its scratch directory, its worktree name (the prime's for `root`) and its project (none for `root`).
 // Tasks reads the board's entries.
 // FrontDeps are the seams a front task's removal reads.
 type greenDeps struct {
 	Subject   string
-	Rerun     string
+	Dir       string
 	Worktree  string
 	Project   string
 	Tasks     func() ([]boardengine.Task, error)
@@ -27,10 +26,16 @@ type greenDeps struct {
 }
 
 // greenEnd runs the green end of the subject's adopt check.
-// It removes the subject's fix task and returns a line when the removal fails, naming its way forward.
-// It clears no hold and starts no run: the hold check does both once every subject is green.
+// It returns one line for each step that failed, each naming its way forward; the other step goes on.
+// It removes the subject's fix task and writes the subject's fix-try count to 0.
+// It lifts no pause and starts no run: an adopt pause stands until an operator lifts it.
 func greenEnd(deps greenDeps) []string {
-	return removeFixTask(deps)
+	lines := removeFixTask(deps)
+
+	if err := writeTries(deps.Dir, 0); err != nil {
+		lines = append(lines, fmt.Sprintf("the fix-try count of %s was not reset (%v); way forward: re-run lym adopt %s", deps.Subject, err, deps.Subject))
+	}
+	return lines
 }
 
 // removeFixTask removes the subject's adopt-check front task, in whatever status it stands not done.
@@ -40,7 +45,7 @@ func greenEnd(deps greenDeps) []string {
 func removeFixTask(deps greenDeps) []string {
 	tasks, err := deps.Tasks()
 	if err != nil {
-		return []string{fmt.Sprintf("the board was not read (%v), so the fix task of %s was not looked for; way forward: re-run %s", err, deps.Subject, deps.Rerun)}
+		return []string{fmt.Sprintf("the board was not read (%v), so the fix task of %s was not looked for; way forward: re-run lym adopt %s", err, deps.Subject, deps.Subject)}
 	}
 	task, found := fronttask.FrontOf(tasks, deps.Project, fronttask.ActionAdoptCheck)
 	if !found {
@@ -53,8 +58,8 @@ func removeFixTask(deps greenDeps) []string {
 	return nil
 }
 
-// hubGreenDeps returns the greenDeps for the green end of subject, bound to the hub of prime, whose re-run is rerun.
-func hubGreenDeps(prime *lymcwd.Location, subject, rerun string) (greenDeps, error) {
+// hubGreenDeps returns the greenDeps for the green end of subject, bound to the hub of prime.
+func hubGreenDeps(prime *lymcwd.Location, subject string) (greenDeps, error) {
 	frontDeps, err := fronttask.HubDeps(prime)
 	if err != nil {
 		return greenDeps{}, err
@@ -66,7 +71,7 @@ func hubGreenDeps(prime *lymcwd.Location, subject, rerun string) (greenDeps, err
 	}
 	return greenDeps{
 		Subject:   subject,
-		Rerun:     rerun,
+		Dir:       subjectDir(prime.HubPath, subject),
 		Worktree:  worktree,
 		Project:   project,
 		Tasks:     func() ([]boardengine.Task, error) { return boardengine.ReadTasks(boardDir) },

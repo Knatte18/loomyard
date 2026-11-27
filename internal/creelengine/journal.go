@@ -38,6 +38,8 @@ const (
 	// eventRenewed marks the same owner extending its live hold; it carries the new expiry and is not logged as an event.
 	eventRenewed  = "renewed"
 	eventReleased = "released"
+	// eventWithheld marks an orch reminder held back; the fold reads it from old journals only, and nothing writes it.
+	eventWithheld = "withheld"
 	// eventCarried is written by retention: a snapshot of an entry whose original lines are about to be deleted.
 	eventCarried = "carried"
 	// eventHighWater opens every day file with the largest id issued so far.
@@ -52,19 +54,6 @@ const (
 	eventInbound = "inbound"
 	// eventDropped records mail from another hub that was dropped, never delivered to any agent.
 	eventDropped = "dropped"
-	// eventMachineOutbound records a message an orch of this hub posted to an orch of another machine;
-	// it is held in the machine-outbound map and never in the mail pool.
-	eventMachineOutbound = "machine-outbound"
-	// eventMachineHeld records the reason the Slack relay holds a machine-outbound message, written when the reason changes.
-	eventMachineHeld = "machine-held"
-	// eventMachineDelivered records that the relay posted a machine-outbound message to Slack.
-	// It carries the post's Slack timestamp.
-	eventMachineDelivered = "machine-delivered"
-	// eventMachineReturned records that a machine-outbound message ended undelivered, with the reason.
-	eventMachineReturned = "machine-returned"
-	// eventMachineInbound records mail from an orch of another machine.
-	// The pool holds it as unread mail stamped with its sending machine.
-	eventMachineInbound = "machine-inbound"
 )
 
 // Kinds of a posted record.
@@ -124,6 +113,8 @@ type record struct {
 	Head bool `json:"head,omitempty"`
 	// ExpiresAt is a hold's expiry.
 	ExpiresAt time.Time `json:"expires_at,omitzero"`
+	// Notice names what a withheld record waited for; the fold reads it from old journals only.
+	Notice string `json:"notice,omitempty"`
 	// Reason is the stall a stalled record names.
 	Reason string `json:"reason,omitempty"`
 	// Step is the reminder backoff step of a reminded record.
@@ -157,12 +148,6 @@ type record struct {
 	// Topic and Run are the tags of a posted record, and of a carried snapshot of its message.
 	Topic string `json:"topic,omitempty"`
 	Run   string `json:"run,omitempty"`
-	// ReceivingMachine is the machine a machine-outbound message goes to.
-	ReceivingMachine string `json:"receiving_machine,omitempty"`
-	// SendingMachine is the machine a machine-inbound message came from.
-	SendingMachine string `json:"sending_machine,omitempty"`
-	// SlackTS is the Slack timestamp of the post a machine-delivered record settles.
-	SlackTS string `json:"slack_ts,omitempty"`
 }
 
 // journalDay returns the UTC day t falls on, as YYYY-MM-DD, the stem of a journal file name.

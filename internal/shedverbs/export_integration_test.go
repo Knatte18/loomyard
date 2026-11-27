@@ -9,9 +9,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// LoopStepBoundForTest is how long a loop test waits for a process that runs a step.
-const LoopStepBoundForTest = loopStepBound
-
 // StepCmdForTest builds the step command over spec with the package's own help texts.
 func StepCmdForTest(spec *Spec) *cobra.Command {
 	return stepCmd(stepTexts(), spec)

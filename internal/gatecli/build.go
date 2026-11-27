@@ -40,7 +40,7 @@ func (e *execution) runBuild(run tierRun, env []string) (result tierResult, ok b
 	timeout := time.Duration(step.TimeoutMin) * e.request.timeoutUnit
 	started := time.Now()
 
-	buildCtx, cancel := withTimeoutMin(e.ctx, timeout, elapsedSinceNow(), time.After)
+	buildCtx, cancel := context.WithTimeout(e.ctx, timeout)
 	defer cancel()
 
 	var logBuffer bytes.Buffer
@@ -58,7 +58,7 @@ func (e *execution) runBuild(run tierRun, env []string) (result tierResult, ok b
 		return tierResult{refusal: fmt.Sprintf("gate test: could not start the shell for the build in %s: %v; way forward: make build.dir an existing directory and put the platform shell on PATH, then re-run the same command", dir, runErr)}, false
 	}
 
-	timedOut := e.ctx.Err() == nil && errors.Is(context.Cause(buildCtx), errTimeoutMinPassed) && exit != 0
+	timedOut := e.ctx.Err() == nil && errors.Is(buildCtx.Err(), context.DeadlineExceeded) && exit != 0
 	if timedOut {
 		exit = 1
 		line := gateslot.BuildTimeoutLine(timeout)

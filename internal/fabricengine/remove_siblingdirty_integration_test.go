@@ -40,7 +40,7 @@ func TestRemove_UntrackedDriveReportIsCommittedAndArchived(t *testing.T) {
 		t.Fatalf("write stop report: %v", err)
 	}
 
-	res, err := topology.Remove(l, slug, false, false, "")
+	res, err := topology.Remove(l, slug, false, false)
 	if err != nil {
 		t.Fatalf("Remove(force=false) on a pair with an uncommitted drive report error = %v; want it committed and archived", err)
 	}

@@ -19,23 +19,13 @@ const (
 // OrchPromptTarget is the prompt target whose passages reach an orch session alone, the home of a repository's orch rules.
 const OrchPromptTarget = "orch-prompt"
 
-// The engine names the target table keys its rows to.
-const (
-	claudeEngine = "claude"
-	codexEngine  = "codex"
-)
-
-// ClaudeLocalInstructionsFile is the anchor-relative file the claude-file target renders into:
-// the local instructions every Claude session started in the worktree loads.
-const ClaudeLocalInstructionsFile = "CLAUDE.local.md"
-
-// CodexOverrideInstructionsFile is the anchor-relative file the codex-file target renders into:
-// the override instructions a Codex session started in the worktree reads before its other instruction files.
-const CodexOverrideInstructionsFile = "AGENTS.override.md"
-
 // ClaudeSettingsFile is the anchor-relative file the claude-settings target renders into:
 // the local Claude Code settings every Claude session started in the worktree loads.
 const ClaudeSettingsFile = ".claude/settings.local.json"
+
+// SettingsExcludeReinterpretation names the reconcile change that adds ClaudeSettingsFile to a hub's exclude list.
+// A hub whose fabric.yaml sets that list would otherwise leave the file unwritten.
+const SettingsExcludeReinterpretation = "heddle-claude-settings-excluded"
 
 const (
 	// claudeFileTarget is the file target rendered into CLAUDE.local.md, the instructions a Claude session reads.
@@ -61,7 +51,6 @@ const (
 // Engine and Role narrow the sessions a prompt target reaches.
 // Engine must equal the session's engine, and Role must match the session's role or a numbered sibling of it;
 // an empty field narrows nothing.
-// A single-engine file target names its engine too, which keys its entries to that engine; it narrows no prompt.
 type Target struct {
 	Name        string
 	Delivery    string
@@ -75,12 +64,12 @@ type Target struct {
 
 // targetTable holds one row per target; a further target is one new row.
 var targetTable = []Target{
-	{Name: claudeFileTarget, Delivery: DeliveryFile, File: ClaudeLocalInstructionsFile, ReRender: []string{ClaudeLocalInstructionsFile, "AGENTS.md", "CLAUDE.md", ".claude/AGENTS.md", ".claude/CLAUDE.md"}, Engine: claudeEngine},
-	{Name: codexFileTarget, Delivery: DeliveryFile, File: CodexOverrideInstructionsFile, ReRender: []string{"AGENTS.md", "CLAUDE.md", CodexOverrideInstructionsFile}, Engine: codexEngine},
+	{Name: claudeFileTarget, Delivery: DeliveryFile, File: "CLAUDE.local.md", ReRender: []string{"CLAUDE.local.md", "AGENTS.md", "CLAUDE.md", ".claude/AGENTS.md", ".claude/CLAUDE.md"}},
+	{Name: codexFileTarget, Delivery: DeliveryFile, File: "AGENTS.override.md", ReRender: []string{"AGENTS.md", "CLAUDE.md", "AGENTS.override.md"}},
 	{Name: agentsFileTarget, Delivery: DeliveryFile, RendersInto: []string{claudeFileTarget, codexFileTarget}},
 	{Name: claudeSettingsTarget, Delivery: DeliveryFile, File: ClaudeSettingsFile, JSONObject: true},
-	{Name: "claude-prompt", Delivery: DeliveryPrompt, Engine: claudeEngine},
-	{Name: "codex-prompt", Delivery: DeliveryPrompt, Engine: codexEngine},
+	{Name: "claude-prompt", Delivery: DeliveryPrompt, Engine: "claude"},
+	{Name: "codex-prompt", Delivery: DeliveryPrompt, Engine: "codex"},
 	{Name: OrchPromptTarget, Delivery: DeliveryPrompt, Role: agentname.RoleOrch},
 	{Name: agentsPromptTarget, Delivery: DeliveryPrompt, RendersInto: []string{"claude-prompt", "codex-prompt"}},
 }

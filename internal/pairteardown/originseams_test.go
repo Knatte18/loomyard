@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -92,7 +91,7 @@ func TestTeardown_OriginSeams(t *testing.T) {
 			`{"slug":"held","kind":"task","status":"running · Implementer"}]}`
 		const noPrimeOwner = `{"version":1,"entries":[{"slug":"unowned","kind":"task"}]}`
 		errAny := errors.New("any error")
-		machine := func() (machinename.Identity, error) { return machinename.Identity{Name: "here"}, nil }
+		machine := func() (string, error) { return "here", nil }
 		parentOf := func(_, slug string) (string, error) {
 			if slug == "child" {
 				return "theirs", nil
@@ -102,7 +101,7 @@ func TestTeardown_OriginSeams(t *testing.T) {
 		boom := errors.New("boom")
 		for _, row := range []struct {
 			name          string
-			machine       func() (machinename.Identity, error)
+			machine       func() (string, error)
 			parentOf      func(hubPath, slug string) (string, error)
 			board         string
 			slug          string
@@ -117,7 +116,7 @@ func TestTeardown_OriginSeams(t *testing.T) {
 			{"unowned under a parent owned elsewhere", machine, parentOf, board, "child", "other", "theirs", true, nil},
 			{"held by a run with no owner reads its parent's owner", machine, parentOf, board, "held", "other", "root", true, nil},
 			{"a hub with no prime owner", machine, parentOf, noPrimeOwner, "unowned", "", "root", false, nil},
-			{"a machine error", func() (machinename.Identity, error) { return machinename.Identity{}, boom }, parentOf, board, "mine", "", "", false, boom},
+			{"a machine error", func() (string, error) { return "", boom }, parentOf, board, "mine", "", "", false, boom},
 			{"a parent resolver error", machine, func(_, _ string) (string, error) { return "", boom }, board, "unowned", "", "", false, boom},
 			{"undecodable bytes", machine, parentOf, "{", "mine", "", "", false, errAny},
 		} {

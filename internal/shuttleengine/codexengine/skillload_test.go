@@ -308,29 +308,3 @@ func TestPrepare_SkillsLoadFirst(t *testing.T) {
 		t.Errorf("Launch.Cmd = %q; want the load line %q as its first turn and no pointer", launch.Cmd, loadLine)
 	}
 }
-
-// TestPrepare_SkipSkillLoadTurn pins that SkipSkillLoadTurn keeps the prompt pointer as the first turn.
-// That holds for a spec naming skills.
-// It returns no prompt line and puts no load line on the launch line.
-func TestPrepare_SkipSkillLoadTurn(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	root := t.TempDir()
-	writeSkill(t, root, "market", "scribe", "1.0.0", "prose")
-	engine := skillEngine(t, root)
-	runDir := t.TempDir()
-
-	launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p", PromptEngine: engineName, Skills: []string{"scribe:prose"}, SkipSkillLoadTurn: true}, shuttleengine.Config{})
-	if err != nil {
-		t.Fatalf("Prepare() error: %v", err)
-	}
-	pointer := launchPointer(filepath.Join(runDir, "prompt.md"))
-	if launch.PromptLine != "" {
-		t.Errorf("Launch.PromptLine = %q; want empty", launch.PromptLine)
-	}
-	loadLine := engine.SkillLoadMessage([]string{"scribe:prose"})
-	if !strings.Contains(launch.Cmd, pointer) || strings.Contains(launch.Cmd, loadLine) {
-		t.Errorf("Launch.Cmd = %q; want the pointer %q and no load line", launch.Cmd, pointer)
-	}
-}

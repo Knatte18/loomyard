@@ -31,7 +31,7 @@ func TestLoadConfig(t *testing.T) {
 	}{
 		{name: "TemplateValue", hub: "", want: slackengine.Config{RemindAfterMin: 30}},
 		{name: "HubValue", hub: "remind_after_min: 45\n", want: slackengine.Config{RemindAfterMin: 45}},
-		{name: "ZeroRefused", hub: "remind_after_min: 0\n", wantErr: `config key "slack.remind_after_min" holds 0`},
+		{name: "ZeroRefused", hub: "remind_after_min: 0\n", wantErr: `slack config key "remind_after_min" holds 0`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

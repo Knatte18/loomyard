@@ -177,18 +177,15 @@ func TestEngine_Review_TableShape(t *testing.T) {
 				t.Errorf("reviewer seat ModelKey = %+v; want opts.ReviewKey %+v", seat.ModelKey, opts.ReviewKey)
 			}
 			gate := shuttle.gates[tt.wantRole]
-			wantEntries := 2
+			wantEntries := 1
 			if tt.parentAsk > 0 {
-				wantEntries = 3
+				wantEntries = 2
 			}
 			if len(gate) != wantEntries || gate[0].Name != "review" || !gate[0].PassOnCap || gate[0].Attempts != reviewGateAttempts {
 				t.Fatalf("gate = %+v; want %d entries, the review-parse entry first, passing on its cap", gate, wantEntries)
 			}
-			if gate[1].Name != "round" || !gate[1].PassOnCap || gate[1].Attempts != roundCheckGateAttempts || gate[1].Gate == nil {
-				t.Errorf("gate[1] = %+v; want the round-check entry, passing on its cap, with attempts above zero and a gate", gate[1])
-			}
-			if tt.parentAsk > 0 && (gate[2].Name != ParentCoverageEntryName || gate[2].PassOnCap || gate[2].Attempts <= 0 || gate[2].Gate == nil) {
-				t.Errorf("gate[2] = %+v; want the parent coverage entry, which never passes on its cap, with attempts above zero and a gate", gate[2])
+			if tt.parentAsk > 0 && (gate[1].Name != ParentCoverageEntryName || gate[1].PassOnCap || gate[1].Attempts <= 0 || gate[1].Gate == nil) {
+				t.Errorf("gate[1] = %+v; want the parent coverage entry, which never passes on its cap, with attempts above zero and a gate", gate[1])
 			}
 		})
 	}
@@ -212,26 +209,20 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 	noFixReview := "---\nverdict: BLOCKING\nfindings:\n" +
 		"  - id: F1\n    severity: BLOCKING\n    class: design\n    location: target.txt:1\n    summary: colors do not match\n" +
 		"---\n### [BLOCKING] colors do not match\n"
-	mediumReview := "---\nverdict: APPROVED\nfindings:\n" +
-		"  - id: F1\n    severity: MEDIUM\n    class: scope\n    location: target.txt:1\n    summary: colors do not match\n    fix: change the color in target.txt:1\n" +
-		"---\n### [MEDIUM] colors do not match\n"
 
 	tests := []struct {
-		name       string
-		script     halfScript
-		clusterFan string
-		// round is the round context the profile carries; wantRoundFailures is how many times the round-check entry must fail.
-		round             *RoundContext
-		wantRoundFailures int
-		stopErr           error
-		wantOutcome       shuttleengine.Outcome
-		wantVerdict       Verdict
-		wantFindings      int
-		wantErrIs         error
-		wantErrText       string
-		wantNotStart      bool
-		wantAudit         *shuttleengine.ForkAudit
-		wantWarnings      int
+		name         string
+		script       halfScript
+		clusterFan   string
+		stopErr      error
+		wantOutcome  shuttleengine.Outcome
+		wantVerdict  Verdict
+		wantFindings int
+		wantErrIs    error
+		wantErrText  string
+		wantNotStart bool
+		wantAudit    *shuttleengine.ForkAudit
+		wantWarnings int
 		// wantGateReason is the reviewer's Gate Reason the result carries; wantNilGate marks a reviewer that never ran gated.
 		wantGateReason string
 		wantNilGate    bool
@@ -247,7 +238,6 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 		{name: "an accepted blocking review", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Engine: "claude"}, writes: blockingReview}, wantOutcome: shuttleengine.OutcomeDone, wantVerdict: VerdictBlocking, wantFindings: 1, wantEngine: "claude"},
 		{name: "an accepted approved review", script: halfScript{result: done, writes: approvedReview}, wantOutcome: shuttleengine.OutcomeDone, wantVerdict: VerdictApproved},
 		{name: "a review missing a finding's fix is refused by the strict parse", script: halfScript{result: done, writes: noFixReview}, wantOutcome: shuttleengine.OutcomeDone, wantErrText: "missing a non-empty fix"},
-		{name: "a new MEDIUM finding of an incremental round fails the round check on every attempt and is let through on the cap", script: halfScript{result: done, writes: mediumReview}, round: &RoundContext{Incremental: true}, wantRoundFailures: 1 + roundCheckGateAttempts, wantOutcome: shuttleengine.OutcomeDone, wantVerdict: VerdictApproved, wantFindings: 1},
 		{name: "an unparseable review is refused", script: halfScript{result: done, writes: malformedReview}, wantOutcome: shuttleengine.OutcomeDone, wantErrText: "round reached done but its review file is invalid"},
 		{name: "a failed review gate is an error", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Reason: "spent"}}, writes: blockingReview}, wantOutcome: shuttleengine.OutcomeDone, wantErrText: "review gate failed", wantGateReason: "spent"},
 		{name: "a failed review gate with no reason is an error holding its findings", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Findings: "report ids are uncovered"}}, writes: blockingReview}, wantOutcome: shuttleengine.OutcomeDone, wantErrText: "report ids are uncovered"},
@@ -265,7 +255,6 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 			t.Parallel()
 			root, p := newEngineTestProfile(t)
 			p.ClusterFan = tt.clusterFan
-			p.Round = tt.round
 			shuttle := &fakeShuttle{review: tt.script, stopErr: tt.stopErr}
 			geom := Geometry{WorktreeRoot: root, AnchorPath: root}
 			if tt.malformedRecord {
@@ -318,17 +307,6 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 			}
 			if tt.clusterFan != "" && !slices.Equal(got.Lenses, []string{"style"}) && err == nil {
 				t.Errorf("Lenses = %v; want the resolved fan's [style]", got.Lenses)
-			}
-			if tt.wantRoundFailures > 0 {
-				failures := 0
-				for _, findings := range shuttle.gateFindings {
-					if strings.Contains(findings, "so it passes the round checks") {
-						failures++
-					}
-				}
-				if failures != tt.wantRoundFailures {
-					t.Errorf("round-check failures = %d; want %d, one per evaluation", failures, tt.wantRoundFailures)
-				}
 			}
 		})
 	}

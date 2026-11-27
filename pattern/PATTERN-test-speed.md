@@ -54,8 +54,6 @@ No site spells a tier list, a scope or a test command.
 | `parent-align`, `finalize` | Parent-Align and Finalize | `all` |
 | `adopt` | `lym adopt check <subject>`, in-process through `gatecli.RunGate` in the subject's worktree | `all` |
 | `darn-write`, `code-burler-fix` | darn's writer and the Code-Burler-Fix rows | `diff` |
-| `harden-burler-fix` | Harden-Burler-Fix's `verify` gate | `diff` |
-| `harden-live` | Harden-Burler-Fix's `live` gate: its merge-bar run and its concurrent copies | `diff` |
 | `pr-review` | PR-Review's gate over the agent's commits | `diff` |
 | By hand | the `tier3` tier | |
 
@@ -134,7 +132,7 @@ Bound: a forged value misleads only an ungated raw run, since `lym gate test` se
   The whole verify catches it at the sites that keep it for a diff touching production code, never on `main`.
   For a tree-scoped darn diff, a site runs its row's key over the trees' targets,
   so such a violation can reach the parent.
-  What the hub lists as non-production in `darn.tree_scope` bounds that.
+  What the hub lists as non-production in `darn.yaml`'s `tree_scope` bounds that.
 
 ## Reflective tests carry `//lym:seam`
 
@@ -219,15 +217,19 @@ so every run takes its slots, its timeout and its log.
 
 - Tests run only through `lym gate test` over `gate.yaml`'s tiers.
   Two things run outside it: a card `**Verify:**` line and `cmd/testtiming`'s runs in every mode.
-- `cmd/testtiming` holds one gate slot in every mode, with its Go flags from `gateslot.HolderEnv` and `LYM_TEST_TIER` from its tags.
-  Its `-redundancy` mode runs every test alone under a coverage binary, since coverage counters are process-wide.
+- Three redundancy runs take a tier's `env` and a gate slot as a tier run does.
+  `lym gate testmap` rebuilds the per-package coverage maps at the HEAD of the worktree it runs in,
+  into the hub's shared maps from the prime and into the worktree's anchor `.lym` elsewhere.
+  The `redundancy` report step a gate key's `reports` lists runs after the key's tiers released their slots.
+  Both run every test alone under a coverage binary, since coverage counters are process-wide.
+  `lym gate redundant` runs each test alone under a binary holding the mutants of its package, one mutant on per run.
 - A card `**Verify:**` line runs through the shared `internal/cardverify` runner,
   and `cmd/testtiming` measures outside the gate because its modes measure what a tier run hides.
 - A site or stencil names a gate key, never a tier list, scope form, test command or target list.
 - Darn's tree-scoped sites add the touched trees' targets to the key's call.
-- The shell guard refuses a command with a prefix in `gate.refuse_raw`,
+- The shell guard refuses a command with a prefix in `gate.yaml`'s `refuse_raw`,
   so an agent's raw test run is steered to the gate.
-- The plan gate's `verify-raw-command` finding flags a card `**Verify:**` line that starts with a `gate.refuse_raw` prefix.
+- The plan gate's `verify-raw-command` finding flags a card `**Verify:**` line that starts with a `refuse_raw` prefix.
 
 ## Test economy
 
@@ -239,11 +241,8 @@ this section keeps only what is project-specific or stricter here.
 - A test targets behavior and contract at a module's public surface, not each helper.
   The surface is the exported API, a CLI verb or a file contract.
   An unexported helper is tested through the surface that uses it.
-- A behavior is tested at the lowest tier its real modules run in.
-  An in-memory or temp-dir fixture of the module's own state, or a stand-in for something outside the repository,
-  keeps it at `tier0`; such a behavior is never tested through a real hub.
-  Another module is never faked to lower a tier:
-  when the real one spawns, the test takes its tier, per [PATTERN-test-stand-ins](PATTERN-test-stand-ins.md).
+- A behavior testable with a fake or an in-memory fixture is tested at tier0 that way, never through a real hub.
+  Integration tests stay the exception.
 - A new test function or file must cover a behavior no existing test covers.
   Otherwise it becomes a row in an existing table-driven test, or an assertion in an existing test of that behavior.
 - Many items of one kind (refusals, claims, rows, verbs) are covered by one table-driven or contract-level test.
@@ -284,3 +283,43 @@ this section keeps only what is project-specific or stricter here.
   and a tier0 test is always judged.
 - The scan does not see a hook, alias or helper a test installs so that git runs module code,
   so the hand check before deleting a candidate also asks whether the candidate makes git run module code.
+
+### The coverage map and the gate's redundancy report
+
+- `lym gate testmap` keeps one coverage map per package under `internal/testcover`.
+  A map records, for each tier0 and tier1 test, its function hash, the blocks it covers of its own package's files,
+  the functions it covers of each other in-module package its test binary links, and its spawn scan verdict.
+  It also records the hashes of the package's files and of each linked package's files at the commit it was built from.
+  The maps are built only on command: no dobby, landing or gate builds them, and the gate selects no test from them.
+  A call naming no package plans every map at the HEAD of the worktree it runs in through the coverage selector, building nothing:
+  a current map moves to HEAD with its entries, an affected one drops the affected tests' entries, which are re-measured,
+  and a miss rebuilds the package whole.
+  A failed build keeps the map's entries and is not retried at the same HEAD.
+  A self-check re-measures a kept entry a fresh build cannot place, and an audit round re-measures the oldest entries.
+- `lym gate redundant <package>` judges a whole package's map by the same package-scoped verdict,
+  then confirms each candidate by mutation inside a gate slot.
+  It mutates the candidates' blocks and keeps a candidate only when its covering tests kill every mutant it kills;
+  one that kills a mutant they miss is listed as refuted, with those mutants.
+  A `//lym:guard` test and one reaching `internal/testkit/scankit` are never candidates:
+  their check reads source files, which no mutant changes.
+  It lists the candidates with their seconds, covering tests and kills, and the refuted, keep-marked and unjudged tests.
+  Bound: a mutant changes the package's own code only,
+  so a candidate whose check differs from its covers only in another package's result is confirmed falsely.
+- A gate key whose `reports` lists `redundancy` runs the report step after its tiers and lints.
+  It takes the diff's new and changed top-level tests against the merge base with the parent branch,
+  leaving out tier2 and tier3 tests, tests marked `//testtiming:keep` and tests that may run module code in another process.
+  It judges each against its package's map, package-scoped like `cmd/testtiming`'s verdict,
+  and writes `redundancy.json` in the worktree's gate directory with each test contained, unique or not judged.
+- The step is advisory and bounded: it never changes the gate's result,
+  and `redundancy_max_tests` and `redundancy_budget_min` cap what it judges.
+  Bound: it lets a redundant test through when an edited block is uncovered or a test lies past the cap or the budget.
+  Bound: it can flag a test falsely, since a map test whose own text is unchanged counts as a cover
+  even when a helper or callee change stops it reaching a block.
+  Bound: a map rebuilt since the report can make a contained verdict stale.
+- Code-Review's rubric reads the report when it matches the reviewed HEAD's tree:
+  every judged package's Go files hash the same and the step's selection over HEAD gives the recorded tests with the recorded hashes.
+  A report written on a red tier never matches, and the rubric then reads a line naming that gate key.
+- A gate finding is evidence for Code-Review exactly as a report candidate is:
+  the reviewer checks a contained test's assertions against its covering tests,
+  then files a finding to fold or delete it, naming the covering tests,
+  or accepts it with a `//testtiming:keep <reason>` finding when it pins what coverage cannot see.

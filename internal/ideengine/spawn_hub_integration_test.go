@@ -125,44 +125,6 @@ func resetPrimeEditorState(t *testing.T, h *hubforge.Hub) {
 	}
 }
 
-// assertBeamStartTask fails the test unless the workspace file at path holds one beam start process task.
-// The task runs the stand-in lym with "beam start <beam>" in anchor.
-func assertBeamStartTask(t *testing.T, path, beam, anchor string) {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
-	}
-	var ws struct {
-		Tasks struct {
-			Tasks []struct {
-				Label   string   `json:"label"`
-				Type    string   `json:"type"`
-				Command string   `json:"command"`
-				Args    []string `json:"args"`
-				Options struct {
-					Cwd string `json:"cwd"`
-				} `json:"options"`
-			} `json:"tasks"`
-		} `json:"tasks"`
-	}
-	if err := json.Unmarshal(data, &ws); err != nil {
-		t.Fatalf("%s is not valid JSON: %v\n%s", path, err, data)
-	}
-	lymPath, err := LymBinary()
-	if err != nil {
-		t.Fatalf("LymBinary: %v", err)
-	}
-	if len(ws.Tasks.Tasks) != 1 {
-		t.Fatalf("%s holds tasks %+v; want one beam start task", filepath.Base(path), ws.Tasks.Tasks)
-	}
-	task := ws.Tasks.Tasks[0]
-	if task.Label != "beam start" || task.Type != "process" || task.Command != lymPath ||
-		!slices.Equal(task.Args, []string{"beam", "start", beam}) || filepath.Clean(task.Options.Cwd) != filepath.Clean(anchor) {
-		t.Errorf("%s task = %+v; want the process task beam start running %s beam start %s in %s", filepath.Base(path), task, lymPath, beam, anchor)
-	}
-}
-
 // checkPrimeWritesHubWorkspace asserts the hub workspace file's location, folders and launch argument.
 // It sits at the hub's anchor and lists the prime's branch, Bolt and every task pair the scenario added so far.
 // It has no _portals folder.
@@ -177,7 +139,6 @@ func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	setIDEConfig(t, h, "open_files:\n  prime: [notes.md, absent.md, \"{beam}.md\"]\n")
 	primeAnchor := filepath.Join(h.Path, prime, l.AnchorRel)
 	wantFiles := []string{writeFileUnder(t, primeAnchor, "notes.md"), writeFileUnder(t, primeAnchor, prime+".md")}
-	t.Cleanup(fabricengine.InstallWorkspaceContent(WorkspaceContent))
 
 	if _, err := Spawn(l, prime); err != nil {
 		t.Fatalf("Spawn: %v", err)
@@ -187,8 +148,6 @@ func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	if len(*launched) != 1 || (*launched)[0] != wsPath {
 		t.Fatalf("CodeLauncher calls = %v, want exactly [%s]", *launched, wsPath)
 	}
-	assertWorktreeTasks(t, primeAnchor)
-	assertBeamStartTask(t, wsPath, "root", primeAnchor)
 	if files := (*opened)[0]; !slices.Equal(files, wantFiles) {
 		t.Errorf("CodeLauncher files = %v; want %v", files, wantFiles)
 	}
@@ -311,7 +270,7 @@ func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	if err != nil {
 		t.Fatalf("Seed: %v", err)
 	}
-	assertWorktreeTasks(t, filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel))
+	assertAttachTaskOnly(t, filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel))
 	if keybindings.Outcome != vscode.KeybindingsCreated {
 		t.Errorf("Seed keybindings outcome = %+v; want %q", keybindings, vscode.KeybindingsCreated)
 	}
@@ -369,7 +328,6 @@ func checkBeamOpensBeamWorkspace(t *testing.T, h *hubforge.Hub, slug string) {
 	setIDEConfig(t, h, "open_files:\n  beam: [README.md, absent.md, docs, \"docs/{beam}.md\"]\n  task: [\"{beam}.md\"]\n")
 	beamAnchor := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel)
 	wantFiles := []string{writeFileUnder(t, beamAnchor, "README.md"), writeFileUnder(t, beamAnchor, "docs/"+slug+".md")}
-	t.Cleanup(fabricengine.InstallWorkspaceContent(WorkspaceContent))
 
 	if _, err := Seed(l, slug); err != nil {
 		t.Fatalf("Seed: %v", err)
@@ -393,8 +351,6 @@ func checkBeamOpensBeamWorkspace(t *testing.T, h *hubforge.Hub, slug string) {
 	if files := (*opened)[0]; !slices.Equal(files, wantFiles) {
 		t.Errorf("CodeLauncher files = %v; want %v", files, wantFiles)
 	}
-	assertWorktreeTasks(t, beamAnchor)
-	assertBeamStartTask(t, beamPath, slug, beamAnchor)
 	if got := readWorkspaceLook(t, beamPath).Associations["*.md"]; got != "vscode.markdown.preview.editor" {
 		t.Errorf("beam workspace *.md editor association = %q; want the markdown preview", got)
 	}
@@ -421,7 +377,7 @@ func checkBeamOpensBeamWorkspace(t *testing.T, h *hubforge.Hub, slug string) {
 	hubforge.AddPairWith(t, h, child, fabricengine.AddOptions{Parent: slug})
 	// The forked task is removed on cleanup, since the hub workspace check of a later step lists every pair of the hub.
 	t.Cleanup(func() {
-		if _, err := h.Topology.Remove(l, child, true, false, ""); err != nil {
+		if _, err := h.Topology.Remove(l, child, true, false); err != nil {
 			t.Errorf("remove the task forked from the beam: %v", err)
 		}
 	})

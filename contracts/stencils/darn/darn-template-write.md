@@ -4,7 +4,7 @@
      seatengine fills it from the lead's value map that `darnengine.DarnTable` builds.
      It then hands the result to shuttle as the writer's whole prompt.
      Every marker below is a top-level {{.X}} substitution, and the file has no {{if}}/{{range}} conditionals.
-     Every marker must be non-empty except pattern_directive, project_directive, friction_directive, parent_directive and report_directive.
+     Every marker must be non-empty except pattern_directive, project_directive, friction_directive and parent_directive.
      project_directive is rendered by internal/loomengine.ProjectRecordDirective for a run under a beam.
      It shares the pattern directive's line, so an empty value leaves the prompt's bytes unchanged.
      decision_record_path names the decision record the writer reads as its scope.
@@ -13,9 +13,7 @@
      prior_work is never empty: `darnengine.DarnTable` fills it with (none) when it has nothing to tell.
      edit_directive is rendered unconditionally by internal/editdirective.
      make_change holds Step 4's list: `darnengine.DarnTable` fills it with darn-fragment-make-change,
-     or with darn-fragment-make-change-gated when a cold fixer clears the row's verify gate.
-     report_directive holds darn-fragment-report, led by a blank line, when darn.report_dir is set.
-     It shares make_change's line, so an empty value leaves the prompt's bytes unchanged. -->
+     or with darn-fragment-make-change-gated when a cold fixer clears the row's verify gate. -->
 
 # Darn — make the change a board entry asks for, in one session
 
@@ -49,16 +47,12 @@ Check whether landed work, another board entry or another run overtook or contra
 - Read `lym board list`, every entry that touches the task and every board note titled `Decision for {{.slug}}:` for it, and `lym loom peers` for the runs in flight and the parent's commits since the fork.
 - An ordinary misalignment you settle yourself.
 - When the entry is plainly outdated, and no `Added after Discussion` entry in the record answers it, you stop:
-  - The exception: once a Code-Review round has run on this task, its scope is closed and the record takes no new entry.
-    A parent's answer, or a `Decision for {{.slug}}:` note, that says the scope is closed and the call is filed for a new task settles the point:
-    make what the record as it stands asks, leave the filed part to that task, and name the note in the change description's design decisions.
   - With a parent, send it a message with `lym creel post --parent --expect-reply "<text>"` naming what overtook or contradicts the entry.
     Ask it to record its answer with `lym loom decision add`; then end your turn to wait.
     That verb appends an `Added after Discussion` entry to the record and types a line into your pane naming it.
     On any message from your parent, re-read the record, and follow the entry you find over the board entry's body.
-  - With no parent, while the scope is open, a `Decision for {{.slug}}:` note never settles the stop: an outdated entry with no `Added after Discussion` entry answering it stops you again, whatever note answers it.
-    Write the change description, your one output file, as a stop report in the final-summary spec's form, naming the outdated entry, what overtook or contradicts it, and as the way forward `lym loom decision add` and then `lym loom resume`,
-    or, on a task a Code-Review round has run on, a board note saying the scope is closed and then `lym loom resume`.
+  - With no parent, a `Decision for {{.slug}}:` note never settles the stop: an outdated entry with no `Added after Discussion` entry answering it stops you again, whatever note answers it.
+    Write the change description, your one output file, as a stop report in the final-summary spec's form, naming the outdated entry, what overtook or contradicts it, and as the way forward `lym loom decision add` and then `lym loom resume`, never a board note.
     Then create the stop marker, an empty file, at `{{.stop_marker_path}}`, and end your turn with no commit.
 - When the task's body names a stop condition and you find it holds, you stop.
   Write the change description, your one output file, as the stop report with the content the body asks for, in the final-summary spec's form.
@@ -67,17 +61,13 @@ Check whether landed work, another board entry or another run overtook or contra
 
 ## Step 4 — Make the change
 
-{{.make_change}}{{.report_directive}}
+{{.make_change}}
 
 ## Step 5 — Write the change description
 
 Write the change description to `{{.description_path}}`, in the format the final-summary spec defines at `{{.specs_dir}}/loom/loom-final-summary-spec.md`.
 Read that spec for the format; it is authoritative and this prompt does not restate it.
 Write the description for a reviewer who knows the codebase but has not seen this session, and never describe the session's own process.
-That reviewer knows nothing of the tooling that ran this session: name nothing of it that the repository itself does not hold, such as LoomYard, lym, the board, the task, the Sketch, the decision record, the parent, an orch, a gate or a tier, and never "item N of the task"; state the requirement or the decision itself.
-Close it with the `## Merge danger` section the spec defines, its door and blast radius called from your diff.
-A claim that a result agrees with a reference, or that the change improves one, carries before and after figures from the current code, taken from your commits or the drift verdict.
-Leave out a claim that has none.
 
 Before handing off, run `lym loom validate-description` and fix every finding it reports.
 A clean `validate-description` run is the last thing you do before you end your turn.
@@ -85,8 +75,6 @@ A clean `validate-description` run is the last thing you do before you end your 
 ## A scope correction from your parent
 
 Your parent records a scope correction with `lym loom decision add`, which appends an `Added after Discussion` entry to the decision record and types a line into your pane naming the new entry.
-Once a Code-Review round has run on this task, the record takes no such entry:
-your parent files the correction as a board note for a new task, and you change nothing for it.
 On that line, or when a message from your parent carries a correction, re-read the record's `Added after Discussion` entries and follow them over the board entry's body.
 When the message names a correction the record does not yet hold, ask your parent to record it, follow the message meanwhile, and name it as an unrecorded parent correction in the change description's design decisions.
 You never run `lym loom decision add` yourself; the verb refuses a task session.
@@ -97,10 +85,7 @@ A follow-up you file goes on the board as a note, never as a task, and you never
 When the board entry or the decision record asks for such a step, leave it out from the start and ask your parent to record the drop with `lym loom decision add`.
 Until the record carries that `Added after Discussion` entry, name the omission in the change description's design decisions as an unrecorded parent correction.
 Once the entry exists, the omission is no deviation from the amended board entry.
-Once a Code-Review round has run, no entry can record the drop:
-your parent files it as a board note, and the omission stays named in the design decisions.
-With no parent to ask, stop and report the step,
-unless a `Decision for {{.slug}}:` note says the scope is closed and files the drop: then leave the step out and name it.
+With no parent to ask, stop and report the step.
 The route admits a drop of an own-entry step only: no other step is left out through it.
 
 ## The sealed expectation
@@ -111,32 +96,6 @@ The `drift` gate entry checks after each turn that every changed value of the ca
 Fix such a value in the code yourself.
 When the change is intended, leave it: only the run's parent amends the expectation, at the Stuck that follows.
 `lym drift check` runs the same check on demand.
-
-## A bug entry
-
-When the task's board entry is labelled `bug`, the fix's test must fail before the fix.
-Write a test that reaches the bug through code the merge base already has, so it fails on the merge base and passes with the fix.
-Once you end your turn, the row's red-first gate runs the tests your diff adds or changes once on the merge base's code.
-It fails when every one of them passes there.
-On a C# hub the gate runs the changed test methods by name in a checkout of the merge base.
-A test that does not build there counts as failing, as one that reads a member only your change adds.
-On a hub whose scoper is neither go nor dotnet the check cannot judge the tests, and the gate passes.
-When the diff adds or changes no test, it holds your handoff without spending an attempt until a new commit or your parent's record lands.
-When the bug has no seam a test can reach, send your parent `lym creel post --parent --expect-reply "<text>"` naming why,
-and ask it to record that with `lym loom decision add` under a title opening `No test seam`; then end your turn to wait.
-When the entry fixes no bug, as one that only adds tests pinning existing behaviour, its tests pass on the merge base by design:
-invent no bug, and before you write code ask your parent the same way to record that under a title opening `No bug fixed`.
-
-The commit that fixes the bug records the cause its test confirmed as a trailer line in the last paragraph of its commit message:
-
-`Root-Cause: <the defect in the code that the failing test confirmed>`
-
-Name the defect, never the symptom the entry reports.
-Code-Review reads this line.
-
-{{template "loom-fragment-loosened-check"}}
-
-{{template "loom-fragment-tooling-names"}}
 
 ## What happens after you hand off
 

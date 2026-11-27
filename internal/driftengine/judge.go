@@ -27,9 +27,8 @@ const judgeTimeout = 60 * time.Minute
 // The judge stencil's mode text, autonomous and with the operator in the pane.
 // It names no engine's tool, so it holds whichever engine the judge launches on.
 const (
-	autonomousJudgeMode = "No operator is present, so make best-judgment rulings and never block on a dialog.\n" +
-		"A question you cannot settle from the request goes to your parent as creel mail, as your parent directive says, never into your pane, which no one reads."
-	operatorJudgeMode = "The operator is present at your pane and decides each ruling: you present each cell or case, discuss it and record the operator's ruling.\n" +
+	autonomousJudgeMode = "No operator is present, so make best-judgment rulings and never block on a dialog."
+	operatorJudgeMode   = "The operator is present at your pane and decides each ruling: you present each cell or case, discuss it and record the operator's ruling.\n" +
 		"Ask in plain text in the pane and wait for the operator's typed reply; never call a tool that opens a question dialog, which the run cannot drive."
 )
 
@@ -69,19 +68,8 @@ type JudgeOpenRange struct {
 	Why string `json:"why"`
 }
 
-// JudgeFile is one file of the task's range that the judge rules on for loosened checks.
-type JudgeFile struct {
-	// ID is the file id the judgement must rule on: f1, f2 and so on in list order.
-	ID string `json:"id"`
-	// Path is the file's repository-relative path.
-	Path string `json:"path"`
-	// Diff is the file's diff against the review base.
-	Diff string `json:"diff"`
-}
-
 // JudgeRequest is what one judge spawn is handed, written before the spawn.
 // Under DiffLines it holds Cells and OpenRanges, and under DiffCommand CompareLog.
-// Under either mode it may hold Files and CommitMessages.
 type JudgeRequest struct {
 	// SpawnID names the spawn; the judgement must carry it back.
 	SpawnID string `json:"spawn_id"`
@@ -97,10 +85,6 @@ type JudgeRequest struct {
 	Expectation string `json:"expectation"`
 	// Amendments are the parent's amendments as text, and empty when there is none.
 	Amendments string `json:"amendments,omitempty"`
-	// Files are the files the judge rules on for loosened checks, under either mode.
-	Files []JudgeFile `json:"files,omitempty"`
-	// CommitMessages are the whole messages of the commits of the task's range, newest first, under either mode.
-	CommitMessages []string `json:"commit_messages,omitempty"`
 }
 
 // WriteJudgeRequest writes the judge request to p's request file through internal/state.
@@ -128,7 +112,7 @@ func readJudgeRequest(p Paths) (JudgeRequest, bool, error) {
 	return req, found, nil
 }
 
-// want returns what the judgement must answer in full: every cell, open range and file of the request.
+// want returns what the judgement must answer in full: every cell and open range of the request.
 func (r JudgeRequest) want() JudgementWant {
 	want := JudgementWant{Mode: r.Mode, SpawnID: r.SpawnID, CompareFailed: r.CompareLog != ""}
 	for _, cell := range r.Cells {
@@ -136,9 +120,6 @@ func (r JudgeRequest) want() JudgementWant {
 	}
 	for _, open := range r.OpenRanges {
 		want.OpenRanges = append(want.OpenRanges, OpenRangeNote{Case: open.Case, Range: open.Range})
-	}
-	for _, file := range r.Files {
-		want.FileIDs = append(want.FileIDs, file.ID)
 	}
 	return want
 }

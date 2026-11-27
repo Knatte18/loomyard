@@ -569,12 +569,7 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 				_, advanceErr = gitexec.Run([]string{"merge", "--ff-only", weftOld.fastForwardTo}, weftPath)
 			}
 		} else {
-			ns, nsErr := originNamespaceAt(weftRepoRoot)
-			if nsErr != nil {
-				advanceErr = nsErr
-			} else {
-				_, advanceErr = gitrepo.New(weftRepoRoot).FetchWithArgs("--no-tags", originRemoteName, ns.Branch(weftBranch)+":refs/heads/"+weftBranch)
-			}
+			_, advanceErr = gitrepo.New(weftRepoRoot).FetchWithArgs("--no-tags", originRemoteName, "refs/heads/"+weftBranch+":refs/heads/"+weftBranch)
 		}
 		if advanceErr != nil {
 			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)

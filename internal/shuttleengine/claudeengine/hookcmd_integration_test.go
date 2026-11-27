@@ -1,6 +1,5 @@
 // hookcmd_integration_test.go runs the recording hook commands settings.go builds under `sh`.
 // It pins what each appends to the events file, and that rendered shell guard commands grep each pattern as written.
-// It also pins that the python guard asks lym whether the hub allows Python before it denies.
 // The deny pattern tables live with the shell guard rows in `internal/shellguard`.
 
 package claudeengine
@@ -31,7 +30,7 @@ func recordingHookCommands(t *testing.T, eventsPath string) map[string]string {
 	t.Helper()
 	commands := map[string]string{}
 	for _, interactive := range []bool{false, true} {
-		data, err := buildSettings(eventsPath, interactive, shuttleengine.Config{}, Config{}, false, false, false, "", "", "", "", testLymPath, sessionScope{})
+		data, err := buildSettings(eventsPath, interactive, shuttleengine.Config{}, Config{}, false, false, "", "", "", "", sessionScope{})
 		if err != nil {
 			t.Fatalf("buildSettings() error: %v", err)
 		}
@@ -298,7 +297,7 @@ func (fx turnHookFixture) commands(t *testing.T, turnHook string, inHub bool) (p
 	if inHub {
 		flagDir = fx.flagDir
 	}
-	data, err := buildSettings(fx.eventsPath, false, shuttleengine.Config{}, Config{}, false, false, false, "", turnHook, flagDir, "", testLymPath, sessionScope{})
+	data, err := buildSettings(fx.eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", turnHook, flagDir, "", sessionScope{})
 	if err != nil {
 		t.Fatalf("buildSettings() error: %v", err)
 	}
@@ -488,94 +487,13 @@ func TestShellGuardDenies_RenderedCommandsGrepThePayload(t *testing.T) {
 				t.Fatal(err)
 			}
 			row := shellRow(t, tt.row)
-			stdout, exitCode := runHookCommand(t, renderShellGuard(row, testLymPath).command, payload.String(), os.Environ())
+			stdout, exitCode := runHookCommand(t, renderShellGuard(row).command, payload.String(), os.Environ())
 			want := ""
 			if tt.denied {
 				want = denyJSON(row.Steer) + "\n"
 			}
 			if stdout != want || exitCode != 0 {
 				t.Errorf("%q hook on %q: stdout = %q, exit = %d; want %q and exit 0", tt.row, tt.command, stdout, exitCode, want)
-			}
-		})
-	}
-}
-
-// TestShellGuardDenies_PythonRowAsksTheHubOnAMatch runs the python row's rendered hook under sh against Bash payloads.
-// A stub `lym` at the path the row is rendered over logs its directory and arguments and exits as each row says.
-// On a python command the hook runs that stub as `shuttle hook-python-allowed` from the session's project directory.
-// It denies the call unless the stub exits 0.
-// It also denies when no lym stands at that path or the project directory cannot be entered.
-// A command that runs no python never runs lym.
-// Every run exits 0 having printed the deny or nothing.
-func TestShellGuardDenies_PythonRowAsksTheHubOnAMatch(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		command string
-		// lymExit is the stub's exit code; empty leaves no lym at the path the row is rendered over.
-		lymExit string
-		// projectDirMissing points CLAUDE_PROJECT_DIR at a directory that does not exist.
-		projectDirMissing bool
-		denied            bool
-		// wantAsked reports whether the hook ran the stub.
-		wantAsked bool
-	}{
-		{name: "AllowedByTheHub", command: "python3 -c 1", lymExit: "0", wantAsked: true},
-		{name: "DeniedByTheHub", command: "python3 -c 1", lymExit: "1", denied: true, wantAsked: true},
-		{name: "NoLymAtThePath", command: "python3 -c 1", denied: true},
-		{name: "ProjectDirectoryCannotBeEntered", command: "python3 -c 1", lymExit: "0", projectDirMissing: true, denied: true},
-		{name: "NoPythonCommand", command: "ls -la", lymExit: "1"},
-	}
-	row := shellRow(t, "python")
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			root := t.TempDir()
-			binDir, projectDir, logPath := filepath.Join(root, "bin"), filepath.Join(root, "project"), filepath.Join(root, "lym.log")
-			dirs := []string{binDir}
-			if !tt.projectDirMissing {
-				dirs = append(dirs, projectDir)
-			}
-			for _, dir := range dirs {
-				if err := os.MkdirAll(dir, 0o755); err != nil {
-					t.Fatal(err)
-				}
-			}
-			lymPath := filepath.Join(binDir, "lym")
-			if tt.lymExit != "" {
-				stub := "#!/bin/sh\necho \"$(pwd -P) $*\" >> " + shQuote(logPath) + "\nexit " + tt.lymExit + "\n"
-				if err := os.WriteFile(lymPath, []byte(stub), 0o755); err != nil {
-					t.Fatal(err)
-				}
-			}
-			command := renderShellGuard(row, lymPath).command
-			var payload bytes.Buffer
-			encoder := json.NewEncoder(&payload)
-			encoder.SetEscapeHTML(false)
-			if err := encoder.Encode(map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": tt.command}}); err != nil {
-				t.Fatal(err)
-			}
-
-			stdout, exitCode := runHookCommand(t, command, payload.String(), []string{"PATH=/usr/bin:/bin", "CLAUDE_PROJECT_DIR=" + projectDir})
-			want := ""
-			if tt.denied {
-				want = denyJSON(row.Steer) + "\n"
-			}
-			if stdout != want || exitCode != 0 {
-				t.Errorf("python hook on %q: stdout = %q, exit = %d; want %q and exit 0", tt.command, stdout, exitCode, want)
-			}
-			wantLog := ""
-			if tt.wantAsked {
-				resolvedProjectDir, err := filepath.EvalSymlinks(projectDir)
-				if err != nil {
-					t.Fatal(err)
-				}
-				wantLog = resolvedProjectDir + " shuttle " + shuttleengine.PythonAllowedHookVerb + "\n"
-			}
-			if logged, _ := os.ReadFile(logPath); string(logged) != wantLog {
-				t.Errorf("lym runs = %q; want %q", logged, wantLog)
 			}
 		})
 	}

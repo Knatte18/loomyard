@@ -1,12 +1,10 @@
 package pairteardown
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -20,11 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
-	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
@@ -70,9 +66,6 @@ type Request struct {
 	// Verdict is the caller's origin reconcile verdict for the slug, empty when it ran none.
 	// An ended or owned_elsewhere verdict skips the driver checks.
 	Verdict fabricengine.EntryState
-	// Rerun is the caller's command that retries the removal.
-	// A held teardown lock's refusal and the pending-teardown record name it; empty names `lym fabric remove <slug>`.
-	Rerun string
 }
 
 // SessionResult reports EndSession's outcome.
@@ -115,8 +108,6 @@ type Teardown struct {
 	interval time.Duration
 	// goos is the operating system the way forward of a held driver lock is worded for.
 	goos string
-	// lymBinary returns the path of the lym binary the sandbox clear runs.
-	lymBinary func() (string, error)
 
 	gone    func(slug string) (bool, error)
 	quiet   func(slug string) (quietState, error)
@@ -149,10 +140,6 @@ type Teardown struct {
 	snapshot func(rec *fabricengine.Mutations, slug string) (tag string, paths []string, err error)
 	// archive copies the pair's trace and verify logs into the hub's log archive; it never fails the teardown.
 	archive func(slug string)
-	// clearSandbox empties the slug's worktree of the throwaway sandbox hubs a hardener run left there, before the removal.
-	// It reports whether the worktree held a sandbox root and the clear ran.
-	// A worktree with no root answers false and starts nothing.
-	clearSandbox func(slug string) (cleared bool, err error)
 	// closePR closes the run's open pull request, since an unlanded teardown would leave it pending; it never fails.
 	closePR func(slug string)
 	// dropRunMail drops the hub's unread creel mail tagged with the removed pair's run; it never fails.
@@ -171,6 +158,9 @@ type Teardown struct {
 	// battenRecord reads the batten run record of the slug on the prime; found is false when the run has none.
 	// Nil reads as no record.
 	battenRecord func(slug string) (status shedengine.Status, found bool, err error)
+	// ownerHeld reports whether an owner pause covers the slug.
+	// Nil reads as none.
+	ownerHeld func(slug string) (bool, error)
 	// removeCancelledRecord deletes the slug's batten run record when its state is cancelled, and reports whether it did.
 	// Nil removes nothing.
 	removeCancelledRecord func(slug string) (removed bool, err error)
@@ -198,7 +188,7 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 	if prime == nil {
 		return nil, errors.New("pairteardown: New needs the hub's prime location")
 	}
-	t := &Teardown{prime: prime, interval: quietPollInterval, goos: runtime.GOOS, sleep: sleepCtx, writeLockWait: runLockWait, lymBinary: selfexec.LymBinary}
+	t := &Teardown{prime: prime, interval: quietPollInterval, goos: runtime.GOOS, sleep: sleepCtx, writeLockWait: runLockWait}
 	t.holdWriteLocks = t.holdRecordsWriteLocks
 	t.stopStrands = t.stopPairStrands
 	t.gone = t.taskWorktreeGone
@@ -224,7 +214,6 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 	}
 	t.endSession = t.endReedSession
 	t.archive = t.archivePairLogs
-	t.clearSandbox = t.clearWorktreeSandbox
 	t.closePR = t.closePairPullRequest
 	t.dropRunMail = t.dropPairRunMail
 	t.killCapture = t.killPairCapture
@@ -236,12 +225,16 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 	t.readClaim = t.readBoardClaim
 	t.writeClaim = t.writeBoardClaim
 	t.battenRecord = func(slug string) (shedengine.Status, bool, error) { return ReadBattenRecord(prime, slug) }
+	t.ownerHeld = func(slug string) (bool, error) { return OwnerPauseHeld(prime, slug) }
 	t.remove = func(req Request) (fabricengine.RemoveResult, error) {
 		top, err := t.topology()
 		if err != nil {
 			return fabricengine.RemoveResult{}, err
 		}
-		return removeThrough(top, prime, req)
+		if req.Local {
+			return top.RemoveLocal(prime, req.Slug, req.Force)
+		}
+		return top.Remove(prime, req.Slug, req.Force, req.Remote)
 	}
 	t.removeStray = func(slug string) (bool, error) {
 		top, err := t.topology()
@@ -258,20 +251,6 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 		return top.SnapshotUncommitted(rec, prime, slug)
 	}
 	return t, nil
-}
-
-// pairRemover removes a pair, with its origin steps or locally.
-type pairRemover interface {
-	Remove(l *lymcwd.Location, slug string, force, remote bool, rerun string) (fabricengine.RemoveResult, error)
-	RemoveLocal(l *lymcwd.Location, slug string, force bool) (fabricengine.RemoveResult, error)
-}
-
-// removeThrough asks remover for the removal req names.
-func removeThrough(remover pairRemover, prime *lymcwd.Location, req Request) (fabricengine.RemoveResult, error) {
-	if req.Local {
-		return remover.RemoveLocal(prime, req.Slug, req.Force)
-	}
-	return remover.Remove(prime, req.Slug, req.Force, req.Remote, req.Rerun)
 }
 
 // EndSession ends a pair's work and session ahead of its removal.
@@ -434,9 +413,6 @@ func (t *Teardown) driverLockBusyError(slug, retry string) error {
 // so the record under the run's scratch directory is still there,
 // and a failure to close it never stops the teardown.
 // The archive copies and never fails the teardown, so the removal follows it whatever it did.
-// A worktree that holds a hardener sandbox root has it cleared after the archive and before the removal,
-// so no process or server of a sandbox hub outlives the worktree it ran in.
-// A failed clear keeps the worktree and returns the failure with the way forward.
 //
 // Whether the pair's work landed is req.Landed, or else read before the removal from the task worktree's status file;
 // the file goes with the worktree, so a task worktree already gone is not landed,
@@ -494,12 +470,6 @@ func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
 	}
 
 	t.archive(req.Slug)
-	if _, err := t.clearSandbox(req.Slug); err != nil {
-		worktree := fabricengine.WorktreePath(t.prime, req.Slug)
-		return snap.applyTo(fabricengine.RemoveResult{}), fmt.Errorf(
-			"clear the sandbox root of pair %q: %w; way forward: run `lym harden sandbox clear` in %s, then run the removal again: `lym fabric remove %s`, or `lym loom resume` for a batten run's Worktree-Teardown",
-			req.Slug, err, worktree, req.Slug)
-	}
 	res, err := t.remove(req)
 	res = snap.applyTo(res)
 	if req.ClearStray {
@@ -513,35 +483,6 @@ func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
 		t.settleBoardClaim(req.Slug, landed)
 	}
 	return res, nil
-}
-
-// clearWorktreeSandbox runs `lym harden sandbox clear` in the slug's task worktree when it holds a sandbox root,
-// and it waits for the verb to end.
-// A worktree with no root, or none at all, answers false and starts nothing.
-func (t *Teardown) clearWorktreeSandbox(slug string) (bool, error) {
-	worktree := fabricengine.WorktreePath(t.prime, slug)
-	if !fileExists(filepath.Join(worktree, lymdirs.DotLymDirName, lymdirs.HardenSandboxDirName)) {
-		return false, nil
-	}
-	exe, err := t.lymBinary()
-	if err != nil {
-		return false, err
-	}
-	args := []string{"harden", "sandbox", "clear"}
-	cmd := exec.Command(exe, args...)
-	cmd.Dir = worktree
-	var output bytes.Buffer
-	cmd.Stdout = &output
-	cmd.Stderr = &output
-	if err := cmd.Start(); err != nil {
-		logger.Warn("pairteardown: spawn sandbox clear failed", "slug", slug, "exe", exe, "args", args, "error", err)
-		return false, err
-	}
-	logger.Info("pairteardown: spawned sandbox clear", "slug", slug, "exe", exe, "args", args, "dir", worktree, "pid", cmd.Process.Pid)
-	if err := cmd.Wait(); err != nil {
-		return false, fmt.Errorf("%w: %s", err, strings.TrimSpace(output.String()))
-	}
-	return true, nil
 }
 
 // clearStray deletes a directory at the task worktree's path that is no worktree, after a removal left the pair gone.
@@ -628,7 +569,7 @@ func (t *Teardown) Run(ctx context.Context, req Request) (Result, error) {
 		}
 	}
 	if !req.LeaveClaim {
-		if followUp := followUpOver(req.Slug, t.battenRecord); followUp != "" {
+		if followUp := followUpOver(req.Slug, t.battenRecord, t.ownerHeld); followUp != "" {
 			result.Warning = fmt.Sprintf("the batten run of %s still stands; %s", req.Slug, followUp)
 		}
 	}

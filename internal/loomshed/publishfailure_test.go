@@ -3,6 +3,7 @@
 package loomshed
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,6 +13,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
+
+// testGateTiers is a tier-list lookup over fixed `landing` and `publish` lists, refusing any other gate.
+func testGateTiers(gate string) ([]int, error) {
+	switch gate {
+	case "landing":
+		return []int{0, 1}, nil
+	case "publish":
+		return []int{2}, nil
+	}
+	return nil, fmt.Errorf("gates holds no list for %q", gate)
+}
 
 func TestWebsterRecordNote(t *testing.T) {
 	tiergate.Require(t, 0)

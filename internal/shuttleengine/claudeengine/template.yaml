@@ -1,28 +1,24 @@
 binary: ${env:LYM_SHUTTLE_CLAUDE:-}  # path to the claude executable; empty falls back to "claude" on PATH — prefer an explicit path, PATH aliases can hit the 0-byte WindowsApps stub; the binary must be the engine or exec it, since a wrapper that does not exec leaves its shell in the foreground and reed reads the strand dead
 deny_ask_user_question: true  # emit a PreToolUse deny for the AskUserQuestion tool (autonomous runs only)
-prompt_cache_ttl: 5m  # prompt-cache TTL of the main conversation for every role without an entry in claude.prompt_cache_ttl_roles; Claude Code's own values, validated when a run starts or a session opens, and the refusal names the accepted ones
-prompt_cache_ttl_roles:  # prompt-cache TTL of the main conversation per role, keyed by a strand's role segment (Spec.Role); the operator's own map, replacing the template's whole when present, so leaving a role out drops it to the default; values are Claude Code's, validated when a run starts or a session opens, and the refusal names the accepted ones
+prompt_cache_ttl: 5m  # prompt-cache TTL for every role without an entry in prompt_cache_ttl_roles; Claude Code's own values, validated when a run starts or a session opens, and the refusal names the accepted ones
+prompt_cache_ttl_roles:  # prompt-cache TTL per role, keyed by a strand's role segment (Spec.Role); the operator's own map, replacing the template's whole when present, so leaving a role out drops it to the default; values are Claude Code's, validated when a run starts or a session opens, and the refusal names the accepted ones
   driver: 5m
   webster: 1h
   orch: 1h
-keep_warm_cap: 250s  # the keep-warm cap for every role without an entry in claude.keep_warm_cap_roles: the longest one wait an agent of the role blocks on; a Go duration, at least 60s, below the role's prompt-cache lifetime and at most 55m; validated when a run starts and on lym config claude; forks run under a one-hour prompt cache, so a fork's gate call stays in the foreground for the whole cap
-keep_warm_cap_roles: {}  # keep-warm cap per role, keyed by a strand's role segment (Spec.Role), replacing claude.keep_warm_cap for that role; the operator's own map, replacing the template's whole when present; values follow the same rules as claude.keep_warm_cap and are validated when a run starts and on lym config claude
+keep_warm_cap: 250s  # the keep-warm cap for every role without an entry in keep_warm_cap_roles: the longest one wait an agent of the role blocks on; a Go duration, at least 60s, below the role's prompt-cache lifetime and at most 55m; validated when a run starts and on lym config claude; a cap above five minutes leaves that role's forks' caches cold, since forks run at Claude Code's 5-minute subagent lifetime
+keep_warm_cap_roles: {}  # keep-warm cap per role, keyed by a strand's role segment (Spec.Role), replacing keep_warm_cap for that role; the operator's own map, replacing the template's whole when present; values follow the same rules as keep_warm_cap and are validated when a run starts and on lym config claude
 batching_nudge:  # the after-tool-call hook that adds one line to the calling chain's context when its recent calls break the batching rules, and never denies a call; read when a run starts, so a running session keeps the values it started with; validated when a run starts and on lym config claude
   enabled: true  # install the hook in every run's settings; false installs none
   lookup_chain: true  # nudge a run of consecutive messages that each hold exactly one lookup and nothing else: a Read, Grep or Glob call, or a Bash call whose command is a read-only lookup such as grep, find, ls, cat, sed -n or a git read
-  read_slice: true  # nudge a Read with an offset or limit of a file under claude.batching_nudge.slice_lines lines, or of a file an earlier message read and that has not changed since
+  read_slice: true  # nudge a Read with an offset or limit of a file under slice_lines lines, or of a file an earlier message read and that has not changed since
   edit_chain: true  # nudge a run of consecutive messages that hold only Edit or Write calls
   context_tokens: 150000  # the calling chain's own context size, in tokens, below which the hook stays silent; at least 0
   lookup_run: 3  # the number of consecutive single-lookup messages that fires; at least 1
   edit_run: 2  # the number of consecutive edit-only messages that fires; at least 1
   slice_lines: 2000  # the line count under which a sliced Read of a file fires; at least 1
   max_nudges: 5  # the most nudges one run's session, and each of its subagents and forks, gets, so a session that ignores the line is not nagged on every turn; at least 1
-accounts: []  # the Claude accounts logged in on this machine, each with name (a-z, 0-9 and -), config_dir (absolute, or starting with ~/), weight (0 retires the account) and windows (used percentage per five_hour and seven_day, 1 to 100, at or above which the account is passed over); machine-local, so set it with lym config claude --layer machine, never in a tracked file
-account_pins:  # pin the hub's worktrees or its beams to one claude.accounts account of non-zero weight; machine-local like claude.accounts
-  hub: ""  # the account every worktree of the hub uses; empty pins nothing
-  beams: ""  # the account every beam uses; empty pins nothing
 session_scope:  # what every Claude session lym launches loads besides lym's own text, written into the settings it passes with --settings, over the user's and the repository's settings; read when a session starts
-  enabled: true  # write the scope: an installed plugin is on only when the session preloads one of its skills, and lists all its skills then, every skill of claude.session_scope.skills_off the session does not preload is off, and every session but the orch's gets no auto-memory; false leaves all of it to the other settings; the claude.ai connectors, bundled skills and Workflow tool every session goes without are set by heddle's lym-session-scope entry in the worktree's .claude/settings.local.json, not here
+  enabled: true  # write the scope: an installed plugin is on only when the session preloads one of its skills, and lists all its skills then, every skill of skills_off the session does not preload is off, and every session but the orch's gets no auto-memory; false leaves all of it to the other settings; the claude.ai connectors, bundled skills and Workflow tool every session goes without are set by heddle's lym-session-scope entry in the worktree's .claude/settings.local.json, not here
   skills_off:  # skills turned off in every session that does not preload them, named as Claude Code lists them; a plugin's skill named here stays listed, since Claude Code ignores the override for it; the operator's own list
     - anthropic-skills:built-in-browser
     - anthropic-skills:chrome-browser

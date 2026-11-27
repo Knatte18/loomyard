@@ -66,11 +66,11 @@ func overlayTemplate(spec Spec, value string, hub bool) ([]byte, error) {
 			names = append(names, name)
 		}
 		sort.Strings(names)
-		return nil, MarkInvalid(fmt.Errorf("%s %q names no shipped layer (shipped: %s); way forward: %s", KeyName(spec.Name, spec.Overlay.Selector), value, strings.Join(names, ", "), selectorWayForward(spec, hub)))
+		return nil, MarkInvalid(fmt.Errorf("%s config: %s %q names no shipped layer (shipped: %s); way forward: %s", spec.Name, spec.Overlay.Selector, value, strings.Join(names, ", "), selectorWayForward(spec, hub)))
 	}
 	merged, err := yamlengine.Merge(spec.Template, document, spec.OpenMaps, spec.WholeEntries)
 	if err != nil {
-		return nil, MarkInvalid(fmt.Errorf("%s %q layer: %w", KeyName(spec.Name, spec.Overlay.Selector), value, err))
+		return nil, MarkInvalid(fmt.Errorf("%s config: %s %q layer: %w", spec.Name, spec.Overlay.Selector, value, err))
 	}
 	return merged, nil
 }
@@ -115,10 +115,10 @@ func selectorRefusal(dirs Dirs, spec Spec, path string, heldBefore bool) error {
 	selector := spec.Overlay.Selector
 	var wayForward strings.Builder
 	if heldBefore {
-		fmt.Fprintf(&wayForward, "delete the %s line from %s in an editor, then ", KeyName(spec.Name, selector), path)
+		fmt.Fprintf(&wayForward, "delete the %s line from %s in an editor, then ", selector, path)
 	}
 	fmt.Fprintf(&wayForward, "set it in the base with \"lym config %s --layer default --set %s=<name>\" from the hub's prime worktree%s", spec.Name, selector, boardDirWayForwardClause)
-	return MarkInvalid(fmt.Errorf("config file %s holds %s, which only the base file %s may hold; way forward: %s", path, KeyName(spec.Name, selector), basePath, wayForward.String()))
+	return MarkInvalid(fmt.Errorf("config file %s holds %s, which only the base file %s may hold; way forward: %s", path, selector, basePath, wayForward.String()))
 }
 
 // baseDocument returns the bytes of the base layer among layers, nil when it is absent.

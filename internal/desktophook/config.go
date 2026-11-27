@@ -64,7 +64,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 		return Config{}, configengine.MarkInvalid(fmt.Errorf("unmarshal desktop config: %w", err))
 	}
 	if cfg.WindowWaitMs < 0 {
-		return Config{}, configengine.MarkInvalid(fmt.Errorf("config key %q holds %d; want an integer of at least 0", configengine.KeyName(configModule, "window_wait_ms"), cfg.WindowWaitMs))
+		return Config{}, configengine.MarkInvalid(fmt.Errorf("desktop config key %q holds %d; want an integer of at least 0", "window_wait_ms", cfg.WindowWaitMs))
 	}
 	return cfg, nil
 }

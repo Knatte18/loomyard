@@ -24,7 +24,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -267,7 +266,6 @@ func (f *Fabric) warpUpstreamSHA() (string, error) {
 // A weft infrastructure failure, neither a stop nor an unreachable origin, returns at once.
 // It does so before the warp arm runs.
 // Such a failure covers an unreadable hub location, a failed weft write lock, or a replay that failed otherwise.
-// It also covers a records store whose origin layout cannot be read, whose error names the config that restores it.
 // Warp is not reset against the weft's correspondence, which such a failure leaves unknown.
 // A warp-side failure reports the accumulated result rather than unwinding the weft pull.
 // It is joined with a weft stop when both happened.
@@ -323,12 +321,7 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 // With an upstream, a standing move record and an empty own anchor marker are weft stops.
 // So is an upstream carrying another anchor marker.
 // They are raised before the pull moves anything.
-// A records store whose origin layout cannot be read is a failure, read first:
-// with no fetch refspec mapping origin's namespace, its upstream reads as missing and nothing would be pulled.
 func (f *Fabric) pullWeftArm(rec *Mutations, result *PullResult, opts SyncOptions) (*WeftStopError, error) {
-	if _, err := originNamespaceAt(f.weftPath); err != nil {
-		return nil, err
-	}
 	weftHasUpstream, err := f.weftHasUpstream()
 	if err != nil {
 		logger.Warn("fabricengine: weft pull: resolve upstream failed, continuing to warp", "weft", f.weftPath, "err", err)
@@ -500,29 +493,24 @@ func (f *Fabric) hubLocation() (*lymcwd.Location, error) {
 }
 
 // lockWeftForReplay takes the weft write lock and then the absorbing push lock, and returns the release of both.
-// It passes the process's pause gate before it takes the write lock and stays admitted until the release.
 func (f *Fabric) lockWeftForReplay() (release func(), err error) {
 	lockDir, err := f.ensureWeftLockDir()
 	if err != nil {
 		return nil, err
 	}
-	leaveGate := pauserecord.Admit(pushLockGateOp)
 	writeLock, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
 	if err != nil {
-		leaveGate()
 		return nil, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
 	}
 	pushLock, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftPushLockFile))
 	if err != nil {
 		_ = writeLock.Release()
-		leaveGate()
 		return nil, fmt.Errorf("fabricengine: acquire push lock: %w", err)
 	}
 	releasePush := holdPushLock(pushLock, lockDir, time.Now())
 	return func() {
 		_ = releasePush()
 		_ = writeLock.Release()
-		leaveGate()
 	}, nil
 }
 

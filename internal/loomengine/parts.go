@@ -34,7 +34,7 @@ const partsRole = "parts"
 // partsStencil is the stencil that opens the Parts-Write lead seat.
 const partsStencil = "loom-template-parts"
 
-// partsDepthFragments maps each parts.depth value to the stencil holding that reading depth's text.
+// partsDepthFragments maps each parts_depth value to the stencil holding that reading depth's text.
 var partsDepthFragments = map[string]string{
 	"light":  "loom-fragment-parts-light",
 	"medium": "loom-fragment-parts-medium",
@@ -42,21 +42,21 @@ var partsDepthFragments = map[string]string{
 
 // PartsTable builds the seatengine.Table of one Parts-Write run.
 // The lead seat reads the decision record and the relevant list, and it writes the parts file.
-// The opening stencil and the depth fragment that cfg.Parts.Depth names are read at call time from stencilsDir;
+// The opening stencil and the depth fragment that cfg.PartsDepth names are read at call time from stencilsDir;
 // the seat engine renders the parent and edit directives from its geometry.
 // specsDir is told, never derived: this package is bound by the Told-Geometry Invariant.
 // The table carries no gate; the producer entry sets it.
 // A PATTERN directive that cannot be rendered fails the table;
 // a friction directive that cannot be rendered is left empty, and the failure is logged.
 func PartsTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
-	choice, err := resolveModelChoice(cfg.Parts.Model, reg)
+	choice, err := resolveModelChoice(cfg.Parts, reg)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: PartsTable: parts role model-spec: %w", err)
 	}
 
-	fragment, ok := partsDepthFragments[cfg.Parts.Depth]
+	fragment, ok := partsDepthFragments[cfg.PartsDepth]
 	if !ok {
-		return seatengine.Table{}, fmt.Errorf("loom: PartsTable: %s %q is neither light nor medium", FullKeyName(partsDepthKey), cfg.Parts.Depth)
+		return seatengine.Table{}, fmt.Errorf("loom: PartsTable: parts_depth %q is neither light nor medium", cfg.PartsDepth)
 	}
 	depthBlock, err := stencilstore.Read(stencilsDir, fragment)
 	if err != nil {
@@ -73,7 +73,7 @@ func PartsTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg Confi
 	}
 
 	var frictionDir string
-	if cfg.Friction.Model != "" {
+	if cfg.Friction != "" {
 		frictionDir = LoomFrictionDir(layout)
 	}
 	frictionDirective, err := friction.Directive(friction.NotePath(frictionDir, "Parts-Write"), stencilsDir, friction.RoleImplementer)
@@ -87,7 +87,7 @@ func PartsTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg Confi
 	lead := seatengine.Seat{
 		Stencil:     partsStencil,
 		ModelChoice: choice,
-		ModelKey:    shuttleengine.ModelKey{Module: tapestryModule, Key: partsModelKey},
+		ModelKey:    shuttleengine.ModelKey{Module: tapestryModule, Key: "parts"},
 		Inputs:      []string{DiscussionDecisionRecord(layout), DiscussionRelevant(layout)},
 		Outputs:     []string{partsFile},
 		ConfigRole:  agentconfig.RolePlan,
@@ -95,13 +95,13 @@ func PartsTable(layout *lymcwd.Location, stencilsDir, specsDir string, cfg Confi
 	return seatengine.Table{
 		RolePrefix: partsRole,
 		Segment:    segmentcolor.Plan,
-		Timeout:    time.Duration(cfg.Plan.TimeoutMin) * time.Minute,
+		Timeout:    time.Duration(cfg.PlanTimeoutMin) * time.Minute,
 		Values: map[string]string{
 			"decision_record_path": DiscussionDecisionRecord(layout),
 			"relevant_path":        DiscussionRelevant(layout),
 			"parts_path":           partsFile,
 			"parts_dir":            partsparser.Dir(layout.AnchorPath()),
-			"parts_max":            strconv.Itoa(cfg.Parts.Max),
+			"parts_max":            strconv.Itoa(cfg.PartsMax),
 			"depth_block":          strings.TrimSpace(stencil.StripLeadingComment(string(depthBlock))),
 			"specs_dir":            specsDir,
 			"pattern_directive":    patternDirective,

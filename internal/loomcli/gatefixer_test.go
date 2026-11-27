@@ -68,8 +68,8 @@ func TestWriterFixerOn(t *testing.T) {
 
 	settings := func(value any, err error) func(module, key string) (any, error) {
 		return func(module, key string) (any, error) {
-			if module != "tapestry" || key != "plan.gate_fixer" {
-				t.Errorf("setting(%q, %q); want the plan gate's own setting tapestry.plan.gate_fixer", module, key)
+			if module != "tapestry" || key != "plan_gate_fixer" {
+				t.Errorf("setting(%q, %q); want the plan gate's own setting tapestry.plan_gate_fixer", module, key)
 			}
 			return value, err
 		}

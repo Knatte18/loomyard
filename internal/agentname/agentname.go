@@ -21,7 +21,6 @@
 // A per-strand file, such as creel's mail flag, is named by FileName.
 // A name shown across machines takes the machine's name in front, as "<machine>::<name>".
 // FormatMachineAddress forms it.
-// ParseMachineAddress parses it and IsMachineAddress tells it apart.
 //
 // The module that spawns an agent owns its role name as a constant declared in that module.
 // It is never an inline literal in the spawn spec.
@@ -191,48 +190,6 @@ const MachineAddressSeparator = "::"
 // It validates neither part: name is a full name this package already formed.
 func FormatMachineAddress(machine, name string) string {
 	return machine + MachineAddressSeparator + name
-}
-
-// MachineAddress is a parsed cross-machine address: the machine an agent lives on and the agent's name there.
-type MachineAddress struct {
-	Machine string
-	Name    Name
-}
-
-// IsMachineAddress reports whether name holds MachineAddressSeparator.
-// It is the routing test for a name that may live on another machine and judges nothing else:
-// ParseMachineAddress refuses a malformed address that passes it.
-func IsMachineAddress(name string) bool {
-	return strings.Contains(name, MachineAddressSeparator)
-}
-
-// ParseMachineAddress parses "<machine>::<name>", where name is a strand's full name of any role.
-// ownNames are this machine's current and former names.
-// An address naming one of them is refused, since a post to this machine takes the bare name.
-// checkMachine judges the machine part.
-// The caller passes the machine name rule, which keeps this package on the standard library.
-// It refuses a malformed address, an own name, a machine that checkMachine refuses,
-// and a name part that is not a strand name.
-func ParseMachineAddress(address string, ownNames []string, checkMachine func(string) error) (MachineAddress, error) {
-	machine, namePart, found := strings.Cut(address, MachineAddressSeparator)
-	if !found || machine == "" || namePart == "" {
-		return MachineAddress{}, fmt.Errorf("agent address %q is invalid: want <machine>::<name>", address)
-	}
-	for _, own := range ownNames {
-		if machine == own {
-			return MachineAddress{}, fmt.Errorf("agent address %q names this machine (%s); way forward: name the agent without the machine, as %s",
-				address, machine, namePart)
-		}
-	}
-	if err := checkMachine(machine); err != nil {
-		return MachineAddress{}, fmt.Errorf("agent address %q: %w", address, err)
-	}
-	name, err := Parse(namePart)
-	if err != nil {
-		return MachineAddress{}, fmt.Errorf("agent address %q: %w; way forward: name a strand of that machine, such as %s",
-			address, err, FormatMachineAddress(machine, "<shortname>:orch"))
-	}
-	return MachineAddress{Machine: machine, Name: name}, nil
 }
 
 // FormatScopedProgram validates the shortname, the slug and the upper-case program name.

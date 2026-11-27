@@ -174,7 +174,7 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 }
 
 // TestOwnerPreflight_TeardownResume covers a resume at Worktree-Teardown whose task worktree is gone.
-// It runs no origin reconcile.
+// It runs no origin reconcile and writes no origin-owed marker.
 // It resumes when the local board shows the run owned here;
 // when it shows another owner, it refuses naming the owner and the adopt, with no wait for origin.
 // A resume at another row with its pair gone still runs the reconcile;
@@ -269,6 +269,10 @@ func TestOwnerPreflight_TeardownResume(t *testing.T) {
 			if reconciled != tt.wantReconcile {
 				t.Errorf("reconcile ran = %v; want %v", reconciled, tt.wantReconcile)
 			}
+			stands, standsErr := OriginOwed(c.location, c.slug)
+			if standsErr != nil || stands {
+				t.Errorf("OriginOwed() = %v, %v; want false, nil", stands, standsErr)
+			}
 		})
 	}
 }
@@ -317,7 +321,7 @@ func TestPreflightRunOwner_RemoveFollowUp(t *testing.T) {
 			}
 			ending := resumeReentry(slug)
 			if tt.wantFollowUp {
-				ending = pairteardown.BattenFollowUp(slug, record, true)
+				ending = pairteardown.BattenFollowUp(slug, record, true, false)
 			}
 			want := fmt.Sprintf("battencli: cannot resume %q: branch some-slug-records is diverged against origin; %s; %s", slug, tt.wayForward, ending)
 			if err.Error() != want {
@@ -329,9 +333,7 @@ func TestPreflightRunOwner_RemoveFollowUp(t *testing.T) {
 
 // TestPassExitCode asserts the exit code a pass returns for each refusal.
 // A refusal of a run another machine owns that the pre-run reaches exits 77, wrapped or not.
-// A covered run exits 78.
-// A continue pass of a run dobby may not continue exits 79.
-// A pass whose catch-up failed exits 80, and any other error exits 1.
+// A covered run exits 78, a continue pass of a run dobby may not continue exits 79, and any other error exits 1.
 // A claim the Worktree-Create row loses is not a row here.
 // No pre-run wraps it, and its stop ends in the driver's own envelope.
 func TestPassExitCode(t *testing.T) {
@@ -357,9 +359,6 @@ func TestPassExitCode(t *testing.T) {
 		{"WrappedOwnedElsewhere", func() error { return fmt.Errorf("outer: %w", ownedElsewhereFor(slug, "there", "some-beam")) }, dobbyengine.PassExitOwnedElsewhere},
 		{"Covered", func() error { return &coveredRefusal{err: errors.New("pause: held")} }, dobbyengine.PassExitCovered},
 		{"ContinueRefused", func() error { return fmt.Errorf("outer: %w", &continueRefusal{reason: "no state", slug: slug}) }, dobbyengine.PassExitContinueRefused},
-		{"CatchUpRefused", func() error {
-			return fmt.Errorf("outer: %w", &catchUpRefusal{text: "origin is unreachable", err: errors.New("no route")})
-		}, dobbyengine.PassExitOriginWait},
 		{"PlainError", func() error { return errors.New("boom") }, 1},
 	}
 	for _, tt := range tests {

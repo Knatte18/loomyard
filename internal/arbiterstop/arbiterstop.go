@@ -71,7 +71,7 @@ func HandsBack(producer, reason string) bool {
 // A loom stop is settled when it is an error stop of kind producer or bootstrap, or it has a transient class.
 // It is also settled when it is an interrupted stop under the reinvoke policy.
 // It is also settled when it is a blocked halt that is neither a landing halt nor a decision halt.
-// It is also settled when it awaits with a pending escalation of cause `hard-cap`, `circling`, `decision` or `stalemate`.
+// It is also settled when it awaits with a pending escalation of cause `hard-cap`, `circling` or `decision`.
 // Every other loom stop is refused, including a landing halt, a decision halt and a `budget` escalation.
 // Only the run's parent lifts those.
 // A batten stop is settled unless its bounce budget is spent or a precondition is unmet.
@@ -110,7 +110,7 @@ func Eligibility(stop Stop) error {
 			return refuse(fmt.Sprintf("the review escalation at %q is unreadable: %v", stop.Producer, stop.EscalationErr))
 		case !stop.EscalationPending:
 			return refuse(fmt.Sprintf("the run awaits at %q with no pending review escalation", stop.Producer))
-		case stop.EscalationCause == shedadapters.EscalationHardCap, stop.EscalationCause == shedadapters.EscalationCircling, stop.EscalationCause == shedadapters.EscalationDecision, stop.EscalationCause == shedadapters.EscalationStalemate:
+		case stop.EscalationCause == shedadapters.EscalationHardCap, stop.EscalationCause == shedadapters.EscalationCircling, stop.EscalationCause == shedadapters.EscalationDecision:
 			return nil
 		default:
 			return refuse(fmt.Sprintf("the review escalation at %q has cause %q, which goes to the run's parent", stop.Producer, stop.EscalationCause))

@@ -55,7 +55,7 @@ func hubLocation(t *testing.T, hub, worktreeName, anchorRel string) *lymcwd.Loca
 }
 
 // seedLoomConfigWithFriction writes <anchorPath>/_lym/config/loom.yaml with a full literal.
-// Its friction.model is the caller-chosen value; empty means Tier 2 is off.
+// Its friction key is the caller-chosen value; empty means Tier 2 is off.
 // Every key is written explicitly so the literal pins every value rather than relying on template fills.
 func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
 	t.Helper()
@@ -64,15 +64,15 @@ func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
 	cfgPath := filepath.Join(configDir, "loom.yaml")
-	contents := fmt.Sprintf(`discussion:
-  model: opus[effort=high]
-  timeout_min: 480
-  interactive: false
-review:
-  timeout_min: 240
-friction:
-  model: %s
-  timeout_min: 30
+	contents := fmt.Sprintf(`discussion: opus[effort=high]
+discussion_timeout_min: 480
+discussion_interactive: false
+plan: opus[effort=high]
+plan_timeout_min: 120
+review: opus[effort=high]
+review_timeout_min: 240
+friction: %s
+friction_timeout_min: 30
 driver: ""
 `, friction)
 	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
@@ -132,12 +132,6 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 			}
 			if c.refMatcher == nil {
 				t.Error("refMatcher = nil; want a non-nil matcher in hub mode")
-			}
-			if c.runID != loc.WorktreeName {
-				t.Errorf("runID = %q; want the worktree's own run %q", c.runID, loc.WorktreeName)
-			}
-			if !c.runner.HasReplyProbe() {
-				t.Error("runner.HasReplyProbe() = false; want the reply probe wired in hub mode")
 			}
 			if c.runDeps().InstructionFiles == nil {
 				t.Error("runDeps().InstructionFiles = nil; want Master's instruction file lister supplied for `lym webster run`")

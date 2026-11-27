@@ -204,18 +204,12 @@ type RemoveResult struct {
 // The wait for a push of the pair to let go of the lock lasts at most the topology's teardown wait.
 // When the wait runs out, Remove returns an error wrapping ErrPairPushRunning before any mutation.
 // The child holds the lock past the remote steps.
-// A failure after taking it that leaves a worktree of the pair in place releases the lock and spawns no push:
-// the pair's next synchronous push carries its commits.
+// A failure after taking it that leaves a worktree of the pair in place releases the lock and respawns the pair's push.
 // After a successful teardown, and before it returns, Remove disables auto gc in both hub stores.
 // It then runs a best-effort foreground `git gc --auto` in each.
 // A failure there is logged and never fails Remove, and a refused or failed Remove runs none of it.
-// The rerun argument is the command that retries the removal, such as a cancel that removes the pair;
-// a held teardown lock's refusal and the pending-teardown record name it.
-// The record names it with no condition on origin,
-// so that command must also finish the teardown once nothing of the pair remains.
-// An empty rerun names `lym fabric remove <slug>`.
-func (t *Topology) Remove(l *lymcwd.Location, slug string, force, remote bool, rerun string) (res RemoveResult, err error) {
-	return t.removePair(l, slug, force, remote, false, rerun)
+func (t *Topology) Remove(l *lymcwd.Location, slug string, force, remote bool) (res RemoveResult, err error) {
+	return t.removePair(l, slug, force, remote, false)
 }
 
 // RemoveLocal removes a paired warp and weft worktree without any origin step and without waiting on another writer.
@@ -224,18 +218,17 @@ func (t *Topology) Remove(l *lymcwd.Location, slug string, force, remote bool, r
 // It commits the sibling's pending records.
 // It then puts a local set-aside/<slug>/<sha> tag on the weft tip, reported in SetAsideTag;
 // it takes the place of the pushed archive tag.
-// It runs no ls-remote.
+// It runs no ls-remote and respawns no push after a failure.
 // It skips the store housekeeping.
 // It regenerates the hub workspace file with one attempt at its lock and reports WorkspaceSkipped when the lock is held.
 // The commits the pushed archive tag would have carried stay under the local tag.
 // The branch deletions keep their gates.
 func (t *Topology) RemoveLocal(l *lymcwd.Location, slug string, force bool) (res RemoveResult, err error) {
-	return t.removePair(l, slug, force, false, true, "")
+	return t.removePair(l, slug, force, false, true)
 }
 
 // removePair removes a worktree pair. In localMode it skips every origin step and every wait on another writer.
-// A non-empty rerun is the command that retries the removal; empty, the retry is `lym fabric remove <slug>`.
-func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, localMode bool, rerun string) (res RemoveResult, err error) {
+func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, localMode bool) (res RemoveResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
@@ -272,13 +265,11 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 	}
 
 	// The pair's detached pushes hold this lock shared, so no push runs against a worktree this call deletes.
-	// A push child that exited on the held lock leaves its commits to the pair's next synchronous push.
-	// That push carries them when a failure after this point leaves a worktree behind.
-	lockRerun := fmt.Sprintf("re-run `lym fabric remove %s`", slug)
-	if rerun != "" {
-		lockRerun = "re-run `" + rerun + "`"
-	}
-	hold, err := t.holdTeardown(rec, rec, l, slug, localMode, lockRerun, !localMode)
+	// A failure after this point that leaves a worktree behind respawns the pair's push once the lock is released.
+	// A child may have exited on the held lock, so the respawn is needed.
+	// A local removal holds the lock itself and respawns nothing:
+	// the surviving worktree's commits stay local for the next reconcile.
+	hold, err := t.holdTeardown(rec, rec, l, slug, localMode, fmt.Sprintf("re-run `lym fabric remove %s`", slug), !localMode)
 	if err != nil {
 		return RemoveResult{}, err
 	}
@@ -286,6 +277,10 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 	defer func() {
 		if !handedOver {
 			hold.finish(nil)
+		}
+		// A directory kept at the task worktree's path is no worktree, so it leaves nothing to push.
+		if err != nil && !errors.Is(err, ErrStrayPathKept) && !localMode && (pathPresent(target) || pathPresent(RecordsWorktreePath(l, slug))) {
+			respawnPairPush(l, slug)
 		}
 	}()
 
@@ -450,7 +445,6 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 		WarpBranch:         warpBranch,
 		ParentBranch:       parentBranch,
 		DeleteTaskOnOrigin: remote,
-		Rerun:              rerun,
 	})
 	res.RemoteHandedOff = out.handedOff
 	if !out.ran {

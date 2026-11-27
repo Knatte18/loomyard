@@ -99,13 +99,7 @@ func TestBuild_Errors(t *testing.T) {
 			name:     "entry gate naming a key the module's template lacks",
 			rows:     []Row{{Name: "Gated", Engine: "Stub", EntryGate: EntryChecks{"loom.nosuchkey"}}},
 			fullEnv:  true,
-			wantSubs: []string{"Gated", `setting key "loom.nosuchkey" is not a key of module`},
-		},
-		{
-			name:     "entry gate naming a moved key",
-			rows:     []Row{{Name: "Gated", Engine: "Stub", EntryGate: EntryChecks{"tapestry.plan_split"}}},
-			fullEnv:  true,
-			wantSubs: []string{"Gated", "tapestry.plan.split", "way forward"},
+			wantSubs: []string{"Gated", "loom.nosuchkey", "is not a key of module"},
 		},
 		{
 			name:     "entry gate naming a segment with no Env.Segments entry",
@@ -115,7 +109,7 @@ func TestBuild_Errors(t *testing.T) {
 		},
 		{
 			name:     "entry gate naming a setting while Env.SettingKnown is nil",
-			rows:     []Row{{Name: "Gated", Engine: "Stub", EntryGate: EntryChecks{"tapestry.plan.auto_accept"}}},
+			rows:     []Row{{Name: "Gated", Engine: "Stub", EntryGate: EntryChecks{"tapestry.plan_auto_accept"}}},
 			wantSubs: []string{"Gated", "Env.SettingKnown is nil", "fill Env.SettingKnown in the caller"},
 		},
 		{
@@ -201,17 +195,12 @@ func TestBuild_LoomContract(t *testing.T) {
 		{
 			name:     "no build row",
 			mutate:   setEngine("Build", "Stub"),
-			wantSubs: []string{"shedbuild: ", "0 build rows", "way forward: give the recipe exactly one build row, engine Implementer, DarnWrite, BeamAwait, SamplerSession or HardenFix"},
+			wantSubs: []string{"shedbuild: ", "0 build rows", "way forward: give the recipe exactly one build row, engine Implementer, DarnWrite, BeamAwait or SamplerSession"},
 		},
 		{
 			name:     "two build rows",
 			mutate:   setEngine("Middle", "DarnWrite"),
-			wantSubs: []string{"shedbuild: ", "2 build rows", "way forward: give the recipe exactly one build row, engine Implementer, DarnWrite, BeamAwait, SamplerSession or HardenFix"},
-		},
-		{
-			name:     "a HardenFix row beside another build row",
-			mutate:   setEngine("Middle", "HardenFix"),
-			wantSubs: []string{"shedbuild: ", "2 build rows", "engine Implementer, DarnWrite, BeamAwait, SamplerSession or HardenFix"},
+			wantSubs: []string{"shedbuild: ", "2 build rows", "way forward: give the recipe exactly one build row, engine Implementer, DarnWrite, BeamAwait or SamplerSession"},
 		},
 		{
 			name: "build row before the record row on the on_done path",
@@ -250,84 +239,6 @@ func TestBuild_LoomContract(t *testing.T) {
 			for _, want := range tt.wantSubs {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("Build() error = %v; want it to contain %q", err, want)
-				}
-			}
-		})
-	}
-
-	// validRing returns a recipe whose build row, a HardenFix row, sits in a ring of three rows in one segment:
-	// the Bouncer, which lies on the on_done path, a review row its on_stuck edge reaches, and the fix row.
-	validRing := func() Recipe {
-		return Recipe{
-			Contract:     "loom",
-			VerifySource: "tree_scope",
-			Entry:        "Pre",
-			Terminals:    []string{"Reflect"},
-			Producers: []Row{
-				{Name: "Pre", Engine: "Stub", OnDone: "Record"},
-				{Name: "Record", Engine: "RecordWrite", OnDone: "Bounce"},
-				{Name: "Bounce", Engine: "Bouncer", Segment: "Harden", OnDone: "Land", OnStuck: "Review"},
-				{Name: "Review", Engine: "Stub", Segment: "Harden", OnDone: "Fix"},
-				{Name: "Fix", Engine: "HardenFix", Segment: "Harden", OnDone: "Bounce"},
-				{Name: "Land", Engine: "Finalize", OnDone: "Reflect"},
-				{Name: "Reflect", Engine: "Stub"},
-			},
-		}
-	}
-	setRow := func(name string, mutate func(*Row)) func(*Recipe) {
-		return func(r *Recipe) {
-			for i := range r.Producers {
-				if r.Producers[i].Name == name {
-					mutate(&r.Producers[i])
-				}
-			}
-		}
-	}
-	ringTests := []struct {
-		name     string
-		mutate   func(*Recipe)
-		wantSubs []string
-	}{
-		{name: "a valid ring passes", mutate: func(*Recipe) {}},
-		{
-			name:     "a segment with its Bouncer recast to Stub",
-			mutate:   setEngine("Bounce", "Stub"),
-			wantSubs: []string{"shedbuild: ", `the build row "Fix" sits in segment "Harden", which holds no Bouncer row`, "way forward: add the segment's Bouncer row"},
-		},
-		{
-			name:     "a fix row whose ring edges are cut",
-			mutate:   setRow("Review", func(row *Row) { row.OnDone = "" }),
-			wantSubs: []string{"shedbuild: ", `the build row "Fix" is reached by no on_done or on_stuck edge from its segment's Bouncer "Bounce"`, "way forward: add the edge from a row of the ring to the build row"},
-		},
-		{
-			name: "a Bouncer placed before the record row on the on_done path",
-			mutate: func(r *Recipe) {
-				setRow("Pre", func(row *Row) { row.OnDone = "Bounce" })(r)
-				setRow("Bounce", func(row *Row) { row.OnDone = "Record" })(r)
-				setRow("Record", func(row *Row) { row.OnDone = "Land" })(r)
-			},
-			wantSubs: []string{"shedbuild: ", "does not lie after the record row", "way forward: place the build row after the record row on the on_done path from the entry"},
-		},
-	}
-	for _, tt := range ringTests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			r := validRing()
-			tt.mutate(&r)
-
-			if tt.wantSubs == nil {
-				if err := checkLoomContract(r); err != nil {
-					t.Errorf("checkLoomContract(ring) = %v; want nil", err)
-				}
-				return
-			}
-			_, err := Build(r, shedrecipe.Env{})
-			if err == nil {
-				t.Fatal("Build(ring) error = nil; want the loom contract refusal")
-			}
-			for _, want := range tt.wantSubs {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("Build(ring) error = %v; want it to contain %q", err, want)
 				}
 			}
 		})

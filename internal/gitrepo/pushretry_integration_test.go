@@ -97,8 +97,8 @@ func TestPlainPushPrimitives_ExhaustedRetryWrapsSentinelAndNeverRebases(t *testi
 		name string
 		push func(r *Repo) error
 	}{
-		{"Push", func(r *Repo) error { return r.Push(RefNamespace{}) }},
-		{"PushRebaseFree", func(r *Repo) error { return r.PushRebaseFree(RefNamespace{}) }},
+		{"Push", func(r *Repo) error { return r.Push() }},
+		{"PushRebaseFree", func(r *Repo) error { return r.PushRebaseFree() }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -152,7 +152,7 @@ func TestPushWithRetry_RetriesARealRefusalOfATagPushedByItsFullRef(t *testing.T)
 	err := PushWithRetry(func() error {
 		_, err := gitexec.Run([]string{"push", "origin", tagRef}, clonePath)
 		return err
-	}, tagRef, RefNamespace{}, delays, func(delay time.Duration) { sleeps = append(sleeps, delay) })
+	}, tagRef, delays, func(delay time.Duration) { sleeps = append(sleeps, delay) })
 
 	if !errors.Is(err, ErrPushRetriesExhausted) {
 		t.Errorf("err = %v; want it to wrap ErrPushRetriesExhausted", err)

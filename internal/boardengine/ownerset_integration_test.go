@@ -9,7 +9,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -19,7 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -279,12 +277,6 @@ func TestSetOwners(t *testing.T) {
 				}
 				if want := "Prime owner: `" + tt.wantPrime + "`.\n"; !strings.Contains(string(readme), want) {
 					t.Errorf("README.md = %q; want it to contain %q", readme, want)
-				}
-				committed := strings.Fields(gitkit.Git(t, f.bare, "show", "--name-only", "--format=", "main"))
-				for _, name := range []string{boardFile, "README.md", BoardDataFile, BoardPageFile} {
-					if !slices.Contains(committed, name) {
-						t.Errorf("origin's newest commit holds %v; want it to hold %s", committed, name)
-					}
 				}
 			}
 			if len(tt.wantStatus) > 0 {
@@ -637,49 +629,6 @@ func TestSetOwners(t *testing.T) {
 			}
 		})
 	}
-
-	t.Run("AnIdentityRegistersTheMachineInTheOwnersCommit", func(t *testing.T) {
-		t.Parallel()
-		f := newOwnerFixture(t, "neve")
-
-		identity := machinename.Identity{ID: "id-a", Name: "neve", Former: []string{"old"}}
-		got, err := SetOwners(f.boardDir, OwnerRequest{Machine: "neve", Identity: identity, Slugs: []string{"beamer"}, Sleep: failOnSleep(t)})
-		if err != nil || !slices.Equal(got.Recorded, []string{"beamer"}) {
-			t.Fatalf("SetOwners() = %+v, %v; want beamer recorded", got, err)
-		}
-		origin := f.originOwners(t)
-		if origin.Entries["beamer"].Owner != "neve" {
-			t.Errorf("origin owner of beamer = %q; want neve", origin.Entries["beamer"].Owner)
-		}
-		if want := (Registry{"id-a": {Name: "neve", Former: []string{"old"}}}); !reflect.DeepEqual(origin.Registry, want) {
-			t.Errorf("origin registry = %v; want %v", origin.Registry, want)
-		}
-		if count := gitkit.Git(t, f.bare, "rev-list", "--count", f.seedHead+"..main"); count != "1" {
-			t.Errorf("commits on origin since the seed = %s; want 1, the owner and the registration in one commit", count)
-		}
-	})
-
-	t.Run("AnIdentityARegisteredMachinesNameRefusesWritesNeitherAndReturnsTheRefusal", func(t *testing.T) {
-		t.Parallel()
-		f := newOwnerFixture(t, "neve")
-		if _, err := RegisterMachine(f.otherDir, Registration{Identity: machinename.Identity{ID: "id-b", Name: "neve"}}); err != nil {
-			t.Fatalf("RegisterMachine() from the second clone error = %v; want nil", err)
-		}
-		head := gitkit.RevParse(t, f.bare, "main")
-
-		identity := machinename.Identity{ID: "id-a", Name: "neve"}
-		got, err := SetOwners(f.boardDir, OwnerRequest{Machine: "neve", Identity: identity, Slugs: []string{"beamer"}, Sleep: failOnSleep(t)})
-		var refusal *RegistrationError
-		if !errors.As(err, &refusal) || len(got.Recorded) != 0 {
-			t.Fatalf("SetOwners() = %+v, %v; want a *RegistrationError and nothing recorded", got, err)
-		}
-		if after := gitkit.RevParse(t, f.bare, "main"); after != head {
-			t.Errorf("origin head = %s after a refusal; want it to stay %s", after, head)
-		}
-		if owner := f.originOwners(t).Entries["beamer"].Owner; owner != "" {
-			t.Errorf("origin owner of beamer = %q; want none written", owner)
-		}
-	})
 
 	t.Run("SkipGitWritesTheOwnerWithNoCommit", func(t *testing.T) {
 		t.Setenv("BOARD_SKIP_GIT", "1")

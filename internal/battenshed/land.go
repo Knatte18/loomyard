@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
@@ -72,7 +71,7 @@ type LandDeps struct {
 	// RunDeploy runs command in the prime with its output to logPath, ending it after timeout.
 	// An error means the shell could not start.
 	RunDeploy func(ctx context.Context, command, logPath string, timeout time.Duration) (DeployResult, error)
-	// PruneBoard prunes the done tasks off the board.
+	// PruneBoard prunes the done tasks off the board, keeping one that still carries notify_on_land.
 	PruneBoard func() error
 	// LandLock is the hub-level lock one landing holds for its whole body, acquired without blocking.
 	LandLock PrimeLock
@@ -278,7 +277,7 @@ func (p *landProducer) pullAndDeploy(ctx context.Context, parent string) (reason
 		return "", recordsStop, nil
 	}
 	if !slices.Contains(settings.DeployBranches, parent) {
-		logger.Info("battenshed: parent branch is not in "+configengine.KeyName("landing", "deploy_branches")+"; skipping deploy", "producer", p.name, "slug", p.slug, "parent", parent)
+		logger.Info("battenshed: parent branch is not in deploy_branches; skipping deploy", "producer", p.name, "slug", p.slug, "parent", parent)
 		return "", recordsStop, nil
 	}
 

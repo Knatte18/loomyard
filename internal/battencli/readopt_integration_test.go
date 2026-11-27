@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -19,7 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
-	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -67,10 +65,10 @@ func requireStatusState(t *testing.T, c *battenCLI, want shedengine.State) {
 // It returns the receiver with the report its resume reconcile judged last.
 func readoptReceiver(h *hubforge.Hub, slug string) (*battenCLI, *fabricengine.OriginReport) {
 	c := &battenCLI{location: h.Location, slug: slug}
-	c.readopt = hubReadoptSeams(h.Location, fabricengine.ReconcileOptions{})
+	c.readopt = hubReadoptSeams(h.Location)
 	var second fabricengine.OriginReport
 	c.reconcile = func(slug string) (fabricengine.OriginReport, error) {
-		report, err := reconcileRun(h.Location, slug, false, fabricengine.ReconcileOptions{})
+		report, err := reconcileRun(h.Location, slug, false)
 		second = report
 		return report, err
 	}
@@ -171,12 +169,11 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 
 	t.Run("ARemovedPairBeforeLandFailsTheRunNamingTheCancel", func(t *testing.T) {
 		t.Parallel()
-		boardkit.InstallReplay(t)
 
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		const slug = "removed-pair"
 		hubforge.AddPair(t, h, slug)
-		if _, err := h.Topology.Remove(h.Location, slug, false, true, ""); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, true); err != nil {
 			t.Fatalf("Remove: %v", err)
 		}
 		c, _ := readoptReceiver(h, slug)
@@ -229,7 +226,7 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 		gitkit.Git(t, prime, "merge", "--squash", taskBranch)
 		gitkit.Git(t, prime, "commit", "-m", "land "+slug)
 		gitkit.Git(t, prime, "push", "--quiet", "origin", "HEAD")
-		if _, err := h.Topology.Remove(h.Location, slug, false, true, ""); err != nil {
+		if _, err := h.Topology.Remove(h.Location, slug, false, true); err != nil {
 			t.Fatalf("Remove: %v", err)
 		}
 
@@ -276,49 +273,6 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 		}
 	})
 
-	t.Run("AResumeReconcileRetriesATransportFailureAndResumesOnceOriginAnswers", func(t *testing.T) {
-		t.Parallel()
-
-		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		const slug = "retry-pair"
-		hubforge.AddPair(t, h, slug)
-		repos := []string{h.PrimeWorktree(), h.PrimeRecords()}
-		originURLs := make([]string, len(repos))
-		for i, repo := range repos {
-			originURLs[i] = gitkit.Git(t, repo, "remote", "get-url", "origin")
-			gitkit.Git(t, repo, "remote", "set-url", "origin", "http://127.0.0.1:1/x")
-		}
-		var sleeps int
-		opts := fabricengine.ReconcileOptions{
-			RetryBound:    time.Minute,
-			RetryInterval: time.Second,
-			Sleep: func(time.Duration) {
-				sleeps++
-				for i, repo := range repos {
-					gitkit.Git(t, repo, "remote", "set-url", "origin", originURLs[i])
-				}
-			},
-		}
-		c := &battenCLI{location: h.Location, slug: slug}
-		var report fabricengine.OriginReport
-		c.reconcile = func(slug string) (fabricengine.OriginReport, error) {
-			var err error
-			report, err = reconcileRun(h.Location, slug, false, opts)
-			return report, err
-		}
-
-		if err := c.reconcileResume(); err != nil {
-			t.Fatalf("reconcileResume() = %v; want nil, the run resumed", err)
-		}
-
-		if report.Unreachable {
-			t.Error("the reconcile reported origin unreachable; want it retried until origin answered")
-		}
-		if sleeps != 1 {
-			t.Errorf("retry sleeps = %d; want 1, the one wait before origin answered", sleeps)
-		}
-	})
-
 	t.Run("APrefixSetOverALiveBareSlugPairKeepsItsBranch", func(t *testing.T) {
 		t.Parallel()
 
@@ -326,7 +280,7 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 		const slug = "bare-pair"
 		hubforge.AddPair(t, h, slug)
 		hubforge.SeedFabricConfig(t, h, "branch_prefix: hanf/\npathspec: \"\"\n")
-		seams := hubReadoptSeams(h.Location, fabricengine.ReconcileOptions{})
+		seams := hubReadoptSeams(h.Location)
 
 		if got, err := seams.TaskBranch(slug); err != nil || got != slug {
 			t.Errorf("TaskBranch(%q) = %q, %v; want the bare slug %q", slug, got, err, slug)

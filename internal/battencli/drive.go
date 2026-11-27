@@ -22,7 +22,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -108,6 +107,11 @@ func (c *battenCLI) driveRun(cmd *cobra.Command) error {
 		return battenRunEnvelope(exit, status, found, abandonedSession, yieldReason, c.spec.RunBusyMessage)
 	})
 	clihelp.SetExit(ctx, exit)
+	// A pass that reached origin and exited 0 pays the origin the earlier resume owed;
+	// any other pass leaves the marker standing.
+	if exit == 0 && c.originReached {
+		c.clearOriginOwed()
+	}
 	// A hand pass leaves the run to its parent's dobby, so the dobby is made live once the pass is over.
 	if err := c.ensureDobby(); err != nil {
 		logger.Warn("battencli: the pass ended but its parent's dobby is not live", "slug", c.slug, "error", err.Error())
@@ -117,13 +121,11 @@ func (c *battenCLI) driveRun(cmd *cobra.Command) error {
 
 // passExitCode returns the exit code of a pass that refused with err before the step loop:
 // the owned-elsewhere code for a run another machine owns; the covered code for a run a pause covers;
-// the continue-refused code for a continue pass of a run dobby may not continue;
-// the origin-wait code for a pass whose catch-up failed or was refused; and 1 for any other refusal.
+// the continue-refused code for a continue pass of a run dobby may not continue; and 1 for any other refusal.
 func passExitCode(err error) int {
 	var owned *OwnedElsewhereError
 	var covered *coveredRefusal
 	var continueRefused *continueRefusal
-	var catchUpRefused *catchUpRefusal
 	switch {
 	case errors.As(err, &owned):
 		return dobbyengine.PassExitOwnedElsewhere
@@ -131,8 +133,6 @@ func passExitCode(err error) int {
 		return dobbyengine.PassExitCovered
 	case errors.As(err, &continueRefused):
 		return dobbyengine.PassExitContinueRefused
-	case errors.As(err, &catchUpRefused):
-		return dobbyengine.PassExitOriginWait
 	default:
 		return 1
 	}
@@ -505,7 +505,7 @@ func (c *battenCLI) primeShuttle(dirs configengine.Dirs) (sheddriver.AgentShuttl
 	if err != nil {
 		return nil, err
 	}
-	engines, err := shuttleengines.NewForWorktree(shuttleConfig, dirs, hubgeom.EngineWorktree(location))
+	engines, err := shuttleengines.New(shuttleConfig, dirs)
 	if err != nil {
 		return nil, err
 	}
@@ -515,13 +515,12 @@ func (c *battenCLI) primeShuttle(dirs configengine.Dirs) (sheddriver.AgentShuttl
 		_, err := notifyRunParent(location, c.slug, line)
 		return err
 	})
-	runner.SetReplyProbe(creelcli.AwaitsReplyProbe(location, battenProgram))
 	// The tackler and the arbiter work for the task's run,
 	// so their sessions count toward the task worktree's usage records.
 	if taskLocation, err := taskWorktreeLocation(location, c.slug); err != nil {
 		logger.Warn("battencli: locate the task worktree to record its tackler and arbiter sessions failed; they stay unrecorded", "slug", c.slug, "error", err)
 	} else {
-		runner.SetSessionEnd(shedadapters.UsageRecorder(taskLocation, shuttleengines.RecordReaders(dirs)))
+		runner.SetSessionEnd(shedadapters.UsageRecorder(taskLocation, shuttleengines.RecordReaders()))
 	}
 	return sheddriver.RunnerShuttle{Runner: runner}, nil
 }
@@ -577,8 +576,6 @@ func (c *battenCLI) loadedArbiterDeps() (shedarbiter.Deps, error) {
 // haltedRowGuard returns the arbiter's goto guard, which admits only the row the run is halted at.
 // The guard reads the halted row from the status on each call.
 // A goto to an earlier row would re-run Seed-Child over a live pair's local config layer and seed, or Worktree-Create.
-// The batten recipe has no PR-Review row, so no batten goto or relaunch moves a run onto that row:
-// the goto and relaunch requests built here pass no hook that resets a PR-Review review.
 func (c *battenCLI) haltedRowGuard() shedengine.GotoGuard {
 	return func(target string) (string, error) {
 		status, found, err := c.readRunStatus()

@@ -6,6 +6,7 @@ package configengine_test
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -632,6 +633,13 @@ func TestConfigPaths(t *testing.T) {
 		{"StagingFile", configengine.StagingFile(base, "board"), filepath.Join(base, lymdirs.DotLymDirName, "config", "board.yaml")},
 		{"ConfigFileRel loom", configengine.ConfigFileRel("loom"), filepath.Join(lymdirs.LymDirName, "config", "loom.yaml")},
 		{"ConfigFileRel board", configengine.ConfigFileRel("board"), filepath.Join(lymdirs.LymDirName, "config", "board.yaml")},
+		{"SparseMarker", configengine.SparseMarker(base), filepath.Join(base, lymdirs.LymDirName, "config", "sparse")},
+		{"SparseMarkerRel", configengine.SparseMarkerRel(), filepath.Join(lymdirs.LymDirName, "config", "sparse")},
+		{"SparseMarker is SparseMarkerRel under the base", configengine.SparseMarker(base), filepath.Join(base, configengine.SparseMarkerRel())},
+		{"BaseSparseMarker", configengine.BaseSparseMarker(base), filepath.Join(base, lymdirs.LymDirName, "config", "base-sparse")},
+		{"BaseSparseMarkerRel", configengine.BaseSparseMarkerRel(), filepath.Join(lymdirs.LymDirName, "config", "base-sparse")},
+		{"BaseSparseMarker is BaseSparseMarkerRel under the base", configengine.BaseSparseMarker(base), filepath.Join(base, configengine.BaseSparseMarkerRel())},
+		{"BaseSparseMarker differs from SparseMarker", fmt.Sprint(configengine.BaseSparseMarker(base) != configengine.SparseMarker(base)), "true"},
 		{"ConfigFile is ConfigFileRel under the base", configengine.ConfigFile(base, "myapp"), filepath.Join(base, configengine.ConfigFileRel("myapp"))},
 	}
 	for _, tt := range tests {

@@ -1,6 +1,7 @@
 // reconcile_migrates_markers_integration_test.go covers Reconcile's per-pair judging of the weft anchor markers:
-// a weft with no committed marker gets the one its content implies.
-// The same derivation is shown for a weft branch Add adopts.
+// a weft with no committed marker gets the one its content implies,
+// and the hub-wide marker on the board is retired once every weft carries its own.
+// The same migration is shown for a weft branch Add adopts.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 // The tests are serial: they swap the package push seam with SwapPushRecorderForTest.
@@ -39,6 +40,19 @@ func committedMarkerAt(t *testing.T, dir, rev string) string {
 	return gitkit.Git(t, dir, "show", rev+":"+lymcwd.AnchorFileName)
 }
 
+// seedBoardMarkers commits the legacy hub-wide marker and a leftover pre-rename marker on the board, then pushes them.
+// It also pushes the prime's weft branch.
+// A fixture hub leaves that branch local while its warp sibling is on origin; a live hub has it on origin.
+func seedBoardMarkers(t *testing.T, h *hubforge.Hub) {
+	t.Helper()
+
+	gitkit.Git(t, h.PrimeRecords(), "push", "--quiet", "origin", "HEAD")
+	board := h.BoardDir()
+	gitkit.CommitFile(t, board, lymcwd.AnchorFileName, ".\n", "legacy hub-wide marker")
+	gitkit.CommitFile(t, board, lymcwd.StaleAnchorFileName, ".\n", "leftover pre-rename marker")
+	gitkit.Git(t, board, "push", "--quiet", "origin", "HEAD")
+}
+
 // reconcileWithoutPairErrors runs a reconcile pass and fails the test on a pass error or on any pair carrying an Error.
 func reconcileWithoutPairErrors(t *testing.T, h *hubforge.Hub) fabricengine.ReconcileResult {
 	t.Helper()
@@ -55,9 +69,9 @@ func reconcileWithoutPairErrors(t *testing.T, h *hubforge.Hub) fabricengine.Reco
 	return res
 }
 
-// TestReconcile_RecordsMarkersOfMarkerlessWefts covers the marker a reconcile pass derives for a markerless weft.
-// It also covers the same derivation on Add's adopt path.
-func TestReconcile_RecordsMarkersOfMarkerlessWefts(t *testing.T) {
+// TestReconcile_MigratesMarkerlessWefts covers the migration of markerless wefts.
+// It also covers the census behind the Bolt marker's retirement, and the same migration on Add's adopt path.
+func TestReconcile_MigratesMarkerlessWefts(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	pair := hubforge.TemplatePairSlug
@@ -70,9 +84,6 @@ func TestReconcile_RecordsMarkersOfMarkerlessWefts(t *testing.T) {
 
 		// The prime moves to "sub" after the pair forked from it, so the pair's content stays at ".".
 		hubforge.ReanchorPair(t, h, prime, "sub")
-		// A fresh hub's weft tracks no wired directory, so each weft tracks one file for its content to imply the anchor.
-		gitkit.CommitFile(t, primeWeft, "sub/"+lymdirs.LymDirName+"/keep.txt", "x", "track content at sub")
-		gitkit.CommitFile(t, pairWeft, lymdirs.LymDirName+"/keep.txt", "x", "track content at the root")
 		dropCommittedMarker(t, primeWeft)
 		dropCommittedMarker(t, pairWeft)
 
@@ -97,7 +108,7 @@ func TestReconcile_RecordsMarkersOfMarkerlessWefts(t *testing.T) {
 
 		calls := recorder.Calls()
 		if len(calls) != 2 {
-			t.Fatalf("push recorder calls = %d; want one per recorded weft", len(calls))
+			t.Fatalf("push recorder calls = %d; want one per migrated weft", len(calls))
 		}
 		if calls[0].WeftPath != primeWeft || calls[0].WarpPath != "" {
 			t.Errorf("first push = %+v; want the prime's records worktree %s alone", calls[0], primeWeft)
@@ -113,11 +124,11 @@ func TestReconcile_RecordsMarkersOfMarkerlessWefts(t *testing.T) {
 			}
 		}
 		if _, err := os.Lstat(filepath.Join(h.PrimeWorktree(), lymdirs.LymDirName)); err == nil {
-			t.Error("the prime was wired at the warp root; want its junctions at the anchor read back from the recorded marker")
+			t.Error("the prime was wired at the warp root; want its junctions at the anchor read back from the migrated marker")
 		}
 	})
 
-	t.Run("UnwireKeepsTheRecordedMarker", func(t *testing.T) {
+	t.Run("UnwireKeepsTheMigratedMarker", func(t *testing.T) {
 		h := hubforge.CopyHub(t, migrationShape)
 		fabricengine.SwapPushRecorderForTest(t)
 		pairWeft := h.PairRecordsSibling(pair)
@@ -136,6 +147,166 @@ func TestReconcile_RecordsMarkersOfMarkerlessWefts(t *testing.T) {
 		}
 		if dirt := gitkit.Git(t, pairWeft, "status", "--porcelain", "--", lymcwd.AnchorFileName); dirt != "" {
 			t.Errorf("marker status after unwire = %q; want clean", dirt)
+		}
+	})
+
+	t.Run("BoltMarkerRetiredInOneBoardCommitOnceEveryWeftCarriesOne", func(t *testing.T) {
+		h := hubforge.CopyHub(t, migrationShape)
+		fabricengine.SwapPushRecorderForTest(t)
+		seedBoardMarkers(t, h)
+		board := h.BoardDir()
+		before := gitkit.RevListCount(t, board, "HEAD")
+
+		res := reconcileWithoutPairErrors(t, h)
+
+		if res.BoltAnchor != "removed" {
+			t.Fatalf("BoltAnchor = %q; want %q", res.BoltAnchor, "removed")
+		}
+		if got := gitkit.RevListCount(t, board, "HEAD"); got != before+1 {
+			t.Errorf("board commits = %d; want %d, the one removal commit", got, before+1)
+		}
+		removed := strings.Fields(gitkit.Git(t, board, "show", "--format=", "--name-only", "HEAD"))
+		if len(removed) != 2 {
+			t.Errorf("files in the removal commit = %v; want both markers", removed)
+		}
+		for _, name := range []string{lymcwd.AnchorFileName, lymcwd.StaleAnchorFileName} {
+			if _, err := os.Lstat(filepath.Join(board, name)); err == nil {
+				t.Errorf("board still holds %s", name)
+			}
+		}
+		if head, upstream := gitkit.RevParse(t, board, "HEAD"), gitkit.RevParse(t, board, "@{upstream}"); head != upstream {
+			t.Errorf("board HEAD %s is not pushed; upstream is %s", head, upstream)
+		}
+	})
+
+	t.Run("HubWithNoBoltMarkerReportsNothing", func(t *testing.T) {
+		h := hubforge.CopyHub(t, migrationShape)
+		fabricengine.SwapPushRecorderForTest(t)
+
+		if res := reconcileWithoutPairErrors(t, h); res.BoltAnchor != "" {
+			t.Errorf("BoltAnchor = %q; want none for a hub with no Bolt marker", res.BoltAnchor)
+		}
+	})
+
+	t.Run("BoltMarkerKeptWhileACensusMemberLacksOne", func(t *testing.T) {
+		tests := []struct {
+			name string
+			// arrange breaks the census in one way and returns what the verdict must name.
+			arrange func(t *testing.T, h *hubforge.Hub) string
+		}{
+			{
+				// The pair's weft is pushed markerless; the pass commits its marker, but the fetched ref still lacks it.
+				"MarkerCommitNotPushed",
+				func(t *testing.T, h *hubforge.Hub) string {
+					weft := h.PairRecordsSibling(pair)
+					dropCommittedMarker(t, weft)
+					gitkit.Git(t, weft, "push", "--quiet", "origin", "HEAD")
+					return "origin/" + fabricengine.RecordsBranchName(pair)
+				},
+			},
+			{
+				"FetchedWeftRefMissing",
+				func(t *testing.T, h *hubforge.Hub) string {
+					gitkit.Git(t, h.PrimeRecords(), "update-ref", "-d", "refs/remotes/origin/"+fabricengine.RecordsBranchName(pair))
+					return fabricengine.RecordsBranchName(pair)
+				},
+			},
+			{
+				"CommittedMarkerBlank",
+				func(t *testing.T, h *hubforge.Hub) string {
+					weft := h.PairRecordsSibling(pair)
+					gitkit.CommitFile(t, weft, lymcwd.AnchorFileName, "\n", "blank the marker")
+					return weft
+				},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				h := hubforge.CopyHub(t, migrationShape)
+				fabricengine.SwapPushRecorderForTest(t)
+				seedBoardMarkers(t, h)
+				want := tt.arrange(t, h)
+
+				res, err := h.Topology.Reconcile(h.Location)
+				if err != nil {
+					t.Fatalf("Reconcile() = %v; want nil", err)
+				}
+				if !strings.HasPrefix(res.BoltAnchor, "kept: ") || !strings.Contains(res.BoltAnchor, want) {
+					t.Errorf("BoltAnchor = %q; want a kept verdict naming %q", res.BoltAnchor, want)
+				}
+				if _, err := os.Lstat(filepath.Join(h.BoardDir(), lymcwd.AnchorFileName)); err != nil {
+					t.Errorf("board marker went missing: %v", err)
+				}
+			})
+		}
+	})
+
+	t.Run("BoltMarkerRetiredOnceTheMigratedMarkerIsPushed", func(t *testing.T) {
+		h := hubforge.CopyHub(t, migrationShape)
+		fabricengine.SwapPushRecorderForTest(t)
+		seedBoardMarkers(t, h)
+		weft := h.PairRecordsSibling(pair)
+		dropCommittedMarker(t, weft)
+		gitkit.Git(t, weft, "push", "--quiet", "origin", "HEAD")
+
+		if res := reconcileWithoutPairErrors(t, h); !strings.HasPrefix(res.BoltAnchor, "kept: ") {
+			t.Fatalf("first pass BoltAnchor = %q; want kept while the migrated marker is unpushed", res.BoltAnchor)
+		}
+		gitkit.Git(t, weft, "push", "--quiet", "origin", "HEAD")
+
+		if res := reconcileWithoutPairErrors(t, h); res.BoltAnchor != "removed" {
+			t.Errorf("second pass BoltAnchor = %q; want %q", res.BoltAnchor, "removed")
+		}
+	})
+
+	t.Run("OrphanRemoteWeftBranchIsNotCounted", func(t *testing.T) {
+		h := hubforge.CopyHub(t, migrationShape)
+		fabricengine.SwapPushRecorderForTest(t)
+		seedBoardMarkers(t, h)
+
+		// A markerless weft branch on origin whose warp sibling never reached origin.
+		weft := h.PairRecordsSibling(pair)
+		pairBranch := fabricengine.RecordsBranchName(pair)
+		gitkit.Git(t, weft, "checkout", "--quiet", "-b", "orphan-weft")
+		dropCommittedMarker(t, weft)
+		gitkit.Git(t, weft, "push", "--quiet", "origin", "orphan-weft")
+		gitkit.Git(t, weft, "checkout", "--quiet", pairBranch)
+
+		if res := reconcileWithoutPairErrors(t, h); res.BoltAnchor != "removed" {
+			t.Errorf("BoltAnchor = %q; want %q, the orphan not counted", res.BoltAnchor, "removed")
+		}
+	})
+
+	t.Run("CensusMakesNoNetworkCall", func(t *testing.T) {
+		tests := []struct {
+			name string
+			// arrange runs with the remote reachable and returns what the verdict must contain.
+			arrange func(t *testing.T, h *hubforge.Hub) string
+		}{
+			{"EveryMarkerPresent", func(*testing.T, *hubforge.Hub) string { return "fetch_failed" }},
+			{
+				"FetchedRefLacksMarker",
+				func(t *testing.T, h *hubforge.Hub) string {
+					weft := h.PairRecordsSibling(pair)
+					dropCommittedMarker(t, weft)
+					gitkit.Git(t, weft, "push", "--quiet", "origin", "HEAD")
+					return "origin/" + fabricengine.RecordsBranchName(pair)
+				},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				h := hubforge.CopyHub(t, migrationShape)
+				fabricengine.SwapPushRecorderForTest(t)
+				seedBoardMarkers(t, h)
+				want := tt.arrange(t, h)
+				gitkit.Git(t, h.PrimeRecords(), "remote", "set-url", "origin", filepath.Join(t.TempDir(), "missing"))
+
+				res := reconcileWithoutPairErrors(t, h)
+				if !strings.HasPrefix(res.BoltAnchor, "kept: ") || !strings.Contains(res.BoltAnchor, want) {
+					t.Errorf("BoltAnchor = %q; want a kept verdict containing %q", res.BoltAnchor, want)
+				}
+			})
 		}
 	})
 

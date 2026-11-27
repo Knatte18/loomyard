@@ -1,10 +1,11 @@
 // pawlwiring.go holds the wiring only a pawl run needs: the seams of Beam-Up, Beam-Await and Beam-Down over the hub;
 // the notice of Beam-Up's warnings; the landing re-check Beam-Await runs;
-// and the blocker read that backstops the land check.
+// the blocker read that backstops the land check; and the side effects of a move off a retired row.
 
 package loomcli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,16 +20,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
+	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // pawlProgram is the program name the pawl rows sign their notices to the beam's orch with.
 const pawlProgram = "PAWL"
+
+// retiredMoveGitHubTimeout bounds the GitHub read of a move off a retired row, so a stuck network holds the move for no longer than that.
+const retiredMoveGitHubTimeout = 30 * time.Second
 
 // pawlDeps assembles the seams of the pawl producers for the beam pair at location, whose slug names its project entry.
 // Every closure reads or writes on demand and opens nothing at build time, since wire also runs for status and pause.
@@ -43,6 +49,10 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 	if found {
 		runID = seed.StartedAt
 	}
+	retiredRows, err := loomrecipe.RetiredRowNames(shedrun.RecipePawl)
+	if err != nil {
+		return pawlengine.Deps{}, err
+	}
 
 	prime := func() (*lymcwd.Location, error) { return primeOfHub(location) }
 	notifyPosted := func(line string) (bool, error) { return orchcli.NotifyOrchAt(location, pawlProgram, line) }
@@ -54,6 +64,8 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 		Slug:  slug,
 		Paths: hubgeom.PawlPaths(location),
 		RunID: runID,
+		// RetiredRows are the rows the recipe's retired map names, so a hold an older binary wrote under one of them is still found.
+		RetiredRows: retiredRows,
 		SetStatus: func(producer string) error {
 			board, err := boardengine.OpenHub(location.HubPath)
 			if err != nil {
@@ -77,11 +89,7 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 			return producer, nil
 		},
 		OwnedElsewhere: func() (bool, error) {
-			here, err := machinename.ReadIdentity()
-			if err != nil {
-				return false, err
-			}
-			registry, err := hubRegistry(location)
+			here, err := machinename.Name()
 			if err != nil {
 				return false, err
 			}
@@ -89,7 +97,7 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 			if err != nil {
 				return false, err
 			}
-			return boardengine.OwnedElsewhere(owner, registry, here), nil
+			return boardengine.OwnedElsewhere(owner, here), nil
 		},
 		MarkBeam: func() error {
 			hub, err := prime()
@@ -149,37 +157,7 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 		StampWake: func(at time.Time) error {
 			return shedrun.WriteWakeStamp(shedrun.WakeRecord(location, shedrun.SelfRunID), pawlengine.NameBeamAwait, at)
 		},
-		Notify:     notifyPosted,
-		Autonomous: func() bool { return hubgeom.Autonomy(location, slug) },
-		HoldsCommits: func() (bool, error) {
-			hub, err := prime()
-			if err != nil {
-				return false, err
-			}
-			origin, found, err := fabricengine.ReadOriginFor(hub, slug)
-			if err != nil {
-				return false, err
-			}
-			if !found {
-				return false, fmt.Errorf("the beam %s records no origin", slug)
-			}
-			beam, err := fabricengine.Open(location)
-			if err != nil {
-				return false, err
-			}
-			return beam.HeadHoldsCommitsNotIn("refs/heads/" + origin.ParentBranch)
-		},
-		WorkRemains: func() (bool, error) {
-			hub, err := prime()
-			if err != nil {
-				return false, err
-			}
-			blockers, err := battencli.ReadBeamLandBlockers(hub, slug)
-			if err != nil {
-				return false, err
-			}
-			return !blockers.Empty(), nil
-		},
+		Notify: notifyPosted,
 		Down: func() error {
 			_, err := orchcli.BeamDown(location)
 			return err
@@ -187,6 +165,96 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 		Now:   time.Now,
 		Sleep: sleepContext,
 	}, nil
+}
+
+// pawlRetiredMove returns the seam that moves the beam slug at location off a retired row, over the hub.
+// The PR-Review session ends through the run's `RoleSession` records,
+// and the pull request's state reads through the pair's origin; the status and notice seams come from the pawl run.
+// Every closure reads or writes on demand and opens nothing at build time, since wire also runs for status and pause.
+func pawlRetiredMove(location *lymcwd.Location, slug string, pawl pawlengine.Deps) func(from, to string, resumed bool) error {
+	recordPath := shedrun.PullRequestRecord(location, shedrun.SelfRunID)
+	recordLock := shedrun.PullRequestRecordLock(location, shedrun.SelfRunID)
+	commitRecord := pullRequestRecordCommitter(newPrePushCheck(location, shedrun.SelfRunID), location)
+	deps := pawlengine.RetiredMoveDeps{
+		Slug:            slug,
+		Paths:           hubgeom.PawlPaths(location),
+		LandingPath:     loomengine.BeamLandingPath(location),
+		LandingLockPath: loomengine.BeamLandingLockPath(location),
+		ReadyPath:       loomengine.BeamReadyPath(location),
+		ReadyLockPath:   loomengine.BeamReadyLockPath(location),
+		EndSession: func() error {
+			record, found, err := pullrequest.ReadRecord(recordPath, recordLock)
+			if err != nil || !found || record.StrandGUID == "" {
+				return err
+			}
+			_, err = runproc.EndRole(fabricengine.RunProcDir(location.HubPath), slug, runproc.RoleSession, os.Getpid())
+			return err
+		},
+		ScratchPullRequest: func() (int, string, bool, error) {
+			record, found, err := pullrequest.ReadRecord(recordPath, recordLock)
+			if err != nil || !found {
+				return 0, "", false, err
+			}
+			return record.Number, record.URL, true, nil
+		},
+		PullRequestOpen: func(number int) (bool, error) { return pullRequestOpen(location, number) },
+		BeamHead: func() (string, error) {
+			fabric, err := fabricengine.Open(location)
+			if err != nil {
+				return "", err
+			}
+			return fabric.HeadSHA()
+		},
+		RemoveScratch: func() error {
+			if err := pullrequest.RemoveRecord(recordPath, recordLock); err != nil {
+				return err
+			}
+			return commitRecord()
+		},
+		Commit:    func() error { return commitLandingDirectory(location, slug) },
+		SetStatus: pawl.SetStatus,
+		Notify: func(line string) error {
+			_, err := pawl.Notify(line)
+			return err
+		},
+	}
+	return func(from, to string, resumed bool) error {
+		return pawlengine.MoveOffRetired(deps, from, to, resumed)
+	}
+}
+
+// pullRequestOpen reports whether GitHub reports the pull request number open, read through the origin of the pair at location.
+func pullRequestOpen(location *lymcwd.Location, number int) (bool, error) {
+	fabric, err := fabricengine.Open(location)
+	if err != nil {
+		return false, err
+	}
+	originURL, err := fabric.OriginURL()
+	if err != nil {
+		return false, err
+	}
+	client, err := pullrequest.Open(originURL)
+	if err != nil {
+		return false, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), retiredMoveGitHubTimeout)
+	defer cancel()
+	status, err := client.Status(ctx, number)
+	if err != nil {
+		return false, err
+	}
+	return status.State == pullrequest.StateOpen, nil
+}
+
+// commitLandingDirectory commits the landing directory of the beam pair at location;
+// it commits nothing when the directory holds no content git can commit.
+func commitLandingDirectory(location *lymcwd.Location, slug string) error {
+	hasContent, err := fabricengine.AnchoredPathHasContent(location, loomengine.LandingDirRel())
+	if err != nil || !hasContent {
+		return err
+	}
+	_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.LandingDirRel()}, fmt.Sprintf("loom: move the landing of %s off a retired row", slug), fabricengine.EnvSyncOptions())
+	return err
 }
 
 // runBeamUpStep brings the beam slug up through beamUp and surfaces the warnings of its report through notify.
@@ -263,24 +331,11 @@ func ownerOfSubject(location *lymcwd.Location, slug string) (owner, subject stri
 	return owner, subject, err
 }
 
-// hubRegistry reads the machine registry the hub's local board records.
-func hubRegistry(location *lymcwd.Location) (boardengine.Registry, error) {
-	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(location.HubPath))
-	if err != nil {
-		return nil, err
-	}
-	return owners.Registry, nil
-}
-
 // pawlRecheck reads what the landing re-check judges for the beam slug at location.
 // These are the members and pairs working under the beam, the beam's owner, the parent's owner and the ready record.
 // It returns the lines naming each failed check, empty when the beam may land.
 func pawlRecheck(location *lymcwd.Location, slug string) ([]string, error) {
-	here, err := machinename.ReadIdentity()
-	if err != nil {
-		return nil, err
-	}
-	registry, err := hubRegistry(location)
+	here, err := machinename.Name()
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +364,7 @@ func pawlRecheck(location *lymcwd.Location, slug string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return pawlRecheckLines(slug, ready, blockers, refusal, registry, here, beamOwner, parentOwner, parentSubject), nil
+	return pawlRecheckLines(slug, ready, blockers, refusal, here, beamOwner, parentOwner, parentSubject), nil
 }
 
 // pawlRecheckLines words the failed landing re-check of the beam slug as lines, empty when every check passes.
@@ -317,7 +372,7 @@ func pawlRecheck(location *lymcwd.Location, slug string) ([]string, error) {
 // A beam this machine does not own names `lym adopt <slug>`.
 // A parent another machine owns names `lym adopt <parentSubject>`, where the subject is `root` for the prime.
 // A beam not flagged ready names `lym beam ready <slug>`.
-func pawlRecheckLines(slug string, ready bool, blockers battencli.BeamLandBlockers, refusal error, registry boardengine.Registry, here machinename.Identity, beamOwner, parentOwner, parentSubject string) []string {
+func pawlRecheckLines(slug string, ready bool, blockers battencli.BeamLandBlockers, refusal error, here, beamOwner, parentOwner, parentSubject string) []string {
 	var lines []string
 	switch {
 	case refusal != nil:
@@ -325,11 +380,11 @@ func pawlRecheckLines(slug string, ready bool, blockers battencli.BeamLandBlocke
 	case !blockers.Empty():
 		lines = append(lines, fmt.Sprintf("work remains under the beam %s; run `lym beam land %s` again once it is gone", slug, slug))
 	}
-	if boardengine.OwnedElsewhere(beamOwner, registry, here) {
-		lines = append(lines, fmt.Sprintf("the beam %s is owned by %s, not this machine (%s): run `lym adopt %s` to take it", slug, beamOwner, here.Name, slug))
+	if boardengine.OwnedElsewhere(beamOwner, here) {
+		lines = append(lines, fmt.Sprintf("the beam %s is owned by %s, not this machine (%s): run `lym adopt %s` to take it", slug, beamOwner, here, slug))
 	}
-	if boardengine.OwnedElsewhere(parentOwner, registry, here) {
-		lines = append(lines, fmt.Sprintf("the beam's parent is owned by %s, not this machine (%s): run `lym adopt %s` to take it", parentOwner, here.Name, parentSubject))
+	if boardengine.OwnedElsewhere(parentOwner, here) {
+		lines = append(lines, fmt.Sprintf("the beam's parent is owned by %s, not this machine (%s): run `lym adopt %s` to take it", parentOwner, here, parentSubject))
 	}
 	if !ready {
 		lines = append(lines, fmt.Sprintf("the beam %s is not flagged ready to merge: run `lym beam ready %s` to flag it", slug, slug))

@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -41,7 +40,7 @@ const raddleFileEngine = "RaddleFile"
 // A run whose recipe rows hold a split perch never reads it.
 const (
 	raddleSettingModule  = "loom"
-	raddleAutoApproveKey = "raddle.auto_approve"
+	raddleAutoApproveKey = "raddle_auto_approve"
 )
 
 // raddleRunHistory returns the history of the run's status file at location, empty when the run has no status file yet.
@@ -140,8 +139,7 @@ func raddleWriteEnv(location *lymcwd.Location, cfg loomengine.Config, stencilsDi
 				}
 				auto, ok := value.(bool)
 				if !ok {
-					key := configengine.KeyName(raddleSettingModule, raddleAutoApproveKey)
-					return false, fmt.Errorf("setting %s holds %v, want true or false; way forward: set %s in loom.yaml, or in the run profile's raddle block", key, value, key)
+					return false, fmt.Errorf("setting %s.%s holds %v, want true or false; way forward: set %s in loom.yaml, or in the run profile's raddle block", raddleSettingModule, raddleAutoApproveKey, value, raddleAutoApproveKey)
 				}
 				return auto, nil
 			},

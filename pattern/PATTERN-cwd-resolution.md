@@ -11,7 +11,7 @@
   raw `os.Getwd` and `git rev-parse --show-toplevel` are banned elsewhere.
 - A module's own durable subdirectory is its own constant joined onto `AnchorPath()`, never a `lymcwd` call.
 - A worktree's anchor comes from its own `.lym-anchor` at the root of its weft branch.
-  With none recorded, the anchor is `"."`.
+  The fallback is the hub-wide Bolt marker, and `"."` after that.
 - Code outside `lymcwd` gets another worktree's `Location` through `lymcwd.NamedWorktree(hubPath, name)`.
   The `Location` is at that worktree's own anchor.
 - Only `fabricengine` writes the marker or reads it from git; `lymcwd` reads the working tree alone.
@@ -35,7 +35,7 @@ so it never imports `internal/lymcwd` directly.
 
 ### Bound packages
 
-`internal/pattern`, `buildinfo`, `standalonestate`, `shedengine`, `sheddriver`, `shedarbiter`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `shuttleengines`, `reedengine`, `burlerengine`, `websterengine`, `weaverengine`, `verifytree`, `cliwire`, `battenshed`, `battenrecipe`, `orchengine`, `parentlock`, `hubreconcile`, `reportengine`, `creelengine`, `dobbyengine`, `slackengine`.
+`internal/pattern`, `buildinfo`, `standalonestate`, `shedengine`, `sheddriver`, `shedarbiter`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `shuttleengines`, `reedengine`, `burlerengine`, `websterengine`, `weaverengine`, `verifytree`, `cliwire`, `battenshed`, `battenrecipe`, `orchengine`, `parentlock`, `hubreconcile`, `reportengine`, `creelengine`, `dobbyengine`, `slackengine`.
 
 ### Detached runners
 
@@ -48,7 +48,8 @@ Only a standalone CLI's own wiring calls it.
 No hub-level container is ever junctioned into a worktree.
 The Bolt checkout is reachable from the hub only.
 
-- `_portals` and `_launchers` are names no verb writes; they stay reserved, so no pair can claim one.
+- `_portals` is retired and stays reserved; `lym fabric reconcile` sweeps what a hub still holds.
+- `_launchers` is retired and stays reserved; `lym cleanup` sweeps what a hub still holds.
 - Workspace files are the hub's `<RepoName>.code-workspace` and each beam's `<RepoName>-<beam>.code-workspace`.
   They sit directly in the hub dir and reference hub-inward folders only.
   They are never written into a worktree.

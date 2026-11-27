@@ -503,6 +503,7 @@ func (c *loomCLI) startSuccessFields(driver, slug string, putDriverToWork bool) 
 // startCmd builds the `start` subcommand: the session bootstrap.
 func (c *loomCLI) startCmd() *cobra.Command {
 	var parentFlag string
+	var noAttachFlag bool
 
 	cmd := &cobra.Command{
 		Use:         "start",
@@ -597,9 +598,7 @@ Example:
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			if err := c.ensureStatusStrand(); errors.Is(err, errStatusStrandNotReplaced) {
-				logger.Warn("loom: the status pane will be missing this run", "cause", err)
-			} else if err != nil {
+			if err := c.ensureStatusStrand(); err != nil {
 				_ = bootstrapLock.Release()
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -648,6 +647,10 @@ Example:
 	}
 
 	cmd.Flags().StringVar(&parentFlag, "parent", "", "write the pair's provenance record once for a worktree created before that record existed; refused when it disagrees with an already-recorded value")
+	// noAttachFlag is read by nothing: the verb never attaches,
+	// and the flag stays accepted for existing callers.
+	cmd.Flags().BoolVar(&noAttachFlag, "no-attach", false, "accepted and ignored; kept for existing callers")
+	_ = cmd.Flags().MarkHidden("no-attach")
 
 	return cmd
 }

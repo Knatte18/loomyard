@@ -97,7 +97,7 @@ func (t *Topology) cleanupRemoteWarp(l *lymcwd.Location, apply bool, openPRHeads
 	if err != nil {
 		return res, err
 	}
-	archiveTagRefs, err := remoteTagRefs(weftRoot, ArchiveTagPrefix+"*")
+	archiveTagRefs, err := remoteTagRefs(weftRoot, "refs/tags/archive/*")
 	if err != nil {
 		return res, err
 	}
@@ -273,110 +273,36 @@ func unlandedReason(repoDir, branch, tip, parent string) string {
 	return err.Error()
 }
 
-// remoteBranchTips maps every branch of dir's records namespace on originRemoteName to its tip SHA.
-// A branch outside the namespace, such as a code branch in a one-repository hub, is not listed.
+// remoteBranchTips maps every branch on originRemoteName, as seen from dir, to its tip SHA.
 func remoteBranchTips(dir string) (map[string]string, error) {
-	ns, err := originNamespaceAt(dir)
-	if err != nil {
-		return nil, err
-	}
-	out, err := gitexec.Run([]string{"ls-remote", originRemoteName, ns.Branch("*")}, dir)
+	out, err := gitexec.Run([]string{"ls-remote", "--heads", originRemoteName}, dir)
 	if err != nil {
 		return nil, fmt.Errorf("list branches on %q: %w", originRemoteName, err)
 	}
 	tips := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {
 		sha, ref, ok := strings.Cut(strings.TrimSpace(line), "\t")
-		if !ok {
-			continue
-		}
-		if local, mapped := ns.LocalRef(ref); mapped && strings.HasPrefix(local, "refs/heads/") {
-			tips[strings.TrimPrefix(local, "refs/heads/")] = sha
+		if ok && strings.HasPrefix(ref, "refs/heads/") {
+			tips[strings.TrimPrefix(ref, "refs/heads/")] = sha
 		}
 	}
 	return tips, nil
 }
 
-// remoteTagRefs lists the local refs/tags/ names of the tags on originRemoteName that match pattern.
-// pattern is relative to the tags prefix, so the same pattern serves a code store and a one-repository records store.
+// remoteTagRefs lists the full ref names on originRemoteName matching pattern.
 func remoteTagRefs(dir, pattern string) ([]string, error) {
-	ns, err := originNamespaceAt(dir)
-	if err != nil {
-		return nil, err
-	}
-	out, err := gitexec.Run([]string{"ls-remote", originRemoteName, ns.Tag(pattern)}, dir)
+	out, err := gitexec.Run([]string{"ls-remote", "--tags", originRemoteName, pattern}, dir)
 	if err != nil {
 		return nil, fmt.Errorf("list tags on %q: %w", originRemoteName, err)
 	}
 	var refs []string
 	for _, line := range strings.Split(out, "\n") {
 		_, ref, ok := strings.Cut(strings.TrimSpace(line), "\t")
-		if !ok {
-			continue
-		}
-		name, _ := strings.CutSuffix(ref, "^{}")
-		if local, mapped := ns.LocalRef(name); mapped && strings.HasPrefix(local, "refs/tags/") {
-			refs = append(refs, local+strings.TrimPrefix(ref, name))
+		if ok {
+			refs = append(refs, ref)
 		}
 	}
 	return refs, nil
-}
-
-// PlainArchiveTag is an archive tag under a one-repository origin's plain refs/tags/, where an earlier binary pushed it.
-// No verb of the one-repository layout reads that prefix, so nothing else names the tag.
-type PlainArchiveTag struct {
-	// Ref is the tag's full ref on origin.
-	Ref string `json:"ref"`
-	// SHA is the object the ref points at.
-	SHA string `json:"sha"`
-	// WayForward is the commands that move the tag under the code store's archive prefix and delete the plain ref.
-	WayForward string `json:"way_forward"`
-}
-
-// PlainArchiveTagsOnOrigin lists the archive and owner archive tags under origin's plain refs/tags/.
-// It reads a one-repository hub.
-// Each tag carries the commands that move it under the code store's archive prefix and delete the plain ref.
-// The commands run from the code worktree at l, and the prefix sits below the records namespace root.
-// The push of both is atomic, so a failed move deletes nothing.
-// A two-repository hub, and a code store with no origin remote, list none.
-// A code store whose origin URL cannot be read for any other reason is an error.
-// The list is sorted by ref, and empty rather than nil.
-func PlainArchiveTagsOnOrigin(l *lymcwd.Location) ([]PlainArchiveTag, error) {
-	tags := []PlainArchiveTag{}
-	recordsRoot, err := RecordsRepoRoot(l)
-	if err != nil {
-		return tags, fmt.Errorf("resolve weft repo root: %w", err)
-	}
-	ns, err := originNamespaceAt(recordsRoot)
-	if err != nil || ns == (gitrepo.RefNamespace{}) {
-		return tags, err
-	}
-	codeDir := l.WorktreePath()
-	if _, urlErr := gitrepo.New(codeDir).RemoteURL(originRemoteName); urlErr != nil {
-		if errors.Is(urlErr, gitrepo.ErrRemoteNotConfigured) {
-			return tags, nil
-		}
-		return tags, fmt.Errorf("read the origin URL of the code store at %s: %w", codeDir, urlErr)
-	}
-
-	prefixes := []string{"refs/tags/" + ArchiveTagPrefix, "refs/tags/" + OwnerArchiveTagPrefix}
-	out, err := gitexec.Run([]string{"ls-remote", originRemoteName, prefixes[0] + "*", prefixes[1] + "*"}, codeDir)
-	if err != nil {
-		return tags, fmt.Errorf("list the archive tags under %q's plain refs/tags/: %w", originRemoteName, err)
-	}
-	codeTags := RecordsNamespaceRoot + RecordsNamespaceCodeTags
-	for _, line := range strings.Split(out, "\n") {
-		sha, ref, ok := strings.Cut(strings.TrimSpace(line), "\t")
-		if !ok || strings.HasSuffix(ref, "^{}") || !slices.ContainsFunc(prefixes, func(p string) bool { return strings.HasPrefix(ref, p) }) {
-			continue
-		}
-		name := strings.TrimPrefix(ref, "refs/tags/")
-		tags = append(tags, PlainArchiveTag{Ref: ref, SHA: sha, WayForward: fmt.Sprintf(
-			"move it under %s with `git -C %s fetch --no-tags %s %s`, then `git -C %s push --atomic %s %s:%s%s :%s`",
-			codeTags, codeDir, originRemoteName, ref, codeDir, originRemoteName, sha, codeTags, name, ref)})
-	}
-	sort.Slice(tags, func(i, j int) bool { return tags[i].Ref < tags[j].Ref })
-	return tags, nil
 }
 
 // remoteDefaultBranch returns the branch that the HEAD of originRemoteName points at.

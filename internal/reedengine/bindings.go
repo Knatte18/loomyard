@@ -129,7 +129,9 @@ func followClickCommand(followJump bool) string {
 }
 
 // bindingArgvs returns the argvs of the Alt keys and the status click, each in the root table.
-// Every argv is a `bind-key -n`.
+// The first argv is an `unbind-key -n M-z` that removes the Alt+z an older build bound.
+// A `bind-key` re-pin never removes a binding, so the unbind is needed.
+// The `bind-key -n` argvs follow it.
 // switchPrev and switchNext are the shell lines run-shell runs for M-Left and M-Right;
 // an empty one leaves its key unbound.
 // followJump reports that the follow button's jump line is pinned in followCommandOption.
@@ -150,6 +152,7 @@ func followClickCommand(followJump bool) string {
 // Each reports that its line is pinned; when false its branch is not bound.
 func bindingArgvs(switchPrev, switchNext string, followJump, buttonClick, slackClick, remoteControlClick bool) [][]string {
 	argvs := [][]string{
+		{"unbind-key", "-n", "M-z"},
 		{"bind-key", "-n", "M-Up", "set-option", followSessionOption, "off", `\;`, "previous-window", `\;`, "if-shell", "-F", "-t", ":", hiddenWindowCondition, selectStrandsWindowCommand},
 		{"bind-key", "-n", "M-Down", "set-option", followSessionOption, "off", `\;`, "next-window", `\;`, "if-shell", "-F", "-t", ":", hiddenWindowCondition, "select-window -t :^"},
 	}

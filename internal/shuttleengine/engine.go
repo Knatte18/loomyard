@@ -207,22 +207,18 @@ type RequirementSupporter interface {
 }
 
 // ForkAuditor is an optional capability of an engine:
-// the provider's read of its on-disk record of a session's subagents, forks and fresh subagents alike.
+// the provider's read of its on-disk record of fork subagents.
 // An engine without it has no fork audit.
 type ForkAuditor interface {
-	// AuditForks reads the provider's on-disk record of the subagents of the fork-authorized session sessionID.
-	// Each ForkReport marks whether its subagent is a fork or a fresh subagent.
+	// AuditForks reads the provider's on-disk record of fork subagents for the fork-authorized session sessionID.
 	// workdir is the pane's actual process cwd.
 	// It reports mechanical facts observed, with no policy interpretation.
 	// It returns an error rather than a zero ForkAudit when the provider has no fork concept.
 	// That lets callers distinguish "no forks" from "cannot audit".
 	AuditForks(sessionID, workdir string) (ForkAudit, error)
-	// AuditForksIncremental reads the provider's on-disk record of the session's subagents.
-	// It skips transcripts already seen.
-	// Parent facts are always full/cumulative:
-	// SpawnCalls, NamedSpawns, NamedForkSpawns, ParentWriteCalls, ParentWrites and ParentBashCommands.
-	// Forks holds one ForkReport per transcript not in seenTranscripts.
-	// A nil seenTranscripts reports every subagent transcript.
+	// AuditForksIncremental reads the provider's on-disk record of fork subagents, skipping transcripts already seen.
+	// Parent facts (SpawnCalls, NamedSpawns, ParentWriteCalls, ParentWrites, ParentBashCommands) are always full/cumulative.
+	// Forks holds one ForkReport per transcript not in seenTranscripts; nil seenTranscripts reports every fork transcript.
 	AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (ForkAudit, error)
 }
 
@@ -315,22 +311,13 @@ type BatchingNudger interface {
 // It records the edited file in the run's edit records file, which EditRecordsFileName names.
 const EditHookVerb = "hook-edit"
 
-// PythonAllowedHookVerb is the name of a hidden `lym shuttle` verb.
-// An engine's python guard hook runs it on a matching call.
-// It exits 0 only when the shuttle config the launch read allows Python at that moment,
-// so a running session follows a change of `deny_python` without a restart.
-const PythonAllowedHookVerb = "hook-python-allowed"
-
 // EditRecorder is an optional capability of an engine:
 // the after-edit hook that records each file edit in the run's edit records file.
 // It records the edits of the session's subagents and forks too.
-// Each record carries a hash of the edited file's content right after the edit.
-// The engine's SessionSignalParser reads each such record back as a SessionSignalFileEdit with that hash.
-// An edit recorded with no hash never counts toward an edit loop.
+// The engine's SessionSignalParser reads each such record back as a SessionSignalFileEdit.
 // An engine without it installs no such hook, so its runs get no edit-loop notice.
 type EditRecorder interface {
-	// RecordEdit appends each file edit the hook input payload describes to the edit records file at recordsPath.
-	// The record carries the hash of the file's content right after the edit.
+	// RecordEdit appends the file edit the hook input payload describes to the edit records file at recordsPath.
 	// A payload that names no edited file appends nothing.
 	RecordEdit(recordsPath string, payload []byte) error
 }
@@ -367,19 +354,6 @@ type SessionResumer interface {
 	CheckResume(sessionID, workdir string) (warning string, err error)
 }
 
-// TranscriptCarrier is an optional capability of an engine:
-// bringing a session's newest transcript into the provider account a resume runs under.
-// A run that resumes a session calls it before the SessionResumer check.
-// An engine without it leaves the transcript where the provider wrote it.
-type TranscriptCarrier interface {
-	// CarryTranscript copies the newest transcript of provider session sessionID into the resume's account.
-	// The transcript is the one recorded under the pane cwd workdir.
-	// It reports whether it copied.
-	// A session this machine holds no transcript of is copied nowhere and reports false with no error.
-	// A non-nil error refuses the resume.
-	CarryTranscript(sessionID, workdir string) (copied bool, err error)
-}
-
 // ErrNoTranscript marks a resume a SessionResumer refused because this machine holds no transcript of the session.
 // A caller that may start the session's work over tells this refusal from every other by errors.Is.
 var ErrNoTranscript = errors.New("shuttle: this machine holds no transcript of the session")
@@ -391,9 +365,6 @@ type SessionHeldError struct {
 	SessionID string
 	// PID is the live process that holds it.
 	PID int
-	// TranscriptCopied is true when the session's transcript was copied before the holder test refused.
-	// A caller that resumes again passes it on as Spec.TranscriptCopied.
-	TranscriptCopied bool
 	// Err is the engine's refusal in its own words.
 	Err error
 }
@@ -675,15 +646,4 @@ type RemoteController interface {
 	// The caller guarantees name is a single line.
 	// The sequence starts no turn.
 	RemoteControlSequence(name string) []PaneInput
-}
-
-// RemoteControlReader is an optional engine capability: reading whether a session's remote control connected.
-// It reads the provider's own record of the session, so it reports what the provider did, never what lym asked for.
-// An engine without it never reports a connection.
-type RemoteControlReader interface {
-	// RemoteControlCheckpoint returns how far the provider's record of the session sessionID, run in workdir, reaches now.
-	// A session with no record yet returns zero.
-	RemoteControlCheckpoint(sessionID, workdir string) (int64, error)
-	// RemoteControlConnected reports whether that record shows the session's remote control connecting past checkpoint.
-	RemoteControlConnected(sessionID, workdir string, checkpoint int64) (bool, error)
 }

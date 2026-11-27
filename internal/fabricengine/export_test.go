@@ -43,15 +43,6 @@ func SetScratchBeforeLinkHookForTest(t *testing.T, hook func()) {
 	t.Cleanup(func() { scratchBeforeLinkHook = nil })
 }
 
-// SetSeedPushHookForTest sets seedPushHook until the test ends.
-// The hook receives the origin ref about to be pushed, so a test can move origin before either seed push.
-// It changes process-global state, so the calling test must not be parallel.
-func SetSeedPushHookForTest(t *testing.T, hook func(ref string)) {
-	t.Helper()
-	seedPushHook = hook
-	t.Cleanup(func() { seedPushHook = nil })
-}
-
 // SetAnchorFailHookForTest makes every anchor change t begins afterwards call hook around its weft commit or branch move.
 // hook is called with afterCommit false before the step and true after it.
 // An error it returns fails the change there.
@@ -442,28 +433,7 @@ func CommitWeftForTest(f *Fabric, pathspec []string, message string, opts SyncOp
 	}
 	defer func() { _ = l.Release() }()
 
-	return f.commitWeftLocked(pathspec, message, nil, opts, snapshotTags...)
-}
-
-// CommitWeftWithTrailersForTest stages the pathspec in f's weft and commits it with trailers.
-// It holds the weft write lock.
-// Tests call it to reach the weft commit's trailer handling without the warp-side classification in front of it.
-func CommitWeftWithTrailersForTest(f *Fabric, pathspec []string, message string, trailers []Trailer, opts SyncOptions) (sha string, committed bool, err error) {
-	if opts.SkipGit {
-		return "", false, nil
-	}
-
-	lockDir, err := f.ensureWeftLockDir()
-	if err != nil {
-		return "", false, err
-	}
-	l, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
-	if err != nil {
-		return "", false, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
-	}
-	defer func() { _ = l.Release() }()
-
-	return f.commitWeftLocked(pathspec, message, trailers, opts)
+	return f.commitWeftLocked(pathspec, message, opts, snapshotTags...)
 }
 
 // SnapshotWarpSHAForTest returns the warp SHA recorded under tag by the newest weft commit on f's current branch.
@@ -656,12 +626,6 @@ func ResetMergeSidesForTest(f *Fabric, rec *Mutations, warpSHA string) error {
 	return f.resetMergeSides(rec, warpSHA)
 }
 
-// ForgetOriginNamespaceForTest drops the cached origin layout of the store at dir, as a new process starts without it.
-// A test that rewrites a store's origin config after a verb read it calls it, so the next verb reads the config again.
-func ForgetOriginNamespaceForTest(dir string) {
-	namespaceAnswers.Delete(filepath.Clean(dir))
-}
-
 // ArchiveWeftTipForTest runs `archiveWeftTip` without a branch push or a sleep seam.
 // It returns the local tip's tag, the skipped reason and the error.
 // Tests in the external test package use it, since they cannot read the unexported fields of `weftArchive`.
@@ -677,24 +641,6 @@ func SetArchiveTagPushHookForTest(t testing.TB, hook func(tagRef string) error) 
 
 	archiveTagPushHook = hook
 	t.Cleanup(func() { archiveTagPushHook = nil })
-}
-
-// SetOwedTipPushedHookForTest sets `owedTipPushedHook` to hook and restores nil in t.Cleanup.
-// It mutates a package variable, so only a non-parallel test may call it.
-func SetOwedTipPushedHookForTest(t testing.TB, hook func()) {
-	t.Helper()
-
-	owedTipPushedHook = hook
-	t.Cleanup(func() { owedTipPushedHook = nil })
-}
-
-// SetTakeoverBeforePushHookForTest sets `takeoverBeforePushHook` to hook and restores nil in t.Cleanup.
-// It mutates a package variable, so only a non-parallel test may call it.
-func SetTakeoverBeforePushHookForTest(t testing.TB, hook func(attempt int)) {
-	t.Helper()
-
-	takeoverBeforePushHook = hook
-	t.Cleanup(func() { takeoverBeforePushHook = nil })
 }
 
 // SetArchiveSleepForTest replaces the real sleep between t's archive-tag push attempts with sleep.
@@ -764,14 +710,6 @@ func SetLeftoverRefillForTest(t *Topology, refill func(target string)) {
 // It sets the wait on the one Topology, so parallel tests inject per instance.
 func SetTeardownWaitForTest(t *Topology, wait time.Duration) {
 	t.teardownWait = wait
-}
-
-// SetTeardownChildEndsForTest makes t's teardowns leave their remote half as a detached child that ended early does.
-// The job is recorded as a pending teardown and none of its remote steps runs.
-// Passing false restores the in-process run.
-// It sets the seam on the one Topology, so parallel tests inject per instance.
-func SetTeardownChildEndsForTest(t *Topology, ends bool) {
-	t.teardownChildEnds = ends
 }
 
 // SetCleanupAfterEnumerateForTest makes t's Cleanup call hook once per orphan.
@@ -975,106 +913,6 @@ func HoldHubPauseForTest(t *testing.T, slug string) {
 		Sleep:    func(context.Context, time.Duration) error { return errors.New("the test's pause is never lifted") },
 	}))
 }
-
-// PauseGateForTest installs a gate over a temp pause record that holds no live entry.
-// cover adds one live hub entry.
-// Each time the gate sleeps it counts one wait, runs atWait when it is not nil, and then lifts the entry.
-// The gate stays installed until the test ends.
-// It changes process-global state, so the calling test must not be parallel.
-func PauseGateForTest(t *testing.T, atWait func()) (cover func(), waits *int) {
-	t.Helper()
-
-	recordPath := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
-	pausedAt := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
-	setLive := func(live ...pauserecord.Entry) {
-		t.Helper()
-		if _, err := pauserecord.Update(recordPath, pausedAt, func(r *pauserecord.Record) error {
-			r.Live = live
-			return nil
-		}); err != nil {
-			t.Errorf("pauserecord.Update: %v", err)
-		}
-	}
-	setLive()
-	waits = new(int)
-	t.Cleanup(pauserecord.InstallGate(pauserecord.Gate{
-		Geometry: pauserecord.Geometry{RecordPath: recordPath, Slug: "held-pair"},
-		Notify:   func(string) {},
-		Sleep: func(context.Context, time.Duration) error {
-			*waits++
-			if atWait != nil {
-				atWait()
-			}
-			setLive()
-			return nil
-		},
-	}))
-	return func() { setLive(pauserecord.Entry{Scope: pauserecord.ScopeHub, PausedAt: pausedAt}) }, waits
-}
-
-// PassingPauseGateForTest installs a gate over a temp pause record that holds one live hub entry for the whole test.
-// Each wait the gate makes counts once and runs atWait, and then the call goes through with the entry still live.
-// atWait therefore runs at every point where a call would be held, until a call admits the process.
-// The gate stays installed until the test ends.
-// It changes process-global state, so the calling test must not be parallel.
-func PassingPauseGateForTest(t *testing.T, atWait func()) (waits *int) {
-	t.Helper()
-
-	recordPath := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
-	pausedAt := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
-	if _, err := pauserecord.Update(recordPath, pausedAt, func(r *pauserecord.Record) error {
-		r.Live = []pauserecord.Entry{{Scope: pauserecord.ScopeHub, PausedAt: pausedAt}}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	waits = new(int)
-	t.Cleanup(pauserecord.InstallGate(pauserecord.Gate{
-		Geometry: pauserecord.Geometry{RecordPath: recordPath, Slug: "held-pair"},
-		Notify:   func(string) {},
-		Sleep: func(context.Context, time.Duration) error {
-			*waits++
-			atWait()
-			return errors.New("the test's pause lets the call through")
-		},
-	}))
-	return waits
-}
-
-// Lock file names in a records worktree's lock directory.
-const (
-	WeftPushLockFileForTest  = weftPushLockFile
-	WeftWriteLockFileForTest = weftWriteLockFile
-)
-
-// LockFreeForTest reports whether another holder could take the lock at path now.
-// It creates the lock's directory when it is missing, takes the lock by one try and releases it at once.
-func LockFreeForTest(t *testing.T, path string) bool {
-	t.Helper()
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Errorf("MkdirAll(%s): %v", filepath.Dir(path), err)
-		return false
-	}
-	held, acquired, err := lock.TryAcquireWriteLock(path)
-	if err != nil {
-		t.Errorf("TryAcquireWriteLock(%s) error = %v", path, err)
-		return false
-	}
-	if acquired {
-		_ = held.Release()
-	}
-	return acquired
-}
-
-// PendingFlagPathForTest is pendingFlagPath, the path of a side's pending flag in a lock directory.
-var PendingFlagPathForTest = pendingFlagPath
-
-// PushSideCodeForTest and PushSideRecordsForTest name the two sides a pending flag can stand for.
-const (
-	PushSideCodeForTest    = pushSideCode
-	PushSideRecordsForTest = pushSideRecords
-)
 
 // SetBeforeWireForTest makes the Add call on t run hook once the new pair's weft worktree exists.
 // The hook runs before the pair's junctions are wired.

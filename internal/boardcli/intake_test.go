@@ -36,8 +36,6 @@ type fakeIssue struct {
 	stateReason string
 	pullRequest bool
 	labels      []string
-	// body is the issue body; nil serves "Body <number>.".
-	body *string
 	// thread holds the issue's comments, oldest first; each is dated 2026-01-02 plus its index in days.
 	thread []string
 	// failThread makes the comments endpoint answer with a server error.
@@ -78,14 +76,10 @@ func (f *fakeInbox) issueJSON(issue fakeIssue) map[string]any {
 	for _, name := range issue.labels {
 		labels = append(labels, map[string]string{"name": name})
 	}
-	body := fmt.Sprintf("Body %d.", issue.number)
-	if issue.body != nil {
-		body = *issue.body
-	}
 	view := map[string]any{
 		"number":       issue.number,
 		"title":        fmt.Sprintf("Issue %d", issue.number),
-		"body":         body,
+		"body":         fmt.Sprintf("Body %d.", issue.number),
 		"html_url":     fmt.Sprintf("https://example.test/issues/%d", issue.number),
 		"state":        issue.state,
 		"state_reason": issue.stateReason,
@@ -255,7 +249,7 @@ func TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages(t *testing.
 	tiergate.Require(t, 0)
 	t.Parallel()
 	fullInbox := []fakeIssue{
-		{number: 1, state: "open", thread: threadWithPointer},
+		{number: 1, state: "open", thread: []string{"one", "two"}},
 		{number: 2, state: "open", pullRequest: true},
 		{number: 3, state: "closed"},
 		{number: 4, state: "open"},
@@ -267,7 +261,6 @@ func TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages(t *testing.
 		{number: 3, state: "closed"},
 		{number: 4, state: "open"},
 	}
-	failedThreadInbox := []fakeIssue{{number: 1, state: "open", thread: []string{"one"}, failThread: true}}
 	tests := []struct {
 		name         string
 		issues       []fakeIssue
@@ -281,19 +274,16 @@ func TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages(t *testing.
 		wantNumbers string
 		// wantFull is whether the issue objects carry the full view.
 		wantFull bool
-		// wantErr is a substring the error message must contain, empty when the row does not check it.
-		wantErr string
 	}{
-		{"Compact", fullInbox, false, false, nil, []string{"list"}, 0, "[1 5 6]", false, ""},
-		{"Full", fullInbox, false, false, nil, []string{"list", "--full"}, 0, "[1 5 6]", true, ""},
-		{"EmptyCompact", emptyInbox, false, false, nil, []string{"list"}, 0, "[]", false, ""},
-		{"EmptyFull", emptyInbox, false, false, nil, []string{"list", "--full"}, 0, "[]", true, ""},
-		{"ListFailure", fullInbox, true, false, nil, []string{"list"}, 1, "", false, ""},
-		{"CommentListFailure", failedThreadInbox, false, false, nil, []string{"list", "--full"}, 1, "", true, "issue #1: github issue comment list failed"},
-		{"BoardLoadFailure", fullInbox, false, true, nil, []string{"list"}, 1, "", false, ""},
-		{"RepositoryUnresolved", fullInbox, false, false, errors.New("no hub repository"), []string{"list"}, 1, "", false, ""},
-		{"RepositoryUnresolvedImport", fullInbox, false, false, errors.New("no hub repository"), []string{"import", `{"issue":1,"slug":"x"}`}, 1, "", false, ""},
-		{"RepositoryUnresolvedClose", fullInbox, false, false, errors.New("no hub repository"), []string{"close", `{"issue":1,"reason":"Noise."}`}, 1, "", false, ""},
+		{"Compact", fullInbox, false, false, nil, []string{"list"}, 0, "[1 5 6]", false},
+		{"Full", fullInbox, false, false, nil, []string{"list", "--full"}, 0, "[1 5 6]", true},
+		{"EmptyCompact", emptyInbox, false, false, nil, []string{"list"}, 0, "[]", false},
+		{"EmptyFull", emptyInbox, false, false, nil, []string{"list", "--full"}, 0, "[]", true},
+		{"ListFailure", fullInbox, true, false, nil, []string{"list"}, 1, "", false},
+		{"BoardLoadFailure", fullInbox, false, true, nil, []string{"list"}, 1, "", false},
+		{"RepositoryUnresolved", fullInbox, false, false, errors.New("no hub repository"), []string{"list"}, 1, "", false},
+		{"RepositoryUnresolvedImport", fullInbox, false, false, errors.New("no hub repository"), []string{"import", `{"issue":1,"slug":"x"}`}, 1, "", false},
+		{"RepositoryUnresolvedClose", fullInbox, false, false, errors.New("no hub repository"), []string{"close", `{"issue":1,"reason":"Noise."}`}, 1, "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -325,16 +315,8 @@ func TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages(t *testing.
 			if code != tt.wantCode {
 				t.Fatalf("exit %d, want %d: %v", code, tt.wantCode, envelope)
 			}
-			// Only the full view fetches comments, and only of issue 1, the one issue that has some.
-			fetchesComments := tt.wantFull && len(tt.issues[0].thread) > 0
-			for _, get := range inbox.perIssueGets {
-				if !fetchesComments || get != "/1/comments" {
-					t.Errorf("per-issue requests = %v, want only /1/comments and only in the full view", inbox.perIssueGets)
-					break
-				}
-			}
-			if fetchesComments && len(inbox.perIssueGets) == 0 {
-				t.Error("per-issue requests = [], want issue 1's comments fetched")
+			if len(inbox.perIssueGets) != 0 {
+				t.Errorf("per-issue requests = %v, want none", inbox.perIssueGets)
 			}
 			if tt.wantCode != 0 {
 				if envelope["ok"] != false {
@@ -342,8 +324,6 @@ func TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages(t *testing.
 				}
 				if msg, _ := envelope["error"].(string); msg == "" {
 					t.Errorf("error = %v, want a message", envelope["error"])
-				} else if !strings.Contains(msg, tt.wantErr) {
-					t.Errorf("error = %q, want it to contain %q", msg, tt.wantErr)
 				}
 				if _, present := envelope["issues"]; present {
 					t.Errorf("issues = %v, want no issues key", envelope["issues"])
@@ -383,13 +363,8 @@ func TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages(t *testing.
 			if first["title"] != "Issue 1" || first["body"] != "Body 1." || first["url"] != "https://example.test/issues/1" || first["created_at"] != "2026-01-02T03:04:05Z" {
 				t.Errorf("first issue = %v, want its fields carried over", first)
 			}
-			wantComments := "[map[body:First comment. created_at:2026-01-02T12:00:00Z] " +
-				"map[body:" + quotedPointerComment + " created_at:2026-01-04T12:00:00Z]]"
-			if got := fmt.Sprint(first["comments"]); got != wantComments {
-				t.Errorf("issue 1 comments = %s, want %s", got, wantComments)
-			}
-			if got := fmt.Sprint(issues[1].(map[string]any)["comments"]); got != "[]" {
-				t.Errorf("issue 5 comments = %s, want []", got)
+			if first["comments"] != 2.0 || issues[1].(map[string]any)["comments"] != 0.0 {
+				t.Errorf("comment counts = %v and %v, want 2 and 0", first["comments"], issues[1].(map[string]any)["comments"])
 			}
 			if fmt.Sprint(issues[2].(map[string]any)["labels"]) != "[bug]" {
 				t.Errorf("issue 6 labels = %v, want [bug]", issues[2].(map[string]any)["labels"])
@@ -445,43 +420,6 @@ func TestIntakeImport_NewNoteCommentsAndCloses(t *testing.T) {
 	}
 	if readBoard(t, path) == "" {
 		t.Error("board.json not written")
-	}
-}
-
-// TestIntakeImport_FlagsEvidenceGaps asserts that import output names a blank issue body.
-// It also asserts that import output names the local paths an issue names.
-// Each key is left out when its gap is absent.
-func TestIntakeImport_FlagsEvidenceGaps(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	tests := []struct {
-		name           string
-		body           string
-		wantEmptyBody  any
-		wantLocalPaths string
-	}{
-		{"blank body", "", true, "<nil>"},
-		{"local paths", "Compare `.lym/shuttle/abc/startup-capture.txt`.", nil, "[.lym/shuttle/abc/startup-capture.txt]"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			inbox := newFakeInbox(t, fakeIssue{number: 7, state: "open", labels: []string{"bug"}, body: new(tt.body)})
-			b, _ := newIntakeBoard(t)
-
-			code, envelope := runHandler(t, func(out *bytes.Buffer) int {
-				return intakeImport(out, b, inbox.repo, `{"issue":7,"slug":"gap"}`)
-			})
-			if code != 0 {
-				t.Fatalf("exit %d: %v", code, envelope)
-			}
-			if envelope["empty_body"] != tt.wantEmptyBody {
-				t.Errorf("empty_body = %v, want %v", envelope["empty_body"], tt.wantEmptyBody)
-			}
-			if got := fmt.Sprint(envelope["local_paths"]); got != tt.wantLocalPaths {
-				t.Errorf("local_paths = %s, want %s", got, tt.wantLocalPaths)
-			}
-		})
 	}
 }
 
@@ -601,7 +539,7 @@ func TestIntakeImport_RefusedBeforeAnyWrite(t *testing.T) {
 func TestIntakeImport_CloseFailureReportsShortResultAndClosePayload(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	inbox := newFakeInbox(t, fakeIssue{number: 16, state: "open", labels: []string{"bug"}, body: new("See .lym/x.log."), thread: []string{"A comment."}})
+	inbox := newFakeInbox(t, fakeIssue{number: 16, state: "open", labels: []string{"bug"}})
 	inbox.failClose = true
 	b, path := newIntakeBoard(t)
 
@@ -616,12 +554,6 @@ func TestIntakeImport_CloseFailureReportsShortResultAndClosePayload(t *testing.T
 	}
 	if _, present := envelope["entry"]; present {
 		t.Errorf("envelope carries entry, want it left out")
-	}
-	if fmt.Sprint(envelope["local_paths"]) != "[.lym/x.log]" {
-		t.Errorf("envelope local_paths = %v, want [.lym/x.log]", envelope["local_paths"])
-	}
-	if _, present := envelope["empty_body"]; present {
-		t.Errorf("envelope carries empty_body for a non-blank body")
 	}
 	closePayload := envelope["close"].(map[string]any)
 	if closePayload["issue"] != 16.0 || closePayload["completed"] != true || closePayload["reason"] != "Imported into the board as `half-done`." {

@@ -9,18 +9,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/Knatte18/loomyard/internal/adoptrecord"
 	"github.com/Knatte18/loomyard/internal/beamcli"
-	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -160,36 +158,40 @@ func TestStatus_PrintsThePrimesDobbyAndEachLocalBeams(t *testing.T) {
 		t.Errorf("lym beam status = %s; want adopt_checks item b green naming %s", out.String(), filepath.Join(subjectDir, "suite.log"))
 	}
 
-	// A hold this machine wrote shows as the one adopt section, beside the unchanged check item.
-	here, err := machinename.ReadIdentity()
-	if err != nil {
-		t.Fatalf("ReadIdentity() = %v; want nil", err)
+	// A record that stopped at deploy shows as the one adopt section, beside the unchanged check item.
+	stopped := adoptrecord.Record{
+		Request:    adoptrecord.Request{Slugs: []string{"b"}},
+		Subjects:   []string{"b"},
+		State:      adoptrecord.StateStopped,
+		InFlight:   adoptrecord.StepDeploy,
+		WayForward: "fix the deploy",
 	}
-	hold := boardengine.Hold{
-		Kind: boardengine.HoldKindAdopt, Machine: here.Name, At: time.Date(2026, 11, 17, 9, 0, 0, 0, time.UTC),
-		Subjects: []boardengine.HoldSubject{{Subject: "b"}},
-	}
-	if written, err := boardengine.WriteHold(h.BoardDir(), hold); err != nil || !written.Wrote {
-		t.Fatalf("WriteHold() = %+v, %v; want Wrote", written, err)
+	if err := adoptrecord.Write(h.Path, stopped); err != nil {
+		t.Fatalf("Write(adopt record) = %v; want nil", err)
 	}
 	out.Reset()
 	clihelp.ExecuteIn(beamcli.Command(), h.PairCodeWorktree("b"), &out, []string{"status"})
 	body, _ := envelope.Decode(t, out.String()).Raw["result"].(map[string]any)
 	section, _ := body["adopt"].(map[string]any)
-	if subjects, _ := section["subjects"].([]any); section["kind"] != boardengine.HoldKindAdopt || section["machine"] != here.Name || len(subjects) != 1 || subjects[0] != "b" {
-		t.Errorf("lym beam status = %s; want one adopt section of kind adopt by %s over b", out.String(), here.Name)
+	if section["state"] != adoptrecord.StateStopped || section["step"] != adoptrecord.StepDeploy {
+		t.Errorf("lym beam status = %s; want one adopt section stopped at deploy", out.String())
 	}
 	if checks, _ := body["adopt_checks"].([]any); len(checks) != 1 {
 		t.Errorf("lym beam status = %s; want the check item beside the adopt section", out.String())
 	}
 
-	// A board that does not decode fails the verb, naming the decode failure, in place of showing a section.
-	if err := os.WriteFile(filepath.Join(h.BoardDir(), "board.json"), []byte("{not json"), 0o644); err != nil {
-		t.Fatalf("WriteFile(board.json) = %v; want nil", err)
+	// A record that does not decode fails the verb naming the discard, and the other sections still read.
+	if err := os.WriteFile(adoptrecord.Path(h.Path), []byte("{not json"), 0o644); err != nil {
+		t.Fatalf("WriteFile(adopt.json) = %v; want nil", err)
 	}
 	out.Reset()
 	clihelp.ExecuteIn(beamcli.Command(), h.PairCodeWorktree("b"), &out, []string{"status"})
-	if failed := envelope.Decode(t, out.String()); failed.OK || !strings.Contains(out.String(), "decode failed") {
-		t.Errorf("lym beam status = %s; want a failure naming the board's decode failure", out.String())
+	failed := envelope.Decode(t, out.String())
+	body, _ = failed.Raw["result"].(map[string]any)
+	if dobbies, _ := body["dobbies"].([]any); failed.OK || !strings.Contains(out.String(), "lym adopt --discard") || len(dobbies) != 2 {
+		t.Errorf("lym beam status = %s; want a failure naming lym adopt --discard with both dobbies still read", out.String())
+	}
+	if checks, _ := body["adopt_checks"].([]any); len(checks) != 1 {
+		t.Errorf("lym beam status = %s; want the check item still read", out.String())
 	}
 }

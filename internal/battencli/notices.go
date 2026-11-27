@@ -14,8 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchcli"
 )
 
-// notifyRunParent sends line, stamped with the run's autonomy, as creel mail.
-// It goes to the nearest live orch above the run slug, signed as batten.
+// notifyRunParent sends line as creel mail to the nearest live orch above the run slug, signed as batten.
 // The mail is tagged with slug as its run, so the run's teardown drops it while it is unread.
 // It reports whether the mail was posted.
 // The walk starts at the run's pair when it is present here.
@@ -27,9 +26,9 @@ func notifyRunParent(prime *lymcwd.Location, slug, line string) (bool, error) {
 		return false, err
 	}
 	if isPair {
-		return orchcli.NotifyParentHalt(site, battenProgram, line)
+		return orchcli.NotifyParent(site, battenProgram, line)
 	}
-	return orchcli.NotifyRunFromHalt(site, slug, battenProgram, runNotifyTags(slug), line)
+	return orchcli.NotifyRunFrom(site, "", battenProgram, runNotifyTags(slug), line)
 }
 
 // runNotifyTags returns the creel tags of batten's notice about the run slug.

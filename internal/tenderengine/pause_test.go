@@ -18,7 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
-	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -30,8 +29,6 @@ type fakePair struct {
 	mu       sync.Mutex
 	slug     string
 	sessions []SessionInfo
-	// sessionsErr fails Sessions while set.
-	sessionsErr error
 	// busy holds each session's scripted busy answers, consumed in order with the last repeating; a session with none reads idle.
 	busy map[string][]bool
 	dead map[string]bool
@@ -88,15 +85,9 @@ func newPair(slug string, strands ...string) *fakePair {
 }
 
 func (p *fakePair) Slug() string                     { return p.slug }
-func (p *fakePair) Sessions() ([]SessionInfo, error) { return p.sessions, p.sessionsErr }
+func (p *fakePair) Sessions() ([]SessionInfo, error) { return p.sessions, nil }
 func (p *fakePair) Running() (string, bool, error)   { return p.producer, p.running, nil }
 func (p *fakePair) Live(guid string) (bool, error)   { return !p.dead[guid], nil }
-
-// errNoReedSession is the refusal a pair with no reed session answers Sessions with, as reed's Status words it.
-var errNoReedSession = fmt.Errorf("no reed session (2 strands persisted): %w", reedengine.ErrNoSession)
-
-// errSessionsRead is a Sessions failure that is not reed's missing-session refusal.
-var errSessionsRead = errors.New("reading the sessions failed")
 
 func (p *fakePair) State(guid string) (shuttleengine.SessionState, error) {
 	if err := p.stateErr[guid]; err != nil {
@@ -261,14 +252,9 @@ type env struct {
 	boardSyncs  int
 	// pushPairErr is what the pair push seam answers when set.
 	pushPairErr error
-	// pushDeferred holds the pairs a pause deferred a detached push of; a nil map leaves the seam unset.
-	pushDeferred map[string]bool
 	// owners and ownersErr are what the owners reading answers; a nil owners leaves the seam unset.
 	owners    []PairOwner
 	ownersErr error
-	// boltHold and boltHoldErr are what the Bolt hold reading answers; a nil boltHold with no error leaves the seam unset.
-	boltHold    *BoltHoldState
-	boltHoldErr error
 	// runProcs and runProcsErr are what the owner-record reading answers.
 	runProcs    map[string][]runproc.Record
 	runProcsErr error
@@ -376,17 +362,6 @@ func (e *env) deps() Deps {
 	if e.owners != nil || e.ownersErr != nil {
 		deps.Owners = func() ([]PairOwner, error) { return e.owners, e.ownersErr }
 	}
-	if e.pushDeferred != nil {
-		deps.PushDeferred = func(slug string) bool { return e.pushDeferred[slug] }
-	}
-	if e.boltHold != nil || e.boltHoldErr != nil {
-		deps.BoltHold = func() (BoltHoldState, error) {
-			if e.boltHold == nil {
-				return BoltHoldState{}, e.boltHoldErr
-			}
-			return *e.boltHold, e.boltHoldErr
-		}
-	}
 	// A nil *fakePair in the interface would read as a prime.
 	if e.prime != nil {
 		deps.Prime = e.prime
@@ -492,35 +467,6 @@ func TestPause(t *testing.T) {
 			}
 			if !reflect.DeepEqual(report.Interrupted, []string{"a"}) || report.Scope != pauserecord.ScopeHub || len(p.interrupts) != 1 {
 				t.Errorf("report = %+v with %d Esc; want scope hub and a interrupted by the first Esc alone", report, len(p.interrupts))
-			}
-		}},
-		{"a pair with no reed session is skipped and the pause goes on to the other pairs", func(t *testing.T) {
-			gone := newPair("p1")
-			gone.sessionsErr = errNoReedSession
-			p := newPair("p2", "b")
-			// The readings are the grace's probe, the step's check, then the one after the Esc.
-			p.busy["g-b"] = []bool{true, true, false}
-			e := newEnv(t, gone, p)
-
-			report := e.pause("", 0)
-
-			wantSkipped := []SessionNote{{Slug: "p1", Reason: "no reed session, so no running turn: " + errNoReedSession.Error()}}
-			if !reflect.DeepEqual(report.Skipped, wantSkipped) {
-				t.Errorf("skipped = %+v; want %+v", report.Skipped, wantSkipped)
-			}
-			if !reflect.DeepEqual(report.Interrupted, []string{"b"}) || len(e.record().Live) != 1 {
-				t.Errorf("interrupted %v with live entries %+v; want b interrupted under the one hub entry", report.Interrupted, e.record().Live)
-			}
-		}},
-		{"a sessions error other than no reed session fails the pause and lists the pair under no skipped", func(t *testing.T) {
-			broken := newPair("p1")
-			broken.sessionsErr = errSessionsRead
-			e := newEnv(t, broken)
-
-			report, err := Pause(e.deps(), PauseRequest{})
-
-			if !errors.Is(err, errSessionsRead) || len(report.Skipped) != 0 {
-				t.Errorf("Pause() = %+v, %v; want the sessions error and nothing skipped", report, err)
 			}
 		}},
 		{"Added is called once with the added entry, before any Esc and before the grace, and not for a repeated pause", func(t *testing.T) {
@@ -832,11 +778,11 @@ func TestPause(t *testing.T) {
 			p := newPair("p1", "a")
 			e := newEnv(t, p)
 
-			first, err := Pause(e.deps(), PauseRequest{Slug: "p1", Caller: "first"})
+			first, err := Pause(e.deps(), PauseRequest{Slug: "p1", Caller: pauserecord.OwnerCaller})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if record := e.record(); first.AlreadyPaused || len(record.Live) != 1 || record.Live[0].Caller != "first" {
+			if record := e.record(); first.AlreadyPaused || len(record.Live) != 1 || record.Live[0].Caller != pauserecord.OwnerCaller {
 				t.Errorf("record = %+v, already paused %v; want one entry carrying the request's caller", record, first.AlreadyPaused)
 			}
 
@@ -844,7 +790,7 @@ func TestPause(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if record := e.record(); !second.AlreadyPaused || len(record.Live) != 1 || record.Live[0].Caller != "first" {
+			if record := e.record(); !second.AlreadyPaused || len(record.Live) != 1 || record.Live[0].Caller != pauserecord.OwnerCaller {
 				t.Errorf("record = %+v, already paused %v; want the standing entry kept and none added", record, second.AlreadyPaused)
 			}
 		}},

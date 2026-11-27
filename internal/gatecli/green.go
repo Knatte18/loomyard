@@ -67,7 +67,7 @@ type greenRecord struct {
 }
 
 // tierFingerprint hashes tier's declaration without its parallel, timeouts and slots.
-// A changed command, env, targets, counter, results, filter or carry setting therefore never carries a pass over.
+// A changed command, env, targets, counter, filter or carry setting therefore never carries a pass over.
 // build is hashed only for a tier with shared_build, and inert only when non-empty.
 // Optional keys are hashed only at a non-default value, so a tier that sets none of them keeps its fingerprint.
 func tierFingerprint(tier gateslot.Tier, build gateslot.BuildStep, inert []string) string {
@@ -81,7 +81,6 @@ func tierFingerprint(tier gateslot.Tier, build gateslot.BuildStep, inert []strin
 		Covers      []int
 		PrebuiltLym bool
 		Manual      bool
-		Results     string              `json:",omitempty"`
 		Filter      string              `json:",omitempty"`
 		SharedBuild bool                `json:",omitempty"`
 		NoCarry     bool                `json:",omitempty"`
@@ -89,7 +88,7 @@ func tierFingerprint(tier gateslot.Tier, build gateslot.BuildStep, inert []strin
 		Inert       []string            `json:",omitempty"`
 	}{
 		About: tier.About, Command: tier.Command, Dir: tier.Dir, Env: tier.Env, AllTargets: tier.AllTargets, Counter: tier.Counter, Covers: tier.Covers, PrebuiltLym: tier.PrebuiltLym, Manual: tier.Manual,
-		Results: tier.Results, Filter: tier.Filter, SharedBuild: tier.SharedBuild, NoCarry: tier.NoCarry, Inert: inert,
+		Filter: tier.Filter, SharedBuild: tier.SharedBuild, NoCarry: tier.NoCarry, Inert: inert,
 	}
 	if tier.SharedBuild {
 		declaration.Build = &build

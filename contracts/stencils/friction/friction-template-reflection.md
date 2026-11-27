@@ -45,15 +45,6 @@ intake filters later.
 
 For a `loom-halt` or `loom-crash-resume` note, file an issue only when the notes, the reason or the trace show a lym problem behind the event.
 A halt caused by the task's own code, or a review segment that did not converge, is dropped; a process signal such as a spent budget or an escalation is not a defect.
-A `build-skew` halt is dropped too: the run's lym was older than a board stencil it read,
-which is a binary to update and not a lym defect;
-the driver hands such a run to a fresh driver when a newer build is on disk.
-A `transient-stop` halt is dropped too: an infrastructure failure that lym classed transient, which a re-step can clear.
-A step loop re-steps it once.
-The Go driver also re-steps a git-transport or GitHub API stop with waits, and sends any other class to the tackler;
-the prompt-driven driver repairs what outlasts the loop's re-step under its repair cap.
-File one only when the notes show such halts at one row that the re-steps never cleared,
-or a failure classed transient that no retry could fix.
 A dropped event stays recoverable: the note names the trace file, the run's status and history stay on disk, and the operator can still file through `lym selfreport create`.
 
 ## Step 3 — File each issue
@@ -62,14 +53,7 @@ For each issue, invoke `lym selfreport create` yourself, following its own guida
 This prompt does not restate that contract.
 File only through `lym selfreport create`, never through `gh`.
 
-Each issue body states what happened, why it is abnormal and what to do, and then gives a provenance line naming the task slug `{{.task_slug}}` and the file names of the notes the issue came from.
-The provenance line is the last of what you write; the sections that `--attach` appends follow it.
-Never file an issue with an empty body.
-
-When the problem rests on evidence in a run directory, such as a capture, a trace or a log line, the issue carries it inline:
-attach the file with `--attach`, or quote the lines that show the problem.
-A run directory is deleted with its worktree, so an issue that only names the path names a file nobody can read once the run is gone.
-An attachment obeys the content rule below like the rest of the body: quote an excerpt instead when the file holds anything the rule forbids.
+Each issue body states what happened, why it is abnormal and what to do, and then ends with a provenance line naming the task slug `{{.task_slug}}` and the file names of the notes the issue came from.
 
 Content rule, which is a hard rule: the repository these issues go to is public.
 An issue body describes the lym problem and may quote lym's own output, verb names and repo-relative lym paths.

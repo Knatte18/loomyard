@@ -4,12 +4,11 @@
 package configengine
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 
@@ -82,18 +81,20 @@ const (
 // and a pair with a dotted key as the one value below an entry, with no template key check.
 // Categories classifies the template by dotted path: an entry covers its own path and every path under it.
 // RetiredKeys maps each dotted key the module has retired to the category it held as a template key;
-// they stay out of Categories and OpenMaps, and the local and machine layers admit or refuse them by that category.
+// they stay out of Categories and OpenMaps; the local and machine layers admit them by that category,
+// and a load drops them from the stacked document.
 // RetiredWayForward maps a retired dotted key to the text telling the operator where the key is set instead;
 // the local layer's refusal of that key ends with that text as the way forward.
 // HubOnlyWayForward maps a top-level key that a task's run settings may not carry.
 // The map gives the text telling the operator where to set it instead;
 // the key still loads from the hub layers, and only the run-settings refusal reads the map.
-// MovedKeys maps each old dotted key the module has moved to its new dotted path;
-// the local rule, the loads and a set refuse an old name.
 // SeedOnly marks the module whose file is the operator's registry: it is seeded whole and never pruned to the template,
 // so its base stays full in a hub too.
 // Overlay is the module's optional template overlay, picked by a selector key in the base layer;
 // its zero value means none.
+// MigrateLayer, when set, rewrites each present layer file's bytes in memory before the layers merge,
+// so a load reads the value a retired key carried before any reconcile rewrote the file.
+// It returns the rewritten bytes and one line per rewrite; the merge discards the lines and writes no file.
 type Spec struct {
 	Name              string
 	Template          []byte
@@ -107,9 +108,9 @@ type Spec struct {
 	RetiredKeys       map[string]Category
 	RetiredWayForward map[string]string
 	HubOnlyWayForward map[string]string
-	MovedKeys         map[string]string
 	SeedOnly          bool
 	Overlay           Overlay
+	MigrateLayer      func(layer []byte) ([]byte, []string, error)
 }
 
 // LocalFile returns the path of a module's local override file under anchor:
@@ -223,43 +224,68 @@ func retiredCovering(spec Spec, path string) (string, Category, bool) {
 	return best, category, found
 }
 
-// MovedKeyIn returns the first old key of spec's MovedKeys, in sorted order, that doc holds, with its new dotted path.
-// A key is held when doc has a value at exactly that path.
-// An old key that is also the area its new path lies under is held only while its value is not a mapping.
-// A mapping there is the new area.
-// The error is a parse failure of doc, which a caller that already parsed doc never sees.
-func MovedKeyIn(spec Spec, doc []byte) (oldKey, newPath string, found bool, err error) {
+// DropRetired removes from doc every retired key of the spec, at its dotted path, keeping every other key and comment.
+// A mapping the removal leaves empty is removed with its key.
+// A document that holds none is returned byte for byte.
+func DropRetired(doc []byte, spec Spec) ([]byte, error) {
+	if len(spec.RetiredKeys) == 0 || len(strings.TrimSpace(string(doc))) == 0 {
+		return doc, nil
+	}
 	var parsed yaml.Node
 	if err := yaml.Unmarshal(doc, &parsed); err != nil {
-		return "", "", false, fmt.Errorf("%s config: %w", spec.Name, err)
+		return nil, MarkInvalid(err)
 	}
-	for _, oldKey := range slices.Sorted(maps.Keys(spec.MovedKeys)) {
-		newPath := spec.MovedKeys[oldKey]
-		value := nodeAt(&parsed, oldKey)
-		if value == nil || (value.Kind == yaml.MappingNode && strings.HasPrefix(newPath, oldKey+".")) {
+	if parsed.Kind != yaml.DocumentNode || len(parsed.Content) == 0 {
+		return doc, nil
+	}
+	dropped := false
+	for key := range spec.RetiredKeys {
+		if removeKey(parsed.Content[0], strings.Split(key, ".")) {
+			dropped = true
+		}
+	}
+	if !dropped {
+		return doc, nil
+	}
+	var out bytes.Buffer
+	encoder := yaml.NewEncoder(&out)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&parsed); err != nil {
+		return nil, fmt.Errorf("marshal %s config without retired keys: %w", spec.Name, err)
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, fmt.Errorf("marshal %s config without retired keys: %w", spec.Name, err)
+	}
+	return out.Bytes(), nil
+}
+
+// removeKey deletes the mapping entry at the key path under node;
+// it also deletes each mapping on the path that the deletion leaves empty.
+// It reports whether an entry was removed.
+func removeKey(node *yaml.Node, path []string) bool {
+	if node.Kind != yaml.MappingNode {
+		return false
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value != path[0] {
 			continue
 		}
-		return oldKey, newPath, true, nil
+		if len(path) == 1 {
+			node.Content = append(node.Content[:i], node.Content[i+2:]...)
+			return true
+		}
+		if !removeKey(node.Content[i+1], path[1:]) {
+			return false
+		}
+		if child := node.Content[i+1]; child.Kind == yaml.MappingNode && len(child.Content) == 0 {
+			node.Content = append(node.Content[:i], node.Content[i+2:]...)
+		}
+		return true
 	}
-	return "", "", false, nil
-}
-
-// movedKeyError is the refusal of an old key name, naming both full names and the site's way forward.
-func movedKeyError(module, oldKey, newPath, wayForward string) error {
-	return fmt.Errorf("key %s was moved to %s; way forward: %s", KeyName(module, oldKey), KeyName(module, newPath), wayForward)
-}
-
-// refuseMovedKey returns the refusal, marked [ErrInvalid], of the first old key name doc holds, or nil.
-func refuseMovedKey(spec Spec, doc []byte, wayForward string) error {
-	oldKey, newPath, found, err := MovedKeyIn(spec, doc)
-	if err != nil || !found {
-		return err
-	}
-	return MarkInvalid(movedKeyError(spec.Name, oldKey, newPath, wayForward))
+	return false
 }
 
 // ValidateLocal checks a local override document against the spec.
-// An old key name of the spec's MovedKeys is refused first, naming its new path.
 // A unit a retired key covers is judged by that key's category alone:
 // CategoryNone admits it with no shape check, and any other category refuses it.
 // Every other unit path must exist in the template, or be a top-level key when the spec holds whole entries.
@@ -279,9 +305,6 @@ func ValidateLocal(spec Spec, doc []byte) error {
 	if len(paths) == 0 {
 		return nil
 	}
-	if err := refuseMovedKey(spec, doc, `run "lym config reconcile --apply" in this worktree`); err != nil {
-		return err
-	}
 	var docNode, templateNode yaml.Node
 	if err := yaml.Unmarshal(doc, &docNode); err != nil {
 		return MarkInvalid(err)
@@ -291,10 +314,9 @@ func ValidateLocal(spec Spec, doc []byte) error {
 	}
 
 	for _, path := range paths {
-		name := KeyName(spec.Name, path)
 		if retiredKey, retiredCategory, retired := retiredCovering(spec, path); retired {
 			if retiredCategory != CategoryNone {
-				message := fmt.Sprintf("key %q is %s and cannot be set in a local override", name, retiredCategory)
+				message := fmt.Sprintf("key %q is %s and cannot be set in a local override", path, retiredCategory)
 				if text := spec.RetiredWayForward[retiredKey]; text != "" {
 					message += "; way forward: " + text
 				}
@@ -304,20 +326,20 @@ func ValidateLocal(spec Spec, doc []byte) error {
 		}
 		templateValue := templateValueAt(spec, &templateNode, path)
 		if templateValue == nil && !spec.WholeEntries {
-			return MarkInvalid(fmt.Errorf("key %q is not in the %s template", name, spec.Name))
+			return MarkInvalid(fmt.Errorf("key %q is not in the %s template", path, spec.Name))
 		}
 		if templateValue != nil {
 			docIsMapping := nodeAt(&docNode, path).Kind == yaml.MappingNode
 			if docIsMapping != (templateValue.Kind == yaml.MappingNode) {
-				return MarkInvalid(fmt.Errorf("key %q: the %s template holds a different shape", name, spec.Name))
+				return MarkInvalid(fmt.Errorf("key %q: the %s template holds a different shape", path, spec.Name))
 			}
 		}
 		category, covered := coveringCategory(spec, path)
 		if covered && category != CategoryNone {
-			return MarkInvalid(fmt.Errorf("key %q is %s and cannot be set in a local override", name, category))
+			return MarkInvalid(fmt.Errorf("key %q is %s and cannot be set in a local override", path, category))
 		}
 		if !covered && spec.HubWide {
-			return MarkInvalid(fmt.Errorf("key %q is not classified for a local override", name))
+			return MarkInvalid(fmt.Errorf("key %q is not classified for a local override", path))
 		}
 	}
 	return nil
@@ -353,29 +375,28 @@ func ValidateMachine(spec Spec, doc []byte) error {
 	}
 
 	for _, path := range paths {
-		name := KeyName(spec.Name, path)
 		if _, retiredCategory, retired := retiredCovering(spec, path); retired {
 			if retiredCategory != CategoryMachine {
-				return MarkInvalid(fmt.Errorf("key %q is retired and cannot be set in a machine override%s", name, machineRemoval))
+				return MarkInvalid(fmt.Errorf("key %q is retired and cannot be set in a machine override%s", path, machineRemoval))
 			}
 			continue
 		}
 		templateValue := templateValueAt(spec, &templateNode, path)
 		if templateValue == nil {
-			return MarkInvalid(fmt.Errorf("key %q is not in the %s template%s", name, spec.Name, machineRemoval))
+			return MarkInvalid(fmt.Errorf("key %q is not in the %s template%s", path, spec.Name, machineRemoval))
 		}
 		docIsMapping := nodeAt(&docNode, path).Kind == yaml.MappingNode
 		if docIsMapping != (templateValue.Kind == yaml.MappingNode) {
-			return MarkInvalid(fmt.Errorf("key %q: the %s template holds a different shape%s", name, spec.Name, machineRemoval))
+			return MarkInvalid(fmt.Errorf("key %q: the %s template holds a different shape%s", path, spec.Name, machineRemoval))
 		}
 		category, covered := coveringCategory(spec, path)
 		switch {
 		case !covered:
-			return MarkInvalid(fmt.Errorf("key %q is not classified for a machine override%s", name, machineRemoval))
+			return MarkInvalid(fmt.Errorf("key %q is not classified for a machine override%s", path, machineRemoval))
 		case category == CategoryNone:
-			return MarkInvalid(fmt.Errorf("key %q is not a machine key; way forward: remove it from the machine override and set it in the hub file through \"lym config %s\" from the prime, or in the local override through \"lym config %s --layer local\"", name, spec.Name, spec.Name))
+			return MarkInvalid(fmt.Errorf("key %q is not a machine key; way forward: remove it from the machine override and set it in the hub file through \"lym config %s\" from the prime, or in the local override through \"lym config %s --layer local\"", path, spec.Name, spec.Name))
 		case category != CategoryMachine:
-			return MarkInvalid(fmt.Errorf("key %q is %s and cannot be set in a machine override; way forward: remove it from the machine override and set it in the hub file through \"lym config %s\" from the prime", name, category, spec.Name))
+			return MarkInvalid(fmt.Errorf("key %q is %s and cannot be set in a machine override; way forward: remove it from the machine override and set it in the hub file through \"lym config %s\" from the prime", path, category, spec.Name))
 		}
 	}
 	return nil
@@ -528,6 +549,46 @@ func readLayers(dirs Dirs, spec Spec, anchorLayers bool) ([]LayerDoc, error) {
 	return docs, nil
 }
 
+// BelowLayer returns the unexpanded merge of the spec's template and every present file layer below layer.
+// It is what a layer's keys are compared against to tell which of them add nothing.
+// It merges the layers the way the loaders do.
+func BelowLayer(dirs Dirs, spec Spec, layer Layer) ([]byte, error) {
+	layers, err := Layers(dirs, spec)
+	if err != nil {
+		return nil, err
+	}
+	merged, err := EffectiveTemplate(spec, baseDocument(dirs, spec, layers), dirs.Board != "")
+	if err != nil {
+		return nil, err
+	}
+	for _, doc := range layers {
+		if layerRank(doc.Layer) >= layerRank(layer) {
+			break
+		}
+		merged, err = yamlengine.Merge(merged, doc.Bytes, spec.OpenMaps, spec.WholeEntries)
+		if err != nil {
+			return nil, MarkInvalid(fmt.Errorf("config file %s: %w", doc.Path, err))
+		}
+	}
+	return merged, nil
+}
+
+// layerRank orders the layers from the template up.
+func layerRank(layer Layer) int {
+	switch layer {
+	case LayerTemplate:
+		return 0
+	case LayerDefault:
+		return 1
+	case LayerWorktree:
+		return 2
+	case LayerMachine:
+		return 3
+	default:
+		return 4
+	}
+}
+
 // Stack is one module's stacked layers.
 // Doc is the present file layers merged unexpanded in stack order, with no template key filled.
 // Layers are the layers Doc was merged from.
@@ -540,38 +601,24 @@ type Stack struct {
 
 // StackLayers returns the module's stack under dirs, and an error when a present layer is unreadable or invalid.
 // No present layer yields an empty Doc.
-// It merges the layers in stack order.
+// It merges the layers in stack order, each rewritten first by the spec's MigrateLayer when one is set.
 func StackLayers(dirs Dirs, spec Spec) (Stack, error) {
 	return stackLayers(dirs, spec, true)
 }
 
-// TopLevelValue returns the value of the top-level key that the highest present file layer under dirs sets.
-// The value is as yaml.v3 decodes it, returned with that layer's file path.
-// set is false when no present file layer sets the key.
-// The template is never read, so a caller reads what one place's own files set by telling only that place's dir.
-// A present layer that is unreadable or invalid is an error, as for [Layers].
-func TopLevelValue(dirs Dirs, spec Spec, key string) (value any, path string, set bool, err error) {
-	layers, err := Layers(dirs, spec)
-	if err != nil {
-		return nil, "", false, err
-	}
-	for i := len(layers) - 1; i >= 0; i-- {
-		var document map[string]any
-		if err := yaml.Unmarshal(layers[i].Bytes, &document); err != nil {
-			return nil, "", false, MarkInvalid(fmt.Errorf("config file %s: %w", layers[i].Path, err))
-		}
-		if value, set := document[key]; set {
-			return value, layers[i].Path, true, nil
-		}
-	}
-	return nil, "", false, nil
-}
-
 // stackLayers merges a module's layers in stack order, reading them through readLayers with the given anchorLayers.
+// The spec's MigrateLayer rewrites each layer's bytes before the merge; a failed rewrite is marked [ErrInvalid].
 func stackLayers(dirs Dirs, spec Spec, anchorLayers bool) (Stack, error) {
 	layers, err := readLayers(dirs, spec, anchorLayers)
 	if err != nil {
 		return Stack{}, err
+	}
+	if spec.MigrateLayer != nil {
+		for i := range layers {
+			if layers[i].Bytes, _, err = spec.MigrateLayer(layers[i].Bytes); err != nil {
+				return Stack{}, MarkInvalid(fmt.Errorf("config file %s: %w", layers[i].Path, err))
+			}
+		}
 	}
 	stack := Stack{Doc: []byte{}, Layers: layers, Origins: map[string]LayerDoc{}}
 	for _, layer := range layers {
@@ -668,52 +715,20 @@ func topLevelKeys(doc *yaml.Node) []string {
 	return keys
 }
 
-// KeyAtLine returns the dotted path of the deepest mapping key whose entry spans line in a resolved document.
-// It returns "" when no entry spans line.
+// KeyAtLine returns the top-level key of a resolved document whose entry spans line, or "" when none does.
 // An entry spans from its key's line up to the next key's line,
 // so a loader names the key a value decoding error at that line belongs to.
-// A mapping written in flow style is a value, so its keys are not part of the path.
 func KeyAtLine(contents []byte, line int) string {
 	var root yaml.Node
 	if err := yaml.Unmarshal(contents, &root); err != nil || len(root.Content) == 0 {
 		return ""
 	}
-	var path []string
-	for mapping := root.Content[0]; mapping != nil; {
-		var key, value *yaml.Node
-		for i := 0; i+1 < len(mapping.Content); i += 2 {
-			if mapping.Content[i].Line <= line {
-				key, value = mapping.Content[i], mapping.Content[i+1]
-			}
-		}
-		mapping = nil
-		if key == nil {
-			break
-		}
-		path = append(path, key.Value)
-		if value.Kind == yaml.MappingNode && value.Style&yaml.FlowStyle == 0 {
-			mapping = value
+	keys := root.Content[0].Content
+	found := ""
+	for i := 0; i < len(keys); i += 2 {
+		if keys[i].Line <= line {
+			found = keys[i].Value
 		}
 	}
-	return strings.Join(path, ".")
-}
-
-// NestPaths turns a map of dotted paths to values into the nested object the paths name.
-// Two paths sharing an area share one mapping.
-func NestPaths(values map[string]any) map[string]any {
-	nested := map[string]any{}
-	for path, value := range values {
-		areas := strings.Split(path, ".")
-		mapping := nested
-		for _, area := range areas[:len(areas)-1] {
-			inner, ok := mapping[area].(map[string]any)
-			if !ok {
-				inner = map[string]any{}
-				mapping[area] = inner
-			}
-			mapping = inner
-		}
-		mapping[areas[len(areas)-1]] = value
-	}
-	return nested
+	return found
 }

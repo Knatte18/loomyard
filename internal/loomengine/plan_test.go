@@ -39,16 +39,16 @@ func planTableLayout(t *testing.T, anchorRel string) *lymcwd.Location {
 	return layout
 }
 
-// planTableConfig returns a config whose plan.lenses key is lenses.
+// planTableConfig returns a config whose plan_lenses key is lenses.
 func planTableConfig(lenses string) Config {
-	return Config{Plan: PlanConfig{Model: "opus[effort=high]", TimeoutMin: 120, Lenses: lenses}, SubagentModel: "haiku"}
+	return Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120, PlanLenses: lenses, SubagentModel: "haiku"}
 }
 
 // templatePlanFan is the fan the embedded lenses template defines for the Plan-Write lead's lens forks.
 const templatePlanFan = "twill-plan"
 
 // TestPlanTable verifies PlanTable builds the lead the Plan-Write row needs:
-// at an unanchored location and at a subpath-anchored one, with and without the plan.lenses key.
+// at an unanchored location and at a subpath-anchored one, with and without the plan_lenses key.
 // Its lead carries the plan role and the fields it needs:
 // model, effort, version, outputs, skills, segment, timeout, interactivity and fork flag.
 // Its prompt, composed by seatengine.Prompts, names the told paths.
@@ -126,7 +126,7 @@ func TestPlanTable(t *testing.T) {
 			if lead.ForkSubagents != tt.wantForks {
 				t.Errorf("lead ForkSubagents = %v; want %v", lead.ForkSubagents, tt.wantForks)
 			}
-			if want := (shuttleengine.ModelKey{Module: "loom", Key: "plan.model"}); lead.ModelKey != want {
+			if want := (shuttleengine.ModelKey{Module: "loom", Key: "plan"}); lead.ModelKey != want {
 				t.Errorf("lead ModelKey = %+v; want %+v", lead.ModelKey, want)
 			}
 			if gotWake := slices.Contains(lead.Requires, shuttleengine.RequirementBackgroundWake); gotWake != (tt.lenses != "") {
@@ -257,7 +257,7 @@ func TestPlanTable(t *testing.T) {
 		for _, enabled := range []bool{true, false} {
 			cfg := planTableConfig("")
 			if enabled {
-				cfg.Friction.Model = "sonnet[medium]"
+				cfg.Friction = "sonnet[medium]"
 			}
 			table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none", false)
 			if err != nil {
@@ -281,7 +281,7 @@ func TestPlanTable(t *testing.T) {
 		layout := planTableLayout(t, "")
 		stencilsDir := newMinimalStencilsDir(t)
 		cfg := planTableConfig("")
-		cfg.Friction.Model = "sonnet[medium]"
+		cfg.Friction = "sonnet[medium]"
 
 		table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none", false)
 		if err != nil {
@@ -430,11 +430,11 @@ func TestPlanTable(t *testing.T) {
 		layout := planTableLayout(t, "")
 		stencilsDir := newTestStencilsDir(t)
 		cfg := planTableConfig(templatePlanFan)
-		cfg.Plan.Model = "sol"
+		cfg.Plan = "sol"
 
 		table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none", false)
 		if err != nil {
-			t.Fatalf("PlanTable(Plan.Model=%q) = _, %v; want nil error", cfg.Plan.Model, err)
+			t.Fatalf("PlanTable(Plan=%q) = _, %v; want nil error", cfg.Plan, err)
 		}
 		prompts, err := seatengine.Prompts(discussionTableGeometry(layout, stencilsDir), table)
 		if err != nil {
@@ -492,7 +492,7 @@ func TestPlanTable(t *testing.T) {
 		tests := []struct {
 			name string
 			plan string
-			// lenses is the plan.lenses value.
+			// lenses is the plan_lenses value.
 			lenses        string
 			removeStencil bool
 			// lensesYAML, when non-empty, is planted as the anchor's lenses.yaml.
@@ -501,10 +501,10 @@ func TestPlanTable(t *testing.T) {
 		}{
 			{name: "unparsable plan model-spec", plan: "opus[effort", wantErrNames: []string{"plan role model-spec"}},
 			{name: "missing stencil", plan: "opus[effort=high]", removeStencil: true, wantErrNames: []string{"loom-template-plan"}},
-			{name: "lens fan with a lenses.yaml that does not parse", plan: "opus[effort=high]", lenses: templatePlanFan, lensesYAML: "fans: [unterminated\n", wantErrNames: []string{"plan.lenses", "twill-plan", "lenses.yaml", `set the key to ""`}},
-			{name: "lens fan naming an undefined lens", plan: "opus[effort=high]", lenses: templatePlanFan, lensesYAML: "fans:\n  twill-plan:\n    - no-such-lens\n", wantErrNames: []string{"plan.lenses", "twill-plan", "no-such-lens", "lenses.yaml", `set the key to ""`}},
-			{name: "lens fan missing from lenses.yaml and the template", plan: "opus[effort=high]", lenses: "no-such-fan", wantErrNames: []string{"plan.lenses", "no-such-fan", "lenses.yaml", "define the fan and its lenses in lenses.yaml", `set the key to ""`}},
-			{name: "lens fan with no lenses", plan: "opus[effort=high]", lenses: templatePlanFan, lensesYAML: "fans:\n  twill-plan: []\n", wantErrNames: []string{"plan.lenses", "twill-plan", "lenses.yaml", `set the key to ""`}},
+			{name: "lens fan with a lenses.yaml that does not parse", plan: "opus[effort=high]", lenses: templatePlanFan, lensesYAML: "fans: [unterminated\n", wantErrNames: []string{"plan_lenses", "twill-plan", "lenses.yaml", `set the key to ""`}},
+			{name: "lens fan naming an undefined lens", plan: "opus[effort=high]", lenses: templatePlanFan, lensesYAML: "fans:\n  twill-plan:\n    - no-such-lens\n", wantErrNames: []string{"plan_lenses", "twill-plan", "no-such-lens", "lenses.yaml", `set the key to ""`}},
+			{name: "lens fan missing from lenses.yaml and the template", plan: "opus[effort=high]", lenses: "no-such-fan", wantErrNames: []string{"plan_lenses", "no-such-fan", "lenses.yaml", "define the fan and its lenses in lenses.yaml", `set the key to ""`}},
+			{name: "lens fan with no lenses", plan: "opus[effort=high]", lenses: templatePlanFan, lensesYAML: "fans:\n  twill-plan: []\n", wantErrNames: []string{"plan_lenses", "twill-plan", "lenses.yaml", `set the key to ""`}},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -518,7 +518,7 @@ func TestPlanTable(t *testing.T) {
 					stencilkit.Remove(t, stencilsDir, planStencil)
 				}
 				cfg := planTableConfig(tt.lenses)
-				cfg.Plan.Model = tt.plan
+				cfg.Plan = tt.plan
 
 				// A missing stencil is the seat engine's refusal: the table builder reads none, and Validate reads every seat's.
 				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none", false)

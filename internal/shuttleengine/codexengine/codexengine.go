@@ -6,6 +6,7 @@
 package codexengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,15 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
-
-// LymBinary resolves the absolute path of the lym binary that Prepare names in the python guard hook.
-// It defaults to `selfexec.LymBinary`, which refuses a test binary.
-// A test that runs Prepare points it at a stand-in path.
-var LymBinary = selfexec.LymBinary
 
 // engineName is the name the engine registers under.
 // The standing passages are keyed by it, and a spec's prompt engine must name it.
@@ -53,8 +48,6 @@ type Codex struct {
 	runHook shuttleengine.HookRunner
 	// rolloutWait bounds the batching nudge's wait for the call it judges to reach the rollout.
 	rolloutWait batchingRolloutWait
-	// now stamps the edit hook's records; tests replace it to pin the stamp.
-	now func() time.Time
 }
 
 // Seams are the collaborators a Codex engine takes from its wiring, so a test can fake each of them.
@@ -89,7 +82,6 @@ func NewFromConfig(cfg shuttleengine.Config, dirs configengine.Dirs, seams Seams
 		userSetup:            seams.UserSetup,
 		runHook:              seams.RunHook,
 		rolloutWait:          defaultBatchingRolloutWait(),
-		now:                  time.Now,
 	}
 }
 
@@ -123,10 +115,8 @@ func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, cod
 
 // Prepare readies a Codex launch for the run in runDir and returns it.
 // It first refuses a spec whose prompt was not rendered for Codex, unless the prompt is marked hand-written.
-// Before anything is written, it validates the spec and reads the hub gate config's refuse_raw list.
-// A gate key the launch does not read never refuses it.
-// A gate config that does not merge or holds an invalid refuse_raw refuses the launch.
-// So does a checkout that Codex rules refuse.
+// Before anything is written, it validates the spec and loads the hub's gate config.
+// A gate config that fails to load refuses the launch, and so does a checkout that Codex rules refuse.
 // It readies the lym home, settles the sandbox and writes prompt.md into runDir.
 // Under codex.yaml's workspace-write, a sandbox that cannot start on the machine refuses the launch, naming the cause.
 // The prompt file holds the spec's prompt alone.
@@ -146,14 +136,11 @@ func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, cod
 // An autonomous spec's question-tool deny comes before them, and the deny notice announces both.
 // With codex.yaml's batching nudge on, Prepare seeds the nudge's state file in runDir.
 // The line then carries the nudge's PostToolUse hook.
-// While cfg's EditLoopEdits is above 0, an autonomous spec's line carries the edit hook.
-// The hook writes to the edit records file in runDir.
 // It runs the settled sandbox mode, and under workspace-write it turns on the sandbox's network access,
 // so the session reaches the creel daemon's socket.
 // Once Codex exits, the launch appends the exit record to the run's events file.
 // A board directory adds creel's hook delivery and marks the launch CreelHooks.
 // A spec with skills starts with the skill load as its first turn.
-// Last, it writes the launch manifest into runDir, read back from the launch line it built.
 // It returns the prompt pointer as Launch.PromptLine, for shuttle to send once the skills load.
 // The launch records session starts and names no session id, since Codex mints its own at the first turn.
 func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
@@ -168,35 +155,26 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 		return shuttleengine.Launch{}, err
 	}
 	// The refuse list lives in the hub's gate config; an absent file means the hub refuses nothing.
-	refuseRaw, err := gateslot.LoadRefuseRaw(c.dirs)
-	if err != nil {
+	gate, err := gateslot.LoadConfig(c.dirs)
+	if err != nil && !errors.Is(err, gateslot.ErrConfigAbsent) {
 		return shuttleengine.Launch{}, fmt.Errorf("codexengine: %w", err)
 	}
-	// The python guard hook runs this binary by path, so a lym of another version on PATH never answers it.
-	lymPath, err := LymBinary()
-	if err != nil {
-		return shuttleengine.Launch{}, fmt.Errorf("codexengine: resolve the lym binary the python guard hook runs: %w", err)
-	}
-	guardIn := guardInputs{denyPython: cfg.DenyPython, denyPublish: spec.DenyPublish, allowRawTmux: spec.AllowRawTmux}
 	tools := toolHooks{
-		guards:       installedGuards(refuseRaw, guardIn),
-		lymPath:      lymPath,
+		guards:       installedGuards(gate.RefuseRaw, guardInputs{denyPython: cfg.DenyPython, denyPublish: spec.DenyPublish}),
 		questionDeny: !spec.Interactive,
 	}
 	// The told Board dir is the hub's Bolt checkout, empty outside a hub.
-	standing := shuttleengine.StandingPassages(c.dirs.Board, engineName, spec.Role)
-	notice := denyNotice(tools.questionDeny, tools.guards, guardIn)
-	items := []instructionItem{creelHeadItem(notice)}
+	passages := shuttleengine.StandingPassages(c.dirs.Board, engineName, spec.Role)
+	items := []instructionItem{creelHeadItem(denyNotice(tools.questionDeny, tools.guards))}
 	subagentEffort := c.subagentEffort(cfg.Agents, spec.ConfigRole, codex)
-	passage := subagentPassage(subagentEffort, spec.Skills)
-	if passage != "" {
+	if passage := subagentPassage(subagentEffort, spec.Skills); passage != "" {
 		items = append(items, instructionItem{
 			name:       "the subagent passage",
 			text:       passage,
 			wayForward: "shorten the role's skills in agents.yaml with lym config agents, since the passage lists them",
 		})
 	}
-	items = append(items, passageItems(standing.Passages)...)
+	items = append(items, passageItems(passages)...)
 	home, writableRoots, found, err := c.readyHome(codex)
 	if err != nil {
 		return shuttleengine.Launch{}, err
@@ -233,10 +211,9 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 		return shuttleengine.Launch{}, err
 	}
 	items = append(items, instructionItemsOf(setup.InstructionFiles)...)
-	unread := c.unreadClaudeFiles(found, workDir)
 	items = append(items, instructionItem{
 		name:       instructionPointersItemName,
-		text:       instructionPointers(unread),
+		text:       instructionPointers(c.unreadClaudeFiles(found, workDir)),
 		wayForward: instructionPointersWayForward,
 	})
 	items = append(items, instructionItem{name: skillListingItemName, text: setup.SkillListing, wayForward: skillListingWayForward})
@@ -255,14 +232,10 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 			return shuttleengine.Launch{}, fmt.Errorf("codexengine: write the batching nudge state: %w", err)
 		}
 	}
-	if cfg.EditLoopEdits > 0 && !spec.Interactive {
-		tools.editRecordsPath = filepath.Join(absRunDir, shuttleengine.EditRecordsFileName)
-	}
 	firstTurn, promptLine := launchPointer(promptPath), ""
-	// The roots come from the codex.yaml this launch already loaded, so one load serves the whole launch.
-	skillRoots := c.expandSkillRoots(codex)
-	if len(spec.Skills) > 0 && !spec.SkipSkillLoadTurn {
-		firstTurn, promptLine = skillLoadOver(spec.Skills, skillRoots), firstTurn
+	if len(spec.Skills) > 0 {
+		// The roots come from the codex.yaml this launch already loaded, so one load serves the whole launch.
+		firstTurn, promptLine = skillLoadOver(spec.Skills, c.expandSkillRoots(codex)), firstTurn
 	}
 
 	sh := shell.ForGOOS()
@@ -271,45 +244,22 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 	if c.dirs.Board != "" {
 		creel = creelDelivery{flagDir: shuttleengine.CreelFlagDir(c.dirs.Board), home: home, bin: codexBinary(codex)}
 	}
-	launchCmd := buildLaunchCmd(sh, launchLine{
-		bin:                   codexBinary(codex),
-		home:                  home,
-		sandboxMode:           sandboxMode,
-		writableRoots:         writableRoots,
-		model:                 spec.Model,
-		effort:                spec.Effort,
-		developerInstructions: instructions,
-		subagentEffort:        subagentEffort,
-		maxSubagentThreads:    codex.MaxSubagentThreads,
-		projectDocMaxBytes:    docMaxBytes,
-		hooks:                 hookSettings(eventsPath, tools, creel),
-		firstTurn:             firstTurn,
-		eventsPath:            eventsPath,
-	})
-	err = writeLaunchManifest(launchFacts{
-		spec:            spec,
-		codex:           codex,
-		refuseRaw:       refuseRaw,
-		lymPath:         lymPath,
-		setup:           setup,
-		standing:        standing,
-		denyNotice:      notice,
-		subagentPassage: passage,
-		instructions:    instructions,
-		unread:          unread,
-		found:           found,
-		workDir:         workDir,
-		skillRoots:      skillRoots,
-		runDir:          absRunDir,
-		sandboxMode:     sandboxMode,
-		shell:           sh,
-		launchLine:      launchCmd,
-	})
-	if err != nil {
-		return shuttleengine.Launch{}, err
-	}
 	return shuttleengine.Launch{
-		Cmd:                  launchCmd,
+		Cmd: buildLaunchCmd(sh, launchLine{
+			bin:                   codexBinary(codex),
+			home:                  home,
+			sandboxMode:           sandboxMode,
+			writableRoots:         writableRoots,
+			model:                 spec.Model,
+			effort:                spec.Effort,
+			developerInstructions: instructions,
+			subagentEffort:        subagentEffort,
+			maxSubagentThreads:    codex.MaxSubagentThreads,
+			projectDocMaxBytes:    docMaxBytes,
+			hooks:                 hookSettings(eventsPath, tools, creel),
+			firstTurn:             firstTurn,
+			eventsPath:            eventsPath,
+		}),
 		ResumeCmd:            buildResumeCmd(sh),
 		PromptLine:           promptLine,
 		RecordsSessionStarts: true,

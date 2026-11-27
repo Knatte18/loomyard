@@ -1,7 +1,7 @@
 // audit_test.go covers AuditForks end to end against a fake ~/.claude/projects layout built under t.TempDir().
 // It asserts the parent-transcript spawn tally and each fork's ForkReport fields.
 // It also covers the zero-fork finding for a missing subagents/ directory and the missing-parent-transcript error.
-// The path encoding that projectDirUnder derives is covered too.
+// The path encoding that claudeProjectDirFor derives is covered too.
 
 package claudeengine
 
@@ -59,9 +59,8 @@ func TestAuditForks_FullLayout(t *testing.T) {
 	if audit.SpawnCalls != 2 {
 		t.Errorf("SpawnCalls = %d; want 2 (two Agent tool_use entries in parent-spawns.jsonl)", audit.SpawnCalls)
 	}
-	if audit.NamedSpawns != 1 || audit.NamedForkSpawns != 1 {
-		t.Errorf("NamedSpawns/NamedForkSpawns = %d/%d; want 1/1 (only the second spawn carries a name, and it is a fork)",
-			audit.NamedSpawns, audit.NamedForkSpawns)
+	if audit.NamedSpawns != 1 {
+		t.Errorf("NamedSpawns = %d; want 1 (only the second spawn carries a name)", audit.NamedSpawns)
 	}
 	if len(audit.Forks) != 3 {
 		t.Fatalf("len(Forks) = %d; want 3", len(audit.Forks))
@@ -111,59 +110,6 @@ func TestAuditForks_FullLayout(t *testing.T) {
 	}
 	if mutating.ReportReturned {
 		t.Error("mutating fork ReportReturned = true; want false (transcript ends with a tool_result, no final text message)")
-	}
-}
-
-// TestAuditForks_FreshSubagentReadFromMeta checks the FreshSubagent flag AuditForks reports for a subagent transcript.
-// The flag is read from the sibling .meta.json the transcript carries.
-// Only a meta file that records a subagent type other than the fork type, with no fork flag, reads as fresh.
-// A missing, unparseable or kind-less meta file reads as a fork.
-// It runs sequentially because each row sets HOME.
-func TestAuditForks_FreshSubagentReadFromMeta(t *testing.T) {
-	tiergate.Require(t, 0)
-	tests := []struct {
-		name string
-		meta string
-		want bool
-	}{
-		{"Fork", forkMeta, false},
-		{"GeneralPurposeSubagent", `{"agentType":"general-purpose","toolUseId":"toolu_01Fresh","spawnDepth":1}`, true},
-		{"ForkTypeWithoutForkFlag", `{"agentType":"fork","toolUseId":"toolu_01Fork"}`, false},
-		{"ForkFlagWithoutAgentType", `{"isFork":true,"toolUseId":"toolu_01Fork"}`, false},
-		{"ForkFlagWithOtherAgentType", `{"isFork":true,"agentType":"general-purpose","toolUseId":"toolu_01Fork"}`, false},
-		{"ToolUseIDOnlyReadsAsFork", `{"toolUseId":"toolu_01Unknown"}`, false},
-		{"EmptyObjectReadsAsFork", `{}`, false},
-		{"NullReadsAsFork", `null`, false},
-		{"NoMetaReadsAsFork", "", false},
-		{"UnparseableMetaReadsAsFork", "{", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			home := t.TempDir()
-			t.Setenv("HOME", home)
-			workdir := "/home/op/fresh-subagent"
-			sessionID := "sess-fresh"
-			projectDir := filepath.Join(home, ".claude", "projects", encodeForTest(workdir))
-			copyFixture(t, "parent-spawns.jsonl", filepath.Join(projectDir, sessionID+".jsonl"))
-			subagents := filepath.Join(projectDir, sessionID, "subagents")
-			copyFixture(t, "fork-spawn-boundary.jsonl", filepath.Join(subagents, "agent-a1.jsonl"))
-			if tt.meta != "" {
-				if err := os.WriteFile(filepath.Join(subagents, "agent-a1.meta.json"), []byte(tt.meta), 0o644); err != nil {
-					t.Fatalf("write meta.json: %v", err)
-				}
-			}
-
-			audit, err := New().AuditForks(sessionID, workdir)
-			if err != nil {
-				t.Fatalf("AuditForks() error: %v", err)
-			}
-			if len(audit.Forks) != 1 {
-				t.Fatalf("len(Forks) = %d; want 1", len(audit.Forks))
-			}
-			if got := audit.Forks[0].FreshSubagent; got != tt.want {
-				t.Errorf("AuditForks().Forks[0].FreshSubagent = %v; want %v", got, tt.want)
-			}
-		})
 	}
 }
 
@@ -272,13 +218,16 @@ func TestAuditForks_MissingParentTranscriptErrors(t *testing.T) {
 //testtiming:keep pins the literal encoding of a backslash-and-space path, which its covering test computes through its own reimplementation of the encoding
 func TestClaudeProjectDirFor_EncodesNonAlnumBytes(t *testing.T) {
 	tiergate.Require(t, 0)
-	t.Parallel()
-	projects := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 
-	got := projectDirUnder(projects, `C:\a b\c`)
-	want := filepath.Join(projects, "C--a-b-c")
+	got, err := claudeProjectDirFor(`C:\a b\c`)
+	if err != nil {
+		t.Fatalf("claudeProjectDirFor() error: %v", err)
+	}
+	want := filepath.Join(home, ".claude", "projects", "C--a-b-c")
 	if got != want {
-		t.Errorf("projectDirUnder(%q) = %q; want %q", `C:\a b\c`, got, want)
+		t.Errorf("claudeProjectDirFor(%q) = %q; want %q", `C:\a b\c`, got, want)
 	}
 }
 

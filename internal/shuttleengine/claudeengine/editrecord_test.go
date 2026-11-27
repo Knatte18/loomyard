@@ -4,9 +4,6 @@
 package claudeengine
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"io/fs"
 	"os"
@@ -21,21 +18,15 @@ import (
 )
 
 // TestRecordEdit pins the record an edit hook input appends and the file-edit signal ParseSessionSignals reads from it.
-// The record leaves out the edit's text and the file's content the input carries,
-// and it carries the hash of the edited file's content when the file can be read.
+// The record leaves out the edit's text and the file's content the input carries.
 func TestRecordEdit(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	at := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
 	const validEdit = `{"hook_event_name":"PostToolUse","tool_name":"Edit","tool_input":{"file_path":"/w/a.go"}}`
-	const editedContent = "package a\n"
-	contentSum := sha256.Sum256([]byte(editedContent))
 	tests := []struct {
 		name    string
 		payload string
-		// content, when set, is written to a file in a temporary directory before the hook runs.
-		// That file's path then stands for editedFilePath in the payload and in want.
-		content string
 		// missingDir puts the edit records file under a directory that does not exist, so it cannot be opened.
 		missingDir bool
 		// want is the signals the edit records file reads as; nil wants nothing appended.
@@ -44,13 +35,6 @@ func TestRecordEdit(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:    "AnEditOfAReadableFileCarriesItsContentHash",
-			payload: `{"hook_event_name":"PostToolUse","session_id":"sess-1","tool_name":"Edit","tool_input":{"file_path":"` + editedFilePath + `","old_string":"x","new_string":"y"}}`,
-			content: editedContent,
-			want:    []shuttleengine.SessionSignal{{Kind: shuttleengine.SessionSignalFileEdit, At: at, SessionID: "sess-1", FilePath: editedFilePath, ContentHash: hex.EncodeToString(contentSum[:])}},
-		},
-		{
-			// The file /w/a.go does not exist, so the edit is recorded with no content hash.
 			name:    "AnEditOfTheSessionIsAFileEdit",
 			payload: `{"hook_event_name":"PostToolUse","session_id":"sess-1","tool_name":"Edit","tool_input":{"file_path":"/w/a.go","old_string":"x","new_string":"y"},"tool_response":{"originalFile":"package a"}}`,
 			want:    []shuttleengine.SessionSignal{{Kind: shuttleengine.SessionSignalFileEdit, At: at, SessionID: "sess-1", FilePath: "/w/a.go"}},
@@ -72,24 +56,9 @@ func TestRecordEdit(t *testing.T) {
 			if tt.missingDir {
 				recordsPath = filepath.Join(t.TempDir(), "no-such-dir", shuttleengine.EditRecordsFileName)
 			}
-			payload, want := tt.payload, slices.Clone(tt.want)
-			if tt.content != "" {
-				filePath := filepath.Join(t.TempDir(), "a.go")
-				if err := os.WriteFile(filePath, []byte(tt.content), 0o644); err != nil {
-					t.Fatalf("write the edited file: %v", err)
-				}
-				quotedPath, err := json.Marshal(filePath)
-				if err != nil {
-					t.Fatalf("quote the edited file's path: %v", err)
-				}
-				payload = strings.ReplaceAll(payload, `"`+editedFilePath+`"`, string(quotedPath))
-				for index := range want {
-					want[index].FilePath = filePath
-				}
-			}
 			engine := New()
 			engine.now = func() time.Time { return at }
-			err := engine.RecordEdit(recordsPath, []byte(payload))
+			err := engine.RecordEdit(recordsPath, []byte(tt.payload))
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Errorf("RecordEdit() error = %v; want one naming %q", err, tt.wantErr)
@@ -103,25 +72,22 @@ func TestRecordEdit(t *testing.T) {
 			if err != nil && !errors.Is(err, fs.ErrNotExist) {
 				t.Fatalf("read the edit records file: %v", err)
 			}
-			if want == nil && len(data) != 0 {
+			if tt.want == nil && len(data) != 0 {
 				t.Errorf("edit records file = %q; want nothing appended", data)
 			}
-			for _, carried := range []string{"old_string", "new_string", "originalFile", `"content"`, "package a"} {
+			for _, carried := range []string{"old_string", "new_string", "originalFile", `"content"`} {
 				if strings.Contains(string(data), carried) {
-					t.Errorf("edit records file = %q; want no %s from the hook input or the edited file", data, carried)
+					t.Errorf("edit records file = %q; want no %s from the hook input", data, carried)
 				}
 			}
 			got, consumed := engine.ParseSessionSignals(data)
 			if consumed != len(data) {
 				t.Errorf("ParseSessionSignals consumed %d of %d bytes; want the whole record", consumed, len(data))
 			}
-			assertSignals(t, "recorded edit", got, want)
+			assertSignals(t, "recorded edit", got, tt.want)
 		})
 	}
 }
-
-// editedFilePath stands in a TestRecordEdit row's payload and want for the path of the file the row writes.
-const editedFilePath = "EDITED_FILE"
 
 // TestBuildSettings_EditHook pins that the settings carry the edit hook, which names the edit records file.
 // They carry it exactly when the edit-loop watch is on and the run is not interactive.
@@ -143,7 +109,7 @@ func TestBuildSettings_EditHook(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			cfg := shuttleengine.Config{EditLoopEdits: tt.edits, EditLoopWindowS: 300}
-			data, err := buildSettings(eventsPath, tt.interactive, cfg, templateConfig(t), false, false, false, "", "", "", "", testLymPath, sessionScope{})
+			data, err := buildSettings(eventsPath, tt.interactive, cfg, templateConfig(t), false, false, "", "", "", "", sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}

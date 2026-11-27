@@ -68,50 +68,6 @@ func TestCheckCarryOversKept(t *testing.T) {
 	}
 }
 
-// TestCheckCarryOversNotLost asserts a record may gain carry-over blocks but never lose or change one.
-func TestCheckCarryOversNotLost(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	planReview := renderedEntry(carryOverEntry("Plan-Review", "cache-key"))
-	planReviewChanged := renderedEntry(carryOverEntry("Plan-Review", "other-key"))
-	describe := renderedEntry(carryOverEntry("Describe", "describe-key"))
-	withBlocks := func(blocks ...string) []byte {
-		body := "\n"
-		for _, block := range blocks {
-			body += block + "\n\n"
-		}
-		return []byte(recordWithOpenRisks(body))
-	}
-
-	tests := []struct {
-		name    string
-		current []byte
-		next    []byte
-		// wantDetails holds the text each finding's Detail must contain, in finding order.
-		wantDetails []string
-	}{
-		{"identical records", withBlocks(planReview), withBlocks(planReview), nil},
-		{"an added block", withBlocks(planReview), withBlocks(planReview, describe), nil},
-		{"a dropped block", withBlocks(planReview), withBlocks(), []string{"dropped"}},
-		{"a changed block", withBlocks(planReview), withBlocks(planReviewChanged), []string{"changed"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got := CheckCarryOversNotLost(tt.current, tt.next)
-			if len(got) != len(tt.wantDetails) {
-				t.Fatalf("CheckCarryOversNotLost() = %+v; want %d findings", got, len(tt.wantDetails))
-			}
-			for i, finding := range got {
-				if !strings.Contains(finding.Detail, tt.wantDetails[i]) {
-					t.Errorf("finding %d detail %q does not contain %q", i, finding.Detail, tt.wantDetails[i])
-				}
-			}
-		})
-	}
-}
-
 // TestCheckAddedEntriesSubset asserts every added entry of the replacement equals its own entry of the current record.
 // Dropping entries is no finding; an inserted or rewritten entry is one finding naming its heading.
 // A heading inside a fenced block starts no entry.

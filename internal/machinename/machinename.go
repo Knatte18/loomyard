@@ -4,8 +4,6 @@
 package machinename
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,11 +21,8 @@ const fileName = "machine.json"
 // lockName is the name of the lock the machine file's writer holds, beside the file.
 const lockName = "machine.lock"
 
-// idBytes is the number of random bytes in a machine id.
-const idBytes = 16
-
-// MaxNameLength is the longest name the name rule accepts, a DNS label's length.
-const MaxNameLength = 63
+// maxNameLength is the longest name the name rule accepts, a DNS label's length.
+const maxNameLength = 63
 
 // setNameWayForward is the way forward of a machine file that does not yield a name.
 const setNameWayForward = "run `lym machine name <name>`, which rewrites the file, or remove the file"
@@ -39,42 +34,6 @@ type File struct {
 	Name string `json:"name"`
 	// Names lists every name recorded for this machine, oldest first, the current one last.
 	Names []string `json:"names"`
-	// ID is the random machine id lym writes at the machine's first registration; empty before then.
-	ID string `json:"id,omitempty"`
-	// Forgotten lists the former names a forget dropped; only the copied-file check reads it.
-	Forgotten []string `json:"forgotten,omitempty"`
-}
-
-// Identity is this machine's whole identity as the machine file and the hostname rule yield it.
-// An empty ID means the machine is not registered yet.
-type Identity struct {
-	// ID is the machine's random id, empty when unregistered.
-	ID string
-	// Name is the machine's current name.
-	Name string
-	// Former lists the names the machine replaced: the non-empty names of the machine file other than the current one.
-	// A former name is kept even when it fails the name rule, since only this machine could have written an owner under it.
-	Former []string
-	// Forgotten lists the former names a forget dropped.
-	Forgotten []string
-}
-
-// ReadIdentity returns this machine's identity: its current and former names,
-// and its id and forgotten names.
-// With no machine file, or no directory to hold one, the id and forgotten names are empty.
-// A file that does not read or yields no valid name is an error, as for Name.
-func ReadIdentity() (Identity, error) {
-	return resolveIdentity(machineFile, os.Hostname)
-}
-
-// NewID returns a new random machine id: 32 lower-case hexadecimal characters from 16 random bytes.
-// Its error is the random source's, which fails only on a broken system; a retry is the way forward.
-func NewID() (string, error) {
-	var raw [idBytes]byte
-	if _, err := rand.Read(raw[:]); err != nil {
-		return "", fmt.Errorf("read random bytes for a machine id: %w; way forward: retry", err)
-	}
-	return hex.EncodeToString(raw[:]), nil
 }
 
 // FilePath returns the machine file's path and its writer's lock's path in the per-user lym config directory.
@@ -129,14 +88,14 @@ func Names() (current string, former []string, err error) {
 // lower-case letters, digits and hyphens, starting and ending with a letter or digit, at most 63 characters.
 // The rule keeps the name from reading as a domain or a hub-qualified name in an owner, an address or a channel name.
 func CheckName(name string) error {
-	valid := name != "" && len(name) <= MaxNameLength && name[0] != '-' && name[len(name)-1] != '-'
+	valid := name != "" && len(name) <= maxNameLength && name[0] != '-' && name[len(name)-1] != '-'
 	for _, r := range name {
 		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
 			valid = false
 		}
 	}
 	if !valid {
-		return fmt.Errorf("the machine name %q is invalid: a name is lower-case letters, digits and hyphens, starts and ends with a letter or digit, and is at most %d characters; way forward: choose a name of that form", name, MaxNameLength)
+		return fmt.Errorf("the machine name %q is invalid: a name is lower-case letters, digits and hyphens, starts and ends with a letter or digit, and is at most %d characters; way forward: choose a name of that form", name, maxNameLength)
 	}
 	return nil
 }
@@ -198,29 +157,6 @@ func resolveNames(locate fileLocator, hostname func() (string, error)) (string, 
 		}
 	}
 	return file.Name, former, nil
-}
-
-// resolveIdentity resolves the identity from the file locate names, resolving the names as resolveNames does.
-// The id and forgotten names come from the decoded file; with no file or no directory they are empty.
-func resolveIdentity(locate fileLocator, hostname func() (string, error)) (Identity, error) {
-	name, former, err := resolveNames(locate, hostname)
-	if err != nil {
-		return Identity{}, err
-	}
-	identity := Identity{Name: name, Former: former}
-	path, ok, err := locate()
-	if err != nil || !ok {
-		return identity, err
-	}
-	file, exists, err := ReadFile(path)
-	if err != nil {
-		return Identity{}, fmt.Errorf("the machine file %s does not read: %w; way forward: %s", path, err, setNameWayForward)
-	}
-	if exists {
-		identity.ID = file.ID
-		identity.Forgotten = file.Forgotten
-	}
-	return identity, nil
 }
 
 // nameFromHostname applies the hostname rule to the hostname hostname reads.

@@ -54,8 +54,6 @@ func seedStencils(cmd *cobra.Command) {
 		return
 	}
 	running := buildvcs.Running()
-	// The read path orders writers the way the refresh does, so a descendant build's board copy is never read unchecked.
-	stencilstore.RegisterOrdering(fabricengine.StencilSource(worktree, "", running).Older)
 	seedStencilsAt(hub, worktree, stencilstore.ModeFor(buildinfo.IsDev(), buildinfo.IsProduction(), running.Clean()), running)
 }
 

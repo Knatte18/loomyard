@@ -21,8 +21,7 @@ func validateSegmentColors(colors map[string]string) error {
 	sort.Strings(keys)
 	for _, key := range keys {
 		if _, err := segmentcolor.ParseColor(colors[key]); err != nil {
-			name := keyName("segment_colors." + key)
-			return fmt.Errorf("invalid %s: %w; set %s to one of the palette colors", name, err, name)
+			return fmt.Errorf("invalid segment_colors.%s: %w; set segment_colors.%s to one of the palette colors", key, err, key)
 		}
 	}
 	return nil

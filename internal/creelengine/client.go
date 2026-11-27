@@ -82,16 +82,6 @@ func (e *daemonRefusal) Error() string { return e.err.Error() }
 
 func (e *daemonRefusal) Unwrap() error { return e.err }
 
-// Is makes every refusal the daemon answered match ErrDaemonRefusal under errors.Is.
-func (e *daemonRefusal) Is(target error) bool { return target == ErrDaemonRefusal }
-
-// ErrDaemonRefusal matches, under errors.Is, every refusal a daemon answered, whatever its message.
-var ErrDaemonRefusal = errors.New("creel: the daemon refused the request")
-
-// IsDaemonRefusal reports whether err is or wraps a refusal the daemon answered.
-// A dropped connection or an unreadable answer is none, so a caller tells an answered request from a lost one.
-func IsDaemonRefusal(err error) bool { return errors.Is(err, ErrDaemonRefusal) }
-
 // connect dials the daemon's socket.
 // When nothing answers it starts the daemon once and retries up to ConnectAttempts times.
 // It sleeps on the client's clock between tries, the wait starting at one second and doubling up to a ceiling.

@@ -211,12 +211,8 @@ func targetWeftTip(weftRepoRoot, weftBranch string) (string, error) {
 	if err != nil || tip == "" {
 		return "", err
 	}
-	ns, err := originNamespaceAt(weftRepoRoot)
-	if err != nil {
-		return "", err
-	}
 	tracking := "refs/remotes/" + originRemoteName + "/" + weftBranch
-	if _, err := gitrepo.New(weftRepoRoot).FetchWithArgs("--no-tags", originRemoteName, ns.Branch(weftBranch)+":"+tracking); err != nil {
+	if _, err := gitrepo.New(weftRepoRoot).FetchWithArgs("--no-tags", originRemoteName, "refs/heads/"+weftBranch+":"+tracking); err != nil {
 		return "", fmt.Errorf("fetch weft branch %q from %q: %w", weftBranch, originRemoteName, err)
 	}
 	return tracking, nil

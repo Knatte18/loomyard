@@ -13,9 +13,6 @@ Each on-disk format has one parser; consumers read only its model.
 - The drift expectation and judgement: `internal/driftengine`.
 - The raddle proposal: `internal/raddleparser`.
 - The lens report's outcome: `internal/lensreport`.
-- The burler review file and the fixer-report frontmatter: `internal/burlerengine`.
-- Bridge envelope: `internal/slackengine`.
-- The Bouncer's verification file: `internal/shedadapters`, through `parseVerification`.
 
 A format another task adds joins this list with its sole parser.
 
@@ -109,20 +106,6 @@ It reads the `outcome` key alone, in the format `contracts/specs/twill-lens-repo
 `internal/landingshed`'s `ParseFixerReport` is the sole parser of the merge fixer's report format.
 `contracts/specs/landing-fixer-report-spec.md` defines that format.
 Parent-Align and Finalize read only the `FixerReport` it returns.
-
-## Burler review file and fixer-report frontmatter (`internal/burlerengine`)
-
-`internal/burlerengine`'s `ParseReview` is the sole parser of the burler review file's frontmatter.
-`ParseCurrentReview` adds the current round's strict checks to it.
-`internal/burlerengine`'s `ParseFixerReport` is the sole parser of the fixer-report's frontmatter.
-Every consumer, the round gates, the producers and the judges among them, reads only the `Verdict`, `Finding` and `FixerReport` models they return.
-The fixer-report is agent-written, so `ParseFixerReport` is strict and refuses an unknown top-level key.
-
-## Bridge envelope (`internal/slackengine`)
-
-`internal/slackengine`'s `FormatBridgeMessage` is the sole writer, and `ParseBridgeMessage` the sole parser,
-of the envelope line that opens a bridge message between two machines' orchs.
-Consumers read only the `BridgeEnvelope` it returns.
 
 ## Fix review report format (`internal/landingshed`)
 

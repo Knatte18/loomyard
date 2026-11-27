@@ -116,14 +116,13 @@ type verifyOutcome struct {
 	Flaky []string
 	// Findings is the failure rendered for a fixer; empty when the verify passed.
 	Findings string
-	// Unjudged reports that the verify judged no code, by a runner crash or a memory pressure stop,
-	// so no fixer can mend it.
-	Unjudged bool
+	// RunnerCrash reports that the test runner crashed in every failed run, so no fixer can mend it.
+	RunnerCrash bool
 }
 
 // runVerify runs the hub's verify gate call through the verify seam under the geometry's pause hold.
 // A failure is rerun once, and a pass on the rerun is a pass whose failing identities are flaky.
-// A timeout, a dirty tree and an unjudged run are not rerun, and an unjudged run starts no fixer.
+// A timeout, a dirty tree and a runner crash are not rerun, and a crash starts no fixer.
 // A failure writes the verify-failure record and returns its findings.
 func runVerify(deps RunDeps, st *State, evaluation int) (verifyOutcome, error) {
 	if deps.Geom.GateConfig == nil {
@@ -149,7 +148,7 @@ func runVerify(deps RunDeps, st *State, evaluation int) (verifyOutcome, error) {
 	}
 
 	var flaky []string
-	if res.Status == verifytree.StatusFailed && !res.TimedOut && !res.Unjudged() {
+	if res.Status == verifytree.StatusFailed && !res.TimedOut && !res.RunnerCrash {
 		firstOutput, err := readVerifyLog(res.Log)
 		if err != nil {
 			return verifyOutcome{}, err
@@ -166,8 +165,8 @@ func runVerify(deps RunDeps, st *State, evaluation int) (verifyOutcome, error) {
 		}
 	}
 
-	if res.Unjudged() {
-		return verifyOutcome{Unjudged: true, Findings: unjudgedFindings(res)}, nil
+	if res.RunnerCrash {
+		return verifyOutcome{RunnerCrash: true, Findings: runnerCrashFindings(res)}, nil
 	}
 	report := runplan.VerifyGateReport{Attempt: evaluation, Cap: len(deps.Ladder), Command: call, Fixer: "verify fixer"}
 	if res.Status == verifytree.StatusDirty {

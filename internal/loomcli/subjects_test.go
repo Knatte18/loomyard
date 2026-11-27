@@ -143,6 +143,9 @@ func TestReviewInputSeams(t *testing.T) {
 		{"FixerReport", fixerReportInput, func(scratchDir string) string {
 			return filepath.Join(scratchDir, loomshed.NameParentAlign+"-fixer-report.md")
 		}},
+		{"FixerReportUnderRetiredName", fixerReportInput, func(scratchDir string) string {
+			return filepath.Join(scratchDir, "Merge-In-fixer-report.md")
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -168,29 +171,17 @@ func TestReviewInputSeams(t *testing.T) {
 		})
 	}
 
-	t.Run("ReviewInputsAnswerOnlyTheFixerReportAndIgnoreAPRFindingsFile", func(t *testing.T) {
+	t.Run("FixerReportBothNames_NewWins", func(t *testing.T) {
 		t.Parallel()
 		scratchDir := t.TempDir()
-		seam := reviewInputs(scratchDir)
-		check := func(step string, want ...string) {
-			t.Helper()
-			got, err := seam()
-			if err != nil || len(got) != len(want) {
-				t.Fatalf("%s: reviewInputs() = %+v, %v; want %d inputs, nil", step, got, err, len(want))
-			}
-			for i := range want {
-				if got[i].Path != want[i] {
-					t.Errorf("%s: reviewInputs()[%d] = %q; want %q", step, i, got[i].Path, want[i])
-				}
+		current := filepath.Join(scratchDir, loomshed.NameParentAlign+"-fixer-report.md")
+		for _, path := range []string{current, filepath.Join(scratchDir, "Merge-In-fixer-report.md")} {
+			if err := os.WriteFile(path, []byte("input\n"), 0o644); err != nil {
+				t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 			}
 		}
-
-		check("no file")
-		writeSubjectFile(t, filepath.Join(scratchDir, "pr-findings-1.md"), "findings\n")
-		check("a pr-findings file")
-
-		fixer := filepath.Join(scratchDir, loomshed.NameParentAlign+"-fixer-report.md")
-		writeSubjectFile(t, fixer, "report\n")
-		check("fixer report beside a pr-findings file", fixer)
+		if path, _, found, err := fixerReportInput(scratchDir)(); err != nil || !found || path != current {
+			t.Errorf("fixerReportInput() = %q, %v, %v; want %q, found, nil", path, found, err, current)
+		}
 	})
 }

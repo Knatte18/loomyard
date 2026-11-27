@@ -1,5 +1,5 @@
 // editrecord.go implements the edit hook: the PostToolUse hook command that runs on each Edit and Write call.
-// It also holds RecordEdit, which appends one slim record of an edited file to the run's edit records file.
+// It also holds RecordEdit, which appends one slim record of the edited file to the run's edit records file.
 // Shuttle's edit-loop watch reads those records.
 
 package claudeengine
@@ -27,13 +27,8 @@ func editRecordHookCommand(quotedRecordsPath string) string {
 	return "lym shuttle " + shuttleengine.EditHookVerb + " " + engineName + " " + quotedRecordsPath + "; true"
 }
 
-// contentHashKey is the edit record's key for the hash of the edited file's content right after the edit.
-// It is lym's own key, beside Claude Code's payload fields.
-const contentHashKey = "content_hash"
-
 // editRecord is the PostToolUse line the edit hook appends.
 // It has Claude Code's own payload shape and holds only the fields a file edit reads.
-// It adds the hash of the edited file's content.
 // Claude Code's full payload carries the edit's text and the file's content.
 // The edit records file must not hold them, since every watch of the run rereads it.
 type editRecord struct {
@@ -44,13 +39,10 @@ type editRecord struct {
 	ToolInput     struct {
 		FilePath string `json:"file_path"`
 	} `json:"tool_input"`
-	ContentHash string `json:"content_hash,omitempty"`
 }
 
 // RecordEdit appends the Edit or Write call a PostToolUse payload describes to the edit records file at recordsPath:
 // a stamp line with the hook-side time, then an editRecord, in one write.
-// The record carries the SHA-256 of the edited file's content as the hook reads it,
-// or no hash when the file cannot be read, such as after a later edit removed it.
 // A payload naming another tool or no file path appends nothing; a malformed payload or a failed write is an error.
 func (c *Claude) RecordEdit(recordsPath string, payload []byte) error {
 	var record editRecord
@@ -61,7 +53,6 @@ func (c *Claude) RecordEdit(recordsPath string, payload []byte) error {
 		return nil
 	}
 	record.HookEventName = hookEventPostToolUse
-	record.ContentHash = shuttleengine.FileContentHash(record.ToolInput.FilePath)
 	line, err := json.Marshal(record)
 	if err != nil {
 		return fmt.Errorf("claudeengine: marshal the edit record: %w", err)

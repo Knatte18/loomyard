@@ -90,7 +90,7 @@ func (s *scriptedServer) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		reply(200, `{"data": {}}`)
 	case "GET " + pullsPath + "/1":
-		reply(200, `{"state": "open", "mergeable_state": "clean", "title": "First title", "body": "First body\r\nsecond line", "head": {"sha": "h1"}}`)
+		reply(200, `{"state": "open", "mergeable_state": "clean", "head": {"sha": "h1"}}`)
 	case "GET " + pullsPath + "/2":
 		reply(200, `{"state": "closed", "merged": true, "head": {"sha": "h2"}}`)
 	case "GET " + pullsPath + "/3":
@@ -125,10 +125,6 @@ func (s *scriptedServer) handle(w http.ResponseWriter, r *http.Request) {
 		reply(200, `[{"type": "required_linear_history", "ruleset_source_type": "Repository", "ruleset_source": "owner/repo", "ruleset_id": 1}]`)
 	case "GET " + rulesPath + "/bare":
 		reply(200, `[]`)
-	case "GET " + rulesPath + "/plan":
-		reply(403, `{"message": "Upgrade to GitHub Pro or make this repository public to enable this feature."}`)
-	case "GET " + rulesPath + "/forbidden":
-		reply(403, `{"message": "Resource not accessible by integration"}`)
 	case "GET " + rulesPath + "/gated":
 		reply(200, `[{"type": "required_status_checks", "ruleset_source_type": "Repository", "ruleset_source": "owner/repo", "ruleset_id": 1, "parameters": {"required_status_checks": [{"context": "build"}, {"context": "lint"}, {"context": "deploy"}, {"context": "ci/status"}, {"context": "ci/slow"}], "strict_required_status_checks_policy": false}}]`)
 	case "GET /repos/owner/repo/commits/h9/check-runs":
@@ -275,8 +271,6 @@ func TestClient_Calls(t *testing.T) {
 			{branch: "guarded", want: true},
 			{branch: "linear", want: false},
 			{branch: "bare", want: false},
-			{branch: "plan", want: false},
-			{branch: "forbidden", wantErr: true},
 			{branch: "unknown", wantErr: true},
 		}
 		for _, tt := range tests {
@@ -307,17 +301,8 @@ func TestClient_Calls(t *testing.T) {
 		if sent := server.all()[before:]; len(sent) != 1 || sent[0].path != rulesPath+"/bare" {
 			t.Errorf("RequiredChecks(bare, h9) sent %d requests; want only the rules read", len(sent))
 		}
-		before = len(server.all())
-		if got, err := client.RequiredChecks(ctx, "plan", "h9"); err != nil || got != nil {
-			t.Errorf("RequiredChecks(plan, h9) = %+v, %v; want none", got, err)
-		}
-		if sent := server.all()[before:]; len(sent) != 1 || sent[0].path != rulesPath+"/plan" {
-			t.Errorf("RequiredChecks(plan, h9) sent %d requests; want only the rules read", len(sent))
-		}
-		for _, base := range []string{"forbidden", "unknown"} {
-			if _, err := client.RequiredChecks(ctx, base, "h9"); err == nil {
-				t.Errorf("RequiredChecks(%s, h9) error = nil; want the failure of the rules read", base)
-			}
+		if _, err := client.RequiredChecks(ctx, "unknown", "h9"); err == nil {
+			t.Error("RequiredChecks(unknown, h9) error = nil; want the failure of the rules read")
 		}
 	})
 
@@ -326,7 +311,7 @@ func TestClient_Calls(t *testing.T) {
 			number int
 			want   pullrequest.Status
 		}{
-			{1, pullrequest.Status{State: pullrequest.StateOpen, HeadSHA: "h1", Approved: true, ChangesRequested: true, MergeableState: "clean", Title: "First title", Body: "First body\r\nsecond line"}},
+			{1, pullrequest.Status{State: pullrequest.StateOpen, HeadSHA: "h1", Approved: true, ChangesRequested: true, MergeableState: "clean"}},
 			{2, pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: "h2"}},
 			{3, pullrequest.Status{State: pullrequest.StateClosed, HeadSHA: "h3"}},
 			{6, pullrequest.Status{State: pullrequest.StateOpen, HeadSHA: "h6", Draft: true, MergeableState: "draft"}},

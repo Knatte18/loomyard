@@ -1,5 +1,5 @@
 // sketch_test.go pins the Sketch end of a Discussion-only run.
-// It covers MakeSketch's one write on a run-held task and the entries it leaves alone.
+// It covers MakeSketch's one write on a run-held task and the entries it leaves alone or refuses.
 // It also covers the migration of a task an older binary left discussed.
 
 package boardengine_test
@@ -46,7 +46,7 @@ func mustGetEntry(t *testing.T, b *boardengine.Board, slug string) boardengine.T
 }
 
 // TestMakeSketch asserts MakeSketch turns a run-held task into a Sketch in one write.
-// It also asserts MakeSketch leaves an absent or done entry alone and keeps the dependents of an entry it makes a Sketch.
+// It also asserts MakeSketch leaves an absent or done entry alone and refuses an entry another depends on.
 func TestMakeSketch(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -57,7 +57,7 @@ func TestMakeSketch(t *testing.T) {
 		mustUpsertEntry(t, b, map[string]any{"slug": "base", "title": "Base", "kind": "task", "labels": bugLabels})
 		mustUpsertEntry(t, b, map[string]any{"slug": "grouping", "title": "Grouping", "kind": "project", "labels": bugLabels})
 		mustUpsertEntry(t, b, map[string]any{"slug": "motif", "title": "Motif", "kind": "task", "labels": []string{"bug", "board"}, "recipe": "motif", "depends_on": []string{"base"}, "run_settings": map[string]any{"loom": map[string]any{"code_max_bounces": 1}},
-			"isolated": true, "profile": "light",
+			"isolated": true, "profile": "light", "pull_request": "on", "notify_on_land": true,
 			"brief": "short", "body": "The body.", "issues": []int{3}})
 		mustUpsertEntry(t, b, map[string]any{"slug": "motif", "project": "grouping"})
 		if err := b.SetRunStatus("motif", boardengine.RunStatus("running", "Discussion-Review")); err != nil {
@@ -86,8 +86,8 @@ func TestMakeSketch(t *testing.T) {
 		if !got.Discussed || got.Title != "Motif" {
 			t.Errorf("entry discussed, title = %t, %q; want true, Motif", got.Discussed, got.Title)
 		}
-		if got.Isolated || got.Profile != "" {
-			t.Errorf("entry isolated, profile = %t, %q; want both cleared", got.Isolated, got.Profile)
+		if got.Isolated || got.Profile != "" || got.PullRequest != "" || got.NotifyOnLand {
+			t.Errorf("entry isolated, profile, pull_request, notify_on_land = %t, %q, %q, %t; want all cleared", got.Isolated, got.Profile, got.PullRequest, got.NotifyOnLand)
 		}
 		if got.Project != "grouping" || got.Brief != "short" || got.Body != "The body." || !slices.Equal(got.Issues, []int{3}) {
 			t.Errorf("entry project, brief, body, issues = %q, %q, %q, %v; want grouping, short, The body., [3]", got.Project, got.Brief, got.Body, got.Issues)
@@ -116,20 +116,18 @@ func TestMakeSketch(t *testing.T) {
 		}
 	})
 
-	t.Run("DependedOnEntryBecomesASketchAndItsDependentKeepsWaiting", func(t *testing.T) {
+	t.Run("DependedOnEntryIsRefused", func(t *testing.T) {
 		t.Parallel()
 		b := newSketchBoard(t)
 		mustUpsertEntry(t, b, map[string]any{"slug": "motif", "title": "Motif", "kind": "task", "labels": bugLabels})
 		mustUpsertEntry(t, b, map[string]any{"slug": "after", "title": "After", "kind": "task", "labels": bugLabels, "depends_on": []string{"motif"}})
 
-		if err := b.MakeSketch("motif"); err != nil {
-			t.Fatalf("MakeSketch() error = %v; want nil", err)
+		err := b.MakeSketch("motif")
+		if !errors.Is(err, boardengine.ErrSketchRefused) || !strings.Contains(err.Error(), "after") || !strings.Contains(err.Error(), "set-deps") {
+			t.Errorf("MakeSketch() error = %v; want an ErrSketchRefused refusal naming the dependent and set-deps", err)
 		}
-		if got := mustGetEntry(t, b, "motif"); got.Kind != boardengine.KindNote {
-			t.Errorf("entry kind = %q; want note", got.Kind)
-		}
-		if got := mustGetEntry(t, b, "after"); !slices.Equal(got.DependsOn, []string{"motif"}) {
-			t.Errorf("dependent depends_on = %v; want [motif]", got.DependsOn)
+		if got := mustGetEntry(t, b, "motif"); got.Kind != boardengine.KindTask {
+			t.Errorf("refused entry kind = %q; want task", got.Kind)
 		}
 	})
 }
@@ -166,6 +164,34 @@ func TestRunLock_SketchExemptionIsTheWholeNetChange(t *testing.T) {
 				t.Errorf("CheckRunLocks error = %v; want a refusal matching ErrRunLocked = %t", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// TestDiscussedTaskBecomesASketchOnTheNextWrite asserts a task left in status discussed becomes a Sketch at the next write of any entry, unless another entry depends on it.
+func TestDiscussedTaskBecomesASketchOnTheNextWrite(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	b := newSketchBoard(t)
+	mustUpsertEntry(t, b, map[string]any{"slug": "talked", "title": "Talked", "kind": "task", "labels": []string{"bug", "board"}})
+	mustUpsertEntry(t, b, map[string]any{"slug": "needed", "title": "Needed", "kind": "task", "labels": bugLabels})
+	mustUpsertEntry(t, b, map[string]any{"slug": "needs", "title": "Needs", "kind": "task", "labels": bugLabels, "depends_on": []string{"needed"}})
+	discussed := boardengine.LegacyStatusDiscussed
+	for _, slug := range []string{"talked", "needed"} {
+		if err := b.SetStatus(slug, &discussed); err != nil {
+			t.Fatalf("SetStatus(%q) error = %v; want nil", slug, err)
+		}
+	}
+
+	if err := b.Rerender(); err != nil {
+		t.Fatalf("Rerender() error = %v; want nil", err)
+	}
+
+	got := mustGetEntry(t, b, "talked")
+	if got.Kind != boardengine.KindNote || !slices.Equal(got.Labels, []string{boardengine.SketchType, "board"}) || got.Status != nil {
+		t.Errorf("entry kind, labels, status = %q, %v, %v; want note, [sketch board], none", got.Kind, got.Labels, got.Status)
+	}
+	if kept := mustGetEntry(t, b, "needed"); kept.Kind != boardengine.KindTask || kept.Status == nil || *kept.Status != discussed {
+		t.Errorf("depended-on entry kind, status = %q, %v; want task, discussed", kept.Kind, kept.Status)
 	}
 }
 

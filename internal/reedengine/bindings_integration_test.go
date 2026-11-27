@@ -159,7 +159,7 @@ func (f *bindingsFixture) assertFollow(t *testing.T, want string) {
 func (f *bindingsFixture) awaitRecord(t *testing.T) []string {
 	t.Helper()
 	var args []string
-	waitUntil(t, recorderDeadline, "the recorder never finished writing", func() bool {
+	waitUntil(t, 30*time.Second, "the recorder never finished writing", func() bool {
 		raw, err := os.ReadFile(f.recordPath)
 		args = strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 		return err == nil && len(args) == 8
@@ -385,12 +385,12 @@ func TestBindings_AltLeftRightRunTheSwitchCommandWithTheToldPaths(t *testing.T) 
 			t.Fatalf("remove stale record: %v", err)
 		}
 		f.send(t, step.key)
-		waitUntil(t, recorderDeadline, "the recorder never ran for "+step.direction, func() bool {
+		waitUntil(t, 5*time.Second, "the recorder never ran for "+step.direction, func() bool {
 			_, err := os.Stat(f.recordPath)
 			return err == nil
 		})
 		var args []string
-		waitUntil(t, recorderDeadline, "the recorder never finished writing", func() bool {
+		waitUntil(t, 30*time.Second, "the recorder never finished writing", func() bool {
 			raw, err := os.ReadFile(f.recordPath)
 			args = strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 			return err == nil && len(args) == 9
@@ -405,11 +405,6 @@ func TestBindings_AltLeftRightRunTheSwitchCommandWithTheToldPaths(t *testing.T) 
 	}
 	f.assertFollow(t, "on")
 }
-
-// recorderDeadline bounds how long a test waits for the recorder script a binding spawns through tmux.
-// The spawn goes through a tmux server shared with the package's other parallel tests.
-// Under that load it can take longer than a few seconds.
-const recorderDeadline = 30 * time.Second
 
 // TestBindings_ButtonClickRunsTheVerbInTheRunDirectory clicks a button and asserts what the pinned line runs.
 // It checks the run directory and the arguments and environment.
@@ -464,7 +459,7 @@ func TestBindings_ButtonClickRunsTheVerbInTheRunDirectory(t *testing.T) {
 	socketPath := strings.TrimSpace(mustTmuxOutput(t, f.e, "display-message", "-p", "#{socket_path}"))
 	f.click(t, 2, "HALT")
 	var lines []string
-	waitUntil(t, recorderDeadline, "the recorder never finished writing", func() bool {
+	waitUntil(t, 30*time.Second, "the recorder never finished writing", func() bool {
 		raw, err := os.ReadFile(recordPath)
 		lines = strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 		return err == nil && len(lines) >= 14
@@ -500,7 +495,7 @@ func TestBindings_ButtonClickRunsTheVerbInTheRunDirectory(t *testing.T) {
 		t.Fatalf("remove the run directory: %v", err)
 	}
 	f.click(t, 2, "HALT")
-	waitUntil(t, recorderDeadline, "the recorder never ran after the run directory was removed", func() bool {
+	waitUntil(t, 5*time.Second, "the recorder never ran after the run directory was removed", func() bool {
 		_, err := os.Stat(recordPath)
 		return err == nil
 	})

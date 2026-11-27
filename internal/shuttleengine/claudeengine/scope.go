@@ -107,32 +107,32 @@ func resolveSessionScope(cfg ScopeConfig, installed []string, preloaded []string
 }
 
 // sessionScopeFor returns the scope of a session that preloads skills and has the given strand role.
-// It reads the installed plugins from configDir, the Claude Code config directory the session launches with.
+// It reads the installed plugins from the engine's Claude Code config directory.
 // A directory or plugins file it cannot read is logged and names no plugin,
 // so the scope still turns off cfg's skills and the memory of a session that is not the orch.
-func (c *Claude) sessionScopeFor(cfg ScopeConfig, skills []string, role, configDir string) sessionScope {
+func (c *Claude) sessionScopeFor(cfg ScopeConfig, skills []string, role string) sessionScope {
 	if !cfg.Enabled {
 		return sessionScope{}
 	}
-	installed, err := c.installedPlugins(configDir)
+	installed, err := c.installedPlugins()
 	if err != nil {
 		logger.Warn("claudeengine: the session's scope names no installed plugin", "err", err)
 	}
 	return resolveSessionScope(cfg, installed, skills, agentname.MatchesRole(role, agentname.RoleOrch))
 }
 
-// installedPlugins reads the ids of the plugins installed under configDir, the launch's config directory.
-func (c *Claude) installedPlugins(configDir string) ([]string, error) {
-	return readInstalledPlugins(c.effectiveConfigDir(configDir))
-}
-
-// effectiveConfigDir returns the config directory a launch reads its plugins, user instructions and skills from.
-// An engine holding a config directory of its own uses that one, and otherwise the launch's, launchedDir.
-func (c *Claude) effectiveConfigDir(launchedDir string) string {
-	if c.claudeDir != "" {
-		return c.claudeDir
+// installedPlugins reads the ids of the plugins installed under the engine's Claude Code config directory.
+// When the engine holds no directory, it resolves one from the environment.
+func (c *Claude) installedPlugins() ([]string, error) {
+	dir := c.claudeDir
+	if dir == "" {
+		resolved, err := claudeConfigDir()
+		if err != nil {
+			return nil, err
+		}
+		dir = resolved
 	}
-	return launchedDir
+	return readInstalledPlugins(dir)
 }
 
 // claudeConfigDir returns Claude Code's config directory:

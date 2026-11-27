@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -33,7 +32,7 @@ func (c *Claude) Supports(req shuttleengine.Requirement) bool {
 
 // InstructionFiles returns the file names Claude Code loads as project instructions.
 func (c *Claude) InstructionFiles() []string {
-	return []string{"CLAUDE.md", heddleengine.ClaudeLocalInstructionsFile}
+	return []string{"CLAUDE.md", "CLAUDE.local.md"}
 }
 
 // ResumeContext renders text as Claude Code's session-start hook output.

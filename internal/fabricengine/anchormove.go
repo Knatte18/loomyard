@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -61,7 +60,7 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string, 
 	defer func() { _ = root.Close() }()
 
 	fromSlash, toSlash := filepath.ToSlash(from), filepath.ToSlash(to)
-	var moved, stagedOnly []string
+	var moved []string
 	for _, name := range names {
 		if name == lymdirs.DotLymDirName {
 			continue
@@ -71,14 +70,6 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string, 
 			return false, err
 		}
 		if !tracked {
-			// A name whose last tracked files the caller staged for deletion still belongs to this commit.
-			staged, err := gitexec.Run([]string{"diff", "--cached", "--name-only", "--", anchorJoin(fromSlash, name)}, weftPath)
-			if err != nil {
-				return false, fmt.Errorf("fabricengine: read the staged paths under %s in %s: %w", anchorJoin(fromSlash, name), weftPath, err)
-			}
-			if strings.TrimSpace(staged) != "" {
-				stagedOnly = append(stagedOnly, anchorJoin(fromSlash, name))
-			}
 			continue
 		}
 		if err := requireAbsent(root, anchorJoin(toSlash, name)); err != nil {
@@ -104,7 +95,7 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string, 
 			return false, fmt.Errorf("fabricengine: create %s in %s: %w", toSlash, weftPath, err)
 		}
 	}
-	specs := append([]string{lymcwd.AnchorFileName}, stagedOnly...)
+	specs := []string{lymcwd.AnchorFileName}
 	for _, name := range moved {
 		src, dst := anchorJoin(fromSlash, name), anchorJoin(toSlash, name)
 		if _, err := gitexec.Run([]string{"mv", "--", src, dst}, weftPath); err != nil {

@@ -57,9 +57,6 @@ type Spec struct {
 	// DenyPublish, when true, makes the engine install a shell guard for this one run and announce it.
 	// The guard refuses git push and gh calls beyond reads, comments, and title and body edits.
 	DenyPublish bool
-	// AllowRawTmux, when true, exempts this one run from the shell guard that refuses a raw tmux or script command.
-	// Only a session whose task is to start tmux servers of its own, such as the sampler's trials, sets it.
-	AllowRawTmux bool
 	// Advisor, when non-empty, names the model the session consults through its provider's advisor tool, for this run alone.
 	// The value is provider vocabulary and is passed through as given; Spec validation does not check it.
 	// An engine whose provider has no advisor refuses a non-empty value before it writes anything.
@@ -156,15 +153,6 @@ type Spec struct {
 	// The engine realizes the list through its skill-loader capability.
 	// An engine without that capability refuses a non-empty list at start.
 	Skills []string
-	// SkipSkillLoadTurn, when true, makes the engine's Prepare keep the prompt pointer on the launch line.
-	// Prepare then returns no Launch.PromptLine.
-	// The session then takes no skill-load turn, while Skills still shape its scope, settings and standing passages.
-	// A resume sets it, since the resumed session already holds the skills its first launch loaded.
-	SkipSkillLoadTurn bool
-	// TranscriptCopied is true when an earlier resume check of ResumeSessionID already copied its transcript.
-	// A caller that resumes again after a refusal sets it from SessionHeldError.TranscriptCopied,
-	// so the run's record reports the copy though this attempt's own carry copied nothing.
-	TranscriptCopied bool
 	// SkillLoadTimeout bounds each load turn's wait before skipping its skills; zero takes the engine's default.
 	// A turn still open at the timeout is awaited until it ends or the run's deadline fails the start;
 	// a turn the provider's API fails is run again however long that takes, so neither skips a skill at this bound.
@@ -246,7 +234,7 @@ func (s *Spec) validate(worktreeRoot string, cfg Config) error {
 	// Otherwise the run would launch and classify OutcomeTimeout on its first poll tick.
 	// It would then keep its live pane and run dir as stray state.
 	if s.Timeout < 0 {
-		return fmt.Errorf("shuttle: spec.Timeout must not be negative (got %s); use 0 for the config default %s", s.Timeout, keyName(runTimeoutMinKey))
+		return fmt.Errorf("shuttle: spec.Timeout must not be negative (got %s); use 0 for the config default run_timeout_min", s.Timeout)
 	}
 	if s.Timeout == 0 {
 		s.Timeout = time.Duration(cfg.RunTimeoutMin) * time.Minute

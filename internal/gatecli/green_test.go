@@ -60,7 +60,6 @@ func TestGreenRecord(t *testing.T) {
 			"env":          tierFingerprint(withTier(base, func(tier *gateslot.Tier) { tier.Env = map[string]string{"GOFLAGS": "-trimpath"} }), noBuild, nil),
 			"all_targets":  tierFingerprint(withTier(base, func(tier *gateslot.Tier) { tier.AllTargets = "./internal/..." }), noBuild, nil),
 			"counter":      tierFingerprint(withTier(base, func(tier *gateslot.Tier) { tier.Counter = "vstest" }), noBuild, nil),
-			"results":      tierFingerprint(withTier(base, func(tier *gateslot.Tier) { tier.Results = gateslot.ResultsTRX }), noBuild, nil),
 			"filter":       tierFingerprint(withTier(base, func(tier *gateslot.Tier) { tier.Filter = "Category!=Slow" }), noBuild, nil),
 			"shared_build": tierFingerprint(sharedBuild, noBuild, nil),
 			"carry":        tierFingerprint(withTier(base, func(tier *gateslot.Tier) { tier.NoCarry = true }), noBuild, nil),

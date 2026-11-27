@@ -82,9 +82,6 @@ type sendContext struct {
 	landingStart SessionStartSource
 	keepUnlanded bool
 	recordless   bool
-	// sentOffset, when non-nil, receives the events file's size read just before the send's text goes out;
-	// a send that types nothing leaves it as it was.
-	sentOffset *int64
 	// paused reads whether a pause covers the target strand and returns the refusal when it does; nil reads uncovered.
 	paused func() error
 	// activityFailures holds the runner's operator-activity failure episodes, shared by every send and probe of one runner.
@@ -621,9 +618,6 @@ func pasteVerified(sc sendContext, paster TextPaster, reader InputBoxReader, tex
 		}
 	}
 	sentAt := eventsSize(sc.eventsPath)
-	if sc.sentOffset != nil {
-		*sc.sentOffset = sentAt
-	}
 	if err := sc.reed.PasteSubmit(sc.guid, text, paster.PasteSubmits()); err != nil {
 		return fmt.Errorf("shuttle: paste text: %w", err)
 	}

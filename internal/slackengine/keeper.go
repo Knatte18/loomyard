@@ -49,10 +49,8 @@ type channelKeeper struct {
 	refused map[string]bool
 	// noticed holds the keys of the notice episodes that have mailed their notice.
 	noticed map[string]bool
-	// bot is who the machine's bot token belongs to, read once.
-	bot Identity
-	// bridgeHolds holds, per pair of orchs, the last hold its bridge channel met and when.
-	bridgeHolds map[string]bridgeHold
+	// botUserID is the Slack user id of the machine's bot, read once.
+	botUserID string
 }
 
 // newChannelKeeper returns a keeper over the seams; it panics on a nil LiveHubs, which the relay's wiring always sets.
@@ -70,8 +68,6 @@ func newChannelKeeper(geom Geometry, slack SlackClient, hub Hub, liveHubs LiveHu
 		orchLocks: map[string]*sync.Mutex{},
 		refused:   map[string]bool{},
 		noticed:   map[string]bool{},
-
-		bridgeHolds: map[string]bridgeHold{},
 	}
 }
 
@@ -199,11 +195,11 @@ func (k *channelKeeper) adopt(ctx context.Context, orch, name string) (ChannelEn
 		return ChannelEntry{}, k.refuse(refusalKey, name, fmt.Sprintf(
 			"the channel %s (%s) is archived, and the relay never unarchives; way forward: rename that channel in Slack, which frees the name", name, info.ID))
 	}
-	bot, err := k.botIdentity(ctx)
+	bot, err := k.botUser(ctx)
 	if err != nil {
 		return ChannelEntry{}, err
 	}
-	if info.Creator != bot.UserID {
+	if info.Creator != bot {
 		return ChannelEntry{}, k.refuse(refusalKey, name, fmt.Sprintf(
 			"the channel %s (%s) was made by another user than this machine's bot; way forward: rename that channel in Slack, which frees the name", name, info.ID))
 	}
@@ -366,8 +362,6 @@ func (k *channelKeeper) inviteOperator(ctx context.Context, orch string) error {
 }
 
 // inviteOperators invites the setup's operator into every open entry that records another operator or none.
-// Bridge channels are included.
-// A refused invite into a bridge channel mails one notice per episode, as for an orch channel.
 // It returns the joined errors of the invites that failed.
 func (k *channelKeeper) inviteOperators(ctx context.Context) error {
 	channelMap, err := ReadChannelMap(k.geom.ChannelMapPath)
@@ -387,30 +381,6 @@ func (k *channelKeeper) inviteOperators(ctx context.Context) error {
 			failures = append(failures, err)
 		}
 	}
-	failures = append(failures, k.inviteBridgeOperators(ctx))
-	return errors.Join(failures...)
-}
-
-// inviteBridgeOperators invites the setup's operator into every open bridge entry that records another operator or none.
-// It returns the joined errors of the invites that failed.
-func (k *channelKeeper) inviteBridgeOperators(ctx context.Context) error {
-	setup, found, err := ReadSetup(k.geom.SetupPath)
-	if err != nil {
-		return err
-	}
-	if !found || setup.OperatorID == "" {
-		return nil
-	}
-	bridgeMap, err := ReadBridgeMap(k.geom.BridgeMapPath)
-	if err != nil {
-		return err
-	}
-	var failures []error
-	for _, id := range bridgeMap.OpenChannelIDs(func(entry BridgeEntry) bool { return entry.Operator != setup.OperatorID }) {
-		if err := k.inviteBridgeOperatorInto(ctx, id, bridgeMap.Channels[id], setup.OperatorID); err != nil {
-			failures = append(failures, err)
-		}
-	}
 	return errors.Join(failures...)
 }
 
@@ -423,9 +393,6 @@ func (k *channelKeeper) inviteBridgeOperators(ctx context.Context) error {
 // and the entry records the new name as soon as the rename stands; the archive then marks the entry archived.
 // An entry already under a dated name is not renamed again.
 // Once the archive stands, the orch's button state is dropped, so a later beam of the same slug starts with it off.
-// The open bridge channels of each such orch are renamed and archived the same way, and their entries marked archived.
-// An orch that still holds an open bridge entry is visited although its own channel is archived and its button dropped,
-// so a bridge archive Slack refused is tried again.
 // A rename or an archive Slack refuses leaves the entry open, returns the error and marks the orch refused;
 // a later call skips a refused orch unless retryRefused is set.
 // The caller calls it only after a read of the hub's beams that stood.
@@ -436,10 +403,6 @@ func (k *channelKeeper) retire(ctx context.Context, beams []string, retryRefused
 	}
 	var failures []error
 	forwarded, err := ReadForwarding(k.geom.ForwardingPath)
-	if err != nil {
-		failures = append(failures, err)
-	}
-	bridgeMap, err := ReadBridgeMap(k.geom.BridgeMapPath)
 	if err != nil {
 		failures = append(failures, err)
 	}
@@ -456,17 +419,11 @@ func (k *channelKeeper) retire(ctx context.Context, beams []string, retryRefused
 			orchs = append(orchs, orch)
 		}
 	}
-	for _, id := range bridgeMap.OpenChannelIDs(nil) {
-		if orch := bridgeMap.Channels[id].LocalOrch; !slices.Contains(orchs, orch) {
-			orchs = append(orchs, orch)
-		}
-	}
 	sort.Strings(orchs)
 	for _, orch := range orchs {
 		entry, held := channelMap.Channels[orch]
 		open := held && !entry.Archived
-		bridged := bridgeMap.OpenChannelIDs(func(bridgeEntry BridgeEntry) bool { return bridgeEntry.LocalOrch == orch })
-		if orch == prime || (!open && len(bridged) == 0 && !slices.Contains(forwarded, orch)) {
+		if orch == prime || (!open && !slices.Contains(forwarded, orch)) {
 			continue
 		}
 		slug, err := slugOf(orch)
@@ -482,7 +439,6 @@ func (k *channelKeeper) retire(ctx context.Context, beams []string, retryRefused
 		if open {
 			err = k.retireEntry(ctx, orch, entry)
 		}
-		err = errors.Join(err, k.retireBridges(ctx, bridgeMap, bridged))
 		if err == nil {
 			err = dropForwarding(k.geom.ForwardingPath, orch)
 		}
@@ -519,48 +475,6 @@ func (k *channelKeeper) retireEntry(ctx context.Context, orch string, entry Chan
 	return k.updateEntry(orch, entry.ID, func(current *ChannelEntry) { current.Archived = true })
 }
 
-// retireBridges renames and archives each of the bridge channels, whose entries bridgeMap holds.
-// It returns the joined errors of the channels that failed.
-func (k *channelKeeper) retireBridges(ctx context.Context, bridgeMap BridgeMap, ids []string) error {
-	var failures []error
-	for _, id := range ids {
-		if err := k.retireBridge(ctx, id, bridgeMap.Channels[id]); err != nil {
-			failures = append(failures, err)
-		}
-	}
-	return errors.Join(failures...)
-}
-
-// retireBridge renames the bridge channel to its dated name unless the entry already has one, then archives it.
-func (k *channelKeeper) retireBridge(ctx context.Context, channelID string, entry BridgeEntry) error {
-	if !entry.Renamed {
-		renamed, err := k.renameDated(ctx, channelID, entry.Name)
-		if err != nil {
-			return err
-		}
-		entry.Name = renamed
-		err = k.updateBridgeEntry(channelID, func(current *BridgeEntry) { current.Name, current.Renamed = renamed, true })
-		if err != nil {
-			return err
-		}
-	}
-	if err := k.slack.Archive(ctx, channelID); err != nil {
-		return fmt.Errorf("slack: archive the bridge channel %s: %w", entry.Name, err)
-	}
-	return k.updateBridgeEntry(channelID, func(current *BridgeEntry) { current.Archived = true })
-}
-
-// updateBridgeEntry applies change to the bridge channel's entry.
-func (k *channelKeeper) updateBridgeEntry(channelID string, change func(*BridgeEntry)) error {
-	return UpdateBridgeMap(k.geom.BridgeMapPath, func(bridgeMap *BridgeMap) error {
-		if current, held := bridgeMap.Channels[channelID]; held {
-			change(&current)
-			bridgeMap.Channels[channelID] = current
-		}
-		return nil
-	})
-}
-
 // renameDated renames the channel to baseName with today's date, trying the next suffix while Slack answers `name_taken`.
 // It returns the name the rename gave.
 func (k *channelKeeper) renameDated(ctx context.Context, channelID, baseName string) (string, error) {
@@ -588,22 +502,22 @@ func (k *channelKeeper) updateEntry(orch, channelID string, change func(*Channel
 	})
 }
 
-// botIdentity returns this machine's bot, its user id and its bot id, which auth.test gives; it is read once and kept.
-func (k *channelKeeper) botIdentity(ctx context.Context) (Identity, error) {
+// botUser returns the Slack user id of this machine's bot, which auth.test gives; it is read once and kept.
+func (k *channelKeeper) botUser(ctx context.Context) (string, error) {
 	k.mu.Lock()
-	known := k.bot
+	known := k.botUserID
 	k.mu.Unlock()
-	if known.UserID != "" {
+	if known != "" {
 		return known, nil
 	}
 	identity, err := k.slack.AuthTest(ctx)
 	if err != nil {
-		return Identity{}, fmt.Errorf("slack: read the bot's user id: %w", err)
+		return "", fmt.Errorf("slack: read the bot's user id: %w", err)
 	}
 	k.mu.Lock()
-	k.bot = identity
+	k.botUserID = identity.UserID
 	k.mu.Unlock()
-	return identity, nil
+	return identity.UserID, nil
 }
 
 // notice mails the hub's orch one `[slack relay]` notice with line for the episode key.

@@ -91,36 +91,6 @@ func TestAuditForks_ParentWritesAndBashInOrder(t *testing.T) {
 	}
 }
 
-// TestAuditForks_NamedForkSpawnsCountOnlyNamedForks checks the two named-spawn counts.
-// NamedSpawns counts every named Agent call.
-// NamedForkSpawns counts only the named calls whose subagent_type is the fork type.
-// A named call that records no subagent_type is counted as neither a fork nor a fresh subagent.
-func TestAuditForks_NamedForkSpawnsCountOnlyNamedForks(t *testing.T) {
-	tiergate.Require(t, 0)
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	workdir := "/home/op/named-fork-spawns"
-	sessionID := "sess-named-fork-spawns"
-	projectDir := filepath.Join(home, ".claude", "projects", encodeForTest(workdir))
-
-	writeParentTranscript(t, projectDir, sessionID, []string{
-		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"general-purpose","name":"writer"}}]}}`,
-		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"fork","name":"lens"}}]}}`,
-		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"fork"}}]}}`,
-		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Agent","input":{"name":"untyped"}}]}}`,
-	})
-
-	audit, err := New().AuditForks(sessionID, workdir)
-	if err != nil {
-		t.Fatalf("AuditForks() error: %v", err)
-	}
-	if audit.SpawnCalls != 4 || audit.NamedSpawns != 3 || audit.NamedForkSpawns != 1 {
-		t.Errorf("SpawnCalls/NamedSpawns/NamedForkSpawns = %d/%d/%d; want 4/3/1",
-			audit.SpawnCalls, audit.NamedSpawns, audit.NamedForkSpawns)
-	}
-}
-
 // TestAuditForks_ParentWriteMissingPathKeyCountedNotPanicked checks a Write-family tool_use block with no path key.
 // The block must not panic, must count in ParentWriteCalls, and must add no ParentWrites entry.
 func TestAuditForks_ParentWriteMissingPathKeyCountedNotPanicked(t *testing.T) {

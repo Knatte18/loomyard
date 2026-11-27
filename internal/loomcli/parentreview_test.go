@@ -53,7 +53,7 @@ func openParentAsk(d time.Duration) burlerengine.ParentAsk {
 func TestParentReviewAnswerVerb(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	const decisionWay = `"lym loom decision add task-a --by parent", run by the run's parent orch ly:orch; once the task's scope is closed, as from Code-Review on, file it instead as a board note`
+	const decisionWay = `"lym loom decision add task-a --by parent", run by the run's parent orch ly:orch`
 	tests := []struct {
 		name string
 		asks []burlerengine.ParentAsk
@@ -167,10 +167,10 @@ func TestParentReviewAnswerVerb(t *testing.T) {
 			wantStates: []burlerengine.ParentAskState{},
 		},
 		{
-			name:       "an older ask while the latest awaits an answer is sent to review what the newer ask names",
+			name:       "an older ask while the latest awaits an answer is sent to review the record again",
 			asks:       []burlerengine.ParentAsk{{State: burlerengine.ParentAskTimeout}, openParentAsk(time.Minute)},
 			input:      parentAnswerInput{ask: 1, satisfied: true},
-			want:       []string{"a newer ask, ask 2, awaits an answer", "review again what ask 2's own request names", "--ask 2"},
+			want:       []string{"ask 2 is", "the decision record may have changed since ask 1", "review the record again under ask 2's own request", "--ask 2"},
 			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskTimeout, burlerengine.ParentAskOpen},
 		},
 		{
@@ -190,14 +190,6 @@ func TestParentReviewAnswerVerb(t *testing.T) {
 			input:      parentAnswerInput{ask: 1, satisfied: true},
 			want:       []string{"reached its deadline at 2026-11-11T12:00:00Z", "now timeout", decisionWay},
 			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskTimeout},
-		},
-		{
-			name:       "an undelivered ask is refused with no exception for an ask the session never reached",
-			asks:       []burlerengine.ParentAsk{{State: burlerengine.ParentAskUndelivered, Strand: "ly:orch-asked", Deadline: parentReviewNow}},
-			input:      parentAnswerInput{ask: 1, satisfied: true},
-			setup:      func(d *parentReviewDeps) { d.strandName = parentReviewParent },
-			want:       []string{"already undelivered", decisionWay},
-			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskUndelivered},
 		},
 	}
 	for _, tt := range tests {
@@ -262,7 +254,7 @@ func TestParentReviewAnswerVerb(t *testing.T) {
 }
 
 // TestParentReviewAwaitVerb verifies the await answers ready once the latest ask has ended or reaches its deadline.
-// The answer names the state, a not-sent or undelivered ask's reason and a done ask's report.
+// The answer names the state, a not-sent ask's reason and a done ask's report.
 // The await answers not ready once its cap runs out first.
 func TestParentReviewAwaitVerb(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -295,15 +287,9 @@ func TestParentReviewAwaitVerb(t *testing.T) {
 		},
 		{
 			name:     "a not-sent ask answers ready with its reason",
-			asks:     []burlerengine.ParentAsk{{State: burlerengine.ParentAskNotSent, Reason: "raise review.timeout_min"}},
+			asks:     []burlerengine.ParentAsk{{State: burlerengine.ParentAskNotSent, Reason: "raise review_timeout_min"}},
 			awaitCap: time.Minute,
-			want:     map[string]any{"ready": true, "ask": float64(1), "state": "not-sent", "reason": "raise review.timeout_min"},
-		},
-		{
-			name:     "an undelivered ask answers ready with its reason",
-			asks:     []burlerengine.ParentAsk{{State: burlerengine.ParentAskUndelivered, Reason: "the request was not delivered: refused"}},
-			awaitCap: time.Minute,
-			want:     map[string]any{"ready": true, "ask": float64(1), "state": "undelivered", "reason": "the request was not delivered: refused"},
+			want:     map[string]any{"ready": true, "ask": float64(1), "state": "not-sent", "reason": "raise review_timeout_min"},
 		},
 		{
 			name:      "the deadline reached during the wait sets the ask timeout and answers ready",

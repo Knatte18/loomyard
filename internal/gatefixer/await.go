@@ -1,6 +1,6 @@
 // await.go implements the bounded wait on a fixer strand.
 // The wait ends done once the reply file exists.
-// It ends dead when the turn ends without one, when the strand is gone, or when the timeout passes.
+// It ends dead when the turn ends without one, when the timeout passes, or when the strand is gone.
 
 package gatefixer
 
@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"os"
 	"time"
-
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // pollTick is how often Await re-reads the fixer's state.
@@ -34,13 +32,8 @@ type Result struct {
 // The fixer is done once rec.ReplyPath exists.
 // It is dead in three cases, checked in this order.
 // Its newest turn ended without a reply (DeadReasonAsking).
-// Its strand is gone.
-// The reason is then DeadReasonInterrupted when lym recorded its shuttle run as interrupted.
-// A machine stop leaves a run recorded that way.
-// Any other gone strand is DeadReasonDied.
 // The timeout has passed since the spawn (DeadReasonTimeout).
-// The strand is read before the timeout.
-// A fixer a stop ended is therefore never reported as slow, however long the stop lasted.
+// Its strand is gone (DeadReasonDied).
 // A wait that elapses first returns StatusRunning.
 // Every terminal result stops the strand; only done also reads the reply and removes the run directory.
 // A failed stop, reply read or removal is a warning.
@@ -69,15 +62,15 @@ func Await(deps Deps, rec *Record, timeout, wait time.Duration) (*Result, error)
 		if turnEnded {
 			return StatusDead, DeadReasonAsking, true, nil
 		}
+		if clock.Now().Sub(spawnedAt) > timeout {
+			return StatusDead, DeadReasonTimeout, true, nil
+		}
 		live, err := StrandLive(deps.Reed, rec.StrandGUID)
 		if err != nil {
 			return "", "", false, err
 		}
 		if !live {
-			return StatusDead, goneStrandReason(deps, rec.StrandGUID), true, nil
-		}
-		if clock.Now().Sub(spawnedAt) > timeout {
-			return StatusDead, DeadReasonTimeout, true, nil
+			return StatusDead, DeadReasonDied, true, nil
 		}
 		return StatusRunning, "", false, nil
 	}
@@ -117,16 +110,4 @@ func Await(deps Deps, rec *Record, timeout, wait time.Duration) (*Result, error)
 		}
 	}
 	return result, nil
-}
-
-// goneStrandReason is the dead reason of the fixer whose strand guid is gone.
-// It is DeadReasonInterrupted when the fixer's shuttle run record marks the run interrupted.
-// It is DeadReasonDied otherwise.
-// A run record that cannot be found or read also leaves the fixer died.
-func goneStrandReason(deps Deps, guid string) string {
-	run, _, err := shuttleengine.FindRun(deps.ShuttleCfg, deps.AnchorRoot, guid)
-	if err == nil && run.Interrupted {
-		return DeadReasonInterrupted
-	}
-	return DeadReasonDied
 }

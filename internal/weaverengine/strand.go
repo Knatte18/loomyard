@@ -146,7 +146,7 @@ func batchGateSpec(geom Geometry, cards []planparser.Card, last bool, rowGates s
 }
 
 // batchGateClosure returns the gate that runs call through verifytree.Verify at each arrival.
-// A dirty tree and a failed run fail with findings the agent reads, and a run that judged no code fails terminally.
+// A dirty tree and a failed run fail with findings the agent reads, and a crashed test runner fails terminally.
 func batchGateClosure(geom Geometry, name, call string) shuttleengine.Gate {
 	paths := verifytree.NewPaths(geom.PaneCwd, geom.VerifyDir)
 	attempt := 0
@@ -163,8 +163,8 @@ func batchGateClosure(geom Geometry, name, call string) shuttleengine.Gate {
 		case verifytree.StatusDirty:
 			return shuttleengine.GateResult{Findings: verifytree.UncommittedFindings(res.Dirty)}, nil
 		}
-		if res.Unjudged() {
-			return shuttleengine.GateResult{Terminal: true, Findings: unjudgedFindings(res)}, nil
+		if res.RunnerCrash {
+			return shuttleengine.GateResult{Terminal: true, Findings: runnerCrashFindings(res)}, nil
 		}
 		output, err := readVerifyLog(res.Log)
 		if err != nil {
@@ -175,9 +175,9 @@ func batchGateClosure(geom Geometry, name, call string) shuttleengine.Gate {
 	}
 }
 
-// unjudgedFindings words a verify that judged no code, which no code change mends.
-func unjudgedFindings(res verifytree.Result) string {
-	return fmt.Sprintf("The verify command's %s, so no test judged the code: %s. No change to the code mends it; before it runs again, note that %s; output: %s.", res.UnjudgedStop(), res.Detail, res.UnjudgedAdvice(), res.Log)
+// runnerCrashFindings words a verify whose every failed run crashed its test runner, which no code change mends.
+func runnerCrashFindings(res verifytree.Result) string {
+	return fmt.Sprintf("The verify command's test runner crashed in its run and its one rerun, so no test judged the code: %s. No change to the code mends it; output: %s.", res.Detail, res.Log)
 }
 
 // readVerifyLog returns the content of the verify log at path.

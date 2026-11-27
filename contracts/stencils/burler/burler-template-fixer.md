@@ -36,21 +36,6 @@ The review is already written and accepted on disk; you hold none of the reviewe
 
 Read the fix step only when its step is reached, never early.
 
-## External tools and processes
-
-Learn how an external tool such as tmux behaves from a test in the repository, in the tier the hub runs that tool's tests in, never from processes you start in the shell.
-Run that one test through `lym gate test --tier <that tier>` with its package and, after `--`, a filter that selects it, and check that the gate's report shows the test ran, not skipped.
-Never start a background or detached process from the shell: such a process outlives your command and runs outside every memory cap lym sets.
-
-When `lym gate test` refuses to run any tier, no change to your own call clears the refusal,
-and its way forward is a change to the hub's gate config, as on a hub that declares no tier0, the round has no gate.
-Run no raw test command in its place:
-check that each package or project you changed still compiles, with the build or vet command its language uses on that one package,
-and name the refusal in the fixer-report's deferred section, so your parent takes the step the refusal names.
-A refusal that a change to your own call clears, such as dropping a word after `--`, is no such case,
-even when its way forward names the config:
-change the call and run the gate again.
-
 ## What you may write (BLOCKING)
 
 You never write the review file `{{.review_path}}`.

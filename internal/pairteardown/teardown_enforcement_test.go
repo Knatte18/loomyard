@@ -14,14 +14,12 @@ import (
 const (
 	fabricEnginePath = "internal/fabricengine"
 	retiredHelper    = "RemovePairBranch"
-	removeArgCount   = 5
+	removeArgCount   = 4
 	minScannedFiles  = 100
 )
 
-// TestEnforcement_PairTeardownChokepoint is the Pair Teardown Invariant's tripwire, not a completeness proof.
-// It fails on a five-argument Remove call in a production file importing internal/fabricengine;
-// the two owning packages are exempt.
-// It also fails on any remaining reference to the retired RemovePairBranch helper.
+// TestEnforcement_PairTeardownChokepoint is the Pair Teardown Invariant's tripwire, not a completeness proof:
+// it fails on a four-argument Remove call in a production file importing internal/fabricengine outside the two owning packages, and on any remaining reference to the retired RemovePairBranch helper.
 //
 //lym:guard
 func TestEnforcement_PairTeardownChokepoint(t *testing.T) {
@@ -48,12 +46,12 @@ func scanSource(t *testing.T, f *scankit.File) []string {
 		return findings
 	}
 	for range removeCalls(file) {
-		findings = append(findings, f.Rel+": calls Remove with five arguments outside internal/pairteardown and internal/fabricengine")
+		findings = append(findings, f.Rel+": calls Remove with four arguments outside internal/pairteardown and internal/fabricengine")
 	}
 	return findings
 }
 
-// removeCalls returns every call of a method named Remove with five arguments.
+// removeCalls returns every call of a method named Remove with four arguments.
 func removeCalls(file *ast.File) []*ast.CallExpr {
 	var calls []*ast.CallExpr
 	ast.Inspect(file, func(n ast.Node) bool {
@@ -84,12 +82,12 @@ func importsFabricEngine(file *ast.File) bool {
 
 // TestEnforcement_PairTeardownScanIsNotVacuous feeds the scan one offending and one clean snippet.
 //
-//testtiming:keep guard self-check: pins that the chokepoint scan fires on an offending five-argument Remove call, which no other test of the package exercises
+//testtiming:keep guard self-check: pins that the chokepoint scan fires on an offending four-argument Remove call, which no other test of the package exercises
 func TestEnforcement_PairTeardownScanIsNotVacuous(t *testing.T) {
 	tiergate.Require(t, 0)
 	const offending = `package x
 import "github.com/Knatte18/loomyard/internal/fabricengine"
-func f(top *fabricengine.Topology) { top.Remove(nil, "s", false, false, "") }
+func f(top *fabricengine.Topology) { top.Remove(nil, "s", false, false) }
 `
 	const clean = `package x
 import "github.com/Knatte18/loomyard/internal/fabricengine"

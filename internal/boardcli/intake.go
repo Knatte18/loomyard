@@ -17,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubissues"
-	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -54,9 +53,7 @@ into an entry and closes it with a pointer, and close closes noise with a stated
 Takes no payload.
 
 Prints {"issues":[...]} with the number and title of each issue.
-With --full, each issue also carries body, labels, url, comments and created_at.
-Its comments are each comment's body and created_at, oldest first and without lym's own import pointers:
-the comments import carries into the entry's body.
+With --full, each issue also carries body, labels, url, comments (the comment count) and created_at.
 The filtering is the same in both modes.
 
 Examples:
@@ -71,7 +68,7 @@ Examples:
 			return intakeList(out, board(), repo, listFull)
 		}),
 	}
-	listCmd.Flags().BoolVar(&listFull, "full", false, "print body, labels, url, the comments and created_at too")
+	listCmd.Flags().BoolVar(&listFull, "full", false, "print body, labels, url, comments and created_at too")
 
 	importCmd := &cobra.Command{
 		Use:         "import {issue, slug|into, title?, brief?, labels?}",
@@ -93,9 +90,6 @@ lym's own import pointers, are carried in the body. An issue an entry already re
 recording entries and touches nothing on GitHub. A success prints slug, issue, labels and dropped,
 the slug being the entry folded into for a fold. The board is written before GitHub is touched; when
 the comment or close then fails, the error carries the slug, issue, labels and dropped it would have printed, and the "close" payload to run.
-An issue whose body is blank adds "empty_body": true, and one that names files under ` + lymdirs.DotLymDirName + `/ adds
-"local_paths"; the entry body carries an import note for each. The named files are deleted with their worktree, so do not
-search for them: only what the entry body quotes or attaches of them is available.
 
 Examples:
   lym board intake import '{"issue":12,"slug":"retry-backoff"}'
@@ -114,7 +108,7 @@ Examples:
 
 	closeCmd := &cobra.Command{
 		Use:         "close {issue, reason, completed?}",
-		Short:       "close a hub repository issue that is noise or already fixed, with a stated reason",
+		Short:       "close a hub repository issue that is noise, with a stated reason",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Comment on an open issue of the hub's repository with the reason and close it.
 It writes nothing to the board and never edits the issue's content. A pull request and an
@@ -125,11 +119,8 @@ Fields:
   "reason"    string  — the comment posted before closing (required, non-empty)
   "completed" bool    — close as completed instead of not planned (optional)
 
-An issue already fixed is closed as completed, its reason naming the fixing commit.
-
-Examples:
-  lym board intake close '{"issue":14,"reason":"Duplicate of #12."}'
-  lym board intake close '{"issue":15,"reason":"Already fixed by 6fa7f1740 on main: it guards the nil fabric.","completed":true}'`,
+Example:
+  lym board intake close '{"issue":14,"reason":"Duplicate of #12."}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -171,23 +162,16 @@ type intakeIssueSummary struct {
 
 // intakeIssueView is the view of an issue that list --full prints.
 type intakeIssueView struct {
-	Number    int                 `json:"number"`
-	Title     string              `json:"title"`
-	Body      string              `json:"body"`
-	Labels    []string            `json:"labels"`
-	URL       string              `json:"url"`
-	Comments  []intakeCommentView `json:"comments"`
-	CreatedAt time.Time           `json:"created_at"`
-}
-
-// intakeCommentView is one comment of an issue as list --full prints it.
-type intakeCommentView struct {
+	Number    int       `json:"number"`
+	Title     string    `json:"title"`
 	Body      string    `json:"body"`
+	Labels    []string  `json:"labels"`
+	URL       string    `json:"url"`
+	Comments  int       `json:"comments"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
 // intakeList prints the open issues of repo that no board entry records, as number and title unless full is set.
-// With full set it also prints each issue's comments, fetching them only for an issue GitHub counts comments on.
 func intakeList(out io.Writer, b *boardengine.Board, repo *hubissues.Repo, full bool) int {
 	issues, err := repo.ListOpenIssues()
 	if err != nil {
@@ -207,23 +191,13 @@ func intakeList(out io.Writer, b *boardengine.Board, repo *hubissues.Repo, full 
 			summaries = append(summaries, intakeIssueSummary{Number: issue.Number, Title: issue.Title})
 			continue
 		}
-		comments := []intakeCommentView{}
-		if issue.Comments > 0 {
-			fetched, err := repo.ListIssueComments(issue.Number)
-			if err != nil {
-				return outputError(out, fmt.Sprintf("issue #%d: %v", issue.Number, err))
-			}
-			for _, comment := range carriedComments(fetched) {
-				comments = append(comments, intakeCommentView{Body: comment.Body, CreatedAt: comment.CreatedAt})
-			}
-		}
 		views = append(views, intakeIssueView{
 			Number:    issue.Number,
 			Title:     issue.Title,
 			Body:      issue.Body,
 			Labels:    issue.Labels,
 			URL:       issue.URL,
-			Comments:  comments,
+			Comments:  issue.Comments,
 			CreatedAt: issue.CreatedAt,
 		})
 	}
@@ -269,23 +243,14 @@ func decodeIssueNumber(fields map[string]json.RawMessage) (int, error) {
 	return number, nil
 }
 
-// carriedComments returns comments, in order, without the import pointers among them.
-// Lym posted those pointers, so they carry nothing.
-func carriedComments(comments []hubissues.IssueComment) []hubissues.IssueComment {
-	var carried []hubissues.IssueComment
-	for _, comment := range comments {
-		if !isImportPointer(comment.Body) {
-			carried = append(carried, comment)
-		}
-	}
-	return carried
-}
-
 // inboxIssue converts a fetched issue and its comments, oldest first, to the boardengine view of it.
-// Import pointers are dropped.
+// A comment that is an import pointer is dropped, since lym posted it and it carries nothing.
 func inboxIssue(issue hubissues.Issue, comments []hubissues.IssueComment) boardengine.InboxIssue {
 	var carried []boardengine.IssueComment
-	for _, comment := range carriedComments(comments) {
+	for _, comment := range comments {
+		if isImportPointer(comment.Body) {
+			continue
+		}
 		carried = append(carried, boardengine.IssueComment{Body: comment.Body, CreatedAt: comment.CreatedAt})
 	}
 	return boardengine.InboxIssue{
@@ -346,12 +311,6 @@ func intakeImport(out io.Writer, b *boardengine.Board, repo *hubissues.Repo, pay
 		"issue":   number,
 		"labels":  result.Entry.Labels,
 		"dropped": dropped,
-	}
-	if result.EmptyBody {
-		short["empty_body"] = true
-	}
-	if len(result.LocalPaths) > 0 {
-		short["local_paths"] = result.LocalPaths
 	}
 	comment := importPointer(result.Entry.Slug)
 	if err := repo.CommentAndClose(number, comment, true); err != nil {

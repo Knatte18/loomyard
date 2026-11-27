@@ -18,7 +18,7 @@
 // The server-global @lym_slack_state_command holds the job's line.
 // The RC button belongs to the agent of the window's active pane.
 // It is drawn only while that pane carries @lym_strand_name and the session carries @lym_button_dir.
-// It is lit while that pane carries @lym_rc, the mark set once the pane's session records its remote control connecting.
+// It is lit while that pane carries @lym_rc, the mark a click on RC or a launch with remote control sets.
 // The action row is read from the session user options @lym_buttons_plain and @lym_buttons_agent.
 // No Go decision reads @strand_color, @lym_unseen or @lym_prime_session.
 // Neither does one read a check mark's options or the action row's options.

@@ -15,7 +15,7 @@ func (c *orchCLI) distillCmd() *cobra.Command {
 		Short:       "ask the watcher to compact the orchestrator session now",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `distill writes a compact-cycle request the watcher picks up at the session's
-next idle moment, whatever ` + orchKeyName("cycle_mode") + ` says. The session writes a note first;
+next idle moment, whatever cycle_mode says. The session writes a note first;
 only then does the watcher compact it in place. The envelope's watcher_live
 tells you at once when no watcher is running to act on it; the request is then
 withdrawn. While a hub pause holds the watcher the request waits for the

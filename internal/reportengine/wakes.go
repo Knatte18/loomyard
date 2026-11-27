@@ -104,7 +104,8 @@ func (row *RunRow) classifyBatten(records Reader, rev string) error {
 	}
 	record := battenshed.BattenRecord{Snapshots: row.battenSnapshots, Child: row.childHistory}
 	rules := battenshed.NoticeRules{
-		VerifyRows:  []string{loomshed.NameParentAlign},
+		VerifyRows:  []string{loomshed.NameParentAlign, retiredMergeInRow, retiredPublishRow},
+		GateRow:     retiredPRGateRow,
 		EpisodeRows: []string{battenrecipe.NameLand, battenrecipe.NameWorktreeTeardown},
 	}
 
@@ -124,7 +125,7 @@ func (row *RunRow) classifyBatten(records Reader, rev string) error {
 	wakeKinds := make([]string, len(result.Wakes))
 	for i, wake := range result.Wakes {
 		wakeKinds[i] = wake.Kind
-		if wake.Kind != battenshed.WakeKindReviewEscalation {
+		if wake.Kind != battenshed.WakeKindReviewEscalation && wake.Kind != battenshed.WakeKindPRGate {
 			wakeKinds[i] = wake.Kind + " at " + wake.Producer
 		}
 	}

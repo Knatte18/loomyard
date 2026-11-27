@@ -5,7 +5,7 @@
      It names no step of the stencil around it;
      each including stencil states its own rule for the lines this block leaves out. -->
 
-A symbol `Rename` needs the hub's `language.rename_tools`; the plan gate refuses one when the list is empty.
+A symbol `Rename` needs the hub's `rename_tools` in `language.yaml`; the plan gate refuses one when the list is empty.
 
 ### Each `NN-<card-slug>.md`
 
@@ -50,12 +50,6 @@ A propagated raw I/O error, which `refusal-spec.md` exempts as transient, is exe
 A branch that upstream validation already rules out is not prescribed: drop it, or, when it guards an invariant, write it as a fail-loud wiring guard in `refusal-spec.md`'s sense, which takes no reaching test.
 A test that calls only the refusal's error constructor does not reach it.
 
-A card whose `**Intent:**` covers every instance of one kind across the repository lists every file holding one.
-Its Intent names the repository search that found them, so a reviewer can re-run it to prove the list complete.
-
-A new function goes on the card that adds its first production caller, even when it is part of a module's public surface:
-a card that adds it alone fails its gate on the guard that every production function is reachable from a `main`.
-
 A field with no content is omitted entirely — never write a `none` sentinel on any field.
 
 **`Uses:` names what the card reads but does not change — never a target.**
@@ -65,8 +59,6 @@ That is the `card-field-overlap` finding — see `{{.specs_dir}}/loom/loom-plan-
 The gates run the hub's tier lists over scopes lym computes, so the plan carries no plan-level verify section and asks for none.
 The hub's tiers and gate lists follow:
 {{.gate_tiers}}
-When they hold a plan tier0 budget line, each card that creates or widens a `tier0` test states in its Intent the seconds the test adds to one `tier0` run,
-and the plan's estimates together stay within that budget; a test that cannot fit moves to a higher tier or shares an existing test.
 A card's `**Verify:**` is the optional escape hatch for what no gate expresses, written only for what the gates cannot catch on their own.
 A `**Verify:**` line that tests is one `lym gate test --wait` call with a tier list and a scope form, never a raw test command or a target list.
 See `{{.specs_dir}}/loom/loom-plan-spec.md`'s verify model section for the gates and scope forms themselves — this file does not restate them.
@@ -86,7 +78,7 @@ A genuinely new file with no predecessor belongs in a separate `Create` card, ne
    into the `Rename` pair.
 4. Never write the relocated file from scratch and delete the original — that loses
    git history exactly as an unstructured create+delete pair would.
-5. For a symbol pair, run the hub's structure-aware rename tool the implementer prompt names (`language.rename_tools`), never a text or regex replace, then grep for zero remaining old-name references and confirm the symbol's doc comment opening names the new name.
+5. For a symbol pair, run the hub's structure-aware rename tool the implementer prompt names (`language.yaml` `rename_tools`), never a text or regex replace, then grep for zero remaining old-name references and confirm the symbol's doc comment opening names the new name.
 ```
 
 ### Minimal skeleton

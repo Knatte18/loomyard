@@ -48,7 +48,7 @@ func pairOnOriginOnly(t *testing.T, slug string) (*hubforge.Hub, *fabricengine.T
 	recordsBranch := fabricengine.RecordsBranchName(slug)
 	gitkit.MustRun(t, h.PairCodeWorktree(slug), "git", "push", "origin", slug)
 	gitkit.MustRun(t, h.PrimeRecords(), "git", "push", "origin", recordsBranch)
-	if _, err := h.Topology.Remove(h.Location, slug, false, false, ""); err != nil {
+	if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
 		t.Fatalf("Remove(%q) under the empty prefix: %v", slug, err)
 	}
 	if parts, err := h.Topology.PairParts(h.Location, slug); err != nil || parts.Any() {
@@ -82,7 +82,7 @@ func TestBranchPrefixChange_PairWithNothingLeftLocally(t *testing.T) {
 				h, top := pairOnOriginOnly(t, tt.slug)
 				recordsBranch := fabricengine.RecordsBranchName(tt.slug)
 
-				res, err := top.Remove(h.Location, tt.slug, false, true, "")
+				res, err := top.Remove(h.Location, tt.slug, false, true)
 				if err != nil {
 					t.Fatalf("Remove(%q, remote) error = %v", tt.slug, err)
 				}
@@ -105,7 +105,7 @@ func TestBranchPrefixChange_PairWithNothingLeftLocally(t *testing.T) {
 		const slug = "pn-discard"
 		h, top := pairOnOriginOnly(t, slug)
 
-		res, err := top.DiscardTaskBranch(h.Location, slug, "")
+		res, err := top.DiscardTaskBranch(h.Location, slug)
 		if err != nil {
 			t.Fatalf("DiscardTaskBranch(%q) error = %v", slug, err)
 		}

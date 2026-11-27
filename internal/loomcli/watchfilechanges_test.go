@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -133,7 +134,7 @@ func TestPullRequestDeps_RecordChangesWatchesTheRunsPullRequestRecord(t *testing
 		t.Fatalf("create %s: %v", filepath.Dir(record), err)
 	}
 
-	changes, stop := pullRequestDeps(location, "main", true).RecordChanges()
+	changes, stop := pullRequestDeps(location, "main", true, &shuttleengine.Runner{}).RecordChanges()
 	t.Cleanup(stop)
 	if changes == nil {
 		t.Fatalf("RecordChanges() channel = nil; want a watch on %s", record)

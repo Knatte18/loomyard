@@ -15,7 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/preflight"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/spf13/cobra"
 )
 
@@ -23,10 +22,6 @@ import (
 type burlerCLI struct {
 	// engine is the constructed burlerengine.Engine the run verb closes over.
 	engine *burlerengine.Engine
-
-	// runner is the shuttle runner in hub mode, kept so a test can read how wire configured it.
-	// Standalone mode leaves it nil.
-	runner *shuttleengine.Runner
 
 	// languageSkills are the hub's language skills that a code round's seats load after burler's own skills.
 	// Hub mode loads them from the hub's language.yaml; standalone mode leaves them empty.
@@ -68,8 +63,7 @@ type burlerCLI struct {
 // It is a separate method so a test can call it on a burlerCLI and inspect the populated fields.
 // The group command skips resolution when it runs bare or on an unknown subcommand, through clihelp.GroupRunE.
 // Neither path needs a git repository.
-// The validate-review verb skips resolution too: it needs no hub, mode or engine wiring.
-// It resolves the worktree itself, from the seam cwd, when it runs the round checks.
+// The validate-review verb skips resolution too: it reads one told path and needs no hub, mode or engine wiring.
 func (c *burlerCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
 	if cmd.Name() == "burler" || cmd.Name() == validateReviewVerb {
 		return nil

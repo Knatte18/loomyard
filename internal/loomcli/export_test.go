@@ -12,11 +12,6 @@ func DriftDepsAt(location *lymcwd.Location, statusPath, statusLockPath string) d
 	return driftDeps(location, statusPath, statusLockPath, driftTables{})
 }
 
-// DriftDepsWithDecisionRecord builds the Drift seams over location with decisionRecordPath set in the agent tables.
-func DriftDepsWithDecisionRecord(location *lymcwd.Location, statusPath, statusLockPath, decisionRecordPath string) driftengine.Deps {
-	return driftDeps(location, statusPath, statusLockPath, driftTables{decisionRecordPath: decisionRecordPath})
-}
-
 // LoomRecordsDirs re-exports the records paths the judge snapshot leaves out.
 var LoomRecordsDirs = loomRecordsDirs
 

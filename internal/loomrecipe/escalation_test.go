@@ -84,7 +84,7 @@ func (p *haltingProducer) Call(context.Context) (shedengine.Outcome, shedengine.
 }
 
 // TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe covers a darn run's Code-Review perch.
-// It drives the perch past a budget of 1 under a hard cap of 2, with code.auto_accept off.
+// It drives the perch past a budget of 1 under a hard cap of 2, with code_auto_accept off.
 // The soft-cap rule continues round 1 automatically.
 // At the hard cap the Bouncer escalates to the parent with a rendered brief instead of blocking.
 // An accept settles the perch onto Describe and files the open finding under Code-Review.
@@ -109,7 +109,7 @@ func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *te
 	code.MaxBounces, code.HardMaxBounces = 1, 2
 	env.Segments["Code-Review"] = code
 	env.Setting = func(module, key string) (any, error) {
-		if module == "loom" && key == "code.auto_accept" {
+		if module == "loom" && key == "code_auto_accept" {
 			return false, nil
 		}
 		return envkit.TemplateSetting(module, key)
@@ -289,7 +289,7 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 			_, env, paths := buildSequenceFixture(t)
 			setBudgets(&env, 3, map[string]int{"Code-Review": 1})
 			env.Setting = func(module, key string) (any, error) {
-				if module == "loom" && key == "code.auto_accept" {
+				if module == "loom" && key == "code_auto_accept" {
 					return true, nil
 				}
 				return envkit.TemplateSetting(module, key)

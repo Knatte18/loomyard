@@ -69,22 +69,13 @@ func fixStepMarkerValues() map[string]string {
 	}
 }
 
-// fixStepIncludes returns the fragments the fix step includes by name, keyed by include name.
-func fixStepIncludes() map[string][]byte {
-	return map[string][]byte{
-		"loom-fragment-loosened-check": stencils.LoomFragmentLoosenedCheck,
-		"loom-fragment-tooling-names":  stencils.LoomFragmentToolingNames,
-	}
-}
-
 // instruction1MarkerValues returns a values map with a placeholder for each marker of the explore step.
-// The optional markers pattern_directive, focus_directive, diff_pieces and fork_reading are included too.
+// The optional markers pattern_directive, focus_directive and fork_reading are included too.
 // Tests delete one key at a time to prove the per-marker error of stencil.FillOptional.
 func instruction1MarkerValues() map[string]string {
 	return map[string]string{
 		"pattern_directive": "## Constraints — do this before you judge anything\n\n- Read the overview.",
 		"focus_directive":   "## Focus directive for this round",
-		"diff_pieces":       "\n\n## The diff under review, in pieces",
 		"fork_reading":      "\n\n## Reading for the fork reviewers",
 		"target":            "target placeholder",
 		"fasit":             "fasit placeholder",
@@ -94,18 +85,15 @@ func instruction1MarkerValues() map[string]string {
 }
 
 // TestTemplate_FillsWithAllMarkers asserts each embedded asset fills through stencil when given its full marker set.
-// For the explore step that set includes its optional markers.
+// For the explore step that set includes the optional pattern_directive and focus_directive.
 // The test fails, naming the marker, when any single required marker of an asset is absent.
-// The explore step's optional markers are excluded from its deletion sweep.
-// Deleting an optional marker must not error.
-//
-//testtiming:keep pins the explore, review and fix steps' per-marker missing-value errors, which TestAnswerParentAsk never renders
+// pattern_directive and focus_directive are excluded from the explore step's deletion sweep.
+// They are optional markers, so deleting either must not error.
 func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name            string
 		template        []byte
-		includes        map[string][]byte
 		values          map[string]string
 		optional        []string
 		requiredMarkers []string
@@ -134,7 +122,6 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 		{
 			name:            "fix step",
 			template:        stencils.BurlerStepFix,
-			includes:        fixStepIncludes(),
 			values:          fixStepMarkerValues(),
 			optional:        []string{"friction_directive", "self_check"},
 			requiredMarkers: []string{"work", "fix_scope_rules", "review_path", "fixer_report_path"},
@@ -148,7 +135,7 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 			name:            "explore step",
 			template:        stencils.BurlerStep1Explore,
 			values:          instruction1MarkerValues(),
-			optional:        []string{"pattern_directive", "focus_directive", "diff_pieces", "fork_reading"},
+			optional:        []string{"pattern_directive", "focus_directive", "fork_reading"},
 			requiredMarkers: []string{"target", "fasit", "rubric", "tool_use_rules"},
 		},
 	}
@@ -156,8 +143,8 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Run("all markers supplied", func(t *testing.T) {
-				if _, err := stencil.FillWith(tt.template, tt.includes, tt.values, tt.optional); err != nil {
-					t.Fatalf("stencil.FillWith() = %v; want nil", err)
+				if _, err := stencil.FillOptional(tt.template, tt.values, tt.optional); err != nil {
+					t.Fatalf("stencil.FillOptional() = %v; want nil", err)
 				}
 			})
 
@@ -171,12 +158,12 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 					}
 					delete(values, marker)
 
-					_, err := stencil.FillWith(tt.template, tt.includes, values, tt.optional)
+					_, err := stencil.FillOptional(tt.template, values, tt.optional)
 					if err == nil {
-						t.Fatalf("stencil.FillWith() with %q missing = nil error; want error naming the marker", marker)
+						t.Fatalf("stencil.FillOptional() with %q missing = nil error; want error naming the marker", marker)
 					}
 					if !strings.Contains(err.Error(), marker) {
-						t.Errorf("stencil.FillWith() error = %q; want it to name marker %q", err.Error(), marker)
+						t.Errorf("stencil.FillOptional() error = %q; want it to name marker %q", err.Error(), marker)
 					}
 				})
 			}
@@ -185,19 +172,16 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 }
 
 // TestTemplate_OptionalDirectives asserts the explore step's optional markers render cleanly when empty.
-// They are pattern_directive, focus_directive, diff_pieces and fork_reading.
+// They are pattern_directive, focus_directive and fork_reading.
 // An empty value leaves no leftover `{{`, no orphan heading and, for pattern_directive, no stray blank-line block.
 // A non-empty value places the two directives ahead of the first work instruction.
-// It places the diff pieces after the target and ahead of the fasit,
-// and the fork reading after the tool-use rules at the end of the stencil.
+// It places the fork reading after the tool-use rules at the end of the stencil.
 // The fix step's friction_directive and self_check each render an empty value cleanly too.
-//
-//testtiming:keep pins that each optional explore and fix marker renders empty cleanly and lands in its place, which TestAnswerParentAsk never renders
 func TestTemplate_OptionalDirectives(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	optional := []string{"pattern_directive", "focus_directive", "diff_pieces", "fork_reading"}
+	optional := []string{"pattern_directive", "focus_directive", "fork_reading"}
 	tests := []struct {
 		marker            string
 		orphanHeading     string
@@ -208,7 +192,6 @@ func TestTemplate_OptionalDirectives(t *testing.T) {
 	}{
 		{marker: "pattern_directive", orphanHeading: "## Constraints", noStrayBlankBlock: true, placement: "precedes the first work instruction", wantBefore: true, anchor: "## What to review (the target)"},
 		{marker: "focus_directive", orphanHeading: "## Focus directive", placement: "precedes the first work instruction", wantBefore: true, anchor: "## What to review (the target)"},
-		{marker: "diff_pieces", orphanHeading: "## The diff under review", placement: "precedes the fasit", wantBefore: true, anchor: "## What to judge it against (the fasit)"},
 		{marker: "fork_reading", orphanHeading: "## Reading for the fork reviewers", placement: "follows the tool-use rules", anchor: "## Tool-use rules — how you gather evidence"},
 	}
 
@@ -258,9 +241,9 @@ func TestTemplate_OptionalDirectives(t *testing.T) {
 		for _, marker := range []string{"friction_directive", "self_check"} {
 			values := fixStepMarkerValues()
 			values[marker] = ""
-			got, err := stencil.FillWith(stencils.BurlerStepFix, fixStepIncludes(), values, []string{"friction_directive", "self_check"})
+			got, err := stencil.FillOptional(stencils.BurlerStepFix, values, []string{"friction_directive", "self_check"})
 			if err != nil {
-				t.Fatalf("stencil.FillWith() with %s empty = %v; want nil", marker, err)
+				t.Fatalf("stencil.FillOptional() with %s empty = %v; want nil", marker, err)
 			}
 			if strings.Contains(string(got), "{{") {
 				t.Errorf("rendered output with %s empty contains leftover {{: %q", marker, got)
@@ -320,7 +303,7 @@ func TestComposePrompt_RendersEngineBlocksForTheHalfsEngine(t *testing.T) {
 			if err != nil {
 				t.Fatalf("composeReviewPrompt(%s) = %v; want nil error", tt.engine, err)
 			}
-			fix, err := composeFixPrompt(stencilsDir, testSpecsDir, tt.engine, &p, "", fixWork(p.ReviewPath, "", false, FixRerun{}), testFixFiles)
+			fix, err := composeFixPrompt(stencilsDir, testSpecsDir, tt.engine, &p, "", fixWork(p.ReviewPath, "", false), testFixFiles)
 			if err != nil {
 				t.Fatalf("composeFixPrompt(%s) = %v; want nil error", tt.engine, err)
 			}

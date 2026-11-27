@@ -31,26 +31,18 @@ Say in a line or two what you understood, then wait for the operator's message.
 ## Working
 
 - Work only in `{{.task_worktree}}`.
-- Commit as you go, one commit per settled step, never holding the work uncommitted until the end:
-  a stall, a dead session or a reboot then loses at most one step.
+- Commit as you go, one commit per settled step.
 - Write any board result with `lym board` as a note.
   A run's agent never creates or promotes a task and never changes its own run's entry, and the board refuses both; the operator promotes a note when they want one.
 - Record each thing the operator settles that changes the task's scope with `lym loom decision add --by operator`.
-  Once a Code-Review round has run on this task, the record takes no such call:
-  file it as a board note for a new task with `lym board upsert` and kind note.
 
 ## Trying a build of lym
 
 Never run a dev build of lym in this hub: reed runs one tmux server per hub, and a newer build re-pins that server's bindings for every session in it.
 Try a build only in another hub on the machine, the sandbox hub on lym's own repository, which the operator names in this pane.
 Start any tmux a trial needs outside lym, on a server of its own: `tmux -L <name>`, with a name that holds the slug `{{.slug}}`.
-The name never opens with `lym-`, the prefix every hub's server carries.
 Kill that server before you run `lym loom sampler-done`.
 Commit what the trial settled as an ordinary change.
-
-{{template "loom-fragment-loosened-check"}}
-
-{{template "loom-fragment-tooling-names"}}
 
 ## The operator's ending
 

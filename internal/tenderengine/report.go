@@ -29,7 +29,6 @@ type Pair interface {
 	// Slug is the pair's slug.
 	Slug() string
 	// Sessions lists the pair's live shuttle-run strands, the loom driver included.
-	// It fails with an error wrapping reedengine.ErrNoSession when the pair has no reed session.
 	Sessions() ([]SessionInfo, error)
 	// State reads the session's state from its run's files, the zero state when the strand has none.
 	State(guid string) (shuttleengine.SessionState, error)
@@ -106,15 +105,8 @@ type Deps struct {
 	Orchs func() ([]Orch, error)
 	// Owners lists each local pair with its effective owner and each run-held entry owned elsewhere; nil reports none.
 	Owners func() ([]PairOwner, error)
-	// BoltHold reads the adopt hold the local Bolt records, which a resume judges; nil reads no hold.
-	BoltHold func() (BoltHoldState, error)
 	// PushPair spawns the detached push of the pair slug names; nil spawns none.
 	PushPair func(slug string) error
-	// PushDeferred reports whether a pause deferred a detached push of the pair slug names, which a lift then pays.
-	// A run's transition commits leave no deferred push:
-	// the dobby's tick restarts the pair's pusher once no pause covers it, so a lift spawns none for them.
-	// A nil PushDeferred reads every pair as owed one.
-	PushDeferred func(slug string) bool
 	// PushPrimeRecords spawns the detached push of the prime's records; nil spawns none.
 	PushPrimeRecords func() error
 	// SyncBoardIfOwed spawns the board sync when the board holds changes a deferred sync left; nil spawns none.
@@ -132,12 +124,6 @@ type SessionNote struct {
 	Strand string `json:"strand"`
 	Slug   string `json:"slug"`
 	Reason string `json:"reason"`
-}
-
-// noReedSessionNote returns the note of the pair slug whose reed session is gone, with reed's refusal err as the cause.
-// Such a pair has no running turn, so pause and status pass it over instead of failing.
-func noReedSessionNote(slug string, err error) SessionNote {
-	return SessionNote{Slug: slug, Reason: "no reed session, so no running turn: " + err.Error()}
 }
 
 // NetOpReport is one network operation in flight.

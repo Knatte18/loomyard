@@ -288,6 +288,17 @@ func firstWiredJunctionLink(tb testing.TB, h *hubforge.Hub, slug string) string 
 	return fabricengine.WarpJunctions(h.Location, slug, names)[0].Link
 }
 
+// pairPermittedRoots returns the hub-relative roots a pair's full teardown or creation may touch:
+// its warp worktree and its weft sibling.
+func pairPermittedRoots(tb testing.TB, h *hubforge.Hub, slug string) []string {
+	tb.Helper()
+
+	return []string{
+		hubRelative(tb, h, h.PairCodeWorktree(slug)),
+		hubRelative(tb, h, h.PairRecordsSibling(slug)),
+	}
+}
+
 // slugPermittedRoots returns the hub-relative roots a pair named slug may occupy:
 // its warp worktree, its weft sibling and their git-admin entries in the prime worktrees.
 // A VerbCase's Expect closure has no *hubforge.Hub to resolve an accessor against, only the state name.
@@ -470,7 +481,7 @@ func removeCase() VerbCase {
 		},
 		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
-			res, err := h.Topology.Remove(h.Location, f.Slug, false, false, "")
+			res, err := h.Topology.Remove(h.Location, f.Slug, false, false)
 			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {
@@ -1114,7 +1125,7 @@ func removeHostileCases() []VerbCase {
 			},
 			Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 				tb.Helper()
-				res, err := h.Topology.Remove(h.Location, f.Slug, false, false, "")
+				res, err := h.Topology.Remove(h.Location, f.Slug, false, false)
 				return res.Mutated(), err
 			},
 			Expect: func(state string) Expectation {

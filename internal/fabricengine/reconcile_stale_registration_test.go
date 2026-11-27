@@ -407,7 +407,7 @@ func TestCleanup_VerdictIsIndependentOfDryRunAndForce(t *testing.T) {
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
-	if _, err := topology.Remove(l, slug, true, false, ""); err != nil {
+	if _, err := topology.Remove(l, slug, true, false); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
 
@@ -491,4 +491,16 @@ func TestCleanup_VerdictIsIndependentOfDryRunAndForce(t *testing.T) {
 	if !gitkit.BranchExists(t, weftRepoRoot, unmanaged) {
 		t.Errorf("unmanaged branch %q was deleted by Cleanup(apply, force=true); want it to survive", unmanaged)
 	}
+}
+
+// reconcilePairFor returns the result entry for slug's pair, failing the test when the result has none.
+func reconcilePairFor(t *testing.T, result fabricengine.ReconcileResult, slug string) fabricengine.ReconcilePairResult {
+	t.Helper()
+	for _, pair := range result.Pairs {
+		if filepath.Base(pair.CodeWorktree) == slug {
+			return pair
+		}
+	}
+	t.Fatalf("Reconcile() reported no pair for slug %q", slug)
+	return fabricengine.ReconcilePairResult{}
 }

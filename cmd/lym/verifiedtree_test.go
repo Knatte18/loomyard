@@ -21,7 +21,6 @@ var planVerifySites = []string{
 	"internal/loomshed/verifygate.go",
 	"internal/webstercli/verify.go",
 	"internal/landingshed/verifygate.go",
-	"internal/loomshed/redfirstgate.go",
 	"internal/weaverengine/strand.go",
 	"internal/weaverengine/verify.go",
 }
@@ -63,7 +62,7 @@ func callsAny(data []byte, token string) bool {
 //
 //lym:guard
 //lym:watch internal/websterengine/verifygate.go internal/loomshed/verifygate.go internal/webstercli/verify.go
-//lym:watch internal/landingshed/verifygate.go internal/loomshed/redfirstgate.go internal/testkit/scankit/*.go
+//lym:watch internal/landingshed/verifygate.go internal/testkit/scankit/*.go
 func TestVerifiedTree_PlanVerifySitesCallVerify(t *testing.T) {
 	tiergate.Require(t, 0)
 	seen := map[string]bool{}

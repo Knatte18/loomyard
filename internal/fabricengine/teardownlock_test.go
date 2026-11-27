@@ -42,7 +42,7 @@ func TestDetachedPush_CoveredChildExitsBeforeItsFlags(t *testing.T) {
 				PauseSlug:    slug,
 				TeardownSlug: slug,
 				ParentLocked: tt.parentLocked,
-			}, MachineNames{})
+			})
 			if err != nil {
 				t.Fatalf("DetachedPush() error = %v; want nil", err)
 			}

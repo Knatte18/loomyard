@@ -4,7 +4,6 @@ package boardengine
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,8 +31,6 @@ type Board struct {
 	validateSlug func(slug string) error
 	// strandName is the writing session's agent name, which the write's task-creation check judges.
 	strandName string
-	// expected is the entry revision the write section checks, nil for a board that expects none; Expecting sets it.
-	expected *expectedRevision
 }
 
 // New returns a Board that runs with cfg, and uses the wall clock when cfg.Clock is nil.
@@ -69,14 +66,9 @@ type noWrite struct{ result any }
 // the write unwraps it, and the promotion keeps the note's dates.
 type promoted struct{ task Task }
 
-// boardCriticalSection runs the locked write of boardCriticalSectionRollingBack with no rollback.
-func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSave func() error) (any, error) {
-	return b.boardCriticalSectionRollingBack(fn, afterSave, nil)
-}
-
-// boardCriticalSectionRollingBack runs the locked write scaffolding shared by every mutating Board method.
+// boardCriticalSection runs the locked write scaffolding shared by every mutating Board method.
 // It takes the write lock and loads the store.
-// A board made by Expecting then checks its entry's revision and refuses a stale one before anything is written.
+// It migrates a board that has not been marked draft and every task left discussed.
 // It then calls fn to mutate the store, and it gives a new task the draft status except a promoted raddle task.
 // It stamps the entry dates and assigns the handles the mutation left missing or of another letter;
 // it refuses a net change to a run-held entry's scope and a run agent's new task.
@@ -85,12 +77,10 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 // it renders the outputs and spawns a detached sync.
 // A fn returning a RenameResult has its dates and run lock judged against the loaded entries with that rename applied.
 // afterSave runs under the lock after the save and before the render.
-// When afterSave or the render fails, a non-nil rollback runs before the lock is released,
-// and its own failure is joined to the returned error.
 // A *DecisionRecordError does not stop the render or the sync;
 // it is returned last, with the write saved and the mutation's result.
 // A fn returning a noWrite skips every step after the mutation.
-func (b *Board) boardCriticalSectionRollingBack(fn func(store *Store) (any, error), afterSave, rollback func() error) (any, error) {
+func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSave func() error) (any, error) {
 	// Guard before any disk mutation.
 	// A Board built without output filenames, the --board-path shape, carries only the data dir;
 	// it can sync and read but must not write.
@@ -122,10 +112,10 @@ func (b *Board) boardCriticalSectionRollingBack(fn func(store *Store) (any, erro
 		return nil, err
 	}
 
+	// Migrated before fn mutates, so a write that releases a task to an empty status is not re-drafted by the migration.
+	migrateDraftStatus(store)
+	migrateDiscussedStatus(store)
 	loaded := cloneTasks(store.Tasks())
-	if err := b.checkExpected(loaded, store.primeOwner); err != nil {
-		return nil, err
-	}
 	// Read before fn mutates, so the slug rule judges the raddle store as it stood before the write.
 	raddleStore, raddleStoreErr := ReadRaddleStore(b.boardPath)
 
@@ -191,25 +181,16 @@ func (b *Board) boardCriticalSectionRollingBack(fn func(store *Store) (any, erro
 		return nil, fmt.Errorf("save store: %w", err)
 	}
 
-	rolledBack := func(failure error) error {
-		if rollback == nil {
-			return failure
-		}
-		if err := rollback(); err != nil {
-			return errors.Join(failure, fmt.Errorf("roll back the saved store: %w", err))
-		}
-		return failure
-	}
 	if afterSave != nil {
 		if err := afterSave(); err != nil {
-			return nil, rolledBack(err)
+			return nil, err
 		}
 	}
 
 	recordErr := followDecisionRecords(b.boardPath, loaded, store.Tasks(), renamedFrom, renamedTo)
 
 	if err := RenderToDisk(b.boardPath, store.Tasks(), store.primeOwner, b.out, now); err != nil {
-		return nil, rolledBack(fmt.Errorf("render: %w", err))
+		return nil, fmt.Errorf("render: %w", err)
 	}
 
 	if !b.skipGit {
@@ -235,55 +216,6 @@ func (b *Board) SetStatus(idOrSlug any, status *string) error {
 	return err
 }
 
-// SetStatusPushed sets or clears the status of the task slug names and pushes the change before it returns.
-// It brings the Bolt up to date with origin first, then commits the write and waits for the push, and it spawns no sync.
-// A landing's done mark takes this path, since the run acts on a status only once origin holds it.
-// An unreachable origin returns an error wrapping ErrOwnerOriginUnreachable; a push that failed leaves the commit local.
-// BOARD_SKIP_GIT writes board.json with no pull, commit or push, and BOARD_SKIP_PUSH commits with no pull or push.
-func (b *Board) SetStatusPushed(slug string, status *string) error {
-	opts := fabricengine.SyncOptions{SkipGit: b.skipGit, SkipPush: b.skipPush}
-	bolt := fabricengine.NewBolt(b.boardPath)
-	write := func() ([]string, error) {
-		store := NewStore(b.boardPath)
-		store.vocab = &b.vocab
-		store.parentOf = b.parentOf
-		store.pairExists = b.pairExists
-		if err := store.Load(); err != nil {
-			return nil, err
-		}
-		if err := store.SetStatus(slug, status); err != nil {
-			return nil, err
-		}
-		if err := store.Save(); err != nil {
-			return nil, fmt.Errorf("save store: %w", err)
-		}
-		rendered, err := renderOwnerWrite(b.boardPath, store.Tasks(), store.primeOwner)
-		if err != nil {
-			return nil, err
-		}
-		return append([]string{boardFile}, rendered...), nil
-	}
-
-	message := "board: status of " + slug
-	if b.skipGit || b.skipPush {
-		_, _, err := bolt.CommitWritten(message, write, opts)
-		return err
-	}
-	rec := fabricengine.NewMutations(filepath.Dir(b.boardPath))
-	result, err := bolt.PullThenCommitWritten([]fabricengine.BoltWrite{{Message: message, Write: write}}, rec)
-	if err != nil {
-		return err
-	}
-	switch result.Skipped {
-	case "":
-	case fabricengine.BoltSkipFetchFailed:
-		return fmt.Errorf("%w: %s", ErrOwnerOriginUnreachable, result.SkipDetail)
-	default:
-		return fmt.Errorf("board: the status write was refused, since the board could not be brought up to date: %s", result.SkipDetail)
-	}
-	return pushOwnerCommit(bolt, opts, rec, time.Sleep)
-}
-
 // SetRunStatus sets status on the entry slug under the write lock.
 // It writes nothing when the entry is absent, done, or already carries status.
 func (b *Board) SetRunStatus(slug, status string) error {
@@ -293,6 +225,34 @@ func (b *Board) SetRunStatus(slug, status string) error {
 			return noWrite{}, nil
 		}
 		return nil, store.SetStatus(slug, &status)
+	}, nil)
+	return err
+}
+
+// SetNotifyOnLand sets the notify_on_land field of the entry slug under the write lock.
+// It writes nothing when the entry is absent or already carries the field.
+func (b *Board) SetNotifyOnLand(slug string) error {
+	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
+		i, found := store.index(slug)
+		if !found || store.tasks[i].NotifyOnLand {
+			return noWrite{}, nil
+		}
+		store.tasks[i].NotifyOnLand = true
+		return nil, nil
+	}, nil)
+	return err
+}
+
+// ClearNotifyOnLand clears the notify_on_land field of the entry slug under the write lock.
+// It writes nothing when the entry is absent or its field is already clear.
+func (b *Board) ClearNotifyOnLand(slug string) error {
+	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
+		i, found := store.index(slug)
+		if !found || !store.tasks[i].NotifyOnLand {
+			return noWrite{}, nil
+		}
+		store.tasks[i].NotifyOnLand = false
+		return nil, nil
 	}, nil)
 	return err
 }
@@ -307,7 +267,7 @@ func (b *Board) RemoveTask(idOrSlug any) error {
 
 // RemoveCommand returns the `lym board remove` command line that removes the entry slug names.
 // The JSON payload is single-quoted for a shell.
-// A way forward names this command with its JSON payload spelled out.
+// A way forward names this command, since the verb takes a JSON payload or a bare handle, never a bare slug.
 func RemoveCommand(slug string) string {
 	payload, _ := json.Marshal(map[string]string{"slug": slug})
 	return "lym board remove '" + string(payload) + "'"
@@ -361,14 +321,24 @@ func (b *Board) Sync() error {
 	return Sync(b.boardPath, b.skipGit, b.skipPush)
 }
 
-// HealthCheck verifies the board directory exists and holds a readable board.json.
-// A syntactically corrupt but readable file passes the health check.
+// HealthCheck verifies the board directory exists and holds a readable board.json or a readable legacy file.
+// Syntactically corrupt but readable files pass the health check.
 func (b *Board) HealthCheck() error {
 	if _, err := os.Stat(b.boardPath); err != nil {
 		return err
 	}
-	_, err := os.ReadFile(filepath.Join(b.boardPath, boardFile))
-	return err
+
+	var firstErr error
+	for _, name := range []string{boardFile, legacyTasksFile, legacyNotesFile} {
+		_, err := os.ReadFile(filepath.Join(b.boardPath, name))
+		if err == nil {
+			return nil
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 // loadStore loads the store for a read and persists nothing.
@@ -382,16 +352,6 @@ func (b *Board) loadStore() (*Store, error) {
 		return nil, err
 	}
 	return store, nil
-}
-
-// View returns the board's view projection as a write would see the board: loaded, with nothing saved.
-// An entry whose decision record file is missing reads as undiscussed, as the render treats it.
-func (b *Board) View() (BoardView, error) {
-	store, err := b.loadStore()
-	if err != nil {
-		return BoardView{}, err
-	}
-	return buildView(store.Tasks(), withMissingRecordsUndiscussed(b.boardPath, store.Tasks()), store.primeOwner, b.out, b.now())
 }
 
 // GetTask returns the task identified by idOrSlug and reports whether one was found.
@@ -438,7 +398,7 @@ func (b *Board) checkFilterLabels(store *Store, labels []string) error {
 	}
 	for _, label := range labels {
 		if !b.vocab.Known(label) && !store.anyEntryCarries(label) {
-			return fmt.Errorf("filter label %q is in neither %s nor %s in board.yaml and no entry carries it: add it to one of them, or filter by a configured label", label, typesName(), labelsName())
+			return fmt.Errorf("filter label %q is in neither the types nor the labels list of board.yaml and no entry carries it: add it to board.yaml, or filter by a configured label", label)
 		}
 	}
 	return nil
@@ -523,7 +483,7 @@ func (b *Board) PromoteTo(idOrSlug any, recipe string, dependsOn []string) (Prom
 	return PromoteResult{Task: result.(Task), Siblings: siblings, RecordWarning: warning}, nil
 }
 
-// Prune removes every done entry under the write lock, except an abandoned entry and a project a kept entry names.
+// Prune removes every done entry under the write lock, except one still carrying notify_on_land.
 // It returns the removed slugs; the render that follows drops their design docs.
 // With apply false it is a dry run:
 // the slugs a pruning run would remove are reported, and the store is neither saved nor rendered.
@@ -557,4 +517,56 @@ func (b *Board) Find(text string, labels []string) ([]BriefTask, error) {
 		return nil, err
 	}
 	return store.Find(text, labels), nil
+}
+
+// RetireLegacy ends the pre-upgrade compatibility window under the write lock.
+// It returns the base names of the legacy files present, tasks file first.
+// It refuses when neither legacy file exists, whatever apply is.
+// With apply false it is a dry run: the names are reported and nothing is saved, rendered or deleted.
+// A dry run still takes the board write lock, creating the board directory and the lock file when they are absent.
+// With apply true the load folds the last done marks and board.json is saved with legacy_done still in place.
+// The legacy files and their swap locks are then deleted.
+// Only after that is legacy_done dropped and board.json saved again.
+// A crash or a failed deletion therefore leaves the surviving legacy files beside an intact legacy_done,
+// so a reload folds no mark twice and retire-legacy can be rerun.
+func (b *Board) RetireLegacy(apply bool) ([]string, error) {
+	legacyNames := []string{legacyTasksFile, legacyNotesFile}
+	legacyPaths := []string{
+		filepath.Join(b.boardPath, legacyTasksFile),
+		filepath.Join(b.boardPath, legacyNotesFile),
+	}
+	var retired *Store
+	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
+		var present []string
+		for i, path := range legacyPaths {
+			if fileExists(path) {
+				present = append(present, legacyNames[i])
+			}
+		}
+		if len(present) == 0 {
+			return nil, fmt.Errorf("nothing to retire: neither %s nor %s exists in the board directory", legacyTasksFile, legacyNotesFile)
+		}
+		if !apply {
+			return noWrite{result: present}, nil
+		}
+		retired = store
+		return present, nil
+	}, func() error {
+		for _, path := range legacyPaths {
+			for _, p := range []string{path, path + swapLockSuffix} {
+				if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+					return fmt.Errorf("remove legacy file: %w", err)
+				}
+			}
+		}
+		retired.legacyDone = nil
+		if err := retired.Save(); err != nil {
+			return fmt.Errorf("save store: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.([]string), nil
 }

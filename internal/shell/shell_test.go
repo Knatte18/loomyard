@@ -212,32 +212,6 @@ func TestShell_ExportEnv(t *testing.T) {
 	}
 }
 
-// TestShell_UnsetEnv pins each dialect's unset statement and that it stays ahead of a command it is chained with.
-func TestShell_UnsetEnv(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	tests := []struct {
-		name      string
-		sh        Shell
-		want      string
-		wantChain string
-	}{
-		{"pwsh", Pwsh(), "Remove-Item -ErrorAction SilentlyContinue Env:CLAUDE_CONFIG_DIR", "Remove-Item -ErrorAction SilentlyContinue Env:CLAUDE_CONFIG_DIR; & 'claude'"},
-		{"posix", Posix(), "unset CLAUDE_CONFIG_DIR", "unset CLAUDE_CONFIG_DIR; 'claude'"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := tt.sh.UnsetEnv("CLAUDE_CONFIG_DIR"); got != tt.want {
-				t.Errorf("%s UnsetEnv(%q) = %q; want %q", tt.name, "CLAUDE_CONFIG_DIR", got, tt.want)
-			}
-			if got := tt.sh.Chain(tt.sh.UnsetEnv("CLAUDE_CONFIG_DIR"), tt.sh.Invoke("claude")); got != tt.wantChain {
-				t.Errorf("%s Chain(UnsetEnv, Invoke) = %q; want %q", tt.name, got, tt.wantChain)
-			}
-		})
-	}
-}
-
 // TestShell_PrependPathEntry pins that each dialect references the live PATH and carries the unset-PATH guard.
 func TestShell_PrependPathEntry(t *testing.T) {
 	tiergate.Require(t, 0)

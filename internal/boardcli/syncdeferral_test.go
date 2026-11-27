@@ -5,7 +5,6 @@ package boardcli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"path/filepath"
 	"testing"
@@ -19,7 +18,7 @@ import (
 // TestSync_DeferrableExitsUnderACoveringPause runs sync against a board path that does not exist,
 // so a sync that reaches the board errors:
 // a deferrable sync under a Defer gate a hub entry covers succeeds without touching the board;
-// a plain sync waits once at the gate, before the board's push lock, and reports the board error once the pause lifts;
+// a plain sync reports the board error;
 // and a deferrable sync with nothing covering proceeds to the board and reports the same error.
 // Serial: it installs the process's network gate.
 func TestSync_DeferrableExitsUnderACoveringPause(t *testing.T) {
@@ -32,11 +31,10 @@ func TestSync_DeferrableExitsUnderACoveringPause(t *testing.T) {
 		covered   bool
 		wantOK    bool
 		wantError bool
-		wantWaits int
 	}{
-		{"DeferrableCoveredSucceedsUntouched", []string{"--board-path", missingBoard, "sync", "--deferrable"}, true, true, false, 0},
-		{"PlainCoveredWaitsThenReachesTheBoard", []string{"--board-path", missingBoard, "sync"}, true, false, true, 1},
-		{"DeferrableUncoveredReachesTheBoard", []string{"--board-path", missingBoard, "sync", "--deferrable"}, false, false, true, 0},
+		{"DeferrableCoveredSucceedsUntouched", []string{"--board-path", missingBoard, "sync", "--deferrable"}, true, true, false},
+		{"PlainCoveredReachesTheBoard", []string{"--board-path", missingBoard, "sync"}, true, false, true},
+		{"DeferrableUncoveredReachesTheBoard", []string{"--board-path", missingBoard, "sync", "--deferrable"}, false, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -50,23 +48,10 @@ func TestSync_DeferrableExitsUnderACoveringPause(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			waits := 0
-			// A wait lifts the pause, so a sync the gate holds goes on to the board.
-			lift := func(context.Context, time.Duration) error {
-				waits++
-				_, err := pauserecord.Update(recordPath, now, func(r *pauserecord.Record) error {
-					r.Live = nil
-					return nil
-				})
-				return err
-			}
-			t.Cleanup(pauserecord.InstallGate(pauserecord.Gate{Geometry: pauserecord.Geometry{RecordPath: recordPath}, Defer: true, Notify: func(string) {}, Sleep: lift}))
+			t.Cleanup(pauserecord.InstallGate(pauserecord.Gate{Geometry: pauserecord.Geometry{RecordPath: recordPath}, Defer: true}))
 
 			var stdout bytes.Buffer
 			code := clihelp.Execute(Command(), &stdout, tt.args)
-			if waits != tt.wantWaits {
-				t.Errorf("sync %q waited at the gate %d times; want %d", tt.args, waits, tt.wantWaits)
-			}
 			var envelope struct {
 				OK    bool   `json:"ok"`
 				Error string `json:"error"`

@@ -81,7 +81,7 @@ func Getwd() (string, error) {
 //
 // It returns the Location on success.
 // It returns ErrNotAGitRepo when cwd is outside a git repo.
-// It returns an *AnchorGateError, which wraps ErrCwdOutsideAnchor, when cwd is not exactly the anchored directory.
+// It returns ErrCwdOutsideAnchor when cwd is not exactly the anchored directory.
 func Resolve(cwd string) (*Location, error) {
 	return resolveCore(cwd, true)
 }

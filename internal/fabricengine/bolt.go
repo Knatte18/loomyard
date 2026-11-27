@@ -16,7 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
 // Bolt is a handle over a single weft:main-backed repo path with no paired warp side.
@@ -205,7 +204,6 @@ type BoltWriteResult struct {
 // When Bolt cannot be brought up to date, nothing is written and the result's Skipped says why.
 // With no upstream there is nothing to pull, and the writes run.
 //
-// It passes the process's pause gate before it takes the board write lock and stays admitted until it returns.
 // The board write lock is held across the pull and every write.
 // A write or commit error stops the sequence and is returned with the commits already landed kept in the result.
 // An empty path list commits nothing.
@@ -213,8 +211,6 @@ type BoltWriteResult struct {
 // A path HEAD does not hold either is left out of the commit.
 // It never pushes.
 func (b *Bolt) PullThenCommitWritten(writes []BoltWrite, rec *Mutations) (res BoltWriteResult, err error) {
-	leaveGate := pauserecord.Admit(pushLockGateOp)
-	defer leaveGate()
 	l, err := b.acquireWriteLock()
 	if err != nil {
 		return BoltWriteResult{}, err
@@ -269,13 +265,10 @@ func (b *Bolt) PullThenCommitWritten(writes []BoltWrite, rec *Mutations) (res Bo
 // A dirty or diverged Bolt cannot be brought up to date:
 // it returns a non-empty skip with a detail naming the way forward.
 // A Bolt with no upstream, and a pull honoring SkipGit, does nothing.
-// It passes the process's pause gate before it takes the board write lock and stays admitted until it returns.
 func (b *Bolt) Pull(opts SyncOptions, rec *Mutations) (BoltSkip, string, error) {
 	if opts.SkipGit {
 		return "", "", nil
 	}
-	leaveGate := pauserecord.Admit(pushLockGateOp)
-	defer leaveGate()
 	l, err := b.acquireWriteLock()
 	if err != nil {
 		return "", "", err
@@ -290,7 +283,6 @@ func (b *Bolt) Pull(opts SyncOptions, rec *Mutations) (BoltSkip, string, error) 
 // pullFirst also holds the board checkout's push lock for its whole run, taken after the board write lock.
 // A coalesced push rebases the board under that lock and never takes the write lock.
 // Without that lock, a push could rebase the board mid-drop.
-// The caller has passed the process's pause gate before it took the board write lock, so a pause never holds this call.
 //
 // A Bolt with no upstream is left alone.
 // Commits ahead of a moved upstream are replayed onto it by entry;
@@ -298,13 +290,7 @@ func (b *Bolt) Pull(opts SyncOptions, rec *Mutations) (BoltSkip, string, error) 
 // a Bolt only behind is fast-forwarded.
 // A replay that stops on a conflict skips as diverged, and one an uncommitted change blocks skips as dirty.
 // Each skip is logged at Warn here, once, so no caller repeats the text.
-// A records store whose origin layout cannot be read is an error naming the refspecs to restore, with nothing fetched.
 func (b *Bolt) pullFirst(rec *Mutations) (BoltSkip, string, error) {
-	// A one-repository store that lost its fetch refspecs fetches nothing and still exits clean,
-	// and its upstream then fails to resolve with no way forward; the layout read names one.
-	if _, err := originNamespaceAt(b.path); err != nil {
-		return "", "", err
-	}
 	repo := gitrepo.New(b.path)
 	pushLockPath, err := repo.PushLockPath()
 	if err != nil {

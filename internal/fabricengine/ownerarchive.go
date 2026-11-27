@@ -9,15 +9,12 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/lymtemp"
 )
 
 // OwnerArchiveTagPrefix is the short-name prefix every owner archive tag carries.
@@ -37,9 +34,6 @@ type OwnerArchivePair struct {
 	Slug string
 	// Pair is the pair's code worktree.
 	Pair *lymcwd.Location
-	// CommitUncommitted archives a worktree's uncommitted files too.
-	// They are committed onto a commit made off the local tip, never onto the branch, and that commit is tagged.
-	CommitUncommitted bool
 }
 
 // ArchiveOwnerTips archives each local tip of pairs that origin lacks, for the machine that now owns them.
@@ -81,18 +75,12 @@ func archiveOwnerPair(rec *Mutations, hubPath string, pair OwnerArchivePair) ([]
 	}
 	defer func() { _ = held.Release() }()
 
-	return archiveOwnerSides(rec, pair)
-}
-
-// archiveOwnerSides archives the code and records tips of pair, for a caller that holds its slug's teardown lock.
-// It returns the tags it pushed.
-func archiveOwnerSides(rec *Mutations, pair OwnerArchivePair) ([]string, error) {
 	var tags []string
 	for _, side := range []struct{ name, dir string }{
 		{"code", pair.Pair.WorktreePath()},
 		{"records", RecordsWorktree(pair.Pair)},
 	} {
-		tag, err := archiveOwnerTip(rec, side.dir, pair.Slug, side.name, pair.CommitUncommitted)
+		tag, err := archiveOwnerTip(rec, side.dir, pair.Slug, side.name)
 		if err != nil {
 			return tags, fmt.Errorf("archive the %s tip: %w", side.name, err)
 		}
@@ -107,9 +95,7 @@ func archiveOwnerSides(rec *Mutations, pair OwnerArchivePair) ([]string, error) 
 // It returns no tag for a directory that is not there, a repository with no origin remote and a tip origin holds.
 // A detached checkout is an error.
 // side names the branch's side, code or records, in the refusal for a tag of that name sitting elsewhere.
-// With commitUncommitted set, a worktree holding uncommitted files is archived at a commit of them made off the tip,
-// and that commit is tagged; the branch and the worktree's index stay where they were.
-func archiveOwnerTip(rec *Mutations, dir, slug, side string, commitUncommitted bool) (string, error) {
+func archiveOwnerTip(rec *Mutations, dir, slug, side string) (string, error) {
 	if !pathPresent(dir) {
 		return "", nil
 	}
@@ -127,11 +113,6 @@ func archiveOwnerTip(rec *Mutations, dir, slug, side string, commitUncommitted b
 	tip, err := localBranchTip(dir, branch)
 	if err != nil || tip == "" {
 		return "", err
-	}
-	if commitUncommitted {
-		if tip, err = commitUncommittedOffTip(rec, dir, tip); err != nil {
-			return "", err
-		}
 	}
 	originTip, err := remoteHeadTip(dir, branch)
 	if err != nil {
@@ -160,44 +141,6 @@ func archiveOwnerTip(rec *Mutations, dir, slug, side string, commitUncommitted b
 		return "", err
 	}
 	return tag, nil
-}
-
-// commitUncommittedOffTip commits the uncommitted files of the worktree at dir, untracked ones included, off tip.
-// It returns the new commit, or tip when the worktree holds nothing uncommitted.
-// The commit is built in a temporary index, so no branch moves and the worktree's own index is never touched.
-func commitUncommittedOffTip(rec *Mutations, dir, tip string) (string, error) {
-	status, err := gitexec.Run([]string{"status", "--porcelain", "--untracked-files=all"}, dir)
-	if err != nil {
-		return "", fmt.Errorf("list the uncommitted paths of %s: %w", dir, err)
-	}
-	if strings.TrimSpace(status) == "" {
-		return tip, nil
-	}
-	indexDir, err := lymtemp.MkdirTemp("owner-archive-index-*")
-	if err != nil {
-		return "", fmt.Errorf("create the temporary index for the owner archive: %w", err)
-	}
-	env := []string{"GIT_INDEX_FILE=" + filepath.Join(indexDir, "index"), "GIT_LITERAL_PATHSPECS=1"}
-	git := func(args ...string) (string, error) {
-		out, err := gitexec.RunWithEnv(args, dir, env)
-		return strings.TrimSpace(out), err
-	}
-	if _, err := git("read-tree", tip); err != nil {
-		return "", fmt.Errorf("read %s into the temporary index: %w", tip, err)
-	}
-	if _, err := git("add", "--all"); err != nil {
-		return "", fmt.Errorf("stage the uncommitted paths of %s in the temporary index: %w", dir, err)
-	}
-	tree, err := git("write-tree")
-	if err != nil {
-		return "", fmt.Errorf("write the tree of the uncommitted paths of %s: %w", dir, err)
-	}
-	sha, err := git("commit-tree", tree, "-p", tip, "-m", "owner archive: the uncommitted files of a run handed over")
-	if err != nil {
-		return "", fmt.Errorf("commit the uncommitted paths of %s: %w", dir, err)
-	}
-	rec.Append(KindCommitCreated, dir, sha)
-	return sha, nil
 }
 
 // The repository sides an owner archive tag sits in.
@@ -314,11 +257,7 @@ func readSideOwnerArchives(side, dir string, keep func(slug string) bool, branch
 		if err != nil {
 			return nil, err
 		}
-		ns, err := archiveTagNamespaceAt(dir)
-		if err != nil {
-			return nil, err
-		}
-		fetch := []string{originRemoteName, ns.Tag(tag)}
+		fetch := []string{originRemoteName, "refs/tags/" + tag}
 		if branchTip != "" {
 			fetch = append(fetch, branchTip)
 		}

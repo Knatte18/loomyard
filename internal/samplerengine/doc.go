@@ -18,11 +18,14 @@
 // ReadRecord and UpdateRecord read and write the file under its lock and keep any key they do not declare.
 //
 // SessionSpec builds the spec the sampler agent's interactive session starts under.
+// It takes a SessionInputs the caller tells it, the resolved Config and a model registry.
 // The session is unawaited, publishes nothing, and opens on the `sampler-template-agent` stencil.
+// The stencil carries paths and, in the PATTERN directive, the PATTERN overview.
 // The agent reads the decision record as the task's brief and works with the operator in the task worktree.
-// The agent writes and commits code, so the spec also renders the implementer PATTERN directive.
-// The spec renders it from the task worktree's PATTERN overview.
-// It also carries the hub's language skills the caller passes, which the agent loads before it edits code.
+// SessionSpec renders the interactive parent directive and the edit directive.
+// The agent writes and commits code, so it also renders the implementer PATTERN directive.
+// That directive comes from the task worktree's PATTERN overview.
+// It refuses an empty required field by name and an agent model-spec the registry cannot resolve.
 //
 // The package is told every path it reads and imports no resolver.
 package samplerengine

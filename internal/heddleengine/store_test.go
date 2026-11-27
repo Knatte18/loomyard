@@ -175,23 +175,19 @@ func TestStore(t *testing.T) {
 		t.Parallel()
 		// The rows are the shipped layer in render order.
 		// wantHeading is a text entry's first line: a level-two heading of its own, and empty for a JSON-object entry.
-		// A row with levelOnly checks that first line for the level-two marker alone, leaving its words free.
 		// Level two keeps the rendered file stepping from the shipped section's level-one heading with no skip.
 		tests := []struct {
 			slug        string
 			target      string
 			wantHeading string
-			levelOnly   bool
 		}{
-			{"lym-batching", "agents-file", "## Batch your calls", false},
-			{"lym-plan-edits-before-gate", "agents-file", "## Make every round of edits in this order", false},
-			{"lym-shell-directory", "agents-file", "## ", true},
-			{"lym-no-attribution", "claude-settings", "", false},
-			{"lym-plugins", "claude-settings", "", false},
-			{"lym-tool-deny", "claude-settings", "", false},
-			{"lym-session-scope", "claude-settings", "", false},
-			{"lym-prompt-suggestion-off", "claude-settings", "", false},
-			{"lym-glossary", "orch-prompt", "## ", true},
+			{"lym-batching", "agents-file", "## Batch your calls"},
+			{"lym-plan-edits-before-gate", "agents-file", "## Make every round of edits in this order"},
+			{"lym-no-attribution", "claude-settings", ""},
+			{"lym-plugins", "claude-settings", ""},
+			{"lym-tool-deny", "claude-settings", ""},
+			{"lym-session-scope", "claude-settings", ""},
+			{"lym-prompt-suggestion-off", "claude-settings", ""},
 		}
 		ordered := shippedStore.Ordered()
 		if len(ordered) != len(tests) {
@@ -205,12 +201,7 @@ func TestStore(t *testing.T) {
 			if tt.wantHeading == "" {
 				continue
 			}
-			heading, _, _ := strings.Cut(got.Text, "\n")
-			if tt.levelOnly {
-				if !strings.HasPrefix(heading, tt.wantHeading) {
-					t.Errorf("shipped entry %s opens with %q; want a heading starting %q", tt.slug, heading, tt.wantHeading)
-				}
-			} else if heading != tt.wantHeading {
+			if heading, _, _ := strings.Cut(got.Text, "\n"); heading != tt.wantHeading {
 				t.Errorf("shipped entry %s opens with %q; want %q", tt.slug, heading, tt.wantHeading)
 			}
 		}
@@ -266,7 +257,7 @@ func TestStore(t *testing.T) {
 		}
 	})
 
-	t.Run("ClaudeFileIsReadAsWrittenWhateverTheStoreVersion", func(t *testing.T) {
+	t.Run("StoreVersionDecidesHowClaudeFileIsRead", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
 			name    string
@@ -274,7 +265,11 @@ func TestStore(t *testing.T) {
 			targets string
 			want    []string
 		}{
-			{"UnversionedClaudeFile", "", `["claude-file"]`, []string{"claude-file"}},
+			{"ClaudeFile", "", `["claude-file"]`, []string{"agents-file"}},
+			{"ClaudeAndCodexFile", "", `["codex-file", "claude-file"]`, []string{"agents-file"}},
+			{"ClaudeFileBesideAPrompt", "", `["claude-prompt", "claude-file"]`, []string{"claude-prompt", "agents-file"}},
+			{"CodexFileAlone", "", `["codex-file"]`, []string{"codex-file"}},
+			{"AgentsFileBesideClaudeFile", "", `["agents-file", "claude-file"]`, []string{"agents-file"}},
 			{"VersionedClaudeFile", `"version": 1, `, `["claude-file"]`, []string{"claude-file"}},
 			{"NewerVersionedClaudeFile", `"version": 2, `, `["claude-file"]`, []string{"claude-file"}},
 		}

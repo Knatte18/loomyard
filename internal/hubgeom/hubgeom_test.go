@@ -533,7 +533,6 @@ func TestSlackGeometry(t *testing.T) {
 		SocketLockPath: filepath.Join(credentialRoot, "lym", slackengine.SocketLockFileName),
 		SetupPath:      filepath.Join(dir, slackengine.SetupFileName),
 		PresencePath:   filepath.Join(credentialRoot, "lym", slackengine.PresenceFileName),
-		PeersPath:      filepath.Join(credentialRoot, "lym", slackengine.PeersFileName),
 		ForwardingPath: filepath.Join(dir, slackengine.ForwardingFileName),
 		OutboxPath:     filepath.Join(dir, slackengine.OutboxFileName),
 		RelayStatePath: filepath.Join(dir, slackengine.RelayStateFileName),
@@ -541,10 +540,6 @@ func TestSlackGeometry(t *testing.T) {
 		LogPath:        filepath.Join(dir, slackengine.RelayLogFileName),
 		RunProcDir:     fabricengine.RunProcDir(hub),
 		LymExecutable:  executable,
-
-		BridgeMapPath:     filepath.Join(dir, slackengine.BridgeMapFileName),
-		BridgeNoticesPath: filepath.Join(dir, slackengine.BridgeNoticesFileName),
-		BridgePostsPath:   filepath.Join(dir, slackengine.BridgePostsFileName),
 	}
 	if got != want {
 		t.Errorf("SlackGeometry(%q) = %+v; want %+v", hub, got, want)
@@ -572,8 +567,6 @@ func TestSlackGeometry(t *testing.T) {
 
 // TestSlackMachine pins the machine-wide Slack file paths and the refusal on a machine with no per-user directory.
 // It sets the environment with t.Setenv, which is process-global state, so it does not run in parallel.
-//
-//testtiming:keep pins the literal slack-presence.json file name of SlackMachine, which TestSlackGeometry reads only through slackengine.PresenceFileName
 func TestSlackMachine(t *testing.T) {
 	tiergate.Require(t, 0)
 	credentialRoot := t.TempDir()
@@ -590,7 +583,6 @@ func TestSlackMachine(t *testing.T) {
 		TokenPath:      filepath.Join(credentialDir, slackengine.TokenFileName),
 		SocketLockPath: filepath.Join(credentialDir, slackengine.SocketLockFileName),
 		PresencePath:   filepath.Join(credentialDir, "slack-presence.json"),
-		PeersPath:      filepath.Join(credentialDir, slackengine.PeersFileName),
 	}
 	if got != want {
 		t.Errorf("SlackMachine() = %+v; want %+v", got, want)

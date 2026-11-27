@@ -54,6 +54,7 @@ func TestPastDiscussionApproval(t *testing.T) {
 			{"AfterTheSegment_DriftBaseline", shedrun.RecipeTapestry, "Drift-Baseline", true, true},
 			{"AfterTheSegment_PlanWrite", shedrun.RecipeTapestry, "Plan-Write", true, true},
 			{"AfterTheSegment_CodeBouncer", shedrun.RecipeTapestry, "Code-Bouncer", true, true},
+			{"RetiredRowMapsToItsReplacement", shedrun.RecipeTapestry, "Merge-In", true, true},
 			{"DarnHasNoApprovalRow", shedrun.RecipeDarn, "Darn-Write", false, false},
 			{"PawlHasNoApprovalRow", shedrun.RecipePawl, "Finalize", false, false},
 		}

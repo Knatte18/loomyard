@@ -126,25 +126,6 @@ func TestRun(t *testing.T) {
 		}
 	})
 
-	t.Run("DroppedCreateTargetSkipsItsDoneCheck", func(t *testing.T) {
-		t.Parallel()
-		const target = "internal/x/one.go"
-		fx := newRunFixture(t, 1, "one")
-		fx.index.notDone = []planindex.Finding{{Check: "create-not-done", Card: "1-one", Severity: planindex.SeverityBlocking, Detail: target + " does not resolve"}}
-		fx.index.notDoneTarget = target
-		record := "## Decisions\n\n### Added after Discussion (parent, 2026-11-21): Drop it\n\nDecision: drop it.\nRationale: unneeded.\nDrops Create: `" + target + "`\n"
-		if err := os.WriteFile(fx.deps.Geom.DecisionRecordPath, []byte(record), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		fx.runner.scripts = []attemptScript{{report: runplan.Report{Journal: "tried"}}}
-
-		requireDone(t, mustRun(t, fx), 1)
-
-		if got := len(fx.runner.specs); got != 1 {
-			t.Errorf("strands started = %d; want 1, the dropped target blocking no attempt", got)
-		}
-	})
-
 	t.Run("BeginRecordsAreFixedAndLeaseIsReleased", func(t *testing.T) {
 		t.Parallel()
 		fx := newRunFixture(t, 1, "one")

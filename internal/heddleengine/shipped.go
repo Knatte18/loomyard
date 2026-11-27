@@ -33,38 +33,8 @@ const (
 //go:embed shipped.json
 var shippedJSON []byte
 
-//go:embed glossary.md
-var glossaryText string
-
-const (
-	// GlossarySlug is the slug of the shipped entry that carries lym's glossary to every orch session.
-	GlossarySlug = "lym-glossary"
-	// glossaryOrder places the glossary after every entry of shipped.json.
-	glossaryOrder = 300
-)
-
 // shippedStore is the shipped layer, decoded and checked once at package load.
-var shippedStore = withGlossary(decodeShipped(shippedJSON))
-
-// Glossary returns lym's glossary: one line per lym term, with its meaning and the words never to use for it.
-// It is kept apart from shipped.json so a term is edited as markdown.
-func Glossary() string {
-	return glossaryText
-}
-
-// withGlossary returns store with the glossary entry added, aimed at the orch-prompt target.
-// It panics when the entry is invalid or its slug is taken, since either is a bug in the lym build itself.
-func withGlossary(store Store) Store {
-	entry := Entry{Slug: GlossarySlug, Text: strings.TrimRight(glossaryText, "\n"), Order: glossaryOrder, Targets: []string{OrchPromptTarget}}
-	if err := ValidateEntry(entry); err != nil {
-		panic(fmt.Sprintf("heddleengine: the glossary entry is invalid: %v", err))
-	}
-	if _, found := store.Get(GlossarySlug); found {
-		panic(fmt.Sprintf("heddleengine: shipped.json holds the glossary's slug %q", GlossarySlug))
-	}
-	store.Entries = append(store.Entries, entry)
-	return store
-}
+var shippedStore = decodeShipped(shippedJSON)
 
 // decodeShipped decodes the embedded shipped layer and panics on any defect.
 // A malformed shipped layer means a bug in the lym build itself.
@@ -162,7 +132,7 @@ func ReadLayers(boltDir string) (Layers, error) {
 // A repository entry that shares a shipped slug therefore stays open to change and removal.
 func refuseShipped(slug string) error {
 	if _, found := shippedStore.Get(slug); found {
-		return fmt.Errorf("entry %q ships with lym and is read-only, so no repository entry can be created under it; way forward: give the new repository entry another slug, or tune the shipped text with `lym heddle set %s --layer %s` in a hub whose heddle.yaml sets %s", slug, slug, OverrideLayer, configengine.KeyName(configModule, LymOverrideKey))
+		return fmt.Errorf("entry %q ships with lym and is read-only, so no repository entry can be created under it; way forward: give the new repository entry another slug, or tune the shipped text with `lym heddle set %s --layer %s` in a hub whose heddle.yaml sets %s", slug, slug, OverrideLayer, LymOverrideKey)
 	}
 	return nil
 }

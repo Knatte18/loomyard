@@ -18,7 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardcli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/burlercli"
-	"github.com/Knatte18/loomyard/internal/claudecli"
 	"github.com/Knatte18/loomyard/internal/cleanupcli"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configcli"
@@ -28,14 +27,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gatecli"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hardencli"
 	"github.com/Knatte18/loomyard/internal/heddlecli"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/helpcli"
 	"github.com/Knatte18/loomyard/internal/hibernatecli"
-	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/idecli"
-	"github.com/Knatte18/loomyard/internal/ideengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/lymtemp"
@@ -148,7 +144,7 @@ envelope: what it did, each error and warning, and each way forward, with long
 lists collapsed to a count. --envelope prints the full envelope instead; any
 output that is no terminal, as an agent's or a script's, gets the envelope.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, weaver, stencil, loom, quarry, batten, shed, orch, cleanup, adopt, beam, report, retro, tender, hibernate, drift, gate, creel, slack, heddle, machine, claude, harden, help.
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, weaver, stencil, loom, quarry, batten, shed, orch, cleanup, adopt, beam, report, retro, tender, hibernate, drift, gate, creel, slack, heddle, machine, help.
 Shortcuts, declared in internal/shortcutcli's embedded file, are listed under their own heading in lym --help.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -169,21 +165,19 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				orchcli.InstallReconcileNotifier(cmd.Context())
 				// A pair's teardown drops the unread creel mail about its run, so no orch reads it as live.
 				orchcli.InstallRunMailDropper()
+				// lym beam start pauses a run another machine owns through tender, which imports orchcli.
+				orchcli.InstallOwnerPause(tendercli.PauseOwnedElsewhere)
 				// A records replay merges the board by entry through boardengine's Bolt replayer, in the detached push child and in a pull-first Bolt write.
 				fabricengine.RegisterBoltReplayer(boardengine.FabricReplay{})
-				// Every board render shows each beam's and the root's autonomy and pull-request setting as the runs read them.
-				boardengine.InstallBeamModeReader(hubgeom.BeamModes)
 				// A worktree that fabric makes or moves reaches heddle through the worktree seam, to render its files.
 				fabricengine.InstallWorktreeSeam(heddleengine.Seam{})
 				// The hub workspace file leads a pair's folder name with its project's handle, read from the board.
 				fabricengine.InstallPairFolderNamer(boardengine.WorkspaceFolderNames)
-				// Each workspace file carries one beam start task, which the alt+shift+0 key runs.
-				fabricengine.InstallWorkspaceContent(ideengine.WorkspaceContent)
 				// A records replay merges heddle.json by entry through heddle's Bolt replayer.
 				// That replayer also claims HEDDLE.md and renders it afresh after each replay.
 				fabricengine.RegisterBoltReplayer(heddleengine.Replayer{})
 				// Every Claude session launched in a hub appends the passages heddle stores for its engine and role, an orch session's orch-prompt ones included.
-				shuttleengine.InstallPassageReader(readHeddleStanding)
+				shuttleengine.InstallPassageReader(heddleengine.Renderer{}.Passages)
 			}
 			// Seeding must never block a command from running, regardless of its outcome.
 			seedStencils(cmd)
@@ -229,8 +223,6 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 		slackcli.Command(),
 		heddlecli.Command(),
 		machinecli.Command(),
-		claudecli.Command(),
-		hardencli.Command(),
 	)
 
 	// SetHelpCommand replaces cobra's built-in help command;

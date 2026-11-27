@@ -101,9 +101,7 @@ with Esc, and holds every path that would start agent or network work until
 
 A second Esc goes only after the provider's settle time, and only into a pane
 still showing a running turn. A session whose turn ended with background work
-is sent no Esc and is reported under "background". A pair with no reed session,
-as after a crash, has no running turn: it is reported under "skipped" and the
-pause goes on.
+is sent no Esc and is reported under "background".
 
 With no slug it covers the whole hub; with a slug it covers that pair. A repeated
 pause adds no entry and interrupts only the sessions in a running turn now. The
@@ -200,10 +198,6 @@ With a slug, a resume also clears the run's pause intent from its batten record,
 and commits and pushes it. A run another machine owns is refused, naming that
 machine.
 
-While an adopt's hold stands in the board, a slug held only by a bolt-hold entry
-is refused, naming the hold's machine, and a resume with no slug leaves every
-bolt-hold entry standing; the worktree's dobby lifts them once the hold clears.
-
 Each session the pause interrupted gets one line to carry on, unless its strand
 is not live or its guarded send is refused, as for a running turn, a draft, a
 dialog on screen or an open rewind picker; those are named with the reason. A
@@ -211,13 +205,10 @@ session another live entry still covers moves to that entry with no line. The
 orchestrator's line comes from its own watcher.
 
 A lift also spawns what a pause deferred: the detached push of each pair the
-lifted entries covered whose push a pause deferred, such as an anchor change's,
-the prime's records push and the board sync. A lift spawns no push for a run's
-transition commits: the dobby's tick restarts the pair's pusher once no pause
-covers it. A pair a live entry still
-covers, one another machine owns and one that is gone is not pushed. The
-report's "spawned" lists the spawns and "spawn_failed" the ones that failed;
-neither fails the resume.
+lifted entries covered, the prime's records push and the board sync. A pair a
+live entry still covers, one another machine owns and one that is gone is not
+pushed. The report's "spawned" lists the spawns and "spawn_failed" the ones that
+failed; neither fails the resume.
 
 Example:
   lym tender resume
@@ -279,8 +270,7 @@ func reviveCmd() *cobra.Command {
 		Long: `revive types one fixed carry-on line into each session whose last turn stopped
 on an API error, the case a network outage without a machine sleep leaves
 behind. A session in any other state is skipped with the state read, and a
-session a live pause covers is left to "lym tender resume". A pair with no reed
-session, as after a crash, is reported under "skipped" and the revive goes on.
+session a live pause covers is left to "lym tender resume".
 
 With no slug it covers the whole hub, the orchestrator included: the orch gets
 the line as a checked creel inject, reported with its id. With a slug it covers that pair. Every send is refused at once when
@@ -342,7 +332,6 @@ func statusCmd() *cobra.Command {
 		Long: `status prints the live pause entries, the network operations in flight and the
 parent locks held, then every live session in the hub with its state, cause and
 whether an entry covers it, and the lym processes running a replaced binary.
-skipped lists each pair, the prime included, with no reed session, whose sessions are not read.
 processes lists every live process registered to a run, by owner, with its role,
 pid and age and whether it is an orphan: its owner has no pair and no live batten,
 and it works outside every registered worktree.

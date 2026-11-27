@@ -20,7 +20,6 @@ func TestParseReview(t *testing.T) {
 		content      string
 		wantErr      bool
 		errSubstr    string
-		errAbsent    string
 		wantVerdict  Verdict
 		wantFindings []Finding
 	}{
@@ -212,7 +211,6 @@ verdict: [APPROVED
 `,
 			wantErr:   true,
 			errSubstr: "not valid YAML",
-			errAbsent: "a value holding",
 		},
 		{
 			// A summary that opens with a quoted fragment and carries unquoted trailing prose on the same line is invalid YAML.
@@ -230,74 +228,6 @@ findings:
 `,
 			wantErr:   true,
 			errSubstr: "must be ONE double-quoted string covering the whole value",
-		},
-		{
-			// An unquoted value holding a colon followed by a space reads to YAML as a nested mapping.
-			name: "unquoted colon in a value appends the quoting hint",
-			content: `---
-verdict: BLOCKING
-findings:
-  - id: b-1
-    severity: BLOCKING
-    class: design
-    location: file.go:1
-    summary: the refusal prints a creel: warning: line
-    fix: quote it
----
-`,
-			wantErr:   true,
-			errSubstr: "a value holding \": \" must be ONE double-quoted string covering the whole value",
-		},
-		{
-			// A valid, fully quoted summary must not pre-empt the colon hint for a later field.
-			name: "fully quoted summary with an unquoted colon in fix gets the colon hint",
-			content: `---
-verdict: BLOCKING
-findings:
-  - id: b-1
-    severity: BLOCKING
-    class: design
-    location: file.go:1
-    summary: "\"capital\" is misspelled"
-    fix: quote it: now
----
-`,
-			wantErr:   true,
-			errSubstr: "a value holding",
-		},
-		{
-			// A fully quoted summary with a trailing YAML comment is valid and must not pre-empt the colon hint.
-			name: "fully quoted summary with a trailing comment and an unquoted colon in fix gets the colon hint",
-			content: `---
-verdict: BLOCKING
-findings:
-  - id: b-1
-    severity: BLOCKING
-    class: design
-    location: file.go:1
-    summary: "the gate fails" # note
-    fix: quote it: now
----
-`,
-			wantErr:   true,
-			errSubstr: "a value holding",
-		},
-		{
-			// A quoted fragment followed by prose holding a colon and a space gets the fragment hint.
-			name: "quoted summary fragment followed by prose holding a colon gets the fragment hint",
-			content: `---
-verdict: BLOCKING
-findings:
-  - id: b-1
-    severity: BLOCKING
-    class: design
-    location: file.go:1
-    summary: "capital" is misspelled: see line 1
-    fix: quote it
----
-`,
-			wantErr:   true,
-			errSubstr: "not a quoted fragment followed by trailing prose",
 		},
 		{
 			name: "unknown verdict",
@@ -582,9 +512,6 @@ findings:
 				if !strings.Contains(err.Error(), tt.errSubstr) {
 					t.Errorf("ParseReview() error = %q; want substring %q", err.Error(), tt.errSubstr)
 				}
-				if tt.errAbsent != "" && strings.Contains(err.Error(), tt.errAbsent) {
-					t.Errorf("ParseReview() error = %q; want no substring %q", err.Error(), tt.errAbsent)
-				}
 				if !strings.HasPrefix(err.Error(), "burler: ") {
 					t.Errorf("ParseReview() error = %q; want burler: -prefixed message", err.Error())
 				}
@@ -641,11 +568,6 @@ func TestParseCurrentReview(t *testing.T) {
 			name:      "prose block with no finding",
 			content:   "---\nverdict: APPROVED\n---\n### [MEDIUM] stray\n",
 			errSubstr: "1 `### [MEDIUM]` prose block(s) but 0 MEDIUM finding(s)",
-		},
-		{
-			name:         "prior and carries pass the shape checks",
-			content:      "---\nverdict: APPROVED\nprior:\n  - id: E1\n    status: open\n    answer: still there\nfindings:\n" + finding + "    carries: E1\n---\n### [MEDIUM] unchecked error\n",
-			wantFindings: 1,
 		},
 		{
 			name:      "prose and frontmatter disagree on severity",

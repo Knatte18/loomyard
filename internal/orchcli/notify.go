@@ -18,9 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchroute"
 )
 
-// DobbyProgram is the program name a dobby signs its notices with, scoped to its beam's slug.
-const DobbyProgram = "DOBBY"
-
 // notifyPoster is the one creel call a notice makes: leaving a body as mail for a receiver, carrying tags.
 type notifyPoster interface {
 	PostTagged(receiver, body string, tags creelengine.PostTags) (int64, error)
@@ -72,30 +69,6 @@ func NotifyFromScoped(from *lymcwd.Location, slug, program, line string) (posted
 // and its topic lets a newer notice of the same topic replace it unread.
 func NotifyRunFrom(from *lymcwd.Location, slug, program string, tags creelengine.PostTags, line string) (posted bool, err error) {
 	return postNotice(from, slug, program, line, tags, func() (string, bool, error) { return nearestOrchStrand(from, OrchLive) })
-}
-
-// NotifyParentHalt sends line, stamped with the pair's autonomy, as creel mail.
-// It goes to the nearest live orch up the pair's beam chain.
-// It serves a run's halt notices, and routes, tags and signs as NotifyParent does.
-// The stamp is the autonomy the pair reads when the notice is built,
-// so the orch the notice reaches handles it under the run's value, never its own worktree's.
-func NotifyParentHalt(pair *lymcwd.Location, program, line string) (posted bool, err error) {
-	return NotifyParent(pair, program, WithRunAutonomy(pair, pair.WorktreeName, line))
-}
-
-// NotifyRunFromHalt sends line, stamped with the autonomy of the run slug, as creel mail carrying tags.
-// It goes to the nearest live orch on the beam chain at or above from.
-// It serves a run's halt notices for a run whose pair is absent, and routes and tags as NotifyRunFrom does.
-// It is signed as the unscoped program: slug names the run whose autonomy stamps the line, never a scope of the signer.
-func NotifyRunFromHalt(from *lymcwd.Location, slug, program string, tags creelengine.PostTags, line string) (posted bool, err error) {
-	return NotifyRunFrom(from, "", program, tags, WithRunAutonomy(from, slug, line))
-}
-
-// WithRunAutonomy returns line followed by "; autonomy: true" or "; autonomy: false".
-// The value is the autonomy the worktree slug reads at the call.
-// It stamps a notice a caller posts through NotifyRunFrom with its own signer scope.
-func WithRunAutonomy(location *lymcwd.Location, slug, line string) string {
-	return fmt.Sprintf("%s; autonomy: %t", line, hubgeom.Autonomy(location, slug))
 }
 
 // NotifyAsker sends line as creel mail to the orch the agents of location reach as their parent.
@@ -156,13 +129,7 @@ func ParentOrchRecorded(pair *lymcwd.Location) (bool, error) {
 // postNotice posts line carrying tags through creel to the orch strand orch answers.
 // It signs the call as program scoped to slug from location, and an empty slug signs as the unscoped program.
 func postNotice(location *lymcwd.Location, slug, program, line string, tags creelengine.PostTags, orch func() (string, bool, error)) (bool, error) {
-	return notifyPrime(orch, line, tags, os.Getenv(agentname.StrandNameEnv), notifyClientsOf(location, slug, program))
-}
-
-// notifyClientsOf returns the creel clients of location's worktree a notice posts through.
-// The program client signs as program scoped to slug, and an empty slug signs as the unscoped program.
-func notifyClientsOf(location *lymcwd.Location, slug, program string) notifyClients {
-	return notifyClients{
+	clients := notifyClients{
 		strand: func(strandClaim string) (notifyPoster, error) {
 			return creelcli.NewStrandClient(location, strandClaim)
 		},
@@ -170,6 +137,7 @@ func notifyClientsOf(location *lymcwd.Location, slug, program string) notifyClie
 			return creelcli.NewScopedProgramClient(location, slug, program)
 		},
 	}
+	return notifyPrime(orch, line, tags, os.Getenv(agentname.StrandNameEnv), clients)
 }
 
 // NearestLiveParent answers the orch a notice of pair goes to, as the orch's agent name and worktree.
@@ -254,30 +222,27 @@ func notifyPrime(orch func() (string, bool, error), line string, tags creelengin
 		logger.Info("orch: notice not posted, no orch strand recorded", "line", line)
 		return false, nil
 	}
-	if err := postSigned(receiver, line, tags, strandClaim, clients); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-// postSigned posts line carrying tags to receiver.
-// A strand claim naming a strand that is not an orch is tried first.
-// A claim creel refuses as coming from outside that strand's pane falls back to posting once as the program.
-func postSigned(receiver, line string, tags creelengine.PostTags, strandClaim string, clients notifyClients) error {
 	if claimsNonOrchStrand(strandClaim) {
 		poster, err := clients.strand(strandClaim)
 		if err != nil {
-			return noticeError(line, err)
+			return false, noticeError(line, err)
 		}
 		_, err = poster.PostTagged(receiver, line, tags)
 		switch {
 		case err == nil:
-			return nil
+			return true, nil
 		case !errors.Is(err, creelengine.ErrStrandClaimOutsidePane):
-			return noticeError(line, err)
+			return false, noticeError(line, err)
 		}
 	}
-	return postAsProgram(receiver, line, tags, clients.program)
+	poster, err := clients.program()
+	if err != nil {
+		return false, noticeError(line, err)
+	}
+	if _, err := poster.PostTagged(receiver, line, tags); err != nil {
+		return false, noticeError(line, err)
+	}
+	return true, nil
 }
 
 // claimsNonOrchStrand reports whether strandClaim names a strand whose role is not an orch's.

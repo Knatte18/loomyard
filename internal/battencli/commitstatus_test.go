@@ -23,15 +23,13 @@ func runStatusRel(loc *lymcwd.Location, runID string) string {
 }
 
 // TestNewCommitStatusSeam covers the on-disk no-op-transition skip over a real temp-file marker:
-//   - a repeated (producer, state) pair commits and starts the pusher once, not twice, across two calls to the same seam;
+//   - a repeated (producer, state) pair commits and spawns the push once, not twice, across two calls to the same seam;
 //   - the skip still holds when the seam is rebuilt between calls, as a fresh "lym batten step" process does;
 //     it is the one case that proves the on-disk marker rather than an in-closure variable;
-//   - a changed pair commits and starts the pusher again rather than being absorbed by the skip;
+//   - a changed pair commits and spawns again rather than being absorbed by the skip;
+//   - a spawn that fails to start still returns nil;
 //   - a missing or corrupt marker falls back to committing once rather than erroring;
-//     the marker is a cache, so losing it costs one redundant commit, never correctness;
-//   - a marker an older binary wrote with "push_pending" set reads and skips the repeated pair;
-//   - every row commits and starts the pusher, each start row from Seed-Child to Run-Shed included;
-//   - the seam never calls Push.
+//     the marker is a cache, so losing it costs one redundant commit, never correctness.
 //
 // The commit message pins batten's own prefix, since the shared core renders whatever prefix its caller gives.
 func TestNewCommitStatusSeam(t *testing.T) {
@@ -43,25 +41,20 @@ func TestNewCommitStatusSeam(t *testing.T) {
 	tests := []struct {
 		name string
 		// markerRel is the marker path under the test's temp dir.
-		markerRel string
-		// seedMarker, when set, is written as the marker's raw bytes before the first call.
-		seedMarker string
+		markerRel     string
+		corruptMarker bool
 		// rebuildSeam makes every call after the first use a fresh seam instance over the same marker.
 		rebuildSeam bool
 		calls       []transition
+		spawnErr    error
 		wantCommits int
-		wantStarts  int
 	}{
-		{name: "RepeatedPairCommitsOnce", markerRel: "last-commit", calls: []transition{{"Run-Shed", "running"}, {"Run-Shed", "running"}}, wantCommits: 1, wantStarts: 1},
-		{name: "SkipSurvivesARebuiltSeam", markerRel: "last-commit", rebuildSeam: true, calls: []transition{{"Run-Shed", "running"}, {"Run-Shed", "running"}}, wantCommits: 1, wantStarts: 1},
-		{name: "ChangedPairCommitsAgain", markerRel: "last-commit", calls: []transition{{"Run-Shed", "running"}, {"Run-Shed", "paused"}}, wantCommits: 2, wantStarts: 2},
-		{name: "MissingMarkerCommitsOnce", markerRel: filepath.Join("does-not-exist", "last-commit"), calls: []transition{{"Run-Shed", "running"}}, wantCommits: 1, wantStarts: 1},
-		{name: "CorruptMarkerCommitsOnce", markerRel: "last-commit", seedMarker: "not valid json{{{", calls: []transition{{"Run-Shed", "running"}}, wantCommits: 1, wantStarts: 1},
-		{name: "MarkerWithPushPendingSkipsTheRepeatedPair", markerRel: "last-commit", seedMarker: `{"producer":"Run-Shed","state":"running","push_pending":true}`, calls: []transition{{"Run-Shed", "running"}}},
-		{name: "StartRowsEachCommitAndStartThePusher", markerRel: "last-commit", rebuildSeam: true, calls: []transition{
-			{"Worktree-Create", "running"}, {"Seed-Child", "running"}, {"Open-Window", "running"}, {"Seed-IDE", "running"},
-			{"Open-IDE", "running"}, {"Run-Shed", "running"}, {"Land", "running"}, {"Worktree-Teardown", "running"},
-		}, wantCommits: 8, wantStarts: 8},
+		{name: "RepeatedPairCommitsOnce", markerRel: "last-commit", calls: []transition{{"Run-Shed", "running"}, {"Run-Shed", "running"}}, wantCommits: 1},
+		{name: "FailingSpawnStillReturnsNil", markerRel: "last-commit", spawnErr: errors.New("spawn failed"), calls: []transition{{"Run-Shed", "running"}}, wantCommits: 1},
+		{name: "SkipSurvivesARebuiltSeam", markerRel: "last-commit", rebuildSeam: true, calls: []transition{{"Run-Shed", "running"}, {"Run-Shed", "running"}}, wantCommits: 1},
+		{name: "ChangedPairCommitsAgain", markerRel: "last-commit", calls: []transition{{"Run-Shed", "running"}, {"Run-Shed", "paused"}}, wantCommits: 2},
+		{name: "MissingMarkerCommitsOnce", markerRel: filepath.Join("does-not-exist", "last-commit"), calls: []transition{{"Run-Shed", "running"}}, wantCommits: 1},
+		{name: "CorruptMarkerCommitsOnce", markerRel: "last-commit", corruptMarker: true, calls: []transition{{"Run-Shed", "running"}}, wantCommits: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -69,20 +62,19 @@ func TestNewCommitStatusSeam(t *testing.T) {
 
 			markerPath := filepath.Join(t.TempDir(), tt.markerRel)
 			markerLockPath := markerPath + ".lock"
-			if tt.seedMarker != "" {
-				if err := os.WriteFile(markerPath, []byte(tt.seedMarker), 0o644); err != nil {
-					t.Fatalf("seed the marker: %v", err)
+			if tt.corruptMarker {
+				if err := os.WriteFile(markerPath, []byte("not valid json{{{"), 0o644); err != nil {
+					t.Fatalf("seed corrupt marker: %v", err)
 				}
 			}
 
-			var commits, starts, pushes int
+			var commits, spawns int
 			var msg string
 			newSeam := func() func(producer, state string) error {
 				return newCommitStatusSeam(commitStatusDeps{
 					MergeActive: func() (bool, error) { return false, nil },
 					Commit:      func(m string) (bool, error) { commits++; msg = m; return true, nil },
-					StartPush:   func() bool { starts++; return true },
-					Push:        func() error { pushes++; return nil },
+					Spawn:       func() error { spawns++; return tt.spawnErr },
 				}, markerPath, markerLockPath)
 			}
 
@@ -99,17 +91,12 @@ func TestNewCommitStatusSeam(t *testing.T) {
 			if commits != tt.wantCommits {
 				t.Errorf("commits = %d; want exactly %d", commits, tt.wantCommits)
 			}
-			if starts != tt.wantStarts {
-				t.Errorf("pusher starts = %d; want exactly %d", starts, tt.wantStarts)
+			if spawns != tt.wantCommits {
+				t.Errorf("spawns = %d; want exactly %d", spawns, tt.wantCommits)
 			}
-			if pushes != 0 {
-				t.Errorf("pushes = %d; want none, the seam never pushes", pushes)
-			}
-			if tt.wantCommits > 0 {
-				last := tt.calls[len(tt.calls)-1]
-				if want := "batten: " + last.producer + " -> " + last.state; msg != want {
-					t.Errorf("Commit msg = %q; want %q", msg, want)
-				}
+			last := tt.calls[len(tt.calls)-1]
+			if want := "batten: " + last.producer + " -> " + last.state; msg != want {
+				t.Errorf("Commit msg = %q; want %q", msg, want)
 			}
 		})
 	}
@@ -119,8 +106,6 @@ func TestNewCommitStatusSeam(t *testing.T) {
 // A transition at a row before Run-Shed writes "<FSM state> · <row>" on the entry:
 // a running transition reads starting, a blocked one halted and a paused one paused.
 // A transition at Run-Shed or a later row writes nothing: the inner run writes the entry's status from its start on.
-//
-//testtiming:keep pins the board status text each producer and state maps to, and that Run-Shed and later rows write none
 func TestNewCommitStatusSeam_WritesBoardStatusBeforeRunShed(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -130,7 +115,7 @@ func TestNewCommitStatusSeam_WritesBoardStatusBeforeRunShed(t *testing.T) {
 	seam := newCommitStatusSeam(commitStatusDeps{
 		MergeActive:    func() (bool, error) { return false, nil },
 		Commit:         func(string) (bool, error) { return true, nil },
-		StartPush:      func() bool { return true },
+		Spawn:          func() error { return nil },
 		SetBoardStatus: func(status string) error { written = append(written, status); return nil },
 	}, markerPath, markerPath+".lock")
 
@@ -155,17 +140,17 @@ func TestNewCommitStatusSeam_WritesBoardStatusBeforeRunShed(t *testing.T) {
 }
 
 // TestNewCommitStatusSeam_BoardWriteFailureDoesNotStopTheCommit pins that a failing board write is only warned about.
-// The write runs at a row before Run-Shed; the seam returns nil and still commits and starts the pusher.
+// The write runs at a row before Run-Shed; the seam returns nil and still commits and spawns the push.
 func TestNewCommitStatusSeam_BoardWriteFailureDoesNotStopTheCommit(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	markerPath := filepath.Join(t.TempDir(), "last-commit")
-	var commits, starts int
+	var commits, spawns int
 	seam := newCommitStatusSeam(commitStatusDeps{
 		MergeActive:    func() (bool, error) { return false, nil },
 		Commit:         func(string) (bool, error) { commits++; return true, nil },
-		StartPush:      func() bool { starts++; return true },
+		Spawn:          func() error { spawns++; return nil },
 		SetBoardStatus: func(string) error { return errors.New("board unreadable") },
 	}, markerPath, markerPath+".lock")
 
@@ -173,8 +158,8 @@ func TestNewCommitStatusSeam_BoardWriteFailureDoesNotStopTheCommit(t *testing.T)
 		t.Fatalf("seam(Worktree-Create, running) = %v; want nil", err)
 	}
 
-	if commits != 1 || starts != 1 {
-		t.Errorf("commits = %d, pusher starts = %d; want 1 and 1", commits, starts)
+	if commits != 1 || spawns != 1 {
+		t.Errorf("commits = %d, spawns = %d; want 1 and 1", commits, spawns)
 	}
 }
 
@@ -221,7 +206,8 @@ func TestBattenCommitStatusDeps_SetBoardStatusWritesTheRunsEntry(t *testing.T) {
 	}
 }
 
-// TestStatusPushSpawns_TellTheirLocationAndGateSlug pins what batten's cleanup push spawn asks fabric for:
+// TestStatusPushSpawns_TellTheirLocationAndGateSlug pins what batten's two push spawns ask fabric for:
+// the status seam spawns for its location under the run's slug as gate slug;
 // cleanup spawns for its location with no gate slug.
 // It swaps the package's spawnStatusPush for a recorder, so it is serial:
 // no parallel test may run while the variable is swapped.
@@ -241,6 +227,14 @@ func TestStatusPushSpawns_TellTheirLocationAndGateSlug(t *testing.T) {
 
 	location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 
+	if err := battenCommitStatusDeps(location, "a-slug").Spawn(); err != nil {
+		t.Fatalf("status seam Spawn() = %v; want nil", err)
+	}
+	if want := []spawnRequest{{location, "a-slug"}}; !reflect.DeepEqual(requests, want) {
+		t.Errorf("status seam requests = %v; want %v", requests, want)
+	}
+
+	requests = nil
 	if err := fabricCleanupDeps(location).Spawn(); err != nil {
 		t.Fatalf("cleanup Spawn() = %v; want nil", err)
 	}
@@ -343,8 +337,9 @@ func TestBattenRunCommitPaths(t *testing.T) {
 }
 
 // TestCommitRunRecords asserts the hand-back and done commit of the run's records:
-// it commits and starts the pusher, calling no Push; starts none when nothing was committed;
-// commits nothing while the pair is mid-merge; and returns a failed commit or merge-state read.
+// it commits and starts the push; starts no push when nothing was committed;
+// commits nothing while the pair is mid-merge; returns a failed commit or merge-state read;
+// and never returns a push that failed to start.
 func TestCommitRunRecords(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -356,27 +351,28 @@ func TestCommitRunRecords(t *testing.T) {
 		mergeErr    error
 		committed   bool
 		commitErr   error
+		spawnErr    error
 		wantCommits int
-		wantStarts  int
+		wantSpawns  int
 		wantErr     error
 	}{
-		{name: "CommitsAndStartsThePusher", committed: true, wantCommits: 1, wantStarts: 1},
-		{name: "NothingCommittedStartsNone", wantCommits: 1},
+		{name: "CommitsAndStartsThePush", committed: true, wantCommits: 1, wantSpawns: 1},
+		{name: "NothingCommittedStartsNoPush", wantCommits: 1},
 		{name: "MidMergeCommitsNothing", mergeActive: true},
 		{name: "FailedMergeStateReadIsReturned", mergeErr: boom, wantErr: boom},
 		{name: "FailedCommitIsReturned", commitErr: boom, wantCommits: 1, wantErr: boom},
+		{name: "FailedPushStartIsNotReturned", committed: true, spawnErr: boom, wantCommits: 1, wantSpawns: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var commits, starts, pushes int
+			var commits, spawns int
 			var msg string
 			err := commitRunRecords(commitStatusDeps{
 				MergeActive: func() (bool, error) { return tt.mergeActive, tt.mergeErr },
 				Commit:      func(m string) (bool, error) { commits++; msg = m; return tt.committed, tt.commitErr },
-				StartPush:   func() bool { starts++; return true },
-				Push:        func() error { pushes++; return nil },
+				Spawn:       func() error { spawns++; return tt.spawnErr },
 			}, "a-slug")
 
 			if !errors.Is(err, tt.wantErr) {
@@ -385,11 +381,8 @@ func TestCommitRunRecords(t *testing.T) {
 			if commits != tt.wantCommits {
 				t.Errorf("commits = %d; want %d", commits, tt.wantCommits)
 			}
-			if starts != tt.wantStarts {
-				t.Errorf("pusher starts = %d; want %d", starts, tt.wantStarts)
-			}
-			if pushes != 0 {
-				t.Errorf("pushes = %d; want none", pushes)
+			if spawns != tt.wantSpawns {
+				t.Errorf("spawns = %d; want %d", spawns, tt.wantSpawns)
 			}
 			if want := "batten: run records for a-slug"; commits > 0 && msg != want {
 				t.Errorf("Commit msg = %q; want %q", msg, want)

@@ -37,17 +37,17 @@ func creelHeadItem(notice string) instructionItem {
 	return instructionItem{
 		name:       "the deny notice and creel trust sentence",
 		text:       head,
-		wayForward: "shorten the hub's " + otherKeyName("gate", "refuse_raw") + " list with lym config gate, since each row adds its notice",
+		wayForward: "shorten the hub's refuse_raw list with lym config gate, since each row adds its notice",
 	}
 }
 
-// passageItems returns one item per standing passage, named by its heddle slug.
-func passageItems(passages []shuttleengine.Passage) []instructionItem {
+// passageItems returns one item per standing passage, named by its position among the passages.
+func passageItems(passages []string) []instructionItem {
 	items := make([]instructionItem, len(passages))
 	for i, passage := range passages {
 		items[i] = instructionItem{
-			name:       "heddle passage " + passage.Slug,
-			text:       passage.Text,
+			name:       fmt.Sprintf("heddle passage %d", i+1),
+			text:       passage,
 			wayForward: "find the entry with lym heddle show codex-prompt and shorten it with lym heddle set, or with lym heddle set --layer lym for a shipped entry",
 		}
 	}

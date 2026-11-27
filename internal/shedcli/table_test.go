@@ -27,7 +27,7 @@ const tableScanMinFiles = 3
 // four-name contract is the simpler, equally authoritative source.
 var allGenericVerbs = []string{"run", "step", "status", "pause", "goto"}
 
-// TestRecipes_KeySet asserts recipes' key set is exactly the recipe names it lists.
+// TestRecipes_KeySet asserts recipes' key set is exactly the eight recipe names it lists.
 // It also asserts the set equals shedrun.RecipeNames(),
 // so the vocabulary internal/shedrun declares and the arming table internal/shedcli declares cannot drift apart.
 //
@@ -39,7 +39,7 @@ func TestRecipes_KeySet(t *testing.T) {
 		name string
 		want []string
 	}{
-		{"exactly arras, batten, darn, hardener, motif, pawl, raddle, sampler and tapestry", []string{"arras", "batten", "darn", "hardener", "motif", "pawl", "raddle", "sampler", "tapestry"}},
+		{"exactly arras, batten, darn, motif, pawl, raddle, sampler and tapestry", []string{"arras", "batten", "darn", "motif", "pawl", "raddle", "sampler", "tapestry"}},
 		{"matches the shedrun vocabulary", shedrun.RecipeNames()},
 	}
 	for _, tt := range tests {

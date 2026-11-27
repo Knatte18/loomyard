@@ -21,7 +21,7 @@ func TestPushLockPath_InGitDirAndCreatedThereByPushCoalesced(t *testing.T) {
 	repoPath, repo := newRepoWithRemote(t, container, "clone", bareRemote)
 	writeFile(t, repoPath, "a.txt", "initial")
 	commitAll(t, repoPath, "init")
-	if err := repo.Push(gitrepo.RefNamespace{}); err != nil {
+	if err := repo.Push(); err != nil {
 		t.Fatalf("Push() (establish upstream) error = %v; want nil", err)
 	}
 
@@ -46,7 +46,7 @@ func TestPushLockPath_InGitDirAndCreatedThereByPushCoalesced(t *testing.T) {
 
 	writeFile(t, repoPath, "b.txt", "more")
 	commitAll(t, repoPath, "more")
-	if err := repo.PushCoalesced(gitrepo.RefNamespace{}); err != nil {
+	if err := repo.PushCoalesced(); err != nil {
 		t.Fatalf("PushCoalesced() error = %v; want nil", err)
 	}
 	if _, err := os.Stat(lockPath); err != nil {

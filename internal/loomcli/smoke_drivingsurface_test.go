@@ -3,8 +3,7 @@
 // On the step side, "lym loom step" and "lym shed step" bring reed up.
 // They never add, replace or remove a status strand, whatever driver the run was seeded with.
 // A start re-arms the session's follow state and selects the run's relevant window,
-// and a resume leaves a follow-off session off and replaces a stale status strand with a live one.
-// A resume that cannot replace the strand still spawns the driver and names the failure in its envelope.
+// and a resume leaves a follow-off session off.
 // A start puts the status strand in the overview window after the runs strand.
 // It replaces an own-window status strand that an older build left.
 // ensureStatusStrand's branches are pinned at Tier 1 through resolveStatusStrandAction.
@@ -36,7 +35,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// verbSmokeTimeout bounds one step or `start` invocation.
+// verbSmokeTimeout bounds one step or `start --no-attach` invocation.
 // The providerless shuttle config makes a step's producer launch and a start's llm driver launch fail within seconds.
 const verbSmokeTimeout = 60 * time.Second
 
@@ -83,22 +82,6 @@ func strandPane(t *testing.T, eng *reedengine.Engine, name string) string {
 	}
 	t.Fatalf("reed status holds no %s strand", name)
 	return ""
-}
-
-// statusStrands returns eng's strands that carry the status strand's name.
-func statusStrands(t *testing.T, eng *reedengine.Engine) []reedengine.StrandStatus {
-	t.Helper()
-	status, err := eng.Status()
-	if err != nil {
-		t.Fatalf("reed status: %v", err)
-	}
-	var found []reedengine.StrandStatus
-	for _, s := range status.Strands {
-		if agentname.Matches(s.Name, statusStrandDisplayName) {
-			found = append(found, s)
-		}
-	}
-	return found
 }
 
 // statusStrandPane returns the pane id of eng's status strand.
@@ -162,9 +145,18 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 				t.Fatalf("lym loom step: %v; output: %s", err, out)
 			}
 
-			strands := statusStrands(t, eng)
-			if len(strands) != 1 || strands[0].GUID != added.GUID {
-				t.Errorf("status strands after step = %+v; want exactly %s, the one added before the step", strands, added.GUID)
+			status, err := eng.Status()
+			if err != nil {
+				t.Fatalf("reed status: %v", err)
+			}
+			var guids []string
+			for _, s := range status.Strands {
+				if agentname.Matches(s.Name, statusStrandDisplayName) {
+					guids = append(guids, s.GUID)
+				}
+			}
+			if len(guids) != 1 || guids[0] != added.GUID {
+				t.Errorf("status strand guids after step = %v; want exactly [%s], the one added before the step", guids, added.GUID)
 			}
 		})
 
@@ -173,16 +165,7 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 			eng := probeReedEngine(t, loc)
 			setFollow(t, eng, "off")
 			current := "=" + eng.SessionName() + ":"
-			// The viewer sits on the shell window, which outlives the resume.
-			// The resume replaces the status strand added above, so that strand's window does not.
-			if out, err := exec.Command(tmuxBinaryPath(t), "-L", eng.Socket(), "select-window", "-t", current+"shell").CombinedOutput(); err != nil {
-				t.Fatalf("select the shell window: %v; output: %s", err, out)
-			}
 			before := windowID(t, eng, current)
-			stale := statusStrands(t, eng)
-			if len(stale) != 1 {
-				t.Fatalf("status strands before the resume = %+v; want the one added above", stale)
-			}
 
 			out, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, "loom", "resume")
 			if err != nil || exit != 0 {
@@ -198,47 +181,7 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 			if got := windowID(t, eng, current); got != before {
 				t.Errorf("current window after the resume = %s; want %s left as it was", got, before)
 			}
-			restored := statusStrands(t, eng)
-			if len(restored) != 1 || !restored[0].Live || restored[0].GUID == stale[0].GUID {
-				t.Errorf("status strands after the resume = %+v; want one live strand replacing %s; output: %s", restored, stale[0].GUID, out)
-			}
 		})
-	})
-
-	t.Run("resume names a status strand it cannot replace and still spawns the driver", func(t *testing.T) {
-		_, loc, worktree, _ := newWiredPairFixture(t)
-		registerBootstrapTeardown(t, loc, worktree)
-		seedGoDriverRun(t, loc)
-		// Three steps leave the run halted with no driver; one alone leaves it running.
-		for range 3 {
-			requireNoStatusStrandAfter(t, loc, worktree, "loom step", "loom", "step")
-		}
-
-		eng := probeReedEngine(t, loc)
-		stale, err := eng.AddStrand(statusStrandAddSpec("sleep 3600", shedrun.RecipeTapestry))
-		if err != nil {
-			t.Fatalf("add status strand: %v", err)
-		}
-		// reed refuses to replace a strand with children.
-		if _, err := eng.AddStrand(reedengine.AddSpec{
-			NameOverride: "status-child",
-			Parent:       stale.GUID,
-			Cmd:          "sleep 3600",
-			Display:      render.Display{Anchor: render.AnchorOwnWindow},
-		}); err != nil {
-			t.Fatalf("add a child of the status strand: %v", err)
-		}
-
-		out, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, "loom", "resume")
-		if err != nil || exit != 0 {
-			t.Fatalf("lym loom resume: exit %d, err %v; output: %s", exit, err, out)
-		}
-		if !strings.Contains(out, "a Go driver was spawned") {
-			t.Errorf("lym loom resume output = %s; want the Go driver spawn", out)
-		}
-		if !strings.Contains(out, `"status_pane"`) || !strings.Contains(out, errStatusStrandNotReplaced.Error()) {
-			t.Errorf("lym loom resume output = %s; want status_pane naming %q", out, errStatusStrandNotReplaced)
-		}
 	})
 
 	// A beam's session holds a runs strand in its first overview window.
@@ -274,9 +217,9 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 			t.Fatalf("write the status sidecar: %v", err)
 		}
 
-		out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, "loom", "start")
+		out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, "loom", "start", "--no-attach")
 		if err != nil {
-			t.Fatalf("lym loom start: %v; output: %s", err, out)
+			t.Fatalf("lym loom start --no-attach: %v; output: %s", err, out)
 		}
 
 		if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 1 {
@@ -355,9 +298,9 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 			// A second run in a reused pair starts over a session whose viewer turned follow off.
 			setFollow(t, eng, "off")
 
-			out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, "loom", "start")
+			out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, "loom", "start", "--no-attach")
 			if err != nil {
-				t.Fatalf("lym loom start: %v; output: %s", err, out)
+				t.Fatalf("lym loom start --no-attach: %v; output: %s", err, out)
 			}
 
 			if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 1 {

@@ -128,7 +128,8 @@ func newLoopHarness(t *testing.T, stopAt int) *loopHarness {
 		Now:        h.clock.now,
 		Awake:      h.clock.awake,
 		Sleep:      h.clock.sleep,
-		Owner:      func() (string, bool, error) { return "", false, nil },
+		Machine:    func() (string, error) { return "m1", nil },
+		Owner:      func() (string, error) { return "", nil },
 		StartTicks: func() string { return loopStartTicks },
 		CheckBinary: func(beforeExec func(), failed func(error)) {
 			if h.checkBinary != nil {
@@ -206,7 +207,7 @@ func TestRun_LockOwnerAndWakeups(t *testing.T) {
 	t.Run("an owner read naming another machine exits at start and logs the adopt way forward", func(t *testing.T) {
 		t.Parallel()
 		h := newLoopHarness(t, 5)
-		h.deps.Owner = func() (string, bool, error) { return "m2", true, nil }
+		h.deps.Owner = func() (string, error) { return "m2", nil }
 		if err := h.run(t); err != nil {
 			t.Errorf("Run() = %v; want nil", err)
 		}
@@ -225,7 +226,7 @@ func TestRun_LockOwnerAndWakeups(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(h.geom.WorktreeRoot, ".git"), []byte("gitdir: elsewhere\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile() = %v; want nil", err)
 		}
-		h.deps.Owner = func() (string, bool, error) { return "m2", true, nil }
+		h.deps.Owner = func() (string, error) { return "m2", nil }
 		if err := h.run(t); err != nil {
 			t.Errorf("Run() = %v; want nil", err)
 		}
@@ -238,12 +239,12 @@ func TestRun_LockOwnerAndWakeups(t *testing.T) {
 		t.Parallel()
 		h := newLoopHarness(t, 5)
 		reads := 0
-		h.deps.Owner = func() (string, bool, error) {
+		h.deps.Owner = func() (string, error) {
 			reads++
 			if reads == 1 {
-				return "m1", false, nil
+				return "m1", nil
 			}
-			return "m2", true, nil
+			return "m2", nil
 		}
 		if err := h.run(t); err != nil {
 			t.Errorf("Run() = %v; want nil", err)
@@ -693,12 +694,12 @@ func TestRun_TickFailuresLogOncePerEpisode(t *testing.T) {
 
 	owner := newLoopHarness(t, 5)
 	reads := 0
-	owner.deps.Owner = func() (string, bool, error) {
+	owner.deps.Owner = func() (string, error) {
 		reads++
 		if reads <= 2 {
-			return "", false, errors.New("board unreadable")
+			return "", errors.New("board unreadable")
 		}
-		return "", false, nil
+		return "", nil
 	}
 	if err := owner.run(t); err != nil {
 		t.Fatalf("Run() = %v; want nil", err)

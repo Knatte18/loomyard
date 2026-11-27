@@ -190,20 +190,6 @@ func FindTrailerCommit(l *lymcwd.Location, key string, newest bool) (TrailerComm
 	return found[len(found)-1], true, nil
 }
 
-// RecordsCommitIsAfter reports whether the records commit sha was made after the records commit rev.
-// That holds when rev is a proper ancestor of sha.
-// It is read-only, so the Fabric Git Invariant exempts it from the commit seam.
-func RecordsCommitIsAfter(l *lymcwd.Location, rev, sha string) (bool, error) {
-	if rev == sha {
-		return false, nil
-	}
-	after, err := gitrepo.New(RecordsWorktree(l)).IsAncestor(rev, sha)
-	if err != nil {
-		return false, fmt.Errorf("fabricengine: compare the records commits %s and %s: %w", rev, sha, err)
-	}
-	return after, nil
-}
-
 // AnchoredFileAt returns the anchor-relative relPath as stored in the weft commit rev, unaffected by any later change.
 // found is false with a nil error when the path is absent at rev; an invalid rev is an error.
 func AnchoredFileAt(l *lymcwd.Location, rev, relPath string) ([]byte, bool, error) {

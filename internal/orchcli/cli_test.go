@@ -170,29 +170,28 @@ func TestBeamUpRefusal(t *testing.T) {
 
 	const move = "a change of the anchor of b from a to c was interrupted; run `lym fabric anchor b --set c` to finish it"
 	tests := []struct {
-		name      string
-		slug      string
-		owner     string
-		elsewhere bool
-		move      string
-		held      bool
-		own       bool
-		want      []string
+		name  string
+		slug  string
+		owner string
+		move  string
+		held  bool
+		own   bool
+		want  []string
 	}{
-		{"No owner, no move and no hold passes", "b", "", false, "", false, false, nil},
-		{"This machine's own beam passes", "b", "desktop", false, "", false, false, nil},
-		{"The prime of no other machine passes", "", "", false, "", false, false, nil},
-		{"Another machine's beam names the owner and the takeover", "b", "laptop", true, "", false, false, []string{`"laptop"`, "lym adopt b", "lym beam start"}},
-		{"The prime another machine owns names the root takeover", "", "laptop", true, "", false, false, []string{`"laptop"`, "lym adopt root"}},
-		{"A standing anchor change names its way forward", "b", "", false, move, false, false, []string{move}},
-		{"A beam held by something else than its own landing names the landing", "b", "", false, "", true, false, []string{"landing", "lym batten status b"}},
-		{"A beam held by its own landing passes", "b", "", false, "", true, true, nil},
-		{"A beam held by its own landing still names the owner of another machine", "b", "laptop", true, "", true, true, []string{`"laptop"`, "lym adopt b"}},
+		{"No owner, no move and no hold passes", "b", "", "", false, false, nil},
+		{"This machine's own beam passes", "b", "desktop", "", false, false, nil},
+		{"The prime of no other machine passes", "", "", "", false, false, nil},
+		{"Another machine's beam names the owner and the takeover", "b", "laptop", "", false, false, []string{`"laptop"`, "lym adopt b", "lym beam start"}},
+		{"The prime another machine owns names the root takeover", "", "laptop", "", false, false, []string{`"laptop"`, "lym adopt root"}},
+		{"A standing anchor change names its way forward", "b", "", move, false, false, []string{move}},
+		{"A beam held by something else than its own landing names the landing", "b", "", "", true, false, []string{"landing", "lym batten status b"}},
+		{"A beam held by its own landing passes", "b", "", "", true, true, nil},
+		{"A beam held by its own landing still names the owner of another machine", "b", "laptop", "", true, true, []string{`"laptop"`, "lym adopt b"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := beamUpRefusal(tt.slug, "desktop", tt.owner, tt.elsewhere, tt.move, tt.held, tt.own, "running · Land")
+			err := beamUpRefusal(tt.slug, "desktop", tt.owner, tt.move, tt.held, tt.own, "running · Land")
 			if tt.want == nil {
 				if err != nil {
 					t.Errorf("beamUpRefusal(%q) = %v; want nil", tt.slug, err)
@@ -820,7 +819,7 @@ func TestResumeContext_PrintsHookJSONPerPhaseAndFailsWithoutMark(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				return text + " Autonomy is off."
+				return text
 			}},
 		{name: "idle prints the reload prompt", state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle},
 			want: func(c *orchCLI) string {
@@ -828,7 +827,7 @@ func TestResumeContext_PrintsHookJSONPerPhaseAndFailsWithoutMark(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				return text + " Autonomy is off."
+				return text
 			}},
 		{name: "a missing stencil is a JSON error and writes no mark", state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle}, breakStencil: true, wantErr: true},
 		{name: "an engine without the capability is a JSON error and writes no mark", state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseResuming, PendingResume: "read the note"},

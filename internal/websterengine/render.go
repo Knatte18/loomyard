@@ -204,15 +204,14 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 // parentName is the told parent agent name; an empty one renders parentdirective's no-parent variant.
 // failureDigest is the prior failed record's reasons and suspect paths, or "" when the batch was not failed;
 // it fills the optional failure_digest marker, rendered as "none" when empty.
+// Being optional, the marker leaves an older deployed stencil rendering.
 // uncommittedPaths is the caller-rendered block of the worktree's uncommitted paths grouped by who wrote them;
 // it fills the optional uncommitted_paths marker, rendered as "none" when empty.
-// parentAnswers is the caller-rendered block of what the batch waited on and the parent's answers;
-// it fills the optional parent_answers marker, rendered as "none" when empty.
 // cardFixer says a failed card gate call goes through a cold fixer first;
 // it renders the card-gate fixer paragraph after the card gates, and false leaves the text unchanged.
 // engine names the engine the strand launches on.
 // The prompt is worded for it, and the edit directive is that engine's copy.
-func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, failureDigest, parentAnswers, uncommittedPaths, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, engine, specsDir, gateTiers string, renameTools, patternChanges []string, selfFixCap int, notePath, parentName string, cardFixer bool) ([]byte, error) {
+func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, failureDigest, uncommittedPaths, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, engine, specsDir, gateTiers string, renameTools, patternChanges []string, selfFixCap int, notePath, parentName string, cardFixer bool) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -224,10 +223,6 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 	uncommittedLine := uncommittedPaths
 	if strings.TrimSpace(uncommittedLine) == "" {
 		uncommittedLine = "none"
-	}
-	answersBlock := parentAnswers
-	if strings.TrimSpace(answersBlock) == "" {
-		answersBlock = "none"
 	}
 
 	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleImplementer, patternChanges)
@@ -267,7 +262,6 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		cardGateFixerMarker: cardFixerText,
 		"failure_digest":    failureLine,
 		"uncommitted_paths": uncommittedLine,
-		"parent_answers":    answersBlock,
 		"pattern_directive": directive,
 		"specs_dir":         specsDir,
 		"gate_tiers":        gateTiersOrNone(gateTiers),
@@ -282,7 +276,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		return nil, fmt.Errorf("webster: read recovery template: %w", err)
 	}
 	friction.WarnIfMarkerAbsent(template, "webster-prefix-recovery", frictionDirective)
-	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", "failure_digest", "uncommitted_paths", "parent_answers", cardGateFixerMarker, friction.MarkerName, parentdirective.MarkerName})
+	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", "failure_digest", "uncommitted_paths", cardGateFixerMarker, friction.MarkerName, parentdirective.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill recovery template: %w", err)
 	}
@@ -448,9 +442,8 @@ func masterPlanDirDisplay(paneCwd, planDir string) string {
 // Master never edits code, only forks.
 // patternChanges is the task's declared PATTERN changes as rendered bullet lines;
 // it is passed to the pattern directive, and nil renders none.
-// parentDecisions is every decision the run's parent recorded after the Discussion, each entry's text verbatim.
-// It renders into {{.parent_decisions}} numbered in record order.
-// A fresh Master thereby knows the answers its parent already gave, and which later one supersedes an earlier one.
+// parentDecisions is every decision the run's parent recorded after the Discussion, each entry's text verbatim;
+// it renders into {{.parent_decisions}}, so a fresh Master knows the answers its parent already gave;
 // nil renders `none`.
 // parentName is the told parent agent name; an empty one renders parentdirective's no-parent variant.
 // notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
@@ -507,18 +500,13 @@ func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summary
 	return prompt, nil
 }
 
-// renderParentDecisions renders the decisions for {{.parent_decisions}} in record order, or `none` when there are none.
-// Each entry sits under its own `Decision N:` line, and a blank line joins the entries.
-// The numbers let a later entry that differs from an earlier one be named as superseding it.
+// renderParentDecisions renders the decisions for {{.parent_decisions}}:
+// the entries in order, joined by a blank line, or `none` when there are none.
 func renderParentDecisions(decisions []string) string {
 	if len(decisions) == 0 {
 		return "none"
 	}
-	numbered := make([]string, len(decisions))
-	for i, decision := range decisions {
-		numbered[i] = fmt.Sprintf("Decision %d:\n%s", i+1, decision)
-	}
-	return strings.Join(numbered, "\n\n")
+	return strings.Join(decisions, "\n\n")
 }
 
 // RenderBatchIndex renders batches as ordered-list text for {{.batch_index}}, one line per batch.
@@ -550,7 +538,7 @@ func RenderBatchIndex(batches []batcher.Batch) string {
 // A waiting batch's line names its need and the verb that resumes it.
 // st may be nil (as-yet-uninitialized run).
 // Only the numbers of the walked batches are looked up, and each is positive,
-// so a record under a non-positive number in st.Batches never surfaces here.
+// so a legacy -1 record in st.Batches never surfaces here.
 func RenderProgress(batches []batcher.Batch, st *State) string {
 	if st == nil {
 		return "none"

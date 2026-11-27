@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/planindex"
@@ -74,7 +73,7 @@ func planContextFindings(plan *planparser.Plan, cards []planparser.Card, worktre
 				findings = append(findings, planindex.Finding{
 					Check:    renameToolMissingCheck,
 					Card:     card.ID(),
-					Detail:   fmt.Sprintf("the symbol rename %s -> %s needs the hub's structure-aware rename tool, and %s lists none; way forward: set it with \"lym config language\" from the prime, or recast the card", pair.Old, pair.New, configengine.KeyName("language", "rename_tools")),
+					Detail:   fmt.Sprintf("the symbol rename %s -> %s needs the hub's structure-aware rename tool, and language.yaml lists none; way forward: set rename_tools with \"lym config language\" from the prime, or recast the card", pair.Old, pair.New),
 					Severity: planindex.SeverityBlocking,
 				})
 			}
@@ -139,7 +138,7 @@ func verifyLineFindings(cards []planparser.Card, refuseRaw []string) []planindex
 					findings = append(findings, planindex.Finding{
 						Check:    verifyRawCommandCheck,
 						Card:     card.ID(),
-						Detail:   fmt.Sprintf("card %d Verify: `%s` runs a command the hub's %s lists, and Go re-runs this line outside any agent hook; way forward: replace it with a `lym gate test --wait` call naming a tier list and a scope form, such as `lym gate test --wait --tier 1 --card <card id>`", card.Number, command, configengine.KeyName("gate", "refuse_raw")),
+						Detail:   fmt.Sprintf("card %d Verify: `%s` runs a command the hub's gate.yaml refuse_raw lists, and Go re-runs this line outside any agent hook; way forward: replace it with a `lym gate test --wait` call naming a tier list and a scope form, such as `lym gate test --wait --tier 1 --card <card id>`", card.Number, command),
 						Severity: planindex.SeverityBlocking,
 					})
 					break

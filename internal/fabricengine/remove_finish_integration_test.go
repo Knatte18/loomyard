@@ -61,7 +61,7 @@ func TestRemove_FinishesPairWhoseTaskWorktreeWasRemovedByHand(t *testing.T) {
 	warpTip := gitkit.RevParse(t, l.WorktreePath(), slug)
 	removeByHand(t, fabricengine.WorktreePath(l, slug))
 
-	res, err := h.Topology.Remove(l, slug, false, false, "")
+	res, err := h.Topology.Remove(l, slug, false, false)
 	if err != nil {
 		t.Fatalf("Remove error = %v; want the half-removed pair finished", err)
 	}
@@ -116,7 +116,7 @@ func TestRemove_FinishesPairWithBothWorktreesGone(t *testing.T) {
 	removeByHand(t, fabricengine.WorktreePath(l, slug))
 	removeByHand(t, fabricengine.RecordsWorktreePath(l, slug))
 
-	res, err := h.Topology.Remove(l, slug, false, false, "")
+	res, err := h.Topology.Remove(l, slug, false, false)
 	if err != nil {
 		t.Fatalf("Remove error = %v", err)
 	}
@@ -168,7 +168,7 @@ func TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin(t *testing.T) {
 	siblingTip := gitkit.RevParse(t, h.RecordsBare, fabricengine.RecordsBranchName(slug))
 	leaveSiblingBranchOnlyOnOrigin(t, h, slug)
 
-	res, err := h.Topology.Remove(l, slug, false, true, "")
+	res, err := h.Topology.Remove(l, slug, false, true)
 	if err != nil {
 		t.Fatalf("Remove(remote=true) error = %v", err)
 	}
@@ -199,7 +199,7 @@ func TestRemove_KeepsOriginOnlySiblingBranchWithoutRemote(t *testing.T) {
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	leaveSiblingBranchOnlyOnOrigin(t, h, slug)
 
-	res, err := h.Topology.Remove(l, slug, false, false, "")
+	res, err := h.Topology.Remove(l, slug, false, false)
 	if err != nil {
 		t.Fatalf("Remove(remote=false) error = %v", err)
 	}
@@ -235,7 +235,7 @@ func TestRemove_ReportsStrayPathAndFinishesBranchTeardown(t *testing.T) {
 	marker := filepath.Join(target, "keep-me.txt")
 	writeFile(t, marker, "not a worktree\n")
 
-	res, err := h.Topology.Remove(l, slug, false, false, "")
+	res, err := h.Topology.Remove(l, slug, false, false)
 	if err != nil {
 		t.Fatalf("Remove error = %v", err)
 	}
@@ -266,11 +266,11 @@ func TestRemove_ReturnsPairNotFoundWhenNothingRemains(t *testing.T) {
 	l := h.Location
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
-	if _, err := h.Topology.Remove(l, slug, false, true, ""); err != nil {
+	if _, err := h.Topology.Remove(l, slug, false, true); err != nil {
 		t.Fatalf("first Remove error = %v", err)
 	}
 
-	_, err := h.Topology.Remove(l, slug, false, true, "")
+	_, err := h.Topology.Remove(l, slug, false, true)
 	if !errors.Is(err, fabricengine.ErrPairNotFound) {
 		t.Fatalf("second Remove error = %v; want it to wrap ErrPairNotFound", err)
 	}
@@ -283,14 +283,14 @@ func TestRemove_ReturnsPairNotFoundWhenNothingRemains(t *testing.T) {
 	if err := fslink.CreateDirLink(retiredPortal, t.TempDir()); err != nil {
 		t.Fatalf("plant retired portal link: %v", err)
 	}
-	_, err = h.Topology.Remove(l, slug, false, true, "")
+	_, err = h.Topology.Remove(l, slug, false, true)
 	if !errors.Is(err, fabricengine.ErrPairNotFound) {
 		t.Fatalf("Remove with only a retired portal link left: error = %v; want it to wrap ErrPairNotFound", err)
 	}
 
 	stray := fabricengine.WorktreePath(l, slug)
 	writeFile(t, filepath.Join(stray, "keep-me.txt"), "not a worktree\n")
-	_, err = h.Topology.Remove(l, slug, false, true, "")
+	_, err = h.Topology.Remove(l, slug, false, true)
 	if !errors.Is(err, fabricengine.ErrPairNotFound) {
 		t.Fatalf("Remove with only a stray directory left: error = %v; want it to wrap ErrPairNotFound", err)
 	}

@@ -70,10 +70,6 @@ For each card above, in the order listed:
 
 A card that departs from its own text because a PATTERN entry forbids the card's way records the departure as a `Pattern-Departure:` trailer in that card's commit.
 
-{{template "loom-fragment-loosened-check"}}
-
-{{template "loom-fragment-tooling-names"}}
-
 ## Where and how you run commands
 
 Your session's working directory already is the worktree root: run every Bash command from there and give paths in Bash commands worktree-relative.
@@ -92,12 +88,6 @@ Run it once after the last card's commit, as a foreground Bash call, and fix wha
 A call that ends with `--main-packages` also runs the module's main packages, which the plan-level verify runs next.
 A failure in them is yours to fix even when an earlier batch caused it.
 A gate call that exits with code `75` and answers `done: false` is not a failure: run the same command again.
-
-## External tools and processes
-
-Learn how an external tool such as tmux behaves from a test in the repository, in the tier the hub runs that tool's tests in, never from processes you start in the shell.
-Run that one test through `lym gate test --tier <that tier>` with its package and, after `--`, a filter that selects it, and check that the gate's report shows the test ran, not skipped.
-Never start a background or detached process from the shell: such a process outlives your command and runs outside every memory cap lym sets.
 
 ## Never touch Weaver's own records
 

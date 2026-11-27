@@ -10,7 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -30,7 +29,7 @@ const windowsGOOS = "windows"
 
 // cancelDeps carries every substrate call a cancel makes, as function values.
 // Production fills each one over the hub, and a test replaces each one with a fake.
-// None is nil except BeamProject and LandingHeld, and EndBeam while BeamProject is nil.
+// None is nil except BeamProject and LandingHeld.
 type cancelDeps struct {
 	// HubPaused reports whether a live hub-scope pause entry covers the prime.
 	HubPaused func() (bool, error)
@@ -42,12 +41,14 @@ type cancelDeps struct {
 	Reconcile func() (fabricengine.OriginReport, error)
 	// PullBolt brings the hub's Bolt level with origin; an unreachable origin wraps boardengine.ErrOwnerOriginUnreachable.
 	PullBolt func() error
-	// Owner returns the slug's effective owner on the local Bolt, empty when none is recorded.
+	// Owner returns this machine's name and the slug's effective owner on the local Bolt, empty when none is recorded.
 	// It also returns the subject that `lym adopt` takes to move the owner.
-	// The elsewhere result says whether the machine registry reads that owner as a machine other than this one.
-	Owner func() (owner, subject string, elsewhere bool, err error)
+	Owner func() (machine, owner, subject string, err error)
 	// ReadStatus reads batten's status file for the slug.
 	ReadStatus func() (status shedengine.Status, found bool, err error)
+	// OwnerHeld reports whether an owner pause covers the slug.
+	// A refusal that sends the operator to remove the pair reads it to word the step that settles the run's record.
+	OwnerHeld func() (bool, error)
 	// BoardStatus reads the status of the slug's entry on the local board.
 	BoardStatus func() (status *string, found bool, err error)
 	// RecordsPresent reports whether the slug's records run directory exists.
@@ -84,18 +85,13 @@ type cancelDeps struct {
 	TaskBranchOnOrigin func() (bool, error)
 	// DiscardTaskBranch archives and deletes the task branch, locally and on origin.
 	DiscardTaskBranch func() (fabricengine.DiscardResult, error)
-	// TeardownPending reports whether an unfinished teardown of the slug names this cancel, with --remove, as its re-run.
-	TeardownPending func() (bool, error)
-	// SettleTeardown drops the record of an unfinished teardown of the slug once nothing of its pair remains.
-	SettleTeardown func() error
 	// Verdict returns the act rule's verdict for the slug, with the cancel, pause, hold, shed pause and owed push set aside.
 	// A paused, held or offline run is still cancelled, so only a landed run or one another machine owns is refused.
 	Verdict func() (runfsm.Verdict, error)
 	// WriteIntent records the cancel intent in batten's record, with the time now, this machine's name and remove.
 	// found is false when the slug has no record, which then holds no intent.
 	WriteIntent func(remove bool) (found bool, err error)
-	// CommitRecord commits batten's record with the run's other records and pushes the records side.
-	// A push that is owed leaves the commit standing.
+	// CommitRecord commits batten's record with the run's other records and spawns the push of the records side.
 	// It refuses while a merge is in progress on the prime's records side.
 	// committed reports whether a records commit was made.
 	CommitRecord func() (committed bool, err error)
@@ -111,10 +107,8 @@ type cancelDeps struct {
 	ClearClaim func() (cleared, found bool, err error)
 	// LiftPauses lifts the slug's own live slug-scope pause entries and returns their scopes.
 	LiftPauses func() ([]string, error)
-	// PushRecords pushes the records side and waits for the result.
-	// owed is true when the push is owed, because origin is unreachable or a held lock deferred it.
-	// Any other failed push is returned.
-	PushRecords func() (owed bool, err error)
+	// SpawnPush starts the detached push of the records side.
+	SpawnPush func() error
 	// Notify posts line to the orch.
 	Notify func(line string) error
 	// BeamProject reports whether the slug's board entry is a beam project.
@@ -129,10 +123,8 @@ type cancelDeps struct {
 	LandingHeld func() (bool, error)
 	// LandBlockers reads what still works under the beam, over the Bolt the reconcile left.
 	LandBlockers func() (BeamLandBlockers, error)
-	// StopBeam stops the beam's orch and watcher when its pair is present locally and marked a beam.
+	// StopBeam stops the beam's orch and watcher when its pair is present locally.
 	StopBeam func() error
-	// EndBeam clears the beam flag of the slug's board entry, leaving a plain project, and reports whether it cleared one.
-	EndBeam func() (bool, error)
 }
 
 // cancelReport records what one cancel did; with EndOnly set, it records what the cancel ended before stopping.
@@ -162,8 +154,6 @@ type cancelReport struct {
 	RecordsCommitted bool
 	// ClaimCleared is true when a run-form board status was cleared.
 	ClaimCleared bool
-	// BeamEnded is true when the cancel cleared the beam flag of the slug's project, which only --remove does.
-	BeamEnded bool
 	// Lifted lists the scopes of the slug's own pause entries that were lifted.
 	Lifted []string
 	// PushSpawned is true when the records push was started, and NoticePosted when the orch notice went out.
@@ -231,7 +221,6 @@ func cancelCommand(slug string, remove bool) string {
 
 // ErrNothingLeft is the sentinel that a cancel refusal matches through errors.Is.
 // The refusal applies when no record, claim, pair part, session, process or cancel of the slug is left.
-// A cancel that removes refuses only when no unfinished teardown naming it is left either.
 var ErrNothingLeft = errors.New("nothing of the slug is left to cancel")
 
 // nothingLeftError is the refusal that nothing of a slug is left to cancel, carrying the message to show.
@@ -317,7 +306,7 @@ func endRunPhase(ctx context.Context, slug string, remove bool, rerun string, de
 	if err != nil {
 		return report, probeRefusal("the pause gate", slug, rerun, err)
 	}
-	if err := refuseBeamCancel(slug, rerun, remove, deps); err != nil {
+	if err := refuseBeamCancel(slug, rerun, deps); err != nil {
 		return report, err
 	}
 
@@ -459,15 +448,13 @@ func isBeamProject(deps cancelDeps) (bool, error) {
 // It refuses before the cancel's lock is taken or anything is ended.
 // It first reconciles the hub against origin, so the members are read over the Bolt origin holds.
 // An error or an unreachable origin refuses with a way forward.
-// With remove, a task member with neither a pair on this machine nor a run status is no work under the beam:
-// it keeps its project field on the plain project the removal leaves.
 // While the beam's pawl run does not hold its entry, the refusal is the beam's landing refusal.
 // It names each member to land or cancel.
 // Once the run holds its entry, a member's landing is refused,
-// so each blocker names the cancel in the beam's parent worktree, and without remove the move off the beam.
+// so each blocker names the cancel in the beam's parent worktree and the move off the beam.
 // The blockers never name `lym batten run`.
 // A task returns before any of this.
-func refuseBeamCancel(slug, rerun string, remove bool, deps cancelDeps) error {
+func refuseBeamCancel(slug, rerun string, deps cancelDeps) error {
 	beam, err := isBeamProject(deps)
 	if err != nil {
 		return probeRefusal("the board entry", slug, rerun, err)
@@ -493,50 +480,30 @@ func refuseBeamCancel(slug, rerun string, remove bool, deps cancelDeps) error {
 			return probeRefusal("the beam's landing hold", slug, rerun, err)
 		}
 	}
-	if !held && !remove {
+	if !held {
 		return fmt.Errorf("%w; then run %s again", refusal, rerun)
 	}
 	blockers, err := deps.LandBlockers()
 	if err != nil {
 		return probeRefusal("the members of the beam", slug, rerun, err)
 	}
-	if remove {
-		blockers = workingBlockers(blockers)
-	}
 	if blockers.Empty() {
 		return nil
 	}
-	if !held {
-		return fmt.Errorf("%w; then run %s again", beamLandRefusal(slug, blockers), rerun)
-	}
-	return heldBeamCancelRefusal(slug, rerun, remove, blockers)
-}
-
-// workingBlockers drops every task member with neither a pair on this machine nor a run status.
-// A member that is itself a beam stays, since it may be open on another machine.
-func workingBlockers(blockers BeamLandBlockers) BeamLandBlockers {
-	blockers.Members = slices.DeleteFunc(slices.Clone(blockers.Members), func(member BeamLandMember) bool {
-		return !member.HasPair && !member.Running && !member.Beam
-	})
-	return blockers
+	return heldBeamCancelRefusal(slug, rerun, blockers)
 }
 
 // heldBeamCancelRefusal words the refusal of a beam's cancel while its pawl run holds its entry.
 // It names every blocker with the step that ends it, then the cancel's re-run.
-// A member with a pair or a run in flight is cancelled in the beam's parent worktree.
-// Without remove it is then moved off the beam:
-// the cancel leaves that member a `draft`, which still blocks the landing.
+// A member with a pair or a run in flight is cancelled in the beam's parent worktree, then moved off the beam.
+// The cancel leaves that member a `draft`, which still blocks the landing, so the move is needed.
 // A member with no run status is moved alone.
-func heldBeamCancelRefusal(slug, rerun string, remove bool, blockers BeamLandBlockers) error {
+func heldBeamCancelRefusal(slug, rerun string, blockers BeamLandBlockers) error {
 	moveOff := "move its `project` off the beam with `lym board upsert`"
 	var ways []string
 	for _, member := range blockers.Members {
 		if member.HasPair || member.Running {
-			way := fmt.Sprintf("the open entry %s is a member of the beam: end it with `lym batten cancel %s --remove`, run in the beam's parent worktree", member.Slug, member.Slug)
-			if !remove {
-				way += fmt.Sprintf(", then %s, since the cancel leaves a `draft` member, which still blocks the landing", moveOff)
-			}
-			ways = append(ways, way)
+			ways = append(ways, fmt.Sprintf("the open entry %s is a member of the beam: end it with `lym batten cancel %s --remove`, run in the beam's parent worktree, then %s, since the cancel leaves a `draft` member, which still blocks the landing", member.Slug, member.Slug, moveOff))
 			continue
 		}
 		ways = append(ways, fmt.Sprintf("the open entry %s is a member of the beam with no run status: %s", member.Slug, moveOff))
@@ -553,21 +520,18 @@ func heldBeamCancelRefusal(slug, rerun string, remove bool, blockers BeamLandBlo
 // the finish is written, the state set cancelled, and the record committed and pushed.
 // A slug with no record has nothing to keep, so what is left of its records is removed.
 // It then clears the board claim and lifts the slug's own pauses.
-// If the records were committed, it pushes them after the lifts and waits for the push.
-// A push that is owed makes the report's way forward name rerun, and any other failed push is a warning.
-// With remove it last clears the beam flag of a beam project, whose life the removal ends,
-// so a failed clear never skips the records push.
+// If the records were committed, it spawns the records push.
 // It releases the batten locks the report holds once the claim is cleared.
 // The cancel's lock and the pause gate stay with the caller.
 // Its errors name rerun as the step to run again.
 func clearRunPhase(slug string, remove bool, rerun string, report *cancelReport, deps cancelDeps) error {
-	pushRecords := false
+	spawnPush := false
 	removeRecords := func() error {
 		committed, err := deps.RemoveRecords()
 		if err != nil {
 			return fmt.Errorf("battencli: could not remove the records of %s: %w; way forward: fix the cause, then run %s again", slug, err, rerun)
 		}
-		report.RecordsCommitted, pushRecords = committed, committed
+		report.RecordsCommitted, spawnPush = committed, committed
 		return nil
 	}
 	if remove {
@@ -588,7 +552,7 @@ func clearRunPhase(slug string, remove bool, rerun string, report *cancelReport,
 			if err != nil {
 				return fmt.Errorf("battencli: could not commit the cancel of %s: %w; way forward: fix the cause it names, then run %s again", slug, err, rerun)
 			}
-			report.RecordKept, report.RecordsCommitted, pushRecords = true, committed, committed
+			report.RecordKept, report.RecordsCommitted, report.PushSpawned = true, committed, committed
 		} else if err := removeRecords(); err != nil {
 			return err
 		}
@@ -608,33 +572,15 @@ func clearRunPhase(slug string, remove bool, rerun string, report *cancelReport,
 		logger.Warn("battencli: could not lift the slug's pause entries", "slug", slug, "cause", err)
 	}
 	report.Lifted = lifted
-	var ways []string
-	if pushRecords {
-		owed, err := deps.PushRecords()
-		switch {
-		case err != nil:
-			logger.Warn("battencli: the records push failed", "slug", slug, "cause", err)
-			report.Warnings = append(report.Warnings, fmt.Sprintf("the records push failed: %v", err))
-		case owed:
-			ways = append(ways, fmt.Sprintf("the records push is owed; run %s again once origin answers", rerun))
-		default:
+	if spawnPush {
+		if err := deps.SpawnPush(); err != nil {
+			logger.Warn("battencli: could not spawn the records push", "slug", slug, "cause", err)
+		} else {
 			report.PushSpawned = true
 		}
 	}
-	if remove {
-		beam, err := isBeamProject(deps)
-		if err == nil && beam {
-			report.BeamEnded, err = deps.EndBeam()
-		}
-		if err != nil {
-			return fmt.Errorf("battencli: could not clear the beam flag of %s: %w; way forward: fix the cause, then run %s again", slug, err, rerun)
-		}
-	}
 	if report.pairKept {
-		ways = append(ways, fmt.Sprintf("run %q before rerunning it", cancelCommand(slug, true)))
-	}
-	if len(ways) > 0 {
-		report.WayForward = strings.Join(ways, "; ")
+		report.WayForward = fmt.Sprintf("run %q before rerunning it", cancelCommand(slug, true))
 	}
 	return nil
 }
@@ -665,11 +611,11 @@ func judgeOrigin(slug, rerun string, deps cancelDeps) (endOnly bool, err error) 
 	}
 
 	if endOnly || !present {
-		owner, subject, elsewhere, err := deps.Owner()
+		machine, owner, subject, err := deps.Owner()
 		if err != nil {
 			return false, probeRefusal("the slug's owner", slug, rerun, err)
 		}
-		if elsewhere {
+		if owner != "" && owner != machine {
 			return false, cancelOwnedElsewhere(slug, owner, subject)
 		}
 	}
@@ -707,7 +653,7 @@ func judgeOrigin(slug, rerun string, deps cancelDeps) (endOnly bool, err error) 
 
 // cancelStoppedRefusal words the refusal of a cancel whose run origin's judgment stopped, ending in reentry.
 // A refusal that names the pair's removal ends instead with the step that settles the run's batten record.
-// That step is read from batten's status.
+// That step is read from batten's status and the owner pause.
 // The removal leaves that record standing, and a cancel at Land would release a landed entry.
 // A read that fails is logged and keeps reentry, and so does an empty follow-up.
 func cancelStoppedRefusal(slug, reentry string, entry fabricengine.EntryOutcome, branches []fabricengine.BranchOutcome, deps cancelDeps) error {
@@ -720,7 +666,12 @@ func cancelStoppedRefusal(slug, reentry string, entry fabricengine.EntryOutcome,
 		logger.Warn("battencli: batten's status could not be read, so the refusal names no follow-up of the removal", "slug", slug, "cause", err)
 		return refusal
 	}
-	followUp := pairteardown.BattenFollowUp(slug, status, found)
+	held, err := deps.OwnerHeld()
+	if err != nil {
+		logger.Warn("battencli: the owner pause could not be read, so the refusal names no follow-up of the removal", "slug", slug, "cause", err)
+		return refusal
+	}
+	followUp := pairteardown.BattenFollowUp(slug, status, found, held)
 	if followUp == "" {
 		return refusal
 	}
@@ -761,9 +712,7 @@ func cancelOwnedElsewhere(slug, owner, subject string) error {
 // refuseNothingLeft refuses a cancel when no record, claim, pair part, session, process or cancel of the slug is left.
 // Without remove, it also refuses when only a task branch or a stray directory is left.
 // A stray directory is one that is no worktree at the task worktree's path.
-// With remove, neither a local task branch, a stray directory nor a beam flag on the slug's project refuses.
-// With remove, an unfinished teardown that names this cancel counts as left too,
-// so the re-run its record names finishes it whatever of the pair is still on origin.
+// With remove, neither a local task branch nor a stray directory refuses.
 // A task branch on origin counts as left, and it is read only when nothing else is left and origin was reached.
 func refuseNothingLeft(slug string, remove, endOnly bool, rerun string, reading cancelMarkerReading, parts fabricengine.PairParts, deps cancelDeps) error {
 	recordsHere, err := deps.RecordsPresent()
@@ -800,20 +749,6 @@ func refuseNothingLeft(slug string, remove, endOnly bool, rerun string, reading 
 	if parts.TaskBranch || parts.StrayPath {
 		return nil
 	}
-	beam, err := isBeamProject(deps)
-	if err != nil {
-		return probeRefusal("the board entry", slug, rerun, err)
-	}
-	if beam {
-		return nil
-	}
-	pending, err := deps.TeardownPending()
-	if err != nil {
-		return probeRefusal("the unfinished teardowns", slug, rerun, err)
-	}
-	if pending {
-		return nil
-	}
 	if endOnly {
 		return fmt.Errorf("origin was unreachable, so the task branch of %s on origin could not be read; way forward: run %s again once origin answers", slug, rerun)
 	}
@@ -834,23 +769,18 @@ func nothingLeft(slug string) error {
 
 // removePairAndBranch removes the pair, snapshotting its uncommitted paths first.
 // It then archives and deletes the task branch while one is left.
-// A pair with nothing left reads as removed, and an unfinished teardown of it is settled.
+// A pair with nothing left reads as removed.
 // A directory that is no worktree at the pair's task worktree path is deleted with the pair.
 // Left behind, it would block the slug's next run.
 // A failed delete refuses and names the cancel to run again.
 func removePairAndBranch(slug, rerun string, report *cancelReport, deps cancelDeps) error {
-	result, err := deps.RemovePair(pairteardown.Request{Slug: slug, Force: true, Snapshot: true, Remote: true, LeaveClaim: true, ClearStray: true, Rerun: cancelCommand(slug, true)})
+	result, err := deps.RemovePair(pairteardown.Request{Slug: slug, Force: true, Snapshot: true, Remote: true, LeaveClaim: true, ClearStray: true})
 	report.SnapshotTag = result.SnapshotTag
 	report.StrayDirectoryDeleted = result.StrayPathDeleted
 	if err != nil && !errors.Is(err, fabricengine.ErrPairNotFound) {
 		return fmt.Errorf("battencli: removing the pair of %s refused: %w; way forward: fix the cause it names, then run \"lym batten cancel %s --remove\" again", slug, err, slug)
 	}
 	report.PairRemoved = true
-	if errors.Is(err, fabricengine.ErrPairNotFound) {
-		if err := deps.SettleTeardown(); err != nil {
-			return fmt.Errorf("battencli: settling the unfinished teardown of %s failed: %w; way forward: fix the cause it names, then run %s again", slug, err, rerun)
-		}
-	}
 
 	parts, err := deps.PairParts()
 	if err != nil {
@@ -890,15 +820,11 @@ func cancelNotice(report cancelReport) string {
 	if report.RecordKept {
 		record = "; its record is kept with the cancel's finish"
 	}
-	beam := ""
-	if report.BeamEnded {
-		beam = ", and its beam flag cleared, leaving a plain project"
-	}
 	switch {
 	case report.EndOnly:
 		return fmt.Sprintf("batten cancel of %s ended its processes only (%s); origin was unreachable, so %s", report.Slug, stood, report.WayForward)
 	case report.PairRemoved:
-		return fmt.Sprintf("batten cancel of %s ended the run (%s); its pair and record were removed%s", report.Slug, stood, beam)
+		return fmt.Sprintf("batten cancel of %s ended the run (%s); its pair and record were removed", report.Slug, stood)
 	case report.WayForward != "":
 		return fmt.Sprintf("batten cancel of %s ended the run (%s); its pair was kept%s, so %s", report.Slug, stood, record, report.WayForward)
 	}
