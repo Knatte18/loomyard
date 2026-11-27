@@ -253,6 +253,37 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		}
 	})
 
+	t.Run("WritesABeamFileWithoutHookMembersWhenItsAnchorCannotBeRead", func(t *testing.T) {
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		hubforge.AddPairWith(t, h, "b", beamAddOptions)
+		marker := filepath.Join(h.PairRecordsSibling("b"), lymcwd.AnchorFileName)
+		t.Cleanup(fabricengine.InstallWorkspaceContent(func(_, beam, _ string) map[string]json.RawMessage {
+			// The hub file's members are asked for after the pairs are listed and before a beam's anchor is read.
+			if beam == "" {
+				if err := os.WriteFile(marker, []byte("../outside"), 0o644); err != nil {
+					t.Errorf("spoil the beam's anchor: %v", err)
+				}
+			}
+			return map[string]json.RawMessage{"x": []byte("true")}
+		}))
+
+		path, _ := regenerateHub(t, h)
+
+		for file, want := range map[string]bool{path: true, fabricengine.BeamWorkspacePath(h.Location, "b"): false} {
+			data, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatalf("read %s: %v", file, err)
+			}
+			var ws map[string]any
+			if err := json.Unmarshal(data, &ws); err != nil {
+				t.Fatalf("%s is not valid JSON: %v\n%s", file, err, data)
+			}
+			if _, carried := ws["x"]; carried != want {
+				t.Errorf("%s carries the hook member = %v; want %v", filepath.Base(file), carried, want)
+			}
+		}
+	})
+
 	t.Run("ListsFolderAddedWhileWaitingForTheLock", func(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		l := *h.Location
