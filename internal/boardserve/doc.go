@@ -25,4 +25,14 @@
 // and a stale one is refused with the entry as the board holds it now.
 // On top of the board's rules the server refuses release, draft and undraft of anything but a task,
 // and the release of a task a run holds.
+//
+// # Lifecycle
+//
+// At most one server runs per state directory: the one that holds its lock.
+// It then starts its log afresh with its pid, removes the previous server's state and listens on a free loopback port.
+// Its state file holds its pid, port and a token drawn at random, and is readable by its owner alone.
+// It watches the board directory, with a timer behind the watcher, so a change made by any process reaches the page.
+// It exits when no API request has arrived for the idle bound, or when its binary was replaced; nothing stops it by hand.
+// On exit it takes no new connection, releases the lock and answers every waiting poll.
+// It then waits for the requests in flight, so a write that has begun completes.
 package boardserve
