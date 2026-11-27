@@ -63,15 +63,19 @@ func newParityFixture(t *testing.T) parityFixture {
 	if err != nil {
 		t.Fatalf("resolve temp dir: %v", err)
 	}
-	location := &lymcwd.Location{RepoName: "repo", HubPath: base, WorktreeName: "worktree"}
-	anchor, board := location.AnchorPath(), fabricengine.BoltDir(base)
+	// The anchor lies below the repository root, so Codex gets the root's CLAUDE.md through its pointers alone.
+	location := &lymcwd.Location{RepoName: "repo", HubPath: base, WorktreeName: "worktree", AnchorRel: "sub"}
+	root, anchor, board := location.WorktreePath(), location.AnchorPath(), fabricengine.BoltDir(base)
 	fx := parityFixture{base: base, claudeDir: filepath.Join(base, "claude-config"), skillRoots: filepath.Join(base, "skill-cache")}
 	lymHome, operatorHome := filepath.Join(base, "lym-home"), filepath.Join(base, "operator-home")
 	homes := "home: " + lymHome + "\noperator_home: " + operatorHome + "\n"
 
 	files := map[string]string{
-		filepath.Join(anchor, ".git", "HEAD"):                   "ref: refs/heads/main\n",
+		filepath.Join(root, ".git", "HEAD"):                     "ref: refs/heads/main\n",
+		filepath.Join(root, "CLAUDE.md"):                        "the root's rules",
+		filepath.Join(root, "AGENTS.md"):                        "the root's agent rules",
 		filepath.Join(anchor, "CLAUDE.md"):                      "the repository's rules",
+		configengine.ConfigFile(board, "gate"):                  configengine.SparseBaseHeader + "refuse_raw: [\"go test\"]\n",
 		filepath.Join(anchor, "CLAUDE.local.md"):                heddleengine.Marker + "\n\nthe filed entry\n",
 		filepath.Join(anchor, "AGENTS.override.md"):             heddleengine.Marker + "\n\nthe filed entry\n",
 		filepath.Join(operatorHome, "auth.json"):                "{}",
@@ -88,7 +92,7 @@ func newParityFixture(t *testing.T) parityFixture {
 	}
 	writeFiles(t, files)
 	for _, name := range []string{"objects", "refs"} {
-		if err := os.MkdirAll(filepath.Join(anchor, ".git", name), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(root, ".git", name), 0o755); err != nil {
 			t.Fatalf("MkdirAll: %v", err)
 		}
 	}
@@ -221,6 +225,20 @@ func TestSeats_CodexManifestHoldsClaudes(t *testing.T) {
 		}
 		for _, item := range Compare(set, manifests) {
 			t.Errorf("seat %s: Codex's launch lacks %s %q; %s", seat.Name, item.Channel, item.Key, codexDeliveryWayForward)
+		}
+		// The comparison holds Codex only to what Claude's manifest lists, so the fixture must keep these listed.
+		for _, want := range []struct {
+			channel shuttleengine.ManifestChannel
+			key     string
+		}{
+			{shuttleengine.ManifestChannelGuard, "refuse-raw"},
+			{shuttleengine.ManifestChannelInstructionSource, "CLAUDE.md"},
+		} {
+			if !slices.ContainsFunc(manifests[ReferenceEngine].Items, func(item shuttleengine.ManifestItem) bool {
+				return item.Channel == want.channel && item.Key == want.key
+			}) {
+				t.Errorf("seat %s: the Claude manifest lacks %s %q, so the fixture no longer exercises its delivery", seat.Name, want.channel, want.key)
+			}
 		}
 		sandbox := slices.IndexFunc(manifests[ComparedEngine].Items, func(item shuttleengine.ManifestItem) bool {
 			return item.Channel == shuttleengine.ManifestChannelSettings && item.Detail == "workspace-write"
