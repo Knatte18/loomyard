@@ -1,16 +1,14 @@
 //go:build linux
 
-// buttonclick_integration_test.go drives runButtonVia against a real tmux server and attached clients.
+// buttonclick_integration_test.go drives runButtonVia against a real tmux server and an attached client.
 // The real process runner runs the click's commands, with a recorder script standing in for the lym binary.
 
 package reedengine
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -19,58 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
-
-// TestRunButton_StrandNamesTheClickingClientsOwnPane pins which pane {strand} reads.
-// It takes the name on the active pane of the clicking client's own session.
-// Another client, attached to another session after it, does not change the name.
-func TestRunButton_StrandNamesTheClickingClientsOwnPane(t *testing.T) {
-	tiergate.Require(t, 2)
-	t.Parallel()
-	e := newIntegrationEngine(t, "off")
-	if _, err := e.Up(); err != nil {
-		t.Fatalf("Up: %v", err)
-	}
-	const otherSession = "other"
-	if err := e.tmux.run("new-session", "-d", "-s", otherSession); err != nil {
-		t.Fatalf("new-session %s: %v", otherSession, err)
-	}
-	strandNames := map[string]string{e.SessionName(): "tc:orch", otherSession: "tc:a-task:agent"}
-	sessions := attachOneClientPerSession(t, e, e.SessionName(), otherSession)
-	for _, s := range sessions {
-		if err := e.tmux.run("set-option", "-p", "-t", s.paneID, strandNamePaneOption, strandNames[s.name]); err != nil {
-			t.Fatalf("set the strand name on %s: %v", s.paneID, err)
-		}
-	}
-	spec := buttonSpec{Shell: "/bin/sh", Flag: "-c", Dir: t.TempDir(), Entries: []buttonSpecEntry{
-		{Index: 0, Label: "name", Run: "printf %s {strand}", Strand: true},
-	}}
-	specJSON, err := json.Marshal(spec)
-	if err != nil {
-		t.Fatalf("marshal spec: %v", err)
-	}
-	if err := e.tmux.run("set-option", "-t", exactSessionWindowTarget(e.SessionName()), buttonSpecOption, string(specJSON)); err != nil {
-		t.Fatalf("set the spec option: %v", err)
-	}
-	posix := shell.Posix()
-
-	for _, s := range sessions {
-		var scripts []string
-		deps := buttonDeps{
-			run: func(shellPath, flag, script, dir string) (string, int, error) {
-				scripts = append(scripts, script)
-				return "", 0, nil
-			},
-			executablePath: func() (string, error) { return "", errors.New("the entry raises no prompt") },
-			anchorOf:       func(dir string) (string, error) { return dir, nil },
-			sh:             posix,
-		}
-		runButtonVia(e.tmux, ButtonRequest{TmuxPath: e.cfg.Tmux, Session: e.SessionName(), Range: "lymbtn0", Client: s.client}, deps)
-
-		if want := []string{"printf %s " + posix.Quote(strandNames[s.name])}; !slices.Equal(scripts, want) {
-			t.Errorf("click by the client in session %s ran %q; want %q", s.name, scripts, want)
-		}
-	}
-}
 
 // TestRunButton_RealTmux runs each kind of spec entry through a real server.
 // The kinds are a plain entry in the run directory, one that exits non-zero, and one naming {strand}.

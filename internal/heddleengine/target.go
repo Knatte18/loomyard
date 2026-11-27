@@ -37,6 +37,10 @@ const CodexOverrideInstructionsFile = "AGENTS.override.md"
 // the local Claude Code settings every Claude session started in the worktree loads.
 const ClaudeSettingsFile = ".claude/settings.local.json"
 
+// SettingsExcludeReinterpretation names the reconcile change that adds ClaudeSettingsFile to a hub's exclude list.
+// A hub whose fabric.yaml sets that list would otherwise leave the file unwritten.
+const SettingsExcludeReinterpretation = "heddle-claude-settings-excluded"
+
 const (
 	// claudeFileTarget is the file target rendered into CLAUDE.local.md, the instructions a Claude session reads.
 	claudeFileTarget = "claude-file"

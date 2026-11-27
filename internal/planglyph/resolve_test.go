@@ -31,19 +31,9 @@ func TestStatusFindings(t *testing.T) {
 		if err != nil {
 			t.Fatalf("resolveTargets(...) returned error: %v", err)
 		}
-		got := statusFindings(plan, root, results, nil, nil)
+		got := statusFindings(plan, root, results)
 		if len(got) != 0 {
 			t.Errorf("statusFindings(found) = %+v; want no findings", got)
-		}
-	})
-
-	// Quarry's alphabets reject a non-canonical spelling, so no fixture draws an ID that differs from its target;
-	// the answer is built by hand.
-	t.Run("CreatedMemberMatchedByParsedID", func(t *testing.T) {
-		results := []quarry.ResolveResult{{Target: "sub#Foo", ID: "sub#Spelled", Status: quarry.StatusNotFound, Unit: quarry.StatusFound}}
-		got := statusFindings(plan, root, results, map[string]int{"sub#Spelled": 1}, nil)
-		if len(got) != 0 {
-			t.Errorf("statusFindings(created by ID) = %+v; want no findings", got)
 		}
 	})
 
@@ -65,7 +55,7 @@ func TestStatusFindings(t *testing.T) {
 			t.Fatalf("Status = %q; want %q (fixture assumption broken)", results[0].Status, quarry.StatusMultipart)
 		}
 		multiPlan := &planparser.Plan{Cards: []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"sub#init"}}}}
-		got := statusFindings(multiPlan, multiRoot, results, nil, nil)
+		got := statusFindings(multiPlan, multiRoot, results)
 		if len(got) != 0 {
 			t.Errorf("statusFindings(multipart) = %+v; want no findings", got)
 		}
@@ -88,7 +78,7 @@ func TestStatusFindings(t *testing.T) {
 			t.Fatalf("Status = %q; want %q (fixture assumption broken)", results[0].Status, quarry.StatusAmbiguous)
 		}
 		ambPlan := &planparser.Plan{Cards: []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"amb#Foo"}}}}
-		got := statusFindings(ambPlan, ambRoot, results, nil, nil)
+		got := statusFindings(ambPlan, ambRoot, results)
 		if len(got) != 1 || got[0].Check != "glyph-ambiguous" {
 			t.Fatalf("statusFindings(ambiguous) = %+v; want one glyph-ambiguous finding", got)
 		}
@@ -144,7 +134,7 @@ func TestStatusFindings(t *testing.T) {
 				t.Fatalf("%s: Status = %q; want %q (fixture assumption broken)", fixture.name, results[0].Status, quarry.StatusAmbiguous)
 			}
 			for _, c := range cards {
-				got := statusFindings(&planparser.Plan{Cards: []planparser.Card{c.card}}, ambRoot, results, nil, nil)
+				got := statusFindings(&planparser.Plan{Cards: []planparser.Card{c.card}}, ambRoot, results)
 				if !fixture.wantAmbiguous {
 					if len(got) != 0 {
 						t.Errorf("statusFindings(%s, %s) = %+v; want no findings for a partitioned member", fixture.name, c.name, got)
@@ -172,7 +162,7 @@ func TestStatusFindings(t *testing.T) {
 			t.Fatalf("results[0] = %+v; want not_found with unit: found", results[0])
 		}
 		nfPlan := &planparser.Plan{Cards: []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"sub#DoesNotExist"}}}}
-		got := statusFindings(nfPlan, root, results, nil, nil)
+		got := statusFindings(nfPlan, root, results)
 		if len(got) != 1 || got[0].Check != "glyph-not-found" {
 			t.Fatalf("statusFindings(not_found, unit: found) = %+v; want one glyph-not-found finding", got)
 		}
@@ -190,7 +180,7 @@ func TestStatusFindings(t *testing.T) {
 			t.Fatalf("results[0] = %+v; want not_found with unit: not_found", results[0])
 		}
 		nfPlan := &planparser.Plan{Cards: []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"missing#Foo"}}}}
-		got := statusFindings(nfPlan, root, results, nil, nil)
+		got := statusFindings(nfPlan, root, results)
 		if len(got) != 1 || got[0].Check != "glyph-not-found" {
 			t.Fatalf("statusFindings(not_found, unit: not_found) = %+v; want one glyph-not-found finding", got)
 		}
@@ -208,7 +198,7 @@ func TestStatusFindings(t *testing.T) {
 			t.Fatalf("results[0] = %+v; want a pre-resolution rejection", results[0])
 		}
 		rejPlan := &planparser.Plan{Cards: []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"/absolute#Foo"}}}}
-		got := statusFindings(rejPlan, root, results, nil, nil)
+		got := statusFindings(rejPlan, root, results)
 		if len(got) != 1 || got[0].Check != "glyph-rejected" {
 			t.Fatalf("statusFindings(rejected) = %+v; want one glyph-rejected finding", got)
 		}
@@ -251,7 +241,7 @@ func TestStatusFindings_UnrecognizedStatusFailsClosed(t *testing.T) {
 		Targets: []string{"sub#Bar"},
 	}}}
 
-	got := statusFindings(plan, "", []quarry.ResolveResult{{Target: "sub#Bar", Status: "partially_found"}}, nil, nil)
+	got := statusFindings(plan, "", []quarry.ResolveResult{{Target: "sub#Bar", Status: "partially_found"}})
 	if len(got) != 1 || got[0].Check != "glyph-rejected" || got[0].Severity != SeverityBlocking {
 		t.Fatalf("statusFindings(unrecognized status) = %+v; want one blocking glyph-rejected finding", got)
 	}

@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -276,21 +277,76 @@ func documentSubjectWithHead(location *lymcwd.Location, head func() (string, err
 // fixerReportInput returns the review input seam of a tapestry run.
 // The seam reads the merge fixer's latest Parent-Align report under scratchDir.
 // It also returns the time the report was written.
+// It falls back to a report under the name Merge-In when the Parent-Align report is absent.
+// Older runs wrote their report under that name.
 // A session that never ran leaves no report, which answers not found.
 func fixerReportInput(scratchDir string) func() (string, time.Time, bool, error) {
-	return reviewInputFile(filepath.Join(scratchDir, loomshed.NameParentAlign+"-fixer-report.md"))
+	current := reviewInputFile(filepath.Join(scratchDir, loomshed.NameParentAlign+"-fixer-report.md"))
+	retired := reviewInputFile(filepath.Join(scratchDir, "Merge-In-fixer-report.md"))
+	return func() (string, time.Time, bool, error) {
+		path, written, found, err := current()
+		if err != nil || found {
+			return path, written, found, err
+		}
+		return retired()
+	}
+}
+
+// prFindingsPrefix and prFindingsSuffix frame the name of a send-back's findings file around the send-back's number.
+const (
+	prFindingsPrefix = "pr-findings-"
+	prFindingsSuffix = ".md"
+)
+
+// prFindingsPattern matches the name of a send-back's findings file and captures its number.
+var prFindingsPattern = regexp.MustCompile(`^` + regexp.QuoteMeta(prFindingsPrefix) + `(\d+)` + regexp.QuoteMeta(prFindingsSuffix) + `$`)
+
+// prFindingsFile returns the path of send-back n's findings file under scratchDir.
+func prFindingsFile(scratchDir string, n int) string {
+	return filepath.Join(scratchDir, prFindingsPrefix+strconv.Itoa(n)+prFindingsSuffix)
 }
 
 // reviewInputs returns the review inputs seam of a run, reading under scratchDir.
-// It answers the merge fixer's latest Parent-Align report once that file exists, so a run without one answers none.
+// It answers the merge fixer's latest Parent-Align report as a non-full input,
+// and the newest send-back findings file, the one with the highest number, as a full input.
+// It answers an input only once its file exists, so a run with neither answers none.
 func reviewInputs(scratchDir string) func() ([]shedadapters.ReviewInput, error) {
 	fixerReport := fixerReportInput(scratchDir)
 	return func() ([]shedadapters.ReviewInput, error) {
+		var inputs []shedadapters.ReviewInput
 		path, writtenAt, found, err := fixerReport()
-		if err != nil || !found {
+		if err != nil {
 			return nil, err
 		}
-		return []shedadapters.ReviewInput{{Path: path, WrittenAt: writtenAt}}, nil
+		if found {
+			inputs = append(inputs, shedadapters.ReviewInput{Path: path, WrittenAt: writtenAt})
+		}
+
+		entries, err := os.ReadDir(scratchDir)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("loom: read the review inputs under %s: %w", scratchDir, err)
+		}
+		newest := -1
+		for _, entry := range entries {
+			match := prFindingsPattern.FindStringSubmatch(entry.Name())
+			if match == nil {
+				continue
+			}
+			if n, convErr := strconv.Atoi(match[1]); convErr == nil && n > newest {
+				newest = n
+			}
+		}
+		if newest < 0 {
+			return inputs, nil
+		}
+		path, writtenAt, found, err = reviewInputFile(prFindingsFile(scratchDir, newest))()
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			inputs = append(inputs, shedadapters.ReviewInput{Path: path, WrittenAt: writtenAt, Full: true})
+		}
+		return inputs, nil
 	}
 }
 

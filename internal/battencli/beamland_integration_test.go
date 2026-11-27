@@ -157,9 +157,6 @@ func TestBeamLanding_ReachesWorktreeCreateSkip(t *testing.T) {
 		got := map[string]bool{}
 		for _, member := range members {
 			got[member.Slug] = member.HasPair
-			if member.Beam != (member.Slug == "c") {
-				t.Errorf("member %s Beam = %v; want it set for the sub-beam c alone", member.Slug, member.Beam)
-			}
 		}
 		if hasPair, listed := got["c"]; !listed || !hasPair {
 			t.Errorf("member c HasPair, listed = %v, %v; want true, true for a registered worktree", hasPair, listed)

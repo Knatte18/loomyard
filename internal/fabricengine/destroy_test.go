@@ -626,6 +626,7 @@ func TestGate_AbsentTargetIsNoOp(t *testing.T) {
 		ownedWarpCheckout(container),
 		ownedPairWarpCheckout(container, container, "main"),
 		ownedFabricHub(),
+		ownedUnderGeometryRoot(filepath.Join(container, launchersDirName)),
 		ownedFreshlyCreatedPath(createdToken{path: absent, worktree: false}),
 		ownedFreshlyCreatedWorktree(createdToken{path: absent, worktree: true}),
 		ownedWiredJunction([]string{absent}, "/somewhere"),

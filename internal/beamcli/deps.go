@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -294,7 +293,6 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 		},
 		// The budget is the prime's loom config, the hub's own, which no run profile reaches.
 		CodeReviewCaps: func() (reviewbudget.Caps, error) {
-			hubgeom.ReconcileBeforeLoad(prime)
 			cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(prime), "loom")
 			if err != nil {
 				return reviewbudget.Caps{}, err
@@ -315,7 +313,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 		// The stamp runs inside the description's own commit, after the description validated.
 		// One commit then holds both files, and a refused description stamps nothing.
 		// A repeat commit over an unchanged directory is a no-op.
-		RecordDescription: func(slug, from string, at time.Time) (string, error) {
+		RecordDescription: func(slug string, at time.Time) (string, error) {
 			beam, err := beamOf(slug)
 			if err != nil {
 				return "", err
@@ -332,17 +330,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 				_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), beam, []string{loomengine.LandingDirRel()}, fmt.Sprintf("beam: change description for %s", slug), fabricengine.EnvSyncOptions())
 				return err
 			}
-			cfg, err := landingshed.LoadConfig(fabricengine.ConfigDirs(beam), "landing")
-			if err != nil {
-				return "", err
-			}
-			record := func() error { return landingshed.RecordBeamDescription(slug, path, cfg.ForbiddenTerms(), commit) }
-			if from != "" {
-				record = func() error {
-					return landingshed.ReplaceBeamDescription(slug, from, path, cfg.ForbiddenTerms(), commit)
-				}
-			}
-			if err := record(); err != nil {
+			if err := landingshed.RecordBeamDescription(slug, path, commit); err != nil {
 				return "", err
 			}
 			return path, nil
@@ -399,13 +387,19 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			}
 			return pair.HeadSHA()
 		},
-		// The beam's own worktree's beam.yaml files apply first and its parents' after, as for a run landing the beam.
+		// The origin record names the parent pair, so the receiving branch's own beam.yaml decides, as for a run landing on it.
 		PullRequestMode: func(slug string) (string, bool, error) {
-			chain, err := hubgeom.TaskSettingChain(prime, slug)
+			_, origin, err := beamOrigin(slug)
 			if err != nil {
 				return "", false, err
 			}
-			mode, err := dobbyengine.LookupPullRequest(chain)
+			parent := prime
+			if origin.ParentWorktree != "" {
+				if parent, err = lymcwd.ResolveWorktree(fabricengine.WorktreePath(prime, origin.ParentWorktree)); err != nil {
+					return "", false, err
+				}
+			}
+			cfg, err := dobbyengine.LoadConfig(fabricengine.ConfigDirs(parent))
 			if err != nil {
 				return "", false, err
 			}
@@ -414,7 +408,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 				return "", false, err
 			}
 			required, err := parentRuleRequired(context.Background(), side.Origin, side.ParentBranch, openAPI)
-			return mode, required, err
+			return cfg.PullRequest, required, err
 		},
 		Sleep: func(ctx context.Context, d time.Duration) error {
 			timer := time.NewTimer(d)
@@ -463,11 +457,15 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			if err != nil {
 				return nil, err
 			}
-			cfg, err := landingshed.LoadConfig(fabricengine.ConfigDirs(beam), "landing")
+			findings, err := summaryparser.ValidateDescription(summaryparser.Path(loomengine.LandingDir(beam)))
 			if err != nil {
 				return nil, err
 			}
-			return descriptionFindings(summaryparser.Path(loomengine.LandingDir(beam)), cfg.ForbiddenTerms())
+			var lines []string
+			for _, finding := range findings {
+				lines = append(lines, finding.Error())
+			}
+			return lines, nil
 		},
 		// A pawl run's Finalize reads merged pull requests through this list, so ready and Finalize agree on what one lacks.
 		MergedLacks: func(slug, mergedHead string) ([]string, error) {
@@ -547,20 +545,6 @@ func beamDraftDeps(location *lymcwd.Location, slug, parentBranch string) landing
 			return commits, nil
 		},
 	}
-}
-
-// descriptionFindings lists the findings of the change description at path as their error texts, none when it is valid.
-// A missing file is a finding, and so is a line that one of forbidden matches.
-func descriptionFindings(path string, forbidden []*regexp.Regexp) ([]string, error) {
-	findings, err := summaryparser.ValidateDescription(path, forbidden)
-	if err != nil {
-		return nil, err
-	}
-	var lines []string
-	for _, finding := range findings {
-		lines = append(lines, finding.Error())
-	}
-	return lines, nil
 }
 
 // pairWorktreePresent reports whether this machine holds the worktree of slug's pair.

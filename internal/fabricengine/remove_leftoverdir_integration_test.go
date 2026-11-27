@@ -115,7 +115,7 @@ func TestRemove_FinishesWorktreeDirGitLeftOnDisk(t *testing.T) {
 			}
 			fabricengine.SetLeftoverSeamForTest(h.Topology, remove, nil)
 
-			res, err := h.Topology.Remove(l, tt.slug, false, false, "")
+			res, err := h.Topology.Remove(l, tt.slug, false, false)
 
 			rel, relErr := filepath.Rel(l.HubPath, dir)
 			if relErr != nil {
@@ -185,7 +185,7 @@ func TestRemove_FailsOnTaskWorktreeDirRefilledAfterItsRemovalThatCannotBeDeleted
 		},
 		func(time.Duration) {})
 
-	res, err := h.Topology.Remove(l, slug, false, false, "")
+	res, err := h.Topology.Remove(l, slug, false, false)
 	if !errors.Is(err, fabricengine.ErrStrayPathKept) || !errors.Is(err, fs.ErrPermission) {
 		t.Fatalf("Remove error = %v; want it to wrap ErrStrayPathKept and the delete's failure", err)
 	}

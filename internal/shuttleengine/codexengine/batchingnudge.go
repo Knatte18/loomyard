@@ -74,7 +74,7 @@ func validateBatchingNudge(nudge BatchingNudgeConfig) error {
 	}
 	for _, bound := range bounds {
 		if bound.value < bound.least {
-			return fmt.Errorf("%s is %d, below its least value %d", keyName(batchingNudgeKey+"."+bound.key), bound.value, bound.least)
+			return fmt.Errorf("codex.yaml's %s.%s is %d, below its least value %d", batchingNudgeKey, bound.key, bound.value, bound.least)
 		}
 	}
 	return nil

@@ -201,12 +201,16 @@ func IsPrimeWorktree(l *lymcwd.Location) (bool, error) {
 	return prime == l.WorktreeName, nil
 }
 
-// RecordsRepoRoot returns the path of the weft prime worktree.
-// It is the directory `git -C` targets for weft worktree add and remove.
+// RecordsRepoRoot returns the path of the records repository's prime worktree.
+// It is the directory `git -C` targets for records worktree add and remove.
+// In a one-repository hub it is the prime of the one repository.
 func RecordsRepoRoot(l *lymcwd.Location) (string, error) {
 	primeName, err := PrimeName(l)
 	if err != nil {
 		return "", err
+	}
+	if oneRepositoryAt(l.WorktreePath()) {
+		return filepath.Join(l.HubPath, primeName), nil
 	}
 	return weftname.SiblingPath(l.HubPath, primeName), nil
 }

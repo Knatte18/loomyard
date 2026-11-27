@@ -23,15 +23,14 @@ const (
 	entryGateWayForward = "way forward: write each check as <operand>, <operand> == <literal> or <operand> != <literal>, an operand being module.key or budget.<Segment>"
 )
 
-// operandPattern is the shape of an entry gate operand: a module word and a dotted path of one or more words.
-var operandPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)+$`)
+// operandPattern is the shape of an entry gate operand: two dot-separated words.
+var operandPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$`)
 
 // entryCheck is one parsed entry gate check.
 type entryCheck struct {
 	// text is the check as the recipe wrote it, trimmed.
 	text string
-	// module and key are the operand split at its first dot, so key may itself be dotted.
-	// module is budgetModule for a segment budget, and key is then the segment.
+	// module and key are the operand's two halves; module is budgetModule for a segment budget, and key is then the segment.
 	module string
 	key    string
 	// comparison is "==", "!=" or "" for a bare operand.

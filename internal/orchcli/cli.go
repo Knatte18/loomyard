@@ -145,11 +145,6 @@ type orchCLI struct {
 	injectRemoteControl func(receiver, name string) error
 	// markRemoteControl sets the RC mark on the live pane of the strand guid in this worktree's session; nil marks none.
 	markRemoteControl func(guid string) error
-	// remoteControlCheckpoint returns how far the provider's record of the orch session sessionID reaches now.
-	remoteControlCheckpoint func(sessionID string) (int64, error)
-	// awaitRemoteControl reports whether the orch session sessionID records its remote control connecting past checkpoint.
-	// It waits a bounded time for the record.
-	awaitRemoteControl func(sessionID string, checkpoint int64) (bool, error)
 }
 
 // Command returns the cobra command tree for the orch module.
@@ -277,12 +272,6 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 		return injectRemoteControlCommand(location, receiver, name)
 	}
 	c.markRemoteControl = reed.MarkRemoteControlOn
-	c.remoteControlCheckpoint = func(sessionID string) (int64, error) {
-		return c.runner.RemoteControlCheckpoint(orchEngine, sessionID)
-	}
-	c.awaitRemoteControl = func(sessionID string, checkpoint int64) (bool, error) {
-		return c.runner.AwaitRemoteControl(orchEngine, sessionID, checkpoint)
-	}
 	c.spawnWatcher = c.spawnWatcherProcess
 	c.startLockWait = stopStartLockWait
 	c.sleep = time.Sleep

@@ -452,7 +452,7 @@ func TestWatchdogDaemon(t *testing.T) {
 	// The one daemon that keeps running, never restarted and with loopDone still open, rediscovers the re-upped session.
 	// enterSession is the function the daemon's discovery loop calls for each appeared name.
 	// It must read the flipped value from disk, not the value it held before the down/up.
-	// So a watchdog:off worktree enters the known set but starts no name-repair loop.
+	// So a watchdog:off worktree enters the known set but starts no watcher.
 	t.Run("ReEntryReReadsFlippedConfig", func(t *testing.T) {
 		if _, err := eng1.Up(); err != nil {
 			t.Fatalf("eng1.Up() (prime back before the flip): %v", err)
@@ -508,13 +508,13 @@ func TestWatchdogDaemon(t *testing.T) {
 
 		// enterSession is the function the running daemon's discovery loop calls for each newly appeared name.
 		// Called here with the same hub, tmux and session identity, it shows what the daemon reads on its next discovery cycle.
-		ws, err := enterSession(h.Path, tmuxPath, offEng.SessionName(), watchdogDefaultTiming())
+		ws, err := enterSession(h.Path, tmuxPath, offEng.SessionName())
 		if err != nil {
 			t.Fatalf("enterSession (after down + flip-to-off + up): %v", err)
 		}
-		t.Cleanup(func() { stopWatchedSession(t, ws) })
-		if ws.repairsNames {
-			t.Error("enterSession() after down + flip-to-off + up started the name-repair loop; want none — re-entry must re-read the flipped config rather than the value it held before the down/up")
+		if ws.cancel != nil {
+			ws.cancel()
+			t.Error("enterSession() after down + flip-to-off + up returned a non-nil cancel; want nil — re-entry must re-read the flipped config rather than the value it held before the down/up")
 		}
 		if ws.eng == nil {
 			t.Error("enterSession() after re-entry returned a nil eng; want a built Engine so departure bookkeeping stays uniform")

@@ -44,8 +44,6 @@ type Inputs struct {
 	CodeTip string
 	// CodeTipMachine is the machine whose transition named CodeTip, for the code-tip refusal.
 	CodeTipMachine string
-	// CodeTipPairAbsent is true when no pair of the run stands on this machine, for the code-tip refusal.
-	CodeTipPairAbsent bool
 	// PastParentMerge is true when origin's fetched parent branch holds the task's work.
 	PastParentMerge bool
 }
@@ -87,13 +85,12 @@ type Verdict struct {
 	Owner        string
 	AdoptSubject string
 	// PushOwedError, PushOwedWorktree and PushOwedWayForward are copied from the inputs for the push-owed refusal.
-	// CodeTip, CodeTipMachine and CodeTipPairAbsent are copied from the inputs for the code-tip refusal.
+	// CodeTip and CodeTipMachine are copied from the inputs for the code-tip refusal.
 	PushOwedError      string
 	PushOwedWorktree   string
 	PushOwedWayForward string
 	CodeTip            string
 	CodeTipMachine     string
-	CodeTipPairAbsent  bool
 	// CancelMachine and CancelRemove are the record's cancel intent, for the cancelling refusal; Judge fills them.
 	CancelMachine string
 	CancelRemove  bool
@@ -113,7 +110,7 @@ func Act(in Inputs) Verdict {
 	verdict := Verdict{
 		Answer: AnswerWait, State: in.State, Owner: in.Owner, AdoptSubject: in.AdoptSubject,
 		PushOwedError: in.PushOwedError, PushOwedWorktree: in.PushOwedWorktree, PushOwedWayForward: in.PushOwedWayForward,
-		CodeTip: in.CodeTip, CodeTipMachine: in.CodeTipMachine, CodeTipPairAbsent: in.CodeTipPairAbsent, HoldMachine: in.HoldMachine,
+		CodeTip: in.CodeTip, CodeTipMachine: in.CodeTipMachine, HoldMachine: in.HoldMachine,
 	}
 	switch {
 	case in.PushOwed:
@@ -162,7 +159,17 @@ func (v Verdict) Refusal(slug, retry string) error {
 		reason = fmt.Sprintf("machine %s owns the run", v.Owner)
 		wayForward = fmt.Sprintf("run the same verb on %s, or run `lym adopt %s` on this machine first", v.Owner, v.AdoptSubject)
 	case ReasonCodeTip:
-		reason, wayForward = v.codeTipRefusal(slug, retry)
+		reason = "the code tip the run's last transition names is not on origin yet"
+		if v.CodeTip != "" {
+			reason = fmt.Sprintf("the code tip %s the run's last transition names is not on origin yet", v.CodeTip)
+		}
+		if v.CodeTipMachine != "" {
+			reason += fmt.Sprintf("; machine %s owes it", v.CodeTipMachine)
+			wayForward = fmt.Sprintf("run `lym fabric push` in the task worktree on machine %s, then run %s again once the code push lands",
+				v.CodeTipMachine, retry)
+		} else {
+			wayForward = fmt.Sprintf("run %s again once the code push lands", retry)
+		}
 	case ReasonHeld:
 		machine := v.HoldMachine
 		if machine == "" {
@@ -193,29 +200,6 @@ func (v Verdict) Refusal(slug, retry string) error {
 		return nil
 	}
 	return fmt.Errorf("run %q cannot act: %s; way forward: %s", slug, reason, wayForward)
-}
-
-// codeTipRefusal words the reason and the way forward of a code-tip wait.
-// With no pair of the run on this machine, the transition may come from a records branch origin has deleted.
-// This machine kept that branch's fetched ref, so the way forward fetches origin's records before any push.
-func (v Verdict) codeTipRefusal(slug, retry string) (reason, wayForward string) {
-	reason = "the code tip the run's last transition names is not on origin yet"
-	if v.CodeTip != "" {
-		reason = fmt.Sprintf("the code tip %s the run's last transition names is not on origin yet", v.CodeTip)
-	}
-	wayForward = fmt.Sprintf("run %s again once the code push lands", retry)
-	if v.CodeTipMachine != "" {
-		reason += fmt.Sprintf("; machine %s owes it", v.CodeTipMachine)
-		wayForward = fmt.Sprintf("run `lym fabric push` in the task worktree on machine %s, then run %s again once the code push lands",
-			v.CodeTipMachine, retry)
-	}
-	if !v.CodeTipPairAbsent {
-		return reason, wayForward
-	}
-	reason += fmt.Sprintf("; no pair of the run stands on this machine, so the transition may be read from a records branch origin has deleted, "+
-		"as `lym batten cancel %s --remove` does", slug)
-	fetch := fmt.Sprintf("run `lym fabric pull` in the prime, which fetches origin's records and drops the ref of a deleted records branch, then run %s again", retry)
-	return reason, fetch + "; if the refusal stays, " + wayForward
 }
 
 // terminalRefusal words the refusal of a landed or cancelled run.

@@ -63,7 +63,7 @@ func TestRemove_CommitsPendingRecordsIntoArchiveTag(t *testing.T) {
 	writeFile(t, filepath.Join(weftWorktree, filepath.FromSlash(rel)), "stopped\n")
 	warpTip := gitkit.RevParse(t, fabricengine.WorktreePath(l, slug), "HEAD")
 
-	res, err := h.Topology.Remove(l, slug, false, false, "")
+	res, err := h.Topology.Remove(l, slug, false, false)
 	if err != nil {
 		t.Fatalf("Remove error = %v", err)
 	}
@@ -107,7 +107,7 @@ func TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation(t *testing.T) {
 	writeFile(t, filepath.Join(weftWorktree, "_lym", "record.txt"), "a record\n")
 	tipBefore := gitkit.RevParse(t, weftWorktree, "HEAD")
 
-	res, err := h.Topology.Remove(l, slug, false, false, "")
+	res, err := h.Topology.Remove(l, slug, false, false)
 	if err == nil {
 		t.Fatalf("Remove(force=false) with out-of-pathspec sibling dirt = nil error; want the refusal")
 	}
@@ -130,7 +130,7 @@ func TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation(t *testing.T) {
 		t.Errorf("sibling branch tip = %s after a refused Remove; want unchanged %s", tipAfter, tipBefore)
 	}
 
-	forced, err := h.Topology.Remove(l, slug, true, false, "")
+	forced, err := h.Topology.Remove(l, slug, true, false)
 	if err != nil {
 		t.Fatalf("Remove(force=true) error = %v", err)
 	}

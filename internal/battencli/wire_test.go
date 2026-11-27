@@ -36,8 +36,7 @@ import (
 
 // TestWire_BuildsLazilyForANonexistentTaskWorktree asserts wire succeeds for a missing task worktree.
 // Every lazy seam must be an injected closure after wire returns, not an already-evaluated value.
-// The seams checked are the status-path resolver, the spawn directory, the teardown seams and the status commit seam.
-// The teardown's push and level seams are checked here because the exhaustive seam test skips them as nil-legal.
+// The seams checked are the status-path resolver, the spawn directory, both teardown halves and the status commit seam.
 // Each seam is checked separately: eager evaluation is the failure laziness exists to avoid,
 // and a check on one seam alone would let the others regress silently.
 func TestWire_BuildsLazilyForANonexistentTaskWorktree(t *testing.T) {
@@ -64,8 +63,6 @@ func TestWire_BuildsLazilyForANonexistentTaskWorktree(t *testing.T) {
 		{"SpawnDirectory", c.env.InnerRun.Spawn != nil},
 		{"TeardownShutdown", c.env.Teardown.Shutdown != nil},
 		{"TeardownRemove", c.env.Teardown.Remove != nil},
-		{"TeardownPush", c.env.Teardown.Push != nil},
-		{"TeardownLevel", c.env.Teardown.Level != nil},
 		{"ReadDecision", c.env.InnerRun.ReadDecision != nil},
 		{"DriverAlive", c.env.InnerRun.DriverAlive != nil},
 		{"DriverStrand", c.env.InnerRun.DriverStrand != nil},
@@ -90,7 +87,7 @@ func TestWire_BuildsLazilyForANonexistentTaskWorktree(t *testing.T) {
 // TestDriverAliveFrom covers driverAliveFrom's answers without tmux.
 // An absent task worktree is false without reading status, and an absent reed session is false with no error.
 // Any other status error is returned.
-// Only a live driver strand is true, under its full name or its role.
+// Only a live driver strand is true, under its full name, its role or the legacy loom-driver literal.
 func TestDriverAliveFrom(t *testing.T) {
 	tiergate.Require(t, 0)
 	boom := errors.New("boom")
@@ -115,6 +112,7 @@ func TestDriverAliveFrom(t *testing.T) {
 		{"OtherErrorReturned", true, status(reedengine.StatusResult{}, boom), false, boom},
 		{"LiveDriver", true, status(strands(reedengine.StrandStatus{Name: loomengine.LoomDriverStrandName, Live: true}), nil), true, nil},
 		{"LiveFullNameDriver", true, status(strands(reedengine.StrandStatus{Name: "ly:task:driver", Live: true}), nil), true, nil},
+		{"LiveLegacyDriver", true, status(strands(reedengine.StrandStatus{Name: loomengine.LegacyLoomDriverStrandName, Live: true}), nil), true, nil},
 		{"DeadDriver", true, status(strands(reedengine.StrandStatus{Name: loomengine.LoomDriverStrandName}), nil), false, nil},
 		{"OtherStrandLiveOnly", true, status(strands(reedengine.StrandStatus{Name: "other", Live: true}), nil), false, nil},
 		{"NoStrands", true, status(reedengine.StatusResult{}, nil), false, nil},
@@ -135,7 +133,7 @@ func TestDriverAliveFrom(t *testing.T) {
 // TestDriverStrandFrom covers driverStrandFrom's answers without tmux.
 // An absent task worktree is none without reading the directory.
 // A directory error is returned.
-// A driver row is live, retiring or dead by its flags, under its full name or its role.
+// A driver row is live, retiring or dead by its flags, under its full name, its role or the legacy loom-driver literal.
 func TestDriverStrandFrom(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -160,6 +158,7 @@ func TestDriverStrandFrom(t *testing.T) {
 		{"NoDriverRow", true, rows(reedengine.DirectoryRow{Name: "other", Live: true}), battenshed.ChildDriverNone, nil},
 		{"LiveDriver", true, rows(reedengine.DirectoryRow{Name: loomengine.LoomDriverStrandName, Live: true}), battenshed.ChildDriverLive, nil},
 		{"LiveFullNameDriver", true, rows(reedengine.DirectoryRow{Name: "ly:task:driver", Live: true}), battenshed.ChildDriverLive, nil},
+		{"LiveLegacyDriver", true, rows(reedengine.DirectoryRow{Name: loomengine.LegacyLoomDriverStrandName, Live: true}), battenshed.ChildDriverLive, nil},
 		{"RetiringDriver", true, rows(reedengine.DirectoryRow{Name: loomengine.LoomDriverStrandName, Live: true, Retiring: true}), battenshed.ChildDriverRetiring, nil},
 		{"DeadDriver", true, rows(reedengine.DirectoryRow{Name: loomengine.LoomDriverStrandName}), battenshed.ChildDriverDead, nil},
 	}

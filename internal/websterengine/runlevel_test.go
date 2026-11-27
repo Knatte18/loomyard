@@ -252,7 +252,7 @@ func roleEngineRefusalCase(name string, fresh bool, roleKey, engineQuoted string
 			return nil
 		},
 		msgContains: []string{engineQuoted},
-		wayForward:  []string{"set webster." + roleKey + " in webster.yaml", "audits forks"},
+		wayForward:  []string{"set " + roleKey + " in webster.yaml", "audits forks"},
 		check: func(t *testing.T, fx *runFixture, _ error) {
 			stateAfter, outcomeAfter, dirAfter := snapshotWebsterDir(t, fx)
 			if !bytes.Equal(stateAfter, stateBefore) {
@@ -315,7 +315,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			},
 			errIs:       shuttleengine.ErrRequirementsUnmet,
 			msgContains: []string{`engine "fake"`, "master", "lym config webster"},
-			wayForward:  []string{"set webster.master in webster.yaml", "lym config webster"},
+			wayForward:  []string{"set master in webster.yaml", "lym config webster"},
 			check: func(t *testing.T, fx *runFixture, err error) {
 				if strings.Contains(err.Error(), "transient") {
 					t.Errorf("Run() error = %q; want no transient clause on a requirements refusal", err)
@@ -533,9 +533,6 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 		},
 		deadEndRefusalCase("a dead recovery that earns no retry", &websterengine.BatchState{Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: 1},
 			"batch 01-batch1 is dead and its recovery earns no retry"),
-		deadEndRefusalCase("a dead recovery quotes its strand's last message", &websterengine.BatchState{Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: 1,
-			Digest: &websterengine.Digest{Status: websterengine.DigestStatusDead, DeadReason: websterengine.DeadReasonAsking, LastMessage: "Keep the old flag?"}},
-			"batch 01-batch1 is dead and its recovery earns no retry (its last message: Keep the old flag?)"),
 		deadEndRefusalCase("a stuck batch whose recoveries are spent", &websterengine.BatchState{Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusStuck, Recoveries: 2},
 			"batch 01-batch1 is stuck and has had its 2 recoveries"),
 		{
@@ -1662,25 +1659,6 @@ func TestRun_MasterSpawn(t *testing.T) {
 			},
 		},
 		{
-			// The parent audit and accept-audit read both after the spawn.
-			name:  "the friction note path and the records side's base are persisted",
-			cards: 1,
-			prepare: func(t *testing.T, fx *runFixture) {
-				fx.Deps.FrictionDir = t.TempDir()
-				writeWorktreeFile(t, fx.Worktree, "_lym/kept.txt", "records")
-			},
-			check: func(t *testing.T, fx *runFixture) {
-				st := loadRunState(t, fx)
-				note := filepath.Join(fx.Deps.FrictionDir, "webster-master.md")
-				if st.MasterNotePath != note || !strings.Contains(fx.Starter.startCalls[0].Prompt, note) {
-					t.Errorf("State.MasterNotePath = %q; want %q, the note the prompt names", st.MasterNotePath, note)
-				}
-				if st.MasterRecordsBase != fx.Git.head {
-					t.Errorf("State.MasterRecordsBase = %q; want the records side's HEAD %q", st.MasterRecordsBase, fx.Git.head)
-				}
-			},
-		},
-		{
 			// The partition is formed once by the active batchifier and recorded before the spawn.
 			name:  "a first init under a grouping batcher records the partition with each batch's profile and estimate",
 			cards: 2,
@@ -2009,25 +1987,6 @@ func TestRun_DoneOutcome(t *testing.T) {
 				}
 				if result.SummaryTitle != "Shipped" {
 					t.Errorf("RunResult.SummaryTitle = %q; want %q", result.SummaryTitle, "Shipped")
-				}
-			},
-		},
-		{
-			name:    "Master's write to the friction note its prompt names leaves the run done",
-			cards:   1,
-			session: "master-session-note",
-			prepare: func(t *testing.T, fx *runFixture) { fx.Deps.FrictionDir = t.TempDir() },
-			state: &websterengine.State{State: runplan.State{Batches: map[int]*websterengine.BatchState{
-				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
-			}}},
-			audit: func(fx *runFixture) shuttleengine.ForkAudit {
-				note := filepath.Join(fx.Deps.FrictionDir, "webster-master.md")
-				return shuttleengine.ForkAudit{ParentWrites: []string{note}, Forks: forkReports(1)}
-			},
-			batchesDone: 1,
-			check: func(t *testing.T, fx *runFixture, result websterengine.RunResult) {
-				if result.Outcome != "done" || warningsContain(result.Warnings, "parent-write") {
-					t.Errorf("RunResult = outcome %q, warnings %v; want done with no parent-write finding", result.Outcome, result.Warnings)
 				}
 			},
 		},

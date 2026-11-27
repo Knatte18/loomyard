@@ -28,7 +28,7 @@ func OriginParentHoldsTaskWork(l, pairLocation *lymcwd.Location, slug string) (b
 // OriginRunStatus reads the child run record of slug from the tree of its records branch's remote-tracking ref.
 // It serves a machine that holds no pair for the run.
 // found is false when the ref or the record is absent.
-// The record is read under the anchor the branch records, from the slug's run directory.
+// The record is read under the anchor the branch records, from the slug's run directory or the legacy `self` directory.
 func OriginRunStatus(prime *lymcwd.Location, slug string) (status shedengine.Status, found bool, err error) {
 	cfg, err := LoadConfig(ConfigDirs(prime))
 	if err != nil {
@@ -40,7 +40,7 @@ func OriginRunStatus(prime *lymcwd.Location, slug string) (status shedengine.Sta
 	}
 	repo := gitrepo.New(recordsRoot)
 	for _, name := range pairBranchNames(cfg, slug) {
-		tip, err := repo.RefSHA(originRefPrefix + RecordsBranchName(name))
+		tip, err := repo.RefSHA(originRefPrefix + recordsBranchIn(prime, name))
 		if errors.Is(err, gitrepo.ErrRefNotFound) {
 			continue
 		}
@@ -62,23 +62,26 @@ func originStatusAtTip(prime *lymcwd.Location, recordsRoot, tip, slug string) (s
 	if err != nil {
 		return shedengine.Status{}, false, err
 	}
-	_, statusRel, err := shedrun.TreeRunFileRels(slug)
-	if err != nil {
-		return shedengine.Status{}, false, err
+	for _, runID := range []string{slug, shedrun.SelfRunID} {
+		_, statusRel, err := shedrun.TreeRunFileRels(runID)
+		if err != nil {
+			return shedengine.Status{}, false, err
+		}
+		statusPath := path.Join(filepath.ToSlash(anchor), statusRel)
+		data, err := showFile(recordsRoot, tip, statusPath)
+		if err != nil {
+			return shedengine.Status{}, false, fmt.Errorf("read %s at %s in %s: %w", statusPath, tip, recordsRoot, err)
+		}
+		if data == nil {
+			continue
+		}
+		status, err := shedengine.ParseStatusTolerant(data)
+		if err != nil {
+			return shedengine.Status{}, false, fmt.Errorf("parse %s at %s in %s: %w", statusPath, tip, recordsRoot, err)
+		}
+		return status, true, nil
 	}
-	statusPath := path.Join(filepath.ToSlash(anchor), statusRel)
-	data, err := showFile(recordsRoot, tip, statusPath)
-	if err != nil {
-		return shedengine.Status{}, false, fmt.Errorf("read %s at %s in %s: %w", statusPath, tip, recordsRoot, err)
-	}
-	if data == nil {
-		return shedengine.Status{}, false, nil
-	}
-	status, err := shedengine.ParseStatusTolerant(data)
-	if err != nil {
-		return shedengine.Status{}, false, fmt.Errorf("parse %s at %s in %s: %w", statusPath, tip, recordsRoot, err)
-	}
-	return status, true, nil
+	return shedengine.Status{}, false, nil
 }
 
 // CodeTipReading is what OriginCodeTip read of a run's code tip.
@@ -108,7 +111,7 @@ func OriginCodeTip(prime *lymcwd.Location, slug string) (CodeTipReading, error) 
 		return CodeTipReading{}, fmt.Errorf("resolve the records repository: %w", err)
 	}
 	for _, name := range pairBranchNames(cfg, slug) {
-		recordsTip, err := gitrepo.New(recordsRoot).RefSHA(originRefPrefix + RecordsBranchName(name))
+		recordsTip, err := gitrepo.New(recordsRoot).RefSHA(originRefPrefix + recordsBranchIn(prime, name))
 		if errors.Is(err, gitrepo.ErrRefNotFound) {
 			continue
 		}

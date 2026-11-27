@@ -139,13 +139,7 @@ coexist with merge_in_progress being false here.
 status also reports failed_pushes: every push origin refused that this machine
 still holds a record of, hub-wide, each with its repository side, branch, class,
 last error, first and last seen, count and the way forward for its class.
-An empty list means no push is outstanding.
-
-status also reports pending_teardowns: every remote teardown, hub-wide, whose
-detached child ended before its job did, such as one killed outright, or whose
-remote step failed. Either can leave the pair's branches on origin. Each names
-what finishes it: the push of an archive tag this machine alone holds, where
-one is owed, and then the re-run.`,
+An empty list means no push is outstanding.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -166,16 +160,10 @@ one is owed, and then the re-run.`,
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			pendingTeardowns, err := fabricengine.PendingTeardowns(l.HubPath)
-			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-				return nil
-			}
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
 				"changes":           changeEntriesMap(entries),
 				"merge_in_progress": inProgress,
 				"failed_pushes":     failedPushes,
-				"pending_teardowns": pendingTeardowns,
 			}))
 			return nil
 		},
@@ -202,7 +190,7 @@ under it in a commit request is refused, not silently dropped.
 
 A commit that would add a secret file is refused before anything is staged: a
 new file matching a pattern lym ships (such as .env or *.pem) or one the
-hub's fabric.secret_paths adds. The error names each file and its pattern.
+fabric config's secret_paths adds. The error names each file and its pattern.
 
 Related commands:
   lym fabric push   — commit then push in the same process

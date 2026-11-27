@@ -22,17 +22,22 @@ func TestResolveRunID(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
-		name string
-		id   string
-		want string
+		name      string
+		legacyDir bool
+		id        string
+		want      string
 	}{
-		{"self resolves to the worktree name", SelfRunID, worktreeName},
-		{"another id resolves to itself", "other", "other"},
+		{"self resolves to the worktree name", false, SelfRunID, worktreeName},
+		{"another id resolves to itself", false, "other", "other"},
+		{"a legacy self dir still answers the slug", true, SelfRunID, worktreeName},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			l := syntheticLocation(t)
+			if tt.legacyDir {
+				mkShedDir(t, l, SelfRunID)
+			}
 			if got := ResolveRunID(l, tt.id); got != tt.want {
 				t.Errorf("ResolveRunID(%q) = %q; want %q", tt.id, got, tt.want)
 			}
@@ -40,8 +45,7 @@ func TestResolveRunID(t *testing.T) {
 	}
 }
 
-// TestRunDirResolution pins which directory a run-id addresses.
-// It is the slug dir for self and the slug, whatever a stale self dir holds, and an unrelated id's own dir.
+// TestRunDirResolution pins which directory a run-id addresses: the slug dir for a new run, the legacy self dir while only it exists, the slug dir once both exist, and an unrelated id's own dir.
 func TestRunDirResolution(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -51,10 +55,13 @@ func TestRunDirResolution(t *testing.T) {
 		existing []string
 		ids      []string
 		wantSeg  string
+		// wantScratchSelfSeg, when set, is the .lym/shed segment ScratchDir(self) must resolve to.
+		wantScratchSelfSeg string
 	}{
-		{"a new run is addressed by self or slug at the slug dir", nil, []string{SelfRunID, worktreeName}, worktreeName},
-		{"a stale self dir does not redirect self or the slug", []string{SelfRunID}, []string{SelfRunID, worktreeName}, worktreeName},
-		{"another run-id is unaffected by a stale self dir", []string{SelfRunID}, []string{"other"}, "other"},
+		{"a new run is addressed by self or slug at the slug dir", nil, []string{SelfRunID, worktreeName}, worktreeName, ""},
+		{"a legacy self dir is the fallback while only it exists", []string{SelfRunID}, []string{SelfRunID, worktreeName}, SelfRunID, SelfRunID},
+		{"the slug dir wins over the legacy one", []string{SelfRunID, worktreeName}, []string{SelfRunID}, worktreeName, ""},
+		{"another run-id is unaffected by a legacy dir", []string{SelfRunID}, []string{"other"}, "other", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -70,6 +77,12 @@ func TestRunDirResolution(t *testing.T) {
 				}
 				if got := filepath.Join(l.AnchorPath(), RunDirRel(l, id)); got != RunDir(l, id) {
 					t.Errorf("anchor joined with RunDirRel(%q) = %q; want RunDir %q", id, got, RunDir(l, id))
+				}
+			}
+			if tt.wantScratchSelfSeg != "" {
+				wantScratch := filepath.Join(l.AnchorPath(), ".lym", "shed", tt.wantScratchSelfSeg)
+				if got := ScratchDir(l, SelfRunID); got != wantScratch {
+					t.Errorf("ScratchDir(self) = %q; want %q", got, wantScratch)
 				}
 			}
 		})

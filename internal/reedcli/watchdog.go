@@ -196,16 +196,14 @@ func sessionsAreIdle(names []string, err error) bool {
 
 // watchedSession is one worktree session the daemon has entered.
 // It holds the *reedengine.Engine built for the session.
-// Its cancel stops every goroutine running on its behalf: the OOM watch, and the name-repair loop when there is one.
-// cancel returns at once, while a goroutine may still be inside a read that writes under the worktree;
-// running counts those goroutines down to zero as each returns.
+// Its cancel stops the name-repair goroutine running on its behalf, if any.
 //
-// repairsNames is false for a `watchdog: off` worktree, which runs no name-repair loop but still has its OOM watch.
+// cancel is nil for a `watchdog: off` worktree.
+// enterSession starts no goroutine for such a worktree, but the entry is still kept:
+// departure bookkeeping in runWatchdogLoop stays uniform across enabled and disabled worktrees.
 type watchedSession struct {
-	eng          *reedengine.Engine
-	cancel       context.CancelFunc
-	running      *sync.WaitGroup
-	repairsNames bool
+	eng    *reedengine.Engine
+	cancel context.CancelFunc
 }
 
 // planSessionDiff compares one discovery cycle's live session names against the daemon's known set.
@@ -317,14 +315,13 @@ func resolveWatchedSession(hub, sessionName string) (*lymcwd.Location, error) {
 	return lymcwd.ResolveWorktree(worktreeRoot)
 }
 
-// enterSession builds the watchedSession entry for a newly-appeared live tmux session name.
-// It starts the session's OOM watch, paced by timing.
-// It also starts the name-repair goroutine, unless the worktree's own config says watchdog: off.
+// enterSession builds the watchedSession entry for a newly-appeared live tmux session name,
+// starting its name-repair goroutine unless the worktree's own config says watchdog: off.
 //
 // The config loads leniently on purpose: a worktree with no _lym still resolves the embedded template.
 // The daemon therefore watches that worktree instead of refusing it.
 //
-// A watchdog: off worktree still gets an entry and its OOM watch, which only reads, but no name-repair goroutine.
+// A watchdog: off worktree still gets an entry, with a nil cancel and no goroutine started at all.
 // The entry keeps the session known and keeps departure bookkeeping uniform across enabled and disabled worktrees.
 //
 // The engine drives tmuxPath, the binary the daemon was told, whatever the worktree's own config names.
@@ -332,7 +329,7 @@ func resolveWatchedSession(hub, sessionName string) (*lymcwd.Location, error) {
 // That binary is the tmux value of the worktree whose spawn started the daemon.
 // The watchers ignore every other worktree's tmux value, including a debugging wrapper.
 // Nothing compares the two, since a config value and a resolved path to one binary differ as text.
-func enterSession(hub, tmuxPath, sessionName string, timing watchdogTiming) (watchedSession, error) {
+func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 	location, err := resolveWatchedSession(hub, sessionName)
 	if err != nil {
 		return watchedSession{}, err
@@ -350,26 +347,21 @@ func enterSession(hub, tmuxPath, sessionName string, timing watchdogTiming) (wat
 	cfg.Tmux = tmuxPath
 	eng := reedengine.New(cfg, geom, shuttleengines.EnvScrub())
 
-	ctx, cancel := context.WithCancel(context.Background())
-	running := &sync.WaitGroup{}
-	running.Go(func() {
-		watchPaneOOMKills(ctx, hub, sessionName, engineOOMBoundaries(eng, location), timing)
-	})
-
 	// A worktree reaches the daemon's discovery loop only after "lym reed up" already booted it,
 	// and that boot already validated cfg.Watchdog loudly (ensureServerAndSessionLocked), so the
 	// only value this needs to recognize here is the "off" spelling itself — every other value,
 	// valid or not, behaves as enabled, failing safe toward watching for a value it cannot parse.
 	if strings.EqualFold(strings.TrimSpace(cfg.Watchdog), "off") {
-		return watchedSession{eng: eng, cancel: cancel, running: running}, nil
+		return watchedSession{eng: eng}, nil
 	}
 
-	running.Go(func() {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
 		if err := eng.WatchNames(ctx, shuttleengines.SessionNamers(dirs)); err != nil {
 			logger.Debug("reed: watchdog's name repair loop returned", "session", sessionName, "err", err)
 		}
-	})
-	return watchedSession{eng: eng, cancel: cancel, running: running, repairsNames: true}, nil
+	}()
+	return watchedSession{eng: eng, cancel: cancel}, nil
 }
 
 // dispatchReap starts the one off-loop goroutine that reaps sessionName, registering it with wg and
@@ -444,12 +436,6 @@ func dispatchReap(wg *sync.WaitGroup, done chan<- string, hub, tmuxPath, shellPa
 //     That exclusion is load-bearing: a session under reap that tmux still lists would otherwise read as appeared,
 //     and the daemon would start watching a session it is killing.
 //
-// Entering a session also starts its OOM watch.
-// The watch posts a notice to the worktree's parent orch for each new OOM kill in a strand pane.
-// The `watchdog: off` value does not stop the watch, which only reads.
-// The watch runs in its own goroutine, never in a cycle.
-// Reading the strands waits on the worktree's reed operation lock, so one long operation must not stall discovery.
-//
 // A cycle whose listing is affirmative resets the idle count, even when every session in it was reaped:
 // the hub socket did answer with sessions.
 // A hub that goes quiet later is seen by the following cycles through the normal idle path.
@@ -479,7 +465,9 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timin
 	var wg sync.WaitGroup
 	defer func() {
 		for name, ws := range known {
-			ws.cancel()
+			if ws.cancel != nil {
+				ws.cancel()
+			}
 			logger.Debug("reed: watchdog stopped watching session on daemon exit", "hub", hub, "session", name)
 		}
 		// The daemon never returns mid-reap and never force-kills its own reaper:
@@ -593,7 +581,9 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timin
 		for _, name := range reap {
 			// Cancelling the entry first stops a goroutine from polling a session the daemon is killing.
 			if ws, ok := known[name]; ok {
-				ws.cancel()
+				if ws.cancel != nil {
+					ws.cancel()
+				}
 				delete(known, name)
 			}
 			inFlight[name] = true
@@ -603,7 +593,7 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timin
 
 		appeared, departed := planSessionDiff(remaining, known)
 		for _, name := range appeared {
-			ws, err := enterSession(hub, tmuxPath, name, timing)
+			ws, err := enterSession(hub, tmuxPath, name)
 			if err != nil {
 				// A name that does not resolve to a worktree is skipped.
 				// It is retried only when it next re-appears in the live set, since an immediate retry would fail the same way.
@@ -618,7 +608,9 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timin
 			if !ok {
 				continue
 			}
-			ws.cancel()
+			if ws.cancel != nil {
+				ws.cancel()
+			}
 			delete(known, name)
 			logger.Debug("reed: watchdog session departed", "hub", hub, "session", name)
 		}

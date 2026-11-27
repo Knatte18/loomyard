@@ -26,8 +26,6 @@ type guardInputs struct {
 	denyPython bool
 	// denyPublish follows the `DenyPublish` field of the launch spec.
 	denyPublish bool
-	// allowRawTmux follows the `AllowRawTmux` field of the launch spec; it leaves out the tmux and script row.
-	allowRawTmux bool
 }
 
 // pythonAllowedCheck returns the command the python row's hook runs on a matching call.
@@ -47,7 +45,6 @@ var switchInstalled = map[shellguard.Switch]func(guardInputs) bool{
 	shellguard.SwitchNone:        func(guardInputs) bool { return true },
 	shellguard.SwitchDenyPython:  func(guardInputs) bool { return true },
 	shellguard.SwitchDenyPublish: func(in guardInputs) bool { return in.denyPublish },
-	shellguard.SwitchDenyRawTmux: func(in guardInputs) bool { return !in.allowRawTmux },
 }
 
 // switchAnnounced maps each shellguard.Switch to whether a launch with the given inputs announces its rows.
@@ -57,7 +54,6 @@ var switchAnnounced = map[shellguard.Switch]func(guardInputs) bool{
 	shellguard.SwitchNone:        func(guardInputs) bool { return true },
 	shellguard.SwitchDenyPython:  func(in guardInputs) bool { return in.denyPython },
 	shellguard.SwitchDenyPublish: func(in guardInputs) bool { return in.denyPublish },
-	shellguard.SwitchDenyRawTmux: func(in guardInputs) bool { return !in.allowRawTmux },
 }
 
 // switchLiveCheck maps a shellguard.Switch whose hook decides on each matching call to the command it asks.

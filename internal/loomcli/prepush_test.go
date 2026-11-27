@@ -13,6 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -387,14 +389,23 @@ func stoppingPrePushCheck() prePushCheck {
 	}
 }
 
-// TestPrePushCheckWiredIntoDeps asserts the PR-Review row runs behind its check:
-// a stopping check stops PushTask with its error, and it does not reach git.
+// TestPrePushCheckWiredIntoDeps asserts the status deps and the PR-Review row run behind their check:
+// a stopping check stops Commit, Push and PushTask with its error;
+// none of them reaches git.
 func TestPrePushCheckWiredIntoDeps(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	location := &lymcwd.Location{RepoName: "repo", HubPath: t.TempDir(), WorktreeName: "task", AnchorRel: "."}
 
-	pullRequest := pullRequestDepsGuardedBy(stoppingPrePushCheck(), location, "main", false)
+	statusDeps := commitStatusDepsGuardedBy(stoppingPrePushCheck(), location, shedrun.SelfRunID)
+	if _, err := statusDeps.Commit("message"); !errors.Is(err, errPushStopped) {
+		t.Errorf("Commit() error = %v; want it to wrap errPushStopped", err)
+	}
+	if err := statusDeps.Push(); !errors.Is(err, errPushStopped) {
+		t.Errorf("Push() error = %v; want it to wrap errPushStopped", err)
+	}
+
+	pullRequest := pullRequestDepsGuardedBy(stoppingPrePushCheck(), location, "main", false, &shuttleengine.Runner{})
 	if err := pullRequest.PushTask(); !errors.Is(err, errPushStopped) {
 		t.Errorf("PushTask() error = %v; want it to wrap errPushStopped", err)
 	}

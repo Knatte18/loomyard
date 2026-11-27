@@ -67,8 +67,8 @@ func ValidateBatchingNudge(cfg Config) error {
 	}
 	for _, bound := range bounds {
 		if bound.value < bound.least {
-			return fmt.Errorf("claudeengine: %s is %d, below its least value %d; way forward: lym config claude --set %s.%s=<n>",
-				keyName(batchingNudgeKey+"."+bound.key), bound.value, bound.least, batchingNudgeKey, bound.key)
+			return fmt.Errorf("claudeengine: claude.yaml's %s.%s is %d, below its least value %d; way forward: lym config claude --set %s.%s=<n>",
+				batchingNudgeKey, bound.key, bound.value, bound.least, batchingNudgeKey, bound.key)
 		}
 	}
 	return nil

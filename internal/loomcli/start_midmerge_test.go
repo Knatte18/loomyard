@@ -153,6 +153,7 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 		{name: "own leftover at a row other than Parent-Align or Finalize", driver: shedrun.DriverLLM, state: ownLeftoverState, want: []string{"a.go"}, wantIn: fabricMsg, producer: loomshed.NamePlanBouncer, parentErr: errors.New("origin record unreadable")},
 		{name: "parked merge verb at Parent-Align", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: "merge", Source: "main", Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: fabricMsg, producer: loomshed.NameParentAlign, parentErr: errors.New("origin record unreadable")},
 		{name: "merge-in of another source at Parent-Align", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: fabricengine.MergeVerbMergeIn, Source: "other", Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: fabricMsg, producer: loomshed.NameParentAlign},
+		{name: "unsettled merge-in of another source at Parent-Align names only the abort", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeRecordsUnsettled, Verb: fabricengine.MergeVerbMergeIn, Source: "other", Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: []string{"lym fabric merge --abort", "a session lym refuses the verb from reports status: FAILED and the orch runs it"}, wantNotIn: []string{"merge --continue", "merge-stage"}, producer: loomshed.NameParentAlign},
 		{name: "foreign state at Finalize", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeForeign, Conflicts: []string{"x"}}, want: []string{"x"}, wantIn: []string{"git"}, wantNotIn: []string{"merge-stage"}, producer: loomshed.NameFinalize, parentErr: errors.New("origin record unreadable")},
 		{name: "own leftover under an undecodable status file", driver: shedrun.DriverLLM, state: ownLeftoverState, want: []string{"a.go"}, wantIn: fabricMsg, statusBody: malformedStatusBody, parentErr: errors.New("origin record unreadable")},
 	}
@@ -341,6 +342,7 @@ func TestRunDriverSpawnAndWait_MidMerge_CleanPairProceeds(t *testing.T) {
 		{name: "clean pair with a malformed status file", state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}, statusBody: malformedStatusBody},
 		{name: "own leftover at Parent-Align on a halted run", state: ownLeftoverState, runState: shedengine.StateBlocked, producer: loomshed.NameParentAlign},
 		{name: "own leftover at Finalize on a running run with a dead driver", state: ownLeftoverState, runState: shedengine.StateRunning, producer: loomshed.NameFinalize},
+		{name: "own unsettled leftover at Finalize on a running run with a dead driver", state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeRecordsUnsettled, Verb: fabricengine.MergeVerbMergeIn, Source: "main", Conflicts: []string{"a.go"}}, runState: shedengine.StateRunning, producer: loomshed.NameFinalize},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -109,9 +109,6 @@ func TestStop_RecordsTheStopBeforeRemovingTheStrand(t *testing.T) {
 				if record.Outcome != tt.wantOutcome {
 					t.Errorf("recorded outcome = %q; want %q", record.Outcome, tt.wantOutcome)
 				}
-				if record.Interrupted {
-					t.Errorf("recorded Interrupted = true; want false for a stop on purpose")
-				}
 				if removed := len(fake.RemoveStrandCalls) > 0; removed != tt.wantRemoved {
 					t.Errorf("strand removed = %v; want %v", removed, tt.wantRemoved)
 				}
@@ -186,7 +183,7 @@ func TestStopStrand_UnrecordableStopRemovesNothing(t *testing.T) {
 				t.Fatalf("read run.json: %v", err)
 			}
 
-			if err := fx.Runner.stopRecorded(runDir, "strand-1", false); err == nil {
+			if err := fx.Runner.stopRecorded(runDir, "strand-1"); err == nil {
 				t.Fatal("stopRecorded() error = nil; want the record failure")
 			}
 
@@ -343,9 +340,6 @@ func TestRunner_StopStepRuns_StopsOnlyTheStepsRuns(t *testing.T) {
 		if record.Outcome != wantOutcome {
 			t.Errorf("%s run outcome = %q; want %q", name, record.Outcome, wantOutcome)
 		}
-		if wantInterrupted := wantOutcome == runOutcomeStopped; record.Interrupted != wantInterrupted {
-			t.Errorf("%s run interrupted = %v; want %v, since a step stop records every stop it makes as interrupted", name, record.Interrupted, wantInterrupted)
-		}
 	}
 
 	seed("run-7", RunState{StrandGUID: "guid-failing", Outcome: runOutcomeRunning, Step: &tie})
@@ -467,9 +461,6 @@ func TestRunner_StopOrphanedStepRuns_StopsOnlyRunsWhoseWaiterIsGone(t *testing.T
 		}
 		if record.Outcome != wantOutcome {
 			t.Errorf("%s run outcome = %q; want %q", name, record.Outcome, wantOutcome)
-		}
-		if wantInterrupted := wantOutcome == runOutcomeStopped; record.Interrupted != wantInterrupted {
-			t.Errorf("%s run interrupted = %v; want %v, since an orphaned step's stop is recorded as interrupted", name, record.Interrupted, wantInterrupted)
 		}
 	}
 }

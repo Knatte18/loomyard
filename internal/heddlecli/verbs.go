@@ -105,7 +105,7 @@ func (c *heddleCLI) requireOverrideOn() error {
 		return fmt.Errorf("heddle: %w", err)
 	}
 	if !cfg.LymOverride {
-		return fmt.Errorf("heddle: the hub's heddle.yaml leaves %s off, so renders would ignore the override; way forward: run `lym config heddle --set %s=true`, then this verb again", configengine.KeyName(heddleengine.ConfigSpec().Name, heddleengine.LymOverrideKey), heddleengine.LymOverrideKey)
+		return fmt.Errorf("heddle: the hub's heddle.yaml leaves %s off, so renders would ignore the override; way forward: run `lym config heddle --set %s=true`, then this verb again", heddleengine.LymOverrideKey, heddleengine.LymOverrideKey)
 	}
 	return nil
 }
@@ -218,7 +218,7 @@ slug lym ships is refused: shipped entries change only with a lym release.
   --targets <a,b>      the targets the entry is delivered to
   --layer lym          override the text of the shipped entry with the given
                        slug instead; it takes --text-file alone, and only a hub
-                       that sets ` + lymOverrideName() + ` takes it
+                       whose heddle.yaml sets lym_override takes it
   --no-render          skip the render into the hub's worktrees
 
 ` + fileTargetHelp() + `
@@ -283,7 +283,7 @@ Examples:
 
 // setOverride stores the text of textFile as the hub's override of the shipped entry slug.
 // With render set it then renders the hub's worktrees as every write does.
-// It refuses --order and --targets, a missing --text-file, and a hub that leaves heddle.lym_override off.
+// It refuses --order and --targets, a missing --text-file, and a hub whose heddle.yaml leaves lym_override off.
 // A refusal saves nothing.
 func (c *heddleCLI) setOverride(cmd *cobra.Command, slug, textFile string, render bool) error {
 	if cmd.Flags().Changed("order") || cmd.Flags().Changed("targets") {
@@ -317,7 +317,7 @@ failed and render_warnings, and lets the board's detached Bolt sync commit and p
 HEDDLE.md. --no-render skips the render into the worktrees.
 A slug lym ships is refused unless the repository holds an entry under it.
 With --layer lym it removes the hub's override of
-the shipped entry instead, whatever ` + lymOverrideName() + ` holds.
+the shipped entry instead, whatever heddle.yaml's lym_override holds.
 
 Examples:
   lym heddle remove house-rules

@@ -1517,8 +1517,6 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 		stopFirst bool
 		// presence sets the machine's presence to slack, so the pointer the launch carries ends with the presence line.
 		presence bool
-		// autonomous sets the autonomy seam to on; without it the paths carry no seam, which reads off.
-		autonomous bool
 		// carried is the count of operator instructions the starter reports a launch carried over.
 		carried int
 		// wantWarning is the warning the start adds beside the starter's own.
@@ -1565,15 +1563,6 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 			name: "presence slack: a launch from the last note carries the presence line", note: true, presence: true,
 			wantStarts: 1, wantSource: orchengine.SourceLastHandoff, wantSaved: "minted-id",
 		},
-		{
-			name: "autonomy on: a recorded id is resumed with the reload pointer and the on line", strands: corpse, recorded: recordedTestSessionID, autonomous: true,
-			wantStarts: 1, wantResumeID: recordedTestSessionID, wantSource: orchengine.SourceResume, wantSaved: recordedTestSessionID, wantSessionID: recordedTestSessionID,
-		},
-		{
-			name: "autonomy on: a launch from the last note carries the on line", note: true, autonomous: true,
-			wantStarts: 1, wantSource: orchengine.SourceLastHandoff, wantSaved: "minted-id",
-		},
-		{name: "autonomy on: a fresh launch carries the on line", autonomous: true, wantStarts: 1, wantSource: orchengine.SourceFresh, wantSaved: "minted-id"},
 		{name: "no id recorded and a last note launches from the note", note: true, wantStarts: 1, wantSource: orchengine.SourceLastHandoff, wantSaved: "minted-id"},
 		{name: "no id recorded and no note launches the start stencil", wantStarts: 1, wantSource: orchengine.SourceFresh, wantSaved: "minted-id"},
 		{name: "a launch naming no id records none", noSessionID: true, wantStarts: 1, wantSource: orchengine.SourceFresh, wantSaved: ""},
@@ -1594,9 +1583,6 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 				h.starter.sessionID = ""
 			}
 			h.cli.cfg.PermissionMode = "bypass"
-			if c.autonomous {
-				h.cli.paths.Autonomy = func() bool { return true }
-			}
 			if c.presence {
 				h.cli.paths.SlackPresencePath = filepath.Join(t.TempDir(), "presence.json")
 				if _, err := slackengine.WritePresence(h.cli.paths.SlackPresencePath, slackengine.PresenceSlack, time.Now()); err != nil {
@@ -1653,7 +1639,7 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 					t.Fatal(err)
 				}
 				wantPrompt := orchengine.WithPresence(h.cli.paths, reload)
-				if !strings.HasPrefix(launched.Prompt, wantPrompt) || (c.presence && wantPrompt == reload) {
+				if launched.Prompt != wantPrompt || (c.presence && wantPrompt == reload) {
 					t.Errorf("prompt = %q; want the reload pointer %q, with the presence line when presence is slack", launched.Prompt, wantPrompt)
 				}
 			case orchengine.SourceLastHandoff:
@@ -1670,18 +1656,9 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if !strings.HasPrefix(launched.Prompt, wantPrompt) || launched.ResumeSessionID != "" {
+				if launched.Prompt != wantPrompt || launched.ResumeSessionID != "" {
 					t.Errorf("fresh spec = %+v; want the start stencil %q and no resume id", launched, wantPrompt)
 				}
-			}
-			// The literal fragments of the autonomy line the pointer ends with, one per value.
-			const onFragment, offFragment = "Autonomy is on: settle every halt yourself", "Autonomy is off."
-			wantFragment, otherFragment := offFragment, onFragment
-			if c.autonomous {
-				wantFragment, otherFragment = onFragment, offFragment
-			}
-			if !strings.Contains(launched.Prompt, wantFragment) || strings.Contains(launched.Prompt, otherFragment) {
-				t.Errorf("prompt = %q; want it to hold %q and not %q", launched.Prompt, wantFragment, otherFragment)
 			}
 			wantNote := "/keep/me.md"
 			if c.note {

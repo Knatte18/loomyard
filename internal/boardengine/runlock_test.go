@@ -66,6 +66,7 @@ func TestRunLock(t *testing.T) {
 		{name: "upsert kind", refused: true, act: upsertLocked(map[string]any{"kind": "note"})},
 		{name: "upsert recipe", refused: true, act: upsertLocked(map[string]any{"recipe": "other-recipe"})},
 		{name: "upsert priority on a held note", refused: true, locked: map[string]any{"kind": "note"}, act: upsertLocked(map[string]any{"priority": "high"})},
+		{name: "upsert pull_request", refused: true, act: upsertLocked(map[string]any{"pull_request": "on"})},
 		{name: "upsert depends_on", refused: true, extra: []map[string]any{other}, act: upsertLocked(map[string]any{"depends_on": []string{"other"}})},
 		{name: "upsert status and body", refused: true, act: upsertLocked(map[string]any{"status": "done", "body": "new"})},
 		{name: "status blocked", refused: true, locked: map[string]any{"status": "blocked · X"}, act: upsertLocked(map[string]any{"body": "new"})},
@@ -112,7 +113,7 @@ func TestRunLock(t *testing.T) {
 		{name: "status-only upsert", act: upsertLocked(map[string]any{"status": "done"})},
 		{name: "run settings change", act: upsertLocked(map[string]any{"run_settings": map[string]any{"loom": map[string]any{"review_max_bounces": 2}}})},
 		{name: "profile change", act: upsertLocked(map[string]any{"profile": "light"})},
-		{name: "beam run settings change", act: upsertLocked(map[string]any{"run_settings": map[string]any{"beam": map[string]any{"pull_request": "review", "land_notice": "on"}}})},
+		{name: "notify_on_land change", act: upsertLocked(map[string]any{"notify_on_land": true})},
 		{name: "upsert naming the held entry's own effective owner", primeOwner: "box", unchanged: true, act: upsertLocked(map[string]any{"owner_machine": "box"})},
 		{name: "normal priority on an entry without one", act: upsertLocked(map[string]any{"priority": "normal"})},
 		{name: "batch whose only item on it is status-only", extra: []map[string]any{other}, act: func(b *boardengine.Board) error {

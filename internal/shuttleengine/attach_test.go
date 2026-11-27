@@ -203,12 +203,13 @@ func TestAttach_OutcomeDisposition(t *testing.T) {
 		relaunching bool
 	}{
 		{"terminal_done", "done", true, false, nil, false},
+		{"legacy_asking_attaches", "asking", true, true, nil, false},
 		{"terminal_died", "died", true, false, nil, false},
 		{"terminal_timeout", "timeout", true, false, nil, false},
 		{"terminal_stopped_is_respawn_eligible_on_a_live_strand", runOutcomeStopped, true, false, nil, false},
 		{"running_attaches", runOutcomeRunning, true, true, nil, false},
 		{"relaunching_attaches_over_a_held_paneless_strand", runOutcomeRunning, true, true, &reedengine.StrandStatus{GUID: "strand-1", Held: true}, true},
-		{"omitted_outcome_is_never_attachable", "", false, false, nil, false},
+		{"omitted_outcome_is_legacy_upgrade_path", "", false, false, nil, false},
 		{"unrecognized_outcome", "some-future-value", true, false, nil, false},
 	}
 	for _, tt := range tests {
@@ -368,51 +369,6 @@ func TestAttach_RemovesSupersededStrands(t *testing.T) {
 	}
 }
 
-// TestAttach_RecordsASupersededRunningCandidateAsInterrupted pins how a superseding attach records a candidate.
-// A candidate still reading running is recorded as stopped and interrupted,
-// so the start after the attach resumes its session.
-// A candidate with a terminal outcome keeps it and is not marked interrupted.
-func TestAttach_RecordsASupersededRunningCandidateAsInterrupted(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	deadOwnWindow := func(guid string) reedengine.StrandStatus {
-		return reedengine.StrandStatus{GUID: guid, PaneID: "%" + guid, OwnWindow: true, Present: true}
-	}
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{deadOwnWindow("strand-running"), deadOwnWindow("strand-died")}}}}
-	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
-	seedPresentReedState(t, fx.DotLym)
-	outputFile := filepath.Join(fx.RunRoot, "out.md")
-	runningDir := seedAttachRun(t, fx.RunRoot, "run-running", seedAttachRunOpts{
-		strandGUID: "strand-running", sessionID: "session-1", outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true,
-	})
-	diedDir := seedAttachRun(t, fx.RunRoot, "run-died", seedAttachRunOpts{
-		strandGUID: "strand-died", sessionID: "session-2", outputFiles: []string{outputFile}, outcome: string(OutcomeDied), includeOutcome: true,
-	})
-
-	if _, found, err := fx.Runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute}); err != nil || found {
-		t.Fatalf("Attach() found, error = %v, %v; want false, nil", found, err)
-	}
-
-	tests := []struct {
-		name            string
-		runDir          string
-		wantOutcome     string
-		wantInterrupted bool
-	}{
-		{"running candidate", runningDir, runOutcomeStopped, true},
-		{"died candidate", diedDir, string(OutcomeDied), false},
-	}
-	for _, tt := range tests {
-		record, _, err := loadRunState(tt.runDir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if record.Outcome != tt.wantOutcome || record.Interrupted != tt.wantInterrupted {
-			t.Errorf("%s record Outcome, Interrupted = %q, %v; want %q, %v", tt.name, record.Outcome, record.Interrupted, tt.wantOutcome, tt.wantInterrupted)
-		}
-	}
-}
-
 // TestAttach_Multiplicity covers candidate evaluation order and one-live-match-or-none:
 // the multiplicity rule applies only to the surviving ATTACHABLE set;
 // an error verdict dominates whatever the other candidates say;
@@ -530,7 +486,7 @@ func TestAttach_OutputFilesMismatch(t *testing.T) {
 func TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("Untracked", func(t *testing.T) {
-		for _, outcome := range []string{"done", "died", "timeout", "api-error", runOutcomeStopped} {
+		for _, outcome := range []string{"done", "asking", "died", "timeout", "api-error", runOutcomeStopped} {
 			t.Run(outcome, func(t *testing.T) {
 				reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: nil}}}
 				fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
@@ -555,7 +511,7 @@ func TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge(t *testin
 	})
 
 	t.Run("BindingCleared", func(t *testing.T) {
-		for _, outcome := range []string{"done", "died", "timeout", "api-error", runOutcomeStopped} {
+		for _, outcome := range []string{"done", "asking", "died", "timeout", "api-error", runOutcomeStopped} {
 			t.Run(outcome, func(t *testing.T) {
 				reed := &fakeReed{StatusQueue: []reedengine.StatusResult{deadStatus("strand-1", "")}}
 				fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())

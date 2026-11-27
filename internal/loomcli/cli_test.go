@@ -56,19 +56,11 @@ func TestResolvePersistentPreRun_SkipsSlugGroups(t *testing.T) {
 			}
 		}
 	}
-
-	// The pusher verb is skipped too: it exits with the resolve error of its flag, not the pre-run's arming refusal.
-	var out bytes.Buffer
-	missing := filepath.Join(t.TempDir(), "no-such-worktree")
-	exitCode := clihelp.ExecuteIn(Command(), t.TempDir(), &out, []string{"pusher", "--worktree", missing})
-	wayForward := "; way forward: run lym loom pusher --worktree with the path of an existing code worktree; the next commit, dobby tick or resume starts the pusher again"
-	if exitCode != 1 || !strings.Contains(out.String(), wayForward) {
-		t.Errorf("loom pusher --worktree <missing> = exit %d, output %q; want exit 1 and the resolve error ending in %q", exitCode, out.String(), wayForward)
-	}
 }
 
-// TestCommand_StartVerbCarriesParent pins the start verb under the loom parent command: it exposes --parent.
-func TestCommand_StartVerbCarriesParent(t *testing.T) {
+// TestCommand_StartVerbCarriesParentAndHiddenNoAttach pins the start verb under the loom parent command:
+// it exposes --parent, and it accepts --no-attach, hidden, for existing callers.
+func TestCommand_StartVerbCarriesParentAndHiddenNoAttach(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
@@ -83,6 +75,11 @@ func TestCommand_StartVerbCarriesParent(t *testing.T) {
 	}
 	if registered.Flags().Lookup("parent") == nil {
 		t.Error(`"loom start" is missing the --parent flag`)
+	}
+	if noAttach := registered.Flags().Lookup("no-attach"); noAttach == nil {
+		t.Error(`"loom start" is missing the --no-attach flag`)
+	} else if !noAttach.Hidden {
+		t.Error(`"loom start"'s --no-attach flag is not hidden`)
 	}
 }
 

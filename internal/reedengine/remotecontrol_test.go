@@ -15,13 +15,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestClientAgentPaneVia pins the format asked of tmux.
-// It also pins how the clicking client's row of four tab-separated fields becomes an AgentPane.
+// TestClientAgentPaneVia pins the format asked of tmux and how its three tab-separated fields become an AgentPane.
 func TestClientAgentPaneVia(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	wantArgv := []string{"list-clients", "-F", "#{client_name}\t#{pane_id}\t#{@lym_strand_name}\t#{@lym_rc}"}
+	wantArgv := []string{"display-message", "-p", "-c", "/dev/pts/3", "#{pane_id}\t#{@lym_strand_name}\t#{@lym_rc}"}
 	tests := []struct {
 		name    string
 		out     string
@@ -29,26 +28,20 @@ func TestClientAgentPaneVia(t *testing.T) {
 		want    AgentPane
 		wantErr string
 	}{
-		{name: "AgentPaneWithTheMark", out: "/dev/pts/3\t%7\tscout\t1\n", want: AgentPane{PaneID: "%7", StrandName: "scout", RemoteControlOn: true}},
-		{name: "AgentPaneWithoutTheMark", out: "/dev/pts/3\t%7\tscout\t\r\n", want: AgentPane{PaneID: "%7", StrandName: "scout"}},
-		{name: "PaneWithNoStrandName", out: "/dev/pts/3\t%2\t\t\n", want: AgentPane{PaneID: "%2"}},
-		{
-			name: "OtherClientsRowsAreSkipped",
-			out:  "/dev/pts/1\t%1\torch\t1\n/dev/pts/30\t%9\tother\t1\n/dev/pts/3\t%7\tscout\t\n",
-			want: AgentPane{PaneID: "%7", StrandName: "scout"},
-		},
-		{name: "TmuxError", tmuxErr: errors.New("no server"), wantErr: `read the active pane of client "/dev/pts/3"`},
-		{name: "ClientNotListed", out: "/dev/pts/1\t%1\torch\t1\n", wantErr: `no client "/dev/pts/3" is attached`},
-		{name: "TooFewFields", out: "/dev/pts/3\t%7\tscout\n", wantErr: `client "/dev/pts/3" has an unreadable list-clients row`},
-		{name: "EmptyPaneID", out: "/dev/pts/3\t\tscout\t1\n", wantErr: "shows no active pane"},
-		{name: "EmptyOutput", out: "", wantErr: `no client "/dev/pts/3" is attached`},
+		{name: "AgentPaneWithTheMark", out: "%7\tscout\t1\n", want: AgentPane{PaneID: "%7", StrandName: "scout", RemoteControlOn: true}},
+		{name: "AgentPaneWithoutTheMark", out: "%7\tscout\t\n", want: AgentPane{PaneID: "%7", StrandName: "scout"}},
+		{name: "PaneWithNoStrandName", out: "%2\t\t\n", want: AgentPane{PaneID: "%2"}},
+		{name: "TmuxError", tmuxErr: errors.New("no such client"), wantErr: `read the active pane of client "/dev/pts/3"`},
+		{name: "TooFewFields", out: "%7\tscout\n", wantErr: "shows no active pane"},
+		{name: "EmptyPaneID", out: "\tscout\t1\n", wantErr: "shows no active pane"},
+		{name: "EmptyOutput", out: "", wantErr: "shows no active pane"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			cmd := newTmuxCmdForSocketPath("tmux", "/tmp/sock")
 			fake := installFakeTmuxOn(t, &cmd)
-			fake.answer("list-clients", tt.out, tt.tmuxErr)
+			fake.answer("display-message", tt.out, tt.tmuxErr)
 
 			got, err := clientAgentPaneVia(cmd, "/dev/pts/3")
 

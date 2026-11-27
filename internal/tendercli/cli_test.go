@@ -323,7 +323,7 @@ func TestPauseAndResume_WriteLiftAndRefuseOverTheHub(t *testing.T) {
 	}
 }
 
-func TestPause_AnAlreadyPausedSlugAnswersAlreadyPausedAndKeepsItsEntry(t *testing.T) {
+func TestPause_AnAdoptPausedSlugAnswersAlreadyPausedAndKeepsItsEntry(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv(agentname.StrandNameEnv, "")
 	h := newHub(t)
@@ -331,7 +331,7 @@ func TestPause_AnAlreadyPausedSlugAnswersAlreadyPausedAndKeepsItsEntry(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	seeded := pauserecord.Entry{Scope: pairSlug, Caller: agentname.External, PausedAt: time.Unix(1000, 0)}
+	seeded := pauserecord.Entry{Scope: pairSlug, Caller: pauserecord.AdoptCaller, PausedAt: time.Unix(1000, 0)}
 	if _, err := pauserecord.Update(geometry.RecordPath, time.Now(), func(record *pauserecord.Record) error {
 		record.Live = []pauserecord.Entry{seeded}
 		return nil
@@ -341,10 +341,10 @@ func TestPause_AnAlreadyPausedSlugAnswersAlreadyPausedAndKeepsItsEntry(t *testin
 
 	paused, code := verb(t, Command(), h.PrimeWorktree(), "pause", pairSlug)
 	if !paused.OK || code != 0 || report(t, paused, "pause")["already_paused"] != true {
-		t.Errorf("pause of an already paused slug: ok=%v code=%d raw=%v; want already_paused", paused.OK, code, paused.Raw)
+		t.Errorf("pause of an adopt-paused slug: ok=%v code=%d raw=%v; want already_paused", paused.OK, code, paused.Raw)
 	}
-	if live, _ := liveEntries(t, h); len(live) != 1 || live[0].Caller != seeded.Caller || !live[0].PausedAt.Equal(seeded.PausedAt) {
-		t.Errorf("live entries = %+v; want the seeded entry unchanged", live)
+	if live, _ := liveEntries(t, h); len(live) != 1 || live[0].Caller != pauserecord.AdoptCaller || !live[0].PausedAt.Equal(seeded.PausedAt) {
+		t.Errorf("live entries = %+v; want the adopt entry unchanged", live)
 	}
 }
 
@@ -360,8 +360,8 @@ func TestPausePair_PausesTheSlugOnceUnderTheDefaultCaller(t *testing.T) {
 	}
 
 	live, _ := liveEntries(t, h)
-	if len(live) != 1 || live[0].Scope != pairSlug || live[0].Caller != agentname.External {
-		t.Errorf("live entries = %+v; want one entry of the pair under the default caller", live)
+	if len(live) != 1 || live[0].Scope != pairSlug || live[0].Caller == pauserecord.OwnerCaller {
+		t.Errorf("live entries = %+v; want one entry of the pair, not under the owner caller", live)
 	}
 }
 
@@ -505,6 +505,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 		}
 	}
 	hubEntry := pauserecord.Entry{Scope: pauserecord.ScopeHub, Caller: "EXTERNAL", PausedAt: time.Now()}
+	ownerEntry := pauserecord.Entry{Scope: "child", Caller: pauserecord.OwnerCaller, PausedAt: time.Now()}
 	pairEntry := pauserecord.Entry{Scope: pairSlug, Caller: "EXTERNAL", PausedAt: time.Now()}
 	boardDir := func(hub *hubforge.Hub) string { return fabricengine.BoardDir(hub.Location.HubPath) }
 	pairDir := func(hub *hubforge.Hub) string { return hub.PairCodeWorktree(pairSlug) }
@@ -520,6 +521,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 		wantCovered bool
 	}{
 		{"DeferrableUnderHubEntry", boardDir, ptr("child"), DetachedChild{Deferrable: true}, "", false, false, []pauserecord.Entry{hubEntry}, true},
+		{"ParentLockedPassesOwnerEntry", boardDir, ptr("child"), DetachedChild{Deferrable: true, ParentLocked: true}, "", false, false, []pauserecord.Entry{ownerEntry}, false},
 		{"HubScopeIgnoresTaskSlugEntry", pairDir, nil, DetachedChild{Deferrable: true, HubScope: true}, "", false, false, []pauserecord.Entry{pairEntry}, false},
 		{"HubScopeHeldByHubEntry", pairDir, nil, DetachedChild{Deferrable: true, HubScope: true}, "", false, false, []pauserecord.Entry{pairEntry, hubEntry}, true},
 		{"OperatorVerbPassesHubEntry", pairDir, nil, DetachedChild{}, "", false, false, []pauserecord.Entry{hubEntry}, false},

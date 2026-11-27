@@ -150,7 +150,7 @@ func refuseDropLocalAnchorChange(l *lymcwd.Location, slug, weftPath, tracking st
 // codeWorktree is the pair's code worktree root, whose anchored directory the way forward runs in.
 // It returns nil when the weft may take upstream in.
 func upstreamAnchorStop(weftPath, codeWorktree, upstream string) (*AnchorStopError, error) {
-	slug, ok := WeftWarpSlug(filepath.Base(weftPath))
+	slug, ok := pairSlugOfRecords(weftPath)
 	if !ok {
 		return nil, fmt.Errorf("fabricengine: %s is no weft sibling worktree", weftPath)
 	}

@@ -31,8 +31,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// RecordsWorktreePath returns the path to a sibling weft worktree with the given slug.
+// RecordsWorktreePath returns the path to the records worktree of the pair with the given slug.
+// It is a sibling weft worktree, and in a one-repository hub the pair's own worktree.
 func RecordsWorktreePath(l *lymcwd.Location, slug string) string {
+	if oneRepositoryAt(l.WorktreePath()) {
+		return WorktreePath(l, slug)
+	}
 	return weftname.SiblingPath(l.HubPath, slug)
 }
 

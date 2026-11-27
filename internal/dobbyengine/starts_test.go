@@ -502,7 +502,7 @@ func TestStartReady_TaskLimitHold(t *testing.T) {
 		if starts := h.stateRecord().Starts; len(starts) != 0 {
 			t.Errorf("start records under the hold = %+v; want none", starts)
 		}
-		want := []string{"hold starts: 2997 of 3000 tasks in /user.slice/user-1000.slice, below beam.task_headroom 500"}
+		want := []string{"hold starts: 2997 of 3000 tasks in /user.slice/user-1000.slice, below task_headroom 500"}
 		if !slices.Equal(*lines, want) {
 			t.Fatalf("log lines under the hold = %q; want %q", *lines, want)
 		}
@@ -528,7 +528,7 @@ func TestStartReady_TaskLimitHold(t *testing.T) {
 		h.tick(true)
 		h.fake.taskHeadroom = 0
 		h.tick(true)
-		want := []string{"hold starts: 2997 of 3000 tasks in /user.slice/user-1000.slice, below beam.task_headroom 500", "starts resume: no task limit applies", "start a"}
+		want := []string{"hold starts: 2997 of 3000 tasks in /user.slice/user-1000.slice, below task_headroom 500", "starts resume: no task limit applies", "start a"}
 		if !slices.Equal(*lines, want) {
 			t.Errorf("log lines = %q; want %q", *lines, want)
 		}
@@ -553,7 +553,7 @@ func TestStartReady_TaskLimitHold(t *testing.T) {
 		if got := h.fake.spawned; len(got) != 1 || got[0].slug != "a" {
 			t.Errorf("first passes = %+v; want only the first task", got)
 		}
-		want := []string{"start a", "hold starts: 2997 of 3000 tasks in /user.slice/user-1000.slice, below beam.task_headroom 500"}
+		want := []string{"start a", "hold starts: 2997 of 3000 tasks in /user.slice/user-1000.slice, below task_headroom 500"}
 		if !slices.Equal(*lines, want) {
 			t.Errorf("log lines = %q; want %q", *lines, want)
 		}

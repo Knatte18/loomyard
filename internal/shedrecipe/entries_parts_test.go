@@ -23,7 +23,7 @@ import (
 // partsMaxSetting answers max for tapestry.parts_max and an error for any other setting.
 func partsMaxSetting(max int) func(module, key string) (any, error) {
 	return func(module, key string) (any, error) {
-		if module == "tapestry" && key == "parts.max" {
+		if module == "tapestry" && key == "parts_max" {
 			return max, nil
 		}
 		return nil, fmt.Errorf("unexpected setting %s.%s", module, key)

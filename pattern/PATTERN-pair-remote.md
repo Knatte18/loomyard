@@ -1,6 +1,6 @@
 # PATTERN-pair-remote
 
-Pushing run records or tearing down a pair: the code branch goes along after the records side, from the worktree's background pusher, which no transition waits for;
+Pushing run records or tearing down a pair: the code branch goes along after the records side, both before the run acts;
 a pair's remote steps hold the slug's teardown lock;
 teardown only via `internal/pairteardown`.
 
@@ -16,15 +16,17 @@ Go pushes a run's records side, and in a task pair the code branch goes after it
   The records side goes first and the code side only once it landed:
   a failed or rejected records side pushes no code.
 - The push is never left to an agent.
-- The worktree's pusher pushes the records side and then the code side, and no transition waits for it.
-  An owed push, on an unreachable origin or a held teardown lock, is retried in the pusher.
-  A refused push leaves its record and notice and stops the pusher until the record's way forward clears it.
+- A transition's push is synchronous through `statuscommit`, before the next producer starts.
+  A push owed on an unreachable origin or a held teardown lock holds the run at its transition and retries behind the gate.
 - The detached pushes that stay keep that order in `coalescePushSides`:
   the anchor change, fabric's commit spawn, `lym fabric sync` and `add`, and a lift's deferred push.
   The pending-flag respawn and the failed-remove respawn are gone, and a left flag waits for its worktree's next push.
 - The prime's pushes stay records-only, its code branch being the operator's.
 - A teardown's archive step pushes the weft branch alone, with no code branch, before the archive tag naming its tip,
   and a refusal of that push is logged only, since the removal archives and deletes the branch anyway.
+
+A one-repository pair pushes its one branch once.
+The prime's records push is guarded and owed as `operator_unpushed` while the operator has unpushed commits.
 
 ### A refused push stays visible
 
@@ -59,11 +61,6 @@ and its removal leaves the board claim to the cancel, which clears it.
   and a handed-over run's local pair in local mode.
   The prime's dobby also tears down an orphan pair, one no board entry or batten record names,
   once it has gone idle for `dobbyengine.OrphanGrace`, its tips archived first.
-- A run's Worktree-Teardown tears down the bench pairs its darn writer made, through `internal/pairteardown`,
-  before it pushes the run's own pair and with no prime lock held.
-  It ends each bench pair's live processes first, then archives its tips and removes it with the driver checks skipped.
-  That order is an exception to the ones below:
-  the processes end before the run-lock wait and the refusal probe, so a failed archive or removal leaves them ended.
 - No production package outside `internal/pairteardown` and `internal/fabricengine` calls `Topology.Remove`.
 - The composite waits for the pair's driver to go quiet, bounded by `Request.QuietWait`;
   `--force` answers dirtiness only and never shortens or skips that wait.
@@ -96,13 +93,10 @@ and its removal leaves the board claim to the cancel, which clears it.
   The pair's drift capture job, the strands, the loop, the run-lock wait and the session end follow.
   The caller's own locks are taken between the owned-process end and the capture job's termination.
   Its removal passes `Request.LeaveClaim`, which settles no claim, since the cancel clears it under its own locks.
-- Worktree-Teardown pushes the pair to completion with the prime lock released,
-  and removes it only while origin's tracking refs hold both tips.
-  With git or pushes off it pushes nothing and removes the pair without that read.
 - `internal/pairteardown` stays inside the fabric-boundary entry:
   it names no side and passes `fabricengine.RemoveResult` through whole.
 - Enforced by `internal/pairteardown/teardown_enforcement_test.go`, a tripwire and not a completeness proof.
-  It flags a five-argument `Remove` call in a file importing `internal/fabricengine`.
+  It flags a four-argument `Remove` call in a file importing `internal/fabricengine`.
   It also flags any reference to `RemovePairBranch`, a name that stays retired.
 
 ### Batten bookend

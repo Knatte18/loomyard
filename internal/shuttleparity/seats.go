@@ -13,7 +13,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
-	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/lenses"
@@ -127,7 +126,7 @@ const soloSessionHolder = "internal/landingshed#soloSession.table"
 // seatTables is the catalog: one entry per seat table builder of production code.
 var seatTables = []seatTable{
 	{Builder: "internal/darnengine#DarnTable", Holders: []string{"internal/darnengine#DarnTable"}, Build: buildDarn},
-	{Builder: "internal/landingshed#DescribeTable", Holders: []string{soloSessionHolder, "internal/landingshed#describeReviewSeat"}, Build: buildDescribe},
+	{Builder: "internal/landingshed#DescribeTable", Holders: []string{soloSessionHolder}, Build: buildDescribe},
 	{Builder: "internal/landingshed#FixerTable", Holders: []string{soloSessionHolder}, Build: buildFixer},
 	{Builder: "internal/landingshed#FixReviewSeatTable", Holders: []string{soloSessionHolder}, Build: buildFixReview},
 	{
@@ -175,9 +174,7 @@ func languageSkillsOf(env SeatEnv) ([]string, error) {
 }
 
 // loomConfigOf returns loom's configuration with the tapestry keys a plan-review row adds.
-// It reconciles the hub's config after a binary change before the loads.
 func loomConfigOf(env SeatEnv) (loomengine.Config, error) {
-	hubgeom.ReconcileBeforeLoad(env.Location)
 	cfg, err := loomengine.LoadConfig(env.Dirs, "loom")
 	if err != nil {
 		return loomengine.Config{}, err
@@ -212,14 +209,9 @@ func buildDarn(env SeatEnv) ([]seatengine.Table, error) {
 		ConditionStopMarkerPath: standInPath(env, "condition-stop-marker"),
 		LanguageSkills:          skills,
 		SubagentModel:           standInModel,
-		MeasureCall:             measureCallStandIn,
 	}, cfg, env.Registry)
 	return []seatengine.Table{table}, err
 }
-
-// measureCallStandIn is the measuring call the darn builder is given.
-// It is the call a hub with no tier gives its darn-write key.
-const measureCallStandIn = "lym gate test --gate darn-write -- <args>"
 
 func buildDescribe(env SeatEnv) ([]seatengine.Table, error) {
 	cfg, err := landingshed.LoadConfig(env.Dirs, "landing")
@@ -230,7 +222,6 @@ func buildDescribe(env SeatEnv) ([]seatengine.Table, error) {
 		StencilsDir:        env.StencilsDir,
 		DecisionRecordPath: standInPath(env, "decision-record.md"),
 		DescriptionPath:    standInPath(env, "description.md"),
-		ReviewDir:          standInPath(env, "describe-review"),
 		TaskBranch:         "task",
 		ParentBranch:       "parent",
 		MergeBase:          "merge-base",

@@ -57,7 +57,7 @@ type wantSequenceEntry struct {
 // A Bouncer row expands to its four entries, and its review and fix rows follow it in the table.
 // A review or fix row contributes only through its Bouncer.
 // A Drift row is skipped since the kit's template answers drift.enabled false.
-// A parts row is skipped since it answers tapestry.plan.split false.
+// A parts row is skipped since it answers tapestry.plan_split false.
 // Merge-In is Stuck and ends the sequence, and every other row is Done.
 var wantSequenceOrder = deriveSequenceOrder()
 

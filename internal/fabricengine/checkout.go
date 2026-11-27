@@ -113,7 +113,7 @@ func (t *Topology) Checkout(l *lymcwd.Location, branch string) (res CheckoutResu
 	weftCreated, err := t.switchOrForkWeft(rec, l, branch)
 	createdWeftBranch := ""
 	if weftCreated {
-		createdWeftBranch = RecordsBranchName(branch)
+		createdWeftBranch = recordsBranchIn(l, branch)
 	}
 	if err != nil {
 		t.rollbackSwitch(rec, l, originalBranch, originalWeftBranch, createdWeftBranch)
@@ -151,7 +151,7 @@ func (t *Topology) Checkout(l *lymcwd.Location, branch string) (res CheckoutResu
 // The anchor change commits the new marker on the branch being left, which every machine that checks it out shares.
 // An anchor directory the current warp checkout does not track is first brought in by a code commit on that same branch.
 func refuseTargetAnchorChange(l *lymcwd.Location, branch string) error {
-	weftBranch := RecordsBranchName(branch)
+	weftBranch := recordsBranchIn(l, branch)
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return fmt.Errorf("resolve the weft repo to read %q: %w", weftBranch, err)
@@ -211,12 +211,8 @@ func targetWeftTip(weftRepoRoot, weftBranch string) (string, error) {
 	if err != nil || tip == "" {
 		return "", err
 	}
-	ns, err := originNamespaceAt(weftRepoRoot)
-	if err != nil {
-		return "", err
-	}
 	tracking := "refs/remotes/" + originRemoteName + "/" + weftBranch
-	if _, err := gitrepo.New(weftRepoRoot).FetchWithArgs("--no-tags", originRemoteName, ns.Branch(weftBranch)+":"+tracking); err != nil {
+	if _, err := gitrepo.New(weftRepoRoot).FetchWithArgs("--no-tags", originRemoteName, "refs/heads/"+weftBranch+":"+tracking); err != nil {
 		return "", fmt.Errorf("fetch weft branch %q from %q: %w", weftBranch, originRemoteName, err)
 	}
 	return tracking, nil
@@ -233,7 +229,7 @@ func targetWeftTip(weftRepoRoot, weftBranch string) (string, error) {
 // An unreachable origin is an error and forks nothing.
 func (t *Topology) switchOrForkWeft(rec *Mutations, l *lymcwd.Location, branch string) (created bool, err error) {
 	weftWorktree := RecordsWorktree(l)
-	weftBranch := RecordsBranchName(branch)
+	weftBranch := recordsBranchIn(l, branch)
 
 	exists, fromOrigin, err := resolveWeftBranch(rec, l, weftBranch, true)
 	if err != nil {

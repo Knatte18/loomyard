@@ -38,7 +38,7 @@ func publishedClone(t *testing.T) (clone, bareRemote string) {
 	seedPath, seed := newRepoWithRemote(t, container, "seed", bareRemote)
 	writeFile(t, seedPath, "seed.txt", "seed")
 	commitAll(t, seedPath, "seed")
-	if err := seed.Push(gitrepo.RefNamespace{}); err != nil {
+	if err := seed.Push(); err != nil {
 		t.Fatalf("Push() of the seed error = %v", err)
 	}
 	clone, _ = cloneFromBare(t, container, "clone", bareRemote)
@@ -269,29 +269,27 @@ func TestRemoteRefsLock_APushTransfersWhileTheLockIsHeldAndWritesItsTrackingRefO
 	}{
 		{"PushRebaseFree of a first push, which also sets the upstream", "fresh", func(t *testing.T, clone string, repo *gitrepo.Repo) (func() error, string) {
 			gitkit.Git(t, clone, "checkout", "-b", "fresh")
-			return func() error { return repo.PushRebaseFree(gitrepo.RefNamespace{}) }, gitkit.CommitFile(t, clone, "fresh.txt", "fresh", "fresh commit")
+			return repo.PushRebaseFree, gitkit.CommitFile(t, clone, "fresh.txt", "fresh", "fresh commit")
 		}, "origin/fresh"},
 		{"PushBranch", "main", func(t *testing.T, clone string, repo *gitrepo.Repo) (func() error, string) {
 			want := gitkit.CommitFile(t, clone, "next.txt", "next", "next commit")
-			return func() error { return repo.PushBranch("origin", "main", gitrepo.RefNamespace{}) }, want
+			return func() error { return repo.PushBranch("origin", "main") }, want
 		}, "origin/main"},
 		{"UpdateRemoteBranchLeased", "main", func(t *testing.T, clone string, repo *gitrepo.Repo) (func() error, string) {
 			first := gitkit.RevParse(t, clone, "HEAD")
 			second := gitkit.CommitFile(t, clone, "second.txt", "second", "second commit")
 			gitkit.Git(t, clone, "push", "origin", "main")
-			return func() error {
-				return repo.UpdateRemoteBranchLeased("origin", "main", first, second, gitrepo.RefNamespace{})
-			}, first
+			return func() error { return repo.UpdateRemoteBranchLeased("origin", "main", first, second) }, first
 		}, "origin/main"},
 		{"DeleteRemoteBranchLeased", "doomed", func(t *testing.T, clone string, repo *gitrepo.Repo) (func() error, string) {
 			gitkit.Git(t, clone, "push", "origin", "main:doomed")
 			tip := gitkit.RevParse(t, clone, "HEAD")
-			return func() error { return repo.DeleteRemoteBranchLeased("origin", "doomed", tip, gitrepo.RefNamespace{}) }, ""
+			return func() error { return repo.DeleteRemoteBranchLeased("origin", "doomed", tip) }, ""
 		}, ""},
 		{"DeleteRemoteBranch", "doomed", func(t *testing.T, clone string, repo *gitrepo.Repo) (func() error, string) {
 			gitkit.Git(t, clone, "push", "origin", "main:doomed")
 			return func() error {
-				deleted, err := repo.DeleteRemoteBranch("origin", "doomed", gitrepo.RefNamespace{})
+				deleted, err := repo.DeleteRemoteBranch("origin", "doomed")
 				if err == nil && !deleted {
 					return fmt.Errorf("DeleteRemoteBranch() deleted = false; want true")
 				}
@@ -340,7 +338,7 @@ func TestRemoteRefsLock_ATrackingRefAFetchMovedPastThePushedCommitStaysThere(t *
 	repo := gitrepo.New(clone)
 	pushed := gitkit.CommitFile(t, clone, "pushed.txt", "pushed", "pushed commit")
 
-	releaseAndWait := pushUnderHeldLock(t, clone, bareRemote, "main", pushed, func() error { return repo.PushBranch("origin", "main", gitrepo.RefNamespace{}) })
+	releaseAndWait := pushUnderHeldLock(t, clone, bareRemote, "main", pushed, func() error { return repo.PushBranch("origin", "main") })
 	other := filepath.Join(t.TempDir(), "other")
 	gitkit.MustRun(t, filepath.Dir(other), "git", "clone", "-b", "main", bareRemote, other)
 	later := gitkit.CommitFile(t, other, "later.txt", "later", "later commit")
@@ -377,7 +375,7 @@ func TestRemoteRefsLock_ConcurrentFetchesAndPushesOfOneRepositoryAllSucceed(t *t
 	}
 	writeFile(t, other, "moved.txt", "moved")
 	commitAll(t, other, "origin moved main")
-	if err := gitrepo.New(other).Push(gitrepo.RefNamespace{}); err != nil {
+	if err := gitrepo.New(other).Push(); err != nil {
 		t.Fatalf("Push() from the other clone error = %v", err)
 	}
 
@@ -393,7 +391,7 @@ func TestRemoteRefsLock_ConcurrentFetchesAndPushesOfOneRepositoryAllSucceed(t *t
 		}()
 		go func() {
 			defer wait.Done()
-			if err := pushers[i].PushRebaseFree(gitrepo.RefNamespace{}); err != nil {
+			if err := pushers[i].PushRebaseFree(); err != nil {
 				errs <- fmt.Errorf("PushRebaseFree() of branch%d: %w", i, err)
 			}
 		}()

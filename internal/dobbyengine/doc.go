@@ -9,262 +9,610 @@
 //
 //   - Geometry is the absolute paths and names the hub wiring tells the engine.
 //   - State is dobby's tolerant JSON record under the worktree's `.lym/beam/` directory.
+//     ReadState reads it, and UpdateState rewrites it under its lock.
 //     A record that does not decode reads as absent with one Warn, so a hand-damaged file never wedges the beam.
 //   - The PassExit codes are what a `lym batten run` pass exits with for a refusal dobby reads by code.
-//   - EnsureLive starts the dobby of each worktree it is named, only when Live reads its lock free.
+//     PassExitOriginWait is the exit of a pass whose catch-up could not reach origin or was refused.
+//     It counts as no failing pass.
+//   - EnsureLive starts the dobby of each worktree it is named, the prime's name or beam slugs.
+//     It starts each only when Live reads its lock free, through SpawnDetached.
+//     It records this machine as the prime owner first when the prime is named and none is recorded.
 //     It reports per worktree and is idempotent.
-//     It refuses a worktree whose owner reads as another machine, naming `lym adopt root` or `lym adopt <slug>`.
-//     The engine compares no machine name: the hub wiring judges each owner and hands over the answer as a flag.
-//     It refuses a worktree with an anchor change standing, and a beam whose landing hold stands.
+//     A named prime or beam whose owner reads as another machine is refused.
+//     The refusal names its owner and `lym adopt root` or `lym adopt <slug>`.
+//     The engine compares no machine name: the hub wiring judges each owner through the registry
+//     and hands over the answer as a flag, in StartDeps.PrimeOwner, BeamPair.Elsewhere and Deps.Owner.
+//     A machine whose name does not read starts no dobby: each named worktree is refused with that failure as its detail.
+//     A named beam whose landing hold stands is refused naming `lym batten status <slug>` and spawns nothing.
+//     StartDeps.LandingHeld reads the hold, and a nil one reads as no hold standing.
+//     OwnedWorktrees lists the prime and every local beam whose owner does not read as another machine.
+//     A caller that narrows nothing names that set.
+//     A worktree with an anchor change on its own records worktree or the prime's is refused and starts nothing.
+//     The refusal carries the change's way forward.
+//     StartDeps.MoveInProgress reads the change, and a nil one reads as no change standing.
 //   - Config is beam.yaml, loaded strictly because dobby only ever runs inside a hub.
-//     Its `adopt_fix_tries` key is never read by dobby itself.
+//     Its `pull_request` key is the receiving branch's pull-request mode, on, off, required or merge.
+//     It is read with the receiving branch's worktree as the anchor.
+//     Set at the default layer, it marks every branch of the hub.
+//     Its `land_notice` key, all, per-task or off, decides which runs get a landing notice.
+//     Its `adopt_fix_tries` key is the adopt check's try limit, which dobby itself never reads.
+//     It caps the fix tasks a failed adopt check files for the worktree's subject between two hand adopts.
+//     `test_map_upkeep`, `test_map_every` and `test_map_batch` are retired keys, which a reconcile prunes.
 //   - Run is the daemon loop, with every seam it reads in Deps.
-//   - `dobby.log` holds the dobby's own lines only, and only the holder of the dobby lock rotates it.
-//   - BuildView is the View of one dobby a reader outside its process sees, built from what it is told.
+//   - `dobby.log` holds the dobby's own lines only.
+//     AppendLog appends each line through its own open, which creates no directory.
+//     A removed worktree therefore gets nothing back.
+//     Only the holder of the file's dobby lock passes `rotate`:
+//     a write that would take the file past 1 MiB first renames it to `dobby.log.1`, replacing an older one.
+//     SpawnDetached points the child's raw standard output and error at `dobby.out`.
+//     The holder of the lock rotates it the same way.
+//     The one rotation a process without the lock makes is on Windows.
+//     There RotatePastBound renames `dobby.out` before a spawn, only when Live reads the lock free.
+//     Bound: `dobby.out` is rotated at the start of the lock holder,
+//     so between starts it grows by what the dobby's standard error alone writes.
+//   - BuildView is the View of one dobby a reader outside its process sees, built from what it is told:
+//     its liveness, its state record, beam.yaml, its runs and the board.
 //
 // The loop:
 //
 //   - The lock at Geometry.LockPath is the one decision whether this process is the dobby.
-//     A lock that stays held returns ErrDobbyRunning.
-//   - A beam dobby ends when its worktree is gone, after it stops the tidy and describer agents it last saw in flight.
-//     The test is the absence of the worktree's `.git` and never of its root,
-//     because every state write recreates the record's directory.
-//     The prime's dobby never takes the exit.
-//   - A beam dobby whose owner reads as another machine hands its runs over through the catch-up, archives
-//     the beam's local tips and exits, unless a hold this machine wrote covers the beam's subject.
-//     A failed step logs once per episode and keeps the dobby up to retry.
-//   - A tick's failure is logged once per episode and the loop goes on.
-//   - Between ticks the binary check re-execs onto a changed lym binary.
+//     ReadsAsReexec reads the state record first:
+//     a record holding the process's own pid and its start ticks, or no start ticks, is a re-exec.
+//     A re-exec waits Deps.ReexecLockWait for the lock, ten seconds when it is zero.
+//     The process it replaced releases the lock as it execs.
+//     Any other start waits lock.ProbeGrace.
+//     A fresh dobby that reused the pid of a record without ticks, after a reboot, reads as a re-exec.
+//   - A lock that stays held returns ErrDobbyRunning.
+//     It logs `dobby: start refused: another dobby holds the lock` without rotating.
+//     A refused re-exec whose record still holds the pid posts a notice naming `lym beam start`;
+//     a refused fresh start posts none.
+//   - Holding the lock, Run calls Deps.Locked, which the CLI fills with the run-process registration.
+//     Run then records the start and logs `start fresh pid` or `start re-exec pid`.
+//   - A record read error before the lock logs `dobby: stopped on error` with its way forward.
+//     So does an error out of Run after the lock other than ErrDobbyRunning.
+//     The log rotates only while the lock is held, and an error after a re-exec posts a notice.
+//   - It reads its beam's owner at start and on each probe tick.
+//     A probe tick first pulls Bolt through Deps.PullBolt, at most once per five minutes,
+//     so an idle machine learns a new owner; a failed pull logs once per episode.
+//     While a hold this machine wrote in Bolt covers the subject of the beam another machine owns (Deps.UnderAdopt),
+//     the dobby stays up and hands nothing over, until the adopt's check is green.
+//     It spawns no pass, starts no task, and runs no tidy or landing step.
+//     The hold's start and end each log one line.
+//     Any other foreign owner gets the hand-over.
+//     The dobby runs the catch-up from origin, which hands over each run another machine owns.
+//     Once it succeeds the dobby ends the subject's processes through Deps.EndSubject,
+//     and the calling dobby is never ended by that call.
+//     It then archives the local tips under the beam that origin lacks through Deps.ArchiveOwner.
+//     Once the archive succeeds it exits with the logged reason `stop: another machine owns this beam`,
+//     which names `lym adopt root` or `lym adopt <slug>`.
+//     A failed catch-up, subject end or archive logs once per episode and keeps the dobby up, retrying at each probe tick.
+//     A cancelled context logs `stop: the context ended`.
+//   - A record with the process's own pid and start ticks owes no new full pass;
+//     a record with the pid and no ticks gains the ticks and owes one;
+//     any other start rewrites the pid, the start time and the ticks and owes one.
+//     A start owes every run a full pass until a tick succeeds.
+//     So do a machine sleep the sleep watch sees and a tick that finds the record without a pid.
+//   - It wakes on a watch event and on its timer, coalescing events to at most one tick a second.
+//     The timer starts at the probe interval and doubles to a minute while no run is in flight.
+//     It returns to the probe interval on an event or while a run is in flight.
+//     Where the watch does not open, as on WSL or through a junction, the timer alone drives the loop.
+//     It runs at the probe cadence, and no wake is shorter than a second.
+//   - A beam dobby ends when its worktree is gone.
+//     The test is the absence of the worktree's `.git` and never of its root.
+//     Every state write recreates the record's directory, which is why the root cannot be the test.
+//     The loop tests it at the top of every iteration and again after each tick, before the binary check;
+//     the prime's dobby never takes the exit.
+//     The exit appends `stop: the worktree of beam <slug> is gone` to Geometry.PrimeLogPath without rotating.
+//     It also stops the tidy agent that the last tick with the worktree present recorded.
+//     The stop goes through Deps.PrimeTidyShuttle.
+//     The stop, or its failure with `lym reed remove <guid>`, is logged to the same file the same way.
+//     It writes nothing at the removed worktree's path.
+//     Bound: a tick in flight when the worktree is removed can leave an empty `.lym/beam` stub.
+//     The stub holds the `state.json` and lock file its state access wrote.
+//     The rest of that tick runs over the fresh empty State it read there.
+//     A tidy that tick spawned is not stopped, and one it settled is stopped again.
+//     The second stop removes a strand only while reed still tracks it.
+//     It logs a failed stop when reed's status probe fails.
+//   - Between ticks it calls the binary check, which re-execs onto a changed lym binary.
+//     It skips the check while a teardown of a leftover pair is in flight, which a re-exec would cut short.
+//     The check logs `re-exec onto the changed lym binary` right before the exec.
+//     An exec that fails logs `re-exec failed` and posts a notice naming `lym beam stop` and `lym beam start`.
+//     The notice goes once per binary identity, and the dobby keeps running.
+//   - A tick's failure is logged once per episode and the loop goes on;
+//     a cancelled context ends it after the tick in flight.
 //   - Any existing path of Geometry.MoveRecords means an anchor change stands.
-//     While it stands, a tick spawns no pass, starts no task, runs no tidy or landing step and sends no notice.
-//     An owed full pass stays owed.
-//     An empty list gates nothing.
-//   - The log records changes only, each one line stamped with its time, and a heartbeat.
-//     The in-process memory of logged states means a re-exec logs no change it did not see.
+//     The change is on the dobby's own records worktree or the prime's.
+//     While it stands, a tick spawns no pass, starts no task and runs no board-tidy step.
+//     The tidy agent is a strand whose state sits at the anchor.
+//     The state record's upkeep and the landing count go on.
+//     A full pass the dobby owes stays owed, and the first tick of the episode logs the change once.
+//     An empty list, as a hand-built Geometry leaves it, gates nothing.
+//   - The log records changes only, each one line through the Log seam stamped with its time, and a heartbeat.
+//     A task start logs `start <slug>`; a pass spawn logs nothing.
+//     A run's state or producer changing logs `run <slug>: <old> -> <new>`.
+//     The state is the run's FSM state, RunView.Run.
+//     The line carries the state alone for running and landed;
+//     for any other state it adds ` at <producer>`.
+//     A run first seen logs its state once.
+//     The memory is in process only, so a re-exec logs no change it did not see.
+//     The first failing pass of an episode logs `pass <slug> failing: <error>`.
+//     The exit 0 that ends the episode logs `pass <slug> succeeds again`.
+//     A failing tick and an unreadable beam owner each log one line when the episode starts and one when it ends.
+//     A board-tidy agent starting, posting its report and timing out each log one line.
+//   - A heartbeat is `heartbeat: <slug> <state> <producer>; …` per run still driven, or `heartbeat: no runs`.
+//     It is written right after the start line, which also records the logged states.
+//     The first tick at least ten minutes after the last heartbeat writes another, whatever that tick did.
+//     A run listing that fails writes `heartbeat: runs unreadable: <error>` in its place.
+//     It rides the loop's ticks with no wait or wake of its own,
+//     so a dead dobby shows in its log within ten minutes plus the longest gap between ticks.
 //
 // The passes:
 //
 //   - Each tick lists the runs whose parent worktree is this dobby's, from the prime's local batten status files.
 //     It never reads the board for this, so a run whose task Land pruned is still driven through its teardown.
-//   - A run gets a pass only while batten's state is running and its Verdict is act.
-//     A run never gets a pass while one of its passes is in flight, and a held driver lock reads as in flight.
-//     A halted or paused run gets no pass until the orch or the operator resumes it with a hand pass.
-//   - A done batten run is driven no further and takes no slot under `max_runs`.
+//   - A run gets a pass only while batten's state is running and the act rule's verdict, RunView.Verdict, is act.
+//     The rule waits a paused, covered or cancelling run and hands over a run another machine owns.
+//     A cancel under way gives no pass either, beside the rule:
+//     an unfinished cancel intent in the batten record, or a cancel lock another process holds.
+//     A run never gets a pass while one of its passes is in flight.
+//     A held driver lock reads as in flight, so a pass left by a dead dobby is waited for and never doubled.
+//     A halted batten run gets no pass, nor does a paused one.
+//     The orch or the operator resumes it with a hand pass.
+//     A paused run whose work reached its parent, RunView.ReachedParent, gets no pass.
+//     It waits until `lym batten run <slug>` resumes it, and its Land is unfinished, so the dobby never counts it stranded.
+//   - A done batten run is driven no further:
+//     once no pass of it is in flight, it takes no slot under `max_runs` and gets no pass.
+//     Its entry leaves the state record.
+//     The board tidy still reads its history until the done-run clear removes it.
+//   - A pass is triggered by a write of the child's status file;
+//     by a write of batten's own status file later than the run's last pass exit;
+//     by a probe tick once per probe interval;
+//     by the dobby's start; and by the lift of a pause that covered the run.
+//     A lift while a pass is in flight gives the run its pass once that one exits.
 //   - A continue pass needs the run at Run-Shed with no full pass owed and no lift to answer.
 //     Every other pass is full.
-//     The state record keeps a full pass owed until one exits 0.
-//   - A pass that exits as owned by another machine keeps the run's full pass owed and marks it owned elsewhere.
-//     Dobby pauses nothing: it releases the parent lock record naming its child and owes the catch-up from origin.
-//     It posts one notice per owner episode naming `lym adopt <subject>`.
-//   - A covered pass or a pass that waits on origin counts as no failure.
-//     The third failure in a row with one error text posts one notice to the nearest live orch.
+//     A start and each recorded sleep owe every run a full pass.
+//     The state record keeps it until a full pass exits 0.
+//   - While a pause covers the run, the act rule waits it and it gets no pass, and the lift gives it the full pass.
+//     Only a hand lifts an adopt pause, the legacy `adopt-hold` entry included.
+//   - A refused continue pass owes a full pass, and a covered pass or a pass that waits on origin counts as no failure.
+//     Any other non-zero exit counts a failure by its error text and is retried on the next probe tick.
+//     The third failure in a row with one text posts one notice to the nearest live orch.
+//     An exit 0 clears the count and the noticed texts.
+//   - A pass that exits as owned by another machine keeps the run's full pass owed.
+//     The state record marks the run as owned elsewhere.
+//     Dobby pauses nothing: it releases the parent lock record naming its child and owes the catch-up from origin,
+//     which hands the run over.
+//     It posts one notice per owner episode naming `lym adopt <subject>`, and no failing-pass notice.
+//     Deps.AdoptSubject reads the subject; the slug stands in when that seam is nil or fails.
+//     While the mark stands and no pause covers the run, each probe tick gives it a full pass the act rule lets act.
+//     That pass is refused again, or it exits 0 and clears the mark.
+//     While the mark stands and a pause covers the run, it gets no pass, a start's and a wake's included.
+//     The covering pause's lift still gives it a full pass.
+//     An owner that a continue pass's own check finds sets no mark:
+//     that check releases the lock and holds the run itself, and dobby goes on passing it.
+//     A marked run is in flight for the backoff only while no pause covers it.
 //   - A task waits on the board as `draft` until released, and dobby starts it from an empty status.
-//     A task starts only when its dependencies are done, its parent is this dobby's worktree,
-//     no other machine owns it, no refusal awaits every start of its slug and no pause covers the hub or the slug.
-//     Starts stop while `max_runs` runs the dobby drives are in flight; `max_runs: 0` starts nothing.
-//   - While fewer than beam.yaml's `task_headroom` cgroup tasks are free, the tick starts no task.
-//     The hold only delays starts, never a pass of a run already started.
+//     A task starts when all of these hold:
+//     the entry is a task whose dependencies are all done;
+//     its parent is this dobby's worktree;
+//     no other machine owns it;
+//     no refusal awaits every start of its slug;
+//     and no pause entry covers the hub or the slug.
+//     Each tick reads the local board, which a write of `board.json` and the probe tick both cause.
+//     It starts each ready task while fewer than `max_runs` runs it drives are in flight:
+//     halted runs count;
+//     done runs, runs recorded owned elsewhere, pawl runs with no landing hold and runs whose entry ended do not.
+//     `max_runs: 0` starts nothing.
+//   - Right before each start, dobby reads the cgroup task limit it sits under through Deps.TaskLimit.
+//     The limit is that of the level of its own cgroup ancestry with the fewest free tasks, such as the user slice.
+//     While fewer than beam.yaml's `task_headroom` tasks are free, the tick starts no task.
+//     A held task gets no refused-start record, notice or backoff and is tried on the next tick.
+//     The first held start of an episode logs this line:
+//     `hold starts: <current> of <max> tasks in <cgroup>, below task_headroom <n>`.
+//     The first start let through after it logs `starts resume: …`.
+//     The episode is kept in process only.
 //     `task_headroom: 0`, a nil seam and a limit that does not read hold nothing.
-//   - A first pass refused for a covering pause is no refused start and waits for the lift.
+//     A limit does not read on Windows or a cgroup v1 host.
+//     Bound: the hold only delays starts, never a pass of a run already started.
+//     A start goes within the idle timer's minute of the headroom returning.
+//     First passes fork little at their start.
+//     Starts in one tick or by several dobbies can therefore each pass the check before the earlier ones grow.
+//   - Starting is the run's first pass, a full pass, which claims the task as batten does;
+//     a slug with a pass in flight is never started twice.
+//     A first pass refused for a covering pause is no refused start:
+//     it gets no notice, no marker and no backoff, and the start waits for the lift.
 //     Any other first pass that exits non-zero and leaves no status file is a refused start:
-//     it gets one notice per refusal text and a retry backoff that doubles up to an hour.
-//   - A front task is a task entry whose `front` is true, filed ahead of the worktree's other starts.
-//     While one is open, the worktree starts no other task, and the view shows those behind it as `front_first`.
-//     Deps.SettleFronts records an open front entry and runs the land action of one that landed.
-//   - A released task whose slug has a finished run record carries the refusal in TaskView.StartRefusal,
-//     except a done motif run of a task whose recipe resolves to raddle, which the start clears.
-//   - Across machines only the owner machine's dobby of the parent runs.
+//     it gets one notice per refusal text, an owned-elsewhere refusal included.
+//     The retry comes after one probe interval, doubling up to an hour, or at once when the entry changes.
+//     The state record keeps the backoff, the last refusal text and the noticed texts.
+//     It clears them when a pass claims the task or its board entry changes.
+//   - A front task is a task entry whose `front` is true, filed by lym ahead of the worktree's other starts.
+//     It is open while its status is empty or a run status.
+//     It belongs to this dobby when its `project` is the dobby's beam slug, empty for the prime's.
+//     While one is open, the step starts no other task of the worktree.
+//     The view shows each released task behind it as `front_first`, not ready.
+//     It starts the front task itself once it is released and ready by the start condition.
+//     It does so even when the runs in flight, halted and held ones included, fill `max_runs`.
+//     Once started, the front task takes its slot like any run.
+//     `max_runs: 0` still starts nothing.
+//     The task-limit hold, a covering pause and the start backoff hold the front task as they hold any task.
+//     A draft front task is closed and lifts the hold.
+//     Bound: the hold reaches only new starts in this worktree, never a nested beam's.
+//   - After the passes and the notices and before the start step, each tick calls `Deps.SettleFronts`.
+//     It settles the worktree's front tasks:
+//     it records an open front entry that has no record and runs the land action of one that landed.
+//     An error stops nothing.
+//     The first error of an episode is logged and posted once to the nearest live orch.
+//     The notice reads `[dobby notice] front task: <error>` and names the slug, the action and its hand step.
+//     A tick that settles cleanly ends the episode.
+//   - A released task whose slug has a finished run record carries the refusal that every start of that slug gets.
+//     TaskView.StartRefusal holds the refusal, with its way forward.
+//     The exception is a done motif run of a task whose recipe the board resolves to raddle:
+//     that start clears the record, so the task carries no refusal.
+//     Dobby spawns no pass for it.
+//     A task owned elsewhere, with open dependencies or covered by a pause gets no record.
+//     Any other such task has the refusal recorded as the start record's refusal, with no backoff.
+//     The same one notice per refusal text goes out, again when the entry changes.
+//     Bound: the record is read every tick, so the task starts on the first tick after the record is gone.
+//   - A task is started only from an empty status, by its parent's dobby or a hand-run `lym batten run`.
+//     It is never started twice while a pass of it is in flight.
+//     Across machines only the owner machine's dobby of the parent runs.
+//     A release written on another machine reaches this dobby when this machine's board is next pulled.
+//   - Bound: per run at most one pass per probe interval plus one per write of the child's status file,
+//     and at most one in flight.
+//     The loop's backoff counts a run as in flight while the planner could give it a pass on the next probe tick.
 //
 // The slot rule:
 //
 //   - A run whose RunView carries NoSlot takes no slot under `max_runs`.
-//     NoSlot marks a pawl run whose landing hold does not stand, while it only waits on its members.
+//     NoSlot marks a pawl run whose landing hold does not stand.
+//     Such a run only waits on its members at Worktree-Create, Preflight, Beam-Up and Beam-Await.
+//     It takes a slot from Finalize on.
+//     The parent's dobby still schedules the run's passes, owed full passes and probes as for every run it drives.
 //   - A run whose RunView carries EntryEnded takes no slot either, whatever batten's state says.
+//     EntryEnded marks a run whose board entry is done or gone from the board.
+//     A landed run that batten stopped as failed or halted before its Worktree-Teardown row therefore frees its slot.
+//   - The view's `max_runs` reasons follow, since BuildView counts through the same rule.
 //
 // The leftover pairs:
 //
-//   - A listed run's pair on disk is left over, by kind, when no pass of it is in flight,
-//     its driver lock is free and no cancel is under way, and its run is handed over, landed,
-//     cancelled without the cancel keeping it, or ended on the board.
-//     A paused run whose work reached its parent is not left over, since its Land is unfinished.
-//   - An orphan pair is one that neither a board entry nor a batten record names; only the prime's dobby reads them.
-//     It is left over once OrphanGrace has passed since its first sight and its last commit,
+//   - A listed run's pair on disk (RunView.PairPresent) is left over, by kind, when no pass of it is in flight,
+//     its driver lock is free and no cancel is under way:
+//     the local pair of a run this machine's hand-over mark names (RunView.HandOverMarked) while another machine owns it,
+//     whatever pause or hold covers it, since its removal takes no origin step;
+//     and, with no pause, no Bolt hold and no other machine owning the run, the pair of a run in the FSM state landed,
+//     the pair of a cancelled run whose cancel did not keep it,
+//     and the pair of a run whose entry ended (RunView.EntryEnded) while batten's state is neither running,
+//     nor paused with its work on its parent, nor done.
+//     A paused run whose work reached its parent is not, since its Land is unfinished.
+//     A machine that adopted its run back owns it, so its pair stays.
+//   - An orphan pair is one that neither a board entry nor a batten record names; only the prime's dobby reads them,
+//     through Deps.Orphans, on each probe tick.
+//     Its first sight posts one notice saying when it goes.
+//     Once that notice posted, the time goes in the first-sight record Deps.OrphanRecord names,
+//     which a restart reads, so the grace is neither reset nor skipped.
+//     A notice that failed leaves the orphan out of the record, and the next probe tick posts it again.
+//     An orphan is left over once OrphanGrace has passed since its first sight and since its last commit,
 //     with no process of its slug alive.
-//     The first-sight record keeps the grace across a restart.
-//   - Each tick hands every leftover pair whose wait ran out to one call of Deps.TearDownLeftovers,
-//     with a retry wait that doubles up to an hour after each failure.
-//     A teardown in flight holds the binary check until it ends.
+//     A pair that stops being an orphan leaves the record, and so does one torn down.
+//   - After the passes, each tick hands every leftover pair whose wait ran out to one call of Deps.TearDownLeftovers.
+//     The hub wiring tears each down by its kind and regenerates the hub workspace file after.
+//     The call returns at once, and a later tick reads its one result; only one is in flight at a time.
+//   - A removed pair logs `teardown <slug>: pair removed`.
+//     A teardown that failed logs `teardown <slug> failing: <reason>` once per episode.
+//     Its pair waits one probe interval, then twice its last wait after each further failure, up to an hour.
+//     The waits are in memory only, and a pair that is no longer left over forgets its wait.
+//   - A teardown in flight keeps the loop out of its idle backoff, and holds the binary check until it ends.
 //     A nil TearDownLeftovers tears nothing down.
-//   - The pair of a cancelled run whose cancel kept it stays, and each fresh start posts one notice naming it.
+//   - The pair of a cancelled run whose cancel kept it stays.
+//     Each fresh start posts one notice listing those pairs and naming `lym fabric remove <slug>`, and the view lists them.
+//     Before the passes of its first tick, a dobby process gives each run cancelled with keep before cancel intents existed,
+//     whose pair stands here, its finished keep cancel intent through Deps.MarkKeptCancels, so such a run reads kept;
+//     the same call commits again a finished keep intent of this machine whose commit failed;
+//     a failure logs once per episode and is tried again at the next tick, and the notice waits for it.
 //
 // The landing step:
 //
-//   - Each tick of a beam's dobby reads Deps.CanLand: the beam is flagged ready with nothing working under it.
+//   - After the scheduling steps, each tick of a beam's dobby reads Deps.CanLand.
+//     Its LandReading says whether the beam is flagged ready with nothing working under it.
+//     It also says which other machine, if any, owns the beam's parent.
+//     Without the flag nothing working under the beam is no cause to act, however long the beam has been idle.
 //     The prime's dobby and a nil CanLand take no step.
-//   - A passing reading with no closed episode in State.Land asks for the landing through Deps.Land,
-//     which writes the land request the beam's pawl run consumes.
-//     A refusal leaves the episode open and Land is asked again each tick.
-//     A reading that does not pass clears the episode.
-//     A failed post leaves the episode open.
-//   - The step lands nothing by itself: Beam-Await re-checks the beam before anything lands.
-//   - While Deps.BeamReady reads true, the start step starts no task of the worktree,
-//     and each open member of the beam gets one notice naming `lym batten cancel <member> --remove`.
+//     The tick runs on every board change the dobby watches and on every pass exit.
+//     A member's teardown, a cancel with `--remove`, and a member moved off the project each trigger it;
+//     so does a member marked done by hand.
+//   - A passing reading with no closed episode recorded in State.Land asks for the landing through Deps.Land.
+//     Deps.Land writes the land request the beam's pawl run consumes, and the step records the episode as closed.
+//     It posts one notice to the beam's own orch only when it cannot ask for the landing.
+//     When another machine owns the parent, the notice names that machine and `lym adopt <subject>`.
+//     That episode closes once the notice goes out.
+//     When Land refuses, the notice carries the refusal.
+//     A refusal leaves the episode open:
+//     Land is asked again each tick, as a refusal may only wait on the run reaching Beam-Await.
+//     The refusal's notice is not posted twice.
+//     A reading that does not pass clears the episode, so a member opened again re-arms the step.
+//     A restarted dobby reads the record and takes no second step.
+//   - Bound: the step lands nothing by itself:
+//     Beam-Await re-checks the beam before anything lands.
+//     A land request Beam-Await refuses is not asked for again in the same episode.
+//   - A failed read or post is logged once per episode and changes nothing:
+//     a failed post leaves the episode open for the next tick.
+//   - While Deps.BeamReady reads true, the beam's ready record stands.
+//     Its start step then starts no task of the worktree, so no member begins once the beam is flagged ready.
+//     Each open member of the beam gets one notice.
+//     An open member is a task not done with no run listed, drafts and tasks held by a dependency included.
+//     The notice names the member, says that it blocks the landing, and names `lym batten cancel <member> --remove`.
+//     State.ReadyHold lists the members noticed, each recorded only once its post went out.
+//     A reading that is false clears State.ReadyHold, so a later episode notices again.
+//     A read that fails starts nothing, is logged once per episode and changes no record.
 //     A nil BeamReady holds nothing.
+//     The view shows every waiting task as held by the flag.
 //
 // The run notices:
 //
-//   - On each probe tick dobby reads the child of every running, non-cancelling run through Deps.RunNotices.
-//     It sends the notice the child's condition calls for: a dead driver, a provider usage limit,
-//     an API error stall, or every agent idle for the quiet window.
-//     A nil RunNotices.ReadChild sends none.
-//   - The idle clocks leave out machine sleeps and paused intervals,
+//   - On each probe tick, after the scheduling steps, dobby reads children through Deps.RunNotices.
+//     It reads the child of every listed run whose batten state is running with no cancel under way.
+//     It sends the notice the child's condition calls for, and a nil RunNotices.ReadChild sends none.
+//   - A child that is not running, or that a pause covers, is in no condition.
+//     A dead driver is no live driver strand and no held driver, run or loom bootstrap lock.
+//     It is checked first, once the child has been running for a minute of awake time,
+//     so a driver still starting is no dead one.
+//     Once batten respawned the child the cap of times with no progress, the notice changes:
+//     it names the respawn cap and `lym loom start`.
+//     With a live driver, the conditions are checked in this order:
+//     an agent run on the provider's usage limit and inactive for two minutes gives the usage-limit notice;
+//     an agent run stalled on an API error and inactive for two minutes gives the api-error notice;
+//     every agent idle for the quiet window with no live wait gives the quiet notice.
+//     With no agent run read, quiet counts from the latest of these:
+//     the child's newest history entry;
+//     the end of its newest ended agent run, which RunNotices.NewestAgentEnd reads;
+//     and its state's since.
+//     A session ending before its row writes its history entry is therefore no idle row.
+//     The idle clocks leave out the machine sleeps in the state record and the paused intervals,
 //     so a sleep or a pause can delay a notice and never raise one earlier.
-//   - A notice goes once per episode.
-//     The marker RunNotices.MarkerPath names keeps the keys, and the state record keeps the child's state,
+//   - With RunNotices.ReviveAPIError set, the first sight of an api-error episode revives the stalled sessions.
+//     That sight notices nothing.
+//     The notice goes when the episode still stands at a later probe tick;
+//     it also goes at the third revived episode in a row with no write of the child's status file between.
+//   - A notice reads `[dobby notice] <slug>: <state> at <row>; <condition>`.
+//     The child's reason follows as `waiting:`, `since` and `history`.
+//     Paths under the task pair are rendered relative to it.
+//     The notice goes through RunNotices.Post, tagged with the run's slug:
+//     a newer run notice of the run replaces one the orch has not read, and the run's teardown drops one still unread.
+//     One not posted is tried on each probe tick, at most three times, then dropped with a Warn.
+//   - A notice goes once per episode:
+//     its key is the condition, the child's state and a stamp.
+//     The marker RunNotices.MarkerPath names keeps the keys, one per line.
+//     The hub wiring places the marker in the run's records directory, so batten's status commit carries it to git.
+//     A driver-dead key ends when the child's state or its since changes.
+//     A quiet or api-error key ends when the newest agent activity moves.
+//     A usage-limit key ends once no run reads usage-limited.
+//     The child's state, its since and the revive streak ride in the run's entry of the state record,
 //     so a re-exec sends no notice twice.
-//   - RunNotices.Post tags each notice with the run's slug, so a newer notice replaces one the orch has not read.
-//   - While an anchor change stands no notice goes.
+//   - A failed read is logged once per episode and sends nothing.
+//   - Bound: while an anchor change stands no notice goes.
+//     A machine that takes a run over dates the child's since from its own first sight,
+//     so a driver-dead notice the other machine sent can go once more.
+//     It goes after the start grace counted from that first sight.
 //
 // The wait reminders:
 //
-//   - A child running at a row of WaitReminders.Rows with no pause covering it is in a wait.
-//     Beam-Await is not among the rows, since it waits on the beam's members as well as the operator.
-//   - While WaitReminders.Away reads true, a wait as old as WaitReminders.Interval gets one reminder line
-//     through WaitReminders.Post, and each further interval brings another.
-//   - A nil WaitReminders.Post or RunNotices.ReadChild checks nothing, and an anchor change stops the check.
+//   - Every dobby, the prime's included, checks at most once a minute, riding its ticks with no wait of its own.
+//     It checks the child of each listed run whose batten state is running with no cancel under way.
+//     It does so through Deps.RunNotices' child and pause reads.
+//     A nil WaitReminders.Post or RunNotices.ReadChild checks nothing.
+//   - A child running at a row of WaitReminders.Rows with no pause covering it is in a wait, whatever the presence.
+//     RunState.OperatorWait keeps the wait: its row, and as its start the first check that read the child there.
+//     The hub wiring names PR-Review and Sampler-Session;
+//     Beam-Await is not among them, since it waits on the beam's members as well as the operator.
+//     WaitReminders.LatestResume moves the start to a later resume of a pause covering the child,
+//     so a pause and resume the dobby did not read, between two checks or while it was down, restarts the wait too.
+//     The wait is cleared when the child leaves the row, stops running or a pause covers it.
+//     It is also cleared when its run's batten state stops being running.
+//   - While WaitReminders.Away reads true, a wait as old as WaitReminders.Interval gets one line:
+//     `<slug>: waiting at <row> for <n> minutes`.
+//     WaitReminders.Post carries it, and each further interval brings another.
+//     A post that fails is logged at Warn and tried at the next check.
+//   - The last reminder's time is in memory only.
+//     It is forgotten when the wait ends and while the operator is not away,
+//     so a return to away reminds at once of a wait past the interval.
+//   - A read that fails is logged once per episode:
+//     a child's leaves its wait as recorded and gets no reminder, and the presence's or the interval's sends none.
+//   - Bound: while an anchor change stands no wait is checked.
+//     A restarted dobby keeps the start but may remind once early.
+//     A child that leaves the row and returns between two checks with no pause keeps its wait.
 //
 // The landing notice:
 //
-//   - `beam.pull_request`, `beam.land_notice`, `beam.autonomy` and `beam.run_watch` are per-task settings,
-//     read only through LookupPullRequest, LookupLandNotice, LookupAutonomy, LookupRunWatch and LookupWithSource.
-//     LookupWithSource also names the worktree of the chain whose own files set the value, or the hub-wide default.
-//     A task's value is the one its own worktree's files set, else each parent worktree's own value up to the prime,
-//     else the hub's default layer's, else the template's.
-//   - Each tick reads Deps.LandNotice for each listed run ahead of its Land row and remembers the reading.
-//     A failed read keeps the last reading and is logged once per episode; a nil LandNotice reads every run as off.
-//   - A run seen past its Land row that dobby remembered ahead of it with `land_notice` on owes one line
-//     through Deps.Notice to the nearest live orch.
-//     A run whose `land_notice` read off owes none.
-//   - A landed line asks the orch for nothing:
-//     a member landing under a recorded pull request gets the description rewrite.
-//   - An owed line stays in the state record and is posted every tick until a post succeeds.
-//   - A run first seen past its Land row gets no line, and a done board entry owes none by itself.
-//
-// The run watch:
-//
-//   - Each scheduling tick reads every listed run:
-//     its derived state, batten's state, row, reason and history, and the child's state, row, reason and history.
-//     The child is read only when a status file was written since its last read.
-//     A child that does not read or has no status keeps the child part read last.
-//     So does a child written after the runs were listed, which the next tick reads;
-//     with no reading yet, the run keeps none for that tick.
-//   - A run's `beam.run_watch`, read through Deps.RunWatch.Level, is stops, rows or off.
-//     Stops owes a line for a change to a stop, rows for every change, off for none.
-//     A run whose level never read keeps no reading, so its first read tells the standing stop.
-//   - The level kept is the one read ahead of the Land row:
-//     the task worktree that sets it is torn down before batten reads done, so a later read would answer a parent's.
-//   - A stop is a derived state of paused, halted, cancelling, cancelled or landed,
-//     or a batten or child state other than running.
-//     A stop is new when the derived state, batten's state, the child's state, whether the child is read
-//     or the episode changed.
-//     The episode is a history length plus its newest entry's folded repeats, so a repeated block at one row counts.
-//   - A landed run whose `beam.land_notice` read on owes no line, since the landing notice reports it.
-//   - The memory is State.Watches, keyed by slug, which outlives the run's entry in the pass records.
-//     It is dropped once the run is no longer listed, owes nothing and has no batten status.
-//   - An owed line stays in the memory until Deps.RunWatch.Post posts it, oldest first.
-//     A post that finds no orch counts no attempt.
-//     A failing post is retried a probe interval later and dropped after three failures,
-//     and a line owed an hour of awake time is dropped.
-//   - A nil Level or Post watches nothing.
-//
-// The gate-hold notice:
-//
-//   - On each probe tick that schedules, dobby reads the held gate slots through Deps.GateHolds.
-//     The slots one process holds are one hold, which starts at the earliest of them.
-//     A hold belongs to the listed run whose task worktree it works in.
-//   - The bound is `beam.gate_hold_factor` times the largest `gate.tiers.<tier>.timeout_min` of the hold,
-//     or `beam.gate_hold_min` minutes when it has none; a factor of 0 sends nothing.
-//   - The bound runs on awake time, so a machine sleep delays the notice.
-//   - A hold past its bound gets one `[dobby notice]` line, whatever the run's watch level.
-//     It names the slots, tier, site, start, bound, the holder's process tree with each process's CPU time,
-//     and the processes outside the tree that carry the holder's environment marker.
-//     Each list names the busiest processes and counts the rest.
-//     A tree or marker scan that fails still sends the notice, naming the tree as unreadable.
-//   - The noticed holds are kept in State.Watches, so a re-exec sends no second line, and a failed post is retried.
-//     A new hold, by another process or with another start, is noticed again.
-//   - The step only reads: it ends no process and frees no slot.
+//   - Each tick with no anchor change standing runs this step after the run notices.
+//     Dobby remembers in the state record every listed run ahead of its Land row.
+//     The memory holds whether the board entry carries `notify_on_land`.
+//     It also holds whether the entry is a member of the dobby's beam.
+//     Both are refreshed while the entry is on the board.
+//     A RunView tells a run past its Land row, and whether it landed, from `battenrecipe.LandOutcomeOf`.
+//     It carries the landing commit Finalize recorded.
+//   - A remembered run seen past its Land row owes one line through Deps.Notice to the nearest live orch.
+//     It owes it when beam.yaml's `land_notice` is all.
+//     It also owes it when `land_notice` is per-task and the entry's request, remembered or read that tick, asks for it.
+//     Under off it owes none.
+//     The line is `[dobby notice] <slug>: landed as <commit>`.
+//     When Finalize recorded the landed diff as empty, it reads `landed with an empty diff`,
+//     naming the commit as the one the parent branch stays at.
+//     With no commit recorded it reads `landed, commit unknown`.
+//     For a run that did not land it reads `ended without landing` with `lym batten status <slug>`.
+//     A beam's batten run is driven by its parent's dobby, so a beam's landing gets its line the same way.
+//   - The landing notice is the one land notice a beam's members get while the beam's pull request is recorded.
+//     While Deps.PullRequestRecorded reads one recorded in the beam's landing record,
+//     each tick sets `notify_on_land` through Deps.SetNotifyOnLand on every open member of the beam that lacks it.
+//     A member is a task or project entry whose project is the beam's slug.
+//     An open one is not done and has a listed run ahead of its Land row,
+//     so a flag its landed line cleared is not set again, even once the run is no longer listed.
+//     A member filed while the pull request is recorded is therefore flagged too, in the tick after the dobby starts it.
+//     A landed line the dobby decides meanwhile ends with the beam's follow-up:
+//     `; add it to the change description, then run `lym beam describe <slug>`, which updates the pull request`.
+//     A member that already carries `notify_on_land` gets that same one line.
+//     So does a member remembered ahead of Land that was never flagged.
+//     One whose run lands in the tick the pull request is first recorded is such a member.
+//     A failed read of the landing record decides no line that tick; a failed write is tried again at the next tick.
+//     Each is logged once per episode.
+//     Under `land_notice: off` no member gets a line, so none carries the follow-up.
+//     The prime's dobby and a nil PullRequestRecorded flag nothing and add no follow-up.
+//   - A done board entry owes the landed line as well when all of these hold:
+//     its parent is the dobby's worktree;
+//     this machine owns it;
+//     it carries `notify_on_land`;
+//     and it has no memory of its own.
+//     The line names the commit when its run is listed past Land, and none goes under off.
+//     A done entry is read as landed whatever set its status,
+//     so an entry marked done by hand gets a landed line for a landing it never made.
+//     A request set after its run passed Land is noticed at the first tick that reads the entry.
+//     So is a landing the dobby never saw ahead of Land, one made while it was down included.
+//     Board prune keeps the entry until its request is cleared.
+//   - Deps.ClearNotifyOnLand clears the entry's field, so prune can drop the landed entry.
+//     It clears once a requested run's or entry's line went out, or at once when it owes none.
+//     A failed clear is tried again at the next tick.
+//   - An owed line is kept in the state record and posted at every tick until a post succeeds, with no cap.
+//     It survives the end of the run's listing, a restart and a re-exec.
+//     Each failed post is logged once per episode.
+//     Creel keeps mail to an orch whose strand is not listed until a strand of that name is,
+//     so a post fails only while creel or the orch record cannot be reached.
+//   - Bound: a run first seen past its Land row whose entry asks nothing gets no line,
+//     so `land_notice: all` notices no landing the dobby did not see ahead of Land.
 //
 // The board tidy:
 //
-//   - Each tick records every Land Done that names this machine as counted in the state record,
-//     so a restart counts none twice and a record read for the first time counts every earlier landing as seen.
-//     While a tidy agent is in flight nothing is counted.
+//   - Each tick reads the batten history of every run whose parent worktree is this dobby's, whatever its state.
+//     It records each Land Done that names this machine as counted in the state record.
+//     So a landing that a hand pass, or a pass a dead dobby left, made is counted, and a restart counts none twice.
+//     A record read for the first time counts every landing already there as seen.
+//     So does a record rewritten fresh over one that did not decode.
+//     Run records left from before the dobby therefore trigger no tidy.
+//     While a tidy agent is in flight nothing is counted,
+//     so the record's slugs since the last tidy are exactly the agent's.
 //   - At every `board_tidy_every` landings, 0 meaning never, dobby spawns the board-tidy agent unless one is in flight.
-//     The agent's one output is the report `.lym/beam/tidy/<UTC timestamp>.md`, which dobby posts to the nearest live orch.
-//     Past `board_tidy_timeout_min` dobby ends the agent and posts a no-report line.
-//   - A landing whose run records `lym batten cleanup --apply` removed before dobby read them is not counted.
-//
-// The description rewrite:
-//
-//   - A beam's dobby whose Deps.BeamDescribe.Record is set records each landing it counts as one to describe.
-//     A landing that waits on a board-tidy agent in flight is described once the tidy settles.
-//   - While Deps.PullRequestRecorded reads a pull request recorded for the beam,
-//     dobby spawns the describer agent over the landings to describe, unless one is in flight.
-//     The agent rewrites the beam's description whole.
-//     It reads the recorded one, the beam's commits and every member pull request.
-//     Its one output is a draft under `.lym/beam/describe/`, named by its UTC timestamp.
-//   - Landings counted while no pull request is recorded are dropped;
-//     an unreadable landing record keeps them until it reads, logged once per episode.
-//   - Once the draft passes Deps.BeamDescribe.Findings, dobby ends the agent.
-//     It records the draft through Deps.BeamDescribe.Record,
-//     which replaces the beam's description, commits it and updates the pull request.
-//   - A spawn that fails, a record that fails, and an agent with no passing draft by its timeout
-//     leave the recorded description standing.
-//     Dobby posts one line to the nearest live orch naming why,
-//     and the next member landing rewrites the description again.
-//     A record that committed the description but not the pull request update posts the way forward `lym beam pr update`.
-//   - An error of the description step is logged once per episode and holds no other step of the tick.
-//   - The prime's dobby rewrites nothing.
+//     The agent is a fresh shuttle run in a window of the worktree's reed session, with role BoardTidyRole.
+//     Its prompt is TidyPrompt over the landed slugs and a parent directive naming the nearest live orch.
+//     Its one output is the report `.lym/beam/tidy/<UTC timestamp>.md`.
+//     The agent in flight is kept in the state record, so a restart or a re-exec spawns no second.
+//   - Once the report exists, dobby posts its path to the nearest live orch.
+//     It ends the agent through shuttle's stop verb.
+//     Past `board_tidy_timeout_min` dobby ends the agent the same way and posts a no-report line naming the slugs.
+//     It keeps the slugs in the state record for the next tidy.
+//   - Bound: a fresh record loses a tidy in flight and the slugs landed since the last tidy,
+//     and the next tidy may spawn while the old agent runs until its timeout.
+//     A landing whose run records `lym batten cleanup --apply` removed before dobby read them is not counted.
 //
 // The done-run clear:
 //
-//   - Each tick with no anchor change standing removes the records, scratch and task branch of each listed run
-//     whose batten status reads done, through Deps.ClearDoneRun,
-//     so a finished run never refuses a later start under its slug.
-//   - A run is cleared only when no pass of it is in flight, its driver lock is free, its pair is gone,
-//     and none of its landing notice, its board-tidy count and a watch line is still owed.
-//     A run whose watch entry holds no level waits too, as does every run on a tick whose watch step failed to record.
-//     The clear drops the run's watch entry.
-//   - A failed clear is logged once per episode and never fails the tick.
+//   - Each tick with no anchor change standing runs this step after the landing count and the landing notices.
+//     It removes the records, scratch and task branch of each listed run whose batten status reads done,
+//     through Deps.ClearDoneRun.
+//     So a finished run's record or leftover branch never refuses a later start under its slug.
+//     A failed branch removal leaves the records, so the next tick tries again.
+//   - A run is cleared only when no pass of it is in flight and its driver lock is free,
+//     its pair is gone, so the leftover teardown takes a landed run's pair first,
+//     the landing-notice memory holds nothing of it,
+//     and a landing it holds is counted.
+//     So neither its landing notice nor its board-tidy count is lost.
+//   - A cleared run logs `run <slug>: done run cleared` and leaves the counted landings,
+//     so a later run under the slug counts its own landing.
+//     Each tick also drops the counted landings of a slug that is neither landed nor listed.
+//   - A clear the seam leaves alone, its lock held or its run no longer done, is tried again at the next tick.
+//     A failed clear is logged once per episode and never fails the tick.
+//   - Bound: while a board-tidy agent is in flight nothing is counted,
+//     so a run that landed meanwhile stays until the agent is settled.
+//
+// The coverage maps:
+//
+//   - The dobby builds no coverage maps; the operator builds them on command with `lym gate test --map`.
 //
 // The catch-up:
 //
 //   - CatchUp brings this machine's view of its runs up to origin's after an absence, before any act rule answer.
-//     It acts through the seams of CatchUpDeps, so the package imports no fabric or teardown package.
-//   - A run owned here that is Ahead of origin gets PushOwed.
-//     A run owned elsewhere gets HandOver, naming its owner.
+//     It reads and acts through the seams of CatchUpDeps, so the package imports no fabric or teardown package.
+//   - It runs these steps in order:
+//     PullBolt fetches Bolt and replays the local display commits, and Register registers this machine or checks its entry;
+//     for each slug Runs lists, FetchRun fetches the run's branches and ReadRun reads the run as a CatchUpRun;
+//     a run owned here that is Ahead of origin gets PushOwed, which pushes the records first and hands the run over itself
+//     when origin holds another machine's takeover entry, and nothing is reset;
+//     a run owned elsewhere gets HandOver, naming its owner, a landing past its parent-side merge included;
+//     and ApplyPauseIntents gets the runs owned here, to write this machine's pause entries from their pause intents.
 //   - CatchUpReport lists the runs pushed, handed over and owned here, and a caller reads every listed run as touched.
-//   - An unreachable origin returns an error wrapping ErrOriginUnreachable before any run is acted on.
+//   - An unreachable origin at the Bolt pull or a run's fetch returns an error wrapping ErrOriginUnreachable.
+//     A registration refusal returns as Register gave it.
+//     Both return before any run is acted on.
 //     A failed push or hand-over is joined into the returned error and the other runs go on.
 //     A nil seam is a wiring error returned at once.
-//   - The dobby owes the catch-up at a fresh start, never at a re-exec, after a sleep,
-//     and when a pass exits PassExitOriginWait or PassExitOwnedElsewhere.
+//   - The dobby owes the catch-up at a fresh start, never at a re-exec, and when its sleep watch sees a sleep.
+//     It owes it when a pass exits PassExitOriginWait or PassExitOwnedElsewhere.
+//     It owes it too when a listed run's verdict hands it over while its pair is still here,
+//     once per run until the run stops answering hand over.
 //     Deps.CatchUp with no PullBolt means no catch-up.
-//   - While the catch-up is owed the tick spawns no pass, starts no task, takes no landing step and runs no tidy step.
-//     A failure retries with a doubling delay and records State.CatchUp as a CatchUpWait.
+//   - UpgradeRead is the first read after an upgrade, run through Deps.Upgrade before the first catch-up that succeeds.
+//     It turns the pause record's standing `adopt`, legacy `adopt-hold` and `owner` entries into the Bolt model.
+//     It holds UpgradeDeps.Lock, so the dobbies of one machine run it one at a time and the second finds nothing left.
+//     With no such entry it does nothing.
+//     Otherwise it pulls Bolt first.
+//     An unreachable origin returns an error wrapping ErrOriginUnreachable with nothing written.
+//     Each adopt entry of a run this machine owns that has a batten record and is not terminal becomes a pause intent.
+//     A pause intent whose push meets another machine's takeover entry reads the run as owned elsewhere and records none.
+//     The subjects of those runs and of the released tasks the entries name form one Bolt hold.
+//     The hold is `adopt-fix` while an open adopt fix task of a subject stands, with each subject's try count.
+//     Otherwise the hold is `adopt`.
+//     A hold of another machine that stands writes none.
+//     One notice names the hold or the standing one, and an identical hold of this machine that already stands posts none.
+//     It gives the way forward of re-running `lym adopt` and then `lym tender resume`.
+//     Only then does it drop every adopt, adopt-hold and owner entry.
+//     The catch-up then writes this machine's entries from the intents.
+//     A failure before the drops leaves the entries, so the read runs again; a failed read keeps the catch-up owed.
+//     An `Upgrade` whose Entries is nil means no first read.
+//   - A tick runs the owed catch-up first, when its next try is due, before any scheduling.
+//     Success clears the wait, resets the retry delay and owes every run a full pass.
+//     Failure keeps it owed, retries after a delay that doubles from a second to the idle ceiling,
+//     and records State.CatchUp as a CatchUpWait whose reason is origin, refused or failed.
+//     A refused or failed wait posts one notice per episode, and an origin wait posts none.
+//     While the catch-up is owed the tick spawns no pass, starts no task, takes no landing step and runs no tidy step.
+//     The state record's upkeep and the landing count go on, and the view's `catch_up` shows the wait.
+//   - After the listing and before it plans passes, a tick hands Deps.SyncBoltHold every slug the catch-up covers
+//     and the listed runs the hold holds, those whose verdict reason is held.
+//     A failed sync logs once per episode and the tick goes on.
 //
 // The desktop launcher:
 //
-//   - Each start of the dobby adds the hub's desktop launcher when Deps.Owner reads the worktree owned by this machine.
-//   - Every catch-up removes it once OwnsAnything reads that this machine owns nothing in the hub.
+//   - CatchUpDeps.Launcher names the hub's desktop launcher, which internal/desktoplauncher writes;
+//     one with no shortname, as a hand-built Deps leaves it, keeps no launcher.
+//   - Each start of the dobby, a re-exec's included, adds the hub's launcher, and the all-hubs launcher with it,
+//     when Deps.Owner reads the worktree owned by this machine.
+//     The launcher runs the dobby's lym binary, so a re-exec onto a moved binary rewrites it.
+//   - Every catch-up, the one a fresh start owes, one after a sleep and a hand pass's included,
+//     removes the hub's launcher once OwnsAnything reads, from the pulled board, that this machine owns nothing in the hub:
+//     neither the prime nor a beam not done.
 //   - A machine with no desktop keeps no launcher; any other failure is logged at Warn and stops nothing.
+//   - Bound: a launcher outlives this machine's ownership until this machine next runs a catch-up,
+//     since no other machine reaches its desktop.
 //
 // The view:
 //
-//   - BuildView carries beam.yaml's `max_runs` and the tasks waiting with the reason each waits.
-//     It also carries the kept pairs of cancelled runs and the listed runs that are not done.
-//     Each listed run says whether it asks for a landing notice.
-//   - The view does not read the task-limit hold, and the dobby log records it.
+//   - It carries beam.yaml's `max_runs` and `land_notice`.
+//     It marks each run and waiting task whose board entry asks for a landing notice.
+//     A run is also marked when the state record remembers the request.
+//   - The runs are the listed ones that are not done.
+//     Each carries batten's state and producer, and a pass in flight while its driver lock is held.
+//     It also carries its last pass exit, owed full pass, owner mark and failing count from the state record.
+//   - The kept pairs are the listed cancelled runs' pairs their cancel kept, each with when that cancel finished.
+//   - A task waits while it is released to the worktree and not started.
+//     Released means an empty status and the worktree as parent.
+//     Its reasons are the start step's own conditions:
+//     the dependencies not done; another machine's ownership; a covering pause;
+//     a refused start whose backoff has not run out for the entry as it reads now;
+//     the beam's ready hold; and `max_runs`.
+//     The `max_runs` reason falls on the tasks nothing else holds, in board order as the start step walks.
+//     It applies once the runs that take a slot fill it.
+//     A task with no reason starts on the dobby's next tick unless the task-limit hold stands.
+//     The view does not read the task-limit hold, and the dobby log records it.
+//   - Bound: a first pass in flight that has left no status file is in no file,
+//     so its task reads as ready and its slot as free until the status appears.
 //
 // Told-geometry tier: the package takes every absolute path from its caller and imports neither internal/lymcwd nor any CLI package, per PATTERN-cwd-resolution.
 // Its seam_enforcement_test.go enforces that membership mechanically.

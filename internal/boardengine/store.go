@@ -4,6 +4,8 @@
 // The store applies the CRUD and validation rules:
 // dangling-dependency, isolated, kind and label rules, and cycle detection.
 // Batch and merge apply atomically.
+// Load migrates the legacy tasks.json and notes.json in memory when board.json is absent,
+// and it folds the done marks of a pre-upgrade binary.
 // Save and Load take the fine-grained swap lock so a concurrent read never sees a half-written file.
 
 package boardengine
@@ -19,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/beamsetting"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -35,15 +36,13 @@ func swapLockPath(path string) string {
 	return lock.TrackedLockPath(filepath.Dir(path), filepath.Base(path)+swapLockSuffix)
 }
 
-// BriefTask is an entry's enriched read-only view, with Layer, Pending and HasProposal computed at read time.
+// BriefTask is an entry's enriched read-only view, with Layer and HasProposal computed at read time.
 type BriefTask struct {
-	ID        int      `json:"id"`
-	Handle    string   `json:"handle,omitempty"`
-	Slug      string   `json:"slug"`
-	Title     string   `json:"title"`
-	DependsOn []string `json:"depends_on"`
-	// Pending lists the dependencies that are not yet met, in depends_on order; empty when the entry waits on nothing.
-	Pending     []string  `json:"pending,omitempty"`
+	ID          int       `json:"id"`
+	Handle      string    `json:"handle,omitempty"`
+	Slug        string    `json:"slug"`
+	Title       string    `json:"title"`
+	DependsOn   []string  `json:"depends_on"`
 	Kind        string    `json:"kind"`
 	Labels      []string  `json:"labels"`
 	Isolated    bool      `json:"isolated"`
@@ -75,16 +74,20 @@ const (
 )
 
 // storeFile is the on-disk shape of board.json.
+// LegacyDone lists the slugs whose done mark came from a legacy file, so the fold never re-applies one.
 // PrimeOwner names the machine that owns the hub's prime, empty when none is recorded.
+// DraftStatus is true once the board's open tasks with no status were marked draft.
 // Machines is the machine registry and Holds the adopt holds, each omitted while empty.
 // Unknown holds the top-level keys this binary does not know, written back after the known ones in key order.
 type storeFile struct {
-	Version    int                        `json:"version"`
-	Entries    []Task                     `json:"entries"`
-	PrimeOwner string                     `json:"prime_owner,omitempty"`
-	Machines   Registry                   `json:"machines,omitempty"`
-	Holds      []Hold                     `json:"holds,omitempty"`
-	Unknown    map[string]json.RawMessage `json:"-"`
+	Version     int                        `json:"version"`
+	Entries     []Task                     `json:"entries"`
+	LegacyDone  []string                   `json:"legacy_done,omitempty"`
+	PrimeOwner  string                     `json:"prime_owner,omitempty"`
+	DraftStatus bool                       `json:"draft_status,omitempty"`
+	Machines    Registry                   `json:"machines,omitempty"`
+	Holds       []Hold                     `json:"holds,omitempty"`
+	Unknown     map[string]json.RawMessage `json:"-"`
 }
 
 // MarshalJSON encodes the known fields, then the Unknown members after them in key order.
@@ -97,31 +100,32 @@ func (f storeFile) MarshalJSON() ([]byte, error) {
 	return appendUnknown(object, f.Unknown)
 }
 
-// loadedStoreFile is the decode shape of board.json.
+// loadedStoreFile is the decode shape of board.json: its entries may still carry the retired tier and type.
 // Unknown holds the top-level keys this binary does not know, each with its raw JSON value.
 type loadedStoreFile struct {
-	Version    int                        `json:"version"`
-	Entries    []Task                     `json:"entries"`
-	PrimeOwner string                     `json:"prime_owner,omitempty"`
-	Machines   Registry                   `json:"machines,omitempty"`
-	Holds      []Hold                     `json:"holds,omitempty"`
-	Unknown    map[string]json.RawMessage `json:"-"`
+	Version     int                        `json:"version"`
+	Entries     []storedEntry              `json:"entries"`
+	LegacyDone  []string                   `json:"legacy_done,omitempty"`
+	PrimeOwner  string                     `json:"prime_owner,omitempty"`
+	DraftStatus bool                       `json:"draft_status,omitempty"`
+	Machines    Registry                   `json:"machines,omitempty"`
+	Holds       []Hold                     `json:"holds,omitempty"`
+	Unknown     map[string]json.RawMessage `json:"-"`
 }
-
-// taskFields is Task without its methods, so decoding it fills the known fields alone and never runs Task.UnmarshalJSON.
-type taskFields Task
 
 // UnmarshalJSON decodes the known fields in one json pass.
 // It then walks the raw bytes once to keep every other key, top-level and per entry, in Unknown.
-// The entries decode through taskFields, not Task.
+// The entries decode through decodedEntry, not storedEntry.
 // No json call is nested per entry, so the load stays as cheap as one decode.
 func (f *loadedStoreFile) UnmarshalJSON(data []byte) error {
 	var decoded struct {
-		Version    int          `json:"version"`
-		Entries    []taskFields `json:"entries"`
-		PrimeOwner string       `json:"prime_owner,omitempty"`
-		Machines   Registry     `json:"machines,omitempty"`
-		Holds      []Hold       `json:"holds,omitempty"`
+		Version     int            `json:"version"`
+		Entries     []decodedEntry `json:"entries"`
+		LegacyDone  []string       `json:"legacy_done,omitempty"`
+		PrimeOwner  string         `json:"prime_owner,omitempty"`
+		DraftStatus bool           `json:"draft_status,omitempty"`
+		Machines    Registry       `json:"machines,omitempty"`
+		Holds       []Hold         `json:"holds,omitempty"`
 	}
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
@@ -136,13 +140,11 @@ func (f *loadedStoreFile) UnmarshalJSON(data []byte) error {
 			unknown[key] = slices.Clone(value)
 		}
 	})
-	entries := make([]Task, 0, len(decoded.Entries))
+	entries := make([]storedEntry, 0, len(decoded.Entries))
 	eachElement(rawEntries, func(raw []byte) {
-		task := Task(decoded.Entries[len(entries)])
-		task.Unknown = unknownMembers(raw, taskKeys)
-		entries = append(entries, task)
+		entries = append(entries, storedEntryFrom(decoded.Entries[len(entries)], raw))
 	})
-	*f = loadedStoreFile{Version: decoded.Version, Entries: entries, PrimeOwner: decoded.PrimeOwner, Machines: decoded.Machines, Holds: decoded.Holds}
+	*f = loadedStoreFile{Version: decoded.Version, Entries: entries, LegacyDone: decoded.LegacyDone, PrimeOwner: decoded.PrimeOwner, DraftStatus: decoded.DraftStatus, Machines: decoded.Machines, Holds: decoded.Holds}
 	if len(unknown) > 0 {
 		f.Unknown = unknown
 	}
@@ -154,9 +156,12 @@ var loadedStoreFileKeys = jsonKeySet(reflect.TypeFor[loadedStoreFile]())
 
 // Store holds the in-memory entry list for one board directory's board.json.
 type Store struct {
-	tasks []Task
+	tasks      []Task
+	legacyDone []string
 	// primeOwner is the board.json prime_owner record, the machine that owns the hub's prime; empty when none is recorded.
 	primeOwner string
+	// draftStatus is the board.json draft_status record: true once the open tasks with no status were marked draft.
+	draftStatus bool
 	// machines is the board.json machine registry, kept and written back unchanged; nil when none is recorded.
 	machines Registry
 	// holds is the board.json adopt holds, kept and written back unchanged.
@@ -186,15 +191,15 @@ func NewStore(boardDir string) *Store {
 }
 
 // Load populates the store from boardDir and never writes.
-// An absent board.json leaves the store empty.
-// An entry without a handle of its own letter gets one in memory, persisted on the next Save.
-// A task written with a retired pull_request or notify_on_land key has the setting it carries folded.
-// The fold goes into its beam run settings.
-// A pull_request of off is dropped with nothing folded, and a project keeps both keys as kept keys.
-// The fold is in memory, persisted on the next Save.
+// board.json wins when it exists; otherwise the legacy files that exist are migrated in memory.
+// Whenever a legacy file exists, its done marks are folded into the loaded entries.
+// Entries in the old tier-and-type shape convert in memory and persist in the new shape on the next Save.
+// An entry without a handle of its own letter gets one in memory, persisted on the next Save too.
 func (s *Store) Load() error {
 	s.tasks = []Task{}
+	s.legacyDone = nil
 	s.primeOwner = ""
+	s.draftStatus = false
 	s.machines = nil
 	s.holds = nil
 	s.unknown = nil
@@ -202,10 +207,21 @@ func (s *Store) Load() error {
 		return nil
 	}
 
+	tasksRecords, haveTasks, err := readLegacyFile(filepath.Join(s.boardDir, legacyTasksFile))
+	if err != nil {
+		return fmt.Errorf("load store: %w", err)
+	}
+	notesRecords, haveNotes, err := readLegacyFile(filepath.Join(s.boardDir, legacyNotesFile))
+	if err != nil {
+		return fmt.Errorf("load store: %w", err)
+	}
+
 	path := filepath.Join(s.boardDir, boardFile)
 	var entries []Task
+	var legacyDone []string
 	var unknown map[string]json.RawMessage
 	var primeOwner string
+	var draftStatus bool
 	var machines Registry
 	var holds []Hold
 	if fileExists(path) {
@@ -223,10 +239,19 @@ func (s *Store) Load() error {
 			if file.Version != storeVersion {
 				return fmt.Errorf("load store: %s has version %d; this binary reads only version %d", boardFile, file.Version, storeVersion)
 			}
-			entries, unknown = file.Entries, file.Unknown
-			primeOwner = file.PrimeOwner
+			entries, legacyDone, unknown = migrateEntries(file.Entries, s.vocab), file.LegacyDone, file.Unknown
+			primeOwner, draftStatus = file.PrimeOwner, file.DraftStatus
 			machines, holds = file.Machines, file.Holds
 		}
+	} else if haveTasks || haveNotes {
+		entries, legacyDone, err = migrateLegacy(tasksRecords, notesRecords, s.vocab)
+		if err != nil {
+			return fmt.Errorf("load store: %w", err)
+		}
+	}
+
+	if haveTasks || haveNotes {
+		entries, legacyDone = foldLegacyDone(entries, legacyDone, append(slices.Clone(tasksRecords), notesRecords...))
 	}
 
 	if entries == nil {
@@ -242,94 +267,16 @@ func (s *Store) Load() error {
 		if entries[i].Labels == nil {
 			entries[i].Labels = []string{}
 		}
-		foldLegacyBeamFields(&entries[i])
 	}
 	assignHandles(entries, s.vocab)
 	s.tasks = entries
+	s.legacyDone = legacyDone
 	s.primeOwner = primeOwner
+	s.draftStatus = draftStatus
 	s.machines = machines
 	s.holds = holds
 	s.unknown = unknown
 	return nil
-}
-
-// The retired board.json entry keys that foldLegacyBeamFields and BeamSettingsByEntry read.
-const (
-	legacyPullRequestKey  = "pull_request"
-	legacyNotifyOnLandKey = "notify_on_land"
-)
-
-// legacyBeamSettings returns the beam settings that the retired entry keys in unknown carry, by beam key.
-// A non-empty pull_request becomes beam.pull_request, and a true notify_on_land becomes beam.land_notice on.
-// A pull_request of off carries nothing:
-// the old resolver still opened a pull request for it under a required or merge parent,
-// so a fold drops it rather than land such a task with none.
-func legacyBeamSettings(unknown map[string]json.RawMessage) map[string]string {
-	settings := map[string]string{}
-	if pullRequest := legacyPullRequest(unknown); pullRequest != "" && pullRequest != beamsetting.PullRequestOff {
-		settings[beamsetting.PullRequestKey] = pullRequest
-	}
-	var notify bool
-	if json.Unmarshal(unknown[legacyNotifyOnLandKey], &notify) == nil && notify {
-		settings[beamsetting.LandNoticeKey] = beamsetting.LandNoticeOn
-	}
-	return settings
-}
-
-// legacyPullRequest returns the retired pull_request entry key in unknown, empty when it is absent or not text.
-func legacyPullRequest(unknown map[string]json.RawMessage) string {
-	var pullRequest string
-	if json.Unmarshal(unknown[legacyPullRequestKey], &pullRequest) != nil {
-		return ""
-	}
-	return pullRequest
-}
-
-// foldLegacyBeamFields moves the retired pull_request and notify_on_land keys of t onto its beam run settings.
-// A board.json written by an older binary holds them as entry keys, which now decode into Unknown,
-// and the per-task beam settings read only run_settings.
-// The settings legacyBeamSettings returns are set under beam, and a value t's run settings already set there wins.
-// Both keys are dropped from Unknown, which becomes nil when nothing else is left.
-// A project carries no run settings, so its keys stay in Unknown, which a save writes back;
-// BeamSettingsByEntry still reads them, so the hub reconcile can carry them into the project's worktree after any save.
-func foldLegacyBeamFields(t *Task) {
-	if t.Kind == KindProject {
-		return
-	}
-	_, hasPullRequest := t.Unknown[legacyPullRequestKey]
-	_, hasNotify := t.Unknown[legacyNotifyOnLandKey]
-	if !hasPullRequest && !hasNotify {
-		return
-	}
-	settings := legacyBeamSettings(t.Unknown)
-	delete(t.Unknown, legacyPullRequestKey)
-	delete(t.Unknown, legacyNotifyOnLandKey)
-	if len(t.Unknown) == 0 {
-		t.Unknown = nil
-	}
-	for _, key := range slices.Sorted(maps.Keys(settings)) {
-		setBeamSettingIfAbsent(t, key, settings[key])
-	}
-}
-
-// setBeamSettingIfAbsent sets key under the beam module of t's run settings unless it is already set there.
-// A beam entry that is not a mapping is left untouched.
-func setBeamSettingIfAbsent(t *Task, key, value string) {
-	beam, isMapping := t.RunSettings[beamsetting.Module].(map[string]any)
-	if t.RunSettings[beamsetting.Module] != nil && !isMapping {
-		return
-	}
-	if _, set := beam[key]; set {
-		return
-	}
-	if beam == nil {
-		beam = map[string]any{}
-		if t.RunSettings == nil {
-			t.RunSettings = map[string]any{}
-		}
-		t.RunSettings[beamsetting.Module] = beam
-	}
-	beam[key] = value
 }
 
 // BoardFileRel returns the board file's name relative to the board directory, the board checkout's root.
@@ -338,23 +285,10 @@ func BoardFileRel() string {
 }
 
 // ParseBoardTasks decodes board.json bytes read from a board commit.
-// It takes no lock, and an unknown key is ignored.
-// Each task's retired pull_request and notify_on_land keys are folded as a load folds them.
+// It takes no lock and reads no legacy file.
+// An entry in the old tier-and-type form still yields its labels, and an unknown key is ignored.
 // A version other than the one this binary reads is an error.
 func ParseBoardTasks(data []byte) ([]Task, error) {
-	entries, err := decodeBoardEntries(data)
-	if err != nil {
-		return nil, err
-	}
-	for i := range entries {
-		foldLegacyBeamFields(&entries[i])
-	}
-	return entries, nil
-}
-
-// decodeBoardEntries decodes the entries of board.json bytes with their unknown keys kept and nothing folded.
-// A version other than the one this binary reads is an error.
-func decodeBoardEntries(data []byte) ([]Task, error) {
 	var file loadedStoreFile
 	if err := json.Unmarshal(data, &file); err != nil {
 		return nil, fmt.Errorf("load store: %w: unmarshal state: %w", state.ErrDecode, err)
@@ -362,58 +296,20 @@ func decodeBoardEntries(data []byte) ([]Task, error) {
 	if file.Version != storeVersion {
 		return nil, fmt.Errorf("load store: %s has version %d; this binary reads only version %d", boardFile, file.Version, storeVersion)
 	}
-	return file.Entries, nil
+	return migrateEntries(file.Entries, nil), nil
 }
 
-// EntryBeamSettings is the beam settings one board entry holds.
-type EntryBeamSettings struct {
-	// Set holds the entry's pull_request and land_notice by beam key.
-	Set map[string]string
-	// RetiredOff reports that the entry's retired pull_request is off, which carries no setting.
-	// It is false when the entry's run settings set a pull_request.
-	RetiredOff bool
-}
-
-// BeamSettingsByEntry returns the beam settings that each board entry of boardDir's board.json holds, by entry slug.
-// An entry's settings are the pull_request and land_notice of its beam run settings,
-// and its retired pull_request and notify_on_land keys while they remain; a run setting wins.
-// A save drops a task's retired keys after folding them into its run settings, a pull_request of off apart,
-// and a project keeps its retired keys.
-// An entry that holds no setting is left out, and an absent board.json gives none.
-// It reads the file as it is on disk, with nothing folded.
-func BeamSettingsByEntry(boardDir string) (map[string]EntryBeamSettings, error) {
-	path := filepath.Join(boardDir, boardFile)
+// readLegacyFile reads one legacy file when it exists, under its swap lock.
+// Existence is checked first so a read never creates a lock file for an absent file.
+func readLegacyFile(path string) ([]legacyRecord, bool, error) {
 	if !fileExists(path) {
-		return nil, nil
+		return nil, false, nil
 	}
-	raw, found, err := state.ReadJSON[json.RawMessage](path, swapLockPath(path))
+	records, found, err := state.ReadJSON[[]legacyRecord](path, swapLockPath(path))
 	if err != nil {
-		return nil, fmt.Errorf("read legacy beam settings: %w", err)
+		return nil, false, err
 	}
-	if !found {
-		return nil, nil
-	}
-	entries, err := decodeBoardEntries(raw)
-	if err != nil {
-		return nil, err
-	}
-	settings := map[string]EntryBeamSettings{}
-	for _, entry := range entries {
-		held := EntryBeamSettings{Set: legacyBeamSettings(entry.Unknown)}
-		if beam, isMapping := entry.RunSettings[beamsetting.Module].(map[string]any); isMapping {
-			for _, key := range []string{beamsetting.PullRequestKey, beamsetting.LandNoticeKey} {
-				if value, isText := beam[key].(string); isText && value != "" {
-					held.Set[key] = value
-				}
-			}
-		}
-		_, setPullRequest := held.Set[beamsetting.PullRequestKey]
-		held.RetiredOff = !setPullRequest && legacyPullRequest(entry.Unknown) == beamsetting.PullRequestOff
-		if len(held.Set) > 0 || held.RetiredOff {
-			settings[entry.Slug] = held
-		}
-	}
-	return settings, nil
+	return records, found, nil
 }
 
 // fileExists reports whether path names an existing file.
@@ -429,12 +325,14 @@ func (s *Store) Save() error {
 	}
 	path := filepath.Join(s.boardDir, boardFile)
 	return state.WriteJSON(path, swapLockPath(path), storeFile{
-		Version:    storeVersion,
-		Entries:    s.tasks,
-		PrimeOwner: s.primeOwner,
-		Machines:   s.machines,
-		Holds:      s.holds,
-		Unknown:    s.unknown,
+		Version:     storeVersion,
+		Entries:     s.tasks,
+		LegacyDone:  s.legacyDone,
+		PrimeOwner:  s.primeOwner,
+		DraftStatus: s.draftStatus,
+		Machines:    s.machines,
+		Holds:       s.holds,
+		Unknown:     s.unknown,
 	})
 }
 
@@ -502,6 +400,27 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 		depTask := snapshotIndex[dep]
 		if depTask.Isolated {
 			return fmt.Errorf("cannot depend on isolated task %q", dep)
+		}
+	}
+
+	if incoming.Kind == KindNote && len(incoming.DependsOn) > 0 {
+		return fmt.Errorf("note %q has depends_on, and only a task can depend on another entry: clear it with \"lym board set-deps\", or make the entry a task with \"lym board promote\"", incoming.Slug)
+	}
+	for _, dep := range incoming.DependsOn {
+		if snapshotIndex[dep].Kind == KindNote {
+			rest, _ := json.Marshal(slices.DeleteFunc(slices.Clone(incoming.DependsOn), func(other string) bool { return other == dep }))
+			return fmt.Errorf("%q depends on note %q, and a note cannot be depended on: promote the note with lym board promote '{\"slug\":\"%s\"}', or drop the dependency with lym board set-deps '{\"slug\":\"%s\",\"depends_on\":%s}'", incoming.Slug, dep, dep, incoming.Slug, rest)
+		}
+	}
+	if incoming.Kind == KindNote {
+		var dependents []string
+		for _, t := range snapshot {
+			if t.Slug != incoming.Slug && slices.Contains(t.DependsOn, incoming.Slug) {
+				dependents = append(dependents, t.Slug)
+			}
+		}
+		if len(dependents) > 0 {
+			return fmt.Errorf("note %q cannot be a note: %s depend on it; clear their depends_on with \"lym board set-deps\", or keep the entry a task", incoming.Slug, strings.Join(dependents, ", "))
 		}
 	}
 
@@ -604,7 +523,7 @@ type MergeStatusUpdate struct {
 // and an upsert naming it is refused as an unknown field.
 // "record_body_sha256" is output only in the same way: a write that stores the entry's decision record stamps it.
 func UpsertPayloadKeys() (required, optional []string) {
-	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", "owner_machine", "project", "order", "beam", "front", onLandKey, "discussed"}
+	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", pullRequestKey, "notify_on_land", "owner_machine", "project", "order", "beam", "front", onLandKey, "discussed"}
 }
 
 // upsertAllowedKeys is the set of field names every upsert path accepts, enforced at the store boundary.
@@ -636,14 +555,6 @@ func validateUpsertFields(fields map[string]any) error {
 			}
 			if k == "handle" {
 				return fmt.Errorf("unknown field: %q (the board assigns an entry's handle; drop it from the payload)", k)
-			}
-			if k == legacyPullRequestKey {
-				return fmt.Errorf("unknown field: %q (%s moved to run_settings: set \"run_settings\": {%q: {%q: \"<%s>\"}})",
-					k, k, beamsetting.Module, beamsetting.PullRequestKey, strings.Join(beamsetting.PullRequestValues(), "|"))
-			}
-			if k == legacyNotifyOnLandKey {
-				return fmt.Errorf("unknown field: %q (%s moved to run_settings: set \"run_settings\": {%q: {%q: %q}})",
-					k, k, beamsetting.Module, beamsetting.LandNoticeKey, beamsetting.LandNoticeOn)
 			}
 			return fmt.Errorf("unknown field: %q", k)
 		}
@@ -755,30 +666,13 @@ func (s *Store) GetTask(selector any) (Task, bool) {
 }
 
 // RemoveTask deletes the entry that selector identifies: a slug string, a numeric id or a Handle.
-// It strips the entry's slug from the depends_on of every remaining entry.
 // It returns an error when no entry matches.
 func (s *Store) RemoveTask(selector any) error {
-	return s.removeEntry(selector, true)
-}
-
-// removeEntry deletes the entry that selector identifies.
-// When stripDependencies is set, it also strips that entry's slug from the depends_on of every remaining entry.
-// A caller that puts an entry of the same slug back in the same write passes false, so its dependents keep waiting.
-func (s *Store) removeEntry(selector any, stripDependencies bool) error {
 	i, found := s.index(selector)
 	if !found {
 		return fmt.Errorf("task not found: %v", selector)
 	}
-	slug := s.tasks[i].Slug
 	s.tasks = append(s.tasks[:i], s.tasks[i+1:]...)
-	if !stripDependencies {
-		return nil
-	}
-	for j := range s.tasks {
-		if slices.Contains(s.tasks[j].DependsOn, slug) {
-			s.tasks[j].DependsOn = slices.DeleteFunc(slices.Clone(s.tasks[j].DependsOn), func(dep string) bool { return dep == slug })
-		}
-	}
 	return nil
 }
 
@@ -866,7 +760,6 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 
 	owners := ownersOf(s.primeOwner, s.tasks)
 	parentOf := parentOfOrPrime(s.parentOf)
-	dependencies := NewDependencies(s.tasks)
 	result := make([]BriefTask, 0, len(s.tasks))
 	for _, t := range ordered {
 		if !hasAllLabels(t, labels) {
@@ -896,7 +789,6 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 			Slug:         t.Slug,
 			Title:        t.Title,
 			DependsOn:    t.DependsOn,
-			Pending:      dependencies.Pending(t),
 			Kind:         t.Kind,
 			Labels:       t.Labels,
 			Isolated:     t.Isolated,
@@ -917,7 +809,7 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 
 // promoteTo makes the entry identified by idOrSlug a task and clears its priority.
 // When recipe is not empty, it is set in the same write.
-// The task keeps the note's depends_on, and a non-nil dependsOn replaces it in the same write,
+// A non-nil dependsOn replaces the task's depends_on in the same write,
 // so a write that also releases the task never lets a run start ahead of them.
 // An entry that is already a task takes no write, so a non-nil dependsOn that differs from its depends_on is refused.
 // A discussed note takes recipe raddle when recipe is empty and its record is stored, or it carries the sketch label.
@@ -972,10 +864,12 @@ func (s *Store) promoteTo(idOrSlug any, recipe string, dependsOn []string, recor
 // Prune removes every done entry except the survivors described here, and returns the removed slugs in store order.
 // It strips the removed slugs from the depends_on and order of the surviving entries.
 // An abandoned entry survives, and so does a done project that a surviving entry names as its project.
+// A done entry carrying notify_on_land survives too,
+// so its request outlives the landing until the dobby has sent its line and cleared it.
 func (s *Store) Prune() []string {
 	gone := make(map[string]bool)
 	for _, t := range s.tasks {
-		if isDone(t) {
+		if isDone(t) && !t.NotifyOnLand {
 			gone[t.Slug] = true
 		}
 	}
@@ -1311,7 +1205,7 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 	keepDiscussed := upsertedAgain && removedEntry.Discussed && slices.Contains(removeSlugs, slugStr)
 
 	for _, slug := range removeSlugs {
-		s.removeEntry(slug, slug != slugStr)
+		s.RemoveTask(slug)
 	}
 
 	upserted, err := s.UpsertTask(upsert)

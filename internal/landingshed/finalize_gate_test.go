@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -739,6 +740,28 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		}
 	})
 
+	t.Run("an attempt record found only under the scratch directory is moved to the records directory with its spent count", func(t *testing.T) {
+		fx := newFinalizeGateFixture(t)
+		fx.scriptGate(failing)
+		scratchPath := FixerAttemptsPath(fx.deps.ScratchDir, finalizeName)
+		if err := WriteFixerAttempts(scratchPath, FixerAttempts{Entry: 1, Spent: 2, Baseline: "t2"}); err != nil {
+			t.Fatal(err)
+		}
+
+		outcome, ptr := fx.call(t)
+
+		fx.requireHaltNoLanding(t, outcome, ptr, "spent every attempt")
+		if rec, found := fx.attempts(t); !found || rec.Spent != 2 {
+			t.Errorf("attempt record under the records directory = %+v, %v; want the 2 spent turns kept", rec, found)
+		}
+		if _, err := os.Stat(scratchPath); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("stat of the scratch attempt record = %v; want it gone", err)
+		}
+		if len(fx.seats.tables) != 0 {
+			t.Errorf("fixer sessions = %d; want none over the spent attempts the scratch record carried", len(fx.seats.tables))
+		}
+	})
+
 	t.Run("a fix over the caps goes to the fix review over the fixer's commits, whatever makes it over, and each rejection goes back to the fixer until the rounds run out", func(t *testing.T) {
 		tests := []struct {
 			name       string
@@ -848,7 +871,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 				name:          "a session past its timeout runs again, and the last round halts naming the timeout key",
 				review:        func(*testing.T, *finalizeGateFixture) func() { return func() {} },
 				reviewTimeout: true,
-				wantReason:    []string{"the fix review gave no verdict", "fixer_timeout_min", "session: " + fakeFixerSession, "fixer commits: t2..f1"},
+				wantReason:    []string{"the fix review gave no verdict", "fixer_timeout_min", "session log: " + fakeFixerRunDir, "fixer commits: t2..f1"},
 				wantReviews:   2,
 			},
 			{
@@ -859,9 +882,9 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 				wantReviews: 1,
 			},
 			{
-				name:        "a session that leaves no report runs again, and the last round halts naming the session",
+				name:        "a session that leaves no report runs again, and the last round halts naming the session log",
 				review:      func(*testing.T, *finalizeGateFixture) func() { return func() {} },
-				wantReason:  []string{"the fix review gave no verdict", "session: " + fakeFixerSession, "fixer commits: t2..f1"},
+				wantReason:  []string{"the fix review gave no verdict", "session log: " + fakeFixerRunDir, "fixer commits: t2..f1"},
 				wantReviews: 2,
 			},
 			{
@@ -880,7 +903,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 					}
 				},
 				wantReviews:  1,
-				wantReason:   []string{"the fix review session of Finalize changed the task branch", "a/a.go", "session: " + fakeFixerSession, "way forward: restore the task branch to the fixer's commits t2..f1", "`lym loom resume`"},
+				wantReason:   []string{"the fix review session of Finalize changed the task branch", "a/a.go", "way forward: restore the task branch to the fixer's commits t2..f1", "`lym loom resume`"},
 				absentReason: "commit or remove them",
 			},
 			{
@@ -1167,7 +1190,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 
 		outcome, ptr := fx.call(t)
 
-		requireEscalateHalt(t, outcome, ptr, finalizeName, fx.reportPath(), "decision D3", "`lym loom decision add`", "kind note")
+		requireEscalateHalt(t, outcome, ptr, finalizeName, fx.reportPath(), "decision D3", "`lym loom decision add`")
 	})
 
 	t.Run("a re-entry from another row starts at zero attempts while a resume keeps the spent ones", func(t *testing.T) {

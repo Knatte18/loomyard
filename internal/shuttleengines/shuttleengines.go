@@ -37,6 +37,8 @@ type ConfigModule struct {
 	Template func() string
 	// OpenMaps are the template's dotted paths whose entries belong to the operator.
 	OpenMaps []string
+	// Migrate, when non-nil, rewrites a present file's bytes before reconcile compares them to the template.
+	Migrate func(existing []byte) ([]byte, []string, error)
 	// Spec returns the module's layered-load spec.
 	Spec func() configengine.Spec
 	// CheckLoad runs the module's own loader under dirs and returns its error, discarding the loaded config.
@@ -189,8 +191,8 @@ func build(cfg shuttleengine.Config, dirs configengine.Dirs, constructors map[st
 	}
 	if _, ok := engines[cfg.Engine]; !ok {
 		return shuttleengine.EngineSet{}, fmt.Errorf(
-			"shuttle: %s %q names no registered engine; registered engines: %s; way forward: set %s in shuttle.yaml to one of them",
-			configengine.KeyName("shuttle", "engine"), cfg.Engine, strings.Join(names, ", "), configengine.KeyName("shuttle", "engine"))
+			"shuttle: shuttle.yaml's engine: %q names no registered engine; registered engines: %s; way forward: set engine: in shuttle.yaml to one of them",
+			cfg.Engine, strings.Join(names, ", "))
 	}
 	return shuttleengine.NewEngineSet(cfg.Engine, engines), nil
 }

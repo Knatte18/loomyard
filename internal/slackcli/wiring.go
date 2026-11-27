@@ -53,7 +53,6 @@ func productionCLI() *slackCLI {
 		resolveLocation: lymcwd.Resolve,
 		wire:            wireProduction,
 		readHiddenLine:  readHiddenTerminalLine,
-		showToggle:      reedengine.ShowToggleOutcome,
 	}
 }
 
@@ -127,7 +126,6 @@ func wireProduction(c *slackCLI, location *lymcwd.Location) error {
 		return slackengine.NewDialer(baseURL, appToken, &http.Client{}, slackengine.HelloTimeout)
 	}
 	c.liveHubs = liveHubGeometries
-	c.orchAutonomous = func() bool { return hubgeom.Autonomy(location, location.WorktreeName) }
 	c.strandName = func() string { return os.Getenv(agentname.StrandNameEnv) }
 	c.newStrandClient = func(strand string) (strandClient, error) {
 		client, err := creelcli.NewStrandClient(location, strand)
@@ -136,6 +134,7 @@ func wireProduction(c *slackCLI, location *lymcwd.Location) error {
 		}
 		return client, nil
 	}
+	c.showToggle = reedengine.ShowToggleOutcome
 	c.ensure = func(geom slackengine.Geometry) (slackengine.StartOutcome, error) {
 		return slackengine.EnsureRelay(geom, primeName)
 	}

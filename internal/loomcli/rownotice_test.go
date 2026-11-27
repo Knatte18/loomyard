@@ -248,7 +248,7 @@ func TestWatchRows_UnknownRowNamesTheRecipeRows(t *testing.T) {
 	if err == nil {
 		t.Fatal("watchRows = nil; want a refusal")
 	}
-	for _, want := range []string{`"loom.notify_parent_on"`, `"Drift-Judge"`, "darn recipe", "way forward", "Darn-Write, Drift-Verify"} {
+	for _, want := range []string{`"notify_parent_on"`, `"Drift-Judge"`, "darn recipe", "way forward", "Darn-Write, Drift-Verify"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("watchRows error = %q; want it to contain %q", err, want)
 		}

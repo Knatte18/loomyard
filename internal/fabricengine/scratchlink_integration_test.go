@@ -1,7 +1,8 @@
 // scratchlink_integration_test.go covers the scratch step of fabric wiring against real hubs.
 // It pins the anchor's `.scratch` becoming a link into the weft-side `.lym`.
 // It pins the adoption of a real directory, and the shapes the step leaves as found.
-// It also pins that nothing of the step lands at the repository root at a subpath anchor.
+// It also pins the retirement of a root `.scratch` link at a subpath anchor.
+// It also pins that a root entry not owned by fabric is left as found there.
 // It also pins the step's reports when a seam refuses it after its classification.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -160,11 +161,12 @@ func scratchExcludeLine(l *lymcwd.Location) string {
 	return "/" + filepath.ToSlash(filepath.Join(l.AnchorRel, ".scratch"))
 }
 
-// dropScratchExcludeLine removes the anchor `.scratch` line from the exclude file.
-// The next wiring has to write it again.
-func dropScratchExcludeLine(t *testing.T, l *lymcwd.Location, slug string) {
+// writeLegacyScratchExclude replaces the exclude file's anchor `.scratch` line with its legacy form.
+// The legacy form has a trailing slash.
+func writeLegacyScratchExclude(t *testing.T, l *lymcwd.Location, slug string) {
 	t.Helper()
-	replaceExcludeLine(t, l, slug, scratchExcludeLine(l), "# scratch line dropped by the test")
+	line := scratchExcludeLine(l)
+	replaceExcludeLine(t, l, slug, line, line+"/")
 }
 
 // replaceExcludeLine rewrites the exclude file of slug's warp repository.
@@ -186,6 +188,20 @@ func replaceExcludeLine(t *testing.T, l *lymcwd.Location, slug, drop, add string
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
+}
+
+// wireLegacyRootScratchLink replaces the anchor `.scratch` link of slug's warp worktree with the legacy root link.
+// It also replaces the exclude line with `/.scratch`, and returns the root link.
+func wireLegacyRootScratchLink(t *testing.T, l *lymcwd.Location, slug string) string {
+	t.Helper()
+	link, target := scratchPaths(l, slug)
+	removeRootLink(t, link)
+	root := filepath.Join(fabricengine.WorktreePath(l, slug), ".scratch")
+	if err := fslink.CreateDirLink(root, target); err != nil {
+		t.Fatalf("link %s: %v", root, err)
+	}
+	replaceExcludeLine(t, l, slug, "/"+filepath.ToSlash(l.AnchorRel)+"/.scratch", "/.scratch")
+	return root
 }
 
 // skipAsRoot skips the test for root, whom a read-only directory does not stop.
@@ -292,7 +308,7 @@ var scratchShapeCases = []scratchShapeCase{
 			root, target := scratchPaths(l, slug)
 			replaceLinkWithRealDirectory(t, root)
 			removeTarget(t, target)
-			dropScratchExcludeLine(t, l, slug)
+			writeLegacyScratchExclude(t, l, slug)
 			infoDir := filepath.Dir(excludeFilePath(t, l, slug))
 			if _, err := os.Stat(filepath.Join(infoDir, "exclude.lym.lock")); err != nil {
 				t.Fatalf("exclude lock file missing before the chmod: %v", err)
@@ -411,7 +427,7 @@ func TestWireJunctions_ScratchLink(t *testing.T) {
 		gitkit.CommitFile(t, warp, ".gitignore", "**/.scratch/\n", "ignore scratch directories")
 		replaceLinkWithRealDirectory(t, root)
 		removeTarget(t, target)
-		dropScratchExcludeLine(t, l, slug)
+		writeLegacyScratchExclude(t, l, slug)
 
 		before := CaptureManifest(t, l.HubPath)
 		rec := wireWithRecord(t, l, slug)
@@ -438,8 +454,8 @@ func TestWireJunctions_ScratchLink(t *testing.T) {
 		AssertRecordMatchesDiff(t, record, DiffManifest(before, after, nil))
 
 		lines := gitkit.ExcludeLines(t, warp)
-		if line := scratchExcludeLine(l); !containsLine(lines, line) {
-			t.Errorf("exclude lines = %v; want %s", lines, line)
+		if line := scratchExcludeLine(l); !containsLine(lines, line) || containsLine(lines, line+"/") {
+			t.Errorf("exclude lines = %v; want %s and no %s/", lines, line, line)
 		}
 		if status := gitkit.GitStatusPorcelain(t, warp); strings.Contains(status, ".scratch") {
 			t.Errorf("git status lists .scratch: %q", status)
@@ -703,7 +719,7 @@ func mutationIndexes(record fabricengine.Mutations, kind fabricengine.Kind, targ
 }
 
 // TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval pins Remove unlinking the `.scratch` link at the anchor.
-// It unlinks through the gate ahead of the warp worktree removal.
+// At a subpath anchor it also unlinks a legacy root link, through the gate ahead of the warp worktree removal.
 // It claims only a link into the pair's weft worktree and leaves every other entry to the worktree removal.
 func TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -721,7 +737,7 @@ func TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval(t *testing.T) {
 			t.Fatalf("write through the link: %v", err)
 		}
 
-		result, err := h.Topology.Remove(l, slug, true, false, "")
+		result, err := h.Topology.Remove(l, slug, true, false)
 		if err != nil {
 			t.Fatalf("Remove = %v; want nil", err)
 		}
@@ -754,7 +770,7 @@ func TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval(t *testing.T) {
 		root, _ := scratchPaths(l, slug)
 		replaceLinkWithRealDirectory(t, root)
 
-		result, err := h.Topology.Remove(l, slug, true, false, "")
+		result, err := h.Topology.Remove(l, slug, true, false)
 		if err != nil {
 			t.Fatalf("Remove = %v; want nil", err)
 		}
@@ -784,7 +800,7 @@ func TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval(t *testing.T) {
 			t.Fatalf("link %s: %v", root, err)
 		}
 
-		result, err := h.Topology.Remove(l, slug, true, false, "")
+		result, err := h.Topology.Remove(l, slug, true, false)
 		if err != nil {
 			t.Fatalf("Remove = %v; want nil", err)
 		}
@@ -797,10 +813,50 @@ func TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval(t *testing.T) {
 		}
 	})
 
+	t.Run("LegacyRootLinkAtASubpathAnchorIsUnlinkedWithTheAnchorLink", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
+		l := h.Location
+		const slug = "unlink-scratch-legacy-root"
+		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
+		anchorLink, target := scratchPaths(l, slug)
+		root := wireLegacyRootScratchLink(t, l, slug)
+		if err := fslink.CreateDirLink(anchorLink, target); err != nil {
+			t.Fatalf("link %s: %v", anchorLink, err)
+		}
+
+		result, err := h.Topology.Remove(l, slug, true, false)
+		if err != nil {
+			t.Fatalf("Remove = %v; want nil", err)
+		}
+
+		record := result.Mutations
+		rootUnlinked := mutationIndexes(record, fabricengine.KindLinkRemoved, scratchHubRelative(t, l, root))
+		anchorUnlinked := mutationIndexes(record, fabricengine.KindLinkRemoved, scratchHubRelative(t, l, anchorLink))
+		warpRemoved := mutationIndexes(record, fabricengine.KindWorktreeRemoved, scratchHubRelative(t, l, fabricengine.WorktreePath(l, slug)))
+		weftRemoved := mutationIndexes(record, fabricengine.KindWorktreeRemoved, scratchHubRelative(t, l, fabricengine.RecordsWorktreePath(l, slug)))
+		if len(rootUnlinked) != 1 || len(anchorUnlinked) != 1 || len(warpRemoved) != 1 || len(weftRemoved) != 1 {
+			t.Fatalf("record %+v; want one link_removed at the root, one at the anchor and one worktree_removed per worktree", record.Entries())
+		}
+		if rootUnlinked[0] > warpRemoved[0] || anchorUnlinked[0] > warpRemoved[0] {
+			t.Errorf("link_removed at indexes %d and %d follows the warp worktree_removed at %d; want both ahead", rootUnlinked[0], anchorUnlinked[0], warpRemoved[0])
+		}
+		targetRel := scratchHubRelative(t, l, target)
+		for i, entry := range record.Entries() {
+			if i < weftRemoved[0] && (entry.Target == targetRel || strings.HasPrefix(entry.Target, targetRel+"/")) {
+				t.Errorf("entry %+v at index %d touches the scratch target ahead of the weft worktree_removed", entry, i)
+			}
+		}
+	})
 }
 
 // TestScratchLink_SubpathAnchor pins the scratch link at a subpath anchor.
 // Unwire keeps it with its exclude line, and nothing is wired or excluded at the repository root.
+// Wiring retires a root `.scratch` link.
+// The root exclude line stays until no worktree has an entry at the root.
+// A root entry that is not fabric's stays as found.
+// Reconcile moves the prime over.
 func TestScratchLink_SubpathAnchor(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -831,6 +887,164 @@ func TestScratchLink_SubpathAnchor(t *testing.T) {
 		lines := gitkit.ExcludeLines(t, warp)
 		if !containsLine(lines, "/backend/.scratch") || containsLine(lines, "/.scratch") {
 			t.Errorf("exclude lines = %v; want /backend/.scratch and no /.scratch", lines)
+		}
+	})
+
+	t.Run("RootLinkMovesToTheAnchor", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
+		l := h.Location
+		const pairSlug = "scratch-root-retired"
+		hubforge.AddPairWith(t, h, pairSlug, fabricengine.AddOptions{SkipPush: true})
+		prime := fabricengine.WorktreePath(l, l.WorktreeName)
+		primeRoot := wireLegacyRootScratchLink(t, l, l.WorktreeName)
+		pairRoot := wireLegacyRootScratchLink(t, l, pairSlug)
+
+		rec := wireWithRecord(t, l, pairSlug)
+
+		pairLink, pairTarget := scratchPaths(l, pairSlug)
+		if got := describeEntry(t, pairRoot); got != "absent" {
+			t.Errorf("pair root .scratch = %q; want it retired", got)
+		}
+		if got, want := describeEntry(t, pairLink), "link:"+pairTarget; got != want {
+			t.Errorf("pair anchor .scratch = %q; want %q", got, want)
+		}
+		if record := rec.Snapshot(); !hasMutation(record, fabricengine.KindLinkRemoved, scratchHubRelative(t, l, pairRoot), "") {
+			t.Errorf("record %+v lacks link_removed at the pair's root .scratch", record.Entries())
+		}
+		if lines := gitkit.ExcludeLines(t, prime); !containsLine(lines, "/.scratch") || !containsLine(lines, "/backend/.scratch") {
+			t.Errorf("exclude lines = %v; want /.scratch kept while the prime links its root, and /backend/.scratch", lines)
+		}
+
+		reconcilePrimePair(t, h)
+
+		primeLink, primeTarget := scratchPaths(l, l.WorktreeName)
+		if got := describeEntry(t, primeRoot); got != "absent" {
+			t.Errorf("prime root .scratch = %q; want it retired", got)
+		}
+		if got, want := describeEntry(t, primeLink), "link:"+primeTarget; got != want {
+			t.Errorf("prime anchor .scratch = %q; want %q", got, want)
+		}
+		if lines := gitkit.ExcludeLines(t, prime); containsLine(lines, "/.scratch") || !containsLine(lines, "/backend/.scratch") {
+			t.Errorf("exclude lines = %v; want /backend/.scratch and no /.scratch", lines)
+		}
+		if status := gitkit.GitStatusPorcelain(t, prime); strings.Contains(status, ".scratch") {
+			t.Errorf("git status lists .scratch: %q", status)
+		}
+	})
+
+	t.Run("RealRootDirectoryOfASiblingKeepsTheRootExcludeLine", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
+		l := h.Location
+		const pairSlug = "scratch-sibling-real-root"
+		hubforge.AddPairWith(t, h, pairSlug, fabricengine.AddOptions{SkipPush: true})
+		prime := fabricengine.WorktreePath(l, l.WorktreeName)
+		primeRoot := filepath.Join(prime, ".scratch")
+		if err := os.MkdirAll(primeRoot, 0o755); err != nil {
+			t.Fatalf("create real %s: %v", primeRoot, err)
+		}
+		if err := os.WriteFile(filepath.Join(primeRoot, scratchNoteName), []byte("hello"), 0o644); err != nil {
+			t.Fatalf("write note: %v", err)
+		}
+		pairRoot := wireLegacyRootScratchLink(t, l, pairSlug)
+
+		wireWithRecord(t, l, pairSlug)
+
+		if got := describeEntry(t, pairRoot); got != "absent" {
+			t.Errorf("pair root .scratch = %q; want it retired", got)
+		}
+		if got := describeEntry(t, primeRoot); got != "dir" {
+			t.Errorf("prime root .scratch = %q; want the real directory left", got)
+		}
+		if lines := gitkit.ExcludeLines(t, prime); !containsLine(lines, "/.scratch") {
+			t.Errorf("exclude lines = %v; want /.scratch kept while the prime holds a root .scratch", lines)
+		}
+	})
+
+	t.Run("RootEntryThatIsNotFabricsIsLeftAsFound", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name string
+			// arrange puts the entry at the root `.scratch` path.
+			arrange func(t *testing.T, root string)
+			// note names a file the entry holds whose content must survive; empty when it holds none.
+			note string
+		}{
+			{
+				name: "RealDirectory",
+				arrange: func(t *testing.T, root string) {
+					if err := os.MkdirAll(root, 0o755); err != nil {
+						t.Fatalf("create %s: %v", root, err)
+					}
+					if err := os.WriteFile(filepath.Join(root, scratchNoteName), []byte("hello"), 0o644); err != nil {
+						t.Fatalf("write note: %v", err)
+					}
+				},
+				note: scratchNoteName,
+			},
+			{
+				name: "RegularFile",
+				arrange: func(t *testing.T, root string) {
+					if err := os.WriteFile(root, []byte("not a directory"), 0o644); err != nil {
+						t.Fatalf("write %s: %v", root, err)
+					}
+				},
+			},
+			{
+				name: "LinkToAnotherTarget",
+				arrange: func(t *testing.T, root string) {
+					other := filepath.Join(t.TempDir(), "elsewhere")
+					if err := os.MkdirAll(other, 0o755); err != nil {
+						t.Fatalf("create %s: %v", other, err)
+					}
+					if err := fslink.CreateDirLink(root, other); err != nil {
+						t.Fatalf("link %s: %v", root, err)
+					}
+				},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
+				l := h.Location
+				slug := l.WorktreeName
+				warp := fabricengine.WorktreePath(l, slug)
+				anchorLink, target := scratchPaths(l, slug)
+				root := filepath.Join(warp, ".scratch")
+				removeRootLink(t, anchorLink)
+				tt.arrange(t, root)
+				replaceExcludeLine(t, l, slug, "/.scratch", "/.scratch")
+				rootBefore := describeEntry(t, root)
+
+				wireWithRecord(t, l, slug)
+
+				if got := describeEntry(t, root); got != rootBefore {
+					t.Errorf("root .scratch = %q; want it left as %q", got, rootBefore)
+				}
+				if tt.note != "" {
+					if content, err := os.ReadFile(filepath.Join(root, tt.note)); err != nil || string(content) != "hello" {
+						t.Errorf("note under the root .scratch = %q, %v; want %q", content, err, "hello")
+					}
+				}
+				if got, want := describeEntry(t, anchorLink), "link:"+target; got != want {
+					t.Errorf("anchor .scratch = %q; want %q", got, want)
+				}
+				if lines := gitkit.ExcludeLines(t, warp); !containsLine(lines, "/.scratch") || !containsLine(lines, "/backend/.scratch") {
+					t.Errorf("exclude lines = %v; want /.scratch kept beside /backend/.scratch", lines)
+				}
+
+				_, pair := reconcilePrimePair(t, h)
+
+				if !strings.Contains(pair.Detail, root) || !strings.Contains(pair.Detail, "lym fabric reconcile") {
+					t.Errorf("Detail = %q; want it to name %s and `lym fabric reconcile`", pair.Detail, root)
+				}
+			})
 		}
 	})
 }
@@ -878,7 +1092,7 @@ func TestReconcile_ScratchLink(t *testing.T) {
 			root, target := scratchPaths(l, slug)
 			replaceLinkWithRealDirectory(t, root)
 			removeTarget(t, target)
-			dropScratchExcludeLine(t, l, slug)
+			writeLegacyScratchExclude(t, l, slug)
 
 			result, pair := reconcilePrimePair(t, h)
 
@@ -892,8 +1106,8 @@ func TestReconcile_ScratchLink(t *testing.T) {
 				t.Errorf("record %+v lacks path_renamed from the root to the target", result.Mutations.Entries())
 			}
 			lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug))
-			if line := scratchExcludeLine(l); !containsLine(lines, line) {
-				t.Errorf("exclude lines = %v; want %s", lines, line)
+			if line := scratchExcludeLine(l); !containsLine(lines, line) || containsLine(lines, line+"/") {
+				t.Errorf("exclude lines = %v; want %s and no %s/", lines, line, line)
 			}
 		})
 	}

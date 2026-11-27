@@ -1,14 +1,11 @@
-// beamdescribe_test.go covers DraftBeamDescription, RecordBeamDescription and ReplaceBeamDescription.
-// It runs them over told seams and a temp description path.
+// beamdescribe_test.go covers DraftBeamDescription and RecordBeamDescription over told seams and a temp description path.
 
 package landingshed
 
 import (
 	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -154,17 +151,12 @@ func TestRecordBeamDescription(t *testing.T) {
 		// content is the description at the path; empty leaves no file.
 		content   string
 		commitErr error
-		forbidden []*regexp.Regexp
 		// wantErr are the substrings the failure carries; empty wants the description recorded.
 		wantErr     []string
 		wantIs      error
 		wantCommits int
 	}{
 		{name: "ValidDescriptionIsCommitted", content: valid, wantCommits: 1},
-		{
-			name: "ForbiddenTermIsRefused", content: valid, forbidden: []*regexp.Regexp{regexp.MustCompile(`hydraulics model`)},
-			wantErr: []string{"forbidden-term: line 3"},
-		},
 		{
 			name:    "UneditedDraftIsRefusedNamingTheMergeDangerFindings",
 			content: beamDraft("Ship the beam", "The beam adds the hydraulics model.", nil),
@@ -194,7 +186,7 @@ func TestRecordBeamDescription(t *testing.T) {
 			commits := 0
 			commit := func() error { commits++; return tt.commitErr }
 
-			err := RecordBeamDescription(slug, path, tt.forbidden, commit)
+			err := RecordBeamDescription(slug, path, commit)
 
 			if commits != tt.wantCommits {
 				t.Errorf("commits = %d; want %d", commits, tt.wantCommits)
@@ -218,117 +210,6 @@ func TestRecordBeamDescription(t *testing.T) {
 			}
 			if got, readErr := os.ReadFile(path); readErr != nil || string(got) != tt.content {
 				t.Errorf("description = %q, %v; want the orch's bytes %q", got, readErr, tt.content)
-			}
-		})
-	}
-}
-
-// TestReplaceBeamDescription asserts a valid draft is committed in place of the recorded description.
-// A missing draft or one with a finding is refused with the description left standing,
-// and a failed commit puts back what stood, or removes the file when nothing stood.
-func TestReplaceBeamDescription(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	const (
-		slug     = "my-beam"
-		recorded = "# Ship the beam\n\nThe beam adds the hydraulics model.\n\n## Member pull requests\n\n- #266 Tool-joint pressure loss\n\n" +
-			"## Merge danger\n\n**Door:** two-way\n**Blast radius:** hydraulics\n"
-		rewritten = "# Ship the beam\n\nThe beam adds the hydraulics model and its tool joints.\n\n## Member pull requests\n\n" +
-			"- #266 Tool-joint pressure loss\n- #270 Tool-joint wear\n\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** hydraulics\n"
-	)
-	commitErr := errors.New("index locked")
-	tests := []struct {
-		name string
-		// existing is the description standing before the call, and draft the draft's content; empty leaves no file.
-		existing  string
-		draft     string
-		commitErr error
-		forbidden []*regexp.Regexp
-		// wantErr are the substrings the failure carries; empty wants the draft committed.
-		wantErr     []string
-		wantIs      error
-		wantCommits int
-		// wantFile is the description after the call; empty wants no file.
-		wantFile string
-	}{
-		{name: "ValidDraftIsCommittedInPlaceOfTheDescription", existing: recorded, draft: rewritten, wantCommits: 1, wantFile: rewritten},
-		{
-			name: "DraftWithAFindingLeavesTheDescriptionStanding", existing: recorded, draft: "# Ship the beam\n",
-			wantErr: []string{"empty-body: body is empty", "stands", `"lym beam describe my-beam"`}, wantFile: recorded,
-		},
-		{
-			name: "DraftHoldingAForbiddenTermLeavesTheDescriptionStanding", existing: recorded, draft: rewritten,
-			forbidden: []*regexp.Regexp{regexp.MustCompile(`its tool joints`)},
-			wantErr:   []string{"forbidden-term: line 3", "stands"}, wantFile: recorded,
-		},
-		{name: "MissingDraftLeavesTheDescriptionStanding", existing: recorded, wantErr: []string{"validate the draft"}, wantFile: recorded},
-		{
-			name: "FailedCommitPutsTheDescriptionBack", existing: recorded, draft: rewritten, commitErr: commitErr,
-			wantErr: []string{"commit the description"}, wantIs: commitErr, wantCommits: 1, wantFile: recorded,
-		},
-		{
-			name: "FailedCommitWithNoDescriptionBeforeRemovesTheFile", draft: rewritten, commitErr: commitErr,
-			wantErr: []string{"commit the description"}, wantIs: commitErr, wantCommits: 1,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			dir := t.TempDir()
-			path := filepath.Join(dir, "landing", "summary.md")
-			draftPath := filepath.Join(dir, "describe", "draft.md")
-			if tt.existing != "" {
-				writeDescription(t, path, tt.existing)
-			}
-			if tt.draft != "" {
-				writeDescription(t, draftPath, tt.draft)
-			}
-			commits := 0
-			var committed string
-			commit := func() error {
-				commits++
-				content, err := os.ReadFile(path)
-				if err != nil {
-					t.Errorf("ReadFile(%s) at the commit = %v; want the draft in place", path, err)
-				}
-				committed = string(content)
-				return tt.commitErr
-			}
-
-			err := ReplaceBeamDescription(slug, draftPath, path, tt.forbidden, commit)
-
-			if commits != tt.wantCommits {
-				t.Errorf("commits = %d; want %d", commits, tt.wantCommits)
-			}
-			if commits > 0 && committed != tt.draft {
-				t.Errorf("description at the commit = %q; want the draft %q", committed, tt.draft)
-			}
-			got, readErr := os.ReadFile(path)
-			if tt.wantFile == "" {
-				if !errors.Is(readErr, fs.ErrNotExist) {
-					t.Errorf("description after the call = %q, %v; want no file", got, readErr)
-				}
-			} else if readErr != nil || string(got) != tt.wantFile {
-				t.Errorf("description after the call = %q, %v; want %q", got, readErr, tt.wantFile)
-			}
-			if len(tt.wantErr) == 0 {
-				if err != nil {
-					t.Fatalf("ReplaceBeamDescription() = %v; want nil", err)
-				}
-				return
-			}
-			if err == nil {
-				t.Fatalf("ReplaceBeamDescription() = nil; want an error carrying %q", tt.wantErr)
-			}
-			for _, want := range tt.wantErr {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("error = %q; want it to carry %q", err.Error(), want)
-				}
-			}
-			if tt.wantIs != nil && !errors.Is(err, tt.wantIs) {
-				t.Errorf("error = %v; want it to wrap %v", err, tt.wantIs)
 			}
 		})
 	}

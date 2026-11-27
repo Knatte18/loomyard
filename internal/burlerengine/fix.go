@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/agentconfig"
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -47,15 +46,6 @@ var skippedRoutedFixerReport = "---\nspawned: false\ndispositions: []\n---\n\n" 
 	"(none)\n\n" +
 	"## Deferred\n\n" +
 	"(none)\n"
-
-// FixRerun says why a fix runs again over a review an earlier fixer session already worked.
-// The zero value is a first fix over the review.
-type FixRerun struct {
-	// Reason says why the earlier session's work did not finish the round.
-	Reason string
-	// Report is where the earlier session's fixer report was archived, "" when it left none.
-	Report string
-}
 
 // FixResult is the fix half's outcome.
 type FixResult struct {
@@ -117,7 +107,6 @@ func (p *Profile) fixTable(opts RunOpts, values map[string]string, skills []stri
 // Fix runs the fix half for p, tuned by opts, over the review whose accepted bytes hash to digest.
 // It validates p, then reads the review and returns ErrReviewChanged when the file no longer hashes to digest.
 // A review with findings of any severity spawns the fixer.
-// With opts.Rerun set, the fixer's work says why it runs again and names the report the earlier session left.
 // With opts.DecisionsRouted, decision-class findings are no fixer work: the fixer's work line names them as not its own,
 // and a review holding only those counts as one with none.
 // A review with none runs opts.Gate once.
@@ -183,7 +172,7 @@ func (e *Engine) Fix(p Profile, opts RunOpts, digest string) (FixResult, error) 
 			return FixResult{}, fmt.Errorf("burler: materialize instruction files: %w", err)
 		}
 	}
-	prompt, err := composeFixPrompt(e.stencilsDir, e.geom.SpecsDir, e.seatEngine(opts.Fix), &p, frictionDirective, fixWork(p.ReviewPath, gateFindingsPath, routed > 0, opts.Rerun), paths)
+	prompt, err := composeFixPrompt(e.stencilsDir, e.geom.SpecsDir, e.seatEngine(opts.Fix), &p, frictionDirective, fixWork(p.ReviewPath, gateFindingsPath, routed > 0), paths)
 	if err != nil {
 		return FixResult{}, err
 	}
@@ -392,10 +381,10 @@ func twillEngineRefusal(opts RunOpts, err error) error {
 	if cut := strings.LastIndex(refusal, wayForwardMarker); cut >= 0 {
 		refusal = refusal[:cut]
 	}
-	modelKey := configengine.KeyName("shuttle", "engine")
-	step := fmt.Sprintf("set %s to an engine with forks, or remove %s from the profile, and re-run", modelKey, opts.FixFanKey)
+	modelKey := "engine: in shuttle.yaml"
+	step := fmt.Sprintf("set engine: in shuttle.yaml to an engine with forks, or remove %s from the profile, and re-run", opts.FixFanKey)
 	if opts.FixKey.Key != "" {
-		modelKey = configengine.KeyName(opts.FixKey.Module, opts.FixKey.Key)
+		modelKey = fmt.Sprintf("%s in %s.yaml", opts.FixKey.Key, opts.FixKey.Module)
 		step = fmt.Sprintf("move %s to an engine with forks, then resume; setting the %s entry to \"\" reaches only rounds whose reviewer is spawned after the edit", modelKey, opts.FixFanKey)
 	}
 	return &engineRefusalError{message: fmt.Sprintf("burler: the twill fixer's fan from %s needs forks, which the engine of %s cannot run: %s%s%s", opts.FixFanKey, modelKey, refusal, wayForwardMarker, step)}

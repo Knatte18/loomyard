@@ -13,7 +13,6 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -43,12 +42,10 @@ type PriorEntry struct {
 // PriorFinding is one finding of the round before the one being judged, with what the fixer answered.
 // Disposition is nil when the fixer gave none.
 // Held marks a decision-class finding of a round that routed its decisions to the run's parent.
-// InScope marks a held finding the parent ruled in scope: the review carries it as fixer work, outside class decision.
 type PriorFinding struct {
 	Finding     Finding
 	Disposition *FindingDisposition
 	Held        bool
-	InScope     bool
 }
 
 // RoundContext is what a review after the first round is judged against.
@@ -65,15 +62,6 @@ type RoundContext struct {
 	// HasChanges is true when the round holds a changes file; Changed then lists its worktree-relative paths.
 	HasChanges bool
 	Changed    []string
-	// AmendingTexts holds the full text, heading included, of every decision record entry pending as a plan amendment.
-	// A plan card file such an entry names is exempt from the changed-file rule.
-	AmendingTexts []string
-	// HaltReason is the stuck reason of the plan executor call that sent the run back to review, empty when none.
-	// A new BLOCKING `origin: webster` finding is exempt from the changed-file rule while it is set.
-	HaltReason string
-	// HardenerRound marks a hardener round, which drives behaviour that the round's changed hunks do not bound.
-	// None of its findings, new or carried, is held to the BLOCKING or changed-file rules of an incremental round.
-	HardenerRound bool
 	// ParentReportPath is the report of the round's parent-review ask, empty when the round holds none.
 	ParentReportPath string
 	// PriorReviewPath, PriorFixerReportPath and ChangesPath name the files the prior-findings block points at.
@@ -104,17 +92,12 @@ func roundRefusal(problem, rewrite string) error {
 // Otherwise it refuses, with the way forward:
 // a `prior` list that misses, repeats or invents an id of the round before, or holds an unknown status;
 // a withdrawn entry whose finding the fixer did not dispute, or an open one that gives a disputed finding no answer;
-// a held finding not ruled in scope that is neither open nor resolved with a quoted title of an added entry;
+// a held finding that is neither resolved nor open, or resolved without quoting a title of an added entry;
 // `carries` links that do not match the open entries one to one;
 // a carried finding that changes class, raises its severity, or moves to a file the round did not change;
-// a carried in-scope finding that keeps the class decision, since its class must change for the fixer to take it;
 // and a new finding in an incremental round that is not BLOCKING, is outside the changed files, or is not covered.
 // A new `origin: parent` finding is exempt from the BLOCKING and changed-file rules.
 // It is exempt only when its parent_ids are all ids of the round's parent report.
-// A carried or new finding located in a file that an entry of ctx.AmendingTexts names passes the changed-file rule.
-// A new BLOCKING finding with `origin: webster` passes it too when ctx.HaltReason is set.
-// With ctx.HardenerRound set, a new finding passes at any severity and in any file,
-// and a carried one may move to any file.
 func CheckReviewRound(content []byte, ctx *RoundContext) error {
 	_, findings, err := ParseReview(content)
 	if err != nil {
@@ -218,7 +201,7 @@ func (c *roundCheck) priorEntry(entry PriorEntry, earlier PriorFinding) error {
 		return roundRefusal(fmt.Sprintf("gives the held finding %q the status %q, but only the parent's call settles it", entry.ID, entry.Status),
 			fmt.Sprintf("with the status resolved or open for %q", entry.ID))
 	}
-	if entry.Status == PriorResolved && !earlier.InScope && !quotesAddedTitle(entry.Answer, c.ctx.AddedTitles) {
+	if entry.Status == PriorResolved && !quotesAddedTitle(entry.Answer, c.ctx.AddedTitles) {
 		return roundRefusal(fmt.Sprintf("resolves the held finding %q without quoting the title of an entry added to the decision record", entry.ID),
 			fmt.Sprintf("with the `answer` for %q quoting the title of the added entry that settles it, or with the status open", entry.ID))
 	}
@@ -251,7 +234,7 @@ func (c *roundCheck) carries(findings []Finding) error {
 			return roundRefusal(fmt.Sprintf("carries %q in more than one finding", f.Carries), fmt.Sprintf("with one finding carrying %q", f.Carries))
 		}
 		carried[f.Carries] = true
-		if err := c.carriedFinding(f, c.earlier[f.Carries]); err != nil {
+		if err := c.carriedFinding(f, c.earlier[f.Carries].Finding); err != nil {
 			return err
 		}
 	}
@@ -264,15 +247,9 @@ func (c *roundCheck) carries(findings []Finding) error {
 	return nil
 }
 
-// carriedFinding checks a finding that carries prior: its class, its severity and its location path.
-// A finding the parent ruled in scope leaves class decision, so the fixer takes it; any other keeps its class.
-func (c *roundCheck) carriedFinding(f Finding, prior PriorFinding) error {
-	earlier := prior.Finding
-	switch {
-	case prior.InScope && f.Class == ClassDecision:
-		return roundRefusal(fmt.Sprintf("finding %q carries %q, which the parent ruled in scope, with the class %q, which no fixer takes", f.ID, earlier.ID, ClassDecision),
-			fmt.Sprintf("with a class of %q other than %q", f.ID, ClassDecision))
-	case !prior.InScope && f.Class != earlier.Class:
+// carriedFinding checks a finding that carries earlier: its class, its severity and its location path.
+func (c *roundCheck) carriedFinding(f, earlier Finding) error {
+	if f.Class != earlier.Class {
 		return roundRefusal(fmt.Sprintf("finding %q carries %q with the class %q, not the earlier class %q", f.ID, earlier.ID, f.Class, earlier.Class),
 			fmt.Sprintf("with the class of %q kept as %q", f.ID, earlier.Class))
 	}
@@ -282,9 +259,6 @@ func (c *roundCheck) carriedFinding(f Finding, prior PriorFinding) error {
 	}
 	path := locationPath(f.Location, c.ctx.WorktreeRoot)
 	if path == locationPath(earlier.Location, c.ctx.WorktreeRoot) {
-		return nil
-	}
-	if c.ctx.HardenerRound || c.namedByAmendment(path) {
 		return nil
 	}
 	if !c.ctx.HasChanges {
@@ -303,7 +277,6 @@ func (c *roundCheck) newFindings(findings []Finding) error {
 	if !c.ctx.Incremental {
 		return nil
 	}
-	websterOutside := 0
 	for _, f := range findings {
 		if f.Carries != "" {
 			continue
@@ -315,89 +288,16 @@ func (c *roundCheck) newFindings(findings []Finding) error {
 			return roundRefusal(fmt.Sprintf("has the new finding %q with `origin: parent`, but its `parent_ids` are not all ids of this round's parent report", f.ID),
 				fmt.Sprintf("with `parent_ids` on %q listing ids of the parent report, or without the finding", f.ID))
 		}
-		// A fault a hardener round drives sits where it lives, on a changed hunk or not, at the severity it has.
-		if c.ctx.HardenerRound {
-			continue
-		}
 		if f.Severity != SeverityBlocking {
 			return roundRefusal(fmt.Sprintf("has the new finding %q at %s, but an incremental round raises a new finding only at BLOCKING", f.ID, f.Severity),
 				fmt.Sprintf("without %q, or with it at BLOCKING on a changed hunk", f.ID))
 		}
-		path := locationPath(f.Location, c.ctx.WorktreeRoot)
-		outsideChanges := c.ctx.HasChanges && !slices.Contains(c.ctx.Changed, path) && !c.namedByAmendment(path)
-		if outsideChanges && f.Origin == WebsterOrigin && c.ctx.HaltReason != "" {
-			// The halt reason is one finding, so only one finding outside the changed files takes its exemption.
-			if websterOutside++; websterOutside == 1 {
-				continue
-			}
-			return roundRefusal(fmt.Sprintf("has a second new finding %q with `origin: webster` at %q, which the changes file does not list, but the plan executor's halt reason admits one", f.ID, path),
-				fmt.Sprintf("with %q located at a file the changes file lists, or without it", f.ID))
-		}
-		if outsideChanges {
+		if path := locationPath(f.Location, c.ctx.WorktreeRoot); c.ctx.HasChanges && !slices.Contains(c.ctx.Changed, path) {
 			return roundRefusal(fmt.Sprintf("has the new finding %q at %q, which the changes file does not list", f.ID, path),
 				fmt.Sprintf("with %q located at the changed line that causes it, or without it", f.ID))
 		}
 	}
 	return nil
-}
-
-// minAmendmentStemLength is the shortest file stem that namedByAmendment matches.
-// A shorter stem would match some text by accident.
-const minAmendmentStemLength = 4
-
-// namedByAmendment reports whether path is a plan card file named by a decision record entry pending as a plan amendment.
-// Two spellings of the card count.
-// One is its base name without extension; the other is that stem without a leading run of digits and one `-`.
-// Either appears in one of the round's AmendingTexts as a whole token, with no identifier character beside it.
-// Plan cards are files like `14-card-slug.md`, which an entry may name by `14-card-slug` or `card-slug`.
-func (c *roundCheck) namedByAmendment(path string) bool {
-	// The plan directory is `_lym/plan`.
-	// `_lym` is a link out of the worktree, so a location may spell it under another root.
-	dir := filepath.ToSlash(filepath.Dir(path))
-	if len(c.ctx.AmendingTexts) == 0 || dir != planparser.PlanDirRel() && !strings.HasSuffix(dir, "/"+planparser.PlanDirRel()) || filepath.Ext(path) != ".md" {
-		return false
-	}
-	base := filepath.Base(path)
-	if planparser.IsNonCardFileName(base) {
-		return false
-	}
-	stem := strings.TrimSuffix(base, filepath.Ext(base))
-	names := []string{stem}
-	if rest := strings.TrimLeft(stem, "0123456789"); rest != stem {
-		if slug, found := strings.CutPrefix(rest, "-"); found {
-			names = append(names, slug)
-		}
-	}
-	for _, name := range names {
-		if len(name) < minAmendmentStemLength {
-			continue
-		}
-		for _, text := range c.ctx.AmendingTexts {
-			if containsToken(text, name) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// containsToken reports whether text holds token with no letter, digit, `-` or `_` directly before or after it.
-func containsToken(text, token string) bool {
-	isIdentifier := func(r byte) bool {
-		return r == '-' || r == '_' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z'
-	}
-	for offset := 0; ; {
-		found := strings.Index(text[offset:], token)
-		if found < 0 {
-			return false
-		}
-		start := offset + found
-		end := start + len(token)
-		if (start == 0 || !isIdentifier(text[start-1])) && (end == len(text) || !isIdentifier(text[end])) {
-			return true
-		}
-		offset = start + 1
-	}
 }
 
 // parentCovered reports whether f is a finding kept from the round's parent report:

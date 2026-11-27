@@ -62,15 +62,14 @@ func hubTaskBranch(location *lymcwd.Location, slug string) (string, fabricengine
 }
 
 // hubReadoptSeams builds the re-adoption seams over the prime location of a hub.
-// opts bounds the run-scope reconcile's remote calls and its retries of an unreachable origin.
-func hubReadoptSeams(location *lymcwd.Location, opts fabricengine.ReconcileOptions) readoptSeams {
+func hubReadoptSeams(location *lymcwd.Location) readoptSeams {
 	return readoptSeams{
 		Gone: func(slug string) (bool, error) {
 			present, err := taskWorktreePresent(location, slug)
 			return !present, err
 		},
 		Reconcile: func(slug string) (fabricengine.OriginReport, error) {
-			return reconcileGoneRun(location, slug, opts)
+			return reconcileGoneRun(location, slug)
 		},
 		Prune: func() error { return fabricengine.PruneRegistrations(location) },
 		Add: func(slug string) error {
@@ -133,15 +132,14 @@ func hubReadoptSeams(location *lymcwd.Location, opts fabricengine.ReconcileOptio
 // reconcileGoneRun runs the run-scope origin reconcile of slug from the prime.
 // It judges a run whose pair worktree is absent.
 // The run scope tears no pair down and moves no ref of the absent pair.
-// opts bounds the reconcile's remote calls and its retries of an unreachable origin.
 // Each entry of the report's mutation record is logged at Info, since a resume has no envelope to carry it.
 // The report is returned with the error, so a partial record is still logged.
-func reconcileGoneRun(location *lymcwd.Location, slug string, opts fabricengine.ReconcileOptions) (fabricengine.OriginReport, error) {
+func reconcileGoneRun(location *lymcwd.Location, slug string) (fabricengine.OriginReport, error) {
 	teardown, err := pairteardown.New(location)
 	if err != nil {
 		return fabricengine.OriginReport{}, err
 	}
-	report, err := fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{Run: slug, PairMayBeAbsent: true}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), opts)
+	report, err := fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{Run: slug, PairMayBeAbsent: true}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), fabricengine.ReconcileOptions{})
 	for _, mutation := range report.Mutations.Entries() {
 		logger.Info("battencli: origin reconcile mutation", "slug", slug, "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
 	}

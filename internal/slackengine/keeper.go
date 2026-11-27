@@ -49,8 +49,8 @@ type channelKeeper struct {
 	refused map[string]bool
 	// noticed holds the keys of the notice episodes that have mailed their notice.
 	noticed map[string]bool
-	// bot is who the machine's bot token belongs to, read once.
-	bot Identity
+	// botUserID is the Slack user id of the machine's bot, read once.
+	botUserID string
 	// bridgeHolds holds, per pair of orchs, the last hold its bridge channel met and when.
 	bridgeHolds map[string]bridgeHold
 }
@@ -199,11 +199,11 @@ func (k *channelKeeper) adopt(ctx context.Context, orch, name string) (ChannelEn
 		return ChannelEntry{}, k.refuse(refusalKey, name, fmt.Sprintf(
 			"the channel %s (%s) is archived, and the relay never unarchives; way forward: rename that channel in Slack, which frees the name", name, info.ID))
 	}
-	bot, err := k.botIdentity(ctx)
+	bot, err := k.botUser(ctx)
 	if err != nil {
 		return ChannelEntry{}, err
 	}
-	if info.Creator != bot.UserID {
+	if info.Creator != bot {
 		return ChannelEntry{}, k.refuse(refusalKey, name, fmt.Sprintf(
 			"the channel %s (%s) was made by another user than this machine's bot; way forward: rename that channel in Slack, which frees the name", name, info.ID))
 	}
@@ -588,22 +588,22 @@ func (k *channelKeeper) updateEntry(orch, channelID string, change func(*Channel
 	})
 }
 
-// botIdentity returns this machine's bot, its user id and its bot id, which auth.test gives; it is read once and kept.
-func (k *channelKeeper) botIdentity(ctx context.Context) (Identity, error) {
+// botUser returns the Slack user id of this machine's bot, which auth.test gives; it is read once and kept.
+func (k *channelKeeper) botUser(ctx context.Context) (string, error) {
 	k.mu.Lock()
-	known := k.bot
+	known := k.botUserID
 	k.mu.Unlock()
-	if known.UserID != "" {
+	if known != "" {
 		return known, nil
 	}
 	identity, err := k.slack.AuthTest(ctx)
 	if err != nil {
-		return Identity{}, fmt.Errorf("slack: read the bot's user id: %w", err)
+		return "", fmt.Errorf("slack: read the bot's user id: %w", err)
 	}
 	k.mu.Lock()
-	k.bot = identity
+	k.botUserID = identity.UserID
 	k.mu.Unlock()
-	return identity, nil
+	return identity.UserID, nil
 }
 
 // notice mails the hub's orch one `[slack relay]` notice with line for the episode key.

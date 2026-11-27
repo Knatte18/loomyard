@@ -227,8 +227,8 @@ func TestReviewBudget_NegativeRefused(t *testing.T) {
 		want   []string
 	}{
 		{"a negative budget", func(env *shedrecipe.Env) {
-			env.Segments["Plan-Review"] = shedrecipe.SegmentSettings{MaxBounces: -1, MaxBouncesKey: "plan.max_bounces", ConfigFile: "tapestry.yaml"}
-		}, []string{"Plan-Review", "plan.max_bounces", "tapestry.yaml"}},
+			env.Segments["Plan-Review"] = shedrecipe.SegmentSettings{MaxBounces: -1, MaxBouncesKey: "plan_max_bounces", ConfigFile: "tapestry.yaml"}
+		}, []string{"Plan-Review", "plan_max_bounces", "tapestry.yaml"}},
 		{"a segment with no Env.Segments entry", func(env *shedrecipe.Env) {
 			delete(env.Segments, "Code-Review")
 		}, []string{"Code-Review", "segment-to-perch table"}},

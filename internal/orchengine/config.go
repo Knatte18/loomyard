@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -119,27 +120,42 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	switch cfg.CycleMode {
 	case "", CycleClear, CycleCompact:
 	default:
-		return Config{}, fmt.Errorf("orch config: %s %q is not accepted; set %s to %q or %q", keyName("cycle_mode"), cfg.CycleMode, keyName("cycle_mode"), CycleClear, CycleCompact)
+		return Config{}, fmt.Errorf("orch config: cycle_mode %q is not accepted; set cycle_mode to %q or %q", cfg.CycleMode, CycleClear, CycleCompact)
 	}
 	switch cfg.PermissionMode {
 	case "":
 		cfg.PermissionMode = permissionBypass
 	case permissionBypass:
 	default:
-		return Config{}, fmt.Errorf("orch config: %s %q is not accepted; set %s to bypass or remove the key", keyName("permission_mode"), cfg.PermissionMode, keyName("permission_mode"))
+		return Config{}, fmt.Errorf("orch config: permission_mode %q is not accepted; set permission_mode: bypass or remove the key", cfg.PermissionMode)
 	}
 	if strings.IndexFunc(cfg.RemoteControlName, unicode.IsControl) >= 0 {
-		return Config{}, fmt.Errorf("orch config: %s %q holds a control character; set it to one line", keyName(remoteControlNameKey), cfg.RemoteControlName)
+		return Config{}, fmt.Errorf("orch config: remote_control_name %q holds a control character; set it to one line", cfg.RemoteControlName)
 	}
 	if cfg.RemoteControl && strings.TrimSpace(cfg.RemoteControlName) == "" {
-		return Config{}, fmt.Errorf("orch config: %s is on but %s is empty; set %s, such as %q, or set %s to false", keyName(remoteControlKey), keyName(remoteControlNameKey), keyName(remoteControlNameKey), remoteControlMachinePlaceholder+agentname.MachineAddressSeparator+remoteControlNamePlaceholder, keyName(remoteControlKey))
+		return Config{}, fmt.Errorf("orch config: remote_control is on but remote_control_name is empty; set remote_control_name, such as %q, or set remote_control: false", remoteControlMachinePlaceholder+agentname.MachineAddressSeparator+remoteControlNamePlaceholder)
 	}
 
 	if time.Duration(cfg.PollIntervalMS)*time.Millisecond < pollFloor {
-		logger.Warn("orch config: "+keyName(pollIntervalKey)+" is below the floor and is raised to it", "key", pollIntervalKey, "value", cfg.PollIntervalMS, "floor_ms", pollFloor.Milliseconds())
+		logger.Warn("orch config: poll_interval_ms is below the floor and is raised to it", "key", "poll_interval_ms", "value", cfg.PollIntervalMS, "floor_ms", pollFloor.Milliseconds())
 	}
 
 	return cfg, nil
+}
+
+// MigrateConfig raises a below-floor or null poll_interval_ms in an orch.yaml document to the poll floor.
+// It serves lym config reconcile and returns the rewritten bytes with one line describing the rewrite.
+// Everything else is carried through with its comments; the loader never calls it.
+// A document that does not parse returns an error marked configengine.ErrInvalid.
+func MigrateConfig(existing []byte) ([]byte, []string, error) {
+	rewritten, line, err := yamlengine.RaiseIntFloor(existing, "poll_interval_ms", int(pollFloor.Milliseconds()))
+	if err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate orch config: %w", err))
+	}
+	if line == "" {
+		return rewritten, nil, nil
+	}
+	return rewritten, []string{line}, nil
 }
 
 // RemoteControlSessionName returns the remote session's name of the orch strand named name on machine.

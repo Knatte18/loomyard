@@ -40,9 +40,6 @@ type HandOverRequest struct {
 	Entry shedengine.Takeover
 	// DroppedIntents names the pause or cancel intents that never reached origin, for the notice.
 	DroppedIntents []string
-	// PrimeRecords is the prime whose records hold the run's unpushed transitions, nil when there is none to archive.
-	// A set one has its local records tip pushed under an owner archive tag named for the run.
-	PrimeRecords *lymcwd.Location
 }
 
 // HandOverResult reports what a hand-over did.
@@ -62,7 +59,6 @@ type HandOverResult struct {
 // Each goes under an owner archive tag pushed to origin.
 // A parent branch that only the run's own merge puts ahead of its upstream is tagged the same way.
 // That branch is then reset to the upstream.
-// With req.PrimeRecords set, the prime's local records tip is archived the same way, under a tag named for the run.
 // One notice goes through the installed push notifier, and the hand-over mark is written last, after every tag landed.
 // A failure at any step returns it before the mark is written, so the next rejected push hands the run over again;
 // a failed archive wraps ErrArchiveFailed.
@@ -108,16 +104,6 @@ func HandOverTips(prime *lymcwd.Location, req HandOverRequest) (HandOverResult, 
 					result.Tags = append(result.Tags, tag)
 				}
 			}
-		}
-	}
-
-	if req.PrimeRecords != nil {
-		tag, err := archiveOwnerTip(rec, RecordsWorktree(req.PrimeRecords), req.Slug, "records", false)
-		if err != nil {
-			return result, fmt.Errorf("%w: prime records of %s: %w", ErrArchiveFailed, req.Slug, err)
-		}
-		if tag != "" {
-			result.Tags = append(result.Tags, tag)
 		}
 	}
 
@@ -224,7 +210,11 @@ func OriginBattenStatus(prime *lymcwd.Location, slug string) (status shedengine.
 // a branch the push created is deleted, after the tip is saved under its owner archive tag.
 // A given-up tip thus does not stay on origin.
 // It reports whether the tip was pushed and stands.
+// A one-repository pair has no code tip apart from its records, so it pushes nothing and reports false.
 func pushOwedCodeTip(rec *Mutations, pair *lymcwd.Location) (pushed bool, err error) {
+	if oneRepositoryAt(pair.WorktreePath()) {
+		return false, nil
+	}
 	slug := pair.WorktreeName
 	weftPath := RecordsWorktree(pair)
 	upstream, hasUpstream, err := upstreamSHAAt(weftPath)
@@ -286,7 +276,7 @@ func pushOwedCodeTip(rec *Mutations, pair *lymcwd.Location) (pushed bool, err er
 		})
 	}
 	if originAbsent {
-		if err := repo.PushCommit(originRemoteName, tip, branch, gitrepo.RefNamespace{}); err != nil {
+		if err := repo.PushCommit(originRemoteName, tip, branch); err != nil {
 			return false, fmt.Errorf("create origin's code branch %s at the owed tip %s: %w; way forward: the next rejected push of the run hands it over again", branch, tip, err)
 		}
 		rec.AppendRef(KindRemoteBranchUpdated, originRemoteName+"/"+branch, tip)

@@ -28,7 +28,17 @@ const (
 	// weftPushLockFile names the push lock that coalescePush holds for the whole loop-until-clean push window.
 	// It sits in .weft/ with weftWriteLockFile, so the .weft/ git exclude already covers it.
 	weftPushLockFile = "fabric.push.lock"
+	// retiredLockFilePattern and retiredSwapLockFilePattern are the broad excludes seedWeftArtifactExcludes removes.
+	// Keeping them would hide a lock file that strays into a tracked tree from git status.
+	retiredLockFilePattern     = "*.lock"
+	retiredSwapLockFilePattern = "*.swaplock"
 )
+
+// legacyLockFileNames are lock files that earlier versions wrote beside tracked files in the weft checkouts:
+// in the Bolt root, and beside the review records of a run directory.
+// No current code writes them.
+// They stay excluded by name, so a leftover one never enters a stage-all board commit or a records commit.
+var legacyLockFileNames = []string{".gitrepo-push.lock", "board.lock", "board.push.lock", "board.json.swaplock", "tasks.json.swaplock", "notes.json.swaplock", "generation-record.json.lock", "settle-record.json.lock", "settle-record.patch.lock"}
 
 // ensureWeftLockDir creates the .weft lock directory and seeds git-exclude
 // entries for fabric's lock artifacts.
@@ -36,18 +46,26 @@ func (f *Fabric) ensureWeftLockDir() (string, error) {
 	return ensureWeftLockDirAt(f.weftPath)
 }
 
-// RecordsLockDirPath returns the lock directory path inside the records worktree at recordsWorktreePath.
+// RecordsLockDirPath returns the lock directory path of the records worktree at recordsWorktreePath.
+// It is the `.weft` directory inside the worktree.
+// In a one-repository hub it is the `lym-locks` directory inside the worktree's git directory.
 // It builds the path only and does not create the directory.
 func RecordsLockDirPath(recordsWorktreePath string) string {
-	return filepath.Join(recordsWorktreePath, weftLockDirName)
+	dir, _ := recordsLockDir(recordsWorktreePath)
+	return dir
 }
 
-// ensureWeftLockDirAt creates the .weft lock directory under weftPath.
+// ensureWeftLockDirAt creates the lock directory of the records worktree at weftPath.
 // It also seeds the git-exclude entries for fabric's lock artifacts, so callers need no Fabric instance.
+// A one-repository worktree keeps its locks in its git directory and gets no exclude lines.
+// The `.weft/` line would hide code paths.
 func ensureWeftLockDirAt(weftPath string) (string, error) {
-	dir := RecordsLockDirPath(weftPath)
+	dir, oneRepository := recordsLockDir(weftPath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("fabricengine: mkdir weft lock dir: %w", err)
+	}
+	if oneRepository {
+		return dir, nil
 	}
 	if err := seedWeftArtifactExcludes(weftPath); err != nil {
 		return "", err
@@ -78,8 +96,9 @@ func HoldRecordsWriteLock(recordsWorktreePath string, wait time.Duration) (relea
 }
 
 // seedWeftArtifactExcludes adds the weft repo's never-tracked operational artifacts to its .git/info/exclude.
-// They are the .weft/ lock directory and the lymdirs.DotLymDirName directory.
-// Each missing entry is appended line-exact and idempotently.
+// They are the .weft/ lock directory, the lymdirs.DotLymDirName directory, and the legacy lock file names.
+// Each missing entry is appended line-exact and idempotently;
+// the retired *.lock and *.swaplock lines are removed.
 // Exclude is used instead of a committed .gitignore: it needs no commit and no new file in the weft root.
 // Without these excludes, a weft worktree reports the artifacts as untracked dirt, which makes it look dirty.
 // The exclude file lives in the repo's common gitdir, so one seeding covers every linked weft worktree.
@@ -88,10 +107,18 @@ func HoldRecordsWriteLock(recordsWorktreePath string, wait time.Duration) (relea
 func seedWeftArtifactExcludes(weftPath string) error {
 	_, _, err := mutateGitExclude(weftPath, func(content string) (string, error) {
 		present := map[string]bool{}
+		var kept []string
 		for _, line := range strings.Split(content, "\n") {
-			present[strings.TrimSpace(line)] = true
+			trimmed := strings.TrimSpace(line)
+			if trimmed == retiredLockFilePattern || trimmed == retiredSwapLockFilePattern {
+				continue
+			}
+			present[trimmed] = true
+			kept = append(kept, line)
 		}
-		for _, entry := range []string{weftLockDirName + "/", lymdirs.DotLymDirName + "/"} {
+		content = strings.Join(kept, "\n")
+		entries := append([]string{weftLockDirName + "/", lymdirs.DotLymDirName + "/"}, legacyLockFileNames...)
+		for _, entry := range entries {
 			if present[entry] {
 				continue
 			}
@@ -159,7 +186,17 @@ func entryMatchesWeft(weftPath, entry string) (bool, error) {
 
 // commitEmptySnapshot lands an empty weft commit with commitMessage and records its correspondence to warpSHA.
 func (f *Fabric) commitEmptySnapshot(commitMessage, warpSHA string) (sha string, committed bool, err error) {
-	sha, err = f.records.CommitEmpty(commitMessage)
+	err = retryHeldIndexLock(indexLockRetryBound, time.Sleep, func() error {
+		var commitErr error
+		if oneRepositoryAt(f.weftPath) {
+			// The index also holds the agent's staged code, which an empty commit refuses.
+			// The marker alone is committed, so the staged entries stay staged.
+			sha, commitErr = f.records.CommitPathAllowEmpty(commitMessage, lymcwd.AnchorFileName)
+		} else {
+			sha, commitErr = f.records.CommitEmpty(commitMessage)
+		}
+		return commitErr
+	})
 	if err != nil {
 		return "", false, err
 	}
@@ -195,6 +232,9 @@ func CommitEmptyWithTrailers(rec *Mutations, l *lymcwd.Location, relPath, msg st
 	}
 
 	weftPath := RecordsWorktree(l)
+	if err := refuseOffPrimeBranch(weftPath); err != nil {
+		return "", false, err
+	}
 	lockDir, err := ensureWeftLockDirAt(weftPath)
 	if err != nil {
 		return "", false, err
@@ -205,7 +245,19 @@ func CommitEmptyWithTrailers(rec *Mutations, l *lymcwd.Location, relPath, msg st
 	}
 	defer func() { _ = writeLock.Release() }()
 
-	sha, err = gitrepo.New(weftPath).CommitPathAllowEmpty(message, weftCommitPathspec(l.AnchorRel, []string{relPath})[0])
+	routed, err := mergeRouteApplies(weftPath)
+	if err != nil {
+		return "", false, err
+	}
+	if routed {
+		sha, _, err = commitRecordsAroundMergeWith(rec, weftPath, l.AnchorRel, []string{relPath}, message, true)
+	} else {
+		err = retryHeldIndexLock(indexLockRetryBound, time.Sleep, func() error {
+			var commitErr error
+			sha, commitErr = gitrepo.New(weftPath).CommitPathAllowEmpty(message, weftCommitPathspec(l.AnchorRel, []string{relPath})[0])
+			return commitErr
+		})
+	}
 	if err != nil {
 		return "", false, err
 	}
@@ -217,10 +269,12 @@ func CommitEmptyWithTrailers(rec *Mutations, l *lymcwd.Location, relPath, msg st
 // The weft write lock must already be held.
 // When warp has a HEAD, the commit carries a Warp-SHA trailer and Snapshot trailers.
 // On an unborn warp, with zero commits, the tags are dropped.
-// With snapshotTags or trailers set and warp past its first commit, a no-op commit still lands, empty,
-// so the tags and the trailers have a commit to sit on.
-// The already-validated trailers end the message, one line each in order, on a born and an unborn warp alike.
-func (f *Fabric) commitWeftLocked(pathspec []string, message string, trailers []Trailer, opts SyncOptions, snapshotTags ...string) (sha string, committed bool, err error) {
+// With snapshotTags set and warp past its first commit, a no-op commit still records the tags.
+// A one-repository worktree that is mid-merge commits around the merge.
+func (f *Fabric) commitWeftLocked(pathspec []string, message string, opts SyncOptions, snapshotTags ...string) (sha string, committed bool, err error) {
+	if err := refuseOffPrimeBranch(f.weftPath); err != nil {
+		return "", false, err
+	}
 	warpSHA, unborn, err := f.warpHeadSHA()
 	if err != nil {
 		return "", false, fmt.Errorf("fabricengine: warp CurrentSHA: %w", err)
@@ -234,11 +288,16 @@ func (f *Fabric) commitWeftLocked(pathspec []string, message string, trailers []
 			return "", false, err
 		}
 	}
-	for _, trailer := range trailers {
-		commitMessage = appendTrailerLine(commitMessage, trailer.Key, trailer.Value)
-	}
 
-	forceEmptyCommit := (len(snapshotTags) > 0 || len(trailers) > 0) && !unborn
+	forceEmptyCommit := len(snapshotTags) > 0 && !unborn
+
+	routed, err := mergeRouteApplies(f.weftPath)
+	if err != nil {
+		return "", false, err
+	}
+	if routed {
+		return f.commitWeftAroundMerge(pathspec, commitMessage, warpSHA, forceEmptyCommit)
+	}
 
 	filteredPathspec, positive, err := weftPathspecFilter(f.weftPath, pathspec)
 	if err != nil {
@@ -251,7 +310,11 @@ func (f *Fabric) commitWeftLocked(pathspec []string, message string, trailers []
 		return "", false, nil
 	}
 
-	sha, committed, err = f.records.StageAndCommit(commitMessage, filteredPathspec)
+	err = retryHeldIndexLock(indexLockRetryBound, time.Sleep, func() error {
+		var commitErr error
+		sha, committed, commitErr = f.records.StageAndCommit(commitMessage, filteredPathspec)
+		return commitErr
+	})
 	if err != nil {
 		if strings.Contains(err.Error(), "did not match any files") {
 			if forceEmptyCommit {
@@ -329,12 +392,8 @@ func (f *Fabric) PushWeft(opts SyncOptions) (res PushResult, err error) {
 		return PushResult{}, nil
 	}
 
-	ns, err := originNamespaceAt(f.weftPath)
-	if err != nil {
-		return PushResult{}, err
-	}
 	hadUnpushed, hadUnpushedErr := f.records.HasUnpushed()
-	if err := f.records.PushCoalesced(ns); err != nil {
+	if err := f.records.PushCoalesced(); err != nil {
 		return PushResult{}, err
 	}
 	recordPushIfAdvanced(rec, f.records, "records", f.weftPath, hadUnpushed, hadUnpushedErr)
@@ -356,12 +415,41 @@ func (f *Fabric) PullWeft(opts SyncOptions) error {
 // It does not acquire the weft write lock; the caller is responsible for synchronization.
 // It seeds the weft artifact excludes before staging,
 // so the stage-all never sweeps up machine-local scratch, even in a repo no other verb has seeded.
+// The Bolt checkout of a one-repository hub gets the `/.lym` line alone.
+// The repository's exclude is the code worktrees' too, and `.weft/` would hide code paths there.
 func commitWeftAt(weftPath, message string, opts SyncOptions) (sha string, committed bool, err error) {
 	if opts.SkipGit {
 		return "", false, nil
 	}
-	if err := seedWeftArtifactExcludes(weftPath); err != nil {
+	if oneRepositoryAt(weftPath) {
+		err = seedDotLymExclude(weftPath)
+	} else {
+		err = seedWeftArtifactExcludes(weftPath)
+	}
+	if err != nil {
 		return "", false, err
 	}
 	return gitrepo.New(weftPath).StageAllAndCommit(message)
+}
+
+// seedDotLymExclude adds the root-anchored `.lym` line to the `.git/info/exclude` of the repository at repoPath.
+// It keeps the never-tracked scratch tree of a checkout's root out of a stage-all commit.
+// A line already present is left alone, and no line is ever removed.
+func seedDotLymExclude(repoPath string) error {
+	line := excludePatternFor(".", lymdirs.DotLymDirName)
+	_, _, err := mutateGitExclude(repoPath, func(content string) (string, error) {
+		for _, existing := range strings.Split(content, "\n") {
+			if strings.TrimSpace(existing) == line {
+				return content, nil
+			}
+		}
+		if content != "" && !strings.HasSuffix(content, "\n") {
+			content += "\n"
+		}
+		return content + line + "\n", nil
+	})
+	if err != nil {
+		return fmt.Errorf("fabricengine: seed the %s exclude in %s: %w", line, repoPath, err)
+	}
+	return nil
 }

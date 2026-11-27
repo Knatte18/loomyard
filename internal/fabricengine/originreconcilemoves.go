@@ -203,6 +203,7 @@ func ffWorktree(rec *Mutations, worktree, originHead string) (state BranchState,
 // A branch behind origin is fast-forwarded.
 // A branch both sides moved has its local commits replayed onto origin's, with ended told to the replay.
 // A replay that stops on a conflict returns BranchDiverged naming the conflicting paths and the local commits.
+// So does a one-repository replay that found local commits changing code paths, which it never rewrites.
 // A replay that an uncommitted change blocks returns BranchDirty.
 // A branch the locks found already level or ahead is returned as that, unmoved.
 // A moved branch returns BranchLevel, or BranchAhead when replayed commits sit on origin's head, with Moved set.
@@ -259,6 +260,7 @@ func reconcileRecordsBranch(rec *Mutations, l *lymcwd.Location, worktree, origin
 		replay, err = replayWeft(rec, l, worktree, originHead, ended)
 	}
 	var refusal *destructiveRefusal
+	var codeStop *localCodeCommitsStop
 	switch {
 	case err == nil:
 		moved, err := repo.CurrentSHA()
@@ -275,7 +277,7 @@ func reconcileRecordsBranch(rec *Mutations, l *lymcwd.Location, worktree, origin
 		outcome.State = BranchDirty
 		outcome.Paths, err = dirtyTrackedPaths(worktree)
 		return outcome, err
-	case errors.Is(err, ErrReplayConflict), errors.As(err, &refusal):
+	case errors.Is(err, ErrReplayConflict), errors.As(err, &refusal), errors.As(err, &codeStop):
 		outcome.State = BranchDiverged
 		outcome.Paths = replay.Conflicts
 		outcome.Commits, err = repo.CommitsNotIn(head, originHead)

@@ -37,7 +37,7 @@ func creelHeadItem(notice string) instructionItem {
 	return instructionItem{
 		name:       "the deny notice and creel trust sentence",
 		text:       head,
-		wayForward: "shorten the hub's " + otherKeyName("gate", "refuse_raw") + " list with lym config gate, since each row adds its notice",
+		wayForward: "shorten the hub's refuse_raw list with lym config gate, since each row adds its notice",
 	}
 }
 

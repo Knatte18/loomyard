@@ -25,16 +25,6 @@ type typeDecl struct {
 	TestAttributed bool
 	// HasTestMethod reports a member carrying a test-method attribute.
 	HasTestMethod bool
-	// TestMethods are the type's own methods that carry a test-method attribute, in source order.
-	TestMethods []testMethod
-}
-
-// testMethod is one method of a type that carries a test-method attribute.
-type testMethod struct {
-	// Name is the method's name without type parameters.
-	Name string
-	// Text is the method's source text, from the opening `[` of its first attribute list to the end of its body.
-	Text string
 }
 
 // sourceFile is the read of one C# source file.
@@ -71,8 +61,6 @@ type frame struct {
 
 // sourceParser walks the tokens of one file.
 type sourceParser struct {
-	// src is the source text the tokens' pos offsets index.
-	src    string
 	tokens []token
 	i      int
 	file   sourceFile
@@ -83,16 +71,11 @@ type sourceParser struct {
 	pending map[string]bool
 	// attributeEnd is the token index just past the last attribute list, where a following list is still an attribute list.
 	attributeEnd int
-	// memberStart is the source offset of the `[` that opened the current member's first attribute list.
-	memberStart int
-	// testMember reports that the current member carries a test-method attribute and its method has not been read yet.
-	testMember bool
 }
 
 // parseSource reads the C# source data of the file rel into its identifier set and type declarations.
 func parseSource(rel string, data []byte) sourceFile {
 	p := &sourceParser{
-		src:          string(data),
 		tokens:       lex(data),
 		file:         sourceFile{Rel: rel, Identifiers: map[string]bool{}},
 		pending:      map[string]bool{},
@@ -115,21 +98,19 @@ func (p *sourceParser) step() {
 	switch {
 	case p.isPunct(p.i, "{"):
 		p.frames = append(p.frames, frame{kind: frameBlock})
-		p.endMember()
+		clear(p.pending)
 		p.i++
 	case p.isPunct(p.i, "}"):
 		if len(p.frames) > 0 {
 			p.frames = p.frames[:len(p.frames)-1]
 		}
-		p.endMember()
+		clear(p.pending)
 		p.i++
 	case p.isPunct(p.i, ";"):
-		p.endMember()
+		clear(p.pending)
 		p.i++
 	case p.isPunct(p.i, "[") && p.startsAttributeList():
 		p.attributeList()
-	case p.isPunct(p.i, "(") && p.testMember && p.inTypeBody():
-		p.testMethod()
 	case t.ident && t.text == "namespace" && !p.after("."):
 		p.namespaceDecl()
 	case t.ident && slices.Contains(typeKeywords, t.text) && p.startsTypeDecl():
@@ -158,10 +139,6 @@ func (p *sourceParser) startsAttributeList() bool {
 // A list with a target prefix, such as `[assembly: X]`, sets nothing.
 func (p *sourceParser) attributeList() {
 	end := p.matching(p.i, "[", "]")
-	if p.i != p.attributeEnd {
-		p.memberStart = p.tokens[p.i].pos
-		p.testMember = false
-	}
 	p.attributeEnd = end + 1
 	defer func() { p.i = end + 1 }()
 
@@ -178,103 +155,8 @@ func (p *sourceParser) attributeList() {
 		p.pending[name] = true
 		if slices.Contains(methodAttributes, name) {
 			p.markTestMethod()
-			p.testMember = p.inTypeBody()
 		}
 	}
-}
-
-// endMember forgets the attributes and the test-method mark of the member that just ended.
-func (p *sourceParser) endMember() {
-	clear(p.pending)
-	p.testMember = false
-}
-
-// inTypeBody reports whether the innermost open brace is a type body.
-func (p *sourceParser) inTypeBody() bool {
-	return len(p.frames) > 0 && p.frames[len(p.frames)-1].kind == frameType
-}
-
-// testMethod reads the method whose `(` is at the cursor, for a member that carries a test-method attribute.
-// The method is recorded on the type whose body the cursor is in, and its body is skipped.
-// A `(` with no name before it records nothing.
-func (p *sourceParser) testMethod() {
-	open := p.i
-	nameIndex := open - 1
-	if p.isPunct(nameIndex, ">") {
-		nameIndex = p.matchingBackward(nameIndex, "<", ">") - 1
-	}
-	if nameIndex < 0 || !p.tokens[nameIndex].ident {
-		p.testMember = false
-		p.i++
-		return
-	}
-	end := p.methodEnd(p.matching(open, "(", ")") + 1)
-	endToken := p.tokens[end]
-	decl := &p.file.Types[p.frames[len(p.frames)-1].decl]
-	decl.TestMethods = append(decl.TestMethods, testMethod{
-		Name: p.tokens[nameIndex].text,
-		Text: p.src[p.memberStart : endToken.pos+len(endToken.text)],
-	})
-	p.endMember()
-	p.i = end + 1
-}
-
-// methodEnd returns the index of the token that ends the method whose parameter list closed just before start.
-// A block body ends at its closing brace, an expression body at its `;`, and a bodiless method at its `;`.
-// It returns the last token index when the method never ends.
-func (p *sourceParser) methodEnd(start int) int {
-	for i := start; i < len(p.tokens); i++ {
-		switch {
-		case p.isPunct(i, "{"):
-			return p.matching(i, "{", "}")
-		case p.isPunct(i, ";"):
-			return i
-		case p.isPunct(i, "=") && p.isPunct(i+1, ">"):
-			return p.statementEnd(i + 2)
-		}
-	}
-	return len(p.tokens) - 1
-}
-
-// statementEnd returns the index of the first `;` at bracket depth zero from start, or the last token index.
-func (p *sourceParser) statementEnd(start int) int {
-	depth := 0
-	for i := start; i < len(p.tokens); i++ {
-		if p.tokens[i].ident {
-			continue
-		}
-		switch p.tokens[i].text {
-		case "(", "[", "{":
-			depth++
-		case ")", "]", "}":
-			depth--
-		case ";":
-			if depth == 0 {
-				return i
-			}
-		}
-	}
-	return len(p.tokens) - 1
-}
-
-// matchingBackward returns the index of the open token matching the closing token at index, or -1 when there is none.
-func (p *sourceParser) matchingBackward(index int, open, closing string) int {
-	depth := 0
-	for i := index; i >= 0; i-- {
-		if p.tokens[i].ident {
-			continue
-		}
-		switch p.tokens[i].text {
-		case closing:
-			depth++
-		case open:
-			depth--
-			if depth == 0 {
-				return i
-			}
-		}
-	}
-	return -1
 }
 
 // lastQualifiedName returns the last segment of the possibly namespace-qualified name at start.
@@ -319,7 +201,7 @@ func (p *sourceParser) nextComma(start, end int) int {
 
 // markTestMethod records a test-method attribute on the type whose body the cursor is in.
 func (p *sourceParser) markTestMethod() {
-	if p.inTypeBody() {
+	if len(p.frames) > 0 && p.frames[len(p.frames)-1].kind == frameType {
 		p.file.Types[p.frames[len(p.frames)-1].decl].HasTestMethod = true
 	}
 }
@@ -422,7 +304,7 @@ func (p *sourceParser) typeDecl() {
 		next++
 	}
 	p.file.Types = append(p.file.Types, decl)
-	p.endMember()
+	clear(p.pending)
 	if p.isPunct(next, "{") {
 		p.frames = append(p.frames, frame{kind: frameType, name: name, decl: len(p.file.Types) - 1})
 	}

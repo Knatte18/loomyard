@@ -200,30 +200,12 @@ func parseSetFlags(raw []string) ([]yamlengine.KV, error) {
 	return pairs, nil
 }
 
-// layerWrite makes one non-interactive change to the layer's file of a module under dirs.
-// It returns the pre-existing keys the template lacks that the write preserved.
-type layerWrite func(dirs configengine.Dirs, spec configengine.Spec, layer configengine.Layer) ([]string, error)
-
-// setPairs returns the write of pairs through configengine.Set.
-func setPairs(pairs []yamlengine.KV) layerWrite {
-	return func(dirs configengine.Dirs, spec configengine.Spec, layer configengine.Layer) ([]string, error) {
-		return configengine.Set(dirs, spec, layer, pairs)
-	}
-}
-
-// unsetKeys returns the write that removes keys through configengine.Unset, which preserves no key.
-func unsetKeys(keys []string) layerWrite {
-	return func(dirs configengine.Dirs, spec configengine.Spec, layer configengine.Layer) ([]string, error) {
-		return nil, configengine.Unset(dirs, spec, layer, keys)
-	}
-}
-
-// setModule applies write to a single config module's file and optionally syncs on success.
-// It opens no editor: write changes the file non-interactively in one call.
+// setModule writes pairs into a single config module's file and optionally syncs on success.
+// It applies them with no editor: configengine.Set performs the write non-interactively in one call.
 // A default-layer file is written at the board dir and committed in the Bolt checkout;
 // a local override is written uncommitted, and a worktree file syncs fabric.
-// A result the module's loader newly refuses leaves the file as it was.
-func setModule(dirs configDirs, out io.Writer, module string, write layerWrite, sync syncFunc, commit hubCommitFunc) int {
+// A value the module's loader refuses leaves the file as it was.
+func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine.KV, sync syncFunc, commit hubCommitFunc) int {
 	// Look up the module; its declared open maps let --set add or rewrite one entry.
 	mod, ok := configreg.Lookup(module)
 	if !ok {
@@ -238,19 +220,19 @@ func setModule(dirs configDirs, out io.Writer, module string, write layerWrite, 
 		if exitCode, refused := dirs.refuseHubWrite(out); refused {
 			return exitCode
 		}
-		return setHubWide(dirs, out, mod, write, commit)
+		return setHubWide(dirs, out, mod, pairs, commit)
 	case configengine.LayerMachine:
 		if exitCode, refused := dirs.refuseHubWrite(out); refused {
 			return exitCode
 		}
-		return setMachine(dirs, out, mod, path, write)
+		return setMachine(dirs, out, mod, path, pairs)
 	case configengine.LayerLocal:
-		return setLocal(dirs, out, mod, path, write)
+		return setLocal(dirs, out, mod, path, pairs)
 	}
 
-	// Apply the write directly, with no editor invocation;
+	// Apply pairs directly, with no editor invocation;
 	// a worktree file under a board is sparse and holds only the keys set.
-	preserved, err := setChecked(dirs.engineDirs(), mod, configengine.LayerWorktree, path, write)
+	preserved, err := setChecked(dirs.engineDirs(), mod, configengine.LayerWorktree, path, pairs)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -281,17 +263,17 @@ func setModule(dirs configDirs, out io.Writer, module string, write layerWrite, 
 	return output.Err(out, fmt.Sprintf("edited _lym/config/%s.yaml but fabric sync failed: %s", module, buf.String()))
 }
 
-// setChecked applies write to the layer's file of module at path and checks the result with the module's own loader.
+// setChecked writes pairs into the layer's file of module at path and checks the result with the module's own loader.
 // A write that leaves the stack failing to load with a new error is undone, and path is put back as it was.
 // The error names the module and carries the loader's, which names the key.
 // A stack that already failed to load lets a write through that leaves that same failure in place.
-func setChecked(dirs configengine.Dirs, module configreg.Module, layer configengine.Layer, path string, write layerWrite) ([]string, error) {
+func setChecked(dirs configengine.Dirs, module configreg.Module, layer configengine.Layer, path string, pairs []yamlengine.KV) ([]string, error) {
 	snap, err := snapshotFile(path)
 	if err != nil {
 		return nil, err
 	}
 	before := module.CheckLoad(dirs)
-	preserved, err := write(dirs, module.Spec(), layer)
+	preserved, err := configengine.Set(dirs, module.Spec(), layer, pairs)
 	if err != nil {
 		return nil, err
 	}
@@ -307,14 +289,14 @@ func newLoadFailure(module configreg.Module, before, after error) error {
 	if after == nil || (before != nil && before.Error() == after.Error()) {
 		return nil
 	}
-	return fmt.Errorf("the %s config would not load after this write: %w; way forward: --set the keys it leaves invalid to values the loader takes, or leave the key as it is", module.Name, after)
+	return fmt.Errorf("the %s config would not load with this value: %w; way forward: --set the key to a value it takes", module.Name, after)
 }
 
-// setLocal applies write to a module's local override file at path.
+// setLocal writes pairs into a module's local override file at path.
 // A local override is never committed and runs no fabric sync.
 // A key the local layer refuses, or a value the module's loader refuses, leaves the file as it was.
-func setLocal(dirs configDirs, out io.Writer, mod configreg.Module, path string, write layerWrite) int {
-	preserved, err := setChecked(dirs.engineDirs(), mod, configengine.LayerLocal, path, write)
+func setLocal(dirs configDirs, out io.Writer, mod configreg.Module, path string, pairs []yamlengine.KV) int {
+	preserved, err := setChecked(dirs.engineDirs(), mod, configengine.LayerLocal, path, pairs)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -328,12 +310,12 @@ func setLocal(dirs configDirs, out io.Writer, mod configreg.Module, path string,
 	return output.Ok(out, fields)
 }
 
-// setMachine applies write to a module's machine override file at path.
+// setMachine writes pairs into a module's machine override file at path.
 // A machine override is never committed and runs no fabric sync.
 // A key the machine layer refuses leaves the file as it was.
 // So does a value the module's loader refuses over the prime's worktree stack.
-func setMachine(dirs configDirs, out io.Writer, mod configreg.Module, path string, write layerWrite) int {
-	preserved, err := setChecked(dirs.engineDirs(), mod, configengine.LayerMachine, path, write)
+func setMachine(dirs configDirs, out io.Writer, mod configreg.Module, path string, pairs []yamlengine.KV) int {
+	preserved, err := setChecked(dirs.engineDirs(), mod, configengine.LayerMachine, path, pairs)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -389,19 +371,19 @@ func editLocal(dirs configDirs, out io.Writer, mod configreg.Module, path string
 	})
 }
 
-// dispatch routes the config command to one of four paths.
-// It takes the --set path when setFlags is non-empty, and the --unset path when unsetFlags is.
+// dispatch routes the config command to one of three paths.
+// It takes the --set path when setFlags is non-empty.
 // It takes the print path when printOnly is true, and otherwise editOne when a module is given.
 //
 // The print path is read-only: it writes the on-disk YAML to out and never opens an editor.
-// The --set and --unset paths write without calling edit; each is mutually exclusive with --print and with the other.
+// The --set path writes without calling edit and is mutually exclusive with --print.
 // layer is the --layer value, empty or one of the four layer names.
 // Any other value is refused before anything is read or written.
 // hubWriteGuard is called before a default-layer write and refuses it with its message; a nil guard allows every write.
 // terminal reports whether the command's input is an interactive terminal.
 // Without one, an editor path is refused before the layer is dispatched,
 // so no guard is consulted, no file is scaffolded and no editor runs.
-func dispatch(l *lymcwd.Location, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc, printOnly bool, setFlags, unsetFlags []string, layer string, hubWriteGuard func() (string, error), terminal bool) int {
+func dispatch(l *lymcwd.Location, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc, printOnly bool, setFlags []string, layer string, hubWriteGuard func() (string, error), terminal bool) int {
 	if !validLayer(layer) {
 		return output.Err(out, fmt.Sprintf("unknown --layer %q; use default, worktree, machine or local", layer))
 	}
@@ -409,33 +391,20 @@ func dispatch(l *lymcwd.Location, out io.Writer, args []string, edit configengin
 	dirs.layer = layer
 	dirs.hubWriteGuard = hubWriteGuard
 
-	// The --set and --unset paths never open the editor,
-	// so their validation runs before the --print and edit branches can act:
-	// mutual exclusivity with --print and with each other, and a module being required.
-	writeFlag := ""
-	switch {
-	case len(setFlags) > 0 && len(unsetFlags) > 0:
-		return output.Err(out, "--set and --unset are mutually exclusive")
-	case len(setFlags) > 0:
-		writeFlag = "--set"
-	case len(unsetFlags) > 0:
-		writeFlag = "--unset"
+	// The --set path never opens the editor, so its validation runs before the --print and edit branches can act:
+	// mutual exclusivity with --print, and a module being required.
+	if len(setFlags) > 0 && printOnly {
+		return output.Err(out, "--print and --set are mutually exclusive")
 	}
-	if writeFlag != "" && printOnly {
-		return output.Err(out, "--print and "+writeFlag+" are mutually exclusive")
-	}
-	if writeFlag != "" && len(args) < 1 {
-		return output.Err(out, "module required with "+writeFlag)
+	if len(setFlags) > 0 && len(args) < 1 {
+		return output.Err(out, "module required with --set")
 	}
 	if len(setFlags) > 0 {
 		pairs, err := parseSetFlags(setFlags)
 		if err != nil {
 			return output.Err(out, err.Error())
 		}
-		return setModule(dirs, out, args[0], setPairs(pairs), sync, commit)
-	}
-	if len(unsetFlags) > 0 {
-		return setModule(dirs, out, args[0], unsetKeys(unsetFlags), sync, commit)
+		return setModule(dirs, out, args[0], pairs, sync, commit)
 	}
 
 	// The --print path is read-only and never opens the editor, so it runs before any edit dispatch.
@@ -496,7 +465,7 @@ func buildConfigLong() string {
 		"success. A hub-wide module (" + strings.Join(hubWide, ", ") + ") is edited instead at the\n" +
 		"hub's board dir and committed in " + fabricengine.BoltDirName + ". With no argument it lists the known\n" +
 		"modules and verbs; with a module\n" +
-		"name it edits that module; `lym config menu` is the interactive\n" +
+		"name it edits that module directly; `lym config menu` is the interactive\n" +
 		"picker. The editor is $VISUAL, then $EDITOR, then `code --wait` when code is\n" +
 		"on PATH, then notepad on Windows or nano and vi elsewhere.\n\n" +
 		"--print prints the on-disk YAML, with no editor.\n\n" +
@@ -508,11 +477,10 @@ func buildConfigLong() string {
 		"or a key inside it, e.g.\n" +
 		"  lym config gate --set tiers.tier0.env.LYM_TEST_TIER=0\n" +
 		"Keys the template lacks are preserved (JSON \"preserved\" field);\n" +
-		"\"lym config reconcile --apply\" removes them, with --layer default from the prime.\n\n" +
-		"--unset key (repeatable) removes a key or a map entry with no editor, e.g.\n" +
-		"  lym config gate --unset gates.harden-live-copies\n\n" +
-		"--layer default|worktree|machine|local picks the file; default is committed from the prime,\n" +
-		"local is untracked.\n\n" +
+		"\"lym config reconcile --layer default --apply\" from the prime removes them from the\n" +
+		"board dir's files, and \"lym config reconcile --apply\" from a worktree file.\n\n" +
+		"--layer default|worktree|machine|local picks the file to print or write: default is the board's\n" +
+		"repo default, committed from the prime; local is an untracked override.\n\n" +
 		"deny_python=false lets Python through and drops the notice at launch, from the prime:\n" +
 		"  lym config shuttle --layer default --set " + string(shellguard.SwitchDenyPython) + "=false\n\n" +
 		"--resolved <module> prints the merged result, each unit annotated with its\n" +
@@ -521,14 +489,12 @@ func buildConfigLong() string {
 }
 
 // resolvedRefusal returns why --resolved cannot run beside the other flags and arguments, or "" when it can.
-func resolvedRefusal(args []string, printOnly bool, setFlags, unsetFlags []string, layer string) string {
+func resolvedRefusal(args []string, printOnly bool, setFlags []string, layer string) string {
 	switch {
 	case printOnly:
 		return "--resolved and --print are mutually exclusive"
 	case len(setFlags) > 0:
 		return "--resolved and --set are mutually exclusive"
-	case len(unsetFlags) > 0:
-		return "--resolved and --unset are mutually exclusive"
 	case layer != "":
 		return "--resolved and --layer are mutually exclusive"
 	case len(args) < 1:
@@ -597,6 +563,7 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool, layer string) 
 // reconcileEnvelope builds the reconcile verb's success fields: the aggregate applied flag and one object per result.
 func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 	modules := make([]map[string]any, len(results))
+	baseStripPending := false
 	for i, result := range results {
 		m := map[string]any{
 			"module":  result.Module,
@@ -604,6 +571,49 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 			"removed": result.Removed,
 			"applied": result.Applied,
 			"layer":   string(result.Layer),
+		}
+		// migratedFrom is set only when a pre-cutover legacy config file's values were folded in during this run.
+		// Ordinary modules omit it rather than carry an empty array.
+		if len(result.MigratedFrom) > 0 {
+			m["migratedFrom"] = result.MigratedFrom
+		}
+		// migrated is set only by a module with a Migrate hook that rewrote its present file.
+		if len(result.Migrated) > 0 {
+			m["migrated"] = result.Migrated
+		}
+		// retired and divergent are set only by a hub-wide module's leftover per-worktree copy.
+		if result.Retired {
+			m["retired"] = true
+		}
+		if len(result.Divergent) > 0 {
+			m["divergent"] = result.Divergent
+		}
+		// stripped and inherited are set only on a worktree without the sparse marker;
+		// reconcile reports them there as pending without stripping.
+		// A default-layer result also carries stripped for an unmigrated board.
+		// It lists the base units that the hub reconcile of a start verb strips.
+		if len(result.Stripped) > 0 {
+			m["stripped"] = result.Stripped
+			if result.Layer == configengine.LayerDefault {
+				baseStripPending = true
+			}
+		}
+		if len(result.Inherited) > 0 {
+			m["inherited"] = result.Inherited
+		}
+		// moved, keptTarget and overwritten are set only by a declared key move.
+		if len(result.Moved) > 0 {
+			m["moved"] = result.Moved
+		}
+		if len(result.KeptTarget) > 0 {
+			m["keptTarget"] = result.KeptTarget
+		}
+		if len(result.Overwritten) > 0 {
+			m["overwritten"] = result.Overwritten
+		}
+		// copied is set only by a declared key copy.
+		if len(result.Copied) > 0 {
+			m["copied"] = result.Copied
 		}
 		// keptExtra is set only by a module with per-name maps whose file holds a name the template lacks.
 		if len(result.KeptExtra) > 0 {
@@ -620,9 +630,9 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 		if len(result.Differs) > 0 {
 			m["differs"] = result.Differs
 		}
-		// moved is set only by a file holding an old key name.
-		if len(result.Moved) > 0 {
-			m["moved"] = result.Moved
+		// unsettled is set only by a seed-only module whose file holds a pair the module leaves for the operator to settle.
+		if len(result.Unsettled) > 0 {
+			m["unsettled"] = result.Unsettled
 		}
 		// seed is set only by a reconcile of the board dir's files.
 		if result.Seed != "" {
@@ -633,6 +643,9 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 	fields := map[string]any{
 		"applied": apply,
 		"modules": modules,
+	}
+	if baseStripPending {
+		fields["base_strip"] = "the board's base files still hold units equal to the template; this command never strips them, and only the hub reconcile of a start verb such as `lym loom resume` or `lym batten run` does"
 	}
 	return fields
 }
@@ -657,7 +670,6 @@ func Command() *cobra.Command {
 	}
 	configCmd.Flags().Bool("print", false, "print on-disk config as YAML without launching the editor")
 	configCmd.Flags().StringArray("set", nil, "set config key=value directly, bypassing the editor (repeatable)")
-	configCmd.Flags().StringArray("unset", nil, "remove a config key from the layer's file, bypassing the editor (repeatable)")
 	configCmd.Flags().Bool("resolved", false, "print the module's resolved config, each unit annotated with the layer it came from")
 	configCmd.Flags().String("layer", "", "the layer to print or write: default, worktree, machine or local (default: the module's own file); machine is a module's never-tracked override of its machine keys under the board dir's .lym, written from the prime")
 	// The RunE closure captures configCmd so the --print and --set flags are readable without consulting os.Args.
@@ -667,16 +679,15 @@ func Command() *cobra.Command {
 		}
 		printOnly, _ := cmd.Flags().GetBool("print")
 		setFlags, _ := cmd.Flags().GetStringArray("set")
-		unsetFlags, _ := cmd.Flags().GetStringArray("unset")
 		layer, _ := cmd.Flags().GetString("layer")
 		resolved, _ := cmd.Flags().GetBool("resolved")
 		if resolved {
-			if refusal := resolvedRefusal(args, printOnly, setFlags, unsetFlags, layer); refusal != "" {
+			if refusal := resolvedRefusal(args, printOnly, setFlags, layer); refusal != "" {
 				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), refusal))
 				return nil
 			}
 		}
-		if len(args) == 0 && !printOnly && len(setFlags) == 0 && len(unsetFlags) == 0 {
+		if len(args) == 0 && !printOnly && len(setFlags) == 0 {
 			return cmd.Help()
 		}
 		if len(args) > 0 {
@@ -688,7 +699,7 @@ func Command() *cobra.Command {
 			clihelp.SetExit(cmd.Context(), runResolved(cmd.Context(), cmd.OutOrStdout(), args[0]))
 			return nil
 		}
-		clihelp.SetExit(cmd.Context(), runConfig(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), args, printOnly, setFlags, unsetFlags, layer))
+		clihelp.SetExit(cmd.Context(), runConfig(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), args, printOnly, setFlags, layer))
 		return nil
 	}
 
@@ -705,25 +716,24 @@ A per-name map entry holding the template's value is reported under "dropped"
 and left out of the written file.
 Pass --apply to write the reconciled files to disk atomically;
 a file is rewritten when the reconcile adds, removes or drops anything.
-Hub-wide modules (fabric, board) have no worktree file, so only their local
-override files are reconciled here.
+A module that retires keys or floors a value first migrates its present file: the dry-run lists
+each rewrite under the module's "migrated" key, and --apply writes the migrated
+file even when the reconcile adds, removes and drops nothing.
+Hub-wide modules (fabric, board) are reported, not reconciled here: a leftover
+per-worktree copy is "retired" when the hub file holds everything it holds
+(--apply deletes it), or "divergent" when it holds an entry the hub file lacks
+(it is left in place).
 
 --layer default reconciles every file under the hub's board dir instead: the
 hub-wide modules' files and each per-worktree module's repo default, seeding
-an absent one from the prime. Keys the template lacks are removed.
---apply with it runs only from the hub's prime worktree,
+an absent one from the prime. Renamed keys are migrated and keys the template
+lacks are removed. --apply with it runs only from the hub's prime worktree,
 outside a task session, and commits the files in ` + fabricengine.BoltDirName + ` and pushes.
 Reconcile is refused in the board dir itself.
 
-Beside "lym config <module> --unset <key>", this verb is the one way to remove
-a key the template lacks, a retired key included: the reconcile that a clone,
-fabric reconcile, a start verb or a verb outside "lym config" loading the loom
-or tapestry config runs keeps such a key, since a newer binary may have written
-it.
-
-A renamed key a module's move table names is the exception: every reconcile,
-those included, moves it to its new path, or drops it when it holds null or the
-new path is already set.`,
+This verb is the one way to remove a key the template lacks: the reconcile a
+start verb, a clone or fabric reconcile runs keeps such a key, unless the
+module retired it, since a newer lym binary may have written it.`,
 	}
 	apply := reconcileCmd.Flags().Bool("apply", false, "apply changes to disk (default: dry-run)")
 	reconcileLayer := reconcileCmd.Flags().String("layer", "", "default reconciles the files under the hub's board dir (default: this worktree's own and local files)")
@@ -758,14 +768,13 @@ new path is already set.`,
 // It does not re-derive the cwd from process state.
 // When printOnly is true the command is read-only: it prints on-disk YAML without opening an editor or running sync.
 // setFlags carries the raw "key=value" strings collected from repeated --set flags.
-// unsetFlags carries the keys collected from repeated --unset flags.
-func runConfig(ctx context.Context, in io.Reader, out io.Writer, args []string, printOnly bool, setFlags, unsetFlags []string, layer string) int {
+func runConfig(ctx context.Context, in io.Reader, out io.Writer, args []string, printOnly bool, setFlags []string, layer string) int {
 	l, realSync, realCommit, err := resolveReal(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	return dispatch(l, out, args, configengine.DefaultEditor, realSync, realCommit, printOnly, setFlags, unsetFlags, layer, realHubWriteGuard(l), stdinIsTerminal(in))
+	return dispatch(l, out, args, configengine.DefaultEditor, realSync, realCommit, printOnly, setFlags, layer, realHubWriteGuard(l), stdinIsTerminal(in))
 }
 
 // realHubWriteGuard returns the guard over l and the calling session's strand name from the environment.

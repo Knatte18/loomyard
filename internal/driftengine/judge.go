@@ -27,9 +27,8 @@ const judgeTimeout = 60 * time.Minute
 // The judge stencil's mode text, autonomous and with the operator in the pane.
 // It names no engine's tool, so it holds whichever engine the judge launches on.
 const (
-	autonomousJudgeMode = "No operator is present, so make best-judgment rulings and never block on a dialog.\n" +
-		"A question you cannot settle from the request goes to your parent as creel mail, as your parent directive says, never into your pane, which no one reads."
-	operatorJudgeMode = "The operator is present at your pane and decides each ruling: you present each cell or case, discuss it and record the operator's ruling.\n" +
+	autonomousJudgeMode = "No operator is present, so make best-judgment rulings and never block on a dialog."
+	operatorJudgeMode   = "The operator is present at your pane and decides each ruling: you present each cell or case, discuss it and record the operator's ruling.\n" +
 		"Ask in plain text in the pane and wait for the operator's typed reply; never call a tool that opens a question dialog, which the run cannot drive."
 )
 

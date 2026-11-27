@@ -53,7 +53,7 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 
 	worktreeRoot := filepath.Join("home", "user", "repo")
 	layout := &lymcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
-	cfg := Config{Discussion: DiscussionConfig{Model: "opus[effort=high]"}, Plan: PlanConfig{Model: "opus[effort=high]"}, SubagentModel: "sonnet"}
+	cfg := Config{Discussion: "opus[effort=high]", Plan: "opus[effort=high]", SubagentModel: "sonnet"}
 	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 	if err != nil {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
@@ -85,7 +85,7 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 	// leadOf returns the discussion lead and its prompt for a run that is interactive or not.
 	leadOf := func(interactive bool, parent string) (seatengine.Seat, string, error) {
 		discussionCfg := cfg
-		discussionCfg.Discussion.Interactive = interactive
+		discussionCfg.DiscussionInteractive = interactive
 		return leadOfTable(func(stencilsDir string) (seatengine.Table, error) {
 			return DiscussionTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), discussionCfg, reg, "add-json-flag", false)
 		}, parent)

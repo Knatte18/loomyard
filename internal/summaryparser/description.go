@@ -1,7 +1,6 @@
 // description.go validates the change-description artifact.
 // ValidateDescription turns the failures of Parse, plus a few structural checks, into Findings.
-// One check covers the Merge danger section, which calls whether a revert undoes the change and what breaks if wrong.
-// Another is the forbidden-term check, which refuses a line naming a term of the tooling that wrote the change.
+// Among them is the Merge danger section, which calls whether a revert undoes the change and what breaks if it is wrong.
 
 package summaryparser
 
@@ -9,8 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
-	"regexp"
 	"strings"
 	"unicode/utf8"
 )
@@ -30,7 +27,6 @@ const (
 	CheckNoMergeDanger          = "no-merge-danger"
 	CheckMergeDangerDoor        = "merge-danger-door"
 	CheckMergeDangerBlastRadius = "merge-danger-blast-radius"
-	CheckForbiddenTerm          = "forbidden-term"
 )
 
 // The Merge danger section's heading, its two labelled lines and the door's two legal values.
@@ -59,11 +55,8 @@ func (f Finding) Error() string {
 // A non-empty body must also hold a "## Merge danger" section.
 // That section needs a "**Door:**" line reading one-way or two-way.
 // It also needs a "**Blast radius:**" line of one word.
-// Each line of the file that one of forbidden matches is one finding naming the line's number and the matched text;
-// a nil or empty forbidden checks no term.
-// The file never holds the credit block or the regression check, which the landing appends after it.
 // Only a read failure other than not-exist is an error.
-func ValidateDescription(path string, forbidden []*regexp.Regexp) ([]Finding, error) {
+func ValidateDescription(path string) ([]Finding, error) {
 	s, err := Parse(path)
 	if err != nil {
 		switch {
@@ -94,29 +87,7 @@ func ValidateDescription(path string, forbidden []*regexp.Regexp) ([]Finding, er
 			break
 		}
 	}
-	if len(forbidden) > 0 {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("summaryparser: read summary file %s: %w", path, err)
-		}
-		findings = append(findings, forbiddenTermFindings(string(data), forbidden)...)
-	}
 	return findings, nil
-}
-
-// forbiddenTermFindings returns one finding per line of content that a pattern of forbidden matches.
-// The finding names the line's one-based number and the first pattern's matched text.
-func forbiddenTermFindings(content string, forbidden []*regexp.Regexp) []Finding {
-	var findings []Finding
-	for i, line := range strings.Split(content, "\n") {
-		for _, pattern := range forbidden {
-			if match := pattern.FindString(line); match != "" {
-				findings = append(findings, Finding{CheckForbiddenTerm, fmt.Sprintf("line %d names %q, a term of the tooling that wrote the change; rewrite the line in the repository's own terms, for a reader who never saw that tooling", i+1, match)})
-				break
-			}
-		}
-	}
-	return findings
 }
 
 // mergeDangerFindings checks body's Merge danger section.

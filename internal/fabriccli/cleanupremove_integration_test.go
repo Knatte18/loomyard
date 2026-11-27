@@ -449,10 +449,6 @@ func TestCommand_CleanupRemoveScenario(t *testing.T) {
 			if reason == "" {
 				t.Errorf("envelope remote_skipped_reason is empty; want a reason naming the missing origin remote\noutput: %s", output)
 			}
-			// A two-repository hub has no plain archive tags to list, and the key still reports an empty list.
-			if plainTags, ok := env.Raw["plain_archive_tags"].([]any); !ok || len(plainTags) != 0 {
-				t.Errorf("envelope plain_archive_tags = %v; want an empty list\noutput: %s", env.Raw["plain_archive_tags"], output)
-			}
 
 			entries, ok := env.Raw["entries"].([]any)
 			if !ok {

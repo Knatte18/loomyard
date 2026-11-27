@@ -28,12 +28,6 @@ func (g Geometry) StampPath() string {
 	return filepath.Join(configengine.ScratchDir(g.BoardDir), "build-stamp.json")
 }
 
-// carriedMarker returns the untracked marker, beside the build stamp.
-// It records that this machine carried the change named id.
-func (g Geometry) carriedMarker(id string) string {
-	return filepath.Join(configengine.ScratchDir(g.BoardDir), "carried-"+id)
-}
-
 // LockPath returns the hub lock file, beside the build stamp.
 func (g Geometry) LockPath() string {
 	return filepath.Join(configengine.ScratchDir(g.BoardDir), "reconcile.lock")
@@ -50,8 +44,8 @@ type Options struct {
 
 // Ensure reconciles the hub's config once per binary build, under the hub lock, and commits what it wrote.
 // A build stamp naming the running build returns nil with no lock and no git.
-// That check reads the stamp and stats each per-worktree module's repo default.
-// An absent repo default makes the stamp stale.
+// That check reads the stamp, stats each per-worktree module's repo default, and stats the board's base-sparse marker.
+// An absent repo default or an absent marker makes the stamp stale.
 // Options.Pair selects the unconditional single-pair call instead of the stamp-gated walk over the whole hub.
 // A lock not acquired within the wait returns *LockTimeoutError; a reconcile or commit failure returns *WorktreeError.
 func Ensure(geom Geometry, opts Options) error {
@@ -59,11 +53,11 @@ func Ensure(geom Geometry, opts Options) error {
 }
 
 // reconcileWayForward is the way forward a failed reconcile's warning names.
-const reconcileWayForward = "fix the cause the error names, then re-run this verb once the reconcile can finish, or run a start verb to retry it: `lym loom resume` in the task worktree, or `lym batten run` or `lym beam start` from the prime"
+const reconcileWayForward = "fix the cause the error names, then run a start verb to retry the reconcile: `lym loom resume` in the task worktree, or `lym batten run` or `lym beam start` from the prime"
 
 // EnsureOrWarn is Ensure for a caller that reads a hub's config and goes on when the reconcile fails.
 // A failure logs one warning naming the error and the way forward, and returns nothing.
-// It leaves the stamp stale, so the next verb that loads a reconciled config retries the walk.
+// It leaves the stamp stale, so the next start verb retries the walk.
 func EnsureOrWarn(geom Geometry, opts Options) {
 	if err := Ensure(geom, opts); err != nil {
 		logger.Warn("hubreconcile: hub config reconcile failed, going on with the config as it is", "error", err, "way_forward", reconcileWayForward)
@@ -89,7 +83,7 @@ type WorktreeError struct {
 	Worktree string
 	// File is the config file that failed; empty when the failure names no file.
 	File string
-	// Module is the config module of File; empty when File is empty or belongs to none, such as a template base.
+	// Module is the config module of File; empty when File is empty or belongs to none, such as the board marker.
 	Module string
 	// Board marks a failure at the board dir, whose files are edited at the default layer from the prime worktree.
 	Board bool

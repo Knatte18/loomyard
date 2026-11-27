@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -111,13 +112,6 @@ type Deps struct {
 	//
 	// Nil means no status file to commit.
 	CommitStatus func() error
-	// Reap ends the processes and removes the files a hardener campaign's sandbox hubs left in the task worktree.
-	// Finalize calls it once, after the change description parses and before it takes the parent lock,
-	// so the worktree's teardown meets no sandbox hub.
-	// A returned error halts Finalize Stuck, naming the verb that clears the sandbox.
-	//
-	// Nil means the run leaves no sandbox.
-	Reap func() error
 
 	// Reconcile runs the origin reconcile over the run's own scope and returns its report.
 	// The producers read the report before they act on the parent.
@@ -349,6 +343,7 @@ type Deps struct {
 
 	// DriftVerdict returns the task's regression check as a markdown section.
 	// PR-Review and the finalize step append it to the change description's body in the pull request and the landing commit.
+	// The PR-Review session's prompt shows it as well.
 	// An empty answer carries no section, and a returned error is returned from Call.
 	//
 	// Nil means "no regression check".
@@ -368,6 +363,9 @@ type Deps struct {
 	HoldsWork func(base, source string) (bool, error)
 	// ChangedPaths returns the sorted paths that differ between from and to, over the task pair.
 	ChangedPaths func(from, to string) ([]string, error)
+	// ChangedCodePaths returns ChangedPaths' paths less the records paths, over the task pair.
+	// A nil seam makes every landing record as not empty.
+	ChangedCodePaths func(from, to string) ([]string, error)
 	// MergeBase returns the best common ancestor of the task pair's HEAD and ref.
 	MergeBase func(ref string) (string, error)
 	// MergeRecordPath is the told merge record file, in the run's scratch directory.
@@ -391,11 +389,8 @@ type Deps struct {
 	RowEntry func(row string) (int, error)
 	// TaskRemoteTip reads the task branch's remote-tracking tip, `origin/<task branch>`, without a fetch.
 	// It answers "" when there is none.
-	// A changed tip shows that some writer moved that ref during a fixer session, which need not be the session.
+	// A push the fixer session makes from the task pair updates that ref, so a changed tip shows the push.
 	TaskRemoteTip func() (string, error)
-	// IsAncestor reports whether the commit sha is ref or one of its ancestors, over the task pair.
-	// The fixer loop uses it to tell a remote tip the session cannot have added from one it could have.
-	IsAncestor func(sha, ref string) (bool, error)
 	// CodeReviewOff reports whether the Code-Perch reads as off:
 	// its effective review budget is 0, or the Code-Review rows' entry gate leaves them out.
 	// With the perch off no review follows Parent-Align and its fixer's change is judged against the caps instead.
@@ -407,7 +402,7 @@ type Deps struct {
 }
 
 // PullRequestDeps carries the told seams the PR-Review row decides and opens the run's pull request through.
-// The row treats every field as required but the ones `optionalPullRequestSeams` names.
+// The row treats every field but `ParentReviewWanted`, `AskParent`, `BeamRecord` and `DropBeamRecord` as required.
 // It returns an error naming the first one left unset.
 type PullRequestDeps struct {
 	// RecordPath is the run's pull-request record file, tracked with the run's records.
@@ -417,11 +412,15 @@ type PullRequestDeps struct {
 	// CommitRecord commits the record's file, or its removal, to the pair's records and starts their push.
 	// The row calls it after every successful write or removal of the record, and returns its error.
 	CommitRecord func() error
-	// Mode reads beam.yaml's `pull_request` for the landing run through the per-task lookup.
-	// The run's own worktree's files apply first, then the nearest parent worktree's value.
-	// After those come the hub's default layer and the template.
-	// A returned error is a lookup that failed, and it names the file to fix.
-	Mode func() (string, error)
+	// ShedStatus reads the run's shed status, whose history shows whether shed persisted the row's last reroute.
+	// A producer's call receives no history, so the row reads it through this seam.
+	ShedStatus func() (shedengine.Status, error)
+	// ParentMode reads the receiving branch's beam.yaml `pull_request`.
+	// It returns that value with the name of the worktree it was read in.
+	// On an error the worktree name is still returned, so the halt names where to fix the file.
+	ParentMode func() (mode, worktree string, err error)
+	// EntryField reads the landing entry's `pull_request` field, empty when the entry has none.
+	EntryField func() (string, error)
 	// Origin reads the facts about the task pair's origin that a pull request needs.
 	Origin func() (Origin, error)
 	// API opens the GitHub calls for the repository the origin URL names.
@@ -434,6 +433,8 @@ type PullRequestDeps struct {
 	TaskHasCommits func() (bool, error)
 	// DirtyPaths lists the task worktree's uncommitted paths.
 	DirtyPaths func() ([]string, error)
+	// MailAgent posts line to the creel strand named strandName.
+	MailAgent func(strandName, line string) error
 	// PauseCovered reports whether a pause covers the run at the time of the call.
 	PauseCovered func() (bool, error)
 	// Now reads the clock the wait's poll spacing runs on.
@@ -444,6 +445,19 @@ type PullRequestDeps struct {
 	// It also returns the function that ends the watch.
 	// A nil channel, as when no watch can be opened, leaves the wait on its timer.
 	RecordChanges func() (changes <-chan struct{}, stop func())
+	// Sessions starts and stops the interactive session the operator discusses the pull request with.
+	// `*shuttleengine.Runner` satisfies it.
+	Sessions prSessions
+	// SessionLive reports whether the strand guid names is live.
+	SessionLive func(guid string) (bool, error)
+	// RegisterSession registers the process of the session's pane under the run, so a teardown ends it.
+	RegisterSession func(guid string) error
+	// ParentReviewWanted reports whether the hub or the task turns on the parent orch's review of the pull request.
+	// It is read at each entry of the row, and nil reads as off.
+	ParentReviewWanted func() (bool, error)
+	// AskParent posts line to the orch the run's agents reach as their parent, and reports whether it posted.
+	// It reports false with no error when no orch is recorded to take the line.
+	AskParent func(line string) (bool, error)
 	// BeamRecord reads the pull request the beam's landing record holds and reports whether it holds one.
 	// A non-nil BeamRecord marks the landing as a beam's, and is nil on every run but a beam's.
 	BeamRecord func() (pullRequest BeamPullRequest, recorded bool, err error)

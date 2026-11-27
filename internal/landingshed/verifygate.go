@@ -70,12 +70,12 @@ type failureRecorder struct {
 // recordFailure writes the landing failure record for a verify of the row's gate key that ended in result.
 // The record's kind is that key, and its tier is the first failing tier the log's summary lines name;
 // a log without one, such as a refusal before the first tier, takes the highest tier of the key.
-// A result that is not a failed run, nor a timeout, an unjudged run or a shell that could not start, writes none.
+// A result that is not a failed run, nor a timeout, a runner crash or a shell that could not start, writes none.
 // Those results name no failing test.
 // It reports whether it wrote the record: a write failure is logged, reported as false and changes nothing else.
 func (g verifyGate) recordFailure(result verifytree.Result) bool {
 	kind := verifytree.FailureKind(g.key)
-	if g.recorder == nil || result.Status != verifytree.StatusFailed || result.TimedOut || result.Unjudged() || result.ExitCode < 0 {
+	if g.recorder == nil || result.Status != verifytree.StatusFailed || result.TimedOut || result.RunnerCrash || result.ExitCode < 0 {
 		return false
 	}
 	failure := verifytree.LandingFailure{
@@ -267,13 +267,13 @@ func (g verifyGate) runMarked(ctx context.Context, producer string, site verifyt
 // It returns a non-empty Stuck reason naming the gate when the call fails or the tree is dirty.
 // It returns a non-nil error for an infrastructure fault or a cancellation.
 // It returns ("", false, nil) when the producer may proceed.
-// unjudged is set when the failed call's result is unjudged, a runner crash or a memory pressure stop,
+// crashed is set when every failed run of the call crashed its test runner with no failing test,
 // so no test judged the code: the reason is then a halt reason opening with `LandingStopPrefix`.
 // The producer halts with it instead of spawning a fixer.
 // A pass, and a skip over a tree already recorded as passed, remove a landing failure record an earlier failed call left.
 // A gate told onFlakyPass runs a failure once more on the same head when its report lists tier and guard runs alone.
 // It then judges the rerun's result in its place.
-func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (reason string, unjudged bool, err error) {
+func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (reason string, crashed bool, err error) {
 	command, site, ok, err := g.gateCall(producer, "landingshed: post-merge verify skipped because no verify command is configured", "parentBranch", parentBranch)
 	if !ok {
 		return "", false, err
@@ -293,18 +293,18 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (r
 	if reason == "" && err == nil {
 		g.clearFailure()
 	}
-	return reason, result.Status == verifytree.StatusFailed && result.Unjudged(), err
+	return reason, result.Status == verifytree.StatusFailed && result.RunnerCrash, err
 }
 
 // rerunTestFailure runs the failed verify first once more on the same head and returns the result the gate judges.
 // A test can fail on a race with another test, so only a failure whose report lists tier and guard runs alone is rerun.
-// A timeout, an unjudged run and a shell that could not start come back as they are.
+// A timeout, a runner crash and a shell that could not start come back as they are.
 // So do a build, vet or lint failure, a package that failed outside any test and a log with no report.
 // The rerun runs the report's failed tests alone when it names Go tests only, and command otherwise.
 // A rerun that passes hands first's failures to onFlakyPass and returns the pass.
 // Any other rerun result comes back, so a failure the rerun repeats is judged on the rerun's log.
 func (g verifyGate) rerunTestFailure(ctx context.Context, producer string, site verifytree.Site, command string, first verifytree.Result) (verifytree.Result, error) {
-	if first.Status != verifytree.StatusFailed || first.TimedOut || first.Unjudged() || first.ExitCode < 0 || first.Log == "" {
+	if first.Status != verifytree.StatusFailed || first.TimedOut || first.RunnerCrash || first.ExitCode < 0 || first.Log == "" {
 		return first, nil
 	}
 	content, err := os.ReadFile(first.Log)
@@ -337,18 +337,18 @@ func (g verifyGate) rerunTestFailure(ctx context.Context, producer string, site 
 	return second, nil
 }
 
-// checkHead runs the pr-review gate over the commits made in the task worktree while the review waits:
+// checkHead runs the pr-review gate over an agent's commits:
 // the call of the row's gate key over the task head for producer.
 // It reads the key's command and base command, and it marks the wait as verifying the producer while the call runs.
 // It skips with a warning when no command is configured, and it writes no landing failure record.
 //
-// It returns the reason the gate refuses the head, written for whoever made the commit to act on in a new one.
+// It returns the reason the gate refuses the head, written for the agent to act on in a new commit.
 // It returns an error for an infrastructure fault or a cancellation, and ("", false, nil) on a pass or a skip.
 // A dirty result returns the dirty reason.
-// unjudged is set when the failed call's result is unjudged, a runner crash or a memory pressure stop:
+// crashed is set when every failed run of the call crashed its test runner with no failing test:
 // no test judged the head, so the reason is a halt reason opening with `LandingStopPrefix`.
-// The caller halts the row with that reason as it stands.
-func (g verifyGate) checkHead(ctx context.Context, producer string) (reason string, unjudged bool, err error) {
+// The caller halts the row with that reason instead of telling the agent.
+func (g verifyGate) checkHead(ctx context.Context, producer string) (reason string, crashed bool, err error) {
 	command, site, ok, err := g.gateCall(producer, "landingshed: the pr-review gate skipped because no verify command is configured")
 	if !ok {
 		return "", false, err
@@ -366,24 +366,24 @@ func (g verifyGate) checkHead(ctx context.Context, producer string) (reason stri
 	case verifytree.StatusDirty:
 		return dirtyReason("when the pr-review gate was about to run", result.Dirty), false, nil
 	case verifytree.StatusFailed:
-		return g.headFailureReason(result), result.Unjudged(), nil
+		return g.headFailureReason(result), result.RunnerCrash, nil
 	default:
 		return "", false, fmt.Errorf("landingshed: %s: unknown pr-review gate status %q", producer, result.Status)
 	}
 	return "", false, nil
 }
 
-// headFailureReason is the reason a failed run of the pr-review gate gives:
+// headFailureReason is the reason a failed run of the pr-review gate gives the agent:
 // the failing tier or the build, the log and the instruction to fix it in a new commit.
-// A timeout, an unjudged run and a shell that could not start name no tier, since none names a failing test.
-// An unjudged run is a halt reason opening with `LandingStopPrefix`:
-// no change to the code mends it, and there is no commit to make.
+// A timeout, a runner crash and a shell that could not start name no tier, since none names a failing test.
+// A runner crash is a halt reason opening with `LandingStopPrefix`:
+// no change to the code mends it, and the agent has no commit to make.
 func (g verifyGate) headFailureReason(result verifytree.Result) string {
 	switch {
 	case result.TimedOut:
 		return fmt.Sprintf("the pr-review gate timed out: %s; output: %s; fix the hanging test or build in a new commit", result.Detail, result.Log)
-	case result.Unjudged():
-		return fmt.Sprintf("%sthe pr-review gate's %s (%s), so no test judged the head and no change to the code mends it; output: %s; way forward: `lym loom resume`, which runs the gate again, and %s", LandingStopPrefix, result.UnjudgedStop(), result.Detail, result.Log, result.UnjudgedAdvice())
+	case result.RunnerCrash:
+		return fmt.Sprintf("%sthe pr-review gate's test runner crashed in its run and its one rerun (%s), so no test judged the head and no change to the code mends it; output: %s; way forward: `lym loom resume`, which runs the gate again, and when the runner crashes again, find the runtime's own fault in the output", LandingStopPrefix, result.Detail, result.Log)
 	case result.ExitCode < 0:
 		return fmt.Sprintf("the pr-review gate could not start: %s; output: %s", result.Detail, result.Log)
 	}
@@ -426,8 +426,8 @@ func watchdogClause(logPath string) string {
 // It returns an error for an unknown status, and ("", nil) when the producer may proceed.
 // A failed command with an exit code ends its reason with the clause asking to fix forward on the task branch.
 // After a CPU watchdog quit the reason names the window and the `busy_quit_sec` way forward before that clause.
-// An unjudged run is a halt reason opening with `LandingStopPrefix`.
-// The reason names its runs and the way forward of resuming, which runs the gate again.
+// A runner crash is a halt reason opening with `LandingStopPrefix`.
+// The reason names the crashed runs and the way forward of resuming, which runs the gate again.
 func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBranch string) (string, error) {
 	switch result.Status {
 	case verifytree.StatusPassed:
@@ -438,16 +438,16 @@ func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBran
 		return dirtyReason("when the "+what+" was about to run", result.Dirty), nil
 	case verifytree.StatusFailed:
 		if result.TimedOut && strings.HasPrefix(result.Detail, "gate build ") {
-			return fmt.Sprintf("%s timed out after merging parent branch %q: %s; output: %s; fix the hanging build, such as a stalled restore or compile, on the task branch, or, for a build that is slow but healthy, rewrite the build whole from the prime with `lym config gate --set 'build={...}'`, carrying every key of the build and the raised %s, since a dotted key under the build writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it; then resume", what, parentBranch, result.Detail, result.Log, gateKeyName("build.timeout_min")), nil
+			return fmt.Sprintf("%s timed out after merging parent branch %q: %s; output: %s; fix the hanging build, such as a stalled restore or compile, on the task branch, or, for a build that is slow but healthy, rewrite the build whole from the prime with `lym config gate --set 'build={...}'`, carrying every key of the build and the raised timeout_min, since a dotted key under the build writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it; then resume", what, parentBranch, result.Detail, result.Log), nil
 		}
 		if result.TimedOut {
-			return fmt.Sprintf("%s timed out after merging parent branch %q: %s; output: %s; fix the hanging test on the task branch, or, for a tier that is slow but healthy, rewrite the tier whole from the prime with `lym config gate --set 'tiers.tier<N>={...}'`, carrying every key of the tier and the raised %s, since a dotted key under the tier writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it; then resume", what, parentBranch, result.Detail, result.Log, gateKeyName("tiers.tier<N>.timeout_min")), nil
+			return fmt.Sprintf("%s timed out after merging parent branch %q: %s; output: %s; fix the hanging test on the task branch, or, for a tier that is slow but healthy, rewrite the tier whole from the prime with `lym config gate --set 'tiers.tier<N>={...}'`, carrying every key of the tier and the raised timeout_min, since a dotted key under the tier writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it; then resume", what, parentBranch, result.Detail, result.Log), nil
 		}
 		if result.ExitCode < 0 {
 			return fmt.Sprintf("%s could not start after merging parent branch %q: %s; output: %s", what, parentBranch, result.Detail, result.Log), nil
 		}
-		if result.Unjudged() {
-			return fmt.Sprintf("%s%s's %s after merging parent branch %q (%s), so no test judged the code and no fixer runs; output: %s; way forward: `lym loom resume`, which runs the gate again, and %s", LandingStopPrefix, what, result.UnjudgedStop(), parentBranch, result.Detail, result.Log, result.UnjudgedAdvice()), nil
+		if result.RunnerCrash {
+			return fmt.Sprintf("%s%s's test runner crashed after merging parent branch %q, in its run and its one rerun (%s), so no test judged the code and no fixer runs; output: %s; way forward: `lym loom resume`, which runs the gate again, and when the runner crashes again, find the runtime's own fault in the output", LandingStopPrefix, what, parentBranch, result.Detail, result.Log), nil
 		}
 		watchdog := watchdogClause(result.Log)
 		return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s%s; fix forward on the task branch, then resume", what, parentBranch, result.ExitCode, result.Log, watchdog), nil

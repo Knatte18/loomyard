@@ -1,69 +1,54 @@
 # PATTERN-single-repo-hub
 
-Running a hub as one repository: a code store and a records store of one origin, records and the board under origin's `refs/lym/`, mapped by the records store's refspecs; only fabric reads the layout.
+Running a hub as one repository: records on each code branch, the board on `lym-bolt`; merges, pull request views and code identity strip the records paths.
 
-## The layout
+## Layout
 
-Rule: A one-repository hub keeps a two-repository hub's local geometry, with both stores cloned from one origin; the records store's branches and tags live under origin's `refs/lym/heads/` and `refs/lym/tags/`, and the board is on the fixed branch `main` there.
+Rule: Reading the layout: a worktree whose root carries `.lym-anchor` belongs to a one-repository hub, read through `lymcwd.OneRepository` and fabric's `oneRepositoryAt`. (test)
 
-- The hub holds a code store and a records store.
-  Both fetch from one origin, so origin's branch and tag lists show the code alone.
-- The namespace is spelled once, by fabric's `RecordsNamespaceRoot`, `RecordsNamespaceHeads` and `RecordsNamespaceTags`.
-  The board's branch is fabric's `OneRepositoryBoardBranch`, never read from git, so a renamed code default cannot hide the board.
-- The prime's records branch is not the code store's default branch.
-  It is the value of the records store's `lym.primeRecordsBranch` key, which the clone writes and no checkout moves.
-  `TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout` and `TestCleanup_RefusesWhenPrimaryWeftBranchIsUndeterminable` hold it over both layouts.
-- The records store is configured before any fetch:
-  fetch `+refs/lym/heads/*:refs/remotes/origin/*` and `+refs/lym/tags/*:refs/tags/*`,
-  push `refs/heads/*:refs/lym/heads/*` and `refs/tags/*:refs/lym/tags/*`, and `remote.origin.tagOpt` `--no-tags`.
-  `--no-tags` keeps a code tag out of the store, while the tag refspec still brings the namespaced tags.
-- A namespaced records branch keeps `branch.<b>.merge` at its `refs/lym/heads/<b>`, so git's own `@{u}` reads it.
-  `gitrepo` reads repository config through one tolerant decode, because go-git refuses a merge setting outside `refs/heads/`.
-  `TestUpstreamSHA` and `TestRemoteFetchRefspecs` hold the refspec-following upstream reads.
+A one-repository hub keeps each task's records under `<anchor>/_lym` on its own code branch, and the board on the orphan branch `lym-bolt`.
+No config key, flag or hub file records the layout.
+`lymcwd` reads the marker from the working tree;
+fabric reads it from git, and leaves out a two-repository records sibling and the Bolt checkout by name.
 
-## The layout is the refspec, read only by fabric
+Held by `TestResolveWithin_OneRepository` in `internal/lymcwd`, `TestRecordsGeometry_OneRepository` in `internal/fabricengine`,
+and `TestCloneAndWire_OneRepository` in `internal/fabriccli`.
 
-Rule: The records store's fetch refspec is the layout; `gitrepo` learns no layout and fabric alone reads it.
+## Records on the code branch
 
-- Fabric's `originNamespaceAt` reads the namespace of the repository at a directory from its `origin` fetch refspecs, and caches it.
-  A code store keeps git's default refspecs and reads as the identity namespace of a two-repository hub.
-  Helpers that serve both stores read at their own directory and take no side parameter.
-- `TestOriginNamespaceAt` holds the read.
-- No other package reads the refspecs, spells `refs/lym/`, or branches on the layout.
+Rule: Committing a one-repository worktree's records: path-limited on the worktree's own branch, waiting out a held `index.lock`, refused in a prime off `lym.primeBranch`.
 
-## The namespace reaches every remote operation
+Fabric's commit primitives take only the paths `RecordsPathsAt` names.
+A prime off the branch `lym.primeBranch` names refuses every records commit.
+A records commit around an unsettled merge goes through `MergeStateOperation`, and an abort or continue of that merge settles it.
 
-Rule: Every records-store remote operation in `gitrepo` and fabric takes the namespace; no bare push stands.
+Held by `TestRecordsCommit_OneRepository` and `TestRecordsCommit_DuringMerge` in `internal/fabricengine`.
 
-- `gitrepo.RefNamespace` has origin-side `Heads` and `Tags` prefixes, and its zero value is the identity.
-  Every `gitrepo` operation that sends or writes an origin ref name takes it:
-  push, lease, push result, upstream write and remote delete.
-  `TestRefNamespace` holds the mapping.
-- Fabric hands the namespace to its push sites, its ls-remote listings and its fetch sources.
-  A code-store or two-repository call passes the zero value, so its behavior is unchanged.
-- `TestOneRepositoryPair_RecordsLiveInTheNamespace` holds a pair's records in the namespace and none on a code branch.
-  `TestOneRepositoryOrigin_ReconcileAndCleanupSeeTheNamespace` holds the origin reads.
-  `TestOneRepositorySecondMachine_AdoptPullAndReplay` holds adopt, pull and the replays from a second machine.
-  `TestOneRepositoryMerge_LeavesNoRecordsOnTheCodeBranch` holds the merge.
+## Merges strip the records
 
-## The clone
+Rule: Merging in a one-repository hub: every fabric merge restores the records paths of `RecordsPathsAt` to the receiving side and commits with the `MergeTrailerKey` trailer.
 
-Rule: `CloneHub` takes the one-URL form only after its check and refusals, and seeds the namespace by a leased, ordered push.
+Records are per-branch and never a merge participant in either direction.
+Pull request views and code identity strip the records paths too, which a later part builds.
 
-- A clone from one URL joins a hub whose origin already holds `refs/lym/`, and `--single-repo` seeds one from a code repository.
-- The check refuses an origin that holds the retired layout, naming its fixed `lym-bolt` branch,
-  and every refusal names the way forward.
-  Fabric defines that name and the board branch once each.
-- The seed pushes the records branch first and the board last, each leased on the tip observed before.
-  A failed seed removes what it pushed and leaves nothing behind.
-- `TestCloneHub_OneURLRefusals` holds the refusals.
-  `TestCloneSingleRepo_SeedsTheNamespace` holds the seed and its order.
-  `TestCloneOneURL_JoinsTheNamespacedHub` holds the join.
-  `TestCloneSingleRepo_FailedSeedPushLeavesNothing` holds the rollback.
+Held by `TestMerge_OneRepository` in `internal/fabricengine`.
 
-## The pair lifecycle runs the two-repository paths
+## Replay and the prime's push
 
-Rule: Add, push, pull, hand-over, remove, cleanup, reconcile and the owner archives run the same code in both layouts, differing only by the namespace they are handed.
+Rule: Replaying or pushing in a one-repository hub: replay only records-only commits, with fork-point trailers; guard the prime's records push and owe it as `operator_unpushed`.
 
-- A one-repository hub adds no lifecycle branch: a pair's records branch, its archive tag and its origin delete go through the namespaced operations above.
-- The tests above run each verb over `hubforge`'s one-repository builder, and the cleanup tests run as a table over both builders.
+A diverged branch replays its records-only commits and stops, naming the commits, when a local commit changes a code path.
+The prime's records push waits while the operator has unpushed commits on its branch,
+and a prime whose branch refuses direct pushes records the failure as `protected`.
+A pair pushes its one branch once, with no owed code tip.
+
+Held by `TestReplay_OneRepository`, `TestPairPush_OneRepository` and `TestPrimePushGuard` in `internal/fabricengine`.
+
+## The Bolt on `lym-bolt`
+
+Rule: Placing the board: on the orphan branch `lym-bolt`, which no code branch merges.
+
+A clone by one URL, or with `--single-repo`, makes the Bolt checkout on `lym-bolt`.
+The Bolt's render-manifest `.gitignore` stays on that branch.
+
+Held by `TestCloneAndWire_OneRepository` in `internal/fabriccli` and `TestBoardWrite_OneRepositoryHub` in `internal/boardengine`.

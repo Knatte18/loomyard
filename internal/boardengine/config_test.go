@@ -178,7 +178,7 @@ func TestLoadConfig_DesignPrefixRefused(t *testing.T) {
 				}
 				return
 			}
-			if err == nil || !strings.Contains(err.Error(), "design_prefix") || !strings.Contains(err.Error(), "set board.design_prefix in board.yaml") {
+			if err == nil || !strings.Contains(err.Error(), "design_prefix") || !strings.Contains(err.Error(), "set design_prefix in board.yaml") {
 				t.Errorf("LoadConfig(design_prefix %s) error = %v; want a refusal naming design_prefix and its way forward", tt.prefix, err)
 			}
 		})
@@ -360,14 +360,13 @@ func TestOutputs(t *testing.T) {
 				Readme:       "Home.md",
 				DesignPrefix: "proposal-",
 				Types:        []boardengine.Label{{Name: "bug"}, {Name: "enhancement"}},
-				Labels:       []boardengine.Label{{Name: "area"}},
 			},
-			want: boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-", Types: []string{"bug", "enhancement"}, Labels: []string{"area"}},
+			want: boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-", Types: []string{"bug", "enhancement"}},
 		},
 		{
 			name: "types follow file order",
 			cfg:  boardengine.Config{Types: []boardengine.Label{{Name: "idea"}, {Name: "bug"}, {Name: "enhancement"}}},
-			want: boardengine.Outputs{Types: []string{"idea", "bug", "enhancement"}, Labels: []string{}},
+			want: boardengine.Outputs{Types: []string{"idea", "bug", "enhancement"}},
 		},
 	}
 	for _, tt := range tests {

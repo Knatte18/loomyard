@@ -154,14 +154,6 @@ func loomArbiterSeam(arbiterDeps shedarbiter.Deps, runID string) *sheddriver.Arb
 	return seam
 }
 
-// handBackNotify returns the driver's hand-back notice seam for the run in the pair at location.
-// It posts each line to the nearest live orch, stamped with the run's autonomy.
-func handBackNotify(location *lymcwd.Location) func(_ sheddriver.Stop, line string) (bool, error) {
-	return func(_ sheddriver.Stop, line string) (bool, error) {
-		return orchcli.NotifyParentHalt(location, loomProgram, line)
-	}
-}
-
 // goDriverDepsFor assembles the Go driver's seams for the run the pre-run armed.
 // release is the driver lock's early release, which the hand-over calls before it spawns its successor.
 // Every closure reads on demand, and the on-disk lym path is resolved once, here.
@@ -264,7 +256,9 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 		},
 		NewReportPath: func() string { return driverReportPath(location, c.runID, time.Now, reportRand) },
 		HandBack: sheddriver.HandBackDeps{
-			Notify:       handBackNotify(location),
+			Notify: func(_ sheddriver.Stop, line string) (bool, error) {
+				return orchcli.NotifyParent(location, loomProgram, line)
+			},
 			OrchRecorded: func() (bool, error) { return orchcli.ParentOrchRecorded(location) },
 			Park:         loomPark(loomCommitStatusDeps(location, c.runID), shedrun.ParkMarker(location, runID)),
 			Now:          time.Now,
@@ -285,7 +279,15 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 			return call.Settle()
 		},
 		ConsumeTackler: func(attemptDir string) error {
-			return sheddriver.ConsumeTacklerAttempt(attemptDir, c.relaunchRequest(runID, gotoGuard))
+			return sheddriver.ConsumeTacklerAttempt(attemptDir, shedengine.RelaunchRequest{
+				StatusPath:              c.shedPaths.StatusPath,
+				LockPath:                c.shedPaths.LockPath,
+				StatusLockPath:          c.shedPaths.StatusLockPath,
+				Producers:               c.routing.Producers,
+				RunID:                   runID,
+				MissingStatusWayForward: c.shedPaths.MissingStatusWayForward,
+				Guard:                   c.gotoGuardEndingFixers(gotoGuard),
+			})
 		},
 		OpenAttempts: func(key sheddriver.StopKey) (string, string, bool, error) {
 			return newestAttemptsFor(shedrun.TacklerDir(location, c.runID), shedrun.ArbiterDir(location, c.runID), key)

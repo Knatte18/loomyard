@@ -4,7 +4,6 @@ package shedrecipe
 
 import (
 	"context"
-	"regexp"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
@@ -12,7 +11,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/driftengine"
-	"github.com/Knatte18/loomyard/internal/hardenshed"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -45,8 +43,7 @@ type Config map[string]any
 
 // SegmentSettings holds one review segment's resolved values, shared by every row of that segment.
 type SegmentSettings struct {
-	// Models holds the segment's reviewer and fixer round models.
-	// The fallback to review.reviewer_model and review.fixer_model is already applied.
+	// Models holds the segment's reviewer and fixer round models, after the fallback to reviewer_model and fixer_model.
 	Models burlerengine.RoundModels
 	// ReviewKey is the config key the reviewer models came from.
 	ReviewKey shuttleengine.ModelKey
@@ -64,7 +61,7 @@ type SegmentSettings struct {
 	HardMaxBouncesKey string
 	// ConfigFile is the file both keys live in, loom.yaml, tapestry.yaml or darn.yaml.
 	ConfigFile string
-	// AmendMaxBounces is the resolved review.amend_max_bounces; 0 settles an amendment without a review.
+	// AmendMaxBounces is the resolved review_amend_max_bounces; 0 settles an amendment without a review.
 	AmendMaxBounces int
 	// Assist is the segment's assistant reviewer settings; the zero value runs no assistant.
 	Assist shedadapters.AssistSettings
@@ -86,15 +83,8 @@ type Env struct {
 	PreflightStencils func() error
 	// PreflightDrift is the drift config check Preflight runs, set for a recipe with a Drift-Baseline row; nil otherwise.
 	PreflightDrift func() error
-	// PreflightHarden is the hardener campaign check Preflight runs, set for a recipe with a HardenFix row; nil otherwise.
-	PreflightHarden func() error
 	// AnchorPath is the told anchor path, read by Webster, Bouncer and the gate resolver's "plan" gate.
 	AnchorPath string
-	// AmendmentPath is the told plan amendment record path, read by the Plan-Burler-Review row alone.
-	AmendmentPath string
-	// HaltConflictDir is the told conflict directory holding the plan executor's halt reason.
-	// Only the Plan-Burler-Review row reads it.
-	HaltConflictDir string
 	// ConfigDirs is the told geometry of a layered config load, read by Webster, which loads batcher through it.
 	ConfigDirs configengine.Dirs
 	// WorktreeRoot is the told worktree root, read by the gate resolver's "plan", "verify" and loom "discussion" gates.
@@ -123,10 +113,10 @@ type Env struct {
 	// VerifyBudget is the told time budget of the "verify" gate; its zero value turns the budget off.
 	// A darn run tells darn.yaml's verify_budget_min and a notice to the run's parent.
 	VerifyBudget loomshed.VerifyBudget
-	// EntryLabels is the told reader of the run's board entry labels, read by the "red-first" gate at each arrival.
-	EntryLabels func() ([]string, error)
-	// RedFirstCommand is the told renderer of the red-first call for a row's gate key, read by the "red-first" gate.
-	RedFirstCommand func(gateKey string) string
+	// VerifyReach is the told source of the pending reach report, keyed by a row's gate key, read by the "verify" gate.
+	// Set, the gate runs under the reach turn and its entry carries the re-run mark of a cold fixer's wrap.
+	// Nil leaves the gate as it is.
+	VerifyReach func(gateKey string) (verifytree.ReachPending, bool, error)
 	// GateFixer is the told wrap that hands a row's gate failure to a cold fixer; nil leaves every gate as written.
 	// The Darn-Write, Plan-Write and Discussion-Write entries read it for a gate with a "fixer" key.
 	// It receives the row's complete gate spec and returns the spec the row runs.
@@ -172,10 +162,6 @@ type Env struct {
 	// DescriptionPath is the told absolute path of the change description.
 	// The gate resolver's "description" gate reads it.
 	DescriptionPath string
-	// DescriptionTerms returns the patterns a change description's line may not match.
-	// They are landing.describe_forbidden_terms, compiled.
-	// The gate resolver's "description" gate and the validate-description verb read it; nil checks no term.
-	DescriptionTerms func() ([]*regexp.Regexp, error)
 
 	// ReviewTimeout is the run-wide review round deadline, used when a BurlerReview or BurlerFix row's timeout_s is absent.
 	// One deadline is shared by every review segment, so it is a run-wide value.
@@ -325,6 +311,18 @@ type Env struct {
 	// Nil is legal and renders the marker as `none`.
 	// The Code-Review rubric reads `none` as an unknown range.
 	ReviewBase func() (string, error)
+	// RedundancyReport returns the gate's redundancy report as a code review reads it.
+	// It is filled into the redundancy_report marker.
+	// It is read only for a rubric carrying the marker; nil renders the marker as `none`.
+	RedundancyReport func() string
+	// ReachReport returns the gate's reach report as a code review reads it.
+	// It is filled into the reach_report marker.
+	// It is read only for a rubric carrying the marker; nil renders the marker as `none`.
+	ReachReport func() string
+	// MutationReport returns the gate's mutation report as a code review reads it.
+	// It is filled into the mutation_report marker.
+	// It is read only for a rubric carrying the marker; nil renders the marker as `none`.
+	MutationReport func() string
 	// ReflectFriction is the injected closure the FrictionReflect entry's producer calls once per Call.
 	// It returns the reflection's status string.
 	// It arrives as a closure because its dependencies are already resolved in internal/loomcli.
@@ -416,9 +414,4 @@ type Env struct {
 	// The entries fill its Seats and Now from Env.Seats and Env.Now.
 	// DriftVerify fills its GateFindingsFile from Env.GateFindingsFile, so a caller leaves those fields unset.
 	Drift driftengine.Deps
-
-	// Harden is the run's hardener campaign: its config and the seams the Harden rows act through.
-	// The HardenFix row and the harden_round key of the Bouncer and BurlerReview rows read it, and each refuses it nil.
-	// Nil is legal for every recipe but hardener.
-	Harden *hardenshed.Campaign
 }

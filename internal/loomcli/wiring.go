@@ -12,7 +12,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"time"
 
@@ -22,10 +21,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
-	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gatecli"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -39,13 +38,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/partsparser"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runfsm"
-	"github.com/Knatte18/loomyard/internal/runplan"
-	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/samplerengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -67,20 +66,40 @@ import (
 // They are injected as plain function values rather than reached directly.
 // Injected this way, the seam's branching is drivable in a Tier 1 test from stub closures.
 // Such a test needs no hub fixture and no git spawn:
-// a commit failure is a hard error, a commit starts the pusher, and a mid-merge state skips the step.
+// a commit failure is a hard error, and an owed push is retried.
+// A mid-merge state skips the step in a two-repository worktree.
+// In a one-repository worktree a blocking git operation makes the step wait instead.
 type commitStatusDeps struct {
 	// MergeActive reports whether the fabric sibling worktree that carries the status file is mid-merge,
-	// and the seam then skips its commit.
+	// and the seam then skips its commit in a two-repository worktree.
+	// The callers that refuse on a merge in progress read it in both layouts.
 	MergeActive func() (bool, error)
+	// MergeOperation names the git operation that blocks the records commit, and "" for none.
+	// The seam waits for it to end in a one-repository worktree.
+	MergeOperation func() (operation string, err error)
+	// Stalled reports whether a commit failure waits rather than halts the run, a prime off its branch.
+	Stalled func(err error) bool
+	// Protected reports whether a push failure is a protected-branch refusal and nothing else.
+	Protected func(err error) bool
+	// OneRepository reports that the worktree belongs to a one-repository hub,
+	// so the seam waits on MergeOperation in place of skipping on MergeActive.
+	OneRepository bool
 	// Commit commits loom's own status file with msg.
 	// When the reviews directory holds a file, the same commit also carries the review round record.
 	// It reports whether it made a commit.
 	Commit func(msg string) (committed bool, err error)
-	// StartPush starts the pusher of the pair and reports whether a pusher started.
-	// It logs its own failure, and a failed start reads false: the next commit, tick or resume starts one.
-	// The status seam calls it after a commit that landed something, and commit-records calls it after its commit.
-	// It is required: the status seam refuses a nil StartPush.
-	StartPush func() bool
+	// Push pushes the run records and, in a task pair, the task branch, and waits for the result.
+	// An error from one side's push names that side.
+	// A push lock that stayed busy names no side.
+	// The status seam calls it after a commit that landed something, and commit-records calls it too.
+	// It is required: the status seam refuses a nil Push.
+	Push func() error
+	// Admit takes the network gate's admission for a transition's push and returns its release; nil takes none.
+	Admit func() (release func())
+	// Owed reports whether a failed transition push is owed, so the seam retries it; nil reads none as owed.
+	Owed func(err error) bool
+	// Sleep waits between the retries of an owed push; nil is time.Sleep.
+	Sleep func(time.Duration)
 	// SetBoardStatus writes status onto the run's board entry, leaving an entry that is absent or already done untouched.
 	// Nil writes nothing.
 	SetBoardStatus func(status string) error
@@ -97,8 +116,8 @@ type commitStatusDeps struct {
 // staging the parent carries the friction directory and every timestamped archive sibling in one entry,
 // where a friction-only entry would miss the archives.
 // Directories are staged whole, not per file, since the staging step runs `git add -- <pathspec>`:
-// an archive stages both the new timestamped sibling and the covered files' removal from the friction directory,
-// and a transition whose commit was skipped mid-merge is caught up by the next one.
+// an archive stages both the new timestamped sibling and the covered files' removal from the friction directory.
+// In a two-repository worktree, a transition whose commit was skipped mid-merge is caught up by the next one.
 // Existence alone is not enough.
 // The recipe's review entries create every review row's run directory when the recipe is built.
 // So from a run's first transition the reviews root exists holding only empty segment directories.
@@ -197,33 +216,46 @@ func removeSettledAmendment(amendmentPath, planRunDir string) error {
 // loomCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from fabric.
 // MergeActive reports the merge state, and Commit commits the run's status pathspec.
 // Every records commit carries the run's transition trailer and the code tip it was made at.
-// Commit is unguarded, and StartPush starts the pair's pusher, which runs the pre-push check before each push.
+// Push pushes the run records and, in a task pair, the task branch, synchronously.
+// Admit, Owed and Sleep drive the status seam's gate admission and its retry of an owed push.
+// Commit and Push each pass the run's pre-push check first.
+// A Commit the check stops commits nothing and returns its error, which the status seam reads as no commit made.
+// A Push the check stops returns the check's error.
 func loomCommitStatusDeps(location *lymcwd.Location, runID string) commitStatusDeps {
+	return commitStatusDepsGuardedBy(newPrePushCheck(location, runID), location, runID)
+}
+
+// commitStatusDepsGuardedBy returns the status-commit dependencies for the run at location.
+// Its commit and push steps pass through check, the pre-push check.
+func commitStatusDepsGuardedBy(check prePushCheck, location *lymcwd.Location, runID string) commitStatusDeps {
 	return commitStatusDeps{
 		MergeActive: func() (bool, error) {
 			return fabricengine.MergeStateActive(location)
 		},
+		MergeOperation: func() (string, error) {
+			return fabricengine.MergeStateOperation(location)
+		},
+		Stalled:       fabricengine.IsPrimeBranchRefusal,
+		Protected:     fabricengine.IsPushProtected,
+		OneRepository: lymcwd.OneRepository(location.WorktreePath()),
 		// A Commit over an already-clean tracked path is a no-op that reports committed false, not a failure.
-		// The status seam starts no pusher for it.
-		Commit: func(msg string) (bool, error) {
+		// The status seam pushes nothing for it.
+		Commit: check.guardedCommit(func(msg string) (bool, error) {
 			trailers := []fabricengine.Trailer{{Key: fabricengine.TransitionTrailerKey, Value: shedrun.ResolveRunID(location, runID)}}
 			_, committed, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(""), location, statusCommitPathspec(location, runID), msg, trailers, fabricengine.EnvSyncOptions())
 			return committed, err
-		},
-		StartPush: func() bool {
-			slug := shedrun.ResolveRunID(location, runID)
-			target, err := runpusher.TargetOf(location, slug)
+		}),
+		Push: check.guardedPush(func() error {
+			prime, err := primeOfHub(location)
 			if err != nil {
-				logger.Warn("loomcli: the pusher did not start; the next commit, tick or resume starts one", "slug", slug, "error", err)
-				return false
+				return err
 			}
-			started, err := runpusher.Start(target)
-			if err != nil {
-				logger.Warn("loomcli: the pusher did not start; the next commit, tick or resume starts one", "slug", slug, "error", err)
-				return false
-			}
-			return started
-		},
+			_, err = pairteardown.PushRun(prime, location, shedrun.ResolveRunID(location, runID), pairteardown.RunPush{LockWait: fabricengine.StatusPushLockWait, TeardownWait: fabricengine.StatusPushLockWait, InsidePair: true})
+			return err
+		}),
+		Admit: func() func() { return pauserecord.Admit("transition push") },
+		Owed:  fabricengine.IsPushOwed,
+		Sleep: time.Sleep,
 		SetBoardStatus: func(status string) error {
 			board, err := boardengine.OpenHub(location.HubPath)
 			if err != nil {
@@ -283,7 +315,7 @@ func raddleFilingMarked(location *lymcwd.Location, runID string) (bool, error) {
 }
 
 // sketchFinish returns the Finish that makes the board entry of the run at location a Sketch.
-// The board can refuse the Sketch as an invalid write.
+// The board refuses the Sketch while another entry depends on the entry.
 // In that case it warns naming the refusal and leaves the entry draft instead,
 // so the run still lets go of the entry and nothing starts it.
 // It then tells the run's parent through notify, since only the parent can settle such an entry;
@@ -312,9 +344,9 @@ func sketchFinish(location *lymcwd.Location, runID string, notify func(line stri
 }
 
 // sketchRefusedNotice renders the line that tells the parent the finished run's entry slug stays a draft task.
-// The line names the board's refusal and gives the ways forward.
+// The line names the board's refusal, which names the dependent entries, and it gives the ways forward.
 func sketchRefusedNotice(slug string, refusal error) string {
-	return fmt.Sprintf("loom %s: the finished run's entry stays a draft task with its decision record stored: %v; way forward: correct what the refusal names, then make the entry a Sketch with `lym board upsert '{\"slug\":\"%s\",\"kind\":\"note\",\"labels\":[\"sketch\"],\"status\":null,\"depends_on\":[],\"isolated\":false,\"recipe\":\"\",\"profile\":\"\",\"run_settings\":null}'`, listing after `sketch` in `labels` the entry's labels that are not type labels, or give the task recipe raddle with `lym board upsert '{\"slug\":\"%s\",\"recipe\":\"raddle\"}'` and release it with `lym board set-status '{\"slug\":\"%s\",\"status\":null}'`", slug, refusal, slug, slug, slug)
+	return fmt.Sprintf("loom %s: the finished run's entry stays a draft task with its decision record stored: %v; way forward: drop or move those dependencies with `lym board set-deps '{\"slug\":\"<dependent>\",\"depends_on\":[...]}'` for each entry the refusal names, keeping its other dependencies, and make the entry a Sketch with `lym board upsert '{\"slug\":\"%s\",\"kind\":\"note\",\"labels\":[\"sketch\"],\"status\":null,\"depends_on\":[],\"isolated\":false,\"recipe\":\"\",\"profile\":\"\",\"run_settings\":null,\"pull_request\":\"\",\"notify_on_land\":false}'`, listing after `sketch` in `labels` the entry's labels that are not type labels, or give the task recipe raddle with `lym board upsert '{\"slug\":\"%s\",\"recipe\":\"raddle\"}'` and release it with `lym board set-status '{\"slug\":\"%s\",\"status\":null}'`", slug, refusal, slug, slug, slug)
 }
 
 // newCommitStatusSeam builds the shedengine.Shed.CommitStatus closure from deps.
@@ -324,15 +356,34 @@ func sketchRefusedNotice(slug string, refusal error) string {
 // a failed board write only warns, and the next transition retries it;
 // the board is the hub's overview, never the run's own bookkeeping.
 // It then calls the shared statuscommit core, which owns the dispositions:
-// skip-while-mid-merge, commit-hard-errors and the start of the pair's pusher after a commit.
+// skip-while-mid-merge, commit-hard-errors, the synchronous push and the retry of an owed push.
+// In a one-repository worktree the core waits for a blocking git operation in place of its skip-while-mid-merge,
+// and a push refused only by a protected branch completes the transition with its records unpushed.
 // This seam passes loom's own commit and log prefixes and no after-commit callback.
-// It pushes nothing: the pusher brings the commit to origin.
+// A commit the pre-push check stopped reads as no commit made, so the core pushes nothing and the transition goes on.
 func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) error {
-	core := statuscommit.New(statuscommit.Deps{
+	coreDeps := statuscommit.Deps{
 		MergeActive: deps.MergeActive,
-		Commit:      deps.Commit,
-		StartPush:   deps.StartPush,
-	}, "loom", "loomcli", nil)
+		Stalled:     deps.Stalled,
+		Protected:   deps.Protected,
+		Commit: func(msg string) (bool, error) {
+			committed, err := deps.Commit(msg)
+			if errors.Is(err, errPushStopped) {
+				logger.Info("loomcli: the run's commit was stopped; the records stay as they are", "error", err)
+				return false, nil
+			}
+			return committed, err
+		},
+		Push:  deps.Push,
+		Admit: deps.Admit,
+		Owed:  deps.Owed,
+		Sleep: deps.Sleep,
+	}
+	if deps.OneRepository {
+		coreDeps.MergeActive = nil
+		coreDeps.MergeOperation = deps.MergeOperation
+	}
+	core := statuscommit.New(coreDeps, "loom", "loomcli", nil)
 	lastBoardStatus, finished := "", false
 	return func(producer, state string) error {
 		switch {
@@ -363,9 +414,7 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 // The committed-file seam that validate-plan --rework reads is filled for them too.
 // It also fills the history seam and the record row's engine that validate-discussion uses;
 // the seam reads committed history through the fabric at call time.
-// It loads no module config itself and constructs no engine.
-// It can fail only if the run's recipe selects no embedded recipe.
-// Only validate-description loads a module config on this path: landing.yaml, for its forbidden terms, when it runs.
+// It loads no module config, constructs no engine, and can fail only if the run's recipe selects no embedded recipe.
 // validate-plan loads the hub-wide language.yaml itself for its rename-tool-missing check;
 // the full wiring does not load that file.
 //
@@ -378,8 +427,7 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 // A sibling process may be rewriting a config the full wiring loads at that moment.
 // validate-discussion reads only `DecisionRecordPath`, `SupportLogPath`, `AnchorPath` and `WorktreeRoot`.
 // On a tapestry run it also reads `PlanIndex`.
-// validate-plan reads language.yaml alone.
-// validate-description reads only `DescriptionPath` and the forbidden terms of landing.yaml.
+// validate-plan reads language.yaml alone, and validate-description reads `DescriptionPath` alone.
 //
 // approve is on this path because it builds no producer:
 // it reads the status file, opens the fabric on demand, queries GitHub, then writes the approval record.
@@ -420,14 +468,6 @@ func (c *loomCLI) wireLightweight(location *lymcwd.Location, cwd string) error {
 	c.env.SupportLogPath = record.supportLog
 	c.env.RelevantPath = loomengine.DiscussionRelevant(location)
 	c.env.DescriptionPath = summaryparser.Path(loomengine.LandingDir(location))
-	// The forbidden terms load landing.yaml only when validate-description runs, so no other verb here reads a config.
-	c.env.DescriptionTerms = func() ([]*regexp.Regexp, error) {
-		cfg, err := landingshed.LoadConfig(fabricengine.ConfigDirs(location), "landing")
-		if err != nil {
-			return nil, err
-		}
-		return cfg.ForbiddenTerms(), nil
-	}
 	c.env.Rework.ReadCommitted = committedAnchoredReader(location)
 	c.env.DiscussionHistory = recordHistory(location, record)
 	recordEngine, err := loomrecipe.RecordEngine(c.recipe)
@@ -548,25 +588,6 @@ func recordWriteDeps(l *lymcwd.Location, record runRecord) loomshed.RecordWriteD
 	}
 }
 
-// entryLabels returns a reader of the labels of the run's board entry for the worktree at l.
-// It opens the board on each call, and an entry the board lacks reads as one with no label.
-func entryLabels(l *lymcwd.Location) func() ([]string, error) {
-	return func() ([]string, error) {
-		board, err := boardengine.OpenHub(l.HubPath)
-		if err != nil {
-			return nil, fmt.Errorf("open the board: %w", err)
-		}
-		task, found, err := board.GetTask(seedSlug(l.WorktreeName))
-		if err != nil {
-			return nil, fmt.Errorf("read the run's board entry: %w", err)
-		}
-		if !found {
-			return nil, nil
-		}
-		return task.Labels, nil
-	}
-}
-
 // writeCarryOver writes entry into the decision record of location's worktree and commits the record alone.
 // An unchanged record commits nothing, and a write or commit error is returned to the caller.
 func writeCarryOver(location *lymcwd.Location, entry discussionparser.CarryOver) error {
@@ -614,8 +635,6 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	// The run's autonomy is applied before any reader uses a field of loomCfg.
-	loomCfg = loomengine.ApplyAutonomy(loomCfg, runAutonomy(location))
 	reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
 	if err != nil {
 		return err
@@ -697,7 +716,6 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		_, err := orchcli.NotifyAsker(location, loomProgram, line)
 		return err
 	})
-	runner.SetReplyProbe(creelcli.AwaitsReplyProbe(location, loomProgram))
 	runner.SetSessionEnd(shedadapters.UsageRecorder(location, shuttleengines.RecordReaders(fabricengine.ConfigDirs(location))))
 
 	websterGeom := hubgeom.WebsterGeometry(location)
@@ -705,10 +723,10 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	websterGeom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
 
 	// frictionDir is the single resolved value every told-friction consumer below reads.
-	// It is non-empty only when loom.yaml sets friction.model: Tier 2 off is an empty path string, never a boolean.
-	// Resolving it once here keeps every consumer from re-checking loomCfg.Friction.Model and disagreeing about Tier 2.
+	// It is non-empty only when loom.yaml sets the friction key: Tier 2 off is an empty path string, never a boolean.
+	// Resolving it once here keeps every consumer from re-checking loomCfg.Friction and disagreeing about Tier 2.
 	frictionDir := ""
-	if loomCfg.Friction.Model != "" {
+	if loomCfg.Friction != "" {
 		frictionDir = loomengine.LoomFrictionDir(location)
 	}
 
@@ -829,11 +847,11 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	}
 	planDir := planparser.PlanDir(anchorPath)
 	// Setting is one lookup per wiring, so every row of a recipe build reads one snapshot of each module's stack.
-	// A key the run's autonomy forces answers its forced value while autonomy reads true.
-	settingLookup := autonomySettingLookup(configreg.SettingLookup(fabricengine.ConfigDirs(location)), func() bool { return runAutonomy(location) })
+	settingLookup := configreg.SettingLookup(fabricengine.ConfigDirs(location))
 
 	weaverGeom.Index = planglyph.NewSlottedIndex(fabricengine.NewReferenceRule(), weaverGeom.GateSlots, weaverGeom.GateWaitDir)
 	weaverGeom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
+	weaverGeom.ReachPending = gatecli.ReachPendingOf(location)
 	weaverDeps := weaverengine.RunDeps{
 		Geom:   weaverGeom,
 		Runner: runner,
@@ -911,8 +929,6 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		PreflightDrift:   preflightDrift,
 		Cwd:              cwd,
 		AnchorPath:       anchorPath,
-		AmendmentPath:    loomengine.LoomAmendmentRecord(location),
-		HaltConflictDir:  runplan.ConflictDir(websterGeom.AnchorRoot),
 		ConfigDirs:       fabricengine.ConfigDirs(location),
 		WorktreeRoot:     location.WorktreePath(),
 		// RunScratchDir is the directory the step envelope reports as scratch_dir.
@@ -925,10 +941,12 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// VerifyMergeBase and ReviewBase are nil for a standalone run, which records no parent branch.
 		VerifyMergeBase: verifyMergeBase,
 		ReviewBase:      verifyMergeBase,
-		VerifyHold:      verifytree.NewPauseHold(pauseGeom, nil),
-		// EntryLabels opens the board at each red-first gate arrival, never at wire time.
-		EntryLabels:     entryLabels(location),
-		RedFirstCommand: gateslot.RedFirstCall,
+		// RedundancyReport, ReachReport and MutationReport read the gate's reports at each rubric fill, never at wire time.
+		RedundancyReport: redundancyReportNote(location),
+		ReachReport:      reachReportNote(location),
+		MutationReport:   mutationReportNote(location),
+		VerifyHold:       verifytree.NewPauseHold(pauseGeom, nil),
+		VerifyReach:      gatecli.ReachPendingOf(location),
 		// GateFixer wraps the Darn-Write, Plan-Write and Discussion-Write gates of a pair run with a cold fixer.
 		// It reads every value here at wire time and opens nothing.
 		GateFixer: gateFixerSeam(gateFixerInputs{
@@ -1010,7 +1028,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		}),
 		Models: registry,
 		// DiscussionTable is evaluated per Call, so the stencils are read at call time per the Stencil Ownership Invariant.
-		// The lead's interactivity is loomCfg.Discussion.Interactive, read fresh on every wire() call.
+		// The lead's interactivity is loomCfg.DiscussionInteractive, read fresh on every wire() call.
 		// Nothing compares it with the mode a live run was started with:
 		// the resume decision rests on live-agent evidence alone: flipping the key between a crash and a resume is harmless,
 		// and it only changes how the next spawn is interviewed.
@@ -1046,8 +1064,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		RaddleFile:  raddleFileDeps(location, seedSlug(location.WorktreeName)),
 		// DescriptionPath is the change description Describe writes and its gate and the landing
 		// rows read.
-		DescriptionPath:  summaryparser.Path(loomengine.LandingDir(location)),
-		DescriptionTerms: func() ([]*regexp.Regexp, error) { return landingCfg.ForbiddenTerms(), nil },
+		DescriptionPath: summaryparser.Path(loomengine.LandingDir(location)),
 		// DescribeTable is evaluated per Call, so the stencil is read at call time.
 		// It opens the fabric lazily.
 		// wire() also runs for status and pause, where opening the fabric must not happen.
@@ -1089,7 +1106,6 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 				RunRecordPath:       runRecordPath,
 				PriorRunRecordPaths: priorRecords,
 				DescriptionPath:     summaryparser.Path(loomengine.LandingDir(location)),
-				ReviewDir:           loomengine.DescribeReviewDir(location),
 				TaskBranch:          taskBranch,
 				ParentBranch:        parentBranch,
 				MergeBase:           mergeBase,
@@ -1135,7 +1151,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 			return err
 		},
 		// PartsTable and PartsPlanTable are evaluated per Call, so the stencils and the parts file are read at call time.
-		// PartsPlanTable receives shuttle's run_timeout_min as a duration; a plan.timeout_min of 0 resolves to that value.
+		// PartsPlanTable receives shuttle's run_timeout_min as a duration; a plan_timeout_min of 0 resolves to that value.
 		// Only the producer entry can build the per-part hooks.
 		PartsTable: func() (seatengine.Table, error) {
 			return loomengine.PartsTable(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry)
@@ -1178,8 +1194,9 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		CodeDiff:        committedCodeDiff(location),
 		MergeInOnly:     parentMergeInOnly(location),
 		RecordHead:      recordHead(location),
-		// ReviewInputs are the merge fixer's latest Parent-Align report.
+		// ReviewInputs are the merge fixer's latest Parent-Align report and the newest send-back findings file.
 		// A report newer than the Code-Perch's settled verdict re-opens the perch as an amendment over it.
+		// A findings file newer than it re-opens the perch as a full generation.
 		ReviewInputs: reviewInputs(loomengine.LoomScratchDir(location)),
 		// SkipPlanReview lets Plan-Bouncer approve an exempt rework generation without a judge.
 		// It reads committed state on demand and opens nothing at wire time.
@@ -1202,11 +1219,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// Slug and SegmentBounces tell each Bouncer row the verbs' slug and the live bounce budget its CIRCLING Reason names.
 		Slug: seedSlug(location.WorktreeName),
 		SegmentBounces: segmentBounces(statusPath, statusLockPath, func() (shedengine.Routing, error) {
-			budgets, err := withHardenBudget(loomSegmentBudgets(loomCfg), c.recipe, fabricengine.ConfigDirs(location))
-			if err != nil {
-				return shedengine.Routing{}, err
-			}
-			return loomrecipe.Routing(c.recipe, budgets)
+			return loomrecipe.Routing(c.recipe, loomSegmentBudgets(loomCfg))
 		}),
 
 		// The Discussion-Review and Code-Review parent seats read their key, history and routing on a call, never at wire time.
@@ -1227,8 +1240,8 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		SettingKnown: configreg.CheckSettingKey,
 		Resume:       "lym loom resume",
 
-		ReviewCirclingCheckpoint: loomCfg.Review.CirclingCheckpoint,
-		ReviewStalemateRounds:    loomCfg.Review.StalemateRounds,
+		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
+		ReviewStalemateRounds:    loomCfg.ReviewStalemateRounds,
 		ReviewTimeout:            reviewSettings.Timeout,
 		// The tree closures open the fabric on each call, since wire() also runs for status and pause.
 		ReviewTreeID: func() (string, error) {
@@ -1249,11 +1262,6 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// Landing is left unfilled here: wireLanding fills Env.Landing separately.
 		// NewPublish and NewFinalize open their fabric pair eagerly at construction.
 		// wire() runs for every verb, status and pause included, so that open must not happen here.
-	}
-
-	// A hardener run's Harden-Review segment, campaign and Preflight check come from hardener.yaml.
-	if err := c.wireHarden(location, loomCfg, registry); err != nil {
-		return err
 	}
 
 	// Every loom run's Drift rows read the task from the decision record.
@@ -1305,6 +1313,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		MissingStatusWayForward: loomMissingStatusWayForward,
 		RerouteCapWayForward:    loomRerouteCapWayForward,
 		BudgetWayForward:        loomBudgetWayForward,
+		RetiredWayForward:       loomRetiredWayForward,
 	}
 
 	// wireDarn and wireLanding pass the list on to the Darn-Write writer and the landing conflict session.
@@ -1352,7 +1361,6 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 				Slug:               seedSlug(location.WorktreeName),
 				WorktreeRoot:       location.WorktreePath(),
 				DecisionRecordPath: record.path,
-				LanguageSkills:     languageSkills,
 				Engines:            engines,
 			}, samplerCfg, registry)
 		})
@@ -1365,6 +1373,8 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 			return err
 		}
 		c.env.Pawl = pawl
+		// A run moved off a row its recipe retired gets the landing's side effects, which only a beam run has.
+		c.shedPaths.RetiredMove = pawlRetiredMove(location, seedSlug(location.WorktreeName), pawl)
 	}
 
 	c.location = location
@@ -1387,53 +1397,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	c.driverPaneProbe = newReedDriverPaneProbe(reedEngine)
 	c.driverDirectory = newReedDriverDirectory(reedEngine)
 	c.bouncerSubdir = loomrecipe.BouncerRunSubdir
-	c.restoreStatusPane = func() error {
-		if _, err := reedEngine.Up(); err != nil {
-			return err
-		}
-		return c.ensureStatusStrand()
-	}
-	// The slug is read when the pusher starts, since the run id is armed before wire and read here lazily.
-	c.startPusher = func() {
-		start := c.pusherStart
-		if start == nil {
-			start = runpusher.Start
-		}
-		startRunPusher(location, shedrun.ResolveRunID(location, c.runID), start)
-	}
 	return nil
-}
-
-// startRunPusher starts the pusher of the worktree at location for the run slug through start.
-// A failed start logs one warning per episode and never fails the caller.
-// The prime's target names no slug, whatever slug is passed.
-func startRunPusher(location *lymcwd.Location, slug string, start func(runpusher.Target) (bool, error)) {
-	runpusher.RestartPusher(func() (bool, error) {
-		target, err := runpusher.TargetOf(location, slug)
-		if err != nil {
-			return false, err
-		}
-		return start(target)
-	}, location.WorktreePath())
-}
-
-// autonomySettingLookup wraps lookup so a loom or drift key the run's autonomy forces answers its forced value.
-// It does so while autonomous reads true; autonomous is read on each forced key's call, never captured.
-// Every other call goes to lookup.
-func autonomySettingLookup(lookup func(module, key string) (any, error), autonomous func() bool) func(module, key string) (any, error) {
-	return func(module, key string) (any, error) {
-		var value, forced bool
-		switch module {
-		case "loom":
-			value, forced = loomengine.AutonomyForcedSetting(key)
-		case "drift":
-			value, forced = driftengine.AutonomyForcedSetting(key)
-		}
-		if forced && autonomous() {
-			return value, nil
-		}
-		return lookup(module, key)
-	}
 }
 
 // planReviewSegment is the name of the recipe segment whose rows read tapestry.yaml's plan perch keys.
@@ -1571,10 +1535,10 @@ func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings
 			FixKey:            keys[perch].Fix,
 			Bouncer:           shedadapters.BouncerModels(bouncers[perch]),
 			MaxBounces:        caps.Soft,
-			MaxBouncesKey:     loomengine.FullKeyName(caps.SoftKey),
+			MaxBouncesKey:     caps.SoftKey,
 			HardMaxBounces:    caps.Hard,
-			HardMaxBouncesKey: loomengine.FullKeyName(caps.HardKey),
-			AmendMaxBounces:   cfg.Review.AmendMaxBounces,
+			HardMaxBouncesKey: caps.HardKey,
+			AmendMaxBounces:   cfg.ReviewAmendMaxBounces,
 			ConfigFile:        segmentConfigFile(perch),
 			Assist: shedadapters.AssistSettings{
 				Models:     assists[perch].Models,
@@ -1629,11 +1593,15 @@ const loomMissingStatusWayForward = "way forward: run \"lym loom start\" first t
 
 // loomRerouteCapWayForward is the told clause a reroute-cap halt ends with, whichever row's reroute hit the cap.
 // The halt is resumed once the cause its reason quotes is cleared.
-const loomRerouteCapWayForward = "run \"lym loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a Webster plan conflict, once the run's parent has recorded the fix with \"lym loom decision add\" and \"--amends-plan\", then run \"lym loom goto --to Plan-Burler-Review\"; once the task's scope is closed no amendment enters the record and the settled plan takes no goto back to Plan-Burler-Review, so the parent files the fix as a board note for a new task with \"lym board upsert\" and kind note, then runs \"lym loom goto --to Plan-Write\" (\"--to Parts-Plan-Write\" for a split plan) before the resume, which writes the plan again from the record as it stands"
+const loomRerouteCapWayForward = "run \"lym loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a Webster plan conflict, once the run's parent has recorded the fix with \"lym loom decision add\" and \"--amends-plan\", then run \"lym loom goto --to Plan-Burler-Review\""
 
 // loomBudgetWayForward is the told clause a bounce-budget-exhausted halt ends with, whichever row's budget ran out.
 // Only the resume grants a budget; a goto keeps the spent one.
 const loomBudgetWayForward = "run \"lym loom resume\" in the task worktree: the resume grants the row one more budget; a goto keeps the spent budget and grants none"
+
+// loomRetiredWayForward is the command a move off a retired row names as the way forward.
+// The resume steps the run again, so it is the command to name.
+const loomRetiredWayForward = "lym loom resume"
 
 // hubConfigWayForward is the trailing clause for a failed load of the hub-wide landing config:
 // reconciling the hub's config is what restores it.

@@ -252,13 +252,13 @@ func TestNewDarn_Routing(t *testing.T) {
 
 	t.Run("a review budget below 0 is refused with the way forward before any row builds", func(t *testing.T) {
 		env, paths := testEnv(t)
-		env.Segments[codeReviewSegment] = shedrecipe.SegmentSettings{MaxBounces: -1, MaxBouncesKey: "code.max_bounces", ConfigFile: "loom.yaml"}
+		env.Segments[codeReviewSegment] = shedrecipe.SegmentSettings{MaxBounces: -1, MaxBouncesKey: "code_max_bounces", ConfigFile: "loom.yaml"}
 		env.Landing.OpenFabric = nil
 		shed, err := New(shedrun.RecipeDarn, env, paths)
 		if err == nil || shed != nil {
 			t.Fatalf("New() = %v, %v; want nil and an error", shed, err)
 		}
-		want := `loomrecipe: bounce budget of review segment "Code-Review" = -1 from code.max_bounces in loom.yaml; want 0 or more; way forward: set code.max_bounces in loom.yaml`
+		want := `loomrecipe: bounce budget of review segment "Code-Review" = -1 from code_max_bounces in loom.yaml; want 0 or more; way forward: set code_max_bounces in loom.yaml`
 		if err.Error() != want {
 			t.Errorf("New() error = %q; want %q", err.Error(), want)
 		}
@@ -305,7 +305,7 @@ func TestDarnVerifyBudget(t *testing.T) {
 			}
 		}
 		want := map[string]map[any]any{
-			loomshed.NameDarnWrite:     {"clean": 3, "verify": 7, "red-first": 3, "drift": 3, "description": 3},
+			loomshed.NameDarnWrite:     {"clean": 3, "verify": 7, "drift": 3, "description": 3},
 			loomshed.NameCodeBurlerFix: {"clean": 3, "verify": 7},
 			loomshed.NameDescribe:      {"description": 3},
 		}
@@ -394,7 +394,7 @@ func TestDarnVerifyBudget(t *testing.T) {
 		if err == nil || shed != nil {
 			t.Fatalf("New() = %v, %v; want nil and an error", shed, err)
 		}
-		want := `loomrecipe: darn.verify_attempts = 0; want at least 1; way forward: run "lym config darn --set verify_attempts=<n>" from the prime, then "lym loom resume"`
+		want := `loomrecipe: verify_attempts = 0; want at least 1; way forward: run "lym config darn --set verify_attempts=<n>" from the prime, then "lym loom resume"`
 		if err.Error() != want {
 			t.Errorf("New() error = %q; want %q", err.Error(), want)
 		}

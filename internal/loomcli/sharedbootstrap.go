@@ -1,11 +1,9 @@
-// sharedbootstrap.go holds the bootstrap helpers that `start`, `step` and `resume` share.
+// sharedbootstrap.go holds the bootstrap steps that `start` and `step` share.
 // Every helper here is lock-agnostic: none acquires or releases loomengine.LoomBootstrapLock.
-// Each verb wraps its own lock window around these calls, so no helper may assume any one window.
+// Each verb wraps its own lock window around these calls, so no helper may assume either window.
 // `start` holds the lock across the strand work, the driver spawn, and the run-lock handshake.
 // `step` holds it around reed Up alone and releases it before it calls the producer.
-// `resume` holds it across its status-pane restore and the driver wake or spawn.
-// ensureStatusStrand is called by `start` and by `resume`'s status-pane restore.
-// `step` never calls it, because `step` touches no strand.
+// ensureStatusStrand is `start`'s alone, because `step` touches no strand.
 
 package loomcli
 
@@ -333,17 +331,13 @@ func ensureFrictionDirAfterSeed(frictionDir string, seedErr error) {
 	friction.EnsureDir(frictionDir)
 }
 
-// errStatusStrandNotReplaced marks a failed replace of the status strand.
-// It costs the operator the status pane, not the run.
-var errStatusStrandNotReplaced = errors.New("could not replace the status strand")
-
-// ensureStatusStrand keeps, replaces or adds the worktree's status strand.
-// The caller has brought reed up and holds the bootstrap lock, which this function neither acquires nor releases.
+// ensureStatusStrand is `start`'s status-strand work: it keeps, replaces or adds the worktree's status strand.
+// Only `start` calls it, after it has brought reed up.
+// It runs after the bootstrap-lock acquisition and ends before the run-lock probe.
 //
-// It returns nil on success.
-// A failed replace returns an error wrapping errStatusStrandNotReplaced and the cause.
-// A caller treats that error as non-fatal.
-// Any other failure is returned unwrapped.
+// It returns the first error encountered, unwrapped, and nil on success.
+// The caller owns the bootstrap lock: this function must neither acquire nor release it.
+// The lock's position differs between the verbs that run the bootstrap.
 func (c *loomCLI) ensureStatusStrand() error {
 	statusResult, err := c.reed.Status()
 	if err != nil {
@@ -367,9 +361,12 @@ func (c *loomCLI) ensureStatusStrand() error {
 	var strand reedengine.Strand
 	if strandAction == statusStrandReplace {
 		// A replace goes through ReplaceStrand so the status strand keeps its top slot.
+		// A failure is not fatal to the bootstrap;
+		// it costs the operator the status pane for this run, not the run itself.
 		strand, err = c.reed.ReplaceStrand(staleGUID, addSpec)
 		if err != nil {
-			return fmt.Errorf("%w %s: %w", errStatusStrandNotReplaced, staleGUID, err)
+			logger.Warn("loom: could not replace the status strand; the status pane will be missing this run", "guid", staleGUID, "cause", err)
+			return nil
 		}
 	} else {
 		strand, err = c.reed.AddStrand(addSpec)
@@ -379,7 +376,7 @@ func (c *loomCLI) ensureStatusStrand() error {
 	}
 	if buildErr == nil {
 		if err := statuspane.WriteSidecar(sidecarPath, strand.GUID, build); err != nil {
-			logger.Warn("loom: could not record the status strand's build; the next status-pane restore will replace it", "cause", err)
+			logger.Warn("loom: could not record the status strand's build; the next start will replace it", "cause", err)
 		}
 	}
 	return nil
@@ -430,14 +427,17 @@ func (c *loomCLI) wireLanding() error {
 		c.verifySource(),
 		parentLockDeps(c.location, c.runID, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath),
 	)
+	// The PR-Review session's liveness and process registration read reed's strand table.
+	slug := seedSlug(c.location.WorktreeName)
+	registerPane := func(pid int) error {
+		return runproc.Register(fabricengine.RunProcDir(c.location.HubPath), slug, runproc.ChildRecord(pid, runproc.RoleSession, nil))
+	}
+	c.env.Landing.PullRequest.SessionLive = sessionLiveness(c.reed.Status)
+	c.env.Landing.PullRequest.RegisterSession = sessionRegistrar(c.reed.Status, registerPane)
 	// The sampler run's session is checked for liveness and registered, and its row wakes on its record's file event.
-	// Its liveness and process registration read reed's strand table.
-	// The building paths pass through here; status and pause never do.
+	// The building paths and pr-findings' send-back edge pass through here; status and pause never do.
+	// The edge's process exits right after it reads the shed, so its watch is never waited on.
 	if recipeHasEngine(c.recipe, samplerSessionEngine) {
-		slug := seedSlug(c.location.WorktreeName)
-		registerPane := func(pid int) error {
-			return runproc.Register(fabricengine.RunProcDir(c.location.HubPath), slug, runproc.ChildRecord(pid, runproc.RoleSession, nil))
-		}
 		c.env.Sampler.Sessions = c.runner
 		c.env.Sampler.SessionLive = sessionLiveness(c.reed.Status)
 		c.env.Sampler.RegisterSession = sessionRegistrar(c.reed.Status, registerPane)

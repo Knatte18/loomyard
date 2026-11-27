@@ -305,7 +305,6 @@ type denyInputs struct {
 	claude        Config
 	forkSubagents bool
 	denyPublish   bool
-	allowRawTmux  bool
 }
 
 // standingDeny is one PreToolUse deny lym installs, with the system-prompt sentence announcing it.
@@ -376,7 +375,6 @@ var shellSwitchInstalled = map[shellguard.Switch]func(denyInputs) bool{
 	shellguard.SwitchNone:        func(denyInputs) bool { return true },
 	shellguard.SwitchDenyPython:  func(denyInputs) bool { return true },
 	shellguard.SwitchDenyPublish: func(in denyInputs) bool { return in.denyPublish },
-	shellguard.SwitchDenyRawTmux: func(in denyInputs) bool { return !in.allowRawTmux },
 }
 
 // shellSwitchAnnounced maps each shell guard switch to whether a run with the given inputs announces its rows.
@@ -386,7 +384,6 @@ var shellSwitchAnnounced = map[shellguard.Switch]func(denyInputs) bool{
 	shellguard.SwitchNone:        func(denyInputs) bool { return true },
 	shellguard.SwitchDenyPython:  func(in denyInputs) bool { return in.cfg.DenyPython },
 	shellguard.SwitchDenyPublish: func(in denyInputs) bool { return in.denyPublish },
-	shellguard.SwitchDenyRawTmux: func(in denyInputs) bool { return !in.allowRawTmux },
 }
 
 // shellSwitchLiveCheck maps a shell guard switch whose hook decides on each matching call to the command it asks.
@@ -453,8 +450,8 @@ func renderShellGuard(row shellguard.Row, lymPath string) standingDeny {
 
 // buildDenyNotice returns the one-line system-prompt notice that announces each deny the given inputs announce.
 // The notice is "" when they announce none.
-func buildDenyNotice(interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish, allowRawTmux bool) string {
-	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, denyPublish: denyPublish, allowRawTmux: allowRawTmux}
+func buildDenyNotice(interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish bool) string {
+	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, denyPublish: denyPublish}
 	var sentences []string
 	// The notice reads no command, so the denies are rendered over no lym path.
 	for _, deny := range standingDeniesFor(cfg.RefuseRaw, "") {
@@ -492,7 +489,6 @@ func activityStampHook(eventsPathPosix string) []hookEntry {
 // That path must be a git-bash POSIX path, and it is shell-quoted, so an apostrophe in it cannot break the command.
 // The PreToolUse guardrails follow from interactive, cfg, claude and forkSubagents.
 // denyPublish adds a deny of git push and of gh calls beyond reads, comments, and title and body edits.
-// allowRawTmux leaves out the deny of a raw tmux or script command, which every other run carries.
 // Every SessionStart source is recorded exactly once.
 // A non-empty contextAfterCompaction splits the SessionStart hook in two:
 // one entry records every source but compaction,
@@ -519,7 +515,7 @@ func activityStampHook(eventsPathPosix string) []hookEntry {
 // A non-empty advisorModel, an alias or a full model id, is written as `advisorModel`; an empty one leaves the key out.
 // lymPath is the lym binary the python row's live check runs, shell-quoted into its command.
 // scope is the session's scope, carried as the document's last keys; the zero scope adds none.
-func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish, allowRawTmux bool, contextAfterCompaction, turnHookCommand, creelFlagDirPosix, advisorModel, lymPath string, scope sessionScope) ([]byte, error) {
+func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish bool, contextAfterCompaction, turnHookCommand, creelFlagDirPosix, advisorModel, lymPath string, scope sessionScope) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
 	recordingHook := func(hookEventName string, alwaysSucceeds bool) []hookEntry {
 		command := recordingCommand(hookEventName, quotedEventsPath)
@@ -564,7 +560,7 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		}
 	}
 
-	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, denyPublish: denyPublish, allowRawTmux: allowRawTmux}
+	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, denyPublish: denyPublish}
 	for _, deny := range standingDeniesFor(cfg.RefuseRaw, lymPath) {
 		if deny.installed(in) {
 			doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{

@@ -15,7 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
@@ -113,7 +112,6 @@ func (c *reedCLI) wireLocation(location *lymcwd.Location) error {
 		return err
 	}
 	c.eng = reedengine.New(cfg, reedGeom, shuttleengines.EnvScrub())
-	c.eng.SetRevivalFilter(orchengine.RevivalFilter(fabricengine.ConfigDirs(location)))
 	c.hubPath = location.HubPath
 	c.anchorPath = location.AnchorPath()
 	return nil

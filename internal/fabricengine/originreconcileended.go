@@ -85,7 +85,7 @@ func pairHasLocalPart(l *lymcwd.Location, slug string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return taskBranch || weftBranchExists(l, RecordsBranchName(slug)), nil
+	return taskBranch || weftBranchExists(l, recordsBranchIn(l, slug)), nil
 }
 
 // busyWayForward names what lets a removal that found its pair busy go through at the next run.

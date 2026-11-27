@@ -22,7 +22,7 @@ const batchifierReasonPrefix = "active batchifier did not resolve: "
 
 // batchifierWayForward closes the Stuck reason with the next step for the operator.
 // The fault sits in batcher.yaml, so that is where the operator fixes it.
-var batchifierWayForward = "; way forward: fix batcher.yaml (" + configengine.KeyName("batcher", "active") + " or the profile it names), then re-step"
+const batchifierWayForward = "; way forward: fix batcher.yaml (its active: key or the profile it names), then re-step"
 
 // websterProducer is the lazy Webster producer.
 // It resolves the active batchifier on every Call and then delegates to shedadapters.WebsterProducer.

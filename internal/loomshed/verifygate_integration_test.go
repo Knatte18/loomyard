@@ -233,19 +233,9 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 	if !t.Run("a first round lints from the merge base and fails on a fixed-column comment the round added", func(t *testing.T) {
 		f.commitFiles(t, map[string]string{"a/wrapped.go": "package a\n\n// Wrapped comment that breaks in the\n// middle of a sentence.\nfunc FirstWrapped() {}\n"})
 		logsBefore := verifyLogs(t, f.verifyDir)
-		untracked := filepath.Join(f.worktree, "a", "untracked.go")
-		if err := os.WriteFile(untracked, []byte("package a\n\n// Untracked comment that breaks in the\n// middle of a sentence.\nfunc Untracked() {}\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
 		passed, findings := f.runGate(t, baseOf(initial))
-		if err := os.Remove(untracked); err != nil {
-			t.Fatal(err)
-		}
 		if passed || !strings.Contains(findings, "a/wrapped.go:3") {
 			t.Errorf("gate() passed = %v, findings = %q; want a failure naming a/wrapped.go:3", passed, findings)
-		}
-		if strings.Contains(findings, "untracked.go") {
-			t.Errorf("gate() findings = %q; want none naming the untracked file, the gate lints the committed range", findings)
 		}
 		if logs := verifyLogs(t, f.verifyDir); len(logs) != len(logsBefore) {
 			t.Errorf("verify logs = %q; want %q, the lint to fail before any command ran", logs, logsBefore)

@@ -267,7 +267,6 @@ func (f *Fabric) warpUpstreamSHA() (string, error) {
 // A weft infrastructure failure, neither a stop nor an unreachable origin, returns at once.
 // It does so before the warp arm runs.
 // Such a failure covers an unreadable hub location, a failed weft write lock, or a replay that failed otherwise.
-// It also covers a records store whose origin layout cannot be read, whose error names the config that restores it.
 // Warp is not reset against the weft's correspondence, which such a failure leaves unknown.
 // A warp-side failure reports the accumulated result rather than unwinding the weft pull.
 // It is joined with a weft stop when both happened.
@@ -302,6 +301,13 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 	if weftStop != nil && errors.Is(weftStop, ErrAnchorChange) {
 		return result, weftStop
 	}
+	// A one-repository worktree has no warp arm: the records arm moved its one branch.
+	if oneRepositoryAt(f.warpPath) {
+		if weftStop != nil {
+			return result, weftStop
+		}
+		return result, nil
+	}
 
 	warpErr := f.pullWarpArm(rec, &result)
 	switch {
@@ -323,12 +329,7 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 // With an upstream, a standing move record and an empty own anchor marker are weft stops.
 // So is an upstream carrying another anchor marker.
 // They are raised before the pull moves anything.
-// A records store whose origin layout cannot be read is a failure, read first:
-// with no fetch refspec mapping origin's namespace, its upstream reads as missing and nothing would be pulled.
 func (f *Fabric) pullWeftArm(rec *Mutations, result *PullResult, opts SyncOptions) (*WeftStopError, error) {
-	if _, err := originNamespaceAt(f.weftPath); err != nil {
-		return nil, err
-	}
 	weftHasUpstream, err := f.weftHasUpstream()
 	if err != nil {
 		logger.Warn("fabricengine: weft pull: resolve upstream failed, continuing to warp", "weft", f.weftPath, "err", err)
@@ -431,6 +432,7 @@ func (f *Fabric) settleUnmovedWeft(rec *Mutations, result *PullResult, pullErr e
 	defer release()
 
 	outcome, err := replayWeft(rec, l, f.weftPath, upstream, ended)
+	var codeStop *localCodeCommitsStop
 	switch {
 	case err == nil:
 		result.WeftPulled = true
@@ -438,6 +440,8 @@ func (f *Fabric) settleUnmovedWeft(rec *Mutations, result *PullResult, pullErr e
 		return nil, nil
 	case errors.Is(err, ErrReplayConflict):
 		return f.weftConflictStop(branch, outcome.Conflicts, ahead, err), nil
+	case errors.As(err, &codeStop):
+		return f.weftCodeCommitsStop(branch, codeStop), nil
 	case errors.Is(err, ErrReplayDirty):
 		dirtyPaths, pathsErr := f.weftDirtyPaths()
 		if pathsErr != nil {
@@ -471,6 +475,16 @@ func (f *Fabric) weftConflictStop(branch string, paths, ahead []string, cause er
 	}
 }
 
+// weftCodeCommitsStop builds the weft stop for a one-repository replay that found local commits changing code paths.
+// The way forward merges origin's branch in, then pushes.
+func (f *Fabric) weftCodeCommitsStop(branch string, stop *localCodeCommitsStop) *WeftStopError {
+	return &WeftStopError{
+		Branch:     branch,
+		WayForward: localCodeCommitsWayForward(f.weftPath, branch, stop.commits, fmt.Sprintf("`lym fabric push` in %s", lymVerbDir(f.warpPath))),
+		Err:        stop,
+	}
+}
+
 // weftDirtyPaths returns the weft worktree's tracked uncommitted paths, relative to it, with slash separators.
 func (f *Fabric) weftDirtyPaths() ([]string, error) {
 	absolute, err := trackedDirtyPaths(f.weftPath)
@@ -489,10 +503,10 @@ func (f *Fabric) weftDirtyPaths() ([]string, error) {
 }
 
 // hubLocation resolves the location of the warp worktree paired with f's weft, from the weft sibling's own name.
+// In a one-repository hub the weft is the warp worktree, named by the pair's slug.
 // It never reads f.warpPath, which a caller may hold outside the hub.
 func (f *Fabric) hubLocation() (*lymcwd.Location, error) {
-	name := filepath.Base(f.weftPath)
-	slug, ok := WeftWarpSlug(name)
+	slug, ok := pairSlugOfRecords(f.weftPath)
 	if !ok {
 		return nil, fmt.Errorf("fabricengine: %s is no weft sibling worktree", f.weftPath)
 	}

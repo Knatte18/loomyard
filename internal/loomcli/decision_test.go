@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -161,12 +160,6 @@ type decisionFake struct {
 	// implementerRows reports, per row, whether the run stands in its Webster span; implementerErr makes the read fail.
 	implementerRows map[string]bool
 	implementerErr  error
-	// closedRows reports, per row, whether the run's scope is closed there; closedErr makes the read fail.
-	closedRows map[string]bool
-	closedErr  error
-	// labels are the labels of the run's board entry, and labelsErr makes their read fail.
-	labels    []string
-	labelsErr error
 	// boardStored is whether the run's board entry carries a stored record; boardStoredErr makes the read fail.
 	boardStored    bool
 	boardStoredErr error
@@ -484,8 +477,6 @@ func (f *decisionFake) deps() decisionDeps {
 			return f.headTrailer == value, nil
 		},
 		implementerSpan:   func(row string) (bool, error) { return f.implementerRows[row], f.implementerErr },
-		scopeClosed:       func(row string) (bool, error) { return f.closedRows[row], f.closedErr },
-		entryLabels:       func() ([]string, error) { return f.labels, f.labelsErr },
 		boardRecordStored: func() (bool, error) { return f.boardStored, f.boardStoredErr },
 	}
 }
@@ -564,10 +555,7 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 		perchWithoutFileRow bool
 		// judgeOpen makes the run's drift judge session read as open.
 		judgeOpen bool
-		// dropsCreate sets the --drops-create targets.
-		dropsCreate []string
 	}{
-		{name: "parent label dropping two Create targets", by: "parent", dropsCreate: []string{"a.go", "b.go"}},
 		{name: "a plain entry while a drift judge session is open", by: "parent", judgeOpen: true},
 		{name: "a raddle run outside perch mode at its Raddle-File row", by: "parent", atRaddleFile: true},
 		{name: "a perch-mode raddle run at its Raddle-Write row", by: "parent", perchAtRaddleWrite: true},
@@ -614,7 +602,6 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 			f.parent = hubgeom.Parent{Name: tc.parentName}
 			input := goodDecisionInput()
 			input.by = by
-			input.dropsCreate = tc.dropsCreate
 			if tc.pattern {
 				input.patternEntry, input.patternAction, input.patternText = "PATTERN-x", "adds", "New rule."
 			}
@@ -630,9 +617,6 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 			}
 
 			data := envelope.RequireOK(t, out.String()).Raw
-			if !slices.Equal(f.lastAdded.DroppedCreates, tc.dropsCreate) {
-				t.Errorf("appended DroppedCreates = %q; want %q", f.lastAdded.DroppedCreates, tc.dropsCreate)
-			}
 			if tc.withdraw {
 				if f.lastAdded.WithdrawnPattern != "PATTERN-x" {
 					t.Errorf("appended WithdrawnPattern = %q; want PATTERN-x", f.lastAdded.WithdrawnPattern)
@@ -693,19 +677,6 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 		afterCommit bool
 	}
 	tests := []refusalCase{
-		{
-			name:         "--drops-create on a call recording several entries",
-			from:         decisionBatchJSON,
-			setup:        func(_ *decisionFake, in *decisionInput) { in.dropsCreate = []string{"a.go"} },
-			inputRefusal: true,
-			want:         []string{"--drops-create applies to one entry", "way forward: record the dropping decision as its own call"},
-		},
-		{
-			name:         "--drops-create target holding a backtick",
-			setup:        func(_ *decisionFake, in *decisionInput) { in.dropsCreate = []string{"a`b.go"} },
-			inputRefusal: true,
-			want:         []string{"--drops-create target", "way forward:", "without backticks"},
-		},
 		{
 			name:    "no decision record",
 			setup:   func(f *decisionFake, _ *decisionInput) { f.appendErr = fmt.Errorf("read: %w", fs.ErrNotExist) },

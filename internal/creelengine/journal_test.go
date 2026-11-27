@@ -123,7 +123,7 @@ func TestJournal_Fold(t *testing.T) {
 			},
 		},
 		{
-			name: "posted, forwarded, read, and returned fold to holder, path, status and ended-unread receiver",
+			name: "posted, forwarded, read, returned and withheld fold to holder, path, status and ended-unread receiver",
 			files: map[string]string{"2026-10-01.jsonl": strings.Join([]string{
 				posted(1, alpha, beta, "first line\nsecond line"),
 				line(record{Event: eventForwarded, ID: 1, By: beta, To: gamma}),
@@ -134,6 +134,7 @@ func TestJournal_Fold(t *testing.T) {
 				line(record{Event: eventReturned, ID: 3, To: gamma, Receiver: delta}),
 				posted(4, "ly:BATTEN", orch, "from a program"),
 				posted(5, "ly:EXTERNAL", beta, "from outside"),
+				line(record{Event: eventWithheld, To: orch, Notice: "creel-notices"}),
 			}, "\n") + "\n"},
 			check: func(t *testing.T, p *pool) {
 				want := map[int64]messageShape{

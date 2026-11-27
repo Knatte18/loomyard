@@ -1,15 +1,15 @@
 // prreview.go implements the PR-Review row: it decides whether the landing goes through a pull request.
-// When the landing waits on one, it pushes the task branch, opens or finds the pull request, and records it.
-// Then it waits on the pull request until the operator ends the review.
+// When it does, it pushes the task branch, opens or finds the pull request, and records it.
+// Then it waits on the pull request until the review ends.
 
 package landingshed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -29,24 +29,22 @@ const (
 )
 
 // PRReview is the ShedProducer that lands a run through a GitHub pull request when the landing goes through one.
-// That is decided from beam.yaml's pull_request for the landing and GitHub's rules for the parent.
+// That is decided from the parent's mode, the beam's settings, the landing entry and GitHub's rules for the parent.
 // When the landing does not go through one, the row closes any recorded pull request GitHub reports open, and passes.
 // With a pull request recorded, a failed read of GitHub's rules is Stuck and closes nothing.
-// A transient failure is an error the driver re-steps; a token failure falls back to beam.yaml.
-// When the landing merges its pull request at once, the row passes at once,
+// A transient failure is an error the driver re-steps; a token failure falls back to the beam and the entry.
+// When the parent merges its pull request at once, the row passes at once,
 // and the landing's merge step opens and merges it with no review.
 // Otherwise the row pushes the task branch and finds or opens the pull request.
-// A re-entry whose record holds another gated head than the task head leaves that push to the wait, behind its gate.
-// With the review not ended and the pull request open, a re-entry halts on a hand commit on GitHub before any push.
 // The pull request's title comes from the change description.
 // Its body comes from the description's body, the regression check and the credit block.
-// The row records the pull request and waits on it, whatever the run's autonomy, and no agent takes part.
-// The wait gates and pushes a commit made in the task worktree while it waits.
-// While the pull request is open and the review goes on, the wait compares its text at each poll.
-// It sets the title and body again when GitHub holds other text than the change description yields.
-// An open pull request's review does not end while its title and body could not be built or set.
-// The wait ends when the pull request is merged or approved on GitHub, or the operator runs `lym loom pr-continue`.
-// It halts on a pull request closed without a merge, a gate failure and a commit pushed to the branch on GitHub by hand.
+// The row records it, keeps one interactive session for the operator to discuss it in, and waits on it.
+// With the parent review setting on, it asks the parent orch to review the open pull request before it waits.
+// The wait gates and pushes the agent's commits.
+// The text is built from the change description, the regression check and the credit block.
+// When it changes, the wait sets the title and body again.
+// The wait ends when the pull request is merged or approved, or closed or continued by the operator.
+// It also ends when the agent has sent findings back: the row reroutes to Code-Bouncer with the findings file as output.
 // It takes no parent lock.
 type PRReview struct {
 	name string
@@ -67,10 +65,13 @@ func NewPRReview(name string, deps Deps) *PRReview {
 
 // Call runs the row once and is safe to re-enter.
 // A record, an open pull request on the task branch or a recorded review ending keeps a re-entry from opening another.
-// When the landing waits on a pull request, the wait has no timeout.
+// When the landing goes through a pull request, the row starts or resumes the run's one interactive session.
+// It then waits on the pull request, which has no timeout.
+// The session is stopped on every verdict, Stuck or error of the row, and left running when the context is cancelled.
 // A cancelled context returns an error.
-// A transient push or GitHub failure is an error the driver re-steps.
+// A transient push, GitHub or session-start failure is an error the driver re-steps.
 // Any other such failure is Stuck with Halt.
+// A send-back mark in the record is settled first, before any session starts or resumes.
 func (p *PRReview) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -78,16 +79,100 @@ func (p *PRReview) Call(ctx context.Context) (shedengine.Outcome, shedengine.Out
 	if err := p.checkWiring(); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
-	return p.decide(ctx).result()
+	end := p.settleSendBack(ctx)
+	if end == nil {
+		end = p.decide(ctx)
+		var startHalt *sessionStartHalt
+		if errors.As(end.err, &startHalt) {
+			end = halt(ctx, p.name, startHalt.haltReason())
+		}
+	}
+	p.endSession(ctx, end.err)
+	return end.result()
+}
+
+// settleSendBack handles the record's send-back mark at the start of a call.
+// With no mark it does nothing.
+// With a mark it reads the row's newest own history entry.
+// When that entry is the reroute of the mark's file, shed persisted the reroute:
+// one write clears the mark, the fixed-in-place count with its counted sets, the parent-review ask and the session.
+// The record is committed, and the row runs as on any entry.
+// With any other newest entry it keeps all of them and sends the findings back again.
+// That covers a re-step, a crash before the persist and a goto onto the row.
+// It also covers the resume after a dirty-tree halt or a reroute-cap halt.
+// The file must match, not only the outcome.
+// Otherwise a crash after a later send-back takes an earlier send-back's reroute for its own.
+// It returns nil when the row runs as on any entry, and otherwise how the call ends.
+func (p *PRReview) settleSendBack(ctx context.Context) *ending {
+	pr := p.deps.PullRequest
+	rec, found, err := pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath)
+	if err != nil {
+		return &ending{err: fmt.Errorf("landingshed: %s: read the pull request record: %w", p.name, err)}
+	}
+	if !found || rec.SendBack == "" {
+		return nil
+	}
+	status, err := pr.ShedStatus()
+	if err != nil {
+		return &ending{err: fmt.Errorf("landingshed: %s: read the run's status: %w", p.name, err)}
+	}
+	if !p.reroutePersisted(status.History, rec.SendBack) {
+		return p.sendBack(ctx, rec)
+	}
+	err = p.updateRecord(func(r *pullrequest.Record) {
+		r.SendBack, r.FixHereCount, r.CountedSets, r.ParentReviewAsked = "", 0, nil, false
+		r.StrandGUID, r.StrandName, r.SessionID, r.Engine = "", "", "", ""
+	})
+	if err != nil {
+		return &ending{err: err}
+	}
+	return nil
+}
+
+// reroutePersisted reports whether the row's newest own entry in history is a reroute whose output is file.
+func (p *PRReview) reroutePersisted(history []shedengine.HistoryEntry, file string) bool {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Producer == p.name {
+			return history[i].Outcome == shedengine.OutcomeReroute && history[i].Output == file
+		}
+	}
+	return false
+}
+
+// sendBack ends the call with the send-back the record's mark names.
+// It stops the live session, then reads the tree again, since the agent may have changed it after the verb answered.
+// On a clean tree it returns Stuck with Reroute set and the mark's file as the output, and clears nothing:
+// shed persists the reroute entry with that file, and the row's next call clears the mark.
+// On a dirty tree it halts for the parent, and the resumed row meets the mark on a clean tree and reroutes.
+func (p *PRReview) sendBack(ctx context.Context, rec pullrequest.Record) *ending {
+	if _, err := p.stopLiveSession(rec); err != nil {
+		return &ending{err: err}
+	}
+	_, dirty, err := p.readTree()
+	if err != nil {
+		return &ending{err: err}
+	}
+	if len(dirty) > 0 {
+		return halt(ctx, p.name, fmt.Sprintf("pull request #%d has findings sent back to Code-Review, but the task worktree has uncommitted changes: %s; way forward: commit or discard them in the task worktree, then run lym loom resume", rec.Number, listShown(dirty)))
+	}
+	end := stuck(ctx, p.name, fmt.Sprintf("pull request #%d has findings sent back to Code-Review; they are in %s", rec.Number, rec.SendBack))
+	if end.err == nil {
+		end.out.Reroute, end.out.Path = true, rec.SendBack
+	}
+	return end
 }
 
 // decide resolves whether the landing goes through a pull request and runs the row's side of the answer.
 func (p *PRReview) decide(ctx context.Context) *ending {
 	pr := p.deps.PullRequest
 
-	mode, err := pr.Mode()
+	mode, worktree, err := pr.ParentMode()
 	if err != nil {
-		return halt(ctx, p.name, beamModeUnreadableReason(err))
+		return halt(ctx, p.name, beamModeUnreadableReason(worktree, err))
+	}
+	field, err := pr.EntryField()
+	if err != nil {
+		return &ending{err: fmt.Errorf("landingshed: %s: read the landing entry's pull_request: %w", p.name, err)}
 	}
 	origin, err := pr.Origin()
 	if err != nil {
@@ -102,7 +187,7 @@ func (p *PRReview) decide(ctx context.Context) *ending {
 	if err != nil {
 		return &ending{err: fmt.Errorf("landingshed: %s: read the pull request record: %w", p.name, err)}
 	}
-	decision, err := resolveWithParentRule(ctx, p.name, p.deps, mode, NotABeam, origin, hasCommits, recordFound)
+	decision, err := resolveWithParentRule(ctx, p.name, p.deps, mode, field, NotABeam, origin, hasCommits, recordFound)
 	if err != nil {
 		return &ending{err: err}
 	}
@@ -113,14 +198,14 @@ func (p *PRReview) decide(ctx context.Context) *ending {
 		return p.closeRecordedPullRequest(ctx, origin, decision.Reason)
 	}
 	if decision.MergeAtOnce {
-		logger.Info("landingshed: this landing merges its pull request at once, so Finalize opens and merges it with no review", "row", p.name, "reason", decision.Reason)
+		logger.Info("landingshed: the parent merges its pull request at once, so Finalize opens and merges it with no review", "row", p.name, "reason", decision.Reason)
 		return done()
 	}
 	return p.openPullRequest(ctx, origin)
 }
 
 // optionalPullRequestSeams names the PullRequestDeps fields the row runs without.
-var optionalPullRequestSeams = []string{"BeamRecord", "DropBeamRecord"}
+var optionalPullRequestSeams = []string{"ParentReviewWanted", "AskParent", "BeamRecord", "DropBeamRecord"}
 
 // checkWiring returns an error naming the first value the row needs that Deps leaves unset:
 // a PullRequestDeps field that optionalPullRequestSeams does not name, or TaskHead.
@@ -140,7 +225,7 @@ func (p *PRReview) checkWiring() error {
 
 // closeRecordedPullRequest ends the run's pull request when the landing does not go through one.
 // It logs reason and closes a recorded pull request GitHub reports open.
-// It then drops the record and returns Done.
+// It then stops the recorded session, drops the record, and returns Done.
 func (p *PRReview) closeRecordedPullRequest(ctx context.Context, origin Origin, reason string) *ending {
 	logger.Info("landingshed: no pull request for this landing", "row", p.name, "reason", reason)
 	pr := p.deps.PullRequest
@@ -156,6 +241,11 @@ func (p *PRReview) closeRecordedPullRequest(ctx context.Context, origin Origin, 
 	if action, err := closeIfOpen(ctx, pr, origin.URL, rec.Number, reason); err != nil {
 		return p.githubFailure(ctx, action, err)
 	}
+	// The session is found through the record, so it is stopped before the record goes,
+	// and a failed stop keeps the record for the re-step to retry.
+	if _, err := p.stopLiveSession(rec); err != nil {
+		return &ending{err: err}
+	}
 	if err := removePRRecord(pr, p.name); err != nil {
 		return &ending{err: err}
 	}
@@ -163,10 +253,6 @@ func (p *PRReview) closeRecordedPullRequest(ctx context.Context, origin Origin, 
 }
 
 // openPullRequest pushes the task branch, then finds or opens the run's pull request.
-// For a recorded review that has not ended, it reads the pull request before the push.
-// While GitHub reports that pull request open, a hand commit on its branch there halts with nothing pushed.
-// Such a review whose gated head is not the task head gets no push here:
-// the wait pushes that head once the gate passed over it.
 // It sets the title from the change description.
 // It sets the body from the description's body, the regression check and the credit block.
 // It records the pull request and waits on it.
@@ -177,6 +263,10 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) *ending {
 		return &ending{err: err}
 	}
 
+	if end := pushTask(ctx, p.deps, p.name, ""); end != nil {
+		return end
+	}
+
 	head, err := p.deps.TaskHead()
 	if err != nil {
 		return &ending{err: fmt.Errorf("landingshed: %s: read the task head: %w", p.name, err)}
@@ -184,12 +274,6 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) *ending {
 	rec, found, err := pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath)
 	if err != nil {
 		return &ending{err: fmt.Errorf("landingshed: %s: read the pull request record: %w", p.name, err)}
-	}
-	// A recorded review not yet ended is pushed only further down, once GitHub's head has been judged.
-	if !found || rec.ReviewEnded {
-		if end := pushTask(ctx, p.deps, p.name, ""); end != nil {
-			return end
-		}
 	}
 	api, err := pr.API(origin.URL)
 	if err != nil {
@@ -199,7 +283,7 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) *ending {
 		// The operator already ended this review.
 		// A head other than the gated head means commits were added that need review, so the review starts afresh.
 		if head == rec.GatedHead {
-			return p.wait(ctx, api, rec, nil, time.Time{})
+			return p.wait(ctx, api, rec, nil, time.Time{}, prText{})
 		}
 		if err := removePRRecord(pr, p.name); err != nil {
 			return &ending{err: err}
@@ -224,18 +308,6 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) *ending {
 			return p.githubFailure(ctx, "read the pull request's status", err)
 		}
 		entryStatus = &status
-		// A push can drop a hand commit from the branch on GitHub, so that commit is judged first.
-		if status.State == pullrequest.StateOpen {
-			if end := p.foreignHeadHalt(ctx, status, rec, head); end != nil {
-				return end
-			}
-		}
-		// The row does not itself push a head the gate refused or never ran.
-		if rec.GatedHead == "" || head == rec.GatedHead {
-			if end := pushTask(ctx, p.deps, p.name, ""); end != nil {
-				return end
-			}
-		}
 		// GitHub refuses to merge a draft pull request, so the review starts by marking a found draft ready.
 		if status.State == pullrequest.StateOpen && status.Draft {
 			if err := api.SetDraft(ctx, rec.Number, false); err != nil {
@@ -243,7 +315,14 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) *ending {
 			}
 		}
 		if status.State != pullrequest.StateOpen {
-			return p.wait(ctx, api, rec, entryStatus, entryReadAt)
+			// A merged pull request has nothing left to discuss, so only a closed one gets a session.
+			// The session is for the agent to clean the tree under a continue flag.
+			if status.State != pullrequest.StateMerged {
+				if rec, err = p.ensureSession(ctx, rec); err != nil {
+					return &ending{err: err}
+				}
+			}
+			return p.wait(ctx, api, rec, entryStatus, entryReadAt, prText{})
 		}
 		ref = pullrequest.Ref{Number: rec.Number, URL: rec.URL}
 	} else {
@@ -256,10 +335,6 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) *ending {
 		if err := api.Edit(ctx, ref.Number, text.title, text.body); err != nil {
 			return p.githubFailure(ctx, "set the pull request's title and body", err)
 		}
-		// The status read before the edit holds the text just set, so the wait's first poll does not edit again.
-		if entryStatus != nil {
-			entryStatus.Title, entryStatus.Body = text.title, text.body
-		}
 	}
 	if err := p.recordPullRequest(ref, head, found); err != nil {
 		return &ending{err: err}
@@ -268,25 +343,60 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) *ending {
 	if err != nil || !found {
 		return &ending{err: fmt.Errorf("landingshed: %s: read back the pull request record (found %v): %w", p.name, found, err)}
 	}
-	return p.wait(ctx, api, rec, entryStatus, entryReadAt)
+	if rec, err = p.ensureSession(ctx, rec); err != nil {
+		return &ending{err: err}
+	}
+	p.askParentReview(rec)
+	return p.wait(ctx, api, rec, entryStatus, entryReadAt, text)
+}
+
+// parentReviewRequestPrefix opens the request the row mails the parent orch, so the orch knows the line for one.
+const parentReviewRequestPrefix = "[pr-review request]"
+
+// askParentReview asks the parent orch to review the open pull request rec records, when the setting is on.
+// It asks once per record until a send-back clears the ask, and the request names the PR-Review session the orch answers.
+// An unreadable setting, a failed post, an orch no record names and a failed write of the ask into the record are logged,
+// and the row's next entry asks again.
+// The row asks and does not gate: the orch's answer reaches the session's agent as creel mail, which the row never reads.
+func (p *PRReview) askParentReview(rec pullrequest.Record) {
+	pr := p.deps.PullRequest
+	if rec.ParentReviewAsked || pr.ParentReviewWanted == nil || pr.AskParent == nil {
+		return
+	}
+	wanted, err := pr.ParentReviewWanted()
+	if err != nil {
+		logger.Warn("landingshed: the parent review setting is unreadable, so the parent orch is not asked", "row", p.name, "cause", err)
+		return
+	}
+	if !wanted {
+		return
+	}
+	posted, err := pr.AskParent(p.parentReviewRequest(rec))
+	if err != nil {
+		logger.Warn("landingshed: could not ask the parent orch for a review of the pull request", "row", p.name, "cause", err)
+		return
+	}
+	if !posted {
+		logger.Info("landingshed: no parent orch is recorded to ask for a review of the pull request", "row", p.name)
+		return
+	}
+	// The request is posted, so a failed write is no reason for the driver to re-step and post it again.
+	if err := p.updateRecord(func(r *pullrequest.Record) { r.ParentReviewAsked = true }); err != nil {
+		logger.Warn("landingshed: could not record that the parent orch was asked for a review of the pull request", "row", p.name, "cause", err)
+	}
+}
+
+// parentReviewRequest is the line that asks the parent orch to review the pull request rec records.
+func (p *PRReview) parentReviewRequest(rec pullrequest.Record) string {
+	return fmt.Sprintf("%s %s: pull request %s, from branch %s into %s, is open for your review; answer the PR-Review session with lym creel post %s \"<answer>\", saying you are satisfied or giving your findings, which its agent fixes before it asks you again",
+		parentReviewRequestPrefix, p.deps.Slug, rec.URL, p.deps.TaskBranch, p.deps.ParentBranch, rec.StrandName)
 }
 
 // prText is a pull request's title and body.
+// A title is never empty, so the zero prText stands for a text not known.
 type prText struct {
 	title string
 	body  string
-}
-
-// matches reports whether a pull request holding title and body carries this text.
-// GitHub may store a body with \r\n line endings.
-// Both sides are therefore compared with those read as \n and with their trailing whitespace trimmed.
-func (t prText) matches(title, body string) bool {
-	return normalisedText(t.title) == normalisedText(title) && normalisedText(t.body) == normalisedText(body)
-}
-
-// normalisedText returns s with every \r\n read as \n and its trailing whitespace trimmed.
-func normalisedText(s string) string {
-	return strings.TrimRight(strings.ReplaceAll(s, "\r\n", "\n"), " \t\r\n")
 }
 
 // pullRequestText returns the title and body the pull request carries for the change description read at the call.
@@ -304,36 +414,36 @@ func (p *PRReview) pullRequestText() (prText, error) {
 	return prText{title: summary.Title, body: bodyWithCredit(summary.Body, credit)}, nil
 }
 
-// syncText sets pull request number's title and body again when status, as polled, holds stale text.
-// Stale text is any other than what the change description yields.
-// The pull request therefore follows the description at every poll, whatever set the text GitHub holds.
-// A text that cannot be built is left for a later poll, since the file may be mid-edit.
-// That failure is logged once per episode, with the way forward.
+// syncText sets the pull request's title and body again when the change description yields other text than the last set,
+// so an edit of the description reaches the pull request at the next poll.
+// A wait that knows no last-set text records the description's text as the last set, and edits nothing.
+// A text that cannot be built is logged once per episode and left for a later poll, since the agent may be mid-edit.
 // A transient failure of the edit is logged once per episode of failed edits and left for a later poll;
 // any other failed edit ends the call with a verdict.
 // It returns nil when the wait goes on.
-func (p *PRReview) syncText(ctx context.Context, api pullrequest.API, state *prWaitState, number int, status pullrequest.Status) *ending {
+func (p *PRReview) syncText(ctx context.Context, api pullrequest.API, state *prWaitState, number int) *ending {
 	text, err := p.pullRequestText()
 	if err != nil {
 		if !state.textWarned {
-			logger.Warn("landingshed: no pull request text could be built, so the review stays open and the pull request keeps its title and body; "+
-				"way forward: fix what the cause names, for the change description until lym loom validate-description passes, "+
-				"and a later poll sets the text and lets an approval or lym loom pr-continue end the review", "row", p.name, "cause", err)
+			logger.Warn("landingshed: no pull request text could be built, so the pull request keeps its title and body", "row", p.name, "cause", err)
 			state.textWarned = true
 		}
-		state.textStale = true
 		return nil
 	}
 	state.textWarned = false
-	if text.matches(status.Title, status.Body) {
-		state.editWarned, state.textStale = false, false
+	switch {
+	case state.synced == prText{}:
+		state.synced = text
+		return nil
+	case text == state.synced:
+		state.editWarned = false
 		return nil
 	}
 	if err := api.Edit(ctx, number, text.title, text.body); err != nil {
-		state.textStale = true
 		return p.pollFailure(ctx, &state.editWarned, "set the pull request's title and body", err)
 	}
-	state.editWarned, state.textStale = false, false
+	state.synced = text
+	state.editWarned = false
 	return nil
 }
 
@@ -378,10 +488,12 @@ func nextPRWait(current time.Duration, moved bool) time.Duration {
 }
 
 // holdWhileCovered returns once no pause covers the run, sleeping with a growing interval while one does.
+// The first covered read stops a live session, and the first uncovered read after that resumes it.
 // An unreadable pause record is logged on every read and read as uncovered, and a cancelled context is an error.
 func (p *PRReview) holdWhileCovered(ctx context.Context) error {
 	pr := p.deps.PullRequest
 	wait := prWaitFloor
+	paused, stopped := false, false
 	for {
 		covered, err := pr.PauseCovered()
 		if err != nil {
@@ -389,7 +501,16 @@ func (p *PRReview) holdWhileCovered(ctx context.Context) error {
 			covered = false
 		}
 		if !covered {
+			if stopped {
+				return p.resumeSession(ctx)
+			}
 			return nil
+		}
+		if !paused {
+			paused = true
+			if stopped, err = p.stopRecordedSession(); err != nil {
+				return err
+			}
 		}
 		if err := pr.Sleep(ctx, wait); err != nil {
 			if cerr := cancelErr(ctx, p.name); cerr != nil {
@@ -417,42 +538,39 @@ type prWaitState struct {
 	lastPoll time.Time
 	// transientWarned is set after a transient poll failure logged its Warn and cleared by the next good poll.
 	transientWarned bool
+	// synced is the title and body the pull request was last set to, zero until the wait knows them.
+	synced prText
 	// textWarned is set after a failure to build the pull request text logged its Warn.
 	// The next build that succeeds clears it.
 	textWarned bool
 	// editWarned is set after a transient failure of the title and body edit logged its Warn.
-	// The next edit that succeeds, and a poll that finds the text current, clear it.
+	// The next edit that succeeds clears it.
 	editWarned bool
-	// textStale is true while the last compare could not bring the pull request's text to the description's.
-	// The text could not be built, or the edit failed; an open pull request's review does not end then.
-	textStale bool
 }
 
 // wait holds the call on the pull request until the review ends.
 // Each wake reads the pull request's status at most once a minute.
-// It gates and pushes a new commit of the task worktree unless the pull request is merged,
+// It gates and pushes the agent's new commits unless the pull request is merged,
 // and it judges the status: merged, closed, approved or continued by the operator is Done or Stuck;
 // anything else keeps waiting.
 // A wake with a head to gate reads the status whatever the minute says.
 // A change to the record ends the sleep between two wakes early,
-// so a continue flag the operator writes is read within a second.
-// A poll that finds the pull request open and its review not ended compares its title and body.
-// A poll that reads the continue flag compares them too.
-// It sets them again when GitHub holds other text than the change description yields.
-// An approval or the continue flag does not end the wait while the text cannot be built.
-// Neither ends it while that edit fails transiently.
+// so a continue flag the agent writes is read within a second.
+// A poll that finds the pull request open and the review going re-sets its title and body when the text has changed.
 // The text is yielded from the change description, the regression check and the credit block.
+// It has changed when it differs from the text last set.
 // rec is the record the wait starts from.
 // entryStatus and entryReadAt are the status read before the wait and its time, nil and zero when none was read.
+// synced is the title and body set before the wait, zero when none was set.
 // A cancelled context is an error.
-func (p *PRReview) wait(ctx context.Context, api pullrequest.API, rec pullrequest.Record, entryStatus *pullrequest.Status, entryReadAt time.Time) *ending {
+func (p *PRReview) wait(ctx context.Context, api pullrequest.API, rec pullrequest.Record, entryStatus *pullrequest.Status, entryReadAt time.Time, synced prText) *ending {
 	label := fmt.Sprintf("PR #%d", rec.Number)
 	p.gate.markWait(label)
 	defer p.gate.markWait("")
 	changes, stopWatch := p.deps.PullRequest.RecordChanges()
 	defer stopWatch()
 
-	state := prWaitState{continueSeen: rec.Continue, pending: entryStatus, lastPoll: entryReadAt}
+	state := prWaitState{continueSeen: rec.Continue, pending: entryStatus, lastPoll: entryReadAt, synced: synced}
 	for {
 		if end := p.wake(ctx, api, &state, label); end != nil {
 			return end
@@ -487,7 +605,6 @@ func (p *PRReview) pause(ctx context.Context, interval time.Duration, wokeAt tim
 
 // wake runs one wake of the review:
 // it reads the task head and the pull request record, gates the head when one is due, and judges the review.
-// A hand commit on the pull request's branch on GitHub halts before a due gate.
 // It returns nil when the wait goes on, and otherwise how the call ends.
 func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitState, label string) *ending {
 	pr := p.deps.PullRequest
@@ -509,21 +626,18 @@ func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitS
 	if err != nil || !found {
 		return &ending{err: fmt.Errorf("landingshed: %s: read the pull request record (found %v): %w", p.name, found, err)}
 	}
+	if rec.SendBack != "" {
+		return p.sendBack(ctx, rec)
+	}
 
 	// The status is read before the gate, and forced when a gate is due,
 	// so a pull request merged at a head the row never gated is not gated, pushed and recorded as if it had been.
-	gateDue := len(dirty) == 0 && head != rec.GatedHead
+	gateDue := len(dirty) == 0 && head != rec.GatedHead && head != rec.MailedHead
 	status, polled, end := p.pollStatus(ctx, api, state, rec, gateDue)
 	if end != nil {
 		return end
 	}
 
-	// The gate's push can drop a hand commit from the branch on GitHub, so that commit is judged first.
-	if gateDue && polled && status.State == pullrequest.StateOpen && !rec.ReviewEnded {
-		if end := p.foreignHeadHalt(ctx, status, rec, head); end != nil {
-			return end
-		}
-	}
 	if gateDue && polled && status.State != pullrequest.StateMerged {
 		if end := p.gateHead(ctx, head, rec, label); end != nil {
 			return end
@@ -538,12 +652,51 @@ func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitS
 	if !polled {
 		return nil
 	}
-	if status.State == pullrequest.StateOpen && !rec.ReviewEnded {
-		if end := p.syncText(ctx, api, state, rec.Number, status); end != nil {
+	if status.State == pullrequest.StateOpen && !rec.ReviewEnded && !rec.Continue {
+		if end := p.syncText(ctx, api, state, rec.Number); end != nil {
 			return end
 		}
 	}
-	return p.judge(ctx, status, rec, head, dirty, state.textStale)
+
+	// The session is stopped before the read that may end the review,
+	// so the agent cannot change the tree between the read and the verdict.
+	// A wake whose read cannot end the review leaves the session at work and judges the tree it read.
+	stopped := false
+	if sessionStopWanted(status, rec, head, dirty) {
+		if stopped, err = p.stopLiveSession(rec); err != nil {
+			return &ending{err: err}
+		}
+		head, dirty, err = p.readTree()
+		if err != nil {
+			return &ending{err: err}
+		}
+	}
+	end = p.judge(ctx, status, rec, head, dirty)
+	if end == nil && stopped {
+		if err = p.resumeSession(ctx); err != nil {
+			return &ending{err: err}
+		}
+	}
+	return end
+}
+
+// sessionStopWanted reports whether the read of status against rec may end the review or act on the operator's ending,
+// so the session must be stopped before the tree is read again.
+// head and dirty are the task head and uncommitted paths the wake read.
+// The cases are a merged pull request, a recorded ending, the continue flag on a clean tree at the gated head,
+// and an approval of the head the row gated.
+// The continue flag on a dirty tree or an ungated head only keeps the review waiting,
+// so the session is left at work instead of being stopped and resumed at every poll.
+func sessionStopWanted(status pullrequest.Status, rec pullrequest.Record, head string, dirty []string) bool {
+	switch {
+	case status.State == pullrequest.StateMerged, rec.ReviewEnded:
+		return true
+	case rec.Continue:
+		return len(dirty) == 0 && head == rec.GatedHead
+	case status.State == pullrequest.StateOpen:
+		return status.Approved && !status.ChangesRequested && status.HeadSHA == rec.GatedHead
+	}
+	return false
 }
 
 // readTree reads the task head and the task worktree's uncommitted paths.
@@ -559,15 +712,19 @@ func (p *PRReview) readTree() (string, []string, error) {
 	return head, dirty, nil
 }
 
+// gateRetryHint closes the mail of a gate failure, naming the agent's way to gate the same head again.
+const gateRetryHint = "; when the failure lies outside the change, such as a file another process held open, and the operator has asked you to continue, run lym loom pr-continue, which gates this head again"
+
 // gateHead runs the pr-review gate over head, a clean tree whose head the record has not gated.
-// A pass pushes head and records it as gated.
-// On a failure the row pushes nothing and halts with the gate's reason;
-// the resume gates the task head again, so a fix committed meanwhile or a failure from outside the change is retried.
-// A runner crash or a memory pressure stop judges no code, so it halts the row naming it.
+// A pass pushes head and records it as gated,
+// and a failure pushes nothing and mails its reason to the PR-Review session once per head.
+// The record keeps the mailed head, which `lym loom pr-continue` clears so that the next wake gates it again.
+// A runner crash judges no code, so it halts the row naming the crash and mails nothing;
+// the resume gates the head again.
 // A head moved or a tree dirtied during the gate discards the verdict.
 // It returns nil when the wait goes on.
 func (p *PRReview) gateHead(ctx context.Context, head string, rec pullrequest.Record, label string) *ending {
-	reason, unjudged, err := p.gate.checkHead(ctx, p.name)
+	reason, crashed, err := p.gate.checkHead(ctx, p.name)
 	p.gate.markWait(label)
 	if err != nil {
 		return &ending{err: err}
@@ -580,19 +737,39 @@ func (p *PRReview) gateHead(ctx context.Context, head string, rec pullrequest.Re
 		return nil
 	}
 
-	if unjudged {
+	if crashed {
 		return halt(ctx, p.name, reason)
 	}
-	if reason != "" {
-		return halt(ctx, p.name, fmt.Sprintf("the pr-review gate refused task head %s of pull request #%d, committed in the task worktree while the review waited: %s; way forward: commit a fix in the task worktree, or leave the head as it is when the failure lies outside the change, then run lym loom resume, which gates the task head again before the row pushes it", head, rec.Number, reason))
+	if reason == "" {
+		if end := pushTask(ctx, p.deps, p.name, ""); end != nil {
+			return end
+		}
+		if err := p.updateRecord(func(r *pullrequest.Record) { r.GatedHead = head }); err != nil {
+			return &ending{err: err}
+		}
+		return nil
 	}
-	if end := pushTask(ctx, p.deps, p.name, ""); end != nil {
-		return end
+
+	if rec.MailedHead == head {
+		return nil
 	}
-	if err := p.updateRecord(func(r *pullrequest.Record) { r.GatedHead = head }); err != nil {
+	p.mailFailure(rec.StrandName, reason+gateRetryHint)
+	if err := p.updateRecord(func(r *pullrequest.Record) { r.MailedHead = head }); err != nil {
 		return &ending{err: err}
 	}
 	return nil
+}
+
+// mailFailure posts reason to the PR-Review session's strand, or logs it when no session is recorded.
+// A failed post is logged and not retried.
+func (p *PRReview) mailFailure(strandName, reason string) {
+	if strandName == "" {
+		logger.Warn("landingshed: the pr-review gate refused the task head and no PR-Review session is recorded to tell", "row", p.name, "reason", reason)
+		return
+	}
+	if err := p.deps.PullRequest.MailAgent(strandName, reason); err != nil {
+		logger.Warn("landingshed: could not tell the PR-Review session the pr-review gate refused the task head", "row", p.name, "strand", strandName, "cause", err)
+	}
 }
 
 // updateRecord applies mutate to the run's pull request record under its lock, so a flag written meanwhile survives.
@@ -660,9 +837,7 @@ func (p *PRReview) pollFailure(ctx context.Context, warned *bool, action string,
 // A merged pull request takes the merged verdicts whatever the continue flag says, since nothing is left to merge.
 // The operator's ending leaves the pull request as GitHub has it, for Finalize to merge on GitHub.
 // Ending the review therefore never lands the run by a direct push to the parent.
-// An open pull request whose branch on GitHub holds a commit the task worktree lacks halts before any ending.
-// While staleText says an open pull request's text could not be built or set, its review goes on.
-func (p *PRReview) judge(ctx context.Context, status pullrequest.Status, rec pullrequest.Record, head string, dirty []string, staleText bool) *ending {
+func (p *PRReview) judge(ctx context.Context, status pullrequest.Status, rec pullrequest.Record, head string, dirty []string) *ending {
 	clean := len(dirty) == 0
 	gated := head == rec.GatedHead
 
@@ -702,12 +877,6 @@ func (p *PRReview) judge(ctx context.Context, status pullrequest.Status, rec pul
 			}
 			return halt(ctx, p.name, p.dirtyEndReason(rec.Number, dirty))
 		}
-		if end := p.foreignHeadHalt(ctx, status, rec, head); end != nil {
-			return end
-		}
-		if staleText {
-			return nil
-		}
 		if rec.Continue {
 			if !clean || !gated {
 				return nil
@@ -719,26 +888,6 @@ func (p *PRReview) judge(ctx context.Context, status pullrequest.Status, rec pul
 		}
 	}
 	return nil
-}
-
-// foreignHeadHalt halts the row when the pull request's branch on GitHub holds a commit the task worktree lacks:
-// one pushed to the branch by hand, which the row never gated.
-// A head the row gated or the task worktree holds, or an older one GitHub has not caught up from, waits on.
-// A head the task worktree cannot read is foreign too, since every commit the run pushes is in that worktree.
-// It returns nil when it does not halt.
-func (p *PRReview) foreignHeadHalt(ctx context.Context, status pullrequest.Status, rec pullrequest.Record, head string) *ending {
-	if status.HeadSHA == "" || status.HeadSHA == rec.GatedHead || status.HeadSHA == head {
-		return nil
-	}
-	foreign, err := p.deps.PullRequest.CommitsMissing(head, status.HeadSHA)
-	if err == nil && len(foreign) == 0 {
-		return nil
-	}
-	held := "these commits the task worktree lacks: " + listShown(foreign)
-	if err != nil {
-		held = fmt.Sprintf("commits the task worktree cannot read (%v)", err)
-	}
-	return halt(ctx, p.name, fmt.Sprintf("pull request #%d's branch %s on GitHub is at %s and holds %s, pushed there by hand, so the run never gated them; way forward: bring them into the task branch in the task worktree, or drop them from the branch on GitHub, then run lym loom resume, which gates a task head not yet gated before it pushes it", rec.Number, p.deps.TaskBranch, status.HeadSHA, held))
 }
 
 // endReview records the operator's ending in the record, unless rec already carries it, and ends the call Done.

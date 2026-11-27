@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -61,7 +60,7 @@ func layoutBouncerRun(t *testing.T, cfg BouncerConfig, fixtures []bouncerJudgeFi
 			}
 		}
 		if f.focus != "" {
-			if err := os.WriteFile(FocusPath(cfg.RunDir, f.round), []byte(f.focus), 0o644); err != nil {
+			if err := os.WriteFile(focusPath(cfg.RunDir, f.round), []byte(f.focus), 0o644); err != nil {
 				t.Fatalf("WriteFile(focus round %d) = %v; want nil", f.round, err)
 			}
 		}
@@ -354,13 +353,13 @@ func TestBouncer_JudgeCall_Verdicts(t *testing.T) {
 			if judge == cfg.Models.Seed {
 				t.Errorf("fixture judge pair equals the seed pair %+v; want them distinct", judge)
 			}
-			for _, path := range []string{verdictPath(cfg.RunDir, 1), ledgerPath(cfg.RunDir, 1), FocusPath(cfg.RunDir, 2)} {
+			for _, path := range []string{verdictPath(cfg.RunDir, 1), ledgerPath(cfg.RunDir, 1), focusPath(cfg.RunDir, 2)} {
 				if _, err := os.Stat(path); err != nil {
 					t.Errorf("os.Stat(%q) = %v; want nil (all three files exist)", path, err)
 				}
 			}
 
-			raw, err := os.ReadFile(FocusPath(cfg.RunDir, 2))
+			raw, err := os.ReadFile(focusPath(cfg.RunDir, 2))
 			if err != nil {
 				t.Fatalf("ReadFile(round-2-focus.md) = %v; want nil", err)
 			}
@@ -394,7 +393,9 @@ func TestBouncer_JudgeCall_RefusedJudgment(t *testing.T) {
 				t.Fatalf("WriteFile(review round %d) = %v; want nil", n, err)
 			}
 		}
-		recordCirclingDecisionOverEscalation(t, cfg.RunDir, 2, CirclingAccept)
+		if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
+			t.Fatalf("RecordCirclingDecision(accept) = %v; want nil", err)
+		}
 	}
 	tests := []struct {
 		name        string
@@ -764,6 +765,14 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 			},
 		},
 		{
+			name: "RunError",
+			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
+				b, cfg := newBouncerFixture(t, withShuttle(&shedfake.Shuttle{Err: errors.New("judge run exploded")})).Build()
+				layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+				return b, cfg
+			},
+		},
+		{
 			name: "UnreadableVerdictFile",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
 				shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
@@ -800,7 +809,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 	}
 
 	// A non-completion outcome that wrote nothing is one the harvest cannot rescue.
-	for _, oc := range []shuttleengine.Outcome{shuttleengine.OutcomeTimeout} {
+	for _, oc := range []shuttleengine.Outcome{shuttleengine.OutcomeDied, shuttleengine.OutcomeTimeout} {
 		tests = append(tests, struct {
 			name         string
 			buildBouncer func(t *testing.T) (*Bouncer, BouncerConfig)
@@ -847,7 +856,7 @@ func TestBouncer_JudgeCall_Harvest(t *testing.T) {
 		if ptr.Path != wantPointer {
 			t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
 		}
-		if _, err := os.Stat(FocusPath(cfg.RunDir, 2)); err != nil {
+		if _, err := os.Stat(focusPath(cfg.RunDir, 2)); err != nil {
 			t.Errorf("os.Stat(round-2-focus.md) = %v; want nil (synthesized on the CONTINUE branch)", err)
 		}
 	})
@@ -870,57 +879,13 @@ func TestBouncer_JudgeCall_Harvest(t *testing.T) {
 	})
 
 	t.Run("Contrast_NothingWrittenDegrades", func(t *testing.T) {
-		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}}
+		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}}
 		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 		outcome, ptr, err := b.Call(context.Background())
 		assertJudgeDegraded(t, outcome, ptr, err)
 	})
-}
-
-// TestBouncer_JudgeCall_ADiedJudgeIsAnInfrastructureFailure pins that a judge with no verdict fails the call.
-// It covers a judge that died, and one whose run errored, whether the call spawned that run or attached to it.
-// The call returns no outcome, so the round spends no bounce budget,
-// and the error names a judge that never came up apart from one that died after it started.
-func TestBouncer_JudgeCall_ADiedJudgeIsAnInfrastructureFailure(t *testing.T) {
-	tiergate.Require(t, 0)
-	startRefused := errors.New("spawn refused: resource temporarily unavailable")
-	tests := []struct {
-		name      string
-		result    shuttleengine.Result
-		runErr    error
-		wantIs    error
-		wantNotIs error
-		wantText  string
-		// attached makes runErr the error of a live judge the call attached to.
-		attached bool
-	}{
-		{"NeverStarted", shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, NotStarted: true, StartError: "provider never became ready"}, nil, shuttleengine.ErrNotStarted, shuttleengine.ErrAgentDied, "provider never became ready", false},
-		{"NeverStartedWithNoStartError", shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, NotStarted: true}, nil, shuttleengine.ErrNotStarted, shuttleengine.ErrAgentDied, "", false},
-		{"DiedAfterStarting", shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}, nil, shuttleengine.ErrAgentDied, shuttleengine.ErrNotStarted, "", false},
-		{"RunErrored", shuttleengine.Result{}, startRefused, startRefused, shuttleengine.ErrAgentDied, "resource temporarily unavailable", false},
-		{"AttachedRunErrored", shuttleengine.Result{}, startRefused, startRefused, shuttleengine.ErrAgentDied, "resource temporarily unavailable", true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			logcapture.Capture(t)
-			shuttle := &shedfake.Shuttle{Result: tt.result, Err: tt.runErr}
-			if tt.attached {
-				shuttle = &shedfake.Shuttle{AttachFound: true, AttachErr: tt.runErr}
-			}
-			b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-			layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
-
-			outcome, ptr, err := b.Call(context.Background())
-			if outcome != "" || !reflect.DeepEqual(ptr, shedengine.OutputPointer{}) {
-				t.Errorf("Call() = %q, %+v; want no outcome and an empty pointer", outcome, ptr)
-			}
-			if !errors.Is(err, tt.wantIs) || errors.Is(err, tt.wantNotIs) || !strings.Contains(err.Error(), tt.wantText) {
-				t.Errorf("Call() error = %v; want one wrapping %v, not %v, containing %q", err, tt.wantIs, tt.wantNotIs, tt.wantText)
-			}
-		})
-	}
 }
 
 // TestBouncer_JudgeCall_DebrisIsNotJudged covers stale or half-written judge outputs in the run dir before the spawn.
@@ -971,7 +936,7 @@ func TestBouncer_JudgeCall_DebrisIsNotJudged(t *testing.T) {
 				return map[string]string{
 					verdictPath(cfg.RunDir, 1): "garbage, not frontmatter (stale verdict)",
 					ledgerPath(cfg.RunDir, 1):  "garbage, not frontmatter (stale ledger)",
-					FocusPath(cfg.RunDir, 2):   "garbage, not frontmatter (stale focus)",
+					focusPath(cfg.RunDir, 2):   "garbage, not frontmatter (stale focus)",
 				}
 			},
 		},

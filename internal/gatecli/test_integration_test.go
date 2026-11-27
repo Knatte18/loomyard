@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,17 +29,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
+	"github.com/Knatte18/loomyard/internal/testcover"
 	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
@@ -398,9 +398,8 @@ func startGate(t *testing.T, run gateRun) *runningGate {
 	t.Cleanup(cancel)
 	g.cmd = exec.CommandContext(ctx, os.Args[0], run.args...)
 	// The outer environment's slot, enclosing gate or strand, must not make the gate think it is nested or an agent's.
-	// Its GOFLAGS is dropped too: a session value differing from the tier's would add an env line to every run.
 	g.cmd.Env = slices.DeleteFunc(os.Environ(), func(entry string) bool {
-		return strings.HasPrefix(entry, gateslot.InheritEnv+"=") || strings.HasPrefix(entry, enclosingGateEnv+"=") || strings.HasPrefix(entry, agentname.StrandNameEnv+"=") || strings.HasPrefix(entry, "GOFLAGS=")
+		return strings.HasPrefix(entry, gateslot.InheritEnv+"=") || strings.HasPrefix(entry, enclosingGateEnv+"=") || strings.HasPrefix(entry, agentname.StrandNameEnv+"=")
 	})
 	g.cmd.Env = append(g.cmd.Env, helperEnv+"="+helperRoleGate, helperCwdEnv+"="+run.cwd, helperRecordEnv+"="+g.record)
 	if !run.realGo {
@@ -673,44 +672,6 @@ func standaloneWorktree(t *testing.T, withConfig bool) string {
 	return dir
 }
 
-func TestGoJSONCounter_MarksTheFailureOfAKilledTestBinary(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("the test binary ends itself with SIGKILL")
-	}
-
-	module := t.TempDir()
-	for name, content := range map[string]string{
-		"go.mod":    "module example.com/killed\n\ngo 1.21\n",
-		"p_test.go": "package p\n\nimport (\n\t\"syscall\"\n\t\"testing\"\n)\n\nfunc TestKilled(t *testing.T) {\n\tsyscall.Kill(syscall.Getpid(), syscall.SIGKILL)\n\tselect {}\n}\n",
-	} {
-		if err := os.WriteFile(filepath.Join(module, name), []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	counter, err := newCounter(counterGoJSON, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.Command("go", "test", "-json", "./...")
-	cmd.Dir = module
-	cmd.Env = append(os.Environ(), "GOWORK=off")
-	cmd.Stdout, cmd.Stderr = counter, counter
-
-	if err := cmd.Run(); err == nil {
-		t.Fatal("go test passed; want it to fail on the killed test binary")
-	}
-	if err := counter.Flush(); err != nil {
-		t.Fatal(err)
-	}
-
-	failures := counter.Failures()
-	if len(failures) != 1 || failures[0].pkg != "example.com/killed" || failures[0].test != "" || !failures[0].killed {
-		t.Errorf("Failures() = %+v; want the package example.com/killed alone, marked killed", failures)
-	}
-}
-
 func TestGateTest_Scenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -815,25 +776,6 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 		_ = firstLease.Release()
 		_ = secondLease.Release()
-	})
-
-	t.Run("a --copies run over a clean tree records no green pass", func(t *testing.T) {
-		clean(t)
-		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
-			t.Fatal(err)
-		}
-		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
-			cfg["gates"] = map[string]any{"copied": map[string]any{"tiers": []int{0}, "scope": "all"}}
-		}))
-		defer writeConfig(t, gateConfig)
-
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "copied", "--copies", "2", "./pkg"}})
-		if code := g.wait(t); code != 0 {
-			t.Fatalf("copies run = exit %d, stdout %q, stderr %q; want exit 0", code, g.stdout.String(), g.stderr.String())
-		}
-		if _, err := os.Stat(greenPath); !os.IsNotExist(err) {
-			t.Errorf("green record after a copies run: stat error = %v; want it unwritten, the copies running live", err)
-		}
 	})
 
 	// withSharedBuild declares the hub's build step over the stand-in, run in dir.
@@ -1179,34 +1121,16 @@ func TestGateTest_Scenario(t *testing.T) {
 
 	t.Run("a tier's own env overrides the MSBuild variables the gate sets", func(t *testing.T) {
 		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
-			cfg["tiers"].(map[string]any)["tier6"].(map[string]any)["env"] = map[string]string{"MSBUILDDISABLENODEREUSE": "0", "ENV_LINE_MARK": "tier"}
+			cfg["tiers"].(map[string]any)["tier6"].(map[string]any)["env"] = map[string]string{"MSBUILDDISABLENODEREUSE": "0"}
 		}))
 		defer writeConfig(t, gateConfig)
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "./pkg"}, env: []string{"ENV_LINE_MARK=session"}})
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "./pkg"}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
 		}
 		if record := g.standIn(t); record.NodeReuse != "0" || record.MSBuildServer != "0" {
 			t.Errorf("tier environment MSBUILDDISABLENODEREUSE = %q, DOTNET_CLI_USE_MSBUILD_SERVER = %q; want the tier's 0 and the gate's 0", record.NodeReuse, record.MSBuildServer)
-		}
-		// The gate's own session environment holds a value of the mark that the tier's env overrides.
-		const envLineOpening = "gate test: tier6 runs with env values that differ from this session's environment: "
-		_, log := runRecordOf(t, g.stdout.String(), 6)
-		// The gate helper hands the verb's stderr lines to its stdout.
-		for name, text := range map[string]string{"gate output": g.stdout.String(), "tier log": log} {
-			if !strings.Contains(text, envLineOpening) || !strings.Contains(text, "ENV_LINE_MARK=tier") || strings.Contains(text, "ENV_LINE_MARK=session") {
-				t.Errorf("%s = %q; want the env line naming ENV_LINE_MARK=tier and not the session's value", name, text)
-			}
-		}
-		requireFree(t)
-
-		equal := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "./pkg"}, env: []string{"ENV_LINE_MARK=tier"}})
-		if code := equal.wait(t); code != 0 {
-			t.Fatalf("exit code with an equal session value = %d, stdout %q; want 0", code, equal.stdout.String())
-		}
-		if strings.Contains(equal.stdout.String(), "ENV_LINE_MARK") {
-			t.Errorf("gate output with an equal session value = %q; want no env line naming ENV_LINE_MARK", equal.stdout.String())
 		}
 		requireFree(t)
 	})
@@ -1497,6 +1421,12 @@ func TestGateTest_Scenario(t *testing.T) {
 			"broken/broken.go":      "package broken\n\nvar x = undefinedThing\n",
 			"broken/broken_test.go": "package broken\n\nimport \"testing\"\n\nfunc TestBuilds(t *testing.T) {}\n",
 		})
+		// The triage lines read the coverage maps of the module in tier0's directory, which is the prime's root.
+		primeModule := filepath.Join(prime, "go.mod")
+		if err := os.WriteFile(primeModule, []byte("module example.com/hub\n\ngo 1.21\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Remove(primeModule) })
 		code, stdout := runGate(t, gateRun{cwd: t.TempDir(), realGo: true, args: []string{"test", "--tier", "5", "-C", module, "./..."}})
 		if code != 1 {
 			t.Errorf("exit code = %d, stdout %q; want 1", code, stdout)
@@ -1518,6 +1448,48 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 		if report, closing := strings.Index(stdout, failureReportHeader), strings.Index(stdout, gateslot.FailedRunsPrefix); report < 0 || closing < report {
 			t.Errorf("stdout %q; want the failure report before the closing line", stdout)
+		}
+		// No coverage map holds the test, so its first line under it is the triage line saying so.
+		if want := "  example.com/report/p TestFails:\n    " + gateslot.TriageLinePrefix + triageNotInMaps + "\n    report/p/p_test.go:6"; !strings.Contains(stdout, want) {
+			t.Errorf("stdout %q lacks %q", stdout, want)
+		}
+		requireFree(t)
+	})
+
+	t.Run("a failing test a prime's coverage map holds gets the no-change-set line naming the missing parent branch and no reach command", func(t *testing.T) {
+		module := writeModule(t, "reportmapped", map[string]string{
+			"p/p.go":      "package p\n",
+			"p/p_test.go": "package p\n\nimport \"testing\"\n\nfunc TestFails(t *testing.T) {\n\tt.Errorf(\"got %d; want %d\", 1, 2)\n}\n",
+		})
+		primeModule := filepath.Join(prime, "go.mod")
+		if err := os.WriteFile(primeModule, []byte("module example.com/hub\n\ngo 1.21\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Remove(primeModule) })
+		// The module is outside the prime's own, so the map is keyed by the test package's import path.
+		sharedDir := testcover.Dir(fabricengine.BoltDir(h.Location.HubPath))
+		const mapCommit = "mapcommit"
+		heldTest := testcover.Map{
+			Commit: mapCommit, BuiltAt: time.Now().Add(-time.Hour),
+			Blocks: []testcover.BlockKey{{File: "p.go", Func: "F", Hash: "h"}},
+			Tests:  []testcover.MapTest{{Name: "TestFails", FuncHash: "x", Seconds: 0.01, Blocks: []int{0}}},
+		}
+		if err := testcover.WriteMap(sharedDir, "example.com/reportmapped/p", heldTest); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(sharedDir, "example.com")) })
+
+		code, stdout := runGate(t, gateRun{cwd: t.TempDir(), realGo: true, args: []string{"test", "--tier", "5", "-C", module, "./..."}})
+		if code != 1 {
+			t.Errorf("exit code = %d, stdout %q; want 1", code, stdout)
+		}
+		want := "  example.com/reportmapped/p TestFails:\n    " + gateslot.TriageLinePrefix + "no change set exists, " + triageReasonNoParent +
+			"; map commit " + mapCommit + "\n    reportmapped/p/p_test.go:6"
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout %q lacks %q", stdout, want)
+		}
+		if strings.Contains(stdout, "lym gate reach --test") {
+			t.Errorf("stdout %q holds a reach command; want none for a test with no change set", stdout)
 		}
 		requireFree(t)
 	})
@@ -1572,6 +1544,43 @@ func TestGateTest_Scenario(t *testing.T) {
 			t.Errorf("stdout = %q; want the closing line %q", g.stdout.String(), want)
 		}
 		requireFree(t)
+	})
+
+	t.Run("a gate key's redundancy report step runs after its tiers and leaves the call's exit code to them", func(t *testing.T) {
+		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+			cfg["gates"] = map[string]any{"reported": map[string]any{"tiers": []int{6}, "scope": "all", "reports": []string{gateslot.ReportRedundancy}}}
+		}))
+		defer writeConfig(t, gateConfig)
+		reportPath := filepath.Join(waitDir, redundancyReportFileName)
+
+		tests := []struct {
+			name     string
+			env      []string
+			wantCode int
+			wantRed  bool
+		}{
+			{"AGreenTier", nil, 0, false},
+			{"ARedTier", []string{helperExitEnv + "=7"}, 7, true},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				if err := os.Remove(reportPath); err != nil && !os.IsNotExist(err) {
+					t.Fatal(err)
+				}
+				g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "reported"}, env: tt.env})
+				if code := g.wait(t); code != tt.wantCode {
+					t.Errorf("exit code = %d, stdout %q; want the tier's %d", code, g.stdout.String(), tt.wantCode)
+				}
+				report, found, err := readRedundancyReport(reportPath)
+				if err != nil || !found || report.GateKey != "reported" || report.RedGate != tt.wantRed {
+					t.Errorf("report = %+v, found %v, err %v; want one for gate key reported with red gate %v", report, found, err, tt.wantRed)
+				}
+				if !strings.Contains(g.stdout.String(), "gate test: redundancy report: ") {
+					t.Errorf("stdout = %q; want the report's summary line", g.stdout.String())
+				}
+				requireFree(t)
+			})
+		}
 	})
 
 	// A stand-in exiting 134 with no test event is a tier whose test runner crashed on SIGABRT, as a shell reports one.
@@ -2497,56 +2506,6 @@ func TestGateTest_UnsetDirFollowsTheAnchor(t *testing.T) {
 	}
 	if want := []string{anchor, anchor, filepath.Join(prime, "sub"), prime}; !slices.Equal(cwds, want) {
 		t.Errorf("build, tier0, tier2 and tier6 ran in %q; want the build and tier0, which set no dir, in the anchor, tier2, whose dir is sub, in sub under the worktree root, and tier6, whose dir is ., in the worktree root: %q", cwds, want)
-	}
-}
-
-// TestGateTest_CheckoutRootMovesTheBuildAndTierDirs pins that a request's checkout root moves the shared build's dir.
-// It moves the tiers' dirs too, since both resolve against the root.
-// It runs in this process, whose environment sets the stand-in's role and record file, so it is not parallel.
-func TestGateTest_CheckoutRootMovesTheBuildAndTierDirs(t *testing.T) {
-	tiergate.Require(t, 1)
-
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
-	anchor := h.Location.AnchorPath()
-	checkout := t.TempDir()
-	for _, dir := range []string{"backend", "sub"} {
-		if err := os.MkdirAll(filepath.Join(checkout, dir), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	gateConfig := scenarioConfig(t, func(cfg map[string]any) {
-		cfg["build"] = map[string]any{"command": "'" + os.Args[0] + "' sharedbuild", "dir": "sub", "timeout_min": 1}
-		tiers := cfg["tiers"].(map[string]any)
-		tiers["tier0"].(map[string]any)["shared_build"] = true
-		tiers["tier2"].(map[string]any)["dir"] = "sub"
-	})
-	if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "gate"), gateConfig, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	record := filepath.Join(t.TempDir(), "standin.json")
-	t.Setenv(helperEnv, helperRoleStandIn)
-	t.Setenv(helperRecordEnv, record)
-	t.Setenv(gateslot.InheritEnv, "")
-	t.Setenv(enclosingGateEnv, "")
-	t.Setenv(agentname.StrandNameEnv, "")
-
-	var out, stderr bytes.Buffer
-	code := runTest(lymcwd.WithCwd(context.Background(), anchor), &out, testRequest{
-		goBinary: os.Args[0], samplePeriod: defaultSamplePeriod, preTierCeiling: defaultPreTierCeiling, timeoutUnit: time.Minute,
-		rerunDelay: defaultRerunDelay, pipeWaitDelay: defaultPipeWaitDelay, stderr: &stderr,
-		tiers: []int{0, 2}, targets: []string{"./pkg"}, checkoutRoot: checkout,
-	})
-	if code != 0 {
-		t.Fatalf("runTest() = exit %d, stdout %q, stderr %q; want 0", code, out.String(), stderr.String())
-	}
-	g := &runningGate{record: record}
-	var cwds []string
-	for _, entry := range g.records(t) {
-		cwds = append(cwds, entry.Cwd)
-	}
-	want := []string{filepath.Join(checkout, "sub"), filepath.Join(checkout, "backend"), filepath.Join(checkout, "sub")}
-	if !slices.Equal(cwds, want) {
-		t.Errorf("the build, tier0 and tier2 ran in %q; want the checkout's sub, backend and sub: %q", cwds, want)
 	}
 }
 

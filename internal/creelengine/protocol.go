@@ -36,9 +36,6 @@ const (
 	// VerbHookWait holds a strand's idle waiter until the daemon rings it or a newer waiter supersedes it.
 	// A ring to a waiter whose request set takes_mail carries the claimed messages, which the client acknowledges.
 	VerbHookWait = "hook-wait"
-	// VerbAwaitsReply answers whether the strand in From awaits the reply to a question it asked.
-	// Only the Go client sends it.
-	VerbAwaitsReply = "awaits-reply"
 )
 
 // CodeStrandClaimOutsidePane is the Response.Code of a refused strand claim for a listed strand, from no strand pane.
@@ -64,7 +61,7 @@ type Request struct {
 	Argument string      `json:"argument,omitempty"`
 	// ID is the message or inject a verb concerns: a reply or forward target, a wait's id, or the log id filter.
 	ID int64 `json:"id,omitempty"`
-	// From is the sender filter of read and log, and the strand awaits-reply asks about.
+	// From is the sender filter of read and log.
 	From string `json:"from,omitempty"`
 	// Wait makes the verb wait: post for its reply, inject for its outcome, read for unread mail, hook-wait for a ring.
 	Wait bool `json:"wait,omitempty"`
@@ -128,8 +125,6 @@ type Response struct {
 	AckRequired bool         `json:"ack_required,omitempty"`
 	Inbox       *InboxResult `json:"inbox,omitempty"`
 	Log         []LogEntry   `json:"log,omitempty"`
-	// AwaitsReply is the answer of awaits-reply.
-	AwaitsReply bool `json:"awaits_reply,omitempty"`
 	// Outcome is how a waited-on thing settled, with the reply or returned message in Message.
 	Outcome OutcomeKind `json:"outcome,omitempty"`
 	Message *Message    `json:"message,omitempty"`

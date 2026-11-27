@@ -178,7 +178,7 @@ func pluginSessionStartContexts(req shuttleengine.UserSetupRequest, ids []string
 				Hook:   hook.command,
 				Text:   hookContext,
 				WayForward: "turn plugin " + id + " off in the session scope: drop its skills from the role's skills in agents.yaml (`lym config agents`) or from the spec, " +
-					"or, while " + keyName(sessionScopeKey+".enabled") + " is off, turn it on (`lym config claude`), since then every installed plugin is on",
+					"or, while claude.yaml's session_scope is off, turn it on (`lym config claude`), since then every installed plugin is on",
 			})
 		}
 	}

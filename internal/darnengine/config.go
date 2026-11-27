@@ -1,9 +1,10 @@
 // config.go defines the darn.yaml configuration: the Config type that mirrors its keys and its strict layered load.
-// It also holds the embedded default template.
+// It also holds the embedded default template and MigrateConfig, which carries a hub file off a retired key.
 
 package darnengine
 
 import (
+	"bytes"
 	_ "embed"
 	"errors"
 	"fmt"
@@ -30,7 +31,7 @@ func ConfigTemplate() string {
 const configModule = "darn"
 
 // ErrTreeScopeKey marks a tree_scope key that is malformed or repeats another key after its trailing slash is trimmed.
-var ErrTreeScopeKey = errors.New("config key \"" + keyName(treeScopeKey) + "\" holds a malformed tree key")
+var ErrTreeScopeKey = errors.New("darn config key \"tree_scope\" holds a malformed tree key")
 
 // Config represents the resolved darn.yaml configuration.
 type Config struct {
@@ -61,7 +62,7 @@ func ConfigOpenMaps() []string {
 
 // ConfigSpec returns darn's layered-load spec.
 // tree_scope picks which diffs run the narrower targets, so it is a guard key and closed to the local layer; no task run_settings sets it.
-// verify, tree_scope_verify and pr_review are retired keys.
+// verify and tree_scope_verify are retired, as is pr_review, so a hub file that still sets any of them loads and reconcile prunes it.
 // The driver, tackler and arbiter keys are retired too, and shed.yaml alone holds them.
 // They are closed to the local layer, so a local file that still sets one is refused with the shed way forward.
 func ConfigSpec() configengine.Spec {
@@ -127,25 +128,25 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	}
 
 	if _, err := modelspec.Parse(cfg.Writer); err != nil {
-		return Config{}, fmt.Errorf("config key %q: %w", keyName(writerKey), err)
+		return Config{}, fmt.Errorf("darn config key %q: %w", "writer", err)
 	}
 
 	// An empty gate_fixer turns the fixer off and must load cleanly.
 	if cfg.GateFixer != "" {
 		if _, err := modelspec.Parse(cfg.GateFixer); err != nil {
-			return Config{}, fmt.Errorf("config key %q: %w; set a model-spec with \"lym config darn\", or \"\" to turn the fixer off", keyName(gateFixerKey), err)
+			return Config{}, fmt.Errorf("darn config key %q: %w; set a model-spec with \"lym config darn\", or \"\" to turn the fixer off", "gate_fixer", err)
 		}
 	}
 
 	if cfg.ReportDir != "" {
 		if !filepath.IsLocal(cfg.ReportDir) {
-			return Config{}, fmt.Errorf("config key %q: %q is not a worktree-relative directory; set one such as docs/research, or \"\" for no report file", keyName(reportDirKey), cfg.ReportDir)
+			return Config{}, fmt.Errorf("darn config key %q: %q is not a worktree-relative directory; set one such as docs/research, or \"\" for no report file", "report_dir", cfg.ReportDir)
 		}
 		cfg.ReportDir = path.Clean(filepath.ToSlash(cfg.ReportDir))
 		// Any segment counts, as a hub anchored at a subpath keeps its records at <anchor>/_lym.
 		for _, root := range []string{lymdirs.LymDirName, lymdirs.DotLymDirName} {
 			if slices.Contains(strings.Split(cfg.ReportDir, "/"), root) {
-				return Config{}, fmt.Errorf("config key %q: %q lies under a records directory %q, so its report never reaches the parent branch; set one such as docs/research, or \"\" for no report file", keyName(reportDirKey), cfg.ReportDir, root)
+				return Config{}, fmt.Errorf("darn config key %q: %q lies under a records directory %q, so its report never reaches the parent branch; set one such as docs/research, or \"\" for no report file", "report_dir", cfg.ReportDir, root)
 			}
 		}
 	}
@@ -185,11 +186,69 @@ func normalizeTreeScope(cfg Config) (map[string]string, error) {
 	return trees, nil
 }
 
-// NormalizeTrees returns trees keyed by trimmed tree path, or the refusal of a malformed key or a repeated tree.
-// Every error wraps ErrTreeScopeKey.
-// Another config module's tree map takes the same key rule through it.
-func NormalizeTrees(trees map[string]string) (map[string]string, error) {
-	return normalizeTreeScope(Config{TreeScope: trees})
+// MigrateConfig carries a darn.yaml document off the retired tree_scope_verify key, for lym config reconcile.
+// It fires only while the document still holds the key.
+// A key held empty empties tree_scope and is pruned, so an off hub stays off; a key held set is pruned and tree_scope kept.
+// A document without the key is returned unchanged.
+// Trees the operator adds later are never touched, and a second pass changes nothing.
+// Each rewrite returns one line, and every comment and other key is carried through yaml node editing.
+// A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
+func MigrateConfig(existing []byte) ([]byte, []string, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal(existing, &document); err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate darn config: unmarshal yaml: %w", err))
+	}
+	if document.Kind != yaml.DocumentNode || len(document.Content) == 0 {
+		return existing, nil, nil
+	}
+	root := document.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate darn config: yaml root is not a mapping"))
+	}
+
+	retiredAt := mappingKeyIndex(root, "tree_scope_verify")
+	if retiredAt < 0 {
+		return existing, nil, nil
+	}
+	held := strings.TrimSpace(root.Content[retiredAt+1].Value)
+	root.Content = slices.Delete(root.Content, retiredAt, retiredAt+2)
+
+	line := "tree_scope_verify: retired, removed; tree_scope kept"
+	if held == "" {
+		line = "tree_scope_verify: retired, removed; tree scope was off, tree_scope emptied"
+		if at := mappingKeyIndex(root, "tree_scope"); at >= 0 {
+			old := root.Content[at+1]
+			root.Content[at+1] = &yaml.Node{
+				Kind:        yaml.MappingNode,
+				Tag:         "!!map",
+				Style:       yaml.FlowStyle,
+				HeadComment: old.HeadComment,
+				LineComment: old.LineComment,
+				FootComment: old.FootComment,
+			}
+		}
+	}
+
+	var out bytes.Buffer
+	encoder := yaml.NewEncoder(&out)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&document); err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate darn config: encode yaml: %w", err))
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate darn config: encode yaml: %w", err))
+	}
+	return out.Bytes(), []string{line}, nil
+}
+
+// mappingKeyIndex returns the index of key's node in mapping.Content, or -1 when mapping holds no such key.
+func mappingKeyIndex(mapping *yaml.Node, key string) int {
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == key {
+			return i
+		}
+	}
+	return -1
 }
 
 // WithEditorWayForward appends the editor way forward to an error wrapping ErrTreeScopeKey.
@@ -200,7 +259,7 @@ func WithEditorWayForward(err error) error {
 	if !errors.Is(err, ErrTreeScopeKey) {
 		return err
 	}
-	return fmt.Errorf("%w; fix the named %s key in lym config darn's editor from the prime, then re-run the lym command that refused", err, keyName(treeScopeKey))
+	return fmt.Errorf("%w; fix the named tree_scope key in lym config darn's editor from the prime, then re-run the lym command that refused", err)
 }
 
 // TreeScopedTargets reports whether a diff is tree-scoped and returns the targets of the trees it touches.

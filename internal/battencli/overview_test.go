@@ -505,13 +505,10 @@ func TestDobbyRunCells_ResolvesTheChildPairAgainInEachRunShedSpell(t *testing.T)
 		}
 	}
 	writeOverviewFile(t, filepath.Join(worktree, ".git", "HEAD"), []byte("ref: refs/heads/main\n"), minutesAgo(200))
-	// The worktree's own marker anchors it.
-	marker := filepath.Join(fabricengine.RecordsWorktreePath(&lymcwd.Location{HubPath: hub}, slug), lymcwd.AnchorFileName)
+	// The hub-wide marker anchors every worktree that records none of its own.
+	marker := filepath.Join(fabricengine.BoardDir(hub), lymcwd.AnchorFileName)
 	setAnchor := func(anchorRel string) {
 		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
-			t.Fatal(err)
-		}
 		writeOverviewFile(t, marker, []byte(anchorRel+"\n"), minutesAgo(1))
 	}
 
@@ -716,11 +713,9 @@ func TestLoadOverviewThresholds(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("loadOverviewThresholds = %+v, want %+v", got, tt.want)
 			}
+			// The prime is no git repository, so the layout read logs its own warning; only the thresholds warning counts.
 			if warned := strings.Contains(logs.String(), "loading the orch thresholds for the overview failed"); warned != tt.wantWarn {
 				t.Errorf("warned = %v, want %v; log:\n%s", warned, tt.wantWarn, logs.String())
-			}
-			if !tt.wantWarn && strings.Contains(logs.String(), "WARN") {
-				t.Errorf("log holds a warning; want none; log:\n%s", logs.String())
 			}
 		})
 	}

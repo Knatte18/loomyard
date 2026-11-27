@@ -83,6 +83,8 @@ func withOrder(slugs ...string) func(*Task) {
 
 func asBeam(task *Task) { task.Beam = true }
 
+func asNotifyOnLand(task *Task) { task.NotifyOnLand = true }
+
 func asDiscussed(task *Task) { task.Discussed = true }
 
 func withRecordStamp(stamp string) func(*Task) {
@@ -104,11 +106,6 @@ func wantOriginFile(name, want string) func(t *testing.T, dir string, got map[st
 	}
 }
 
-// withUnknownKey gives the entry one board.json key this binary does not declare, with raw as its JSON value.
-func withUnknownKey(key, raw string) func(*Task) {
-	return func(task *Task) { task.Unknown = map[string]json.RawMessage{key: json.RawMessage(raw)} }
-}
-
 func withBeamColor(color string) func(*Task) {
 	return func(task *Task) { task.BeamColor = color }
 }
@@ -122,13 +119,11 @@ func boardJSON(t *testing.T, tasks []Task) []byte {
 // boardJSONWithPrime encodes tasks as a board.json that records prime as the hub's prime owner, none when empty.
 func boardJSONWithPrime(t *testing.T, tasks []Task, prime string) []byte {
 	t.Helper()
-	return boardJSONWithHolds(t, tasks, prime, nil, nil)
+	return boardJSONWithDraft(t, tasks, prime, false)
 }
 
-// boardJSONWithHolds encodes tasks as a board.json that records prime as the hub's prime owner.
-// It adds the top-level holds and machines keys.
-// Each key is absent when empty.
-func boardJSONWithHolds(t *testing.T, tasks []Task, prime string, holds []Hold, machines Registry) []byte {
+// boardJSONWithDraft encodes tasks as a board.json, with the top-level draft_status key set when draft is true.
+func boardJSONWithDraft(t *testing.T, tasks []Task, prime string, draft bool) []byte {
 	t.Helper()
 	numbered := make([]Task, len(tasks))
 	for i, task := range tasks {
@@ -136,12 +131,34 @@ func boardJSONWithHolds(t *testing.T, tasks []Task, prime string, holds []Hold, 
 		numbered[i] = task
 	}
 	data, err := json.Marshal(struct {
-		Version    int      `json:"version"`
-		Entries    []Task   `json:"entries"`
-		PrimeOwner string   `json:"prime_owner,omitempty"`
-		Machines   Registry `json:"machines,omitempty"`
-		Holds      []Hold   `json:"holds,omitempty"`
-	}{1, numbered, prime, machines, holds})
+		Version     int    `json:"version"`
+		Entries     []Task `json:"entries"`
+		PrimeOwner  string `json:"prime_owner,omitempty"`
+		DraftStatus bool   `json:"draft_status,omitempty"`
+	}{1, numbered, prime, draft})
+	if err != nil {
+		t.Fatalf("marshal board.json: %v", err)
+	}
+	return data
+}
+
+// boardJSONWithHolds encodes tasks as boardJSONWithDraft does, plus the top-level holds and machines keys.
+// Each key is absent when empty.
+func boardJSONWithHolds(t *testing.T, tasks []Task, prime string, draft bool, holds []Hold, machines Registry) []byte {
+	t.Helper()
+	numbered := make([]Task, len(tasks))
+	for i, task := range tasks {
+		task.ID = i
+		numbered[i] = task
+	}
+	data, err := json.Marshal(struct {
+		Version     int      `json:"version"`
+		Entries     []Task   `json:"entries"`
+		PrimeOwner  string   `json:"prime_owner,omitempty"`
+		DraftStatus bool     `json:"draft_status,omitempty"`
+		Machines    Registry `json:"machines,omitempty"`
+		Holds       []Hold   `json:"holds,omitempty"`
+	}{1, numbered, prime, draft, machines, holds})
 	if err != nil {
 		t.Fatalf("marshal board.json: %v", err)
 	}
@@ -188,7 +205,9 @@ type replayRow struct {
 	designs     []fabricengine.ReplayFile
 	// originPrime, basePrime, parentPrime and commitPrime are each side's prime_owner; wantPrime is held afterwards.
 	originPrime, basePrime, parentPrime, commitPrime, wantPrime string
-	wantEmpty                                                   bool
+	// commitDraft reports whether the commit's board.json records draft_status; wantDraft whether the board keeps it.
+	commitDraft, wantDraft bool
+	wantEmpty              bool
 	// originHolds, baseHolds, parentHolds and commitHolds are each side's holds, nil leaving the key absent.
 	// wantHolds is held afterwards.
 	originHolds, baseHolds, parentHolds, commitHolds, wantHolds []Hold
@@ -229,31 +248,7 @@ func TestFabricReplay(t *testing.T) {
 	}
 	oneEntry := []Task{replayEntry("a")}
 	beamEntry := []Task{replayEntry("a", asProject, asBeam)}
-	legacyPullRequest := []Task{replayEntry("a", withUnknownKey("pull_request", `"merge"`))}
 	rows := []replayRow{
-		{
-			name:        "ACommitThatSetsOnlyALegacyNotifyOnLandLandsAsBeamLandNotice",
-			base:        oneEntry,
-			origin:      oneEntry,
-			parent:      oneEntry,
-			commit:      []Task{replayEntry("a", withUnknownKey("notify_on_land", "true"))},
-			wantEntries: map[string]string{"a": "a"},
-			check: func(t *testing.T, _ string, got map[string]Task) {
-				t.Helper()
-				want := map[string]any{"beam": map[string]any{"land_notice": "on"}}
-				if !reflect.DeepEqual(got["a"].RunSettings, want) {
-					t.Errorf("entry a run_settings = %v; want %v", got["a"].RunSettings, want)
-				}
-			},
-		},
-		{
-			name:        "RemovingAnUnchangedEntryThatCarriesALegacyPullRequestMakesNoConflict",
-			base:        legacyPullRequest,
-			origin:      legacyPullRequest,
-			parent:      legacyPullRequest,
-			commit:      nil,
-			wantEntries: map[string]string{"a": ""},
-		},
 		{
 			name:        "AHoldTheCommitAddedLandsOnOrigin",
 			base:        oneEntry,
@@ -479,12 +474,13 @@ func TestFabricReplay(t *testing.T) {
 			wantEntries: map[string]string{"b": "B2", "x": ""},
 		},
 		{
-			name:        "NoteWithDependsOnLands",
+			name:        "NoteWithDependsOnIsRefused",
 			base:        []Task{replayEntry("a"), replayEntry("b", withTitle("B"))},
 			origin:      []Task{replayEntry("a"), replayEntry("b", withTitle("B"))},
 			parent:      []Task{replayEntry("a"), replayEntry("b", withTitle("B"))},
 			commit:      []Task{replayEntry("a"), replayEntry("b", withTitle("B2")), replayEntry("x", asNote, withDependsOn("a"))},
-			wantEntries: map[string]string{"b": "B2", "x": "x"},
+			wantRefused: map[string]string{"x": "only a task can depend"},
+			wantEntries: map[string]string{"b": "B2", "x": ""},
 		},
 		{
 			name:        "InvalidIssueNumberIsRefused",
@@ -634,6 +630,19 @@ func TestFabricReplay(t *testing.T) {
 			wantEntries: map[string]string{"b": "B2", "task-order": "", "note-order": "", "task-beam": "", "note-beam": ""},
 		},
 		{
+			name:        "NotifyOnLandSetByTheCommitLandsOnTheEntry",
+			base:        []Task{replayEntry("a")},
+			origin:      []Task{replayEntry("a")},
+			parent:      []Task{replayEntry("a")},
+			commit:      []Task{replayEntry("a", asNotifyOnLand)},
+			wantEntries: map[string]string{"a": "a"},
+			check: func(t *testing.T, _ string, got map[string]Task) {
+				if !got["a"].NotifyOnLand {
+					t.Errorf("a.notify_on_land = false; want true")
+				}
+			},
+		},
+		{
 			name:        "PrimeOwnerChangedOnBothSidesKeepsOriginsAndReportsItLost",
 			base:        []Task{replayEntry("a")},
 			origin:      []Task{replayEntry("a")},
@@ -659,6 +668,16 @@ func TestFabricReplay(t *testing.T) {
 			parentPrime: "base",
 			commitPrime: "neve",
 			wantPrime:   "neve",
+			wantEntries: map[string]string{"a": "a"},
+		},
+		{
+			name:        "DraftStatusMarkSetByTheCommitLandsOnOrigin",
+			base:        []Task{replayEntry("a")},
+			origin:      []Task{replayEntry("a")},
+			parent:      []Task{replayEntry("a")},
+			commit:      []Task{replayEntry("a")},
+			commitDraft: true,
+			wantDraft:   true,
 			wantEntries: map[string]string{"a": "a"},
 		},
 		{
@@ -883,7 +902,7 @@ func TestFabricReplay(t *testing.T) {
 					t.Fatalf("WriteFile(%q) = %v; want nil", configFile, err)
 				}
 			}
-			if err := os.WriteFile(filepath.Join(dir, "board.json"), boardJSONWithHolds(t, tt.origin, tt.originPrime, tt.originHolds, tt.originMachines), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, "board.json"), boardJSONWithHolds(t, tt.origin, tt.originPrime, false, tt.originHolds, tt.originMachines), 0o644); err != nil {
 				t.Fatalf("WriteFile(board.json) = %v; want nil", err)
 			}
 			for name, content := range tt.originFiles {
@@ -894,9 +913,9 @@ func TestFabricReplay(t *testing.T) {
 
 			boardFileSides := fabricengine.ReplayFile{
 				Path:   boardFile,
-				Base:   boardJSONWithHolds(t, tt.base, tt.basePrime, tt.baseHolds, tt.baseMachines),
-				Before: boardJSONWithHolds(t, tt.parent, tt.parentPrime, tt.parentHolds, tt.parentMachines),
-				After:  boardJSONWithHolds(t, tt.commit, tt.commitPrime, tt.commitHolds, tt.commitMachines),
+				Base:   boardJSONWithHolds(t, tt.base, tt.basePrime, false, tt.baseHolds, tt.baseMachines),
+				Before: boardJSONWithHolds(t, tt.parent, tt.parentPrime, false, tt.parentHolds, tt.parentMachines),
+				After:  boardJSONWithHolds(t, tt.commit, tt.commitPrime, tt.commitDraft, tt.commitHolds, tt.commitMachines),
 			}
 			result, err := FabricReplay{}.Apply(fabricengine.ReplayRequest{
 				Dir:   dir,
@@ -952,6 +971,9 @@ func TestFabricReplay(t *testing.T) {
 			}
 			if stored.primeOwner != tt.wantPrime {
 				t.Errorf("prime_owner = %q; want %q", stored.primeOwner, tt.wantPrime)
+			}
+			if stored.draftStatus != tt.wantDraft {
+				t.Errorf("draft_status = %v; want %v", stored.draftStatus, tt.wantDraft)
 			}
 			if got, want := recordJSON(t, stored.holds, len(stored.holds) == 0), recordJSON(t, tt.wantHolds, len(tt.wantHolds) == 0); got != want {
 				t.Errorf("holds = %s; want %s", got, want)
@@ -1021,9 +1043,6 @@ func TestFabricReplay_Ledger(t *testing.T) {
 			{"EntryStore", "board.json", true},
 			{"DesignFile", "design-a.md", true},
 			{"RecordFile", "decision-x.md", true},
-			{"ViewProjection", "board-data.js", true},
-			{"ViewerPage", "board.html", true},
-			{"ViewerPageInSubdirectory", "sub/board.html", false},
 			{"RecordFileInSubdirectory", "sub/decision-x.md", false},
 			{"RecordFileEmptySlug", "decision-.md", false},
 			{"RaddleStoreFile", "raddle/x/store.json", true},

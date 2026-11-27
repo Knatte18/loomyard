@@ -43,6 +43,12 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	if refusal := flagShapeRefusal(request); refusal != "" {
 		return output.Err(out, refusal)
 	}
+	if request.mapMode {
+		return runTestMap(ctx, out, testMapRequest{
+			scope: request, goBinary: request.goBinary, environ: os.Environ(), secondUnit: request.secondUnit,
+			minuteUnit: request.timeoutUnit, grace: request.pipeWaitDelay, cappedParallel: memoryCappedParallel, stderr: request.stderr,
+		})
+	}
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("gate test: cannot read the working directory: %v; way forward: re-run the same command", err))
@@ -95,12 +101,8 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	request.busyQuit = cfg.Limits().BusyQuit
 	request.memoryQuit = cfg.MemoryQuit()
 	request.hubEnv = hubEnv
-	request.sessionEnv = os.Environ()
 
 	green := openGreen(gateslot.WaitDir(location.AnchorPath()), request.root, request.goBinary, cfg)
-	if request.checkoutRoot != "" {
-		request.root = request.checkoutRoot
-	}
 	sc, err := computeScope(preCtx, cfg, location, request.root, request, green)
 	if refusal := preTierExpiry(preCtx, runCtx, request, "computing the scope"); refusal != "" {
 		return output.Err(out, refusal)
@@ -126,7 +128,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		return output.Err(out, err.Error())
 	}
 	if (request.guards || sc.guardStep) && len(sc.guards) == 0 {
-		logger.Info("gate test: no guard test is left for the guard step; it runs nothing")
+		logger.Info("gate test: no guard test found outside the scope; the guard step runs nothing")
 	}
 
 	exe := &execution{
@@ -152,7 +154,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		logger.Info("gate test: no hub bound applies; running unslotted", "dir", dir)
 	}
 
-	exe.green = greenForCall(green, request)
+	exe.green = green
 
 	env := gateEnv(os.Environ(), hubEnv)
 	watching, reason := watchdogApplies(request.busyQuit, request.args, os.Getenv(enclosingGateEnv), proc.IsAncestor)
@@ -162,14 +164,18 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	logger.Info("gate test: memory guard decision", "applies", guarding, "reason", guardReason)
 	exe.request.memoryGuarding = guarding
 	// A nested `lym gate test` reads the variable to learn this run's watchdog already sees its test binaries.
-	exe.env = append(slices.DeleteFunc(env, func(entry string) bool { return strings.HasPrefix(entry, enclosingGateEnv+"=") }), runMarkerEntry(os.Getpid()))
+	exe.env = append(slices.DeleteFunc(env, func(entry string) bool { return strings.HasPrefix(entry, enclosingGateEnv+"=") }), enclosingGateEnv+"="+strconv.Itoa(os.Getpid()))
 
 	// Without --stop-on-fail a failed run does not stop the call, so every later tier and guard run stays checked.
 	// That holds even when the change under test did not cause the failure.
 	var failures []string
 	code, firstFailed := 0, ""
 	buildNamed := false
-	var unjudged unjudgedRuns
+	// crashed names the failed runs that crashed their test runner twice.
+	// judged is set once any other run failed.
+	// The call closes with the runner crash line only when no failure judged the code.
+	var crashed []string
+	judged := false
 	for i, run := range plan {
 		var end runEnd
 		if run.guardStep {
@@ -178,7 +184,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 			end = exe.runListed(run)
 		}
 		if end.blocked {
-			unjudged.judged = true
+			judged = true
 			// The build is a failed run counted before the first tier it blocked.
 			if !buildNamed {
 				buildNamed = true
@@ -190,7 +196,11 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 			failures = append(failures, runLabel(run)+" (blocked by the build)")
 		} else if end.ran && end.code != 0 {
 			failures = append(failures, failedRunLabel(run, end))
-			unjudged.add(runLabel(run), end)
+			if end.crash != "" {
+				crashed = append(crashed, fmt.Sprintf("%s (exit %d, %s)", runLabel(run), end.code, end.crash))
+			} else {
+				judged = true
+			}
 			if code == 0 {
 				code, firstFailed = end.code, runLabel(run)
 			}
@@ -214,19 +224,44 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	}
 	// The lint steps run after the tiers, so a call that fails both reports the two in one go.
 	if request.gate != "" && runCtx.Err() == nil {
+		red := code != 0
 		for _, lint := range runLints(request.root, cfg.Gates[request.gate].Lints) {
-			unjudged.judged = true
+			judged = true
 			exe.failed = append(exe.failed, lint)
 			failures = append(failures, fmt.Sprintf("%s (%s)", lint.label, lint.outcome))
 			if code == 0 {
 				code, firstFailed = 1, lint.label
 			}
 		}
+		// The report steps run last and never change the code.
+		// The reach step runs first, and the mutation step after the redundancy step.
+		reports := cfg.Gates[request.gate].Reports
+		runsReach, runsRedundancy := slices.Contains(reports, gateslot.ReportReach), slices.Contains(reports, gateslot.ReportRedundancy)
+		runsMutation := slices.Contains(reports, gateslot.ReportMutation)
+		if runsReach || runsRedundancy || runsMutation {
+			stopGuard, guardKilled := startMemoryGuard(runCtx, newMemoryGuard(request.memoryQuit, request.stderr), os.Getpid(), exe.request.memoryGuarding)
+			if runsReach {
+				reach := exe.reachStep()
+				reach.guardKilled = guardKilled
+				reach.run(red, inHub)
+			}
+			if runsRedundancy {
+				step := exe.redundancyStep()
+				step.guardKilled = guardKilled
+				step.run(red, inHub)
+			}
+			if runsMutation {
+				step := exe.mutationStep()
+				step.reach.guardKilled = guardKilled
+				step.run(red, inHub)
+			}
+			stopGuard()
+		}
 	}
 	exe.printReport(inHub)
 	printFailedRuns(request.stderr, failures, firstFailed, false)
-	if line := unjudged.closingLine(); line != "" {
-		printLine(request.stderr, line)
+	if len(crashed) > 0 && !judged {
+		printLine(request.stderr, gateslot.RunnerCrashLine(strings.Join(crashed, ", ")))
 	}
 	if code == 0 && sc.form == scopeCard {
 		printNotRunTiers(request.stderr, notRunTiers(cfg, plan))
@@ -237,42 +272,6 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		}
 	}
 	return exitAfterSignal(caught, code)
-}
-
-// unjudgedRuns collects a call's failures by whether each judged the code.
-type unjudgedRuns struct {
-	// crashed names the failed runs that crashed their test runner twice.
-	crashed []string
-	// pressured names the failed runs the memory guard stopped twice for a memory limit other load filled.
-	pressured []string
-	// judged is set once any other failure happened.
-	judged bool
-}
-
-// add records the run labelled label, which ran and failed as end.
-func (u *unjudgedRuns) add(label string, end runEnd) {
-	switch {
-	case end.crash != "":
-		u.crashed = append(u.crashed, fmt.Sprintf("%s (exit %d, %s)", label, end.code, end.crash))
-	case end.pressureStop:
-		u.pressured = append(u.pressured, fmt.Sprintf("%s (exit %d)", label, end.code))
-	default:
-		u.judged = true
-	}
-}
-
-// closingLine returns the line saying no failure of the call judged the code, or "" when one did or nothing failed.
-// It is the runner crash line when every failed run crashed, and the memory pressure line when one was a pressure stop.
-func (u unjudgedRuns) closingLine() string {
-	switch {
-	case u.judged:
-		return ""
-	case len(u.pressured) > 0:
-		return gateslot.MemoryPressureLine(strings.Join(u.pressured, ", "))
-	case len(u.crashed) > 0:
-		return gateslot.RunnerCrashLine(strings.Join(u.crashed, ", "))
-	}
-	return ""
 }
 
 // haltExitCode returns the exit code of a call that the run end halted.
@@ -305,9 +304,8 @@ func printFailedRuns(stderr io.Writer, failures []string, firstFailed string, ha
 // stopsCall reports whether a run that ended so stops a --stop-on-fail call.
 // A failed or blocked run does.
 // A run that crashed its test runner in its run and its rerun judged no code, so it does not.
-// Nor does a run the memory guard stopped in its run and its rerun for a memory limit other load filled.
 func stopsCall(end runEnd) bool {
-	return end.blocked || (end.ran && end.code != 0 && end.crash == "" && !end.pressureStop)
+	return end.blocked || (end.ran && end.code != 0 && end.crash == "")
 }
 
 // stopOnFailLine returns the stderr line a --stop-on-fail call prints when the failed run stops it.
@@ -337,15 +335,12 @@ func printNotRunTiers(stderr io.Writer, numbers []int) {
 // The label carries the run's exit code.
 // A run that hit a resource shortage twice carries the marker and the way forward of re-running once the load drops.
 // A run that crashed its test runner twice carries the signal and says that no test failed.
-// A run the memory guard stopped twice for a memory limit other load filled says it is an infrastructure stop.
 func failedRunLabel(run tierRun, end runEnd) string {
 	switch {
 	case end.shortage != "":
 		return fmt.Sprintf("%s (exit %d, a resource shortage, %q, in its run and its rerun: an environment error, not a test failure; way forward: re-run the same command once the machine's process load drops)", runLabel(run), end.code, end.shortage)
 	case end.crash != "":
 		return fmt.Sprintf("%s (exit %d, a runner crash, %s, in its run and its rerun with no failing test: the code under test was not judged)", runLabel(run), end.code, end.crash)
-	case end.pressureStop:
-		return fmt.Sprintf("%s (exit %d, a memory guard kill in its run and its rerun for a memory limit other load filled: an infrastructure stop, not a test failure; way forward: re-run the same command once that load ends)", runLabel(run), end.code)
 	}
 	return fmt.Sprintf("%s (exit %d)", runLabel(run), end.code)
 }
@@ -364,8 +359,6 @@ type runEnd struct {
 	shortage string
 	// crash is the signal name of a test runner that crashed in the run and its rerun with no failing test; empty otherwise.
 	crash string
-	// pressureStop is set when the memory guard stopped the run and its rerun for a memory limit other load filled.
-	pressureStop bool
 }
 
 // runLabel names a run in the closing line of failed runs: its tier.
@@ -383,14 +376,19 @@ func runLabel(run tierRun) string {
 // flagShapeRefusal returns the refusal for a malformed combination of flags, or "" when the call is well-formed.
 // It needs no config and runs before hub resolution.
 func flagShapeRefusal(request testRequest) string {
-	if request.copies < 0 {
-		return fmt.Sprintf("gate test: --copies %d names no count; way forward: pass 1 or more copies, or drop --copies, then re-run the same command", request.copies)
-	}
-	if request.copies > 0 && request.gate == "" {
-		return "gate test: --copies runs the copies of one gate key's tier; way forward: name the gate key with --gate, then re-run the same command"
-	}
-	if request.copies > 0 && len(request.targets) == 0 {
-		return "gate test: --copies runs the same explicit targets in every copy; way forward: name the packages to run as targets, then re-run the same command"
+	if request.mapMode {
+		for _, other := range []struct {
+			flag  string
+			given bool
+		}{
+			{"--tier", len(request.tiers) > 0}, {"--upto", request.uptoGiven}, {"--gate", request.gate != ""},
+			{"--guards", request.guards}, {"--" + gateslot.StopOnFailFlag, request.stopOnFail},
+			{"-C", request.dir != ""}, {"words after --", len(request.args) > 0},
+		} {
+			if other.given {
+				return fmt.Sprintf("gate test: --map measures tier0 and tier1 over its scope, so it goes with none of --tier, --upto, --gate, --guards, --%s, -C and words after --; way forward: drop %s and run lym gate test --map with targets or a scope flag", gateslot.StopOnFailFlag, other.flag)
+			}
+		}
 	}
 	if request.tags != "" {
 		return fmt.Sprintf("gate test: --tags %q is refused, since a tier's own command sets its build tags; way forward: name the tier that compiles them with --tier, for example --tier 1, and re-run the same command", request.tags)
@@ -423,21 +421,7 @@ func flagShapeRefusal(request testRequest) string {
 	if request.mainPackages && len(request.cards) == 0 {
 		return fmt.Sprintf("gate test: --%s adds to a --card scope, and the call names no card; way forward: pass --card <id> once per card, or drop --%s, then re-run the same command", gateslot.MainPackagesFlag, gateslot.MainPackagesFlag)
 	}
-	if request.runAgent && runsTmuxTier(request) && !namesPackage(request) {
-		return fmt.Sprintf("gate test: a run agent's call of tier%d, the tmux tier, names no package, so it would start every tmux test of its scope; way forward: run one test with lym gate test --tier %d <the package that holds the test> -- <a filter selecting one test>", gateslot.TmuxTier, gateslot.TmuxTier)
-	}
 	return ""
-}
-
-// runsTmuxTier reports whether the call's flags list the tmux tier, through --tier or an --upto range that reaches it.
-func runsTmuxTier(request testRequest) bool {
-	return slices.Contains(request.tiers, gateslot.TmuxTier) || (request.uptoGiven && request.upto >= gateslot.TmuxTier)
-}
-
-// namesPackage reports whether the call's explicit targets include one that is no wildcard.
-// A wildcard such as ./... stands for many packages, so it names none.
-func namesPackage(request testRequest) bool {
-	return slices.ContainsFunc(request.targets, func(target string) bool { return !strings.Contains(target, "...") })
 }
 
 // gateKeyRefusal returns the refusal for a --gate key the config cannot run, or "" for a runnable key or none.
@@ -453,9 +437,6 @@ func gateKeyRefusal(cfg gateslot.Config, request testRequest) string {
 	}
 	if key.Scope == scopeCard && len(request.cards) == 0 && len(request.targets) == 0 {
 		return fmt.Sprintf("gate test: --gate %q has scope card, which runs the packages of the cards named; way forward: pass --card <id> once per card, then re-run the same command", request.gate)
-	}
-	if request.copies > 0 && (len(key.Tiers) > 1 || slices.Contains(key.Tiers, gateslot.BilledTier)) {
-		return fmt.Sprintf("gate test: --copies runs one tier below tier%d, and --gate %q names tiers %v; way forward: set the key to one tier below tier3 with lym config gate --set from the prime%s", gateslot.BilledTier, request.gate, key.Tiers, roleClause)
 	}
 	return ""
 }
@@ -572,10 +553,12 @@ type execution struct {
 
 // printReport writes the failure report of the call's failed runs to stderr, and nothing when no run failed.
 // The report names the files the change touches.
+// It holds triage lines under the failed tests the coverage maps can judge.
 func (e *execution) printReport(inHub bool) {
 	if len(e.failed) == 0 {
 		return
 	}
+	e.addTriage(inHub)
 	printFailureReport(e.request.stderr, e.failed, touchedFiles(e.ctx, e.location, e.request.root, inHub))
 }
 
@@ -630,9 +613,8 @@ func (e *execution) runGreenAware(run tierRun) runEnd {
 				return result
 			}
 		}
-		before, listed := untrackedBeforeRun(run, e.request.root)
 		return retryTier(e.ctx, e.request.stderr, runLabel(run), e.request.rerunDelay, func() tierResult {
-			return runTierChecked(e.ctx, e.out, run, env, e.request, before, listed)
+			return runTier(e.ctx, e.out, run, env, e.request)
 		}, func(first tierResult) {
 			first.record.WaitStart = waitStart
 			e.writeRecord(first.record, first.log, tierName(run.number))
@@ -656,41 +638,17 @@ func (e *execution) reportCarried(run tierRun) runEnd {
 // It runs body inside them with the environment the slots give and the time the wait for them started.
 // It releases the slots and reports the tier's outcome.
 // A wait that does not end with the slots held halts the call.
-// A --copies call takes one lease of the copies' slots together and runs the copies the pool holds inside it.
-// A vet-step or guard-step run of a copies call runs once, in the slots of its own tier.
-// It refuses to run inside a slot an enclosing gate run holds, since it needs a lease of its own.
 func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string, waitStart time.Time) tierResult) runEnd {
 	waitStart := time.Now()
 	env := e.env
-	copying := e.request.copies > 0 && !empty && !run.vetStep && !run.guardStep
-	if copying && e.inherited {
-		return runEnd{code: output.Err(e.out, "gate test: --copies needs a lease of its own, and this call runs inside a slot an enclosing gate run holds; way forward: run the call outside a held gate slot, then re-run the same command"), halt: true}
-	}
-	copiesRun := 0
-	if copying {
-		copiesRun = e.request.copies
-	}
 	if e.pool != nil && !e.inherited && !empty {
-		count := run.tier.Slots
-		if copying {
-			limits, err := e.pool.Limits()
-			if err != nil {
-				return runEnd{code: output.Err(e.out, fmt.Sprintf("gate test: cannot read the gate slot limits: %v; way forward: re-run the same command", err)), halt: true}
-			}
-			count, copiesRun = copyLease(e.request.copies, run.tier.Slots, limits.Slots)
-		}
-		lease, code := acquireSlot(e.ctx, e.out, e.pool, e.location, e.request, tierName(run.number), count)
+		lease, code := acquireSlot(e.ctx, e.out, e.pool, e.location, e.request, tierName(run.number), run.tier.Slots)
 		if lease == nil {
 			return runEnd{code: code, halt: true}
 		}
 		defer releaseSlot(lease, e.request.root)
 		env = lease.InheritEnv(env)
 	}
-	if copying && copiesRun < e.request.copies {
-		printLine(e.request.stderr, copiesClampLine(e.request.copies, copiesRun, tierName(run.number)))
-	}
-	e.request.copiesRun = copiesRun
-	defer func() { e.request.copiesRun = 0 }()
 	if e.request.phase != nil {
 		e.request.phase(runPhase{State: phaseRunning, Tier: tierName(run.number)})
 	}
@@ -701,8 +659,7 @@ func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string
 }
 
 // report writes the tier's run record and log, and prints its summary line to stderr.
-// It also prints the tier's `-trimpath` line when it has one, and a started line for the tier run, or for each copy.
-// It returns the tier's exit code.
+// It also prints the tier's `-trimpath` line when it has one, and it returns the tier's exit code.
 // A refusal is answered instead, so its stdout stays one JSON envelope, and it halts the call.
 // A run that a terminating signal cancelled halts the call as well.
 // A record that cannot be written is logged and decides nothing.
@@ -724,14 +681,13 @@ func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) 
 		printLine(e.request.stderr, result.trimpathNote)
 	}
 	printLine(e.request.stderr, gateslot.TierSummaryLine(record, logPath))
-	e.printStartedLines(run, result)
 	if record.ExitCode != 0 {
-		e.addFailedRuns(run, result, logPath)
+		e.failed = append(e.failed, tierFailedRun(run, result, logPath, e.request.root))
 	}
 	if e.request.observer.Ended != nil {
 		e.request.observer.Ended(record)
 	}
-	return runEnd{code: record.ExitCode, halt: e.ctx.Err() != nil, ran: true, shortage: result.shortage, crash: result.crash, pressureStop: result.pressureStop}
+	return runEnd{code: record.ExitCode, halt: e.ctx.Err() != nil, ran: true, shortage: result.shortage, crash: result.crash}
 }
 
 // writeRecord adds the call's worktree, slug, tier list, gate key and call id to record.
@@ -780,13 +736,6 @@ func resolveHub(dir string) (*lymcwd.Location, bool, error) {
 	return location, true, nil
 }
 
-// runMarkerEntry returns the environment entry that every process the tier run of pid starts carries,
-// so a process can be traced to the run after it has left the run's process tree.
-// A nested `lym gate test` replaces the entry for the processes it starts.
-func runMarkerEntry(pid int) string {
-	return enclosingGateEnv + "=" + strconv.Itoa(pid)
-}
-
 // acquireSlot takes count slots of pool for tier.
 // It keeps a wait record in the worktree's wait directory until the acquire returns.
 // The wait has no cap of its own: it ends when the slots free or ctx is cancelled.
@@ -803,8 +752,7 @@ func acquireSlot(ctx context.Context, out io.Writer, pool *gateslot.Pool, locati
 		defer os.Remove(waitPath)
 	}
 
-	holder := gateslot.Holder{Worktree: location.WorktreePath(), Site: site, Tier: tier, Marker: runMarkerEntry(os.Getpid())}
-	lease, err := pool.AcquireSlots(ctx, holder, count)
+	lease, err := pool.AcquireSlots(ctx, gateslot.Holder{Worktree: location.WorktreePath(), Site: site, Tier: tier}, count)
 	switch {
 	case err == nil:
 		return lease, 0

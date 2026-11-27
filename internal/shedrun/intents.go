@@ -5,6 +5,7 @@ package shedrun
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -13,6 +14,9 @@ import (
 
 // errIntentRecordAbsent stops an intent write over a run with no status file, which has no intent to hold.
 var errIntentRecordAbsent = errors.New("run has no status file")
+
+// errKeptCancelNotOwed stops a kept cancel's write over a run that is not cancelled or already holds a cancel intent.
+var errKeptCancelNotOwed = errors.New("run owes no kept cancel intent")
 
 // updateStatusIfPresent rewrites the run's status file through mutate under the status lock.
 // It writes nothing and reports found false when the file is absent.
@@ -60,6 +64,27 @@ func FinishCancel(l *lymcwd.Location, runID string, finish shedengine.CancelFini
 		st.State = shedengine.StateCancelled
 		return nil
 	})
+}
+
+// WriteKeptCancel records a finished cancel intent that kept the pair, naming machine, started and ended at at.
+// It writes only over a run in state cancelled with no cancel intent.
+// A cancel with keep left such a run before cancel intents existed.
+// It reports written false and writes nothing for any other run and for a run with no status file.
+// The caller commits the record.
+func WriteKeptCancel(l *lymcwd.Location, runID, machine string, at time.Time) (written bool, err error) {
+	stamp := at.UTC().Format(time.RFC3339)
+	_, err = updateStatusIfPresent(l, runID, func(st *shedengine.Status) error {
+		if st.State != shedengine.StateCancelled || st.Cancel != nil {
+			return errKeptCancelNotOwed
+		}
+		st.Cancel = &shedengine.CancelIntent{StartedAt: stamp, Machine: machine, Finish: &shedengine.CancelFinish{EndedAt: stamp}}
+		written = true
+		return nil
+	})
+	if errors.Is(err, errKeptCancelNotOwed) {
+		return false, nil
+	}
+	return written && err == nil, err
 }
 
 // WritePauseIntent records intent as the run's pause intent.

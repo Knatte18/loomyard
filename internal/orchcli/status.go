@@ -150,7 +150,7 @@ func (c *orchCLI) statusCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `status prints one JSON envelope: the recorded strand and whether it is live,
 whether a watcher holds its lock, the latest context reading against the soft
-threshold (` + orchKeyName("soft_threshold_tokens") + `) and the hard cap (` + orchKeyName("threshold_tokens") + `), and the
+threshold (soft_threshold_tokens) and the hard cap (threshold_tokens), and the
 persisted cycle phase (idle, handoff-requested, clearing, resuming or compacting), count, trigger (cycle_trigger), last handoff, abort reason
 and last deferral (last_deferral, RFC 3339 UTC, null when none).
 stuck names the stall reason creel last reported for the watcher's pending inject,

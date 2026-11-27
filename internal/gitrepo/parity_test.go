@@ -319,38 +319,6 @@ func TestParity(t *testing.T) {
 				}
 			}
 		}},
-		// A branch whose upstream names a namespaced origin ref reads the tracking ref the fetch refspec maps,
-		// and a branch merging a ref no refspec maps has no upstream, as git's own @{upstream} says.
-		{"Upstream agrees on a namespaced upstream", func(t *testing.T) {
-			remote := t.TempDir()
-			gitkit.MustRun(t, remote, "git", "init", "--bare", "-b", "main")
-			gitkit.MustRun(t, dir, "git", "remote", "add", "namespaced", remote)
-			gitkit.MustRun(t, dir, "git", "config", "--replace-all", "remote.namespaced.fetch", "+refs/lym/heads/*:refs/remotes/namespaced/*")
-			gitkit.MustRun(t, dir, "git", "push", "namespaced", "main:refs/lym/heads/main")
-			gitkit.MustRun(t, dir, "git", "fetch", "namespaced")
-			gitkit.MustRun(t, dir, "git", "branch", "namespaced-upstream", "main")
-			gitkit.MustRun(t, dir, "git", "config", "branch.namespaced-upstream.remote", "namespaced")
-			gitkit.MustRun(t, dir, "git", "config", "branch.namespaced-upstream.merge", "refs/lym/heads/main")
-			gitkit.MustRun(t, dir, "git", "branch", "unmapped-upstream", "main")
-			gitkit.MustRun(t, dir, "git", "config", "branch.unmapped-upstream.remote", "namespaced")
-			gitkit.MustRun(t, dir, "git", "config", "branch.unmapped-upstream.merge", "refs/heads/main")
-
-			for _, tt := range []struct {
-				branch string
-				wantOK bool
-			}{{"namespaced-upstream", true}, {"unmapped-upstream", false}} {
-				oracleSHA, oracleOK := gitoracle.Upstream(t, dir, tt.branch)
-				implSHA, implOK, implErr := repo.Upstream(tt.branch)
-				if implErr != nil {
-					t.Fatalf("Upstream(%s) error = %v", tt.branch, implErr)
-				}
-				assertParityBool(t, oracleOK, implOK)
-				assertParitySHA(t, oracleSHA, implSHA)
-				if implOK != tt.wantOK {
-					t.Errorf("Upstream(%s) ok = %v; want %v", tt.branch, implOK, tt.wantOK)
-				}
-			}
-		}},
 		// gitrepo returns ErrInvalidSHA before it resolves or diffs anything.
 		{"ChangedFilesSince rejects a non-hex sha", func(t *testing.T) {
 			if _, err := repo.ChangedFilesSince("not-a-sha!!"); !errors.Is(err, gitrepo.ErrInvalidSHA) {

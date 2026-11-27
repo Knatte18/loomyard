@@ -251,6 +251,8 @@ type Gate struct {
 	ExemptAll bool
 	// Defer makes a call that finds a live entry covering the process hand off to the deferral SetGateDeferral stored, before any wait.
 	Defer bool
+	// OwnerEntryExempt lets a live entry of the gate's own slug whose Caller is OwnerCaller pass.
+	OwnerEntryExempt bool
 }
 
 var (
@@ -310,10 +312,14 @@ func (g *Gate) waiter(onSleep func()) Waiter {
 	switch {
 	case g.ExemptAll:
 		waiter.ExemptEntry = func(Entry) bool { return true }
-	case g.ExemptScope != "":
+	case g.ExemptScope != "" || g.OwnerEntryExempt:
 		exemptScope, exemptPausedAt := g.ExemptScope, g.ExemptPausedAt
+		ownerEntryExempt := g.OwnerEntryExempt
 		waiter.ExemptEntry = func(entry Entry) bool {
-			return entry.Scope == exemptScope && entry.PausedAt.Equal(exemptPausedAt)
+			if ownerEntryExempt && entry.Scope == slug && entry.Caller == OwnerCaller {
+				return true
+			}
+			return exemptScope != "" && entry.Scope == exemptScope && entry.PausedAt.Equal(exemptPausedAt)
 		}
 	}
 	return waiter

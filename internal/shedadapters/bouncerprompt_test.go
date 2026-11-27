@@ -60,87 +60,43 @@ func decisionRuleSection(t *testing.T, prompt string) string {
 	return section
 }
 
-//testtiming:keep pins the decision rule's text: both non-circling verdicts are always offered, the rising-count caveat comes with CIRCLING, and round 2 on renders the lighter rule with its earlier-open list and round-1 fallback unless first-raised keys gate
+//testtiming:keep pins the decision rule's text: both non-circling verdicts are always offered, the rising-count caveat comes with CIRCLING, and round 2 on renders the lighter rule with its earlier-open list and round-1 fallback
 func TestDecisionRuleMarker_CirclingOnlyFromTheCheckpoint(t *testing.T) {
 	tiergate.Require(t, 0)
 	for _, tt := range []struct {
-		name             string
-		round            int
-		checkpoint       int
-		firstRaisedGates bool
-		wantCircling     bool
-		wantLighter      bool
+		name         string
+		round        int
+		checkpoint   int
+		wantCircling bool
+		wantLighter  bool
 	}{
-		{"round 1 below the checkpoint", 1, 2, false, false, false},
-		{"round 2 below the checkpoint", 2, 3, false, false, true},
-		{"at the checkpoint", 2, 2, false, true, true},
-		{"above the checkpoint", 5, 2, false, true, true},
-		{"round 1 at the checkpoint", 1, 1, false, true, false},
-		{"round 2 with first-raised keys gating", 2, 3, true, false, false},
-		{"above the checkpoint with first-raised keys gating", 5, 2, true, true, false},
+		{"round 1 below the checkpoint", 1, 2, false, false},
+		{"round 2 below the checkpoint", 2, 3, false, true},
+		{"at the checkpoint", 2, 2, true, true},
+		{"above the checkpoint", 5, 2, true, true},
+		{"round 1 at the checkpoint", 1, 1, true, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			got := decisionRuleMarker(tt.round, tt.checkpoint, tt.firstRaisedGates)
-			call := fmt.Sprintf("decisionRuleMarker(%d, %d, %t)", tt.round, tt.checkpoint, tt.firstRaisedGates)
+			got := decisionRuleMarker(tt.round, tt.checkpoint)
 			lighterPhrases := []string{"keys open in an earlier round", "`## Open risks`", "rule by round 1's rule instead: `CONTINUE` while the latest round carries a gating-class finding at MEDIUM or worse, or any BLOCKING finding"}
 			for _, phrase := range lighterPhrases {
 				if has := strings.Contains(got, phrase); has != tt.wantLighter {
-					t.Errorf("%s contains %q = %v; want %v", call, phrase, has, tt.wantLighter)
+					t.Errorf("decisionRuleMarker(%d, %d) contains %q = %v; want %v", tt.round, tt.checkpoint, phrase, has, tt.wantLighter)
 				}
 			}
 			if !tt.wantLighter && !strings.Contains(got, "- `CONTINUE` while the latest round carries a gating-class finding at MEDIUM or worse, or any BLOCKING finding.\n") {
-				t.Errorf("%s lacks round 1's CONTINUE bullet", call)
+				t.Errorf("decisionRuleMarker(%d, %d) lacks round 1's CONTINUE bullet", tt.round, tt.checkpoint)
 			}
 			if has := strings.Contains(got, "CIRCLING"); has != tt.wantCircling {
-				t.Errorf("%s names CIRCLING = %v; want %v", call, has, tt.wantCircling)
+				t.Errorf("decisionRuleMarker(%d, %d) names CIRCLING = %v; want %v", tt.round, tt.checkpoint, has, tt.wantCircling)
 			}
 			for _, verdict := range []string{"`CONVERGED`", "`CONTINUE`"} {
 				if !strings.Contains(got, verdict) {
-					t.Errorf("%s lacks %s; want both non-circling verdicts always offered", call, verdict)
+					t.Errorf("decisionRuleMarker(%d, %d) lacks %s; want both non-circling verdicts always offered", tt.round, tt.checkpoint, verdict)
 				}
 			}
 			if tt.wantCircling && !strings.Contains(got, "never circling") {
-				t.Errorf("%s lacks the rising-count caveat", call)
-			}
-		})
-	}
-}
-
-//testtiming:keep pins that FirstRaisedGates on the Bouncer reaches round 2's judge prompt, which then rules by round 1's rule
-func TestBouncer_JudgePromptGatesAFirstRaisedKeyWithFirstRaisedGates(t *testing.T) {
-	tiergate.Require(t, 0)
-	const lighterClause = "on a key first raised in the latest round does not block it"
-	for _, tt := range []struct {
-		name             string
-		firstRaisedGates bool
-		wantLighter      bool
-	}{
-		{"unset renders the lighter rule", false, true},
-		{"set renders round 1's rule", true, false},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := newBouncerFixture(t).Config
-			cfg.FirstRaisedGates = tt.firstRaisedGates
-			cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("CONTINUE"), bouncerLedgerContent(1), true)
-			b, err := NewBouncer(cfg)
-			if err != nil {
-				t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-			}
-			for round := 1; round <= 2; round++ {
-				report := cfg.RunDir + "/" + cfg.ReportName(round)
-				if err := os.WriteFile(report, []byte(bouncerReport(round)), 0o644); err != nil {
-					t.Fatalf("WriteFile(%q) = %v; want nil", report, err)
-				}
-				if round == 2 {
-					b.cfg.Shuttle = &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-				}
-				shedfake.CallOK(t, b)
-			}
-
-			judge := b.cfg.Shuttle.(*shedfake.Shuttle)
-			section := decisionRuleSection(t, judge.GotSpec.Prompt)
-			if has := strings.Contains(section, lighterClause); has != tt.wantLighter {
-				t.Errorf("round 2 decision rule contains %q = %v; want %v\n%s", lighterClause, has, tt.wantLighter, section)
+				t.Errorf("decisionRuleMarker(%d, %d) lacks the rising-count caveat", tt.round, tt.checkpoint)
 			}
 		})
 	}
@@ -180,13 +136,14 @@ func TestBouncer_JudgePromptOffersCirclingOnlyFromTheCheckpoint(t *testing.T) {
 	}
 }
 
-// The rubric carries the webster_record and gate_tiers markers.
+// The rubric carries the webster_record and redundancy_report markers.
 //
-//testtiming:keep pins that the exclude_lenses example line and rule reach the seed and judge prompts exactly when ClusterExcludes is set, and that the WebsterRecord note reaches the rubric in both
+//testtiming:keep pins that the exclude_lenses example line and rule reach the seed and judge prompts exactly when ClusterExcludes is set, and that the WebsterRecord and RedundancyReport notes reach the rubric in both
 func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 	tiergate.Require(t, 0)
 	const websterRecord = "Webster has begun these batches."
-	rubric := withStencilOverrides(map[string]string{bouncerFixtureRubricName: "Record: {{.webster_record}}\nTiers:\n{{.gate_tiers}}\n"})
+	const redundancyReport = "No current redundancy report: none written."
+	rubric := withStencilOverrides(map[string]string{bouncerFixtureRubricName: "Record: {{.webster_record}}\nTiers:\n{{.gate_tiers}}\nRedundancy: {{.redundancy_report}}\n"})
 	const gateTiers = "- tier1: build first\n- gate card: [1]"
 	for _, clusterExcludes := range []bool{false, true} {
 		t.Run(fmt.Sprintf("Seed_ClusterExcludes=%t", clusterExcludes), func(t *testing.T) {
@@ -195,6 +152,7 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 			cfg.Shuttle = shuttle
 			cfg.ClusterExcludes = clusterExcludes
 			cfg.WebsterRecord = func() string { return websterRecord }
+			cfg.RedundancyReport = func() string { return redundancyReport }
 			cfg.GateTiers = gateTiers
 			b, err := NewBouncer(cfg)
 			if err != nil {
@@ -209,6 +167,9 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 			if !strings.Contains(shuttle.GotSpec.Prompt, "Record: "+websterRecord) {
 				t.Errorf("seed prompt = %q; want the rubric to carry the WebsterRecord note", shuttle.GotSpec.Prompt)
 			}
+			if !strings.Contains(shuttle.GotSpec.Prompt, "Redundancy: "+redundancyReport) {
+				t.Errorf("seed prompt = %q; want the rubric to carry the RedundancyReport note", shuttle.GotSpec.Prompt)
+			}
 			if !strings.Contains(shuttle.GotSpec.Prompt, gateTiers) {
 				t.Errorf("seed prompt = %q; want the rubric to carry the gate tier lines", shuttle.GotSpec.Prompt)
 			}
@@ -220,6 +181,7 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 			cfg.Shuttle = shuttle
 			cfg.ClusterExcludes = clusterExcludes
 			cfg.WebsterRecord = func() string { return websterRecord }
+			cfg.RedundancyReport = func() string { return redundancyReport }
 			cfg.GateTiers = gateTiers
 			b, err := NewBouncer(cfg)
 			if err != nil {
@@ -240,6 +202,9 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 			assertExcludeLensesText(t, shuttle.GotSpec.Prompt, clusterExcludes)
 			if !strings.Contains(shuttle.GotSpec.Prompt, "Record: "+websterRecord) {
 				t.Errorf("judge prompt = %q; want the rubric to carry the WebsterRecord note", shuttle.GotSpec.Prompt)
+			}
+			if !strings.Contains(shuttle.GotSpec.Prompt, "Redundancy: "+redundancyReport) {
+				t.Errorf("judge prompt = %q; want the rubric to carry the RedundancyReport note", shuttle.GotSpec.Prompt)
 			}
 			if !strings.Contains(shuttle.GotSpec.Prompt, gateTiers) {
 				t.Errorf("judge prompt = %q; want the rubric to carry the gate tier lines", shuttle.GotSpec.Prompt)

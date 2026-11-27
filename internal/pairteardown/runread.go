@@ -49,9 +49,6 @@ type runReader struct {
 	owedPush func(slug string) ([]fabricengine.FailedPush, error)
 	// codeTip reads the code tip the slug's last transition on origin names, and whether origin lacks it.
 	codeTip func(slug string) (fabricengine.CodeTipReading, error)
-	// localHoldsTip reports whether the local code branch of the slug's pair holds the code tip.
-	// Only a read of a pair standing here calls it.
-	localHoldsTip func(slug, tip string) (bool, error)
 	// skipPush is true when the environment skips every push, so origin never holds the parent merge.
 	skipPush bool
 	// originParentHolds reports whether origin's fetched parent branch holds the task's work.
@@ -146,10 +143,7 @@ func hubRunReader(prime *lymcwd.Location) runReader {
 		owedPush: func(slug string) ([]fabricengine.FailedPush, error) {
 			return fabricengine.FailedPushesOwedBy(prime.HubPath, slug)
 		},
-		codeTip: func(slug string) (fabricengine.CodeTipReading, error) { return fabricengine.OriginCodeTip(prime, slug) },
-		localHoldsTip: func(slug, tip string) (bool, error) {
-			return fabricengine.HeadContains(fabricengine.WorktreePath(prime, slug), tip)
-		},
+		codeTip:  func(slug string) (fabricengine.CodeTipReading, error) { return fabricengine.OriginCodeTip(prime, slug) },
 		skipPush: fabricengine.EnvSyncOptions().SkipPush,
 		originParentHolds: func(slug string) (bool, error) {
 			task, err := taskLocation(slug)
@@ -249,20 +243,9 @@ func (r runReader) read(slug string) (runfsm.Records, runfsm.Inputs, error) {
 		return fail("the code tip", err)
 	}
 	if tip.Missing {
-		// A pair here whose code branch holds the tip owes it to origin.
-		// Its own pusher pushes the code side after the records side.
-		heldHere := false
-		if pairHere {
-			if heldHere, err = r.localHoldsTip(slug, tip.Tip); err != nil {
-				return fail("whether the local code branch holds the code tip", err)
-			}
-		}
-		if !heldHere {
-			inputs.CodeTipMissing = true
-			inputs.CodeTip = tip.Tip
-			inputs.CodeTipMachine = tip.Machine
-			inputs.CodeTipPairAbsent = !pairHere
-		}
+		inputs.CodeTipMissing = true
+		inputs.CodeTip = tip.Tip
+		inputs.CodeTipMachine = tip.Machine
 	}
 
 	switch {

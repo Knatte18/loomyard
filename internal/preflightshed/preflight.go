@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -76,9 +75,6 @@ type Checks struct {
 	// Drift loads drift.yaml and refuses a command a run would be refused at a Drift row.
 	// A failure makes the row stuck, with the drift reason and the way forward its error carries.
 	Drift func() error
-	// Harden checks a hardener campaign: its packages, the hub's live gate keys and its reviewer list.
-	// A failure makes the row stuck, with the campaign reason and the way forward its error carries.
-	Harden func() error
 }
 
 // preflightProducer is the general Preflight producer.
@@ -97,11 +93,11 @@ const batchifierReasonPrefix = "active batchifier did not resolve: "
 
 // batchifierWayForward closes the batchifier reason;
 // the fault is in batcher.yaml, so the operator fixes it there.
-var batchifierWayForward = "; way forward: fix batcher.yaml (" + configengine.KeyName("batcher", "active") + " or the profile it names), then re-step"
+const batchifierWayForward = "; way forward: fix batcher.yaml (its active: key or the profile it names), then re-step"
 
 // retiredKeyWayForward completes the way forward that a retired-key error already ends with.
-// The error's own text names the reconcile that removes the key from a worktree or local file,
-// or the one that does so for the repo default.
+// It tells the operator to run `lym config reconcile --apply`, which migrates a worktree or local file.
+// For the repo default, it tells the operator to run `lym fabric reconcile`.
 const retiredKeyWayForward = ", then re-step"
 
 // stencilsReasonPrefix leads the stuck reason of a failed stencils check;
@@ -111,10 +107,6 @@ const stencilsReasonPrefix = "seat stencils check failed: "
 // driftReasonPrefix leads the stuck reason of a failed drift check;
 // the error text, which carries its own way forward, follows.
 const driftReasonPrefix = "drift config check failed: "
-
-// hardenReasonPrefix leads the stuck reason of a failed hardener check;
-// the error text, which carries its own way forward, follows.
-const hardenReasonPrefix = "hardener campaign check failed: "
 
 // NewPreflightWithChecks returns a shedengine.ShedProducer that validates cwd via preflight.Check.
 // It also runs the optional checks.
@@ -165,13 +157,6 @@ func (p *preflightProducer) stencilsFailure(ctx context.Context) (string, error)
 // A cancelled context wins over the failure and comes back as the error.
 func (p *preflightProducer) driftFailure(ctx context.Context) (string, error) {
 	return p.prefixedFailure(ctx, p.checks.Drift, driftReasonPrefix)
-}
-
-// hardenFailure runs the told hardener check and returns the stuck reason for its failure.
-// It returns "" when the check passed or none is told.
-// A cancelled context wins over the failure and comes back as the error.
-func (p *preflightProducer) hardenFailure(ctx context.Context) (string, error) {
-	return p.prefixedFailure(ctx, p.checks.Harden, hardenReasonPrefix)
 }
 
 // prefixedFailure runs check, when told, and logs its failure.
@@ -227,7 +212,7 @@ func (p *preflightProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		return "", shedengine.OutputPointer{}, cerr
 	}
 
-	for _, check := range []func(context.Context) (string, error){p.batcherFailure, p.stencilsFailure, p.driftFailure, p.hardenFailure} {
+	for _, check := range []func(context.Context) (string, error){p.batcherFailure, p.stencilsFailure, p.driftFailure} {
 		reason, err := check(ctx)
 		if err != nil {
 			return "", shedengine.OutputPointer{}, err

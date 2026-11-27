@@ -1,5 +1,4 @@
 // clone.go implements CloneHub, the clone orchestration that tears the hub down when any step fails.
-// It also holds the refusal of a hub a killed clone left without its Bolt checkout, which names the re-clone.
 //
 // After the weft clone succeeds, the weft primary is checked out onto a "-weft"-suffixed branch.
 // For the default branch "main", that branch is "main-weft".
@@ -28,90 +27,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// staleFabricAnchorName is the pre-rename lym-anchor marker filename, aliased from lymcwd.StaleAnchorFileName.
-// CloneHub looks for it only to refuse a hub that carries it, rather than silently re-anchoring at the wrong subpath.
-// The refusal applies only when the prime's weft root carries no marker.
+// staleFabricAnchorName is the older lym-anchor marker filename, aliased from lymcwd.StaleAnchorFileName.
+// lymcwd never reads it as a fallback.
+// CloneHub reads it only to detect a leftover marker from an older clone.
+// It then fails, rather than silently re-anchoring at the wrong subpath.
+// The guard runs only on the Bolt fallback read: a marker at the prime's weft root supersedes it.
 const staleFabricAnchorName = lymcwd.StaleAnchorFileName
-
-// existingHubError refuses a clone into hubPath, which already exists.
-// A clone killed partway leaves such a hub, which no other verb finishes,
-// so the way forward is the same clone with --reset, which replaces the hub.
-func existingHubError(cwd, hubPath string, opts CloneOptions) error {
-	return fmt.Errorf("hub already exists at %s; way forward: replace it with `%s`", hubPath, cloneResetCommand(cwd, opts))
-}
-
-// cloneResetCommand spells the clone opts asks for into the directory cwd, with --reset added.
-func cloneResetCommand(cwd string, opts CloneOptions) string {
-	args := []string{"lym", "fabric", "clone"}
-	if opts.SingleRepo {
-		args = append(args, "--single-repo")
-	}
-	if opts.Shortname != "" {
-		args = append(args, "--shortname", opts.Shortname)
-	}
-	if opts.Subpath != "" {
-		args = append(args, "--subpath", opts.Subpath)
-	}
-	if opts.ForceBootstrap {
-		args = append(args, "--force-bootstrap")
-	}
-	args = append(args, opts.WeftURL)
-	if opts.WarpURL != "" {
-		args = append(args, opts.WarpURL)
-	}
-	return strings.Join(append(args, "--into", cwd, "--reset"), " ")
-}
-
-// RefuseHubWithoutBolt refuses the hub of l when its Bolt checkout holds no repository.
-// A clone killed after it made the records store and before the Bolt checkout leaves such a hub,
-// and every pull or write of the board fails on it with a raw git error.
-// The refusal names the clone that replaces the hub: its own origin URLs, re-cloned into its parent with --reset.
-// A one-repository hub's clone takes the code store's URL alone.
-// Its refusal names the join, for an origin that holds the hub's board, and the seed, for an origin that holds none.
-// A records store whose layout is lost is named as a one-repository hub.
-// Any layout read failure is carried on the refusal.
-// A URL that cannot be read is named by a placeholder, and so is the seed's shortname.
-func RefuseHubWithoutBolt(l *lymcwd.Location) error {
-	boltDir := BoltDir(l.HubPath)
-	if _, err := os.Lstat(filepath.Join(boltDir, ".git")); err == nil {
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("fabricengine: look for the repository of the %s checkout at %s: %w", BoltDirName, boltDir, err)
-	}
-
-	codeURL := "<code-url>"
-	if url, err := gitrepo.New(l.WorktreePath()).RemoteURL(originRemoteName); err == nil {
-		codeURL = url
-	}
-	recordsURL := "<records-url>"
-	oneRepository := false
-	var layoutErr error
-	if recordsRoot, err := RecordsRepoRoot(l); err == nil {
-		ns, nsErr := originNamespaceAt(recordsRoot)
-		layoutErr = nsErr
-		oneRepository = errors.Is(nsErr, ErrRecordsLayout) || ns != (gitrepo.RefNamespace{})
-		if !oneRepository {
-			if url, err := gitrepo.New(recordsRoot).RemoteURL(originRemoteName); err == nil {
-				recordsURL = url
-			}
-		}
-	}
-
-	parent := filepath.Dir(l.HubPath)
-	replacement := "`" + cloneResetCommand(parent, CloneOptions{WeftURL: recordsURL, WarpURL: codeURL}) + "`"
-	if oneRepository {
-		join := cloneResetCommand(parent, CloneOptions{WeftURL: codeURL})
-		seed := cloneResetCommand(parent, CloneOptions{SingleRepo: true, Shortname: "<shortname>", WeftURL: codeURL})
-		replacement = fmt.Sprintf("`%s` when origin holds the hub's board, or `%s` when it holds none", join, seed)
-	}
-	refusal := fmt.Sprintf("the hub at %s has no repository at its %s checkout %s, as a clone that stopped before making it leaves; "+
-		"way forward: replace the hub with %s",
-		l.HubPath, BoltDirName, boltDir, replacement)
-	if layoutErr != nil {
-		return fmt.Errorf("%s; the records store's layout also cannot be read: %w", refusal, layoutErr)
-	}
-	return errors.New(refusal)
-}
 
 // CloneOptions carries the parameters of CloneHub as named fields.
 // Named fields keep two adjacent string parameters, one of them optional, from being passed in the wrong order.
@@ -134,9 +55,9 @@ type CloneOptions struct {
 	// It is required when the weft is a fresh bind;
 	// on a bound weft it must equal the recorded shortname, or record one if the weft has none.
 	Shortname string
-	// SingleRepo seeds a one-repository hub from WeftURL, which is then the code repository and the only URL.
-	// The records and the board live under origin's records namespace, and the hub is pushed there by PushCloneBoard.
-	// A plain one-URL clone of an origin that already holds that board joins it with no flag.
+	// SingleRepo clones the one URL as a one-repository hub and creates its marker and board branch.
+	// It refuses a second URL and an origin that already holds the Bolt branch or a records binding.
+	// Without it, one URL over an origin holding the Bolt branch is the one-repository layout all the same.
 	SingleRepo bool
 }
 
@@ -168,26 +89,15 @@ type CloneResult struct {
 	// CloneHub leaves it empty; the wiring that follows the clone fires the event and sets it.
 	// A clone that fails after the event returns no result, so the warning then travels in the error.
 	SeamWarning string
-	// seed is set only by a SingleRepo clone.
-	// It marks the result for PushCloneBoard and AbandonSeededClone, so no caller reads the layout.
-	seed *cloneSeed
-}
-
-// cloneSeed holds what a SingleRepo clone's seed push and the teardown of a failed one need.
-type cloneSeed struct {
-	// container is the directory the hub was created in, and hubPath the hub directory.
-	container string
-	hubPath   string
-	// hubTok proves this clone created hubPath.
-	hubTok createdToken
-	// recordsPath is the records store, and boardDir the board worktree of it.
-	recordsPath string
-	boardDir    string
-	// recordsBranch is the prime's records branch.
-	recordsBranch string
-	// observedTip is the tip of recordsBranch under the records namespace on origin at the precondition check.
-	// It is empty when origin held no such branch.
-	observedTip string
+	// OneRepository is true when the clone took the one-repository layout.
+	// WeftBase is then the prime's own anchor directory, and the prime is its own records worktree.
+	OneRepository bool
+	// hubToken proves that this clone created the hub directory, so a refused push can tear the hub down.
+	hubToken createdToken
+	// primePath is the prime worktree of a one-repository clone.
+	primePath string
+	// pushOwed is true when the clone created the marker and the board branch and origin holds neither yet.
+	pushOwed bool
 }
 
 // CloneHub clones the warp and weft repositories into a new hub directory and returns the resolved geometry.
@@ -199,6 +109,10 @@ type cloneSeed struct {
 //
 // opts.WeftURL is required.
 // opts.WarpURL is optional; when empty, it is resolved from the warp binding recorded on the weft candidate.
+//
+// When opts.SingleRepo is set or origin holds the BoltBranchName branch, one URL names a one-repository hub.
+// clone_onerepository.go runs that clone instead of the steps below.
+// With opts.SingleRepo a second URL is refused before anything is created.
 //
 // When opts.WarpURL is set, the hub name is known without the network.
 // The hub-exists check, and under Reset the check that the target is a hub, run before the weft probe.
@@ -218,37 +132,17 @@ type cloneSeed struct {
 //     captured warp branch if it already exists locally from step 3, or freshly orphan-creating it otherwise;
 //     on failure, tear down and return the error.
 //  5. Resolve the lym-anchor subpath, adopt or create. Adopt reads the marker committed at the root of the
-//     prime's weft worktree and writes nothing. Create validates
+//     prime's weft worktree, else the Bolt legacy marker on weft:main, and writes nothing. Create validates
 //     that the subpath exists in the warp worktree, then commits the marker on the prime's weft branch.
 //     Then write the warp-binding record when it is new, and return the resolved CloneResult.
 //
-// A one-URL clone first reads origin's layout with one ls-remote.
-// That read comes before the hub-exists check, --reset and anything created.
-// An origin left by the earlier one-repository layout is refused.
-// Without opts.SingleRepo, so is an origin holding records branches and no board, which a seed that stopped leaves.
-// With opts.SingleRepo, an origin that already holds a board is refused too.
-// So is one whose default branch is a records repository.
-// So is one whose default branch tracks the earlier layout's directories.
-// Otherwise the URL is the code repository of a one-repository hub:
-// an origin holding the board is joined, and one holding none is seeded under opts.SingleRepo.
-// The records store of such a hub is a git init of its own, fetching only the records namespace.
-// A seeded clone sets CloneResult's seed mark, and PushCloneBoard then pushes it.
-//
 // Any clone or worktree-add failure triggers teardownHub, which removes the entire hub directory.
 // If removal also fails, the error names both the original failure and the residual hub path.
-//
-// A cwd that is not an existing directory is refused by name before any git runs.
 func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	var rec *Mutations
 	defer func() { res.Mutations = rec.Snapshot() }()
 
 	cwd = filepath.Clean(cwd)
-	// git started in a directory that is not there fails as if git itself were missing, so the directory is named here.
-	if info, statErr := os.Stat(cwd); statErr != nil {
-		return CloneResult{}, fmt.Errorf("the directory the hub is created in cannot be read: %w; way forward: create it, or pass --into an existing directory", statErr)
-	} else if !info.IsDir() {
-		return CloneResult{}, fmt.Errorf("%s, where the hub is created, is not a directory; way forward: pass --into an existing directory", cwd)
-	}
 
 	if opts.WeftURL == "" {
 		return CloneResult{}, fmt.Errorf("weft URL is required")
@@ -265,23 +159,19 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	subpathRequestedExplicitly := strings.TrimSpace(opts.Subpath) != ""
 
 	if opts.SingleRepo && opts.WarpURL != "" {
-		return CloneResult{}, fmt.Errorf("--single-repo takes the code repository's URL alone; way forward: give --single-repo one URL, the code repository")
-	}
-	if opts.SingleRepo && opts.Shortname == "" {
-		return CloneResult{}, fmt.Errorf("a fresh --single-repo clone needs the repo's shortname: pass --shortname <shortname>, 2-6 characters matching [a-z][a-z0-9]{1,5}, e.g. lym fabric clone --single-repo --shortname lx <code-url>")
+		return CloneResult{}, fmt.Errorf("--single-repo clones one repository, so it takes one URL, and the second URL %s was given; way forward: give the one repository's URL alone", opts.WarpURL)
 	}
 
-	var layout originLayout
-	oneRepository := false
-	if opts.WarpURL == "" {
-		layout, err = readOriginLayout(cwd, opts.WeftURL)
-		if err != nil {
-			return CloneResult{}, err
+	// One URL over an origin holding the Bolt branch, or with --single-repo, is the one-repository layout.
+	// A failed ls-remote answers no here, so the weft probe below reports the unreachable URL as it always has.
+	if opts.WarpURL == "" && (opts.SingleRepo || originHoldsBolt(cwd, opts.WeftURL)) {
+		oneRepositoryName := DeriveWarpName(opts.WeftURL)
+		if oneRepositoryName == "" {
+			return CloneResult{}, fmt.Errorf("could not derive repo name from URL %s", opts.WeftURL)
 		}
-		if err := refuseOneURLClone(cwd, layout, opts); err != nil {
-			return CloneResult{}, err
-		}
-		oneRepository = opts.SingleRepo || layout.boardTip != ""
+		oneRepositoryHubPath := HubPath(cwd, oneRepositoryName)
+		rec = NewMutations(oneRepositoryHubPath)
+		return cloneOneRepositoryHub(rec, cwd, oneRepositoryHubPath, oneRepositoryName, opts)
 	}
 
 	var name, hubPath, effective string
@@ -303,7 +193,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 				return CloneResult{}, err
 			}
 		} else if _, err := os.Stat(hubPath); err == nil {
-			return CloneResult{}, existingHubError(cwd, hubPath, opts)
+			return CloneResult{}, fmt.Errorf("hub already exists at %s", hubPath)
 		}
 
 		// The pre-hub probe touches the network only after the offline checks have passed.
@@ -326,23 +216,6 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 			return CloneResult{}, fmt.Errorf(
 				"refusing to bootstrap %s as a weft: its history carries neither %s on weft:main or main-weft nor an empty tree — check the argument order, clone now takes <weft-url> [<warp-url>]",
 				opts.WeftURL, lymcwd.AnchorFileName)
-		}
-	} else if oneRepository {
-		// One-repository form: the one URL is the code repository, and the hub is named after it.
-		// The name needs no network, so the offline checks run before anything is created.
-		name = DeriveWarpName(opts.WeftURL)
-		if name == "" {
-			return CloneResult{}, fmt.Errorf("could not derive repo name from URL %s", opts.WeftURL)
-		}
-		hubPath = HubPath(cwd, name)
-		rec = NewMutations(hubPath)
-		effective = opts.WeftURL
-		if opts.Reset {
-			if _, err := checkResetTarget(hubPath); err != nil {
-				return CloneResult{}, err
-			}
-		} else if _, err := os.Stat(hubPath); err == nil {
-			return CloneResult{}, existingHubError(cwd, hubPath, opts)
 		}
 	} else {
 		// One-argument form: the hub name is unknowable until the binding is read, so the probe
@@ -374,14 +247,9 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 
 	// --subpath can only be checked against the cloned trees.
 	// A --reset clone therefore checks it against staged shallow clones while the existing hub is still intact.
-	// A seeded clone creates its anchor fresh and adopts none, so only a two-repository clone and a join are checked.
-	if opts.Reset && subpathRequestedExplicitly && !opts.SingleRepo {
+	if opts.Reset && subpathRequestedExplicitly {
 		if _, statErr := os.Stat(hubPath); statErr == nil {
-			namespace := gitrepo.RefNamespace{}
-			if oneRepository {
-				namespace = oneRepositoryNamespace()
-			}
-			if err := checkSubpathBeforeReset(cwd, opts.WeftURL, effective, requestedAnchor, namespace); err != nil {
+			if err := checkSubpathBeforeReset(cwd, opts.WeftURL, effective, requestedAnchor); err != nil {
 				return CloneResult{}, err
 			}
 		}
@@ -395,7 +263,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 			return CloneResult{}, err
 		}
 	} else if _, err := os.Stat(hubPath); err == nil {
-		return CloneResult{}, existingHubError(cwd, hubPath, opts)
+		return CloneResult{}, fmt.Errorf("hub already exists at %s", hubPath)
 	}
 
 	warpURL := effective
@@ -429,28 +297,11 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
 
-	// The post-checkout hook fires drift warnings on every later git checkout in this repo.
-	// It is installed after the warp worktree exists.
-	// Hook installation is non-fatal: a failure is logged and does not abort the clone.
-	// The hook serves usability, not correctness.
-	//
-	// InstallPostCheckoutHook reads one field, WorktreePath(), so it needs a path, not a resolution.
-	// The exclusive create above leaves no marker yet, so the Location answers "." for its anchor.
-	hookLocation, hookErr := lymcwd.NamedWorktree(hubPath, name)
-	if hookErr == nil {
-		hookErr = InstallPostCheckoutHook(hookLocation)
-	}
-	if hookErr != nil {
-		logger.Warn("fabricengine: post-checkout hook install failed (non-fatal)", "verb", "clone", "hub", hubPath, "error", hookErr)
-	}
+	installPostCheckoutHookNonFatal(hubPath, name)
 
 	// Clone the weft repo into the hub.
 	weftPath := weftname.SiblingPath(hubPath, name)
-	if oneRepository {
-		if err := initRecordsStore(opts.WeftURL, weftPath, !opts.SingleRepo); err != nil {
-			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
-		}
-	} else if err := cloneRepo(opts.WeftURL, weftPath); err != nil {
+	if err := cloneRepo(opts.WeftURL, weftPath); err != nil {
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
 	rec.Append(KindWorktreeCreated, weftPath, "")
@@ -470,20 +321,11 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
 
-	// Materialize the Bolt checkout as a second weft worktree on the board branch.
-	// In a two-repository hub that is warpBranch, and in a one-repository hub the fixed board branch of the namespace.
+	// Materialize the Bolt checkout as a second weft worktree on warpBranch.
 	// It adopts that branch if it already exists locally from the weft clone;
 	// otherwise it creates a fresh orphan, which is the case for an empty weft remote.
-	boardBranch := warpBranch
-	if oneRepository {
-		boardBranch = OneRepositoryBoardBranch
-		primeRecordsBranch := RecordsBranchName(warpBranch)
-		if _, err := gitexec.Run([]string{"config", PrimeRecordsBranchKey, primeRecordsBranch}, weftPath); err != nil {
-			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf("record the prime's records branch %s: %w", primeRecordsBranch, err))
-		}
-	}
 	boardDir := BoltDir(hubPath)
-	if err := ensureBoardWorktree(weftPath, boardBranch, boardDir); err != nil {
+	if err := ensureBoardWorktree(weftPath, warpBranch, boardDir); err != nil {
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
 	rec.Append(KindWorktreeCreated, boardDir, "")
@@ -506,54 +348,41 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	}
 	rec.Append(KindDirCreated, scratchDir, "")
 
-	// A one-repository clone reads the board's records only now, from the board origin's tip gave it.
-	// A seeded clone reads none, so its binding is the one URL and its shortname the supplied one.
-	if oneRepository {
-		var recordedWarp, recordedShortname string
-		var warpFound, shortnameFound bool
-		if !opts.SingleRepo {
-			recordedWarp, warpFound, recordedShortname, shortnameFound, err = readJoinedBoardRecords(weftPath, opts.WeftURL)
-			if err != nil {
-				return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
-			}
-		}
-		effective, writeRecord, err = resolveEffectiveWarpURL(recordedWarp, warpFound, opts.WeftURL)
-		if err != nil {
-			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
-		}
-		effectiveShortname, writeShortname, shortnameWarning, err = resolveEffectiveShortname(recordedShortname, shortnameFound, opts.Shortname, !warpFound)
-		if err != nil {
-			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
-		}
-	}
-
 	// Resolve the lym-anchor subpath as adopt-or-create.
 	// A fresh bind commits the marker on the prime's weft branch here;
 	// the Bolt commit the CLI layer makes later carries config and no anchor.
 	primeData, primeReadErr := os.ReadFile(filepath.Join(weftPath, lymcwd.AnchorFileName))
+	boardMarkerPath := filepath.Join(boardDir, lymcwd.AnchorFileName)
 	var anchor string
 	if primeReadErr == nil {
 		// Adopt path: the prime's weft worktree carries a committed marker at its root,
-		// so this is a re-clone of a hub that already recorded one, and nothing is written.
+		// so this is a re-clone of a hub that already recorded one.
+		// The marker wins over the Bolt legacy marker, and nothing is written.
 		anchor, err = adoptRecordedAnchor(primeData, "on "+RecordsBranchName(warpBranch), requestedAnchor, subpathRequestedExplicitly)
 		if err != nil {
 			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 		}
+	} else if boardData, boardReadErr := os.ReadFile(boardMarkerPath); boardReadErr == nil {
+		// Legacy adopt path: only the Bolt marker exists.
+		// The hub keeps resolving through it until `lym fabric reconcile` migrates it onto the prime's weft.
+		anchor, err = adoptRecordedAnchor(boardData, "on weft:main", requestedAnchor, subpathRequestedExplicitly)
+		if err != nil {
+			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
+		}
 	} else {
-		// A `.fabric-anchor` marker on the board with no `.lym-anchor` marker on the prime is refused, not ignored:
+		// A stale `.fabric-anchor` marker with no `.lym-anchor` beside it is a hard error, not a silent fallback:
 		// without this check the clone would fall through to the create path and re-anchor at "." or at the requested --subpath.
 		// The marker records a real anchor, so `_lym` would silently resolve to the wrong place for a subpath-anchored repo.
+		// This check runs on the Bolt fallback only, since a marker at the prime's weft root already supersedes the Bolt read.
 		if _, statErr := os.Stat(filepath.Join(boardDir, staleFabricAnchorName)); statErr == nil {
-			// The remedy names the marker on the prime's records branch, never a re-clone:
+			// The remedy names the marker rename, never a re-clone:
 			// this error comes from a clone, so telling the operator to clone again reproduces it.
-			// A clone adopts only the marker committed on that branch.
-			// Renaming the marker in the board worktree alone would let the retry fall through to the create path.
+			// The record lives on weft:main, so migrating it is a rename plus a commit in an existing hub's board worktree.
+			// Once that is done, this clone succeeds.
 			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf(
-				"found stale %s marker with no %s beside it at %s; in an existing hub, commit %s holding the old marker's content at the root of the weft remote's records branch %s "+
-					"from the prime's weft worktree and push it, remove %s from the %s worktree, commit and push that, then retry this clone",
+				"found stale %s marker with no %s beside it at %s; in an existing hub's %s worktree run `git mv %s %s` and commit, then retry this clone",
 				staleFabricAnchorName, lymcwd.AnchorFileName, boardDir,
-				lymcwd.AnchorFileName, RecordsBranchName(warpBranch),
-				staleFabricAnchorName, BoltDirName))
+				BoltDirName, staleFabricAnchorName, lymcwd.AnchorFileName))
 		}
 
 		// Create path: first-ever clone of this weft, no marker committed yet.
@@ -569,6 +398,8 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	}
 
 	// Write the warp-binding record when this clone determined it; both branches above fall through to this point.
+	// A re-clone of a pre-binding hub has .lym-anchor committed but no .lym-warp, so writeRecord is true,
+	// and the record is written here with no special casing, which makes this the clone-time backfill too.
 	var warpBindingRecorded bool
 	if writeRecord {
 		if err := writeWarpBinding(boardDir, effective); err != nil {
@@ -600,22 +431,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 
 	regenerateAfterVerb(rec, l, "clone")
 
-	var seed *cloneSeed
-	if opts.SingleRepo {
-		primeRecordsBranch := RecordsBranchName(warpBranch)
-		seed = &cloneSeed{
-			container:     cwd,
-			hubPath:       hubPath,
-			hubTok:        hubTok,
-			recordsPath:   weftPath,
-			boardDir:      boardDir,
-			recordsBranch: primeRecordsBranch,
-			observedTip:   layout.heads[primeRecordsBranch],
-		}
-	}
-
 	return CloneResult{
-		seed:                seed,
 		HubPath:             hubPath,
 		Anchor:              anchor,
 		BoardDir:            boardDir,
@@ -629,10 +445,29 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	}, nil
 }
 
+// installPostCheckoutHookNonFatal installs the post-checkout hook.
+// The target is the prime worktree called name of the hub at hubPath.
+// The hook fires drift warnings on every later git checkout in this repo, so it is installed once the worktree exists.
+// Installation is non-fatal: a failure is logged and does not abort the clone.
+// The hook serves usability, not correctness.
+//
+// InstallPostCheckoutHook reads one field, WorktreePath(), so it needs a path, not a resolution.
+// A clone in progress has recorded no marker yet, so the Location answers "." for its anchor.
+func installPostCheckoutHookNonFatal(hubPath, name string) {
+	hookLocation, err := lymcwd.NamedWorktree(hubPath, name)
+	if err == nil {
+		err = InstallPostCheckoutHook(hookLocation)
+	}
+	if err != nil {
+		logger.Warn("fabricengine: post-checkout hook install failed (non-fatal)", "verb", "clone", "hub", hubPath, "error", err)
+	}
+}
+
 // adoptRecordedAnchor validates the anchor a marker records and checks it against the requested subpath.
 // source names where the marker was read, for the error text.
-// The recorded value is validated, not trusted:
-// adopting an absolute or escaping anchor yields a hub whose every weft commit fails.
+// The recorded value is validated, not trusted.
+// An older binary could have recorded an absolute or escaping anchor;
+// adopting one yields a hub whose every weft commit fails.
 // An explicitly requested subpath that disagrees with the recorded anchor is refused, never silently re-anchored;
 // "." is not exempt: the flag defaults to the empty string, so an explicit "." is distinguishable from no request.
 func adoptRecordedAnchor(markerData []byte, source, requestedAnchor string, requestedExplicitly bool) (string, error) {
@@ -902,103 +737,6 @@ func teardownHub(rec *Mutations, cwd, hubPath string, tok createdToken, cause er
 		return fmt.Errorf("%w; residual hub left at %s; remove it manually before retrying", cause, hubPath)
 	}
 	return cause
-}
-
-// initRecordsStore makes the one-repository records store at dir from the origin at url.
-// It runs git init and adds origin with tag auto-following off.
-// Before any fetch it replaces the fetch refspecs with the records namespace's branches and tags.
-// It also sets the push refspecs, so the store never fetches or holds a code ref.
-// With fetch it then fetches the namespaced branches and tags under the remote-refs lock.
-func initRecordsStore(url, dir string, fetch bool) error {
-	ns := oneRepositoryNamespace()
-	remoteKey := "remote." + originRemoteName
-	steps := [][]string{
-		{"init"},
-		{"remote", "add", "--no-tags", originRemoteName, filepath.ToSlash(url)},
-		{"config", "--replace-all", remoteKey + ".fetch", "+" + ns.Heads + "*:refs/remotes/" + originRemoteName + "/*"},
-		{"config", "--add", remoteKey + ".fetch", "+" + ns.Tags + "*:refs/tags/*"},
-		{"config", "--replace-all", remoteKey + ".push", "refs/heads/*:" + ns.Heads + "*"},
-		{"config", "--add", remoteKey + ".push", "refs/tags/*:" + ns.Tags + "*"},
-	}
-
-	if err := os.Mkdir(dir, 0o755); err != nil {
-		return fmt.Errorf("create the records store at %s: %w", dir, err)
-	}
-	for _, args := range steps {
-		if _, err := gitexec.Run(args, dir); err != nil {
-			return fmt.Errorf("make the records store at %s: git %s: %w", dir, args[0], err)
-		}
-	}
-	if !fetch {
-		return nil
-	}
-	if err := gitrepo.New(dir).Fetch(); err != nil {
-		return fmt.Errorf("fetch the records of %s into %s: %w", url, dir, err)
-	}
-	return nil
-}
-
-// readJoinedBoardRecords reads the warp binding and the shortname a joined clone's board holds at origin's board tip.
-// It reads them from the records store's remote-tracking ref of the board branch.
-// It reports each as found only when the record is present and usable.
-// url names the origin in a warning about an unusable shortname.
-func readJoinedBoardRecords(recordsPath, url string) (warp string, warpFound bool, shortname string, shortnameFound bool, err error) {
-	boardRef := "refs/remotes/" + originRemoteName + "/" + OneRepositoryBoardBranch
-	read := func(file string) (string, bool, error) {
-		listed, err := gitexec.Run([]string{"ls-tree", boardRef, "--name-only", "--", file}, recordsPath)
-		if err != nil {
-			return "", false, fmt.Errorf("look for %s on the board of %s: %w", file, url, err)
-		}
-		if strings.TrimSpace(listed) == "" {
-			return "", false, nil
-		}
-		content, err := gitexec.Run([]string{"show", boardRef + ":" + file}, recordsPath)
-		if err != nil {
-			return "", false, fmt.Errorf("read %s on the board of %s: %w", file, url, err)
-		}
-		return content, true, nil
-	}
-
-	rawWarp, warpPresent, err := read(WarpBindingFileName)
-	if err != nil {
-		return "", false, "", false, err
-	}
-	if trimmed := strings.TrimSpace(rawWarp); warpPresent && trimmed != "" {
-		warp, warpFound = trimmed, true
-	}
-	rawShortname, shortnamePresent, err := read(ShortnameFileName)
-	if err != nil {
-		return "", false, "", false, err
-	}
-	if shortnamePresent {
-		shortname, shortnameFound = usableShortname(rawShortname, url)
-	}
-	return warp, warpFound, shortname, shortnameFound, nil
-}
-
-// PushCloneBoard pushes a clone's board to origin once its first commit is made.
-// A two-repository clone and a join push it as any board is pushed.
-// A SingleRepo clone's result carries the seed mark.
-// Its push is the leased, ordered seed of origin's records namespace.
-// A failed seed push has already removed the hub, or kept it while origin may still take a pushed ref.
-// Its error names the way forward.
-func PushCloneBoard(res CloneResult, rec *Mutations) error {
-	if res.seed == nil {
-		return NewBolt(res.BoardDir).PushRecorded(SyncOptions{}, rec)
-	}
-	return pushCloneSeed(rec, res.seed)
-}
-
-// AbandonSeededClone is the recovery for a SingleRepo clone that fails after CloneHub and before PushCloneBoard.
-// With the seed mark it removes the hub, so no hub is left for a reconcile to push unleased.
-// It returns cause with the same clone as its way forward; origin holds nothing of the seed at that point.
-// Without the mark it returns cause unchanged.
-func AbandonSeededClone(res CloneResult, rec *Mutations, cause error) error {
-	if res.seed == nil {
-		return cause
-	}
-	rerun := fmt.Errorf("%w; way forward: run the same `lym fabric clone --single-repo` again", cause)
-	return teardownHub(rec, res.seed.container, res.seed.hubPath, res.seed.hubTok, rerun)
 }
 
 // DeriveWarpName extracts the warp repository basename from a raw URL or file path.

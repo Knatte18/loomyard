@@ -70,7 +70,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, "ly:"+slug+":webster")
 
 		// loom is per-worktree, so this exercises the fabric-sync path.
-		validYAML := "discussion:\n  timeout_min: 60\n"
+		validYAML := "discussion_timeout_min: 60\n"
 		fakeEdit := func(path string) error {
 			return os.WriteFile(path, []byte(validYAML), 0o644)
 		}
@@ -81,7 +81,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 
 		var out bytes.Buffer
-		code := dispatch(codeLayout, &out, []string{"loom"}, fakeEdit, injectedSync, nil, false, nil, nil, "", nil, true)
+		code := dispatch(codeLayout, &out, []string{"loom"}, fakeEdit, injectedSync, nil, false, nil, "", nil, true)
 		if code != 0 {
 			t.Errorf("dispatch() = %d; want 0; output: %s", code, out.String())
 		}
@@ -345,15 +345,22 @@ func TestConfigOverRealHub(t *testing.T) {
 		})
 	}
 
-	t.Run("reconcile --layer default prunes the keys the template lacks in the Bolt checkout and commits them", func(t *testing.T) {
+	t.Run("reconcile --layer default migrates renamed keys in the Bolt checkout and commits them", func(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, "")
 		loomFile := configengine.ConfigFile(boardDir, "loom")
 		current, err := os.ReadFile(loomFile)
 		if err != nil {
 			t.Fatalf("read the board loom.yaml: %v", err)
 		}
-		// The planted keys are webster_fan, plan_reviewer_fan and plan_fan, none of which loom's template holds.
-		planted := []string{strings.TrimRight(string(current), "\n"), "webster_fan: review-code", "plan_reviewer_fan: review-plan", "plan_fan: stale-fan"}
+		// The planted old keys are webster_fan and plan_reviewer_fan, each under its old name alone.
+		// plan_fan is planted beside them, since the hub base is sparse.
+		var planted []string
+		for _, line := range strings.Split(strings.TrimRight(string(current), "\n"), "\n") {
+			if !strings.HasPrefix(line, "code_reviewer_fan:") && !strings.HasPrefix(line, "plan_reviewer_fan:") {
+				planted = append(planted, line)
+			}
+		}
+		planted = append(planted, "webster_fan: review-code", "plan_reviewer_fan: review-plan", "plan_fan: stale-fan")
 		before := []byte(strings.Join(planted, "\n") + "\n")
 		if err := os.WriteFile(loomFile, before, 0o644); err != nil {
 			t.Fatalf("plant old keys in the board loom.yaml: %v", err)
@@ -376,7 +383,8 @@ func TestConfigOverRealHub(t *testing.T) {
 		// A profiles file beside a template base that records an older template follows the template change,
 		// and the dry run lists it as follows:
 		// a key the file still holds at the base's value falls under removed and updated;
-		// a value the operator set, which the template holds otherwise, falls under differs.
+		// a value the operator set, which the template holds otherwise, falls under differs;
+		// a recipe block held under its former name beside a differing current one falls under unsettled.
 		profilesFile := configengine.ConfigFile(boardDir, "profiles")
 		profilesOriginal, err := os.ReadFile(profilesFile)
 		if err != nil {
@@ -384,14 +392,15 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 		baseFile := configengine.TemplateBaseFile(boardDir, "profiles")
 		baseOriginal, baseErr := os.ReadFile(baseFile)
-		const lightDarn = "  darn:\n    loom: {code: {max_bounces: 1, hard_max_bounces: 2, reviewer_model: \"opus[medium]\"}}\n"
-		const lightDarnSolo = "  darn:\n    loom: {code: {max_bounces: 1, hard_max_bounces: 2, reviewer_fan: \"\", reviewer_model: \"opus[medium]\"}}\n"
-		const solidDarn = "  darn:\n    loom: {code: {max_bounces: 2, hard_max_bounces: 3, reviewer_model: \"opus[medium]\"}}\n"
-		const solidDarnBase = "  darn:\n    loom: {code: {max_bounces: 1, hard_max_bounces: 4, reviewer_model: \"opus[medium]\"}}\n"
-		const solidDarnTuned = "  darn:\n    loom: {code: {max_bounces: 5, hard_max_bounces: 4, reviewer_model: \"opus[medium]\"}}\n"
+		const lightDarn = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_model: \"opus[medium]\"}\n"
+		const lightDarnSolo = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: \"\", code_reviewer_model: \"opus[medium]\"}\n"
+		const solidDarn = "  darn:\n    loom: {code_max_bounces: 2, code_hard_max_bounces: 3, code_reviewer_model: \"opus[medium]\"}\n"
+		const solidDarnBase = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 4, code_reviewer_model: \"opus[medium]\"}\n"
+		const solidDarnTuned = "  darn:\n    loom: {code_max_bounces: 5, code_hard_max_bounces: 4, code_reviewer_model: \"opus[medium]\"}\n"
+		const formerPair = "paired:\n  loom:\n    loom: {code_max_bounces: 1}\n  tapestry:\n    loom: {code_max_bounces: 2}\n"
 		olderTemplate := strings.Replace(runprofile.ConfigTemplate(), lightDarn, lightDarnSolo, 1)
 		basePlanted := strings.Replace(olderTemplate, solidDarn, solidDarnBase, 1)
-		profilesPlanted := strings.Replace(olderTemplate, solidDarn, solidDarnTuned, 1)
+		profilesPlanted := strings.Replace(olderTemplate, solidDarn, solidDarnTuned, 1) + formerPair
 		for path, content := range map[string]string{profilesFile: profilesPlanted, baseFile: basePlanted} {
 			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 				t.Fatalf("plant the older template state at %s: %v", path, err)
@@ -420,9 +429,10 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 		restoreProfiles()
 		for key, want := range map[string]string{
-			"removed": "[light.darn.loom.code.reviewer_fan]",
-			"updated": "[solid.darn.loom.code.hard_max_bounces: 4 -> 3]",
-			"differs": "[solid.darn.loom.code.max_bounces: file 5, template 2]",
+			"removed":   "[light.darn.loom.code_reviewer_fan]",
+			"updated":   "[solid.darn.loom.code_hard_max_bounces: 4 -> 3]",
+			"differs":   "[solid.darn.loom.code_max_bounces: file 5, template 2]",
+			"unsettled": "[paired.loom: differs from paired.tapestry]",
 		} {
 			if got := fmt.Sprint(reconcileModule(t, result, "profiles")[key]); got != want {
 				t.Errorf("dry-run profiles %s = %s; want %s", key, got, want)
@@ -435,10 +445,10 @@ func TestConfigOverRealHub(t *testing.T) {
 		if loom["layer"] != string(configengine.LayerDefault) || loom["seed"] != "hub" || loom["applied"] != false {
 			t.Errorf("dry-run loom entry = %v; want layer default, seed hub, applied false", loom)
 		}
-		removedKeys := fmt.Sprint(loom["removed"])
-		for _, want := range []string{"webster_fan", "plan_reviewer_fan", "plan_fan"} {
-			if !strings.Contains(removedKeys, want) {
-				t.Errorf("dry-run loom removed = %s; want it to name %s", removedKeys, want)
+		migrated := fmt.Sprint(loom["migrated"])
+		for _, want := range []string{"webster_fan", "plan_fan"} {
+			if !strings.Contains(migrated, want) {
+				t.Errorf("dry-run loom migrated = %s; want it to name %s", migrated, want)
 			}
 		}
 		if dropped := fmt.Sprint(reconcileModule(t, result, "lenses")["dropped"]); dropped != "[fans.standard]" {
@@ -528,11 +538,24 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read the board loom.yaml: %v", err)
 		}
+		for _, want := range []string{"\ncode_reviewer_fan: review-code"} {
+			if !strings.Contains(string(after), want) {
+				t.Errorf("applied board loom.yaml lacks %q; got %q", want, after)
+			}
+		}
 		for _, gone := range []string{"\nwebster_fan:", "\nwebster_reviewer_fan:", "\nplan_fan:", "\nplan_reviewer_fan:", "stale-fan"} {
 			if strings.Contains(string(after), gone) {
 				t.Errorf("applied board loom.yaml still holds %q; got %q", gone, after)
 			}
 		}
+		moved, err := os.ReadFile(configengine.ConfigFile(boardDir, "tapestry"))
+		if err != nil {
+			t.Fatalf("read the board tapestry.yaml: %v", err)
+		}
+		if !strings.Contains(string(moved), "plan_reviewer_fan: review-plan") {
+			t.Errorf("applied board tapestry.yaml lacks the moved plan_reviewer_fan: review-plan; got %q", moved)
+		}
+
 		show := exec.Command("git", "show", "--name-only", "--pretty=format:%s", "HEAD")
 		show.Dir = boardDir
 		showOut, err := show.Output()
@@ -540,7 +563,7 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Fatalf("git show in the Bolt checkout: %v", err)
 		}
 		wantShow := "config: reconcile the board dir's files"
-		for _, rel := range []string{configengine.ConfigFileRel("lenses"), configengine.TemplateBaseFileRel("profiles")} {
+		for _, rel := range []string{configengine.ConfigFileRel("lenses"), configengine.ConfigFileRel("loom"), configengine.TemplateBaseFileRel("profiles"), configengine.ConfigFileRel("tapestry")} {
 			wantShow += "\n" + strings.ReplaceAll(rel, "\\", "/")
 		}
 		if strings.TrimSpace(string(showOut)) != wantShow {
@@ -568,19 +591,19 @@ func TestConfigOverRealHub(t *testing.T) {
 	t.Run("reconcile --apply removes a key the template lacks from a hub worktree file", func(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, "")
 		loomFile := configengine.ConfigFile(codeWorktreePath, "loom")
-		if err := os.WriteFile(loomFile, []byte("discussion:\n    timeout_min: 60\nnewer_key: 1\n"), 0o644); err != nil {
+		if err := os.WriteFile(loomFile, []byte("discussion_timeout_min: 60\nnewer_key: 1\n"), 0o644); err != nil {
 			t.Fatalf("plant a key the template lacks in the worktree loom.yaml: %v", err)
 		}
 
 		if code, result := runReconcileCLI(t, codeWorktreePath, "--apply"); code != 0 {
 			t.Fatalf("reconcile --apply = %d; want 0; result: %v", code, result)
 		}
-		if after, err := os.ReadFile(loomFile); err != nil || string(after) != "discussion:\n    timeout_min: 60\n" {
+		if after, err := os.ReadFile(loomFile); err != nil || string(after) != "discussion_timeout_min: 60\n" {
 			t.Errorf("worktree loom.yaml = %q, %v after the apply; want the unknown key removed and the tuned one kept", after, err)
 		}
 	})
 
-	t.Run("reconcile --layer default --apply prunes every key the template lacks, retired ones included, and leaves the profiles file as written", func(t *testing.T) {
+	t.Run("reconcile --layer default --apply prunes every retired loom, landing and gate key and every key the template lacks, and leaves the profiles file as written", func(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, "")
 		appendPlanted := func(module, planted string) {
 			t.Helper()
@@ -599,7 +622,10 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 		appendPlanted("loom", "webster_max_bounces: 2\nmerge_max_bounces: 1\nalignment_pr_approve: true\nrework: true\nnewer_loom_key: 1\n")
 		appendPlanted("landing", "require_pr_to_base: []\nnewer_landing_key: 1\n")
-		appendPlanted("gate", "go_parallel: 8\n")
+		gateFile := configengine.ConfigFile(boardDir, "gate")
+		if err := os.WriteFile(gateFile, []byte("gates:\n  round: [0, 1]\n  publish: [0]\n"), 0o644); err != nil {
+			t.Fatalf("plant a publish gate in the board gate.yaml: %v", err)
+		}
 		appendPlanted("profiles", "retired-keys:\n  tapestry:\n    loom: {webster_max_bounces: 3, merge_max_bounces: 1}\n")
 		profilesFile := configengine.ConfigFile(boardDir, "profiles")
 		profilesBefore, err := os.ReadFile(profilesFile)
@@ -620,22 +646,26 @@ func TestConfigOverRealHub(t *testing.T) {
 			return string(content)
 		}
 		loom := read("loom")
+		if !strings.Contains(loom, "\ncode_max_bounces: 2 ") {
+			t.Errorf("applied board loom.yaml lacks code_max_bounces: 2; got %q", loom)
+		}
 		for _, gone := range []string{"webster_max_bounces", "merge_max_bounces", "alignment_pr_approve", "rework", "newer_loom_key"} {
 			if strings.Contains(loom, gone) {
 				t.Errorf("applied board loom.yaml still holds %q; got %q", gone, loom)
 			}
 		}
-		if landing := read("landing"); strings.Contains(landing, "require_pr_to_base") || strings.Contains(landing, "newer_landing_key") {
-			t.Errorf("applied board landing.yaml = %q; want neither require_pr_to_base nor newer_landing_key", landing)
+		if landing := read("landing"); !strings.Contains(landing, "\ndeploy_branches: []") || strings.Contains(landing, "require_pr_to_base") || strings.Contains(landing, "newer_landing_key") {
+			t.Errorf("applied board landing.yaml = %q; want an empty deploy_branches and neither require_pr_to_base nor newer_landing_key", landing)
 		}
-		if gate := read("gate"); strings.Contains(gate, "go_parallel") {
-			t.Errorf("applied board gate.yaml = %q; want no go_parallel", gate)
+		if gate := read("gate"); !strings.Contains(gate, "webster-fix: {tiers: [0, 1], scope: diff}") || strings.Contains(gate, "round") || strings.Contains(gate, "publish") {
+			t.Errorf("applied board gate.yaml = %q; want the round list migrated to webster-fix and no publish", gate)
 		}
 		if profilesAfter := read("profiles"); profilesAfter != string(profilesBefore) {
 			t.Errorf("board profiles.yaml = %q after the apply; want %q, byte for byte", profilesAfter, profilesBefore)
 		}
 
-		// The profile still holding the retired keys is refused when it seeds a run, naming the first old key.
+		// The profile still holding the retired keys seeds a run:
+		// the Webster key reads as its Code successor and the Merge key is dropped.
 		profiles, err := runprofile.Load(configengine.Dirs{Board: boardDir})
 		if err != nil {
 			t.Fatalf("runprofile.Load: %v", err)
@@ -644,8 +674,50 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Settings(retired-keys, tapestry): %v", err)
 		}
-		if _, err := configreg.LayerRunSettings("retired-keys", profile, nil); err == nil || !strings.Contains(err.Error(), "merge_max_bounces") {
-			t.Errorf("LayerRunSettings(retired-keys) error = %v; want a refusal naming merge_max_bounces", err)
+		documents, err := configreg.LayerRunSettings("retired-keys", profile, nil)
+		if err != nil {
+			t.Fatalf("LayerRunSettings(retired-keys): %v", err)
+		}
+		if got, want := string(documents["loom"]), "code_max_bounces: 3 "; !strings.HasPrefix(got, want) || strings.Contains(got, "merge_max_bounces") {
+			t.Errorf("seeded loom layer = %q; want it to start with %q and hold no merge_max_bounces", got, want)
+		}
+	})
+
+	t.Run("reconcile --layer default lists an unmigrated base's strip as pending and never performs it", func(t *testing.T) {
+		t.Setenv(agentname.StrandNameEnv, "")
+		loomTemplate, ok := configreg.Template("loom")
+		if !ok {
+			t.Fatal("configreg has no loom template")
+		}
+		loomFile := configengine.ConfigFile(boardDir, "loom")
+		full := []byte(loomTemplate())
+		if err := os.WriteFile(loomFile, full, 0o644); err != nil {
+			t.Fatalf("write the current template whole into the board loom.yaml: %v", err)
+		}
+		marker := configengine.BaseSparseMarker(boardDir)
+		if err := os.Remove(marker); err != nil && !os.IsNotExist(err) {
+			t.Fatalf("remove the board marker: %v", err)
+		}
+
+		code, result := runReconcileCLI(t, primeWorktreePath, "--layer", "default")
+		if code != 0 {
+			t.Fatalf("reconcile --layer default = %d; want 0; result: %v", code, result)
+		}
+		if stripped := reconcileModule(t, result, "loom")["stripped"]; stripped == nil {
+			t.Errorf("dry-run loom entry lists no stripped keys; want the template-equal keys; result: %v", result)
+		}
+		if _, ok := result["base_strip"].(string); !ok {
+			t.Errorf("dry-run envelope lacks base_strip; got %v", result)
+		}
+
+		if code, result = runReconcileCLI(t, primeWorktreePath, "--layer", "default", "--apply"); code != 0 {
+			t.Fatalf("reconcile --layer default --apply = %d; want 0; result: %v", code, result)
+		}
+		if after, err := os.ReadFile(loomFile); err != nil || !bytes.Equal(after, full) {
+			t.Errorf("board loom.yaml = %q, %v after the apply; want the units left in place", after, err)
+		}
+		if _, err := os.Stat(marker); !os.IsNotExist(err) {
+			t.Errorf("board marker stat err = %v after the apply; want it absent", err)
 		}
 	})
 }
@@ -664,7 +736,7 @@ func boardHead(t *testing.T, boardDir string) string {
 
 // reconcileBaseEntry returns the entry in the envelope for module that records the reconcile of the module's own file.
 // That entry carries the seed; the test fails when it is absent.
-// A module may also appear in a result that carries no seed, such as a local-layer result,
+// A key move reports apart, under the source module's name,
 // so the first entry of a module is not always the reconcile one.
 func reconcileBaseEntry(t *testing.T, result map[string]any, module string) map[string]any {
 	t.Helper()

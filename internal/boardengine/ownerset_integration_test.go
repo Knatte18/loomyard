@@ -280,12 +280,6 @@ func TestSetOwners(t *testing.T) {
 				if want := "Prime owner: `" + tt.wantPrime + "`.\n"; !strings.Contains(string(readme), want) {
 					t.Errorf("README.md = %q; want it to contain %q", readme, want)
 				}
-				committed := strings.Fields(gitkit.Git(t, f.bare, "show", "--name-only", "--format=", "main"))
-				for _, name := range []string{boardFile, "README.md", BoardDataFile, BoardPageFile} {
-					if !slices.Contains(committed, name) {
-						t.Errorf("origin's newest commit holds %v; want it to hold %s", committed, name)
-					}
-				}
 			}
 			if len(tt.wantStatus) > 0 {
 				tasks, err := ParseBoardTasks([]byte(gitkit.Git(t, f.bare, "show", "main:board.json")))

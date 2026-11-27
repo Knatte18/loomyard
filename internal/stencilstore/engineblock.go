@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
@@ -152,7 +151,7 @@ func readInclude(baseDir, engine, stencilName, include string) ([]byte, error) {
 		return writeEngineBlocksInPlace(baseDir, engine, include, content, false)
 	}
 	if engine == "" {
-		return nil, fmt.Errorf("stencilstore: stencil %q includes engine block %q, but no engine was named to read it for; way forward: name the seat's engine in its model spec, or set %s", stencilName, block, configengine.KeyName("shuttle", "engine"))
+		return nil, fmt.Errorf("stencilstore: stencil %q includes engine block %q, but no engine was named to read it for; way forward: name the seat's engine in its model spec, or set the engine key of shuttle.yaml", stencilName, block)
 	}
 	blockPath := Path(baseDir, EngineBlockName(engine, block))
 	content, err := os.ReadFile(blockPath)

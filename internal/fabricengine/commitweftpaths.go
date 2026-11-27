@@ -5,6 +5,7 @@ package fabricengine
 import (
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -62,8 +63,24 @@ func CommitRecordsPaths(rec *Mutations, weftPath, anchorRel string, relPaths []s
 // commitRecordsPathsHeld stages and commits relPaths for a caller that already holds the weft write lock of weftPath.
 // It takes no lock, so a caller that try-acquired the lock never blocks on a second acquisition of the same lock file.
 // It expects non-empty relPaths and a caller that has already honoured opts.SkipGit; opts is not read here.
+// A one-repository worktree that is mid-merge commits around the merge.
 func commitRecordsPathsHeld(rec *Mutations, weftPath, anchorRel string, relPaths []string, msg string, opts SyncOptions) (sha string, committed bool, err error) {
-	sha, committed, err = gitrepo.New(weftPath).StageAndCommit(msg, weftCommitPathspec(anchorRel, relPaths))
+	if err := refuseOffPrimeBranch(weftPath); err != nil {
+		return "", false, err
+	}
+	routed, err := mergeRouteApplies(weftPath)
+	if err != nil {
+		return "", false, err
+	}
+	if routed {
+		sha, committed, err = commitRecordsAroundMerge(rec, weftPath, anchorRel, relPaths, msg)
+	} else {
+		err = retryHeldIndexLock(indexLockRetryBound, time.Sleep, func() error {
+			var commitErr error
+			sha, committed, commitErr = gitrepo.New(weftPath).StageAndCommit(msg, weftCommitPathspec(anchorRel, relPaths))
+			return commitErr
+		})
+	}
 	if err != nil {
 		return "", false, err
 	}

@@ -29,5 +29,3 @@ You never run a Bash call in the background.
 - Leave the worktree clean: no uncommitted change may remain when you write your reply.
 
 {{template "loom-fragment-loosened-check"}}
-
-{{template "loom-fragment-tooling-names"}}

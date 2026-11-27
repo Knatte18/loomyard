@@ -51,14 +51,12 @@ type landWorld struct {
 	// held and heldErr are what HeldSlugs answers: the slugs run directories and task branches hold.
 	held    []string
 	heldErr error
-	// drafted and recorded hold the slug of each DraftDescription and RecordDescription call,
-	// and recordedFrom the draft path each RecordDescription call names;
+	// drafted and recorded hold the slug of each DraftDescription and RecordDescription call;
 	// draftErr and recordErr are what those seams fail with.
-	drafted      []string
-	draftErr     error
-	recorded     []string
-	recordedFrom []string
-	recordErr    error
+	drafted   []string
+	draftErr  error
+	recorded  []string
+	recordErr error
 	// api is the fake GitHub every pull request side holds; origin and sideErr are what PullRequestSide answers with.
 	api     *prkit.API
 	origin  landingshed.Origin
@@ -183,9 +181,8 @@ func (w *landWorld) deps() landDeps {
 			}
 			return "/hub/" + slug + "/_lym/landing/summary.md", nil
 		},
-		RecordDescription: func(slug, from string, _ time.Time) (string, error) {
+		RecordDescription: func(slug string, _ time.Time) (string, error) {
 			w.recorded = append(w.recorded, slug)
-			w.recordedFrom = append(w.recordedFrom, from)
 			if w.recordErr != nil {
 				return "", w.recordErr
 			}
@@ -517,33 +514,38 @@ func TestMarkReady(t *testing.T) {
 			wantErr: []string{"empty-body: body is empty", "lym beam describe b"},
 		},
 		{
+			name:    "RequiredParentWithNoneRecordedRefusedNamingOpen",
+			slug:    "b",
+			setup:   unflagged(func(w *landWorld) { w.mode = "required" }),
+			wantErr: []string{"lym beam pr open b"},
+		},
+		{
 			name: "RulesRequiredOnParentWithNoneRecordedRefusedNamingOpen",
 			slug: "b",
 			setup: unflagged(func(w *landWorld) {
-				w.mode = "review"
+				w.mode = "on"
 				w.rulesRequired = true
 			}),
 			wantErr: []string{"lym beam pr open b"},
 		},
 		{
-			name: "RulesRequiredWithNoUpstreamRefusedNamingTheFactAndReady",
+			name: "RequiredParentWithNoUpstreamRefusedNamingTheFactAndReady",
 			slug: "b",
 			setup: unflagged(func(w *landWorld) {
-				w.mode = "review"
-				w.rulesRequired = true
+				w.mode = "required"
 				w.origin = landingshed.Origin{URL: "https://github.com/o/r.git"}
 			}),
 			wantErr:   []string{"no upstream", "lym beam ready b"},
 			wantNoErr: []string{"lym loom resume"},
 		},
 		{
-			name: "MergeWithTheSameMissingFactRefused",
+			name: "MergeParentWithTheSameMissingFactRefused",
 			slug: "b",
 			setup: unflagged(func(w *landWorld) {
-				w.mode = "trail"
+				w.mode = "merge"
 				w.origin = landingshed.Origin{URL: "https://github.com/o/r.git"}
 			}),
-			wantErr:   []string{"no upstream", "lym beam ready b", "the beam's beam.pull_request is trail"},
+			wantErr:   []string{"no upstream", "lym beam ready b"},
 			wantNoErr: []string{"lym loom resume"},
 		},
 		{
@@ -639,17 +641,16 @@ func TestMarkReady(t *testing.T) {
 			wantMarkCalls: 1,
 		},
 		{
-			name:          "MergeWithNoneRecordedWritesTheRecord",
+			name:          "MergeParentWithNoneRecordedWritesTheRecord",
 			slug:          "b",
-			setup:         unflagged(func(w *landWorld) { w.mode = "trail" }),
+			setup:         unflagged(func(w *landWorld) { w.mode = "merge" }),
 			wantMarkCalls: 1,
 		},
 		{
-			name: "RulesRequiredWithNoCommitsBeyondItsParentWritesTheRecord",
+			name: "RequiredParentWithNoCommitsBeyondItsParentWritesTheRecord",
 			slug: "b",
 			setup: unflagged(func(w *landWorld) {
-				w.mode = "review"
-				w.rulesRequired = true
+				w.mode = "required"
 				w.hasCommits = false
 			}),
 			wantMarkCalls: 1,

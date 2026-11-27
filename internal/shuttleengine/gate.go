@@ -7,6 +7,7 @@ package shuttleengine
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 )
 
@@ -32,12 +33,6 @@ type GateResult struct {
 	Send string
 	// SendFailedWayForward is the clause the loop's Warn quotes when sending Send fails.
 	SendFailedWayForward string
-	// Delivered, when non-nil, is set true by the loop each time it has delivered Send to the writer.
-	// A closure that offers Send until it is delivered reads it to stop offering.
-	Delivered *bool
-	// Reprompted, when non-nil, is told by the loop once it has delivered the re-prompt of this failing result.
-	// A closure that must offer its findings until the writer has them records that there.
-	Reprompted RepromptRecorder
 	// Terminal marks a failing result the run finalizes at once, with no re-prompt.
 	// The entry's failure count is not incremented for it.
 	// Its Findings text rides GateOutcome.Reason to the producer:
@@ -51,10 +46,29 @@ type GateResult struct {
 	WriterOnly bool
 }
 
-// RepromptRecorder records that a failing result's re-prompt reached the writer.
-// It is an interface rather than a func, so a GateResult stays comparable.
-type RepromptRecorder interface {
-	RecordReprompt()
+// RerunMark marks a gate call as a re-run of a gate that already ran in the same evaluation.
+// The zero value is ready, and a nil *RerunMark marks nothing.
+// It is safe for concurrent use.
+type RerunMark struct {
+	// active counts the marked calls in flight.
+	active atomic.Int32
+}
+
+// Run calls gate with the mark set, clears the mark once gate returns and returns gate's result.
+// A nil receiver calls gate unmarked.
+func (m *RerunMark) Run(gate Gate) (GateResult, error) {
+	if m == nil {
+		return gate()
+	}
+	m.active.Add(1)
+	defer m.active.Add(-1)
+	return gate()
+}
+
+// On reports whether a Run of m is in progress, so a gate can tell the re-run from its first call.
+// A nil mark is never on.
+func (m *RerunMark) On() bool {
+	return m != nil && m.active.Load() > 0
 }
 
 // Gate is a mechanical validator a gated run consults at each arrival and at its single verdict site, finalize.
@@ -110,6 +124,9 @@ type GateEntry struct {
 	// A result of several lines, or an empty or whitespace-only line, fails the send,
 	// and the loop ends with the attempts spent so far.
 	Reprompt func(findingsPath string) string
+	// Rerun is the mark a wrapper sets while it runs this entry's gate again over a fixer's tree.
+	// It is nil for an entry nothing re-runs.
+	Rerun *RerunMark
 }
 
 // GateSpec is the ordered list of gate entries a gated run consults at each arrival.

@@ -19,40 +19,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
-// CloneAndWireFromLocalBares clones a hub named shortname under container from two local bare repositories and wires it.
-// It returns the hub's path and its prime's cwd; the clone is left intact on error, as CloneAndWire leaves it.
-func CloneAndWireFromLocalBares(container, codeBare, recordsBare, shortname string) (hubPath, primeCwd string, err error) {
-	res, err := CloneAndWire(container, fabricengine.CloneOptions{
-		WarpURL:   codeBare,
-		WeftURL:   recordsBare,
-		Shortname: shortname,
-	})
-	return res.HubPath, res.PrimeCwd, err
-}
-
-// CloneAndWireFromLocalOrigin clones a one-repository hub named shortname under container from one local bare repository.
-// It wires the hub as CloneAndWire does.
-// The clone seeds the hub's records and board into origin under its records namespace.
-// It returns the hub's path and its prime's cwd; the clone is left intact on error, as CloneAndWire leaves it.
-func CloneAndWireFromLocalOrigin(container, origin, shortname string) (hubPath, primeCwd string, err error) {
-	res, err := CloneAndWire(container, fabricengine.CloneOptions{
-		WeftURL:    origin,
-		Shortname:  shortname,
-		SingleRepo: true,
-	})
-	return res.HubPath, res.PrimeCwd, err
-}
-
 // CloneAndWire clones a hub and wires it, so that a successful clone needs no reconcile.
-// It materializes the hub-wide config, then commits it on weft:main and pushes it through `fabricengine.PushCloneBoard`.
-// That verb pushes a two-repository clone's and a join's board as any board is pushed.
-// It seeds a `--single-repo` clone's.
-// A failure before that push returns through `fabricengine.AbandonSeededClone`, which removes a seeded hub.
+// It materializes the hub-wide config, then commits it on weft:main and pushes it.
 // It then wires the warp junctions and reconciles the per-worktree configs.
 // It commits the resulting per-worktree module configs on the weft primary branch, with no push.
 // It then tells the worktree seam that the prime was made.
 // A failed event's warning goes in SeamWarning, or in the error when the walk that follows fails.
 // The anchor marker is already committed on the prime's weft branch when the wiring starts.
+// A one-repository clone commits the hub-wide config on the board branch and the module configs on the prime's branch.
+// It wires real directories where a two-repository clone links junctions, and pushes both branches once before the walk.
 //
 // Keeping the sequence in one place stops a second copy from drifting away from it.
 //
@@ -68,10 +43,12 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	rec.Extend(res.Mutated())
 	defer func() { res.Mutations = rec.Snapshot() }()
 
+	// No warning is raised for a template-seeded module: no vocabulary can predate a fresh clone.
 	// The whole-repo commit below carries every file this call wrote.
+	boardSeededFromNothing := !anyBaseFilePresent(res.BoardDir)
 	hubWideResults, err := configsync.ReconcileHubWideAt(res.BoardDir, res.WeftBase, configsync.HubWideOptions{Apply: true})
 	if err != nil {
-		return fabricengine.CloneResult{}, fabricengine.AbandonSeededClone(res, rec, err)
+		return fabricengine.CloneResult{}, err
 	}
 	for _, hubWideResult := range hubWideResults {
 		if hubWideResult.Applied {
@@ -81,10 +58,26 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 			rec.Append(fabricengine.KindFileWritten, configengine.TemplateBaseFile(res.BoardDir, hubWideResult.Module), "")
 		}
 	}
+	// A board seeded from nothing holds only sparse files, so it is marked here.
+	// The board commit below carries the marker.
+	// A board that already held a base file is left unmarked:
+	// the walk at the end strips it once and commits the marker itself.
+	markerPath := configengine.BaseSparseMarker(res.BoardDir)
+	if boardSeededFromNothing {
+		if err := configsync.WriteBaseSparseMarker(res.BoardDir); err != nil {
+			return fabricengine.CloneResult{}, err
+		}
+		rec.Append(fabricengine.KindFileWritten, markerPath, "")
+	}
+
 	b := fabricengine.NewBolt(res.BoardDir)
 	sha, committed, err := b.Commit("fabric clone: record repo-wide config", fabricengine.SyncOptions{})
 	if err != nil {
-		return fabricengine.CloneResult{}, fabricengine.AbandonSeededClone(res, rec, err)
+		// An untracked marker would make the next start verb's walk see a marked board and skip its one-time strip.
+		if boardSeededFromNothing {
+			_ = os.Remove(markerPath)
+		}
+		return fabricengine.CloneResult{}, err
 	}
 	if committed {
 		rec.Append(fabricengine.KindCommitCreated, res.BoardDir, sha)
@@ -94,8 +87,12 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	// Such an entry would claim a push this call did not observe.
 	// The commit above is already recorded.
 	// A seed-commit drop behind the push is recorded in rec as commits_dropped.
-	if err := fabricengine.PushCloneBoard(res, rec); err != nil {
-		return fabricengine.CloneResult{}, err
+	// A one-repository clone pushes nothing here:
+	// its board branch may not be on origin yet, and PushOneRepositoryClone pushes it after the prime's branch.
+	if !res.OneRepository {
+		if err := b.PushRecorded(fabricengine.SyncOptions{}, rec); err != nil {
+			return fabricengine.CloneResult{}, err
+		}
 	}
 
 	l, err := lymcwd.Resolve(res.PrimeCwd)
@@ -139,6 +136,14 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 		return fabricengine.CloneResult{}, err
 	}
 
+	// A --single-repo clone has created the marker, the seed records and the board branch locally.
+	// Origin holds none of them.
+	// The push comes after the records are committed and before the walk below, which pushes the board.
+	// A refused push tears the hub down, so the clone leaves nothing to complete by hand.
+	if err := fabricengine.PushOneRepositoryClone(res); err != nil {
+		return fabricengine.CloneResult{}, err
+	}
+
 	// The prime is now set up as an added pair is when its seam fires:
 	// wired, its exclude lines seeded, the Bolt checkout present and its module configs committed.
 	// The render reads only the Bolt checkout's heddle store and the shipped layer, so it needs nothing the walk writes.
@@ -149,8 +154,10 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	// A new hub has no build stamp, so the walk seeds every absent per-worktree repo default sparse.
 	// The header-only base comes from the template, and the prime's non-template units come from the prime.
 	// The walk commits them on the board and pushes it.
-	// A walk failure leaves the clone intact, and the walk of the next verb that runs one seeds the defaults.
+	// A walk failure leaves the clone intact, and the next start verb's walk seeds the defaults.
+	// The same walk migrates the prime, so it arrives with the sparse marker committed.
 	absentDefaults := absentRepoDefaults(res.BoardDir)
+	markerBefore := fileExists(configengine.SparseMarker(res.WeftBase))
 	if err := hubreconcile.Ensure(hubreconcile.Geometry{BoardDir: res.BoardDir, WorktreePath: l.WorktreePath()}, hubreconcile.Options{}); err != nil {
 		if res.SeamWarning != "" {
 			err = fmt.Errorf("%w; the prime was not rendered: %s", err, res.SeamWarning)
@@ -162,8 +169,27 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 			rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(res.BoardDir, module), "")
 		}
 	}
+	if marker := configengine.SparseMarker(res.WeftBase); !markerBefore && fileExists(marker) {
+		rec.Append(fabricengine.KindFileWritten, marker, "")
+	}
 
 	return res, nil
+}
+
+// fileExists reports whether path names an existing file.
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// anyBaseFilePresent reports whether any registered module's base file exists under boardDir.
+func anyBaseFilePresent(boardDir string) bool {
+	for _, module := range configreg.Modules() {
+		if fileExists(configengine.ConfigFile(boardDir, module.Name)) {
+			return true
+		}
+	}
+	return false
 }
 
 // absentRepoDefaults returns the per-worktree modules whose repo default is absent under boardDir.
@@ -178,19 +204,6 @@ func absentRepoDefaults(boardDir string) []string {
 		}
 	}
 	return absent
-}
-
-// cloneDestination returns the directory a clone creates its hub in, from the seam cwd and the --into value.
-// An empty into yields cwd unchanged, an absolute into is cleaned as given, and a relative into resolves against cwd.
-// The process cwd is never read: cwd is a destination here rather than a lookup anchor.
-func cloneDestination(cwd, into string) string {
-	switch {
-	case into == "":
-		return cwd
-	case filepath.IsAbs(into):
-		return filepath.Clean(into)
-	}
-	return filepath.Join(cwd, into)
 }
 
 // runCloneWithReset executes the clone subcommand.
@@ -220,7 +233,22 @@ func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset 
 		warpURL = args[1]
 	}
 
-	res, err := CloneAndWire(cloneDestination(cwd, into), fabricengine.CloneOptions{
+	// The new hub is created in this directory, never the process cwd.
+	// An empty --into yields the seam cwd unchanged, an absolute --into is cleaned as given,
+	// and a relative --into resolves against the seam cwd.
+	// Resolving against the process cwd would reintroduce the dependency lymcwd exists to remove.
+	// Here cwd is a destination rather than a lookup anchor.
+	dest := cwd
+	switch {
+	case into == "":
+		// dest already equals cwd.
+	case filepath.IsAbs(into):
+		dest = filepath.Clean(into)
+	default:
+		dest = filepath.Join(cwd, into)
+	}
+
+	res, err := CloneAndWire(dest, fabricengine.CloneOptions{
 		WeftURL:        weftURL,
 		WarpURL:        warpURL,
 		Subpath:        subpath,

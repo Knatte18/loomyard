@@ -15,28 +15,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// testFlaky returns a flaky failure of kind with id, its first run's log and its output tail.
-func testFlaky(id, kind, log, tail string) flakyFailure {
-	return flakyFailure{failure: VerifyFailure{ID: id, Kind: kind, Tail: tail}, log: log}
-}
-
 func TestTriageWarnings(t *testing.T) {
 	tiergate.Require(t, 0)
 	cases := []struct {
 		name string
-		in   []flakyFailure
+		in   []string
 		want []string
 	}{
-		{
-			"flaky tests",
-			[]flakyFailure{testFlaky("p.A", FailureKindTest, "/v/1.log", "boom"), testFlaky("p", FailureKindPackage, "/v/1.log", "")},
-			[]string{"integration verify: flaky failures passed or vanished on rerun: p.A, p"},
-		},
-		{
-			"a verify command failure is no flaky test",
-			[]flakyFailure{testFlaky(opaqueFailureID, FailureKindOpaque, "/v/1.log", "gate error")},
-			[]string{"integration verify: the verify command failed naming no failing test and passed on rerun; first run's log: /v/1.log"},
-		},
+		{"flaky", []string{"p.A", "p.B"}, []string{"integration verify: flaky failures passed or vanished on rerun: p.A, p.B"}},
 		{"none", nil, nil},
 	}
 	for _, c := range cases {
@@ -50,12 +36,7 @@ func TestWriteTriageFrictionNote(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("content", func(t *testing.T) {
 		dir := filepath.Join(t.TempDir(), "friction")
-		flaky := []flakyFailure{
-			testFlaky("p.A", FailureKindTest, "/v/1.log", "a_test.go:3: boom\nmore"),
-			testFlaky("p", FailureKindPackage, "/v/1.log", ""),
-			testFlaky(opaqueFailureID, FailureKindOpaque, "/v/3.log", "gate test: build failed"),
-		}
-		if err := writeTriageFrictionNote(dir, flaky); err != nil {
+		if err := writeTriageFrictionNote(dir, []string{"p.A", "p.B"}); err != nil {
 			t.Fatal(err)
 		}
 		got, err := os.ReadFile(filepath.Join(dir, "webster-verify-triage.md"))
@@ -63,45 +44,7 @@ func TestWriteTriageFrictionNote(t *testing.T) {
 			t.Fatal(err)
 		}
 		want := "Integration-suite triage: non-regression verify failures\n\n" +
-			"These identities failed the first verify run and passed or vanished on rerun (flaky):\n\n" +
-			"- p.A, first run's log /v/1.log\n\n  ```text\n  a_test.go:3: boom\n  more\n  ```\n\n" +
-			"- p, first run's log /v/1.log\n\n  Its output was empty.\n\n" +
-			"The verify command failed its first run naming no failing test, and passed on rerun; the failure may be the verify step's own, not a test's:\n\n" +
-			"- first run's log /v/3.log\n\n  ```text\n  gate test: build failed\n  ```\n\n"
-		if string(got) != want {
-			t.Errorf("note = %q; want %q", got, want)
-		}
-	})
-	t.Run("command failures only", func(t *testing.T) {
-		dir := filepath.Join(t.TempDir(), "friction")
-		flaky := []flakyFailure{testFlaky(opaqueFailureID, FailureKindOpaque, "/v/3.log", "gate test: build failed")}
-		if err := writeTriageFrictionNote(dir, flaky); err != nil {
-			t.Fatal(err)
-		}
-		got, err := os.ReadFile(filepath.Join(dir, "webster-verify-triage.md"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		want := "Integration-suite triage: non-regression verify failures\n\n" +
-			"The verify command failed its first run naming no failing test, and passed on rerun; the failure may be the verify step's own, not a test's:\n\n" +
-			"- first run's log /v/3.log\n\n  ```text\n  gate test: build failed\n  ```\n\n"
-		if string(got) != want {
-			t.Errorf("note = %q; want %q", got, want)
-		}
-	})
-	t.Run("a backtick fence in the tail", func(t *testing.T) {
-		dir := filepath.Join(t.TempDir(), "friction")
-		flaky := []flakyFailure{testFlaky("p.A", FailureKindTest, "/v/1.log", "before\n```\nafter")}
-		if err := writeTriageFrictionNote(dir, flaky); err != nil {
-			t.Fatal(err)
-		}
-		got, err := os.ReadFile(filepath.Join(dir, "webster-verify-triage.md"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		want := "Integration-suite triage: non-regression verify failures\n\n" +
-			"These identities failed the first verify run and passed or vanished on rerun (flaky):\n\n" +
-			"- p.A, first run's log /v/1.log\n\n  ````text\n  before\n  ```\n  after\n  ````\n\n"
+			"These identities failed the first verify run and passed or vanished on rerun (flaky):\n\n- p.A\n- p.B\n\n"
 		if string(got) != want {
 			t.Errorf("note = %q; want %q", got, want)
 		}
@@ -109,7 +52,7 @@ func TestWriteTriageFrictionNote(t *testing.T) {
 	t.Run("empty dir", func(t *testing.T) {
 		cwd := t.TempDir()
 		t.Chdir(cwd)
-		if err := writeTriageFrictionNote("", []flakyFailure{testFlaky("p.A", FailureKindTest, "/v/1.log", "")}); err != nil {
+		if err := writeTriageFrictionNote("", []string{"p.A"}); err != nil {
 			t.Fatal(err)
 		}
 		if entries, _ := os.ReadDir(cwd); len(entries) != 0 {

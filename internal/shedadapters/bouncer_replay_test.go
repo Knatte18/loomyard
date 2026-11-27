@@ -56,7 +56,7 @@ func TestBouncer_Replay_Blocking(t *testing.T) {
 		t.Error("Call() did not log a warning on a CONTINUE replay")
 	}
 
-	if _, err := os.Stat(FocusPath(cfg.RunDir, 2)); err != nil {
+	if _, err := os.Stat(focusPath(cfg.RunDir, 2)); err != nil {
 		t.Errorf("os.Stat(round-2-focus.md) = %v; want nil (synthesized when absent)", err)
 	}
 
@@ -107,13 +107,13 @@ func TestBouncer_FocusSynthesis_OverUnparseableFile(t *testing.T) {
 				}})
 			}
 			malformed := fmt.Sprintf("garbage, not frontmatter (malformed round-%d focus)", round)
-			if err := os.WriteFile(FocusPath(cfg.RunDir, round), []byte(malformed), 0o644); err != nil {
+			if err := os.WriteFile(focusPath(cfg.RunDir, round), []byte(malformed), 0o644); err != nil {
 				t.Fatalf("WriteFile(malformed focus) = %v; want nil", err)
 			}
 
 			shedfake.CallOK(t, b)
 
-			archived := archivedSiblingPath(FocusPath(cfg.RunDir, round), bouncerJudgeTestClock)
+			archived := archivedSiblingPath(focusPath(cfg.RunDir, round), bouncerJudgeTestClock)
 			got, err := os.ReadFile(archived)
 			if err != nil {
 				t.Fatalf("ReadFile(archived sibling %q) = %v; want nil", archived, err)
@@ -122,7 +122,7 @@ func TestBouncer_FocusSynthesis_OverUnparseableFile(t *testing.T) {
 				t.Errorf("archived sibling content = %q; want %q (the malformed content survives)", got, malformed)
 			}
 
-			synthRaw, err := os.ReadFile(FocusPath(cfg.RunDir, round))
+			synthRaw, err := os.ReadFile(focusPath(cfg.RunDir, round))
 			if err != nil {
 				t.Fatalf("ReadFile(round-%d-focus.md) = %v; want nil", round, err)
 			}

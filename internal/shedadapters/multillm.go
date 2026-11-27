@@ -39,7 +39,6 @@ var _ SeatRunner = (*seatengine.Engine)(nil)
 // and it maps the chair's result onto the shedengine.ShedProducer contract.
 // An advisor's result is logged only, since an advisor's death weakens nothing the chair decided;
 // a writer that ended the step decides it instead.
-// A chair that started and timed out is Stuck, not an error, so the run halts blocked with a reason that can be resumed.
 type MultiLLMProducer struct {
 	name  string
 	table seatengine.Table
@@ -86,7 +85,7 @@ func NewMultiLLMProducerSourced(name string, tables TableSource, seats SeatRunne
 
 // KeepGateFindings sets the file an exhausted chair gate's findings are kept in, which the Stuck reason names.
 // It returns the producer so a constructor call can chain it.
-// A later call whose chair gate passed leaves the file in place; an empty path keeps no findings file.
+// A call whose chair gate passed removes the file; an empty path keeps no findings file.
 func (p *MultiLLMProducer) KeepGateFindings(path string) *MultiLLMProducer {
 	p.gateFindingsPath = path
 	return p
@@ -124,7 +123,7 @@ func (p *MultiLLMProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 		if err != nil {
 			return p.errorExit(ctx, "seat resume", err)
 		}
-		return p.mapOutcome(ctx, table, result)
+		return p.mapOutcome(ctx, result)
 	}
 
 	freshTable := table
@@ -142,7 +141,7 @@ func (p *MultiLLMProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 	if err != nil {
 		return p.errorExit(ctx, "seat run", err)
 	}
-	return p.mapOutcome(ctx, table, result)
+	return p.mapOutcome(ctx, result)
 }
 
 // errorExit returns the context error when ctx is cancelled;
@@ -161,20 +160,18 @@ func (p *MultiLLMProducer) errorExit(ctx context.Context, what string, err error
 // Otherwise the chair's result decides:
 // done maps to Done with the chair's first output as the pointer;
 // when its gate failed, it maps to Stuck with the pointer and the gate's attempts and reason;
-// a chair that started and timed out maps to Stuck with an empty pointer path, because its outputs may not exist,
-// and a reason naming the elapsed time, the limit, the last session state and the way forward;
-// a chair that never started is an engine-level error wrapping shuttleengine.ErrNotStarted;
-// that error carries the chair's start error text when shuttle reported one;
-// a chair that started and died is an engine-level error wrapping shuttleengine.ErrAgentDied.
+// died and timeout are engine-level errors, wrapping shuttleengine.ErrNotStarted when the chair never started;
+// it carries the chair's start error text when shuttle reported one;
+// a chair that started and died wraps shuttleengine.ErrAgentDied.
 // A genuine success survives cancellation, the one exception cancelErr never applies to.
-func (p *MultiLLMProducer) mapOutcome(ctx context.Context, table seatengine.Table, result seatengine.Result) (shedengine.Outcome, shedengine.OutputPointer, error) {
+func (p *MultiLLMProducer) mapOutcome(ctx context.Context, result seatengine.Result) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	for _, advisor := range result.Advisors {
 		logger.Info("shedadapters: advisor seat result", "producer", p.name, "engine", multiLLMEngineLabel, "seat", advisor.Name, "outcome", advisor.Outcome, "startError", advisor.StartError, "notified", advisor.Notified, "strandGUID", advisor.StrandGUID)
 	}
 
 	for _, seat := range result.Advisors {
 		if seat.Writer && seat.EndedStep {
-			return p.writerExit(ctx, table, seat)
+			return p.writerExit(ctx, seat)
 		}
 	}
 
@@ -190,6 +187,9 @@ func (p *MultiLLMProducer) mapOutcome(ctx context.Context, table seatengine.Tabl
 			}
 			logger.Warn("shedadapters: chair's gate did not pass", "producer", p.name, "engine", multiLLMEngineLabel, "attempts", chair.Gate.Attempts, "findingsPath", chair.Gate.FindingsPath, "sessionID", chair.SessionID, "strandGUID", chair.StrandGUID)
 			return shedengine.Stuck, shedengine.OutputPointer{Path: result.ChairOutputs[0], GateAttempts: gateAttemptsPointer(chair.Gate), GateSpans: gateSpansOf(chair.Gate), Reason: gateFailedReason(chair.Gate, p.gateFindingsPath)}, nil
+		}
+		if chair.Gate != nil {
+			clearGateFindings(p.gateFindingsPath)
 		}
 		return shedengine.Done, shedengine.OutputPointer{Path: result.ChairOutputs[0], GateAttempts: gateAttemptsPointer(chair.Gate), GateSpans: gateSpansOf(chair.Gate)}, nil
 
@@ -207,8 +207,7 @@ func (p *MultiLLMProducer) mapOutcome(ctx context.Context, table seatengine.Tabl
 		if chair.Outcome == shuttleengine.OutcomeDied {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): shuttle run outcome %s: %w", p.name, multiLLMEngineLabel, chair.Outcome, shuttleengine.ErrAgentDied)
 		}
-		reason := fmt.Sprintf("%s (%s): the chair's session timed out; %s; %s", p.name, multiLLMEngineLabel, timeoutDetail(chair, table.Chair().Timeout, table.Timeout), timeoutWayForward)
-		return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(chair.Gate), GateSpans: gateSpansOf(chair.Gate), Reason: reason}, nil
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): shuttle run outcome %s", p.name, multiLLMEngineLabel, chair.Outcome)
 
 	default:
 		if cerr := cancelErr(ctx, p.name, multiLLMEngineLabel); cerr != nil {
@@ -222,47 +221,16 @@ func (p *MultiLLMProducer) mapOutcome(ctx context.Context, table seatengine.Tabl
 // writerResumeWayForward is the way forward every writer exit ends with.
 const writerResumeWayForward = "way forward: re-run the row with lym loom resume, which starts every part over unless the chair is still live"
 
-// timeoutWayForward is the way forward a chair timeout's Stuck reason ends with.
-const timeoutWayForward = "way forward: run lym loom resume, which re-attaches the session while it is live and otherwise starts the row over"
-
-// timeoutDetail describes how a timed-out run went: the elapsed time, the limit it had and its last session state.
-// The limit is seatTimeout when non-zero, else tableTimeout.
-// A zero start or end time, or a zero limit, reads as "unknown",
-// and a run whose wait recorded no session state reads as "none recorded".
-func timeoutDetail(run shuttleengine.Result, seatTimeout, tableTimeout time.Duration) string {
-	elapsed := "unknown"
-	if !run.StartedAt.IsZero() && !run.EndedAt.IsZero() {
-		elapsed = run.EndedAt.Sub(run.StartedAt).Round(time.Second).String()
-	}
-	limit := seatTimeout
-	if limit == 0 {
-		limit = tableTimeout
-	}
-	limitText := "unknown"
-	if limit != 0 {
-		limitText = limit.String()
-	}
-	lastState := "none recorded"
-	if len(run.SessionStates) > 0 {
-		last := run.SessionStates[len(run.SessionStates)-1]
-		lastState = string(last.Name)
-		if last.Cause != "" {
-			lastState += " (cause " + last.Cause + ")"
-		}
-	}
-	return fmt.Sprintf("elapsed %s, limit %s, last session state %s", elapsed, limitText, lastState)
-}
-
 // writerExit maps a writer seat that ended the step onto the producer contract.
 // The seat's name is also the name of its part.
 // A start failure wraps shuttleengine.ErrNotStarted.
 // A died run or a wait error wraps shuttleengine.ErrAgentDied and names the writer.
 // A timeout, a failed gate, an Accept error, and a writer lost at resume with its outputs missing are Stuck.
 // The pointer is the seat's first output, so the part's files are committed.
-// The reason names the seat and its part; a timeout's reason adds the elapsed time, the limit and the last session state.
+// The reason names the seat and its part.
 // Any other end is an error naming the writer and its outcome.
 // A cancelled context returns the context error first: no writer end is a success.
-func (p *MultiLLMProducer) writerExit(ctx context.Context, table seatengine.Table, seat seatengine.SeatResult) (shedengine.Outcome, shedengine.OutputPointer, error) {
+func (p *MultiLLMProducer) writerExit(ctx context.Context, seat seatengine.SeatResult) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if cerr := cancelErr(ctx, p.name, multiLLMEngineLabel); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
 	}
@@ -280,13 +248,7 @@ func (p *MultiLLMProducer) writerExit(ctx context.Context, table seatengine.Tabl
 	case seat.Outcome == shuttleengine.OutcomeDied || seat.WaitErr != nil:
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): %s ended without finishing (outcome %q, wait error %v): %w; %s", p.name, multiLLMEngineLabel, label, seat.Outcome, seat.WaitErr, shuttleengine.ErrAgentDied, writerResumeWayForward)
 	case seat.Outcome == shuttleengine.OutcomeTimeout:
-		var seatTimeout time.Duration
-		for _, tableSeat := range table.Seats {
-			if tableSeat.Name == seat.Name {
-				seatTimeout = tableSeat.Timeout
-			}
-		}
-		return stuck(label+" timed out; "+timeoutDetail(seat.Result, seatTimeout, table.Timeout), nil)
+		return stuck(label+" timed out", nil)
 	case seat.Outcome == shuttleengine.OutcomeDone && gate != nil && !gate.Passed:
 		return stuck(label+": "+gateFailedReason(gate, seat.GateFindingsPath), gate)
 	case seat.AcceptErr != nil:

@@ -68,8 +68,8 @@ func resolveAddParent(l *lymcwd.Location, cfg Config, parent string) (addParent,
 	if shaErr != nil {
 		return addParent{}, fmt.Errorf("read HEAD commit of --parent %q: %w", parent, shaErr)
 	}
-	if !slices.Contains(pairNames, branch) && !weftBranchExists(l, RecordsBranchName(branch)) {
+	if !slices.Contains(pairNames, branch) && !weftBranchExists(l, recordsBranchIn(l, branch)) {
 		return addParent{}, fmt.Errorf("--parent %q has %q checked out, not its own pair branch %q; way forward: run `lym fabric checkout %s` in %s, then re-run the add", parent, branch, pairBranch, pairBranch, parentPath)
 	}
-	return addParent{location: location, branch: branch, recordsBranch: RecordsBranchName(branch), headSHA: headSHA}, nil
+	return addParent{location: location, branch: branch, recordsBranch: recordsBranchIn(l, branch), headSHA: headSHA}, nil
 }

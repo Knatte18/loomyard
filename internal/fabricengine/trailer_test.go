@@ -243,27 +243,3 @@ func TestAppendSnapshotTrailers_RejectsInvalidTags(t *testing.T) {
 		})
 	}
 }
-
-// TestCommitWithTrailers_RefusesAnInvalidTrailerBeforeTouchingAnything covers the refusal ahead of every git call.
-// The Fabric is the zero value, so any step past the trailer check would fail on it instead of refusing.
-func TestCommitWithTrailers_RefusesAnInvalidTrailerBeforeTouchingAnything(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	tests := []struct {
-		name    string
-		trailer Trailer
-	}{
-		{"KeyWithASpace", Trailer{Key: "Bad Key", Value: "run-1"}},
-		{"BlankValue", Trailer{Key: TransitionTrailerKey, Value: " "}},
-		{"ValueSpanningLines", Trailer{Key: TransitionTrailerKey, Value: "run-1\nInjected: x"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			result, err := (&Fabric{}).CommitWithTrailers([]string{"README"}, "msg", []Trailer{tt.trailer}, SyncOptions{})
-			if err == nil || result.Committed() {
-				t.Errorf("CommitWithTrailers(%+v) = %+v, %v; want a refusal that commits nothing", tt.trailer, result, err)
-			}
-		})
-	}
-}

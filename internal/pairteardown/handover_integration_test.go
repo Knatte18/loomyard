@@ -8,12 +8,9 @@ package pairteardown_test
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
-	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -28,7 +25,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
-	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/takeoverkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -367,128 +363,6 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 
 		if len(*lines) != 1 || strings.Contains((*lines)[0], "pause intent") {
 			t.Errorf("notices = %q; want one naming no intent, since origin holds the pause intent", *lines)
-		}
-	})
-
-	// primeAhead builds the fixture whose prime records hold unpushed commits of two batten runs, interleaved.
-	// The run slug is taken over on origin, and origin's prime records branch moved past the local tip.
-	// It returns the fixture, the prime's branch and the prime's local tip before any push.
-	const keptSlug = "kept-run"
-	primeAhead := func(t *testing.T) (*handOverFixture, string, string) {
-		t.Helper()
-		boardkit.InstallReplay(t)
-		f := newHandOverFixtureWith(t, slug, false)
-		primeRecords := f.h.PrimeRecords()
-		branch := gitkit.CurrentBranch(t, primeRecords)
-		gitkit.Git(t, primeRecords, "push", "--set-upstream", "origin", branch)
-		for i, runSlug := range []string{keptSlug, slug, keptSlug} {
-			_, statusRel, err := shedrun.TreeRunFileRels(runSlug)
-			if err != nil {
-				t.Fatalf("TreeRunFileRels(%q): %v", runSlug, err)
-			}
-			message := fmt.Sprintf("transition %d of %s\n\n%s: %s", i, runSlug, fabricengine.TransitionTrailerKey, runSlug)
-			gitkit.CommitFile(t, primeRecords, path.Join(path.Dir(statusRel), fmt.Sprintf("transition-%d.txt", i)), "x\n", message)
-		}
-		head := gitkit.RevParse(t, primeRecords, "HEAD")
-		f.plantRunRecord(t, branch, slug, shedengine.Status{State: shedengine.StateRunning}, &f.entry)
-		return f, branch, head
-	}
-	runPrime := func(f *handOverFixture, named string) error {
-		_, err := pairteardown.PushRun(f.h.Location, f.h.Location, named, pairteardown.RunPush{LockWait: fabricengine.LockWaitUnbounded})
-		return err
-	}
-	// originTransitions returns the subjects of the transition commits on origin's prime records branch, oldest first.
-	originTransitions := func(t *testing.T, f *handOverFixture, branch string) []string {
-		t.Helper()
-		var subjects []string
-		for _, subject := range strings.Split(gitkit.Git(t, f.h.RecordsBare, "log", "--reverse", "--format=%s", "refs/heads/"+branch), "\n") {
-			if strings.HasPrefix(subject, "transition ") {
-				subjects = append(subjects, subject)
-			}
-		}
-		return subjects
-	}
-	wantKeptOnly := []string{"transition 0 of " + keptSlug, "transition 2 of " + keptSlug}
-	requirePairGone := func(t *testing.T, f *handOverFixture) {
-		t.Helper()
-		for _, dir := range []string{f.h.PairCodeWorktree(slug), f.h.PairRecordsSibling(slug)} {
-			if _, statErr := os.Stat(dir); !os.IsNotExist(statErr) {
-				t.Errorf("stat %s error = %v; want the pair gone", dir, statErr)
-			}
-		}
-	}
-
-	t.Run("APrimePushHandsTheTakenOverRunOverAndLandsTheOthersCommitsInOrder", func(t *testing.T) {
-		f, branch, primeHead := primeAhead(t)
-		captureNotices(t)
-
-		if err := runPrime(f, ""); err != nil {
-			t.Fatalf("PushRun(prime) error = %v; want nil", err)
-		}
-
-		f.requireMark(t)
-		f.requireProcessEnded(t)
-		requirePairGone(t, f)
-		holdsPrimeTip := false
-		for _, tag := range strings.Fields(gitkit.Git(t, f.h.RecordsBare, "tag", "--list", fabricengine.OwnerArchiveTagPrefix+slug+"/*")) {
-			if gitkit.RevParse(t, f.h.RecordsBare, tag+"^{commit}") == primeHead {
-				holdsPrimeTip = true
-			}
-		}
-		if !holdsPrimeTip {
-			t.Errorf("owner archive tags of %q on origin hold none at the prime's tip %s", slug, primeHead)
-		}
-		if got := originTransitions(t, f, branch); !slices.Equal(got, wantKeptOnly) {
-			t.Errorf("origin transition commits = %q; want %q, none of the taken-over run's", got, wantKeptOnly)
-		}
-	})
-
-	t.Run("APrimePushNamingTheTakenOverRunEndsWithErrHandedOver", func(t *testing.T) {
-		f, branch, _ := primeAhead(t)
-		captureNotices(t)
-
-		err := runPrime(f, slug)
-
-		f.requireHandedOver(t, err)
-		if got := originTransitions(t, f, branch); !slices.Equal(got, wantKeptOnly) {
-			t.Errorf("origin transition commits = %q; want %q, none of the taken-over run's", got, wantKeptOnly)
-		}
-	})
-
-	t.Run("AFailedArchiveOwesThePassAndTheNextPushHandsTheRunOver", func(t *testing.T) {
-		f, branch, _ := primeAhead(t)
-		captureNotices(t)
-		hook := filepath.Join(f.h.RecordsBare, "hooks", "pre-receive")
-		if err := os.MkdirAll(filepath.Dir(hook), 0o755); err != nil {
-			t.Fatalf("create the hooks directory: %v", err)
-		}
-		refuseTags := "#!/bin/sh\nwhile read old new ref; do case \"$ref\" in refs/tags/*) exit 1;; esac; done\n"
-		if err := os.WriteFile(hook, []byte(refuseTags), 0o755); err != nil {
-			t.Fatalf("write the pre-receive hook: %v", err)
-		}
-		before := gitkit.RevParse(t, f.h.RecordsBare, "refs/heads/"+branch)
-
-		err := runPrime(f, "")
-
-		if !errors.Is(err, fabricengine.ErrTakeoverPassOwed) || !fabricengine.IsPushOwed(err) {
-			t.Fatalf("PushRun(prime) error = %v; want one wrapping ErrTakeoverPassOwed that IsPushOwed reads owed", err)
-		}
-		if mark, found, markErr := fabricengine.ReadHandOverMark(f.h.Path, slug); markErr != nil || found {
-			t.Errorf("ReadHandOverMark() = %+v, %v, %v; want no mark", mark, found, markErr)
-		}
-		if got := gitkit.RevParse(t, f.h.RecordsBare, "refs/heads/"+branch); got != before {
-			t.Errorf("origin prime records tip = %s; want it unchanged at %s", got, before)
-		}
-
-		if err := os.Remove(hook); err != nil {
-			t.Fatalf("remove the pre-receive hook: %v", err)
-		}
-		if err := runPrime(f, ""); err != nil {
-			t.Fatalf("second PushRun(prime) error = %v; want nil", err)
-		}
-		f.requireMark(t)
-		if got := originTransitions(t, f, branch); !slices.Equal(got, wantKeptOnly) {
-			t.Errorf("origin transition commits = %q; want %q, none of the taken-over run's", got, wantKeptOnly)
 		}
 	})
 }

@@ -23,7 +23,6 @@ type (
 	AuditWarning              = runplan.AuditWarning
 	SuspectPath               = runplan.SuspectPath
 	AmendedCard               = runplan.AmendedCard
-	ParentAnswer              = runplan.ParentAnswer
 	PartitionBatch            = runplan.PartitionBatch
 	Report                    = runplan.Report
 	ReportRename              = runplan.ReportRename

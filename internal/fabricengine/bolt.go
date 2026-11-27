@@ -298,13 +298,7 @@ func (b *Bolt) Pull(opts SyncOptions, rec *Mutations) (BoltSkip, string, error) 
 // a Bolt only behind is fast-forwarded.
 // A replay that stops on a conflict skips as diverged, and one an uncommitted change blocks skips as dirty.
 // Each skip is logged at Warn here, once, so no caller repeats the text.
-// A records store whose origin layout cannot be read is an error naming the refspecs to restore, with nothing fetched.
 func (b *Bolt) pullFirst(rec *Mutations) (BoltSkip, string, error) {
-	// A one-repository store that lost its fetch refspecs fetches nothing and still exits clean,
-	// and its upstream then fails to resolve with no way forward; the layout read names one.
-	if _, err := originNamespaceAt(b.path); err != nil {
-		return "", "", err
-	}
 	repo := gitrepo.New(b.path)
 	pushLockPath, err := repo.PushLockPath()
 	if err != nil {

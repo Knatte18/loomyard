@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -48,6 +47,8 @@ func (s anchorSeams) headSHA(weftPath string) (string, error) {
 // It renames `from/.lym` to `to/.lym` when it exists.
 // Then it writes the anchor marker holding `to` through an os.Root at weftPath.
 // All of it is committed in one weft commit spanning from/<names>, to/<names> and the root marker.
+// The commit carries an AnchorChangeTrailerKey trailer naming to,
+// so a reader tells the move from a hand edit of the marker.
 // The caller holds the weft write lock.
 // A name that is not tracked under from is left alone,
 // and a path already standing where a name or `.lym` would land is refused before anything moves.
@@ -61,7 +62,7 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string, 
 	defer func() { _ = root.Close() }()
 
 	fromSlash, toSlash := filepath.ToSlash(from), filepath.ToSlash(to)
-	var moved, stagedOnly []string
+	var moved []string
 	for _, name := range names {
 		if name == lymdirs.DotLymDirName {
 			continue
@@ -71,14 +72,6 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string, 
 			return false, err
 		}
 		if !tracked {
-			// A name whose last tracked files the caller staged for deletion still belongs to this commit.
-			staged, err := gitexec.Run([]string{"diff", "--cached", "--name-only", "--", anchorJoin(fromSlash, name)}, weftPath)
-			if err != nil {
-				return false, fmt.Errorf("fabricengine: read the staged paths under %s in %s: %w", anchorJoin(fromSlash, name), weftPath, err)
-			}
-			if strings.TrimSpace(staged) != "" {
-				stagedOnly = append(stagedOnly, anchorJoin(fromSlash, name))
-			}
 			continue
 		}
 		if err := requireAbsent(root, anchorJoin(toSlash, name)); err != nil {
@@ -104,7 +97,7 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string, 
 			return false, fmt.Errorf("fabricengine: create %s in %s: %w", toSlash, weftPath, err)
 		}
 	}
-	specs := append([]string{lymcwd.AnchorFileName}, stagedOnly...)
+	specs := []string{lymcwd.AnchorFileName}
 	for _, name := range moved {
 		src, dst := anchorJoin(fromSlash, name), anchorJoin(toSlash, name)
 		if _, err := gitexec.Run([]string{"mv", "--", src, dst}, weftPath); err != nil {
@@ -127,7 +120,8 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string, 
 	if err := seams.runFail(false); err != nil {
 		return false, err
 	}
-	commitArgs := append([]string{"commit", "-q", "-m", fmt.Sprintf("fabric anchor: move the weft from %s to %s", from, to), "--"}, specs...)
+	message := appendTrailerLine(fmt.Sprintf("fabric anchor: move the weft from %s to %s", from, to), AnchorChangeTrailerKey, to)
+	commitArgs := append([]string{"commit", "-q", "-m", message, "--"}, specs...)
 	if _, err := gitexec.RunWithEnv(commitArgs, weftPath, []string{"GIT_LITERAL_PATHSPECS=1"}); err != nil {
 		return false, fmt.Errorf("fabricengine: commit the move of the weft from %s to %s: %w", from, to, err)
 	}

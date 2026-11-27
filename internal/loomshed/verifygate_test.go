@@ -67,12 +67,6 @@ func TestVerifyFailureFindings(t *testing.T) {
 			wantNot: []string{"failed with exit code", "could not start", "timed out"},
 		},
 		{
-			name:    "a memory pressure stop names the stopped runs and no crash",
-			result:  verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1, MemoryPressure: true, Detail: "gate test stopped for a memory limit other load filled: tier1 (exit 1)"},
-			want:    []string{"stopped for a memory limit other load filled", "tier1 (exit 1)", "the run stops here", "the other load has to end"},
-			wantNot: []string{"failed with exit code", "crashed", "timed out"},
-		},
-		{
 			name:    "a log with the watchdog line names the window and the way forward",
 			result:  verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1},
 			log:     "ok  \texample.com/mod/b\t0.1s\n" + gateslot.WatchdogLine("/tmp/x/a.test", 42, 2*time.Minute) + "\nSIGQUIT: quit\nlast line\n",
@@ -101,6 +95,16 @@ func TestVerifyFailureFindings(t *testing.T) {
 			log:      "=== RUN   TestOne\n    first\n--- FAIL: TestOne (0.00s)\nFAIL\nFAIL\texample.com/mod/a\t0.1s\n=== RUN   TestTwo\n    second\n--- FAIL: TestTwo (0.00s)\nFAIL\nFAIL\texample.com/mod/a\t0.1s\n",
 			failures: true,
 			want:     []string{"example.com/mod/a.TestOne:\nfirst", "example.com/mod/a.TestTwo:\nsecond"},
+		},
+		{
+			name:   "a log whose failure report holds triage lines lists them under their test in a Triage section after the failures",
+			result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1},
+			log: "=== RUN   TestA\n    a_test.go:9: boom\n--- FAIL: TestA (0.00s)\nFAIL\nFAIL\texample.com/mod/a\t0.1s\n" +
+				gateslot.FailureReportHeader + "\ntier0 (exit 1), log /runs/a.log:\n  example.com/mod/a TestA:\n    " + gateslot.TriageLinePrefix + "not in the coverage maps\n    a_test.go:9: boom\n" +
+				gateslot.FailedRunsPrefix + "tier0 (exit 1); the exit code is tier0's\n",
+			failures: true,
+			want:     []string{"Failures:", "\nTriage:\n- example.com/mod/a.TestA\n    " + gateslot.TriageLinePrefix + "not in the coverage maps\n"},
+			wantNot:  []string{"Log tail:"},
 		},
 		{
 			name:     "an oversized failure is cut on a rune boundary and the failures after it are left to the full log",
@@ -141,6 +145,10 @@ func TestVerifyFailureFindings(t *testing.T) {
 			// Only a log with the watchdog line names the key.
 			if !slices.Contains(tt.want, "busy_quit_sec") {
 				tt.wantNot = append(tt.wantNot, "busy_quit_sec")
+			}
+			// Only a log whose failure report holds triage lines gets the section.
+			if !slices.ContainsFunc(tt.want, func(want string) bool { return strings.Contains(want, "Triage:") }) {
+				tt.wantNot = append(tt.wantNot, "Triage:")
 			}
 			for _, unwanted := range tt.wantNot {
 				if strings.Contains(got, unwanted) {

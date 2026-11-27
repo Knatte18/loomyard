@@ -82,7 +82,6 @@ var configStrictnessStrictSet = map[string]bool{
 	"internal/samplerengine": true,
 	"internal/dobbyengine":   true,
 	"internal/gateslot":      true,
-	"internal/hardenshed":    true,
 	"internal/configcli":     true,
 	"internal/configreg":     true,
 }

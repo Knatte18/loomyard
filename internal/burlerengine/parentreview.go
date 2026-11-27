@@ -35,8 +35,6 @@ const (
 	ParentAskTimeout ParentAskState = "timeout"
 	// ParentAskNoParent is an ask that never went out because no parent orch resolved.
 	ParentAskNoParent ParentAskState = "no-parent"
-	// ParentAskUndelivered is an ask whose post to a resolved parent orch creel refused or failed; Reason carries the error.
-	ParentAskUndelivered ParentAskState = "undelivered"
 	// ParentAskNotSent is an ask that never went out because its deadline cap left no room; Reason says why.
 	ParentAskNotSent ParentAskState = "not-sent"
 )
@@ -73,8 +71,6 @@ type ParentAsk struct {
 	// Report is the parent report's path, set once the ask is done.
 	Report     string    `json:"report,omitempty"`
 	AnsweredAt time.Time `json:"answered_at,omitzero"`
-	// Cleared marks an ended ask that answers nothing, so the seat that made it asks again.
-	Cleared bool `json:"cleared,omitempty"`
 }
 
 // ParentAskRecord is a run's record of its parent-review asks, oldest first.
@@ -261,30 +257,6 @@ func EndParentAsk(files ParentReviewFiles, number int, end ParentAskState, reaso
 		return ParentAsk{}, false, fmt.Errorf("burler: end parent-review ask %d: %w", number, err)
 	}
 	return ask, found, nil
-}
-
-// ClearParentAsk marks the ended ask numbered number cleared, under the record's lock.
-// A cleared ask answers nothing, so the seat that made it asks again.
-// An ask already cleared is no error.
-// The caller passes an ask it found present and ended; a record that lacks the number is an error naming it.
-func ClearParentAsk(files ParentReviewFiles, number int) error {
-	err := state.UpdateJSON(files.Record, files.Lock, func(record ParentAskRecord, _ bool) (ParentAskRecord, error) {
-		for i := range record.Asks {
-			if record.Asks[i].Number != number {
-				continue
-			}
-			if record.Asks[i].Cleared {
-				return record, errParentAskUnchanged
-			}
-			record.Asks[i].Cleared = true
-			return record, nil
-		}
-		return record, fmt.Errorf("the record holds no ask numbered %d", number)
-	})
-	if err != nil && !errors.Is(err, errParentAskUnchanged) {
-		return fmt.Errorf("burler: clear parent-review ask %d: %w", number, err)
-	}
-	return nil
 }
 
 // SettleParentAsk closes the ask numbered number once its round's review at reviewPath is accepted.

@@ -36,7 +36,7 @@ func (everyCommandMatches) Matches(string) bool { return true }
 // The entry's text comes from the audit's own finding for the command cmd.
 func readOnlyEntry(cmd string) string {
 	audit := shuttleengine.ForkAudit{ParentBashCommands: []string{cmd}}
-	violations := websterengine.CheckParent(audit, "/w/outcome.yaml", "/w/summary.md", "", "/w", everyCommandMatches{})
+	violations := websterengine.CheckParent(audit, "/w/outcome.yaml", "/w/summary.md", "/w", everyCommandMatches{})
 	if len(violations) != 1 {
 		panic("CheckParent over one flagged command returned " + strconv.Itoa(len(violations)) + " violations; want 1")
 	}

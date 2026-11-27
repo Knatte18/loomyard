@@ -5,10 +5,8 @@
 package websterengine_test
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -98,14 +96,14 @@ func TestFixVerifySpawnOrAttach(t *testing.T) {
 				arrange: func(deps *websterengine.FixVerifyDeps) {
 					deps.Roles = map[websterengine.Role]shuttleengine.ModelChoice{}
 				},
-				wantText: []string{"no resolved model-spec", "way forward: set webster.recovery in webster.yaml"},
+				wantText: []string{"no resolved model-spec", "way forward: set recovery in webster.yaml"},
 			},
 			{
 				name: "recovery engine cannot audit forks",
 				arrange: func(deps *websterengine.FixVerifyDeps) {
 					deps.Engines = noAuditEngines{engine: &shuttlefake.Engine{}}
 				},
-				wantText: []string{"cannot audit forks", "way forward: set webster.recovery in webster.yaml"},
+				wantText: []string{"cannot audit forks", "way forward: set recovery in webster.yaml"},
 			},
 			{
 				name: "gate config with no webster-fix key",
@@ -303,32 +301,6 @@ func TestFixVerifyAwait(t *testing.T) {
 			wait:       websterengine.RecoveryWaitBudget,
 			wantStatus: websterengine.DigestStatusDead,
 			wantReason: websterengine.DeadReasonDied,
-		},
-		{
-			name: "a gone strand of an interrupted run is dead interrupted",
-			arrange: func(t *testing.T, fx *recoverFixture, _ websterengine.FixVerifyDeps, rec *websterengine.VerifyFixerState) {
-				path := filepath.Join(rec.ShuttleRunDir, "run.json")
-				data, err := os.ReadFile(path)
-				if err != nil {
-					t.Fatalf("read run record: %v", err)
-				}
-				var run map[string]any
-				if err := json.Unmarshal(data, &run); err != nil {
-					t.Fatalf("decode run record: %v", err)
-				}
-				run["outcome"], run["interrupted"] = "stopped", true
-				data, err = json.Marshal(run)
-				if err != nil {
-					t.Fatalf("encode run record: %v", err)
-				}
-				if err := os.WriteFile(path, data, 0o644); err != nil {
-					t.Fatalf("write run record: %v", err)
-				}
-				fx.Reed.Strands = nil
-			},
-			wait:       websterengine.RecoveryWaitBudget,
-			wantStatus: websterengine.DigestStatusDead,
-			wantReason: gatefixer.DeadReasonInterrupted,
 		},
 		{
 			name:       "a shorter wait returns running and stops nothing",

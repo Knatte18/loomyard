@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
@@ -105,25 +104,6 @@ func TestHubCatchUp(t *testing.T) {
 		}
 		if got := recordsTip(t, h, branch); got != tipBefore {
 			t.Errorf("origin's records tip = %s; want %s unchanged", got, tipBefore)
-		}
-	})
-
-	t.Run("A_records_store_that_lost_its_fetch_refspecs_returns_its_layout_error_not_ErrOriginUnreachable", func(t *testing.T) {
-		// The records store's config is shared by the Bolt checkout, whose pull would fail first on the lost refspecs.
-		t.Setenv("BOARD_SKIP_GIT", "1")
-		h := hubforge.NewOneRepoHub(t, hubforge.OneRepoOptions{})
-		// With no push the pair's records worktree is never read for its layout, so the answer is read after the refspecs went.
-		hubforge.AddPairWith(t, h, "alpha", fabricengine.AddOptions{SkipPush: true})
-		gitkit.Git(t, h.PairRecordsSibling("alpha"), "config", "--unset-all", "remote.origin.fetch")
-
-		_, err := catchUpOver(h, "alpha")
-
-		const wantErrorHas = "config --replace-all remote.origin.fetch"
-		if err == nil || !strings.Contains(err.Error(), wantErrorHas) {
-			t.Fatalf("CatchUp() error = %v; want one naming %q", err, wantErrorHas)
-		}
-		if errors.Is(err, dobbyengine.ErrOriginUnreachable) {
-			t.Errorf("CatchUp() error = %v; want no ErrOriginUnreachable for a layout the fetch cannot read", err)
 		}
 	})
 

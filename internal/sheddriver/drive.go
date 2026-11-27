@@ -84,8 +84,6 @@ type Deps struct {
 	// Now is the clock.
 	Now func() time.Time
 
-	// Wait waits delay before a re-step, returning early with ctx's error once ctx ends; nil waits on the real clock.
-	Wait func(ctx context.Context, delay time.Duration) error
 	// CommitRecords commits the run's records at a done stop; nil commits nothing.
 	// A done stop that reported friction: failed calls it again after its hand-back report; repeat calls must do nothing.
 	CommitRecords func() error
@@ -167,9 +165,6 @@ type TamperSeam struct {
 // rules and attempts are what the stop report quotes for the stop in hand.
 // pendingAttempt is the arbiter attempt the next step consumes;
 // pendingNotice is the outcome line held until that step consumes it.
-// judged is whether the tackler or the arbiter was asked to judge a stop.
-// judgedKey is the key of the stop it was asked about.
-// A stop other than that one is not a judged stop, whatever judged says.
 // exit is how the run ended.
 type goDriver struct {
 	deps           Deps
@@ -177,8 +172,6 @@ type goDriver struct {
 	attempts       []driveAttemptNote
 	pendingAttempt string
 	pendingNotice  *arbiterSettledNotice
-	judged         bool
-	judgedKey      StopKey
 	exit           Exit
 }
 
@@ -252,7 +245,7 @@ func (d *goDriver) run(ctx context.Context) error {
 			}
 		}
 		if attempt == "" {
-			d.rules, d.attempts, d.judged = nil, nil, false
+			d.rules, d.attempts = nil, nil
 		}
 		resumed = false
 
@@ -291,11 +284,6 @@ func (d *goDriver) settleStop(ctx context.Context, stop Stop) (attempt string, e
 			d.exit = ExitBusy
 			return "", true, nil
 		}
-		if decision.Wait > 0 {
-			if err := d.wait(ctx, decision.Wait); err != nil {
-				return "", true, err
-			}
-		}
 		if decision.Action != driveActionHandBack && decision.Action != driveActionRelayHandBack {
 			if err := d.holdPause(ctx); err != nil {
 				return "", true, err
@@ -321,7 +309,6 @@ func (d *goDriver) settleStop(ctx context.Context, stop Stop) (attempt string, e
 			d.settle(stop, shedrun.SettlerGoRule, shedrun.SettleRestep, decision.Rule, "")
 			return "", false, nil
 		case driveActionTackler, driveActionArbiter:
-			d.judged, d.judgedKey = true, stop.Key()
 			var moved Stop
 			if decision.Action == driveActionTackler {
 				moved, exit, err = d.tackle(ctx, stop)
@@ -969,35 +956,7 @@ func (d *goDriver) handBackStop(stop Stop, decision driveDecision, cause error) 
 	if decision.Action == driveActionRelayHandBack {
 		h.Relay = stop.ParentNotice
 	}
-	if decision.NetworkNotice {
-		h.Relay = d.networkNotice(stop)
-	}
 	return d.handBackAs(stop, h, decision.Rule)
-}
-
-// networkNotice words the parent's notice for a stop a network failure left after every re-step:
-// the row, how long the driver waited for the remote, the failing remote operation as the stop's error quotes it,
-// and that the run resumes once the remote answers.
-func (d *goDriver) networkNotice(stop Stop) string {
-	return fmt.Sprintf("Run %s stopped at %s: a network failure outlasted %d re-steps over %s. Failing remote operation: %s. Resume the run once the remote answers.",
-		d.deps.RunID, stop.CurrentProducer, len(networkRestepWaits), networkRestepSpan(), stop.Error)
-}
-
-// wait waits delay before a re-step through the Wait seam, or on the real clock when it is unwired.
-// A context that ends first returns its error.
-func (d *goDriver) wait(ctx context.Context, delay time.Duration) error {
-	logger.Info("sheddriver: drive: waiting for the remote before a re-step", "run", d.deps.RunID, "delay", delay)
-	if d.deps.Wait != nil {
-		return d.deps.Wait(ctx, delay)
-	}
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
 }
 
 // handBackAs records the hand-back in the settle records, with outcome as its reason.
@@ -1037,7 +996,6 @@ func (d *goDriver) handBack(stop Stop, h driveHandBack) error {
 	h.RunID = d.deps.RunID
 	h.ReportPath = reportPath
 	h.Stop = stop
-	h.Judged = d.judged && stop.Key() == d.judgedKey
 	h.Rules = append(slices.Clone(d.rules), h.Rules...)
 	h.Attempts = append(slices.Clone(d.attempts), h.Attempts...)
 	return handBackRun(park, h, d.reportFor(stop, h, reportPath), d.watched())

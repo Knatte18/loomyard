@@ -3,6 +3,7 @@
 package gateslot
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -15,7 +16,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
@@ -37,9 +37,25 @@ type Config struct {
 	MemoryQuitMB int `yaml:"memory_quit_mb"`
 	// FixerTimeoutMin is the minutes a cold gate fixer may run before its caller stops waiting for it.
 	FixerTimeoutMin int `yaml:"fixer_timeout_min"`
-	// PlanTier0BudgetSec is the seconds a plan's new and changed tier0 tests may add to one tier0 run; 0 sets no budget.
-	// The planner and the plan review read it through TiersValue.
-	PlanTier0BudgetSec int `yaml:"plan_tier0_budget_sec"`
+	// RedundancyBuildTimeoutMin is the minutes each build of a coverage map run or the redundancy report step may take.
+	RedundancyBuildTimeoutMin int `yaml:"redundancy_build_timeout_min"`
+	// RedundancyTestTimeoutSec is the seconds each test a coverage map run or the redundancy report step runs alone may take.
+	RedundancyTestTimeoutSec int `yaml:"redundancy_test_timeout_sec"`
+	// RedundancyTestMemoryMB is the megabytes each such test, with every process it starts, may hold.
+	RedundancyTestMemoryMB int `yaml:"redundancy_test_memory_mb"`
+	// RedundancyMaxTests caps the tests the redundancy report step judges in one call.
+	RedundancyMaxTests int `yaml:"redundancy_max_tests"`
+	// RedundancyBudgetMin is the minutes the redundancy report step may spend on builds and tests once it holds its slot.
+	RedundancyBudgetMin int `yaml:"redundancy_budget_min"`
+	// ReachBudgetMin is the minutes the reach and mutation report steps and `lym gate mutate` may spend on coverage maps.
+	// They spend it refreshing the worktree's maps, once they hold a slot.
+	ReachBudgetMin int `yaml:"reach_budget_min"`
+	// MutationMaxMutants caps the mutants `lym gate mutate` and the mutation report step run for one diff.
+	// They spread it over the changed functions in turn.
+	MutationMaxMutants int `yaml:"mutation_max_mutants"`
+	// MutationBudgetMin is the minutes `lym gate mutate` and the mutation report step may spend on mutant builds and runs.
+	// It counts from the hold of their slot.
+	MutationBudgetMin int `yaml:"mutation_budget_min"`
 	// Tiers are the declared test tiers keyed tier0, tier1, and so on.
 	Tiers map[string]Tier `yaml:"tiers"`
 	// Gates maps a gate key to the tiers and scope that site runs.
@@ -56,25 +72,13 @@ type Config struct {
 	InertPaths []string `yaml:"inert_paths"`
 }
 
-// RedFirstMode is how `lym gate red-first` runs the changed tests of a scoper on the diff's base.
-type RedFirstMode int
+// scoperHasGoCoverageMaps says, per scoper, whether it works on Go packages, whose coverage maps the gate reads.
+var scoperHasGoCoverageMaps = map[string]bool{"go": true, "none": false, "dotnet": false}
 
-// The ways a scoper's changed tests run on the diff's base.
-const (
-	// RedFirstUnsupported is a scoper the check cannot judge tests for.
-	RedFirstUnsupported RedFirstMode = iota
-	// RedFirstOverlay runs the tests in the worktree, under a build overlay of the base's production files.
-	RedFirstOverlay
-	// RedFirstCheckout runs the tests in a checkout of the base, where the changed test files keep their working-tree text.
-	RedFirstCheckout
-)
-
-// scoperRedFirstMode says, per scoper, how the red-first check runs its changed tests.
-var scoperRedFirstMode = map[string]RedFirstMode{"go": RedFirstOverlay, "none": RedFirstUnsupported, "dotnet": RedFirstCheckout}
-
-// RedFirstMode returns how the red-first check runs the config's scoper's changed tests on the diff's base.
-func (c Config) RedFirstMode() RedFirstMode {
-	return scoperRedFirstMode[c.Scoper]
+// HasGoCoverageMaps reports whether the config's scoper works on Go packages.
+// A step that reads Go coverage maps judges nothing when it does not.
+func (c Config) HasGoCoverageMaps() bool {
+	return scoperHasGoCoverageMaps[c.Scoper]
 }
 
 // BuildStep is the build a gate call runs once for every tier that sets shared_build.
@@ -104,18 +108,25 @@ type buildFile struct {
 // A tier_parallel entry is a node because a scalar --set writes it as a string.
 // A gates entry is a node so decodeGates names the key a bad entry sits under.
 type configFile struct {
-	Slots              int                  `yaml:"slots"`
-	BusyQuitSec        int                  `yaml:"busy_quit_sec"`
-	MemoryQuitMB       int                  `yaml:"memory_quit_mb"`
-	FixerTimeoutMin    int                  `yaml:"fixer_timeout_min"`
-	PlanTier0BudgetSec int                  `yaml:"plan_tier0_budget_sec"`
-	Tiers              map[string]tierFile  `yaml:"tiers"`
-	Gates              map[string]yaml.Node `yaml:"gates"`
-	Scoper             string               `yaml:"scoper"`
-	RefuseRaw          []string             `yaml:"refuse_raw"`
-	TierParallel       map[string]yaml.Node `yaml:"tier_parallel"`
-	Build              buildFile            `yaml:"build"`
-	InertPaths         []string             `yaml:"inert_paths"`
+	Slots                     int                  `yaml:"slots"`
+	BusyQuitSec               int                  `yaml:"busy_quit_sec"`
+	MemoryQuitMB              int                  `yaml:"memory_quit_mb"`
+	FixerTimeoutMin           int                  `yaml:"fixer_timeout_min"`
+	RedundancyBuildTimeoutMin int                  `yaml:"redundancy_build_timeout_min"`
+	RedundancyTestTimeoutSec  int                  `yaml:"redundancy_test_timeout_sec"`
+	RedundancyTestMemoryMB    int                  `yaml:"redundancy_test_memory_mb"`
+	RedundancyMaxTests        int                  `yaml:"redundancy_max_tests"`
+	RedundancyBudgetMin       int                  `yaml:"redundancy_budget_min"`
+	ReachBudgetMin            int                  `yaml:"reach_budget_min"`
+	MutationMaxMutants        int                  `yaml:"mutation_max_mutants"`
+	MutationBudgetMin         int                  `yaml:"mutation_budget_min"`
+	Tiers                     map[string]tierFile  `yaml:"tiers"`
+	Gates                     map[string]yaml.Node `yaml:"gates"`
+	Scoper                    string               `yaml:"scoper"`
+	RefuseRaw                 []string             `yaml:"refuse_raw"`
+	TierParallel              map[string]yaml.Node `yaml:"tier_parallel"`
+	Build                     buildFile            `yaml:"build"`
+	InertPaths                []string             `yaml:"inert_paths"`
 }
 
 // ErrConfigAbsent is LoadConfig's error for a layer stack whose hub gate.yaml is missing.
@@ -139,10 +150,12 @@ func ConfigPerNameMaps() []string {
 // `slots` and `tier_parallel` take a machine override, and every key stays closed to the local layer.
 // `fixer_timeout_min` and `memory_quit_mb` are cross-pair like `busy_quit_sec`;
 // a gate key's `fixer` sits inside `gates`, a guard key.
+// The coverage map, redundancy report, reach report and mutation keys are cross-pair too:
+// every worktree of the hub reads the maps they bound.
 // `tiers` and `build` run any shell command in a task worktree, so they are executable.
 // The gate lists, the scoper, the refused commands and the inert paths switch off or hollow a guard.
 // `cli_wait_sec`, `go_parallel`, `guard_tier` and `test_map_max_age_days` are retired;
-// a file that still sets one is refused, naming the key.
+// a hub or machine file that still sets one loads, and reconcile prunes it.
 // `tiers` and `build` carry the shape their decode gives them.
 // So `--set` reaches one key inside a tier or the build step, such as `tiers.tier0.env.LYM_TEST_TIER`;
 // it refuses a key neither holds.
@@ -158,18 +171,25 @@ func ConfigSpec() configengine.Spec {
 		PerNameMaps: ConfigPerNameMaps(),
 		HubWide:     true,
 		Categories: map[string]configengine.Category{
-			"slots":                 configengine.CategoryMachine,
-			"tier_parallel":         configengine.CategoryMachine,
-			"busy_quit_sec":         configengine.CategoryCrossPair,
-			"memory_quit_mb":        configengine.CategoryCrossPair,
-			"fixer_timeout_min":     configengine.CategoryCrossPair,
-			"plan_tier0_budget_sec": configengine.CategoryGuard,
-			"tiers":                 configengine.CategoryExecutable,
-			"gates":                 configengine.CategoryGuard,
-			"scoper":                configengine.CategoryGuard,
-			"refuse_raw":            configengine.CategoryGuard,
-			"build":                 configengine.CategoryExecutable,
-			"inert_paths":           configengine.CategoryGuard,
+			"slots":                        configengine.CategoryMachine,
+			"tier_parallel":                configengine.CategoryMachine,
+			"busy_quit_sec":                configengine.CategoryCrossPair,
+			"memory_quit_mb":               configengine.CategoryCrossPair,
+			"fixer_timeout_min":            configengine.CategoryCrossPair,
+			"redundancy_build_timeout_min": configengine.CategoryCrossPair,
+			"redundancy_test_timeout_sec":  configengine.CategoryCrossPair,
+			"redundancy_test_memory_mb":    configengine.CategoryCrossPair,
+			"redundancy_max_tests":         configengine.CategoryCrossPair,
+			"redundancy_budget_min":        configengine.CategoryCrossPair,
+			"reach_budget_min":             configengine.CategoryCrossPair,
+			"mutation_max_mutants":         configengine.CategoryCrossPair,
+			"mutation_budget_min":          configengine.CategoryCrossPair,
+			"tiers":                        configengine.CategoryExecutable,
+			"gates":                        configengine.CategoryGuard,
+			"scoper":                       configengine.CategoryGuard,
+			"refuse_raw":                   configengine.CategoryGuard,
+			"build":                        configengine.CategoryExecutable,
+			"inert_paths":                  configengine.CategoryGuard,
 		},
 		RetiredKeys: map[string]configengine.Category{
 			"cli_wait_sec":          configengine.CategoryCrossPair,
@@ -238,38 +258,6 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	return cfg, nil
 }
 
-// LoadRefuseRaw returns the refuse_raw list of the gate config under dirs, for a session launch's shell guard.
-// A launch runs no gate, so a key it does not read never refuses it:
-// when the full load fails past the layer merge, the list is read from the merged stack alone,
-// and the failure is logged as a warning naming its way forward.
-// An absent hub file yields an empty list.
-// A stack that does not merge returns the full load's error.
-// A refuse_raw list that is itself invalid returns that list's error with the gate config's way forward.
-func LoadRefuseRaw(dirs configengine.Dirs) ([]string, error) {
-	cfg, loadErr := LoadConfig(dirs)
-	if loadErr == nil {
-		return cfg.RefuseRaw, nil
-	}
-	if errors.Is(loadErr, ErrConfigAbsent) {
-		return nil, nil
-	}
-	resolved, err := configengine.Load(dirs, ConfigSpec())
-	if err != nil {
-		return nil, loadErr
-	}
-	var file struct {
-		RefuseRaw []string `yaml:"refuse_raw"`
-	}
-	if err := yaml.Unmarshal(resolved, &file); err != nil {
-		return nil, loadErr
-	}
-	if err := decodeRefuseRaw(file.RefuseRaw); err != nil {
-		return nil, withConfigWayForward(err, ConfigFiles(dirs), "")
-	}
-	logger.Warn("gate config: the config does not load, so the launch reads its "+keyName("refuse_raw")+" list alone; every gate call refuses until it is fixed", "error", loadErr)
-	return file.RefuseRaw, nil
-}
-
 // holdsUnits reports whether the layer file at path is readable and holds at least one config unit.
 // An empty or comment-only file is one the load drops, so removing it fixes nothing;
 // an unparsable file counts as holding units, since the load fails naming it.
@@ -313,19 +301,31 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		return Config{}, fmt.Errorf("unmarshal gate config: %w", err)
 	}
 	if file.Slots < 1 {
-		return Config{}, fmt.Errorf("config key %q: %d; want at least 1", keyName("slots"), file.Slots)
+		return Config{}, fmt.Errorf("gate config key %q: %d; want at least 1", "slots", file.Slots)
 	}
 	if file.BusyQuitSec < 0 {
-		return Config{}, fmt.Errorf("config key %q: %d; want at least 0", keyName(busyQuitSecKey), file.BusyQuitSec)
+		return Config{}, fmt.Errorf("gate config key %q: %d; want at least 0", "busy_quit_sec", file.BusyQuitSec)
 	}
 	if file.MemoryQuitMB < 0 {
-		return Config{}, fmt.Errorf("config key %q: %d; want at least 0", keyName("memory_quit_mb"), file.MemoryQuitMB)
+		return Config{}, fmt.Errorf("gate config key %q: %d; want at least 0", "memory_quit_mb", file.MemoryQuitMB)
 	}
-	if file.PlanTier0BudgetSec < 0 {
-		return Config{}, fmt.Errorf("config key %q: %d; want at least 0", keyName("plan_tier0_budget_sec"), file.PlanTier0BudgetSec)
-	}
-	if file.FixerTimeoutMin < 1 {
-		return Config{}, fmt.Errorf("config key %q: %d; want at least 1", keyName("fixer_timeout_min"), file.FixerTimeoutMin)
+	for _, bound := range []struct {
+		key   string
+		value int
+	}{
+		{"fixer_timeout_min", file.FixerTimeoutMin},
+		{"redundancy_build_timeout_min", file.RedundancyBuildTimeoutMin},
+		{"redundancy_test_timeout_sec", file.RedundancyTestTimeoutSec},
+		{"redundancy_test_memory_mb", file.RedundancyTestMemoryMB},
+		{"redundancy_max_tests", file.RedundancyMaxTests},
+		{"redundancy_budget_min", file.RedundancyBudgetMin},
+		{"reach_budget_min", file.ReachBudgetMin},
+		{"mutation_max_mutants", file.MutationMaxMutants},
+		{"mutation_budget_min", file.MutationBudgetMin},
+	} {
+		if bound.value < 1 {
+			return Config{}, fmt.Errorf("gate config key %q: %d; want at least 1", bound.key, bound.value)
+		}
 	}
 	tiers, err := decodeTiers(file.Tiers)
 	if err != nil {
@@ -336,7 +336,7 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		return Config{}, err
 	}
 	if file.Scoper != "go" && file.Scoper != "none" && file.Scoper != "dotnet" {
-		return Config{}, fmt.Errorf("config key %q: %q; want go, none or dotnet", keyName("scoper"), file.Scoper)
+		return Config{}, fmt.Errorf("gate config key %q: %q; want go, none or dotnet", "scoper", file.Scoper)
 	}
 	build, err := decodeBuild(file.Build)
 	if err != nil {
@@ -344,7 +344,7 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 	}
 	for _, key := range sortedKeys(tiers) {
 		if tiers[key].SharedBuild && build.Command == "" {
-			return Config{}, fmt.Errorf("config key %q: true, but the hub declares no build step; want a build step or shared_build false", keyName("tiers."+key+".shared_build"))
+			return Config{}, fmt.Errorf("gate config key %q: true, but the hub declares no build step; want a build step or shared_build false", "tiers."+key+".shared_build")
 		}
 	}
 	if err := decodeRefuseRaw(file.RefuseRaw); err != nil {
@@ -355,18 +355,25 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		return Config{}, err
 	}
 	return Config{
-		Slots:              file.Slots,
-		BusyQuitSec:        file.BusyQuitSec,
-		MemoryQuitMB:       file.MemoryQuitMB,
-		FixerTimeoutMin:    file.FixerTimeoutMin,
-		PlanTier0BudgetSec: file.PlanTier0BudgetSec,
-		Tiers:              tiers,
-		Gates:              gates,
-		Scoper:             file.Scoper,
-		RefuseRaw:          file.RefuseRaw,
-		TierParallel:       tierParallel,
-		Build:              build,
-		InertPaths:         file.InertPaths,
+		Slots:                     file.Slots,
+		BusyQuitSec:               file.BusyQuitSec,
+		MemoryQuitMB:              file.MemoryQuitMB,
+		FixerTimeoutMin:           file.FixerTimeoutMin,
+		RedundancyBuildTimeoutMin: file.RedundancyBuildTimeoutMin,
+		RedundancyTestTimeoutSec:  file.RedundancyTestTimeoutSec,
+		RedundancyTestMemoryMB:    file.RedundancyTestMemoryMB,
+		RedundancyMaxTests:        file.RedundancyMaxTests,
+		RedundancyBudgetMin:       file.RedundancyBudgetMin,
+		ReachBudgetMin:            file.ReachBudgetMin,
+		MutationMaxMutants:        file.MutationMaxMutants,
+		MutationBudgetMin:         file.MutationBudgetMin,
+		Tiers:                     tiers,
+		Gates:                     gates,
+		Scoper:                    file.Scoper,
+		RefuseRaw:                 file.RefuseRaw,
+		TierParallel:              tierParallel,
+		Build:                     build,
+		InertPaths:                file.InertPaths,
 	}, nil
 }
 
@@ -377,7 +384,7 @@ func decodeBuild(file buildFile) (BuildStep, error) {
 		return BuildStep{}, nil
 	}
 	refuse := func(field, want string) error {
-		return fmt.Errorf("config key %q: %s", keyName("build."+field), want)
+		return fmt.Errorf("gate config key %q: %s", "build."+field, want)
 	}
 	if strings.TrimSpace(file.Command) == "" {
 		return BuildStep{}, refuse("command", "missing; want the shell command the build runs")
@@ -430,12 +437,12 @@ func CheckDirs(dirs configengine.Dirs, worktreeRoot, anchorDir string) error {
 	}
 	for _, key := range sortedKeys(cfg.Tiers) {
 		if _, err := StatCommandDir(worktreeRoot, anchorDir, cfg.Tiers[key].Dir); err != nil {
-			return useRefusal("key %q: %v", keyName("tiers."+key+".dir"), err)
+			return useRefusal("key %q: %v", "tiers."+key+".dir", err)
 		}
 	}
 	if cfg.Build.Command != "" {
 		if _, err := StatCommandDir(worktreeRoot, anchorDir, cfg.Build.Dir); err != nil {
-			return useRefusal("key %q: %v", keyName("build.dir"), err)
+			return useRefusal("key %q: %v", "build.dir", err)
 		}
 	}
 	return nil
@@ -471,9 +478,10 @@ type guidedError struct{ error }
 
 func (e guidedError) Unwrap() error { return e.error }
 
-// refuseRetiredGateLists refuses a hub file whose gates entry is still in the retired list shape.
+// refuseRetiredGateLists refuses a hub file whose gates entry is still in the retired list shape;
+// a deploy leaves such a file until reconcile runs MigrateConfig.
 // The layered load would refuse it first as a shape mismatch against the template;
-// the refusal names the mapping shape that replaces the list.
+// it names no way forward that migrates it.
 func refuseRetiredGateLists(hubFile string) error {
 	data, err := os.ReadFile(hubFile)
 	if err != nil {
@@ -489,7 +497,7 @@ func refuseRetiredGateLists(hubFile string) error {
 	}
 	for i := 0; i+1 < len(gates.Content); i += 2 {
 		if gates.Content[i+1].Kind == yaml.SequenceNode {
-			return fmt.Errorf("config key %q: the retired list shape; write it as a mapping with tiers and scope, such as {tiers: [0], scope: diff}, with \"lym config gate\" from the prime%s", keyName("gates."+gates.Content[i].Value), roleClause)
+			return fmt.Errorf("gate config key %q: the retired list shape; fix it with \"lym fabric reconcile\" (or \"lym config reconcile --layer default --apply\") from the prime, which migrates it%s", "gates."+gates.Content[i].Value, roleClause)
 		}
 	}
 	return nil
@@ -506,38 +514,48 @@ func (c Config) MemoryQuit() int64 {
 	return int64(c.MemoryQuitMB) << 20
 }
 
-// decodeGates decodes the gates entries into keys and validates each key's scope, lints and fixer.
+// RedundancyTestMemory returns the memory cap `redundancy_test_memory_mb` sets, in bytes.
+func (c Config) RedundancyTestMemory() int64 {
+	return int64(c.RedundancyTestMemoryMB) << 20
+}
+
+// decodeGates decodes the gates entries into keys and validates each key's scope, lints, reports and fixer.
 func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 	gates := make(map[string]GateKey, len(entries))
 	for _, name := range sortedKeys(entries) {
 		node := entries[name]
-		path := keyName("gates." + name)
+		path := "gates." + name
 		var key GateKey
 		if err := node.Decode(&key); err != nil {
-			return nil, fmt.Errorf("config key %q: %w", path, err)
+			return nil, fmt.Errorf("gate config key %q: %w", path, err)
 		}
 		switch key.Scope {
 		case scopeCard:
 			if name != cardGateKey && name != "batch" {
-				return nil, guidedError{fmt.Errorf("config key %q: scope card is only for the card and batch keys; fix it with \"lym config gate\" from the prime%s", path, roleClause)}
+				return nil, guidedError{fmt.Errorf("gate config key %q: scope card is only for the card and batch keys; fix it with \"lym config gate\" from the prime%s", path, roleClause)}
 			}
 		case scopeDiff, scopeAll:
 		case retiredScopeCoverage:
-			return nil, guidedError{fmt.Errorf("config key %q: scope coverage is retired, since the gate no longer selects tests from the coverage maps; set %s to diff with \"lym config gate\" from the prime%s", path, path+".scope", roleClause)}
+			return nil, guidedError{fmt.Errorf("gate config key %q: scope coverage is retired, since the gate no longer selects tests from the coverage maps; fix it with \"lym fabric reconcile\" (or \"lym config reconcile --layer default --apply\") from the prime, which migrates it to scope diff%s", path, roleClause)}
 		default:
-			return nil, guidedError{fmt.Errorf("config key %q: scope %q; want card, diff or all; fix it with \"lym config gate\" from the prime%s", path, key.Scope, roleClause)}
+			return nil, guidedError{fmt.Errorf("gate config key %q: scope %q; want card, diff or all; fix it with \"lym config gate\" from the prime%s", path, key.Scope, roleClause)}
 		}
 		for _, lint := range key.Lints {
 			if lint != LintComments && lint != LintPattern {
-				return nil, guidedError{fmt.Errorf("config key %q: lint %q; want %s or %s; fix it with \"lym config gate\" from the prime%s", path, lint, LintComments, LintPattern, roleClause)}
+				return nil, guidedError{fmt.Errorf("gate config key %q: lint %q; want %s or %s; fix it with \"lym config gate\" from the prime%s", path, lint, LintComments, LintPattern, roleClause)}
+			}
+		}
+		for _, report := range key.Reports {
+			if report != ReportReach && report != ReportRedundancy && report != ReportMutation {
+				return nil, guidedError{fmt.Errorf("gate config key %q: report %q; want %s, %s or %s; fix it with \"lym config gate\" from the prime%s", path, report, ReportReach, ReportRedundancy, ReportMutation, roleClause)}
 			}
 		}
 		if key.Fixer != "" {
 			if name != cardGateKey {
-				return nil, guidedError{fmt.Errorf("config key %q: a fixer is only for the card key, since only its agent call hands a red verdict to a fixer; remove fixer from that key with \"lym config gate\" from the prime%s", path+".fixer", roleClause)}
+				return nil, guidedError{fmt.Errorf("gate config key %q: a fixer is only for the card key, since only its agent call hands a red verdict to a fixer; remove fixer from that key with \"lym config gate\" from the prime%s", path+".fixer", roleClause)}
 			}
 			if _, err := modelspec.Parse(key.Fixer); err != nil {
-				return nil, guidedError{fmt.Errorf("config key %q: %q is no model-spec: %v; set a model-spec such as sonnet[medium], or \"\" to turn the fixer off, with \"lym config gate\" from the prime%s", path+".fixer", key.Fixer, err, roleClause)}
+				return nil, guidedError{fmt.Errorf("gate config key %q: %q is no model-spec: %v; set a model-spec such as sonnet[medium], or \"\" to turn the fixer off, with \"lym config gate\" from the prime%s", path+".fixer", key.Fixer, err, roleClause)}
 			}
 		}
 		gates[name] = key
@@ -553,6 +571,266 @@ func (c Config) Limits() Limits {
 		Tier0Parallel: c.Tiers[tierKey(0)].Parallel,
 		BusyQuit:      time.Duration(c.BusyQuitSec) * time.Second,
 	}
+}
+
+// gateTarget is one key a retired gate list migrates to, with the scope its mapping takes.
+type gateTarget struct {
+	key   string
+	scope string
+}
+
+// The gate key of the parent-align check, and the retired merge-in key that migrates to it.
+const (
+	parentAlignGateKey    = "parent-align"
+	retiredMergeInGateKey = "merge-in"
+)
+
+// The gate keys the adopt seed reads and writes.
+const (
+	finalizeGateKey = "finalize"
+	adoptGateKey    = "adopt"
+)
+
+// retiredGateLists maps each retired gate list to the keys it becomes.
+var retiredGateLists = map[string][]gateTarget{
+	"landing": {{parentAlignGateKey, scopeAll}, {"finalize", scopeAll}, {"darn-write", scopeDiff}, {"code-burler-fix", scopeDiff}},
+	"final":   {{"webster", scopeAll}},
+	"round":   {{"webster-fix", scopeDiff}},
+}
+
+// MigrateConfig migrates a gate.yaml document's retired gates and keys and returns one line per rewrite.
+// The retired gates.publish list and the retired guard_tier key are pruned.
+// A landing, final or round list becomes the keys that `retiredGateLists` maps it to,
+// and a card or batch list becomes a mapping with scope card.
+// A gates.merge-in key is renamed to gates.parent-align, keeping its value.
+// A gates entry whose mapping holds the retired `scope: coverage` is rewritten to `scope: diff`.
+// It keeps its other fields.
+// A key the file already holds in the new shape keeps its value,
+// and every comment and other key is carried through yaml node editing.
+// A document with nothing to migrate is returned unchanged, so a migrated file is unchanged on a second pass.
+// A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
+func MigrateConfig(existing []byte) ([]byte, []string, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal(existing, &document); err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate gate config: unmarshal yaml: %w", err))
+	}
+	if document.Kind != yaml.DocumentNode || len(document.Content) == 0 {
+		return existing, nil, nil
+	}
+	root := document.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate gate config: yaml root is not a mapping"))
+	}
+	var lines []string
+	if gates := mappingValue(root, "gates"); gates != nil && gates.Kind == yaml.MappingNode {
+		if at := mappingKeyIndex(gates, "publish"); at >= 0 {
+			gates.Content = append(gates.Content[:at], gates.Content[at+2:]...)
+			lines = append(lines, "gates.publish: retired, removed")
+		}
+		lines = append(lines, migrateGateLists(gates)...)
+		lines = append(lines, renameGateKeys(gates)...)
+		lines = append(lines, migrateCoverageScopes(gates)...)
+	}
+	if at := mappingKeyIndex(root, "guard_tier"); at >= 0 {
+		root.Content = append(root.Content[:at], root.Content[at+2:]...)
+		lines = append(lines, "guard_tier: retired, removed")
+	}
+	if len(lines) == 0 {
+		return existing, nil, nil
+	}
+
+	encoded, err := encodeGateDocument(&document, "migrate gate config")
+	if err != nil {
+		return nil, nil, err
+	}
+	return encoded, lines, nil
+}
+
+// encodeGateDocument encodes a parsed gate document with two-space indentation.
+// It returns an error marked configengine.ErrInvalid whose message opens with what.
+func encodeGateDocument(document *yaml.Node, what string) ([]byte, error) {
+	var out bytes.Buffer
+	encoder := yaml.NewEncoder(&out)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(document); err != nil {
+		return nil, configengine.MarkInvalid(fmt.Errorf("%s: encode yaml: %w", what, err))
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, configengine.MarkInvalid(fmt.Errorf("%s: encode yaml: %w", what, err))
+	}
+	return out.Bytes(), nil
+}
+
+// SeedAdoptGate adds the adopt gate to a hub's base gate document when the document tunes finalize;
+// it returns the line that says so.
+// The new gates.adopt carries a copy of gates.finalize's value,
+// so the adopt check runs the tiers the hub tuned for its landing.
+// A document with no gates.finalize, or already holding gates.adopt, is returned unchanged with no line,
+// so a second pass changes nothing.
+// A hub that tunes finalize cannot pin adopt to the template's own value:
+// the reconcile drops a template-equal entry, and the next pass seeds adopt again from finalize.
+// It runs over the hub base file alone: a local-layer file, a seed and a run-settings gate object are never seeded.
+// A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
+func SeedAdoptGate(existing []byte) ([]byte, []string, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal(existing, &document); err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("seed adopt gate: unmarshal yaml: %w", err))
+	}
+	if document.Kind != yaml.DocumentNode || len(document.Content) == 0 {
+		return existing, nil, nil
+	}
+	root := document.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("seed adopt gate: yaml root is not a mapping"))
+	}
+	gates := mappingValue(root, "gates")
+	if gates == nil || gates.Kind != yaml.MappingNode {
+		return existing, nil, nil
+	}
+	lines := seedAdoptGate(gates)
+	if len(lines) == 0 {
+		return existing, nil, nil
+	}
+	encoded, err := encodeGateDocument(&document, "seed adopt gate")
+	if err != nil {
+		return nil, nil, err
+	}
+	return encoded, lines, nil
+}
+
+// seedAdoptGate writes adopt into the gates mapping right after finalize:
+// a flow mapping holding a copy of finalize's value; it returns the line that says so.
+// A mapping without a finalize mapping, or already holding adopt, is left as it is.
+func seedAdoptGate(gates *yaml.Node) []string {
+	at := mappingKeyIndex(gates, finalizeGateKey)
+	if at < 0 || gates.Content[at+1].Kind != yaml.MappingNode || mappingKeyIndex(gates, adoptGateKey) >= 0 {
+		return nil
+	}
+	value := cloneGateNode(gates.Content[at+1])
+	value.Style = yaml.FlowStyle
+	name := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: adoptGateKey}
+	gates.Content = slices.Insert(gates.Content, at+2, name, value)
+	return []string{fmt.Sprintf("gates.%s: added with the value of gates.%s", adoptGateKey, finalizeGateKey)}
+}
+
+// cloneGateNode returns a deep copy of node without its comments.
+func cloneGateNode(node *yaml.Node) *yaml.Node {
+	clone := *node
+	clone.HeadComment, clone.LineComment, clone.FootComment = "", "", ""
+	clone.Content = make([]*yaml.Node, len(node.Content))
+	for i, child := range node.Content {
+		clone.Content[i] = cloneGateNode(child)
+	}
+	return &clone
+}
+
+// migrateGateLists rewrites every list-shaped gate entry into the keyed shape and returns one line per rewrite.
+// A retired key's list is dropped from its place;
+// its targets, minus those the mapping already holds, take that place.
+func migrateGateLists(gates *yaml.Node) []string {
+	held := make(map[string]bool)
+	for i := 0; i+1 < len(gates.Content); i += 2 {
+		held[gates.Content[i].Value] = true
+	}
+	var lines []string
+	var content []*yaml.Node
+	for i := 0; i+1 < len(gates.Content); i += 2 {
+		name, value := gates.Content[i], gates.Content[i+1]
+		if value.Kind != yaml.SequenceNode {
+			content = append(content, name, value)
+			continue
+		}
+		if name.Value == cardGateKey || name.Value == "batch" {
+			content = append(content, name, gateMapping(value, scopeCard))
+			lines = append(lines, fmt.Sprintf("gates.%s: list shape retired, migrated to tiers and scope %s", name.Value, scopeCard))
+			continue
+		}
+		targets, retired := retiredGateLists[name.Value]
+		if !retired {
+			content = append(content, name, value)
+			continue
+		}
+		var created []string
+		for _, target := range targets {
+			if held[target.key] {
+				continue
+			}
+			held[target.key] = true
+			targetName := *name
+			targetName.Value = target.key
+			if len(created) > 0 {
+				targetName.HeadComment, targetName.LineComment, targetName.FootComment = "", "", ""
+			}
+			content = append(content, &targetName, gateMapping(value, target.scope))
+			created = append(created, target.key)
+		}
+		if len(created) == 0 {
+			lines = append(lines, fmt.Sprintf("gates.%s: retired, removed", name.Value))
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("gates.%s: retired, migrated to %s", name.Value, joinWithAnd(created)))
+	}
+	gates.Content = content
+	return lines
+}
+
+// renameGateKeys renames the gates mapping's retired merge-in key to parent-align and returns one line per rewrite.
+// The renamed key carries the value and comments of the retired one.
+// When the mapping already holds parent-align, that key keeps its value and the retired key is dropped.
+func renameGateKeys(gates *yaml.Node) []string {
+	at := mappingKeyIndex(gates, retiredMergeInGateKey)
+	if at < 0 {
+		return nil
+	}
+	if mappingKeyIndex(gates, parentAlignGateKey) >= 0 {
+		gates.Content = append(gates.Content[:at], gates.Content[at+2:]...)
+		return []string{fmt.Sprintf("gates.%s: retired, removed", retiredMergeInGateKey)}
+	}
+	gates.Content[at].Value = parentAlignGateKey
+	return []string{fmt.Sprintf("gates.%s: renamed to gates.%s", retiredMergeInGateKey, parentAlignGateKey)}
+}
+
+// migrateCoverageScopes rewrites the retired scope coverage of every gates mapping entry to scope diff.
+// It returns one line per rewrite, in the order of the entries; the entry's other fields and comments stay.
+func migrateCoverageScopes(gates *yaml.Node) []string {
+	var lines []string
+	for i := 0; i+1 < len(gates.Content); i += 2 {
+		entry := gates.Content[i+1]
+		if entry.Kind != yaml.MappingNode {
+			continue
+		}
+		scope := mappingValue(entry, "scope")
+		if scope == nil || scope.Kind != yaml.ScalarNode || scope.Value != retiredScopeCoverage {
+			continue
+		}
+		scope.Value = scopeDiff
+		lines = append(lines, fmt.Sprintf("gates.%s: scope %s retired, migrated to scope %s", gates.Content[i].Value, retiredScopeCoverage, scopeDiff))
+	}
+	return lines
+}
+
+// gateMapping returns a flow mapping node holding a copy of the tiers list and the scope.
+func gateMapping(tiers *yaml.Node, scope string) *yaml.Node {
+	list := *tiers
+	list.Content = slices.Clone(tiers.Content)
+	list.Style = yaml.FlowStyle
+	scalar := func(value string) *yaml.Node {
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
+	}
+	return &yaml.Node{
+		Kind:    yaml.MappingNode,
+		Tag:     "!!map",
+		Style:   yaml.FlowStyle,
+		Content: []*yaml.Node{scalar("tiers"), &list, scalar("scope"), scalar(scope)},
+	}
+}
+
+// joinWithAnd joins names with commas and a final "and".
+func joinWithAnd(names []string) string {
+	if len(names) == 1 {
+		return names[0]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 // mappingKeyIndex returns the index of key in mapping's Content, or -1 when the mapping holds no such key.

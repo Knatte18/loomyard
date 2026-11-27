@@ -121,10 +121,10 @@ func fixerRecord(rec *VerifyFixerState) *gatefixer.Record {
 	}
 }
 
-// awaitFixerStrand waits on rec's strand through gatefixer.Await over deps, using timeout and wait.
+// awaitFixerStrand waits on rec's strand through gatefixer.Await, using timeout, wait and clk.
 // It prefixes each warning with label, the verb the fixer runs under.
-func awaitFixerStrand(deps gatefixer.Deps, rec *gatefixer.Record, label string, timeout, wait time.Duration) (*gatefixer.Result, error) {
-	result, err := gatefixer.Await(deps, rec, timeout, wait)
+func awaitFixerStrand(engines AuditEngines, reed shuttleengine.ReedOps, stopper StrandStopper, rec *gatefixer.Record, label string, timeout, wait time.Duration, clk Clock) (*gatefixer.Result, error) {
+	result, err := gatefixer.Await(gatefixer.Deps{Stopper: stopper, Reed: reed, Engines: engines, Clock: clk}, rec, timeout, wait)
 	if err != nil {
 		return nil, fmt.Errorf("webster: %s: %w", label, err)
 	}
@@ -162,7 +162,7 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 
 	choice, ok := deps.Roles[RoleRecovery]
 	if !ok {
-		return nil, false, fmt.Errorf("webster: no resolved model-spec for role %q; way forward: set %s in webster.yaml with lym config webster, then re-run `%s`", RoleRecovery, keyName(string(RoleRecovery)), fixVerifyCommand)
+		return nil, false, fmt.Errorf("webster: no resolved model-spec for role %q; way forward: set %s in webster.yaml with lym config webster, then re-run `%s`", RoleRecovery, RoleRecovery, fixVerifyCommand)
 	}
 	if err := roleAuditEngine(deps.Engines, RoleRecovery, choice); err != nil {
 		return nil, false, err
@@ -244,22 +244,15 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 // FixVerifyAwait blocks up to wait for rec's cold fixer to reach a terminal classification, polling on the shared tick.
 // The fixer is done once its reply file exists.
 // It is dead, checked in this order, when its newest turn ended without one (DeadReasonAsking);
-// when its strand is gone (DeadReasonDied, or gatefixer.DeadReasonInterrupted for a run recorded as interrupted);
-// or when recovery_timeout_min has passed since the spawn (DeadReasonTimeout).
+// when recovery_timeout_min has passed since the spawn (DeadReasonTimeout);
+// or when its strand is gone (DeadReasonDied).
 // Every terminal result stops the strand; only done also reads the reply and removes the run dir.
 // A failed stop, reply read or removal is a warning.
 // The caller holds no state-mutation lease across it.
 func FixVerifyAwait(deps FixVerifyDeps, rec *VerifyFixerState, wait time.Duration, clk Clock) (*FixVerifyResult, error) {
 	strand := fixerRecord(rec)
 	strand.ReplyPath = VerifyFixReplyPath(deps.Geom.ScratchDir)
-	waited, err := awaitFixerStrand(gatefixer.Deps{
-		Stopper:    deps.Stopper,
-		Reed:       deps.Reed,
-		Engines:    deps.Engines,
-		ShuttleCfg: deps.ShuttleCfg,
-		AnchorRoot: deps.Geom.AnchorRoot,
-		Clock:      clk,
-	}, strand, "fix-verify", time.Duration(deps.Config.RecoveryTimeoutMin)*time.Minute, wait)
+	waited, err := awaitFixerStrand(deps.Engines, deps.Reed, deps.Stopper, strand, "fix-verify", time.Duration(deps.Config.RecoveryTimeoutMin)*time.Minute, wait, clk)
 	if err != nil {
 		return nil, err
 	}

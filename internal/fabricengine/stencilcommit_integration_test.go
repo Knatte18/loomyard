@@ -55,7 +55,7 @@ func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
 
 	// Push whatever hubforge already committed so HasUnpushed starts false.
 	// The check below then shows that CommitSeededStencils' own commit, not pre-existing unpushed state, makes it true.
-	if err := board.PushCoalesced(gitrepo.RefNamespace{}); err != nil {
+	if err := board.PushCoalesced(); err != nil {
 		t.Fatalf("PushCoalesced() (pre-seed) error = %v", err)
 	}
 	if unpushed, err := board.HasUnpushed(); err != nil {

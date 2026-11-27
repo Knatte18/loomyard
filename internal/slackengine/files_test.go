@@ -224,7 +224,7 @@ func TestCredentialFiles(t *testing.T) {
 	t.Run("SetupReadsBackWithAPrivateMode", func(t *testing.T) {
 		t.Parallel()
 		path := filepath.Join(t.TempDir(), "slack", slackengine.SetupFileName)
-		want := slackengine.Setup{OperatorID: "U456"}
+		want := slackengine.Setup{ChannelID: "C123", OperatorID: "U456"}
 		if err := slackengine.WriteSetup(path, want); err != nil {
 			t.Fatalf("WriteSetup = %v", err)
 		}
@@ -238,26 +238,26 @@ func TestCredentialFiles(t *testing.T) {
 		if err := slackengine.SetOperator(path, "U789"); err != nil {
 			t.Fatalf("SetOperator = %v", err)
 		}
-		wantReplaced := slackengine.Setup{OperatorID: "U789"}
-		if got, found, err := slackengine.ReadSetup(path); err != nil || !found || got != wantReplaced {
-			t.Errorf("ReadSetup after SetOperator = %+v, %v, %v; want %+v", got, found, err, wantReplaced)
+		wantKept := slackengine.Setup{ChannelID: "C123", OperatorID: "U789"}
+		if got, found, err := slackengine.ReadSetup(path); err != nil || !found || got != wantKept {
+			t.Errorf("ReadSetup after SetOperator = %+v, %v, %v; want %+v with the channel kept", got, found, err, wantKept)
 		}
-		unknownKeyPath := filepath.Join(t.TempDir(), "slack", slackengine.SetupFileName)
-		if err := os.MkdirAll(filepath.Dir(unknownKeyPath), 0o700); err != nil {
+		olderPath := filepath.Join(t.TempDir(), "slack", slackengine.SetupFileName)
+		if err := os.MkdirAll(filepath.Dir(olderPath), 0o700); err != nil {
 			t.Fatalf("MkdirAll = %v", err)
 		}
-		if err := os.WriteFile(unknownKeyPath, []byte(`{"newer_key":"kept"}`), 0o600); err != nil {
+		if err := os.WriteFile(olderPath, []byte(`{"channel_id":"C9","newer_key":"kept"}`), 0o600); err != nil {
 			t.Fatalf("WriteFile = %v", err)
 		}
-		if err := slackengine.SetOperator(unknownKeyPath, "U1"); err != nil {
-			t.Fatalf("SetOperator(file with an unknown key) = %v", err)
+		if err := slackengine.SetOperator(olderPath, "U1"); err != nil {
+			t.Fatalf("SetOperator(older file) = %v", err)
 		}
-		raw, err := os.ReadFile(unknownKeyPath)
+		raw, err := os.ReadFile(olderPath)
 		if err != nil {
 			t.Fatalf("ReadFile = %v", err)
 		}
 		var keys map[string]string
-		wantKeys := map[string]string{"newer_key": "kept", "operator_id": "U1"}
+		wantKeys := map[string]string{"channel_id": "C9", "newer_key": "kept", "operator_id": "U1"}
 		if err := json.Unmarshal(raw, &keys); err != nil || !cmp.Equal(keys, wantKeys) {
 			t.Errorf("setup file after SetOperator = %s (%v); want the keys %v", raw, err, wantKeys)
 		}
@@ -308,7 +308,7 @@ func TestCredentialFiles(t *testing.T) {
 		if _, _, err := slackengine.RequireConfigured(geom); err == nil || !strings.Contains(err.Error(), "lym slack setup --operator") {
 			t.Errorf("RequireConfigured(no setup) = %v; want an error naming lym slack setup --operator", err)
 		}
-		want := slackengine.Setup{OperatorID: "U456"}
+		want := slackengine.Setup{ChannelID: "C123", OperatorID: "U456"}
 		if err := slackengine.WriteSetup(geom.SetupPath, want); err != nil {
 			t.Fatalf("WriteSetup = %v", err)
 		}

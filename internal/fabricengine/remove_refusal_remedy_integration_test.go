@@ -49,7 +49,7 @@ func TestRemove_DirtyRefusalLeavesPairIntact(t *testing.T) {
 		t.Fatalf("dirty %s: %v", tracked, err)
 	}
 
-	res, err := topology.Remove(l, slug, false, false, "")
+	res, err := topology.Remove(l, slug, false, false)
 	if err == nil {
 		t.Fatalf("Remove(force=false) on a dirty pair returned nil error; want a refusal")
 	}
@@ -88,7 +88,7 @@ func TestRemove_WarpStatusProbeFailurePushesNoTag(t *testing.T) {
 		t.Fatalf("overwrite %s: %v", gitFile, err)
 	}
 
-	_, err := topology.Remove(l, slug, false, false, "")
+	_, err := topology.Remove(l, slug, false, false)
 	if err == nil {
 		t.Fatalf("Remove with a failing status probe returned nil error; want a refusal")
 	}
@@ -157,7 +157,7 @@ func TestRemove_StatusFailureNamesPathAndCommandOnce(t *testing.T) {
 		t.Fatalf("create %s: %v", notACheckout, err)
 	}
 
-	_, err := topology.Remove(l, slug, false, false, "")
+	_, err := topology.Remove(l, slug, false, false)
 	if err == nil {
 		t.Fatalf("Remove on a non-checkout directory returned nil error; want a failure from the dirtiness probe")
 	}

@@ -20,9 +20,6 @@ Never answer one with a goto to Plan-Bouncer, since the plan does not change.
   The halt's reason says which, and names the commits the fixer kept.
   Read the commits and decide what the run needs.
   Record it with `lym loom decision add <slug> --by parent`, then run `lym loom resume` in the task worktree.
-  Once the task's scope is closed, as for a Parent-Align stop after a Code-Review round has run, the record takes no decision:
-  file the call as a board note for a new task with `lym board upsert` and kind note, then resume.
-  A Finalize stop is outside the closed span and still records the call.
 - **An undecodable attempt record:** remove that record by the path the reason names.
   That grants the entry a fresh cap.
 - **Finalize's fix reviews out of rounds:** the reason names the open findings.
@@ -32,8 +29,6 @@ Never answer one with a goto to Plan-Bouncer, since the plan does not change.
 - **A fixer that escalated a decision** on a tapestry, darn or sampler run halts with the landing-escalate prefix instead.
   The arbiter judges it first, so it reaches you only as the arbiter's hand-on.
   Record the deciding decision with `lym loom decision add`, then `lym loom resume`.
-  Once the task's scope is closed, as for a Parent-Align stop, file the call as a board note instead,
-  have the conflict settled on the task branch so the record's decisions hold, then resume.
 - **A beam** has no Parent-Align, and its Finalize merges the beam's pull request on GitHub.
   It halts when GitHub refuses:
   a pending check, a dismissed review, a refused merge method or a pull request closed on GitHub.

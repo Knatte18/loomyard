@@ -264,7 +264,7 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 		{
 			name:    "tackler_max_spawns 0 starts nothing",
 			setup:   func(f *tacklerFixture) { f.settings.MaxSpawns = 0 },
-			wantErr: ErrTacklerUnavailable, wantErrText: "tackler spawn budget is 0",
+			wantErr: ErrTacklerUnavailable, wantErrText: "tackler_max_spawns: 0",
 		},
 		{
 			name: "spent budget starts nothing",

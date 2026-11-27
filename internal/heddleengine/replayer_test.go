@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -127,6 +128,37 @@ func TestReplayer(t *testing.T) {
 		}
 		if got := store.Entries; len(got) != 2 || got[0].Slug != "b" || got[1].Slug != "c" {
 			t.Errorf("entries = %+v; want b then c", got)
+		}
+	})
+
+	t.Run("UnversionedSidesReadClaudeFileAsAgentsFile", func(t *testing.T) {
+		t.Parallel()
+		unversionedA := []byte(`{"entries": [{"slug": "a", "text": "A", "order": 1, "targets": ["claude-file"]}]}`)
+		unversionedAC := []byte(`{"entries": [` +
+			`{"slug": "a", "text": "A", "order": 1, "targets": ["claude-file"]},` +
+			`{"slug": "c", "text": "C", "order": 3, "targets": ["claude-file"]}]}`)
+		// Origin aims a at a different set, so a parent or commit left unmigrated shows as a lost targets change.
+		origin := entryFor("a", "A", 1, "agents-file", "claude-prompt")
+		result, store := applyReplay(t, Store{Entries: []Entry{origin}}, unversionedA, unversionedA, unversionedAC)
+		added, _ := store.Get("c")
+		if !slices.Equal(added.Targets, []string{"agents-file"}) || len(result.Lost) != 0 || len(result.Refused) != 0 {
+			t.Errorf("added entry = %+v, result = %+v; want c read as agents-file with nothing lost or refused", added, result)
+		}
+		if kept, _ := store.Get("a"); !slices.Equal(kept.Targets, []string{"agents-file", "claude-prompt"}) {
+			t.Errorf("a.Targets = %v; want origin's targets kept", kept.Targets)
+		}
+	})
+
+	t.Run("UnversionedMergeBaseReadsClaudeFileAsAgentsFile", func(t *testing.T) {
+		t.Parallel()
+		base := []byte(`{"entries": [{"slug": "a", "text": "A", "order": 1, "targets": ["claude-file"]}]}`)
+		parent := []byte(`{"entries": [{"slug": "a", "text": "A", "order": 1, "targets": ["claude-prompt", "claude-file"]}]}`)
+		commit := []byte(`{"entries": [{"slug": "a", "text": "A", "order": 1, "targets": ["claude-prompt"]}]}`)
+		// Origin still holds the merge base's targets, so the commit's change applies only when the base reads as agents-file.
+		origin := entryFor("a", "A", 1, "agents-file")
+		result, store := applyReplay(t, Store{Entries: []Entry{origin}}, base, parent, commit)
+		if got, _ := store.Get("a"); !slices.Equal(got.Targets, []string{"claude-prompt"}) || len(result.Lost) != 0 {
+			t.Errorf("a.Targets = %v, result = %+v; want the commit's targets applied with nothing lost", got.Targets, result)
 		}
 	})
 

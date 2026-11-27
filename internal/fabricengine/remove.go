@@ -209,13 +209,8 @@ type RemoveResult struct {
 // After a successful teardown, and before it returns, Remove disables auto gc in both hub stores.
 // It then runs a best-effort foreground `git gc --auto` in each.
 // A failure there is logged and never fails Remove, and a refused or failed Remove runs none of it.
-// The rerun argument is the command that retries the removal, such as a cancel that removes the pair;
-// a held teardown lock's refusal and the pending-teardown record name it.
-// The record names it with no condition on origin,
-// so that command must also finish the teardown once nothing of the pair remains.
-// An empty rerun names `lym fabric remove <slug>`.
-func (t *Topology) Remove(l *lymcwd.Location, slug string, force, remote bool, rerun string) (res RemoveResult, err error) {
-	return t.removePair(l, slug, force, remote, false, rerun)
+func (t *Topology) Remove(l *lymcwd.Location, slug string, force, remote bool) (res RemoveResult, err error) {
+	return t.removePair(l, slug, force, remote, false)
 }
 
 // RemoveLocal removes a paired warp and weft worktree without any origin step and without waiting on another writer.
@@ -230,12 +225,11 @@ func (t *Topology) Remove(l *lymcwd.Location, slug string, force, remote bool, r
 // The commits the pushed archive tag would have carried stay under the local tag.
 // The branch deletions keep their gates.
 func (t *Topology) RemoveLocal(l *lymcwd.Location, slug string, force bool) (res RemoveResult, err error) {
-	return t.removePair(l, slug, force, false, true, "")
+	return t.removePair(l, slug, force, false, true)
 }
 
 // removePair removes a worktree pair. In localMode it skips every origin step and every wait on another writer.
-// A non-empty rerun is the command that retries the removal; empty, the retry is `lym fabric remove <slug>`.
-func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, localMode bool, rerun string) (res RemoveResult, err error) {
+func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, localMode bool) (res RemoveResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
@@ -246,6 +240,9 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 	}
 
 	target := WorktreePath(l, slug)
+	// Read before the teardown, while the layout's marker is still in the worktree it deletes.
+	// A one-repository pair is one worktree on one branch, so every sibling step below is skipped for it.
+	oneRepo := oneRepositoryAt(l.WorktreePath())
 	pair, err := t.inspectPair(l, slug)
 	if err != nil {
 		return RemoveResult{}, err
@@ -256,7 +253,7 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 		pair.warpBranch = onOrigin
 	}
 	warpBranch := pair.warpBranch
-	weftBranch := RecordsBranchName(warpBranch)
+	weftBranch := recordsBranchIn(l, warpBranch)
 	// Read before the teardown deletes the records worktree that holds the pair's own marker.
 	pairLoc, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
@@ -274,11 +271,7 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 	// The pair's detached pushes hold this lock shared, so no push runs against a worktree this call deletes.
 	// A push child that exited on the held lock leaves its commits to the pair's next synchronous push.
 	// That push carries them when a failure after this point leaves a worktree behind.
-	lockRerun := fmt.Sprintf("re-run `lym fabric remove %s`", slug)
-	if rerun != "" {
-		lockRerun = "re-run `" + rerun + "`"
-	}
-	hold, err := t.holdTeardown(rec, rec, l, slug, localMode, lockRerun, !localMode)
+	hold, err := t.holdTeardown(rec, rec, l, slug, localMode, fmt.Sprintf("re-run `lym fabric remove %s`", slug), !localMode)
 	if err != nil {
 		return RemoveResult{}, err
 	}
@@ -370,11 +363,14 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 	}
 
 	// A sibling with neither worktree nor local branch is known only from origin, and only the teardown child asks origin.
-	siblingSteps, err := t.removeSibling(rec, l, slug, weftBranch, pair, force)
-	if err != nil {
-		return RemoveResult{}, err
+	// A one-repository pair has none: its one worktree and branch went with the task side above and below.
+	if !oneRepo {
+		siblingSteps, err := t.removeSibling(rec, l, slug, weftBranch, pair, force)
+		if err != nil {
+			return RemoveResult{}, err
+		}
+		steps = append(steps, siblingSteps...)
 	}
-	steps = append(steps, siblingSteps...)
 
 	if removeAfterTeardownHook != nil {
 		removeAfterTeardownHook()
@@ -449,8 +445,8 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 		DeleteWeftOnOrigin: remote && !weftBranchExists(l, weftBranch),
 		WarpBranch:         warpBranch,
 		ParentBranch:       parentBranch,
-		DeleteTaskOnOrigin: remote,
-		Rerun:              rerun,
+		DeleteTaskOnOrigin: remote && !oneRepo,
+		DeleteViewRef:      remote && oneRepo,
 	})
 	res.RemoteHandedOff = out.handedOff
 	if !out.ran {
@@ -588,7 +584,7 @@ func (t *Topology) inspectPair(l *lymcwd.Location, slug string) (pairState, erro
 		return pairState{}, err
 	}
 	s.taskBranch = taskBranch
-	s.siblingBranch = weftBranchExists(l, RecordsBranchName(warpBranch))
+	s.siblingBranch = weftBranchExists(l, recordsBranchIn(l, warpBranch))
 	return s, nil
 }
 

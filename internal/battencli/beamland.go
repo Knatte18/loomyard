@@ -19,12 +19,10 @@ import (
 // Slug names the entry, and HasPair reports whether this machine holds its pair as a registered worktree.
 // A directory left at the pair's path reads as no pair.
 // Running reports whether the board status is a run status, so a run is in flight on some machine.
-// Beam reports whether the entry is itself a beam, which may be open on another machine with neither of those set.
 type BeamLandMember struct {
 	Slug    string
 	HasPair bool
 	Running bool
-	Beam    bool
 }
 
 // BeamLandBlockers is what still works under a beam: its open members and the local pairs forked from it.
@@ -133,7 +131,7 @@ func beamMembers(prime *lymcwd.Location, slug string) ([]BeamLandMember, error) 
 			continue
 		}
 		hasPair := fabricengine.PairWorktreeStands(prime, task.Slug)
-		members = append(members, BeamLandMember{Slug: task.Slug, HasPair: hasPair, Running: boardengine.IsRunStatus(task.Status), Beam: task.Beam})
+		members = append(members, BeamLandMember{Slug: task.Slug, HasPair: hasPair, Running: boardengine.IsRunStatus(task.Status)})
 	}
 	slices.SortFunc(members, func(a, b BeamLandMember) int { return strings.Compare(a.Slug, b.Slug) })
 	return members, nil

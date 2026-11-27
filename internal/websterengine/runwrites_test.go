@@ -241,7 +241,7 @@ func TestLoadRunWrites(t *testing.T) {
 			{
 				name:      "EngineLessSessionOnDefaultWithoutForkAudit",
 				engines:   shuttleengine.NewEngineSet("a", map[string]shuttleengine.Engine{"a": withoutForkAudit}),
-				wantParts: []string{"sess-1", `shuttle.engine "a"`, "set shuttle.engine in shuttle.yaml back to an engine with fork audit"},
+				wantParts: []string{"sess-1", `engine: "a"`, "set engine: in shuttle.yaml back to an engine with fork audit"},
 			},
 			{
 				name:      "HeldEngineWithoutForkAudit",

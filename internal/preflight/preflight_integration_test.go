@@ -431,8 +431,7 @@ func TestCheckResolved_Failures(t *testing.T) {
 // TestCheckResolved_LymOwnStateIsExempt leaves lym's own state under `_lym` uncommitted.
 // It asserts that the worktree-clean check passes over that state.
 // The state is the files that lym's stop and settle paths write into a run's directory.
-// It also holds a new friction note, a committed halt note that a reflection moved into an archive,
-// and an agent session's usage record.
+// It also holds a new friction note and a committed halt note that a reflection moved into an archive.
 // Fabric's own unscoped Clean must see the changes first, so the pass is never a gitignore's doing.
 // A file under `_lym` outside the exempt state then still refuses.
 // Each anchor builds its own hub, since a subpath anchor moves `_lym` below the worktree's root.
@@ -472,10 +471,6 @@ func TestCheckResolved_LymOwnStateIsExempt(t *testing.T) {
 			}
 			for _, path := range runState {
 				writeFile(t, path)
-			}
-			sessionUsage := shedrun.SessionUsageRecord{SessionID: "db065ed3-54e1-4008-bacd-df683191b516"}
-			if err := shedrun.WriteSessionUsage(shedrun.UsageDir(l), sessionUsage); err != nil {
-				t.Fatalf("WriteSessionUsage: %v", err)
 			}
 
 			if clean, _, err := fabricengine.Clean(l); err != nil || clean {
@@ -663,6 +658,37 @@ func TestResolveMode(t *testing.T) {
 		}
 		if loc != nil {
 			t.Errorf("ResolveMode(%s) Location = %+v; want nil", sub, loc)
+		}
+	})
+
+	t.Run("StaleAnchorMarker", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := setupFixture(t)
+		cwd := h.PrimeWorktree()
+
+		// The stale guard applies only to the Bolt read, so the prime's own marker is removed.
+		anchorPath := filepath.Join(h.PrimeRecords(), lymcwd.AnchorFileName)
+		if err := os.Remove(anchorPath); err != nil {
+			t.Fatalf("remove %s: %v", anchorPath, err)
+		}
+		stalePath := filepath.Join(h.BoardDir(), lymcwd.StaleAnchorFileName)
+		if err := os.WriteFile(stalePath, []byte("."), 0o644); err != nil {
+			t.Fatalf("write %s: %v", stalePath, err)
+		}
+
+		loc, mode, err := preflight.ResolveMode(cwd)
+		if err == nil {
+			t.Fatalf("ResolveMode(%s) error = nil; want non-nil", cwd)
+		}
+		if !errors.Is(err, lymcwd.ErrStaleAnchorMarker) {
+			t.Errorf("ResolveMode(%s) error = %v; want wrapped ErrStaleAnchorMarker", cwd, err)
+		}
+		if mode != preflight.Mode(0) {
+			t.Errorf("ResolveMode(%s) mode = %v; want the zero Mode value", cwd, mode)
+		}
+		if loc != nil {
+			t.Errorf("ResolveMode(%s) Location = %+v; want nil", cwd, loc)
 		}
 	})
 

@@ -66,7 +66,7 @@ func TestBeginBatch_Refusals(t *testing.T) {
 				fx.Deps.Batches[0].Cards[0].Pairs = []planparser.MovePair{{Old: "sub#Foo", New: "plan:sub#Bar"}}
 			},
 			wantIs:   websterengine.ErrRenameToolMissing,
-			wantText: []string{"sub#Foo", "1-json-flag", `way forward: set language.rename_tools with "lym config language"`, "lym webster begin-batch 1"},
+			wantText: []string{"sub#Foo", "1-json-flag", `way forward: set rename_tools with "lym config language"`, "lym webster begin-batch 1"},
 			check: func(t *testing.T, fx *beginFixture) {
 				if len(fx.Deps.State.Batches) != 0 {
 					t.Errorf("state batches = %v; want none recorded", fx.Deps.State.Batches)
@@ -212,15 +212,15 @@ func TestBeginBatch_Refusals(t *testing.T) {
 			wantNotText: []string{"exhausted", "record-batch"},
 		},
 		{
-			name: "a report over a dead recovery at the cap with an unrendered amendment names recover-batch once more",
+			name: "a report over a dead recovery at the cap with an unrendered amendment ends the run stuck without exhausted",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				seedReport(t, fx)
 				fx.Deps.State.Batches = map[int]*websterengine.BatchState{
 					1: {Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 2, AmendedCards: []websterengine.AmendedCard{{Card: "01-json-flag"}}},
 				}
 			},
-			wantText:    []string{"terminal with status dead", "`lym webster recover-batch 1`, once more"},
-			wantNotText: []string{"exhausted", "record-batch", "end the run stuck"},
+			wantText:    []string{"terminal with status dead", "end the run stuck naming the batch"},
+			wantNotText: []string{"exhausted", "record-batch", "recover-batch"},
 		},
 		{
 			name: "a report over a stuck fork record at the cap names the exhausted routes",
@@ -582,14 +582,10 @@ func TestBeginBatch_Record(t *testing.T) {
 			},
 		},
 		{
-			name: "a re-begin carries the recovery count, its sessions, its start commit and the parent's answers",
-			prior: &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Recoveries: 2, RecoverySessions: []string{"r1", "r2"}, RecoveryEngines: map[string]string{"r1": "claude", "r2": "fake"}, RecoveryStartSHA: recordedStart,
-				ParentAnswers: []websterengine.ParentAnswer{{Need: "which flag?", Answer: "the old one"}}},
+			name:      "a re-begin carries the recovery count, its sessions and its start commit",
+			prior:     &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Recoveries: 2, RecoverySessions: []string{"r1", "r2"}, RecoveryEngines: map[string]string{"r1": "claude", "r2": "fake"}, RecoveryStartSHA: recordedStart},
 			wantStart: func(fx *beginFixture) string { return fx.Git.head },
 			check: func(t *testing.T, fx *beginFixture, bs *websterengine.BatchState) {
-				if want := []websterengine.ParentAnswer{{Need: "which flag?", Answer: "the old one"}}; !slices.Equal(bs.ParentAnswers, want) {
-					t.Errorf("Batches[1].ParentAnswers = %v; want %v", bs.ParentAnswers, want)
-				}
 				if want := map[string]string{"r1": "claude", "r2": "fake"}; !maps.Equal(bs.RecoveryEngines, want) {
 					t.Errorf("Batches[1].RecoveryEngines = %v; want %v", bs.RecoveryEngines, want)
 				}
@@ -609,7 +605,9 @@ func TestBeginBatch_Record(t *testing.T) {
 				built := planparser.Card{
 					Number:         1,
 					Slug:           "json-flag",
+					Type:           planparser.CardTypeCreate,
 					TypeLabelCount: 1,
+					HasType:        true,
 					HasIntent:      true,
 					Intent:         "placeholder intent",
 					TargetGroups:   []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"sub#Built"}}},
@@ -812,7 +810,9 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 			{
 				Number:         1,
 				Slug:           "json-flag",
+				Type:           planparser.CardTypeCreate,
 				TypeLabelCount: 1,
+				HasType:        true,
 				HasIntent:      true,
 				Intent:         "placeholder intent",
 				TargetGroups:   []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"brandnew#Thing"}}},
@@ -912,7 +912,9 @@ func TestBeginBatch_AlreadyBuiltCardsAreNotReResolved(t *testing.T) {
 	built := planparser.Card{
 		Number:         1,
 		Slug:           "json-flag",
+		Type:           planparser.CardTypeCreate,
 		TypeLabelCount: 1,
+		HasType:        true,
 		HasIntent:      true,
 		Intent:         "placeholder intent",
 		TargetGroups:   []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"sub#Built"}}},
@@ -921,7 +923,9 @@ func TestBeginBatch_AlreadyBuiltCardsAreNotReResolved(t *testing.T) {
 	pending := planparser.Card{
 		Number:           2,
 		Slug:             "list-tests",
+		Type:             planparser.CardTypeEdit,
 		TypeLabelCount:   1,
+		HasType:          true,
 		HasIntent:        true,
 		Intent:           "placeholder intent",
 		HasImpactSummary: true,
@@ -1049,7 +1053,9 @@ func TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget(t *testing
 		c := planparser.Card{
 			Number:         number,
 			Slug:           slug,
+			Type:           typ,
 			TypeLabelCount: 1,
+			HasType:        true,
 			HasIntent:      true,
 			Intent:         "placeholder intent",
 			TargetGroups:   []planparser.TargetGroup{{Type: typ, Refs: []string{ref}}},

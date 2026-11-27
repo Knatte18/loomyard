@@ -820,7 +820,7 @@ func TestResumeContext_PrintsHookJSONPerPhaseAndFailsWithoutMark(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				return text + " Autonomy is off."
+				return text
 			}},
 		{name: "idle prints the reload prompt", state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle},
 			want: func(c *orchCLI) string {
@@ -828,7 +828,7 @@ func TestResumeContext_PrintsHookJSONPerPhaseAndFailsWithoutMark(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				return text + " Autonomy is off."
+				return text
 			}},
 		{name: "a missing stencil is a JSON error and writes no mark", state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle}, breakStencil: true, wantErr: true},
 		{name: "an engine without the capability is a JSON error and writes no mark", state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseResuming, PendingResume: "read the note"},

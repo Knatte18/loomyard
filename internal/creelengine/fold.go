@@ -277,7 +277,8 @@ type LogEntry struct {
 	Command  CommandName
 	Argument string
 	// Kind is the kind of the message or inject a posted or carried entry records, empty on every other entry.
-	Kind string
+	Kind   string
+	Notice string
 	// Reason is the stall a stalled event names.
 	Reason string
 	// Unread is the message ids a reminded event listed, oldest first.
@@ -517,7 +518,7 @@ func (p *pool) apply(rec record, day string) {
 		if msg := p.messages[rec.ID]; msg != nil {
 			msg.Unanswered = rec.Reason
 		}
-	case eventInterrupted, eventStalled:
+	case eventInterrupted, eventStalled, eventWithheld:
 	case eventHeld:
 		p.holds[rec.To] = &holdEntry{Owner: rec.By, Expires: rec.ExpiresAt, origin: day}
 	case eventRenewed:
@@ -775,7 +776,7 @@ func (p *pool) setOutcome(id int64, outcome string) {
 func (p *pool) logEntryFor(rec record, day string) LogEntry {
 	entry := LogEntry{
 		Day: day, Event: rec.Event, At: rec.At, ID: rec.ID,
-		From: rec.From, To: rec.To, By: rec.By, Receiver: rec.Receiver, Reason: rec.Reason,
+		From: rec.From, To: rec.To, By: rec.By, Receiver: rec.Receiver, Notice: rec.Notice, Reason: rec.Reason,
 		Unread: rec.Unread, Step: rec.Step,
 		SendingHub: rec.SendingHub, SendingShortname: rec.SendingShortname, SendingID: rec.SendingID,
 		ReceivingHub: rec.ReceivingHub, RemoteID: rec.RemoteID, Answers: rec.Answers,

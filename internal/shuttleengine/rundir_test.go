@@ -319,18 +319,6 @@ func TestSweepOrphans_AgeGuardAndLiveGuid(t *testing.T) {
 	relaunchingWithin := seedRelaunching("relaunching-within", now.Add(-time.Minute))
 	relaunchingPast := seedRelaunching("relaunching-past", now.Add(-time.Hour))
 
-	// Of the old strandless runs that ended unfinished, the sweep keeps the one a stop recorded as interrupted.
-	seedEnded := func(id, outcome string, interrupted bool) string {
-		runDir := seedRun(t, root, id, "strand-gone")
-		if err := saveRunState(runDir, RunState{RunID: id, StrandGUID: "strand-gone", SessionID: "session-1", Outcome: outcome, Interrupted: interrupted}); err != nil {
-			t.Fatalf("saveRunState: %v", err)
-		}
-		setDirMTime(t, runDir, now, 10*time.Minute)
-		return runDir
-	}
-	interrupted := seedEnded("interrupted-run", runOutcomeStopped, true)
-	died := seedEnded("died-run", string(OutcomeDied), false)
-
 	strandGUIDs := map[string]bool{"strand-live": true}
 	removed, err := sweepOrphans(root, strandGUIDs, minAge, now, bound)
 	if err != nil {
@@ -338,11 +326,8 @@ func TestSweepOrphans_AgeGuardAndLiveGuid(t *testing.T) {
 	}
 
 	// os.ReadDir hands the dirs back sorted by name, so the removed ones come back in that order.
-	if want := []string{died, oldNoState, oldOrphan, relaunchingPast}; !reflect.DeepEqual(removed, want) {
+	if want := []string{oldNoState, oldOrphan, relaunchingPast}; !reflect.DeepEqual(removed, want) {
 		t.Errorf("removed = %v, want %v", removed, want)
-	}
-	if _, err := os.Stat(interrupted); err != nil {
-		t.Errorf("interrupted run dir was removed, want kept: %v", err)
 	}
 	if _, err := os.Stat(relaunchingWithin); err != nil {
 		t.Errorf("relaunching dir within its bound was removed, want kept: %v", err)

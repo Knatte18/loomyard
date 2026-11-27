@@ -4,7 +4,7 @@ Heddle entries are rendered only via `heddleengine`, and lym's own instructions 
 
 ## Heddle rendering
 
-Rule: Rendering heddle entries into a file or prompt: only via `heddleengine`, from its shipped layer, Bolt's `heddle.json` and, under `heddle.lym_override`, lym overrides; `heddle.json` written only via `lym heddle` or its replayer; fabric names no heddle file.
+Rule: Rendering heddle entries into a file or prompt: only via `heddleengine`, from its shipped layer, Bolt's `heddle.json` and, under `lym_override`, lym overrides; `heddle.json` written only via `lym heddle` or its replayer; fabric names no heddle file.
 
 Heddle's instruction text is stored once per layer and rendered from those stores, never from a copy.
 
@@ -13,7 +13,7 @@ Heddle's instruction text is stored once per layer and rendered from those store
   Its glossary entry, `lym-glossary`, is embedded from `glossary.md` beside it, the one copy of lym's glossary.
 - The repository layer is `heddle.json` at the Bolt checkout's root.
 - A hub's lym overrides sit in `heddle-lym-override.json` beside it.
-  A render reads them only while the hub sets `heddle.lym_override`.
+  A render reads them only while the hub's `heddle.yaml` sets `lym_override`.
 - The `lym heddle` verbs and heddle's Bolt replayer are the only writers of `heddle.json`.
   Another module's verb, such as `lym orch rules`, writes it only through the write path the `lym heddle` verbs share.
 - The verbs alone write `heddle-lym-override.json`, which the replayer leaves unclaimed.

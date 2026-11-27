@@ -32,6 +32,9 @@ const mergeStateFileName = "fabric-merge.json"
 // The SHA fabric handed to `git merge` is what git wrote into MERGE_HEAD,
 // so it is exactly what a genuine conclude-commit carries as its second parent.
 // sideConcludeAlreadyLanded consumes them.
+// A record without them, written by an older binary, reads them as empty.
+// Every consumer treats empty as "no evidence available" and refuses to make a positive claim;
+// none treats it as "evidence satisfied".
 //
 // The weft is not a merge participant; its four fields record it as unmoved.
 // WeftStart is the weft HEAD at record time.
@@ -41,6 +44,10 @@ const mergeStateFileName = "fabric-merge.json"
 // The fields are kept for two reasons.
 // mergeAttemptIncompleteReason refuses a resume on an empty WeftOutcome.
 // Keeping them also leaves the persisted JSON schema byte-compatible in both directions across the binary change.
+//
+// RecordsUnsettled is set while a merge in a one-repository worktree has staged the source's records.
+// It stays set until the records are set back to the receiving side's.
+// A record an older binary wrote reads it false, so it reads settled.
 type mergeState struct {
 	Verb          string    `json:"verb"`   // "merge-in" | "merge"
 	Source        string    `json:"source"` // caller-supplied branch
@@ -55,6 +62,8 @@ type mergeState struct {
 	WarpCommitted string    `json:"warp_committed"` // conclude SHAs, set as each lands
 	WeftCommitted string    `json:"weft_committed"`
 	StartedAt     time.Time `json:"started_at"`
+
+	RecordsUnsettled bool `json:"records_unsettled"`
 }
 
 // The mergeState outcome strings a gitrepo.MergeOutcome maps onto, recorded in WarpOutcome and

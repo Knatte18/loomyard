@@ -44,6 +44,8 @@ func (d *daemon) oweCatchUp() {
 }
 
 // catchUp runs the owed catch-up from origin when its next try is due, and reports whether it stands owed after the call.
+// The first read after an upgrade runs before the catch-up until one run of it succeeds,
+// and a failed read keeps the catch-up owed as a failed catch-up does.
 // Success clears the wait, resets the delay and owes every listed run a full pass.
 // It also drops the per-run memory of the runs the catch-up touched.
 // Failure keeps the catch-up owed and schedules the next try one delay later, doubling from a second to idleCeiling.
@@ -54,6 +56,17 @@ func (d *daemon) catchUp(ctx context.Context, now time.Time) bool {
 	}
 	if now.Before(d.catchUpNext) {
 		return true
+	}
+	if !d.upgraded && d.deps.Upgrade.Entries != nil {
+		read, err := UpgradeRead(d.deps.Upgrade)
+		if err != nil {
+			d.catchUpFailed(ctx, now, err)
+			return true
+		}
+		d.upgraded = true
+		if read.Dropped > 0 {
+			d.logLine(now, fmt.Sprintf("first read after the upgrade: %d pause entries turned into the Bolt model", read.Dropped))
+		}
 	}
 	report, err := CatchUp(d.deps.CatchUp)
 	if err != nil {

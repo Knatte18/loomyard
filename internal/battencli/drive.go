@@ -22,7 +22,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -515,7 +514,6 @@ func (c *battenCLI) primeShuttle(dirs configengine.Dirs) (sheddriver.AgentShuttl
 		_, err := notifyRunParent(location, c.slug, line)
 		return err
 	})
-	runner.SetReplyProbe(creelcli.AwaitsReplyProbe(location, battenProgram))
 	// The tackler and the arbiter work for the task's run,
 	// so their sessions count toward the task worktree's usage records.
 	if taskLocation, err := taskWorktreeLocation(location, c.slug); err != nil {
@@ -577,8 +575,6 @@ func (c *battenCLI) loadedArbiterDeps() (shedarbiter.Deps, error) {
 // haltedRowGuard returns the arbiter's goto guard, which admits only the row the run is halted at.
 // The guard reads the halted row from the status on each call.
 // A goto to an earlier row would re-run Seed-Child over a live pair's local config layer and seed, or Worktree-Create.
-// The batten recipe has no PR-Review row, so no batten goto or relaunch moves a run onto that row:
-// the goto and relaunch requests built here pass no hook that resets a PR-Review review.
 func (c *battenCLI) haltedRowGuard() shedengine.GotoGuard {
 	return func(target string) (string, error) {
 		status, found, err := c.readRunStatus()

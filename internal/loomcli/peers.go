@@ -87,10 +87,18 @@ type peersDeps struct {
 
 // recipeRow returns the 1-based position of status's producer among rows.
 // It returns 0 when status is no run status or its producer names no row.
+// A producer holding a retired row name counts as the row that replaced it.
 func recipeRow(status *string, rows []string) int {
 	producer, ok := boardengine.RunStatusProducer(status)
 	if !ok {
 		return 0
+	}
+	// A peer's status file is read unrenamed,
+	// so a peer parked on a retired row name is listed at its successor's position.
+	if successor, retired := loomrecipe.RetiredRows(shedrun.RecipeTapestry)[producer]; retired {
+		producer = successor
+	} else if successor, retired := loomrecipe.RetiredRows(shedrun.RecipeDarn)[producer]; retired {
+		producer = successor
 	}
 	if index := slices.Index(rows, producer); index >= 0 {
 		return index + 1

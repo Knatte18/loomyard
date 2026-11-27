@@ -83,9 +83,6 @@ type Profile struct {
 	// Round is what the review is judged against when an earlier round is complete, and what the prior-findings block lists.
 	// Nil is a full round: the prior-rounds text and the round checks of a round with no earlier findings.
 	Round *RoundContext
-	// HaltReason is the stuck reason of the plan executor call that sent the run back to review, empty when none.
-	// A non-empty value makes the review prompt carry it as a finding the reviewer must raise.
-	HaltReason string
 }
 
 // rolePrefix returns base led by the profile's RolePrefix, or base alone when there is none.
@@ -140,8 +137,6 @@ type RunOpts struct {
 	// DecisionsRouted marks a fix whose caller sends the review's decision-class findings to the run's parent.
 	// Those findings are then not fixer work; false keeps every finding as fixer work.
 	DecisionsRouted bool
-	// Rerun, when its Reason is set, tells the fixer why it runs again over a review an earlier fixer session worked.
-	Rerun FixRerun
 	// Assist is the review half's assistant reviewer's model choice; a choice with no model runs no assistant.
 	// AssistFan names the assistant's fan, empty for a solo assistant, and AssistKey the config key its model came from.
 	Assist    shuttleengine.ModelChoice

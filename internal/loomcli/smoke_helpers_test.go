@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -21,7 +22,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -120,11 +120,11 @@ func claudeConfigWithBinary(binary string) string {
 // The deadline override must be applied together with the provider override, and neither is sufficient alone.
 // Removing the provider stops a real session from starting but not the wait:
 // a launch that fails still leaves reed holding the pane, so shuttle's wait loop polls until the SPEC's own deadline.
-// The discussion deadline comes from loom.yaml's discussion.timeout_min, which ships at 480 minutes.
+// The discussion deadline comes from loom.yaml's discussion_timeout_min, which ships at 480 minutes.
 // That default is set high so an autonomous agent exploring a codebase is never cut off.
 // In a fixture with no agent at all, the wait would be an eight-hour block on a thirty-second test.
 func fastDeadlineLoomConfig() string {
-	return strings.Replace(loomengine.ConfigTemplate(), "  timeout_min: 480", "  timeout_min: 1", 1)
+	return strings.Replace(loomengine.ConfigTemplate(), "discussion_timeout_min: 480", "discussion_timeout_min: 1", 1)
 }
 
 // smokeStatusRel is the status file's relative path for the self run.
@@ -251,12 +251,9 @@ var badReedUpRegistration = &hubforge.Registration{
 
 // newBadReedUpFixture copies the bad-reed-config template, whose reed config makes reed Up fail.
 // It seeds the copy's pair with seed and returns the resolved location and the worktree path.
-// A verb run against it reconciles the hub, which spawns a detached board sync,
-// so the fixture ends every process left under the copy before the copy is removed.
 func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lymcwd.Location)) (*lymcwd.Location, string) {
 	t.Helper()
 	h := hubforge.CopyRegistered(t, badReedUpRegistration)
-	waitForFixtureProcessesToExit(t, fixtureProcessPatience)
 	worktree := h.PairCodeWorktree(badReedUpSlug)
 	loc, err := lymcwd.Resolve(worktree)
 	if err != nil {
@@ -266,66 +263,28 @@ func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lymcwd.Location)) 
 	return loc, worktree
 }
 
-// fixtureProcessPatience is how long a fixture's cleanup waits for its temp dirs' processes to exit on their own.
-const fixtureProcessPatience = 10 * time.Second
-
-// fixtureProcessPoll is the interval at which a fixture's cleanup rescans for the processes under its temp dirs.
-const fixtureProcessPoll = 20 * time.Millisecond
-
-// waitForFixtureProcessesToExit registers a cleanup that ends every process whose cwd is under the test's temp dirs.
-// A push into a bare repository leaves a git process there for a moment,
-// and a verb's detached `lym board sync` runs on after the verb returns.
-// Either would otherwise write into a directory the temp-dir removal is deleting.
-// Either could also outlive the package's run, whose end fails on every process left running.
-// The cleanup waits up to patience for them to exit, then kills and logs each one still running.
-// A process that appears after a kill is killed and logged in turn, a further patience later.
-// The cleanup fails the test when the only processes left after that patience are ones it already killed.
-// It is registered after the fixture, so it runs before the fixture's removal.
-func waitForFixtureProcessesToExit(t *testing.T, patience time.Duration) {
+// waitForFixtureProcessesToExit registers a cleanup that waits for processes whose cwd is under the test's temp dirs.
+// A push into a bare repository leaves a git process there for a moment;
+// that process would otherwise write into a directory the temp-dir removal is deleting.
+// It is registered after the fixture, so it runs before the fixture's removal;
+// the wait is best effort, and the removal reports what is still left.
+func waitForFixtureProcessesToExit(t *testing.T) {
 	t.Helper()
-	root, err := filepath.EvalSymlinks(filepath.Dir(t.TempDir()))
-	if err != nil {
-		t.Fatalf("resolve the test's temp root: %v", err)
-	}
+	root := filepath.Dir(t.TempDir())
 	t.Cleanup(func() {
-		killed := map[int]bool{}
-		for deadline := time.Now().Add(patience); ; time.Sleep(fixtureProcessPoll) {
-			left := processesUnder(root)
-			if len(left) == 0 {
-				return
-			}
-			if time.Now().Before(deadline) {
-				continue
-			}
-			killedAnother := false
-			for _, pid := range left {
-				if killed[pid] {
-					continue
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+			running := false
+			for _, pid := range tmuxkit.Pids() {
+				if cwd, ok := tmuxkit.ProcCwd(pid); ok && pid != os.Getpid() && strings.HasPrefix(cwd, root+string(filepath.Separator)) {
+					running = true
+					break
 				}
-				argv, _ := tmuxkit.ProcArgv(pid)
-				t.Logf("fixture process %d under %s still runs after %s; killing it: %q", pid, root, patience, argv)
-				_ = proc.KillPID(pid)
-				killed[pid] = true
-				killedAnother = true
 			}
-			if !killedAnother {
-				t.Errorf("fixture processes %v under %s still run %s after they were killed", left, root, patience)
+			if !running {
 				return
 			}
-			deadline = time.Now().Add(patience)
 		}
 	})
-}
-
-// processesUnder returns the pids of the live processes other than this one whose cwd is under root.
-func processesUnder(root string) []int {
-	var pids []int
-	for _, pid := range tmuxkit.Pids() {
-		if cwd, ok := tmuxkit.ProcCwd(pid); ok && pid != os.Getpid() && strings.HasPrefix(cwd, root+string(filepath.Separator)) {
-			pids = append(pids, pid)
-		}
-	}
-	return pids
 }
 
 // hubStampPath returns the hub's build stamp file.
@@ -333,18 +292,13 @@ func hubStampPath(loc *lymcwd.Location) string {
 	return hubreconcile.Geometry{BoardDir: fabricengine.BoardDir(loc.HubPath)}.StampPath()
 }
 
-// boardLensesDefault returns the path of the lenses repo default in loc's hub board.
-func boardLensesDefault(loc *lymcwd.Location) string {
-	return configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "lenses")
-}
-
-// deleteBoardLensesDefault commits the deletion of the lenses repo default in loc's hub board.
-// This is the state that a hub reconcile after a binary change reseeds.
-func deleteBoardLensesDefault(t *testing.T, loc *lymcwd.Location) {
+// commitRetiredBatcherKey commits a batcher.yaml that carries a retired key into loc's records worktree.
+// This is the state that a hub reconcile after a binary change removes.
+func commitRetiredBatcherKey(t *testing.T, loc *lymcwd.Location) {
 	t.Helper()
-	board := fabricengine.BoardDir(loc.HubPath)
-	gitkit.Git(t, board, "rm", "-q", "--", filepath.ToSlash(configengine.ConfigFileRel("lenses")))
-	gitkit.Git(t, board, "commit", "-q", "-m", "fixture: delete lenses default")
+	batcher, _ := configreg.Lookup("batcher")
+	retired := strings.Replace(batcher.Template(), "orientation: 31400", "master_base: 52000", 1)
+	gitkit.CommitFile(t, fabricengine.RecordsWorktree(loc), configengine.ConfigFileRel("batcher"), retired, "fixture: retired key")
 }
 
 // findWatchdogPIDs returns the pids of the live reed watchdog daemons.

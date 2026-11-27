@@ -57,9 +57,6 @@ type Spec struct {
 	// DenyPublish, when true, makes the engine install a shell guard for this one run and announce it.
 	// The guard refuses git push and gh calls beyond reads, comments, and title and body edits.
 	DenyPublish bool
-	// AllowRawTmux, when true, exempts this one run from the shell guard that refuses a raw tmux or script command.
-	// Only a session whose task is to start tmux servers of its own, such as the sampler's trials, sets it.
-	AllowRawTmux bool
 	// Advisor, when non-empty, names the model the session consults through its provider's advisor tool, for this run alone.
 	// The value is provider vocabulary and is passed through as given; Spec validation does not check it.
 	// An engine whose provider has no advisor refuses a non-empty value before it writes anything.
@@ -246,7 +243,7 @@ func (s *Spec) validate(worktreeRoot string, cfg Config) error {
 	// Otherwise the run would launch and classify OutcomeTimeout on its first poll tick.
 	// It would then keep its live pane and run dir as stray state.
 	if s.Timeout < 0 {
-		return fmt.Errorf("shuttle: spec.Timeout must not be negative (got %s); use 0 for the config default %s", s.Timeout, keyName(runTimeoutMinKey))
+		return fmt.Errorf("shuttle: spec.Timeout must not be negative (got %s); use 0 for the config default run_timeout_min", s.Timeout)
 	}
 	if s.Timeout == 0 {
 		s.Timeout = time.Duration(cfg.RunTimeoutMin) * time.Minute

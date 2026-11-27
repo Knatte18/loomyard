@@ -1392,7 +1392,7 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 		t.Errorf("stat of the waiting report = %v; want it archived", err)
 	}
 	var outResume strings.Builder
-	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outResume, []string{"1", "--wait", "1ns", "--answer", "the timeout is raised"}); code != 0 || !strings.Contains(outResume.String(), `"status":"running"`) {
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outResume, []string{"1", "--wait", "1ns"}); code != 0 || !strings.Contains(outResume.String(), `"status":"running"`) {
 		t.Fatalf("recover-batch 1 over a waiting batch at two recoveries = %d, output: %s; want a running respawn", code, outResume.String())
 	}
 	loaded, err = websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
@@ -1664,7 +1664,7 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 					seedPersistentPreRunConfig(t, h, strings.Replace(batcher.ConfigTemplate(), "orientation: 31400", "master_base: 52000", 1))
 				},
 				wantConfig:   true,
-				wantContains: []string{"batcher.yaml did not load", "master_base", `or run \"lym config reconcile --apply\", which removes a key the template lacks, then re-run the verb`},
+				wantContains: []string{"batcher.yaml did not load", "master_base", `way forward: run \"lym config reconcile --apply\", then re-run the verb`},
 			},
 			{
 				name: "an unreadable batcher.yaml",

@@ -17,13 +17,8 @@ import (
 
 // FetchPairTips fetches the code branch and the records branch of the pair at pair from origin.
 // A reader of origin's fetched refs, such as OriginCodeTip, then sees what origin holds now.
-// A records store whose origin layout cannot be read is an error naming the refspecs to restore, with nothing fetched.
 func FetchPairTips(pair *lymcwd.Location) error {
-	recordsDir := RecordsWorktree(pair)
-	if _, err := originNamespaceAt(recordsDir); err != nil {
-		return err
-	}
-	if err := gitrepo.New(recordsDir).Fetch(); err != nil {
+	if err := gitrepo.New(RecordsWorktree(pair)).Fetch(); err != nil {
 		return fmt.Errorf("fetch the records branch of the pair at %s: %w", pair.WorktreePath(), err)
 	}
 	if err := gitrepo.New(pair.WorktreePath()).Fetch(); err != nil {
@@ -42,12 +37,12 @@ func FetchPairTips(pair *lymcwd.Location) error {
 // It reports false, committing nothing, when origin's records branch holds fewer than two transitions of slug:
 // the first transition names the tip the pair was made at, so nothing earlier can stand in.
 // It pushes nothing.
-// A records store whose origin layout cannot be read is an error naming the refspecs to restore, with nothing fetched.
+// A one-repository pair's code tip is never owed apart from its records, so it reports false and commits nothing.
 func ReturnToPreviousTransition(pair *lymcwd.Location, slug string) (returned bool, err error) {
-	recordsDir := RecordsWorktree(pair)
-	if _, err := originNamespaceAt(recordsDir); err != nil {
-		return false, err
+	if oneRepositoryAt(pair.WorktreePath()) {
+		return false, nil
 	}
+	recordsDir := RecordsWorktree(pair)
 	repo := gitrepo.New(recordsDir)
 	if err := repo.Fetch(); err != nil {
 		return false, fmt.Errorf("fetch the records branch of %q: %w", slug, err)
@@ -79,15 +74,15 @@ func ReturnToPreviousTransition(pair *lymcwd.Location, slug string) (returned bo
 		return false, fmt.Errorf("the previous transition %s of %q names no code tip", previous.SHA, slug)
 	}
 
-	status, found, err := statusAtCommit(pair, recordsDir, previous.SHA, slug)
+	runID, status, found, err := statusAtCommit(pair, recordsDir, previous.SHA, slug)
 	if err != nil {
 		return false, err
 	}
 	if !found {
 		return false, fmt.Errorf("the previous transition %s of %q holds no status record", previous.SHA, slug)
 	}
-	statusPath := shedrun.StatusFile(pair, slug)
-	if err := state.WriteJSON(statusPath, shedrun.StatusLock(pair, slug), status); err != nil {
+	statusPath := shedrun.StatusFile(pair, runID)
+	if err := state.WriteJSON(statusPath, shedrun.StatusLock(pair, runID), status); err != nil {
 		return false, fmt.Errorf("write the status of %q as the previous transition left it: %w", slug, err)
 	}
 	statusRel, err := filepath.Rel(pair.AnchorPath(), statusPath)
@@ -107,30 +102,33 @@ func ReturnToPreviousTransition(pair *lymcwd.Location, slug string) (returned bo
 }
 
 // statusAtCommit reads the run record of slug at the records commit sha of the repository at recordsDir.
-// found is false when the commit holds none.
-func statusAtCommit(pair *lymcwd.Location, recordsDir, sha, slug string) (status shedengine.Status, found bool, err error) {
+// It tries the run directory named for the slug, then the legacy `self` one, and returns the run id that held it.
+func statusAtCommit(pair *lymcwd.Location, recordsDir, sha, slug string) (runID string, status shedengine.Status, found bool, err error) {
 	names, err := RepoWiredNames(pair)
 	if err != nil {
-		return shedengine.Status{}, false, fmt.Errorf("load the fabric config: %w", err)
+		return "", shedengine.Status{}, false, fmt.Errorf("load the fabric config: %w", err)
 	}
 	anchor, err := treeAnchor(recordsDir, sha, names, pair.AnchorRel)
 	if err != nil {
-		return shedengine.Status{}, false, err
+		return "", shedengine.Status{}, false, err
 	}
-	_, statusRel, err := shedrun.TreeRunFileRels(slug)
-	if err != nil {
-		return shedengine.Status{}, false, err
+	for _, candidate := range []string{slug, shedrun.SelfRunID} {
+		_, statusRel, err := shedrun.TreeRunFileRels(candidate)
+		if err != nil {
+			return "", shedengine.Status{}, false, err
+		}
+		data, err := showFile(recordsDir, sha, path.Join(filepath.ToSlash(anchor), statusRel))
+		if err != nil {
+			return "", shedengine.Status{}, false, fmt.Errorf("read the status of %q at %s: %w", slug, sha, err)
+		}
+		if data == nil {
+			continue
+		}
+		status, err := shedengine.ParseStatusTolerant(data)
+		if err != nil {
+			return "", shedengine.Status{}, false, fmt.Errorf("parse the status of %q at %s: %w", slug, sha, err)
+		}
+		return candidate, status, true, nil
 	}
-	data, err := showFile(recordsDir, sha, path.Join(filepath.ToSlash(anchor), statusRel))
-	if err != nil {
-		return shedengine.Status{}, false, fmt.Errorf("read the status of %q at %s: %w", slug, sha, err)
-	}
-	if data == nil {
-		return shedengine.Status{}, false, nil
-	}
-	status, err = shedengine.ParseStatusTolerant(data)
-	if err != nil {
-		return shedengine.Status{}, false, fmt.Errorf("parse the status of %q at %s: %w", slug, sha, err)
-	}
-	return status, true, nil
+	return "", shedengine.Status{}, false, nil
 }

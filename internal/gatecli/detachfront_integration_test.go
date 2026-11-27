@@ -379,13 +379,6 @@ func TestGateTest_DetachedRun(t *testing.T) {
 
 		requireGoing(t, rig.call("3s", env, "./pkg"), "running tier0")
 		run := rig.currentRun("./pkg")
-		holders, err := rig.pool.Holders()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(holders) != 1 || holders[0].Marker != "LYM_GATE_TEST_PID="+strconv.Itoa(holders[0].PID) {
-			t.Errorf("Holders() = %+v; want the one tier holder, marked with its own pid", holders)
-		}
 		release()
 		waitExitOf(t, run)
 

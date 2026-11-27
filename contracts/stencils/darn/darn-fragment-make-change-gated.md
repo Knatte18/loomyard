@@ -3,8 +3,7 @@
      and the writer acts only on what the fixer leaves.
      The writer asks its parent for the single run of the test a task's reported failure names, before it diagnoses it.
      internal/darnengine's DarnTable reads it for the writer's engine,
-     fills the {{.subagent_model}} marker its Claude engine block declares from loom.subagent_model,
-     fills the {{.measure_call}} marker with the measuring call the hub's gate config can run,
+     fills the {{.subagent_model}} marker its Claude engine block declares from loom.yaml's subagent_model,
      then fills the result whole into darn-template-write's make_change marker. -->
 
 1. When the task starts from a reported test failure, ask your parent before you diagnose it or make any edit:
@@ -22,16 +21,10 @@
    A fresh subagent sees none of this session, so each prompt names the files the subagent owns and the edits to make, and tells the subagent to run no `lym gate test`.
    Keep in this session the work that needs the overview: the design, a change that spans packages, the commits and the change description.
 3. Run no `lym gate test` yourself.
-   There are two exceptions.
-   One is a value the change needs that only a test run shows, such as a golden test's output.
-   The other is a fact the change needs about how an external tool such as tmux behaves:
-   learn it from a test you write in the repository, in the tier the hub runs that tool's tests in.
-   For either, run that one test class once through `{{.measure_call}}`,
+   The one exception is a value the change needs that only a test run shows, such as a golden test's output:
+   run that one test class once through `lym gate test --gate darn-write <its package or test project> -- <args>`,
    with the args by which the tier's runner selects one class.
-   The call names one package or project and selects one class, so it never starts a whole tier.
-   The args reach every tier the call runs, so they must suit each of them.
-   Never learn how a tool behaves from processes you start in the shell, and never start a background or detached process from it:
-   such a process outlives your command and runs outside every memory cap lym sets.
+   The args reach every tier the key lists, so they must suit each of them.
    Never run a raw test command for it: a raw run can exit 0 with no output when no test ran, and only the gate's report says so.
    When that report says a project ran no test, the property that makes it run is the one its project file's `IsTestProject` condition names.
    When the tier's command holds `{args}`, run the same gate call once more with `-p:<property>=true` among the args after `--`,
@@ -43,7 +36,5 @@
    the repository's overview doc when a module table or execution stack it shows changes;
    and, when the repository has a `PATTERN.md`, its entry for a cross-cutting invariant the change adds or changes.
 5. Apply each bullet of the record's `## PATTERN changes` section to `PATTERN.md` in your own commits.
-6. Commit on the task branch after each coherent step, as soon as its edits are made, in small commits.
-   Never hold the change uncommitted until the end:
-   a stall, a dead session or a reboot then loses at most one step, and your parent sees your progress in the branch's history.
+6. Commit on the task branch in small, coherent commits.
    Never push: the landing steps that follow push the branch.

@@ -593,6 +593,28 @@ func TestNetwork(t *testing.T) {
 			wantInFlight:  true,
 			wantCoveredAt: true,
 		},
+		{
+			name:         "an OwnerEntryExempt gate passes its own slug's owner entry at once",
+			live:         []Entry{{Scope: "a", Caller: OwnerCaller, PausedAt: epoch}},
+			gate:         Gate{OwnerEntryExempt: true},
+			wantInFlight: true,
+		},
+		{
+			name:          "an OwnerEntryExempt gate still waits on a hub entry",
+			live:          []Entry{{Scope: ScopeHub, Caller: OwnerCaller, PausedAt: epoch}},
+			gate:          Gate{OwnerEntryExempt: true},
+			wantSleeps:    1,
+			wantInFlight:  true,
+			wantCoveredAt: true,
+		},
+		{
+			name:          "an OwnerEntryExempt gate still waits on an operator's entry of its own slug",
+			live:          []Entry{{Scope: "a", Caller: "EXTERNAL", PausedAt: epoch}},
+			gate:          Gate{OwnerEntryExempt: true},
+			wantSleeps:    1,
+			wantInFlight:  true,
+			wantCoveredAt: true,
+		},
 	}
 	for _, tt := range deferralRows {
 		t.Run(tt.name, func(t *testing.T) {

@@ -798,7 +798,7 @@ func TestGateParity_DescriptionGate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c := tc.build(t, t.TempDir())
 
-			result, err := landingshed.NewDescriptionGate(c.env.DescriptionPath, nil)()
+			result, err := landingshed.NewDescriptionGate(c.env.DescriptionPath)()
 			pv := producerVerdict(result, err)
 
 			var out bytes.Buffer

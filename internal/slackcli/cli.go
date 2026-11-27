@@ -91,15 +91,11 @@ type slackCLI struct {
 	worktreeOrch func() (string, error)
 	// machine returns the paths of the machine's own Slack files, which `bar` reads with no hub.
 	machine func() (slackengine.MachinePaths, error)
-	// orchAutonomous reports whether the autonomy of the orch that runs in the verb's worktree is on, read at each call.
-	// A nil seam reads false, which forwards every reply.
-	orchAutonomous func() bool
 	// strandName returns the name of the strand whose pane the process runs in, empty when it names none.
 	strandName func() string
 	// newStrandClient builds the creel client of the strand named strand, which `hook` reads the log and posts as.
 	newStrandClient func(strand string) (strandClient, error)
 	// showToggle redraws the clicking client's status bar, showing message on it first when message is not empty.
-	// It needs no hub, so it is set before any wiring and serves a toggle whose wiring failed.
 	showToggle func(tmuxPath, socketPath, client, message string)
 	// ensure starts the relay when it is down, for the hub's prime.
 	// It reports whether the relay started or was already live.
@@ -172,7 +168,6 @@ var worktreeFreeVerbs = []string{relayVerb, barVerb}
 // preRun fills the seams the verb about to run reads.
 // A verb of a hub first resolves the worktree it runs in; a verb of worktreeFreeVerbs resolves none.
 // A failure is written as a refusal and aborts the verb.
-// A failed `toggle` also reports the refusal on the clicked bar, since its click discards what it prints.
 // The bare group needs nothing and prints its help.
 func (c *slackCLI) preRun(cmd *cobra.Command, args []string) error {
 	if cmd.HasSubCommands() {
@@ -192,11 +187,7 @@ func (c *slackCLI) preRun(cmd *cobra.Command, args []string) error {
 		return c.wire(c, location)
 	}()
 	if err != nil {
-		code := output.Err(cmd.OutOrStdout(), err.Error())
-		if cmd.Name() == toggleVerb {
-			c.reportToggle(cmd, args[0], err)
-		}
-		clihelp.Abort(cmd.Context(), code)
+		clihelp.Abort(cmd.Context(), output.Err(cmd.OutOrStdout(), err.Error()))
 	}
 	return nil
 }

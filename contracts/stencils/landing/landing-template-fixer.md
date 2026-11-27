@@ -48,14 +48,6 @@ When the landing failure record holds `build: true`, the gate failed in its buil
 
 {{template "loom-fragment-loosened-check"}}
 
-{{template "loom-fragment-tooling-names"}}
-
-## External tools and processes
-
-Learn how an external tool such as tmux behaves from a test in the repository, in the tier the hub runs that tool's tests in, never from processes you start in the shell.
-Run that one test through `lym gate test --tier <that tier>` with its package and, after `--`, a filter that selects it, and check that the gate's report shows the test ran, not skipped.
-Never start a background or detached process from the shell: such a process outlives your command and runs outside every memory cap lym sets.
-
 ## The report — your terminal act
 
 Write the report at `{{.report_path}}`, in the format the `landing-fixer-report-spec.md` spec pins.

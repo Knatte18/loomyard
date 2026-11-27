@@ -90,8 +90,7 @@ func TestUpsertKindAndRetiredKeys(t *testing.T) {
 		t.Errorf("expected batch kind error")
 	}
 
-	for key, wantHint := range map[string]string{"tier": `"kind"`, "type": `"labels"`, "deferred": `"kind": "note"`,
-		"pull_request": `"pull_request": "<review|off|trail|merge-in>"`, "notify_on_land": `"land_notice": "on"`} {
+	for key, wantHint := range map[string]string{"tier": `"kind"`, "type": `"labels"`, "deferred": `"kind": "note"`} {
 		_, err = s.UpsertTask(map[string]any{"slug": "a", key: 1})
 		if err == nil || !stringContains(err.Error(), "unknown field") || !stringContains(err.Error(), wantHint) {
 			t.Errorf("key %q: expected unknown-field refusal naming %s, got %v", key, wantHint, err)
@@ -121,79 +120,48 @@ func TestKindDependencyRules(t *testing.T) {
 		return s
 	}
 
-	t.Run("a note carries depends_on through upsert, set-deps and a demotion", func(t *testing.T) {
+	t.Run("a note with depends_on refused", func(t *testing.T) {
 		s := seed(t)
-		if _, err := s.UpsertTask(map[string]any{"slug": "n", "kind": "note", "depends_on": []string{"dep"}}); err != nil {
-			t.Fatalf("UpsertTask(note n depending on dep) error = %v; want nil", err)
-		}
-		if err := s.SetDeps("idea", []string{"dep"}); err != nil {
-			t.Fatalf("SetDeps(idea, [dep]) error = %v; want nil", err)
+		_, err := s.UpsertTask(map[string]any{"slug": "n", "kind": "note", "depends_on": []string{"dep"}})
+		if err == nil || !stringContains(err.Error(), "set-deps") || !stringContains(err.Error(), "promote") {
+			t.Errorf("expected refusal naming set-deps and promote, got %v", err)
 		}
 		if _, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "task", "depends_on": []string{"dep"}}); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "note"}); err != nil {
-			t.Fatalf("demoting task x that has depends_on: error = %v; want nil", err)
-		}
-		for _, slug := range []string{"n", "idea", "x"} {
-			if got, _ := s.GetTask(slug); got.Kind != boardengine.KindNote || !slices.Equal(got.DependsOn, []string{"dep"}) {
-				t.Errorf("GetTask(%s) = kind %q, depends_on %v; want a note depending on [dep]", slug, got.Kind, got.DependsOn)
-			}
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "note"}); err == nil {
+			t.Errorf("demoting a task that has depends_on should be refused")
 		}
 	})
 
-	t.Run("a task and a note each take a note as a dependency", func(t *testing.T) {
+	t.Run("depending on an open note refused", func(t *testing.T) {
 		s := seed(t)
-		if _, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "task", "depends_on": []string{"dep", "idea"}}); err != nil {
-			t.Fatalf("UpsertTask(task x depending on note idea) error = %v; want nil", err)
-		}
-		if _, err := s.UpsertTask(map[string]any{"slug": "n", "kind": "note", "depends_on": []string{"idea"}}); err != nil {
-			t.Fatalf("UpsertTask(note n depending on note idea) error = %v; want nil", err)
-		}
-		if got, _ := s.GetTask("x"); !slices.Equal(got.DependsOn, []string{"dep", "idea"}) {
-			t.Errorf("GetTask(x) depends_on = %v; want [dep idea]", got.DependsOn)
-		}
-		if got, _ := s.GetTask("n"); !slices.Equal(got.DependsOn, []string{"idea"}) {
-			t.Errorf("GetTask(n) depends_on = %v; want [idea]", got.DependsOn)
+		_, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "task", "depends_on": []string{"dep", "idea"}})
+		want := `"x" depends on note "idea", and a note cannot be depended on: promote the note with lym board promote '{"slug":"idea"}', or drop the dependency with lym board set-deps '{"slug":"x","depends_on":["dep"]}'`
+		if err == nil || err.Error() != want {
+			t.Errorf("UpsertTask() error = %v; want %q", err, want)
 		}
 	})
 
-	t.Run("a cycle through a note is refused", func(t *testing.T) {
+	t.Run("depending on a done note refused", func(t *testing.T) {
 		s := seed(t)
-		if _, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "task", "depends_on": []string{"idea"}}); err != nil {
-			t.Fatal(err)
-		}
-		err := s.SetDeps("idea", []string{"x"})
-		if err == nil || !stringContains(err.Error(), "cycle detected") {
-			t.Errorf("SetDeps(idea, [x]) error = %v; want a cycle refusal", err)
-		}
-	})
-
-	t.Run("demoting a task another entry depends on is allowed", func(t *testing.T) {
-		s := seed(t)
-		if _, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "task", "depends_on": []string{"dep"}}); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := s.UpsertTask(map[string]any{"slug": "dep", "kind": "note"}); err != nil {
-			t.Fatalf("demoting dep to a note error = %v; want nil", err)
-		}
-		if got, _ := s.GetTask("dep"); got.Kind != boardengine.KindNote {
-			t.Errorf("GetTask(dep) kind = %q; want note", got.Kind)
-		}
-	})
-
-	t.Run("a dependency on a note stays pending even when the note is done", func(t *testing.T) {
-		s := seed(t)
-		if _, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "task", "depends_on": []string{"idea"}}); err != nil {
-			t.Fatal(err)
-		}
 		if err := s.SetStatus("idea", stringPtr("done")); err != nil {
 			t.Fatal(err)
 		}
-		for _, brief := range s.ListTasksBrief(nil) {
-			if brief.Slug == "x" && !slices.Equal(brief.Pending, []string{"idea"}) {
-				t.Errorf("ListTasksBrief() x pending = %v; want [idea]", brief.Pending)
-			}
+		_, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "task", "depends_on": []string{"idea"}})
+		if err == nil || !stringContains(err.Error(), `"idea"`) {
+			t.Errorf("expected refusal naming idea, got %v", err)
+		}
+	})
+
+	t.Run("demoting a task another entry depends on refused", func(t *testing.T) {
+		s := seed(t)
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "kind": "task", "depends_on": []string{"dep"}}); err != nil {
+			t.Fatal(err)
+		}
+		_, err := s.UpsertTask(map[string]any{"slug": "dep", "kind": "note"})
+		if err == nil || !stringContains(err.Error(), "x") || !stringContains(err.Error(), "set-deps") {
+			t.Errorf("expected refusal naming the dependent x and set-deps, got %v", err)
 		}
 	})
 
@@ -226,47 +194,11 @@ func TestKindDependencyRules(t *testing.T) {
 			}
 		}
 	})
-}
 
-func TestRemoveTaskStripsTheSlugFromDependsOn(t *testing.T) {
-	tiergate.Require(t, 0)
-	seed := func(t *testing.T) *boardengine.Store {
-		t.Helper()
-		s := boardengine.NewStore("")
-		for _, fields := range []map[string]any{
-			{"slug": "gone", "kind": "task"},
-			{"slug": "stays", "kind": "task"},
-			{"slug": "waiting-task", "kind": "task", "depends_on": []string{"gone", "stays"}},
-			{"slug": "waiting-note", "kind": "note", "depends_on": []string{"stays", "gone"}},
-		} {
-			if _, err := s.UpsertTask(fields); err != nil {
-				t.Fatalf("seed %v: %v", fields["slug"], err)
-			}
-		}
-		return s
-	}
-
-	t.Run("a removed entry leaves the depends_on of a task and a note and their other dependencies stay", func(t *testing.T) {
+	t.Run("set-deps on a note refused", func(t *testing.T) {
 		s := seed(t)
-		if err := s.RemoveTask("gone"); err != nil {
-			t.Fatalf("RemoveTask(gone) error = %v; want nil", err)
-		}
-		for _, slug := range []string{"waiting-task", "waiting-note"} {
-			if got, _ := s.GetTask(slug); !slices.Equal(got.DependsOn, []string{"stays"}) {
-				t.Errorf("GetTask(%s) depends_on = %v; want [stays]", slug, got.DependsOn)
-			}
-		}
-	})
-
-	t.Run("a merge that upserts a removed slug again keeps the dependencies on it", func(t *testing.T) {
-		s := seed(t)
-		if _, err := s.MergeTasks([]string{"gone", "stays"}, map[string]any{"slug": "gone", "kind": "task"}, nil); err != nil {
-			t.Fatalf("MergeTasks() error = %v; want nil", err)
-		}
-		for slug, want := range map[string][]string{"waiting-task": {"gone"}, "waiting-note": {"gone"}} {
-			if got, _ := s.GetTask(slug); !slices.Equal(got.DependsOn, want) {
-				t.Errorf("GetTask(%s) depends_on = %v; want %v, the merged-away stays stripped", slug, got.DependsOn, want)
-			}
+		if err := s.SetDeps("idea", []string{"dep"}); err == nil {
+			t.Errorf("a note must not take depends_on")
 		}
 	})
 }
@@ -1086,28 +1018,6 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 		t.Errorf("listed layers = %v; want %v", layers, want)
 	}
 
-	// An entry lists its dependencies not yet met as pending, a note's included, and leaves out a done one.
-	waiting := boardengine.NewStore("")
-	for _, fields := range []map[string]any{
-		{"slug": "open", "kind": "task"},
-		{"slug": "landed", "kind": "task", "status": "done"},
-		{"slug": "after-both", "kind": "task", "depends_on": []string{"landed", "open"}},
-		{"slug": "waits", "kind": "note", "depends_on": []string{"open", "landed"}},
-	} {
-		if _, err := waiting.UpsertTask(fields); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	}
-	pending := map[string][]string{}
-	for _, b := range waiting.ListTasksBrief(nil) {
-		if b.Pending != nil {
-			pending[b.Slug] = b.Pending
-		}
-	}
-	if want := map[string][]string{"after-both": {"open"}, "waits": {"open"}}; !maps.EqualFunc(pending, want, slices.Equal[[]string]) {
-		t.Errorf("listed pending = %v; want %v", pending, want)
-	}
-
 	// With no parent seam, each listed entry's parent beam is computed from the store's own entries,
 	// and the prime lists as RootSubject.
 	beamDir := t.TempDir()
@@ -1511,11 +1421,11 @@ var keptA = [][3]string{
 
 // TestLoad asserts Store.Load's handling of board.json.
 // A missing file yields an empty store, and nil depends_on and labels normalize to empty slices.
-// The version-1 shape loads, and a Save round-trips it.
+// The version-1 and old tier-and-type shapes load, and a Save round-trips them.
 // An unknown version or a corrupt file is an error.
 // It also pins the kept keys:
-// an entry key or top-level key this binary does not know survives every write path with its exact digits,
-// and it sits after the known fields in key order.
+// an entry key or top-level key this binary does not know survives every write path with its exact digits;
+// it sits after the known fields in key order, and the retired tier and type are still dropped.
 func TestLoad(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1573,12 +1483,51 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "a nil depends_on becomes an empty slice",
-			body: `{"version":1,"entries":[{"id":0,"slug":"task1","title":"Task 1","kind":"task"}]}`,
+			body: `{"version":1,"entries":[{"id":0,"slug":"task1","title":"Task 1","tier":3,"type":"feature"}]}`,
 			check: func(t *testing.T, tasks []boardengine.Task) {
 				if len(tasks) != 1 || tasks[0].DependsOn == nil || len(tasks[0].DependsOn) != 0 {
 					t.Errorf("want one entry with an empty non-nil DependsOn, got %+v", tasks)
 				}
 			},
+		},
+		{
+			name: "a task's stored priority is dropped and a note's kept",
+			body: `{"version":1,"entries":[{"id":0,"slug":"t","kind":"task","priority":"high"},{"id":1,"slug":"n","kind":"note","priority":"low"}]}`,
+			check: func(t *testing.T, tasks []boardengine.Task) {
+				if len(tasks) != 2 || tasks[0].Priority != "" || tasks[1].Priority != boardengine.PriorityLow {
+					t.Errorf("loaded %+v; want the task without a priority and the note low", tasks)
+				}
+			},
+			save:     true,
+			wantKeys: [][3]string{{"t", "priority", ""}, {"n", "priority", `"low"`}},
+		},
+		{
+			name: "a task's and a grouping project's recorded owner is dropped and a beam project's kept",
+			body: `{"version":1,"entries":[` +
+				`{"id":0,"slug":"t","kind":"task","owner_machine":"box"},` +
+				`{"id":1,"slug":"g","kind":"project","owner_machine":"box"},` +
+				`{"id":2,"slug":"b","kind":"project","beam":true,"owner_machine":"box"}]}`,
+			check: func(t *testing.T, tasks []boardengine.Task) {
+				if len(tasks) != 3 || tasks[0].OwnerMachine != "" || tasks[1].OwnerMachine != "" || tasks[2].OwnerMachine != "box" {
+					t.Errorf("loaded %+v; want no owner on the task and the grouping project and box on the beam", tasks)
+				}
+			},
+			save:     true,
+			wantKeys: [][3]string{{"t", "owner_machine", ""}, {"g", "owner_machine", ""}, {"b", "owner_machine", `"box"`}},
+		},
+		{
+			name: "a task's and a grouping project's recorded beam colour is dropped and a beam project's kept",
+			body: `{"version":1,"entries":[` +
+				`{"id":0,"slug":"t","kind":"task","beam_color":"#7d2d6b"},` +
+				`{"id":1,"slug":"g","kind":"project","beam_color":"#7d2d6b"},` +
+				`{"id":2,"slug":"b","kind":"project","beam":true,"beam_color":"#7d2d6b"}]}`,
+			check: func(t *testing.T, tasks []boardengine.Task) {
+				if len(tasks) != 3 || tasks[0].BeamColor != "" || tasks[1].BeamColor != "" || tasks[2].BeamColor != "#7d2d6b" {
+					t.Errorf("loaded %+v; want no colour on the task and the grouping project and #7d2d6b on the beam", tasks)
+				}
+			},
+			save:     true,
+			wantKeys: [][3]string{{"t", "beam_color", ""}, {"g", "beam_color", ""}, {"b", "beam_color", `"#7d2d6b"`}},
 		},
 		{
 			name: "a kind with no labels key becomes an empty labels list",
@@ -1590,13 +1539,50 @@ func TestLoad(t *testing.T) {
 			},
 		},
 		{
-			name: "a version-1 entry loads as stored",
-			body: `{"version":1,"entries":[{"id":4,"slug":"a","title":"A","kind":"task","labels":["bug"],"depends_on":[]}]}`,
+			name: "the version-1 shape loads and Save keeps legacy_done",
+			body: `{"version":1,"entries":[{"id":4,"slug":"a","title":"A","kind":"task","labels":["bug"],"depends_on":[]}],"legacy_done":["old"]}`,
 			check: func(t *testing.T, tasks []boardengine.Task) {
 				if len(tasks) != 1 || tasks[0].Slug != "a" || tasks[0].Kind != boardengine.KindTask || len(tasks[0].Labels) != 1 || tasks[0].Labels[0] != "bug" {
 					t.Errorf("loaded %+v; want entry a as a task labelled bug", tasks)
 				}
 			},
+			save:         true,
+			saveContains: []string{`"legacy_done"`},
+		},
+		{
+			name: "the old tier-and-type shape converts on Load and Save writes kind and labels",
+			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","tier":1,"type":"bug","brief":"[infra] fix it","depends_on":[],"zz_scalar":9007199254740993}]}`,
+			check: func(t *testing.T, tasks []boardengine.Task) {
+				if len(tasks) != 1 || tasks[0].Kind != boardengine.KindTask || strings.Join(tasks[0].Labels, ",") != "bug,infra" || tasks[0].Brief != "fix it" {
+					t.Errorf("loaded %+v; want a task labelled bug, infra with the stripped brief", tasks)
+				}
+			},
+			save:         true,
+			saveContains: []string{`"kind":"task"`, `"labels"`},
+			saveAbsent:   []string{`"tier"`, `"type"`},
+			wantKeys:     [][3]string{{"a", "zz_scalar", "9007199254740993"}},
+			saveExact: `{
+  "version": 1,
+  "entries": [
+    {
+      "id": 0,
+      "handle": "T1",
+      "slug": "a",
+      "title": "A",
+      "kind": "task",
+      "labels": [
+        "bug",
+        "infra"
+      ],
+      "issues": [],
+      "depends_on": [],
+      "isolated": false,
+      "brief": "fix it",
+      "body": "",
+      "zz_scalar": 9007199254740993
+    }
+  ]
+}`,
 		},
 		{
 			name: "set-status keeps kept keys after the known fields in key order",
@@ -1794,73 +1780,6 @@ func TestLoad(t *testing.T) {
 			saveAbsent:   []string{`"Title"`},
 		},
 		{
-			name: "a legacy pull_request becomes beam.pull_request and the key is dropped",
-			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","kind":"task","pull_request":"merge"}]}`,
-			check: func(t *testing.T, tasks []boardengine.Task) {
-				if tasks[0].Unknown != nil {
-					t.Errorf("Unknown = %v; want nil once both legacy keys are folded", tasks[0].Unknown)
-				}
-			},
-			wantKeys: [][3]string{
-				{"a", "run_settings", `{"beam":{"pull_request":"merge"}}`},
-				{"a", "pull_request", ""},
-				{"a", "notify_on_land", ""},
-			},
-		},
-		{
-			name: "a legacy notify_on_land of true becomes beam.land_notice on",
-			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","kind":"task","notify_on_land":true}]}`,
-			wantKeys: [][3]string{
-				{"a", "run_settings", `{"beam":{"land_notice":"on"}}`},
-				{"a", "pull_request", ""},
-				{"a", "notify_on_land", ""},
-			},
-		},
-		{
-			name: "a legacy notify_on_land of false is dropped and folds nothing",
-			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","kind":"task","notify_on_land":false}]}`,
-			wantKeys: [][3]string{
-				{"a", "run_settings", ""},
-				{"a", "notify_on_land", ""},
-			},
-		},
-		{
-			name: "a beam value the run settings already set wins over a legacy key",
-			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","kind":"task","pull_request":"on","notify_on_land":true,` +
-				`"run_settings":{"beam":{"pull_request":"off"},"loom":{"x":1}}}]}`,
-			wantKeys: [][3]string{
-				{"a", "run_settings", `{"beam":{"land_notice":"on","pull_request":"off"},"loom":{"x":1}}`},
-				{"a", "pull_request", ""},
-				{"a", "notify_on_land", ""},
-			},
-		},
-		{
-			name: "a beam run setting that is not a mapping is left as it is and the legacy key is dropped",
-			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","kind":"task","pull_request":"on","run_settings":{"beam":"x"}}]}`,
-			wantKeys: [][3]string{
-				{"a", "run_settings", `{"beam":"x"}`},
-				{"a", "pull_request", ""},
-			},
-		},
-		{
-			name: "a legacy pull_request of off is dropped and folds nothing beside a carried notify_on_land",
-			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","kind":"task","pull_request":"off","notify_on_land":true}]}`,
-			wantKeys: [][3]string{
-				{"a", "run_settings", `{"beam":{"land_notice":"on"}}`},
-				{"a", "pull_request", ""},
-			},
-		},
-		{
-			name: "a project's legacy keys stay with its other kept keys, folding nothing",
-			body: `{"version":1,"entries":[{"id":0,"slug":"p","title":"P","kind":"project","pull_request":"on","notify_on_land":true,"zz_keep":1}]}`,
-			wantKeys: [][3]string{
-				{"p", "run_settings", ""},
-				{"p", "pull_request", `"on"`},
-				{"p", "notify_on_land", "true"},
-				{"p", "zz_keep", "1"},
-			},
-		},
-		{
 			name:    "an unknown version is refused naming it",
 			body:    `{"version":2,"entries":[]}`,
 			wantErr: "version 2",
@@ -2047,33 +1966,6 @@ func TestPromote(t *testing.T) {
 		}
 	})
 
-	t.Run("a note keeps its depends_on, and a given depends_on replaces it", func(t *testing.T) {
-		tests := []struct {
-			name  string
-			given []string
-			want  []string
-		}{
-			{"NoneGiven", nil, []string{"c"}},
-			{"Given", []string{"d"}, []string{"d"}},
-			{"EmptyGiven", []string{}, []string{}},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				s := seed(t)
-				for _, fields := range []map[string]any{{"slug": "d", "kind": "task"}, {"slug": "a", "depends_on": []string{"c"}}} {
-					if _, err := s.UpsertTask(fields); err != nil {
-						t.Fatal(err)
-					}
-				}
-				got, changed, err := s.PromoteWithDeps("a", tt.given)
-				if err != nil || !changed || got.Kind != boardengine.KindTask || !slices.Equal(got.DependsOn, tt.want) {
-					t.Errorf("PromoteWithDeps(a, %v) = kind %q, depends_on %v, changed %v, err %v; want a task depending on %v",
-						tt.given, got.Kind, got.DependsOn, changed, err, tt.want)
-				}
-			})
-		}
-	})
-
 	t.Run("a project refused naming lym beam create", func(t *testing.T) {
 		s := seed(t)
 		if _, err := s.UpsertTask(map[string]any{"slug": "proj", "kind": "project"}); err != nil {
@@ -2103,9 +1995,6 @@ func TestPrune(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := s.UpsertTask(map[string]any{"slug": "live", "kind": "task", "depends_on": []string{"d1"}}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.UpsertTask(map[string]any{"slug": "waiting", "kind": "note", "depends_on": []string{"d1", "live"}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.UpsertTask(map[string]any{"slug": "d2"}); err != nil {
@@ -2138,9 +2027,6 @@ func TestPrune(t *testing.T) {
 	live, _ := s.GetTask("live")
 	if len(live.DependsOn) != 0 {
 		t.Errorf("depends_on not stripped: %v", live.DependsOn)
-	}
-	if waiting, _ := s.GetTask("waiting"); !slices.Equal(waiting.DependsOn, []string{"live"}) {
-		t.Errorf("depends_on of note waiting = %v; want [live], the pruned d1 stripped", waiting.DependsOn)
 	}
 	if again := s.Prune(); len(again) != 0 {
 		t.Errorf("second prune removed %v", again)

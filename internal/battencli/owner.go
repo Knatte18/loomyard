@@ -300,7 +300,7 @@ func (c *battenCLI) ownerPreflight(found bool, status shedengine.Status) error {
 // A status file that fails to read or decode returns an error.
 // A refusal that names `lym fabric remove` ends in the step that settles the run's batten record, not in the re-run.
 // The re-run would reach a pair that is gone, since the removal leaves the record standing.
-// The refusal is unchanged when it names no removal, or the follow-up is empty.
+// The refusal is unchanged when it names no removal, the owner-pause read fails (logged), or the follow-up is empty.
 func (c *battenCLI) preflightRunOwner() error {
 	status, found, err := state.ReadJSON[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	if err != nil {
@@ -310,7 +310,12 @@ func (c *battenCLI) preflightRunOwner() error {
 	if refusal == nil || !strings.Contains(refusal.Error(), fabricRemoveCommand) {
 		return refusal
 	}
-	followUp := pairteardown.BattenFollowUp(c.slug, status, found)
+	held, err := pairteardown.OwnerPauseHeld(c.location, c.slug)
+	if err != nil {
+		logger.Warn("battencli: the owner pause could not be read, so the refusal names no follow-up of the removal", "slug", c.slug, "cause", err)
+		return refusal
+	}
+	followUp := pairteardown.BattenFollowUp(c.slug, status, found, held)
 	if followUp == "" {
 		return refusal
 	}

@@ -87,20 +87,6 @@ func (o ReconcileOptions) attempts() int {
 	return 1 + int(o.RetryBound/o.RetryInterval)
 }
 
-// The retry bound and interval of a reconcile that a run's start, resume or leftover teardown performs.
-const (
-	runStartRetryBound    = time.Minute
-	runStartRetryInterval = 10 * time.Second
-)
-
-// RunStartReconcileOptions returns the options of an origin reconcile that a run performs.
-// That covers a run's start, its resume and its leftover teardown.
-// An unreachable origin is retried every ten seconds for a minute before the reconcile reports it unreachable.
-// The retries run under the hub's remote-refs locks, so the bound is the shortest that still waits out a brief drop.
-func RunStartReconcileOptions() ReconcileOptions {
-	return ReconcileOptions{RetryBound: runStartRetryBound, RetryInterval: runStartRetryInterval}
-}
-
 // deadline returns the bound of one remote call.
 func (o ReconcileOptions) deadline() time.Duration {
 	if o.AttemptDeadline <= 0 {
@@ -537,11 +523,7 @@ func lsRemoteOnce(warpDir, recordsDir string, opts ReconcileOptions) (warp, reco
 
 // lsRemoteHeads returns origin's branch heads of the repository at dir by branch name, under opts' attempt deadline.
 func lsRemoteHeads(side, dir string, opts ReconcileOptions) (map[string]string, error) {
-	ns, err := originNamespaceAt(dir)
-	if err != nil {
-		return nil, err
-	}
-	args := []string{"ls-remote", originRemote, ns.Branch("*")}
+	args := []string{"ls-remote", "--heads", originRemote}
 	opts.callHook(args)
 	out, err := gitexec.RunWithin(args, dir, opts.deadline())
 	if err != nil {
@@ -550,13 +532,9 @@ func lsRemoteHeads(side, dir string, opts ReconcileOptions) (map[string]string, 
 	heads := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {
 		sha, ref, found := strings.Cut(strings.TrimSpace(line), "\t")
-		if !found {
-			continue
-		}
-		if local, mapped := ns.LocalRef(ref); mapped {
-			if name, isBranch := strings.CutPrefix(local, "refs/heads/"); isBranch {
-				heads[name] = sha
-			}
+		name, isBranch := strings.CutPrefix(ref, "refs/heads/")
+		if found && isBranch {
+			heads[name] = sha
 		}
 	}
 	return heads, nil
@@ -587,13 +565,9 @@ func fetchMovedHeads(dir string, heads map[string]string, judgeOnly bool, opts R
 			args = append(args, heads[branch])
 		}
 	} else {
-		ns, err := originNamespaceAt(dir)
-		if err != nil {
-			return err
-		}
 		args = append(args, originRemote)
 		for _, branch := range branches {
-			args = append(args, fmt.Sprintf("+%s:%s", ns.Branch(branch), trackingRefOf(branch)))
+			args = append(args, fmt.Sprintf("+refs/heads/%s:%s", branch, trackingRefOf(branch)))
 		}
 	}
 	opts.callHook(args)
@@ -870,14 +844,19 @@ func ReconcileOrigin(l *lymcwd.Location, scope ReconcileScope, seams OriginSeams
 
 // judgeAgainstOrigin reads the heads origin has in both repositories.
 // It fetches the heads origin moved past their tracking refs, and returns the verdict on each target.
-// It holds the remote-refs lock of the code repository and then of the records repository throughout,
-// so a fetch of either repository finishes before origin is read or starts after every verdict.
+// It holds the remote-refs lock of the code repository and then of the records repository throughout.
+// It takes the lock once when both are one repository.
+// So a fetch of either repository finishes before origin is read or starts after every verdict.
 // The same holds for the tracking-ref write that follows a push's transfer.
 // The locks are held through the ls-remote retries and their sleeps, bounded by opts' RetryBound,
 // so an unreachable origin blocks every fetch and every push's tracking-ref write of both repositories for that bound.
 // A transport failure that outlasts the retry bound returns unreachable true with no verdict and a nil error.
 func judgeAgainstOrigin(targets []originTarget, warpDir, recordsDir string, judgeOnly bool, opts ReconcileOptions) (branches []BranchOutcome, unreachable bool, err error) {
-	for _, dir := range []string{warpDir, recordsDir} {
+	for i, dir := range []string{warpDir, recordsDir} {
+		// A one-repository hub holds both sides in one repository, and its lock is not reentrant.
+		if i == 1 && sameDirectory(dir, warpDir) {
+			continue
+		}
 		release, err := gitrepo.New(dir).HoldRemoteRefs()
 		if err != nil {
 			return nil, false, err
