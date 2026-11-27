@@ -47,6 +47,8 @@ const (
 	RoleTeardown = "teardown"
 	// RoleSlackRelay is the hub's Slack relay, registered under HubOwner.
 	RoleSlackRelay = "slack-relay"
+	// RoleBoardServer is the hub's board server, registered under HubOwner.
+	RoleBoardServer = "board-server"
 	// RoleAdopt is the role the detached adopt worker of an older lym registered under HubOwner.
 	// A record of one is still spared at a subject's process end.
 	RoleAdopt = "adopt"

@@ -7,6 +7,17 @@
 //   - `promote`, `raddle`, `rename`, `prune`, `find`, `labels`, `profiles` and `retire-legacy` are built in `Command`.
 //     The `rerender` and `sync` maintenance verbs are built there too.
 //   - `intake` (list, import, close) comes from `intakeCommand`.
+//   - `open` and `serve`, the board viewer's verbs, are built in `Command` too.
+//
+// `open` opens the board's page in the default browser, from any worktree of the hub.
+// It prints `{"ok":true,"address":…,"launcher":…,"started":…}`.
+// The page is served by one server per hub.
+// When none runs, `open` starts `serve` in the prime and waits for it to answer.
+// The address carries no token: the launcher file, readable by its owner alone, takes the browser to the page with it.
+// An agent's call waits on the browser opener no longer than its keep-warm cap, and the operator's until it exits.
+// `serve` is the server itself, logging to stderr; with another server running it prints `{"ok":true,"running":true}`.
+// Its board writes carry no strand name, so every write of the page is the operator's.
+// Both refuse a run agent's session first and `--board-path` second, and neither refusal starts a process.
 //
 // `prune` and `retire-legacy` are read-only dry runs without `--apply`.
 // Each prints the fields an applied run prints, filled with what it would change, plus `"applied": false`;
