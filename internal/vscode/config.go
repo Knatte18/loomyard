@@ -1,6 +1,6 @@
 // config.go writes a worktree's VS Code configuration under .vscode.
 // settings.json sets the window's title and colours, and the markdown editor association when asked;
-// tasks.json holds the reed attach task.
+// tasks.json holds the reed attach task and the board open task.
 // Every other settings key is the operator's and is kept.
 // Limitation: the hub workspace file at <hub>/<RepoName>.code-workspace carries the prime's settings,
 // so a relative path value (starting with ./ or ../) resolves against the hub directory, not the prime's own folder.
@@ -60,10 +60,10 @@ type Look struct {
 // A setting held in its array form is left as it is.
 // With renderMarkdown off, that entry is removed while it names the preview, so an editor the operator chose stays.
 // tasks.json is always written, overwriting any existing file.
-// It holds one "reed attach" task, run on demand or by its seeded key binding;
+// It holds a "reed attach" task and a "board open" task, each run on demand or by its seeded key binding;
 // no task runs on folder open, so opening the folder starts no session and no agent.
 // Neither file touches .gitignore; the caller keeps .vscode/ out of git through info/exclude.
-// lymPath is the resolved absolute lym path stamped into the task.
+// lymPath is the resolved absolute lym path stamped into the tasks.
 // An empty lymPath becomes "lym",
 // so a resolution failure upstream still produces a runnable, PATH-dependent task file rather than a broken one.
 // Returns an error if I/O fails.
@@ -79,7 +79,7 @@ func WriteConfig(worktreeDir, relpath string, look Look, renderMarkdown bool, ly
 	if err := writeSettings(filepath.Join(vscodePath, "settings.json"), look, renderMarkdown); err != nil {
 		return err
 	}
-	return writeAttachTask(filepath.Join(vscodePath, "tasks.json"), lymPath)
+	return writeWorktreeTasks(filepath.Join(vscodePath, "tasks.json"), lymPath)
 }
 
 // writeSettings creates settingsPath with lym's defaults, look and the markdown association renderMarkdown asks for.
@@ -174,10 +174,19 @@ func applyMarkdownPreview(settings map[string]any, render bool) {
 // attachTaskLabel names the reed attach task; the seeded key binding finds the task by this label.
 const attachTaskLabel = "reed attach"
 
-// writeAttachTask writes a tasks.json holding the single on-demand "reed attach" task, overwriting any existing file.
-// The task carries no runOptions.
-// VS Code runs it only from "Tasks: Run Task" or its seeded key binding, never on folder open.
-func writeAttachTask(tasksPath, lymPath string) error {
+// boardOpenTaskLabel names the board open task; the seeded key binding finds the task by this label.
+const boardOpenTaskLabel = "board open"
+
+// beamStartTaskLabel names the beam start task; the seeded key binding finds the task by this label.
+const beamStartTaskLabel = "beam start"
+
+// writeWorktreeTasks writes a tasks.json holding the on-demand "reed attach" and "board open" tasks.
+// It overwrites any existing file.
+// Neither task carries runOptions.
+// VS Code runs one only from "Tasks: Run Task" or its seeded key binding, never on folder open.
+// The board open terminal comes forward on every run without taking focus,
+// so a refusal it prints is seen.
+func writeWorktreeTasks(tasksPath, lymPath string) error {
 	tasks := map[string]any{
 		"version": "2.0.0",
 		"tasks": []map[string]any{
@@ -191,6 +200,18 @@ func writeAttachTask(tasksPath, lymPath string) error {
 					"panel":  "new",
 					"echo":   true,
 					"focus":  true,
+				},
+			},
+			{
+				"label":   boardOpenTaskLabel,
+				"type":    "shell",
+				"command": lymPath,
+				"args":    []string{"board", "open"},
+				"presentation": map[string]any{
+					"reveal": "always",
+					"panel":  "shared",
+					"echo":   true,
+					"focus":  false,
 				},
 			},
 		},

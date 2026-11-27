@@ -60,19 +60,26 @@ func commitFile(t *testing.T, dir, rel, content string) {
 	gitkit.Git(t, dir, "commit", "-m", "add "+rel)
 }
 
-// assertAttachTaskOnly fails the test unless anchorDir's tasks.json holds only the on-demand reed attach task.
-// The task must have an absolute command and no folder-open trigger.
-func assertAttachTaskOnly(t *testing.T, anchorDir string) {
+// assertWorktreeTasks fails the test unless anchorDir's tasks.json holds exactly the reed attach and board open tasks.
+// Each must have an absolute command and no folder-open trigger,
+// and the board open terminal must come forward without taking focus.
+func assertWorktreeTasks(t *testing.T, anchorDir string) {
 	t.Helper()
 	tasks := readTasks(t, anchorDir)
-	if len(tasks) != 1 || tasks[0]["label"] != "reed attach" {
-		t.Fatalf("tasks = %v; want the single reed attach task", tasks)
+	if len(tasks) != 2 || tasks[0]["label"] != "reed attach" || tasks[1]["label"] != "board open" {
+		t.Fatalf("tasks = %v; want the reed attach and board open tasks", tasks)
 	}
-	if command, _ := tasks[0]["command"].(string); !filepath.IsAbs(command) {
-		t.Errorf("reed attach command = %q; want an absolute path", command)
+	for _, task := range tasks {
+		if command, _ := task["command"].(string); !filepath.IsAbs(command) {
+			t.Errorf("%v command = %q; want an absolute path", task["label"], command)
+		}
+		if runOptions, ok := task["runOptions"]; ok {
+			t.Errorf("%v carries runOptions %v; want none, so opening the folder runs nothing", task["label"], runOptions)
+		}
 	}
-	if runOptions, ok := tasks[0]["runOptions"]; ok {
-		t.Errorf("reed attach carries runOptions %v; want none, so opening the folder runs nothing", runOptions)
+	presentation, _ := tasks[1]["presentation"].(map[string]any)
+	if presentation["reveal"] != "always" || presentation["focus"] != false {
+		t.Errorf("board open presentation = %v; want reveal always and focus false", presentation)
 	}
 }
 
@@ -108,7 +115,7 @@ func checkTaskPairStaysClean(t *testing.T, h *hubforge.Hub, slug, gitignore stri
 	if !wantExclude && !bytes.Equal(excludeBefore, excludeAfter) {
 		t.Errorf("info/exclude changed:\n%s", excludeAfter)
 	}
-	assertAttachTaskOnly(t, anchorDir)
+	assertWorktreeTasks(t, anchorDir)
 }
 
 // checkOverwritesTasksKeepsSettings asserts an untracked tasks.json holding an old chain is replaced.
@@ -134,7 +141,7 @@ func checkOverwritesTasksKeepsSettings(t *testing.T, h *hubforge.Hub, slug strin
 		t.Fatalf("Spawn: %v", err)
 	}
 
-	assertAttachTaskOnly(t, filepath.Dir(vscodeDir))
+	assertWorktreeTasks(t, filepath.Dir(vscodeDir))
 	got := readPrimeLook(t, filepath.Join(vscodeDir, "settings.json"))
 	if got.TabSize != 2 || got.Title != "[tst] "+slug || got.Colors["titleBar.activeBackground"] != vscode.PrimeColor || got.Colors["activityBar.background"] == "" || got.Colors["activityBar.background"] == vscode.PrimeColor {
 		t.Errorf("settings.json = %+v; want tabSize 2 kept, title %q, green title bar and a non-green activity bar", got, "[tst] "+slug)

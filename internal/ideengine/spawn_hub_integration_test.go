@@ -143,6 +143,7 @@ func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	if _, err := Spawn(l, prime); err != nil {
 		t.Fatalf("Spawn: %v", err)
 	}
+	assertWorktreeTasks(t, primeAnchor)
 
 	wsPath := fabricengine.HubWorkspacePath(l)
 	if len(*launched) != 1 || (*launched)[0] != wsPath {
@@ -220,7 +221,7 @@ func readOptionalFile(t *testing.T, path string) (data []byte, exists bool) {
 
 // checkTaskSlugOpensBareFolder asserts a task spawn launches its bare folder.
 // It also asserts a task seed and a task spawn leave the workspace file's bytes, or its absence, unchanged.
-// It also asserts Seed and Spawn both write the on-demand attach task and seed keybindings.json into missing files.
+// It also asserts Seed and Spawn both write the on-demand worktree tasks and seed keybindings.json into missing files.
 // It also asserts Spawn, and never Seed, runs the machine's desktop window command.
 // An ide.yaml that fails to load fails Seed, Spawn and OpenTask, with nothing launched and no settings.json written.
 // A valid ide.yaml opens the folder beside the existing files it lists for a task.
@@ -270,7 +271,7 @@ func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	if err != nil {
 		t.Fatalf("Seed: %v", err)
 	}
-	assertAttachTaskOnly(t, filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel))
+	assertWorktreeTasks(t, filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel))
 	if keybindings.Outcome != vscode.KeybindingsCreated {
 		t.Errorf("Seed keybindings outcome = %+v; want %q", keybindings, vscode.KeybindingsCreated)
 	}
@@ -348,6 +349,7 @@ func checkBeamOpensBeamWorkspace(t *testing.T, h *hubforge.Hub, slug string) {
 	if len(*launched) != 1 || (*launched)[0] != beamPath {
 		t.Fatalf("CodeLauncher calls = %v, want exactly [%s]", *launched, beamPath)
 	}
+	assertWorktreeTasks(t, beamAnchor)
 	if files := (*opened)[0]; !slices.Equal(files, wantFiles) {
 		t.Errorf("CodeLauncher files = %v; want %v", files, wantFiles)
 	}
