@@ -51,8 +51,21 @@ const (
 	ManifestOmitted ManifestDelivery = "omitted"
 )
 
-// WebsterForkDenyKey is the guard key of the `lym webster` fork deny.
-const WebsterForkDenyKey = "webster-fork-deny"
+// The manifest keys every engine gives the same item under.
+const (
+	// PromptEngineKey keys the prompt rendered for an engine, and HandWrittenPromptKey a prompt written by hand.
+	PromptEngineKey      = "prompt-engine"
+	HandWrittenPromptKey = "hand-written"
+	// QuestionDenyKey and WebsterForkDenyKey are the guard keys of the question-tool deny and the `lym webster` fork deny.
+	QuestionDenyKey    = "question-deny"
+	WebsterForkDenyKey = "webster-fork-deny"
+	// BatchingNudgeKey keys the batching nudge.
+	BatchingNudgeKey = "batching-nudge"
+	// DenyNoticeKey, CreelTrustKey and SubagentPassageKey are the notice keys.
+	DenyNoticeKey      = "deny-notice"
+	CreelTrustKey      = "creel-trust"
+	SubagentPassageKey = "subagent-passage"
+)
 
 // ErrHookUnrun is the error a hook runner returns for a hook it lists without running.
 var ErrHookUnrun = errors.New("shuttle: the hook is listed and not run")

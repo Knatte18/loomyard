@@ -102,7 +102,7 @@ func (s *UserSetupSource) UserSetup(req shuttleengine.UserSetupRequest) (shuttle
 	}
 	slices.Sort(ids)
 	scope := resolveSessionScope(claude.SessionScope, ids, req.Skills, agentname.MatchesRole(req.Role, agentname.RoleOrch))
-	setup.SkillListing, warnings = skillListing(configDir, req.RepoRoot, req.WorkDir, plugins, scope)
+	setup.SkillListing, setup.ListedSkills, warnings = skillListing(configDir, req.RepoRoot, req.WorkDir, plugins, scope)
 	setup.Warnings = append(setup.Warnings, warnings...)
 	setup.PluginContexts, setup.Omitted = pluginSessionStartContexts(req, ids, plugins, scope)
 	return setup, nil
@@ -228,7 +228,8 @@ type listedSkill struct {
 	path        string
 }
 
-// skillListing returns the rule for using a skill and one line per skill the session's scope turns on.
+// skillListing returns the rule for using a skill and one line per skill the session's scope turns on,
+// and the listed names in listing order.
 // A line is `- <name>: <description> (<absolute SKILL.md path>)`, and the lines are sorted by name.
 // It returns "" when no skill is listed.
 // The skills are those under `skills/*/SKILL.md` of each plugin the scope turns on, named `<plugin>:<skill>`.
@@ -237,7 +238,7 @@ type listedSkill struct {
 // A user or project skill the scope's overrides turn off is left out.
 // An empty configDir leaves out the user's skills.
 // An unreadable SKILL.md is left out with a warning naming it.
-func skillListing(configDir, repoRoot, workDir string, plugins map[string]string, scope sessionScope) (string, []string) {
+func skillListing(configDir, repoRoot, workDir string, plugins map[string]string, scope sessionScope) (string, []string, []string) {
 	var skills []listedSkill
 	var warnings []string
 	scan := func(skillsDir, namePrefix string, honorOverrides bool) {
@@ -292,16 +293,18 @@ func skillListing(configDir, repoRoot, workDir string, plugins map[string]string
 	}
 
 	if len(skills) == 0 {
-		return "", warnings
+		return "", nil, warnings
 	}
 	slices.SortFunc(skills, func(a, b listedSkill) int {
 		return strings.Compare(a.name+"\x00"+a.path, b.name+"\x00"+b.path)
 	})
 	lines := []string{skillListingRule}
+	var names []string
 	for _, skill := range skills {
 		lines = append(lines, fmt.Sprintf("- %s: %s (%s)", skill.name, skill.description, skill.path))
+		names = append(names, skill.name)
 	}
-	return strings.Join(lines, "\n"), warnings
+	return strings.Join(lines, "\n"), names, warnings
 }
 
 // isDirectory reports whether path names a directory.

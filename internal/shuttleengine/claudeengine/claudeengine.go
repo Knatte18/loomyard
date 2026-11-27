@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -113,7 +114,8 @@ func validateSessionID(id string) error {
 	return nil
 }
 
-// Prepare writes prompt.md, settings.json and the Bash env file bash-env.sh into runDir and returns the Launch command strings.
+// Prepare writes the run's artifacts into runDir and returns the Launch command strings.
+// Among them are prompt.md, settings.json, the Bash env file bash-env.sh and the launch manifest.
 // The launch line carries a pointer to prompt.md rather than the prompt, so a prompt of any size launches.
 // A spec that names skills carries the skill-load message on the launch line instead and returns the pointer as Launch.PromptLine, for shuttle to send after the skills load.
 // It loads claude.yaml and the hub's gate config, whose refuse_raw list the run's shell guard installs and whose failure to load refuses the spawn, then validates spec.Effort, spec.Model, spec.PermissionMode, spec.ResumeSessionID, the prompt-cache TTL config, the keep-warm caps and the batching nudge before writing any artifacts.
@@ -259,11 +261,13 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	}
 	notice := buildDenyNotice(spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish)
 	// The told Board dir is the hub's Bolt checkout, empty outside a hub.
+	standing := shuttleengine.StandingPassages(c.dirs.Board, engineName, spec.Role)
+	subagent := subagentPassage(cfg.Agents, spec.ConfigRole, spec.Skills)
 	var passages []string
-	if passage := subagentPassage(cfg.Agents, spec.ConfigRole, spec.Skills); passage != "" {
-		passages = append(passages, passage)
+	if subagent != "" {
+		passages = append(passages, subagent)
 	}
-	for _, passage := range shuttleengine.StandingPassages(c.dirs.Board, engineName, spec.Role).Passages {
+	for _, passage := range standing.Passages {
 		passages = append(passages, passage.Text)
 	}
 	if err := os.WriteFile(appendPromptPath, []byte(appendPromptText(notice, passages)), 0o644); err != nil {
@@ -278,8 +282,25 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	if len(spec.Skills) > 0 {
 		launchArg, promptLine = skillLoadMessage, pointer
 	}
+	launchCmd := buildLaunchCmd(sh, bin, launchArg, settingsPath, sessionID, resolvedModel, spec.Effort, appendPromptPath, envFilePath, promptCacheTTL, spec.RemoteControlName, resume, skipPermissions, spec.ForkSubagents)
+	loadArgument := ""
+	if skillLoadMessage != "" {
+		loadArgument = sh.Quote(skillLoadMessage)
+	}
+	if err := c.writeLaunchManifest(runDir, spec, settingsPath, appendPromptPath, manifestInputs{
+		launchCmd:         launchCmd,
+		passages:          standing.Passages,
+		fileEntries:       standing.FileEntries,
+		denyNotice:        notice,
+		subagentPassage:   subagent,
+		skillLoadArgument: loadArgument,
+		guards:            guardCandidates(cfg.RefuseRaw),
+		batchingCommand:   batchingNudgeHookCommand(shQuote(path.Join(path.Dir(eventsPathForHook), batchingNudgeStateFileName))),
+	}); err != nil {
+		return shuttleengine.Launch{}, err
+	}
 	return shuttleengine.Launch{
-		Cmd:        buildLaunchCmd(sh, bin, launchArg, settingsPath, sessionID, resolvedModel, spec.Effort, appendPromptPath, envFilePath, promptCacheTTL, spec.RemoteControlName, resume, skipPermissions, spec.ForkSubagents),
+		Cmd:        launchCmd,
 		ResumeCmd:  buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, appendPromptPath, envFilePath, promptCacheTTL, spec.RemoteControlName, skipPermissions, spec.ForkSubagents),
 		SessionID:  sessionID,
 		PromptLine: promptLine,

@@ -386,6 +386,14 @@ func TestUserSetup_SkillListing(t *testing.T) {
 					t.Errorf("SkillListing = %q; want it to open with the rule for using a skill", setup.SkillListing)
 				}
 			}
+			var wantNames []string
+			for _, listed := range wantLines {
+				name, _, _ := strings.Cut(strings.TrimPrefix(listed, "- "), ": ")
+				wantNames = append(wantNames, name)
+			}
+			if !slices.Equal(setup.ListedSkills, wantNames) {
+				t.Errorf("ListedSkills = %q; want %q", setup.ListedSkills, wantNames)
+			}
 			if warnings := strings.Join(setup.Warnings, "\n"); wantWarn == "" && warnings != "" || !strings.Contains(warnings, wantWarn) {
 				t.Errorf("Warnings = %q; want one naming %q", setup.Warnings, wantWarn)
 			}
@@ -509,8 +517,8 @@ func TestUserSetup_PluginSessionStartContexts(t *testing.T) {
 			var gotTexts []string
 			for _, item := range setup.PluginContexts {
 				gotTexts = append(gotTexts, item.Text)
-				if item.Name != hookName || !strings.Contains(item.WayForward, "session scope") {
-					t.Errorf("plugin context item = %+v; want name %q and a way forward naming the session scope", item, hookName)
+				if item.Name != hookName || !strings.Contains(item.WayForward, "session scope") || item.Plugin != "scribe@market" || item.Hook != "emit" {
+					t.Errorf("plugin context item = %+v; want name %q, its plugin and hook, and a way forward naming the session scope", item, hookName)
 				}
 			}
 			if !reflect.DeepEqual(gotTexts, tt.wantTexts) {
@@ -523,6 +531,16 @@ func TestUserSetup_PluginSessionStartContexts(t *testing.T) {
 			} else if len(setup.Omitted) != 1 || !strings.Contains(setup.Omitted[0].Name, tt.wantOmittedName) ||
 				!strings.Contains(setup.Omitted[0].Reason, tt.wantOmittedReason) {
 				t.Errorf("Omitted = %+v; want one with name holding %q and reason holding %q", setup.Omitted, tt.wantOmittedName, tt.wantOmittedReason)
+			}
+			for _, omitted := range setup.Omitted {
+				// A hooks file that cannot be read names no one hook.
+				wantPlugin, wantHook := "", ""
+				if tt.wantOmittedName == hookName {
+					wantPlugin, wantHook = "scribe@market", "emit"
+				}
+				if omitted.Plugin != wantPlugin || omitted.Hook != wantHook {
+					t.Errorf("Omitted plugin, hook = %q, %q; want %q, %q", omitted.Plugin, omitted.Hook, wantPlugin, wantHook)
+				}
 			}
 			if len(runs) == 0 {
 				return

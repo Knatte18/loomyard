@@ -504,6 +504,12 @@
 // Each of these degrades to an unverified report:
 // a missing transcript_path, an unreadable file, a transcript with no matching message, or one with no skill listing.
 //
+// Prepare ends by writing the launch manifest into the run directory.
+// Each of lym's own items is listed only when the written settings, appended system prompt or launch line holds it,
+// so a delivery that did not reach the launch leaves no item.
+// What Claude Code loads itself is listed from the engine's own resolution, with no plugin hook run:
+// the instruction files, the heddle entries of a marked CLAUDE.local.md, the listed skills and the plugin hooks.
+//
 // The engine announces each standing tool deny to the session and tells it to trust and answer creel mail.
 // It does so through the run directory's append-system-prompt.txt.
 // Both the launch line and the resume line name it with --append-system-prompt-file.

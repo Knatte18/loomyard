@@ -31,6 +31,9 @@ const steerWebsterForkDeny = "lym webster verbs belong to the Master session, ne
 // noticeAskUserQuestionDeny announces the AskUserQuestion deny in an autonomous run.
 const noticeAskUserQuestionDeny = "AskUserQuestion is unavailable: when blocked or needing operator input, state the question as your final message and end your turn without writing the result file; the run then waits for the answer, which arrives as your next turn."
 
+// askUserQuestionTool is the tool name a hook entry matches to guard or record the question dialog.
+const askUserQuestionTool = "AskUserQuestion"
+
 // hookCommand is one Claude Code hook invocation, run under git-bash on Windows.
 // AsyncRewake runs the command in the background and wakes the idle session when it exits 2.
 // Timeout bounds it in seconds.
@@ -306,7 +309,7 @@ func claudeDenies() []standingDeny {
 			installed: func(in denyInputs) bool { return in.forkSubagents },
 		},
 		{
-			matcher:   "AskUserQuestion",
+			matcher:   askUserQuestionTool,
 			command:   "echo '" + denyJSON(steerAskUserQuestionDeny) + "'",
 			steer:     steerAskUserQuestionDeny,
 			notice:    noticeAskUserQuestionDeny,
@@ -492,7 +495,7 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 	if interactive {
 		// The hook records the live ask like a turn end and lets the tool call proceed.
 		doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
-			Matcher: "AskUserQuestion",
+			Matcher: askUserQuestionTool,
 			Hooks:   recordingHook(hookEventPreToolUse, false)[0].Hooks,
 		})
 	}
