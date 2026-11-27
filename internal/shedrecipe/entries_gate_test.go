@@ -12,7 +12,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
-	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // reworkTestEnv returns newTestEnv(t) with every Rework seam filled.
@@ -167,29 +166,6 @@ func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
 			}
 			if len(asked) != 1 || asked[0] != tt.want {
 				t.Errorf("VerifyCommand asked for %q; want one ask for %q", asked, tt.want)
-			}
-		})
-	}
-
-	// The "verify" entry carries a re-run mark for the gate fixer's wrap exactly when the reach turn is told.
-	for _, tt := range []struct {
-		name  string
-		reach func(gateKey string) (verifytree.ReachPending, bool, error)
-		want  bool
-	}{
-		{"verify with VerifyReach", func(string) (verifytree.ReachPending, bool, error) { return verifytree.ReachPending{}, false, nil }, true},
-		{"verify without VerifyReach", nil, false},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			env := newTestEnv(t)
-			env.VerifyCommand = func(string) (string, error) { return "", nil }
-			env.VerifyReach = tt.reach
-			spec, err := resolveRowGateSpec("BurlerFix", "Code-Burler-Fix", gatesCfg("verify", 3), env)
-			if err != nil {
-				t.Fatalf("resolveRowGateSpec() error = %v; want nil", err)
-			}
-			if got := spec[0].Rerun != nil; got != tt.want {
-				t.Errorf("resolveRowGateSpec()[0].Rerun set = %v; want %v", got, tt.want)
 			}
 		})
 	}

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -21,9 +22,51 @@ import (
 )
 
 // redFirstGateYAML is a hub whose key `rf` runs tier0 as a real `go test` over the explicit targets.
-const redFirstGateYAML = "slots: 2\nscoper: go\nredundancy_test_timeout_sec: 20\nredundancy_test_memory_mb: 128\n" +
+const redFirstGateYAML = "slots: 2\nscoper: go\n" +
 	"tiers:\n  tier0: {command: 'go test -json -count=1 {targets} {args}', all_targets: ./..., timeout_min: 2, counter: go-json, env: {LYM_TEST_TIER: \"0\"}}\n" +
 	"gates:\n  rf: {tiers: [0], scope: diff}\n"
+
+// redFirstModule is the import path of the fixture module.
+// It is the import path of the repository, so the module builds alone beside its own stand-in tiergate.
+const redFirstModule = "github.com/Knatte18/loomyard"
+
+// redFirstTiergateStub stands in for the tier gate in the fixture module: every test runs.
+const redFirstTiergateStub = "package tiergate\n\nimport \"testing\"\n\n// Require stands in for the tier gate: every test runs.\nfunc Require(t testing.TB, tier int) {}\n"
+
+// seedRedFirstModule writes the gate config gate into the hub h and commits a Go module to its prime worktree.
+// The module holds the packages calc and other, each a source file with two one-line functions, One and Two, and no test.
+// It returns the prime worktree.
+func seedRedFirstModule(t *testing.T, h *hubforge.Hub, gate string) string {
+	t.Helper()
+	if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "gate"), []byte(gate), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	prime := h.PrimeWorktree()
+	plankit.WriteTree(t, prime, map[string]string{
+		"go.mod":         "module " + redFirstModule + "\n\ngo 1.21\n",
+		"calc/calc.go":   "package calc\n\nfunc One() int { return 1 }\n\nfunc Two() int { return 2 }\n",
+		"other/other.go": "package other\n\nfunc One() int { return 1 }\n\nfunc Two() int { return 2 }\n",
+	})
+	gitkit.Git(t, prime, "add", "go.mod", "calc", "other")
+	gitkit.Git(t, prime, "commit", "-q", "-m", "seed the "+redFirstModule+" module")
+	return prime
+}
+
+// editRedFirstCalc replaces from with to in calc.go of root, leaving the change uncommitted.
+func editRedFirstCalc(t *testing.T, root, from, to string) {
+	t.Helper()
+	file := filepath.Join(root, "calc", "calc.go")
+	data, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), from) {
+		t.Fatalf("calc.go holds no %q to replace", from)
+	}
+	if err := os.WriteFile(file, []byte(strings.Replace(string(data), from, to, 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestGateRedFirst(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -31,10 +74,8 @@ func TestGateRedFirst(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	prime := seedTestMapModule(t, h, mutateModule, redFirstGateYAML, map[string]map[string]int{"calc": nil, "other": nil})
-	plankit.WriteTree(t, prime, map[string]string{
-		"internal/testkit/tiergate/tiergate.go": mutateSupportFiles["internal/testkit/tiergate/tiergate.go"],
-	})
+	prime := seedRedFirstModule(t, h, redFirstGateYAML)
+	plankit.WriteTree(t, prime, map[string]string{"internal/testkit/tiergate/tiergate.go": redFirstTiergateStub})
 	// The package other holds a test named TestTwoIsTwo that fails wherever it runs, and a TestOther the diff will change.
 	writeOtherTests := func(otherBody string) {
 		t.Helper()
@@ -58,7 +99,7 @@ func TestGateRedFirst(t *testing.T) {
 	// The fix changes One from 1 to 2.
 	fix := func() {
 		t.Helper()
-		editMutateCalc(t, prime, "func One() int { return 1 }", "func One() int { return 2 }")
+		editRedFirstCalc(t, prime, "func One() int { return 1 }", "func One() int { return 2 }")
 	}
 	writeTest := func(name, body string) {
 		t.Helper()
@@ -135,12 +176,63 @@ func TestGateRedFirst(t *testing.T) {
 	})
 }
 
+func TestGateRedFirst_RefusesWhatItCannotDiffOrBuild(t *testing.T) {
+	tiergate.Require(t, 1)
+	// The rows run one after another: each rewrites the one hub's gate config.
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	prime := seedRedFirstModule(t, h, redFirstGateYAML)
+	tests := []struct {
+		name string
+		gate string
+		args []string
+		want []string
+	}{
+		{
+			"NoBaseInAWorktreeWithNoParentBranch", redFirstGateYAML, nil,
+			[]string{"the worktree has no parent branch to diff from", "pass --base"},
+		},
+		{
+			"ABaseNamingNoCommit", redFirstGateYAML, []string{"--base", "no-such-commit"},
+			[]string{"names no commit", "pass the SHA of a commit"},
+		},
+		{
+			"ATierDirHoldingNoGoModule", strings.Replace(redFirstGateYAML, "counter: go-json", "counter: go-json, dir: calc", 1), []string{"--base", "HEAD"},
+			[]string{"holds no go.mod naming a module inside the worktree", "declare tier0 or tier1 with its dir at the Go module's root"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "gate"), []byte(tt.gate), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var out bytes.Buffer
+			code := clihelp.ExecuteIn(Command(), prime, &out, append([]string{"red-first", "--gate", "rf"}, tt.args...))
+			var answer struct {
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(out.Bytes(), &answer); err != nil {
+				t.Fatalf("red-first printed %q; want one JSON envelope: %v", out.String(), err)
+			}
+			if code != 1 {
+				t.Errorf("red-first = exit %d, error %q; want exit 1", code, answer.Error)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(answer.Error, want) {
+					t.Errorf("red-first error = %q; want it to contain %q", answer.Error, want)
+				}
+			}
+		})
+	}
+}
+
 func TestGateRedFirst_AHubWhoseScoperIsNotGoExitsUnjudged(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	prime := seedTestMapModule(t, h, mutateModule, strings.Replace(redFirstGateYAML, "scoper: go", "scoper: none", 1), map[string]map[string]int{"calc": nil})
+	prime := seedRedFirstModule(t, h, strings.Replace(redFirstGateYAML, "scoper: go", "scoper: none", 1))
 	var out bytes.Buffer
 	code := clihelp.ExecuteIn(Command(), prime, &out, []string{"red-first", "--gate", "rf", "--base", gitkit.RevParse(t, prime, "HEAD")})
 	var answer struct {

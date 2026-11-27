@@ -64,7 +64,7 @@ func newCommand(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, reru
 	var tiers []int
 	var upto, copies int
 	var cards []string
-	var all, guards, wait, mainPackages, stopOnFail, mapMode, noCarry bool
+	var all, guards, wait, mainPackages, stopOnFail, noCarry bool
 	testCmd := &cobra.Command{
 		Use:         "test [<targets>...]",
 		Short:       "run the hub's test tiers once their gate slots are free",
@@ -84,13 +84,11 @@ Without --gate the scope is the explicit <targets>, --all, --card <id>, --base <
 Arguments after "--" fill each tier's {args}.
 A --filter among them is ANDed with the tier's filter where the tier's command holds {filter}.
 --guards, and a narrower scope while ` + keyName(scoperKey) + ` is go, also run the //lym:guard tests outside the scope; --card adds tier-skipped ones.
---map builds the tier0 and tier1 coverage maps, and refuses the flags that pick tiers or steps.
 --copies N, with --gate and explicit targets, runs N copies of the key's one tier side by side.
 
 Examples:
 
   lym gate test --wait ./internal/foo
-  lym gate test --wait --map internal/foo
   lym gate test --tier 0 --tier 1 --all
   lym gate test --wait --gate card --card 3
   lym gate test --base main
@@ -101,9 +99,9 @@ Examples:
 				return nil
 			}
 			request := testRequest{
-				goBinary: goBinary, samplePeriod: samplePeriod, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit, secondUnit: time.Second, rerunDelay: rerunDelay, pipeWaitDelay: pipeWaitDelay,
+				goBinary: goBinary, samplePeriod: samplePeriod, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit, rerunDelay: rerunDelay, pipeWaitDelay: pipeWaitDelay,
 				stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, gate: gate, tiers: tiers, cards: cards, mainPackages: mainPackages, base: base, all: all, guards: guards, targets: args,
-				upto: upto, uptoGiven: cmd.Flags().Changed("upto"), stopOnFail: stopOnFail, mapMode: mapMode, copies: copies, noCarry: noCarry,
+				upto: upto, uptoGiven: cmd.Flags().Changed("upto"), stopOnFail: stopOnFail, copies: copies, noCarry: noCarry,
 				phase: phaseFrom(cmd.Context()), runAgent: os.Getenv(agentname.StrandNameEnv) != "",
 			}
 			if dash := cmd.ArgsLenAtDash(); dash >= 0 {
@@ -129,17 +127,13 @@ Examples:
 	testCmd.Flags().BoolVar(&guards, "guards", false, "after the listed tiers, run every //lym:guard test of the module under the tier its file belongs to")
 	testCmd.Flags().BoolVar(&stopOnFail, gateslot.StopOnFailFlag, false, "end the call at its first failed run, so no later tier, vet or guard run starts")
 	testCmd.Flags().BoolVar(&noCarry, gateslot.NoCarryFlag, false, "run every tier of the call even where its last green run covers the unchanged tree")
-	testCmd.Flags().BoolVar(&mapMode, mapFlag, false, "build the per-package coverage maps of tier0 and tier1 over the scope's packages instead of running the tiers")
 	testCmd.Flags().IntVar(&copies, "copies", 0, "with --gate and explicit targets, run this many copies of the key's one tier side by side inside one slot lease; 0 is off")
 	testCmd.Flags().BoolVar(&wait, "wait", false, "run the tiers in this process and block until they end, instead of in the detached runner an agent call starts or joins")
 	cmd.AddCommand(testCmd)
 	cmd.AddCommand(statusCmd())
 	cmd.AddCommand(reportCmd())
 	cmd.AddCommand(cardVerifyCmd(seams))
-	cmd.AddCommand(redundantCmd(goBinary, timeoutUnit, pipeWaitDelay))
-	cmd.AddCommand(mutateCmd(goBinary, timeoutUnit, pipeWaitDelay))
 	cmd.AddCommand(redFirstCmd(goBinary, samplePeriod, preTierCeiling, timeoutUnit, rerunDelay, pipeWaitDelay))
-	cmd.AddCommand(reachCmd())
 	cmd.AddCommand(runnerCmd(func() *cobra.Command {
 		return newCommand(goBinary, samplePeriod, preTierCeiling, timeoutUnit, rerunDelay, pipeWaitDelay, seams)
 	}, seams))
@@ -155,10 +149,8 @@ type testRequest struct {
 	samplePeriod time.Duration
 	// preTierCeiling bounds the work before the first tier.
 	preTierCeiling time.Duration
-	// timeoutUnit is the length of one `timeout_min` minute, and of one minute of the redundancy step's minute keys.
+	// timeoutUnit is the length of one `timeout_min` minute.
 	timeoutUnit time.Duration
-	// secondUnit is the length of one second of `redundancy_test_timeout_sec`.
-	secondUnit time.Duration
 	// rerunDelay is how long a tier waits before its one rerun after a resource shortage or a crashed test runner.
 	rerunDelay time.Duration
 	// pipeWaitDelay is how long a tier's or the build's output is still read after its shell exits.
@@ -190,8 +182,6 @@ type testRequest struct {
 	stopOnFail bool
 	// noCarry is the --no-carry flag: every tier of the call runs as a carry: false tier does, so no green record is carried.
 	noCarry bool
-	// mapMode is the --map flag: the call builds the coverage maps over its scope instead of running the tiers.
-	mapMode bool
 	// copies is the --copies value: how many copies of the gate key's one tier run side by side; 0 is off.
 	copies int
 	// copiesRun is how many copies the tier run in progress runs; 0 runs the tier once.
@@ -234,13 +224,10 @@ type testRequest struct {
 	phase func(runPhase)
 	// processCapFor builds the process cap over a tier run's marker; nil means newProcessCap.
 	// A test replaces it so the cap trips without a runaway.
-	processCapFor func(marker string, period time.Duration, commands *runningCommands) processCap
+	processCapFor func(marker string, period time.Duration) processCap
 	// memoryGuardFor builds the memory guard over a tier run's command; nil means newMemoryGuard.
 	// A test replaces it so the guard kills without a runaway.
 	memoryGuardFor func(limit int64, out io.Writer) memoryGuard
-	// commands are the tier commands the call is running, which the report steps' memory guard leaves alone;
-	// nil records none.
-	commands *runningCommands
 }
 
 // absoluteDir returns the directory a request runs in: dir made absolute against cwd, or cwd when dir is empty.

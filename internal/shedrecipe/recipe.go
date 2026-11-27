@@ -123,10 +123,6 @@ type Env struct {
 	// VerifyBudget is the told time budget of the "verify" gate; its zero value turns the budget off.
 	// A darn run tells darn.yaml's verify_budget_min and a notice to the run's parent.
 	VerifyBudget loomshed.VerifyBudget
-	// VerifyReach is the told source of the pending reach report, keyed by a row's gate key, read by the "verify" gate.
-	// Set, the gate runs under the reach turn and its entry carries the re-run mark of a cold fixer's wrap.
-	// Nil leaves the gate as it is.
-	VerifyReach func(gateKey string) (verifytree.ReachPending, bool, error)
 	// EntryLabels is the told reader of the run's board entry labels, read by the "red-first" gate at each arrival.
 	EntryLabels func() ([]string, error)
 	// RedFirstCommand is the told renderer of the red-first call for a row's gate key, read by the "red-first" gate.
@@ -329,18 +325,6 @@ type Env struct {
 	// Nil is legal and renders the marker as `none`.
 	// The Code-Review rubric reads `none` as an unknown range.
 	ReviewBase func() (string, error)
-	// RedundancyReport returns the gate's redundancy report as a code review reads it.
-	// It is filled into the redundancy_report marker.
-	// It is read only for a rubric carrying the marker; nil renders the marker as `none`.
-	RedundancyReport func() string
-	// ReachReport returns the gate's reach report as a code review reads it.
-	// It is filled into the reach_report marker.
-	// It is read only for a rubric carrying the marker; nil renders the marker as `none`.
-	ReachReport func() string
-	// MutationReport returns the gate's mutation report as a code review reads it.
-	// It is filled into the mutation_report marker.
-	// It is read only for a rubric carrying the marker; nil renders the marker as `none`.
-	MutationReport func() string
 	// ReflectFriction is the injected closure the FrictionReflect entry's producer calls once per Call.
 	// It returns the reflection's status string.
 	// It arrives as a closure because its dependencies are already resolved in internal/loomcli.

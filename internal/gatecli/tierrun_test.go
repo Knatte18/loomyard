@@ -317,7 +317,7 @@ func TestRunTierProcessCap(t *testing.T) {
 			var stderr bytes.Buffer
 			request := testRequest{
 				root: dir, stderr: &stderr, samplePeriod: time.Millisecond, timeoutUnit: 30 * time.Second, pipeWaitDelay: defaultPipeWaitDelay,
-				processCapFor: func(marker string, period time.Duration, _ *runningCommands) processCap {
+				processCapFor: func(marker string, period time.Duration) processCap {
 					starts.Add(1)
 					return processCap{
 						limit:  1,
@@ -378,7 +378,6 @@ func TestRunTierProcessCap(t *testing.T) {
 // It marks the result of a kill over the cap so no rerun follows, and that of a slice-pressure kill so one does.
 // A slice-pressure kill beside a failed test, or beside a failed package whose binary was not killed, is not marked so.
 // A request that turns the guard off builds none.
-// The tier command is recorded in the request's running commands while it runs and removed once it ends.
 func TestRunTierMemoryGuard(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -445,14 +444,8 @@ func TestRunTierMemoryGuard(t *testing.T) {
 			}
 			var starts atomic.Int32
 			var stderr bytes.Buffer
-			commands := &runningCommands{}
-			// commandPID is the tier command's pid, which the guard receives as its root.
-			// registered is whether the command was in commands when the guard sampled it.
-			var commandPID atomic.Int64
-			var registered atomic.Bool
 			request := testRequest{
 				root: dir, stderr: &stderr, timeoutUnit: 30 * time.Second, pipeWaitDelay: defaultPipeWaitDelay, memoryGuarding: tt.guarding,
-				commands: commands,
 				memoryGuardFor: func(limit int64, out io.Writer) memoryGuard {
 					starts.Add(1)
 					return memoryGuard{
@@ -460,10 +453,6 @@ func TestRunTierMemoryGuard(t *testing.T) {
 						floor:  guardFloor,
 						period: time.Millisecond,
 						sample: func(root int) ([]proc.ProcessSample, error) {
-							commandPID.Store(int64(root))
-							if commands.holds(root) {
-								registered.Store(true)
-							}
 							if tt.slicePressure {
 								return []proc.ProcessSample{{PID: testBinaryPID, Parent: root, Path: testBinaryPath, RSS: 1500 << 20}}, nil
 							}
@@ -499,14 +488,6 @@ func TestRunTierMemoryGuard(t *testing.T) {
 
 			if got := starts.Load(); got != tt.wantStarts {
 				t.Errorf("runTier() built the memory guard %d times; want %d", got, tt.wantStarts)
-			}
-			if tt.guarding {
-				if !registered.Load() {
-					t.Errorf("runTier() ran the tier command %d with commands not holding it; want it held while it runs", commandPID.Load())
-				}
-				if commands.holds(int(commandPID.Load())) {
-					t.Errorf("commands.holds(%d) = true after runTier() returned; want the ended command removed", commandPID.Load())
-				}
 			}
 			if result.memoryStopped != tt.wantKilled {
 				t.Errorf("runTier() memoryStopped = %v; want %v", result.memoryStopped, tt.wantKilled)

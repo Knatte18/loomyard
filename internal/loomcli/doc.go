@@ -301,10 +301,6 @@
 // A change confined to the harness's own files reads as an unchanged subject;
 // the landing gate at Parent-Align and Finalize bounds it.
 //
-// The Code-Review rubric's `redundancy_report`, `reach_report` and `mutation_report` markers list the worktree's report.
-// They do so only when it matches HEAD, and otherwise say no current report exists.
-// A report written in the prime never matches.
-//
 // # The recorded driver's one reading site
 //
 // A recorded seed driver value is read only in a recipe's bootstrap verbs:

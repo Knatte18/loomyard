@@ -213,12 +213,9 @@ func amendmentTitlesAt(path string) func() ([]string, error) {
 // A failed review base read is an error naming row.
 func reviewRubricNotes(row RowIdentity, env Env, runDir string) (shedadapters.RubricNotes, error) {
 	notes := shedadapters.RubricNotes{
-		GateTiers:        env.GateTiers,
-		Amendment:        shedadapters.AmendmentNote(runDir),
-		ReviewInput:      shedadapters.ReviewInputNote(runDir),
-		RedundancyReport: env.RedundancyReport,
-		ReachReport:      env.ReachReport,
-		MutationReport:   env.MutationReport,
+		GateTiers:   env.GateTiers,
+		Amendment:   shedadapters.AmendmentNote(runDir),
+		ReviewInput: shedadapters.ReviewInputNote(runDir),
 	}
 	if env.WebsterRecord != nil {
 		notes.WebsterRecord = env.WebsterRecord()

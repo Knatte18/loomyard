@@ -35,11 +35,5 @@
 // It adds an optional trace of the failure to the plan.
 // A later passing gate at either row removes it through RemoveLandingFailure.
 //
-// WithReachTurn is a decorator over any verify gate that hands a writer the reach note through its own gate.
-// A failing inner result is returned as it is.
-// A passing result can have unreached functions the listed file lacks, within the budget.
-// Such a result becomes one failing result marked WriterOnly.
-// Bound: the turn costs one writer turn and one gate attempt per arrival that lists a new unreached function.
-//
 // The package imports no resolver: the worktree and the directory are told through Paths.
 package verifytree

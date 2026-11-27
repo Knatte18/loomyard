@@ -25,9 +25,9 @@ const tmuxTierNumber = 2
 type SpawnVerdict struct {
 	// OutOfProcess is set when the test may run this module's code in another process.
 	// That covers a followed call, and a test in a tmux-tier file.
-	OutOfProcess bool `json:"out_of_process,omitempty"`
+	OutOfProcess bool
 	// Unresolved is set when the test calls something the scan cannot resolve to source.
-	Unresolved bool `json:"unresolved,omitempty"`
+	Unresolved bool
 }
 
 func (v *SpawnVerdict) merge(o SpawnVerdict) {

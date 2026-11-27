@@ -81,15 +81,8 @@ func TestBouncerEntry_HappyPath(t *testing.T) {
 	const note = "Webster has begun these batches."
 	env.WebsterRecord = func() string { return note }
 	env.GateTiers = "- tier1: build first\n- gate card: [1]"
-	const redundancyReport = "No current redundancy report: none written."
-	env.RedundancyReport = func() string { return redundancyReport }
-	const reachReport = "No current reach report: none written."
-	env.ReachReport = func() string { return reachReport }
-	const mutationReport = "No current mutation report: none written."
-	env.MutationReport = func() string { return mutationReport }
 	writeStencil(t, env.StencilsDir, "bouncer-template-seed", "{{.rubric}}\n")
-	writeStencil(t, env.StencilsDir, "bouncer-rubric",
-		"Record: {{.webster_record}}\nTiers:\n{{.gate_tiers}}\nRedundancy: {{.redundancy_report}}\nReach: {{.reach_report}}\nMutation: {{.mutation_report}}\n")
+	writeStencil(t, env.StencilsDir, "bouncer-rubric", "Record: {{.webster_record}}\nTiers:\n{{.gate_tiers}}\n")
 	producer, err = bouncerEntry(reviewRow("review-bounce"), cfg, env)
 	if err != nil {
 		t.Fatalf("bouncerEntry() error = %v; want nil", err)
@@ -103,15 +96,6 @@ func TestBouncerEntry_HappyPath(t *testing.T) {
 	}
 	if len(fake.Specs) != 1 || !strings.Contains(fake.Specs[0].Prompt, env.GateTiers) {
 		t.Errorf("seed specs = %+v; want one whose prompt carries the env's gate tier lines", fake.Specs)
-	}
-	if len(fake.Specs) != 1 || !strings.Contains(fake.Specs[0].Prompt, "Redundancy: "+redundancyReport) {
-		t.Errorf("seed specs = %+v; want one whose prompt carries the env's redundancy report note", fake.Specs)
-	}
-	if len(fake.Specs) != 1 || !strings.Contains(fake.Specs[0].Prompt, "Reach: "+reachReport) {
-		t.Errorf("seed specs = %+v; want one whose prompt carries the env's reach report note", fake.Specs)
-	}
-	if len(fake.Specs) != 1 || !strings.Contains(fake.Specs[0].Prompt, "Mutation: "+mutationReport) {
-		t.Errorf("seed specs = %+v; want one whose prompt carries the env's mutation report note", fake.Specs)
 	}
 }
 

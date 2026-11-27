@@ -12,10 +12,6 @@ so the hub never runs more at once than its configured count.
 - A gate build or test runs only holding `internal/gateslot` slots, in one of the places below.
 - Inside a `lym gate test` tier run, holding the slots its tier asks for;
   the tier's config sets its parallelism and environment.
-- Inside the map run of `lym gate test --map`, holding the larger of tier0's and tier1's slot asks,
-  where a tier asking for every slot ranks above any count.
-- Inside the refresh of a task worktree's own anchor maps by the `reach` report step,
-  which runs the map run's measurement in the map run's slot ask.
 - In one of the non-tier holders `internal/gateslot`'s doc lists, holding one slot;
   the holder sets its own `-trimpath` Go flag, plus `-p` from `tier0`'s parallel when the hub declares `tier0`.
 - Every Go gate build keeps `-trimpath`,

@@ -4,7 +4,6 @@
 package testcover_test
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -90,113 +89,6 @@ func TestBuildBinaryAndListTests(t *testing.T) {
 	}
 }
 
-func TestLinkedPackages(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	tc, record := standIn(t)
-	got, err := tc.LinkedPackages("m/p")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := []string{"m/p", "m/q"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("LinkedPackages(m/p) = %q; want %q, each once, without the external test package or the test main", got, want)
-	}
-	wantArgs := []string{"list", "-deps", "-test", "-f", `{{if and .Module .Module.Main}}{{.ImportPath}}{{"\t"}}{{.Name}}{{"\t"}}{{.ForTest}}{{end}}`, "m/p"}
-	if args := recordedArgs(t, record); !reflect.DeepEqual(args, wantArgs) {
-		t.Errorf("LinkedPackages ran go %q; want %q", args, wantArgs)
-	}
-}
-
-func TestGoEnvironment(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	tc, record := standIn(t)
-	version, goos, goarch, err := tc.GoEnvironment()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if version != "go1.26.8" || goos != "linux" || goarch != "amd64" {
-		t.Errorf("GoEnvironment() = %q, %q, %q; want go1.26.8, linux, amd64", version, goos, goarch)
-	}
-	if args, want := recordedArgs(t, record), []string{"env", "GOVERSION", "GOOS", "GOARCH"}; !reflect.DeepEqual(args, want) {
-		t.Errorf("GoEnvironment ran go %q; want %q", args, want)
-	}
-}
-
-func TestBuildMutantBinary(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		env       []string
-		wantLines []testcover.SourceLine
-	}{
-		{name: "BuildsWithTheOverlayAndEveryCompileError"},
-		{
-			name:      "NamesTheLinesOfARefusedBuild",
-			env:       []string{standInCompileErrorsEnv + "=1"},
-			wantLines: []testcover.SourceLine{{File: "x.go", Line: 4}, {File: "y.go", Line: 12}, {File: "z.go", Line: 62}},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			tc, record := standIn(t)
-			tc.Env = append(tc.Env, tt.env...)
-			out := filepath.Join(t.TempDir(), "mutants.test")
-			err := tc.BuildMutantBinary("m/p", "/tmp/o/overlay.json", out)
-			wantArgs := []string{"test", "-c", "-o", out, "-vet=off", "-overlay=/tmp/o/overlay.json", "-gcflags=m/p=-e", "m/p"}
-			if got := recordedArgs(t, record); !reflect.DeepEqual(got, wantArgs) {
-				t.Errorf("BuildMutantBinary ran go %q; want %q", got, wantArgs)
-			}
-			var buildErr *testcover.MutantBuildError
-			switch {
-			case tt.wantLines == nil && err != nil:
-				t.Errorf("BuildMutantBinary error = %v; want none", err)
-			case tt.wantLines != nil && !errors.As(err, &buildErr):
-				t.Errorf("BuildMutantBinary error = %v; want a *MutantBuildError", err)
-			case tt.wantLines != nil && !reflect.DeepEqual(buildErr.Lines, tt.wantLines):
-				t.Errorf("MutantBuildError lines = %v; want %v", buildErr.Lines, tt.wantLines)
-			}
-		})
-	}
-}
-
-func TestProfileBlocks(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	tc, record := standIn(t)
-	profile := filepath.Join(t.TempDir(), "blocks.out")
-	got, err := tc.ProfileBlocks(tc.Go, t.TempDir(), profile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []testcover.ProfileBlock{{File: "m/p/x.go", StartLine: 3, StartCol: 21, EndLine: 5, EndCol: 2, Statements: 1}}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("ProfileBlocks = %+v; want %+v, every block uncovered", got, want)
-	}
-	if args, wantArgs := recordedArgs(t, record), []string{"-test.run=^$", "-test.coverprofile=" + profile}; !reflect.DeepEqual(args, wantArgs) {
-		t.Errorf("ProfileBlocks ran the binary with %q; want %q", args, wantArgs)
-	}
-}
-
-func TestBuildBinaryTimesOut(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	tc, _ := standIn(t)
-	tc.Env = append(tc.Env, standInHangBuildEnv+"=1")
-	tc.BuildTimeout, tc.Grace = 2*time.Second, time.Second
-	err := tc.BuildBinary("m/p", "m/p", "", filepath.Join(t.TempDir(), "pkg.test"))
-	if err == nil || !strings.Contains(err.Error(), "timed out after 2s") {
-		t.Errorf("BuildBinary error = %v; want one saying the build timed out after 2s", err)
-	}
-}
-
 func TestRunAlone(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -210,8 +102,6 @@ func TestRunAlone(t *testing.T) {
 		within time.Duration
 		// memory is the run's MemoryLimit; zero leaves it uncapped.
 		memory int64
-		// guard is the run's GuardKilled; nil sets none.
-		guard func(pid int) bool
 		// noProfile runs the test with no profile flag, as a binary built without coverage.
 		noProfile bool
 		// now is the run's Now; nil sets none.
@@ -246,14 +136,6 @@ func TestRunAlone(t *testing.T) {
 			}},
 		},
 		{name: "Fail", test: standInFail, want: testcover.RunResult{Name: standInFail, Elapsed: 0.1, Action: testcover.ActionFail}},
-		{
-			name: "FailedRunTheGuardKilledIsGuardKilled", test: standInFail, guard: func(int) bool { return true },
-			want: testcover.RunResult{Name: standInFail, Action: testcover.ActionFail, GuardKilled: true},
-		},
-		{
-			name: "FailedRunTheGuardDidNotKillStaysAFailure", test: standInFail, guard: func(int) bool { return false },
-			want: testcover.RunResult{Name: standInFail, Elapsed: 0.1, Action: testcover.ActionFail},
-		},
 		{name: "SkipWithoutProfile", test: standInSkip, want: testcover.RunResult{Name: standInSkip, Action: testcover.ActionSkip}},
 		{
 			name: "SkipWithProfile",
@@ -304,7 +186,7 @@ func TestRunAlone(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			tc, record := standIn(t)
-			tc.TestTimeout, tc.MemoryLimit, tc.GuardKilled, tc.Grace, tc.Now = tt.timeout, tt.memory, tt.guard, time.Second, tt.now
+			tc.TestTimeout, tc.MemoryLimit, tc.Grace, tc.Now = tt.timeout, tt.memory, time.Second, tt.now
 			profile := filepath.Join(t.TempDir(), "cover.out")
 			if tt.noProfile {
 				profile = ""

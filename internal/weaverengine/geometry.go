@@ -110,10 +110,6 @@ type Geometry struct {
 	// VerifyHold is the told pause hold the plan-level verify passes to every Verify.
 	// Nil holds nothing.
 	VerifyHold *verifytree.PauseHold
-	// ReachPending is the told source of the pending reach report, keyed by a gate key.
-	// A batch entry's reach turn reads it.
-	// Nil turns the reach turn off.
-	ReachPending func(gateKey string) (verifytree.ReachPending, bool, error)
 }
 
 // runPlan returns the shared machinery's view of g.

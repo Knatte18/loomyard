@@ -9,8 +9,6 @@ import (
 	"errors"
 	"slices"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -51,10 +49,9 @@ type guardRun struct {
 // runGuardScripted runs a memory guard over script and returns once the script's last sample has been handled.
 // limit is the memory limit the guard reads, and limited whether it finds one.
 // holders answers the guard's read of the limit's cgroup.
-// foreign names the processes another guard watches.
 // own answers the guard's read of the gate call's processes; nil answers with the tree last sampled.
 // Only the test binary at testBinaryPID can be described.
-func runGuardScripted(t *testing.T, script []scriptedSample, limit proc.MemoryLimit, limited bool, holders func(cgroup string) ([]proc.ProcessSample, error), foreign func(pid int) bool, own func() ([]proc.ProcessSample, error)) guardRun {
+func runGuardScripted(t *testing.T, script []scriptedSample, limit proc.MemoryLimit, limited bool, holders func(cgroup string) ([]proc.ProcessSample, error), own func() ([]proc.ProcessSample, error)) guardRun {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -87,7 +84,6 @@ func runGuardScripted(t *testing.T, script []scriptedSample, limit proc.MemoryLi
 			result.killed = append(result.killed, pid)
 			return nil
 		},
-		foreign: foreign,
 		after: func(time.Duration) <-chan time.Time {
 			elapsed := make(chan time.Time, 1)
 			elapsed <- time.Time{}
@@ -147,8 +143,6 @@ func TestMemoryGuard(t *testing.T) {
 		limit   proc.MemoryLimit
 		limited bool
 		holders func(cgroup string) ([]proc.ProcessSample, error)
-		// foreign are the running tier commands, whose test binaries the tier's own guard watches.
-		foreign []int
 		// own answers the read of the gate call's processes; nil answers with the sampled tree.
 		own               func() ([]proc.ProcessSample, error)
 		wantKilled        []int
@@ -178,17 +172,6 @@ func TestMemoryGuard(t *testing.T) {
 			}}},
 			wantKilled: []int{innerPID},
 			wantLines:  []string{memoryGuardLine("averylongpackagenamethatpassesfifteen.test", innerPID, "", "", "it held 5000 MB, over gate.memory_quit_mb's 4096 MB", false)},
-		},
-		{
-			name: "a test binary below a running tier command is left to the tier's own guard",
-			script: []scriptedSample{{tree: []proc.ProcessSample{
-				{PID: 2, Parent: 1, Path: "/bin/sh", RSS: 1 << 20},
-				{PID: otherPID, Parent: 2, Path: longBinaryPath, RSS: 5000 << 20},
-				{PID: testBinaryPID, Parent: 1, Path: testBinaryPath, RSS: 5000 << 20},
-			}}},
-			foreign:    []int{2},
-			wantKilled: []int{testBinaryPID},
-			wantLines:  []string{overLine},
 		},
 		{
 			name: "a short memory limit the run fills kills the largest tree at or above the floor",
@@ -276,11 +259,7 @@ func TestMemoryGuard(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			commands := &runningCommands{}
-			for _, pid := range tt.foreign {
-				commands.add(pid)
-			}
-			got := runGuardScripted(t, tt.script, tt.limit, tt.limited, tt.holders, commands.holds, tt.own)
+			got := runGuardScripted(t, tt.script, tt.limit, tt.limited, tt.holders, tt.own)
 			if !slices.Equal(got.killed, tt.wantKilled) {
 				t.Errorf("killed pids = %v; want %v", got.killed, tt.wantKilled)
 			}
@@ -299,74 +278,6 @@ func TestMemoryGuard(t *testing.T) {
 			}
 			if tt.wantSamples != 0 && got.samples != tt.wantSamples {
 				t.Errorf("sampler calls = %d; want %d", got.samples, tt.wantSamples)
-			}
-		})
-	}
-}
-
-// TestStartMemoryGuard pins what the guard's start hands its caller.
-// A guard that does not apply samples nothing, and its stop returns at once.
-// One that applies kills the runaway whole, and its stop ends the guard.
-// Afterwards the killed binary's pid reads as killed once, and no other pid ever does.
-func TestStartMemoryGuard(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	nested := []proc.ProcessSample{
-		{PID: testBinaryPID, Parent: 1, Path: testBinaryPath, RSS: 100 << 20},
-		{PID: innerPID, Parent: testBinaryPID, Path: longBinaryPath, RSS: 5000 << 20},
-	}
-	tests := []struct {
-		name    string
-		applies bool
-		tree    []proc.ProcessSample
-		// wantKilled are the pids guardKilled reads as killed.
-		wantKilled []int
-	}{
-		{name: "a guard that does not apply samples nothing and stops at once", applies: false, tree: guardTree(3000<<20, 2000<<20)},
-		{name: "a guard that applies kills the runaway whole before its stop returns", applies: true, tree: guardTree(3000<<20, 2000<<20), wantKilled: []int{testBinaryPID}},
-		{name: "an inner binary's kill notes the outer binary that started it too", applies: true, tree: nested, wantKilled: []int{innerPID, testBinaryPID}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			var samples atomic.Int32
-			firstKill := make(chan struct{})
-			var announce sync.Once
-			guard := memoryGuard{
-				limit:  guardLimit,
-				floor:  guardFloor,
-				period: time.Millisecond,
-				sample: func(int) ([]proc.ProcessSample, error) {
-					samples.Add(1)
-					return tt.tree, nil
-				},
-				pressure: func() (proc.MemoryLimit, bool) { return proc.MemoryLimit{}, false },
-				describe: func(int) (proc.Process, bool) { return proc.Process{}, false },
-				kill: func(int) error {
-					announce.Do(func() { close(firstKill) })
-					return nil
-				},
-				after: time.After,
-			}
-
-			stop, guardKilled := startMemoryGuard(context.Background(), guard, 1, tt.applies)
-			if tt.applies {
-				<-firstKill
-			}
-			stop()
-
-			if !tt.applies && samples.Load() != 0 {
-				t.Errorf("a guard that does not apply sampled %d times; want 0", samples.Load())
-			}
-			for _, pid := range []int{testBinaryPID, innerPID, guardChildPID, otherPID} {
-				want := slices.Contains(tt.wantKilled, pid)
-				if got := guardKilled(pid); got != want {
-					t.Errorf("guardKilled(%d) = %v after stop; want %v", pid, got, want)
-				}
-				if guardKilled(pid) {
-					t.Errorf("guardKilled(%d) = true on the second read; want false, the pid forgotten once read", pid)
-				}
 			}
 		})
 	}

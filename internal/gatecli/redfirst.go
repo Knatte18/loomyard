@@ -37,6 +37,31 @@ import (
 // redFirstVerb labels the refusals of `lym gate red-first`.
 const redFirstVerb = "gate red-first"
 
+// noteScoper is the format of the note for a hub whose scoper leaves red-first nothing to judge.
+// Its one %s takes the scoper's name.
+var noteScoper = "the hub's " + keyName(scoperKey) + " is %s, neither go nor dotnet, so red-first judged nothing"
+
+// verbDiffBase returns the commit a verb diffs from, or a refusal when there is none.
+// requested is the verb's --base value.
+// It is a commit the repository holds, or empty for the merge base with the parent branch.
+// verb labels the refusal, such as "gate red-first".
+func verbDiffBase(location *lymcwd.Location, fabric *fabricengine.Fabric, requested, verb string) (string, string) {
+	if requested != "" {
+		if !fabric.CommitExists(requested) {
+			return "", fmt.Sprintf("%s: --base %q names no commit; way forward: pass the SHA of a commit the repository holds", verb, requested)
+		}
+		return requested, ""
+	}
+	base, found, err := parentMergeBase(location)
+	switch {
+	case err != nil:
+		return "", fmt.Sprintf("%s: read the merge base with the parent branch: %v; way forward: re-run the same command", verb, err)
+	case !found:
+		return "", verb + ": the worktree has no parent branch to diff from; way forward: pass --base with the commit to diff from"
+	}
+	return base, ""
+}
+
 // noSeamWayForward is the way forward of a refusal that only the run's parent can lift.
 func noSeamWayForward() string {
 	return fmt.Sprintf("the run's parent records the bug as having no seam a test can reach, "+
@@ -69,7 +94,7 @@ and the tests and every other non-Go file keep their working-tree text.
 Under the dotnet scoper it takes the changed test methods of the changed .cs files.
 It runs them once per test project, by fully qualified name, in a checkout of the base,
 where the changed files of those test projects keep their working-tree text.
-It runs the key's tiers only, never its lints, its scope or its report steps.
+It runs the key's tiers only, never its lints or its scope.
 A test that does not build on the base counts as failing there.
 It exits 0 when a changed test failed on the base, and prints the red tests.
 It exits ` + fmt.Sprint(gateslot.RedFirstGreenExit) + ` when every changed test passed on the base, since such a test does not show the bug.
@@ -92,7 +117,7 @@ Examples:
 				gate: gate, base: base,
 				run: testRequest{
 					goBinary: goBinary, samplePeriod: samplePeriod, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit,
-					secondUnit: time.Second, rerunDelay: rerunDelay, pipeWaitDelay: pipeWaitDelay, stderr: cmd.ErrOrStderr(),
+					rerunDelay: rerunDelay, pipeWaitDelay: pipeWaitDelay, stderr: cmd.ErrOrStderr(),
 				},
 			}))
 			return nil
@@ -147,7 +172,7 @@ func runRedFirst(ctx context.Context, out io.Writer, request redFirstRequest) in
 	root := location.WorktreePath()
 	var module goModule
 	if mode == gateslot.RedFirstOverlay {
-		if module, err = redundancyModule(cfg, root); err != nil {
+		if module, err = goModuleOf(cfg, root); err != nil {
 			return output.Err(out, fmt.Sprintf("%s: %v; way forward: declare tier0 or tier1 with its dir at the Go module's root with lym config gate from the prime, then re-run the same command", redFirstVerb, err))
 		}
 	}
@@ -231,7 +256,7 @@ type redFirstCall struct {
 	// tests are the tests the diff adds or changes, at least one.
 	tests []testreach.ChangedTest
 	// baseTree reads the files of the base commit.
-	baseTree redundancyTree
+	baseTree sourceTree
 	// runTiers runs one package's tests through the gate key's tiers and returns the exit code.
 	// A test replaces it to stand in for the real tier runs.
 	runTiers func(ctx context.Context, out io.Writer, request testRequest) int
@@ -359,7 +384,7 @@ func judgeRedFirst(exitCode int, captured string, tests []testreach.ChangedTest)
 // changedTestsAt returns the tests the working tree head adds or changes against the tree base.
 // changed are the worktree-relative slash paths that differ between the two.
 // It reads the `_test.go` files of each package of module that holds a changed one, in both trees.
-func changedTestsAt(base, head redundancyTree, module goModule, changed []string) ([]testreach.ChangedTest, error) {
+func changedTestsAt(base, head sourceTree, module goModule, changed []string) ([]testreach.ChangedTest, error) {
 	dirs := map[string]bool{}
 	for _, rel := range changed {
 		if dir := path.Dir(rel); strings.HasSuffix(rel, "_test.go") && isModulePackage(module.rel, dir) {
@@ -369,7 +394,7 @@ func changedTestsAt(base, head redundancyTree, module goModule, changed []string
 	baseFiles, headFiles := testreach.FileSet{}, testreach.FileSet{}
 	for _, dir := range slices.Sorted(maps.Keys(dirs)) {
 		for _, side := range []struct {
-			tree  redundancyTree
+			tree  sourceTree
 			files testreach.FileSet
 		}{{base, baseFiles}, {head, headFiles}} {
 			names, err := side.tree.goFiles(dir)
@@ -390,7 +415,7 @@ func changedTestsAt(base, head redundancyTree, module goModule, changed []string
 			}
 		}
 	}
-	return testreach.ChangedTests(reachModuleOf(module), baseFiles, headFiles)
+	return testreach.ChangedTests(testreachModule(module), baseFiles, headFiles)
 }
 
 // baseOverlay writes into dir the base's text of each changed file of module that the base's build reads.
@@ -403,7 +428,7 @@ func changedTestsAt(base, head redundancyTree, module goModule, changed []string
 // a test file, a Go file outside the module's packages or under testdata, a file outside the module,
 // and a non-Go file no production file embeds.
 // They are the tests' inputs, or nothing the build reads.
-func baseOverlay(dir, root string, module goModule, changed []string, base redundancyTree) (map[string]string, error) {
+func baseOverlay(dir, root string, module goModule, changed []string, base sourceTree) (map[string]string, error) {
 	replace := map[string]string{}
 	for i, rel := range changed {
 		if strings.HasSuffix(rel, "_test.go") {
@@ -449,7 +474,7 @@ const goEmbedDirective = "//go:embed"
 // It reads the embed patterns of the Go files in rel's directory.
 // It reads those in each directory above it too, up to the module's root at moduleRel.
 // A pattern embeds rel when it matches rel's path below the Go file's directory, or a directory rel lies under.
-func embeddedAtBase(base redundancyTree, moduleRel, rel string) (bool, error) {
+func embeddedAtBase(base sourceTree, moduleRel, rel string) (bool, error) {
 	dir := path.Dir(rel)
 	for {
 		names, err := base.goFiles(dir)

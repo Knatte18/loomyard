@@ -77,13 +77,6 @@ func TestGateTest_RefusesBeforeResolvingTheHub(t *testing.T) {
 		{name: "a negative --copies names no count", args: []string{"test", "--copies=-1"}, wantError: "--copies -1 names no count"},
 		{name: "--copies without --gate names --gate", args: []string{"test", "--copies", "2", "./pkg"}, wantError: "name the gate key with --gate"},
 		{name: "--copies without targets names the targets", args: []string{"test", "--copies", "2", "--gate", "live"}, wantError: "name the packages to run as targets"},
-		{name: "--map with --tier names lym gate test --map", args: []string{"test", "--map", "--tier", "0"}, wantError: "lym gate test --map"},
-		{name: "--map with --upto names lym gate test --map", args: []string{"test", "--map", "--upto", "1"}, wantError: "lym gate test --map"},
-		{name: "--map with --gate names lym gate test --map", args: []string{"test", "--map", "--gate", "card"}, wantError: "lym gate test --map"},
-		{name: "--map with --guards names lym gate test --map", args: []string{"test", "--map", "--guards"}, wantError: "lym gate test --map"},
-		{name: "--map with --stop-on-fail names lym gate test --map", args: []string{"test", "--map", "--stop-on-fail"}, wantError: "lym gate test --map"},
-		{name: "--map with -C names lym gate test --map", args: []string{"test", "--map", "-C", "sub", "./pkg"}, wantError: "lym gate test --map"},
-		{name: "--map with words after -- names lym gate test --map", args: []string{"test", "--map", "./pkg", "--", "-run", "X"}, wantError: "lym gate test --map"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

@@ -980,28 +980,6 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	} else if got := c.env.WebsterRecord(); got != "none" {
 		t.Errorf("c.env.WebsterRecord() = %q; want none for an anchor with no webster run record", got)
 	}
-	if c.env.RedundancyReport == nil {
-		t.Error("c.env.RedundancyReport = nil; want the closure over the worktree's redundancy report")
-	} else if got, want := c.env.RedundancyReport(), "No current redundancy report: no gate call of this worktree has written one."; got != want {
-		t.Errorf("c.env.RedundancyReport() = %q; want %q for a worktree with no report", got, want)
-	}
-	if c.env.ReachReport == nil {
-		t.Error("c.env.ReachReport = nil; want the closure over the worktree's reach report")
-	} else if got, want := c.env.ReachReport(), "No current reach report: no gate call of this worktree has written one."; got != want {
-		t.Errorf("c.env.ReachReport() = %q; want %q for a worktree with no report", got, want)
-	}
-	if c.env.MutationReport == nil {
-		t.Error("c.env.MutationReport = nil; want the closure over the worktree's mutation report")
-	} else if got, want := c.env.MutationReport(), "No current mutation report: no gate call of this worktree has written one."; got != want {
-		t.Errorf("c.env.MutationReport() = %q; want %q for a worktree with no report", got, want)
-	}
-	// Both seams are nil-legal in the Env, so a dropped assignment would turn the reach turn off unnoticed.
-	if c.env.VerifyReach == nil {
-		t.Error("c.env.VerifyReach = nil; want the loomshed verify gate's pending-report source")
-	}
-	if c.env.WeaverDeps.Geom.ReachPending == nil {
-		t.Error("c.env.WeaverDeps.Geom.ReachPending = nil; want the weaver batch gate's pending-report source")
-	}
 
 	// Each loom segment's entry joins the models, keys and Bouncer pair with its resolved budget and hard cap:
 	// plan.max_bounces, code.max_bounces and plan.hard_max_bounces name their own keys;

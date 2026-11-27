@@ -708,9 +708,8 @@ func TestGateTest_Scopes(t *testing.T) {
 	})
 
 	t.Run("--gate with scope diff runs the computed scope", func(t *testing.T) {
-		// The gate declares no reports, so the tier commands are the only invocations the stand-in records.
 		config := scopesConfigWith(t, "go", func(cfg map[string]any) {
-			cfg["gates"] = map[string]any{"pr-review": map[string]any{"tiers": []int{0}, "scope": "diff", "reports": []string{}}}
+			cfg["gates"] = map[string]any{"pr-review": map[string]any{"tiers": []int{0}, "scope": "diff"}}
 		})
 		if err := os.WriteFile(configPath, config, 0o644); err != nil {
 			t.Fatal(err)

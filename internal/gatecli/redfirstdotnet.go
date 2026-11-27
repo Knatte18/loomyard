@@ -41,7 +41,7 @@ type dotnetRedFirstCall struct {
 	// changed are the worktree-relative slash paths that differ between base and the working tree.
 	changed []string
 	// baseTree reads the files of the base commit.
-	baseTree redundancyTree
+	baseTree sourceTree
 	// exportBase writes every file of the base commit under its directory.
 	// A test replaces it to stand in for the git read.
 	exportBase func(dest string) error

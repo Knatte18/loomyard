@@ -68,23 +68,21 @@ func TestConfigSpec_SetNestedKeys(t *testing.T) {
 }
 
 var templateDefaults = Config{
-	Slots: 2, BusyQuitSec: 120, MemoryQuitMB: 4096, FixerTimeoutMin: 30,
-	RedundancyBuildTimeoutMin: 10, RedundancyTestTimeoutSec: 120, RedundancyTestMemoryMB: 2048, RedundancyMaxTests: 40, RedundancyBudgetMin: 10,
-	ReachBudgetMin: 10, MutationMaxMutants: 40, MutationBudgetMin: 20, PlanTier0BudgetSec: 60,
+	Slots: 2, BusyQuitSec: 120, MemoryQuitMB: 4096, FixerTimeoutMin: 30, PlanTier0BudgetSec: 60,
 	Gates: map[string]GateKey{
 		"card":            {Tiers: []int{0}, Scope: "card", Lints: []string{"comments", "pattern"}, Fixer: "sonnet[medium]"},
-		"batch":           {Tiers: []int{0}, Scope: "card", Reports: []string{"reach"}},
-		"webster":         {Tiers: []int{0}, Scope: "all", Reports: []string{"reach", "redundancy"}},
-		"parent-align":    {Tiers: []int{0}, Scope: "all", Reports: []string{"reach", "redundancy"}},
+		"batch":           {Tiers: []int{0}, Scope: "card"},
+		"webster":         {Tiers: []int{0}, Scope: "all"},
+		"parent-align":    {Tiers: []int{0}, Scope: "all"},
 		"finalize":        {Tiers: []int{0}, Scope: "all"},
 		"adopt":           {Tiers: []int{0}, Scope: "all"},
-		"webster-fix":     {Tiers: []int{0}, Scope: "diff", Reports: []string{"mutation"}},
-		"darn-write":      {Tiers: []int{0}, Scope: "diff", Reports: []string{"reach", "redundancy", "mutation"}},
-		"code-burler-fix": {Tiers: []int{0}, Scope: "diff", Reports: []string{"reach", "redundancy", "mutation"}},
-		"pr-review":       {Tiers: []int{0}, Scope: "diff", Reports: []string{"mutation"}},
+		"webster-fix":     {Tiers: []int{0}, Scope: "diff"},
+		"darn-write":      {Tiers: []int{0}, Scope: "diff"},
+		"code-burler-fix": {Tiers: []int{0}, Scope: "diff"},
+		"pr-review":       {Tiers: []int{0}, Scope: "diff"},
 
 		"harden-live":       {Tiers: []int{0}, Scope: "diff"},
-		"harden-burler-fix": {Tiers: []int{0}, Scope: "diff", Reports: []string{"reach", "redundancy", "mutation"}},
+		"harden-burler-fix": {Tiers: []int{0}, Scope: "diff"},
 	},
 	Scoper: "none",
 }
@@ -141,28 +139,6 @@ func seedGateConfig(t *testing.T, contents string) string {
 		}
 	}
 	return baseDir
-}
-
-// TestConfig_HasGoCoverageMaps pins that only the go scoper works on Go packages.
-func TestConfig_HasGoCoverageMaps(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	tests := []struct {
-		scoper string
-		want   bool
-	}{
-		{"go", true},
-		{"none", false},
-		{"dotnet", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.scoper, func(t *testing.T) {
-			t.Parallel()
-			if got := (Config{Scoper: tt.scoper}).HasGoCoverageMaps(); got != tt.want {
-				t.Errorf("Config{Scoper: %q}.HasGoCoverageMaps() = %v; want %v", tt.scoper, got, tt.want)
-			}
-		})
-	}
 }
 
 // TestConfig_RedFirstMode pins how each scoper's changed tests run on the base.
@@ -297,6 +273,7 @@ func TestLoadConfig(t *testing.T) {
 		{"a retired cli_wait_sec still loads", "slots: 3\ncli_wait_sec: 180\n", hubWith(func(c *Config) { c.Slots = 3 }), ""},
 		{"a retired guard_tier still loads", "slots: 3\nguard_tier: 1\n", hubWith(func(c *Config) { c.Slots = 3 }), ""},
 		{"a retired test_map_max_age_days still loads, whatever its value", "slots: 3\ntest_map_max_age_days: 0\n", hubWith(func(c *Config) { c.Slots = 3 }), ""},
+		{"retired report-step keys still load", baseKeys + "redundancy_budget_min: 10\nmutation_max_mutants: 40\n", hubWith(func(*Config) {}), ""},
 		{"busy_quit_sec zero turns the watchdog off", "slots: 2\nbusy_quit_sec: 0\n", hubWith(func(c *Config) { c.BusyQuitSec = 0 }), ""},
 		{"memory_quit_mb zero turns the memory guard off", "slots: 2\nmemory_quit_mb: 0\n", hubWith(func(c *Config) { c.MemoryQuitMB = 0 }), ""},
 		{"negative memory_quit_mb", baseKeys + "memory_quit_mb: -1\n", Config{}, `config key "gate.memory_quit_mb": -1; want at least 0` + fixIt},
@@ -338,38 +315,13 @@ func TestLoadConfig(t *testing.T) {
 		},
 		{"an unparsable fixer on the card key", baseKeys + "gates:\n  card: {fixer: \"???\"}\n", Config{}, unparsableFixerRefusal("???")},
 		{"fixer_timeout_min zero", baseKeys + "fixer_timeout_min: 0\n", Config{}, `config key "gate.fixer_timeout_min": 0; want at least 1` + fixIt},
-		{"redundancy_build_timeout_min zero", baseKeys + "redundancy_build_timeout_min: 0\n", Config{}, `config key "gate.redundancy_build_timeout_min": 0; want at least 1` + fixIt},
-		{"redundancy_test_timeout_sec zero", baseKeys + "redundancy_test_timeout_sec: 0\n", Config{}, `config key "gate.redundancy_test_timeout_sec": 0; want at least 1` + fixIt},
-		{"redundancy_test_memory_mb zero", baseKeys + "redundancy_test_memory_mb: 0\n", Config{}, `config key "gate.redundancy_test_memory_mb": 0; want at least 1` + fixIt},
-		{"redundancy_max_tests zero", baseKeys + "redundancy_max_tests: 0\n", Config{}, `config key "gate.redundancy_max_tests": 0; want at least 1` + fixIt},
-		{"redundancy_budget_min zero", baseKeys + "redundancy_budget_min: 0\n", Config{}, `config key "gate.redundancy_budget_min": 0; want at least 1` + fixIt},
-		{"reach_budget_min zero", baseKeys + "reach_budget_min: 0\n", Config{}, `config key "gate.reach_budget_min": 0; want at least 1` + fixIt},
-		{"mutation_max_mutants zero", baseKeys + "mutation_max_mutants: 0\n", Config{}, `config key "gate.mutation_max_mutants": 0; want at least 1` + fixIt},
-		{"mutation_budget_min zero", baseKeys + "mutation_budget_min: 0\n", Config{}, `config key "gate.mutation_budget_min": 0; want at least 1` + fixIt},
 		{"plan_tier0_budget_sec negative", baseKeys + "plan_tier0_budget_sec: -1\n", Config{}, `config key "gate.plan_tier0_budget_sec": -1; want at least 0` + fixIt},
-		{"an unknown report", baseKeys + "gates:\n  webster: {tiers: [0], scope: all, reports: [speed]}\n", Config{}, `config key "gate.gates.webster": report "speed"; want reach, redundancy or mutation` + fixIt},
 		{
-			"a key listing every report loads", baseKeys + "gates:\n  finalize: {tiers: [0], scope: all, reports: [reach, redundancy, mutation]}\n",
+			"a tuned key still holding a reports list loads, the list ignored",
+			baseKeys + "gates:\n  darn-write: {tiers: [0, 1], scope: diff, reports: [reach, redundancy, mutation]}\n  pr-review: {reports: [], tiers: [0], scope: diff}\n",
 			hubWith(func(c *Config) {
 				c.Gates = maps.Clone(templateDefaults.Gates)
-				c.Gates["finalize"] = GateKey{Tiers: []int{0}, Scope: "all", Reports: []string{"reach", "redundancy", "mutation"}}
-			}), "",
-		},
-		{
-			"a tuned webster without reports takes the template's, and reports [] on another key turns them off",
-			baseKeys + "gates:\n  webster: {tiers: [0, 1], scope: all}\n  darn-write: {tiers: [0], scope: diff, reports: []}\n",
-			hubWith(func(c *Config) {
-				c.Gates = maps.Clone(templateDefaults.Gates)
-				c.Gates["webster"] = GateKey{Tiers: []int{0, 1}, Scope: "all", Reports: []string{"reach", "redundancy"}}
-				c.Gates["darn-write"] = GateKey{Tiers: []int{0}, Scope: "diff"}
-			}), "",
-		},
-		{
-			"a tuned darn-write and batch without reports take the template's",
-			baseKeys + "gates:\n  darn-write: {tiers: [0, 1], scope: diff}\n  batch: {tiers: [0], scope: card}\n",
-			hubWith(func(c *Config) {
-				c.Gates = maps.Clone(templateDefaults.Gates)
-				c.Gates["darn-write"] = GateKey{Tiers: []int{0, 1}, Scope: "diff", Reports: []string{"reach", "redundancy", "mutation"}}
+				c.Gates["darn-write"] = GateKey{Tiers: []int{0, 1}, Scope: "diff"}
 			}), "",
 		},
 		{"scope card on a key but card and batch", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: card}\n", Config{}, `config key "gate.gates.parent-align": scope card is only for the card and batch keys` + fixIt},
@@ -383,7 +335,7 @@ func TestLoadConfig(t *testing.T) {
 			"a key's lints load in order", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: all, lints: [pattern, comments]}\n",
 			hubWith(func(c *Config) {
 				c.Gates = maps.Clone(templateDefaults.Gates)
-				c.Gates["parent-align"] = GateKey{Tiers: []int{0}, Scope: "all", Lints: []string{"pattern", "comments"}, Reports: []string{"reach", "redundancy"}}
+				c.Gates["parent-align"] = GateKey{Tiers: []int{0}, Scope: "all", Lints: []string{"pattern", "comments"}}
 			}), "",
 		},
 		{"a key in the retired list shape", baseKeys + "gates:\n  card: [0]\n", Config{}, `config key "gate.gates.card": the retired list shape; write it as a mapping with tiers and scope, such as {tiers: [0], scope: diff}, with "lym config gate" from the prime` + roleClause},

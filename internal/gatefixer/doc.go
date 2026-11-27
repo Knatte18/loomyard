@@ -37,7 +37,6 @@
 // At most one fixer runs per failed evaluation, and at most the entry's attempts plus one per row visit.
 // An interrupted fixer is replaced on the same files and counts toward neither bound.
 // A failing result its gate marks WriterOnly is meant for the writer alone, so it spawns no fixer.
-// The judging run after a fixer goes through the entry's RerunMark, so a gate can tell that run from the first.
 // Every other entry only waits for a live fixer, and the entry's final closure spawns none but a replacement,
 // so every entry is judged over the fixer's finished tree.
 //

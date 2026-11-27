@@ -50,8 +50,7 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
   it samples once per period, 5 seconds in production, for as long as go test runs;
   it spawns nothing,
 - the gate memory guard in `internal/gatecli/memoryguard.go`:
-  it samples once a second for as long as a tier's command, `lym gate redundant`, `lym gate test --map`
-  or the redundancy report step of `lym gate test` runs;
+  it samples once a second for as long as a tier's command runs;
   it spawns nothing,
 - the detached gate runner's lease read in `internal/gatecli/detachrun.go`:
   it wakes once a second for as long as the run's lease lasts,

@@ -115,10 +115,6 @@ type GateKey struct {
 	Scope string `yaml:"scope"`
 	// Lints are the lint steps the key's call runs after its tiers, in order, each LintComments or LintPattern; empty runs none.
 	Lints []string `yaml:"lints"`
-	// Reports are the advisory report steps the key's call judges beside its last tier and writes after its lints.
-	// Each is ReportReach, ReportRedundancy or ReportMutation; empty runs none.
-	// A report step never changes the call's result.
-	Reports []string `yaml:"reports"`
 	// Fixer is the model-spec of the cold fixer that a red agent call of this key hands its verdict to; empty turns it off.
 	// Only the card key may hold one.
 	Fixer string `yaml:"fixer"`
@@ -146,24 +142,6 @@ const (
 	// LintPattern is the PATTERN headroom lint: it flags PATTERN.md growth past its headroom line versus HEAD.
 	LintPattern = "pattern"
 )
-
-// ReportReach names the reach report step a gate key's reports may hold.
-// It refreshes the worktree's coverage maps of the packages the diff changes.
-// It finds the changed functions no test of the maps reaches.
-// It writes them to the worktree as a note for the writer and the review.
-// It runs before every other report step.
-const ReportReach = "reach"
-
-// ReportRedundancy names the redundancy report step a gate key's reports may hold.
-// It judges the diff's new and changed tests against the per-package coverage maps.
-// It writes the verdicts to the worktree.
-const ReportRedundancy = "redundancy"
-
-// ReportMutation names the mutation report step a gate key's reports may hold.
-// It mutates the lines the diff changes in the blocks the coverage maps' tests cover, and runs the covering tests.
-// It writes every survivor and the counts to the worktree, and prints one summary line.
-// It runs after every other report step.
-const ReportMutation = "mutation"
 
 // goReadGates are the gate keys the Go verify sites read, in the order TiersValue lists them.
 var goReadGates = []string{"card", "batch", "webster", "parent-align", "finalize", "adopt", "webster-fix", "darn-write", "code-burler-fix", "harden-burler-fix", "harden-live", "pr-review"}
@@ -409,7 +387,7 @@ func (c Config) Gate(key string) (GateKey, error) {
 		return GateKey{}, useRefusal("gates.%s is empty, and every gate verifies at least one tier", key)
 	}
 	if len(c.Tiers) == 0 {
-		return GateKey{Scope: gate.Scope, Lints: slices.Clone(gate.Lints), Reports: slices.Clone(gate.Reports)}, nil
+		return GateKey{Scope: gate.Scope, Lints: slices.Clone(gate.Lints)}, nil
 	}
 	if _, declared := c.Tiers[tierKey(0)]; !declared {
 		return GateKey{}, useRefusal("the hub declares no tier0, so no gate has a tier to run; declare %s", tierKeyName(tierKey(0)))
@@ -419,7 +397,7 @@ func (c Config) Gate(key string) (GateKey, error) {
 			return GateKey{}, useRefusal("gates.%s lists %s, which the hub does not declare", key, tierKey(number))
 		}
 	}
-	return GateKey{Tiers: slices.Clone(gate.Tiers), Scope: gate.Scope, Lints: slices.Clone(gate.Lints), Reports: slices.Clone(gate.Reports)}, nil
+	return GateKey{Tiers: slices.Clone(gate.Tiers), Scope: gate.Scope, Lints: slices.Clone(gate.Lints)}, nil
 }
 
 // TierList returns the tier numbers the named gate key runs, in order, with the refusals Gate gives.

@@ -140,15 +140,7 @@ func batchGateSpec(geom Geometry, cards []planparser.Card, last bool, rowGates s
 		if i < len(cards) {
 			name = gateKeyCard + " " + cards[i].ID()
 		}
-		gate := batchGateClosure(geom, name, call)
-		if i >= len(cards) && geom.ReachPending != nil {
-			gate = verifytree.WithReachTurn(gate, verifytree.ReachTurn{
-				Pending:    func() (verifytree.ReachPending, bool, error) { return geom.ReachPending(gateKeyBatch) },
-				Attempts:   batchGateAttempts,
-				ListedPath: verifytree.ReachListedPath(geom.VerifyDir, batchGateSite),
-			})
-		}
-		spec = append(spec, shuttleengine.GateEntry{Name: name, Gate: gate, Attempts: batchGateAttempts})
+		spec = append(spec, shuttleengine.GateEntry{Name: name, Gate: batchGateClosure(geom, name, call), Attempts: batchGateAttempts})
 	}
 	return append(spec, rowGates...), nil
 }

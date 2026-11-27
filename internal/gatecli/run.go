@@ -43,12 +43,6 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	if refusal := flagShapeRefusal(request); refusal != "" {
 		return output.Err(out, refusal)
 	}
-	if request.mapMode {
-		return runTestMap(ctx, out, testMapRequest{
-			scope: request, goBinary: request.goBinary, environ: os.Environ(), secondUnit: request.secondUnit,
-			minuteUnit: request.timeoutUnit, grace: request.pipeWaitDelay, cappedParallel: memoryCappedParallel, stderr: request.stderr,
-		})
-	}
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("gate test: cannot read the working directory: %v; way forward: re-run the same command", err))
@@ -102,7 +96,6 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	request.memoryQuit = cfg.MemoryQuit()
 	request.hubEnv = hubEnv
 	request.sessionEnv = os.Environ()
-	request.commands = &runningCommands{}
 
 	green := openGreen(gateslot.WaitDir(location.AnchorPath()), request.root, request.goBinary, cfg)
 	if request.checkoutRoot != "" {
@@ -177,23 +170,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	code, firstFailed := 0, ""
 	buildNamed := false
 	var unjudged unjudgedRuns
-	// The report steps judge in the background beside the plan's last tier, once every earlier run passed.
-	// A failed run cancels them, and every return waits for their end.
-	var reports reportSteps
-	if request.gate != "" {
-		reports = reportStepsOf(cfg.Gates[request.gate].Reports)
-	}
-	reportsStart := lastTierStart(plan)
-	var chain *reportChain
-	defer func() {
-		if chain != nil {
-			chain.stop()
-		}
-	}()
 	for i, run := range plan {
-		if i == reportsStart && reports.any() && code == 0 && runCtx.Err() == nil {
-			chain = exe.startReports(runCtx, reports, inHub)
-		}
 		var end runEnd
 		if run.guardStep {
 			end = exe.runGuard(run)
@@ -218,9 +195,6 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 				code, firstFailed = end.code, runLabel(run)
 			}
 		}
-		if chain != nil && code != 0 {
-			chain.cancel()
-		}
 		if end.halt {
 			if end.ran && code == 0 {
 				printLine(request.stderr, "gate test: the call was cancelled while its last run ended without a failure, so it exits 1; way forward: re-run the same command")
@@ -240,7 +214,6 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	}
 	// The lint steps run after the tiers, so a call that fails both reports the two in one go.
 	if request.gate != "" && runCtx.Err() == nil {
-		red := code != 0
 		for _, lint := range runLints(request.root, cfg.Gates[request.gate].Lints) {
 			unjudged.judged = true
 			exe.failed = append(exe.failed, lint)
@@ -248,22 +221,6 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 			if code == 0 {
 				code, firstFailed = 1, lint.label
 			}
-		}
-		// The reports are written last and never change the code.
-		// Steps that judged beside the last tier hand over their reports when no run failed;
-		// otherwise the steps judge now, as red-gate reports when a run failed.
-		if reports.any() {
-			var judged *judgedReports
-			if chain != nil && !red {
-				judged = chain.wait()
-			} else {
-				if chain != nil {
-					chain.stop()
-				}
-				judged = exe.newJudgedReports(reports)
-				judged.judge(runCtx, red, inHub)
-			}
-			judged.write(request.stderr)
 		}
 	}
 	exe.printReport(inHub)
@@ -426,20 +383,6 @@ func runLabel(run tierRun) string {
 // flagShapeRefusal returns the refusal for a malformed combination of flags, or "" when the call is well-formed.
 // It needs no config and runs before hub resolution.
 func flagShapeRefusal(request testRequest) string {
-	if request.mapMode {
-		for _, other := range []struct {
-			flag  string
-			given bool
-		}{
-			{"--tier", len(request.tiers) > 0}, {"--upto", request.uptoGiven}, {"--gate", request.gate != ""},
-			{"--guards", request.guards}, {"--" + gateslot.StopOnFailFlag, request.stopOnFail},
-			{"-C", request.dir != ""}, {"words after --", len(request.args) > 0},
-		} {
-			if other.given {
-				return fmt.Sprintf("gate test: --map measures tier0 and tier1 over its scope, so it goes with none of --tier, --upto, --gate, --guards, --%s, -C and words after --; way forward: drop %s and run lym gate test --map with targets or a scope flag", gateslot.StopOnFailFlag, other.flag)
-			}
-		}
-	}
 	if request.copies < 0 {
 		return fmt.Sprintf("gate test: --copies %d names no count; way forward: pass 1 or more copies, or drop --copies, then re-run the same command", request.copies)
 	}

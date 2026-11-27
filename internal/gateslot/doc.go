@@ -43,12 +43,7 @@
 // The non-tier holders hold one slot and set their own Go flags through HolderEnv.
 // Each passes the `-p` value it reads from the pool's Limits.Tier0Parallel at its acquire,
 // so a hub that declares `tier0` bounds them by its parallel and a hub that declares none adds no `-p`.
-// The redundancy report step of `lym gate test` is one: it takes one slot beside the slots the call's last tier holds.
-// The reach report step holds a slot only for its refresh of a task worktree's own maps.
-// `lym gate redundant` is another.
-// It waits for its slot once it has a candidate to check by mutation, and holds it to its end.
-// `lym gate mutate` is a third, and the mutation report step of `lym gate test` a fourth.
-// Each waits for its slot after its refresh of the worktree's maps, and holds it to its end.
+// They are a card's `**Verify:**` run, a drift command, the plan lint's Go type load and every mode of `cmd/testtiming`.
 //
 // # Prebuilt store
 //
@@ -77,10 +72,10 @@
 // `tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier.
 // `gates` is a per-name map from a gate key to a GateKey,
 // so a hub file that sets one key keeps the template's value for every other.
-// A GateKey may hold `lints` and `reports`: its lints run after its tiers,
-// and its reports judge beside its last tier and are written after its lints.
+// A GateKey may hold `lints`, which run after its tiers.
 // It may also hold a `fixer` on the `card` key only.
-// Config load fills a template key a tuned `gates` entry lacks into that entry, and `reports: []` turns the reports off.
+// Config load fills a template key a tuned `gates` entry lacks into that entry.
+// It ignores a key the GateKey does not hold, such as the `reports` list of an older template.
 // A Tier's `manual: true` keeps it out of a `lym gate test --upto` range.
 // A Tier's `carry: false` keeps a green run from being carried over an unchanged tree.
 // A Tier's `memory_mb` caps the memory its command holds with every process it starts.
@@ -97,9 +92,6 @@
 // so a fresh hub with no tests yet runs the key's lints and no tier.
 // Each refusal names `lym config gate`.
 // The call renderers, such as Config.GateCall and Config.AgentGateCall, render only a form the hub's config can run.
-//
-// `lym gate test --map` and the reach and mutation report steps build coverage maps under the `redundancy_*` bounds.
-// A mutant run past the test bound or the memory cap is unjudged, never a kill.
 //
 // A recipe row's `gate_key` setting names the gate key it reads in place of its lower-cased row name.
 // The shipped recipes and template.yaml hold which row reads which key.

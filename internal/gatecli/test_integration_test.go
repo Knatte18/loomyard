@@ -1574,68 +1574,6 @@ func TestGateTest_Scenario(t *testing.T) {
 		requireFree(t)
 	})
 
-	t.Run("a gate key's redundancy report step judges beside its last tier and leaves the call's exit code to it", func(t *testing.T) {
-		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
-			cfg["gates"] = map[string]any{"reported": map[string]any{"tiers": []int{6}, "scope": "all", "reports": []string{gateslot.ReportRedundancy}}}
-		}))
-		defer writeConfig(t, gateConfig)
-		reportPath := filepath.Join(waitDir, redundancyReportFileName)
-
-		tests := []struct {
-			name     string
-			env      []string
-			wantCode int
-			wantRed  bool
-		}{
-			{"AGreenTier", nil, 0, false},
-			{"ARedTier", []string{helperExitEnv + "=7"}, 7, true},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				if err := os.Remove(reportPath); err != nil && !os.IsNotExist(err) {
-					t.Fatal(err)
-				}
-				g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "reported"}, env: tt.env})
-				if code := g.wait(t); code != tt.wantCode {
-					t.Errorf("exit code = %d, stdout %q; want the tier's %d", code, g.stdout.String(), tt.wantCode)
-				}
-				report, found, err := readRedundancyReport(reportPath)
-				if err != nil || !found || report.GateKey != "reported" || report.RedGate != tt.wantRed {
-					t.Errorf("report = %+v, found %v, err %v; want one for gate key reported with red gate %v", report, found, err, tt.wantRed)
-				}
-				if !strings.Contains(g.stdout.String(), "gate test: redundancy report: ") {
-					t.Errorf("stdout = %q; want the report's summary line", g.stdout.String())
-				}
-				requireFree(t)
-			})
-		}
-	})
-
-	t.Run("a halted call whose key lists reports writes no report", func(t *testing.T) {
-		if err := os.MkdirAll(filepath.Join(prime, "cmd", "lym"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(prime, "cmd")) })
-		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
-			cfg["gates"] = map[string]any{"halting": map[string]any{"tiers": []int{0, 3}, "scope": "all", "reports": []string{gateslot.ReportRedundancy}}}
-		}))
-		defer writeConfig(t, gateConfig)
-		reportPath := filepath.Join(waitDir, redundancyReportFileName)
-		if err := os.Remove(reportPath); err != nil && !os.IsNotExist(err) {
-			t.Fatal(err)
-		}
-
-		// Tier0 passes, so the report steps start beside tier3, whose failed prebuild then halts the call.
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "halting"}, env: []string{helperBuildExitEnv + "=1"}})
-		if code := g.wait(t); code != 1 {
-			t.Errorf("exit code = %d, stdout %q; want the refusal's 1", code, g.stdout.String())
-		}
-		if report, found, err := readRedundancyReport(reportPath); err != nil || found {
-			t.Errorf("readRedundancyReport() = %+v, found %v, err %v; want no report from a halted call", report, found, err)
-		}
-		requireFree(t)
-	})
-
 	// A stand-in exiting 134 with no test event is a tier whose test runner crashed on SIGABRT, as a shell reports one.
 	crashEnv := []string{helperExitEnv + "=134"}
 	// closingOf returns the last closing line of failed runs in output.
@@ -2595,7 +2533,7 @@ func TestGateTest_CheckoutRootMovesTheBuildAndTierDirs(t *testing.T) {
 	var out, stderr bytes.Buffer
 	code := runTest(lymcwd.WithCwd(context.Background(), anchor), &out, testRequest{
 		goBinary: os.Args[0], samplePeriod: defaultSamplePeriod, preTierCeiling: defaultPreTierCeiling, timeoutUnit: time.Minute,
-		secondUnit: time.Second, rerunDelay: defaultRerunDelay, pipeWaitDelay: defaultPipeWaitDelay, stderr: &stderr,
+		rerunDelay: defaultRerunDelay, pipeWaitDelay: defaultPipeWaitDelay, stderr: &stderr,
 		tiers: []int{0, 2}, targets: []string{"./pkg"}, checkoutRoot: checkout,
 	})
 	if code != 0 {

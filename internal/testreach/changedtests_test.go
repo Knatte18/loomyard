@@ -53,6 +53,18 @@ func TestChangedTests(t *testing.T) {
 			head: testreach.FileSet{"mod/b_test.go": []byte("package p\n\nfunc TestA(t *testing.T) {}\n")},
 		},
 		{
+			name: "SameNameInTwoFilesIsMatchedPerFile",
+			base: testreach.FileSet{
+				"mod/x_linux_test.go": []byte("package p\n\nfunc TestPlat(t *testing.T) { _ = 1 }\n"),
+				"mod/x_other_test.go": []byte("package p\n\nfunc TestPlat(t *testing.T) { _ = 2 }\n"),
+			},
+			head: testreach.FileSet{
+				"mod/x_linux_test.go": []byte("package p\n\nfunc TestPlat(t *testing.T) { _ = 10 }\n"),
+				"mod/x_other_test.go": []byte("package p\n\nfunc TestPlat(t *testing.T) { _ = 2 }\n"),
+			},
+			want: []testreach.ChangedTest{{Package: "ex.com/m", File: "x_linux_test.go", Name: "TestPlat"}},
+		},
+		{
 			name: "DeletedTestIsNotFound",
 			base: testreach.FileSet{"mod/a_test.go": []byte("package p\n\nfunc TestA(t *testing.T) {}\n")},
 			head: testreach.FileSet{"mod/a_test.go": []byte("package p\n")},

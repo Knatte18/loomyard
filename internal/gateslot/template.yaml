@@ -1,15 +1,7 @@
 slots: 2  # how many gate builds and test runs the hub executes at once; a lowered count takes effect on the next acquire while a running holder finishes
 busy_quit_sec: 120  # seconds a Go test binary under lym gate test may keep a CPU core at least 90 percent busy before it gets one SIGQUIT and dumps its goroutine stacks; 0 turns the watchdog off; raise it for a package that is CPU-bound but healthy
-memory_quit_mb: 4096  # megabytes a Go test binary that lym gate test (its redundancy and mutation report steps and the refresh of its reach report step included), lym gate redundant, lym gate mutate or lym gate test --map runs may hold, with every process it starts, before the memory guard kills them all and names its package; the guard also kills the largest test binary of 1024 MB or more once the memory limit lym sits under has less than a tenth left; 0 turns the guard off
+memory_quit_mb: 4096  # megabytes a Go test binary that lym gate test runs may hold, with every process it starts, before the memory guard kills them all and names its package; the guard also kills the largest test binary of 1024 MB or more once the memory limit lym sits under has less than a tenth left; 0 turns the guard off
 fixer_timeout_min: 30  # minutes a cold gate fixer may run before the call that spawned it stops waiting; it bounds the card gate's fixer and the row gate fixers, and webster's fix-verify keeps webster.recovery_timeout_min
-redundancy_build_timeout_min: 10  # minutes each coverage, mutant and lym build of a coverage map run, the reach report step's refresh, the redundancy and mutation report steps, lym gate redundant or lym gate mutate may take before its process group is killed and the build counts as failed
-redundancy_test_timeout_sec: 120  # seconds each test of those runs alone may take before its process group is killed; the test is left out, except a mutant run in lym gate redundant, lym gate mutate or the mutation report step, which is then unjudged, never a kill
-redundancy_test_memory_mb: 2048  # megabytes each test of those runs alone may hold, with every process it starts, before the kernel ends it or fails its allocation; the test is left out, recorded as failed by lym gate test --map, and a mutant run in lym gate redundant, lym gate mutate or the mutation report step is unjudged, never a kill; lym gate redundant, lym gate mutate, the mutation report step, lym gate test --map and the reach report step's refresh run fewer tests side by side when the memory limit they sit under leaves less than their caps together
-redundancy_max_tests: 40  # the most new and changed tests the redundancy report step judges in one call, taken in file then name order; the rest are listed as not judged
-redundancy_budget_min: 10  # minutes the redundancy report step may spend on its builds and tests once it holds its gate slot; past it the step starts no further build or test
-reach_budget_min: 10  # minutes the reach and mutation report steps and lym gate mutate may spend refreshing the worktree's coverage maps once they hold a gate slot; past it they start no further build or test
-mutation_max_mutants: 40  # the most mutants lym gate mutate or the mutation report step runs for one diff, one per changed function in turn, spread evenly over the functions when the cap is short of one each; the rest are listed as not run
-mutation_budget_min: 20  # minutes lym gate mutate or the mutation report step may spend on its mutant builds and runs once it holds its gate slot; past it it starts no further build or test
 plan_tier0_budget_sec: 60  # seconds a plan's new and changed tier0 tests may add to one tier0 run; the planner states each card's estimate in its test Intent and the plan review flags a plan past it; 0 sets no budget
 
 # The hub's test tiers, keyed tier0, tier1, and so on; the template declares none.
@@ -28,23 +20,22 @@ tiers: {}
 # The scope card is only for the card and batch keys.
 # The darn-write key's scope is not card and its tiers all hold {args} in their command, since the darn writer's measuring call passes the words that select one test class there.
 # A key may also hold lints, the lint steps its call runs after the tiers against HEAD: comments (fixed-column-wrapped breaks and over-long lines in // comments) and pattern (PATTERN.md grown past its headroom line).
-# A key may also hold reports, the advisory steps its call judges beside its last tier and writes after the lints, which never change its result; reach runs before every other report step and mutation after them: reach (refreshes the worktree's coverage maps of the packages the diff changes and writes the changed functions no test reaches into the worktree's gate directory), redundancy (judges the diff's new and changed Go tests against the coverage maps and writes the verdicts into the worktree's gate directory), mutation (mutates the lines the diff changes in blocks a test covers, runs the tests covering each mutant, writes every survivor, unjudged mutant, uncovered changed block and package not judged into the worktree's gate directory and prints one summary line); reports: [] turns them off.
 # The card key alone may also hold fixer, a model-spec such as sonnet[medium]: the cold fixer an agent's red lym gate test --gate card call hands its failures to; "" turns it off.
 # No tier list may be empty.
 # While gate.tiers is empty, every key runs with nothing to run; once any tier is declared, each tier a key names must be declared too.
 gates:
   card: {tiers: [0], scope: card, lints: [comments, pattern], fixer: "sonnet[medium]"}
-  batch: {tiers: [0], scope: card, reports: [reach]}
-  webster: {tiers: [0], scope: all, reports: [reach, redundancy]}
-  parent-align: {tiers: [0], scope: all, reports: [reach, redundancy]}
+  batch: {tiers: [0], scope: card}
+  webster: {tiers: [0], scope: all}
+  parent-align: {tiers: [0], scope: all}
   finalize: {tiers: [0], scope: all}
   adopt: {tiers: [0], scope: all}
-  webster-fix: {tiers: [0], scope: diff, reports: [mutation]}
-  darn-write: {tiers: [0], scope: diff, reports: [reach, redundancy, mutation]}
-  code-burler-fix: {tiers: [0], scope: diff, reports: [reach, redundancy, mutation]}
+  webster-fix: {tiers: [0], scope: diff}
+  darn-write: {tiers: [0], scope: diff}
+  code-burler-fix: {tiers: [0], scope: diff}
   harden-live: {tiers: [0], scope: diff}
-  harden-burler-fix: {tiers: [0], scope: diff, reports: [reach, redundancy, mutation]}
-  pr-review: {tiers: [0], scope: diff, reports: [mutation]}
+  harden-burler-fix: {tiers: [0], scope: diff}
+  pr-review: {tiers: [0], scope: diff}
 
 # How a computed, base or card scope maps to {targets}: go derives the impacted Go packages per module, dotnet derives the impacted C# test projects and classes from the type-name closure over test classes, none runs every tier whole.
 scoper: none

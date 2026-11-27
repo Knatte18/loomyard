@@ -26,7 +26,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gatecli"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -835,7 +834,6 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 
 	weaverGeom.Index = planglyph.NewSlottedIndex(fabricengine.NewReferenceRule(), weaverGeom.GateSlots, weaverGeom.GateWaitDir)
 	weaverGeom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
-	weaverGeom.ReachPending = gatecli.ReachPendingOf(location)
 	weaverDeps := weaverengine.RunDeps{
 		Geom:   weaverGeom,
 		Runner: runner,
@@ -927,12 +925,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// VerifyMergeBase and ReviewBase are nil for a standalone run, which records no parent branch.
 		VerifyMergeBase: verifyMergeBase,
 		ReviewBase:      verifyMergeBase,
-		// RedundancyReport, ReachReport and MutationReport read the gate's reports at each rubric fill, never at wire time.
-		RedundancyReport: redundancyReportNote(location),
-		ReachReport:      reachReportNote(location),
-		MutationReport:   mutationReportNote(location),
-		VerifyHold:       verifytree.NewPauseHold(pauseGeom, nil),
-		VerifyReach:      gatecli.ReachPendingOf(location),
+		VerifyHold:      verifytree.NewPauseHold(pauseGeom, nil),
 		// EntryLabels opens the board at each red-first gate arrival, never at wire time.
 		EntryLabels:     entryLabels(location),
 		RedFirstCommand: gateslot.RedFirstCall,

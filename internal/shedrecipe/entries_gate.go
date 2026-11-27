@@ -15,7 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // gateEntryKeys are the keys one element of a row's "gates" list may carry.
@@ -53,7 +52,6 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // env.VerifyTreeScope alone selects the darn form;
 // it requires env.VerifyMergeBase, the base of both lints in that form;
 // otherwise env.VerifyMergeBase is the base of the headroom lint;
-// with env.VerifyReach set, the gate runs under verifytree.WithReachTurn and its entry carries a re-run mark;
 // "drift" requires the env.Drift seams Config, Status, Head, CaptureCurrent, TrailerCommit, FileAt and Compare;
 // it returns driftengine.NewDriftGate over them;
 // "expectation" requires the env.Drift seams Config, TrailerCommit and FileAt;
@@ -165,15 +163,6 @@ func resolveGateEntry(entry, row, gateKey string, index int, elem Config, env En
 	}
 	// Only the red-first gate carries a Final closure, and its Gate answers pending, so its entry holds.
 	resolved := shuttleengine.GateEntry{Name: name, Gate: closure, Final: final, MayHold: final != nil, Attempts: attempts, PassOnCap: passOnCap}
-	if name == "verify" && env.VerifyReach != nil {
-		resolved.Rerun = &shuttleengine.RerunMark{}
-		resolved.Gate = verifytree.WithReachTurn(closure, verifytree.ReachTurn{
-			Pending:    func() (verifytree.ReachPending, bool, error) { return env.VerifyReach(gateKey) },
-			Attempts:   attempts,
-			Rerun:      resolved.Rerun,
-			ListedPath: verifytree.ReachListedPath(env.VerifyDir, row+" gate"),
-		})
-	}
 	return resolved, nil
 }
 

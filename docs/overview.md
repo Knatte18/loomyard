@@ -300,7 +300,7 @@ github.com/Knatte18/loomyard/
 ├── internal/cleanupcli/          the cleanup CLI command (`lym cleanup`, the routine cleanups of the hub prime's leftover state, a dry run by default)
 ├── internal/fabriccli/           the fabric CLI command (git coordination of code and records)
 ├── internal/fabricengine/        the fabric domain kernel
-├── internal/gatecli/             the gate CLI command (`lym gate test`, the tier runner: the hub's test tiers over a scope, slotted, bounded, counted and logged; `lym gate status`, the holders of the hub's gate slots; `lym gate report`, the machine's run records totalled per slug and gate key; `lym gate test --map`, the per-package coverage maps built on command at the HEAD of the worktree it runs in; `lym gate redundant`, one package's redundancy candidates read from its coverage map and confirmed by mutation; `lym gate reach`, the tests that reach one function, or the landings of a branch that a test reaches, read from the coverage maps; `lym gate mutate`, the mutants of the lines the worktree's diff changes, run against the tests that cover them, a check the gate's `mutation` report step also runs; `lym gate red-first`, the tests the worktree's diff adds or changes, run once on the merge base's code)
+├── internal/gatecli/             the gate CLI command (`lym gate test`, the tier runner: the hub's test tiers over a scope, slotted, bounded, counted and logged; `lym gate status`, the holders of the hub's gate slots; `lym gate report`, the machine's run records totalled per slug and gate key; `lym gate red-first`, the tests the worktree's diff adds or changes, run once on the merge base's code)
 ├── internal/helpcli/             the help CLI command (`lym help [<command>...]`, `lym help index`)
 ├── internal/shortcutcli/         the top-level operator shortcuts (`lym a`, `lym s`, `lym p`, `lym r`) from one embedded file
 ├── internal/idecli/              the ide CLI command
@@ -407,8 +407,8 @@ github.com/Knatte18/loomyard/
 ├── internal/commentlint/        the comment line lint: fixed-column wraps and over-long lines in the `//` comment blocks a diff creates, over a told worktree and base
 ├── internal/patternlint/        the PATTERN headroom lint: growth of the overview past its headroom line, over a told worktree and base
 ├── internal/impactset/          the impacted-set command a gate key's `diff` scope runs: the packages a diff reaches over the import graph, plus the `//lym:guard` tests, or a fallback reason to run the full verify
-├── internal/testcover/          the per-test coverage engine: runs each test of a package alone under a coverage binary, keys blocks by content, judges contained and removable tests, reads and writes the per-package coverage map, and compares a map with a commit to plan which tests a build re-measures or to name the miss that rebuilds the package whole
-├── internal/testreach/          the one cross-package reader of the per-test coverage maps: finds the functions a diff changes from the file contents of both sides, runs no git
+├── internal/testcover/          the per-test coverage engine of `cmd/testtiming -redundancy`: runs each test of a package alone under a coverage binary and judges contained and removable tests
+├── internal/testreach/          the tests a diff adds or changes, found from the file contents of both sides; runs no git
 ├── internal/dotnetimpact/       the `dotnet` scoper's derivation: the test projects and test classes a C# diff or a card's targets reach, by type-name closure over the source, or a fallback reason to run the tier whole
 ├── internal/runplan/            the run-plan state and batch machinery an implementer embeds and calls: plan fingerprint and file hashes, recorded partition, batch records, the batch report contract, dispatch re-resolution and plan-conflict record, post-batch checks, suspect-path checks, digest, card gates, report await and verify-failure record, told its paths and each refusal's way forward by the implementer
 ├── internal/weaverengine/       Weaver, the cold-start implementer with model escalation
@@ -851,7 +851,6 @@ User-facing modules each get one `lym <module>` namespace:
   Status prints, once, the dobby section a beam's window draws, for the prime and for each local beam:
   alive or not, the runs it drives with their state, stage, time in stage and last pass, and each released task it has not started with what the task waits on, and the beam's orch: strand live, watcher live and the recorded session, then one adopt check item per subject, shown only when the hub holds a record of it: the subject, its state, the tier in flight, the tiers done and the paths of its log and output.
   Dobby starts the beam's released tasks from an empty status, drives their batten runs in short passes, sends the nearest live orch its own notices, the `[dobby notice]` lines of a running child (a dead driver, an API-error stall, a usage limit, idle agents) and the `[run watch]` lines of every run it drives, one per stop or, under `beam.run_watch: rows`, one per change, and a `[dobby notice]` for a gate slot a driven run holds past its bound, spawns the board-tidy agent every few landings, and, while a beam's pull request is recorded, spawns a describer agent after each member landing to rewrite the beam's change description.
-  No dobby builds the shared coverage maps: the operator builds them on command with `lym gate test --map`, and the gate's `reach` and `mutation` steps refresh only a task worktree's own.
   It logs to its `dobby.log` the changes it sees, such as a task start, a run changing state and a failing pass episode, plus a heartbeat line every ten minutes.
   A front task, filed through `internal/fronttask`, is the one open task of its worktree that dobby starts first, past `beam.max_runs`, while no other task of that worktree starts.
   Its `on_land` action runs once it lands or its entry is removed by hand with `lym board remove`, from a closed action table and on the subject's owner machine only.
@@ -965,9 +964,6 @@ User-facing modules each get one `lym <module>` namespace:
   so a tag-set compile break fails at the card;
   a failing tier stops no later tier, vet or guard run;
   the gate key's lint steps run after the tiers;
-  a gate key's advisory `reach` report step runs before it, finding the functions the diff changes, refreshing the worktree's own coverage maps of their packages and noting the tests that reach each,
-  and its advisory `redundancy` report step runs last, judging the diff's new and changed Go tests against the coverage maps without changing the result,
-  and Code-Review's rubric reads its report while it matches the reviewed HEAD's tree;
   a failure report lists every failure with its package, test and first lines, the files the change touches and each failed run's log;
   a closing line names every failed run,
   and the call exits with the first failing run's code.
@@ -977,58 +973,18 @@ User-facing modules each get one `lym <module>` namespace:
   `--gate <key>` runs the tiers and scope `gate.yaml`'s gate key names,
   and with `--guards` the verb also runs every `//lym:guard` test of the module under the command of the tier its file belongs to).
   `lym gate card-verify <card id>` runs a plan card's `**Verify:**` line through the shared `internal/cardverify` runner and exits with the line's code.
-  `lym gate redundant <package>` judges one package's coverage map by the redundancy verdict,
-  then confirms each candidate inside one gate slot by running it and its covering tests with each mutant of its blocks on:
-  a candidate stays listed only when its covering tests kill every mutant it kills,
-  and one that kills a mutant they miss is listed as refuted.
-  Each listed candidate comes with its seconds, its covering tests and whether it is in the removable set.
-  Every test run is capped at `gate.redundancy_test_memory_mb` of memory, in a transient systemd scope where the user manager caps one,
-  so a mutant that keeps memory for ever is killed alone;
-  a run that ends at the cap or at its time bound is unjudged, never a kill, and is listed,
-  and a candidate whose answer rests on such a run is listed as unconfirmed, with those mutants.
-  `lym gate reach <file>#<Func>` prints the tests that reach one function from the coverage maps, with the commit and age of each map read,
-  and `lym gate reach --test <package>.<Test> --since <rev> [--branch <name>]` lists the landings on a branch, walked first-parent from the commit, whose changed functions the test reaches;
-  it runs no build, takes no gate slot and writes nothing.
-  `lym gate mutate [--base <rev>]` mutates the lines the worktree's diff changes, from the merge base with the parent branch or from `--base`, and lists the mutants no covering test kills:
-  it refreshes the worktree's own maps of the changed packages under `gate.reach_budget_min`, then holds one gate slot to its end and judges each package whose map is fresh,
-  placing at most one mutant on each changed line of a block a test covers, up to `gate.mutation_max_mutants` over the changed functions in turn,
-  and running each mutant against the map's tests that cover its block until one fails, bounded by `gate.mutation_budget_min`;
-  every build is bounded by `gate.redundancy_build_timeout_min`, every test run by `gate.redundancy_test_timeout_sec` and capped at `gate.redundancy_test_memory_mb`,
-  and a run that ends at the cap or its time bound is unjudged, never a kill.
-  A mutant every covering test passes is a survivor, listed with the tests of other packages that reach its function;
-  the call also lists the changed blocks no test covers and the packages it did not judge, with the reason, and exits 0 once it ran.
   `lym gate red-first --gate <key> [--base <rev>]` runs the tests the worktree's diff adds or changes, which `internal/testreach` names, once under the key's tiers,
   with a Go overlay that puts the base's production files and the non-Go files they embed back, and exits 0 when one of them fails there;
   under the `dotnet` scoper it runs the changed C# test methods, which `internal/dotnetimpact` names, by fully qualified name in a checkout of the base
   where the changed files of their test projects keep their working-tree text, and a test that does not build there counts as failing;
   a run in which every one passes, a diff with no test, and a run the check cannot judge (a hub whose scoper is neither `go` nor `dotnet`, C# tests no filter or tier can reach, a C# test file whose project cannot be told, or a C# run that discovered no test) each exit with their own code from `internal/gateslot`.
-  `lym gate test --map [<targets>...]` builds the per-package coverage maps of `internal/testcover` over its scope's packages at the HEAD of the worktree it runs in, only on command
-  (the `reach` report step's refresh of a task worktree's own maps runs the same measurement under the same build and test bounds and memory cap),
-  the hub's shared maps from the prime and a worktree's own, under its `.lym`, from any other worktree:
-  each tier0 and tier1 test runs alone in its own process, a package's tier0 tests before its tier1 tests,
-  each tier's tests up to its `parallel` side by side and fewer when memory is short or the tier's `memory_mb` divides into fewer caps,
-  inside the larger of the two tiers' gate-slot asks, where `slots: all` ranks above any count,
-  with no `lym` built for them,
-  bounded by `gate.redundancy_build_timeout_min` and `gate.redundancy_test_timeout_sec`
-  and capped at `gate.redundancy_test_memory_mb`,
-  under a coverage binary over every in-module package its test binary links; the gate selects no test from the maps, and a call from the prime whose HEAD stayed put also writes the index `internal/testreach` reads the shared maps through.
-  A test that fails beside others runs again alone, and one that then passes is listed as `passed_alone`.
-  The call exits 1 when a build failed, a package was left unmeasured or an entry it wrote records a failed or timed-out test, after writing every map and listing the tests as `failed_tests`.
-  A map is written only when HEAD is still the commit the call read at its start and no file the package or a linked package owns is modified or untracked,
-  checked once its build ended and again before the write, over every path that writes a map, a failed build's included.
-  A package that fails a check is listed as `unmeasured` with its reason, and a moved HEAD ends the walk and lists every package not yet measured.
-  An edit made between a package's checks and reverted before the next goes unseen,
-  and a gitignored Go file the build compiles enters the map under HEAD's hashes.
   A run inside a slot an enclosing gate run holds takes no second one,
   and a git worktree outside every hub runs unslotted under its own `gate.yaml`.
   A Go test binary that keeps a core busy past `gate.busy_quit_sec` gets one SIGQUIT,
   so its goroutine stacks reach the log long before the tier's own timeout.
   A memory guard kills a Go test binary whose process tree holds more than `gate.memory_quit_mb`,
-  or the largest one once the memory limit lym sits under runs short, and names its package,
-  under `lym gate test` (its redundancy report step and the refresh of its reach report step included), `lym gate redundant`, `lym gate mutate` and `lym gate test --map` alike,
-  and a test run it kills is listed as not judged under the redundancy paths, never as a mutant kill,
-  and recorded as failed by `lym gate test --map`;
-  a tier's `memory_mb` runs its whole command under the kernel cap `lym gate redundant` uses.
+  or the largest one once the memory limit lym sits under runs short, and names its package;
+  a tier's `memory_mb` runs its whole command under a kernel memory cap.
   The `dotnet` scoper narrows a C# hub's computed, `--base` and `--card` scopes to the test projects and classes that name a changed type, rendered into the tier's `{filter}` placeholder (`internal/dotnetimpact`),
   and a hub's `build` step runs once per call inside the slots of the first tier that sets `shared_build`, with its own summary line and run record.
   `gate.inert_paths` makes a diff of files no test reads run no tier,

@@ -388,7 +388,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 			},
 			{
 				name:       "a darn-write key that lists an undeclared tier fails the table",
-				gateConfig: strings.Replace(gateConfigWithTwoTiers(), "  darn-write: {tiers: [0], scope: diff,", "  darn-write: {tiers: [0, 7], scope: diff,", 1),
+				gateConfig: strings.Replace(gateConfigWithTwoTiers(), "  darn-write: {tiers: [0], scope: diff}", "  darn-write: {tiers: [0, 7], scope: diff}", 1),
 				wantErr:    "gates.darn-write lists tier7, which the hub does not declare",
 			},
 		}

@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -20,31 +19,17 @@ type capSample struct {
 	err  error
 }
 
-// capRoot is the pid of the process that starts the tier commands in a scripted cap.
-const capRoot = 100
-
 // runScriptedCap runs a cap of limit over script and returns its line and the pids it killed, in order.
 // It returns once the script's last list has been taken.
-// A non-nil running makes the cap count only processes below one of those tier command pids, over tree as the sample.
-func runScriptedCap(limit int, script []capSample, tree []proc.ProcessSample, running []int) (string, []int) {
+func runScriptedCap(limit int, script []capSample) (string, []int) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var killed []int
 	taken := 0
-	var commands *runningCommands
-	if running != nil {
-		commands = &runningCommands{}
-		for _, pid := range running {
-			commands.add(pid)
-		}
-	}
 	c := processCap{
-		commands: commands,
-		root:     capRoot,
-		sample:   func(int) ([]proc.ProcessSample, error) { return tree, nil },
-		limit:    limit,
-		period:   time.Second,
-		marker:   "LYM_GATE_TEST_PID=7",
+		limit:  limit,
+		period: time.Second,
+		marker: "LYM_GATE_TEST_PID=7",
 		list: func(string) ([]int, error) {
 			next := script[taken]
 			taken++
@@ -71,11 +56,8 @@ func TestProcessCap(t *testing.T) {
 	t.Parallel()
 	const limit = 3
 	tests := []struct {
-		name   string
-		script []capSample
-		// tree and running are the process sample and the running tier command pids; nil running counts every listed pid.
-		tree       []proc.ProcessSample
-		running    []int
+		name       string
+		script     []capSample
 		wantLine   string
 		wantKilled []int
 	}{
@@ -99,31 +81,12 @@ func TestProcessCap(t *testing.T) {
 			name:   "AnUnsupportedPlatformEndsTheCap",
 			script: []capSample{{err: errors.ErrUnsupported}, {pids: []int{1, 2, 3, 4}}},
 		},
-		{
-			name:   "MarkedProcessesOutsideEveryTierCommandAreNotCounted",
-			script: []capSample{{pids: []int{1, 2, 3, 4}}},
-			tree: []proc.ProcessSample{
-				{PID: 10, Parent: capRoot}, {PID: 1, Parent: 10}, {PID: 2, Parent: 10},
-				{PID: 3, Parent: capRoot}, {PID: 4, Parent: capRoot},
-			},
-			running: []int{10},
-		},
-		{
-			name:   "MarkedProcessesBelowATierCommandAndOnesTheSampleLostAreCounted",
-			script: []capSample{{pids: []int{1, 2, 3, 5}}},
-			tree: []proc.ProcessSample{
-				{PID: 10, Parent: capRoot}, {PID: 1, Parent: 10}, {PID: 2, Parent: 10}, {PID: 3, Parent: 2},
-			},
-			running:    []int{10},
-			wantLine:   processCapLine(4, limit),
-			wantKilled: []int{1, 2, 3, 5},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			line, killed := runScriptedCap(limit, tt.script, tt.tree, tt.running)
+			line, killed := runScriptedCap(limit, tt.script)
 
 			if line != tt.wantLine {
 				t.Errorf("processCap.run() = %q; want %q", line, tt.wantLine)

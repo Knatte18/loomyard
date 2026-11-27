@@ -15,7 +15,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -64,13 +63,8 @@ type memoryGuard struct {
 	// describe reads a process's working directory and command line; ok is false once it is gone.
 	describe func(pid int) (process proc.Process, ok bool)
 	// kill sends SIGKILL to pid.
-	kill func(pid int) error
-	// onKill, when set, is called with the pid of each test binary the guard is about to kill.
-	// It is also called with the pid of each test binary that holds a killed one, before any SIGKILL goes out.
-	onKill func(pid int)
-	// foreign, when set, names the processes another guard watches; a test binary below one is left to that guard.
-	foreign func(pid int) bool
-	after   func(time.Duration) <-chan time.Time
+	kill  func(pid int) error
+	after func(time.Duration) <-chan time.Time
 	// out receives the line of each kill as it happens; nil prints none.
 	out io.Writer
 }
@@ -108,9 +102,6 @@ type memoryKill struct {
 	reason string
 	// slicePressure is set when the kill is a slice-pressure kill: other load filled the memory limit.
 	slicePressure bool
-	// enclosing are the pids of the Go test binaries that started the killed binary, directly or not.
-	// Their own tests fail with the killed binary's death, so they count as killed too.
-	enclosing []int
 }
 
 // guardKill is the line of one kill the guard made.
@@ -125,7 +116,7 @@ type guardKill struct {
 // When none does, the memory limit the calling process sits under is checked.
 // With less than a tenth of its Max left, the largest tree holding at least floor is killed whole.
 // That kill is a slice-pressure kill when the calling gate call's processes hold less than half the limit's use.
-// Each binary is killed once, and a binary below a process foreign names is never killed.
+// Each binary is killed once.
 // A platform that cannot sample ends run after one log line.
 func (g memoryGuard) run(ctx context.Context, root int) []guardKill {
 	logger.Info("gate: memory guard started", "limit_mb", g.limit>>20, "period", g.period)
@@ -146,57 +137,12 @@ func (g memoryGuard) run(ctx context.Context, root int) []guardKill {
 			logger.Warn("gate: the memory guard could not sample the process tree", "cause", err)
 			continue
 		}
-		trees := testTrees(tree)
-		if g.foreign != nil {
-			trees = withoutForeign(trees, tree, g.foreign)
-		}
-		for _, kill := range g.kills(trees, killed) {
+		for _, kill := range g.kills(testTrees(tree), killed) {
 			killed[kill.tree.binary.PID] = true
-			kill.enclosing = enclosingTestBinaries(tree, kill.tree.binary)
 			kills = append(kills, g.killTree(kill))
 		}
 	}
 	return kills
-}
-
-// withoutForeign returns trees without each tree whose binary has an ancestor in sample that foreign names.
-func withoutForeign(trees []testTree, sample []proc.ProcessSample, foreign func(pid int) bool) []testTree {
-	parents := make(map[int]int, len(sample))
-	for _, process := range sample {
-		parents[process.PID] = process.Parent
-	}
-	return slices.DeleteFunc(trees, func(tree testTree) bool {
-		seen := map[int]bool{tree.binary.PID: true}
-		for pid := tree.binary.Parent; !seen[pid]; {
-			if foreign(pid) {
-				return true
-			}
-			seen[pid] = true
-			parent, sampled := parents[pid]
-			if !sampled {
-				return false
-			}
-			pid = parent
-		}
-		return false
-	})
-}
-
-// enclosingTestBinaries returns the pids of the Go test binaries of tree that are ancestors of binary.
-func enclosingTestBinaries(tree []proc.ProcessSample, binary proc.ProcessSample) []int {
-	byPID := make(map[int]proc.ProcessSample, len(tree))
-	for _, process := range tree {
-		byPID[process.PID] = process
-	}
-	var enclosing []int
-	visited := map[int]bool{binary.PID: true}
-	for parent, ok := byPID[binary.Parent]; ok && !visited[parent.PID]; parent, ok = byPID[parent.Parent] {
-		visited[parent.PID] = true
-		if strings.HasSuffix(parent.Path, testBinarySuffix) {
-			enclosing = append(enclosing, parent.PID)
-		}
-	}
-	return enclosing
 }
 
 // testTrees returns each Go test binary of tree with its descendants and the memory they hold together.
@@ -331,11 +277,6 @@ func (g memoryGuard) killTree(kill memoryKill) guardKill {
 			}
 		}
 	}
-	if g.onKill != nil {
-		for _, pid := range append([]int{binary.PID}, kill.enclosing...) {
-			g.onKill(pid)
-		}
-	}
 	for _, pid := range kill.tree.pids {
 		if err := g.kill(pid); err != nil {
 			logger.Debug("gate: the memory guard could not kill a process", "pid", pid, "cause", err)
@@ -384,50 +325,4 @@ func memoryGuardApplies(limit int64, enclosing string, isAncestor func(pid int) 
 		return false, fmt.Sprintf("an enclosing lym gate test (pid %d) already guards this run's memory", pid)
 	}
 	return true, keyName(memoryQuitMBKey) + " is set and no enclosing lym gate test guards this run"
-}
-
-// guardOwnTests starts the memory guard over the test binaries the calling process starts, when the guard applies.
-// limit is `memory_quit_mb` in bytes, and out receives the line of each kill.
-// It returns the function that ends the guard and waits for its end,
-// and the function that reports whether the guard killed the process with a given pid.
-func guardOwnTests(ctx context.Context, limit int64, out io.Writer) (stop func(), guardKilled func(pid int) bool) {
-	applies, reason := memoryGuardApplies(limit, os.Getenv(enclosingGateEnv), proc.IsAncestor)
-	logger.Info("gate: memory guard decision", "applies", applies, "reason", reason)
-	return startMemoryGuard(ctx, newMemoryGuard(limit, out), os.Getpid(), applies)
-}
-
-// startMemoryGuard runs guard over the process tree under root in the background when applies is set.
-// It runs until stop is called or ctx ends.
-// stop ends the guard and returns once its run has ended, and returns at once when no guard runs.
-// guardKilled reports whether the guard killed the test binary with pid, or a test binary that pid's binary started.
-// It is false for every pid when no guard runs.
-// It reads each pid once and then forgets it, so a later process that reuses the pid reads as not killed.
-// The guard notes a binary before it sends SIGKILL, so a caller that sees the binary end finds it noted.
-func startMemoryGuard(ctx context.Context, guard memoryGuard, root int, applies bool) (stop func(), guardKilled func(pid int) bool) {
-	if !applies {
-		return func() {}, func(int) bool { return false }
-	}
-	var mu sync.Mutex
-	killed := map[int]bool{}
-	guard.onKill = func(pid int) {
-		mu.Lock()
-		killed[pid] = true
-		mu.Unlock()
-	}
-	guardCtx, cancel := context.WithCancel(ctx)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		guard.run(guardCtx, root)
-	}()
-	return func() {
-			cancel()
-			<-done
-		}, func(pid int) bool {
-			mu.Lock()
-			defer mu.Unlock()
-			was := killed[pid]
-			delete(killed, pid)
-			return was
-		}
 }
