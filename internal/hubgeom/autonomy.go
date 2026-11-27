@@ -1,4 +1,5 @@
 // autonomy.go is the one reader of beam.yaml's `autonomy` for a run or an orch.
+// It also places the hub's prime from the git files, with no git process.
 
 package hubgeom
 
@@ -28,7 +29,7 @@ func Autonomy(location *lymcwd.Location, slug string) bool {
 	if name == "" {
 		name = location.WorktreeName
 	}
-	prime, err := resolvePrimeWithoutGit(location)
+	prime, err := PrimeWithoutGit(location)
 	if err != nil {
 		return autonomyReadFailed(name, err)
 	}
@@ -57,8 +58,10 @@ func autonomyReadFailed(name string, cause error) bool {
 	return false
 }
 
-// resolvePrimeWithoutGit returns the Location of the hub's main worktree, the prime, from the hub's git files.
-func resolvePrimeWithoutGit(location *lymcwd.Location) (*lymcwd.Location, error) {
+// PrimeWithoutGit returns the Location of the hub's main worktree, the prime, from the hub's git files.
+// It spawns no git, so a caller that must start no process can place the prime.
+// location is any worktree of the hub.
+func PrimeWithoutGit(location *lymcwd.Location) (*lymcwd.Location, error) {
 	worktrees, err := dotgit.ListWorktrees(location.WorktreePath())
 	if err != nil {
 		return nil, fmt.Errorf("hubgeom: list the worktrees of the hub: %w", err)

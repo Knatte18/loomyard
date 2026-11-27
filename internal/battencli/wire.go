@@ -1247,8 +1247,20 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				res, err := td.RemovePair(teardownRequest(slug))
 				return finishRemoval(res, err, slug)
 			},
-			// Push and Level read the task worktree when they run, and a pair already gone pushes nothing and reads level.
-			Push:  teardownPush,
+			// Push and Level read the task worktree when they run, and a task pair already gone pushes nothing and reads level.
+			// Push first removes the bench pairs the run's darn writer made, so none outlives the run.
+			// The row calls it with no prime lock held, so their archive pushes and teardowns never hold that lock.
+			// A failed bench removal keeps the task pair, and the resumed row retries it.
+			Push: func(ctx context.Context) error {
+				benchPairs, err := pairteardown.RemoveBenchPairs(ctx, location, slug)
+				if err != nil {
+					return fmt.Errorf("the bench pairs of %q were not all removed: %w", slug, err)
+				}
+				if len(benchPairs) > 0 {
+					logger.Info("battencli: teardown removed the run's bench pairs", "slug", slug, "bench_pairs", benchPairs)
+				}
+				return teardownPush(ctx)
+			},
 			Level: teardownLevel,
 		},
 		Land: landDeps(location, slug, locateTask),

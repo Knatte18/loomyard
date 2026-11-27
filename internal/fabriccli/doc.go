@@ -145,4 +145,14 @@
 // A hardener round builds its throwaway hubs there.
 // The guard judges the directory the verb acts in: the cwd or a clone's `--into` destination.
 // The same verb aimed at any other hub is refused.
+//
+// A darn writer on a run with the docs profile adds and removes its own bench pairs on the real hub,
+// so a docs bench makes the pairs it measures in without handing each step to the orch.
+// A bench pair's slug is the task's slug, `-b` and a positive number.
+// The writer runs `add` and `remove` from its task worktree or its records sibling,
+// and an `add` takes neither `--parent` nor `--adopt-local`, so the pair forks from the task branch.
+// The guard reads the recipe and the profile from the run's identity record in that worktree, `_lym/usage/run.json`.
+// A slug that a batten run directory names is refused, since that pair is another run's.
+// The guard reads no board, so a slug that only a board entry names passes.
+// A detached push of a bench pair passes for the same writer, under the same record and run directory checks.
 package fabriccli

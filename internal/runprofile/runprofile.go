@@ -26,6 +26,9 @@ const ModuleName = "profiles"
 // It maps a recipe name to the profile a task of that recipe takes when it names none.
 const DefaultsEntry = "defaults"
 
+// DocsProfile names the template's darn-only profile for prose and config value edits.
+const DocsProfile = "docs"
+
 //go:embed template.yaml
 var configTemplate string
 

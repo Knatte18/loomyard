@@ -1,5 +1,6 @@
-// leftover.go removes two kinds of pair the dobby finds left over that no run's own teardown takes:
-// the local pair of a run this machine handed over, and an orphan pair no board entry or batten record names.
+// leftover.go removes three kinds of pair that no run's own pair removal takes:
+// the local pair of a run this machine handed over, an orphan pair no board entry or batten record names,
+// and the bench pairs a run's darn writer made, which the run's teardown removes.
 
 package pairteardown
 
@@ -9,10 +10,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -67,19 +71,102 @@ func RemoveOrphanPair(ctx context.Context, prime *lymcwd.Location, slug string) 
 	return td.Run(ctx, Request{Slug: slug, Force: true, LeaveClaim: true, Verdict: fabricengine.EntryEnded})
 }
 
-// requireStillOrphan returns an error when the board, the batten run directory or a registered live process names slug.
-func requireStillOrphan(prime *lymcwd.Location, slug string) error {
+// RemoveBenchPairs tears down every bench pair of the task taskSlug in the hub and returns their slugs.
+// A darn writer makes such pairs for its own bench, forked from its task worktree, and none may outlive its run.
+// Each pair's live processes are ended first, so a driver still running in it does not get the removal refused.
+// Its tips that origin lacks are then archived under owner archive tags pushed to origin.
+// Its uncommitted files are committed onto the archived tip.
+// The pair is then torn down with force.
+// Its branches stay on origin and no board claim is settled.
+// A pair whose slug a board entry or a batten run directory names is another run's and is left standing.
+// A half-removed pair, one git lists as prunable or whose worktree does not resolve, is left with a warning.
+// The first failure returns with the slugs removed before it; a re-run removes the rest.
+func RemoveBenchPairs(ctx context.Context, prime *lymcwd.Location, taskSlug string) ([]string, error) {
+	worktrees, err := fabricengine.List(prime.WorktreePath())
+	if err != nil {
+		return nil, fmt.Errorf("pairteardown: list the hub's pairs for the bench pairs of %q: %w", taskSlug, err)
+	}
+	var removed []string
+	for _, worktree := range worktrees {
+		if worktree.Main {
+			continue
+		}
+		name := filepath.Base(worktree.Path)
+		if worktree.Prunable {
+			warnHalfRemovedBenchPair(taskSlug, name, "git lists it as prunable")
+			continue
+		}
+		pair, err := lymcwd.ResolveWorktree(worktree.Path)
+		if err != nil {
+			warnHalfRemovedBenchPair(taskSlug, name, err.Error())
+			continue
+		}
+		if !darnengine.IsBenchPairSlug(taskSlug, pair.WorktreeName) {
+			continue
+		}
+		slug := pair.WorktreeName
+		reason, err := runNamingReason(prime, slug)
+		if err != nil {
+			return removed, err
+		}
+		if reason != "" {
+			logger.Info("pairteardown: a pair with a bench pair slug belongs to another run and stays", "slug", slug, "task", taskSlug, "reason", reason)
+			continue
+		}
+		td, err := New(prime)
+		if err != nil {
+			return removed, err
+		}
+		// The processes end before the archive, so nothing they commit is left out of it.
+		if _, err := td.endOwned(slug); err != nil {
+			return removed, fmt.Errorf("pairteardown: end the processes of the bench pair %q: %w", slug, err)
+		}
+		archive := []fabricengine.OwnerArchivePair{{Slug: slug, Pair: pair, CommitUncommitted: true}}
+		if _, err := fabricengine.ArchiveOwnerTips(prime.HubPath, archive); err != nil {
+			return removed, fmt.Errorf("pairteardown: archive the tips of the bench pair %q: %w", slug, err)
+		}
+		if _, err := td.Run(ctx, Request{Slug: slug, Force: true, LeaveClaim: true, Verdict: fabricengine.EntryEnded}); err != nil {
+			return removed, fmt.Errorf("pairteardown: remove the bench pair %q: %w", slug, err)
+		}
+		removed = append(removed, slug)
+	}
+	return removed, nil
+}
+
+// warnHalfRemovedBenchPair warns that the worktree name stays, when name is a bench pair slug of the task taskSlug.
+func warnHalfRemovedBenchPair(taskSlug, name, reason string) {
+	if !darnengine.IsBenchPairSlug(taskSlug, name) {
+		return
+	}
+	logger.Warn("pairteardown: a half-removed bench pair is left; run `lym fabric prune --apply` to clear it", "slug", name, "task", taskSlug, "reason", reason)
+}
+
+// runNamingReason returns why slug is a run's own pair: a board entry or a batten run directory names it.
+// It returns "" when neither does.
+func runNamingReason(prime *lymcwd.Location, slug string) (string, error) {
 	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
 	if err != nil {
-		return fmt.Errorf("pairteardown: read the board before removing the orphan pair %q: %w", slug, err)
+		return "", fmt.Errorf("pairteardown: read the board before removing the pair %q: %w", slug, err)
 	}
 	if slices.ContainsFunc(tasks, func(task boardengine.Task) bool { return task.Slug == slug }) {
-		return fmt.Errorf("pairteardown: %q is no orphan pair: a board entry names it", slug)
+		return "a board entry names it", nil
 	}
 	if _, err := os.Stat(shedrun.RunDir(prime, slug)); err == nil {
-		return fmt.Errorf("pairteardown: %q is no orphan pair: a batten run directory names it", slug)
+		return "a batten run directory names it", nil
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("pairteardown: read the batten run directory of %q: %w", slug, err)
+		return "", fmt.Errorf("pairteardown: read the batten run directory of %q: %w", slug, err)
+	}
+	return "", nil
+}
+
+// requireStillOrphan returns an error when the board, the batten run directory or a registered live process names slug.
+func requireStillOrphan(prime *lymcwd.Location, slug string) error {
+	reason, err := runNamingReason(prime, slug)
+	if err != nil {
+		return err
+	}
+	if reason != "" {
+		return fmt.Errorf("pairteardown: %q is no orphan pair: %s", slug, reason)
 	}
 	live, err := runproc.List(fabricengine.RunProcDir(prime.HubPath), slug)
 	if err != nil {

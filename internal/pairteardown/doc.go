@@ -188,6 +188,10 @@
 // It then archives the code and records tips under owner archive tags and tears the pair down.
 // Neither settles a board claim or touches a batten record, and a failed archive removes nothing.
 //
+// RemoveBenchPairs serves a run's teardown for the bench pairs its darn writer made, slugs `<slug>-b<N>`.
+// It archives and removes each the orphan way, but it ends a live process instead of refusing it.
+// It leaves standing a pair whose slug a board entry or batten run names.
+//
 // # Quiet rule
 //
 // A pair is quiet when its run lock and its loop lock are free,

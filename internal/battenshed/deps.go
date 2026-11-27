@@ -377,7 +377,7 @@ type TeardownDeps struct {
 	// Push brings the pair's commits to origin and returns once they landed, with no prime lock held.
 	// An error wrapping ErrPushEntryEnded means origin ended the pair's entry.
 	// One wrapping ErrPushHandedOver means the run was handed over.
-	// Any other error is a refused push.
+	// Any other error, from the push or from a step the closure runs ahead of it, keeps the pair.
 	// A nil Push pushes nothing.
 	Push func(ctx context.Context) error
 	// Level reports whether origin's tracking refs hold the pair's tips.

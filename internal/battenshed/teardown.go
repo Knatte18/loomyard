@@ -217,7 +217,7 @@ func (p *worktreeTeardownProducer) pushPair(ctx context.Context) (stuckReason st
 	case errors.Is(pushErr, ErrPushHandedOver):
 		return fmt.Sprintf("the run was handed over to another machine and its pair is already removed here, so no resume applies here: %s", pushErr.Error()), false, nil
 	}
-	return fmt.Sprintf("the pair's push failed and the pair is kept: %s; once its way forward is done, resume with `lym batten run %s`", pushErr.Error(), p.slug), false, nil
+	return fmt.Sprintf("the push step failed and the pair is kept: %s; once its way forward is done, resume with `lym batten run %s`", pushErr.Error(), p.slug), false, nil
 }
 
 // pairIsLevel calls deps.Level, which a nil Level reads as level.

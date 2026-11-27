@@ -9,6 +9,8 @@
 // setting one in darn.yaml is refused, naming the `shed` module.
 //
 // IsMergeTaskWriter reports whether a strand is the writer of a merge task, from the strand name alone.
+// IsBenchPairSlug reports whether a slug names a bench pair of a task: the task's slug, `-b` and a positive number.
+// A darn writer makes such a pair for its own bench, forked from its task worktree.
 //
 // Tree scope applies to a diff wholly under the hub's non-production trees.
 // Each darn verify site then runs its own gate key over the touched trees' targets, in place of the key's scope.

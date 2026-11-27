@@ -59,6 +59,11 @@ and its removal leaves the board claim to the cancel, which clears it.
   and a handed-over run's local pair in local mode.
   The prime's dobby also tears down an orphan pair, one no board entry or batten record names,
   once it has gone idle for `dobbyengine.OrphanGrace`, its tips archived first.
+- A run's Worktree-Teardown tears down the bench pairs its darn writer made, through `internal/pairteardown`,
+  before it pushes the run's own pair and with no prime lock held.
+  It ends each bench pair's live processes first, then archives its tips and removes it with the driver checks skipped.
+  That order is an exception to the ones below:
+  the processes end before the run-lock wait and the refusal probe, so a failed archive or removal leaves them ended.
 - No production package outside `internal/pairteardown` and `internal/fabricengine` calls `Topology.Remove`.
 - The composite waits for the pair's driver to go quiet, bounded by `Request.QuietWait`;
   `--force` answers dirtiness only and never shortens or skips that wait.

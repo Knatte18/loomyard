@@ -1,14 +1,17 @@
 // roleguard.go refuses the mutating `lym fabric` verbs from a sandboxed task-session role.
 // It classifies each subcommand as a reader that a sandboxed role may run, or as a verb it may not.
-// A merge task's writer may also run the merge verbs,
+// A merge task's writer may also run the merge verbs, a docs run's darn writer may add and remove its own bench pairs,
 // and any sandboxed role may run every verb in a hub under its own worktree's sandbox root.
-// A detached push passes only for the role's own pair or a pair under that root.
+// A detached push passes only for the role's own pair, a pair under that root,
+// or a bench pair its darn writer's run may touch.
 // The refusal text is built here as well.
 
 package fabriccli
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,9 +19,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/darnengine"
+	"github.com/Knatte18/loomyard/internal/dotgit"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/runprofile"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/weftname"
 	"github.com/spf13/cobra"
 )
@@ -110,29 +117,110 @@ func inOwnSandboxRoot(dir string, name agentname.Name) bool {
 	}
 }
 
+// strandHubWorktree returns the location of worktree and reports whether it passes three checks.
+// worktree is a worktree root, its name passes named, and its hub records the strand name's shortname.
+func strandHubWorktree(worktree string, name agentname.Name, named func(worktreeName string) bool) (*lymcwd.Location, bool) {
+	location, err := lymcwd.ResolveWorktree(worktree)
+	if err != nil || !named(location.WorktreeName) || location.WorktreePath() != worktree {
+		return nil, false
+	}
+	shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(location.HubPath))
+	return location, found && shortname == name.Shortname
+}
+
 // isOwnWorktree reports whether worktree is the root of the worktree the strand name identifies.
 // That worktree is named by the name's slug and sits in the hub whose recorded shortname is the name's shortname.
 func isOwnWorktree(worktree string, name agentname.Name) bool {
-	location, err := lymcwd.ResolveWorktree(worktree)
-	if err != nil || location.WorktreeName != name.Slug || location.WorktreePath() != worktree {
-		return false
+	_, ok := strandHubWorktree(worktree, name, func(worktreeName string) bool { return worktreeName == name.Slug })
+	return ok
+}
+
+// pairLocation returns the location of the worktree dir belongs to, as that worktree or its records sibling.
+// It reports false unless that worktree's name passes named and it sits in the strand name's hub.
+// dir is judged where it lands, with the symlinks of its deepest existing ancestor resolved.
+func pairLocation(dir string, name agentname.Name, named func(worktreeName string) bool) (*lymcwd.Location, bool) {
+	current, ok := resolveThroughExistingAncestor(dir)
+	if !ok {
+		return nil, false
 	}
-	shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(location.HubPath))
-	return found && shortname == name.Shortname
+	return strandHubWorktree(worktreeOwningRecordsDir(current), name, named)
+}
+
+// ownPairLocation returns the location of the strand name's own worktree for dir.
+// It reports false unless dir is that worktree or its records sibling.
+func ownPairLocation(dir string, name agentname.Name) (*lymcwd.Location, bool) {
+	return pairLocation(dir, name, func(worktreeName string) bool { return worktreeName == name.Slug })
 }
 
 // isOwnPairPath reports whether dir is the worktree the strand name identifies, or that worktree's records sibling.
-// dir is judged where it lands, with the symlinks of its deepest existing ancestor resolved.
 func isOwnPairPath(dir string, name agentname.Name) bool {
-	current, ok := resolveThroughExistingAncestor(dir)
+	_, ok := ownPairLocation(dir, name)
+	return ok
+}
+
+// benchPairAdmitted reports whether the run of the task worktree at task may touch the bench pair benchSlug.
+// It may when the run's identity record there names the darn recipe and the docs profile,
+// and no batten run directory on the prime names benchSlug, which would make the pair another run's.
+// The run's seed writes the record with the profile the run took, the entry's own or the recipe's default.
+// The board is not read, so a slug that only a board entry names is not caught.
+// A non-nil error says why an otherwise admitted run is barred from the pair, or which read failed.
+func benchPairAdmitted(task *lymcwd.Location, benchSlug string) (bool, error) {
+	run, found, err := shedrun.ReadRunUsageRecord(shedrun.UsageDir(task))
+	if err != nil {
+		return false, err
+	}
+	if !found || run.Recipe != shedrun.RecipeDarn || run.Profile != runprofile.DocsProfile {
+		return false, nil
+	}
+	prime, err := hubgeom.PrimeWithoutGit(task)
+	// A repository whose refs are not files can only be listed by git itself.
+	if errors.Is(err, dotgit.ErrRefStorage) {
+		prime, err = primeThroughGit(task)
+	}
+	if err != nil {
+		return false, err
+	}
+	_, err = os.Stat(shedrun.RunDir(prime, benchSlug))
+	switch {
+	case err == nil:
+		return false, fmt.Errorf("a batten run directory names %s, so that pair is another run's; take another number", benchSlug)
+	case !errors.Is(err, fs.ErrNotExist):
+		return false, fmt.Errorf("read the batten run directory of %s: %w", benchSlug, err)
+	}
+	return true, nil
+}
+
+// primeThroughGit returns the location of the hub's prime worktree, as git's own worktree list names it.
+func primeThroughGit(location *lymcwd.Location) (*lymcwd.Location, error) {
+	name, err := fabricengine.PrimeName(location)
+	if err != nil {
+		return nil, err
+	}
+	return lymcwd.ResolveWorktree(fabricengine.WorktreePath(location, name))
+}
+
+// isBenchPairPath reports whether the strand name's darn writer may push dir.
+// dir must be a bench pair of that writer's task, or the pair's records sibling.
+// The bench pair sits in the writer's own hub, and the run of the writer's own worktree in that hub may touch it.
+func isBenchPairPath(dir string, name agentname.Name) bool {
+	if !darnengine.IsWriter(name) {
+		return false
+	}
+	pair, ok := pairLocation(dir, name, func(worktreeName string) bool { return darnengine.IsBenchPairSlug(name.Slug, worktreeName) })
 	if !ok {
 		return false
 	}
-	return isOwnWorktree(worktreeOwningRecordsDir(current), name)
+	task, ok := ownPairLocation(filepath.Join(pair.HubPath, name.Slug), name)
+	if !ok {
+		return false
+	}
+	admitted, err := benchPairAdmitted(task, pair.WorktreeName)
+	return err == nil && admitted
 }
 
-// injectedPathsAreOwn reports whether every non-empty path a detached push of cmd names is one the strand may push:
-// the strand's own worktree, its records sibling, or a path under its own worktree's sandbox root.
+// injectedPathsAreOwn reports whether the strand may push every non-empty path a detached push of cmd names.
+// It may push its own worktree, that worktree's records sibling and a path under its own worktree's sandbox root.
+// A darn writer on a docs run may also push a bench pair of its task or that pair's records sibling.
 // A relative path is read against the directory the invocation acts in.
 func injectedPathsAreOwn(cmd *cobra.Command, name agentname.Name, paths ...string) bool {
 	cwd, err := lymcwd.CwdFrom(cmd.Context())
@@ -146,11 +234,54 @@ func injectedPathsAreOwn(cmd *cobra.Command, name agentname.Name, paths ...strin
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(cwd, path)
 		}
-		if !isOwnPairPath(path, name) && !inOwnSandboxRoot(path, name) {
+		if !isOwnPairPath(path, name) && !inOwnSandboxRoot(path, name) && !isBenchPairPath(path, name) {
 			return false
 		}
 	}
 	return true
+}
+
+// benchPairVerbs are the verbs a darn writer may run on a bench pair of its own task.
+var benchPairVerbs = []string{"add", "remove"}
+
+// benchPairVerb reports whether this invocation of cmd adds or removes a bench pair of the strand name's darn writer.
+// The one argument is a bench pair slug of the writer's task.
+// The verb acts in the writer's own worktree or its records sibling,
+// and an add takes neither --parent nor --adopt-local, so the pair forks from the task branch.
+// The run of that worktree must be one that may touch the pair.
+// A non-nil error says why that run is barred from it.
+func benchPairVerb(cmd *cobra.Command, name agentname.Name) (bool, error) {
+	if !darnengine.IsWriter(name) || !slices.Contains(benchPairVerbs, cmd.Name()) {
+		return false, nil
+	}
+	args := cmd.Flags().Args()
+	if len(args) != 1 || !darnengine.IsBenchPairSlug(name.Slug, args[0]) {
+		return false, nil
+	}
+	if cmd.Name() == "add" {
+		parent, _ := cmd.Flags().GetString("parent")
+		adoptLocal, _ := cmd.Flags().GetBool("adopt-local")
+		if parent != "" || adoptLocal {
+			return false, nil
+		}
+	}
+	cwd, err := lymcwd.CwdFrom(cmd.Context())
+	if err != nil {
+		return false, err
+	}
+	location, ok := ownPairLocation(cwd, name)
+	if !ok {
+		return false, nil
+	}
+	return benchPairAdmitted(location, args[0])
+}
+
+// benchPairWayForward is the clause a darn writer's refused add or remove carries.
+// It names the bench pairs the writer may make itself.
+func benchPairWayForward(taskSlug string) string {
+	return fmt.Sprintf("; a darn writer on a run with profile %s adds and removes its own bench pairs itself: "+
+		"a slug of the form %s<N> such as %s1, run from its task worktree, as `lym fabric add %s1` with no --parent or --adopt-local",
+		runprofile.DocsProfile, taskSlug+darnengine.BenchPairSlugInfix, taskSlug+darnengine.BenchPairSlugInfix, taskSlug+darnengine.BenchPairSlugInfix)
 }
 
 // taskSessionRefusal is the refusal of `lym fabric <verb>` from the task session strandName, naming its ways forward.
@@ -203,6 +334,8 @@ func readerVerb(cmd *cobra.Command) bool {
 // or a path under the role's own sandbox root; a path flag on any other subcommand is refused.
 // The hidden teardown child a removal spawns inherits the strand name the same way, so it passes too.
 // A merge task's writer passes on the verbs its work is, since the merge of the parent branch is that task.
+// A darn writer on a docs run passes on adding and removing its own bench pairs from its task worktree.
+// It also passes on a push of such a pair, so a docs bench makes its pairs without the orch.
 // Any verb passes when the directory it acts in lies under the sandbox root of the role's own worktree,
 // so a hardener round drives its own sandbox hubs while a verb aimed at the real hub stays refused.
 // The guard reads the strand name and the paths the call names, so it stops a mistaken call.
@@ -229,11 +362,20 @@ func sandboxedRoleRefusal(cmd *cobra.Command, strandName string) string {
 		}
 		return taskSessionRefusal(cmd.Name(), strandName)
 	}
-	if readerVerb(cmd) || (darnengine.IsMergeTaskWriter(name) && mergeTaskVerb(cmd)) {
+	benchAdmitted, benchErr := benchPairVerb(cmd, name)
+	if readerVerb(cmd) || (darnengine.IsMergeTaskWriter(name) && mergeTaskVerb(cmd)) || benchAdmitted {
 		return ""
 	}
 	if target, err := verbTargetDir(cmd); err == nil && inOwnSandboxRoot(target, name) {
 		return ""
 	}
-	return taskSessionRefusal(cmd.Name(), strandName)
+	refusal := taskSessionRefusal(cmd.Name(), strandName)
+	switch {
+	case benchErr != nil:
+		// The way forward would name the command just run, so the reason it is barred stands in its place.
+		refusal += "; " + benchErr.Error()
+	case darnengine.IsWriter(name) && slices.Contains(benchPairVerbs, cmd.Name()):
+		refusal += benchPairWayForward(name.Slug)
+	}
+	return refusal
 }

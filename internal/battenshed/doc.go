@@ -105,13 +105,16 @@
 //
 // Worktree-Teardown has two halves, session shutdown and worktree removal,
 // which call the pair-teardown composite (internal/pairteardown) as its EndSession and RemovePair phases.
+// The push first removes the bench pairs a docs bench's darn writer made, so none outlives the run.
+// That removal holds no prime lock.
 // A pair of which nothing remains is the done post-condition for both halves.
 // The row pushes the pair between two holds of the prime lock:
 // the first hold shuts the session down, the push runs with no lock held,
 // and the second hold removes the pair once origin's tracking refs hold both its tips.
 // A tip that moved since the push releases the second hold and pushes again.
 // After a bounded number of pushes that still leave origin lacking a tip, the row is Stuck and keeps the pair.
-// With git or pushes off nothing is pushed, and the pair is removed without that read.
+// With git or pushes off nothing of the pair is pushed, and the pair is removed without that read.
+// The bench pairs' archive tags are pushed whatever those switches say.
 //
 // Every producer that holds the hub's prime lock waits for a contended lock instead of halting on the first try.
 // It returns Stuck only when the bound is spent (primelockwait.go).

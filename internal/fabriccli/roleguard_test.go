@@ -2,6 +2,7 @@
 // which subcommands a task-session role may run.
 // It also pins which strand names the guard lets through.
 // It pins which directories a task role may run a mutating verb in.
+// It pins which bench pairs a docs run's darn writer may add, remove and push.
 // It drives the built command tree against directories that hold no hub.
 // A passing verb stops at its own worktree-resolution error and spawns nothing.
 
@@ -19,7 +20,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/runprofile"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/weftname"
 	"github.com/spf13/cobra"
@@ -131,6 +135,26 @@ func linkTo(t *testing.T, target string) string {
 		t.Fatal(err)
 	}
 	return link
+}
+
+// benchTaskWorktree makes a hub whose recorded shortname is ly and returns its worktree slug.
+// The worktree holds a run identity record naming recipe and profile, and none when recipe is empty.
+func benchTaskWorktree(t *testing.T, recipe, profile string) string {
+	t.Helper()
+	hub := t.TempDir()
+	recordShortname(t, hub, "ly")
+	worktree := fakeWorktree(t, hub, "slug")
+	if recipe == "" {
+		return worktree
+	}
+	location, err := lymcwd.ResolveWorktree(worktree)
+	if err != nil {
+		t.Fatalf("resolve the task worktree: %v", err)
+	}
+	if err := shedrun.WriteRunUsage(shedrun.UsageDir(location), shedrun.RunUsageRecord{Recipe: recipe, Profile: profile}); err != nil {
+		t.Fatalf("write the run identity record: %v", err)
+	}
+	return worktree
 }
 
 // TestSandboxedRoleGuard sets the strand-name environment variable with t.Setenv.
@@ -396,6 +420,108 @@ func TestSandboxedRoleGuard(t *testing.T) {
 
 		if code, out := runUnderParentIn(t, ownSandboxHub, "pull", "--weft-path", "/x"); code != 1 || !strings.Contains(out, "refuses the path flags") {
 			t.Errorf("pull --weft-path from the own sandbox hub = %d, output %s; want the path-flag refusal", code, out)
+		}
+	})
+
+	t.Run("a docs run's darn writer adds and removes only its own bench pairs, from its task worktree", func(t *testing.T) {
+		const writer = "ly:slug:darn"
+		docs := benchTaskWorktree(t, shedrun.RecipeDarn, runprofile.DocsProfile)
+		if err := os.MkdirAll(docs+weftname.Suffix, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		other := fakeWorktree(t, filepath.Dir(docs), "other")
+		noRecord := benchTaskWorktree(t, "", "")
+		light := benchTaskWorktree(t, shedrun.RecipeDarn, "light")
+		tapestry := benchTaskWorktree(t, shedrun.RecipeTapestry, runprofile.DocsProfile)
+		broken := benchTaskWorktree(t, shedrun.RecipeDarn, runprofile.DocsProfile)
+		brokenLocation, err := lymcwd.ResolveWorktree(broken)
+		if err != nil {
+			t.Fatalf("resolve the task worktree: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(shedrun.UsageDir(brokenLocation), "run.json"), []byte("{"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		// A fake worktree is its own repository, so it is its own prime and holds the batten run directory.
+		docsLocation, err := lymcwd.ResolveWorktree(docs)
+		if err != nil {
+			t.Fatalf("resolve the task worktree: %v", err)
+		}
+		if err := os.MkdirAll(shedrun.RunDir(docsLocation, "slug-b3"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		tests := []struct {
+			name    string
+			strand  string
+			cwd     string
+			args    []string
+			refused bool
+			// reason is what a writer's refusal gives in place of the bench pair way forward, empty when it gives none.
+			reason string
+		}{
+			{"AddFromTaskWorktree", writer, docs, []string{"add", "slug-b1"}, false, ""},
+			{"RemoveFromTaskWorktree", writer, docs, []string{"remove", "slug-b2"}, false, ""},
+			{"AddFromRecordsSibling", writer, docs + weftname.Suffix, []string{"add", "slug-b1"}, false, ""},
+			{"NumberedWriter", "ly:slug:darn-2", docs, []string{"add", "slug-b1"}, false, ""},
+			{"AddWithParent", writer, docs, []string{"add", "slug-b1", "--parent", "other"}, true, ""},
+			{"AddAdoptingLocal", writer, docs, []string{"add", "slug-b1", "--adopt-local"}, true, ""},
+			{"SlugNotABenchPair", writer, docs, []string{"add", "slug-notes"}, true, ""},
+			{"NoSlug", writer, docs, []string{"add"}, true, ""},
+			{"BenchPairOfAnotherTask", writer, docs, []string{"remove", "other-b1"}, true, ""},
+			{"FromAnotherWorktree", writer, other, []string{"add", "slug-b1"}, true, ""},
+			{"NoRunRecord", writer, noRecord, []string{"add", "slug-b1"}, true, ""},
+			{"UndecodableRunRecord", writer, broken, []string{"add", "slug-b1"}, true, "does not decode"},
+			{"RunOnAnotherProfile", writer, light, []string{"add", "slug-b1"}, true, ""},
+			{"RunOfAnotherRecipe", writer, tapestry, []string{"remove", "slug-b1"}, true, ""},
+			{"AddOfASlugABattenRunNames", writer, docs, []string{"add", "slug-b3"}, true, "a batten run directory names slug-b3"},
+			{"RemoveOfASlugABattenRunNames", writer, docs, []string{"remove", "slug-b3"}, true, "a batten run directory names slug-b3"},
+			{"NotADarnWriter", webster, docs, []string{"add", "slug-b1"}, true, ""},
+		}
+		for _, tt := range tests {
+			t.Setenv(agentname.StrandNameEnv, tt.strand)
+			code, out := runUnderParentIn(t, tt.cwd, tt.args...)
+			if refused := strings.Contains(out, refusalMarker); refused != tt.refused {
+				t.Errorf("%s: %v under %s refused = %v; want %v; output: %s", tt.name, tt.args, tt.strand, refused, tt.refused, out)
+			}
+			if !tt.refused {
+				continue
+			}
+			if code != 1 {
+				t.Errorf("%s: %v under %s = %d; want exit 1", tt.name, tt.args, tt.strand, code)
+			}
+			wantWayForward := tt.strand == writer && tt.reason == ""
+			if strings.Contains(out, "`lym fabric add slug-b1`") != wantWayForward {
+				t.Errorf("%s: refusal under %s names the bench pair way forward = %v; want %v; output: %s",
+					tt.name, tt.strand, !wantWayForward, wantWayForward, out)
+			}
+			if !strings.Contains(out, tt.reason) {
+				t.Errorf("%s: refusal under %s lacks %q: %s", tt.name, tt.strand, tt.reason, out)
+			}
+		}
+
+		bench := fakeWorktree(t, filepath.Dir(docs), "slug-b1")
+		battenNamedBench := fakeWorktree(t, filepath.Dir(docs), "slug-b3")
+		lightBench := fakeWorktree(t, filepath.Dir(light), "slug-b1")
+		otherHubBench := fakeWorktree(t, filepath.Dir(benchTaskWorktree(t, shedrun.RecipeDarn, runprofile.DocsProfile)), "slug-b1")
+		recordShortname(t, filepath.Dir(otherHubBench), "zz")
+		pushTests := []struct {
+			name    string
+			strand  string
+			pair    string
+			refused bool
+		}{
+			{"WritersBenchPair", writer, bench, false},
+			{"BenchPairInAnotherHub", writer, otherHubBench, true},
+			{"BenchSlugUnderAnotherRole", webster, bench, true},
+			{"WriterOnAnotherProfile", writer, lightBench, true},
+			{"BenchSlugABattenRunNames", writer, battenNamedBench, true},
+		}
+		for _, tt := range pushTests {
+			t.Setenv(agentname.StrandNameEnv, tt.strand)
+			args := []string{"push", "--weft-path", tt.pair + weftname.Suffix, "--warp-path", tt.pair}
+			if _, out := runUnderParent(t, args...); strings.Contains(out, refusalMarker) != tt.refused {
+				t.Errorf("%s: %v under %s refused = %v; want %v; output: %s", tt.name, args, tt.strand, !tt.refused, tt.refused, out)
+			}
 		}
 	})
 
