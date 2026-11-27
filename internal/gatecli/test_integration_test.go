@@ -711,97 +711,189 @@ func TestGoJSONCounter_MarksTheFailureOfAKilledTestBinary(t *testing.T) {
 	}
 }
 
+// scenarioHub is one hubforge hub the scenario rows run `lym gate test` over, with a gate config written into it.
+// Every row that runs in a hub builds its own, so rows share no state and run in parallel.
+type scenarioHub struct {
+	hub *hubforge.Hub
+	// configPath is the hub's gate.yaml.
+	configPath string
+	// defaultConfig is the gate.yaml the hub starts with, which a row that breaks the config rewrites to repair it.
+	defaultConfig []byte
+	prime         string
+	pool          *gateslot.Pool
+	waitDir       string
+	// greenPath is the green record the hub's gate calls read and write.
+	greenPath string
+	// buildDir is a directory under the prime for a shared build step to run in.
+	buildDir string
+	// dirt is a file in the prime that keeps its worktree dirty.
+	// The prime starts dirty, so the green record neither carries nor records;
+	// a row that tests the carry cleans it first.
+	dirt string
+}
+
+// newScenarioHub copies a hub anchored at its root and writes the default gate config into it.
+// It also writes the dirt file into the prime and creates the build dir.
+func newScenarioHub(t *testing.T) *scenarioHub {
+	t.Helper()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	f := &scenarioHub{
+		hub:           h,
+		configPath:    configengine.ConfigFile(h.BoardDir(), "gate"),
+		defaultConfig: scenarioConfig(t, nil),
+		prime:         h.PrimeWorktree(),
+		pool:          hubgeom.GateSlots(h.Location),
+		waitDir:       gateslot.WaitDir(h.Location.AnchorPath()),
+	}
+	f.greenPath = filepath.Join(f.waitDir, greenFileName)
+	f.buildDir = filepath.Join(f.prime, "sub")
+	f.dirt = filepath.Join(f.prime, "dirt.txt")
+	f.writeConfig(t, f.defaultConfig)
+	if err := os.WriteFile(f.dirt, []byte("dirt\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(f.buildDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+// writeConfig replaces the hub's gate.yaml with data.
+func (f *scenarioHub) writeConfig(t *testing.T, data []byte) {
+	t.Helper()
+
+	if err := os.WriteFile(f.configPath, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// requireFree fails the test unless every gate slot of the hub ends up free with no wait record left.
+func (f *scenarioHub) requireFree(t *testing.T) {
+	t.Helper()
+
+	eventually(t, "the slots to be free", func() bool {
+		holders, err := f.pool.Holders()
+		return err == nil && len(holders) == 0
+	})
+	if waits, err := gateslot.ReadWaits(f.waitDir); err != nil || len(waits) != 0 {
+		t.Errorf("ReadWaits = (%+v, %v); want no wait record left", waits, err)
+	}
+}
+
+// acquire takes one slot of the hub's pool for site and releases it when the test ends.
+func (f *scenarioHub) acquire(t *testing.T, site string) *gateslot.Lease {
+	t.Helper()
+
+	lease, err := f.pool.Acquire(context.Background(), gateslot.Holder{Worktree: "/other/worktree", Site: site})
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	t.Cleanup(func() { _ = lease.Release() })
+	return lease
+}
+
+// writeModule writes a nested module named name under the prime holding files, and returns its directory.
+func (f *scenarioHub) writeModule(t *testing.T, name string, files map[string]string) string {
+	t.Helper()
+
+	root := filepath.Join(f.prime, name)
+	files["go.mod"] = "module example.com/" + name + "\n\ngo 1.21\n"
+	for rel, content := range files {
+		full := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+// clean removes the dirt file, so the prime's worktree is clean and the green record carries and records.
+func (f *scenarioHub) clean(t *testing.T) {
+	t.Helper()
+
+	if err := os.Remove(f.dirt); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// writeEnvFile writes an env module file with content at path, creating its directory.
+func (f *scenarioHub) writeEnvFile(t *testing.T, path, content string) {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// wrapComment writes a Go file into the prime whose new comment wraps in the middle of a sentence.
+// The comments lint finds that file.
+func (f *scenarioHub) wrapComment(t *testing.T) {
+	t.Helper()
+
+	wrapped := filepath.Join(f.prime, "wrapped.go")
+	if err := os.WriteFile(wrapped, []byte("package hub\n\n// a fresh comment that wraps in the\n// middle of a sentence.\nfunc Fresh() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// withSharedBuild returns a change to a gate config that declares a build step over the stand-in, run in dir.
+// It also sets shared_build on tier0 and tier6.
+func withSharedBuild(dir string) func(cfg map[string]any) {
+	return func(cfg map[string]any) {
+		cfg["build"] = map[string]any{"command": "'" + os.Args[0] + "' sharedbuild", "dir": dir, "env": map[string]string{"BUILD_MARK": "1"}, "timeout_min": 1}
+		tiers := cfg["tiers"].(map[string]any)
+		for _, name := range []string{"tier0", "tier6"} {
+			tiers[name].(map[string]any)["shared_build"] = true
+		}
+	}
+}
+
+// buildRecords returns the stand-in records of the build steps the gate g ran, in invocation order.
+// It leaves out the tier invocations.
+func buildRecords(t *testing.T, g *runningGate) []standInRecord {
+	t.Helper()
+
+	return slices.DeleteFunc(g.records(t), func(record standInRecord) bool { return !record.Build })
+}
+
+// closingOf returns the last closing line of failed runs in output, or the empty string when output holds none.
+func closingOf(output string) string {
+	closing := ""
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(line, gateslot.FailedRunsPrefix) {
+			closing = line
+		}
+	}
+	return closing
+}
+
 func TestGateTest_Scenario(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	configPath := configengine.ConfigFile(h.BoardDir(), "gate")
-	gateConfig := scenarioConfig(t, nil)
-	writeConfig := func(t *testing.T, data []byte) {
-		t.Helper()
-		if err := os.WriteFile(configPath, data, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	writeConfig(t, gateConfig)
-	prime := h.PrimeWorktree()
-	pool := hubgeom.GateSlots(h.Location)
-	waitDir := gateslot.WaitDir(h.Location.AnchorPath())
-
-	requireFree := func(t *testing.T) {
-		t.Helper()
-		eventually(t, "the slots to be free", func() bool {
-			holders, err := pool.Holders()
-			return err == nil && len(holders) == 0
-		})
-		if waits, err := gateslot.ReadWaits(waitDir); err != nil || len(waits) != 0 {
-			t.Errorf("ReadWaits = (%+v, %v); want no wait record left", waits, err)
-		}
-	}
-	acquire := func(t *testing.T, site string) *gateslot.Lease {
-		t.Helper()
-		lease, err := pool.Acquire(context.Background(), gateslot.Holder{Worktree: "/other/worktree", Site: site})
-		if err != nil {
-			t.Fatalf("Acquire: %v", err)
-		}
-		t.Cleanup(func() { _ = lease.Release() })
-		return lease
-	}
-	// writeModule writes a nested module named name under the prime holding files, and returns its directory.
-	writeModule := func(t *testing.T, name string, files map[string]string) string {
-		t.Helper()
-		root := filepath.Join(prime, name)
-		files["go.mod"] = "module example.com/" + name + "\n\ngo 1.21\n"
-		for rel, content := range files {
-			full := filepath.Join(root, filepath.FromSlash(rel))
-			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-				t.Fatal(err)
-			}
-		}
-		return root
-	}
-
-	// The prime starts dirty, so the green record neither carries nor records in the rows below that repeat a command;
-	// the carry rows clean it for their own length.
-	dirt := filepath.Join(prime, "dirt.txt")
-	writeDirt := func(t *testing.T) {
-		t.Helper()
-		if err := os.WriteFile(dirt, []byte("dirt\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	writeDirt(t)
-	clean := func(t *testing.T) {
-		t.Helper()
-		if err := os.Remove(dirt); err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { writeDirt(t) })
-	}
-	greenPath := filepath.Join(waitDir, greenFileName)
-
 	t.Run("a second --gate run over the same clean tree carries every tier, taking no slot and running no command", func(t *testing.T) {
-		clean(t)
-		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
-			t.Fatal(err)
-		}
-		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.clean(t)
+		f.writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
 			cfg["gates"] = map[string]any{"finalize": map[string]any{"tiers": []int{0, 2}, "scope": "all"}}
 		}))
-		defer writeConfig(t, gateConfig)
 
-		first := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "finalize"}})
+		first := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--gate", "finalize"}})
 		if code := first.wait(t); code != 0 || !reflect.DeepEqual(first.tierArgs(t), [][]string{{"./pkg"}, {"whole"}}) {
 			t.Fatalf("first run = exit %d, tier invocations %q; want exit 0 and both tiers run", code, first.tierArgs(t))
 		}
 
 		// Both slots held: a carried tier takes none, so a call that took one would block here.
-		firstLease, secondLease := acquire(t, "holder one"), acquire(t, "holder two")
-		second := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "finalize"}})
+		firstLease, secondLease := f.acquire(t, "holder one"), f.acquire(t, "holder two")
+		second := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--gate", "finalize"}})
 		if code := second.wait(t); code != 0 || len(second.tierArgs(t)) != 0 {
 			t.Fatalf("second run = exit %d, tier invocations %q, stdout %q; want exit 0 and no command run", code, second.tierArgs(t), second.stdout.String())
 		}
@@ -818,50 +910,28 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("a --copies run over a clean tree records no green pass", func(t *testing.T) {
-		clean(t)
-		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
-			t.Fatal(err)
-		}
-		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.clean(t)
+		f.writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
 			cfg["gates"] = map[string]any{"copied": map[string]any{"tiers": []int{0}, "scope": "all"}}
 		}))
-		defer writeConfig(t, gateConfig)
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "copied", "--copies", "2", "./pkg"}})
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--gate", "copied", "--copies", "2", "./pkg"}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("copies run = exit %d, stdout %q, stderr %q; want exit 0", code, g.stdout.String(), g.stderr.String())
 		}
-		if _, err := os.Stat(greenPath); !os.IsNotExist(err) {
+		if _, err := os.Stat(f.greenPath); !os.IsNotExist(err) {
 			t.Errorf("green record after a copies run: stat error = %v; want it unwritten, the copies running live", err)
 		}
 	})
 
-	// withSharedBuild declares the hub's build step over the stand-in, run in dir.
-	// It also sets shared_build on tier0 and tier6.
-	withSharedBuild := func(dir string) func(cfg map[string]any) {
-		return func(cfg map[string]any) {
-			cfg["build"] = map[string]any{"command": "'" + os.Args[0] + "' sharedbuild", "dir": dir, "env": map[string]string{"BUILD_MARK": "1"}, "timeout_min": 1}
-			tiers := cfg["tiers"].(map[string]any)
-			for _, name := range []string{"tier0", "tier6"} {
-				tiers[name].(map[string]any)["shared_build"] = true
-			}
-		}
-	}
-	buildDir := filepath.Join(prime, "sub")
-	if err := os.MkdirAll(buildDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	// buildRecords returns the build step's records in g.
-	buildRecords := func(t *testing.T, g *runningGate) []standInRecord {
-		t.Helper()
-		return slices.DeleteFunc(g.records(t), func(record standInRecord) bool { return !record.Build })
-	}
-
 	t.Run("the shared build runs once before the first opted-in tier, in its dir with the slot and its env and none of the call's words, and the tier's clock starts after it", func(t *testing.T) {
-		writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
-		defer writeConfig(t, gateConfig)
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "--tier", "6", "./pkg", "--", "-count=1"}, env: []string{"MSBUILDDISABLENODEREUSE=0", "DOTNET_CLI_USE_MSBUILD_SERVER=1"}})
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "0", "--tier", "6", "./pkg", "--", "-count=1"}, env: []string{"MSBUILDDISABLENODEREUSE=0", "DOTNET_CLI_USE_MSBUILD_SERVER=1"}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
 		}
@@ -869,8 +939,8 @@ func TestGateTest_Scenario(t *testing.T) {
 		if len(builds) != 1 {
 			t.Fatalf("build invocations = %+v; want the build once for both tiers", builds)
 		}
-		if build := builds[0]; !slices.Equal(build.Args, []string{"sharedbuild"}) || build.Cwd != buildDir || build.BuildMark != "1" || filepath.Dir(build.Slot) != pool.Dir {
-			t.Errorf("build invocation = %+v; want only `sharedbuild`, run in %s with BUILD_MARK and a slot of %s", build, buildDir, pool.Dir)
+		if build := builds[0]; !slices.Equal(build.Args, []string{"sharedbuild"}) || build.Cwd != f.buildDir || build.BuildMark != "1" || filepath.Dir(build.Slot) != f.pool.Dir {
+			t.Errorf("build invocation = %+v; want only `sharedbuild`, run in %s with BUILD_MARK and a slot of %s", build, f.buildDir, f.pool.Dir)
 		}
 		if build := builds[0]; build.NodeReuse != "1" || build.MSBuildServer != "0" {
 			t.Errorf("build environment MSBUILDDISABLENODEREUSE = %q, DOTNET_CLI_USE_MSBUILD_SERVER = %q; want 1 and 0 over the inherited values", build.NodeReuse, build.MSBuildServer)
@@ -891,28 +961,16 @@ func TestGateTest_Scenario(t *testing.T) {
 		if tier0.Start.Before(build.End) {
 			t.Errorf("tier0 started at %s, before the build ended at %s; want its timeout_min counted after the build", tier0.Start, build.End)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
-	// writeEnvFile writes the env module's file at path and removes it when the row ends.
-	// The removal keeps any later row over the shared hub from loading it.
-	writeEnvFile := func(t *testing.T, path, content string) {
-		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = os.Remove(path) })
-	}
-
 	t.Run("the shared build runs with the env module's variables over the inherited ones and under its own env, and its build-server switches stay lym's", func(t *testing.T) {
-		writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
-		defer writeConfig(t, gateConfig)
-		writeEnvFile(t, configengine.ConfigFile(h.BoardDir(), "env"), "vars:\n  BUILD_MARK: from-env-module\n  GOFLAGS: -from-env-module\n  MSBUILDDISABLENODEREUSE: \"0\"\n")
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
+		f.writeEnvFile(t, configengine.ConfigFile(f.hub.BoardDir(), "env"), "vars:\n  BUILD_MARK: from-env-module\n  GOFLAGS: -from-env-module\n  MSBUILDDISABLENODEREUSE: \"0\"\n")
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "./pkg"}, env: []string{"GOFLAGS=-inherited"}})
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "6", "./pkg"}, env: []string{"GOFLAGS=-inherited"}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
 		}
@@ -929,8 +987,10 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("inside a hub the env module loads the hub file with this machine's file winning name by name", func(t *testing.T) {
-		writeEnvFile(t, configengine.ConfigFile(h.BoardDir(), "env"), "vars:\n  BUILD_MARK: from-hub-file\n")
-		hubOnly := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "./pkg"}})
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.writeEnvFile(t, configengine.ConfigFile(f.hub.BoardDir(), "env"), "vars:\n  BUILD_MARK: from-hub-file\n")
+		hubOnly := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "0", "./pkg"}})
 		if code := hubOnly.wait(t); code != 0 {
 			t.Fatalf("exit code = %d, stdout %q; want 0", code, hubOnly.stdout.String())
 		}
@@ -938,8 +998,8 @@ func TestGateTest_Scenario(t *testing.T) {
 			t.Errorf("tier BUILD_MARK with only the hub file = %q; want from-hub-file", got)
 		}
 
-		writeEnvFile(t, configengine.MachineFile(h.BoardDir(), "env"), "vars:\n  BUILD_MARK: from-machine-file\n")
-		withMachine := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "./pkg"}})
+		f.writeEnvFile(t, configengine.MachineFile(f.hub.BoardDir(), "env"), "vars:\n  BUILD_MARK: from-machine-file\n")
+		withMachine := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "0", "./pkg"}})
 		if code := withMachine.wait(t); code != 0 {
 			t.Fatalf("exit code = %d, stdout %q; want 0", code, withMachine.stdout.String())
 		}
@@ -949,10 +1009,11 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("a failing build blocks every opted-in tier, names the build first in the closing line and still runs a tier that did not opt in", func(t *testing.T) {
-		writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
-		defer writeConfig(t, gateConfig)
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "--tier", "2", "--tier", "6", "./pkg"}, env: []string{helperBuildExitEnv + "=3"}})
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "0", "--tier", "2", "--tier", "6", "./pkg"}, env: []string{helperBuildExitEnv + "=3"}})
 		if code := g.wait(t); code != 3 {
 			t.Errorf("exit code = %d, stdout %q; want the build's 3", code, g.stdout.String())
 		}
@@ -997,14 +1058,15 @@ func TestGateTest_Scenario(t *testing.T) {
 		if at := strings.Index(output, wantReport); report < 0 || at < report || closing < at {
 			t.Errorf("stdout = %q; want the failure report listing %q between its header and the closing line", output, wantReport)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("a build that outlives its timeout_min is killed with the build timeout line and exits 1", func(t *testing.T) {
-		writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
-		defer writeConfig(t, gateConfig)
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "./pkg"}, env: []string{helperHoldEnv + "=1", helperUnitEnv + "=1s"}})
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "0", "./pkg"}, env: []string{helperHoldEnv + "=1", helperUnitEnv + "=1s"}})
 		code := g.wait(t)
 		// tierRecords leaves out a build, so the held sleeper is read from the build's own record.
 		for _, record := range buildRecords(t, g) {
@@ -1019,14 +1081,15 @@ func TestGateTest_Scenario(t *testing.T) {
 		if len(g.tierRecords(t)) != 0 {
 			t.Errorf("tier invocations = %q; want none after the build timed out", g.tierArgs(t))
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("a build whose dir is missing is refused naming the dir and the way forward, and runs no tier command", func(t *testing.T) {
-		writeConfig(t, scenarioConfig(t, withSharedBuild("missing")))
-		defer writeConfig(t, gateConfig)
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.writeConfig(t, scenarioConfig(t, withSharedBuild("missing")))
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "--tier", "2", "./pkg"}})
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "0", "--tier", "2", "./pkg"}})
 		code := g.wait(t)
 		var envelope struct {
 			OK    bool   `json:"ok"`
@@ -1037,41 +1100,36 @@ func TestGateTest_Scenario(t *testing.T) {
 		if err := json.Unmarshal([]byte(stdoutLines[len(stdoutLines)-1]), &envelope); err != nil {
 			t.Fatalf("stdout %q does not end in a JSON envelope: %v", g.stdout.String(), err)
 		}
-		missing := filepath.Join(prime, "missing")
+		missing := filepath.Join(f.prime, "missing")
 		if code != 1 || envelope.OK || !strings.Contains(envelope.Error, "could not start the shell for the build in "+missing) || !strings.Contains(envelope.Error, "make build.dir an existing directory and put the platform shell on PATH, then re-run the same command") {
 			t.Errorf("gate = exit %d, %+v; want exit 1 and the refusal naming %s and the way forward", code, envelope, missing)
 		}
 		if len(g.records(t)) != 0 {
 			t.Errorf("stand-in records = %+v; want no tier command, tier2 included", g.records(t))
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("a second --all run over the same clean tree carries both opted-in tiers and runs no build", func(t *testing.T) {
-		clean(t)
-		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
-			t.Fatal(err)
-		}
-		writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
-		defer writeConfig(t, gateConfig)
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.clean(t)
+		f.writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
 
-		first := startGate(t, gateRun{cwd: prime, args: []string{"test", "--all", "--tier", "0", "--tier", "6"}})
+		first := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--all", "--tier", "0", "--tier", "6"}})
 		if code := first.wait(t); code != 0 || len(buildRecords(t, first)) != 1 {
 			t.Fatalf("first run = exit %d, builds %+v; want exit 0 and the one build", code, buildRecords(t, first))
 		}
-		second := startGate(t, gateRun{cwd: prime, args: []string{"test", "--all", "--tier", "0", "--tier", "6"}})
+		second := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--all", "--tier", "0", "--tier", "6"}})
 		if code := second.wait(t); code != 0 || len(second.records(t)) != 0 || strings.Contains(second.stdout.String(), "build before") {
 			t.Errorf("second run = exit %d, stand-in records %+v, stdout %q; want both tiers carried and no build", code, second.records(t), second.stdout.String())
 		}
 	})
 
 	t.Run("--guards plans a group per tier of the guard tests' files, a repeat carries both groups, and a plain run of their packages runs them", func(t *testing.T) {
-		clean(t)
-		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
-			t.Fatal(err)
-		}
-		before := gitkit.RevParse(t, prime, "HEAD")
-		t.Cleanup(func() { gitkit.Git(t, prime, "reset", "-q", "--hard", before) })
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.clean(t)
 		for rel, content := range map[string]string{
 			"guardtiers/go.mod":            "module example.com/guardtiers\n\ngo 1.21\n",
 			"guardtiers/pkg/pkg.go":        "package pkg\n",
@@ -1080,7 +1138,7 @@ func TestGateTest_Scenario(t *testing.T) {
 			"guardtiers/h/h.go":            "package h\n",
 			"guardtiers/h/h_tier1_test.go": "//go:build tier1\n\npackage h\n\nimport \"testing\"\n\n//lym:guard\nfunc TestGuardOne(t *testing.T) {}\n",
 		} {
-			full := filepath.Join(prime, filepath.FromSlash(rel))
+			full := filepath.Join(f.prime, filepath.FromSlash(rel))
 			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 				t.Fatal(err)
 			}
@@ -1088,10 +1146,10 @@ func TestGateTest_Scenario(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		gitkit.Git(t, prime, "add", "guardtiers")
-		gitkit.Git(t, prime, "commit", "-q", "-m", "add the guard tiers module")
+		gitkit.Git(t, f.prime, "add", "guardtiers")
+		gitkit.Git(t, f.prime, "commit", "-q", "-m", "add the guard tiers module")
 
-		module := filepath.Join(prime, "guardtiers")
+		module := filepath.Join(f.prime, "guardtiers")
 		run := func(args ...string) *runningGate {
 			g := startGate(t, gateRun{cwd: t.TempDir(), args: append([]string{"test", "-C", module}, args...)})
 			if code := g.wait(t); code != 0 {
@@ -1118,22 +1176,23 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("a dirty worktree carries nothing and writes nothing", func(t *testing.T) {
-		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
-			t.Fatal(err)
-		}
+		t.Parallel()
+		f := newScenarioHub(t)
 		for attempt := 1; attempt <= 2; attempt++ {
-			g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--all"}})
+			g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--all"}})
 			if code := g.wait(t); code != 0 || !reflect.DeepEqual(g.tierArgs(t), [][]string{{"./pkg"}}) {
 				t.Errorf("run %d on the dirty prime = exit %d, tier invocations %q; want the tier to run", attempt, code, g.tierArgs(t))
 			}
 		}
-		if _, err := os.Stat(greenPath); !os.IsNotExist(err) {
+		if _, err := os.Stat(f.greenPath); !os.IsNotExist(err) {
 			t.Errorf("green record after dirty runs: stat error = %v; want it unwritten", err)
 		}
 	})
 
 	t.Run("a free slot runs the tier under its env, exits with its code and records the run", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./pkg", "--", "-run", "X"}, env: []string{helperExitEnv + "=7", strandEnvEntry, helperCapEnv + "=0", logger.TraceIDEnv + "=0123456789abcdef", "MSBUILDDISABLENODEREUSE=0", "DOTNET_CLI_USE_MSBUILD_SERVER=1"}})
+		t.Parallel()
+		f := newScenarioHub(t)
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "./pkg", "--", "-run", "X"}, env: []string{helperExitEnv + "=7", strandEnvEntry, helperCapEnv + "=0", logger.TraceIDEnv + "=0123456789abcdef", "MSBUILDDISABLENODEREUSE=0", "DOTNET_CLI_USE_MSBUILD_SERVER=1"}})
 		if code := g.wait(t); code != 7 {
 			t.Errorf("exit code = %d; want the stand-in's 7", code)
 		}
@@ -1153,18 +1212,18 @@ func TestGateTest_Scenario(t *testing.T) {
 		if want := []string{"./pkg", "-run", "X"}; !slices.Equal(record.Args, want) {
 			t.Errorf("tier args = %q; want %q", record.Args, want)
 		}
-		if record.GoFlags != "-count=1 -trimpath -p=3" || filepath.Dir(record.Slot) != pool.Dir {
-			t.Errorf("tier environment GOFLAGS = %q, %s = %q; want the cache-off flag before the tier's own GOFLAGS and a slot of %s", record.GoFlags, gateslot.InheritEnv, record.Slot, pool.Dir)
+		if record.GoFlags != "-count=1 -trimpath -p=3" || filepath.Dir(record.Slot) != f.pool.Dir {
+			t.Errorf("tier environment GOFLAGS = %q, %s = %q; want the cache-off flag before the tier's own GOFLAGS and a slot of %s", record.GoFlags, gateslot.InheritEnv, record.Slot, f.pool.Dir)
 		}
-		if record.Cwd != prime {
-			t.Errorf("tier cwd = %q; want the tier's dir under the worktree root %q", record.Cwd, prime)
+		if record.Cwd != f.prime {
+			t.Errorf("tier cwd = %q; want the tier's dir under the worktree root %q", record.Cwd, f.prime)
 		}
 
 		run, log := runRecordOf(t, g.stdout.String(), 0)
-		if run.Worktree != prime || run.Slug != "" || run.Tier != 0 || !slices.Equal(run.TierList, []int{0}) || run.ScopeForm != "targets" || run.ExitCode != 7 || run.Outcome != "failed" || run.TimedOut || run.Discovered != 0 {
+		if run.Worktree != f.prime || run.Slug != "" || run.Tier != 0 || !slices.Equal(run.TierList, []int{0}) || run.ScopeForm != "targets" || run.ExitCode != 7 || run.Outcome != "failed" || run.TimedOut || run.Discovered != 0 {
 			t.Errorf("run record = %+v; want the prime's failed tier0 run over targets, exit 7, nothing discovered", run)
 		}
-		if got, want := filepath.Dir(summaryLogPath(t, g.stdout.String(), 0)), gateslot.RunLogDir(gateslot.Dir(h.BoardDir())); got != want {
+		if got, want := filepath.Dir(summaryLogPath(t, g.stdout.String(), 0)), gateslot.RunLogDir(gateslot.Dir(f.hub.BoardDir())); got != want {
 			t.Errorf("run record directory = %s; want the board's %s", got, want)
 		}
 		trimpath := trimpathLine("tier0", []string{"GOFLAGS=-trimpath -p=3"})
@@ -1174,16 +1233,17 @@ func TestGateTest_Scenario(t *testing.T) {
 		if !slices.Contains(strings.Split(g.stdout.String(), "\n"), trimpath) {
 			t.Errorf("gate output = %q; want the -trimpath line %q", g.stdout.String(), trimpath)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("a tier's own env overrides the MSBuild variables the gate sets", func(t *testing.T) {
-		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
 			cfg["tiers"].(map[string]any)["tier6"].(map[string]any)["env"] = map[string]string{"MSBUILDDISABLENODEREUSE": "0", "ENV_LINE_MARK": "tier"}
 		}))
-		defer writeConfig(t, gateConfig)
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "./pkg"}, env: []string{"ENV_LINE_MARK=session"}})
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "6", "./pkg"}, env: []string{"ENV_LINE_MARK=session"}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
 		}
@@ -1199,20 +1259,22 @@ func TestGateTest_Scenario(t *testing.T) {
 				t.Errorf("%s = %q; want the env line naming ENV_LINE_MARK=tier and not the session's value", name, text)
 			}
 		}
-		requireFree(t)
+		f.requireFree(t)
 
-		equal := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "./pkg"}, env: []string{"ENV_LINE_MARK=tier"}})
+		equal := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "6", "./pkg"}, env: []string{"ENV_LINE_MARK=tier"}})
 		if code := equal.wait(t); code != 0 {
 			t.Fatalf("exit code with an equal session value = %d, stdout %q; want 0", code, equal.stdout.String())
 		}
 		if strings.Contains(equal.stdout.String(), "ENV_LINE_MARK") {
 			t.Errorf("gate output with an equal session value = %q; want no env line naming ENV_LINE_MARK", equal.stdout.String())
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("a tier that fails once on a resource shortage is rerun and ends passed with the rerun announced", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "./pkg"}, env: []string{helperShortageEnv + "=once"}})
+		t.Parallel()
+		f := newScenarioHub(t)
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "6", "./pkg"}, env: []string{helperShortageEnv + "=once"}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d, stdout %q; want 0 after the rerun", code, g.stdout.String())
 		}
@@ -1222,11 +1284,13 @@ func TestGateTest_Scenario(t *testing.T) {
 		if !strings.Contains(g.stdout.String(), "gate test: tier6 failed on a resource shortage") {
 			t.Errorf("stdout = %q; want the rerun announced", g.stdout.String())
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("a tier that fails on a resource shortage twice keeps its exit code and is named a resource shortage in the closing line", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "./pkg"}, env: []string{helperShortageEnv + "=always"}})
+		t.Parallel()
+		f := newScenarioHub(t)
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "6", "./pkg"}, env: []string{helperShortageEnv + "=always"}})
 		if code := g.wait(t); code != 1 {
 			t.Fatalf("exit code = %d, stdout %q; want the run's own 1", code, g.stdout.String())
 		}
@@ -1242,19 +1306,21 @@ func TestGateTest_Scenario(t *testing.T) {
 		if !strings.Contains(closing, "tier6 (exit 1, a resource shortage") {
 			t.Errorf("closing line = %q; want it to name tier6 as a resource shortage", closing)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("status names each held slot's number, worktree, site, tier and start, the slot count and the drain", func(t *testing.T) {
-		acquire(t, "holder one")
-		lease, err := pool.AcquireSlots(context.Background(), gateslot.Holder{Worktree: "/tiered/worktree", Site: "lym gate test tier1", Tier: "tier1"}, 1)
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.acquire(t, "holder one")
+		lease, err := f.pool.AcquireSlots(context.Background(), gateslot.Holder{Worktree: "/tiered/worktree", Site: "lym gate test tier1", Tier: "tier1"}, 1)
 		if err != nil {
 			t.Fatalf("AcquireSlots: %v", err)
 		}
 		t.Cleanup(func() { _ = lease.Release() })
 
 		var out bytes.Buffer
-		code := clihelp.ExecuteIn(Command(), prime, &out, []string{"status"})
+		code := clihelp.ExecuteIn(Command(), f.prime, &out, []string{"status"})
 		var envelope struct {
 			OK       bool `json:"ok"`
 			InHub    bool `json:"in_hub"`
@@ -1285,17 +1351,19 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("status reports draining true while a multi-slot acquire holds the drain lock", func(t *testing.T) {
-		if err := os.MkdirAll(pool.Dir, 0o755); err != nil {
+		t.Parallel()
+		f := newScenarioHub(t)
+		if err := os.MkdirAll(f.pool.Dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		drain, acquired, err := lock.TryAcquireWriteLock(filepath.Join(pool.Dir, "drain.lock"))
+		drain, acquired, err := lock.TryAcquireWriteLock(filepath.Join(f.pool.Dir, "drain.lock"))
 		if err != nil || !acquired {
 			t.Fatalf("TryAcquireWriteLock(drain) = (%v, %v); want the drain held", acquired, err)
 		}
 		t.Cleanup(func() { _ = drain.Release() })
 
 		var out bytes.Buffer
-		code := clihelp.ExecuteIn(Command(), prime, &out, []string{"status"})
+		code := clihelp.ExecuteIn(Command(), f.prime, &out, []string{"status"})
 		var envelope struct {
 			OK       bool `json:"ok"`
 			Draining bool `json:"draining"`
@@ -1309,6 +1377,7 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("status outside every hub answers in_hub false", func(t *testing.T) {
+		t.Parallel()
 		var out bytes.Buffer
 		code := clihelp.ExecuteIn(Command(), t.TempDir(), &out, []string{"status"})
 		var envelope struct {
@@ -1325,10 +1394,12 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("--wait blocks until a slot frees", func(t *testing.T) {
-		first, second := acquire(t, "holder one"), acquire(t, "holder two")
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--wait", "./pkg"}})
+		t.Parallel()
+		f := newScenarioHub(t)
+		first, second := f.acquire(t, "holder one"), f.acquire(t, "holder two")
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--wait", "./pkg"}})
 		eventually(t, "the gate's wait record", func() bool {
-			waits, err := gateslot.ReadWaits(waitDir)
+			waits, err := gateslot.ReadWaits(f.waitDir)
 			return err == nil && len(waits) == 1
 		})
 		ended := make(chan error, 1)
@@ -1350,13 +1421,15 @@ func TestGateTest_Scenario(t *testing.T) {
 		if got := g.tierArgs(t); !reflect.DeepEqual(got, [][]string{{"./pkg"}}) {
 			t.Errorf("tier invocations = %q; want the one run once the slot freed", got)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("a tier with slots all needs every slot and holds them", func(t *testing.T) {
-		held := acquire(t, "holder")
+		t.Parallel()
+		f := newScenarioHub(t)
+		held := f.acquire(t, "holder")
 		// A call with no strand takes no cap: one that took the 50ms cap would have answered SlotBusyExit by now.
-		waiting := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "1", "./pkg"}, env: []string{helperCapEnv + "=50ms"}})
+		waiting := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "1", "./pkg"}, env: []string{helperCapEnv + "=50ms"}})
 		ended := make(chan error, 1)
 		go func() { ended <- waiting.cmd.Wait() }()
 		select {
@@ -1374,26 +1447,28 @@ func TestGateTest_Scenario(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "1", "./pkg"}, env: []string{helperHoldEnv + "=1"}})
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "1", "./pkg"}, env: []string{helperHoldEnv + "=1"}})
 		record := g.standIn(t)
 		t.Cleanup(func() { _ = (&os.Process{Pid: record.Grandchild}).Kill() })
-		holders, err := pool.Holders()
+		holders, err := f.pool.Holders()
 		if err != nil || len(holders) != 2 || holders[0].Tier != "tier1" || holders[1].Tier != "tier1" {
 			t.Errorf("Holders = (%+v, %v); want both slots held by tier1", holders, err)
 		}
 		g.stop(t)
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("an inherited held slot runs without acquiring", func(t *testing.T) {
-		holder := startGate(t, gateRun{cwd: prime, args: []string{"test", "./held"}, env: []string{helperHoldEnv + "=1"}})
+		t.Parallel()
+		f := newScenarioHub(t)
+		holder := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "./held"}, env: []string{helperHoldEnv + "=1"}})
 		held := holder.standIn(t)
-		holders, err := pool.Holders()
-		if err != nil || len(holders) != 1 || holders[0].Worktree != prime || holders[0].Tier != "tier0" || holders[0].Site != "lym gate test tier0 ./held" {
+		holders, err := f.pool.Holders()
+		if err != nil || len(holders) != 1 || holders[0].Worktree != f.prime || holders[0].Tier != "tier0" || holders[0].Site != "lym gate test tier0 ./held" {
 			t.Errorf("Holders = (%+v, %v); want the holding gate's worktree, tier and site", holders, err)
 		}
 
-		nested := startGate(t, gateRun{cwd: prime, args: []string{"test", "./nested"}, env: []string{gateslot.InheritEnv + "=" + held.Slot, strandEnvEntry}})
+		nested := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "./nested"}, env: []string{gateslot.InheritEnv + "=" + held.Slot, strandEnvEntry}})
 		if code := nested.wait(t); code != 0 {
 			t.Errorf("nested exit code = %d, stdout %q; want 0 inside the held slot", code, nested.stdout.String())
 		}
@@ -1409,7 +1484,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 
 		// The gate is a child of this process, so a value naming this process names a live ancestor of the gate.
-		enclosed := startGate(t, gateRun{cwd: prime, args: []string{"test", "./enclosed"}, env: []string{gateslot.InheritEnv + "=" + held.Slot, enclosingGateEnv + "=" + strconv.Itoa(os.Getpid())}})
+		enclosed := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "./enclosed"}, env: []string{gateslot.InheritEnv + "=" + held.Slot, enclosingGateEnv + "=" + strconv.Itoa(os.Getpid())}})
 		if code := enclosed.wait(t); code != 0 {
 			t.Errorf("enclosed exit code = %d, stdout %q; want 0 inside the held slot", code, enclosed.stdout.String())
 		}
@@ -1422,18 +1497,22 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("-C names a worktree from a cwd outside the hub and the slot is taken", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "-C", prime, "./pkg"}})
+		t.Parallel()
+		f := newScenarioHub(t)
+		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "-C", f.prime, "./pkg"}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d; want 0", code)
 		}
 		record := g.standIn(t)
-		if record.Cwd != prime || !slices.Equal(record.Args, []string{"./pkg"}) || filepath.Dir(record.Slot) != pool.Dir {
-			t.Errorf("tier cwd %q, args %q, slot %q; want %q running ./pkg inside a slot of %s", record.Cwd, record.Args, record.Slot, prime, pool.Dir)
+		if record.Cwd != f.prime || !slices.Equal(record.Args, []string{"./pkg"}) || filepath.Dir(record.Slot) != f.pool.Dir {
+			t.Errorf("tier cwd %q, args %q, slot %q; want %q running ./pkg inside a slot of %s", record.Cwd, record.Args, record.Slot, f.prime, f.pool.Dir)
 		}
 	})
 
-	nestedModule := filepath.Join(prime, "nested")
 	t.Run("-C names a nested module directory inside a hub worktree and the slot is taken", func(t *testing.T) {
+		t.Parallel()
+		f := newScenarioHub(t)
+		nestedModule := filepath.Join(f.prime, "nested")
 		if err := os.MkdirAll(nestedModule, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -1442,12 +1521,18 @@ func TestGateTest_Scenario(t *testing.T) {
 			t.Fatalf("exit code = %d; want 0", code)
 		}
 		record := g.standIn(t)
-		if record.Cwd != nestedModule || filepath.Dir(record.Slot) != pool.Dir {
-			t.Errorf("tier cwd %q, slot %q; want %s inside a slot of %s", record.Cwd, record.Slot, nestedModule, pool.Dir)
+		if record.Cwd != nestedModule || filepath.Dir(record.Slot) != f.pool.Dir {
+			t.Errorf("tier cwd %q, slot %q; want %s inside a slot of %s", record.Cwd, record.Slot, nestedModule, f.pool.Dir)
 		}
 	})
 
 	t.Run("a real go test tier in the nested module passes with nothing discovered", func(t *testing.T) {
+		t.Parallel()
+		f := newScenarioHub(t)
+		nestedModule := filepath.Join(f.prime, "nested")
+		if err := os.MkdirAll(nestedModule, 0o755); err != nil {
+			t.Fatal(err)
+		}
 		files := map[string]string{
 			"go.mod":         "module example.com/nested\n\ngo 1.21\n",
 			"nested.go":      "package nested\n\nfunc Add(a, b int) int { return a + b }\n",
@@ -1465,11 +1550,13 @@ func TestGateTest_Scenario(t *testing.T) {
 		if run, _ := runRecordOf(t, stdout, 5); run.Discovered != 0 || run.Outcome != "passed" {
 			t.Errorf("run record = %+v; want a pass with nothing discovered", run)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("a real go test tier whose command lacks its tag fails on a package holding a test file under it", func(t *testing.T) {
-		module := writeModule(t, "emptytier", map[string]string{
+		t.Parallel()
+		f := newScenarioHub(t)
+		module := f.writeModule(t, "emptytier", map[string]string{
 			"p/p.go":           "package p\n",
 			"p/main_test.go":   "package p\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestMain(m *testing.M) { os.Exit(m.Run()) }\n",
 			"p/tagged_test.go": "//go:build tier5\n\npackage p\n\nimport \"testing\"\n\nfunc TestTagged(t *testing.T) {}\n",
@@ -1487,11 +1574,13 @@ func TestGateTest_Scenario(t *testing.T) {
 		if run.Outcome != "failed" || run.ExitCode != 1 || !strings.Contains(log, "example.com/emptytier/p") {
 			t.Errorf("run record = %+v, log %q; want a failure whose log names the package", run, log)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("a real go test tier's failed test and broken package are both in the failure report, with file:line, values, the log and the touched files", func(t *testing.T) {
-		module := writeModule(t, "report", map[string]string{
+		t.Parallel()
+		f := newScenarioHub(t)
+		module := f.writeModule(t, "report", map[string]string{
 			"p/p.go":                "package p\n",
 			"p/p_test.go":           "package p\n\nimport \"testing\"\n\nfunc TestFails(t *testing.T) {\n\tt.Errorf(\"got %d; want %d\", 1, 2)\n}\n",
 			"broken/broken.go":      "package broken\n\nvar x = undefinedThing\n",
@@ -1519,28 +1608,18 @@ func TestGateTest_Scenario(t *testing.T) {
 		if report, closing := strings.Index(stdout, failureReportHeader), strings.Index(stdout, gateslot.FailedRunsPrefix); report < 0 || closing < report {
 			t.Errorf("stdout %q; want the failure report before the closing line", stdout)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
-	// wrapComment writes a Go file into the prime whose new comment wraps in the middle of a sentence.
-	// The comments lint finds that file, and the file is removed when the test ends.
-	wrapComment := func(t *testing.T) {
-		t.Helper()
-		wrapped := filepath.Join(prime, "wrapped.go")
-		if err := os.WriteFile(wrapped, []byte("package hub\n\n// a fresh comment that wraps in the\n// middle of a sentence.\nfunc Fresh() {}\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = os.Remove(wrapped) })
-	}
-
 	t.Run("a gate key's lint step runs after its tiers and fails the call with its findings in the report", func(t *testing.T) {
-		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
 			cfg["gates"] = map[string]any{"linted": map[string]any{"tiers": []int{6}, "scope": "all", "lints": []string{"comments"}}}
 		}))
-		defer writeConfig(t, gateConfig)
-		wrapComment(t)
+		f.wrapComment(t)
 
-		code, stdout := runGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "linted"}})
+		code, stdout := runGate(t, gateRun{cwd: f.prime, args: []string{"test", "--gate", "linted"}})
 		if code != 1 {
 			t.Errorf("exit code = %d, stdout %q; want 1 from the lint step", code, stdout)
 		}
@@ -1553,17 +1632,18 @@ func TestGateTest_Scenario(t *testing.T) {
 				t.Errorf("stdout %q lacks %q", stdout, want)
 			}
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("a failing lint after a failing tier keeps the tier's exit code and is named last in the closing line", func(t *testing.T) {
-		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
 			cfg["gates"] = map[string]any{"linted": map[string]any{"tiers": []int{6}, "scope": "all", "lints": []string{"comments"}}}
 		}))
-		defer writeConfig(t, gateConfig)
-		wrapComment(t)
+		f.wrapComment(t)
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "linted"}, env: []string{helperExitEnv + "=7"}})
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--gate", "linted"}, env: []string{helperExitEnv + "=7"}})
 		if code := g.wait(t); code != 7 {
 			t.Errorf("exit code = %d, stdout %q; want the failing tier's 7", code, g.stdout.String())
 		}
@@ -1571,24 +1651,16 @@ func TestGateTest_Scenario(t *testing.T) {
 		if !strings.Contains(g.stdout.String(), want+"\n") {
 			t.Errorf("stdout = %q; want the closing line %q", g.stdout.String(), want)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	// A stand-in exiting 134 with no test event is a tier whose test runner crashed on SIGABRT, as a shell reports one.
 	crashEnv := []string{helperExitEnv + "=134"}
-	// closingOf returns the last closing line of failed runs in output.
-	closingOf := func(output string) string {
-		closing := ""
-		for _, line := range strings.Split(output, "\n") {
-			if strings.HasPrefix(line, gateslot.FailedRunsPrefix) {
-				closing = line
-			}
-		}
-		return closing
-	}
 
 	t.Run("a tier that crashes its test runner twice closes the call with the runner crash line", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "./pkg"}, env: crashEnv})
+		t.Parallel()
+		f := newScenarioHub(t)
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "6", "./pkg"}, env: crashEnv})
 		if code := g.wait(t); code != 134 {
 			t.Fatalf("exit code = %d, stdout %q; want the crash's 134", code, g.stdout.String())
 		}
@@ -1599,19 +1671,20 @@ func TestGateTest_Scenario(t *testing.T) {
 		if !found || runs != "tier6 (exit 134, SIGABRT)" {
 			t.Errorf("runner crash line runs = %q, %v; want tier6 (exit 134, SIGABRT)", runs, found)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("a crash beside a run that judged the code closes the call without the runner crash line", func(t *testing.T) {
+		t.Parallel()
 		tests := []struct {
 			name  string
-			setup func(t *testing.T) (gate string, env []string)
+			setup func(t *testing.T, f *scenarioHub) (gate string, env []string)
 			want  []string
 		}{
 			{
 				name: "a failing tier",
-				setup: func(t *testing.T) (string, []string) {
-					writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+				setup: func(t *testing.T, f *scenarioHub) (string, []string) {
+					f.writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
 						cfg["tiers"].(map[string]any)["tier7"] = map[string]any{"command": "exit 1", "all_targets": "./pkg", "timeout_min": 1, "counter": "go-json"}
 						cfg["gates"] = map[string]any{"mixed": map[string]any{"tiers": []int{6, 7}, "scope": "all"}}
 					}))
@@ -1621,20 +1694,20 @@ func TestGateTest_Scenario(t *testing.T) {
 			},
 			{
 				name: "a lint finding",
-				setup: func(t *testing.T) (string, []string) {
-					writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+				setup: func(t *testing.T, f *scenarioHub) (string, []string) {
+					f.writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
 						cfg["gates"] = map[string]any{"linted": map[string]any{"tiers": []int{6}, "scope": "all", "lints": []string{"comments"}}}
 					}))
-					wrapComment(t)
+					f.wrapComment(t)
 					return "linted", crashEnv
 				},
 				want: []string{"tier6 (exit 134, a runner crash, SIGABRT", "lint comments (1 finding)"},
 			},
 			{
 				name: "a tier blocked by the build",
-				setup: func(t *testing.T) (string, []string) {
-					writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
-						withSharedBuild(buildDir)(cfg)
+				setup: func(t *testing.T, f *scenarioHub) (string, []string) {
+					f.writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+						withSharedBuild(f.buildDir)(cfg)
 						cfg["gates"] = map[string]any{"built": map[string]any{"tiers": []int{0, 2}, "scope": "all"}}
 					}))
 					return "built", append(slices.Clone(crashEnv), helperBuildExitEnv+"=3")
@@ -1644,10 +1717,11 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				defer writeConfig(t, gateConfig)
-				gate, env := tt.setup(t)
+				t.Parallel()
+				f := newScenarioHub(t)
+				gate, env := tt.setup(t, f)
 
-				g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", gate}, env: env})
+				g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--gate", gate}, env: env})
 				g.wait(t)
 
 				if runs, found := gateslot.FindRunnerCrash(g.stdout.String()); found {
@@ -1659,23 +1733,23 @@ func TestGateTest_Scenario(t *testing.T) {
 						t.Errorf("closing line = %q; want it to name %q", closing, want)
 					}
 				}
-				requireFree(t)
+				f.requireFree(t)
 			})
 		}
 	})
 
 	t.Run("a halted call prints its failure report before the closing line and runs no lint", func(t *testing.T) {
-		if err := os.MkdirAll(filepath.Join(prime, "cmd", "lym"), 0o755); err != nil {
+		t.Parallel()
+		f := newScenarioHub(t)
+		if err := os.MkdirAll(filepath.Join(f.prime, "cmd", "lym"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(prime, "cmd")) })
-		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+		f.writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
 			cfg["gates"] = map[string]any{"halting": map[string]any{"tiers": []int{0, 3}, "scope": "all", "lints": []string{"comments"}}}
 		}))
-		defer writeConfig(t, gateConfig)
-		wrapComment(t)
+		f.wrapComment(t)
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "halting"}, env: []string{helperExitEnv + "=7", helperBuildExitEnv + "=1"}})
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--gate", "halting"}, env: []string{helperExitEnv + "=7", helperBuildExitEnv + "=1"}})
 		if code := g.wait(t); code != 1 {
 			t.Errorf("exit code = %d, stdout %q; want the refusal's 1", code, g.stdout.String())
 		}
@@ -1691,16 +1765,17 @@ func TestGateTest_Scenario(t *testing.T) {
 		if strings.Contains(stdout, "lint comments") {
 			t.Errorf("stdout = %q; want no lint run after the call halted", stdout)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	if runtime.GOOS == "linux" {
 		t.Run("a test binary that keeps cores busy past busy_quit_sec is quit with its stacks printed", func(t *testing.T) {
-			spinModule := writeModule(t, "spin", map[string]string{
+			t.Parallel()
+			f := newScenarioHub(t)
+			spinModule := f.writeModule(t, "spin", map[string]string{
 				"spin_test.go": "package spin\n\nimport (\n\t\"sync/atomic\"\n\t\"testing\"\n)\n\nvar sink atomic.Uint64\n\nfunc spinForever() {\n\tfor {\n\t\tsink.Add(1)\n\t}\n}\n\nfunc TestSpin(t *testing.T) {\n\tfor i := 0; i < 4; i++ {\n\t\tgo spinForever()\n\t}\n\tspinForever()\n}\n",
 			})
-			writeConfig(t, scenarioConfig(t, func(cfg map[string]any) { cfg["busy_quit_sec"] = 1 }))
-			defer writeConfig(t, gateConfig)
+			f.writeConfig(t, scenarioConfig(t, func(cfg map[string]any) { cfg["busy_quit_sec"] = 1 }))
 
 			g := startGate(t, gateRun{cwd: t.TempDir(), realGo: true, args: []string{"test", "--tier", "5", "-C", spinModule, "./..."}})
 			code := g.wait(t)
@@ -1713,12 +1788,14 @@ func TestGateTest_Scenario(t *testing.T) {
 			if window, ok := gateslot.FindWatchdogQuit(stdout); !ok || window != "1s" {
 				t.Errorf("FindWatchdogQuit(stdout) = %q, %v; want the run's own 1s window, which the template's 120s cannot produce", window, ok)
 			}
-			requireFree(t)
+			f.requireFree(t)
 		})
 	}
 
 	t.Run("a two-tier call runs both tiers in turn", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "--tier", "0", "./pkg"}})
+		t.Parallel()
+		f := newScenarioHub(t)
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "6", "--tier", "0", "./pkg"}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
 		}
@@ -1745,12 +1822,13 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("a failing tier stops no later tier and the call exits with the first failure's code", func(t *testing.T) {
-		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
 			cfg["tiers"].(map[string]any)["tier6"].(map[string]any)["command"] = "exit 9"
 		}))
-		defer writeConfig(t, gateConfig)
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "--tier", "6", "./pkg"}, env: []string{helperExitEnv + "=7"}})
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "0", "--tier", "6", "./pkg"}, env: []string{helperExitEnv + "=7"}})
 		if code := g.wait(t); code != 7 {
 			t.Errorf("exit code = %d, stdout %q; want the first failing tier's 7", code, g.stdout.String())
 		}
@@ -1761,16 +1839,17 @@ func TestGateTest_Scenario(t *testing.T) {
 		if !strings.Contains(g.stdout.String(), want+"\n") {
 			t.Errorf("stdout = %q; want the closing line %q", g.stdout.String(), want)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("--stop-on-fail ends the call at the first failing tier and names the tier it skipped", func(t *testing.T) {
-		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
 			cfg["tiers"].(map[string]any)["tier6"].(map[string]any)["command"] = "exit 9"
 		}))
-		defer writeConfig(t, gateConfig)
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--stop-on-fail", "--tier", "0", "--tier", "6", "./pkg"}, env: []string{helperExitEnv + "=7"}})
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--stop-on-fail", "--tier", "0", "--tier", "6", "./pkg"}, env: []string{helperExitEnv + "=7"}})
 		if code := g.wait(t); code != 7 {
 			t.Errorf("exit code = %d, stdout %q; want tier0's 7", code, g.stdout.String())
 		}
@@ -1785,17 +1864,18 @@ func TestGateTest_Scenario(t *testing.T) {
 		if strings.Contains(g.stdout.String(), "gate test: tier6 ") {
 			t.Errorf("stdout = %q; want no tier6 summary line, since tier6 never ran", g.stdout.String())
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("--stop-on-fail ends the call at a tier the build blocked and names the build as the failure", func(t *testing.T) {
-		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
-			withSharedBuild(buildDir)(cfg)
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+			withSharedBuild(f.buildDir)(cfg)
 			cfg["gates"] = map[string]any{"built": map[string]any{"tiers": []int{0, 2}, "scope": "all"}}
 		}))
-		defer writeConfig(t, gateConfig)
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--stop-on-fail", "--gate", "built"}, env: []string{helperBuildExitEnv + "=3"}})
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--stop-on-fail", "--gate", "built"}, env: []string{helperBuildExitEnv + "=3"}})
 		g.wait(t)
 		if want := "gate test: --stop-on-fail ended the call after build failed, so tier2 did not run\n"; !strings.Contains(g.stdout.String(), want) {
 			t.Errorf("stdout = %q; want the line %q", g.stdout.String(), want)
@@ -1803,17 +1883,18 @@ func TestGateTest_Scenario(t *testing.T) {
 		if strings.Contains(g.stdout.String(), "gate test: tier2 ") {
 			t.Errorf("stdout = %q; want no tier2 summary line, since tier2 never ran", g.stdout.String())
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("--stop-on-fail does not stop the call at a tier that crashed its test runner twice", func(t *testing.T) {
-		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
 			cfg["tiers"].(map[string]any)["tier7"] = map[string]any{"command": "exit 1", "all_targets": "./pkg", "timeout_min": 1, "counter": "go-json"}
 			cfg["gates"] = map[string]any{"mixed": map[string]any{"tiers": []int{6, 7}, "scope": "all"}}
 		}))
-		defer writeConfig(t, gateConfig)
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--stop-on-fail", "--gate", "mixed"}, env: crashEnv})
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--stop-on-fail", "--gate", "mixed"}, env: crashEnv})
 		g.wait(t)
 		if strings.Contains(g.stdout.String(), "--stop-on-fail ended the call") {
 			t.Errorf("stdout = %q; want no stop, since a crashed runner judged no code", g.stdout.String())
@@ -1824,15 +1905,16 @@ func TestGateTest_Scenario(t *testing.T) {
 				t.Errorf("closing line = %q; want it to name %q", closing, want)
 			}
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("a refusal after a failed tier ends the call with the closing line and the refusal's code", func(t *testing.T) {
-		if err := os.MkdirAll(filepath.Join(prime, "cmd", "lym"), 0o755); err != nil {
+		t.Parallel()
+		f := newScenarioHub(t)
+		if err := os.MkdirAll(filepath.Join(f.prime, "cmd", "lym"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(prime, "cmd")) })
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "--tier", "3", "./pkg"}, env: []string{helperExitEnv + "=7", helperBuildExitEnv + "=1"}})
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "0", "--tier", "3", "./pkg"}, env: []string{helperExitEnv + "=7", helperBuildExitEnv + "=1"}})
 		if code := g.wait(t); code != 1 {
 			t.Errorf("exit code = %d, stdout %q; want the refusal's 1", code, g.stdout.String())
 		}
@@ -1840,11 +1922,13 @@ func TestGateTest_Scenario(t *testing.T) {
 		if !strings.Contains(g.stdout.String(), want+"\n") {
 			t.Errorf("stdout = %q; want the closing line %q", g.stdout.String(), want)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("a tier that outlives timeout_min is killed with the timeout line", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./pkg"}, env: []string{helperHoldEnv + "=1", helperUnitEnv + "=1s"}})
+		t.Parallel()
+		f := newScenarioHub(t)
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "./pkg"}, env: []string{helperHoldEnv + "=1", helperUnitEnv + "=1s"}})
 		code := g.wait(t)
 		record := g.standIn(t)
 		t.Cleanup(func() { _ = (&os.Process{Pid: record.Grandchild}).Kill() })
@@ -1856,10 +1940,11 @@ func TestGateTest_Scenario(t *testing.T) {
 		if !run.TimedOut || run.ExitCode != 1 || !strings.Contains(log, "tier timeout") {
 			t.Errorf("run record = %+v, log %q; want a timed-out run with the timeout line in its log", run, log)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("a tier whose shell exits while an orphan holds its output ends with the shell's code and kills the orphan", func(t *testing.T) {
+		t.Parallel()
 		tests := []struct {
 			name        string
 			shellExit   int
@@ -1870,7 +1955,9 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./pkg"}, env: []string{helperOrphanEnv + "=" + helperOrphanTier, helperExitEnv + "=" + strconv.Itoa(tt.shellExit), helperPipeDelayEnv + "=100ms"}})
+				t.Parallel()
+				f := newScenarioHub(t)
+				g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "./pkg"}, env: []string{helperOrphanEnv + "=" + helperOrphanTier, helperExitEnv + "=" + strconv.Itoa(tt.shellExit), helperPipeDelayEnv + "=100ms"}})
 				code := g.wait(t)
 				record := g.standIn(t)
 				t.Cleanup(func() { _ = (&os.Process{Pid: record.Grandchild}).Kill() })
@@ -1881,16 +1968,17 @@ func TestGateTest_Scenario(t *testing.T) {
 				if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ExitCode != tt.shellExit || run.Outcome != tt.wantOutcome || run.TimedOut {
 					t.Errorf("run record = %+v; want a %s run with the shell's exit code %d and no timeout", run, tt.wantOutcome, tt.shellExit)
 				}
-				requireFree(t)
+				f.requireFree(t)
 			})
 		}
 	})
 
 	t.Run("a shared build whose shell exits while an orphan holds its output ends with the shell's code and kills the orphan", func(t *testing.T) {
-		writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
-		defer writeConfig(t, gateConfig)
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "./pkg"}, env: []string{helperOrphanEnv + "=" + helperOrphanBuild, helperBuildExitEnv + "=1", helperPipeDelayEnv + "=100ms"}})
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "0", "./pkg"}, env: []string{helperOrphanEnv + "=" + helperOrphanBuild, helperBuildExitEnv + "=1", helperPipeDelayEnv + "=100ms"}})
 		code := g.wait(t)
 		builds := buildRecords(t, g)
 		if len(builds) != 1 {
@@ -1905,12 +1993,14 @@ func TestGateTest_Scenario(t *testing.T) {
 		if build, _ := buildRunRecordOf(t, g.stdout.String(), 0); build.ExitCode != 1 || build.Outcome != "failed" || build.TimedOut {
 			t.Errorf("build run record = %+v; want a failed run with the build's exit code 1 and no timeout", build)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	if runtime.GOOS != "windows" {
 		t.Run("a catchable signal kills the tier's whole group and frees the slot", func(t *testing.T) {
-			g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./held"}, env: []string{helperHoldEnv + "=1"}})
+			t.Parallel()
+			f := newScenarioHub(t)
+			g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "./held"}, env: []string{helperHoldEnv + "=1"}})
 			record := g.standIn(t)
 			if err := g.cmd.Process.Signal(syscall.SIGTERM); err != nil {
 				t.Fatal(err)
@@ -1922,15 +2012,17 @@ func TestGateTest_Scenario(t *testing.T) {
 			if run, _ := runRecordOf(t, g.stdout.String(), 0); !run.Abandoned {
 				t.Errorf("run record of the signalled tier = %+v; want it marked abandoned", run)
 			}
-			requireFree(t)
+			f.requireFree(t)
 		})
 	}
 
 	if runtime.GOOS == "linux" {
 		t.Run("a SIGKILL of the gate ends the tier's command", func(t *testing.T) {
+			t.Parallel()
+			f := newScenarioHub(t)
 			// Only the shell the gate started carries the parent-death signal,
 			// so the tier's command is the one `exec` replaces it with.
-			g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "7", "./held"}, env: []string{helperHoldEnv + "=1"}})
+			g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "7", "./held"}, env: []string{helperHoldEnv + "=1"}})
 			record := g.standIn(t)
 			t.Cleanup(func() { _ = (&os.Process{Pid: record.Grandchild}).Kill() })
 			if err := g.cmd.Process.Kill(); err != nil {
@@ -1938,13 +2030,15 @@ func TestGateTest_Scenario(t *testing.T) {
 			}
 			g.wait(t)
 			eventually(t, "the tier's command to end with its killed parent", func() bool { return processGone(record.PID) })
-			requireFree(t)
+			f.requireFree(t)
 		})
 	}
 
 	stale := gateslot.PrebuiltLymEnv + "=/stale/lym"
 	t.Run("an untagged tier builds nothing and strips an inherited prebuilt variable", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./pkg"}, env: []string{stale}})
+		t.Parallel()
+		f := newScenarioHub(t)
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "./pkg"}, env: []string{stale}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d; want 0", code)
 		}
@@ -1955,7 +2049,9 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("a prebuilding tier in a root without cmd/lym builds nothing and strips an inherited prebuilt variable", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "3", "./pkg"}, env: []string{stale}})
+		t.Parallel()
+		f := newScenarioHub(t)
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "3", "./pkg"}, env: []string{stale}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d; want 0", code)
 		}
@@ -1966,14 +2062,16 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("a prebuilding tier builds lym once, exports it from the store under its content's name and removes the build", func(t *testing.T) {
-		if err := os.MkdirAll(filepath.Join(prime, "cmd", "lym"), 0o755); err != nil {
+		t.Parallel()
+		f := newScenarioHub(t)
+		if err := os.MkdirAll(filepath.Join(f.prime, "cmd", "lym"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		// buildAndExport runs one prebuilding gate whose stand-in build writes content.
 		// It returns the build path and the path the tier saw.
 		buildAndExport := func(t *testing.T, content string) (bin, exported string) {
 			t.Helper()
-			g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "3", "./pkg"}, env: []string{helperBuildContentEnv + "=" + content}})
+			g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--tier", "3", "./pkg"}, env: []string{helperBuildContentEnv + "=" + content}})
 			if code := g.wait(t); code != 0 {
 				t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
 			}
@@ -1982,15 +2080,15 @@ func TestGateTest_Scenario(t *testing.T) {
 				t.Fatalf("records = %+v; want one build invocation, then the tier invocation", records)
 			}
 			bin = records[0].Args[7]
-			if want := []string{"build", "-C", prime, "-p", "3", "-trimpath", "-o", bin, "./cmd/lym"}; !slices.Equal(records[0].Args, want) {
+			if want := []string{"build", "-C", f.prime, "-p", "3", "-trimpath", "-o", bin, "./cmd/lym"}; !slices.Equal(records[0].Args, want) {
 				t.Errorf("build args = %q; want %q", records[0].Args, want)
 			}
 			return bin, records[1].Prebuilt
 		}
 
 		bin, exported := buildAndExport(t, "lym build one")
-		if filepath.Dir(exported) != pool.PrebuiltDir() || !strings.HasPrefix(filepath.Base(exported), "lym-") {
-			t.Errorf("the tier saw %s = %q; want a lym- entry of the store %s", gateslot.PrebuiltLymEnv, exported, pool.PrebuiltDir())
+		if filepath.Dir(exported) != f.pool.PrebuiltDir() || !strings.HasPrefix(filepath.Base(exported), "lym-") {
+			t.Errorf("the tier saw %s = %q; want a lym- entry of the store %s", gateslot.PrebuiltLymEnv, exported, f.pool.PrebuiltDir())
 		}
 		if got, err := os.ReadFile(exported); err != nil || string(got) != "lym build one" {
 			t.Errorf("the stored binary %s = (%q, %v); want the build's content", exported, got, err)
@@ -1998,7 +2096,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		if _, again := buildAndExport(t, "lym build one"); again != exported {
 			t.Errorf("a second run of the same build exported %q; want the same %q", again, exported)
 		}
-		if _, changed := buildAndExport(t, "lym build two"); changed == exported || filepath.Dir(changed) != pool.PrebuiltDir() {
+		if _, changed := buildAndExport(t, "lym build two"); changed == exported || filepath.Dir(changed) != f.pool.PrebuiltDir() {
 			t.Errorf("a changed build exported %q; want a store entry other than %q", changed, exported)
 		}
 		if _, err := os.Stat(filepath.Dir(bin)); !os.IsNotExist(err) {
@@ -2019,9 +2117,9 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 	})
 
-	standalone := standaloneWorktree
 	t.Run("a tier runs with the env module's variables beneath its own env", func(t *testing.T) {
-		worktree := standalone(t, true)
+		t.Parallel()
+		worktree := standaloneWorktree(t, true)
 		envFile := configengine.ConfigFile(worktree, "env")
 		if err := os.WriteFile(envFile, []byte("vars:\n  BUILD_MARK: from-env-module\n  GOFLAGS: -from-env-module\n"), 0o644); err != nil {
 			t.Fatal(err)
@@ -2036,7 +2134,8 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 	})
 	t.Run("a broken env config refuses the call before any tier, naming the config and its way forward", func(t *testing.T) {
-		worktree := standalone(t, true)
+		t.Parallel()
+		worktree := standaloneWorktree(t, true)
 		if err := os.WriteFile(configengine.ConfigFile(worktree, "env"), []byte("vars:\n  BAD-NAME: x\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -2050,7 +2149,8 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 	})
 	t.Run("a worktree outside every hub runs unslotted under its own gate.yaml and records under its own .lym", func(t *testing.T) {
-		worktree := standalone(t, true)
+		t.Parallel()
+		worktree := standaloneWorktree(t, true)
 		g := startGate(t, gateRun{cwd: worktree, args: []string{"test", "./pkg"}, env: []string{strandEnvEntry, helperCapEnv + "=0"}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
@@ -2072,7 +2172,8 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("a prebuilding tier outside every hub exports its own build path and removes it afterwards", func(t *testing.T) {
-		worktree := standalone(t, true)
+		t.Parallel()
+		worktree := standaloneWorktree(t, true)
 		if err := os.MkdirAll(filepath.Join(worktree, "cmd", "lym"), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -2093,38 +2194,41 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 	})
 
-	// Each row breaks the shared hub in its setup and repairs it in the returned restore, so the rows run in order.
+	// Each row breaks its own hub in its setup and repairs it in the returned restore.
+	// The restore runs before requireFree reads the slots.
 	refusals := []struct {
 		name string
 		// args defaults to `test ./pkg`.
 		args  []string
-		setup func(t *testing.T) (restore func())
+		setup func(t *testing.T, f *scenarioHub) (restore func())
 		env   []string
-		// wantError lists text the refusal must hold.
-		wantError []string
+		// wantError lists text the refusal must hold, given the row's hub.
+		wantError func(f *scenarioHub) []string
 	}{
 		{
 			name: "an absent gate.yaml names lym fabric reconcile",
-			setup: func(t *testing.T) func() {
-				if err := os.Remove(configPath); err != nil {
+			setup: func(t *testing.T, f *scenarioHub) func() {
+				if err := os.Remove(f.configPath); err != nil {
 					t.Fatal(err)
 				}
-				return func() { writeConfig(t, gateConfig) }
+				return func() { f.writeConfig(t, f.defaultConfig) }
 			},
-			wantError: []string{`way forward: run "lym fabric reconcile", then re-run the same command; a session lym refuses the verb from reports status: FAILED and the orch runs it`},
+			wantError: func(*scenarioHub) []string {
+				return []string{`way forward: run "lym fabric reconcile", then re-run the same command; a session lym refuses the verb from reports status: FAILED and the orch runs it`}
+			},
 		},
 		{
 			name: "a gate.yaml value below 1 names lym config gate",
-			setup: func(t *testing.T) func() {
-				writeConfig(t, []byte("slots: 0\n"))
-				return func() { writeConfig(t, gateConfig) }
+			setup: func(t *testing.T, f *scenarioHub) func() {
+				f.writeConfig(t, []byte("slots: 0\n"))
+				return func() { f.writeConfig(t, f.defaultConfig) }
 			},
-			wantError: []string{`fix it with "lym config gate" from the prime`},
+			wantError: func(*scenarioHub) []string { return []string{`fix it with "lym config gate" from the prime`} },
 		},
 		{
 			name: "a machine tier_parallel below 1 names both files and both ways forward",
-			setup: func(t *testing.T) func() {
-				machinePath := configengine.MachineFile(h.BoardDir(), "gate")
+			setup: func(t *testing.T, f *scenarioHub) func() {
+				machinePath := configengine.MachineFile(f.hub.BoardDir(), "gate")
 				if err := os.MkdirAll(filepath.Dir(machinePath), 0o755); err != nil {
 					t.Fatal(err)
 				}
@@ -2137,84 +2241,96 @@ func TestGateTest_Scenario(t *testing.T) {
 					}
 				}
 			},
-			wantError: []string{
-				configengine.ConfigFile(h.BoardDir(), "gate"),
-				configengine.MachineFile(h.BoardDir(), "gate"),
-				"lym config gate --layer machine",
-				"by removing",
-				"take the step it names, then re-run the same command",
-				"a session that is not the prime takes none of these steps; it reports status: FAILED and the orch runs them",
+			wantError: func(f *scenarioHub) []string {
+				return []string{
+					configengine.ConfigFile(f.hub.BoardDir(), "gate"),
+					configengine.MachineFile(f.hub.BoardDir(), "gate"),
+					"lym config gate --layer machine",
+					"by removing",
+					"take the step it names, then re-run the same command",
+					"a session that is not the prime takes none of these steps; it reports status: FAILED and the orch runs them",
+				}
 			},
 		},
 		{
 			name: "a hub with no tier names lym config gate",
-			setup: func(t *testing.T) func() {
-				writeConfig(t, []byte("slots: 2\n"))
-				return func() { writeConfig(t, gateConfig) }
+			setup: func(t *testing.T, f *scenarioHub) func() {
+				f.writeConfig(t, []byte("slots: 2\n"))
+				return func() { f.writeConfig(t, f.defaultConfig) }
 			},
-			wantError: []string{"declares no tier0", `"lym config gate"`, "reports status: FAILED"},
+			wantError: func(*scenarioHub) []string {
+				return []string{"declares no tier0", `"lym config gate"`, "reports status: FAILED"}
+			},
 		},
 		{
 			name:      "an undeclared tier names lym config gate",
 			args:      []string{"test", "--tier", "9", "./pkg"},
-			setup:     func(t *testing.T) func() { return func() {} },
-			wantError: []string{"declares no tier9", `"lym config gate"`},
+			setup:     func(t *testing.T, f *scenarioHub) func() { return func() {} },
+			wantError: func(*scenarioHub) []string { return []string{"declares no tier9", `"lym config gate"`} },
 		},
 		{
-			name:      "words after -- for a tier without {args} name lym config gate",
-			args:      []string{"test", "--tier", "2", "./pkg", "--", "-v"},
-			setup:     func(t *testing.T) func() { return func() {} },
-			wantError: []string{"command of tier2 holds no {args}", `"lym config gate"`, "reports status: FAILED"},
+			name:  "words after -- for a tier without {args} name lym config gate",
+			args:  []string{"test", "--tier", "2", "./pkg", "--", "-v"},
+			setup: func(t *testing.T, f *scenarioHub) func() { return func() {} },
+			wantError: func(*scenarioHub) []string {
+				return []string{"command of tier2 holds no {args}", `"lym config gate"`, "reports status: FAILED"}
+			},
 		},
 		{
 			name: "a tier whose dir does not exist is a refusal naming the dir",
-			setup: func(t *testing.T) func() {
-				writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+			setup: func(t *testing.T, f *scenarioHub) func() {
+				f.writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
 					cfg["tiers"].(map[string]any)["tier0"].(map[string]any)["dir"] = "absent"
 				}))
-				return func() { writeConfig(t, gateConfig) }
+				return func() { f.writeConfig(t, f.defaultConfig) }
 			},
-			wantError: []string{"could not start the shell for tier0", filepath.Join(prime, "absent")},
+			wantError: func(f *scenarioHub) []string {
+				return []string{"could not start the shell for tier0", filepath.Join(f.prime, "absent")}
+			},
 		},
 		{
-			name:      "work before the first tier outliving the ceiling names the re-run",
-			setup:     func(t *testing.T) func() { return func() {} },
-			env:       []string{helperCeilingEnv + "=1ns"},
-			wantError: []string{"outlived its 1ns ceiling", "run the same command again"},
+			name:  "work before the first tier outliving the ceiling names the re-run",
+			setup: func(t *testing.T, f *scenarioHub) func() { return func() {} },
+			env:   []string{helperCeilingEnv + "=1ns"},
+			wantError: func(*scenarioHub) []string {
+				return []string{"outlived its 1ns ceiling", "run the same command again"}
+			},
 		},
 		{
 			name: "a slot directory that cannot be created is a re-run refusal",
-			setup: func(t *testing.T) func() {
-				aside := pool.Dir + ".aside"
-				if err := os.MkdirAll(pool.Dir, 0o755); err != nil {
+			setup: func(t *testing.T, f *scenarioHub) func() {
+				aside := f.pool.Dir + ".aside"
+				if err := os.MkdirAll(f.pool.Dir, 0o755); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.Rename(pool.Dir, aside); err != nil {
+				if err := os.Rename(f.pool.Dir, aside); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(pool.Dir, nil, 0o644); err != nil {
+				if err := os.WriteFile(f.pool.Dir, nil, 0o644); err != nil {
 					t.Fatal(err)
 				}
 				return func() {
-					if err := os.Remove(pool.Dir); err != nil {
+					if err := os.Remove(f.pool.Dir); err != nil {
 						t.Fatal(err)
 					}
-					if err := os.Rename(aside, pool.Dir); err != nil {
+					if err := os.Rename(aside, f.pool.Dir); err != nil {
 						t.Fatal(err)
 					}
 				}
 			},
-			wantError: []string{"cannot acquire a gate slot"},
+			wantError: func(*scenarioHub) []string { return []string{"cannot acquire a gate slot"} },
 		},
 	}
 	for _, tc := range refusals {
 		t.Run(tc.name, func(t *testing.T) {
-			restore := tc.setup(t)
+			t.Parallel()
+			f := newScenarioHub(t)
+			restore := tc.setup(t, f)
 			args := tc.args
 			if args == nil {
 				args = []string{"test", "./pkg"}
 			}
-			g := startGate(t, gateRun{cwd: prime, args: args, env: tc.env})
+			g := startGate(t, gateRun{cwd: f.prime, args: args, env: tc.env})
 			code := g.wait(t)
 			restore()
 
@@ -2228,7 +2344,7 @@ func TestGateTest_Scenario(t *testing.T) {
 			if code != 1 || envelope.OK {
 				t.Errorf("gate = exit %d, %+v; want exit 1 and ok false", code, envelope)
 			}
-			for _, want := range tc.wantError {
+			for _, want := range tc.wantError(f) {
 				if !strings.Contains(envelope.Error, want) {
 					t.Errorf("gate error = %q; want it to hold %q", envelope.Error, want)
 				}
@@ -2236,14 +2352,15 @@ func TestGateTest_Scenario(t *testing.T) {
 			if _, err := os.Stat(g.record); err == nil {
 				t.Error("the stand-in ran although the gate refused")
 			}
-			requireFree(t)
+			f.requireFree(t)
 		})
 	}
 
 	t.Run("a --gate call in a hub that declares no tier passes with nothing to run", func(t *testing.T) {
-		writeConfig(t, []byte("slots: 2\n"))
-		defer writeConfig(t, gateConfig)
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "finalize"}})
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.writeConfig(t, []byte("slots: 2\n"))
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--gate", "finalize"}})
 		if code, out := g.wait(t), g.stdout.String(); code != 0 || !strings.Contains(out, `the hub declares no tier, so --gate "finalize" runs no tier, only its lints`) {
 			t.Errorf("gate = exit %d, stdout %q; want exit 0 and the line naming the hub's missing tiers", code, out)
 		}
@@ -2253,14 +2370,15 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("a --gate call in a hub that declares no tier still runs the key's lints and fails on a finding", func(t *testing.T) {
-		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+		t.Parallel()
+		f := newScenarioHub(t)
+		f.writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
 			cfg["tiers"] = map[string]any{}
 			cfg["gates"] = map[string]any{"linted": map[string]any{"tiers": []int{0}, "scope": "all", "lints": []string{"comments"}}}
 		}))
-		defer writeConfig(t, gateConfig)
-		wrapComment(t)
+		f.wrapComment(t)
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "linted"}})
+		g := startGate(t, gateRun{cwd: f.prime, args: []string{"test", "--gate", "linted"}})
 		code, out := g.wait(t), g.stdout.String()
 		if code != 1 {
 			t.Errorf("gate = exit %d, stdout %q; want exit 1 from the lint step", code, out)
@@ -2279,7 +2397,8 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("a worktree outside every hub with no gate.yaml names lym config gate", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: standalone(t, false), args: []string{"test", "./pkg"}})
+		t.Parallel()
+		g := startGate(t, gateRun{cwd: standaloneWorktree(t, false), args: []string{"test", "./pkg"}})
 		code := g.wait(t)
 		if code != 1 || !strings.Contains(g.stdout.String(), `lym config gate`) {
 			t.Errorf("gate = exit %d, stdout %q; want exit 1 and a refusal naming lym config gate", code, g.stdout.String())
@@ -2287,6 +2406,7 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("a directory in no git worktree names lym config gate run in one", func(t *testing.T) {
+		t.Parallel()
 		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "./pkg"}})
 		code := g.wait(t)
 		if code != 1 || !strings.Contains(g.stdout.String(), "is in no git worktree") || !strings.Contains(g.stdout.String(), `lym config gate`) {
@@ -2294,13 +2414,6 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 	})
 
-	guarded := writeModule(t, "guarded", map[string]string{
-		"pkg/pkg.go":  "package pkg\n",
-		"g/g.go":      "package g\n",
-		"g/g_test.go": "package g\n\nimport \"testing\"\n\n//lym:guard\nfunc TestGuard(t *testing.T) {}\n",
-		"h/h.go":      "package h\n",
-		"h/h_test.go": "package h\n\nimport \"testing\"\n\n//lym:guard\nfunc TestGuardH(t *testing.T) {}\n",
-	})
 	guardRun := []string{"./g", "./h", "-run", "^(TestGuard|TestGuardH)$"}
 	guardTests := []struct {
 		name     string
@@ -2332,6 +2445,15 @@ func TestGateTest_Scenario(t *testing.T) {
 	}
 	for _, tc := range guardTests {
 		t.Run("--guards: "+tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := newScenarioHub(t)
+			guarded := f.writeModule(t, "guarded", map[string]string{
+				"pkg/pkg.go":  "package pkg\n",
+				"g/g.go":      "package g\n",
+				"g/g_test.go": "package g\n\nimport \"testing\"\n\n//lym:guard\nfunc TestGuard(t *testing.T) {}\n",
+				"h/h.go":      "package h\n",
+				"h/h_test.go": "package h\n\nimport \"testing\"\n\n//lym:guard\nfunc TestGuardH(t *testing.T) {}\n",
+			})
 			g := startGate(t, gateRun{cwd: t.TempDir(), args: append([]string{"test", "-C", guarded}, tc.args...), env: tc.env})
 			if code := g.wait(t); code != tc.wantExit {
 				t.Errorf("exit code = %d, stdout %q; want %d", code, g.stdout.String(), tc.wantExit)
@@ -2346,12 +2468,14 @@ func TestGateTest_Scenario(t *testing.T) {
 			if count := strings.Count(g.stdout.String(), trimpath); count != len(tc.want) {
 				t.Errorf("gate output = %q; want the -trimpath line %q once per run, listed tier and guard group alike, which all run under tier0", g.stdout.String(), trimpath)
 			}
-			requireFree(t)
+			f.requireFree(t)
 		})
 	}
 
 	t.Run("--guards: a module with no marked test runs the listed tier and no guard step", func(t *testing.T) {
-		bare := writeModule(t, "bare", map[string]string{"pkg/pkg.go": "package pkg\n"})
+		t.Parallel()
+		f := newScenarioHub(t)
+		bare := f.writeModule(t, "bare", map[string]string{"pkg/pkg.go": "package pkg\n"})
 		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "-C", bare, "--guards", "./pkg"}})
 		if code := g.wait(t); code != 0 {
 			t.Errorf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
@@ -2359,11 +2483,13 @@ func TestGateTest_Scenario(t *testing.T) {
 		if got := g.tierArgs(t); !reflect.DeepEqual(got, [][]string{{"./pkg"}}) {
 			t.Errorf("tier invocations = %q; want the listed tier alone", got)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("--guards: a guard in the module's root package runs as the . package", func(t *testing.T) {
-		rooted := writeModule(t, "rooted", map[string]string{
+		t.Parallel()
+		f := newScenarioHub(t)
+		rooted := f.writeModule(t, "rooted", map[string]string{
 			"root.go":      "package rooted\n",
 			"root_test.go": "package rooted\n\nimport \"testing\"\n\n//lym:guard\nfunc TestGuardRoot(t *testing.T) {}\n",
 		})
@@ -2375,7 +2501,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		if got := g.tierArgs(t); !reflect.DeepEqual(got, want) {
 			t.Errorf("tier invocations = %q; want %q", got, want)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	// Each row writes its own module, so a broken one never disturbs another.
@@ -2432,7 +2558,9 @@ func TestGateTest_Scenario(t *testing.T) {
 			continue
 		}
 		t.Run("--guards: "+tc.name, func(t *testing.T) {
-			module := writeModule(t, "scan"+strconv.Itoa(i), tc.files)
+			t.Parallel()
+			f := newScenarioHub(t)
+			module := f.writeModule(t, "scan"+strconv.Itoa(i), tc.files)
 			if tc.unreadable != "" {
 				makeUnreadable(t, filepath.Join(module, filepath.FromSlash(tc.unreadable)))
 			}
@@ -2461,7 +2589,7 @@ func TestGateTest_Scenario(t *testing.T) {
 			if _, err := os.Stat(g.record); err == nil {
 				t.Error("the stand-in ran although the scan refused")
 			}
-			requireFree(t)
+			f.requireFree(t)
 		})
 	}
 }

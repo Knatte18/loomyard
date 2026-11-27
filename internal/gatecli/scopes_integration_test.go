@@ -1,7 +1,7 @@
 // scopes_integration_test.go drives `lym gate test` over a hubforge hub with a task pair.
 // The task pair's fabric origin record names the prime's branch as its parent.
 // It reaches the computed, --base and --card scope forms.
-// It is Tier 2: it builds a real hub and spawns git, `go list` and the stand-in tier command.
+// Each row runs over a hub of its own, and spawns git, `go list` and the stand-in tier command.
 
 package gatecli
 
@@ -53,44 +53,44 @@ func scopesConfigWith(t *testing.T, scoper string, mutate func(cfg map[string]an
 	})
 }
 
-func TestGateTest_Scopes(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
+// scopesHub is one hubforge hub seeded with the scopes module and a card plan, owned by a single row.
+// The module lives on the prime's branch and the pair is fast-forwarded onto it,
+// so the merge base the pair diffs from holds the module,
+// and a computed scope sees only the edits a row makes.
+type scopesHub struct {
+	hub        *hubforge.Hub
+	prime      string
+	pair       string
+	configPath string
+	pool       *gateslot.Pool
+	// plan is the one-card plan written under the pair's plan directory, which its code repository excludes.
+	plan plankit.Plan
+	// greenPath is the pair's green record.
+	greenPath string
+	// mergeBase is the commit the prime stands on, since the pair was fast-forwarded onto it.
+	mergeBase string
+}
+
+// newScopesHub forges a hub with a task pair and writes the go-scoper config.
+// It commits the seed module on the prime, fast-forwards the pair onto it and writes the card plan into the pair.
+func newScopesHub(t *testing.T) *scopesHub {
+	t.Helper()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})
-	prime := h.PrimeWorktree()
-	pair := h.PairCodeWorktree(hubforge.TemplatePairSlug)
-	configPath := configengine.ConfigFile(h.BoardDir(), "gate")
-	writeScoper := func(t *testing.T, scoper string) {
-		t.Helper()
-		if err := os.WriteFile(configPath, scopesConfig(t, scoper), 0o644); err != nil {
-			t.Fatal(err)
-		}
+	f := &scopesHub{
+		hub:        h,
+		prime:      h.PrimeWorktree(),
+		pair:       h.PairCodeWorktree(hubforge.TemplatePairSlug),
+		configPath: configengine.ConfigFile(h.BoardDir(), "gate"),
+		pool:       hubgeom.GateSlots(h.Location),
+		plan: plankit.Plan{Approved: true, Cards: []plankit.Card{{
+			Number: 1,
+			Slug:   "span",
+			Groups: []plankit.Group{{Label: "Edit", Targets: []string{"lib/lib.go", "nested/n.go"}}},
+		}}},
 	}
-	writeScoper(t, "go")
-	// writeDotnet writes the hub config with the dotnet scoper and Markdown files inert.
-	// The stand-in command `{targets} {filter}` runs on both tiers, and mutate, when not nil, changes the config last.
-	writeDotnet := func(t *testing.T, mutate func(cfg map[string]any)) {
-		t.Helper()
-		config := scopesConfigWith(t, "dotnet", func(cfg map[string]any) {
-			cfg["inert_paths"] = []string{"*.md"}
-			tiers := cfg["tiers"].(map[string]any)
-			for _, name := range []string{"tier0", "tier1"} {
-				tiers[name].(map[string]any)["command"] = "'" + os.Args[0] + "' {targets} {filter}"
-			}
-			if mutate != nil {
-				mutate(cfg)
-			}
-		})
-		if err := os.WriteFile(configPath, config, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	pool := hubgeom.GateSlots(h.Location)
+	f.writeScoper(t, "go")
 
-	// The module lives on the prime's branch, and the pair is fast-forwarded onto it,
-	// so the merge base the pair diffs from holds the module,
-	// and a computed scope sees only the edits a row makes.
 	files := map[string]string{
 		"go.mod":             "module example.com/scopes\n\ngo 1.21\n",
 		"lib/lib.go":         "package lib\n\nfunc One() int { return 1 }\n",
@@ -111,81 +111,206 @@ func TestGateTest_Scopes(t *testing.T) {
 		"cs/Lib.Tests/CircleTests.cs":   "namespace Lib.Tests;\n\n[TestFixture]\npublic class CircleTests\n{\n    [Test]\n    public void Area() { var circle = new Circle(); }\n}\n",
 		"cs/Lib.Tests/OtherTests.cs":    "namespace Lib.Tests;\n\n[TestFixture]\npublic class OtherTests\n{\n    [Test]\n    public void Run() { }\n}\n",
 	}
-	plankit.WriteTree(t, prime, files)
-	gitkit.Git(t, prime, "add", "go.mod", "lib", "user", "other", "guardpkg", "watched", "nested", "docs", "cs")
-	gitkit.Git(t, prime, "commit", "-q", "-m", "seed the scopes module")
-	gitkit.Git(t, pair, "merge", "--ff-only", "-q", "main")
+	plankit.WriteTree(t, f.prime, files)
+	gitkit.Git(t, f.prime, "add", "go.mod", "lib", "user", "other", "guardpkg", "watched", "nested", "docs", "cs")
+	gitkit.Git(t, f.prime, "commit", "-q", "-m", "seed the scopes module")
+	gitkit.Git(t, f.pair, "merge", "--ff-only", "-q", "main")
+	f.mergeBase = gitkit.RevParse(t, f.prime, "HEAD")
+	f.greenPath = filepath.Join(gateslot.WaitDir(f.pair), greenFileName)
+	plankit.Write(t, planparser.PlanDir(f.pair), f.plan)
+	return f
+}
 
-	// edit replaces the pair's file rel with content until the test ends.
-	edit := func(t *testing.T, rel, content string) {
-		t.Helper()
-		full := filepath.Join(pair, filepath.FromSlash(rel))
-		original, readErr := os.ReadFile(full)
-		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
+// writeScoper writes the hub config with the given scoper.
+func (f *scopesHub) writeScoper(t *testing.T, scoper string) {
+	t.Helper()
+	if err := os.WriteFile(f.configPath, scopesConfig(t, scoper), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// writeDotnet writes the hub config with the dotnet scoper and Markdown files inert.
+// The stand-in command `{targets} {filter}` runs on both tiers, and mutate, when not nil, changes the config last.
+func (f *scopesHub) writeDotnet(t *testing.T, mutate func(cfg map[string]any)) {
+	t.Helper()
+	config := scopesConfigWith(t, "dotnet", func(cfg map[string]any) {
+		cfg["inert_paths"] = []string{"*.md"}
+		tiers := cfg["tiers"].(map[string]any)
+		for _, name := range []string{"tier0", "tier1"} {
+			tiers[name].(map[string]any)["command"] = "'" + os.Args[0] + "' {targets} {filter}"
 		}
-		t.Cleanup(func() {
-			if readErr != nil {
-				_ = os.Remove(full)
-				return
-			}
-			if err := os.WriteFile(full, original, 0o644); err != nil {
-				t.Error(err)
-			}
-		})
+		if mutate != nil {
+			mutate(cfg)
+		}
+	})
+	if err := os.WriteFile(f.configPath, config, 0o644); err != nil {
+		t.Fatal(err)
 	}
-	// gate runs `lym gate test args...` from cwd and returns the finished gate.
-	gate := func(t *testing.T, cwd string, env []string, args ...string) *runningGate {
-		t.Helper()
-		g := startGate(t, gateRun{cwd: cwd, args: append([]string{"test"}, args...), env: env})
-		g.exit = g.wait(t)
-		return g
+}
+
+// writeInert writes the hub config with scoper and Markdown files inert, then lets mutate change the config.
+func (f *scopesHub) writeInert(t *testing.T, scoper string, mutate func(cfg map[string]any)) {
+	t.Helper()
+	config := scopesConfigWith(t, scoper, func(cfg map[string]any) {
+		cfg["inert_paths"] = []string{"*.md"}
+		if mutate != nil {
+			mutate(cfg)
+		}
+	})
+	if err := os.WriteFile(f.configPath, config, 0o644); err != nil {
+		t.Fatal(err)
 	}
-	requireFree := func(t *testing.T) {
-		t.Helper()
-		eventually(t, "the slots to be free", func() bool {
-			holders, err := pool.Holders()
-			return err == nil && len(holders) == 0
-		})
+}
+
+// edit replaces the pair's file rel with content.
+func (f *scopesHub) edit(t *testing.T, rel, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(f.pair, filepath.FromSlash(rel)), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
 	}
+}
+
+// gate runs `lym gate test args...` from cwd and returns the finished gate.
+func (f *scopesHub) gate(t *testing.T, cwd string, env []string, args ...string) *runningGate {
+	t.Helper()
+	g := startGate(t, gateRun{cwd: cwd, args: append([]string{"test"}, args...), env: env})
+	g.exit = g.wait(t)
+	return g
+}
+
+// requireFree waits until no gate slot of the hub has a holder.
+func (f *scopesHub) requireFree(t *testing.T) {
+	t.Helper()
+	eventually(t, "the slots to be free", func() bool {
+		holders, err := f.pool.Holders()
+		return err == nil && len(holders) == 0
+	})
+}
+
+// wantArgs checks that g exited 0 and that the tier command ran with exactly the invocations in want.
+func (f *scopesHub) wantArgs(t *testing.T, g *runningGate, want ...[]string) {
+	t.Helper()
+	if g.exit != 0 {
+		t.Errorf("exit code = %d, stdout %q; want 0", g.exit, g.stdout.String())
+	}
+	if got := g.tierArgs(t); !reflect.DeepEqual(got, want) {
+		t.Errorf("tier invocations = %q; want %q", got, want)
+	}
+}
+
+// wantRefusal checks that the gate refused before any slot or tier command with text holding each of wants.
+func (f *scopesHub) wantRefusal(t *testing.T, g *runningGate, wants ...string) {
+	t.Helper()
+	var envelope struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(g.stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("stdout %q is not a JSON envelope: %v", g.stdout.String(), err)
+	}
+	if g.exit != 1 || envelope.OK {
+		t.Errorf("gate = exit %d, %+v; want exit 1 and ok false", g.exit, envelope)
+	}
+	for _, want := range wants {
+		if !strings.Contains(envelope.Error, want) {
+			t.Errorf("gate error = %q; want it to hold %q", envelope.Error, want)
+		}
+	}
+	if _, err := os.Stat(g.record); err == nil {
+		t.Error("a tier command ran although the gate refused")
+	}
+	f.requireFree(t)
+}
+
+// real runs `lym gate test args...` from the pair with the real go command, which the green record lists packages with.
+func (f *scopesHub) real(t *testing.T, args ...string) *runningGate {
+	t.Helper()
+	g := startGate(t, gateRun{cwd: f.pair, realGo: true, args: append([]string{"test"}, args...)})
+	g.exit = g.wait(t)
+	return g
+}
+
+// wantCarried checks that g passed with every tier carried and ran no tier command.
+func (f *scopesHub) wantCarried(t *testing.T, g *runningGate) {
+	t.Helper()
+	if g.exit != 0 || len(g.tierArgs(t)) != 0 || !strings.Contains(g.stdout.String(), " all carried ") {
+		t.Errorf("gate = exit %d, tier invocations %q, stdout %q; want every tier carried", g.exit, g.tierArgs(t), g.stdout.String())
+	}
+}
+
+// commitChange commits content to rel on the pair and returns the new commit.
+func (f *scopesHub) commitChange(t *testing.T, rel, content string) string {
+	t.Helper()
+	gitkit.CommitFile(t, f.pair, rel, content, "change "+rel)
+	return gitkit.RevParse(t, f.pair, "HEAD")
+}
+
+// removeGreen deletes the pair's green record when there is one.
+func (f *scopesHub) removeGreen(t *testing.T) {
+	t.Helper()
+	if err := os.Remove(f.greenPath); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+}
+
+// wantDerivation checks that g printed the diff scope derivation line for base and tiers.
+func (f *scopesHub) wantDerivation(t *testing.T, g *runningGate, base, tiers string) {
+	t.Helper()
+	if line := "gate test: diff scope from " + base + " for " + tiers; !strings.Contains(g.stdout.String(), line) {
+		t.Errorf("stdout = %q; want it to hold %q", g.stdout.String(), line)
+	}
+}
+
+// noCarryTier1 drops tier1's covers and sets its carry to false.
+func noCarryTier1(cfg map[string]any) {
+	tier1 := cfg["tiers"].(map[string]any)["tier1"].(map[string]any)
+	delete(tier1, "covers")
+	tier1["carry"] = false
+}
+
+// wantInertEmpty checks that the gate named the inert diff and ran no command of the tiers that carry.
+func wantInertEmpty(t *testing.T, g *runningGate) {
+	t.Helper()
+	if !strings.Contains(g.stdout.String(), "every changed file is inert, so the scope is empty") {
+		t.Errorf("stdout = %q; want the inert-only diff named", g.stdout.String())
+	}
+}
+
+// scopesSharedBuild declares the hub's build step over the stand-in and sets shared_build on tier0.
+// It also clears the covers of tier1.
+func scopesSharedBuild(cfg map[string]any) {
+	cfg["build"] = map[string]any{"command": "'" + os.Args[0] + "' sharedbuild", "timeout_min": 1}
+	tiers := cfg["tiers"].(map[string]any)
+	tiers["tier0"].(map[string]any)["shared_build"] = true
+	delete(tiers["tier1"].(map[string]any), "covers")
+}
+
+// vetSummary returns the summary line of tier1's vet run in output, failing the test when there is none.
+func vetSummary(t *testing.T, output string) string {
+	t.Helper()
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(line, "gate test: tier1 vet ") {
+			return line
+		}
+	}
+	t.Fatalf("output %q holds no summary line of tier1's vet run", output)
+	return ""
+}
+
+func TestGateTest_Scopes(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
 	guardInvocation := []string{"./guardpkg", "-run", "^(TestGuard)$"}
-	wantArgs := func(t *testing.T, g *runningGate, want ...[]string) {
-		t.Helper()
-		if g.exit != 0 {
-			t.Errorf("exit code = %d, stdout %q; want 0", g.exit, g.stdout.String())
-		}
-		if got := g.tierArgs(t); !reflect.DeepEqual(got, want) {
-			t.Errorf("tier invocations = %q; want %q", got, want)
-		}
-	}
-	// wantRefusal checks that the gate refused before any slot or tier command with text holding each of wants.
-	wantRefusal := func(t *testing.T, g *runningGate, wants ...string) {
-		t.Helper()
-		var envelope struct {
-			OK    bool   `json:"ok"`
-			Error string `json:"error"`
-		}
-		if err := json.Unmarshal(g.stdout.Bytes(), &envelope); err != nil {
-			t.Fatalf("stdout %q is not a JSON envelope: %v", g.stdout.String(), err)
-		}
-		if g.exit != 1 || envelope.OK {
-			t.Errorf("gate = exit %d, %+v; want exit 1 and ok false", g.exit, envelope)
-		}
-		for _, want := range wants {
-			if !strings.Contains(envelope.Error, want) {
-				t.Errorf("gate error = %q; want it to hold %q", envelope.Error, want)
-			}
-		}
-		if _, err := os.Stat(g.record); err == nil {
-			t.Error("a tier command ran although the gate refused")
-		}
-		requireFree(t)
-	}
+	circleTestsArgs := []string{"cs/Lib.Tests/Lib.Tests.csproj", "--filter", "FullyQualifiedName~Lib.Tests.CircleTests"}
+	tier1File := "//go:build tier1\n\npackage lib\n\nimport \"testing\"\n\nfunc TestUse(t *testing.T) { _ = %s() }\n"
 
 	t.Run("a computed scope under go runs the changed package and its importer, then the guard step's group through its tier's slots", func(t *testing.T) {
-		edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 2 }\n")
-		g := gate(t, pair, nil)
-		wantArgs(t, g, []string{"./lib", "./user"}, guardInvocation)
+		t.Parallel()
+		f := newScopesHub(t)
+		f.edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 2 }\n")
+		g := f.gate(t, f.pair, nil)
+		f.wantArgs(t, g, []string{"./lib", "./user"}, guardInvocation)
 		listed, _ := runRecordOf(t, g.stdout.String(), 0)
 		guard, _ := guardRunRecordOf(t, g.stdout.String(), 0)
 		if listed.ScopeForm != "computed" || listed.Slug != hubforge.TemplatePairSlug || !slices.Equal(listed.TierList, []int{0}) {
@@ -197,64 +322,42 @@ func TestGateTest_Scopes(t *testing.T) {
 		if strings.Contains(g.stdout.String(), notRunSuffix) {
 			t.Errorf("stdout = %q; want no line naming the tiers a pass did not run, which only the card scope form prints", g.stdout.String())
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("a computed scope over a change to a nested module's file falls back to whole, naming the reason, and plans no guard group for the tier it ran whole", func(t *testing.T) {
-		edit(t, "nested/n.go", "package nested\n\nvar Changed = true\n")
-		g := gate(t, pair, nil)
-		wantArgs(t, g, []string{"./..."})
+		t.Parallel()
+		f := newScopesHub(t)
+		f.edit(t, "nested/n.go", "package nested\n\nvar Changed = true\n")
+		g := f.gate(t, f.pair, nil)
+		f.wantArgs(t, g, []string{"./..."})
 		if !strings.Contains(g.stdout.String(), "falls back to whole: nested/n.go is neither a Markdown file nor under a Go package directory") {
 			t.Errorf("stdout = %q; want the fallback and its reason", g.stdout.String())
 		}
 	})
 
 	t.Run("a Markdown-only change runs no tier command, logs zero and runs only the guard step", func(t *testing.T) {
-		edit(t, "docs/note.md", "changed note\n")
-		g := gate(t, pair, nil)
-		wantArgs(t, g, guardInvocation)
+		t.Parallel()
+		f := newScopesHub(t)
+		f.edit(t, "docs/note.md", "changed note\n")
+		g := f.gate(t, f.pair, nil)
+		f.wantArgs(t, g, guardInvocation)
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.Discovered != 0 || run.ExitCode != 0 || !strings.Contains(g.stdout.String(), "the scope is empty, so tier0 runs no command") {
 			t.Errorf("tier0 run record = %+v, stdout %q; want an empty-scope pass with nothing discovered", run, g.stdout.String())
 		}
 		if trimpath := trimpathLine("tier0", []string{"GOFLAGS=-trimpath -p=3"}); strings.Count(g.stdout.String(), trimpath) != 1 {
 			t.Errorf("stdout = %q; want the -trimpath line once, for the guard group alone, since the listed tier runs no command", g.stdout.String())
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
-	// writeInert writes the hub config with scoper and Markdown files inert, then lets mutate change the config.
-	writeInert := func(t *testing.T, scoper string, mutate func(cfg map[string]any)) {
-		t.Helper()
-		config := scopesConfigWith(t, scoper, func(cfg map[string]any) {
-			cfg["inert_paths"] = []string{"*.md"}
-			if mutate != nil {
-				mutate(cfg)
-			}
-		})
-		if err := os.WriteFile(configPath, config, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// noCarryTier1 drops tier1's covers and sets its carry to false.
-	noCarryTier1 := func(cfg map[string]any) {
-		tier1 := cfg["tiers"].(map[string]any)["tier1"].(map[string]any)
-		delete(tier1, "covers")
-		tier1["carry"] = false
-	}
-	// wantInertEmpty checks that the gate named the inert diff and ran no command of the tiers that carry.
-	wantInertEmpty := func(t *testing.T, g *runningGate) {
-		t.Helper()
-		if !strings.Contains(g.stdout.String(), "every changed file is inert, so the scope is empty") {
-			t.Errorf("stdout = %q; want the inert-only diff named", g.stdout.String())
-		}
-	}
-
 	t.Run("an inert-only diff under go runs no listed tier's command and still runs the guard step, and a carry: false tier beside it runs whole", func(t *testing.T) {
-		writeInert(t, "go", noCarryTier1)
-		defer writeScoper(t, "go")
-		edit(t, "docs/note.md", "inert note\n")
-		g := gate(t, pair, nil, "--tier", "0", "--tier", "1")
-		wantArgs(t, g, []string{"./..."}, guardInvocation)
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeInert(t, "go", noCarryTier1)
+		f.edit(t, "docs/note.md", "inert note\n")
+		g := f.gate(t, f.pair, nil, "--tier", "0", "--tier", "1")
+		f.wantArgs(t, g, []string{"./..."}, guardInvocation)
 		wantInertEmpty(t, g)
 		if !strings.Contains(g.stdout.String(), "the scope is empty, so tier0 runs no command") {
 			t.Errorf("stdout = %q; want tier0 to run no command", g.stdout.String())
@@ -262,55 +365,45 @@ func TestGateTest_Scopes(t *testing.T) {
 	})
 
 	t.Run("an inert-only diff under none runs no listed tier's command and plans no guard step, and a carry: false tier beside it runs whole", func(t *testing.T) {
-		writeInert(t, "none", noCarryTier1)
-		defer writeScoper(t, "go")
-		edit(t, "docs/note.md", "inert note\n")
-		g := gate(t, pair, nil, "--tier", "0", "--tier", "1")
-		wantArgs(t, g, []string{"./..."})
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeInert(t, "none", noCarryTier1)
+		f.edit(t, "docs/note.md", "inert note\n")
+		g := f.gate(t, f.pair, nil, "--tier", "0", "--tier", "1")
+		f.wantArgs(t, g, []string{"./..."})
 		wantInertEmpty(t, g)
 	})
 
 	t.Run("an inert-only diff under dotnet runs no listed tier's command, and a carry: false tier beside it runs whole", func(t *testing.T) {
-		writeDotnet(t, noCarryTier1)
-		defer writeScoper(t, "go")
-		edit(t, "docs/note.md", "inert note\n")
-		wantArgs(t, gate(t, pair, nil, "--tier", "0", "--tier", "1"), []string{"./..."})
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeDotnet(t, noCarryTier1)
+		f.edit(t, "docs/note.md", "inert note\n")
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--tier", "0", "--tier", "1"), []string{"./..."})
 	})
 
 	t.Run("an untracked non-inert file beside an inert change keeps the go scope as it is derived", func(t *testing.T) {
-		writeInert(t, "go", nil)
-		defer writeScoper(t, "go")
-		edit(t, "docs/note.md", "inert note\n")
-		edit(t, "other/added.go", "package other\n\nvar Added = 1\n")
-		g := gate(t, pair, nil)
-		wantArgs(t, g, []string{"./other"}, guardInvocation)
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeInert(t, "go", nil)
+		f.edit(t, "docs/note.md", "inert note\n")
+		f.edit(t, "other/added.go", "package other\n\nvar Added = 1\n")
+		g := f.gate(t, f.pair, nil)
+		f.wantArgs(t, g, []string{"./other"}, guardInvocation)
 		if strings.Contains(g.stdout.String(), "every changed file is inert") {
 			t.Errorf("stdout = %q; want the diff not held inert", g.stdout.String())
 		}
 	})
 
-	// withSharedBuild declares the hub's build step over the stand-in and sets shared_build on tier0.
-	// It also clears the covers of tier1.
-	withSharedBuild := func(cfg map[string]any) {
-		cfg["build"] = map[string]any{"command": "'" + os.Args[0] + "' sharedbuild", "timeout_min": 1}
-		tiers := cfg["tiers"].(map[string]any)
-		tiers["tier0"].(map[string]any)["shared_build"] = true
-		delete(tiers["tier1"].(map[string]any), "covers")
-	}
-	// builds returns the shared build's invocations in g.
-	builds := func(t *testing.T, g *runningGate) []standInRecord {
-		t.Helper()
-		return slices.DeleteFunc(g.records(t), func(record standInRecord) bool { return !record.Build })
-	}
-
 	t.Run("a dotnet scope that selected no test class runs the build once in tier0's slots, runs no tier0 command and runs tier1 whole", func(t *testing.T) {
-		writeDotnet(t, withSharedBuild)
-		defer writeScoper(t, "go")
-		edit(t, "cs/Lib/Unused.cs", "namespace Lib;\n\npublic class Unused { public int Edge; }\n")
-		g := gate(t, pair, nil, "--tier", "0", "--tier", "1")
-		wantArgs(t, g, []string{"./..."})
-		if got := builds(t, g); len(got) != 1 || filepath.Dir(got[0].Slot) != pool.Dir {
-			t.Errorf("build invocations = %+v; want the one build, inside a slot of %s", got, pool.Dir)
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeDotnet(t, scopesSharedBuild)
+		f.edit(t, "cs/Lib/Unused.cs", "namespace Lib;\n\npublic class Unused { public int Edge; }\n")
+		g := f.gate(t, f.pair, nil, "--tier", "0", "--tier", "1")
+		f.wantArgs(t, g, []string{"./..."})
+		if got := buildRecords(t, g); len(got) != 1 || filepath.Dir(got[0].Slot) != f.pool.Dir {
+			t.Errorf("build invocations = %+v; want the one build, inside a slot of %s", got, f.pool.Dir)
 		}
 		if !strings.Contains(g.stdout.String(), "gate test: the scope selected no test class, so tier1 runs whole") {
 			t.Errorf("stdout = %q; want tier1 named as run whole", g.stdout.String())
@@ -318,36 +411,38 @@ func TestGateTest_Scopes(t *testing.T) {
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.Discovered != 0 || run.ExitCode != 0 {
 			t.Errorf("tier0 run record = %+v; want an empty pass", run)
 		}
-		requireFree(t)
+		f.requireFree(t)
 
-		failing := startGate(t, gateRun{cwd: pair, args: []string{"test", "--tier", "0", "--tier", "1"}, env: []string{helperBuildExitEnv + "=3"}})
+		failing := startGate(t, gateRun{cwd: f.pair, args: []string{"test", "--tier", "0", "--tier", "1"}, env: []string{helperBuildExitEnv + "=3"}})
 		if code := failing.wait(t); code != 3 {
 			t.Errorf("exit code with a build exiting 3 = %d, stdout %q; want 3", code, failing.stdout.String())
 		}
 	})
 
 	t.Run("an inert-only dotnet diff and an empty one run no build", func(t *testing.T) {
-		writeDotnet(t, withSharedBuild)
-		defer writeScoper(t, "go")
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeDotnet(t, scopesSharedBuild)
 		wantNothingRun := func(name string) {
 			t.Helper()
-			g := gate(t, pair, nil, "--tier", "0", "--tier", "1")
+			g := f.gate(t, f.pair, nil, "--tier", "0", "--tier", "1")
 			if got := g.records(t); g.exit != 0 || len(got) != 0 {
 				t.Errorf("%s diff: exit %d, stand-in records %+v; want no build and no tier command", name, g.exit, got)
 			}
 		}
 		wantNothingRun("empty")
-		edit(t, "docs/note.md", "inert note\n")
+		f.edit(t, "docs/note.md", "inert note\n")
 		wantNothingRun("inert-only")
 	})
 
 	t.Run("an empty dotnet diff with a carry: false tier that opts into the build runs the build before that tier's whole command", func(t *testing.T) {
-		writeDotnet(t, func(cfg map[string]any) {
-			withSharedBuild(cfg)
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeDotnet(t, func(cfg map[string]any) {
+			scopesSharedBuild(cfg)
 			cfg["tiers"].(map[string]any)["tier0"].(map[string]any)["carry"] = false
 		})
-		defer writeScoper(t, "go")
-		g := gate(t, pair, nil, "--tier", "0", "--tier", "1")
+		g := f.gate(t, f.pair, nil, "--tier", "0", "--tier", "1")
 		records := g.records(t)
 		if g.exit != 0 || len(records) != 2 || !records[0].Build || records[1].Build || !slices.Equal(records[1].Args, []string{"./..."}) {
 			t.Errorf("gate = exit %d, stand-in records %+v; want the build, then tier0's whole command", g.exit, records)
@@ -355,62 +450,61 @@ func TestGateTest_Scopes(t *testing.T) {
 	})
 
 	t.Run("--base runs the packages the diff from that revision reaches, then the guard step", func(t *testing.T) {
-		base := gitkit.RevParse(t, pair, "HEAD")
-		edit(t, "user/user.go", "package user\n\nimport \"example.com/scopes/lib\"\n\nfunc Two() int { return lib.One() + 2 }\n")
-		g := gate(t, pair, nil, "--base", base)
-		wantArgs(t, g, []string{"./user"}, guardInvocation)
+		t.Parallel()
+		f := newScopesHub(t)
+		base := gitkit.RevParse(t, f.pair, "HEAD")
+		f.edit(t, "user/user.go", "package user\n\nimport \"example.com/scopes/lib\"\n\nfunc Two() int { return lib.One() + 2 }\n")
+		g := f.gate(t, f.pair, nil, "--base", base)
+		f.wantArgs(t, g, []string{"./user"}, guardInvocation)
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "base" {
 			t.Errorf("tier0 run record scope form = %q; want base", run.ScopeForm)
 		}
 	})
 
 	t.Run("a computed scope skips a //lym:watch test of an impacted package when the diff touches no file its pattern names, and runs it when the diff adds one", func(t *testing.T) {
-		edit(t, "watched/w.go", "package watched\n\nvar Changed = true\n")
-		wantArgs(t, gate(t, pair, nil), []string{"./watched", "-skip", "^(TestWatched)$"}, guardInvocation)
+		t.Parallel()
+		f := newScopesHub(t)
+		f.edit(t, "watched/w.go", "package watched\n\nvar Changed = true\n")
+		f.wantArgs(t, f.gate(t, f.pair, nil), []string{"./watched", "-skip", "^(TestWatched)$"}, guardInvocation)
 
-		edit(t, "watched/x_linux.go", "package watched\n")
-		wantArgs(t, gate(t, pair, nil), []string{"./watched"}, guardInvocation)
+		f.edit(t, "watched/x_linux.go", "package watched\n")
+		f.wantArgs(t, f.gate(t, f.pair, nil), []string{"./watched"}, guardInvocation)
 	})
 
-	circleTestsArgs := []string{"cs/Lib.Tests/Lib.Tests.csproj", "--filter", "FullyQualifiedName~Lib.Tests.CircleTests"}
-
 	t.Run("a computed scope under dotnet runs the selected test project once with its class filter", func(t *testing.T) {
-		writeDotnet(t, nil)
-		defer writeScoper(t, "go")
-		edit(t, "cs/Lib/Circle.cs", "namespace Lib;\n\npublic class Circle { public int Radius; }\n")
-		g := gate(t, pair, nil)
-		wantArgs(t, g, circleTestsArgs)
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeDotnet(t, nil)
+		f.edit(t, "cs/Lib/Circle.cs", "namespace Lib;\n\npublic class Circle { public int Radius; }\n")
+		g := f.gate(t, f.pair, nil)
+		f.wantArgs(t, g, circleTestsArgs)
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "computed" {
 			t.Errorf("tier0 run record scope form = %q; want computed", run.ScopeForm)
 		}
 	})
 
 	t.Run("a project file change under dotnet falls back to whole, naming the path", func(t *testing.T) {
-		writeDotnet(t, nil)
-		defer writeScoper(t, "go")
-		edit(t, "cs/Lib/Lib.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />\n")
-		g := gate(t, pair, nil)
-		wantArgs(t, g, []string{"./..."})
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeDotnet(t, nil)
+		f.edit(t, "cs/Lib/Lib.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />\n")
+		g := f.gate(t, f.pair, nil)
+		f.wantArgs(t, g, []string{"./..."})
 		if !strings.Contains(g.stdout.String(), "falls back to whole: cs/Lib/Lib.csproj is neither inert nor a .cs file") {
 			t.Errorf("stdout = %q; want the fallback and its reason", g.stdout.String())
 		}
 	})
 
-	plan := plankit.Plan{Approved: true, Cards: []plankit.Card{{
-		Number: 1,
-		Slug:   "span",
-		Groups: []plankit.Group{{Label: "Edit", Targets: []string{"lib/lib.go", "nested/n.go"}}},
-	}}}
-	plankit.Write(t, planparser.PlanDir(pair), plan)
-
 	t.Run("--card runs a card's packages and the packages that import them once per module, then the guard step over the guard tests outside them", func(t *testing.T) {
-		g := gate(t, pair, nil, "--card", "1")
-		wantArgs(t, g, []string{"./lib", "./user"}, []string{"."}, guardInvocation)
+		t.Parallel()
+		f := newScopesHub(t)
+		g := f.gate(t, f.pair, nil, "--card", "1")
+		f.wantArgs(t, g, []string{"./lib", "./user"}, []string{"."}, guardInvocation)
 		var cwds []string
 		for _, record := range g.tierRecords(t) {
 			cwds = append(cwds, record.Cwd)
 		}
-		if want := []string{pair, filepath.Join(pair, "nested"), pair}; !slices.Equal(cwds, want) {
+		if want := []string{f.pair, filepath.Join(f.pair, "nested"), f.pair}; !slices.Equal(cwds, want) {
 			t.Errorf("tier cwds = %q; want the root module, the nested module, then the guard step in the root module: %q", cwds, want)
 		}
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "card" {
@@ -419,85 +513,83 @@ func TestGateTest_Scopes(t *testing.T) {
 	})
 
 	t.Run("--card runs a dependent package's guard in the guard step unless a listed tier is or covers its tier", func(t *testing.T) {
-		plankit.WriteTree(t, pair, map[string]string{
+		t.Parallel()
+		f := newScopesHub(t)
+		plankit.WriteTree(t, f.pair, map[string]string{
 			"consumer/c.go":      "package consumer\n\nimport \"example.com/scopes/lib\"\n\nvar One = lib.One\n",
 			"consumer/c_test.go": "//go:build tier1\n\npackage consumer\n\nimport \"testing\"\n\n//lym:guard\nfunc TestConsumerGuard(t *testing.T) {}\n",
 			// The listed tier0, and tier1 which covers it, both run this one, so the guard step never names it.
 			"consumer/c0_test.go": "package consumer\n\nimport \"testing\"\n\n//lym:guard\nfunc TestConsumerTierZeroGuard(t *testing.T) {}\n",
 		})
-		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(pair, "consumer")) })
 		scoped := []string{"./lib", "./consumer", "./user"}
 
-		wantArgs(t, gate(t, pair, nil, "--card", "1"),
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--card", "1"),
 			scoped, []string{"."},
 			append([]string{"vet", "-tags", "tier1"}, scoped...), []string{"vet", "-tags", "tier1", "."},
 			guardInvocation, []string{"./consumer", "-run", "^(TestConsumerGuard)$"})
-		wantArgs(t, gate(t, pair, nil, "--card", "1", "--tier", "1"), scoped, []string{"."}, guardInvocation)
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--card", "1", "--tier", "1"), scoped, []string{"."}, guardInvocation)
 	})
 
 	t.Run("a computed scope runs an impacted package's guard in the guard step unless a listed tier is or covers its tier", func(t *testing.T) {
-		plankit.WriteTree(t, pair, map[string]string{
+		t.Parallel()
+		f := newScopesHub(t)
+		plankit.WriteTree(t, f.pair, map[string]string{
 			"consumer/c.go":      "package consumer\n\nimport \"example.com/scopes/lib\"\n\nvar One = lib.One\n",
 			"consumer/c_test.go": "//go:build tier1\n\npackage consumer\n\nimport \"testing\"\n\n//lym:guard\nfunc TestConsumerGuard(t *testing.T) {}\n",
 		})
-		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(pair, "consumer")) })
-		edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 3 }\n")
+		f.edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 3 }\n")
 		scoped := []string{"./consumer", "./lib", "./user"}
 
-		wantArgs(t, gate(t, pair, nil), scoped, guardInvocation, []string{"./consumer", "-run", "^(TestConsumerGuard)$"})
-		wantArgs(t, gate(t, pair, nil, "--tier", "1"), scoped, guardInvocation)
+		f.wantArgs(t, f.gate(t, f.pair, nil), scoped, guardInvocation, []string{"./consumer", "-run", "^(TestConsumerGuard)$"})
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--tier", "1"), scoped, guardInvocation)
 	})
 
 	t.Run("a --gate call skips a //lym:only test its marker does not name, a marked key runs only its marked tests or is refused, and a marker naming no gate key is refused", func(t *testing.T) {
-		plankit.WriteTree(t, pair, map[string]string{
+		t.Parallel()
+		f := newScopesHub(t)
+		plankit.WriteTree(t, f.pair, map[string]string{
 			"heldpkg/h.go": "package heldpkg\n",
 			"heldpkg/h_test.go": "package heldpkg\n\nimport \"testing\"\n\n//lym:only upkeep\nfunc TestHeld(t *testing.T) {}\n\n" +
 				"//lym:guard\n//lym:only finalize\nfunc TestLandingGuard(t *testing.T) {}\n",
 			"nested/n_test.go": "package nested\n\nimport \"testing\"\n\n//lym:only upkeep\nfunc TestNestedHeld(t *testing.T) {}\n",
 		})
-		t.Cleanup(func() {
-			_ = os.RemoveAll(filepath.Join(pair, "heldpkg"))
-			_ = os.Remove(filepath.Join(pair, "nested", "n_test.go"))
-		})
 
-		finalize := gate(t, pair, nil, "--gate", "finalize")
-		wantArgs(t, finalize, []string{"./...", "-skip", "^(TestHeld)$"})
+		finalize := f.gate(t, f.pair, nil, "--gate", "finalize")
+		f.wantArgs(t, finalize, []string{"./...", "-skip", "^(TestHeld)$"})
 		if want := `tier0 skips TestHeld, since their //lym:only markers do not name --gate "finalize"`; !strings.Contains(finalize.stdout.String(), want) {
 			t.Errorf("stdout = %q; want the held line %q", finalize.stdout.String(), want)
 		}
-		wantArgs(t, gate(t, pair, nil, "--gate", "upkeep"), []string{"./heldpkg", "-run", "^(TestHeld)$"})
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "upkeep"), []string{"./heldpkg", "-run", "^(TestHeld)$"})
 		// A test of the same name that another package holds back leaves the marked one running.
-		plankit.WriteTree(t, pair, map[string]string{
+		plankit.WriteTree(t, f.pair, map[string]string{
 			"samename/s_test.go": "package samename\n\nimport \"testing\"\n\n//lym:only finalize\nfunc TestHeld(t *testing.T) {}\n",
 		})
-		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(pair, "samename")) })
-		wantArgs(t, gate(t, pair, nil, "--gate", "upkeep"), []string{"./heldpkg", "-run", "^(TestHeld)$"})
-		if err := os.RemoveAll(filepath.Join(pair, "samename")); err != nil {
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "upkeep"), []string{"./heldpkg", "-run", "^(TestHeld)$"})
+		if err := os.RemoveAll(filepath.Join(f.pair, "samename")); err != nil {
 			t.Fatal(err)
 		}
-		wantArgs(t, gate(t, pair, nil, "--all"), []string{"./..."})
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--all"), []string{"./..."})
 
 		// The card scope leaves heldpkg out, so only the guard step could run its held guard.
 		skip := "^(TestHeld|TestLandingGuard)$"
-		wantArgs(t, gate(t, pair, nil, "--gate", "card", "--card", "1"),
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "card", "--card", "1"),
 			[]string{"./lib", "./user", "-skip", skip}, []string{".", "-skip", skip}, guardInvocation)
 
-		wantArgs(t, gate(t, pair, nil, "--gate", "upkeep", "./heldpkg"), []string{"./heldpkg", "-skip", "^(TestLandingGuard)$"})
-		wantArgs(t, gate(t, pair, nil, "--gate", "finalize", "-C", "nested", "."), []string{".", "-skip", "^(TestNestedHeld)$"})
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "upkeep", "./heldpkg"), []string{"./heldpkg", "-skip", "^(TestLandingGuard)$"})
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "finalize", "-C", "nested", "."), []string{".", "-skip", "^(TestNestedHeld)$"})
 
-		writeScoper(t, "none")
-		defer writeScoper(t, "go")
-		wantRefusal(t, gate(t, pair, nil, "--gate", "upkeep"), "needs the go scoper", `"none"`)
-		writeScoper(t, "go")
+		f.writeScoper(t, "none")
+		f.wantRefusal(t, f.gate(t, f.pair, nil, "--gate", "upkeep"), "needs the go scoper", `"none"`)
+		f.writeScoper(t, "go")
 
 		// The key lists tier0 alone, and its marked tier1 test still runs, under tier1's command.
-		tierOne := filepath.Join(pair, "heldpkg", "h1_test.go")
-		plankit.WriteTree(t, pair, map[string]string{
+		tierOne := filepath.Join(f.pair, "heldpkg", "h1_test.go")
+		plankit.WriteTree(t, f.pair, map[string]string{
 			"heldpkg/h1_test.go": "//go:build tier1\n\npackage heldpkg\n\nimport \"testing\"\n\n//lym:only upkeep\nfunc TestHeldTierOne(t *testing.T) {}\n",
 		})
 		bothTiers := [][]string{{"./heldpkg", "-run", "^(TestHeld)$"}, {"./heldpkg", "-run", "^(TestHeldTierOne)$"}}
-		upkeep := gate(t, pair, nil, "--gate", "upkeep")
-		wantArgs(t, upkeep, bothTiers...)
+		upkeep := f.gate(t, f.pair, nil, "--gate", "upkeep")
+		f.wantArgs(t, upkeep, bothTiers...)
 		// The two tiers share one command, so the settings tell them apart:
 		// tier1's slots: all records as 0, where tier0 records 1.
 		if run, _ := guardRunRecordOf(t, upkeep.stdout.String(), 1); !run.GuardStep || run.Tier != 1 || run.Slots != 0 {
@@ -512,71 +604,71 @@ func TestGateTest_Scopes(t *testing.T) {
 					mutate(cfg)
 				}
 			})
-			if err := os.WriteFile(configPath, config, 0o644); err != nil {
+			if err := os.WriteFile(f.configPath, config, 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
 		writeManualTierOne(nil)
-		wantRefusal(t, gate(t, pair, nil, "--gate", "upkeep"), "marks TestHeldTierOne in tier1, which is manual", "list tier1 in gate.gates.upkeep")
+		f.wantRefusal(t, f.gate(t, f.pair, nil, "--gate", "upkeep"), "marks TestHeldTierOne in tier1, which is manual", "list tier1 in gate.gates.upkeep")
 		writeManualTierOne(func(cfg map[string]any) {
 			cfg["gates"] = map[string]any{"upkeep": map[string]any{"tiers": []int{0, 1}, "scope": "marked"}}
 		})
-		wantArgs(t, gate(t, pair, nil, "--gate", "upkeep"), bothTiers...)
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "upkeep"), bothTiers...)
 		writeManualTierOne(func(cfg map[string]any) {
 			cfg["tiers"].(map[string]any)["tier6"].(map[string]any)["covers"] = []int{1}
 			cfg["gates"] = map[string]any{"upkeep": map[string]any{"tiers": []int{6}, "scope": "marked"}}
 		})
-		wantArgs(t, gate(t, pair, nil, "--gate", "upkeep"), bothTiers...)
-		writeScoper(t, "go")
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--gate", "upkeep"), bothTiers...)
+		f.writeScoper(t, "go")
 		if err := os.Remove(tierOne); err != nil {
 			t.Fatal(err)
 		}
 
-		if err := os.Remove(filepath.Join(pair, "nested", "n_test.go")); err != nil {
+		if err := os.Remove(filepath.Join(f.pair, "nested", "n_test.go")); err != nil {
 			t.Fatal(err)
 		}
-		edit(t, "heldpkg/h_test.go", "package heldpkg\n\nimport \"testing\"\n\n//lym:only finalize\nfunc TestHeld(t *testing.T) {}\n")
-		wantRefusal(t, gate(t, pair, nil, "--gate", "upkeep"), "is marked //lym:only upkeep", "way forward")
+		f.edit(t, "heldpkg/h_test.go", "package heldpkg\n\nimport \"testing\"\n\n//lym:only finalize\nfunc TestHeld(t *testing.T) {}\n")
+		f.wantRefusal(t, f.gate(t, f.pair, nil, "--gate", "upkeep"), "is marked //lym:only upkeep", "way forward")
 
-		edit(t, "heldpkg/h_test.go", "package heldpkg\n\nimport \"testing\"\n\n//lym:only nosuch\nfunc TestHeld(t *testing.T) {}\n")
-		wantRefusal(t, gate(t, pair, nil, "--gate", "finalize"), `TestHeld in heldpkg names the gate key "nosuch"`, "way forward")
+		f.edit(t, "heldpkg/h_test.go", "package heldpkg\n\nimport \"testing\"\n\n//lym:only nosuch\nfunc TestHeld(t *testing.T) {}\n")
+		f.wantRefusal(t, f.gate(t, f.pair, nil, "--gate", "finalize"), `TestHeld in heldpkg names the gate key "nosuch"`, "way forward")
 
-		edit(t, "go.mod", "this is not a go.mod\n")
-		unlistable := gate(t, pair, nil, "--gate", "finalize")
-		wantArgs(t, unlistable, []string{"./..."})
+		f.edit(t, "go.mod", "this is not a go.mod\n")
+		unlistable := f.gate(t, f.pair, nil, "--gate", "finalize")
+		f.wantArgs(t, unlistable, []string{"./..."})
 		if want := "cannot list the //lym:only tests of"; !strings.Contains(unlistable.stdout.String(), want) {
 			t.Errorf("stdout = %q; want it to hold %q", unlistable.stdout.String(), want)
 		}
-		wantRefusal(t, gate(t, pair, nil, "--gate", "upkeep"), "cannot list the packages of", "way forward")
+		f.wantRefusal(t, f.gate(t, f.pair, nil, "--gate", "upkeep"), "cannot list the packages of", "way forward")
 	})
 
 	t.Run("--card under dotnet runs the project of the test class naming a card's member glyph target", func(t *testing.T) {
-		writeDotnet(t, nil)
-		defer writeScoper(t, "go")
-		csharpPlan := plan
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeDotnet(t, nil)
+		csharpPlan := f.plan
 		csharpPlan.Language = "csharp"
 		csharpPlan.Cards = []plankit.Card{{Number: 1, Slug: "span", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"Lib#Circle.Area"}}}}}
-		plankit.Write(t, planparser.PlanDir(pair), csharpPlan)
-		t.Cleanup(func() { plankit.Write(t, planparser.PlanDir(pair), plan) })
-		g := gate(t, pair, nil, "--card", "1")
-		wantArgs(t, g, circleTestsArgs)
+		plankit.Write(t, planparser.PlanDir(f.pair), csharpPlan)
+		g := f.gate(t, f.pair, nil, "--card", "1")
+		f.wantArgs(t, g, circleTestsArgs)
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "card" {
 			t.Errorf("tier0 run record scope form = %q; want card", run.ScopeForm)
 		}
 	})
 
 	t.Run("--card under dotnet names a selected project that a tier0 command without {targets} does not reach, and still exits 0", func(t *testing.T) {
-		writeDotnet(t, func(cfg map[string]any) {
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeDotnet(t, func(cfg map[string]any) {
 			tiers := cfg["tiers"].(map[string]any)
 			tiers["tier0"].(map[string]any)["command"] = "'" + os.Args[0] + "' cs/Other/Other.csproj {filter}"
 		})
-		defer writeScoper(t, "go")
-		csharpPlan := plan
+		csharpPlan := f.plan
 		csharpPlan.Language = "csharp"
 		csharpPlan.Cards = []plankit.Card{{Number: 1, Slug: "span", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"Lib#Circle.Area"}}}}}
-		plankit.Write(t, planparser.PlanDir(pair), csharpPlan)
-		t.Cleanup(func() { plankit.Write(t, planparser.PlanDir(pair), plan) })
-		g := gate(t, pair, nil, "--card", "1")
+		plankit.Write(t, planparser.PlanDir(f.pair), csharpPlan)
+		g := f.gate(t, f.pair, nil, "--card", "1")
 		if g.exit != 0 {
 			t.Errorf("exit code = %d, stdout %q; want 0, since the line is output only", g.exit, g.stdout.String())
 		}
@@ -587,56 +679,41 @@ func TestGateTest_Scopes(t *testing.T) {
 	})
 
 	t.Run("--card skips a //lym:watch test of a card's package that no change since the parent merge base concerns, and runs it once one does or with no parent branch", func(t *testing.T) {
-		watchedPlan := plan
+		t.Parallel()
+		f := newScopesHub(t)
+		watchedPlan := f.plan
 		watchedPlan.Cards = []plankit.Card{{Number: 1, Slug: "span", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"watched/w.go"}}}}}
-		plankit.Write(t, planparser.PlanDir(pair), watchedPlan)
-		t.Cleanup(func() { plankit.Write(t, planparser.PlanDir(pair), plan) })
-		// A dirty tree is never carried, so the packages the row before ran green run again.
-		edit(t, "docs/note.md", "a dirtying note\n")
-		wantArgs(t, gate(t, pair, nil, "--card", "1"), []string{"./watched", "-skip", "^(TestWatched)$"}, guardInvocation)
+		plankit.Write(t, planparser.PlanDir(f.pair), watchedPlan)
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--card", "1"), []string{"./watched", "-skip", "^(TestWatched)$"}, guardInvocation)
 
-		edit(t, "watched/x_linux.go", "package watched\n")
-		wantArgs(t, gate(t, pair, nil, "--card", "1"), []string{"./watched"}, guardInvocation)
+		f.edit(t, "watched/x_linux.go", "package watched\n")
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--card", "1"), []string{"./watched"}, guardInvocation)
 
-		plankit.Write(t, planparser.PlanDir(prime), watchedPlan)
-		t.Cleanup(func() {
-			_ = os.RemoveAll(planparser.PlanDir(prime))
-			// The prime's passing call recorded green, which would make the next prime row list packages.
-			_ = os.Remove(filepath.Join(gateslot.WaitDir(prime), greenFileName))
-		})
-		wantArgs(t, gate(t, prime, nil, "--card", "1"), []string{"./watched"}, guardInvocation)
+		plankit.Write(t, planparser.PlanDir(f.prime), watchedPlan)
+		f.wantArgs(t, f.gate(t, f.prime, nil, "--card", "1"), []string{"./watched"}, guardInvocation)
 	})
 
-	// vetSummary returns the summary line of tier1's vet run in output, failing the test when there is none.
-	vetSummary := func(t *testing.T, output string) string {
-		t.Helper()
-		for _, line := range strings.Split(output, "\n") {
-			if strings.HasPrefix(line, "gate test: tier1 vet ") {
-				return line
-			}
-		}
-		t.Fatalf("output %q holds no summary line of tier1's vet run", output)
-		return ""
-	}
-	tier1File := "//go:build tier1\n\npackage lib\n\nimport \"testing\"\n\nfunc TestUse(t *testing.T) { _ = %s() }\n"
-
 	t.Run("--card vets a card's packages per module under the tag of a tier that adds a file to one, between the listed tier and the guard step", func(t *testing.T) {
-		edit(t, "lib/use_test.go", fmt.Sprintf(tier1File, "One"))
-		g := gate(t, pair, nil, "--card", "1")
-		wantArgs(t, g, []string{"./lib", "./user"}, []string{"."}, []string{"vet", "-tags", "tier1", "./lib", "./user"}, []string{"vet", "-tags", "tier1", "."}, guardInvocation)
+		t.Parallel()
+		f := newScopesHub(t)
+		f.edit(t, "lib/use_test.go", fmt.Sprintf(tier1File, "One"))
+		g := f.gate(t, f.pair, nil, "--card", "1")
+		f.wantArgs(t, g, []string{"./lib", "./user"}, []string{"."}, []string{"vet", "-tags", "tier1", "./lib", "./user"}, []string{"vet", "-tags", "tier1", "."}, guardInvocation)
 		if line := vetSummary(t, g.stdout.String()); !strings.Contains(line, " exit 0 ") {
 			t.Errorf("vet summary line = %q; want exit 0", line)
 		}
 		if want := "gate test: tier1, tier2, tier3, tier5, tier6, tier7" + notRunSuffix + "\n"; !strings.Contains(g.stdout.String(), want) {
 			t.Errorf("stdout = %q; want the line %q, which names tier1 since its vet run does not run the tier", g.stdout.String(), want)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("--card fails a card whose tier1 file uses a helper only a tier0 file defines, naming the vet run", func(t *testing.T) {
-		edit(t, "lib/helper_test.go", "//go:build tier0\n\npackage lib\n\nfunc helper() int { return One() }\n")
-		edit(t, "lib/use_test.go", fmt.Sprintf(tier1File, "helper"))
-		g := startGate(t, gateRun{cwd: pair, args: []string{"test", "--card", "1"}, realGo: true})
+		t.Parallel()
+		f := newScopesHub(t)
+		f.edit(t, "lib/helper_test.go", "//go:build tier0\n\npackage lib\n\nfunc helper() int { return One() }\n")
+		f.edit(t, "lib/use_test.go", fmt.Sprintf(tier1File, "helper"))
+		g := startGate(t, gateRun{cwd: f.pair, args: []string{"test", "--card", "1"}, realGo: true})
 		g.exit = g.wait(t)
 		output := g.stdout.String()
 		if g.exit == 0 {
@@ -660,13 +737,13 @@ func TestGateTest_Scopes(t *testing.T) {
 		if guard, _ := guardRunRecordOf(t, output, 0); !guard.GuardStep {
 			t.Errorf("guard run record = %+v; want the guard step to have run after the failed vet", guard)
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	t.Run("--card with a tier that outlives timeout_min across its invocations is killed with the timeout line", func(t *testing.T) {
-		// A dirty tree is never carried, so the packages the row before ran green run again.
-		edit(t, "docs/note.md", "a dirtying note\n")
-		g := gate(t, pair, []string{helperHoldEnv + "=1", helperUnitEnv + "=1s"}, "--card", "1")
+		t.Parallel()
+		f := newScopesHub(t)
+		g := f.gate(t, f.pair, []string{helperHoldEnv + "=1", helperUnitEnv + "=1s"}, "--card", "1")
 		records := g.tierRecords(t)
 		t.Cleanup(func() {
 			for _, record := range records {
@@ -680,29 +757,36 @@ func TestGateTest_Scopes(t *testing.T) {
 		if tier, ok := gateslot.FindTierTimeout(g.stdout.String()); g.exit != 1 || !ok || tier != "tier0" {
 			t.Errorf("gate = exit %d, FindTierTimeout = (%q, %v), stdout %q; want exit 1 and the tier0 timeout line", g.exit, tier, ok, g.stdout.String())
 		}
-		requireFree(t)
+		f.requireFree(t)
 	})
 
 	for _, scoper := range []string{"go", "none", "dotnet"} {
 		t.Run("--card with an unknown id is refused before any slot naming the plan's ids under "+scoper, func(t *testing.T) {
-			writeScoper(t, scoper)
-			defer writeScoper(t, "go")
-			wantRefusal(t, gate(t, pair, nil, "--card", "9"), "1-span", "way forward")
+			t.Parallel()
+			f := newScopesHub(t)
+			f.writeScoper(t, scoper)
+			f.wantRefusal(t, f.gate(t, f.pair, nil, "--card", "9"), "1-span", "way forward")
 		})
 	}
 
 	t.Run("--card in a worktree with no plan is refused naming --all", func(t *testing.T) {
-		wantRefusal(t, gate(t, prime, nil, "--card", "1"), "--all", "explicit targets")
+		t.Parallel()
+		f := newScopesHub(t)
+		f.wantRefusal(t, f.gate(t, f.prime, nil, "--card", "1"), "--all", "explicit targets")
 	})
 
 	t.Run("--gate with scope card and no --card is refused naming the key and the way forward", func(t *testing.T) {
-		wantRefusal(t, gate(t, pair, nil, "--gate", "card"), `"card"`, "--card <id>", "way forward")
+		t.Parallel()
+		f := newScopesHub(t)
+		f.wantRefusal(t, f.gate(t, f.pair, nil, "--gate", "card"), `"card"`, "--card <id>", "way forward")
 	})
 
 	t.Run("--gate with scope card runs the --card packages and records the key", func(t *testing.T) {
-		edit(t, "docs/note.md", "a dirtying note\n")
-		g := gate(t, pair, nil, "--gate", "card", "--card", "1")
-		wantArgs(t, g, []string{"./lib", "./user"}, []string{"."}, guardInvocation)
+		t.Parallel()
+		f := newScopesHub(t)
+		f.edit(t, "docs/note.md", "a dirtying note\n")
+		g := f.gate(t, f.pair, nil, "--gate", "card", "--card", "1")
+		f.wantArgs(t, g, []string{"./lib", "./user"}, []string{"."}, guardInvocation)
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "card" || run.GateKey != "card" {
 			t.Errorf("tier0 run record = %+v; want the card scope form and gate key card", run)
 		}
@@ -712,49 +796,56 @@ func TestGateTest_Scopes(t *testing.T) {
 	})
 
 	t.Run("--card with --main-packages adds the module's main packages to the card's packages", func(t *testing.T) {
-		plankit.WriteTree(t, pair, map[string]string{"tool/main.go": "package main\n\nfunc main() {}\n"})
-		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(pair, "tool")) })
-		wantArgs(t, gate(t, pair, nil, "--card", "1", "--main-packages"), []string{"./lib", "./user", "./tool"}, []string{"."}, guardInvocation)
+		t.Parallel()
+		f := newScopesHub(t)
+		plankit.WriteTree(t, f.pair, map[string]string{"tool/main.go": "package main\n\nfunc main() {}\n"})
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--card", "1", "--main-packages"), []string{"./lib", "./user", "./tool"}, []string{"."}, guardInvocation)
 	})
 
 	t.Run("--card with --main-packages is refused naming the module and the way forward when go list fails there", func(t *testing.T) {
-		edit(t, "go.mod", "this is not a go.mod\n")
-		wantRefusal(t, gate(t, pair, nil, "--card", "1", "--main-packages"), "--main-packages", "module at .", "way forward")
+		t.Parallel()
+		f := newScopesHub(t)
+		f.edit(t, "go.mod", "this is not a go.mod\n")
+		f.wantRefusal(t, f.gate(t, f.pair, nil, "--card", "1", "--main-packages"), "--main-packages", "module at .", "way forward")
 	})
 
 	t.Run("--card with --main-packages adds nothing under the none scoper", func(t *testing.T) {
-		writeScoper(t, "none")
-		defer writeScoper(t, "go")
-		plankit.WriteTree(t, pair, map[string]string{"tool/main.go": "package main\n\nfunc main() {}\n"})
-		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(pair, "tool")) })
-		wantArgs(t, gate(t, pair, nil, "--card", "1", "--main-packages"), []string{"./..."})
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeScoper(t, "none")
+		plankit.WriteTree(t, f.pair, map[string]string{"tool/main.go": "package main\n\nfunc main() {}\n"})
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--card", "1", "--main-packages"), []string{"./..."})
 	})
 
 	t.Run("--card with --main-packages adds nothing under dotnet", func(t *testing.T) {
-		writeDotnet(t, nil)
-		defer writeScoper(t, "go")
-		csharpPlan := plan
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeDotnet(t, nil)
+		csharpPlan := f.plan
 		csharpPlan.Language = "csharp"
 		csharpPlan.Cards = []plankit.Card{{Number: 1, Slug: "span", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"Lib#Circle.Area"}}}}}
-		plankit.Write(t, planparser.PlanDir(pair), csharpPlan)
-		t.Cleanup(func() { plankit.Write(t, planparser.PlanDir(pair), plan) })
-		wantArgs(t, gate(t, pair, nil, "--card", "1", "--main-packages"), circleTestsArgs)
+		plankit.Write(t, planparser.PlanDir(f.pair), csharpPlan)
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--card", "1", "--main-packages"), circleTestsArgs)
 	})
 
 	t.Run("a passing --card call leaves a tier a listed tier covers out of the tiers it did not run", func(t *testing.T) {
-		edit(t, "docs/note.md", "a dirtying note\n")
-		g := gate(t, pair, nil, "--card", "1", "--tier", "1")
+		t.Parallel()
+		f := newScopesHub(t)
+		f.edit(t, "docs/note.md", "a dirtying note\n")
+		g := f.gate(t, f.pair, nil, "--card", "1", "--tier", "1")
 		if want := "gate test: tier2, tier3, tier5, tier6, tier7" + notRunSuffix + "\n"; g.exit != 0 || !strings.Contains(g.stdout.String(), want) {
 			t.Errorf("gate = exit %d, stdout %q; want exit 0 and the line %q, without tier0, which tier1 covers", g.exit, g.stdout.String(), want)
 		}
 	})
 
 	t.Run("--gate with scope all runs every tier whole, ignoring --card ids", func(t *testing.T) {
+		t.Parallel()
+		f := newScopesHub(t)
 		for i, key := range []string{"finalize", "adopt"} {
 			// Each key's run is over a tree of its own, so the previous green run is not carried over it.
-			edit(t, "lib/lib.go", fmt.Sprintf("package lib\n\nfunc One() int { return %d }\n", 4+10*i))
-			g := gate(t, pair, nil, "--gate", key, "--card", "1")
-			wantArgs(t, g, []string{"./..."})
+			f.edit(t, "lib/lib.go", fmt.Sprintf("package lib\n\nfunc One() int { return %d }\n", 4+10*i))
+			g := f.gate(t, f.pair, nil, "--gate", key, "--card", "1")
+			f.wantArgs(t, g, []string{"./..."})
 			if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "all" || run.GateKey != key {
 				t.Errorf("tier0 run record = %+v; want the all scope form and gate key %s", run, key)
 			}
@@ -762,206 +853,187 @@ func TestGateTest_Scopes(t *testing.T) {
 	})
 
 	t.Run("--gate with scope all over an inert-only diff from the parent branch runs no tier's command", func(t *testing.T) {
-		writeInert(t, "go", nil)
-		defer writeScoper(t, "go")
-		edit(t, "docs/note.md", "inert note for finalize\n")
-		g := gate(t, pair, nil, "--gate", "finalize")
-		wantArgs(t, g)
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeInert(t, "go", nil)
+		f.edit(t, "docs/note.md", "inert note for finalize\n")
+		g := f.gate(t, f.pair, nil, "--gate", "finalize")
+		f.wantArgs(t, g)
 		if out := g.stdout.String(); !strings.Contains(out, `scope all of --gate "finalize": every file changed since`) || !strings.Contains(out, "the scope is empty, so tier0 runs no command") {
 			t.Errorf("stdout = %q; want the inert-only diff named and tier0 running no command", out)
 		}
 	})
 
 	t.Run("--gate with scope all runs whole over an inert-only edit in the prime, which has no parent branch", func(t *testing.T) {
-		writeInert(t, "go", nil)
-		defer writeScoper(t, "go")
-		note := filepath.Join(prime, "docs", "note.md")
-		original, err := os.ReadFile(note)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() {
-			if err := os.WriteFile(note, original, 0o644); err != nil {
-				t.Error(err)
-			}
-		})
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeInert(t, "go", nil)
+		note := filepath.Join(f.prime, "docs", "note.md")
 		if err := os.WriteFile(note, []byte("inert note edited in the prime\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		g := gate(t, prime, nil, "--gate", "finalize")
-		wantArgs(t, g, []string{"./..."})
+		g := f.gate(t, f.prime, nil, "--gate", "finalize")
+		f.wantArgs(t, g, []string{"./..."})
 		if strings.Contains(g.stdout.String(), "the scope is empty") {
 			t.Errorf("stdout = %q; want no empty-scope line, since the prime has no parent branch to diff from", g.stdout.String())
 		}
 	})
 
 	t.Run("--gate with scope all runs whole and names why when the parent branch's merge base cannot be read", func(t *testing.T) {
-		writeInert(t, "go", nil)
-		defer writeScoper(t, "go")
-		recorded, found, err := fabricengine.ReadOriginFor(h.Location, hubforge.TemplatePairSlug)
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeInert(t, "go", nil)
+		recorded, found, err := fabricengine.ReadOriginFor(f.hub.Location, hubforge.TemplatePairSlug)
 		if err != nil || !found {
 			t.Fatalf("read the pair's origin record = %v, found %v; want it present", err, found)
 		}
 		vanished := recorded
 		vanished.ParentBranch = "vanished-parent-branch"
 		rewrite := func(origin fabriclayout.Origin) error {
-			return fabricengine.WriteOrigin(new(fabricengine.Mutations), h.Location, hubforge.TemplatePairSlug, origin)
+			return fabricengine.WriteOrigin(new(fabricengine.Mutations), f.hub.Location, hubforge.TemplatePairSlug, origin)
 		}
 		if err := rewrite(vanished); err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() {
-			if err := rewrite(recorded); err != nil {
-				t.Error(err)
-			}
-		})
-		edit(t, "docs/note.md", "inert note with a vanished parent\n")
-		g := gate(t, pair, nil, "--gate", "finalize")
-		wantArgs(t, g, []string{"./..."})
+		f.edit(t, "docs/note.md", "inert note with a vanished parent\n")
+		g := f.gate(t, f.pair, nil, "--gate", "finalize")
+		f.wantArgs(t, g, []string{"./..."})
 		if out := g.stdout.String(); !strings.Contains(out, `the scope of --gate "finalize" stays whole: cannot read the merge base`) || strings.Contains(out, "the scope is empty") {
 			t.Errorf("stdout = %q; want the stays-whole line and no empty-scope line", out)
 		}
 	})
 
 	t.Run("--gate with scope diff runs the computed scope", func(t *testing.T) {
+		t.Parallel()
+		f := newScopesHub(t)
 		config := scopesConfigWith(t, "go", func(cfg map[string]any) {
 			cfg["gates"] = map[string]any{"pr-review": map[string]any{"tiers": []int{0}, "scope": "diff"}}
 		})
-		if err := os.WriteFile(configPath, config, 0o644); err != nil {
+		if err := os.WriteFile(f.configPath, config, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		defer writeScoper(t, "go")
-		edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 5 }\n")
-		g := gate(t, pair, nil, "--gate", "pr-review")
-		wantArgs(t, g, []string{"./lib", "./user"}, guardInvocation)
+		f.edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 5 }\n")
+		g := f.gate(t, f.pair, nil, "--gate", "pr-review")
+		f.wantArgs(t, g, []string{"./lib", "./user"}, guardInvocation)
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "computed" || run.GateKey != "pr-review" {
 			t.Errorf("tier0 run record = %+v; want the computed scope form and gate key pr-review", run)
 		}
 	})
 
 	t.Run("--gate with scope diff runs whole on a whole fallback, and takes all_targets under the none scoper", func(t *testing.T) {
-		edit(t, "nested/n.go", "package nested\n\nvar Changed = 2\n")
-		g := gate(t, pair, nil, "--gate", "darn-write")
-		wantArgs(t, g, []string{"./..."})
+		t.Parallel()
+		f := newScopesHub(t)
+		f.edit(t, "nested/n.go", "package nested\n\nvar Changed = 2\n")
+		g := f.gate(t, f.pair, nil, "--gate", "darn-write")
+		f.wantArgs(t, g, []string{"./..."})
 		if !strings.Contains(g.stdout.String(), "falls back to whole: nested/n.go is neither a Markdown file nor under a Go package directory") {
 			t.Errorf("stdout = %q; want the whole fallback", g.stdout.String())
 		}
 
-		writeScoper(t, "none")
-		defer writeScoper(t, "go")
-		edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 11 }\n")
-		g = gate(t, pair, nil, "--gate", "darn-write")
-		wantArgs(t, g, []string{"./..."})
+		f.writeScoper(t, "none")
+		f.edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 11 }\n")
+		g = f.gate(t, f.pair, nil, "--gate", "darn-write")
+		f.wantArgs(t, g, []string{"./..."})
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "computed" || run.GateKey != "darn-write" {
 			t.Errorf("tier run record = %+v; want the computed scope form and gate key darn-write", run)
 		}
 	})
 
 	t.Run("explicit targets beside --gate replace the key's scope", func(t *testing.T) {
-		g := gate(t, pair, nil, "--gate", "card", "./other")
-		wantArgs(t, g, []string{"./other"})
+		t.Parallel()
+		f := newScopesHub(t)
+		g := f.gate(t, f.pair, nil, "--gate", "card", "./other")
+		f.wantArgs(t, g, []string{"./other"})
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "targets" || run.GateKey != "card" {
 			t.Errorf("tier0 run record = %+v; want the targets scope form and gate key card", run)
 		}
 	})
 
 	t.Run("--gate with an unknown key is refused with the config's way forward naming lym config gate", func(t *testing.T) {
-		wantRefusal(t, gate(t, pair, nil, "--gate", "nosuch"), `"nosuch"`, "lym config gate")
+		t.Parallel()
+		f := newScopesHub(t)
+		f.wantRefusal(t, f.gate(t, f.pair, nil, "--gate", "nosuch"), `"nosuch"`, "lym config gate")
 	})
 
 	t.Run("a misplaced guard marker refuses a computed call before any slot with its file and line", func(t *testing.T) {
-		edit(t, "other/o_test.go", "package other\n\n//lym:guard\nfunc helper() {}\n")
-		wantRefusal(t, gate(t, pair, nil), "other/o_test.go:3", "way forward")
+		t.Parallel()
+		f := newScopesHub(t)
+		f.edit(t, "other/o_test.go", "package other\n\n//lym:guard\nfunc helper() {}\n")
+		f.wantRefusal(t, f.gate(t, f.pair, nil), "other/o_test.go:3", "way forward")
 	})
 
 	t.Run("the prime with no parent runs whole", func(t *testing.T) {
-		g := gate(t, prime, nil)
-		wantArgs(t, g, []string{"./..."})
+		t.Parallel()
+		f := newScopesHub(t)
+		g := f.gate(t, f.prime, nil)
+		f.wantArgs(t, g, []string{"./..."})
 		if strings.Contains(g.stdout.String(), "falls back") || strings.Contains(g.stdout.String(), "diff scope from") {
 			t.Errorf("stdout = %q; want no fallback or derivation notice, since there is no parent to diff from", g.stdout.String())
 		}
 	})
 
 	t.Run("under the none scoper every scope form takes all_targets", func(t *testing.T) {
-		writeScoper(t, "none")
-		defer writeScoper(t, "go")
-		base := gitkit.RevParse(t, pair, "HEAD")
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeScoper(t, "none")
+		base := gitkit.RevParse(t, f.pair, "HEAD")
 
-		edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 3 }\n")
-		wantArgs(t, gate(t, pair, nil), []string{"./..."})
-		wantArgs(t, gate(t, pair, nil, "--card", "1"), []string{"./..."})
-		wantArgs(t, gate(t, pair, nil, "--base", base), []string{"./..."})
+		f.edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 3 }\n")
+		f.wantArgs(t, f.gate(t, f.pair, nil), []string{"./..."})
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--card", "1"), []string{"./..."})
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--base", base), []string{"./..."})
 	})
 
-	// The rows from here commit to the pair's branch and run in order;
-	// the one after them runs whole and reads no history.
-	// real runs `lym gate test args...` from the pair with the real go command, which the green record lists packages with.
-	real := func(t *testing.T, args ...string) *runningGate {
-		t.Helper()
-		g := startGate(t, gateRun{cwd: pair, realGo: true, args: append([]string{"test"}, args...)})
-		g.exit = g.wait(t)
-		return g
-	}
-	wantCarried := func(t *testing.T, g *runningGate) {
-		t.Helper()
-		if g.exit != 0 || len(g.tierArgs(t)) != 0 || !strings.Contains(g.stdout.String(), " all carried ") {
-			t.Errorf("gate = exit %d, tier invocations %q, stdout %q; want every tier carried", g.exit, g.tierArgs(t), g.stdout.String())
-		}
-	}
-	greenPath := filepath.Join(gateslot.WaitDir(pair), greenFileName)
-
 	t.Run("an all run after a green diff run runs only the packages the diff run did not cover, and a third all run carries whole", func(t *testing.T) {
-		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
-			t.Fatal(err)
-		}
-		gitkit.CommitFile(t, pair, "lib/lib.go", "package lib\n\nfunc One() int { return 7 }\n", "change lib")
-		base := gitkit.RevParse(t, pair, "HEAD~1")
+		t.Parallel()
+		f := newScopesHub(t)
+		gitkit.CommitFile(t, f.pair, "lib/lib.go", "package lib\n\nfunc One() int { return 7 }\n", "change lib")
+		base := gitkit.RevParse(t, f.pair, "HEAD~1")
 
-		diff := real(t, "--base", base)
-		wantArgs(t, diff, []string{"./lib", "./user"}, guardInvocation)
+		diff := f.real(t, "--base", base)
+		f.wantArgs(t, diff, []string{"./lib", "./user"}, guardInvocation)
 
-		second := real(t, "--all")
-		wantArgs(t, second, []string{"./guardpkg", "./other", "./watched"})
+		second := f.real(t, "--all")
+		f.wantArgs(t, second, []string{"./guardpkg", "./other", "./watched"})
 
-		wantCarried(t, real(t, "--all"))
+		f.wantCarried(t, f.real(t, "--all"))
 	})
 
 	t.Run("a changed tier command, a different tree and -- -count=1 each break the carry", func(t *testing.T) {
-		wantCarried(t, real(t, "--all"))
+		t.Parallel()
+		f := newScopesHub(t)
+		f.wantArgs(t, f.real(t, "--all"), []string{"./..."})
+		f.wantCarried(t, f.real(t, "--all"))
 
-		if withArgs := real(t, "--all", "--", "-count=1"); withArgs.exit != 0 || !reflect.DeepEqual(withArgs.tierArgs(t), [][]string{{"./...", "-count=1"}}) {
+		if withArgs := f.real(t, "--all", "--", "-count=1"); withArgs.exit != 0 || !reflect.DeepEqual(withArgs.tierArgs(t), [][]string{{"./...", "-count=1"}}) {
 			t.Errorf("--all -- -count=1 = exit %d, tier invocations %q; want the tier to run whole under the new args", withArgs.exit, withArgs.tierArgs(t))
 		}
-		wantCarried(t, real(t, "--all"))
+		f.wantCarried(t, f.real(t, "--all"))
 
-		gitkit.CommitFile(t, pair, "docs/note.md", "a committed note\n", "change the tree")
-		wantArgs(t, real(t, "--all"), []string{"./..."})
+		gitkit.CommitFile(t, f.pair, "docs/note.md", "a committed note\n", "change the tree")
+		f.wantArgs(t, f.real(t, "--all"), []string{"./..."})
 
 		changed := scopesConfigWith(t, "go", func(cfg map[string]any) {
 			tier0 := cfg["tiers"].(map[string]any)["tier0"].(map[string]any)
 			tier0["command"] = tier0["command"].(string) + " extra"
 		})
-		if err := os.WriteFile(configPath, changed, 0o644); err != nil {
+		if err := os.WriteFile(f.configPath, changed, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		defer writeScoper(t, "go")
-		wantArgs(t, real(t, "--all"), []string{"./...", "extra"})
+		f.wantArgs(t, f.real(t, "--all"), []string{"./...", "extra"})
 	})
 
 	t.Run("--card carries a vet run that passed on the same clean tree", func(t *testing.T) {
-		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
-			t.Fatal(err)
-		}
-		before := gitkit.RevParse(t, pair, "HEAD")
-		gitkit.CommitFile(t, pair, "lib/use_test.go", fmt.Sprintf(tier1File, "One"), "add a tier1 file")
-		t.Cleanup(func() { gitkit.Git(t, pair, "reset", "-q", "--hard", before) })
+		t.Parallel()
+		f := newScopesHub(t)
+		gitkit.CommitFile(t, f.pair, "lib/use_test.go", fmt.Sprintf(tier1File, "One"), "add a tier1 file")
 
-		first := real(t, "--card", "1")
+		first := f.real(t, "--card", "1")
 		if line := vetSummary(t, first.stdout.String()); first.exit != 0 || !strings.Contains(line, " exit 0 ") || strings.Contains(line, " carried ") {
 			t.Fatalf("first call = exit %d, vet summary line %q; want a pass that ran the vet", first.exit, line)
 		}
 
-		second := real(t, "--card", "1")
+		second := f.real(t, "--card", "1")
 		// A --card call never prints the all scope form, so this call counts carried lines instead of using wantCarried.
 		if got := second.tierArgs(t); second.exit != 0 || len(got) != 0 || strings.Count(second.stdout.String(), " carried ") != 3 {
 			t.Errorf("second call = exit %d, tier invocations %q, stdout %q; want the listed tier, the vet run and the guard step carried", second.exit, got, second.stdout.String())
@@ -972,60 +1044,35 @@ func TestGateTest_Scopes(t *testing.T) {
 	})
 
 	t.Run("a tier whose command edits a tracked file and commits it before passing records nothing", func(t *testing.T) {
-		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
-			t.Fatal(err)
-		}
+		t.Parallel()
+		f := newScopesHub(t)
 		committing := scopesConfigWith(t, "go", func(cfg map[string]any) {
 			tier0 := cfg["tiers"].(map[string]any)["tier0"].(map[string]any)
 			tier0["command"] = tier0["command"].(string) + " && echo more >> docs/note.md && git commit -q -am more"
 		})
-		if err := os.WriteFile(configPath, committing, 0o644); err != nil {
+		if err := os.WriteFile(f.configPath, committing, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		defer writeScoper(t, "go")
-		if g := real(t, "--all"); g.exit != 0 {
+		if g := f.real(t, "--all"); g.exit != 0 {
 			t.Fatalf("committing tier = exit %d, stdout %q; want a pass", g.exit, g.stdout.String())
 		}
-		if entries := readGreen(greenPath).Entries; len(entries) != 0 {
+		if entries := readGreen(f.greenPath).Entries; len(entries) != 0 {
 			t.Errorf("green record = %+v; want nothing recorded for a tier that changed HEAD's tree", entries)
 		}
 	})
 
-	// The rows from here read the diff base each tier takes.
-	// The merge base is the commit the prime stands on, since the pair was fast-forwarded onto it.
-	mergeBase := gitkit.RevParse(t, prime, "HEAD")
-	wantDerivation := func(t *testing.T, g *runningGate, base, tiers string) {
-		t.Helper()
-		if line := "gate test: diff scope from " + base + " for " + tiers; !strings.Contains(g.stdout.String(), line) {
-			t.Errorf("stdout = %q; want it to hold %q", g.stdout.String(), line)
-		}
-	}
-	// commitChange commits content to rel on the pair and returns the new commit.
-	commitChange := func(t *testing.T, rel, content string) string {
-		t.Helper()
-		gitkit.CommitFile(t, pair, rel, content, "change "+rel)
-		return gitkit.RevParse(t, pair, "HEAD")
-	}
-	removeGreen := func(t *testing.T) {
-		t.Helper()
-		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
-			t.Fatal(err)
-		}
-	}
-
 	t.Run("the green entry of a run that held tests back, and the one an inert carry writes, name them", func(t *testing.T) {
-		writeInert(t, "go", nil)
-		defer writeScoper(t, "go")
-		before := gitkit.RevParse(t, pair, "HEAD")
-		t.Cleanup(func() { gitkit.Git(t, pair, "reset", "-q", "--hard", before) })
-		commitChange(t, "heldpkg/h.go", "package heldpkg\n")
-		held := commitChange(t, "heldpkg/h_test.go", "package heldpkg\n\nimport \"testing\"\n\n//lym:only upkeep\nfunc TestHeld(t *testing.T) {}\n")
-		removeGreen(t)
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeInert(t, "go", nil)
+		f.commitChange(t, "heldpkg/h.go", "package heldpkg\n")
+		held := f.commitChange(t, "heldpkg/h_test.go", "package heldpkg\n\nimport \"testing\"\n\n//lym:only upkeep\nfunc TestHeld(t *testing.T) {}\n")
+		f.removeGreen(t)
 		// wantHeld checks the one entry written for commit.
 		wantHeld := func(commit string) {
 			t.Helper()
 			var got [][]string
-			for _, entry := range readGreen(greenPath).Entries {
+			for _, entry := range readGreen(f.greenPath).Entries {
 				if entry.Commit == commit {
 					got = append(got, entry.Held)
 				}
@@ -1035,73 +1082,78 @@ func TestGateTest_Scopes(t *testing.T) {
 			}
 		}
 
-		wantArgs(t, real(t, "--gate", "finalize"), []string{"./...", "-skip", "^(TestHeld)$"})
+		f.wantArgs(t, f.real(t, "--gate", "finalize"), []string{"./...", "-skip", "^(TestHeld)$"})
 		wantHeld(held)
 
-		carried := commitChange(t, "docs/note.md", "an inert commit over held tests\n")
-		wantCarried(t, real(t, "--gate", "finalize"))
+		carried := f.commitChange(t, "docs/note.md", "an inert commit over held tests\n")
+		f.wantCarried(t, f.real(t, "--gate", "finalize"))
 		wantHeld(carried)
 	})
 
 	t.Run("a diff run diffs from the newest whole-green ancestor, else from the parent merge base", func(t *testing.T) {
-		removeGreen(t)
-		commitChange(t, "other/other.go", "package other\n\nvar Seen = 1\n")
-		g := gate(t, pair, nil)
-		wantDerivation(t, g, mergeBase, "tier0")
+		t.Parallel()
+		f := newScopesHub(t)
+		f.commitChange(t, "other/other.go", "package other\n\nvar Seen = 1\n")
+		g := f.gate(t, f.pair, nil)
+		f.wantDerivation(t, g, f.mergeBase, "tier0")
 
-		green := commitChange(t, "other/other.go", "package other\n\nvar Seen = 2\n")
-		if whole := gate(t, pair, nil, "--all"); whole.exit != 0 {
+		green := f.commitChange(t, "other/other.go", "package other\n\nvar Seen = 2\n")
+		if whole := f.gate(t, f.pair, nil, "--all"); whole.exit != 0 {
 			t.Fatalf("--all = exit %d, stdout %q; want a pass that records tier0 whole-green", whole.exit, whole.stdout.String())
 		}
-		commitChange(t, "lib/lib.go", "package lib\n\nfunc One() int { return 8 }\n")
-		g = gate(t, pair, nil)
-		wantDerivation(t, g, green, "tier0")
-		wantArgs(t, g, []string{"./lib", "./user"}, guardInvocation)
+		f.commitChange(t, "lib/lib.go", "package lib\n\nfunc One() int { return 8 }\n")
+		g = f.gate(t, f.pair, nil)
+		f.wantDerivation(t, g, green, "tier0")
+		f.wantArgs(t, g, []string{"./lib", "./user"}, guardInvocation)
 	})
 
 	t.Run("a dirty worktree diffs from the parent merge base although the record holds a whole-green ancestor", func(t *testing.T) {
-		removeGreen(t)
-		if whole := gate(t, pair, nil, "--all"); whole.exit != 0 {
+		t.Parallel()
+		f := newScopesHub(t)
+		f.commitChange(t, "other/other.go", "package other\n\nvar Seen = 1\n")
+		if whole := f.gate(t, f.pair, nil, "--all"); whole.exit != 0 {
 			t.Fatalf("--all = exit %d, stdout %q; want a pass that records tier0 whole-green", whole.exit, whole.stdout.String())
 		}
-		commitChange(t, "lib/lib.go", "package lib\n\nfunc One() int { return 9 }\n")
-		edit(t, "docs/note.md", "a dirtying note\n")
-		wantDerivation(t, gate(t, pair, nil), mergeBase, "tier0")
+		f.commitChange(t, "lib/lib.go", "package lib\n\nfunc One() int { return 9 }\n")
+		f.edit(t, "docs/note.md", "a dirtying note\n")
+		f.wantDerivation(t, f.gate(t, f.pair, nil), f.mergeBase, "tier0")
 	})
 
 	t.Run("tiers on one base share one derivation line and tiers on different bases print one each", func(t *testing.T) {
+		t.Parallel()
+		f := newScopesHub(t)
 		separate := scopesConfigWith(t, "go", func(cfg map[string]any) {
 			delete(cfg["tiers"].(map[string]any)["tier1"].(map[string]any), "covers")
 		})
-		if err := os.WriteFile(configPath, separate, 0o644); err != nil {
+		if err := os.WriteFile(f.configPath, separate, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		defer writeScoper(t, "go")
-		removeGreen(t)
 
-		shared := gate(t, pair, nil, "--tier", "0", "--tier", "1")
-		wantDerivation(t, shared, mergeBase, "tier0, tier1")
+		shared := f.gate(t, f.pair, nil, "--tier", "0", "--tier", "1")
+		f.wantDerivation(t, shared, f.mergeBase, "tier0, tier1")
 		if count := strings.Count(shared.stdout.String(), "gate test: diff scope from"); count != 1 {
 			t.Errorf("derivation lines = %d in stdout %q; want 1", count, shared.stdout.String())
 		}
 
-		removeGreen(t)
-		green := commitChange(t, "other/other.go", "package other\n\nvar Seen = 3\n")
-		if whole := gate(t, pair, nil, "--tier", "0", "--all"); whole.exit != 0 {
+		f.removeGreen(t)
+		green := f.commitChange(t, "other/other.go", "package other\n\nvar Seen = 3\n")
+		if whole := f.gate(t, f.pair, nil, "--tier", "0", "--all"); whole.exit != 0 {
 			t.Fatalf("--tier 0 --all = exit %d, stdout %q; want a pass that records tier0 whole-green", whole.exit, whole.stdout.String())
 		}
-		commitChange(t, "other/other.go", "package other\n\nvar Seen = 4\n")
-		split := gate(t, pair, nil, "--tier", "0", "--tier", "1")
-		wantDerivation(t, split, green, "tier0")
-		wantDerivation(t, split, mergeBase, "tier1")
+		f.commitChange(t, "other/other.go", "package other\n\nvar Seen = 4\n")
+		split := f.gate(t, f.pair, nil, "--tier", "0", "--tier", "1")
+		f.wantDerivation(t, split, green, "tier0")
+		f.wantDerivation(t, split, f.mergeBase, "tier1")
 		if count := strings.Count(split.stdout.String(), "gate test: diff scope from"); count != 2 {
 			t.Errorf("derivation lines = %d in stdout %q; want 2", count, split.stdout.String())
 		}
 	})
 
 	t.Run("a narrowed dotnet pass records nothing, a --all run records the tier whole, and two vstest tiers then carry", func(t *testing.T) {
+		t.Parallel()
+		f := newScopesHub(t)
 		const project = "cs/Lib.Tests/Lib.Tests.csproj"
-		writeDotnet(t, func(cfg map[string]any) {
+		f.writeDotnet(t, func(cfg map[string]any) {
 			tiers := cfg["tiers"].(map[string]any)
 			for _, name := range []string{"tier0", "tier1"} {
 				tier := tiers[name].(map[string]any)
@@ -1110,94 +1162,97 @@ func TestGateTest_Scopes(t *testing.T) {
 			}
 			delete(tiers["tier1"].(map[string]any), "covers")
 		})
-		defer writeScoper(t, "go")
-		removeGreen(t)
 
-		base := gitkit.RevParse(t, pair, "HEAD")
-		commitChange(t, "cs/Lib/Circle.cs", "namespace Lib;\n\npublic class Circle { public int Edge; }\n")
-		wantArgs(t, gate(t, pair, nil, "--base", base), circleTestsArgs)
-		if entries := readGreen(greenPath).Entries; len(entries) != 0 {
+		base := gitkit.RevParse(t, f.pair, "HEAD")
+		f.commitChange(t, "cs/Lib/Circle.cs", "namespace Lib;\n\npublic class Circle { public int Edge; }\n")
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--base", base), circleTestsArgs)
+		if entries := readGreen(f.greenPath).Entries; len(entries) != 0 {
 			t.Errorf("green record = %+v; want nothing recorded for a narrowed project run", entries)
 		}
 
-		wantArgs(t, gate(t, pair, nil, "--all"), []string{project})
-		first := gate(t, pair, nil, "--all", "--tier", "0", "--tier", "1")
-		wantArgs(t, first, []string{project})
-		wantCarried(t, gate(t, pair, nil, "--all", "--tier", "0", "--tier", "1"))
+		f.wantArgs(t, f.gate(t, f.pair, nil, "--all"), []string{project})
+		first := f.gate(t, f.pair, nil, "--all", "--tier", "0", "--tier", "1")
+		f.wantArgs(t, first, []string{project})
+		f.wantCarried(t, f.gate(t, f.pair, nil, "--all", "--tier", "0", "--tier", "1"))
 	})
 
 	t.Run("an --all run carries over a committed inert-only change from a whole ancestor and writes the current tree's entry", func(t *testing.T) {
-		writeInert(t, "go", nil)
-		defer writeScoper(t, "go")
-		removeGreen(t)
-		wantArgs(t, real(t, "--all"), []string{"./..."})
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeInert(t, "go", nil)
+		f.wantArgs(t, f.real(t, "--all"), []string{"./..."})
 
-		current := commitChange(t, "docs/note.md", "an inert commit\n")
-		wantCarried(t, real(t, "--all"))
-		if !slices.ContainsFunc(readGreen(greenPath).Entries, func(entry greenEntry) bool { return entry.Commit == current && entry.Whole }) {
-			t.Errorf("green record = %+v; want a whole entry for the current commit %s", readGreen(greenPath).Entries, current)
+		current := f.commitChange(t, "docs/note.md", "an inert commit\n")
+		f.wantCarried(t, f.real(t, "--all"))
+		if !slices.ContainsFunc(readGreen(f.greenPath).Entries, func(entry greenEntry) bool { return entry.Commit == current && entry.Whole }) {
+			t.Errorf("green record = %+v; want a whole entry for the current commit %s", readGreen(f.greenPath).Entries, current)
 		}
 
 		// The entry written for the current tree carries the next call directly: removing the ancestor's leaves it alone.
-		record := readGreen(greenPath)
+		record := readGreen(f.greenPath)
 		record.Entries = slices.DeleteFunc(record.Entries, func(entry greenEntry) bool { return entry.Commit != current })
-		removeGreen(t)
+		f.removeGreen(t)
 		for _, entry := range record.Entries {
-			if err := recordGreen(greenPath, entry, entry.Written); err != nil {
+			if err := recordGreen(f.greenPath, entry, entry.Written); err != nil {
 				t.Fatal(err)
 			}
 		}
-		wantCarried(t, real(t, "--all"))
+		f.wantCarried(t, f.real(t, "--all"))
 	})
 
 	t.Run("an --all run runs after a committed non-inert change although a whole ancestor is green", func(t *testing.T) {
-		writeInert(t, "go", nil)
-		defer writeScoper(t, "go")
-		commitChange(t, "lib/lib.go", "package lib\n\nfunc One() int { return 10 }\n")
-		wantArgs(t, real(t, "--all"), []string{"./..."})
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeInert(t, "go", nil)
+		f.wantArgs(t, f.real(t, "--all"), []string{"./..."})
+		f.commitChange(t, "lib/lib.go", "package lib\n\nfunc One() int { return 10 }\n")
+		f.wantArgs(t, f.real(t, "--all"), []string{"./..."})
 	})
 
 	t.Run("an --all run on a dirty tree runs whole although the history is inert-only", func(t *testing.T) {
-		writeInert(t, "go", nil)
-		defer writeScoper(t, "go")
-		commitChange(t, "docs/note.md", "another inert commit\n")
-		edit(t, "docs/note.md", "a dirtying note\n")
-		wantArgs(t, real(t, "--all"), []string{"./..."})
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeInert(t, "go", nil)
+		f.wantArgs(t, f.real(t, "--all"), []string{"./..."})
+		f.commitChange(t, "docs/note.md", "another inert commit\n")
+		f.edit(t, "docs/note.md", "a dirtying note\n")
+		f.wantArgs(t, f.real(t, "--all"), []string{"./..."})
 	})
 
 	t.Run("a carry: false tier runs again over inert-only history", func(t *testing.T) {
-		writeInert(t, "go", func(cfg map[string]any) { cfg["tiers"].(map[string]any)["tier0"].(map[string]any)["carry"] = false })
-		defer writeScoper(t, "go")
-		removeGreen(t)
-		wantArgs(t, real(t, "--all"), []string{"./..."})
-		commitChange(t, "docs/note.md", "a third inert commit\n")
-		wantArgs(t, real(t, "--all"), []string{"./..."})
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeInert(t, "go", func(cfg map[string]any) { cfg["tiers"].(map[string]any)["tier0"].(map[string]any)["carry"] = false })
+		f.wantArgs(t, f.real(t, "--all"), []string{"./..."})
+		f.commitChange(t, "docs/note.md", "a third inert commit\n")
+		f.wantArgs(t, f.real(t, "--all"), []string{"./..."})
 	})
 
 	t.Run("a changed inert_paths list voids the entries an inert carry would use", func(t *testing.T) {
-		defer writeScoper(t, "go")
-		writeInert(t, "go", nil)
-		removeGreen(t)
-		wantArgs(t, real(t, "--all"), []string{"./..."})
-		writeInert(t, "go", func(cfg map[string]any) { cfg["inert_paths"] = []string{"*.md", "*.txt"} })
-		commitChange(t, "docs/note.md", "a fourth inert commit\n")
-		wantArgs(t, real(t, "--all"), []string{"./..."})
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeInert(t, "go", nil)
+		f.wantArgs(t, f.real(t, "--all"), []string{"./..."})
+		f.writeInert(t, "go", func(cfg map[string]any) { cfg["inert_paths"] = []string{"*.md", "*.txt"} })
+		f.commitChange(t, "docs/note.md", "a fourth inert commit\n")
+		f.wantArgs(t, f.real(t, "--all"), []string{"./..."})
 	})
 
 	t.Run("under the none scoper a Markdown-only diff runs the listed tiers whole, skipping a covered one", func(t *testing.T) {
-		writeScoper(t, "none")
-		defer writeScoper(t, "go")
-		edit(t, "docs/note.md", "another note\n")
-		g := gate(t, pair, nil, "--tier", "0", "--tier", "1")
-		wantArgs(t, g, []string{"./..."})
+		t.Parallel()
+		f := newScopesHub(t)
+		f.writeScoper(t, "none")
+		f.edit(t, "docs/note.md", "another note\n")
+		g := f.gate(t, f.pair, nil, "--tier", "0", "--tier", "1")
+		f.wantArgs(t, g, []string{"./..."})
 		if !strings.Contains(g.stdout.String(), "tier0 is covered by tier1") {
 			t.Errorf("stdout = %q; want tier0 named as covered", g.stdout.String())
 		}
 	})
 
 	t.Run("RunGate tells its observer each tier it starts and ends, a carried tier ends with no start and a blocked tier ends with its blocked record", func(t *testing.T) {
-		defer writeScoper(t, "go")
-		t.Cleanup(func() { gitkit.Git(t, pair, "reset", "-q", "--hard", "HEAD") })
+		t.Parallel()
+		f := newScopesHub(t)
 		recordPath := filepath.Join(t.TempDir(), "standin.json")
 		standInEnv := map[string]string{helperEnv: helperRoleStandIn, helperRecordEnv: recordPath}
 		// writeGate declares the finalize key over gateTiers, with tier1 exiting tier1Exit.
@@ -1230,13 +1285,13 @@ func TestGateTest_Scopes(t *testing.T) {
 					tiers["tier0"].(map[string]any)["shared_build"] = true
 				}
 			})
-			if err := os.WriteFile(configPath, config, 0o644); err != nil {
+			if err := os.WriteFile(f.configPath, config, 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
 		dirty := func(t *testing.T, content string) {
 			t.Helper()
-			if err := os.WriteFile(filepath.Join(pair, "docs", "note.md"), []byte(content), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(f.pair, "docs", "note.md"), []byte(content), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -1253,8 +1308,8 @@ func TestGateTest_Scopes(t *testing.T) {
 				},
 			}
 			var out, stderr bytes.Buffer
-			code := RunGate(context.Background(), pair, "finalize", &out, &stderr, observer)
-			requireFree(t)
+			code := RunGate(context.Background(), f.pair, "finalize", &out, &stderr, observer)
+			f.requireFree(t)
 			return code, calls, ended
 		}
 
@@ -1267,12 +1322,12 @@ func TestGateTest_Scopes(t *testing.T) {
 		if len(ended) != 2 || ended[0].ExitCode != 0 || ended[1].ExitCode != 3 || ended[1].Outcome != "failed" {
 			t.Errorf("ended records = %+v; want tier0's exit 0 and tier1's failed exit 3", ended)
 		}
-		if cli := gate(t, pair, nil, "--wait", "--gate", "finalize"); code != 3 || cli.exit != code {
+		if cli := f.gate(t, f.pair, nil, "--wait", "--gate", "finalize"); code != 3 || cli.exit != code {
 			t.Errorf("RunGate exit code = %d, CLI exit code = %d; want both 3, the first failing tier's", code, cli.exit)
 		}
 
 		writeGate(t, []int{0, 1}, "0", false, "")
-		gitkit.CommitFile(t, pair, "docs/note.md", "a committed observed note\n", "commit the observed note")
+		gitkit.CommitFile(t, f.pair, "docs/note.md", "a committed observed note\n", "commit the observed note")
 		if code, _, _ := runGate(t); code != 0 {
 			t.Fatalf("RunGate exit code over a clean tree = %d; want 0, which records both tiers green", code)
 		}
