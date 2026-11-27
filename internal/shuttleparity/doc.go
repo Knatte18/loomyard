@@ -26,4 +26,9 @@
 // Each entry builds its tables on the worktree's configuration, with stand-ins for a run's own inputs only.
 // The stand-ins are written under a directory the caller removes.
 // Bound: a table an operator writes in a recipe row holds no seat in code, so the catalog does not list it.
+//
+// # Seat report
+//
+// Report prepares one seat of the catalog on every engine of a set, in a temporary directory it removes.
+// It returns each engine's manifest, the missing compared items and each engine's unmet requirements.
 package shuttleparity

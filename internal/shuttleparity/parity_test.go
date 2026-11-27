@@ -48,6 +48,23 @@ func fakeSet(reference, compared *manifestEngine) shuttleengine.EngineSet {
 	return shuttleengine.NewEngineSet(ReferenceEngine, map[string]shuttleengine.Engine{ReferenceEngine: reference, ComparedEngine: compared})
 }
 
+// fixtureTable returns a one-seat table over a seeded stencil, whose seat pins a model of the reference engine.
+func fixtureTable() seatengine.Table {
+	return seatengine.Table{
+		RolePrefix: "fixture",
+		Segment:    "plan",
+		Seats: []seatengine.Seat{{
+			Stencil:     "drift-template-expect",
+			ModelChoice: shuttleengine.ModelChoice{Engine: ReferenceEngine, Model: "opus", Effort: "high", Version: "5"},
+			Outputs:     []string{"/out.md"},
+		}},
+		Values: map[string]string{
+			"subject_reading": "s", "plan_reading": "p", "baseline_dir": "/b", "listing_path": "/l",
+			"expected_path": "/e", "diff_mode": "lines", "expectation_format": "f",
+		},
+	}
+}
+
 // TestCompare pins which of the reference manifest's items the compared one must hold.
 // It also pins the prompt items, the unmet requirements and the unrun-hook error.
 // It also pins the preparation of each engine and the seat listing.
@@ -187,19 +204,7 @@ func TestCompare(t *testing.T) {
 		broken := errors.New("no stand-in")
 		stencils := stencilkit.Seed(t)
 		env := seatsEnv(t, stencils)
-		table := seatengine.Table{
-			RolePrefix: "fixture",
-			Segment:    "plan",
-			Seats: []seatengine.Seat{{
-				Stencil:     "drift-template-expect",
-				ModelChoice: shuttleengine.ModelChoice{Engine: ReferenceEngine, Model: "opus", Effort: "high", Version: "5"},
-				Outputs:     []string{"/out.md"},
-			}},
-		}
-		table.Values = map[string]string{
-			"subject_reading": "s", "plan_reading": "p", "baseline_dir": "/b", "listing_path": "/l",
-			"expected_path": "/e", "diff_mode": "lines", "expectation_format": "f",
-		}
+		table := fixtureTable()
 		seats, failures := seatsOf(env, []seatTable{
 			{Builder: "first#Table", Build: func(SeatEnv) ([]seatengine.Table, error) { return []seatengine.Table{table}, nil }},
 			{Builder: "second#Table", Build: func(SeatEnv) ([]seatengine.Table, error) { return nil, broken }},

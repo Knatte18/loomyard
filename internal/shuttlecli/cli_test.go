@@ -266,6 +266,7 @@ func TestCommand_PositionalArgValidation(t *testing.T) {
 		{"StateStrayArgument", []string{"state", "stray"}},
 		{"AwaitNoArgs", []string{"await"}},
 		{"AwaitForksStrayArgument", []string{"await-forks", "stray"}},
+		{"ManifestNoArgs", []string{"manifest"}},
 	}
 
 	for _, tt := range tests {

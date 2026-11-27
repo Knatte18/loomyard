@@ -4,6 +4,7 @@
 // invocation, into a receiver every verb (run.go, open.go, state.go) closes over, so no
 // subcommand re-resolves geometry, config, or engine construction itself.
 // The verbs are run, open and the read-only state, which lists the session state of each running run.
+// The verb manifest, which prints what each engine's launch gives one seat, is implemented in manifest.go.
 // The read-only await, the capped wait on one or more files, is implemented in await.go.
 // The read-only await-forks, the capped wait until the calling session's forks have finished, is implemented in awaitforks.go.
 // await-forks resolves its geometry from anywhere under the anchored directory or in the records sibling.
@@ -25,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
+	"github.com/Knatte18/loomyard/internal/shuttleparity"
 	"github.com/spf13/cobra"
 )
 
@@ -45,9 +47,12 @@ type shuttleCLI struct {
 	engines    shuttleengine.EngineSet
 	// configDirs are the config layers both configs load from, set by PersistentPreRunE; open resolves its model registry through them.
 	configDirs configengine.Dirs
+	// manifestReport reports what each engine gives the seat called name, set by PersistentPreRunE.
+	manifestReport func(name string) (shuttleparity.ManifestReport, error)
 }
 
 // Command returns the cobra command tree for the shuttle module.
+// Its verbs include manifest, which prints each engine's launch manifest for one seat.
 // The parent command carries a PersistentPreRunE that resolves geometry and engines, skipping
 // resolution when the group command itself is invoked (no git repo required).
 // The await verb skips it too and needs no hub, reading only the keep-warm config inside a git worktree.
@@ -138,11 +143,12 @@ provider specifics.`,
 			}
 			c.runner.SetPause(pauseGeom)
 			c.configDirs = fabricengine.ConfigDirs(layout)
+			c.manifestReport = worktreeManifestReport(layout, reedGeom, c.cfg, c.configDirs)
 			return nil
 		},
 	}
 
-	parent.AddCommand(c.runCmd(), c.openCmd(), c.stateCmd(), c.awaitCmd(), c.awaitForksCmd(), hookBatchingCmd(), hookEditCmd())
+	parent.AddCommand(c.runCmd(), c.openCmd(), c.stateCmd(), c.awaitCmd(), c.awaitForksCmd(), c.manifestCmd(), hookBatchingCmd(), hookEditCmd())
 
 	return parent
 }
