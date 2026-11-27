@@ -13,9 +13,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// resolveShellPath is the absolute path of the configured shell, found through the executable search path.
+// ResolveShellPath is the absolute path of the configured shell, found through the executable search path.
 // An unresolvable shell is an error naming the `shell` key and its value, so the operator can set a shell that exists.
-func resolveShellPath(shell string) (string, error) {
+func ResolveShellPath(shell string) (string, error) {
 	path, err := exec.LookPath(shell)
 	if err != nil {
 		return "", fmt.Errorf("reed: the configured shell %q (key %s) is not an executable on PATH: %w; set %s in reed.yaml to a shell that exists", shell, keyName("shell"), err, keyName("shell"))

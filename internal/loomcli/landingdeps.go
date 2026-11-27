@@ -995,46 +995,6 @@ func driverWaitMark(
 	}
 }
 
-// sessionLiveness returns the seam a row reads to learn whether its kept session's strand is live.
-// It is built over reed's strand table, so a test needs no tmux.
-// The table is read at call time, and a strand is live when it is present, live and not retiring.
-func sessionLiveness(status func() (reedengine.StatusResult, error)) func(guid string) (bool, error) {
-	return func(guid string) (bool, error) {
-		result, err := status()
-		if err != nil {
-			return false, err
-		}
-		for _, strand := range result.Strands {
-			if strand.GUID == guid {
-				return strand.Live && !strand.Retiring, nil
-			}
-		}
-		return false, nil
-	}
-}
-
-// sessionRegistrar returns the seam a row uses to register its kept session's pane process.
-// It is built over reed's strand table and a register seam, so a test needs no tmux.
-// A strand with no live pane process has nothing to register and is an error, which the caller logs.
-func sessionRegistrar(status func() (reedengine.StatusResult, error), register func(pid int) error) func(guid string) error {
-	return func(guid string) error {
-		result, err := status()
-		if err != nil {
-			return err
-		}
-		for _, strand := range result.Strands {
-			if strand.GUID != guid {
-				continue
-			}
-			if strand.PanePID == 0 {
-				return fmt.Errorf("loomcli: strand %s has no live pane process to register", guid)
-			}
-			return register(strand.PanePID)
-		}
-		return fmt.Errorf("loomcli: strand %s is not in reed's strand table", guid)
-	}
-}
-
 // conflictSessionStopper returns the seam landingshed stops the run's conflict sessions through.
 // It is built over two seams, so a test needs no tmux:
 // status reads reed's strand table and stop ends one strand by guid.

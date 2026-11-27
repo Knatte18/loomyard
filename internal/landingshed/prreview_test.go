@@ -724,7 +724,7 @@ func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
 			CommitRecord:  func() error { return nil },
 		},
 	}
-	newPRSessionWorld(t).fill(&deps)
+	newPRSessionWorld(t, recordingStartStop).fill(&deps)
 	return deps
 }
 

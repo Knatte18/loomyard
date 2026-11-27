@@ -436,15 +436,15 @@ func (c *loomCLI) wireLanding() error {
 	registerPane := func(pid int) error {
 		return runproc.Register(fabriclayout.RunProcDir(c.location.HubPath), slug, runproc.ChildRecord(pid, runproc.RoleSession, nil))
 	}
-	c.env.Landing.PullRequest.SessionLive = sessionLiveness(c.reed.Status)
-	c.env.Landing.PullRequest.RegisterSession = sessionRegistrar(c.reed.Status, registerPane)
+	c.env.Landing.PullRequest.SessionLive = reedengine.SessionLiveness(c.reed.Status)
+	c.env.Landing.PullRequest.RegisterSession = reedengine.SessionRegistrar(c.reed.Status, registerPane)
 	// The sampler run's session is checked for liveness and registered the same way,
 	// and its row wakes on its record's file event.
 	// The building paths pass through here; status and pause never do.
 	if recipeHasEngine(c.recipe, samplerSessionEngine) {
 		c.env.Sampler.Sessions = c.runner
-		c.env.Sampler.SessionLive = sessionLiveness(c.reed.Status)
-		c.env.Sampler.RegisterSession = sessionRegistrar(c.reed.Status, registerPane)
+		c.env.Sampler.SessionLive = reedengine.SessionLiveness(c.reed.Status)
+		c.env.Sampler.RegisterSession = reedengine.SessionRegistrar(c.reed.Status, registerPane)
 		c.env.Sampler.Watch = openRecordWatch(shedrun.SamplerRecord(c.location, c.runID))
 	}
 	// The fixer runs on the seat engine wire already built, so no second engine is constructed.

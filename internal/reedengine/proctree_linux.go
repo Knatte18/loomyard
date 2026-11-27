@@ -13,10 +13,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// paneProcessAge returns the elapsed time of the process pid, read from /proc/uptime and /proc/<pid>/stat.
+// PaneProcessAge returns the elapsed time of the process pid, read from /proc/uptime and /proc/<pid>/stat.
 // It answers false for a pid of 0 or below and for anything unreadable,
 // so an age that cannot be read counts as inside the launch grace and never makes a removal kill a pane.
-func paneProcessAge(pid int) (time.Duration, bool) {
+func PaneProcessAge(pid int) (time.Duration, bool) {
 	if pid <= 0 {
 		return 0, false
 	}

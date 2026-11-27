@@ -43,7 +43,7 @@ type waitWorld struct {
 	marks  []string
 	// mails records each post to the session as "<strand name>|<line>".
 	mails []string
-	// sessions holds a live strand guid-1, which a record naming it reuses.
+	// sessions is the session world; a row whose record names firstGUID finds that strand started and live.
 	sessions *prSessionWorld
 	// missing is what the CommitsMissing seam answers, and missingErr is the error it fails with.
 	// missingCalls records each call as "<merged>|<task>".
@@ -74,9 +74,8 @@ func newWaitWorld(t *testing.T, scripts map[string][]scriptedCall) (*waitWorld, 
 		now:    prReviewFixtureNow,
 		head:   "h1",
 	}
-	w.sessions = newPRSessionWorld(t)
+	w.sessions = newPRSessionWorld(t, recordingStartStop)
 	w.sessions.fill(&w.deps)
-	w.sessions.seedLive("guid-1")
 	w.deps.TaskHead = func() (string, error) { return w.head, nil }
 	w.deps.GateKey = "pr-review"
 	w.deps.VerifyWaitMark = func(label string, _ time.Time) error {
@@ -173,7 +172,9 @@ func TestPRReview_Wait(t *testing.T) {
 		rec.Base, rec.Head = "main", "task"
 		return rec
 	}
-	withStrand := func(r *pullrequest.Record) { r.StrandGUID, r.StrandName, r.SessionID = "guid-1", "pr-strand", "sess-1" }
+	withStrand := func(r *pullrequest.Record) {
+		r.StrandGUID, r.StrandName, r.SessionID = firstGUID, "pr-strand", "sess-1"
+	}
 	withContinue := func(r *pullrequest.Record) { r.Continue = true }
 	withReviewEnded := func(r *pullrequest.Record) { r.ReviewEnded = true }
 	writeContinue := func(w *waitWorld) {
@@ -537,7 +538,7 @@ func TestPRReview_Wait(t *testing.T) {
 			setup: func(w *waitWorld) {
 				w.onSleep = func(w *waitWorld, n int) {
 					if n == 1 {
-						w.sessions.reed.StatusErr = errors.New("reed unreadable")
+						w.sessions.blockStatus()
 					}
 					if n >= 8 {
 						w.cancel()
@@ -986,6 +987,9 @@ func TestPRReview_Wait(t *testing.T) {
 				tt.setup(w)
 			}
 			if tt.record != nil {
+				if tt.record.StrandGUID == firstGUID {
+					w.sessions.seedLive(w.deps)
+				}
 				if err := pullrequest.WriteRecord(w.deps.PullRequest.RecordPath, w.deps.PullRequest.RecordLockPath, *tt.record); err != nil {
 					t.Fatalf("write record: %v", err)
 				}

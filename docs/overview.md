@@ -2107,6 +2107,8 @@ It gives each test a self-cleaning `-L` key through `Socket`.
 `internal/testkit/stencilkit` seeds stencil fixtures from the registry through `stencilstore`.
 Seeded files carry production's hash stamp.
 `internal/testkit/shedcheckkit` checks an assembled OnDone/OnStuck producer graph for structural defects.
+`internal/testkit/tmuxrec` replays recorded tmux, process-table and user-manager answers below `reedengine`,
+through `reedengine.NewOver`.
 
 ## Sandbox Hub
 

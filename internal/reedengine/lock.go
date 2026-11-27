@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 )
 
@@ -32,6 +33,8 @@ type Engine struct {
 	cfg  Config
 	geom Geometry
 	tmux TmuxCmd
+	// toldTmux is set when the engine was built over a told tmux, which also runs the session spawn.
+	toldTmux bool
 	// skipRevival is set under the op lock while a step runs after the earlier worktrees were revived.
 	skipRevival bool
 	// warnOut receives the operator-facing warning for a tmux config that failed to source.
@@ -50,8 +53,12 @@ type Engine struct {
 	scrub EnvScrub
 	// ensureServerGone is a test seam for the wait after kill-server; nil selects the production wait.
 	ensureServerGone func(serverPID int) error
-	// paneAge reports the elapsed time of a pane's first process; New sets it to paneProcessAge and a test sets a stub.
+	// paneAge reports the elapsed time of a pane's first process; New sets it to PaneProcessAge and a test sets a stub.
 	paneAge func(pid int) (time.Duration, bool)
+	// capMemory moves a pane's shell into a memory-capped scope of the systemd user manager.
+	capMemory func(pid int, unit string, limit int64) (cgroup string, err error)
+	// newGUID mints the guid of each strand an add creates.
+	newGUID func() (string, error)
 	// executablePath resolves the running lym binary's path.
 	// Under go test it refuses the test binary, so a test that wants a pinned line stubs it.
 	executablePath func() (string, error)
@@ -78,15 +85,41 @@ func (e *Engine) revivalCmd(strand Strand) string {
 	return line
 }
 
-// New builds an Engine for the given Config, Geometry and EnvScrub.
+// Outside holds what an Engine reaches outside the repository, and the source of the guids it mints.
+// A zero field selects the real thing.
+// Those are the Config's tmux binary, the kernel's process table, the systemd user manager and a random guid.
+type Outside struct {
+	// Tmux runs one tmux subcommand on the engine's server in place of the tmux binary.
+	// It also runs the session spawn that starts the server.
+	// args is the subcommand argv without the server flags, and stdin is nil unless the call writes standard input.
+	// capture is true for a call whose standard output is read.
+	// A failure carries tmux's standard error in its text, as the real binary's does.
+	Tmux func(capture bool, stdin []byte, args ...string) (string, error)
+	// TmuxVersion is the `tmux -V` line the version floor reads while Tmux is set; empty admits any version.
+	TmuxVersion string
+	// PaneAge reports the elapsed time of process pid, and false when it cannot be read.
+	PaneAge func(pid int) (time.Duration, bool)
+	// CapMemory moves process pid into the scope unit capped at limit bytes, and returns the scope's cgroup.
+	CapMemory func(pid int, unit string, limit int64) (cgroup string, err error)
+	// NewGUID mints a strand guid.
+	NewGUID func() (string, error)
+}
+
+// New builds an Engine for the given Config, Geometry and EnvScrub over the real tmux, process table and user manager.
 // The caller populates every Geometry field, since New validates none of them.
 // New panics when scrub holds no name and no prefix.
 // An engine registry always declares keys, so an empty set is a wiring defect.
 func New(cfg Config, geom Geometry, scrub EnvScrub) *Engine {
+	return NewOver(cfg, geom, scrub, Outside{})
+}
+
+// NewOver builds an Engine as New does, reaching what outside sets in place of the real thing.
+// NewOver panics when scrub holds no name and no prefix.
+func NewOver(cfg Config, geom Geometry, scrub EnvScrub, outside Outside) *Engine {
 	if len(scrub.Names) == 0 && len(scrub.Prefixes) == 0 {
-		panic("reedengine: New needs a non-empty EnvScrub")
+		panic("reedengine: New and NewOver need a non-empty EnvScrub")
 	}
-	return &Engine{
+	e := &Engine{
 		cfg:   cfg,
 		geom:  geom,
 		scrub: scrub,
@@ -94,9 +127,26 @@ func New(cfg Config, geom Geometry, scrub EnvScrub) *Engine {
 
 		warnOut:        os.Stderr,
 		build:          buildvcs.Running(),
-		paneAge:        paneProcessAge,
+		paneAge:        PaneProcessAge,
+		capMemory:      proc.CapProcessMemory,
+		newGUID:        newGUID,
 		executablePath: selfexec.LymBinary,
 	}
+	if outside.Tmux != nil {
+		e.toldTmux = true
+		e.tmux.execHook = outside.Tmux
+		e.tmux.floorLine = outside.TmuxVersion
+	}
+	if outside.PaneAge != nil {
+		e.paneAge = outside.PaneAge
+	}
+	if outside.CapMemory != nil {
+		e.capMemory = outside.CapMemory
+	}
+	if outside.NewGUID != nil {
+		e.newGUID = outside.NewGUID
+	}
+	return e
 }
 
 // Socket returns this engine's tmux -L socket name.

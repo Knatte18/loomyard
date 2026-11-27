@@ -384,7 +384,7 @@ func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 		return Strand{}, err
 	}
 
-	guid, err := newGUID()
+	guid, err := e.newGUID()
 	if err != nil {
 		return Strand{}, fmt.Errorf("generate guid: %w", err)
 	}

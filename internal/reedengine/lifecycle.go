@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -341,7 +342,7 @@ func (e *Engine) preflightBootHost() (shellPath, tmuxConf string, err error) {
 	if err := checkSocketPathLength(resolvedSocketDir(), e.Socket(), unixSocketPathLimit(runtime.GOOS)); err != nil {
 		return "", "", err
 	}
-	shellPath, err = resolveShellPath(e.cfg.Shell)
+	shellPath, err = ResolveShellPath(e.cfg.Shell)
 	if err != nil {
 		return "", "", err
 	}
@@ -468,6 +469,14 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	clean = stripTraceID(clean)
 	clean = stripIdentityEnv(clean)
 	spawnSession := func() error {
+		if e.toldTmux {
+			// A told tmux addresses its server itself, so it is handed the spawn's subcommands without the server flags.
+			argv := e.serverSpawnArgv(runtime.GOOS, debugArgs)
+			if err := e.tmux.run(argv[slices.Index(argv, "new-session"):]...); err != nil {
+				return fmt.Errorf("start tmux: %w", err)
+			}
+			return nil
+		}
 		if err := CheckTmuxFloor(e.cfg.Tmux); err != nil {
 			return fmt.Errorf("start tmux: %w", err)
 		}

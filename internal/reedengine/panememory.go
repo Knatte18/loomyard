@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 // defaultPaneMemoryMaxMiB is the pane memory cap, in MiB, a Config without a positive pane_memory_max_mib takes.
@@ -44,7 +43,7 @@ func (e *Engine) capPaneMemoryLocked(paneID string, s *Strand) {
 	limit := paneMemoryMax(e.cfg)
 	unit := fmt.Sprintf("%s%d.scope", PaneScopeUnitPrefix, pid)
 	logger.Info("reed: moving the pane's shell into a memory-capped scope through busctl", "strand", s.GUID, "pane", paneID, "pid", pid, "scope", unit, "bytes", limit)
-	cgroup, err := proc.CapProcessMemory(pid, unit, limit)
+	cgroup, err := e.capMemory(pid, unit, limit)
 	if err != nil {
 		logger.Warn("reed: the pane runs with no memory cap", "strand", s.GUID, "name", s.Name, "pane", paneID, "pid", pid, "cause", err)
 		return

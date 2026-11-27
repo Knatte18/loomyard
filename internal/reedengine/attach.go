@@ -93,7 +93,7 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 		shellPath := ""
 		if runtime.GOOS != "windows" {
 			var err error
-			if shellPath, err = resolveShellPath(e.cfg.Shell); err != nil {
+			if shellPath, err = ResolveShellPath(e.cfg.Shell); err != nil {
 				logger.Warn("reed: cannot resolve the configured shell, leaving the session's shell pins as they are", "key", "shell", "shell", e.cfg.Shell, "err", err)
 			}
 		}

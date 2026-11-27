@@ -100,9 +100,9 @@ func TestBoot_TmuxConf(t *testing.T) {
 		if err := bootOwnServer(t, first); err != nil {
 			t.Fatalf("Up(): %v", err)
 		}
-		wantShell, err := resolveShellPath(first.cfg.Shell)
+		wantShell, err := ResolveShellPath(first.cfg.Shell)
 		if err != nil {
-			t.Fatalf("resolveShellPath: %v", err)
+			t.Fatalf("ResolveShellPath: %v", err)
 		}
 		for option, want := range map[string]string{"mouse": first.cfg.Mouse, "remain-on-exit": "on", "destroy-unattached": "off"} {
 			if got := optionValue(t, first, "-gqv", option); got != want {

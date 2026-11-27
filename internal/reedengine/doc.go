@@ -21,6 +21,8 @@
 // reedengine's production files import no internal/fabricengine.
 // The environment keys the tmux server spawn must not inherit are told as an EnvScrub passed to New;
 // reedengine carries no provider's names itself.
+// New reaches the real tmux binary, process table and systemd user manager, and mints random strand guids.
+// NewOver takes an Outside that replaces any of them, so a test can run the engine over a recorded tmux.
 // The spawn order of a hub's worktrees is told as Geometry.SpawnOrder, nil in standalone mode.
 //
 // # Invariants
