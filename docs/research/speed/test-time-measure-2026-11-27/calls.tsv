@@ -1,0 +1,316 @@
+tier	run	package	test_s	wall_s	slot_wait_s	call_s	exit	load1	slots_held_before	slots_held_after	sites_before	slowest
+0	1	cmd/lym	10.543	12.0	0.0	12.6	0	5.69	0	0	-	TestGofmt_ModuleFilesAreFormatted=4.46;TestAgentMessaging_NoEngineTool=1.33;TestInteractiveSpawn_NoHeadlessClaude=1.16
+0	1	cmd/testtiming	0.020	0.6	0.0	1.2	0	7.35	0	0	-	TestTraceEnv=0.00;TestTierSelection=0.00;TestSplitPatterns=0.00
+0	1	internal/adoptcli	0.029	1.0	0.0	1.5	0	7.35	0	0	-	TestRunCheck=0.01;TestAdopt=0.01;TestRunHoldCheck=0.00
+0	1	internal/agentconfig	0.035	0.3	0.0	1.0	0	7.80	0	0	-	TestLoad_ResolvesSkillsPerRole=0.01;TestLoad_RefusesUnusableContent=0.01;TestDropPRReviewerRole=0.01
+0	1	internal/agentname	0.015	0.4	0.0	0.9	0	7.80	0	0	-	TestValidationRejections=0.00;TestTaskSlug=0.00;TestStandaloneShortname=0.00
+0	1	internal/arbiterstop	0.039	0.8	0.0	1.4	0	7.80	0	0	-	TestHoldReading=0.01;TestEscalationEligible=0.00;TestEligibility_InterruptedPawlRows=0.00
+0	1	internal/batcher	0.052	0.3	0.0	1.0	0	7.80	0	0	-	TestCostBatchifier_OptimalAndFeasible=0.04;TestProfileWeights=0.02;TestActive=0.02
+0	1	internal/battencli	0.623	1.8	0.0	2.4	0	8.06	0	0	-	TestRunCmd_HeldRunLockRefusesNamingTheLockPath=0.25;TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker=0.18;TestDobbyRunCells_ReadsTheRunsFromDisk=0.05
+0	1	internal/battenrecipe	0.040	1.0	0.0	1.5	0	8.06	0	0	-	TestNew_OnDoneChainAndLoadBearingEdges=0.01;TestToldGeometryInvariant_AllowlistOnly=0.00;TestRecipeEngines_ReportsEveryEngineNameSortedOnce=0.00
+0	1	internal/battenshed	0.444	1.1	0.0	1.7	0	8.06	0	0	-	TestInnerRun_ReadFailuresLogOncePerEpisode=0.05;TestInnerRun_ParentLockReleasesAStalledLoopsRecord=0.05;TestInnerRun_BinaryChangeRestepsADriverlessGoChild=0.05
+0	1	internal/beamcli	0.036	0.9	0.0	1.4	0	8.13	0	0	-	TestRegisterDobby=0.01;TestMergeParent=0.01;TestBeamDescribeDeps_CarriesTheForbiddenTerms=0.01
+0	1	internal/boardcli	0.335	1.0	0.0	1.5	0	8.13	0	0	-	TestRunOpen=0.30;TestServeOptions=0.01;TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages=0.01
+0	1	internal/boardengine	0.421	1.0	0.0	1.5	0	8.13	0	0	-	TestStoreDecisionRecord=0.07;TestDiscussedPayload=0.07;TestRename_Refusals=0.06
+0	1	internal/boardengine/boardtest	0.388	1.0	0.0	1.5	0	8.04	0	0	-	TestConcurrentReadsDuringUpserts=0.37;TestConcurrentUpsertsDoNotLoseWrites=0.09
+0	1	internal/boardserve	0.153	0.6	0.0	1.1	0	8.04	0	0	-	TestServer=0.09;TestRun=0.07
+0	1	internal/buildinfo	0.011	0.2	0.0	0.8	0	8.04	0	0	-	TestLeafInvariant_AllowlistOnly=0.00;TestChannelAccessors=0.00
+0	1	internal/buildvcs	0.012	0.2	0.0	0.8	0	8.04	0	0	-	TestOfFile=0.00;TestIdentity_CleanAndLabel=0.00;TestIdentityOf=0.00
+0	1	internal/burlercli	0.091	0.9	0.0	1.4	0	7.80	0	0	-	TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError=0.02;TestWire_StencilsDirFlag=0.01;TestWire_SelectsModeAndWiresItsFields=0.01
+0	1	internal/burlerengine	0.308	1.1	0.0	1.7	0	7.80	0	0	-	TestEngine_Review_Outcomes=0.04;TestEngine_Fix_Outcomes=0.04;TestEngine_Review_TableShape=0.03
+0	1	internal/cardverify	0.012	0.3	0.0	0.9	0	7.80	0	0	-	TestIsGateCall=0.00
+0	1	internal/claudecli	0.017	0.8	0.0	1.6	0	7.80	0	0	-	TestCommand=0.00
+0	1	internal/claudeimports	0.041	0.6	0.0	1.4	0	9.18	0	0	-	TestLeafInvariant_StandardLibraryOnly=0.00;TestExpand=0.00
+0	1	internal/cleanupcli	0.020	0.9	0.0	1.4	0	9.18	0	0	-	TestScratchSegment=0.00;TestRunSegments=0.00;TestPrimeSegments=0.00
+0	1	internal/clihelp	0.019	0.3	0.0	0.8	0	9.18	0	0	-	TestWrap_ShortCircuitsAfterAbort=0.00;TestWrapRunCtx_ReceivesCommandContext=0.00;TestUseReadableOutput=0.00
+0	1	internal/cliwire	0.492	1.0	0.0	1.6	0	9.18	0	0	-	TestDeriveCallerSet_CliwireOnly=0.43;TestResolveStandalone_PlanRules=0.02;TestToldGeometryInvariant_AllowlistOnly=0.00
+0	1	internal/commentlint	0.015	0.3	0.0	0.9	0	8.92	0	0	-	TestParseNameStatus=0.00;TestFindingString=0.00;TestFindNewWrappedBreaks=0.00
+0	1	internal/configcli	0.310	1.1	0.0	1.6	0	8.92	0	0	-	TestDispatchSetProfiles=0.29;TestDispatchHubWideBoard=0.26;TestDispatchLayers=0.11
+0	1	internal/configengine	0.048	0.3	0.0	0.8	0	8.92	0	0	-	TestLoad_LayerStack=0.02;TestValidateLocal=0.00;TestTopLevelValue=0.00
+0	1	internal/configreg	0.501	1.0	0.0	1.5	0	8.92	0	0	-	TestRegistration_MatchesDeclarers=0.28;TestProfilesCheckLoad=0.13;TestNames=0.13
+0	1	internal/configsync	2.204	2.8	0.0	3.4	0	8.77	0	0	-	TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate=2.14;TestReconcileHubWideAt_SeedsFromHubPrimeOrTemplate=0.94;TestReconcileAll=0.09
+0	1	internal/consoletitle	0.011	0.3	0.0	0.8	0	8.77	0	0	-	TestWorkspace=0.00;TestTitle=0.00;TestLeafInvariant_StandardLibraryOnly=0.00
+0	1	internal/creelcli	0.022	0.7	0.0	1.3	0	9.27	0	0	-	TestWriteMessagesText=0.00;TestWakeSession=0.00;TestSlackBridge_RelayPostReadyRefusesWithAWayForwardWhenAReadFails=0.00
+0	1	internal/creelconfig	0.010	0.3	0.0	0.8	0	9.27	0	0	-	TestLoadConfig=0.00
+0	1	internal/creelengine	0.105	0.4	0.0	1.0	0	9.27	0	0	-	TestStore_ClaimAtBoundary=0.02;TestScheduler_Outbound=0.02;TestDaemon_Protocol=0.02
+0	1	internal/darnengine	0.084	0.4	0.0	1.0	0	9.27	0	0	-	TestDarnSpec=0.04;TestLoadConfig=0.03;TestDarnSpec_Refusals=0.03
+0	1	internal/desktophook	0.011	0.2	0.0	0.7	0	9.27	0	0	-	TestLoadConfig=0.00
+0	1	internal/desktoplauncher	0.012	0.2	0.0	0.8	0	8.76	0	0	-	TestParseUserDirs_ReadsTheDesktopDirectory=0.00;TestLocate_ChoosesDirectoryAndFormPerPlatform=0.00;TestFreedesktopDesktopDir_ReadsUserDirsOrFallsBackToHome=0.00
+0	1	internal/discussionparser	0.022	0.3	0.0	0.8	0	8.76	0	0	-	TestWriteCarryOver_SplicesEntries=0.00;TestWriteCarryOver_SanitizesHostileFields=0.00;TestWriteCarryOver_RendersConvergedAndAcceptedEntries=0.00
+0	1	internal/dobbyengine	1.492	2.0	0.0	2.5	0	8.76	0	0	-	TestRun_LockOwnerAndWakeups=1.26;TestWaitReminders=0.07;TestDrivePasses_ExitHandling=0.03
+0	1	internal/dotgit	0.018	0.2	0.0	0.7	0	8.76	0	0	-	TestRead=0.00;TestListWorktrees=0.00;TestLeafInvariant_StandardLibraryOnly=0.00
+0	1	internal/dotnetimpact	0.011	0.2	0.0	0.7	0	9.26	0	0	-	TestParseSource_TestMethods=0.00;TestParseSource=0.00;TestNarrow=0.00
+0	1	internal/driftcli	0.014	0.6	0.0	1.1	0	9.26	0	0	-	TestWorktreeRequests_JoinOnTheWorktreeRootAndStartInTheAnchor=0.00;TestCheckResultWouldPass=0.00;TestCheckParentCaller=0.00
+0	1	internal/driftengine	0.116	0.6	0.0	1.1	0	9.26	0	0	-	TestStartCapture=0.05;TestSeatTables=0.02;TestDriftVerify=0.02
+0	1	internal/durfmt	0.010	0.2	0.0	0.7	0	9.26	0	0	-	TestLeafInvariant_StandardLibraryOnly=0.00;TestFormat=0.00
+0	1	internal/editdirective	0.017	0.2	0.0	0.7	0	9.26	0	0	-	TestDirective_ReadsTheEnginesCopyWithoutBanner=0.01;TestDirective_EngineWithoutACopyNamesTheStencil=0.01
+0	1	internal/entrymerge	0.011	0.2	0.0	0.7	0	9.26	0	0	-	TestTable=0.00
+0	1	internal/envconfig	0.013	0.3	0.0	0.7	0	8.84	0	0	-	TestSet_MachineLayerTakesAVariable=0.00;TestLoadConfig_StacksHubAndMachineName=0.00;TestConfig_EntriesAndBeneath=0.00
+0	1	internal/envsource	0.013	0.2	0.0	0.7	0	8.84	0	0	-	TestDotEnv=0.00;TestBuild_DotEnvParsing=0.00;TestBuild=0.00
+0	1	internal/fabriccli	0.103	0.7	0.0	1.1	0	8.84	0	0	-	TestSandboxedRoleGuard=0.08;TestStartDobbiesThroughBeamStart=0.00;TestSameRepoHeads=0.00
+0	1	internal/fabriccore	0.011	0.2	0.0	0.7	0	8.84	0	0	-	TestRefusal_Error=0.00;TestLeafInvariant_NoIO=0.00;TestLeafInvariant_AllowlistOnly=0.00
+0	1	internal/fabricengine	0.117	0.9	0.0	1.4	0	8.84	0	0	-	TestRunTeardownChild_AnswersBusyOnAHeldLock=0.05;TestMergeVocabulary_GuardReasonSetMatchesConstBlock=0.03;TestHoldRecordsWriteLock=0.02
+0	1	internal/fabriclayout	0.011	0.2	0.0	0.7	0	9.90	0	0	-	TestWeftWarpSlug=0.00;TestStructuralDirs=0.00;TestScopedPathspec=0.00
+0	1	internal/fabricvocab	0.010	0.2	0.0	0.7	0	9.90	0	0	-	TestLeafInvariant_AllowlistOnly=0.00
+0	1	internal/failuretrace	0.015	0.6	0.0	1.1	0	9.90	0	0	-	TestTrace=0.00;TestNewTracer=0.00;TestLocations=0.00
+0	1	internal/friction	0.015	0.3	0.0	0.8	0	9.90	0	1	-	TestWarnIfMarkerAbsent_DoesNotPanic=0.00;TestNotePath_ReturnsEmpty=0.00;TestNotePath_NonClobbering=0.00
+0	1	internal/frictionengine	0.079	0.6	0.0	1.1	0	9.90	1	0	plan gate caller-uncovered	TestReflect_UnwritableRecord_FailedNoSpawn=0.03;TestReflect_StaleReportDeletedBeforeSpec=0.03;TestReflect_Skipped=0.03
+0	1	internal/fronttask	0.020	0.7	0.0	1.2	0	9.50	0	0	-	TestStartAction=0.00;TestSettle=0.00;TestRemove=0.00
+0	1	internal/fslink	0.012	0.2	0.0	0.8	0	9.50	0	0	-	TestRemove=0.00;TestPointsTo=0.00;TestIsLink=0.00
+0	1	internal/fswatch	0.077	0.5	0.0	1.3	0	9.50	0	0	-	TestWatcher_CloseEndsChannel=0.00;TestWatch_NoNamesDeliversEveryEntry=0.00;TestWatch_MissingDirectoryErrors=0.00
+0	1	internal/fsx	0.013	0.3	0.0	0.9	0	9.50	0	0	-	TestPathGuard=0.00;TestNewestModTime=0.00;TestAtomicWriteBytes=0.00
+0	1	internal/gatecli	1.207	2.1	0.0	2.6	0	9.50	0	0	-	TestRunWithFixer=1.02;TestRunBuildTimeout=0.21;TestDetachRun_ReadProcessRecord=0.12
+0	1	internal/gatefixer	0.049	0.3	0.0	0.8	0	8.98	0	0	-	TestRenderPrompt=0.03;TestAwait=0.02;TestSpawnOrAttach=0.01
+0	1	internal/gateslot	0.083	0.3	0.0	0.7	0	8.98	0	0	-	TestAcquire_TakesFreeSlotsUpToLimitThenRefusesAnother=0.03;TestAcquire_ReadsLimitsAtEveryAcquire=0.03;TestAcquireSlots=0.03
+0	1	internal/gitexec	0.009	0.2	0.0	0.6	0	8.98	0	0	-	TestIsTransportFailure=0.00;TestGitError_Error=0.00
+0	1	internal/githubclient	0.704	1.0	0.0	1.5	0	8.98	0	0	-	TestAuthRT_HeldCallGetsItsFullDeadlineAfterRelease=0.66;TestAuthRT_WaitsWhileAPauseCoversTheProcess=0.02;TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout=0.01
+0	1	internal/gitkit	0.872	1.1	0.0	1.5	0	8.34	0	0	-	TestCopyRepoCallerSet_LymcwdOnly=0.82;TestLeafInvariant_AllowlistOnly=0.00;TestGitVersionGate=0.00
+0	1	internal/gitrepo	0.020	0.4	0.0	0.9	0	8.34	0	0	-	TestValidSHA=0.00;TestRetryablePushRefusal_ClassifiesByTheReasonOnThePushedRefsLine=0.00;TestRefNamespace=0.00
+0	1	internal/gitrepo/internal/gitoracle	0.010	0.2	0.0	0.7	0	8.34	0	0	-	TestLeafInvariant_AllowlistOnly=0.00
+0	1	internal/haltnote	0.036	0.2	0.0	0.8	0	8.34	0	0	-	TestSoleParser_NoOtherProductionFileSpellsTheNoteTitle=0.02;TestRenderParse=0.00;TestLeafInvariant_AllowlistOnly=0.00
+0	1	internal/hardenshed	0.028	0.5	0.0	1.0	0	8.34	0	0	-	TestLoadConfig=0.01;TestWrapRow=0.00;TestRotate=0.00
+0	1	internal/heddleengine	0.109	0.7	0.0	1.2	0	7.91	0	0	-	TestRender=0.06;TestClaudeSettingsCarryTheAgentDefaults=0.02;TestShippedClaudeSettings=0.01
+0	1	internal/helpcli	0.009	0.2	0.0	0.7	0	7.91	0	0	-	TestHelpCommand_Behaviors=0.00
+0	1	internal/hibernatecli	0.021	0.8	0.0	1.3	0	7.91	0	0	-	TestWakeReconcileFromReport=0.00;TestChooseResumeOnWake=0.00
+0	1	internal/hibernateengine	0.055	0.6	0.0	1.1	0	7.91	0	0	-	TestSequence=0.03;TestTakeUp=0.00;TestSubmit=0.00
+0	1	internal/hubgeom	0.074	1.2	0.0	1.7	0	7.52	0	0	-	TestWebsterGeometry=0.04;TestReedGeometry_ButtonContext=0.01;TestWeaverGeometry=0.00
+0	1	internal/hubissues	0.672	1.0	0.0	1.5	0	7.52	0	0	-	TestListOpenIssues_PausedPageGetsItsOwnDeadline=0.65;TestOpen_RefusesNonGitHubURL=0.00;TestListOpenIssues_PaginatesAndExcludesPullRequests=0.00
+0	1	internal/hubreconcile	0.075	0.7	0.0	1.2	0	7.52	0	0	-	TestEnsure_HeldLockTimesOutWithoutStamping=0.05;TestCarryMovedRunSettings_RenamedPullRequestValuesAreRewritten=0.01;TestToldGeometryInvariant_AllowlistOnly=0.00
+0	1	internal/hubregistry	0.023	0.4	0.0	1.0	0	7.52	0	0	-	TestRecord=0.00;TestLookup=0.00
+0	1	internal/ideconfig	0.010	0.2	0.0	0.8	0	7.24	0	0	-	TestLoadConfig=0.00
+0	1	internal/ideengine	0.015	0.5	0.0	1.0	0	7.24	0	0	-	TestWorkspaceContent=0.00;TestLookForWithoutShortnameTitlesTheSlugAlone=0.00;TestLookForDegradesToATaskUnderThePrime=0.00
+0	1	internal/impactset	0.013	0.2	0.0	0.7	0	7.24	0	0	-	TestUnwatchedTests=0.00;TestTargetsFor=0.00;TestParseChangedPaths=0.00
+0	1	internal/landingshed	0.824	1.5	0.0	2.0	0	7.24	0	0	-	TestPRReview_Wait=0.22;TestFinalize_GateAndFixer=0.18;TestPRReview_Call=0.12
+0	1	internal/languageconfig	0.012	0.2	0.0	0.7	0	6.90	0	0	-	TestLoad_ResolvesSkills=0.00;TestLoad_InvalidFailsNamingKey=0.00;TestBulletListValue=0.00
+0	1	internal/lenses	0.072	0.3	0.0	0.7	0	6.90	0	0	-	TestLoad=0.04;TestConfigTemplate_DecodesAndIsSelfConsistent=0.02;TestCheckLoad=0.01
+0	1	internal/lensreport	0.014	0.2	0.0	0.7	0	6.90	0	0	-	TestReturned=0.00;TestPath_NamesOneLensReportTheNameTestAccepts=0.00;TestPathPattern=0.00
+0	1	internal/lock	0.062	0.2	0.0	0.7	0	6.90	0	0	-	TestAcquireWriteLockWithin=0.05;TestTryAcquireWriteLock=0.00;TestTryAcquireReadLock=0.00
+0	1	internal/logger	0.057	0.2	0.0	0.7	0	6.90	0	0	-	TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker=0.03;TestWriteDurable_SurvivesLogsDirRenameMidProcess=0.00;TestWriteDurable_SizeCapStopsWritesAfterSingleTruncationMarker=0.00
+0	1	internal/loggerconfig	0.012	0.2	0.0	0.8	0	6.90	0	0	-	TestLoad_ResolvesBounds=0.00;TestLoad_InvalidValueErrorsNamingKey=0.00;TestConfigPath=0.00
+0	1	internal/loomcli	2.238	3.3	0.0	3.9	0	6.90	0	1	-	TestWire_ReviewKeysReachTheEnv=1.20;TestResumeVerb=0.63;TestNewShed_WrapsTheRowsNotifyParentOnNames=0.49
+0	1	internal/loomengine	1.866	2.8	0.0	3.7	0	6.67	1	1	test tier0	TestDiscussionTable=0.32;TestLoadTapestryConfig=0.27;TestProducerSpecs_SkillsAndParentDirective=0.25
+0	1	internal/loomrecipe	4.561	5.7	0.0	6.4	0	8.54	1	1	test tier0	TestDriftRows_EntryGate=0.68;TestPlanSplitRows=0.56;TestSamplerRecipe=0.39
+0	1	internal/loomshed	0.297	1.5	0.0	2.3	0	10.73	1	1	test tier0	TestNewPlanDirRotator=0.10;TestPartsRotators=0.06;TestVerifyFailureFindings=0.03
+0	1	internal/lymcwd	5.955	6.4	0.0	7.2	0	11.16	1	1	test tier0	TestEnforcement_FabricVocabulary=2.40;TestEnforcement_BoltDirNameDeclaredOnce=2.28;TestEnforcement_LocationLiterals=0.48
+0	1	internal/lymtemp	0.025	0.4	0.0	1.2	0	11.70	2	1	test tier0|plan gate caller-uncovered	TestSweep=0.00;TestResolveRootPath=0.00;TestProcessDirectory_StaysOneDirectoryUnderTheRoot=0.00
+0	1	internal/machinecli	0.036	1.2	0.0	1.9	0	11.70	1	1	test tier0	TestStart_StartsOnlyWhatThisMachineOwns=0.01;TestStart_PrintsAStandingHold=0.01;TestName_Set=0.01
+0	1	internal/machinename	0.091	0.5	0.0	1.5	0	12.45	1	1	test tier0	TestSoleSource_NoOtherProductionFileReadsTheHostname=0.06;TestResolveNames_UnreadableFileIsAnError=0.00;TestResolveNames=0.00
+0	1	internal/mergeresolve	0.222	1.2	0.0	2.0	0	12.45	1	1	test tier0	TestResolve_SessionEditsTrackedFile_StagesTrackedBeforeConclude=0.14;TestResolve_CleanMergeNoSession=0.14;TestResolve_SessionLeavesUntrackedFile_AbortsStuckNamingItWithoutStaging=0.12
+0	1	internal/modelspec	0.057	0.6	0.0	1.5	0	14.82	1	1	test tier0	TestRegistry_Resolve_UnknownAlias=0.00;TestRegistry_Resolve=0.00;TestParse_Rejects=0.00
+0	1	internal/orchcli	1.007	2.7	0.0	3.6	0	14.82	1	1	test tier0	TestWatch=0.84;TestStart_ReconcilesTheHubFirst=0.24;TestStart_NoStrandLaunchesAndSpawnsWatcher=0.24
+0	1	internal/orchengine	4.308	5.3	0.0	6.2	0	16.51	1	1	test tier0	TestWatcher_StepOutcomes=0.54;TestWatcher_RestartMidColorStepTypesItOnceWhenIdle=0.54;TestWatcher_ClearingTimeoutNeverTypesWhileBusy=0.47
+0	1	internal/orchroute	0.029	0.9	0.0	1.7	0	18.55	1	1	test tier0	TestLiveFrom=0.00
+0	1	internal/output	0.018	0.4	0.0	1.2	0	18.55	1	1	test tier0	TestSummaryWriter=0.00;TestSummary=0.00;TestOk_EmitsValidJSON=0.00
+0	1	internal/pairteardown	0.599	1.5	0.0	2.3	0	17.63	1	1	test tier0	TestEnforcement_PairTeardownChokepoint=0.51;TestHoldRecordsWriteLocks=0.04;TestRunLockHolderPasses=0.01
+0	1	internal/parentdirective	0.031	0.4	0.0	1.2	0	17.63	1	1	test tier0	TestDirective_MissingStencilNamesIt=0.02;TestDirective_InteractiveOmitsOnlyBan=0.02;TestDirective_EmptyNameRendersNoParentVariant=0.02
+0	1	internal/parentlock	0.018	0.3	0.0	0.9	0	17.63	1	1	test tier0	TestWaitRecord_DeadWriterReadsAbsentAndIsReplaced=0.00;TestTryAcquire_TakesRecordOfDeadOrRecycledOwner=0.00;TestTryAcquire_SameRunRewritesOwnerProcess=0.00
+0	1	internal/partsparser	0.016	0.3	0.0	0.9	0	17.63	1	1	test tier0	TestValidate=0.00;TestParse=0.00;TestCheck=0.00
+0	1	internal/pattern	0.065	0.4	0.0	0.9	0	17.10	1	1	test tier1	TestDirective_PerRole=0.03;TestDirective_FilesystemFailuresAreErrors=0.01;TestProjectOverview=0.00
+0	1	internal/pauserecord	0.020	0.2	0.0	0.8	0	17.10	1	1	test tier1	TestWaitUncovered=0.00;TestUpdate=0.00;TestSleepWatch=0.00
+0	1	internal/pawlengine	0.016	0.3	0.0	0.8	0	17.10	1	1	test tier1	TestRemoveReady=0.00;TestReadyFor=0.00;TestNextAwaitWait=0.00
+0	1	internal/planglyph	0.533	1.4	0.0	2.1	0	17.10	1	1	test tier1	TestGlyphChain_ResignScenarios=0.10;TestGlyphChain_RedundantFile=0.09;TestGlyphChain_FuncNamedInterfaceMethod=0.07
+0	1	internal/planparser	0.060	0.5	0.0	1.1	0	16.77	1	1	test tier1	TestRefKindScan_RealTreeClean=0.04;TestPlanOpScan_RealTreeClean=0.03;TestValidate_VerifyPackageMissing=0.01
+0	1	internal/preflight	0.026	1.0	0.0	1.6	0	16.77	1	1	test tier1	TestReport_AddFailure=0.00
+0	1	internal/preflightshed	0.038	1.1	0.0	2.0	0	16.77	1	1	test tier1	TestWayForward=0.00;TestPreflight_StencilsCheck=0.00;TestPreflight_HardenCheck=0.00
+0	1	internal/proc	0.705	1.2	0.0	2.2	0	17.59	1	1	test tier1	TestWaitForScope_GivesUpOnAScopeReadEndedTwiceInARow=0.62;TestProcessTreeReads=0.26;TestKillTree=0.05
+0	1	internal/pullrequest	0.021	0.5	0.0	1.2	0	17.59	1	1	test tier1	TestClient_Calls=0.01;TestStandingReviews=0.00;TestRecord_RoundTripAndUpdate=0.00
+0	1	internal/quarrycli	0.034	1.0	0.0	1.8	0	17.59	1	1	test tier1	TestCommand_TextFlagRefusals=0.00;TestCommand_Resolve_PerGlyphAnswers=0.00;TestCommand_Glyphs_GoldenAgainstFacade=0.00
+0	1	internal/raddleparser	0.020	0.4	0.0	1.2	0	17.22	1	1	test tier1	TestRecheckBoard=0.00;TestParse_OptionalKeys=0.00;TestParse=0.00
+0	1	internal/reedcli	0.357	1.4	0.0	2.1	0	17.22	1	1	test tier1	TestWaitParentExit=0.20;TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping=0.07;TestCommand_Down_IsNotRefusedInBolt=0.04
+0	1	internal/reedengine	0.598	1.1	0.0	1.8	0	17.22	1	1	test tier1	TestWithOpLock_SerializesConcurrentCalls=0.15;TestRemoveSocketFileOnceGone=0.10;TestStatusFormats_SessionLoopsTakeOneFormat=0.05
+0	1	internal/reedengine/render	0.017	0.4	0.0	1.2	0	17.68	1	1	test tier1	TestDisplayMarshalsWithoutRetiredKeys=0.00;TestDisplayDecodesRetiredKeysIgnored=0.00
+0	1	internal/reportcli	0.027	1.2	0.0	1.9	0	17.68	1	1	test tier1	TestTimingSleepNote=0.00;TestReportVerbs_RefuseBadFlags=0.00;TestRefuseNonPrime=0.00
+0	1	internal/reportconfig	0.018	0.3	0.0	1.0	0	17.68	1	1	test tier1	TestLoadConfig=0.00
+0	1	internal/reportengine	0.103	1.3	0.0	1.9	0	17.31	1	1	test tier1	TestComputeTiming=0.06;TestCompute_FullRunCounts=0.05;TestCompute_Weeks=0.03
+0	1	internal/retrocli	0.019	1.0	0.0	1.6	0	17.31	1	1	test tier1	TestRetro_RefusesBadArguments=0.00
+0	1	internal/retroengine	0.017	0.9	0.0	1.6	0	17.31	1	1	test tier1	TestSelect=0.00;TestPlan_TaskFieldsFilesOneDarnTaskOnTheDocsProfileWithAnOpusWriter=0.00;TestPlan_BodyFillsTheShippedStencil=0.00
+0	1	internal/reviewbudget	0.028	0.5	0.0	1.3	0	18.40	1	1	test tier1	TestLeafInvariant_AllowlistOnly=0.00;TestCheckResolved=0.00;TestCheckLocal=0.00
+0	1	internal/runfsm	0.016	0.4	0.0	1.3	0	18.40	1	1	test tier1	TestTransitionState=0.00;TestDerive=0.00;TestAct=0.00
+0	1	internal/runplan	0.020	0.5	0.0	1.3	0	18.40	1	1	test tier1	TestReport_JournalIsOptional=0.00;TestPostBatchChecks_UnreadableDecisionRecordNamesTheWayForward=0.00;TestPostBatchChecks_DroppedHandleDeclarationIsNotBound=0.00
+0	1	internal/runproc	0.076	0.5	0.0	1.3	0	18.40	1	1	test tier1	TestRegisterAndList=0.06;TestRegisterOrch_IsFoundByItsOwnerRoleAndPID=0.05;TestEndSubject_EndsTheRunsThenTheSubjectAndItsDobbyLast=0.03
+0	1	internal/runprofile	0.025	0.5	0.0	1.3	0	19.49	1	1	test tier1	TestLoad=0.01;TestTemplateLadder=0.00;TestTemplateDocsProfile=0.00
+0	1	internal/runpusher	0.035	1.1	0.0	2.0	0	19.49	1	1	test tier1	TestWorktreeGone_ReadsWhetherTheDirectoryStands=0.00;TestStart=0.00;TestRun=0.00
+0	1	internal/samplerengine	0.031	0.5	0.0	1.3	0	19.49	1	1	test tier1	TestSessionSpec=0.01;TestRecord=0.00;TestLoadConfig=0.00
+0	1	internal/seatengine	0.876	2.3	0.0	3.0	0	20.42	1	1	test tier1	TestEngine_Run_FailedStopReturnsTheWayForwardUnretried=0.21;TestEngine_Run_AssistantRemovesStaleFilesBeforeTheChairStarts=0.20;TestTable_Validate=0.18
+0	1	internal/secretpath	0.015	0.4	0.0	1.2	0	20.42	1	1	test tier1	TestNew_RefusesMalformedPattern=0.00;TestMatcher_Match=0.00;TestLeafInvariant_StandardLibraryOnly=0.00
+0	1	internal/segmentcolor	0.012	0.3	0.0	1.3	0	21.34	1	1	test tier1	TestTmuxColor_MapsEveryPaletteColor=0.00;TestParseColor=0.00;TestLeafInvariant_AllowlistOnly=0.00
+0	1	internal/selfexec	0.018	0.4	0.0	1.2	0	21.34	1	1	test tier1	TestWatcher_Check=0.00;TestResolveLymBinary=0.00;TestLymBinary_RefusesTheRunningTestBinary=0.00
+0	1	internal/selfreportcli	0.138	0.8	0.0	1.6	0	21.34	1	1	test tier1	TestRunCreate_Success=0.05;TestCommand_RefusedBeforeTransport=0.03;TestRunCreate_Failure=0.00
+0	1	internal/selfreportengine	0.019	0.6	0.0	1.4	0	21.34	1	1	test tier1	TestDefaultLabels=0.00;TestCreateIssue_TokenNotResolvable=0.00;TestCreateIssue_Success=0.00
+0	1	internal/shedadapters	3.241	4.2	0.0	4.9	0	21.56	1	1	test tier1	TestBouncer_SoftCapRule=0.38;TestBouncer_AutoAccept=0.26;TestBouncer_Reentry=0.17
+0	1	internal/shedarbiter	0.754	2.0	0.0	2.8	0	22.15	1	2	test tier1	TestCall_SpawnPath=0.35;TestCall_VerdictOutcomes=0.25;TestPrompt=0.22
+0	1	internal/shedbuild	0.083	1.3	0.0	2.0	0	22.15	2	2	test tier1|test tier1 ./internal/hubreconcile	TestExpand=0.03;TestBuild_Errors=0.03;TestBuild_LoomContract=0.02
+0	1	internal/shedcli	0.063	1.9	0.0	2.7	0	21.66	2	2	test tier1|test tier1 ./internal/hubreconcile	TestArmFromSeed_RunIDDefaultsToSelf=0.02;TestWriteSeed_UnknownRecipeRefusesWithTheAvailableNames=0.00;TestWriteSeed_SucceedsWithNoSeedPresent=0.00
+0	1	internal/sheddriver	0.347	0.8	0.0	1.4	0	21.66	2	2	test tier1|test tier1 ./internal/hubreconcile	TestDriveVerb=0.25;TestTacklerCall_SpawnPath=0.12;TestTacklerPrompt=0.07
+0	1	internal/shedengine	0.193	0.6	0.0	1.3	0	21.05	2	2	test tier1|test tier1 ./internal/hubreconcile	TestRun_RerouteCapHaltsOnFourthRerouteAndResumeGrantsThreeMore=0.03;TestStep_EntryGate=0.02;TestStep_YieldPersistsNothing=0.01
+0	1	internal/shedrecipe	0.386	1.5	0.0	2.2	0	21.05	2	2	test tier1|test tier1 ./internal/hubreconcile	TestMultiLLMEntry_ConstructionFailures=0.08;TestMultiLLMFixtureRecipe_BuildsAndRunsAgainstFakeSeats=0.04;TestBouncerEntry_EnvJudgeFallback=0.04
+0	1	internal/shedrun	0.035	0.5	0.0	1.3	0	21.05	2	2	test tier1|test tier1 ./internal/hubreconcile	TestWriteSeed_RefusesDisagreeingSeed=0.00;TestWriteSeed_ReadSeed_RoundTrip=0.00;TestWakeStamp=0.00
+0	1	internal/shedtransient	0.015	0.6	0.0	1.4	0	21.44	2	2	test tier1|test tier1 ./internal/hubreconcile	TestSpawnRefusedRecently=0.00;TestImportAllowlistOnly=0.00;TestClassAndMark=0.00
+0	1	internal/shedverbs	0.549	1.7	0.0	2.5	0	21.44	2	2	test tier1|test tier1 ./internal/hubreconcile	TestUntilStop_DeadLoopStopsLoopExited=0.32;TestUntilStop_LoserWaitsOnWinner=0.03;TestUntilStop_SecondWaiterAdoptsTheLiveLoop=0.02
+0	1	internal/shell	0.032	0.4	0.0	1.2	0	21.44	2	2	test tier1|test tier1 ./internal/hubreconcile	TestShell_WithEnv=0.00;TestShell_UnsetEnv=0.00;TestShell_Touch=0.00
+0	1	internal/shellguard	0.032	0.6	0.0	1.5	0	21.73	2	2	test tier1|test tier1 ./internal/hubreconcile	TestRows_SteersOpenWithWholeCommandRefusal=0.00;TestRows_RawGoSteerNamesOnlyUnrefusedCompileChecks=0.00;TestRows_EngineTexts=0.00
+0	1	internal/shortcutcli	0.021	0.6	0.0	1.4	0	21.73	2	2	test tier1|test tier1 ./internal/hubreconcile	TestShortcut_Run=0.00;TestMount_File=0.00
+0	1	internal/shuttlecli	0.085	1.0	0.0	1.7	0	21.73	2	1	test tier1|test tier1 ./internal/hubreconcile	TestAwaitVerb=0.05;TestRunCmd_APIErrorEnvelope=0.03;TestHookPythonAllowedVerb_FollowsAStandaloneRunsStateDirConfig=0.01
+0	1	internal/shuttleengine	1.527	1.9	0.0	2.5	0	20.95	1	1	test tier1	TestPromptEngineRule=0.59;TestModelChoiceMappingRule=0.58;TestWait_HeldTurnEndNotice=0.51
+0	1	internal/shuttleengine/bashlookup	0.014	0.3	0.0	0.9	0	20.95	1	1	test tier1	TestLineRangeFile=0.00;TestIsReadOnlyLookup=0.00
+0	1	internal/shuttleengine/claudeengine	2.661	3.3	0.0	3.9	0	20.95	1	1	test tier1	TestClaude_SwitchAccount=0.64;TestPrepare_ExportsTheResolvedAccount=0.41;TestPrepare_CreelMailHookFollowsTheBoardDirectory=0.24
+0	1	internal/shuttleengine/codexengine	0.484	1.1	0.0	1.9	0	20.15	1	1	test tier1	TestCheckAfterStartup=0.11;TestPrepare_ConcurrentLaunchesLoseNoRoot=0.10;TestPrepare_UserSetup=0.09
+0	1	internal/shuttleengines	0.064	0.7	0.0	1.5	0	20.15	1	1	test tier1	TestNew=0.02;TestKeepWarm=0.02;TestNew_CodexLaunchCarriesTheClaudeUserSetup=0.01
+0	1	internal/shuttleparity	1.483	3.1	0.0	3.8	0	20.14	1	1	test tier1	TestLaunchSpecLiterals_AreListed=0.60;TestSeats_CodexManifestHoldsClaudes=0.57;TestProducers_CodexManifestHoldsClaudes=0.26
+0	1	internal/slackcli	0.069	1.2	0.0	2.0	0	21.25	1	1	test tier1	TestReadHiddenTerminalLine=0.03;TestSlackCLI=0.02;TestToggleSlackRefusals=0.01
+0	1	internal/slackengine	0.683	1.3	0.0	2.1	0	21.25	1	1	test tier1	TestRunRelay=0.51;TestSocketClient=0.06;TestEnsureRelay=0.03
+0	1	internal/sleepjournal	0.019	0.5	0.0	1.3	0	21.25	1	1	test tier1	TestParse=0.00;TestLeafInvariant_StandardLibraryOnly=0.00
+0	1	internal/standalonegeom	0.029	0.7	0.0	1.5	0	20.83	1	1	test tier1	TestWebsterGeometry=0.00;TestStandaloneDirs=0.00;TestReedGeometry_SessionNameSanitizesTheReadableHalf=0.00
+0	1	internal/standalonestate	0.019	0.5	0.0	1.2	0	20.83	1	1	test tier1	TestUserStateDir=0.00;TestUserConfigDir=0.00;TestRelativeInputs_NeverConsultTheWorkingDirectory=0.00
+0	1	internal/state	0.026	0.4	0.0	1.2	0	20.83	1	1	test tier1	TestUpdateJSON_Concurrency=0.01;TestWriters_CreateAbsentLockDirectory=0.00;TestWriteJSON_RoundTripOverwriteAndLayout=0.00
+0	1	internal/statuscommit	0.020	0.4	0.0	1.2	0	20.84	1	1	test tier1	TestNew_OrdinaryPath=0.00;TestNew_NilPushPanics=0.00;TestNew_MergeActiveSkips=0.00
+0	1	internal/statuspane	0.015	0.4	0.0	1.3	0	20.84	1	1	test tier1	TestStatusCache_Poll=0.00;TestSidecar_RoundTrip=0.00;TestReadSidecar_UnreadableIsNil=0.00
+0	1	internal/stencil	0.020	0.5	0.0	1.2	0	20.84	1	1	test tier1	TestTopLevelMarkers=0.00;TestStripLeadingComment=0.00;TestIncludeNames=0.00
+0	1	internal/stencilstore	0.024	0.5	0.0	1.2	0	20.84	1	1	test tier1	TestWritesDue=0.00;TestWarnPortBackDrift_EmitsOneLineListingTheDriftedStencils=0.00;TestValidate=0.00
+0	1	internal/summaryparser	0.016	0.4	0.0	1.1	0	20.78	1	1	test tier1	TestValidateDescription_Table=0.00;TestValidateDescription_ReadErrorIsError=0.00;TestValidateDescription_ForbiddenTerms=0.00
+0	1	internal/tendercli	0.022	1.0	0.0	1.8	0	20.78	1	1	test tier1	TestSyncBoardIfOwed=0.00;TestShuttlePairReadings=0.00;TestRevivePending=0.00
+0	1	internal/tenderengine	0.048	0.5	0.0	1.1	0	20.78	1	1	test tier1	TestResume=0.01;TestPause=0.01;TestSyncBoltHold=0.00
+0	1	internal/termwindow	0.018	0.3	0.0	1.1	0	20.78	1	1	test tier1	TestResolve_ChoosesLauncherPerPlatform=0.00;TestLauncher_ArgumentsOpenTitledWindowRunningAttach=0.00
+0	1	internal/testcover	0.019	0.4	0.0	1.1	0	20.87	1	1	test tier1	TestStampOutput=0.00;TestScanSpawns=0.00;TestScanKeeps=0.00
+0	1	internal/testkit	0.088	0.5	0.0	1.3	0	20.87	1	1	test tier1	TestEnforcement_TestkitInvariant=0.07;TestEnforcement_ScankitStdlibOnly=0.00;TestEnforcement_PermkitStdlibOnly=0.00
+0	1	internal/testkit/envelope	0.019	0.4	0.0	1.2	0	20.87	1	1	test tier1	TestRequireOK=0.00;TestRequireErr=0.00;TestDecode_PartialFalseIsPresent=0.00
+0	1	internal/testkit/envkit	2.161	3.1	0.0	3.8	0	20.87	1	1	test tier1	TestSeamMarkers_ReflectiveTestsAreMarked=2.13;TestFullEnv_FillsEverySeam=0.01;TestNilSeams_SkipsNilLegalPaths=0.00
+0	1	internal/testkit/fabrickit	0.011	0.2	0.0	0.7	0	20.48	1	1	test tier2	TestBuilder=0.00
+0	1	internal/testkit/llmkit	0.010	0.3	0.0	0.8	0	20.48	1	1	test tier2	TestClaude=0.00
+0	1	internal/testkit/locationkit	0.012	0.3	0.0	0.9	0	20.48	1	1	test tier2	TestLocation_PathsJoinFields=0.00;TestLocation_CarriesToldFields=0.00
+0	1	internal/testkit/logcapture	0.018	0.5	0.0	1.2	0	19.56	1	1	test tier2	TestCapture_RestoresOutputAfterTest=0.00;TestCapture_ConcurrentWritesAndReads=0.00;TestCapture_CapturesWarnButNotInfo=0.00
+0	1	internal/testkit/permkit	0.012	0.3	0.0	1.0	0	19.56	1	1	test tier2	TestChmod_SetsTheModeAndRestoresItAtCleanup=0.00
+0	1	internal/testkit/plankit	0.019	0.4	0.0	1.1	0	19.56	1	1	test tier2	TestRepo_WritesNestedFiles=0.00;TestRender_ParsesAndValidates=0.00;TestRender_BytesCanBeCorrupted=0.00
+0	1	internal/testkit/scankit	0.016	0.3	0.0	1.0	0	19.56	1	1	test tier2	TestWalk_Filters=0.00;TestWalk_FileContents=0.00;TestRoot_HasGoMod=0.00
+0	1	internal/testkit/shedcheckkit	0.056	1.5	0.1	2.6	0	19.04	1	1	test tier2	TestKindConstants=0.00;TestFinding_String=0.00;TestCheck=0.00
+0	1	internal/testkit/shedfake	0.080	1.1	0.1	2.3	0	19.04	1	1	test tier2	TestWebsterSeams_FieldsNonNil=0.00;TestShuttle_RunGated=0.00;TestShuttle_RunFnReplacesScriptedAnswer=0.00
+0	1	internal/testkit/shuttlefake	0.024	0.6	0.0	1.5	0	20.80	1	1	test tier2	TestSignalEngine_PairsStampsAndHoldsTrailingStamps=0.00;TestReed_StrandLivenessAcrossAddAndRemove=0.00;TestReed_StatusReturnsACopy=0.00
+0	1	internal/testkit/stencilkit	0.240	0.8	0.0	1.6	0	20.80	1	1	test tier2	TestRemove_LeavesTheRest=0.03;TestSeed_ReadsBackEveryRegistryName=0.02;TestSeedInto_UsesGivenDirectory=0.01
+0	1	internal/testkit/tiergate	0.046	0.6	0.0	1.6	0	20.80	1	1	test tier2	TestSelected_ParsesTheVariable=0.00;TestRequire_RunsOnlySelectedTiers=0.00;TestRequire_FailsOnAMalformedSelection=0.00
+0	1	internal/testkit/tmuxkit	0.080	0.8	0.0	1.7	0	22.09	1	1	test tier2	TestAfterRun_ReportsFailedRemovalKeepingTheCode=0.05;TestRunCheckingGitEntries=0.04;TestCheckSockets=0.04
+0	1	internal/testreach	0.016	0.5	0.0	1.2	0	22.09	1	1	test tier2	TestChangedTests=0.00
+0	1	internal/toolfloor	0.032	0.6	0.0	1.4	0	22.09	1	2	test tier2	TestTmuxHasAllowSetTitle=0.00;TestLeafInvariant_StandardLibraryOnly=0.00;TestCheck=0.00
+0	1	internal/twilldirective	0.530	1.6	0.0	2.4	0	22.09	2	2	test tier2|test tier1 ./internal/hubreconcile	TestDirective_MissingStencilNamesIt=0.35;TestDirective_MissingValueNamesTheMarker=0.29;TestDirective_RendersEveryValueVerbatim=0.22
+0	1	internal/verifyrun	0.085	0.7	0.1	2.0	0	22.09	2	2	test tier2|test tier1 ./internal/hubreconcile	TestQuoteArg=0.00
+0	1	internal/verifytree	0.026	0.6	0.0	1.6	0	22.09	2	2	test tier2|test tier1 ./internal/hubreconcile	TestReadMarker=0.00;TestParsePorcelainZ=0.00;TestLandingFailureRecord=0.00
+0	1	internal/vscode	0.042	1.0	0.0	2.4	0	24.80	2	2	test tier2|test tier1 ./internal/hubreconcile	TestWriteVSCodeConfigCreatesFilesWhenAbsent=0.00;TestWriteConfigRewritesOwnSettingsKeysAndOverwritesTasks=0.00;TestWriteConfigOwnsMarkdownPreviewEntry=0.00
+0	1	internal/weavercli	0.062	1.4	0.0	2.6	0	24.80	2	3	test tier2|test tier1 ./internal/hubreconcile	TestResetVerb=0.02
+0	1	internal/weaverengine	3.357	5.2	0.1	6.2	0	26.18	3	2	test tier2|test tier1 ./internal/hubreconcile|plan gate caller-uncovered	TestRun_Reentry=2.32;TestRun=1.12;TestReset=0.53
+0	1	internal/webstercli	1.078	3.6	0.0	4.5	0	32.41	2	2	test tier2|test tier1 ./internal/hubreconcile	TestNoteRefusals_VerbEnvelopes=0.37;TestValidateCmd_Envelopes=0.31;TestStatusCmd=0.20
+0	1	internal/websterengine	3.321	4.9	0.0	5.6	0	33.02	2	2	test tier2|test tier1 ./internal/hubreconcile	TestRun_AutoRebaseline=0.36;TestRecoverBatch_WaitingResume=0.25;TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck=0.21
+0	1	internal/weftname	0.012	0.3	0.0	1.0	0	31.82	2	1	test tier2|test tier1 ./internal/hubreconcile	TestSiblingPaths=0.00
+0	1	internal/yamlengine	0.024	0.4	0.0	1.0	0	31.82	1	1	test tier2	TestSetValues=0.01;TestSetSparse=0.01;TestStrip=0.00
+0	1	tools/codestats	0.014	0.2	0.0	0.7	0	31.27	1	1	test tier2	TestSplitLines=0.00;TestScan_SkipsDirectoryLink=0.00;TestScan_SkipsAndCollects=0.00
+0	1	tools/deploy	0.023	0.3	0.0	0.9	0	31.27	1	1	test tier2	TestOtherLymBinaries_ReportsEachLymCopyOutsideTheDestDirOnce=0.01;TestResolveDest_DevUsesDerivedDevBinDir=0.00;TestParseMarketplace_ReadsPluginEntries=0.00
+0	1	tools/godocreflow	0.014	0.3	0.0	0.9	0	31.27	1	1	test tier2	TestSplitSentences=0.00;TestSplitClauses=0.00;TestReflowSource_ReflowsDocComments=0.00
+0	1	tools/internal/devbin	0.011	0.3	0.0	0.7	0	31.27	1	1	test tier2	TestDevBinPaths_DeriveFromRepoRoot=0.00
+0	1	tools/machinecost	0.011	0.3	0.0	0.9	0	31.27	1	1	test tier2	TestWriteReport_ReadsBackUnchanged=0.00;TestSumThrottleCounts=0.00;TestRun_ExitCodes=0.00
+0	1	tools/mdreflow	0.015	0.3	0.0	0.8	0	29.25	1	1	test tier2	TestReflowText_CollapsedInvariant=0.00;TestReflowText=0.00;TestCollapsed=0.00
+0	1	tools/plandag	0.018	0.3	0.0	0.8	0	29.25	1	1	test tier2	TestRun_WritesMatrixLevelsAndReducedGraph=0.00;TestRun_UnparseablePlanFailsWithoutOutput=0.00;TestRun_ExtendsCellsDropExtendsEdges=0.00
+0	1	tools/sandbox	0.021	0.3	0.0	0.8	0	29.25	1	1	test tier2	TestSuiteSpecs_ReedTeardownFlag=0.00;TestRun_SuiteSubcommands=0.00;TestRun_RejectsBadInvocation=0.00
+0	1	tools/tapestryrename	0.012	0.2	0.0	0.8	0	29.25	1	1	test tier2	TestSubstitute=0.00;TestRenameTree=0.00
+0	1	tools/tokencount	0.035	0.7	0.0	1.2	0	29.25	1	1	test tier2	TestCalibrateStartFit=0.01;TestCalibrateFailsOnAnUnusableProfile=0.01;TestCalibrate=0.01
+0	1	tools/wordswap	0.018	0.2	0.0	0.7	0	29.25	1	1	test tier2	TestSwapText=0.00;TestProcessFile_MismatchLeavesFileUntouched=0.00;TestProcessFile_DryRunWritesNothing=0.00
+1	1	cmd/lym	11.543	18.9	0.0	19.6	0	27.30	1	2	test tier2	TestTestOnlyCode_EveryProductionFunctionIsReachableFromAMain=7.41;TestCSharpFixtures_CompileWithDotnet=6.74;TestTreeSitterLink_OnlyAllowedTestBinariesLinkIt=3.16
+1	1	cmd/testtiming	1.767	13.4	0.0	14.3	0	23.31	2	3	test tier2|test tier0	TestTakeGateSlot=1.73;TestPrebuildLym=0.42
+1	1	internal/adoptcli	3.664	16.1	0.0	17.1	0	26.47	3	3	test tier2|test tier0|test tier0	TestAdoptIntegration_SecondCloneTakesOver=3.62;TestCommand_RunsFromABeam=1.18;TestCommand_HereAdoptsTheSubjectOfItsWorktree=1.15
+1	1	internal/battencli	75.170	88.6	0.0	89.7	0	29.79	3	4	test tier0|test tier0|test tier1	TestBattenIntegration_Rows=54.17;TestCancelIntegration_RemoveOfABeamLeavesAPlainProject=19.60;TestVerbs_RunFromABeam=18.28
+1	1	internal/beamcli	13.588	30.2	0.0	31.4	0	56.74	4	3	test tier0|test tier1|test tier0|plan gate caller-uncovered	TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitAndTheEndedEntryAndPair=7.73;TestTearDownLeftovers_RemovesALandedAndACancelledPairAndTheirWorkspaceFolders=7.09;TestHubLandDeps_FileTaskReleasesTheTaskAndCodeReviewCapsReadTheHubConfig=6.92
+1	1	internal/boardcli	8.992	21.9	2.0	25.0	0	56.16	3	3	test tier0|test tier1|test tier0	TestBoardServeScenario=7.87;TestCLI=1.09
+1	1	internal/boardengine	20.131	33.3	0.0	34.2	0	50.13	3	3	test tier1|test tier0|test tier1	TestSetOwners=7.82;TestBoard_SetStatusPushed=7.19;TestWriteAdopt=1.85
+1	1	internal/boardengine/boardtest	1.845	14.6	0.0	15.7	0	52.17	3	3	test tier1|test tier1|test tier1	TestSync=1.77
+1	1	internal/burlercli	1.505	15.4	0.0	16.4	0	53.21	3	3	test tier1|test tier1|test tier1	TestValidateReviewVerb_RoundChecks=1.36;TestCommand_StandalonePreRun_ReachesRunsOwnValidationGateAndLeavesTargetUntouched=0.02
+1	1	internal/cardverify	1.290	13.1	0.0	14.2	0	55.31	3	3	test tier1|test tier1|test tier1	TestRunner=1.02
+1	1	internal/cleanupcli	5.227	18.1	0.0	19.0	0	52.60	3	3	test tier1|test tier1|test tier1	TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLeftover=5.17;TestCleanupVerb_ScratchSegmentSweepsTheAnchorOfASubpathHub=1.89
+1	1	internal/commentlint	0.118	11.8	0.0	12.7	0	52.65	3	3	test tier1|test tier1|test tier1	TestLint_OverARepository=0.09
+1	1	internal/configcli	4.419	17.0	0.0	18.1	0	54.85	3	3	test tier1|test tier1|test tier1	TestConfigOverRealHub=4.20;TestConfigReconcileInGitRepo=0.16
+1	1	internal/creelcli	5.874	18.8	0.0	19.8	0	55.26	3	3	test tier1|test tier1|test tier1	TestCreelCLI=4.25;TestHubDelivery_SkipsAWorktreeThatNoLongerResolves=1.32;TestHubDelivery=0.25
+1	1	internal/desktophook	0.077	11.7	0.1	12.7	0	56.21	3	3	test tier1|test tier1|test tier1	TestAfterWindow=0.06
+1	1	internal/dotgit	0.159	11.6	0.0	12.5	0	55.22	3	3	test tier1|test tier1|test tier1	TestListWorktrees_MatchesGitPorcelain=0.13;TestListWorktrees_RelativeGitdirMatchesGit=0.04
+1	1	internal/dotnetimpact	0.357	12.4	0.0	13.3	0	54.21	3	3	test tier1|test tier1|test tier1	TestDeriveDiff=0.28
+1	1	internal/driftcli	3.001	17.3	0.1	18.3	0	55.27	3	3	test tier1|test tier1|test tier1	TestCapture_OutlivesCaller=2.96;TestCheck_PrintsTheFindings=2.49;TestDrift_RunsInTheAnchoredDirectory=2.41
+1	1	internal/driftengine	0.606	12.9	2.0	15.7	0	53.21	3	3	test tier1|test tier1|test tier2	TestRunCapture=0.55;TestRunCompare=0.31;TestCaptureCurrent=0.03
+1	1	internal/fabriccli	22.925	37.7	0.0	38.6	0	53.80	3	4	test tier1|test tier1|test tier2	TestCommand_HubMutationScenario=16.31;TestCommand_AdoptRemoteWeftScenario=15.93;TestCommand_MergeScenario=15.07
+1	1	internal/fabricengine	142.305	156.8	4.1	161.8	0	50.17	3	2	test tier1|test tier1|test tier2	TestAnchorChange=48.51;TestPushFailureClasses=34.74;TestReconcileOrigin_Judge=20.54
+1	1	internal/fronttask	2.082	16.2	0.0	17.1	0	37.92	2	3	test tier0|test tier1	TestHubSettleDeps_OwnedHereReadsTheOwnerOnTheHubBoard=1.95;TestHubDeps_FilesAndRemovesOnTheHubBoard=1.42
+1	1	internal/gatecli	55.806	70.8	0.0	71.6	0	42.05	3	4	test tier0|test tier1|test tier0	TestGateTest_Scopes=54.36;TestGateRedFirst_Dotnet=53.36;TestGateTest_Scenario=45.00
+1	1	internal/gateslot	0.107	12.4	299.7	313.2	0	60.09	4	4	test tier1|test tier1|test tier1|test tier0	TestAcquire_HolderProcessDeathFreesSlot=0.07
+1	1	internal/gitexec	0.225	11.5	0.0	12.5	0	57.87	4	4	test tier1|test tier1|test tier2|plan gate caller-uncovered	TestRun_RemoteBounds=0.11;TestIsTransportFailure_RealGit=0.05;TestRun_StdoutOnError=0.02
+1	1	internal/gitkit	0.134	9.0	90.5	100.5	0	52.62	4	4	test tier1|test tier2|test tier2|plan gate caller-uncovered	TestCopiedRepoScenario=0.10;TestRevParse_HeadReadFromFilesMatchesGit=0.06;TestRunDirectory_HoldsEveryTempFileAndIsGoneAfterTheRun=0.04
+1	1	internal/gitrepo	4.303	15.9	6.1	22.7	0	42.09	4	3	test tier2|test tier2|test tier0|plan gate caller-uncovered	TestMergePrimitives=2.99;TestPush=2.19;TestDeleteRemoteBranch=1.60
+1	1	internal/hardencli	1.595	12.0	0.0	12.7	0	42.95	3	3	test tier2|test tier1 ./internal/hubreconcile|test tier1 ./internal/loomshed	TestSandboxVerbs=1.57
+1	1	internal/heddlecli	0.926	10.6	0.0	11.3	0	38.29	3	3	test tier2|test tier2 ./internal/loomshed|test tier2 ./internal/burlerengine	TestHeddleCLI=0.90
+1	1	internal/heddleengine	1.790	11.0	0.0	11.6	0	35.80	3	1	test tier2|test tier1 ./internal/shuttleengine/claudeengine|test tier2 ./internal/shedrecipe	TestSeam_PullTakeIn=1.39;TestRender_WritesAtTheAnchorAndLeavesNoUntrackedFile=0.37
+1	1	internal/hibernatecli	2.008	12.7	0.0	13.5	0	30.51	1	1	test tier2	TestHibernateVerbs_WireTheHub=0.99;TestHubDepsNotify_WarnsWhenNoOrchStrandIsRecorded=0.97
+1	1	internal/hubforge	6.906	17.5	0.0	18.3	0	30.52	1	0	test tier0	TestNewHub=4.04;TestCopyRegistered_CopyHoldsTheBuildAndIsolatesWrites=4.01;TestCopyHub=3.32
+1	1	internal/hubgeom	1.646	11.1	0.0	11.9	0	29.85	0	0	-	TestGeometryOverRealHub=1.62;TestParentOf=0.83;TestEngineWorktree=0.70
+1	1	internal/hubreconcile	29.622	39.3	0.0	40.0	0	26.95	0	1	-	TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas=6.34;TestEnsure_HubWideWalkRendersAndCommitsTheHeddleOverview=6.31;TestEnsure_MidMergePairIsLeftAloneAndRetried=6.26
+1	1	internal/hubregistry	0.056	11.5	0.0	12.4	0	25.57	1	1	test tier0	TestRepositoryName=0.03;TestLookupRepository=0.03
+1	1	internal/idecli	0.523	10.9	0.0	11.8	0	25.53	1	1	test tier0	TestCommand_SpawnScenario=0.50;TestCommand_NotAGitRepo=0.00
+1	1	internal/ideengine	3.903	13.4	0.0	14.3	0	25.43	1	1	test tier1	TestSpawnScenario=3.00;TestSpawnAnchoredScenario=0.78;TestMenuScenario=0.09
+1	1	internal/impactset	0.346	9.1	0.0	9.9	0	25.59	1	1	test tier1	TestDerive_OverARepository=0.32;TestModuleGuardTests_OverAModule=0.04;TestModuleMainPackages=0.02
+1	1	internal/landingshed	3.539	14.0	0.0	14.9	0	24.10	1	1	test tier1	TestFinalize_OverRealHub=2.42;TestMergeIn_ConflictSessionLoadsLanguageSkills=1.08;TestVerifyGate_RealVerifytreeScenario=0.06
+1	1	internal/logger	0.020	10.9	0.0	11.6	0	24.81	1	1	test tier1	TestDurableSink_CwdFallbackFollowsLymOwnership=0.00
+1	1	internal/loomcli	17.688	28.5	0.0	29.2	0	27.79	1	1	test tier1	TestLoomFailedReedUpRefuses=6.84;TestLoomResumeReconcilesTheHubConfigBeforeArming=4.76;TestHubPeersDeps_OverRealHub=3.72
+1	1	internal/loomshed	4.245	15.1	0.0	15.9	0	31.06	1	1	test tier1	TestVerifyGate_RoundScenario=3.27;TestVerifyGate_DarnFormRunsTheFailedTestsAloneFirst=0.62;TestRedFirstGate_HoldRunsNothingUntilACommitOrTheRecordLands=0.31
+1	1	internal/lymcwd	0.150	12.1	0.0	13.0	0	28.91	1	1	test tier1	TestResolve_AnchorScenario=0.07;TestResolveWithin_NoOwnerOrNoMarker=0.05;TestResolveWithin=0.05
+1	1	internal/machinecli	4.563	16.7	0.0	17.9	0	29.66	1	1	test tier1	TestName_SweepsHubs=4.53
+1	1	internal/orchcli	1.888	12.5	0.0	13.4	0	33.39	1	1	test tier1	TestParentOrchStrand=0.67;TestOrchIntegration_Refusals=0.62;TestHubOrchs_ListsWiredBeamsAndSkipsUnwiredPairs=0.62
+1	1	internal/orchroute	0.441	8.2	0.0	8.9	0	31.42	1	1	test tier1	TestAsker=0.42
+1	1	internal/pairteardown	18.431	25.9	0.0	26.5	0	28.54	1	1	test tier2	TestHandOverOwnedElsewhere=8.58;TestPushRun_HandsOverOnATakeover=6.70;TestRemoveBenchPairs=2.35
+1	1	internal/planglyph	2.800	12.8	0.0	13.6	0	23.83	1	2	test tier2	TestGlyphChain_CallerCoverageTyped=1.80;TestGlyphChain_RedundantPackage=1.04;TestRealGitDelta=0.90
+1	1	internal/preflight	2.899	15.2	0.0	16.3	0	26.47	2	2	test tier2|test tier0	TestCheckResolved_LymOwnStateIsExempt=2.74;TestCheckResolved_MissingOptionalJunctionIsAJunctionFault=2.34;TestHealthyHub=2.33
+1	1	internal/preflightshed	5.721	18.8	0.0	19.9	0	27.24	2	3	test tier2|test tier0	TestPreflight_ReconcileFailureWarnsAndGoesOnToTheCheck=5.69;TestPreflight_StaleStampReconcilesBeforeTheCleanCheck=5.29;TestPreflight_Scenario=4.30
+1	1	internal/proc	1.811	16.3	0.0	17.4	0	32.81	3	2	test tier2|test tier0|test tier0	TestCapProcessMemory_KillsARunawayChildInTheScopeAndTheProcessLivesOn=1.73;TestRunMemoryCapped_AKillAtTheCapEndsWhatTheChildLeftInItsScope=0.61;TestRunMemoryCapped=0.47
+1	1	internal/reedcli	4.331	18.8	0.0	20.2	0	35.59	2	3	test tier0|test tier0	TestEndPairProcesses=3.29;TestReportPaneOOMKills_DeliversTheNoticeToTheParentOrchsCreelMailbox=0.73;TestEnterSession_DrivesTheToldTmux=0.27
+1	1	internal/reedengine	0.040	14.5	74.5	90.3	0	38.21	3	3	test tier0|test tier0|test tier0	TestShowToggleOutcome=0.01
+1	1	internal/reportcli	0.585	11.1	0.0	11.8	0	49.39	3	2	test tier0|test tier0|test tier1	TestRepliesVerb=0.46;TestReportVerbs_RefuseOutsideThePrimeThenReportTheSeededRun=0.11
+1	1	internal/retrocli	1.751	13.0	0.0	13.9	0	44.25	2	2	test tier1|test tier1	TestRetro_FilesAndReleasesTheTaskOfALandedRun=1.70
+1	1	internal/runpusher	2.629	19.5	0.0	20.5	0	41.02	2	3	test tier1|test tier1	TestNewDeps_ConditionsStopOnAHandOverMarkOrARefusedPush=2.60
+1	1	internal/shedcli	6.816	23.7	0.0	24.8	0	48.02	3	3	test tier1|test tier1|test tier0	TestParity_Scenario=6.75;TestShedVerbs_StaleStampReconcilesBeforeALoomRecipeArms=2.61
+1	1	internal/shedrecipe	0.164	18.4	18.3	37.7	0	50.30	3	4	test tier1|test tier1|test tier0	TestHardenFixEntry_VerifyAsksTheHardenKey=0.06
+1	1	internal/shedverbs	3.621	17.9	42.3	61.3	0	63.15	4	3	test tier1|test tier1|test tier0|test tier0 ./internal/burlerengine ./internal/shuttleengine/... ./contracts/... ./internal/websterengine	TestLoopIntegration_ArmingRefusalStopsAsBootstrap=3.32;TestLoopIntegration_ChildTreeDiesWithLoop=0.19;TestLoopIntegration_KeeperWaitsThroughATerminatingSignal=0.06
+1	1	internal/shedworktree	1.481	15.3	0.0	16.4	0	66.63	3	3	test tier1|test tier1|test tier0 ./internal/loomshed ./internal/loomcli ./internal/darnengine ./contracts/stencils	TestArbiterSeam_Changes=1.45
+1	1	internal/shellguard	1.418	13.1	0.0	14.0	0	66.85	3	3	test tier1|test tier1|test tier1 ./internal/loomshed ./internal/loomcli ./internal/darnengine ./contracts/stencils	TestRows_PatternsDenyAndAllow=0.24
+1	1	internal/shuttlecli	1.519	16.0	0.0	17.0	0	62.45	3	4	test tier1|test tier1|test tier1 ./internal/loomshed ./internal/loomcli ./internal/darnengine ./contracts/stencils	TestCommand_AwaitForksResolvesFromTheRecordsSibling=0.78;TestHookPythonAllowedVerb_FollowsTheHubsDenyPython=0.70
+1	1	internal/shuttleengine/claudeengine	5.609	18.9	26.2	46.0	0	60.14	4	3	test tier1|test tier1|test tier1 ./internal/loomshed ./internal/loomcli ./internal/darnengine ./contracts/stencils|test tier0	TestRunPluginHook=5.03;TestRecordingHooks_AppendStampThenPayload=0.50;TestTurnHook_GetsThePayloadAndTheEngineNameWithoutPrinting=0.40
+1	1	internal/shuttleengine/codexengine	0.139	14.9	0.0	15.9	0	53.67	3	4	test tier1|test tier1|test tier0	TestHookCommands_RecordAndStamp=0.10;TestGuardCommand_DeniesAMatchingCommand=0.06;TestCreelHookCommands=0.05
+1	1	internal/shuttleengines	0.063	12.7	20.2	33.7	0	59.75	4	3	test tier1|test tier1|test tier0|test tier0 ./internal/shuttleengine/... ./internal/burlerengine	TestNew_CodexLaunchCarriesAPluginSessionStartContext=0.02
+1	1	internal/shuttleparity	1.617	16.3	0.0	17.1	0	55.61	3	3	test tier1|test tier1|test tier1	TestLoomConfigOf_StaleStampReconcilesTheHubBase=1.58
+1	1	internal/slackcli	1.772	14.6	0.0	15.6	0	55.20	3	4	test tier1|test tier1|test tier0	TestWorktreeOrch=1.73;TestReceiverPaused=1.34;TestOrchProject=1.23
+1	1	internal/stencilcli	1.462	14.4	68.3	83.6	0	49.77	4	3	test tier1|test tier1|test tier0|test tier0 ./internal/loomshed ./internal/loomcli ./internal/darnengine ./contracts/stencils	TestStencilCLI_Scenario=1.38
+1	1	internal/tendercli	2.609	12.9	0.0	13.6	0	50.52	3	3	test tier0|test tier2|test tier2	TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub=0.91;TestPauseAndResume_WriteLiftAndRefuseOverTheHub=0.74;TestStatus_PrintsOutstandingFailedPushes=0.66
+1	1	internal/termwindow	1.045	8.3	0.0	9.0	0	45.85	3	3	test tier2|test tier2|test tier1	TestAttachLine_EndsOrKeepsTheShellByAttachStatus=1.03
+1	1	internal/testcover	3.060	12.4	0.0	13.2	0	40.20	3	3	test tier2|test tier1|test tier0	TestRunAlone=3.01;TestBuildBinaryAndListTests=0.02
+1	1	internal/testkit/lymbin	8.848	20.0	0.0	20.8	0	39.35	3	4	test tier2|test tier1|test tier0 ./internal/loomshed ./internal/loomcli ./internal/darnengine	TestBuild_ProducesExecutableBinary=4.32;TestBuildWithLDFlags_ReachTheBuild=4.24;TestRun_TimesOutNamingTheTimeout=0.20
+1	1	internal/testkit/tiergate	-	4.8	203.0	208.7	0	36.56	4	3	test tier1|test tier1 ./internal/loomshed ./internal/loomcli ./internal/darnengine|test tier0|test tier0	-
+1	1	internal/testkit/tmuxkit	0.046	11.5	0.0	12.4	0	55.43	3	3	test tier1|test tier1|test tier0	TestSnapshotProcesses_NamesAChildWorkingInTheDirectoryAndLeavesOutThisBinary=0.02;TestMain_ExitsTwoWithoutRunningTheSuiteOnAPositionalArgument=0.01
+1	1	internal/verifyrun	0.337	10.7	0.0	11.6	0	56.37	3	3	test tier1|test tier1|test tier0	TestRun_ExpiryKillsBackgroundedDescendant=0.26;TestRun_Cancellation=0.05;TestRunTied=0.04
+1	1	internal/verifytree	0.518	11.3	0.0	12.2	0	52.38	3	3	test tier1|test tier1|test tier1	TestVerify_Scenario=0.25;TestVerify_PerCommandRecord=0.18;TestVerify_PauseHold=0.14
+1	1	internal/weavercli	1.283	12.8	0.0	13.6	0	52.20	3	3	test tier1|test tier1|test tier1	TestResetDepsFor_SeamsResetATaskPairThroughTheHub=1.23
+1	1	internal/webstercli	17.096	29.5	102.6	133.1	0	51.60	3	3	test tier1|test tier1|test tier1	TestResetCmd=6.81;TestGateParity_VerifyGate=1.43;TestBatchVerbs_RefuseUnderAPause=1.36
+1	1	internal/websterengine	5.156	16.5	0.0	17.3	0	51.16	3	3	test tier1|test tier1|test tier2	TestRun_VerifyGate=0.97;TestRecoverBatch_SuspectEvidence=0.76;TestRecordBatch_PostBatchChecks=0.74
+1	1	tools/forkaudit	2.163	13.7	92.5	107.1	0	47.81	3	4	test tier1|test tier1|test tier2	TestForkauditPlanSection=1.79;TestForkauditTraceCrossCheck=1.47;TestForkauditReport=1.16
+1	1	tools/machinecost	11.910	24.1	78.7	104.0	0	41.61	4	3	test tier1|test tier2|test tier0|test tier0	TestRunProbe_MeasuresEveryPartAndLeavesNoFolders=7.63;TestLinkProbeProgram_EachLinkDiffers=7.35;TestRunProbe_FailedRunLeavesNoFolders=4.24
+1	1	tools/retro	0.294	13.3	0.0	14.3	0	43.01	3	3	test tier2|test tier1|test tier0 ./internal/landingshed ./internal/loomcli ./internal/testkit/envkit ./internal/testkit/shuttlefake ./internal/testkit ./internal/battencli ./internal/shuttleparity ./internal/shellguard ./internal/beamsetting ./internal/dobbyengine ./contracts/stencils	TestRetroScript_WritesTheFiguresOfEachRun=0.27
+1	1	tools/tokencount	0.394	13.9	0.0	14.9	0	44.60	3	4	test tier2|test tier1|test tier0 ./internal/landingshed ./internal/loomcli ./internal/testkit/envkit ./internal/testkit/shuttlefake ./internal/testkit ./internal/battencli ./internal/shuttleparity ./internal/shellguard ./internal/beamsetting ./internal/dobbyengine ./contracts/stencils	TestRunReadsArchivedShedStatus=0.28;TestCodeRepoChangedLines=0.24;TestCalibrateGitBackedMatchesInMemory=0.07
+0	2	internal/fabricengine	0.353	2.4	4.1	7.6	0	57.76	4	3	test tier1|test tier0|test tier1 ./internal/loomcli ./internal/landingshed|test tier1	TestMergeVocabulary_GuardReasonSetMatchesConstBlock=0.12;TestFailedPushRecord=0.07;TestRunTeardownChild_AnswersBusyOnAHeldLock=0.05
+1	2	internal/fabricengine	201.935	217.1	0.0	218.1	0	59.45	3	4	test tier1|test tier0|test tier1	TestAnchorChange=58.99;TestPushFailureClasses=48.34;TestReconcileOrigin_Judge=26.64
+0	2	internal/battencli	1.188	3.1	28.1	32.2	0	55.19	4	3	test tier1|test tier1|test tier2|test tier0	TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker=0.35;TestRunCmd_HeldRunLockRefusesNamingTheLockPath=0.25;TestDobbyRunCells_ReadsTheRunsFromDisk=0.19
+1	2	internal/battencli	33.403	48.9	0.0	49.8	0	49.94	3	3	test tier1|test tier0|test tier0 ./internal/landingshed ./internal/dobbyengine ./internal/testkit/shuttlefake ./internal/testkit ./internal/loomcli ./internal/testkit/envkit	TestBattenIntegration_Rows=21.66;TestWorktreeCreate_ForksFromTheBeam=8.50;TestCancelIntegration_RemoveOfABeamLeavesAPlainProject=8.17
+0	2	internal/gatecli	1.452	2.8	58.3	61.9	0	51.34	3	3	test tier1|test tier0|test tier0	TestRunWithFixer=1.07;TestRunTierEndsAVSTestSummaryWithItsInvocation=0.43;TestRunTierMemoryGuard=0.28
+1	2	internal/gatecli	49.074	60.7	0.0	61.6	0	45.79	3	4	test tier1|test tier1|test tier1	TestGateRedFirst_Dotnet=48.06;TestGateTest_Scopes=43.30;TestGateTest_Scenario=34.57
+0	2	internal/hubreconcile	0.127	1.5	10.1	12.4	0	55.77	4	3	test tier1|test tier1|test tier2|test tier0 ./internal/beamsetting ./internal/dobbyengine ./internal/landingshed	TestEnsure_HeldLockTimesOutWithoutStamping=0.06;TestCarryMovedRunSettings_FailedBoardWriteIsSkippedAndLeavesTheBoard=0.02;TestCarryMovedRunSettings_RenamedPullRequestValuesAreRewritten=0.01
+1	2	internal/hubreconcile	28.739	42.0	0.0	43.0	0	56.38	3	4	test tier1|test tier1|test tier2	TestEnsure_HubWideWalkRendersAndCommitsTheHeddleOverview=6.14;TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas=6.14;TestEnsure_MidMergePairIsLeftAloneAndRetried=6.09
+0	2	internal/fabriccli	0.247	1.6	8.0	10.5	0	54.14	4	3	test tier1|test tier1|test tier2|test tier0 ./internal/websterengine	TestSandboxedRoleGuard=0.20;TestRemoveVerdict=0.01;TestRemoveFields=0.01
+1	2	internal/fabriccli	21.719	34.3	0.0	35.1	0	50.11	3	3	test tier1|test tier1|test tier2	TestCommand_HubMutationScenario=15.07;TestCommand_AdoptRemoteWeftScenario=14.92;TestCommand_MergeScenario=14.12
+0	2	internal/boardengine	1.501	2.6	144.8	148.3	0	47.58	4	3	test tier1|test tier1|test tier0 ./internal/websterengine|test tier0	TestDecisionRecordFollowsEntry=0.41;TestStoreDecisionRecord=0.28;TestRename_Refusals=0.27
+1	2	internal/boardengine	18.794	31.5	0.0	32.4	0	57.94	3	3	test tier1|test tier0|test tier2	TestSetOwners=7.50;TestBoard_SetStatusPushed=7.18;TestWriteAdopt=1.65
+0	2	internal/webstercli	0.920	2.9	0.0	3.7	0	50.76	3	3	test tier1|test tier2|test tier1	TestValidateCmd_Envelopes=0.17;TestAwaitBatchCmd_ReportPresenceEnvelope=0.17;TestNoteRefusals_VerbEnvelopes=0.15
+1	2	internal/webstercli	15.486	27.2	0.0	28.0	0	49.66	3	3	test tier1|test tier2|test tier1	TestResetCmd=5.51;TestPersistentPreRunE_PlanDirAnchoredAtSubpath=1.36;TestBatchVerbs_RefuseUnderAPause=1.33
+0	2	internal/loomcli	3.555	5.5	0.0	6.3	0	44.20	3	3	test tier2|test tier1|test tier2	TestWire_ReviewKeysReachTheEnv=1.66;TestResumeVerb=0.88;TestNewShed_WrapsTheRowsNotifyParentOnNames=0.78
+1	2	internal/loomcli	20.618	33.7	0.0	34.6	0	40.93	3	3	test tier1|test tier2|test tier0	TestLoomFailedReedUpRefuses=6.79;TestLoomResumeReconcilesTheHubConfigBeforeArming=4.97;TestDecisionParent_ABeamsRecordIsItsOwnOrchs=4.61
+0	2	internal/beamcli	0.105	1.9	0.0	2.8	0	50.43	3	4	test tier1|test tier2|test tier0	TestRegisterDobby=0.06;TestLand=0.05;TestMarkReady=0.04
+1	2	internal/beamcli	6.016	17.0	80.4	98.3	0	50.43	4	3	test tier1|test tier2|test tier0|test tier0	TestDobby_ReexecsOntoAReplacedBinary=3.30;TestHubLandDeps_FileTaskReleasesTheTaskAndCodeReviewCapsReadTheHubConfig=3.21;TestTearDownLeftovers_RemovesALandedAndACancelledPairAndTheirWorkspaceFolders=2.89
+0	2	cmd/lym	15.563	17.7	72.4	90.9	0	46.97	3	3	test tier1|test tier1|test tier0	TestGofmt_ModuleFilesAreFormatted=5.22;TestTierPurity_UntaggedTestsSpawnNothing=1.68;TestBareTemp_NoCreationInTheBareSystemTempDirectory=1.39
+1	2	cmd/lym	14.672	26.7	0.0	27.5	0	46.26	3	3	test tier1|test tier1|test tier1	TestTestOnlyCode_EveryProductionFunctionIsReachableFromAMain=8.14;TestCSharpFixtures_CompileWithDotnet=7.31;TestCrossCompileLinux=5.35

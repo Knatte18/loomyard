@@ -168,6 +168,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [testmap-use-cases-2026-11-18](speed/testmap-use-cases-2026-11-18/report.md) — what the per-test coverage maps can do for lym and its agents: every use found in research and practice, ranked, with the top three argued and the rest ruled out.
 - [mutation-trial-2026-11-19](speed/mutation-trial-2026-11-19/report.md) — `lym gate mutate` replayed on 20 landed diffs: mutants run, killed, survived and unjudged, the survivors judged by hand, and the decision to build the `mutation` report step.
 - [testmap-worth-evaluation](testmap-worth-evaluation.md) — every user of the coverage maps, what each has given against its cost, and which to remove.
+- [test-time-measure-2026-11-27](speed/test-time-measure-2026-11-27/report.md) — test and wall time of every package's tier0 and tier1 tests, the packages worth a cut and where build dominates.
 
 ## survey — ideas from outside projects
 
