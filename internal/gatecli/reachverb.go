@@ -161,7 +161,7 @@ func runReach(ctx context.Context, out io.Writer, request reachRequest) int {
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("gate reach: %v; way forward: re-run the same command", err))
 	}
-	step := reachStep{location: location, root: location.WorktreePath()}
+	step := reachStep{cfg: cfg, location: location, root: location.WorktreePath()}
 	reader, err := testreach.Open(reachModuleOf(module), testcover.Dir(fabricengine.BoltDir(location.HubPath)), step.worktreeMapsDir(prime))
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("gate reach: %v; way forward: re-run the same command", err))

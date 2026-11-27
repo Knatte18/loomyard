@@ -413,10 +413,16 @@
 // The reach step diffs from the merge base with the parent branch.
 // The prime diffs the working tree from HEAD and records `prime`.
 // A task worktree first refreshes its own coverage maps for the packages holding a changed function.
+// It rebuilds a map that is absent, of an older format than `testcover.MapFormatVersion` or no longer fresh.
 // It does so under `reach_budget_min` and never into the hub's shared maps; the prime refreshes nothing.
 // A package left unrefreshed is a line of the report with its reason and way forward.
 // It then records each changed function and the tests that reach it, from the shared maps and the worktree's own.
-// A function no mapped test reaches carries its caveats.
+// A function no mapped test reaches carries its caveats, one per cause, each naming the tests or packages it holds.
+// One cause is tests of its package in a tier no map holds, or in no tier.
+// Another is tests that may run code in another process.
+// A third is tests whose run alone recorded no coverage.
+// The last two name the tests of its package's map, and apart from them those of the maps of packages linking it.
+// For a new function, a further caveat names the packages whose maps recorded its package's files before they changed.
 // A hub with no coverage map gets a report that judges nothing, whose note names `lym gate test --map`.
 // `ReachReport.NoteLines` renders the note, cut at a line cap.
 // `ReadReachReport` and `ReachReportMatches` read and match a report.
@@ -463,6 +469,7 @@
 // A hub whose scoper is not `go` judges nothing: the verb prints a note naming the scoper, with exit 0.
 //
 // A package is judged only with a fresh map: one the refresh wrote, or a map whose file hashes match the worktree.
+// In a task worktree a package the refresh left unrefreshed is not judged, even when its map's file hashes match.
 // Every other changed package is listed as not judged, with its reason and way forward, and gets no mutant.
 // The check holds one gate slot after the refresh.
 // It plans mutants over the blocks the map's tests cover, excluding tests whose check reads source files,
@@ -797,7 +804,8 @@
 // A test that fails, times out or is ended by the memory guard or its cap beside other tests runs once more alone,
 // and that run's outcome stands; a test that passed only alone is listed under `passed_alone`.
 // The call builds no `lym` and sets no `gateslot.PrebuiltLymEnv`.
-// The spawn scan marks every test that reaches `internal/testkit/lymbin`, and such a test is never run.
+// The spawn scan marks every test that reaches `internal/testkit/lymbin` out of process, and such a test is never run.
+// A test the scan marks unresolved alone runs, and enters with its coverage beside its verdict.
 // Each build is bounded by `redundancy_build_timeout_min`.
 // Each test is bounded by `redundancy_test_timeout_sec` and `redundancy_test_memory_mb`.
 // A run the cap ends is recorded as failed.

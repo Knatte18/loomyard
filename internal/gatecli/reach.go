@@ -252,7 +252,7 @@ func changedPackages(module goModule, funcs []testreach.ChangedFunc) []string {
 
 // refreshMaps refreshes the worktree's own map of each package of funcs that needs one.
 // It lists the packages it does not refresh as unrefreshed.
-// A package needs one when it has no map or its map is not fresh against the worktree's files.
+// A package needs one when it has no map, or its map is of an older format or not fresh against the worktree's files.
 // It is refreshed only when no file it or a linked package owns is uncommitted, and only inside reach_budget_min.
 // The prime refreshes nothing: it keeps no worktree maps, and its shared maps are the map run's to build.
 func (s reachStep) refreshMaps(report *ReachReport, module goModule, funcs []testreach.ChangedFunc, prime bool) {
@@ -347,7 +347,7 @@ func (s reachStep) mapRequest() testMapRequest {
 	}
 }
 
-// staleLinked reports whether the worktree's own map of the package pkg is absent or no longer fresh.
+// staleLinked reports whether the worktree's own map of the package pkg is absent, of an older format or no longer fresh.
 // It returns the import paths of the in-module packages linked by the package's test binary:
 // those its map records, or for a package with no map those the go command lists.
 func (s reachStep) staleLinked(run *testMapRun, module goModule, pkg string) (linked []string, stale bool, err error) {
@@ -356,9 +356,11 @@ func (s reachStep) staleLinked(run *testMapRun, module goModule, pkg string) (li
 		return nil, false, err
 	}
 	if found {
-		fresh, err := testreach.Fresh(reachModuleOf(module), pkg, m)
-		if err != nil || fresh {
-			return nil, false, err
+		if m.HasCurrentFormat() {
+			fresh, err := testreach.Fresh(reachModuleOf(module), pkg, m)
+			if err != nil || fresh {
+				return nil, false, err
+			}
 		}
 		return slices.Sorted(maps.Keys(m.Linked)), true, nil
 	}
@@ -440,18 +442,34 @@ func (s reachStep) describe(report *ReachReport, module goModule, reader *testre
 }
 
 // caveats returns the reasons a test may run fn, which no mapped test reaches, without the maps showing it.
-// One is a test of its package above tier1, or an entry its map marks as running code in another process.
-// The other, for a function new since the base, is a package linking its package whose map is older than its files.
+// Each caveat names its cause and the tests or packages it holds.
+// One names the tiers of its package's tests that no map holds, the tests with no tier among them.
+// One per cause names the tests of its package's map that may run it unseen:
+// in another process, or in a run that recorded no coverage.
+// One per cause names such tests of the maps of the packages linking its package.
+// The last is for a function new since the base.
+// It names the packages linking its package whose maps are older than its files.
 func (s reachStep) caveats(report *ReachReport, module goModule, reader *testreach.Reader, pkg string, fn testreach.ChangedFunc) []string {
 	var caveats []string
 	tests, err := testcover.ScanTestFuncs(filepath.Join(module.dir, filepath.FromSlash(pkg)))
 	if err != nil {
 		report.Errors = append(report.Errors, fmt.Sprintf("scan the tests of %s: %v", pkg, err))
 	}
-	aboveMapped := slices.ContainsFunc(tests, func(test testcover.TestFunc) bool { return !slices.Contains(mappedTiers, test.Tier) })
-	if aboveMapped || reader.SpawnMarked(pkg) {
-		caveats = append(caveats, fmt.Sprintf("a test of %s that no map holds, or that may run code in another process, may run it unseen", pkg))
+	if tiers := unmappedTierNames(tests, mappedTierConfigs(s.cfg)); len(tiers) > 0 {
+		caveats = append(caveats, fmt.Sprintf("tests of %s in %s, which no map holds, may run it unseen", pkg, strings.Join(tiers, " and ")))
 	}
+	caveats = append(caveats, unseenTestCaveats(pkg, reader.UnseenTests(pkg))...)
+	// The tests of all linking packages share one caveat per cause:
+	// a widely linked package would otherwise fill the capped note with the caveats of one function.
+	linkers := reader.UnseenLinkerTests(fn.Key.Package)
+	var linkerTests []testreach.UnseenTest
+	for _, linker := range slices.Sorted(maps.Keys(linkers)) {
+		for _, test := range linkers[linker] {
+			test.Test = linker + "." + test.Test
+			linkerTests = append(linkerTests, test)
+		}
+	}
+	caveats = append(caveats, unseenTestCaveats("packages linking "+pkg, linkerTests)...)
 	if !fn.New {
 		return caveats
 	}
@@ -464,4 +482,72 @@ func (s reachStep) caveats(report *ReachReport, module goModule, reader *testrea
 		caveats = append(caveats, fmt.Sprintf("the tests of %s may reach it: their maps recorded the files of %s before they changed", strings.Join(stale, ", "), pkg))
 	}
 	return caveats
+}
+
+// Causes of an unseen test that a reach caveat names.
+const (
+	causeOutOfProcess = "they run code in another process, so the map run never ran them"
+	causeUnresolved   = "they call what the spawn scan cannot resolve, which may run code in another process"
+	// causeOutcome takes the outcome the map run recorded for the tests' runs alone.
+	causeOutcome = "the map run recorded their runs alone as %s, with no coverage"
+)
+
+// unmappedTierNames returns the names of the groups of tests that no map holds.
+// mapped holds the tiers a map run measures.
+// The groups are each tier outside mapped that a test names, ascending, then "no tier" when a test names none.
+func unmappedTierNames(tests []testcover.TestFunc, mapped map[int]gateslot.Tier) []string {
+	var tiers []int
+	untiered := false
+	for _, test := range tests {
+		if !test.Tiered {
+			untiered = true
+		} else if _, held := mapped[test.Tier]; !held {
+			tiers = append(tiers, test.Tier)
+		}
+	}
+	slices.Sort(tiers)
+	var names []string
+	for _, tier := range slices.Compact(tiers) {
+		names = append(names, fmt.Sprintf("tier%d", tier))
+	}
+	if untiered {
+		names = append(names, "no tier")
+	}
+	return names
+}
+
+// unseenTestCaveats returns one caveat per cause that leaves a test of the package pkg unseen, naming its tests.
+// The caveats are sorted by cause.
+func unseenTestCaveats(pkg string, unseen []testreach.UnseenTest) []string {
+	testsByCause := map[string][]string{}
+	for _, test := range unseen {
+		cause := unseenCause(test)
+		testsByCause[cause] = append(testsByCause[cause], test.Test)
+	}
+	var caveats []string
+	for _, cause := range slices.Sorted(maps.Keys(testsByCause)) {
+		caveats = append(caveats, fmt.Sprintf("%s of %s may run it unseen: %s", namedTests(testsByCause[cause]), pkg, cause))
+	}
+	return caveats
+}
+
+// unseenCause returns why the map may not show test reaching a function.
+// A test that never ran gives its spawn mark, and one whose run failed, timed out or was skipped its outcome.
+// Any other gives its unresolved mark, one whose run passed and covered nothing included.
+func unseenCause(test testreach.UnseenTest) string {
+	switch {
+	case test.Spawn.OutOfProcess:
+		return causeOutOfProcess
+	case test.Outcome != "" && test.Outcome != testcover.OutcomeNoCoverage:
+		return fmt.Sprintf(causeOutcome, test.Outcome)
+	}
+	return causeUnresolved
+}
+
+// namedTests names the first maxReachTestsPerFunction of tests and counts the rest.
+func namedTests(tests []string) string {
+	if len(tests) <= maxReachTestsPerFunction {
+		return strings.Join(tests, ", ")
+	}
+	return fmt.Sprintf("%s and %d more", strings.Join(tests[:maxReachTestsPerFunction], ", "), len(tests)-maxReachTestsPerFunction)
 }

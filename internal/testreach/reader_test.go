@@ -4,6 +4,7 @@ package testreach_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -115,8 +116,8 @@ func TestReader(t *testing.T) {
 		}
 	}
 	// worktreeCase writes a shared map of a built at sharedBuilt and a worktree map of a built at worktreeBuilt.
-	// The worktree map records the hash of its file as fileHash.
-	worktreeCase := func(fileHash string, sharedBuilt, worktreeBuilt time.Time) func(*testing.T, reachFixture) {
+	// The worktree map records the hash of its file as fileHash and has the format version.
+	worktreeCase := func(version int, fileHash string, sharedBuilt, worktreeBuilt time.Time) func(*testing.T, reachFixture) {
 		return func(t *testing.T, f reachFixture) {
 			f.writeFile(t, "a/a.go", pkgFile)
 			writeCoverageMap(t, f.shared, "a", testcover.Map{
@@ -126,6 +127,7 @@ func TestReader(t *testing.T) {
 			})
 			writeCoverageMap(t, f.worktree, "a", testcover.Map{
 				Commit: "worktree", BuiltAt: worktreeBuilt, Files: map[string]string{"a.go": fileHash},
+				Format: &testcover.MapFormat{Version: version},
 				Blocks: []testcover.BlockKey{block("a.go", "F")},
 				Tests:  []testcover.MapTest{{Name: "TestWorktree", Blocks: []int{0}}},
 			})
@@ -157,33 +159,43 @@ func TestReader(t *testing.T) {
 			skipMaps: true,
 		},
 		{
-			name: "OutcomeAndSpawnEntriesReachNothing",
+			name: "OutcomeAndOutOfProcessEntriesReachNothingAndAnUnresolvedEntryReachesItsBlocks",
 			setup: func(t *testing.T, f reachFixture) {
 				writeCoverageMap(t, f.shared, "c", testcover.Map{
 					Commit: "c1", BuiltAt: builtEarly,
 					Blocks: []testcover.BlockKey{block("c.go", "F")},
 					Tests: []testcover.MapTest{
-						{Name: "TestFailed", Outcome: testcover.OutcomeFailed, Blocks: []int{0}},
-						{Name: "TestOutOfProcess", Spawn: testcover.SpawnVerdict{OutOfProcess: true}, Blocks: []int{0}},
 						{Name: "TestUnresolved", Spawn: testcover.SpawnVerdict{Unresolved: true}, Blocks: []int{0}},
+						{Name: "TestOutOfProcess", Spawn: testcover.SpawnVerdict{OutOfProcess: true}, Blocks: []int{0}},
+						{Name: "TestFailed", Outcome: testcover.OutcomeFailed, Blocks: []int{0}},
+						{Name: "TestSkipped", Outcome: testcover.OutcomeSkipped},
 					},
 				})
-				writeCoverageMap(t, f.shared, "a", testcover.Map{Commit: "c1", BuiltAt: builtEarly, Tests: []testcover.MapTest{{Name: "TestPlain"}}})
+				writeCoverageMap(t, f.shared, "a", testcover.Map{Commit: "c1", BuiltAt: builtEarly, Tests: []testcover.MapTest{
+					{Name: "TestPlain"}, {Name: "TestEmpty", Outcome: testcover.OutcomeNoCoverage},
+				}})
 			},
 			fn:       testcover.FuncKey{Package: modulePath + "/c", File: "c.go", Func: "F"},
+			want:     []testreach.Reach{{Package: modulePath + "/c", Test: "TestUnresolved", Own: true, Funcs: 1, MapCommit: "c1"}},
 			skipMaps: true,
 			check: func(t *testing.T, _ reachFixture, r *testreach.Reader) {
-				if !r.SpawnMarked("c") {
-					t.Error("SpawnMarked(c) = false; want true")
+				wantUnseen := []testreach.UnseenTest{
+					{Test: "TestFailed", Outcome: testcover.OutcomeFailed},
+					{Test: "TestOutOfProcess", Spawn: testcover.SpawnVerdict{OutOfProcess: true}},
+					{Test: "TestSkipped", Outcome: testcover.OutcomeSkipped},
+					{Test: "TestUnresolved", Spawn: testcover.SpawnVerdict{Unresolved: true}},
 				}
-				if r.SpawnMarked("a") {
-					t.Error("SpawnMarked(a) = true; want false")
+				if diff := cmp.Diff(wantUnseen, r.UnseenTests("c")); diff != "" {
+					t.Errorf("UnseenTests(c) mismatch (-want +got):\n%s", diff)
+				}
+				if got := r.UnseenTests("a"); len(got) != 0 {
+					t.Errorf("UnseenTests(a) = %+v; want none, since a test that covered nothing runs nothing", got)
 				}
 			},
 		},
 		{
 			name:  "WorktreeMapWithMatchingHashesOverridesALaterSharedMap",
-			setup: worktreeCase(hashOf(pkgFile), builtLate, builtEarly),
+			setup: worktreeCase(testcover.MapFormatVersion, hashOf(pkgFile), builtLate, builtEarly),
 			fn:    reachedF,
 			want:  []testreach.Reach{aReach("TestWorktree", "worktree")},
 			wantMaps: []testreach.MapSource{
@@ -191,8 +203,17 @@ func TestReader(t *testing.T) {
 			},
 		},
 		{
+			name:  "WorktreeMapOfAnOlderFormatWithMatchingHashesLosesToALaterSharedMap",
+			setup: worktreeCase(2, hashOf(pkgFile), builtLate, builtEarly),
+			fn:    reachedF,
+			want:  []testreach.Reach{aReach("TestShared", "shared")},
+			wantMaps: []testreach.MapSource{
+				{Package: "a", Commit: "shared", BuiltAt: builtLate},
+			},
+		},
+		{
 			name:  "StaleWorktreeMapLosesToALaterSharedMap",
-			setup: worktreeCase(hashOf("changed"), builtLate, builtEarly),
+			setup: worktreeCase(testcover.MapFormatVersion, hashOf("changed"), builtLate, builtEarly),
 			fn:    reachedF,
 			want:  []testreach.Reach{aReach("TestShared", "shared")},
 			wantMaps: []testreach.MapSource{
@@ -201,7 +222,7 @@ func TestReader(t *testing.T) {
 		},
 		{
 			name:  "StaleWorktreeMapWinsWhenBuiltLater",
-			setup: worktreeCase(hashOf("changed"), builtEarly, builtLate),
+			setup: worktreeCase(testcover.MapFormatVersion, hashOf("changed"), builtEarly, builtLate),
 			fn:    reachedF,
 			want:  []testreach.Reach{aReach("TestWorktree", "worktree")},
 			wantMaps: []testreach.MapSource{
@@ -286,6 +307,28 @@ func TestReader(t *testing.T) {
 				}
 				if want := []string{"older"}; !slices.Equal(stale, want) {
 					t.Errorf("StaleLinkers() = %v; want %v", stale, want)
+				}
+			},
+		},
+		{
+			name: "UnseenLinkerTestsReturnsTheUnseenTestsOfThePackagesLinkingThePackage",
+			setup: func(t *testing.T, f reachFixture) {
+				linked := map[string]map[string]string{modulePath + "/a": {"a.go": hashOf(pkgFile)}}
+				failed := testcover.MapTest{Name: "TestFails", Outcome: testcover.OutcomeFailed}
+				writeCoverageMap(t, f.shared, "linker", testcover.Map{
+					Commit: "c1", BuiltAt: builtEarly, Linked: linked, Tests: []testcover.MapTest{failed, {Name: "TestPasses"}},
+				})
+				writeCoverageMap(t, f.shared, "seen", testcover.Map{
+					Commit: "c1", BuiltAt: builtEarly, Linked: linked, Tests: []testcover.MapTest{{Name: "TestPasses"}},
+				})
+				writeCoverageMap(t, f.shared, "unrelated", testcover.Map{Commit: "c1", BuiltAt: builtEarly, Tests: []testcover.MapTest{failed}})
+			},
+			fn:       reachedF,
+			skipMaps: true,
+			check: func(t *testing.T, _ reachFixture, r *testreach.Reader) {
+				want := map[string][]testreach.UnseenTest{"linker": {{Test: "TestFails", Outcome: testcover.OutcomeFailed}}}
+				if diff := cmp.Diff(want, r.UnseenLinkerTests(modulePath+"/a")); diff != "" {
+					t.Errorf("UnseenLinkerTests() mismatch (-want +got):\n%s", diff)
 				}
 			},
 		},
@@ -389,7 +432,7 @@ func TestReaderIndex(t *testing.T) {
 	baseMap := testcover.Map{
 		Commit: "c1", BuiltAt: builtEarly,
 		Blocks: []testcover.BlockKey{block("a.go", "F")},
-		Tests:  []testcover.MapTest{{Name: "TestF", Blocks: []int{0}}},
+		Tests:  []testcover.MapTest{{Name: "TestF", Blocks: []int{0}}, {Name: "TestG", Outcome: testcover.OutcomeTimedOut}},
 	}
 	// writeIndex writes the index of f's shared maps and requires that it holds the test named holds.
 	writeIndex := func(t *testing.T, f reachFixture, holds string) {
@@ -412,6 +455,29 @@ func TestReaderIndex(t *testing.T) {
 		{name: "NoIndex"},
 		{name: "IndexThatDoesNotParse", indexBytes: []byte("{not json")},
 		{name: "ACurrentIndex", prepare: func(t *testing.T, f reachFixture) { writeIndex(t, f, "TestF") }},
+		{name: "AnIndexOfAnotherVersionWithTheCurrentStamp", prepare: func(t *testing.T, f reachFixture) {
+			writeIndex(t, f, "TestF")
+			path := filepath.Join(f.shared, testreach.IndexFileName)
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var index map[string]any
+			if err := json.Unmarshal(data, &index); err != nil {
+				t.Fatal(err)
+			}
+			// A version 1 index holds no unseen list, so a reader that took it would answer none.
+			index["version"] = 1
+			for _, info := range index["packages"].(map[string]any) {
+				delete(info.(map[string]any), "unseen")
+			}
+			if data, err = json.Marshal(index); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}},
 		{name: "AnIndexWhoseStampDiffersAfterAMapWasRewritten", prepare: func(t *testing.T, f reachFixture) {
 			old := baseMap
 			old.Tests = []testcover.MapTest{{Name: "TestOld", Blocks: []int{0}}}
@@ -449,7 +515,9 @@ func TestReaderIndex(t *testing.T) {
 				tt.prepare(t, f)
 			}
 			indexBytes, readErr := os.ReadFile(indexPath)
-			// want is what the maps alone answer: the index is set aside while a reader answers from them, then put back.
+			// want and wantUnseen are what the maps alone answer:
+			// the index is set aside while a reader answers from them, then put back.
+			var wantUnseen []testreach.UnseenTest
 			want := func() []testreach.Reach {
 				if indexBytes != nil {
 					if err := os.Remove(indexPath); err != nil {
@@ -465,6 +533,7 @@ func TestReaderIndex(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Open() without the index error = %v", err)
 				}
+				wantUnseen = r.UnseenTests("a")
 				return r.TestsReaching(reachedF)
 			}()
 			if len(want) == 0 || want[0].Test != "TestF" || !want[0].Own {
@@ -476,6 +545,12 @@ func TestReaderIndex(t *testing.T) {
 			}
 			if diff := cmp.Diff(want, r.TestsReaching(reachedF)); diff != "" {
 				t.Errorf("TestsReaching() mismatch (-want +got):\n%s", diff)
+			}
+			if wantG := []testreach.UnseenTest{{Test: "TestG", Outcome: testcover.OutcomeTimedOut}}; !cmp.Equal(wantUnseen, wantG) {
+				t.Fatalf("UnseenTests(a) from the maps alone = %+v; want %+v", wantUnseen, wantG)
+			}
+			if diff := cmp.Diff(wantUnseen, r.UnseenTests("a")); diff != "" {
+				t.Errorf("UnseenTests(a) mismatch (-want +got):\n%s", diff)
 			}
 			got, readErr := os.ReadFile(indexPath)
 			if indexBytes == nil {

@@ -42,6 +42,8 @@ type mappedRun struct {
 	covered testcover.BlockSet
 	// funcs are the functions of the linked packages a passing run covered.
 	funcs []testcover.FuncKey
+	// spawn is the spawn scan's verdict on the test, which its entry carries beside its coverage.
+	spawn testcover.SpawnVerdict
 }
 
 // blockTable is what a fresh coverage build holds of a package, read from the first profile one of its runs wrote.
@@ -61,8 +63,10 @@ type packageRun struct {
 	trees                   map[string]packageTree
 	// indexes name the functions of each linked package but the job's own, by import path.
 	indexes map[string]*testcover.FuncIndex
-	// m is the package's new map as the job started: its file hashes and the entries of its spawn-marked tests.
+	// m is the package's new map as the job started: its file hashes and the entries of its out-of-process tests.
 	m testcover.Map
+	// spawns holds the spawn scan's verdict on each test of the package, by name.
+	spawns map[string]testcover.SpawnVerdict
 	// table is read from the first profile a run of the job wrote, nil until then.
 	table *blockTable
 	// measure holds the job's build and run time.
@@ -89,7 +93,9 @@ type coverageBuild struct {
 
 // mapPackage measures the job's package at the call's HEAD and writes its map once its tests ran.
 // The job starts from an empty map at HEAD, so the new map replaces any map the package had.
-// It runs every mapped test but those the spawn scan marks, which enter with their verdict, unrun.
+// It runs every mapped test but those the spawn scan marks out of process, which enter with their verdict, unrun.
+// A test marked unresolved alone runs, and enters with its verdict beside its run's coverage,
+// so a function it calls in its own process reads as reached.
 // A package with no mapped test gets a map of its file hashes and no tests, with no build.
 // A failed build is recorded through writeFailed.
 // Every write is checked first, and a package that fails the check is listed unmeasured with no map written.
@@ -120,7 +126,7 @@ func (r *testMapRun) mapPackage(job testMapJob) error {
 	}
 	var toRun []testcover.TestFunc
 	for _, fn := range mapped {
-		if verdict := spawns[fn.Name]; verdict.OutOfProcess || verdict.Unresolved {
+		if verdict := spawns[fn.Name]; verdict.OutOfProcess {
 			m.Tests = append(m.Tests, testcover.MapTest{Name: fn.Name, Tier: fn.Tier, FuncHash: fn.Hash, Spawn: verdict, Commit: head, MeasuredAt: time.Now()})
 			continue
 		}
@@ -165,7 +171,7 @@ func (r *testMapRun) mapPackage(job testMapJob) error {
 		r.ahead = r.startBuild(r.next.pkg)
 	}
 	p := &packageRun{
-		job: job, pkgDir: pkgDir, importPath: importPath, bin: build.bin, mapped: mapped, trees: trees, m: m,
+		job: job, pkgDir: pkgDir, importPath: importPath, bin: build.bin, mapped: mapped, trees: trees, m: m, spawns: spawns,
 		indexes: map[string]*testcover.FuncIndex{}, measure: testMapMeasure{Package: pkg, BuildSeconds: build.seconds},
 	}
 	for _, other := range build.linked {
@@ -559,7 +565,7 @@ func (r *testMapRun) runTest(p *packageRun, fn testcover.TestFunc, profile strin
 		Env: env, Ctx: r.ctx, TestTimeout: r.testTimeout, MemoryLimit: r.testMemory, GuardKilled: r.guardKilled, Grace: r.request.grace,
 	}
 	result, err := runner.RunAlone(p.bin, p.pkgDir, profile, fn.Name)
-	run := mappedRun{fn: fn, result: result}
+	run := mappedRun{fn: fn, result: result, spawn: p.spawns[fn.Name]}
 	switch {
 	case err != nil:
 		logger.Warn("gate test --map: a test that could not run is recorded as failed", "package", p.job.pkg, "test", fn.Name, "cause", err)
@@ -587,13 +593,13 @@ func ranNames(runs []mappedRun) map[string]bool {
 }
 
 // fillMapTests merges runs, the job's reduced runs, into m and sets its block key and function tables.
-// An entry of m that a run names is replaced by the run's; every other entry, a spawn-marked test's, is kept.
+// An entry of m that a run names is replaced by the run's; every other entry, an out-of-process test's, is kept.
 // The block table is table's keys, the fresh build's blocks of the package's own files;
 // m's own table stands when table is nil, since no run wrote a profile.
 // The function table holds the kept entries' functions and those the passing runs cover.
 // A passing run that covers a block of the package or a function of a linked package enters with that coverage;
 // one that covers neither enters as OutcomeNoCoverage, and any other run with its outcome.
-// Every entry a run gives carries commit and at.
+// Every entry a run gives carries commit, at and the run's spawn verdict.
 func fillMapTests(m *testcover.Map, table *blockTable, runs []mappedRun, commit string, at time.Time) {
 	ran := ranNames(runs)
 	var kept []testcover.MapTest
@@ -636,7 +642,7 @@ func fillMapTests(m *testcover.Map, table *blockTable, runs []mappedRun, commit 
 	for _, run := range runs {
 		entry := testcover.MapTest{
 			Name: run.fn.Name, Tier: run.fn.Tier, FuncHash: run.fn.Hash, Seconds: run.result.Elapsed,
-			Outcome: run.outcome, Commit: commit, MeasuredAt: at,
+			Spawn: run.spawn, Outcome: run.outcome, Commit: commit, MeasuredAt: at,
 		}
 		if run.outcome == "" {
 			for position := range run.covered {

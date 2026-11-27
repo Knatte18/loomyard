@@ -36,6 +36,15 @@ type Reach struct {
 	MapCommit string
 }
 
+// UnseenTest is a test of a package's map that may run a function the map does not show it reaching.
+type UnseenTest struct {
+	Test string `json:"test"`
+	// Spawn is the spawn scan's verdict on the test.
+	Spawn testcover.SpawnVerdict `json:"spawn"`
+	// Outcome is why the test's run alone recorded no coverage, empty when it recorded some.
+	Outcome testcover.TestOutcome `json:"outcome,omitempty"`
+}
+
 // MapSource describes one map a Reader read.
 type MapSource struct {
 	// Package is the module-relative slash path of the map's package.
@@ -49,7 +58,8 @@ type MapSource struct {
 // Open reads the coverage maps of module from the hub's shared maps directory sharedDir.
 // It also reads the worktree's own maps directory worktreeDir, which is "" where the worktree keeps none.
 // An absent directory reads as one with no maps.
-// For a package both hold, the worktree's map wins when Fresh holds for it; otherwise the map built later wins.
+// For a package both hold, the worktree's map wins when it has the current format and Fresh holds for it;
+// otherwise the map built later wins.
 // A map that holds only a build failure, names a block or function outside its tables or does not parse is passed over.
 // The reverse table of the shared maps comes from the index beside them when the index's stamp is current.
 // Otherwise it is built in memory; Open never writes the index.
@@ -89,7 +99,7 @@ func worktreeMapWins(module Module, pkg string, m testcover.Map, shared packageI
 	if err != nil {
 		return false, err
 	}
-	return fresh || !shared.BuiltAt.After(m.BuiltAt), nil
+	return fresh && m.HasCurrentFormat() || !shared.BuiltAt.After(m.BuiltAt), nil
 }
 
 // readSharedTable returns the reverse table of the shared maps in dir, from a current index or else from the maps.
@@ -129,10 +139,10 @@ func buildTable(module Module, maps map[string]testcover.Map, worktree bool) map
 			info.LinkedDigests[linked] = digestHashes(hashes)
 		}
 		for _, test := range m.Tests {
-			if test.Spawn.OutOfProcess || test.Spawn.Unresolved {
-				info.SpawnMarked = true
+			if mayRunUnseen(test) {
+				info.Unseen = append(info.Unseen, UnseenTest{Test: test.Name, Spawn: test.Spawn, Outcome: test.Outcome})
 			}
-			if !test.Measured() {
+			if !test.HoldsCoverage() {
 				continue
 			}
 			reached := map[testcover.FuncKey]struct{}{}
@@ -146,9 +156,16 @@ func buildTable(module Module, maps map[string]testcover.Map, worktree bool) map
 				table.Reaches[fn] = append(table.Reaches[fn], reachEntry{MapPackage: pkg, Package: importPath, Test: test.Name, Funcs: len(reached)})
 			}
 		}
+		slices.SortFunc(info.Unseen, func(a, b UnseenTest) int { return strings.Compare(a.Test, b.Test) })
 		table.Packages[pkg] = info
 	}
 	return table
+}
+
+// mayRunUnseen reports whether the test of entry may run a function its map does not show it reaching.
+// A spawn-marked test may run one in another process; a run alone that failed, timed out or was skipped recorded none.
+func mayRunUnseen(entry testcover.MapTest) bool {
+	return entry.Spawn.OutOfProcess || entry.Spawn.Unresolved || (entry.Outcome != "" && entry.Outcome != testcover.OutcomeNoCoverage)
 }
 
 // TestsReaching returns every test that reaches fn.
@@ -237,11 +254,26 @@ func (r *Reader) Maps() []MapSource {
 	return sources
 }
 
-// SpawnMarked reports whether the map of the module-relative package pkg holds an entry.
-// The entry's spawn verdict must mark the test out of process or unresolved.
-// Such a test may run the function in a process the map's coverage cannot see.
-func (r *Reader) SpawnMarked(pkg string) bool {
-	return r.packages[pkg].SpawnMarked
+// UnseenTests returns, sorted by name, the tests that may run a function unseen.
+// They are tests of the map of the module-relative package pkg.
+// One kind is a test the spawn scan marks, which may run module code in another process.
+// The other is a test whose run alone failed, timed out or was skipped and so recorded no coverage.
+func (r *Reader) UnseenTests(pkg string) []UnseenTest {
+	return r.packages[pkg].Unseen
+}
+
+// UnseenLinkerTests returns the tests that may run a function unseen from the maps recording a package as linked.
+// pkg is the linked package's import path.
+// The result is keyed by the module-relative package of each such map, its tests sorted by name;
+// a map holding no such test has no key.
+func (r *Reader) UnseenLinkerTests(pkg string) map[string][]UnseenTest {
+	unseen := map[string][]UnseenTest{}
+	for mapPkg, info := range r.packages {
+		if _, linked := info.LinkedDigests[pkg]; linked && len(info.Unseen) > 0 {
+			unseen[mapPkg] = info.Unseen
+		}
+	}
+	return unseen
 }
 
 // StaleLinkers names, sorted, the module-relative packages whose maps record the package at import path pkg as linked.

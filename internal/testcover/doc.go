@@ -65,8 +65,10 @@
 // LinkedPackages lists the main module's packages a package's test binary links, the coverpkg of a cross-package build.
 //
 // The coverage map is one JSON record per package, read and written through internal/state.
-// An entry records a passing measurement, or instead a TestOutcome for a run alone that recorded no coverage,
-// or a spawn verdict for a test the spawn scan marks; MapTest.Measured tells the first.
+// An entry records a passing measurement, or instead a TestOutcome for a run alone that recorded no coverage.
+// The entry of a test the spawn scan marks carries the verdict too.
+// A test marked out of process is never run, so its entry holds neither coverage nor outcome.
+// MapTest.HoldsCoverage tells an entry that holds coverage, and MapTest.Measured one a judge may use.
 // A map whose coverage build failed with no entry to keep holds the failure as its BuildFailure;
 // a map that keeps entries holds a later failure and its commit as its Failure instead.
 // Its MapFormat marker holds the writer's commit, build time and EnvironmentStamp.

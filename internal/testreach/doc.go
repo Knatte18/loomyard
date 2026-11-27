@@ -20,16 +20,20 @@
 // Open reads the coverage maps of the module from two directories, each a testcover.Dir:
 // the hub's shared maps and the worktree's own maps, which the prime keeps none of.
 // An absent directory reads as one with no maps.
-// For a package both hold, the worktree's map wins when Fresh holds for it; otherwise the map built later wins.
+// For a package both hold, the worktree's map wins when it has the current format and Fresh holds for it;
+// otherwise the map built later wins.
 // A map that holds only a build failure, names a block or function outside its tables or does not parse is passed over,
 // and a map that does not parse is logged, so one corrupt map never stops the other packages from answering.
 // ReadPackageMap reads one package's map with the same pass-over rules.
 // In its own package a test reaches a function when its blocks hold a block of the function;
 // in another package, when the function is among the functions its map lists.
-// An entry with an outcome or a spawn mark reaches nothing.
-// SpawnMarked and StaleLinkers name the two caveats of an answer:
-// a package whose map holds a test that may run code in another process,
-// and the packages whose maps recorded a linked package's files before they changed.
+// An entry with an outcome, or one marked out of process, reaches nothing.
+// An entry marked unresolved alone reaches what its run alone covered.
+// UnseenTests, UnseenLinkerTests and StaleLinkers name the caveats of an answer.
+// UnseenTests gives the tests of a package whose entries may leave out a function they run.
+// Each comes with its spawn verdict and outcome.
+// UnseenLinkerTests gives such tests of the packages whose maps record a package as linked.
+// StaleLinkers gives the packages whose maps recorded a linked package's files before they changed.
 //
 // The reverse table of the shared maps, from function to reaching tests, is a cache file beside them, the index.
 // Open uses the index when its stamp equals the directory's current stamp.

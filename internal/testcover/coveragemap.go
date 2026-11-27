@@ -18,8 +18,8 @@ const mapFileName = "map.json"
 // MapFormatVersion is the map shape a MapFormat marker names:
 // The shape holds the own package's blocks and other files.
 // It holds each linked package's covered functions and file hashes.
-// It also holds each test's spawn verdict.
-const MapFormatVersion = 2
+// It also holds each test's spawn verdict, and the coverage of a test the verdict marks unresolved alone.
+const MapFormatVersion = 3
 
 // Dir returns the coverage map directory under the `.lym` of the directory root.
 // Under the hub's board directory it holds the maps every worktree of the hub on the machine shares;
@@ -59,9 +59,16 @@ type Map struct {
 	// Failure records a coverage build that failed at a later commit than Commit, beside the entries the map keeps;
 	// nil when no build failed since.
 	Failure *MapFailure `json:"failure,omitempty"`
-	// Format marks a map of the MapFormatVersion shape; it is nil in a map no writer of that shape wrote.
+	// Format is the writer's marker of the map's shape.
+	// A map of the MapFormatVersion shape holds that Version; an older map holds a lower one, or no marker.
 	// Its Commit and BuiltAt equal the map's own unless a writer that does not know it rewrote the map since.
 	Format *MapFormat `json:"format,omitempty"`
+}
+
+// HasCurrentFormat reports whether the map's marker names the MapFormatVersion shape or a later one.
+// A map of an older shape can hold less than a run now records, however well its file hashes match.
+func (m Map) HasCurrentFormat() bool {
+	return m.Format != nil && m.Format.Version >= MapFormatVersion
 }
 
 // MapTest is one judged top-level test of a coverage map.
@@ -78,7 +85,8 @@ type MapTest struct {
 	// Funcs are indexes into Map.Funcs of the linked packages' functions the test covers.
 	Funcs []int `json:"funcs,omitempty"`
 	// Spawn is the static spawn scan's verdict on the test.
-	// An entry whose verdict marks the test out of process or unresolved records no passing measurement.
+	// An entry whose verdict marks the test out of process holds no coverage, since the map run never runs it.
+	// One marked unresolved alone holds the coverage of its run alone, which no judge uses.
 	Spawn SpawnVerdict `json:"spawn"`
 	// Outcome is why the test's run alone recorded no coverage, empty for a passing measurement.
 	Outcome TestOutcome `json:"outcome,omitempty"`
@@ -90,9 +98,16 @@ type MapTest struct {
 
 // Measured reports whether the entry records a passing measurement:
 // no outcome, and no spawn verdict that marks the test out of process or unresolved.
-// Only such an entry counts as the test's coverage.
+// Only such an entry is judged, since a marked test may run module code its coverage does not see.
 func (t MapTest) Measured() bool {
 	return t.Outcome == "" && !t.Spawn.OutOfProcess && !t.Spawn.Unresolved
+}
+
+// HoldsCoverage reports whether the entry holds the in-process coverage of a passing run alone.
+// An entry marked unresolved alone holds one beside its verdict; an entry marked out of process was never run.
+// The coverage shows what the test runs in its own process, so it answers which tests reach a function.
+func (t MapTest) HoldsCoverage() bool {
+	return t.Outcome == "" && !t.Spawn.OutOfProcess
 }
 
 // MapFailure is a coverage build that failed at a commit later than the map's own.

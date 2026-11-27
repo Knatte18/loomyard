@@ -223,7 +223,7 @@ func TestGateReach(t *testing.T) {
 			name: "AFunctionNoMappedTestReachesNamesItsPackagesMap", cwd: prime,
 			args:      []string{"alpha/alpha.go#Two"},
 			wantLines: []string{"no mapped test reaches alpha.Two", "map of alpha from commit alphamap"},
-			notLines:  []string{"no coverage map holds"},
+			notLines:  []string{"no coverage map holds", "which no map holds"},
 		},
 		{
 			name: "AFunctionOfAPackageWithNoMapSaysNoMapHoldsIt", cwd: prime,

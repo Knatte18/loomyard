@@ -23,7 +23,7 @@ import (
 const indexFileName = "index.json"
 
 // indexVersion is the shape of the index file; an index of another shape is read as absent.
-const indexVersion = 1
+const indexVersion = 2
 
 // indexFile is the reverse table of the shared maps, from each function to the tests that reach it, as a cache file.
 type indexFile struct {
@@ -45,8 +45,8 @@ type funcReaches struct {
 type packageInfo struct {
 	Commit  string    `json:"commit"`
 	BuiltAt time.Time `json:"built_at"`
-	// SpawnMarked is set when an entry of the map has a spawn verdict that marks it out of process or unresolved.
-	SpawnMarked bool `json:"spawn_marked,omitempty"`
+	// Unseen holds the tests of the map that may run a function the map does not show them reaching, sorted by name.
+	Unseen []UnseenTest `json:"unseen,omitempty"`
 	// LinkedDigests maps each linked package's import path to the digestHashes of the file hashes the map recorded for it.
 	LinkedDigests map[string]string `json:"linked_digests,omitempty"`
 	// Worktree is set for a map read from the worktree's own maps; it is never stored.

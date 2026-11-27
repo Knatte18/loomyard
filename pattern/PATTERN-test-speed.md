@@ -298,6 +298,8 @@ this section keeps only what is project-specific or stricter here.
 - `lym gate test --map` keeps one coverage map per package under `internal/testcover`.
   A map records, for each tier0 and tier1 test, its function hash, the blocks it covers of its own package's files,
   the functions it covers of each other in-module package its test binary links, and its spawn scan verdict.
+  A test the scan marks out of process is never run and holds no coverage;
+  one marked unresolved alone runs, and its coverage answers reach though no judge uses it.
   It also records the hashes of the package's files and of each linked package's files at the commit it was built from.
   The hub's shared maps are built only on command: no dobby, landing or gate builds them, and the gate selects no test from them.
   The `reach` step refreshes a task worktree's own anchor maps of the packages holding changed functions,
@@ -334,7 +336,8 @@ this section keeps only what is project-specific or stricter here.
   It finds the functions the diff changes against the merge base with the parent branch, or against HEAD in the prime,
   and writes `reach.json` in the worktree's gate directory with the tests of the maps that reach each one.
   It prints a note of the report.
-  A task worktree first refreshes its own anchor maps of the packages holding a changed function whose map is absent or stale,
+  A task worktree first refreshes its own anchor maps of the packages holding a changed function
+  whose map is absent, of an older format or stale,
   within `gate.reach_budget_min`; a package with an uncommitted file of its own or of a linked package keeps its map and is listed.
   The prime refreshes nothing and answers from the shared maps.
   The step is advisory: it never changes the gate's result.

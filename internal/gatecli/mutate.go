@@ -80,6 +80,7 @@ func mutateCmd(goBinary string, minuteUnit, grace time.Duration) *cobra.Command 
 The diff is from --base, else the merge base with the parent branch; a worktree with neither, the prime's case, is refused.
 It refreshes the worktree's own coverage maps of the packages holding a changed function under ` + keyName(reachBudgetMinKey) + `; the prime refreshes nothing.
 A package is judged only with a fresh map: one the refresh wrote, or a map whose file hashes match the worktree, the hub's shared one in the prime.
+In a task worktree a package the refresh left unrefreshed is not judged, even when its map's file hashes match.
 Any other changed package is listed as not judged, with its reason and way forward.
 It places at most one mutant on each changed line of a block a test covers, leaving out lines that only log or test another platform.
 It takes up to ` + keyName(mutationMaxMutantsKey) + ` over the changed functions in turn, spread evenly over them when the cap is short of one each.

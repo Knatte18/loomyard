@@ -33,11 +33,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// reachFunctionLine is the part of a ReachFunction the rows compare: the function, its tests and whether it has a caveat.
+// reachFunctionLine is the part of a ReachFunction the rows compare: the function, its tests and its caveats.
 type reachFunctionLine struct {
 	Package, Func string
 	Tests         []string
-	Caveated      bool
+	Caveats       []string
 }
 
 // TestGateTestReachStep runs the reach report step in order over one hub.
@@ -64,7 +64,7 @@ func TestGateTestReachStep(t *testing.T) {
 
 	// Each package holds the two one-line functions One and Two and a tier0 test that covers One.
 	// nomap's test binary links lib, and tiered holds a tier2 test file beside its tier0 test.
-	packages := []string{"alpha", "dirty", "dirtylink", "fresh", "lib", "lib2", "nomap", "stale", "tiered"}
+	packages := []string{"alpha", "dirty", "dirtylink", "fresh", "lib", "lib2", "nomap", "oldformat", "stale", "tiered"}
 	title := func(pkg string) string { return strings.ToUpper(pkg[:1]) + pkg[1:] }
 	seeded := map[string]string{"go.mod": "module " + module + "\n\ngo 1.21\n"}
 	for _, pkg := range packages {
@@ -90,7 +90,7 @@ func TestGateTestReachStep(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, pkg := range []string{"dirty", "dirtylink", "fresh", "nomap", "stale"} {
+	for _, pkg := range []string{"dirty", "dirtylink", "fresh", "nomap", "oldformat", "stale"} {
 		edit(t, pair, pkg, "return 1 }", "return 9 }")
 	}
 	edit(t, pair, "tiered", "return 2 }", "return 8 }")
@@ -145,7 +145,10 @@ func TestGateTestReachStep(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		m := testcover.Map{Commit: "c0ffee", BuiltAt: time.Now().Add(-time.Hour), Files: diskHashes(t, filepath.Join(root, pkg)), Blocks: keys}
+		m := testcover.Map{
+			Commit: "c0ffee", BuiltAt: time.Now().Add(-time.Hour), Files: diskHashes(t, filepath.Join(root, pkg)), Blocks: keys,
+			Format: &testcover.MapFormat{Version: testcover.MapFormatVersion},
+		}
 		if test != "" {
 			m.Tests = []testcover.MapTest{{Name: test, FuncHash: "x", Seconds: 0.01, Blocks: []int{0}}}
 		}
@@ -206,7 +209,7 @@ func TestGateTestReachStep(t *testing.T) {
 	functionLines := func(report ReachReport) []reachFunctionLine {
 		var lines []reachFunctionLine
 		for _, fn := range report.Functions {
-			line := reachFunctionLine{Package: fn.Package, Func: fn.Func, Caveated: len(fn.Caveats) > 0}
+			line := reachFunctionLine{Package: fn.Package, Func: fn.Func, Caveats: fn.Caveats}
 			for _, test := range fn.Tests {
 				line.Tests = append(line.Tests, test.Package+"."+test.Test)
 			}
@@ -240,11 +243,21 @@ func TestGateTestReachStep(t *testing.T) {
 		t.Fatal(err)
 	}
 	// fresh's own map matches the worktree; stale's does not; dirtylink's does not and records lib2 as linked.
+	// oldformat's matches the worktree but has an older format.
+	// lib2's map records dirtylink as linked, and it and dirtylink's each hold a test whose run failed.
 	writeMap(t, anchorDir, "fresh", mapOf(t, pair, "fresh", "TestFreshOne"))
+	oldFormat := mapOf(t, pair, "oldformat", "TestOldformatOne")
+	oldFormat.Format.Version = 2
+	writeMap(t, anchorDir, "oldformat", oldFormat)
+	linker := mapOf(t, pair, "lib2", "")
+	linker.Linked = map[string]map[string]string{module + "/dirtylink": diskHashes(t, filepath.Join(pair, "dirtylink"))}
+	linker.Tests = []testcover.MapTest{{Name: "TestLib2Fails", Outcome: testcover.OutcomeFailed}}
+	writeMap(t, anchorDir, "lib2", linker)
 	writeMap(t, anchorDir, "stale", staleMapOf(t))
 	dirtyLinked := mapOf(t, pair, "dirtylink", "")
 	dirtyLinked.Files["dirtylink.go"] = "an earlier dirtylink.go"
 	dirtyLinked.Linked = map[string]map[string]string{module + "/lib2": diskHashes(t, filepath.Join(pair, "lib2"))}
+	dirtyLinked.Tests = []testcover.MapTest{{Name: "TestDirtylinkFails", Outcome: testcover.OutcomeFailed}}
 	writeMap(t, anchorDir, "dirtylink", dirtyLinked)
 
 	t.Run("RefreshesTheStaleAndMissingMapsOfTheChangedPackagesAndAnswersFromThem", func(t *testing.T) {
@@ -253,9 +266,9 @@ func TestGateTestReachStep(t *testing.T) {
 		step.writeReport(step.judgeReport(false, true))
 		report := readReport(t, pairLocation)
 
-		// nomap and tiered have no map and stale's is stale, so each is built.
+		// nomap and tiered have no map, stale's is stale and oldformat's has an older format, so each is built.
 		// fresh's matches, and dirty's and dirtylink's hold an uncommitted file.
-		if got, want := builds(t, builtFile), []string{"nomap", "stale", "tiered"}; !slices.Equal(got, want) {
+		if got, want := builds(t, builtFile), []string{"nomap", "oldformat", "stale", "tiered"}; !slices.Equal(got, want) {
 			t.Errorf("coverage builds = %v; want %v", got, want)
 		}
 		wantUnrefreshed := []string{
@@ -267,11 +280,15 @@ func TestGateTestReachStep(t *testing.T) {
 		}
 		wantFunctions := []reachFunctionLine{
 			{Package: "dirty", Func: "One"},
-			{Package: "dirtylink", Func: "One"},
+			{Package: "dirtylink", Func: "One", Caveats: []string{
+				"TestDirtylinkFails of dirtylink may run it unseen: the map run recorded their runs alone as failed, with no coverage",
+				"lib2.TestLib2Fails of packages linking dirtylink may run it unseen: the map run recorded their runs alone as failed, with no coverage",
+			}},
 			{Package: "fresh", Func: "One", Tests: []string{"fresh.TestFreshOne"}},
 			{Package: "nomap", Func: "One", Tests: []string{"nomap.TestNomapOne"}},
+			{Package: "oldformat", Func: "One", Tests: []string{"oldformat.TestOldformatOne"}},
 			{Package: "stale", Func: "One", Tests: []string{"stale.TestStaleOne"}},
-			{Package: "tiered", Func: "Two", Caveated: true},
+			{Package: "tiered", Func: "Two", Caveats: []string{"tests of tiered in tier2, which no map holds, may run it unseen"}},
 		}
 		if diff := cmp.Diff(wantFunctions, functionLines(report), cmpopts.EquateEmpty()); diff != "" {
 			t.Errorf("report functions mismatch (-want +got):\n%s", diff)
@@ -280,7 +297,7 @@ func TestGateTestReachStep(t *testing.T) {
 			t.Errorf("report = prime %v, note %q, errors %q, gate key %q, module dir %q; want a task report with no note and no error",
 				report.Prime, report.Note, report.Errors, report.GateKey, report.ModuleDir)
 		}
-		for _, pkg := range []string{"nomap", "stale", "tiered"} {
+		for _, pkg := range []string{"nomap", "oldformat", "stale", "tiered"} {
 			m, found, err := testcover.ReadMap(anchorDir, pkg)
 			if err != nil || !found || m.Commit != gitkit.RevParse(t, pair, "HEAD") || !maps.Equal(m.Files, diskHashes(t, filepath.Join(pair, pkg))) {
 				t.Errorf("anchor map of %s = found %v, err %v, commit %q, files %v; want one built at the worktree's HEAD over its files", pkg, found, err, m.Commit, m.Files)
@@ -400,7 +417,7 @@ func TestGateTestReachStep(t *testing.T) {
 		if err != nil || !bytes.Equal(got, sharedBytes) {
 			t.Errorf("shared map of alpha = %d bytes, err %v; want the %d bytes written before the steps ran", len(got), err, len(sharedBytes))
 		}
-		for _, pkg := range []string{"fresh", "nomap", "stale", "tiered"} {
+		for _, pkg := range []string{"fresh", "nomap", "oldformat", "stale", "tiered"} {
 			if _, found, err := testcover.ReadMap(sharedDir, pkg); err != nil || found {
 				t.Errorf("ReadMap(%s) in the shared maps = found %v, err %v; want no map", pkg, found, err)
 			}

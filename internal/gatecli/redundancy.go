@@ -584,7 +584,7 @@ func (r *redundancyRun) runTest(pkg, pkgDir, importPath, bin string, test redund
 // judgeRuns gives each of runs, the runs of the tests ran of p, its verdict against the tests of p's map that still hold.
 // A map test holds when its entry records a passing measurement.
 // The package must still declare a test of its name with the same function hash, and no run may bear its name.
-// An outcome entry and a spawn-marked one record no coverage, so they cover nothing.
+// An outcome entry and a spawn-marked one are not measured, so they cover nothing.
 // The greedy pass keeps every map test that holds, and a run it drops is contained.
 func (r *redundancyRun) judgeRuns(p judgedPackage, ran []redundancyCandidate, runs []testcover.Run) {
 	if len(runs) == 0 {

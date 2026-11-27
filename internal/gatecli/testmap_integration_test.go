@@ -1742,12 +1742,13 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 		if diff := cmp.Diff(wantFuncs, caller.Funcs); diff != "" {
 			t.Errorf("caller map funcs mismatch (-want +got):\n%s", diff)
 		}
-		// The spawn-marked tests are recorded with their verdict and never run.
+		// The out-of-process test is recorded with its verdict and never run.
+		// The unresolved test runs, and its entry holds its coverage beside its verdict.
 		wantTests := []testcover.MapTest{
 			{Name: "TestCallerCalls", Blocks: []int{0}, Funcs: []int{0}, Commit: head},
 			{Name: "TestCallerElsewhere", Funcs: []int{0}, Commit: head},
 			{Name: "TestCallerSpawns", Tier: 1, Spawn: testcover.SpawnVerdict{OutOfProcess: true}, Commit: head},
-			{Name: "TestCallerUnresolved", Tier: 1, Spawn: testcover.SpawnVerdict{Unresolved: true}, Commit: head},
+			{Name: "TestCallerUnresolved", Tier: 1, Blocks: []int{0}, Spawn: testcover.SpawnVerdict{Unresolved: true}, Commit: head},
 		}
 		if diff := cmp.Diff(wantTests, caller.Tests, cmpopts.EquateEmpty(), cmpopts.IgnoreFields(testcover.MapTest{}, "FuncHash", "Seconds", "MeasuredAt")); diff != "" {
 			t.Errorf("caller map tests mismatch (-want +got):\n%s", diff)
