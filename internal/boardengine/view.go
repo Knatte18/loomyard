@@ -22,6 +22,9 @@ const BoardDataFile = "board-data.js"
 // boardDataPrefix opens BoardDataFile's one statement.
 const boardDataPrefix = "window.BOARD = "
 
+// EntryStoreFile is the name of the entry store in the board directory, for a caller that watches it for changes.
+const EntryStoreFile = boardFile
+
 // BoardView is the whole board as a viewer shows it, placing every entry where the README does.
 type BoardView struct {
 	// Rendered is the RFC 3339 UTC time the view was built.

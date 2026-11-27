@@ -27,6 +27,10 @@ const HibernateDirName = "hibernate"
 // CreelDirName is the directory under the hub's board-level `.lym` that holds creel's journal and the daemon lock.
 const CreelDirName = "creel"
 
+// BoardServeDirName is the directory under the hub's board-level `.lym` that holds the board server's files.
+// It holds the server's state, lock, launcher and log.
+const BoardServeDirName = "board-serve"
+
 // SlackDirName is the directory under the hub's board-level `.lym` that holds the Slack setup file and channel map.
 // It also holds the inbox, outbound record, relay state, relay lock and relay log.
 const SlackDirName = "slack"
