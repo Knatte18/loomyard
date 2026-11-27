@@ -85,6 +85,8 @@ textarea { min-height: 8rem; }
   // Edit forms outlive a redraw, so an unsent edit stays in its form.
   var forms = new Map();
   var messages = new Map();
+  // The slugs of the entries with an action in flight.
+  var acting = new Set();
   var createForm = null;
   var createProjects = "";
 
@@ -141,8 +143,10 @@ textarea { min-height: 8rem; }
       return stash("<code>" + code + "</code>");
     });
     result = result.replace(/\[([^\[\]]*)\]\(([^()]*)\)/g, function (all, label, target) {
+      // A target holding a code span's placeholder is no link, and safeTarget would trim the placeholder's NULs.
+      if (target.indexOf("\u0000") >= 0) { return stash(all); }
       var href = safeTarget(target);
-      if (href === null || href.indexOf("\u0000") >= 0) { return stash(all); }
+      if (href === null) { return stash(all); }
       return stash("<a href=\"" + href + "\" rel=\"noreferrer\">" + emphasis(label) + "</a>");
     });
     result = emphasis(result);
@@ -351,7 +355,8 @@ textarea { min-height: 8rem; }
         } else if (op === "edit") {
           forms.delete(slug);
         } else if (state) {
-          state.revision = answer.entry.revision;
+          // A form built on an older entry than the action saw keeps its revision, so its Save is refused as stale.
+          if (state.revision === revision) { state.revision = answer.entry.revision; }
           state.fresh = null;
         }
       } else {
@@ -563,7 +568,11 @@ textarea { min-height: 8rem; }
     var actions = make("div", null, "actions");
     actionsFor(entry).forEach(function (op) {
       actions.appendChild(button(op, function () {
-        write(op, entry.slug, entry.revision).catch(function () {});
+        if (acting.has(entry.slug)) { return; }
+        acting.add(entry.slug);
+        write(op, entry.slug, entry.revision)
+          .catch(function () {})
+          .then(function () { acting.delete(entry.slug); });
       }));
     });
     detail.appendChild(actions);
