@@ -13,6 +13,11 @@
 // A failed halt on a board stencil that a newer lym build wrote carries `build-skew`:
 // the run's lym was older than a board stencil it read, which is a binary to update and not a lym defect;
 // the driver hands such a run to a fresh driver when a newer build is on disk.
+// A failed halt whose status records a transient class carries `transient-stop`:
+// an infrastructure failure classed transient, which a re-step can clear and which is no producer defect.
+// A step loop re-steps it once.
+// The Go driver also re-steps a git-transport or GitHub API stop with waits, and sends any other class to the tackler;
+// the prompt-driven driver repairs what outlasts the loop's re-step under its repair cap.
 //
 // The `lym loom` verbs serve loom runs only.
 // `armAt` refuses a recipe that does not declare the loom contract.

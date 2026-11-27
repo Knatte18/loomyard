@@ -120,6 +120,7 @@ func TestClassifyHalt(t *testing.T) {
 		reason      string
 		interrupted bool
 		buildSkew   bool
+		transient   bool
 		wantKind    AnomalyKind
 		wantOK      bool
 	}{
@@ -165,6 +166,38 @@ func TestClassifyHalt(t *testing.T) {
 			buildSkew: true,
 			wantKind:  AnomalyBuildSkew,
 			wantOK:    true,
+		},
+		{
+			name:      "FailedTransient_TransientStop",
+			state:     shedengine.StateFailed,
+			reason:    "landingshed: Finalize: read GitHub's rules for the parent branch: dial tcp: lookup api.github.com: server misbehaving",
+			transient: true,
+			wantKind:  AnomalyTransientStop,
+			wantOK:    true,
+		},
+		{
+			name:      "FailedBuildSkewTransient_BuildSkew",
+			state:     shedengine.StateFailed,
+			buildSkew: true,
+			transient: true,
+			wantKind:  AnomalyBuildSkew,
+			wantOK:    true,
+		},
+		{
+			name:        "FailedInterruptedTransient_InterruptedStop",
+			state:       shedengine.StateFailed,
+			reason:      "loop-exited: loop 1 ended without an envelope",
+			interrupted: true,
+			transient:   true,
+			wantKind:    AnomalyInterrupted,
+			wantOK:      true,
+		},
+		{
+			name:      "NotFailedTransient_NoKind",
+			state:     shedengine.StateRunning,
+			transient: true,
+			wantKind:  "",
+			wantOK:    false,
 		},
 		{
 			name:      "NotFailedBuildSkew_NoKind",
@@ -244,9 +277,9 @@ func TestClassifyHalt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			kind, ok := ClassifyHalt(tt.state, tt.reason, tt.interrupted, tt.buildSkew)
+			kind, ok := ClassifyHalt(tt.state, tt.reason, tt.interrupted, tt.buildSkew, tt.transient)
 			if kind != tt.wantKind || ok != tt.wantOK {
-				t.Errorf("ClassifyHalt(%q, %q, %v, %v) = (%q, %v); want (%q, %v)", tt.state, tt.reason, tt.interrupted, tt.buildSkew, kind, ok, tt.wantKind, tt.wantOK)
+				t.Errorf("ClassifyHalt(%q, %q, %v, %v, %v) = (%q, %v); want (%q, %v)", tt.state, tt.reason, tt.interrupted, tt.buildSkew, tt.transient, kind, ok, tt.wantKind, tt.wantOK)
 			}
 		})
 	}

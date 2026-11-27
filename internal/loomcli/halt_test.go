@@ -463,7 +463,8 @@ func TestStep_EscalationHaltSkipsReflectionAndKeepsBothNotes(t *testing.T) {
 
 // TestStep_ProducerErrorWritesTheHaltNoteAndNoReflection drives step with a producer that returns an error.
 // The error envelope reports friction skipped, the halt note is on disk and no reflection ran.
-// The note's anomaly kind is a build skew for a board stencil a newer lym build wrote, and a producer failure otherwise.
+// The note's anomaly kind is a build skew for a board stencil a newer lym build wrote.
+// It is a transient stop for an error marked transient, and a producer failure otherwise.
 func TestStep_ProducerErrorWritesTheHaltNoteAndNoReflection(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -479,6 +480,12 @@ func TestStep_ProducerErrorWritesTheHaltNoteAndNoReflection(t *testing.T) {
 			err: fmt.Errorf("shedadapters: Code-Burler-Review (burler-review): round 1 attempt 1b: review: %w",
 				&stencilstore.NewerBoardCopyError{Stencil: "burler-assist-consolidation", WrittenBy: "newer", Running: "running"}),
 			wantAnomaly: "anomaly: build-skew",
+		},
+		{
+			name: "GitHubAPIFailureMarkedTransient",
+			err: shedengine.MarkTransient(shedengine.TransientGitHubAPI,
+				errors.New("landingshed: Finalize: read GitHub's rules for the parent branch: dial tcp: lookup api.github.com: server misbehaving")),
+			wantAnomaly: "anomaly: transient-stop",
 		},
 	}
 	for _, tt := range tests {
