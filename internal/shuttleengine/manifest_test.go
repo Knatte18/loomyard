@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,7 +101,9 @@ func TestRunner_Start_KeepsTheManifestCopy(t *testing.T) {
 		name string
 		hook func(t *testing.T, runDir string)
 		// blocked puts a regular file where the copies' directory goes.
-		blocked      bool
+		blocked bool
+		// saveFails makes the start fail on saving the run record, once Prepare has written its record.
+		saveFails    bool
 		wantCopy     bool
 		wantNoCopies bool
 	}{
@@ -114,6 +117,17 @@ func TestRunner_Start_KeepsTheManifestCopy(t *testing.T) {
 					t.Errorf("write record: %v", err)
 				}
 			},
+			wantNoCopies: true,
+		},
+		{
+			name: "a launch whose run record is not saved keeps no copy",
+			hook: func(t *testing.T, runDir string) {
+				writeRecord(t, runDir)
+				if err := os.Mkdir(filepath.Join(runDir, runStateFileName), 0o755); err != nil {
+					t.Errorf("block the run record: %v", err)
+				}
+			},
+			saveFails:    true,
 			wantNoCopies: true,
 		},
 	}
@@ -137,6 +151,15 @@ func TestRunner_Start_KeepsTheManifestCopy(t *testing.T) {
 			outputFile := filepath.Join(t.TempDir(), "out.md")
 
 			run, err := fx.Runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
+			if tt.saveFails {
+				if err == nil || !strings.Contains(err.Error(), "save run state") {
+					t.Errorf("StartGated() error = %v; want the run record save to fail", err)
+				}
+				if _, err := os.Stat(copies); !os.IsNotExist(err) {
+					t.Errorf("copies directory stat error = %v; want it absent", err)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("StartGated() error: %v", err)
 			}
