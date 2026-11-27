@@ -1052,10 +1052,9 @@
 //
 // It reads HEAD through `Fabric.HeadSHA` before its walk and measures every package at that HEAD, in import path order.
 // Each package is measured whole, and its map replaced whole.
-// It reads HEAD again before each package and once a package's tests ran.
-// Once HEAD moved it ends, counting the packages it left as queued.
 // It reads the tracked files through `Fabric.CodeDirAt`, `Fabric.CodeTreeAt` and `Fabric.CodeFileAt`.
-// It reads the uncommitted and untracked files through `Fabric.Status`, twice per package it builds.
+// It reads the uncommitted and untracked files through `Fabric.Status`.
+// A check of the whole module reads them through `Fabric.CodeWorktreeChanges`.
 // A package owns every tracked file under its directory, testdata included.
 // Its files stop at the next package directory or nested module.
 // The map holds the hashes of its Go files in `Files` and of the others it owns in `OtherFiles`.
@@ -1071,11 +1070,18 @@
 // The build runs under the slot's `gateslot.HolderEnv`.
 // The listing and build of the next package start once the current package's binary is ready,
 // so they run while the current package's tests run; a build whose package then needs no binary is cancelled and dropped.
-// Once a package's build is taken up the call reads the worktree status afresh.
-// A modified or untracked file owned by any linked package, the package itself included, skips the package.
-// The skip cause names the file.
-// Bound: some packages are written with no such check, under HEAD's hashes.
-// They are one with no mapped test or only spawn-marked ones, and one whose scan or build failed.
+// A check reads HEAD and the worktree status afresh.
+// It fails once HEAD differs from the one read at the start.
+// It also fails when a checked package owns a modified or untracked file, which the reason names.
+// The checked packages are the package and every package its test binary links.
+// A package is checked once its coverage build ended and compiled, before its tests run, and again before its write:
+// after its tests, and before a failed build or a failure while the tests ran is recorded.
+// A package with no build is checked over its own files before its write.
+// Such a package has no mapped test, only spawn-marked ones or a failed scan.
+// A build whose listing of the linked packages failed is checked for HEAD and every modified or untracked module file.
+// A failed check writes no map, and the package is listed under `unmeasured` with the reason.
+// A dirty package does not end the call.
+// A moved HEAD ends it, listing the current package and every package not yet measured.
 // It runs each test alone in its own process with its own profile, in the package directory under its tier's env.
 // It runs them through `testcover.Toolchain.RunAlone`.
 // A package's tier0 tests run first and then its tier1 tests, so at most one tier's count runs at once.
@@ -1117,13 +1123,9 @@
 // A linked function is named by its package's import path, its file and the name a block key gives it;
 // no block of another package is stored.
 // A run or build that a terminating signal ends records nothing, and nor does the rest of its package's measurement.
-// Once the package's tests ran the call reads the worktree status afresh, then HEAD.
-// A dirty file a linked package owns discards the runs; the call writes nothing for the package.
-// A HEAD move does the same, and the skip names the linked files whose hashes differ.
-// It also counts the package as queued.
-// The package is reported skipped.
-// Bound: an edit made after the first status read and reverted before the second goes unseen,
+// Bound: an edit made and reverted before a package's first check, or between its two checks, goes unseen,
 // so the map holds coverage measured on the edited code under the committed hashes.
+// Neither check sees a gitignored file, so a gitignored Go file the build compiles enters the map under HEAD's hashes.
 // Two calls over one package from one worktree each write its map, and the later write wins;
 // a failed build's write keeps the entries it read, which may come from the other call.
 // Every map the call writes, a failed build's included, carries a `testcover.MapFormat` marker.
@@ -1134,11 +1136,12 @@
 // It also holds digests of the mapped tiers' commands and env as configured and of the hub's env.yaml variables.
 //
 // The call prints `built`, the packages whose map it wrote.
-// It prints `skipped` with each cause, `failed` with each failure, `timed_out` and `left_out`.
+// It prints `unmeasured` and `left_out` with each reason, `failed` with each failure and `timed_out`.
 // It prints `passed_alone`, and `failed_tests`: each test a written map records as failed or timed out.
-// It also prints `head` and `queued`.
+// It also prints `head`.
 // Its `packages` holds each measured package's build seconds, run seconds and test count.
-// It exits 1 when a build failed or `failed_tests` is not empty, having written the maps all the same.
+// It exits 1 when a package is unmeasured, a build failed or `failed_tests` is not empty.
+// Such an exit still leaves written every map the checks let through.
 // It exits 1 too for a refusal or a read, slot or write failure that ends the walk, and otherwise 0.
 //
 // `lym gate redundant <package>` judges the map of one package and confirms its redundancy candidates by mutation.

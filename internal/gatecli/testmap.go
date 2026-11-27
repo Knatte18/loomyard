@@ -1,7 +1,8 @@
 // testmap.go holds the map run of `lym gate test --map`.
 // It builds the per-package coverage maps at the HEAD of the worktree it runs in, over the packages of the call's scope.
 // It picks the worktree's maps directory, then measures each package whole.
-// It prints what it measured, skipped, failed and left out.
+// It writes a map only while HEAD is still and the files it covers are clean.
+// It prints what it measured, left unmeasured, failed and left out.
 
 package gatecli
 
@@ -56,10 +57,10 @@ type testMapRequest struct {
 	guardFor func(ctx context.Context, limit int64, out io.Writer) (stop func(), guardKilled func(pid int) bool)
 }
 
-// testMapSkip is a package the call left without a new map, with the cause.
+// testMapSkip is a package the call left without a new map, with the reason.
 type testMapSkip struct {
 	Package string `json:"package"`
-	Cause   string `json:"cause"`
+	Reason  string `json:"reason"`
 }
 
 // testMapFailure is a package whose coverage build failed, with the failure.
@@ -122,6 +123,8 @@ type testMapRun struct {
 	head string
 	// headMoved is set once a later read of HEAD differs from head, which ends the call.
 	headMoved bool
+	// movedReason is why a package is left unmeasured once HEAD moved, set with headMoved by the check that saw it.
+	movedReason string
 	// lease is the held slots; it stays nil before the first build and inside an enclosing gate run's slot.
 	lease *gateslot.Lease
 	// holderEnv is env with the slot holder's Go flags, nil until the call holds its slots.
@@ -140,26 +143,25 @@ type testMapRun struct {
 	// toolchain holds the Go version and platform of the maps' environment stamp, nil until the call reads them.
 	toolchain *testcover.EnvironmentStamp
 
-	built    []string
-	skipped  []testMapSkip
-	failed   []testMapFailure
-	timedOut []string
+	built []string
+	// unmeasured holds the packages a check left without a new map, each with the reason.
+	unmeasured []testMapSkip
+	failed     []testMapFailure
+	timedOut   []string
 	// passedAlone holds the tests, as `<package>.<Test>`, that failed beside others and passed run alone.
 	passedAlone []string
 	// failedTests holds the tests, as `<package>.<Test>`, that a written map records as failed or timed out.
 	failedTests []string
 	// leftOut holds the packages the command line names that the call does not map, each with the reason.
 	leftOut []testMapSkip
-	// queued counts the packages a HEAD move, an error or a terminating signal left unmeasured.
-	queued int
 	// measures holds the build and run time of each package the call built.
 	measures []testMapMeasure
 }
 
 // runTestMap runs one map run and returns its exit code.
-// The code is 0 once it walked its packages and every build and test succeeded.
+// The code is 0 once it measured every package and every build and test succeeded.
 // It is 1 for a refusal or a failure that ends the call.
-// It is also 1 for a walk in which a build failed or a written map records a failed or timed-out test.
+// It is also 1 when a package is left unmeasured, a build failed or a written map records a failed or timed-out test.
 // It is 128 plus the signal number after a terminating signal.
 func runTestMap(ctx context.Context, out io.Writer, request testMapRequest) int {
 	cwd, err := lymcwd.CwdFrom(ctx)
@@ -175,7 +177,7 @@ func runTestMap(ctx context.Context, out io.Writer, request testMapRequest) int 
 	defer stop()
 	run := &testMapRun{
 		ctx: runCtx, request: request, location: location, mapsDir: mapsDir,
-		built: []string{}, skipped: []testMapSkip{}, failed: []testMapFailure{}, timedOut: []string{},
+		built: []string{}, unmeasured: []testMapSkip{}, failed: []testMapFailure{}, timedOut: []string{},
 		passedAlone: []string{}, failedTests: []string{}, leftOut: []testMapSkip{}, measures: []testMapMeasure{},
 	}
 	defer run.close()
@@ -209,17 +211,16 @@ func runTestMap(ctx context.Context, out io.Writer, request testMapRequest) int 
 	}
 	code := output.Ok(out, map[string]any{
 		"built":        run.built,
-		"skipped":      run.skipped,
+		"unmeasured":   run.unmeasured,
 		"failed":       run.failed,
 		"timed_out":    run.timedOut,
 		"passed_alone": run.passedAlone,
 		"failed_tests": run.failedTests,
 		"left_out":     run.leftOut,
 		"head":         run.head,
-		"queued":       run.queued,
 		"packages":     run.measures,
 	})
-	if len(run.failed) > 0 || len(run.failedTests) > 0 {
+	if len(run.unmeasured) > 0 || len(run.failed) > 0 || len(run.failedTests) > 0 {
 		return 1
 	}
 	return code
@@ -337,7 +338,7 @@ func (r *testMapRun) packages(sc scope) ([]string, string) {
 		case reason == "":
 			packages = append(packages, pkg)
 		case named[pkg]:
-			r.leftOut = append(r.leftOut, testMapSkip{Package: pkg, Cause: reason})
+			r.leftOut = append(r.leftOut, testMapSkip{Package: pkg, Reason: reason})
 		}
 	}
 	return packages, ""
@@ -498,9 +499,8 @@ func holdsGoFile(dir string) bool {
 }
 
 // mapPackages reads HEAD and measures each of packages whole at it, in order.
-// It reads HEAD before each package, and ends once HEAD moved, counting the packages left as queued.
+// A package whose check finds HEAD moved ends the walk, and every package after it is left unmeasured too.
 // The error reports a read, slot or write failure, or a cancelled call, that ends the walk.
-// The packages the walk had not measured by then count as queued.
 func (r *testMapRun) mapPackages(packages []string) error {
 	head, err := r.fabric.HeadSHA()
 	if err != nil {
@@ -512,31 +512,26 @@ func (r *testMapRun) mapPackages(packages []string) error {
 		dir := path.Join(r.moduleRel, pkg)
 		files, err := r.fileHashes(head, dir)
 		if err != nil {
-			r.queued += len(packages)
 			return err
 		}
 		jobs = append(jobs, testMapJob{pkg: pkg, dir: dir, files: files})
 	}
 	for i, job := range jobs {
 		if err := r.ctx.Err(); err != nil {
-			r.queued += len(jobs) - i
 			return err
-		}
-		if err := r.readHead(); err != nil {
-			r.queued += len(jobs) - i
-			return err
-		}
-		if r.headMoved {
-			r.queued += len(jobs) - i
-			return nil
 		}
 		r.next = testMapJob{}
 		if i+1 < len(jobs) {
 			r.next = jobs[i+1]
 		}
 		if err := r.mapPackage(job); err != nil {
-			r.queued += len(jobs) - i
 			return err
+		}
+		if r.headMoved {
+			for _, left := range jobs[i+1:] {
+				r.skip(left.pkg, r.movedReason)
+			}
+			return nil
 		}
 	}
 	return nil
@@ -552,6 +547,34 @@ func (r *testMapRun) readHead() error {
 		r.headMoved = true
 	}
 	return nil
+}
+
+// checkClean reads HEAD and the worktree status afresh.
+// It returns why a package whose map covers the files of trees is left unmeasured, or "" for one that may go on.
+// A nil trees, for linked packages that could not be listed, stands for the whole module.
+func (r *testMapRun) checkClean(trees map[string]packageTree) (string, error) {
+	if err := r.readHead(); err != nil {
+		return "", err
+	}
+	if r.headMoved {
+		current, err := r.fabric.HeadSHA()
+		if err != nil {
+			return "", fmt.Errorf("read HEAD: %w", err)
+		}
+		r.movedReason = fmt.Sprintf("HEAD moved from %s to %s; way forward: re-run the same command once HEAD stays put", r.head, current)
+		return r.movedReason, nil
+	}
+	var file string
+	var err error
+	if trees == nil {
+		file, err = r.dirtyModuleFile()
+	} else {
+		file, err = r.dirtyOwnedFile(trees)
+	}
+	if err != nil || file == "" {
+		return "", err
+	}
+	return "modified or untracked file " + file + "; way forward: commit or revert it, then re-run the same command", nil
 }
 
 // fileHashes returns the ContentHash of each Go file, by name, that the directory dir tracks at the commit head.
@@ -577,9 +600,9 @@ func (r *testMapRun) fileHashes(head, dir string) (map[string]string, error) {
 	return hashes, nil
 }
 
-// skip reports pkg skipped for cause.
-func (r *testMapRun) skip(pkg, cause string) {
-	r.skipped = append(r.skipped, testMapSkip{Package: pkg, Cause: cause})
+// skip reports pkg left unmeasured for reason.
+func (r *testMapRun) skip(pkg, reason string) {
+	r.unmeasured = append(r.unmeasured, testMapSkip{Package: pkg, Reason: reason})
 }
 
 // close cancels a coverage build still running ahead and waits for it to end.

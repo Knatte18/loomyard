@@ -302,6 +302,15 @@ this section keeps only what is project-specific or stricter here.
   A call builds no `lym`, holds the larger of `tier0`'s and `tier1`'s slot asks and writes no run or green record.
   It exits non-zero when a build failed or a test's standing outcome is a failure, a timeout or a kill,
   and still writes the map.
+  A map is written only while HEAD is the commit the call read at its start
+  and no file the package or a linked package owns is modified or untracked.
+  Both are checked once the build ended and again before every map write, a failed build's included.
+  A package with no build is checked over its own files before its write,
+  and a build whose linked packages could not be listed over every module file.
+  A package failing a check is listed as unmeasured with the reason and the call exits non-zero;
+  a moved HEAD ends the call, listing every package not yet measured.
+  Bound: an edit made before a package's first check, or between its two checks, and reverted before the next goes unseen,
+  and neither check sees a gitignored file.
 - `lym gate redundant <package>` judges a whole package's map by the same package-scoped verdict,
   then confirms each candidate by mutation inside a gate slot.
   It mutates the candidates' blocks and keeps a candidate only when its covering tests kill every mutant it kills;

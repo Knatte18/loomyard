@@ -963,8 +963,13 @@ User-facing modules each get one `lym <module>` namespace:
   It holds the larger of tier0's and tier1's slot asks, where a tier asking for every slot ranks above any count,
   and it builds no `lym`.
   A test that fails beside others runs once more alone and is listed when it passes there.
-  The call exits non-zero when a build failed or a map records a failed or timed-out test.
-  A package whose linked packages hold a modified or untracked file just before its build or after its tests is skipped.
+  A map is written only while HEAD is the one the call started at and no file the package or a linked package owns
+  is modified or untracked, checked once the build ended and again before the write;
+  a build whose linked packages could not be listed is checked over the whole module,
+  and a package with no build over its own files.
+  Any other package is listed as unmeasured with the reason, and a moved HEAD ends the call.
+  An edit reverted before the next check, and a gitignored file, go unseen.
+  The call exits non-zero when a package is unmeasured, a build failed or a map records a failed or timed-out test.
   A run inside a slot an enclosing gate run holds takes no second one,
   and a git worktree outside every hub runs unslotted under its own `gate.yaml`.
   A Go test binary that keeps a core busy past `busy_quit_sec` gets one SIGQUIT,

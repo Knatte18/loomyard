@@ -4,7 +4,7 @@
 // It reads each run's profile once.
 // It keys the blocks covered of the package's own files and names the functions covered of the others.
 // It merges the runs into the package's map and writes it once.
-// It discards the runs when a linked package's files are dirty or HEAD moved under its tests.
+// It writes nothing for a package when a linked package's files are dirty or HEAD moved.
 // It starts the next package's coverage build while the current package's tests run.
 
 package gatecli
@@ -87,7 +87,8 @@ type coverageBuild struct {
 // It runs every mapped test but those the spawn scan marks, which enter with their verdict, unrun.
 // A package with no mapped test gets a map of its file hashes and no tests, with no build.
 // A failed build is recorded through writeFailed.
-// A package gets no map and is reported skipped when a linked package's file is dirty once its build is taken up.
+// A check before a write that finds HEAD moved or a covered file dirty leaves the package unmeasured, with no map.
+// A package whose build compiled is checked before its tests run too.
 // With the binary ready, it starts the coverage build of the package the walk measures next.
 // The error reports a slot, read or write failure that ends the call.
 // After a terminating signal it is the call context's error.
@@ -100,16 +101,18 @@ func (r *testMapRun) mapPackage(job testMapJob) error {
 		return err
 	}
 	m := testcover.Map{Commit: head, Files: job.files, OtherFiles: own.otherFiles()}
+	// A package with no build has no linked set, so its writes check its own files.
+	ownTrees := map[string]packageTree{importPath: own}
 	mapped, err := r.mappedTests(pkgDir)
 	if err != nil {
-		return r.writeFailed(pkg, m, err)
+		return r.writeFailed(pkg, m, err, ownTrees)
 	}
 	if len(mapped) == 0 {
-		return r.write(pkg, m)
+		return r.write(pkg, m, ownTrees)
 	}
 	spawns, err := r.scanSpawns(pkgDir)
 	if err != nil {
-		return r.writeFailed(pkg, m, fmt.Errorf("spawn scan: %w", err))
+		return r.writeFailed(pkg, m, fmt.Errorf("spawn scan: %w", err), ownTrees)
 	}
 	var toRun []testcover.TestFunc
 	for _, fn := range mapped {
@@ -120,7 +123,7 @@ func (r *testMapRun) mapPackage(job testMapJob) error {
 		toRun = append(toRun, fn)
 	}
 	if len(toRun) == 0 {
-		return r.write(pkg, m)
+		return r.write(pkg, m, ownTrees)
 	}
 
 	if err := r.holdSlot(); err != nil {
@@ -132,27 +135,27 @@ func (r *testMapRun) mapPackage(job testMapJob) error {
 		if err := r.ctx.Err(); err != nil {
 			return err
 		}
-		return r.writeFailed(pkg, m, build.err)
+		return r.writeFailed(pkg, m, build.err, nil)
 	}
 	trees, err := r.linkedTrees(head, importPath, own, build.linked)
 	if err != nil {
 		return err
 	}
 	m.Linked = linkedHashes(trees, importPath)
-	file, err := r.dirtyOwnedFile(trees)
-	if err != nil {
-		return err
-	}
-	if file != "" {
-		r.skip(pkg, "modified or untracked file "+file)
-		return nil
-	}
 	if build.err != nil {
 		// A signal ends the build for a cause outside the package, so no failure is recorded.
 		if err := r.ctx.Err(); err != nil {
 			return err
 		}
-		return r.writeFailed(pkg, m, build.err)
+		return r.writeFailed(pkg, m, build.err, trees)
+	}
+	reason, err := r.checkClean(trees)
+	if err != nil {
+		return err
+	}
+	if reason != "" {
+		r.skip(pkg, reason)
+		return nil
 	}
 	if r.next.pkg != "" && r.ahead == nil {
 		r.ahead = r.startBuild(r.next.pkg)
@@ -219,8 +222,8 @@ func (r *testMapRun) takeBuild(pkg string) *coverageBuild {
 
 // measureTests runs queue, the job's tests, and writes the package's map once they ran.
 // A tier's tests all run before the next tier's, so no two tiers' tests run at once.
-// Once the runs end it reads the worktree status and HEAD.
-// A dirty file a linked package owns, or a HEAD move, discards the runs and ends the job with the package skipped.
+// A check once the runs end that finds a linked package's file dirty or HEAD moved discards them.
+// The package is then left unmeasured.
 // The error reports a read or write failure, or a signal, that ends the job.
 func (r *testMapRun) measureTests(p *packageRun, queue []testcover.TestFunc) error {
 	start := time.Now()
@@ -232,7 +235,7 @@ func (r *testMapRun) measureTests(p *packageRun, queue []testcover.TestFunc) err
 			if stop := r.ctx.Err(); stop != nil {
 				return stop
 			}
-			return r.writeFailed(p.job.pkg, p.m, err)
+			return r.writeFailed(p.job.pkg, p.m, err, p.trees)
 		}
 		runs = append(runs, batchRuns...)
 	}
@@ -242,7 +245,8 @@ func (r *testMapRun) measureTests(p *packageRun, queue []testcover.TestFunc) err
 		return err
 	}
 	fillMapTests(&p.m, p.table, runs, r.head, time.Now())
-	if err := r.write(p.job.pkg, p.m); err != nil {
+	built := len(r.built)
+	if err := r.write(p.job.pkg, p.m, p.trees); err != nil || len(r.built) == built {
 		return err
 	}
 	for _, run := range runs {
@@ -393,31 +397,14 @@ func (p *packageRun) newBlockTable(own []testcover.ProfileBlock) (*blockTable, e
 	return &blockTable{keys: keys, positions: positions}, nil
 }
 
-// endJob reads the worktree status and HEAD once the job's tests ran, and reports whether they end the job.
-// A dirty file that a package of the job's trees owns skips the package.
-// A HEAD move skips it too, naming the files of those packages that changed, and counts it as queued.
+// endJob checks the job's trees once its tests ran.
+// It reports whether the check ends the job with the package left unmeasured.
 func (r *testMapRun) endJob(p *packageRun) (bool, error) {
-	file, err := r.dirtyOwnedFile(p.trees)
-	if err != nil {
+	reason, err := r.checkClean(p.trees)
+	if err != nil || reason == "" {
 		return false, err
 	}
-	if file != "" {
-		r.skip(p.job.pkg, "modified or untracked file "+file+" after its tests")
-		return true, nil
-	}
-	if err := r.readHead(); err != nil || !r.headMoved {
-		return false, err
-	}
-	changed, err := r.changedFiles(r.head, p.importPath, p.trees)
-	if err != nil {
-		return false, err
-	}
-	cause := "HEAD moved under its tests"
-	if len(changed) > 0 {
-		cause = "files changed under its tests: " + strings.Join(changed, ", ")
-	}
-	r.skip(p.job.pkg, cause)
-	r.queued++
+	r.skip(p.job.pkg, reason)
 	return true, nil
 }
 
@@ -682,7 +669,17 @@ func reindexed(indexes []int, to func(int) int) []int {
 }
 
 // write writes m as the map of pkg and reports pkg built.
-func (r *testMapRun) write(pkg string, m testcover.Map) error {
+// It first checks HEAD and the files of trees, a nil trees standing for the whole module;
+// a failed check writes nothing and leaves pkg unmeasured.
+func (r *testMapRun) write(pkg string, m testcover.Map, trees map[string]packageTree) error {
+	reason, err := r.checkClean(trees)
+	if err != nil {
+		return err
+	}
+	if reason != "" {
+		r.skip(pkg, reason)
+		return nil
+	}
 	if err := r.writeMap(pkg, m); err != nil {
 		return err
 	}
@@ -694,7 +691,17 @@ func (r *testMapRun) write(pkg string, m testcover.Map) error {
 // A readable map of pkg that holds test entries is kept with its commit, entries and marker.
 // It records the failure and HEAD beside them.
 // Otherwise m is written with its file hashes, no tests and failure as its build failure.
-func (r *testMapRun) writeFailed(pkg string, m testcover.Map, failure error) error {
+// It first checks HEAD and the files of trees, a nil trees standing for the whole module;
+// a failed check records nothing and leaves pkg unmeasured.
+func (r *testMapRun) writeFailed(pkg string, m testcover.Map, failure error, trees map[string]packageTree) error {
+	reason, err := r.checkClean(trees)
+	if err != nil {
+		return err
+	}
+	if reason != "" {
+		r.skip(pkg, reason)
+		return nil
+	}
 	r.failed = append(r.failed, testMapFailure{Package: pkg, Failure: failure.Error()})
 	kept, found, err := testcover.ReadMap(r.mapsDir, pkg)
 	if err == nil && found && len(kept.Tests) > 0 {

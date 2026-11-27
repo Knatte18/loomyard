@@ -605,15 +605,31 @@ func appendAndCommit(dir, rel string) error {
 // It also holds the call's exit code and stderr.
 type testMapOutcome struct {
 	Built       []string         `json:"built"`
-	Skipped     []testMapSkip    `json:"skipped"`
+	Unmeasured  []testMapSkip    `json:"unmeasured"`
 	Failed      []testMapFailure `json:"failed"`
 	TimedOut    []string         `json:"timed_out"`
 	PassedAlone []string         `json:"passed_alone"`
 	FailedTests []string         `json:"failed_tests"`
 	LeftOut     []testMapSkip    `json:"left_out"`
-	Queued      int              `json:"queued"`
 	Exit        int              `json:"-"`
 	Stderr      string           `json:"-"`
+}
+
+// testMapDirty returns pkg left unmeasured over the modified or untracked file.
+func testMapDirty(pkg, file string) testMapSkip {
+	return testMapSkip{Package: pkg, Reason: "modified or untracked file " + file + "; way forward: commit or revert it, then re-run the same command"}
+}
+
+// testMapMoved returns each of pkgs left unmeasured because HEAD of the worktree prime moved.
+// The reason names the move from the commit from to the one prime is at now.
+func testMapMoved(t *testing.T, prime, from string, pkgs ...string) []testMapSkip {
+	t.Helper()
+	reason := "HEAD moved from " + from + " to " + gitkit.RevParse(t, prime, "HEAD") + "; way forward: re-run the same command once HEAD stays put"
+	var left []testMapSkip
+	for _, pkg := range pkgs {
+		left = append(left, testMapSkip{Package: pkg, Reason: reason})
+	}
+	return left
 }
 
 // testMapScope returns the scope of a call naming targets, or of an `--all` call when it names none.
@@ -903,7 +919,6 @@ func TestGateTestMap(t *testing.T) {
 			t.Errorf("runTestMap() failed = %+v; want broken alone, naming its build failure", got.Failed)
 		}
 	}
-	movedSkip := testMapSkip{Package: "zmoved", Cause: "files changed under its tests: zmoved.go"}
 	ignoreRunFields := cmpopts.IgnoreFields(testcover.MapTest{}, "FuncHash", "Seconds", "Commit", "MeasuredAt")
 	outsideHub := t.TempDir()
 
@@ -994,9 +1009,9 @@ func TestGateTestMap(t *testing.T) {
 	t.Run("AnAllCallMapsEveryPackageWithAMappedTest", func(t *testing.T) {
 		head := gitkit.RevParse(t, prime, "HEAD")
 		got, counts := callTestMapCounts(t, prime, standIn, environ, time.Minute)
-		// zmoved's test moves HEAD, so its measurement is discarded and it counts as queued.
+		// zmoved's test moves HEAD, so its measurement is discarded and it is left unmeasured.
 		wantOutcome(t, got, testMapOutcome{
-			Built: []string{"alpha", "outcomes", "steady"}, Skipped: []testMapSkip{movedSkip}, TimedOut: []string{"alpha.TestAlphaHangs"}, Queued: 1,
+			Built: []string{"alpha", "outcomes", "steady"}, Unmeasured: testMapMoved(t, prime, head, "zmoved"), TimedOut: []string{"alpha.TestAlphaHangs"},
 			FailedTests: []string{"alpha.TestAlphaHangs", "outcomes.TestOutcomesFails"}, Exit: 1,
 		})
 		wantBrokenFailed(t, got)
@@ -1098,6 +1113,19 @@ func TestGateTestMap(t *testing.T) {
 		}
 	})
 
+	t.Run("APackageWithNoMappedTestIsCheckedBeforeItsWrite", func(t *testing.T) {
+		before := readMap(t, "emptied")
+		notes := filepath.Join(prime, "emptied", "notes.txt")
+		if err := os.WriteFile(notes, []byte("notes\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Remove(notes) })
+		wantOutcome(t, call(t, "emptied"), testMapOutcome{Unmeasured: []testMapSkip{testMapDirty("emptied", "emptied/notes.txt")}, Exit: 1})
+		if diff := cmp.Diff(before, readMap(t, "emptied")); diff != "" {
+			t.Errorf("emptied map mismatch (-before +after):\n%s", diff)
+		}
+	})
+
 	t.Run("ABaseScopeMapsThePackagesItsDiffTouches", func(t *testing.T) {
 		// The added line sits below the blocks the stand-in profiles.
 		plankit.WriteTree(t, prime, map[string]string{"steady/steady.go": testMapSource("steady") + "// changed\n"})
@@ -1106,9 +1134,10 @@ func TestGateTestMap(t *testing.T) {
 	})
 
 	t.Run("AnEllipsisTargetMapsEveryPackageBelowIt", func(t *testing.T) {
+		head := gitkit.RevParse(t, prime, "HEAD")
 		got := call(t, "./...")
 		wantOutcome(t, got, testMapOutcome{
-			Built: []string{"alpha", "emptied", "outcomes", "steady"}, Skipped: []testMapSkip{movedSkip}, TimedOut: []string{"alpha.TestAlphaHangs"}, Queued: 1,
+			Built: []string{"alpha", "emptied", "outcomes", "steady"}, Unmeasured: testMapMoved(t, prime, head, "zmoved"), TimedOut: []string{"alpha.TestAlphaHangs"},
 			FailedTests: []string{"alpha.TestAlphaHangs", "outcomes.TestOutcomesFails"}, Exit: 1,
 		})
 		wantBrokenFailed(t, got)
@@ -1202,8 +1231,8 @@ func TestGateTestMap(t *testing.T) {
 	t.Run("NamedPackageWithNoTrackedGoFileIsSkipped", func(t *testing.T) {
 		got := call(t, "ignored", "notests")
 		wantOutcome(t, got, testMapOutcome{LeftOut: []testMapSkip{
-			{Package: "ignored", Cause: "no Go file tracked at HEAD"},
-			{Package: "notests", Cause: "no tier0 or tier1 test and no map"},
+			{Package: "ignored", Reason: "no Go file tracked at HEAD"},
+			{Package: "notests", Reason: "no tier0 or tier1 test and no map"},
 		}})
 		for _, pkg := range []string{"ignored", "notests"} {
 			if _, found, err := testcover.ReadMap(mapsDir, pkg); err != nil || found {
@@ -1478,12 +1507,13 @@ func TestGateTestMap(t *testing.T) {
 		})
 		gitkit.Git(t, prime, "add", "amoves", "bhangs")
 		gitkit.Git(t, prime, "commit", "-q", "-m", "add a package that moves HEAD and one whose build hangs")
+		head := gitkit.RevParse(t, prime, "HEAD")
 		started := time.Now()
 		got := callWith(t, withEnv(testMapHangBuildEnv, module+"/bhangs"), time.Minute, "amoves", "bhangs")
 		if elapsed := time.Since(started); elapsed > 30*time.Second {
 			t.Errorf("runTestMap() took %v; want it to end soon after the HEAD move, cancelling the hanging build", elapsed)
 		}
-		wantOutcome(t, got, testMapOutcome{Skipped: []testMapSkip{{Package: "amoves", Cause: "files changed under its tests: amoves.go"}}, Queued: 2})
+		wantOutcome(t, got, testMapOutcome{Unmeasured: testMapMoved(t, prime, head, "amoves", "bhangs"), Exit: 1})
 	})
 
 	t.Run("ATestPastTheMemoryCapIsRecordedAsFailed", func(t *testing.T) {
@@ -1591,9 +1621,28 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 	}
 	wantLeft := func(t *testing.T, pkg string, before testcover.Map) {
 		t.Helper()
-		if after := readTestMap(t, mapsDir, pkg); !after.BuiltAt.Equal(before.BuiltAt) {
-			t.Errorf("%s map built at %v; want it left from %v", pkg, after.BuiltAt, before.BuiltAt)
+		if diff := cmp.Diff(before, readTestMap(t, mapsDir, pkg)); diff != "" {
+			t.Errorf("%s map mismatch (-before +after):\n%s", pkg, diff)
 		}
+	}
+	// writeStray writes the untracked or edited file rel of the prime.
+	writeStray := func(t *testing.T, rel, content string) string {
+		t.Helper()
+		file := filepath.Join(prime, filepath.FromSlash(rel))
+		if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return file
+	}
+	// wantDirtyLeaves calls pkg under env beside the untracked file rel, which it removes at the end.
+	// It wants pkg left unmeasured over that file with its map as it was.
+	wantDirtyLeaves := func(t *testing.T, env []string, pkg, rel string) {
+		t.Helper()
+		before := readTestMap(t, mapsDir, pkg)
+		file := writeStray(t, rel, "notes\n")
+		t.Cleanup(func() { os.Remove(file) })
+		wantOutcome(t, call(t, env, pkg), testMapOutcome{Unmeasured: []testMapSkip{testMapDirty(pkg, rel)}, Exit: 1})
+		wantLeft(t, pkg, before)
 	}
 	hash := func(content string) string { return testcover.ContentHash([]byte(content)) }
 	// rebuiltInnerStamp rebuilds the map of linked/inner, which has no test and so needs no build, and returns its stamp.
@@ -1667,19 +1716,14 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 	t.Run("ADirtyLinkedPackageLeavesTheMapAsItWasAndCountsNothingAgainstTheCap", func(t *testing.T) {
 		callerBefore := readTestMap(t, mapsDir, "caller")
 		followerBefore := readTestMap(t, mapsDir, "follower")
-		notes := filepath.Join(prime, "linked", "notes.txt")
-		if err := os.WriteFile(notes, []byte("notes\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
+		writeStray(t, "linked/linked.go", files["linked/linked.go"]+"// edited\n")
 		// No dirty file keeps linked/inner from building.
 		got := call(t, environ, "caller", "follower", "linked/inner")
-		if err := os.Remove(notes); err != nil {
-			t.Fatal(err)
-		}
-		const cause = "modified or untracked file linked/notes.txt"
+		writeStray(t, "linked/linked.go", files["linked/linked.go"])
 		wantOutcome(t, got, testMapOutcome{
-			Built:   []string{"linked/inner"},
-			Skipped: []testMapSkip{{Package: "caller", Cause: cause}, {Package: "follower", Cause: cause}},
+			Built:      []string{"linked/inner"},
+			Unmeasured: []testMapSkip{testMapDirty("caller", "linked/linked.go"), testMapDirty("follower", "linked/linked.go")},
+			Exit:       1,
 		})
 		wantLeft(t, "caller", callerBefore)
 		wantLeft(t, "follower", followerBefore)
@@ -1694,11 +1738,12 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 			t.Fatal(err)
 		}
 		// The file does not exist when the call starts.
-		// So follower, walked after dirtier, skips only on a status read taken before its build.
-		wantOutcome(t, got, testMapOutcome{Skipped: []testMapSkip{
-			{Package: "dirtier", Cause: "modified or untracked file linked/scratch.txt after its tests"},
-			{Package: "follower", Cause: "modified or untracked file linked/scratch.txt"},
-		}})
+		// So the check before its write leaves dirtier unmeasured.
+		// The check after its build does the same for follower, walked after dirtier.
+		wantOutcome(t, got, testMapOutcome{
+			Unmeasured: []testMapSkip{testMapDirty("dirtier", "linked/scratch.txt"), testMapDirty("follower", "linked/scratch.txt")},
+			Exit:       1,
+		})
 		wantLeft(t, "dirtier", dirtierBefore)
 		wantLeft(t, "follower", followerBefore)
 	})
@@ -1706,14 +1751,12 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 	t.Run("ALinkedFileChangedUnderAJobDiscardsAllItsRunsAndEndsTheCall", func(t *testing.T) {
 		dirtierBefore := readTestMap(t, mapsDir, "dirtier")
 		followerBefore := readTestMap(t, mapsDir, "follower")
+		head := gitkit.RevParse(t, prime, "HEAD")
 		got := call(t, withEnv(testMapLandEnv, "linked"), "dirtier", "follower")
 		// TestDirtierLandsLinked moves HEAD.
 		// The map is written once after all of dirtier's tests ran, so none of them is kept.
-		// follower's job comes after the move, so the call ends there and counts it queued beside dirtier.
-		wantOutcome(t, got, testMapOutcome{
-			Skipped: []testMapSkip{{Package: "dirtier", Cause: "files changed under its tests: linked/linked.go"}},
-			Queued:  2,
-		})
+		// follower's job comes after the move, so the call ends there and leaves it unmeasured beside dirtier.
+		wantOutcome(t, got, testMapOutcome{Unmeasured: testMapMoved(t, prime, head, "dirtier", "follower"), Exit: 1})
 		wantLeft(t, "dirtier", dirtierBefore)
 		wantLeft(t, "follower", followerBefore)
 	})
@@ -1731,11 +1774,9 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				dirtierBefore := readTestMap(t, mapsDir, "dirtier")
+				head := gitkit.RevParse(t, prime, "HEAD")
 				got := call(t, tt.env, "dirtier")
-				wantOutcome(t, got, testMapOutcome{
-					Skipped: []testMapSkip{{Package: "dirtier", Cause: "files changed under its tests: linked/" + added}},
-					Queued:  1,
-				})
+				wantOutcome(t, got, testMapOutcome{Unmeasured: testMapMoved(t, prime, head, "dirtier"), Exit: 1})
 				wantLeft(t, "dirtier", dirtierBefore)
 			})
 		}
@@ -1786,6 +1827,27 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 		}
 	})
 
+	t.Run("AFailedListingThroughADirtyFileWritesNoMap", func(t *testing.T) {
+		// No linked set is known, so any dirty file of the module counts.
+		wantDirtyLeaves(t, withEnv(testMapFailListEnv, "1"), "caller", "follower/notes.txt")
+	})
+
+	t.Run("AFailedBuildOverADirtyLinkedFileWritesNoMap", func(t *testing.T) {
+		wantDirtyLeaves(t, withEnv(testMapFailBuildEnv, module+"/caller"), "caller", "linked/notes.txt")
+	})
+
+	t.Run("APackageWhoseTestsAreAllSpawnMarkedIsCheckedBeforeItsWrite", func(t *testing.T) {
+		plankit.WriteTree(t, prime, map[string]string{
+			"spawner/spawner.go": testMapSource("spawner"),
+			"spawner/spawner_test.go": "package spawner\n\nimport (\n\t\"os\"\n\t\"testing\"\n\n\t\"github.com/Knatte18/loomyard/internal/testkit/tiergate\"\n)\n\n" +
+				"func TestSpawnerSpawns(t *testing.T) {\n\ttiergate.Require(t, 1)\n\t_, _ = os.Executable()\n}\n",
+		})
+		gitkit.Git(t, prime, "add", "spawner")
+		gitkit.Git(t, prime, "commit", "-q", "-m", "add a package of one spawning test")
+		wantOutcome(t, call(t, environ, "spawner"), testMapOutcome{Built: []string{"spawner"}})
+		wantDirtyLeaves(t, environ, "spawner", "spawner/notes.txt")
+	})
+
 	t.Run("ASpawnScanFailureWritesAFailedMapWithTheMarker", func(t *testing.T) {
 		plankit.WriteTree(t, prime, map[string]string{
 			"garbled/garbled.go":      "package garbled\n\nfunc (\n",
@@ -1800,6 +1862,10 @@ func TestGateTestMapLinkedPackages(t *testing.T) {
 		if failed := readTestMap(t, mapsDir, "garbled"); failed.BuildFailure != got.Failed[0].Failure || failed.Format == nil {
 			t.Errorf("garbled map = failure %q, format %+v; want the spawn scan failure and a marker", failed.BuildFailure, failed.Format)
 		}
+	})
+
+	t.Run("AFailedSpawnScanOverADirtyFileWritesNoMap", func(t *testing.T) {
+		wantDirtyLeaves(t, environ, "garbled", "garbled/notes.txt")
 	})
 
 	t.Run("AGoEnvFailureEndsTheWalk", func(t *testing.T) {
