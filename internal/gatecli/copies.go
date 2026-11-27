@@ -101,12 +101,20 @@ func runTierCopies(ctx context.Context, run tierRun, env []string, request testR
 // mergeCopies folds the results of the copies of one tier run into the tier run's result.
 // The merged record totals the copies' counts and launches and takes the first failing exit code.
 // The merged result keeps the copies' own results, so the report can name each copy.
+// It is a slice-pressure stop when one copy was and every other copy passed or was one too.
 func mergeCopies(results []tierResult) tierResult {
 	merged := tierResult{record: results[0].record, copies: results}
 	merged.record.Launches = slices.Clone(merged.record.Launches)
 	merged.record.Failures = slices.Clone(merged.record.Failures)
 	var log bytes.Buffer
+	pressured, failedOtherwise := false, false
 	for i, result := range results {
+		if result.slicePressure {
+			pressured = true
+		} else if result.record.ExitCode != 0 {
+			failedOtherwise = true
+		}
+		merged.slicePressure = pressured && !failedOtherwise
 		fmt.Fprintf(&log, "copy %d:\n", i+1)
 		log.Write(result.log)
 		if merged.refusal == "" {

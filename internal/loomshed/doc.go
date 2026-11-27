@@ -72,7 +72,7 @@
 // So does a C# change whose tests the check cannot select or run.
 // A diff that adds or changes no test holds the run without spending an attempt.
 // The hold lasts until a new commit or the parent's record.
-// Failing exits name their way forward, and any other exit code, a timeout or a runner crash fails terminally.
+// Failing exits name their way forward, and any other exit code, a timeout or an unjudged run fails terminally.
 // A labels or record read error is the gate's returned error.
 //
 // The Plan-Write rotation archives the prior plan and webster's run record,

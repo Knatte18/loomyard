@@ -106,9 +106,10 @@
 //
 // # Watchdog and timeout lines
 //
-// Each line the gate prints after a CPU-watchdog quit, a tier or build timeout, or a runner crash has one renderer.
+// The gate prints a line after a CPU-watchdog quit, a tier or build timeout, a runner crash or a memory pressure stop.
+// Each such line has one renderer.
 // It also has one finder.
-// A site therefore tells a runtime's crash from a failing test.
+// A site therefore tells a runtime's crash, or a memory limit other load filled, from a failing test.
 //
 // # Red-first call
 //

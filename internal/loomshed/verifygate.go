@@ -77,7 +77,8 @@ const failedAloneNote = "The tests that failed the last verify run were run alon
 // That arrival first runs them alone through verifytree.Verify, the command gateslot.FailedTestsCall renders.
 // Tests that fail again fail the arrival with their findings alone and are kept for the arrival after.
 // A run of them that passes, or fails naming no failed test, leaves the arrival to the full command.
-// A timed-out run, a runner crash and a failure outside any test keep nothing, so the next arrival runs the full command.
+// A timed-out run, an unjudged run and a failure outside any test keep nothing,
+// so the next arrival runs the full command.
 //
 // `StatusPassed` and `StatusSkipped` pass.
 // `StatusDirty` fails with the dirty paths.
@@ -85,8 +86,9 @@ const failedAloneNote = "The tests that failed the last verify run were run alon
 // After a CPU watchdog quit, it adds the window and the `busy_quit_sec` way forward.
 // The command's guard scan rejects a test file, such as one with a misplaced `//lym:guard` marker.
 // That rejection reaches the findings through the tail, with its file and line.
-// A `StatusFailed` result is a runner crash when every failed run crashed its test runner with no failing test.
-// That fails terminally and names the crashed runs.
+// A `StatusFailed` result is unjudged when every failed run crashed its test runner with no failing test,
+// or the memory guard stopped runs of it for a memory limit other load filled and no failed run judged the code.
+// That fails terminally and names those runs.
 // No change the writer makes mends it, so no fixer gets it.
 // A headroom finding or a comment lint finding fails with its file and line or its bytes and the way forward.
 // A command, merge base or tree scope read error is a returned error.
@@ -196,8 +198,8 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 				failedBefore, _ = namedFailures(res)
 			}
 			findings := verifyFailureFindings(res, res.Log)
-			logger.Warn("loomshed: verify gate failed", "gate", siteLabel, "attempt", attempt, "exitCode", res.ExitCode, "runnerCrash", res.RunnerCrash, "log", res.Log)
-			return shuttleengine.GateResult{Passed: false, Findings: findings, Terminal: res.RunnerCrash}, nil
+			logger.Warn("loomshed: verify gate failed", "gate", siteLabel, "attempt", attempt, "exitCode", res.ExitCode, "runnerCrash", res.RunnerCrash, "memoryPressure", res.MemoryPressure, "log", res.Log)
+			return shuttleengine.GateResult{Passed: false, Findings: findings, Terminal: res.Unjudged()}, nil
 		}
 	}
 }
@@ -236,9 +238,9 @@ func runFailedTestsAlone(paths verifytree.Paths, site verifytree.Site, failed []
 }
 
 // namedFailures returns the failed tests res's log names, when its failure report names failed tests alone.
-// A timed-out run and a runner crash name none.
+// A timed-out run and an unjudged run name none.
 func namedFailures(res verifytree.Result) ([]gateslot.FailedTest, bool) {
-	if res.TimedOut || res.RunnerCrash || res.Log == "" {
+	if res.TimedOut || res.Unjudged() || res.Log == "" {
 		return nil, false
 	}
 	log, err := os.ReadFile(res.Log)
@@ -279,7 +281,7 @@ func commentLintFindings(findings []commentlint.Finding) string {
 	return b.String()
 }
 
-// verifyFailureFindings renders a StatusFailed result with its exit code, timeout or runner crash, and log path.
+// verifyFailureFindings renders a StatusFailed result with its exit code, timeout or unjudged stop, and log path.
 // It quotes each failing test and package the log names, with its own output.
 // It also quotes the gate's closing line of failed runs.
 // A log that names no failing test or package is quoted as its tail instead.
@@ -292,8 +294,8 @@ func verifyFailureFindings(res verifytree.Result, logPath string) string {
 	switch {
 	case res.TimedOut:
 		fmt.Fprintf(&b, "The verify command timed out: %s.", res.Detail)
-	case res.RunnerCrash:
-		fmt.Fprintf(&b, "The verify command's test runner crashed in its run and its one rerun, so no test judged the code: %s. No change to the code mends it, so the run stops here; resuming it runs the gate again.", res.Detail)
+	case res.Unjudged():
+		fmt.Fprintf(&b, "The verify command's %s, so no test judged the code: %s. No change to the code mends it, so the run stops here; resuming it runs the gate again, and %s.", res.UnjudgedStop(), res.Detail, res.UnjudgedAdvice())
 	default:
 		fmt.Fprintf(&b, "The verify command failed with exit code %d.", res.ExitCode)
 		if res.Detail != "" {

@@ -119,7 +119,7 @@ func (d detachRun) runWithFixer(ctx context.Context, request detachRequest, gate
 		return exit
 	}
 	first := d.runRequest(ctx, request, gateTree, seams.leaseRead())
-	if !on || first.Abandoned || first.Code == 0 || !d.holdsFailureReport() || d.endedOnRunnerCrash() {
+	if !on || first.Abandoned || first.Code == 0 || !d.holdsFailureReport() || d.endedUnjudged() {
 		return first
 	}
 	return d.fixAndRerun(ctx, request, gateTree, seams, kit, store, first)
@@ -131,14 +131,17 @@ func (d detachRun) holdsFailureReport() bool {
 	return err == nil && info.Size() > 0
 }
 
-// endedOnRunnerCrash reports whether the run's stderr file holds the line a call closes with when every failed run crashed its test runner, a failure no change to the code mends.
-func (d detachRun) endedOnRunnerCrash() bool {
+// endedUnjudged reports whether the run's stderr file holds a line a call closes with when no failed run judged the code.
+// Every failed run crashed its test runner, or the memory guard stopped it for a memory limit other load filled;
+// no change to the code mends either.
+func (d detachRun) endedUnjudged() bool {
 	report, err := os.ReadFile(d.path(stderrFile))
 	if err != nil {
 		return false
 	}
 	_, crashed := gateslot.FindRunnerCrash(string(report))
-	return crashed
+	_, pressured := gateslot.FindMemoryPressureStop(string(report))
+	return crashed || pressured
 }
 
 // settleLiveFixer waits on the live fixer record of an earlier run before the gate runs, under `phaseFixing`.

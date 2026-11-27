@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -670,6 +671,44 @@ func standaloneWorktree(t *testing.T, withConfig bool) string {
 		}
 	}
 	return dir
+}
+
+func TestGoJSONCounter_MarksTheFailureOfAKilledTestBinary(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the test binary ends itself with SIGKILL")
+	}
+
+	module := t.TempDir()
+	for name, content := range map[string]string{
+		"go.mod":    "module example.com/killed\n\ngo 1.21\n",
+		"p_test.go": "package p\n\nimport (\n\t\"syscall\"\n\t\"testing\"\n)\n\nfunc TestKilled(t *testing.T) {\n\tsyscall.Kill(syscall.Getpid(), syscall.SIGKILL)\n\tselect {}\n}\n",
+	} {
+		if err := os.WriteFile(filepath.Join(module, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	counter, err := newCounter(counterGoJSON, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "test", "-json", "./...")
+	cmd.Dir = module
+	cmd.Env = append(os.Environ(), "GOWORK=off")
+	cmd.Stdout, cmd.Stderr = counter, counter
+
+	if err := cmd.Run(); err == nil {
+		t.Fatal("go test passed; want it to fail on the killed test binary")
+	}
+	if err := counter.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	failures := counter.Failures()
+	if len(failures) != 1 || failures[0].pkg != "example.com/killed" || failures[0].test != "" || !failures[0].killed {
+		t.Errorf("Failures() = %+v; want the package example.com/killed alone, marked killed", failures)
+	}
 }
 
 func TestGateTest_Scenario(t *testing.T) {

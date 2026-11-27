@@ -927,7 +927,7 @@ func (fz *Finalize) mergeAndGate(ctx context.Context, parentHandle parentMerger)
 //
 // A failing gate spawns the fixer while the entry has attempts left under finalize_fix_attempts in landing.yaml.
 // The attempts are read from the attempt record under the row's entry.
-// A gate whose every failed run crashed its test runner judged no code;
+// A gate whose result is a runner crash or a memory pressure stop judged no code;
 // it halts with the gate's LandingStopPrefix reason, spawning no fixer and spending no attempt.
 // A pass after the lock was taken again spends from the same attempts,
 // so a second failed verify never grants a fresh cap.
@@ -968,11 +968,11 @@ func (fz *Finalize) gateAndFix(ctx context.Context) *ending {
 		return fail(ctx, finalizeName, err)
 	}
 
-	gateReason, crashed, err := fz.gate.check(ctx, finalizeName, fz.deps.ParentBranch)
+	gateReason, unjudged, err := fz.gate.check(ctx, finalizeName, fz.deps.ParentBranch)
 	if err != nil {
 		return fail(ctx, finalizeName, err)
 	}
-	if crashed {
+	if unjudged {
 		return halt(ctx, finalizeName, gateReason)
 	}
 	passed := gateReason == ""

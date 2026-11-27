@@ -21,6 +21,7 @@
 // so a failure the change under test did not cause hides no later check.
 // `--stop-on-fail` ends the call at its first failed run instead, naming the failed run and every run it skipped.
 // A run that crashed its test runner in its run and its rerun judged no code, so it stops nothing.
+// Nor does a run the memory guard stopped in its run and its rerun for a memory limit other load filled.
 // `--no-carry` treats every tier of the call as a `carry: false` tier.
 // A call over an unchanged tree then still runs its tests.
 // When a run failed, the call prints the failure report, then closes with one stderr line naming each failed run.
@@ -60,16 +61,21 @@
 // A vet or guard run does not count as running a tier.
 // The line is output only and changes no exit code or record.
 //
-// A tier run that fails without timing out is rerun once after a delay in two cases.
+// A tier run that fails without timing out is rerun once after a delay in three cases.
 // The first is an output that holds a resource-shortage marker.
 // The markers are `resource temporarily unavailable`, `failed to create new OS thread` and `cannot fork`.
 // The second is a run that reports no failing test and exits 128 plus a crash signal number.
 // That code is what a shell reports when a runtime aborted and crashed its test runner.
+// The third is a run whose only stops were the memory guard's slice-pressure kills.
+// Such a run has no failing test and no failed package but those whose test binary was killed.
 // The rerun's result is the tier's.
 // The first run's record carries `runner_crash` for a crash; the rerun's record carries `rerun`.
+// The record of a run the guard stopped so, the first or the rerun, carries `memory_pressure`.
 // A call closes with `gateslot.RunnerCrashLine` when every failed run of it crashed so.
-// It needs no failing test, failed build or lint finding beside those runs;
-// the line lets a site tell a runtime's crash from a failing test.
+// It closes with `gateslot.MemoryPressureLine` instead when the guard stopped one of them so twice,
+// and every other failed run crashed or was stopped so too.
+// Either needs no failing test, failed build or lint finding beside those runs;
+// the line lets a site tell a runtime's crash or a full memory limit from a failing test.
 // Bound: one rerun per tier run, and a test that aborts its own runner is reported as a crash, not a failing test.
 // The build step is not rerun.
 //
@@ -618,10 +624,17 @@
 // While a tier's command runs, a memory guard samples its child tree through `proc.TreeSample`.
 // A `.test` process whose tree holds more than `memory_quit_mb` resident is killed whole with SIGKILL;
 // a tree that holds another tree over the cap is spared, and the inner binary is killed.
-// When no tree passes the cap and the memory limit the verb sits under is nearly spent;
+// When no tree passes the cap and the memory limit the verb sits under is nearly spent,
 // the largest tree of 1024 MB or more is killed whole.
+// That kill is a slice-pressure kill when the gate call's own process tree holds less than half the limit's use:
+// other load filled it.
+// The tree is the whole call's, so sibling `--copies` copies and report-step binaries count as the call's own.
+// Its line names the largest other holders of the limit's cgroup, which `proc.ResidentInCgroup` lists.
+// It calls the kill an infrastructure stop, whose way forward is to wait for that load to end.
 // Each kill prints a line naming the binary, its package directory and the reason;
-// the tier's log and failure report carry it, and the tier is never rerun.
+// the tier's log and failure report carry it.
+// A tier whose only stops were slice-pressure kills, and that failed nothing else, is rerun once;
+// after any other guard kill the tier is never rerun.
 // `lym gate redundant`, `lym gate mutate`, `lym gate test --map` and the report steps run the same guard.
 // The report steps' guard leaves alone a test binary below a running tier command, which the tier's own guard watches.
 // A test run the guard kills there is not judged, a mutant run it kills counts as no kill,
@@ -733,7 +746,7 @@
 // It then runs the gate again.
 // It appends the fixer's reply or the dead note to the re-run's stderr under `## Cold fixer reply`.
 // A pass, an abandoned exit, a `card-verify` request and a refusal end with the first run's result.
-// So do a red verdict holding `gateslot.RunnerCrashLine` and a failed spawn.
+// So do a red verdict holding `gateslot.RunnerCrashLine` or `gateslot.MemoryPressureLine` and a failed spawn.
 // A passed lease or a terminating signal during the phase stops the fixer and the run ends abandoned.
 // A run in the phase `fixing` is joinable under changed dirty paths,
 // so a caller's repeated call joins whatever tree the fixer is changing.

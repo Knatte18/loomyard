@@ -21,9 +21,10 @@
 // a process that re-execs itself keeps its children but not the goroutines that waited on them,
 // so the new image calls it before it starts a child of its own.
 //
-// The process readers are TreeSample, ListProcesses, ReadProcess, ListStats and PIDsWithEnv.
+// The process readers are TreeSample, ResidentInCgroup, ListProcesses, ReadProcess, ListStats and PIDsWithEnv.
+// ResidentInCgroup lists the processes of a cgroup and its descendants with the memory each holds resident.
 // They, the signal senders and the cgroup readers read /proc or signal by pid, so they work on Linux only.
-// On Windows TreeSample, ListProcesses, ListStats and PIDsWithEnv return errors.ErrUnsupported.
+// On Windows TreeSample, ResidentInCgroup, ListProcesses, ListStats and PIDsWithEnv return errors.ErrUnsupported.
 // ReadProcess and IsAncestor are false there.
 // SignalProcess only kills, and SignalGroup returns ErrNoProcessGroup.
 // SignalProcess and SignalGroup return the raw syscall error.

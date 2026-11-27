@@ -40,24 +40,32 @@ func guardTree(binaryRSS, childRSS int64) []proc.ProcessSample {
 
 // guardRun is what one scripted run of the memory guard left behind.
 type guardRun struct {
-	killed  []int
-	lines   []string
-	out     string
-	samples int
+	killed []int
+	lines  []string
+	// pressureKills counts the kills the guard made as slice-pressure kills.
+	pressureKills int
+	out           string
+	samples       int
 }
 
 // runGuardScripted runs a memory guard over script and returns once the script's last sample has been handled.
 // limit is the memory limit the guard reads, and limited whether it finds one.
+// holders answers the guard's read of the limit's cgroup.
 // foreign names the processes another guard watches.
+// own answers the guard's read of the gate call's processes; nil answers with the tree last sampled.
 // Only the test binary at testBinaryPID can be described.
-func runGuardScripted(t *testing.T, script []scriptedSample, limit proc.MemoryLimit, limited bool, foreign func(pid int) bool) guardRun {
+func runGuardScripted(t *testing.T, script []scriptedSample, limit proc.MemoryLimit, limited bool, holders func(cgroup string) ([]proc.ProcessSample, error), foreign func(pid int) bool, own func() ([]proc.ProcessSample, error)) guardRun {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	var result guardRun
 	var out bytes.Buffer
+	if own == nil {
+		own = func() ([]proc.ProcessSample, error) { return script[result.samples-1].tree, nil }
+	}
 	g := memoryGuard{
+		own:    own,
 		limit:  guardLimit,
 		floor:  guardFloor,
 		period: time.Second,
@@ -70,6 +78,7 @@ func runGuardScripted(t *testing.T, script []scriptedSample, limit proc.MemoryLi
 			return next.tree, next.err
 		},
 		pressure: func() (proc.MemoryLimit, bool) { return limit, limited },
+		holders:  holders,
 		describe: func(pid int) (proc.Process, bool) {
 			process := proc.Process{PID: pid, Cwd: guardTestDir, Argv: []string{testBinaryPath, testRunFlagPrefix + guardFilter, "-test.v=true"}}
 			return process, pid == testBinaryPID
@@ -86,7 +95,13 @@ func runGuardScripted(t *testing.T, script []scriptedSample, limit proc.MemoryLi
 		},
 		out: &out,
 	}
-	result.lines = g.run(ctx, 1)
+
+	for _, kill := range g.run(ctx, 1) {
+		result.lines = append(result.lines, kill.line)
+		if kill.slicePressure {
+			result.pressureKills++
+		}
+	}
 	result.out = out.String()
 	return result
 }
@@ -96,19 +111,50 @@ func TestMemoryGuard(t *testing.T) {
 	t.Parallel()
 
 	overCap := guardTree(3000<<20, 2000<<20)
-	overLine := memoryGuardLine("pkg.test", testBinaryPID, guardTestDir, guardFilter, "it held 5000 MB, over gate.memory_quit_mb's 4096 MB")
+	overLine := memoryGuardLine("pkg.test", testBinaryPID, guardTestDir, guardFilter, "it held 5000 MB, over gate.memory_quit_mb's 4096 MB", false)
 	short := proc.MemoryLimit{Used: 16384<<20 - 512<<20, Max: 16384 << 20, Cgroup: "/user.slice"}
 	ample := proc.MemoryLimit{Used: 8192 << 20, Max: 16384 << 20, Cgroup: "/user.slice"}
+	// smallRun is a run of two test binaries holding 2700 MB together, under half of short's use.
+	smallRun := []proc.ProcessSample{
+		{PID: testBinaryPID, Parent: 1, Path: testBinaryPath, RSS: 1500 << 20},
+		{PID: otherPID, Parent: 1, Path: longBinaryPath, RSS: 1200 << 20},
+	}
+	// siblingRun is smallRun with a binary the same gate call runs outside the guarded tree.
+	siblingRun := func(rss int64) func() ([]proc.ProcessSample, error) {
+		return func() ([]proc.ProcessSample, error) {
+			return append(slices.Clone(smallRun), proc.ProcessSample{PID: innerPID, Parent: 1, Path: testBinaryPath, RSS: rss}), nil
+		}
+	}
+	// otherLoad is the user slice's processes.
+	// It holds two of the gate call's own binaries and processes that do not count.
+	// It also holds large holders, one of them with an unreadable executable.
+	otherLoad := func(string) ([]proc.ProcessSample, error) {
+		return []proc.ProcessSample{
+			{PID: 903, Path: "/usr/bin/bash", RSS: 4 << 20},
+			{PID: innerPID, Path: testBinaryPath, RSS: 3500 << 20},
+			{PID: 905, RSS: 2500 << 20},
+			{PID: 901, Path: "/usr/bin/node", RSS: 3000 << 20},
+			{PID: testBinaryPID, Path: testBinaryPath, RSS: 1500 << 20},
+			{PID: 900, Path: "/usr/share/code/code", RSS: 6000 << 20},
+			{PID: 904, Path: "/usr/bin/kworker", RSS: 0},
+			{PID: 902, Path: "/usr/lib/firefox/firefox", RSS: 2000 << 20},
+		}, nil
+	}
+	unreadable := func(string) ([]proc.ProcessSample, error) { return nil, errors.New("proc listing failed") }
 	tests := []struct {
 		name    string
 		script  []scriptedSample
 		limit   proc.MemoryLimit
 		limited bool
+		holders func(cgroup string) ([]proc.ProcessSample, error)
 		// foreign are the running tier commands, whose test binaries the tier's own guard watches.
-		foreign     []int
-		wantKilled  []int
-		wantLines   []string
-		wantSamples int
+		foreign []int
+		// own answers the read of the gate call's processes; nil answers with the sampled tree.
+		own               func() ([]proc.ProcessSample, error)
+		wantKilled        []int
+		wantLines         []string
+		wantPressureKills int
+		wantSamples       int
 	}{
 		{
 			name:       "a tree over the cap is killed whole, once",
@@ -131,7 +177,7 @@ func TestMemoryGuard(t *testing.T) {
 				{PID: innerPID, Parent: testBinaryPID, Path: longBinaryPath, RSS: 5000 << 20},
 			}}},
 			wantKilled: []int{innerPID},
-			wantLines:  []string{memoryGuardLine("averylongpackagenamethatpassesfifteen.test", innerPID, "", "", "it held 5000 MB, over gate.memory_quit_mb's 4096 MB")},
+			wantLines:  []string{memoryGuardLine("averylongpackagenamethatpassesfifteen.test", innerPID, "", "", "it held 5000 MB, over gate.memory_quit_mb's 4096 MB", false)},
 		},
 		{
 			name: "a test binary below a running tier command is left to the tier's own guard",
@@ -145,15 +191,63 @@ func TestMemoryGuard(t *testing.T) {
 			wantLines:  []string{overLine},
 		},
 		{
-			name: "a short memory limit kills the largest tree at or above the floor",
+			name: "a short memory limit the run fills kills the largest tree at or above the floor",
 			script: []scriptedSample{{tree: []proc.ProcessSample{
-				{PID: testBinaryPID, Parent: 1, Path: testBinaryPath, RSS: 1500 << 20},
-				{PID: otherPID, Parent: 1, Path: longBinaryPath, RSS: 1200 << 20},
+				{PID: 2, Parent: 1, Path: nonTestBinary, RSS: 6000 << 20},
+				{PID: testBinaryPID, Parent: 2, Path: testBinaryPath, RSS: 1500 << 20},
+				{PID: otherPID, Parent: 2, Path: longBinaryPath, RSS: 1200 << 20},
 			}}},
 			limit:      short,
 			limited:    true,
+			holders:    otherLoad,
 			wantKilled: []int{testBinaryPID},
-			wantLines:  []string{memoryGuardLine("pkg.test", testBinaryPID, guardTestDir, guardFilter, "the memory limit of /user.slice had 512 MB left of 16384 MB, and it was the largest test binary at 1500 MB")},
+			wantLines:  []string{memoryGuardLine("pkg.test", testBinaryPID, guardTestDir, guardFilter, "the memory limit of /user.slice had 512 MB left of 16384 MB, and it was the largest test binary at 1500 MB", false)},
+		},
+		{
+			name:       "a short memory limit other load fills kills the largest tree as an infrastructure stop naming the other holders",
+			script:     []scriptedSample{{tree: smallRun}},
+			limit:      short,
+			limited:    true,
+			holders:    otherLoad,
+			own:        siblingRun(3500 << 20),
+			wantKilled: []int{testBinaryPID},
+			wantLines: []string{"lym gate: memory guard: killed the test binary pkg.test (pid 42) of the package in /work/internal/foo, running the tests -test.run=^TestHog$ selects, with every process it started: " +
+				"the memory limit of /user.slice had 512 MB left of 16384 MB, and this run's processes held only 6200 MB of the 15872 MB in use; " +
+				"its largest other holders are code (pid 900) at 6000 MB, node (pid 901) at 3000 MB, a process whose executable could not be read (pid 905) at 2500 MB; " +
+				"it was the largest test binary at 1500 MB; " +
+				"an infrastructure stop, not a test failure: other load filled the memory limit, and no change to the code under test frees it; " +
+				"way forward: wait for that load to end, then re-run the same command"},
+			wantPressureKills: 1,
+		},
+		{
+			name:       "a gate call holding most of the use beside a small guarded tree is an ordinary pressure kill",
+			script:     []scriptedSample{{tree: smallRun}},
+			limit:      short,
+			limited:    true,
+			holders:    otherLoad,
+			own:        siblingRun(6000 << 20),
+			wantKilled: []int{testBinaryPID},
+			wantLines:  []string{memoryGuardLine("pkg.test", testBinaryPID, guardTestDir, guardFilter, "the memory limit of /user.slice had 512 MB left of 16384 MB, and it was the largest test binary at 1500 MB", false)},
+		},
+		{
+			name:       "a gate call whose processes cannot be sampled makes an ordinary pressure kill",
+			script:     []scriptedSample{{tree: smallRun}},
+			limit:      short,
+			limited:    true,
+			holders:    otherLoad,
+			own:        func() ([]proc.ProcessSample, error) { return nil, errors.New("proc listing failed") },
+			wantKilled: []int{testBinaryPID},
+			wantLines:  []string{memoryGuardLine("pkg.test", testBinaryPID, guardTestDir, guardFilter, "the memory limit of /user.slice had 512 MB left of 16384 MB, and it was the largest test binary at 1500 MB", false)},
+		},
+		{
+			name:              "a slice-pressure kill whose cgroup cannot be read says its other holders could not be read",
+			script:            []scriptedSample{{tree: smallRun}},
+			limit:             short,
+			limited:           true,
+			holders:           unreadable,
+			wantKilled:        []int{testBinaryPID},
+			wantLines:         []string{memoryGuardLine("pkg.test", testBinaryPID, guardTestDir, guardFilter, "the memory limit of /user.slice had 512 MB left of 16384 MB, and this run's processes held only 2700 MB of the 15872 MB in use; the other holders of its memory could not be read; it was the largest test binary at 1500 MB", true)},
+			wantPressureKills: 1,
 		},
 		{
 			name:    "a short memory limit spares a tree under the floor",
@@ -186,12 +280,15 @@ func TestMemoryGuard(t *testing.T) {
 			for _, pid := range tt.foreign {
 				commands.add(pid)
 			}
-			got := runGuardScripted(t, tt.script, tt.limit, tt.limited, commands.holds)
+			got := runGuardScripted(t, tt.script, tt.limit, tt.limited, tt.holders, commands.holds, tt.own)
 			if !slices.Equal(got.killed, tt.wantKilled) {
 				t.Errorf("killed pids = %v; want %v", got.killed, tt.wantKilled)
 			}
 			if !slices.Equal(got.lines, tt.wantLines) {
 				t.Errorf("lines = %q; want %q", got.lines, tt.wantLines)
+			}
+			if got.pressureKills != tt.wantPressureKills {
+				t.Errorf("slice-pressure kills = %d; want %d", got.pressureKills, tt.wantPressureKills)
 			}
 			wantOut := ""
 			if len(tt.wantLines) > 0 {

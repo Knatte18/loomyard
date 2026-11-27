@@ -176,11 +176,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	var failures []string
 	code, firstFailed := 0, ""
 	buildNamed := false
-	// crashed names the failed runs that crashed their test runner twice.
-	// judged is set once any other run failed.
-	// The call closes with the runner crash line only when no failure judged the code.
-	var crashed []string
-	judged := false
+	var unjudged unjudgedRuns
 	// The report steps judge in the background beside the plan's last tier, once every earlier run passed.
 	// A failed run cancels them, and every return waits for their end.
 	var reports reportSteps
@@ -205,7 +201,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 			end = exe.runListed(run)
 		}
 		if end.blocked {
-			judged = true
+			unjudged.judged = true
 			// The build is a failed run counted before the first tier it blocked.
 			if !buildNamed {
 				buildNamed = true
@@ -217,11 +213,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 			failures = append(failures, runLabel(run)+" (blocked by the build)")
 		} else if end.ran && end.code != 0 {
 			failures = append(failures, failedRunLabel(run, end))
-			if end.crash != "" {
-				crashed = append(crashed, fmt.Sprintf("%s (exit %d, %s)", runLabel(run), end.code, end.crash))
-			} else {
-				judged = true
-			}
+			unjudged.add(runLabel(run), end)
 			if code == 0 {
 				code, firstFailed = end.code, runLabel(run)
 			}
@@ -250,7 +242,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	if request.gate != "" && runCtx.Err() == nil {
 		red := code != 0
 		for _, lint := range runLints(request.root, cfg.Gates[request.gate].Lints) {
-			judged = true
+			unjudged.judged = true
 			exe.failed = append(exe.failed, lint)
 			failures = append(failures, fmt.Sprintf("%s (%s)", lint.label, lint.outcome))
 			if code == 0 {
@@ -276,8 +268,8 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	}
 	exe.printReport(inHub)
 	printFailedRuns(request.stderr, failures, firstFailed, false)
-	if len(crashed) > 0 && !judged {
-		printLine(request.stderr, gateslot.RunnerCrashLine(strings.Join(crashed, ", ")))
+	if line := unjudged.closingLine(); line != "" {
+		printLine(request.stderr, line)
 	}
 	if code == 0 && sc.form == scopeCard {
 		printNotRunTiers(request.stderr, notRunTiers(cfg, plan))
@@ -288,6 +280,42 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		}
 	}
 	return exitAfterSignal(caught, code)
+}
+
+// unjudgedRuns collects a call's failures by whether each judged the code.
+type unjudgedRuns struct {
+	// crashed names the failed runs that crashed their test runner twice.
+	crashed []string
+	// pressured names the failed runs the memory guard stopped twice for a memory limit other load filled.
+	pressured []string
+	// judged is set once any other failure happened.
+	judged bool
+}
+
+// add records the run labelled label, which ran and failed as end.
+func (u *unjudgedRuns) add(label string, end runEnd) {
+	switch {
+	case end.crash != "":
+		u.crashed = append(u.crashed, fmt.Sprintf("%s (exit %d, %s)", label, end.code, end.crash))
+	case end.pressureStop:
+		u.pressured = append(u.pressured, fmt.Sprintf("%s (exit %d)", label, end.code))
+	default:
+		u.judged = true
+	}
+}
+
+// closingLine returns the line saying no failure of the call judged the code, or "" when one did or nothing failed.
+// It is the runner crash line when every failed run crashed, and the memory pressure line when one was a pressure stop.
+func (u unjudgedRuns) closingLine() string {
+	switch {
+	case u.judged:
+		return ""
+	case len(u.pressured) > 0:
+		return gateslot.MemoryPressureLine(strings.Join(u.pressured, ", "))
+	case len(u.crashed) > 0:
+		return gateslot.RunnerCrashLine(strings.Join(u.crashed, ", "))
+	}
+	return ""
 }
 
 // haltExitCode returns the exit code of a call that the run end halted.
@@ -320,8 +348,9 @@ func printFailedRuns(stderr io.Writer, failures []string, firstFailed string, ha
 // stopsCall reports whether a run that ended so stops a --stop-on-fail call.
 // A failed or blocked run does.
 // A run that crashed its test runner in its run and its rerun judged no code, so it does not.
+// Nor does a run the memory guard stopped in its run and its rerun for a memory limit other load filled.
 func stopsCall(end runEnd) bool {
-	return end.blocked || (end.ran && end.code != 0 && end.crash == "")
+	return end.blocked || (end.ran && end.code != 0 && end.crash == "" && !end.pressureStop)
 }
 
 // stopOnFailLine returns the stderr line a --stop-on-fail call prints when the failed run stops it.
@@ -351,12 +380,15 @@ func printNotRunTiers(stderr io.Writer, numbers []int) {
 // The label carries the run's exit code.
 // A run that hit a resource shortage twice carries the marker and the way forward of re-running once the load drops.
 // A run that crashed its test runner twice carries the signal and says that no test failed.
+// A run the memory guard stopped twice for a memory limit other load filled says it is an infrastructure stop.
 func failedRunLabel(run tierRun, end runEnd) string {
 	switch {
 	case end.shortage != "":
 		return fmt.Sprintf("%s (exit %d, a resource shortage, %q, in its run and its rerun: an environment error, not a test failure; way forward: re-run the same command once the machine's process load drops)", runLabel(run), end.code, end.shortage)
 	case end.crash != "":
 		return fmt.Sprintf("%s (exit %d, a runner crash, %s, in its run and its rerun with no failing test: the code under test was not judged)", runLabel(run), end.code, end.crash)
+	case end.pressureStop:
+		return fmt.Sprintf("%s (exit %d, a memory guard kill in its run and its rerun for a memory limit other load filled: an infrastructure stop, not a test failure; way forward: re-run the same command once that load ends)", runLabel(run), end.code)
 	}
 	return fmt.Sprintf("%s (exit %d)", runLabel(run), end.code)
 }
@@ -375,6 +407,8 @@ type runEnd struct {
 	shortage string
 	// crash is the signal name of a test runner that crashed in the run and its rerun with no failing test; empty otherwise.
 	crash string
+	// pressureStop is set when the memory guard stopped the run and its rerun for a memory limit other load filled.
+	pressureStop bool
 }
 
 // runLabel names a run in the closing line of failed runs: its tier.
@@ -754,7 +788,7 @@ func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) 
 	if e.request.observer.Ended != nil {
 		e.request.observer.Ended(record)
 	}
-	return runEnd{code: record.ExitCode, halt: e.ctx.Err() != nil, ran: true, shortage: result.shortage, crash: result.crash}
+	return runEnd{code: record.ExitCode, halt: e.ctx.Err() != nil, ran: true, shortage: result.shortage, crash: result.crash, pressureStop: result.pressureStop}
 }
 
 // writeRecord adds the call's worktree, slug, tier list, gate key and call id to record.

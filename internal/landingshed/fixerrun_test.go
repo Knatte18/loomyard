@@ -297,13 +297,13 @@ func TestFixerRun_Outcomes(t *testing.T) {
 			avoidReason: []string{"without a usable turn"},
 		},
 		{
-			name: "a gate whose runner crashed after a turn is the crash end, never re-prompted",
+			name: "a gate whose runner crashed after a turn is the unjudged end, never re-prompted",
 			setup: func(t *testing.T, fx *fixerRunFixture) {
 				fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 134, RunnerCrash: true, Detail: "gate test runner crashed with no failing test: tier1 (exit 134, SIGABRT)"}
 				report := func() { fx.writeReport(t, fixedReport) }
 				fx.seats.turns = []func(){report, report}
 			},
-			wantEnd: fixerEndCrash, wantSpent: 1, wantTurns: 1,
+			wantEnd: fixerEndUnjudged, wantSpent: 1, wantTurns: 1,
 			wantReason: []string{LandingStopPrefix, "test runner crashed", "tier1 (exit 134, SIGABRT)", "`lym loom resume`"},
 		},
 		{

@@ -45,7 +45,7 @@
 // When a pull request is wanted, Finalize merges it on GitHub under the lock instead of landing by a local push.
 //
 // Each row gates the merged tree through internal/verifytree under its own told gate key.
-// A gate whose every failed run crashed its test runner judged no code:
+// A gate whose result is a runner crash or a memory pressure stop judged no code:
 // the row halts with LandingStopPrefix, spawns no fixer and writes no landing failure record.
 // A failing gate spawns the merge fixer, whose whole change is judged against the size and kind caps.
 // A change over the caps lands only behind the fix review's approval or the operator's acceptance.

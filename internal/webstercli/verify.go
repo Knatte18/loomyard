@@ -4,8 +4,8 @@
 // A passing or skipped run is an ok envelope.
 // A dirty tree or a failing command is an error envelope carrying a `findings` key;
 // the gate-parity test maps that shape onto a stuck verdict.
-// A command whose test runner crashed in its run and its rerun is an error envelope too;
-// it names the crashed runs and says to run the verb again rather than fix the code.
+// A command that judged no code, by a runner crash or a memory pressure stop, is an error envelope too;
+// it names those runs and says to run the verb again rather than fix the code.
 
 package webstercli
 
@@ -40,8 +40,9 @@ its paths under "findings", and a failing command with its exit code, log path
 and failing identities under "findings"; both exit non-zero. A gate.yaml that
 cannot be loaded, or a "webster" key naming an undeclared tier, is refused
 naming "lym config gate". A command whose test runner crashed in its run and
-its one rerun judged no code: it is refused naming the crashed runs under
-"findings", and the way forward is to run the verb again.
+its one rerun, or that was stopped so for a memory limit other load filled,
+judged no code: it is refused naming those runs under "findings", and the way
+forward is to run the verb again.
 
 A pause covering the worktree holds the run until the resume: the verify waits
 before its command, and stops a running command at the pause's grace end.
@@ -86,9 +87,9 @@ func (c *websterCLI) runVerify(cmd *cobra.Command) int {
 			map[string]any{"findings": map[string]any{"dirty": res.Dirty}})
 	}
 
-	if res.RunnerCrash {
+	if res.Unjudged() {
 		return output.ErrFields(out,
-			fmt.Sprintf("webster: verify: the verify command's test runner crashed in its run and its one rerun, so no test judged the code (%s); no change to the code mends it; way forward: run `lym webster verify` again, and when the runner crashes again, find the runtime's own fault in %s", res.Detail, res.Log),
+			fmt.Sprintf("webster: verify: the verify command's %s, so no test judged the code (%s); no change to the code mends it; way forward: run `lym webster verify` again, and %s: %s", res.UnjudgedStop(), res.Detail, res.UnjudgedAdvice(), res.Log),
 			map[string]any{"findings": map[string]any{"exit_code": res.ExitCode, "log": res.Log, "detail": res.Detail}})
 	}
 

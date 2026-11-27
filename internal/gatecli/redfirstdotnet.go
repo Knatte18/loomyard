@@ -290,8 +290,9 @@ type dotnetVerdict struct {
 	red []dotnetimpact.ChangedTest
 	// buildError is the first compile error of the project's files when its tests did not build on the base.
 	buildError string
-	// noTestRan is set for an unjudged run whose tiers discovered no test and neither timed out nor crashed their runner:
-	// an exit code 0 means the filter selected none, any other that a restore or build failure ended the run.
+	// noTestRan is set for an unjudged run whose tiers discovered no test.
+	// A run whose tiers timed out, crashed their runner or stopped for memory pressure never sets it.
+	// An exit code 0 means the filter selected none, any other that a restore or build failure ended the run.
 	noTestRan bool
 }
 
@@ -305,7 +306,8 @@ type dotnetVerdict struct {
 // a test that reads a member only the change adds does not build on the base.
 // A failing run that makes no test red judged none of them.
 // It ran no test when the tier summary lines report none discovered or the output holds none.
-// A tier that timed out or crashed its runner is the exception, since it may have started tests before it ended.
+// The exception is a tier that timed out, crashed its runner or was stopped for memory pressure.
+// Such a tier may have started tests before it ended.
 func judgeDotnetRedFirst(exitCode int, captured string, tests []dotnetimpact.ChangedTest, projectDir string) dotnetVerdict {
 	discovered, summarized := gateslot.TierDiscovered(captured)
 	if exitCode == 0 {
@@ -329,7 +331,8 @@ func judgeDotnetRedFirst(exitCode int, captured string, tests []dotnetimpact.Cha
 	}
 	_, timedOut := gateslot.FindTierTimeout(captured)
 	_, crashed := gateslot.FindRunnerCrash(captured)
-	return dotnetVerdict{outcome: redFirstUnjudged, noTestRan: (!summarized || discovered == 0) && !timedOut && !crashed}
+	_, pressured := gateslot.FindMemoryPressureStop(captured)
+	return dotnetVerdict{outcome: redFirstUnjudged, noTestRan: (!summarized || discovered == 0) && !timedOut && !crashed && !pressured}
 }
 
 // failedNameMatches reports whether name, a failed test's name in a VSTest result, names the test method method.

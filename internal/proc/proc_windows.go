@@ -91,6 +91,11 @@ func TreeSample(root int) ([]ProcessSample, error) {
 	return nil, errors.ErrUnsupported
 }
 
+// ResidentInCgroup reports errors.ErrUnsupported on Windows, which has no cgroups.
+func ResidentInCgroup(cgroup string) ([]ProcessSample, error) {
+	return nil, errors.ErrUnsupported
+}
+
 // ReadProcess reports false on Windows, where the process links it reads do not exist.
 func ReadProcess(pid int) (Process, bool) {
 	return Process{}, false

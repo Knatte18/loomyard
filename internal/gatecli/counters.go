@@ -91,6 +91,8 @@ type runFailure struct {
 	// lines are the failure's first printed lines, trimmed and without go test's status lines, at most failureLines.
 	// A lint finding has its one line.
 	lines []string
+	// killed is set on a package failure whose test binary go test reported as ended by SIGKILL.
+	killed bool
 }
 
 const (
@@ -99,6 +101,10 @@ const (
 	// unparsedLines caps the lines a counter keeps of output no test event carried.
 	unparsedLines = 12
 )
+
+// killedBinaryLine is the output go test adds to a package whose test binary SIGKILL ended.
+// The event carries the test that was running, when one was.
+const killedBinaryLine = "signal: killed"
 
 // newCounter returns the counter for kind, which writes the tier's text output to out.
 // Any kind but `go-json` and `vstest` is an error.
@@ -184,6 +190,8 @@ type goJSONCounter struct {
 	buildLines   map[string][]string
 	// failedPackages holds the packages with a failed test, whose own fail event the test explains.
 	failedPackages map[string]bool
+	// killedPackages holds the packages whose output carried killedBinaryLine.
+	killedPackages map[string]bool
 	// failures holds every failed test, parents of failed subtests included, and each failed package no test explains.
 	failures []runFailure
 	// unparsed holds the first non-empty lines that were no JSON event.
@@ -334,6 +342,12 @@ func (c *goJSONCounter) observeTest(event goTestEvent) {
 // On a package's fail event that no failed test explains, it adds a failure for the package.
 // The failure carries the package's own lines and those of its failed build.
 func (c *goJSONCounter) observePackageOutcome(event goTestEvent) {
+	if event.Action == "output" && strings.TrimSpace(event.Output) == killedBinaryLine {
+		if c.killedPackages == nil {
+			c.killedPackages = map[string]bool{}
+		}
+		c.killedPackages[event.Package] = true
+	}
 	switch {
 	case event.Action == "build-output" && event.ImportPath != "":
 		c.buildLines = appendCapped(c.buildLines, event.ImportPath, strings.TrimSpace(event.Output))
@@ -345,7 +359,7 @@ func (c *goJSONCounter) observePackageOutcome(event goTestEvent) {
 		if len(lines) > failureLines {
 			lines = lines[:failureLines]
 		}
-		c.failures = append(c.failures, runFailure{pkg: event.Package, lines: lines})
+		c.failures = append(c.failures, runFailure{pkg: event.Package, lines: lines, killed: c.killedPackages[event.Package]})
 	}
 }
 

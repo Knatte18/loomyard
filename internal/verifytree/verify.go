@@ -105,10 +105,34 @@ type Result struct {
 	// RunnerCrash is set when the failed command's log holds the gate's runner crash line; the status stays StatusFailed.
 	// It means every failed run, its one rerun included, crashed its test runner on a signal, so no test judged the code.
 	RunnerCrash bool
-	// Detail names a shell start failure, the tier and timeout of a timed-out run, or the crashed runs of a runner crash.
+	// MemoryPressure is set when the failed command's log holds the gate's memory pressure line;
+	// the status stays StatusFailed.
+	// It means the memory guard stopped runs, their one rerun included, for a memory limit other load filled,
+	// and no failed run judged the code.
+	MemoryPressure bool
+	// Detail names a shell start failure, the tier and timeout of a timed-out run, or the runs of an unjudged result.
 	Detail string
 	// Log is this run's own verify log, empty for a dirty or skipped result.
 	Log string
+}
+
+// Unjudged reports whether the failed command judged no code, so no change to the code mends it and no fixer gets it.
+func (r Result) Unjudged() bool { return r.RunnerCrash || r.MemoryPressure }
+
+// UnjudgedStop says what stopped an unjudged result, as words that follow a possessive such as "the verify command's".
+func (r Result) UnjudgedStop() string {
+	if r.MemoryPressure {
+		return "run was stopped for a memory limit other load filled, as was its one rerun"
+	}
+	return "test runner crashed in its run and its one rerun"
+}
+
+// UnjudgedAdvice is the clause that closes the way forward of running an unjudged result's command again.
+func (r Result) UnjudgedAdvice() string {
+	if r.MemoryPressure {
+		return "the other load has to end before that run"
+	}
+	return "when the runner crashes again, find the runtime's own fault in the output"
 }
 
 // record is the verified-tree record Verify writes after a pass: one entry per command.
@@ -318,6 +342,7 @@ func parsePorcelainZ(out string) []string {
 // Detail names the tier and its timeout, and ExitCode stays the command's own exit code.
 // One whose log holds no timeout line but the gate's runner crash line is marked RunnerCrash instead.
 // Detail names the crashed runs.
+// One with neither line but the gate's memory pressure line is marked MemoryPressure, and Detail names the stopped runs.
 // A cancelled ctx is a returned error and writes no record.
 // With a site.Hold, a covering pause holds Verify before its command,
 // and it stops a running command at the pause's grace end.
@@ -439,6 +464,9 @@ func runAndRecord(ctx context.Context, p Paths, site Site, command, tree, commit
 		if !failed.TimedOut {
 			failed.RunnerCrash, failed.Detail = runnerCrashDetail(logPath)
 		}
+		if !failed.TimedOut && !failed.RunnerCrash {
+			failed.MemoryPressure, failed.Detail = memoryPressureDetail(logPath)
+		}
 		return failed, false, nil
 	}
 
@@ -537,6 +565,20 @@ func runnerCrashDetail(logPath string) (bool, string) {
 		return false, ""
 	}
 	return true, "gate test runner crashed with no failing test: " + runs
+}
+
+// memoryPressureDetail reports whether the log at logPath holds the gate's memory pressure line.
+// When it does, the detail names the stopped runs.
+func memoryPressureDetail(logPath string) (bool, string) {
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		return false, ""
+	}
+	runs, ok := gateslot.FindMemoryPressureStop(string(data))
+	if !ok {
+		return false, ""
+	}
+	return true, "gate test stopped for a memory limit other load filled: " + runs
 }
 
 // HeadTree returns HEAD's tree SHA in worktree, so a caller can tell whether the tree a verify judged is still HEAD's.

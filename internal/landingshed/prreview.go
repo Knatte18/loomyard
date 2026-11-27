@@ -542,11 +542,11 @@ func (p *PRReview) readTree() (string, []string, error) {
 // A pass pushes head and records it as gated.
 // On a failure the row pushes nothing and halts with the gate's reason;
 // the resume gates the task head again, so a fix committed meanwhile or a failure from outside the change is retried.
-// A runner crash judges no code, so it halts the row naming the crash.
+// A runner crash or a memory pressure stop judges no code, so it halts the row naming it.
 // A head moved or a tree dirtied during the gate discards the verdict.
 // It returns nil when the wait goes on.
 func (p *PRReview) gateHead(ctx context.Context, head string, rec pullrequest.Record, label string) *ending {
-	reason, crashed, err := p.gate.checkHead(ctx, p.name)
+	reason, unjudged, err := p.gate.checkHead(ctx, p.name)
 	p.gate.markWait(label)
 	if err != nil {
 		return &ending{err: err}
@@ -559,7 +559,7 @@ func (p *PRReview) gateHead(ctx context.Context, head string, rec pullrequest.Re
 		return nil
 	}
 
-	if crashed {
+	if unjudged {
 		return halt(ctx, p.name, reason)
 	}
 	if reason != "" {

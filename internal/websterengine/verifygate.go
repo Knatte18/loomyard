@@ -31,9 +31,9 @@ const verifyGateName = "verify"
 // verifyGateSite is the site label the gate's verify call writes to the running marker.
 const verifyGateSite = "webster gate"
 
-// verifyGateCrashFindingsPrefix opens the findings of a verify whose test runner crashed.
+// verifyGateUnjudgedFindingsPrefix opens the findings of a verify that judged no code.
 // verifyGateStuckReason reads that prefix to end the stuck reason in reentry alone.
-const verifyGateCrashFindingsPrefix = "The verify command's test runner crashed"
+const verifyGateUnjudgedFindingsPrefix = "The verify command judged no code"
 
 // VerifyGateNotes collects what a gate's evaluations observed that is not a failure:
 // the failures that passed on rerun, each with its first run's log, and the commits made above the pre-fix head.
@@ -218,8 +218,8 @@ type verifyGateSeams struct {
 // otherwise it runs that call through verifytree.Verify, told geom.VerifyHold on the first run and the rerun alike;
 // on a failure it reruns once, and a failure whose rerun passes is flaky and passes the gate.
 // A run that timed out or hung, as classifyHang reads its log and exit code, is not re-run: it fails at once.
-// A run whose every failed tier run crashed its test runner with no failing test judged no code:
-// it fails `Terminal` at once, on the first run or the rerun, naming the crashed runs,
+// A run whose result is a runner crash or a memory pressure stop judged no code:
+// it fails `Terminal` at once, on the first run or the rerun, naming those runs,
 // and no fixer gets it, no attempt is spent and no report is written.
 // A failure that survives returns findings.
 // The first failure of any kind records HEAD as the pre-fix head, unless the gate took over an earlier run's.
@@ -501,11 +501,11 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		})
 	}
 
-	// failRunnerCrash fails the gate terminally for res, a verify whose failed tier runs all crashed the test runner:
-	// No failing test judged the code, and no change to the code mends it, so no fixer gets it and it is never rerun.
-	failRunnerCrash := func(res verifytree.Result) shuttleengine.GateResult {
-		logger.Warn("websterengine: verify gate's test runner crashed, so no fixer runs", "attempt", attempt, "detail", res.Detail, "log", res.Log)
-		findings := fmt.Sprintf("%s in its run and its one rerun, so no test judged the code: %s. No change to the code mends it, so no fixer runs and the run stops here; output: %s.", verifyGateCrashFindingsPrefix, res.Detail, res.Log)
+	// failUnjudged fails the gate terminally for res, a verify that judged no code.
+	// No change to the code mends it, so no fixer gets it and it is never rerun.
+	failUnjudged := func(res verifytree.Result) shuttleengine.GateResult {
+		logger.Warn("websterengine: verify gate judged no code, so no fixer runs", "attempt", attempt, "detail", res.Detail, "log", res.Log)
+		findings := fmt.Sprintf("%s, as its %s: %s. No change to the code mends it, so no fixer runs and the run stops here; before it runs again, note that %s; output: %s.", verifyGateUnjudgedFindingsPrefix, res.UnjudgedStop(), res.Detail, res.UnjudgedAdvice(), res.Log)
 		return shuttleengine.GateResult{Passed: false, Terminal: true, Findings: findings}
 	}
 
@@ -574,8 +574,8 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		if res.TimedOut {
 			return failTimedOut(res)
 		}
-		if res.RunnerCrash {
-			return failRunnerCrash(res), nil
+		if res.Unjudged() {
+			return failUnjudged(res), nil
 		}
 
 		firstOutput, err := readOutput(res)
@@ -608,8 +608,8 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		if res.TimedOut {
 			return failTimedOut(res)
 		}
-		if res.RunnerCrash {
-			return failRunnerCrash(res), nil
+		if res.Unjudged() {
+			return failUnjudged(res), nil
 		}
 		rerunOutput, err := readOutput(res)
 		if err != nil {
@@ -644,12 +644,13 @@ func readVerifyGateReport(path string) (VerifyGateReport, error) {
 // verifyGateStuckReason is the one-line stuck reason of a done run whose verify gate did not pass.
 // A Terminal failure, the rejection of a fixer commit, names the gate's own reason.
 // It ends in the reset to the pre-fix head, then reentry.
-// A Terminal runner crash names the gate's own reason and ends in reentry alone, since no fixer commit exists to reset.
+// A Terminal unjudged verify names the gate's own reason and ends in reentry alone.
+// It has no fixer commit to reset.
 // Otherwise it opens with the re-prompts the failing entry sent against its limit.
 // When the run ended with re-prompts left, it says why.
 // It then names the verify command and what failed, and ends in a way forward.
 func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome, reentry string) string {
-	if strings.HasPrefix(gate.Reason, verifyGateCrashFindingsPrefix) {
+	if strings.HasPrefix(gate.Reason, verifyGateUnjudgedFindingsPrefix) {
 		return "verify gate failed: " + oneLine(gate.Reason) + "; " + wayForwardSteps(reentry)
 	}
 	if gate.Reason != "" {

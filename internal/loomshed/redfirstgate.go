@@ -48,7 +48,7 @@ type RedFirstGate struct {
 // While HEAD's tree stays the one the refusal judged, Gate answers pending again without running command.
 // Final answers that refusal as a failure whose findings name the same way forward.
 // On that same tree it runs no command again.
-// Any other failed run, a timeout or a runner crash included, judged none of the diff's tests and fails terminally:
+// Any other failed run, a timeout or an unjudged run included, judged none of the diff's tests and fails terminally:
 // no change to the code mends it, and resuming the run runs the check again.
 // A labels read error, a record read or parse error, a HEAD read error and a verify error are returned errors.
 func NewRedFirstGate(worktreeRoot, verifyDir, siteLabel, command string, labels func() ([]string, error), recordPath string, hold *verifytree.PauseHold) RedFirstGate {
@@ -214,18 +214,18 @@ func (g *redFirstGate) verify() (verifytree.Result, *shuttleengine.GateResult, e
 		dirty := dirtyResult(res, g.siteLabel, g.attempt)
 		return res, &dirty, nil
 	}
-	if res.ExitCode == gateslot.RedFirstUnjudgedExit && !res.TimedOut && !res.RunnerCrash {
+	if res.ExitCode == gateslot.RedFirstUnjudgedExit && !res.TimedOut && !res.Unjudged() {
 		logger.Info("loomshed: red-first gate passed unjudged, the check cannot judge the tests", "gate", g.siteLabel, "attempt", g.attempt, "log", res.Log)
 		return res, &shuttleengine.GateResult{Passed: true}, nil
 	}
-	logger.Warn("loomshed: red-first gate failed", "gate", g.siteLabel, "attempt", g.attempt, "exitCode", res.ExitCode, "timedOut", res.TimedOut, "runnerCrash", res.RunnerCrash, "log", res.Log)
+	logger.Warn("loomshed: red-first gate failed", "gate", g.siteLabel, "attempt", g.attempt, "exitCode", res.ExitCode, "timedOut", res.TimedOut, "runnerCrash", res.RunnerCrash, "memoryPressure", res.MemoryPressure, "log", res.Log)
 	return res, nil, nil
 }
 
 // holdsForCommitOrRecord reports whether a failed red-first run is a refusal the writer's next turn may not lift.
 // Only a commit that adds a failing test, or the parent's record that lifts the gate, lifts a diff with no test.
 func holdsForCommitOrRecord(res verifytree.Result) bool {
-	if res.TimedOut || res.RunnerCrash {
+	if res.TimedOut || res.Unjudged() {
 		return false
 	}
 	return res.ExitCode == gateslot.RedFirstNoTestExit
@@ -254,9 +254,9 @@ func redFirstFailure(res verifytree.Result) shuttleengine.GateResult {
 	case res.TimedOut:
 		terminal = true
 		fmt.Fprintf(&b, "The red-first check timed out, so it judged none of the diff's tests: %s. %s", res.Detail, redFirstNoMend)
-	case res.RunnerCrash:
+	case res.Unjudged():
 		terminal = true
-		fmt.Fprintf(&b, "The red-first check's test runner crashed, so it judged none of the diff's tests: %s. %s", res.Detail, redFirstNoMend)
+		fmt.Fprintf(&b, "The red-first check's %s, so it judged none of the diff's tests: %s. No change to the code mends it, so the run stops here; resuming it runs the check again, and %s.", res.UnjudgedStop(), res.Detail, res.UnjudgedAdvice())
 	case res.ExitCode == gateslot.RedFirstGreenExit:
 		fmt.Fprintf(&b, "Every test the diff adds or changes passed on the merge base, so none of them fails before the change.\n\n"+
 			"Way forward: when the change fixes a bug, make a test fail on the merge base and pass with the fix, "+

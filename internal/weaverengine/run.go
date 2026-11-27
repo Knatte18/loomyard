@@ -740,7 +740,7 @@ func finishRun(deps RunDeps, st *State) (RunResult, error) {
 			flaky = append(flaky, out.Flaky...)
 			break
 		}
-		if out.RunnerCrash {
+		if out.Unjudged {
 			return verifyStop(len(st.Fixers), out.Findings), nil
 		}
 

@@ -122,7 +122,7 @@ func NewParentAlign(deps Deps) (*ParentAlign, error) {
 // After the merge and the `landing` gate it aligns:
 // it runs the merge fixer when the parent brought in commits or the gate fails,
 // and every halt of that alignment is a Stuck with Halt whose reason opens with LandingStopPrefix.
-// A gate whose every failed run crashed its test runner judged no code:
+// A gate whose result is a runner crash or a memory pressure stop judged no code:
 // it halts the same way before any alignment, with no fixer.
 // A fixer's escalate on a tapestry, darn or sampler run (Deps.EscalateJudgedFirst) opens with EscalateStopPrefix.
 // A failed record write and every infrastructure fault are errors.
@@ -193,11 +193,11 @@ func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 	if end := gateEnding(ctx, parentAlignName, reason, err); end != nil {
 		return end.result()
 	}
-	gateReason, crashed, err := m.gate.check(ctx, parentAlignName, m.deps.ParentBranch)
+	gateReason, unjudged, err := m.gate.check(ctx, parentAlignName, m.deps.ParentBranch)
 	if err != nil {
 		return fail(ctx, parentAlignName, err).result()
 	}
-	if crashed {
+	if unjudged {
 		return halt(ctx, parentAlignName, gateReason).result()
 	}
 	if gateReason == "" {

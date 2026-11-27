@@ -1,4 +1,4 @@
-// verify_crash_integration_test.go covers how Verify reads the gate's runner crash line and tier timeout line.
+// verify_crash_integration_test.go covers how Verify reads the gate's crash, memory pressure and tier timeout lines.
 // It reads them from a failed command's log, over real shell processes.
 
 package verifytree
@@ -27,9 +27,11 @@ func TestVerify_ReadsTheRunnerCrashAndTimeoutLines(t *testing.T) {
 		exit         string
 		wantCrash    bool
 		wantTimedOut bool
+		wantPressure bool
 		wantDetail   string
 	}{
 		{name: "a crash line", logLines: []string{crashLine}, exit: "134", wantCrash: true, wantDetail: "tier1 (exit 134, SIGABRT)"},
+		{name: "a memory pressure line", logLines: []string{gateslot.MemoryPressureLine("tier1 (exit 1)")}, exit: "1", wantPressure: true, wantDetail: "tier1 (exit 1)"},
 		{name: "a timeout line beside a crash line is a timeout", logLines: []string{timeoutLine, crashLine}, exit: "1", wantTimedOut: true, wantDetail: "tier2"},
 		{name: "neither line", logLines: []string{"FAIL"}, exit: "3"},
 	}
@@ -49,6 +51,9 @@ func TestVerify_ReadsTheRunnerCrashAndTimeoutLines(t *testing.T) {
 
 			if res.Status != StatusFailed || res.RunnerCrash != tt.wantCrash || res.TimedOut != tt.wantTimedOut {
 				t.Errorf("Verify() = status %q, runner crash %v, timed out %v; want %q, %v, %v", res.Status, res.RunnerCrash, res.TimedOut, StatusFailed, tt.wantCrash, tt.wantTimedOut)
+			}
+			if res.MemoryPressure != tt.wantPressure || res.Unjudged() != (tt.wantCrash || tt.wantPressure) {
+				t.Errorf("Verify() = memory pressure %v, unjudged %v; want %v, %v", res.MemoryPressure, res.Unjudged(), tt.wantPressure, tt.wantCrash || tt.wantPressure)
 			}
 			if !strings.Contains(res.Detail, tt.wantDetail) || (tt.wantDetail == "" && res.Detail != "") {
 				t.Errorf("Verify() detail = %q; want it to name %q", res.Detail, tt.wantDetail)

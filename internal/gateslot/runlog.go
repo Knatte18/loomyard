@@ -1,5 +1,5 @@
 // runlog.go writes the diagnostic record and log of each tier run under the gate directory;
-// it also renders and finds the timeout, runner crash and tier summary lines that a log carries.
+// it also renders and finds the timeout, runner crash, memory pressure and tier summary lines that a log carries.
 
 package gateslot
 
@@ -30,6 +30,8 @@ const (
 	buildTierName      = "build"
 
 	runnerCrashPrefix = "lym gate test: runner crash: "
+
+	memoryPressurePrefix = "lym gate test: memory pressure stop: "
 )
 
 // TimeoutKeyName returns the full name of the gate.yaml key bounding the run named tier, a tier or the build.
@@ -100,8 +102,12 @@ type RunRecord struct {
 	// RunnerCrash names the signal, such as SIGABRT, that ended a tier run with no failing test.
 	// Such a run judged no code; the field is empty for any other run.
 	RunnerCrash string `json:"runner_crash,omitempty"`
+	// MemoryPressure is set on the record of a tier run, the first or the rerun, that judged no code.
+	// The memory guard's only stops of such a run were for a memory limit other load filled.
+	MemoryPressure bool `json:"memory_pressure,omitempty"`
 	// Rerun is set on the record of a tier's one rerun.
-	// The rerun follows a first run that crashed its test runner or failed on a resource shortage.
+	// The rerun follows a first run that judged no code:
+	// a runner crash, a resource shortage or a stop for a memory limit other load filled.
 	// The first run has its own record.
 	Rerun bool `json:"rerun,omitempty"`
 }
@@ -260,8 +266,28 @@ func RunnerCrashLine(runs string) string {
 
 // FindRunnerCrash returns the runs the first runner crash line in log names, and false when log holds none.
 func FindRunnerCrash(log string) (runs string, ok bool) {
+	return findClosingRuns(log, runnerCrashPrefix)
+}
+
+// MemoryPressureLine renders the line a gate call closes with when no failed run judged the code,
+// and the memory guard stopped runs of it in their run and their one rerun for a memory limit other load filled.
+// runs names each such run with its exit code, and holds no semicolon.
+// The line names the way forward, since no change to the code under test frees memory other processes hold.
+func MemoryPressureLine(runs string) string {
+	return fmt.Sprintf("%s%s; the memory guard killed a test binary of each in its run and its one rerun because other load had nearly filled the memory limit the call runs under, so no test judged the code; way forward: wait for that load to end, then re-run the same command",
+		memoryPressurePrefix, runs)
+}
+
+// FindMemoryPressureStop returns the runs the first memory pressure line in log names, and false when log holds none.
+func FindMemoryPressureStop(log string) (runs string, ok bool) {
+	return findClosingRuns(log, memoryPressurePrefix)
+}
+
+// findClosingRuns returns the runs the first line of log opening with prefix names, up to its first semicolon.
+// It reports false when no line opens with prefix.
+func findClosingRuns(log, prefix string) (runs string, ok bool) {
 	for _, line := range strings.Split(log, "\n") {
-		rest, found := strings.CutPrefix(strings.TrimRight(line, "\r"), runnerCrashPrefix)
+		rest, found := strings.CutPrefix(strings.TrimRight(line, "\r"), prefix)
 		if !found {
 			continue
 		}

@@ -49,8 +49,11 @@ func TestRetryTier(t *testing.T) {
 	aborted := failed(abort, "Fatal error. Internal CLR error. (0x80131506)\nAborted (core dumped)\n")
 	segv := failed(128+int(syscall.SIGSEGV), "Segmentation fault (core dumped)\n")
 	abortedWithFailure := tierResult{record: gateslot.RunRecord{ExitCode: abort, Failed: 1}, log: aborted.log}
+	pressured := tierResult{record: gateslot.RunRecord{ExitCode: 1}, log: []byte("signal: killed\n"), memoryStopped: true, slicePressure: true}
+	pressuredTimedOut := tierResult{record: gateslot.RunRecord{ExitCode: 1, TimedOut: true}, memoryStopped: true, slicePressure: true}
 	const shortageAnnounced = "gate test: tier0 failed on a resource shortage"
 	crashAnnounced := fmt.Sprintf("gate test: tier0 crashed its test runner (exit %d, SIGABRT) with no failing test", abort)
+	const pressureAnnounced = "gate test: tier0 had a test binary killed by the memory guard for a memory limit other load filled"
 	tests := []struct {
 		name      string
 		attempts  []tierResult
@@ -61,6 +64,9 @@ func TestRetryTier(t *testing.T) {
 		wantExit          int
 		wantShortage      string
 		wantCrash         string
+		wantPressureStop  bool
+		// wantRerunMarked is whether the rerun's record carries the memory pressure mark.
+		wantRerunMarked bool
 		// wantAnnounced opens stderr when the rerun is announced, and is empty when it is not.
 		wantAnnounced string
 	}{
@@ -80,6 +86,11 @@ func TestRetryTier(t *testing.T) {
 		{name: "ShortageThenCrashCarriesNoCrash", attempts: []tierResult{eagain, aborted}, wantAttempts: 2, wantExit: abort, wantAnnounced: shortageAnnounced},
 		{name: "SignalExitWithAFailingTestIsNotRerun", attempts: []tierResult{abortedWithFailure}, wantAttempts: 1, wantExit: abort},
 		{name: "TerminatedRunIsNoCrash", attempts: []tierResult{failed(128+int(syscall.SIGTERM), "Terminated\n")}, wantAttempts: 1, wantExit: 128 + int(syscall.SIGTERM)},
+		{name: "SlicePressureThenPassEndsPassed", attempts: []tierResult{pressured, failed(0, "ok\n")}, wantAttempts: 2, wantAnnounced: pressureAnnounced},
+		{name: "SlicePressureThenOrdinaryFailureCarriesNoPressureStop", attempts: []tierResult{pressured, failed(1, "--- FAIL: TestX\n")}, wantAttempts: 2, wantExit: 1, wantAnnounced: pressureAnnounced},
+		{name: "SlicePressureTwiceIsAPressureStop", attempts: []tierResult{pressured, pressured}, wantAttempts: 2, wantExit: 1, wantPressureStop: true, wantRerunMarked: true, wantAnnounced: pressureAnnounced},
+		{name: "ShortageThenSlicePressureCarriesNoPressureStop", attempts: []tierResult{eagain, pressured}, wantAttempts: 2, wantExit: 1, wantRerunMarked: true, wantAnnounced: shortageAnnounced},
+		{name: "TimedOutSlicePressureIsNotRerun", attempts: []tierResult{pressuredTimedOut}, wantAttempts: 1, wantExit: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -105,8 +116,8 @@ func TestRetryTier(t *testing.T) {
 			if calls != tt.wantAttempts {
 				t.Errorf("retryTier ran %d attempts; want %d", calls, tt.wantAttempts)
 			}
-			if got.record.ExitCode != tt.wantExit || got.shortage != tt.wantShortage || got.crash != tt.wantCrash || got.record.RunnerCrash != tt.wantCrash {
-				t.Errorf("retryTier() = exit %d, shortage %q, crash %q, record crash %q; want exit %d, shortage %q, crash %q", got.record.ExitCode, got.shortage, got.crash, got.record.RunnerCrash, tt.wantExit, tt.wantShortage, tt.wantCrash)
+			if got.record.ExitCode != tt.wantExit || got.shortage != tt.wantShortage || got.crash != tt.wantCrash || got.record.RunnerCrash != tt.wantCrash || got.pressureStop != tt.wantPressureStop {
+				t.Errorf("retryTier() = exit %d, shortage %q, crash %q, record crash %q, pressure stop %v; want exit %d, shortage %q, crash %q, pressure stop %v", got.record.ExitCode, got.shortage, got.crash, got.record.RunnerCrash, got.pressureStop, tt.wantExit, tt.wantShortage, tt.wantCrash, tt.wantPressureStop)
 			}
 			retried := tt.wantAnnounced != ""
 			if announced := retried && strings.HasPrefix(stderr.String(), tt.wantAnnounced); announced != retried || (!retried && stderr.Len() > 0) {
@@ -120,6 +131,10 @@ func TestRetryTier(t *testing.T) {
 			}
 			if !strings.HasPrefix(string(got.log), stderr.String()) || !got.record.Rerun {
 				t.Errorf("rerun log = %q, rerun mark %v; want the log to open with the announcement %q and the record marked a rerun", got.log, got.record.Rerun, stderr.String())
+			}
+			wantFirstPressure := tt.wantAnnounced == pressureAnnounced
+			if recorded[0].record.MemoryPressure != wantFirstPressure || got.record.MemoryPressure != tt.wantRerunMarked {
+				t.Errorf("memory pressure marks = first %v, rerun %v; want %v, %v", recorded[0].record.MemoryPressure, got.record.MemoryPressure, wantFirstPressure, tt.wantRerunMarked)
 			}
 			wantFirstCrash := ""
 			if tt.wantAnnounced == crashAnnounced {
@@ -360,7 +375,8 @@ func TestRunTierProcessCap(t *testing.T) {
 // TestRunTierMemoryGuard pins the tier run's wiring of the memory guard.
 // A guard kill fails a command that exited 0.
 // It puts the kill's line and the tests it left running in the log and the causes.
-// It also marks the result so no rerun follows.
+// It marks the result of a kill over the cap so no rerun follows, and that of a slice-pressure kill so one does.
+// A slice-pressure kill beside a failed test, or beside a failed package whose binary was not killed, is not marked so.
 // A request that turns the guard off builds none.
 // The tier command is recorded in the request's running commands while it runs and removed once it ends.
 func TestRunTierMemoryGuard(t *testing.T) {
@@ -371,26 +387,61 @@ func TestRunTierMemoryGuard(t *testing.T) {
 	}
 
 	const shortage = "resource temporarily unavailable"
-	killLine := memoryGuardLine(filepath.Base(testBinaryPath), testBinaryPID, guardTestDir, guardFilter, "it held 5000 MB, over gate.memory_quit_mb's 4096 MB")
+	const (
+		overCapReason  = "it held 5000 MB, over gate.memory_quit_mb's 4096 MB"
+		pressureReason = "the memory limit of /user.slice had 512 MB left of 16384 MB, and this run's processes held only 1500 MB of the 15872 MB in use; " +
+			"no other process under it holds memory the guard could read; it was the largest test binary at 1500 MB"
+	)
+	// killedPackageEvents are what go test reports for the package of a killed binary.
+	killedPackageEvents := []string{
+		`{"Action":"output","Package":"example.com/m/p","Test":"TestHog","Output":"signal: killed\n"}`,
+		`{"Action":"fail","Package":"example.com/m/p"}`,
+	}
 	tests := []struct {
 		name string
 		// guarding is whether the request turns the memory guard on.
-		guarding   bool
+		guarding bool
+		// slicePressure has the guard see a small run under a memory limit other load filled, instead of a tree over the cap.
+		slicePressure bool
+		// events are further test events the command prints.
+		events     []string
 		wantKilled bool
+		// wantRerun is whether the result is marked for the slice-pressure rerun.
+		wantRerun  bool
 		wantStarts int32
 	}{
 		{name: "AGuardKillFailsACommandThatExitedZero", guarding: true, wantKilled: true, wantStarts: 1},
+		{name: "ASlicePressureKillMarksTheRunForARerun", guarding: true, slicePressure: true, wantKilled: true, wantRerun: true, wantStarts: 1},
+		{
+			name: "TheKilledPackagesOwnFailureKeepsTheRerun", guarding: true, slicePressure: true,
+			events: killedPackageEvents, wantKilled: true, wantRerun: true, wantStarts: 1,
+		},
+		{
+			name: "AnotherPackagesFailureBesideASlicePressureKillIsJudged", guarding: true, slicePressure: true,
+			events: append(slices.Clone(killedPackageEvents), `{"Action":"fail","Package":"example.com/m/other"}`), wantKilled: true, wantStarts: 1,
+		},
+		{
+			name: "AFailedTestBesideASlicePressureKillIsJudged", guarding: true, slicePressure: true,
+			events: []string{`{"Action":"fail","Package":"example.com/m/p","Test":"TestOther"}`}, wantKilled: true, wantStarts: 1,
+		},
 		{name: "NoGuardLeavesAPassingCommandPassing", guarding: false, wantKilled: false, wantStarts: 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
+			reason := overCapReason
+			if tt.slicePressure {
+				reason = pressureReason
+			}
+			wantLine := memoryGuardLine(filepath.Base(testBinaryPath), testBinaryPID, guardTestDir, guardFilter, reason, tt.slicePressure)
 			killed := filepath.Join(dir, "killed")
 			command := "echo " + shortage
 			if tt.guarding {
 				// The command reports a test as started, then waits for the stand-in guard's kill before it exits 0.
-				command = fmt.Sprintf(`echo '{"Action":"run","Package":"example.com/p","Test":"TestHog"}'; until [ -f %q ]; do sleep 0.01; done; echo %s`, killed, shortage)
+				// printf takes each event verbatim, where echo would expand the JSON's own escapes.
+				events := append([]string{`{"Action":"run","Package":"example.com/m/p","Test":"TestHog"}`}, tt.events...)
+				command = fmt.Sprintf(`printf '%%s\n' '%s'; until [ -f %q ]; do sleep 0.01; done; echo %s`, strings.Join(events, "' '"), killed, shortage)
 			}
 			var starts atomic.Int32
 			var stderr bytes.Buffer
@@ -413,11 +464,21 @@ func TestRunTierMemoryGuard(t *testing.T) {
 							if commands.holds(root) {
 								registered.Store(true)
 							}
+							if tt.slicePressure {
+								return []proc.ProcessSample{{PID: testBinaryPID, Parent: root, Path: testBinaryPath, RSS: 1500 << 20}}, nil
+							}
 							return guardTree(3000<<20, 2000<<20), nil
 						},
+						own: func() ([]proc.ProcessSample, error) {
+							return []proc.ProcessSample{{PID: testBinaryPID, Path: testBinaryPath, RSS: 1500 << 20}}, nil
+						},
 						pressure: func() (proc.MemoryLimit, bool) {
+							if tt.slicePressure {
+								return proc.MemoryLimit{Used: 16384<<20 - 512<<20, Max: 16384 << 20, Cgroup: "/user.slice"}, true
+							}
 							return proc.MemoryLimit{}, false
 						},
+						holders: func(string) ([]proc.ProcessSample, error) { return nil, nil },
 						describe: func(pid int) (proc.Process, bool) {
 							process := proc.Process{PID: pid, Cwd: guardTestDir, Argv: []string{testBinaryPath, testRunFlagPrefix + guardFilter}}
 							return process, pid == testBinaryPID
@@ -459,13 +520,16 @@ func TestRunTierMemoryGuard(t *testing.T) {
 			if result.record.ExitCode != 1 {
 				t.Errorf("runTier() exit = %d; want 1 for a command that exited 0 after a guard kill", result.record.ExitCode)
 			}
-			if !slices.Contains(result.causes, killLine) || !strings.Contains(stderr.String(), killLine) || !strings.Contains(string(result.log), killLine+"\n") {
-				t.Errorf("runTier() causes = %q, stderr = %q, log = %q; want the kill line in each", result.causes, stderr.String(), result.log)
+			if !slices.Contains(result.causes, wantLine) || !strings.Contains(stderr.String(), wantLine) || !strings.Contains(string(result.log), wantLine+"\n") {
+				t.Errorf("runTier() causes = %q, stderr = %q, log = %q; want the kill line %q in each", result.causes, stderr.String(), result.log, wantLine)
+			}
+			if result.slicePressure != tt.wantRerun || stoppedOnSlicePressure(result) != tt.wantRerun {
+				t.Errorf("runTier() slicePressure = %v, stoppedOnSlicePressure() = %v; want %v for both", result.slicePressure, stoppedOnSlicePressure(result), tt.wantRerun)
 			}
 			if !slices.ContainsFunc(result.causes, func(cause string) bool {
-				return strings.Contains(cause, "example.com/p") && strings.Contains(cause, "TestHog")
+				return strings.Contains(cause, "example.com/m/p") && strings.Contains(cause, "TestHog")
 			}) {
-				t.Errorf("runTier() causes = %q; want one naming the test TestHog that was running in example.com/p", result.causes)
+				t.Errorf("runTier() causes = %q; want one naming the test TestHog that was running in example.com/m/p", result.causes)
 			}
 			if resourceShortage(result.log) == "" {
 				t.Fatalf("runTier() log = %q; want it to hold the shortage marker the command printed", result.log)
@@ -635,6 +699,82 @@ func TestRunTierEndsAVSTestSummaryWithItsInvocation(t *testing.T) {
 	}
 }
 
+// A run's stops are slice pressure alone only when every one is a slice-pressure kill of the memory guard.
+func TestRunStopsSlicePressureOnly(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	pressure := guardKill{line: "pressure kill", slicePressure: true}
+	overCap := guardKill{line: "over-cap kill"}
+	tests := []struct {
+		name  string
+		stops runStops
+		want  bool
+	}{
+		{"NoStop", runStops{}, false},
+		{"SlicePressureKills", runStops{guardKills: []guardKill{pressure, pressure}}, true},
+		{"BesideAnOverCapKill", runStops{guardKills: []guardKill{pressure, overCap}}, false},
+		{"BesideTheMemoryCap", runStops{guardKills: []guardKill{pressure}, memoryCap: "memory cap"}, false},
+		{"BesideTheProcessCap", runStops{guardKills: []guardKill{pressure}, processCap: "process cap"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.stops.slicePressureOnly(); got != tt.want {
+				t.Errorf("slicePressureOnly() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// A call closes with the memory pressure or runner crash line only when no failure judged the code.
+// A run that judged no code stops no --stop-on-fail call.
+func TestUnjudgedRunsClosingLineAndStopsCall(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	pressure := runEnd{code: 1, ran: true, pressureStop: true}
+	crash := runEnd{code: 134, ran: true, crash: "SIGABRT"}
+	failure := runEnd{code: 2, ran: true}
+	pressureLine := gateslot.MemoryPressureLine("tier1 (exit 1)")
+	tests := []struct {
+		name string
+		ends []runEnd
+		// lintFailed is whether a lint step found something.
+		lintFailed bool
+		want       string
+		// wantStops is whether each of ends stops a --stop-on-fail call.
+		wantStops []bool
+	}{
+		{name: "NothingFailed"},
+		{name: "APressureStop", ends: []runEnd{pressure}, want: pressureLine, wantStops: []bool{false}},
+		{name: "ACrash", ends: []runEnd{crash}, want: gateslot.RunnerCrashLine("tier0 (exit 134, SIGABRT)"), wantStops: []bool{false}},
+		{name: "ACrashAndAPressureStopCloseWithThePressureLine", ends: []runEnd{crash, pressure}, want: gateslot.MemoryPressureLine("tier1 (exit 1)"), wantStops: []bool{false, false}},
+		{name: "APressureStopBesideAFailure", ends: []runEnd{pressure, failure}, wantStops: []bool{false, true}},
+		{name: "APressureStopBesideALintFinding", ends: []runEnd{pressure}, lintFailed: true, wantStops: []bool{false}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var runs unjudgedRuns
+			for i, end := range tt.ends {
+				label := "tier0"
+				if end.pressureStop {
+					label = "tier1"
+				}
+				runs.add(label, end)
+				if got := stopsCall(end); got != tt.wantStops[i] {
+					t.Errorf("stopsCall(%+v) = %v; want %v", end, got, tt.wantStops[i])
+				}
+			}
+			runs.judged = runs.judged || tt.lintFailed
+			if got := runs.closingLine(); got != tt.want {
+				t.Errorf("closingLine() = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // The kill line names the tier's memory cap in full, as the key to raise.
 func TestTierMemoryCapLine(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -668,6 +808,11 @@ func TestFailedRunLabel(t *testing.T) {
 			name: "CrashTwice",
 			end:  runEnd{code: 134, ran: true, crash: "SIGABRT"},
 			want: "tier1 (exit 134, a runner crash, SIGABRT, in its run and its rerun with no failing test: the code under test was not judged)",
+		},
+		{
+			name: "PressureStopTwice",
+			end:  runEnd{code: 1, ran: true, pressureStop: true},
+			want: "tier1 (exit 1, a memory guard kill in its run and its rerun for a memory limit other load filled: an infrastructure stop, not a test failure; way forward: re-run the same command once that load ends)",
 		},
 	}
 	for _, tt := range tests {

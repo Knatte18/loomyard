@@ -199,16 +199,38 @@ func TestMergeCopies(t *testing.T) {
 	t.Parallel()
 
 	launch := gateslot.PackageLaunch{}
-	merged := mergeCopies([]tierResult{
-		{record: gateslot.RunRecord{Launches: []gateslot.PackageLaunch{launch}}},
-		{record: gateslot.RunRecord{Launches: []gateslot.PackageLaunch{launch, launch}, ExitCode: 1}},
-	})
-
-	if got := len(merged.record.Launches); got != 3 {
-		t.Errorf("merged launches = %d; want the copies' 1 and 2 summed to 3", got)
+	passed := tierResult{record: gateslot.RunRecord{Launches: []gateslot.PackageLaunch{launch}}}
+	failed := tierResult{record: gateslot.RunRecord{Launches: []gateslot.PackageLaunch{launch, launch}, ExitCode: 1}}
+	pressured := tierResult{record: failed.record, slicePressure: true}
+	tests := []struct {
+		name         string
+		copies       []tierResult
+		wantExit     int
+		wantOutcome  string
+		wantLaunches int
+		wantPressure bool
+	}{
+		{"APassedAndAFailedCopy", []tierResult{passed, failed}, 1, "failed", 3, false},
+		{"EveryCopyUnderSlicePressure", []tierResult{pressured, pressured}, 1, "failed", 4, true},
+		{"ASlicePressureCopyAfterAPassedOne", []tierResult{passed, pressured}, 1, "failed", 3, true},
+		{"ASlicePressureCopyBesideAFailedOne", []tierResult{pressured, failed}, 1, "failed", 4, false},
+		{"AFailedCopyBeforeASlicePressureOne", []tierResult{failed, pressured}, 1, "failed", 4, false},
 	}
-	if merged.record.ExitCode != 1 || merged.record.Outcome != "failed" || len(merged.copies) != 2 {
-		t.Errorf("merged record = exit %d, outcome %q, %d copies; want the first failing exit 1, failed, and both copies kept", merged.record.ExitCode, merged.record.Outcome, len(merged.copies))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			merged := mergeCopies(tt.copies)
+
+			if got := len(merged.record.Launches); got != tt.wantLaunches {
+				t.Errorf("merged launches = %d; want the copies' launches summed to %d", got, tt.wantLaunches)
+			}
+			if merged.record.ExitCode != tt.wantExit || merged.record.Outcome != tt.wantOutcome || len(merged.copies) != len(tt.copies) {
+				t.Errorf("merged record = exit %d, outcome %q, %d copies; want exit %d, %q, and every copy kept", merged.record.ExitCode, merged.record.Outcome, len(merged.copies), tt.wantExit, tt.wantOutcome)
+			}
+			if merged.slicePressure != tt.wantPressure {
+				t.Errorf("merged slicePressure = %v; want %v", merged.slicePressure, tt.wantPressure)
+			}
+		})
 	}
 }
 

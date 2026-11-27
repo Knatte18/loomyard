@@ -256,7 +256,7 @@
 // A pass with HEAD above it records it as `FixedBase` and HEAD as `FixedHead`.
 // accept-audit accepts the fix commits in that range.
 // A failure is rerun once and only a failure that survives the rerun goes to a fixer;
-// a hang (classifyHang) or a crashed test runner is never rerun, since neither is flakiness.
+// a hang (classifyHang) or a run that judged no code is never rerun, since neither is flakiness.
 // Tests that fail once and pass on the rerun are reported as flaky, not failed.
 // A run whose gate spent its budget ends stuck with a reason that names the command and what failed.
 // A run-level entry's failure quotes the head of its findings and names the report, which holds them all.

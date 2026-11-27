@@ -54,8 +54,14 @@ type tierResult struct {
 	// processCapped is set when the process cap killed the run's processes; such a run is never rerun.
 	processCapped bool
 	// memoryStopped is set when the memory guard or the tier's memory cap killed a process of the run;
-	// such a run is never rerun.
+	// such a run is never rerun, bar one whose stops were all slice-pressure kills.
 	memoryStopped bool
+	// slicePressure is set when other load filled the memory limit, so the run judged no code and is rerun once.
+	// Every stop of such a run was a slice-pressure kill of the memory guard.
+	// No test of it failed, and no package of it failed without its test binary being killed.
+	slicePressure bool
+	// pressureStop is set on a rerun when the run and its rerun both ended on slice-pressure kills alone; false otherwise.
+	pressureStop bool
 	// failures, causes and unparsed feed the failure report: failed tests, lines the verb states, and unparsed output.
 	failures []runFailure
 	causes   []string
@@ -226,7 +232,8 @@ func runTierCommands(ctx context.Context, out io.Writer, run tierRun, env []stri
 	return tierResult{
 		record: record, log: logBuffer.Bytes(), trimpathNote: trimpathNote,
 		processCapped: stops.processCap != "", memoryStopped: len(stops.memoryLines()) > 0,
-		failures: failures, causes: causes, unparsed: counter.Unparsed(),
+		slicePressure: stops.slicePressureOnly() && record.Failed == 0 && !failedBeyondKills(failures),
+		failures:      failures, causes: causes, unparsed: counter.Unparsed(),
 	}
 }
 
@@ -311,19 +318,43 @@ func envOverrideLine(tier string, tierEnv, session []string) string {
 type runStops struct {
 	// processCap is the process cap's line once it killed the run's processes, empty otherwise.
 	processCap string
-	// guardKills holds the memory guard's line for each test binary it killed.
-	guardKills []string
+	// guardKills holds the memory guard's kill of each test binary it killed.
+	guardKills []guardKill
 	// memoryCap is the line of a kill at the tier's memory cap, empty otherwise.
 	memoryCap string
 }
 
 // memoryLines returns the memory guard's lines followed by the tier's memory cap line, when there is one.
 func (s runStops) memoryLines() []string {
-	lines := slices.Clone(s.guardKills)
+	var lines []string
+	for _, kill := range s.guardKills {
+		lines = append(lines, kill.line)
+	}
 	if s.memoryCap != "" {
 		lines = append(lines, s.memoryCap)
 	}
 	return lines
+}
+
+// slicePressureOnly reports whether the guards' only stops of the run were the memory guard's slice-pressure kills.
+func (s runStops) slicePressureOnly() bool {
+	if len(s.guardKills) == 0 || s.memoryCap != "" || s.processCap != "" {
+		return false
+	}
+	for _, kill := range s.guardKills {
+		if !kill.slicePressure {
+			return false
+		}
+	}
+	return true
+}
+
+// failedBeyondKills reports whether failures holds a failure a killed test binary does not explain:
+// a failed test, or a package that failed outside any test with its binary not killed.
+func failedBeyondKills(failures []runFailure) bool {
+	return slices.ContainsFunc(failures, func(failure runFailure) bool {
+		return failure.test != "" || !failure.killed
+	})
 }
 
 // stopped reports whether any guard stopped part of the run.
@@ -439,31 +470,44 @@ func runnerCrash(result tierResult) string {
 	return crashSignals[syscall.Signal(result.record.ExitCode-128)]
 }
 
+// stoppedOnSlicePressure reports whether a tier run that ran and did not time out ended on slice-pressure kills alone.
+func stoppedOnSlicePressure(result tierResult) bool {
+	return result.refusal == "" && !result.buildFailed && !result.record.TimedOut && result.slicePressure
+}
+
 // retryTier runs attempt, the tier named tier, and returns its result.
 // It reruns the tier after delay if the run failed on a shortage, or crashed its test runner with no failing test.
-// Neither judges the code under test.
+// It does so too if the memory guard stopped the run for a memory limit other load filled.
+// None of them judges the code under test.
+// The record of every attempt stopped so, the first or the rerun, carries MemoryPressure.
 // The line announcing the rerun goes to stderr and opens the rerun's log.
 // Once the delay has passed, recordFirst gets the first run's result,
 // so its record stays on file beside the rerun's, which is marked Rerun.
 // A rerun that fails on a shortage again carries its marker in shortage,
 // and a rerun that crashes after a first run that crashed carries its signal in crash and its record's RunnerCrash.
+// A rerun that the guard stops so after a first run it stopped so carries pressureStop.
 // A rerun that crashes after a first run that failed on a shortage carries no crash:
 // only one of the two runs crashed.
 // A ctx cancelled before or during the delay returns the first result.
 func retryTier(ctx context.Context, stderr io.Writer, tier string, delay time.Duration, attempt func() tierResult, recordFirst func(tierResult)) tierResult {
 	result := attempt()
+	result.record.MemoryPressure = stoppedOnSlicePressure(result)
 	marker := failedOnShortage(result)
 	signal := ""
 	if marker == "" {
 		signal = runnerCrash(result)
 	}
-	if (marker == "" && signal == "") || ctx.Err() != nil {
+	pressured := marker == "" && signal == "" && stoppedOnSlicePressure(result)
+	if (marker == "" && signal == "" && !pressured) || ctx.Err() != nil {
 		return result
 	}
 	cause := fmt.Sprintf("failed on a resource shortage (%q in its output), an environment error a rerun clears", marker)
 	if signal != "" {
 		cause = fmt.Sprintf("crashed its test runner (exit %d, %s) with no failing test, which judges no code", result.record.ExitCode, signal)
 		result.record.RunnerCrash = signal
+	}
+	if pressured {
+		cause = "had a test binary killed by the memory guard for a memory limit other load filled, which judges no code"
 	}
 	line := fmt.Sprintf("gate test: %s %s; running it once more in %s", tier, cause, delay)
 	printLine(stderr, line)
@@ -483,6 +527,8 @@ func retryTier(ctx context.Context, stderr io.Writer, tier string, delay time.Du
 		retried.crash = runnerCrash(retried)
 		retried.record.RunnerCrash = retried.crash
 	}
+	retried.pressureStop = pressured && stoppedOnSlicePressure(retried)
+	retried.record.MemoryPressure = stoppedOnSlicePressure(retried)
 	retried.log = append([]byte(line+"\n"), retried.log...)
 	return retried
 }

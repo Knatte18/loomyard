@@ -66,22 +66,27 @@ func TestWatchdogLine(t *testing.T) {
 	}
 
 	crashLine := RunnerCrashLine("tier1 (exit 134, SIGABRT)")
-	crashTests := []struct {
+	pressureLine := MemoryPressureLine("tier1 (exit 1), guard tier1 (exit 1)")
+	closingTests := []struct {
 		name     string
+		find     func(log string) (string, bool)
 		log      string
 		wantRuns string
 		wantOK   bool
 	}{
-		{"the crash line after the closing line of failed runs", "Aborted (core dumped)\n" + FailedRunsPrefix + "tier1 (exit 134)\r\n" + crashLine + "\r\n", "tier1 (exit 134, SIGABRT)", true},
-		{"a log with no crash line", "Fatal error. Internal CLR error. (0x80131506)\n" + FailedRunsPrefix + "tier1 (exit 134)\n", "", false},
+		{"RunnerCrash_the crash line after the closing line of failed runs", FindRunnerCrash, "Aborted (core dumped)\n" + FailedRunsPrefix + "tier1 (exit 134)\r\n" + crashLine + "\r\n", "tier1 (exit 134, SIGABRT)", true},
+		{"RunnerCrash_a log with no crash line", FindRunnerCrash, "Fatal error. Internal CLR error. (0x80131506)\n" + FailedRunsPrefix + "tier1 (exit 134)\n", "", false},
+		{"RunnerCrash_a memory pressure line is no crash", FindRunnerCrash, pressureLine + "\n", "", false},
+		{"MemoryPressure_the pressure line after the closing line of failed runs", FindMemoryPressureStop, "signal: killed\n" + FailedRunsPrefix + "tier1 (exit 1)\r\n" + pressureLine + "\r\n", "tier1 (exit 1), guard tier1 (exit 1)", true},
+		{"MemoryPressure_a crash line is no memory pressure stop", FindMemoryPressureStop, crashLine + "\n", "", false},
 	}
-	for _, tt := range crashTests {
-		t.Run("RunnerCrash_"+tt.name, func(t *testing.T) {
+	for _, tt := range closingTests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			runs, ok := FindRunnerCrash(tt.log)
+			runs, ok := tt.find(tt.log)
 			if runs != tt.wantRuns || ok != tt.wantOK {
-				t.Errorf("FindRunnerCrash() = %q, %v; want %q, %v", runs, ok, tt.wantRuns, tt.wantOK)
+				t.Errorf("finder(%q) = %q, %v; want %q, %v", tt.log, runs, ok, tt.wantRuns, tt.wantOK)
 			}
 		})
 	}

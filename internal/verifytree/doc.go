@@ -11,8 +11,10 @@
 // Verify takes no gate slot and applies no timeout.
 // Each command is one `lym gate test --wait` call, or such calls joined by `&&`, bounded by the gate.
 // A failed command whose log holds a tier timeout line is a failed result with TimedOut set.
-// One whose log holds the runner crash line is a failed result with RunnerCrash set, which judged no code.
-// A site stops on a runner crash rather than hand it to a fixer.
+// One whose log holds the runner crash line is a failed result with RunnerCrash set.
+// One whose log holds the memory pressure line is a failed result with MemoryPressure set.
+// Either judged no code, which Result.Unjudged reports.
+// A site stops on an unjudged result rather than hand it to a fixer.
 // The command's environment drops the strand-name variable and gateslot.PrebuiltLymEnv.
 // Bound: a test is code the fork writes, which could clear the variable itself.
 //

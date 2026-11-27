@@ -94,6 +94,11 @@ func TestJudgeDotnetRedFirst_ReadsTheRunsExitCodeFailureReportAndCompileErrors(t
 			want:     dotnetVerdict{outcome: redFirstUnjudged},
 		},
 		{
+			name: "ARunStoppedForMemoryPressureWithNoTestDiscoveredRanTests", exitCode: 1,
+			captured: tierSummary(0, 1) + gateslot.MemoryPressureLine("tier0 (exit 1)") + "\n",
+			want:     dotnetVerdict{outcome: redFirstUnjudged},
+		},
+		{
 			name: "ARunThatDiscoveredTestsAndJudgedNoneRanTests", exitCode: 1, captured: tierSummary(3, 1),
 			want: dotnetVerdict{outcome: redFirstUnjudged},
 		},
