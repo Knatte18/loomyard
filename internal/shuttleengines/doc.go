@@ -9,6 +9,8 @@
 // Names lists the registered names, which equal modelspec's closed set of engine names.
 // The codex entry builds its engine with the claude engine's user-setup source and plugin hook runner.
 // That is the one route from the user's Claude setup to a Codex launch.
+// NewWithSeams builds the same set with a caller's plugin hook runner and sandbox probe.
+// New leaves both at the engines' own.
 //
 // Each registry entry carries its engine's config module as plain data.
 // ConfigModules lists them sorted by name for the config registry.
