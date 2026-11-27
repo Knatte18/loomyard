@@ -22,6 +22,10 @@ func startOpener(path string) (<-chan error, error) {
 	}
 	exited := make(chan error, 1)
 	// This wait also reaps the opener when nobody receives from the channel.
-	go func() { exited <- cmd.Wait() }()
+	go func() {
+		err := cmd.Wait()
+		logger.Info("boardcli: the opener exited", "opener", openerName, "error", err)
+		exited <- err
+	}()
 	return exited, nil
 }
