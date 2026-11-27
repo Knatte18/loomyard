@@ -264,6 +264,38 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		}
 	})
 
+	t.Run("WritesABeamFileWithoutHookMembersWhenItsAnchorCannotBeRead", func(t *testing.T) {
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		hubforge.AddPairWith(t, h, "b", beamAddOptions)
+		beamPath := fabricengine.BeamWorkspacePath(h.Location, "b")
+		if err := os.Remove(beamPath); err != nil {
+			t.Fatalf("remove the beam file: %v", err)
+		}
+		marker := filepath.Join(h.PairRecordsSibling("b"), lymcwd.AnchorFileName)
+		t.Cleanup(fabricengine.InstallWorkspaceContent(func(_, beam, _ string) map[string]json.RawMessage {
+			// The hub file's call comes once the pairs are listed and before the beam's anchor is read again,
+			// so a directory in the marker's place here makes only the later reads fail.
+			if beam == "" {
+				if err := os.RemoveAll(marker); err != nil {
+					t.Errorf("remove the anchor marker: %v", err)
+				}
+				if err := os.Mkdir(marker, 0o755); err != nil {
+					t.Errorf("make the anchor unreadable: %v", err)
+				}
+			}
+			return map[string]json.RawMessage{"tasks": json.RawMessage("true")}
+		}))
+
+		path, _ := regenerateHub(t, h)
+
+		if _, ok := readWorkspaceMembers(t, beamPath)["tasks"]; ok {
+			t.Errorf("the beam file carries a tasks key though its anchor cannot be read")
+		}
+		if _, ok := readWorkspaceMembers(t, path)["tasks"]; !ok {
+			t.Errorf("the hub file carries no tasks key")
+		}
+	})
+
 	t.Run("ListsFolderAddedWhileWaitingForTheLock", func(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		l := *h.Location
