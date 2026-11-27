@@ -79,14 +79,17 @@
 // so a server spawned from a pane on one account never hands it to a pane with no export.
 //
 // The launch and resume lines both carry `CLAUDE_CODE_PROMPT_CACHE_TTL`,
-// so a session writes its prompt cache at the TTL its role needs rather than at Claude Code's subscription default.
+// so a main conversation writes its prompt cache at the TTL its role needs, not at Claude Code's subscription default.
 // Prepare and OpenLaunch resolve it from the spec's role through `prompt_cache_ttl_roles`, else `prompt_cache_ttl`.
 // They refuse a configured value that is not `5m` or `1h` before any artifact is written.
 // The value is fixed for the session's life, since a resume line is never rebuilt.
 // `keep_warm_cap` and `keep_warm_cap_roles` set the longest single wait an agent of a role blocks on.
-// Forks run at Claude Code's 5-minute subagent lifetime;
-// a cap above five minutes therefore leaves that role's forks' caches cold.
 // Both lines also carry `BASH_MAX_TIMEOUT_MS` at one hour, so no Bash call stays in the foreground past that ceiling.
+// The launch, resume and open lines carry `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL` at one hour.
+// Claude Code moves a background subagent's foreground Bash call to the background after 180 seconds.
+// A subagent whose prompt cache is one hour is exempt.
+// On the 5-minute default, a fork's capped `lym gate test` call would leave the foreground before its keep-warm cap.
+// The hour lets a fork's cache outlive any cap, at one-hour cache-write prices for subagents, forks and helper requests.
 //
 // The context reading comes from the transcript a Stop payload names:
 // the latest main-chain assistant usage entry or compaction boundary.

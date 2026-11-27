@@ -20,13 +20,14 @@ import (
 )
 
 // Each launch and resume line starts with the per-dialect env assignments:
-// CLAUDE_ENV_FILE, BASH_MAX_TIMEOUT_MS, and the default 5m CLAUDE_CODE_PROMPT_CACHE_TTL.
+// CLAUDE_ENV_FILE, BASH_MAX_TIMEOUT_MS and the one-hour CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL.
+// The default 5m CLAUDE_CODE_PROMPT_CACHE_TTL follows them.
 // The env file paths are the ones the tests below thread through.
 const (
 	pwshEnvFilePath  = `C:\run\bash-env.sh`
 	posixEnvFilePath = "/run/bash-env.sh"
-	pwshEnvLead      = `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:BASH_MAX_TIMEOUT_MS = '3600000'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '5m'; `
-	posixEnvLead     = `CLAUDE_ENV_FILE='/run/bash-env.sh' BASH_MAX_TIMEOUT_MS='3600000' CLAUDE_CODE_PROMPT_CACHE_TTL='5m' `
+	pwshEnvLead      = `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:BASH_MAX_TIMEOUT_MS = '3600000'; $env:CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL = '1h'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '5m'; `
+	posixEnvLead     = `CLAUDE_ENV_FILE='/run/bash-env.sh' BASH_MAX_TIMEOUT_MS='3600000' CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL='1h' CLAUDE_CODE_PROMPT_CACHE_TTL='5m' `
 )
 
 func TestClaudeBinary(t *testing.T) {
@@ -89,7 +90,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			settingsPath:   `C:\run\settings.json`,
 			sessionID:      "abc-123",
 			promptCacheTTL: "1h",
-			want:           `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:BASH_MAX_TIMEOUT_MS = '3600000'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '1h'; & 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --dangerously-skip-permissions`,
+			want:           `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:BASH_MAX_TIMEOUT_MS = '3600000'; $env:CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL = '1h'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '1h'; & 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --dangerously-skip-permissions`,
 		},
 		{
 			name:         "autonomous_no_model",
@@ -377,12 +378,12 @@ func TestBuildLaunchCmd(t *testing.T) {
 	}
 }
 
-// openLines returns an open launch's fresh and resume lines with their leading export of the prompt-cache TTL stripped.
-// It fails the test unless both lines open with that export at ttl.
+// openLines returns an open launch's fresh and resume lines with their leading exports of the prompt-cache TTLs stripped.
+// It fails the test unless both lines open with the export of ttl and then the export of the one-hour subagent TTL.
 func openLines(t *testing.T, sh shell.Shell, launch shuttleengine.Launch, ttl string) (fresh, resume string) {
 	t.Helper()
 	const marker = "|"
-	lead := strings.TrimSuffix(sh.Chain(sh.ExportEnv(promptCacheTTLEnvKey, ttl), marker), marker)
+	lead := strings.TrimSuffix(sh.Chain(sh.ExportEnv(promptCacheTTLEnvKey, ttl), sh.ExportEnv("CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL", "1h"), marker), marker)
 	fresh, freshFound := strings.CutPrefix(launch.Cmd, lead)
 	resume, resumeFound := strings.CutPrefix(launch.ResumeCmd, lead)
 	if !freshFound || !resumeFound {
@@ -392,7 +393,8 @@ func openLines(t *testing.T, sh shell.Shell, launch shuttleengine.Launch, ttl st
 }
 
 // TestOpenLaunch pins the open launch: the fresh line with the name reference and optional model flags;
-// the resume line that falls back to the fresh one; the export of the role's prompt-cache TTL ahead of both;
+// the resume line that falls back to the fresh one;
+// the exports of the role's prompt-cache TTL and the one-hour subagent TTL ahead of both;
 // and the refusals made before a session id is minted.
 func TestOpenLaunch(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -868,7 +870,7 @@ func TestBuildResumeCmd(t *testing.T) {
 			"fork_mode_on", "", "", "", true, true, "5m", "",
 			pwshEnvLead + `$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; & 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME"`,
 		},
-		{"prompt_cache_ttl_one_hour", "", "", "", true, false, "1h", "", `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:BASH_MAX_TIMEOUT_MS = '3600000'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '1h'; & 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME"`},
+		{"prompt_cache_ttl_one_hour", "", "", "", true, false, "1h", "", `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:BASH_MAX_TIMEOUT_MS = '3600000'; $env:CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL = '1h'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '1h'; & 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME"`},
 		{
 			// A revived session must come back with the remote control it launched with.
 			"remote_control_on_resume", "", "", "", true, false, "5m", "neve::ly:orch",

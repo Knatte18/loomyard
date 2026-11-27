@@ -93,10 +93,25 @@ func claudeBinary(claude Config) string {
 // It must ride the pane command because the reed server env is scrubbed of CLAUDE_CODE_* at boot.
 const forkSubagentEnvKey = "CLAUDE_CODE_FORK_SUBAGENT"
 
-// promptCacheTTLEnvKey is the variable Claude Code reads to pick the TTL of the prompt cache it writes.
+// promptCacheTTLEnvKey is the variable Claude Code reads as the TTL of the main conversation's prompt cache.
 // It rides the pane line because the reed server env is scrubbed of CLAUDE_CODE_* at boot,
-// and it outranks every Claude Code control for the TTL but FORCE_PROMPT_CACHING_5M.
+// and it outranks every Claude Code control for that TTL but FORCE_PROMPT_CACHING_5M.
 const promptCacheTTLEnvKey = "CLAUDE_CODE_PROMPT_CACHE_TTL"
+
+// subagentPromptCacheTTLEnvKey is the variable Claude Code reads as the TTL of requests outside the main conversation.
+// Those are subagents, forks, and background and helper requests such as compaction.
+// Claude Code counts a few of its helper requests, such as the auto-mode classifier's, as the main conversation.
+// It rides the pane line because the reed server env is scrubbed of CLAUDE_CODE_* at boot.
+const subagentPromptCacheTTLEnvKey = "CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL"
+
+// subagentPromptCacheTTL is the prompt-cache TTL of a lym-spawned session's requests outside its main conversation.
+// Claude Code moves a background subagent's foreground Bash call to the background after 180 seconds.
+// A subagent whose prompt cache is one hour is exempt.
+// A capped `lym gate test` call waits up to the role's keep-warm cap.
+// On the 5-minute default, a cap past 180 seconds would therefore answer a backgrounded call.
+// One-hour cache writes cost more than 5-minute ones.
+// Subagents, forks, and background and helper requests all pay that price for the exemption.
+const subagentPromptCacheTTL = "1h"
 
 // bashMaxTimeoutEnvKey is the variable Claude Code reads as the ceiling on the Bash tool's timeout parameter.
 // It rides the pane line because the reed server env is scrubbed of CLAUDE_CODE_* at boot.
@@ -327,6 +342,7 @@ func envFileContentFor(goos string) string {
 // Shuttle builds this line before reed forms the strand's name,
 // so the pane shell expands the reference from the export that reed's launch script makes.
 // A non-empty remoteControlName adds --remote-control naming it, so the session starts with remote control on.
+// It sets subagentPromptCacheTTLEnvKey to subagentPromptCacheTTL, so no fork's gate call leaves the foreground early.
 // It wraps the finished line in the envFileKey assignment naming envFilePath, so that assignment leads the line.
 // The account's environment is applied outermost, so it wins over a value the pane's own environment holds.
 func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model, effort, appendPromptPath, envFilePath, promptCacheTTL, remoteControlName string, account accountEnv, resume, skipPermissions, forkSubagents bool) string {
@@ -359,6 +375,7 @@ func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model
 		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)
 	}
 	cmd = sh.WithEnv(promptCacheTTLEnvKey, promptCacheTTL, cmd)
+	cmd = sh.WithEnv(subagentPromptCacheTTLEnvKey, subagentPromptCacheTTL, cmd)
 	cmd = sh.WithEnv(bashMaxTimeoutEnvKey, bashMaxTimeoutMS, cmd)
 	return account.wrap(sh, sh.WithEnv(envFileKey, envFilePath, cmd))
 }
@@ -412,6 +429,8 @@ func buildOpenCmd(sh shell.Shell, bin, firstTurn, sessionID, model, effort, sett
 // The TTL is spec.Role's from claude.yaml, as for a run, and an invalid TTL anywhere in claude.yaml refuses the open.
 // Both lines open with a statement that exports it as CLAUDE_CODE_PROMPT_CACHE_TTL,
 // so the resume line and its fresh fallback both run under it, in either shell dialect.
+// A second statement exports CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL at one hour.
+// It keeps a fork's gate call from leaving the foreground early.
 // A statement that exports or unsets CLAUDE_CONFIG_DIR for the worktree's resolved account follows that export.
 // It runs ahead of both lines.
 // With a hub board directory, it creates dir and writes two files into it:
@@ -504,10 +523,11 @@ func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttle
 	fresh := buildOpenCmd(sh, bin, skillLoadMessage, sessionID, resolvedModel, spec.Effort, settingsPath, appendPromptPath, skipPermissions, false)
 	resumeLine := buildOpenCmd(sh, bin, "", sessionID, resolvedModel, spec.Effort, settingsPath, appendPromptPath, skipPermissions, true)
 	exportTTL := sh.ExportEnv(promptCacheTTLEnvKey, promptCacheTTL)
+	exportSubagentTTL := sh.ExportEnv(subagentPromptCacheTTLEnvKey, subagentPromptCacheTTL)
 	accountStatement := account.statement(sh)
 	return shuttleengine.Launch{
-		Cmd:        sh.Chain(exportTTL, accountStatement, fresh),
-		ResumeCmd:  sh.Chain(exportTTL, accountStatement, sh.OrElse(resumeLine, fresh)),
+		Cmd:        sh.Chain(exportTTL, exportSubagentTTL, accountStatement, fresh),
+		ResumeCmd:  sh.Chain(exportTTL, exportSubagentTTL, accountStatement, sh.OrElse(resumeLine, fresh)),
 		SessionID:  sessionID,
 		CreelHooks: creelFlagDirForHook != "",
 	}, nil
@@ -573,7 +593,7 @@ var _ shuttleengine.SessionOpener = (*Claude)(nil)
 // When forkSubagents is true, the line is wrapped to keep the fork-subagent capability.
 // It carries the promptCacheTTLEnvKey assignment too, since the resumed claude inherits nothing from the launch:
 // without it the session falls back to Claude Code's default TTL.
-// It carries the bashMaxTimeoutEnvKey assignment too, for the same reason.
+// It carries the subagentPromptCacheTTLEnvKey and bashMaxTimeoutEnvKey assignments too, for the same reason.
 // It leads with the envFileKey assignment naming envFilePath:
 // a resumed session keeps the default stdin of its Bash tool.
 // It applies the account's environment outermost, as the launch line does, since the resumed claude inherits nothing.
@@ -599,6 +619,7 @@ func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort,
 		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)
 	}
 	cmd = sh.WithEnv(promptCacheTTLEnvKey, promptCacheTTL, cmd)
+	cmd = sh.WithEnv(subagentPromptCacheTTLEnvKey, subagentPromptCacheTTL, cmd)
 	cmd = sh.WithEnv(bashMaxTimeoutEnvKey, bashMaxTimeoutMS, cmd)
 	return account.wrap(sh, sh.WithEnv(envFileKey, envFilePath, cmd))
 }

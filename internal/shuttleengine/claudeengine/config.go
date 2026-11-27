@@ -25,10 +25,10 @@ type Config struct {
 	Binary string `yaml:"binary"`
 	// DenyAskUserQuestion switches the PreToolUse deny for the AskUserQuestion tool.
 	DenyAskUserQuestion bool `yaml:"deny_ask_user_question"`
-	// PromptCacheTTL is Claude Code's prompt-cache TTL for a role without a map entry;
+	// PromptCacheTTL is the main conversation's prompt-cache TTL for a role without a map entry;
 	// it is validated where a run starts, not when the config loads.
 	PromptCacheTTL string `yaml:"prompt_cache_ttl"`
-	// PromptCacheTTLRoles maps a strand's role segment to Claude Code's prompt-cache TTL;
+	// PromptCacheTTLRoles maps a strand's role segment to its main conversation's prompt-cache TTL;
 	// it is validated where a run starts, not when the config loads.
 	PromptCacheTTLRoles map[string]string `yaml:"prompt_cache_ttl_roles"`
 	// KeepWarmCap is the longest one keep-warm wait for a role without a map entry, a Go duration;

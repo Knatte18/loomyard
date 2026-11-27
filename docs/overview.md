@@ -712,8 +712,10 @@ User-facing modules each get one `lym <module>` namespace:
   and the settings set `CLAUDE_CODE_SUBAGENT_EFFORT`, so a subagent whose call names no effort still runs at the role's.
   The worktree's `.claude/settings.local.json` carries the efforts table's default as `effortLevel` and as that variable,
   so a session started by hand in the worktree runs at it.
-  The engine sets the prompt-cache TTL per role on launch, resume and open from `claude.prompt_cache_ttl` and `claude.prompt_cache_ttl_roles` (template: 5 minutes for `driver`, 1 hour for `webster` and `orch`, 5 minutes for every other role).
+  The engine sets the main conversation's prompt-cache TTL per role on launch, resume and open from `claude.prompt_cache_ttl` and `claude.prompt_cache_ttl_roles` (template: 5 minutes for `driver`, 1 hour for `webster` and `orch`, 5 minutes for every other role).
   `claude.keep_warm_cap` (template 250s) and `claude.keep_warm_cap_roles` set the per-role keep-warm cap beside them.
+  Every request outside the main conversation, a subagent's, a fork's or a helper's, runs under a one-hour prompt cache.
+  The reason is that Claude Code backgrounds a 5-minute-cache subagent's foreground Bash call after 180 seconds.
   While the `claude.batching_nudge` block is on, a `PostToolUse` hook after each `Read`, `Grep`, `Glob`, `Bash`, `Edit` or `Write` call runs the hidden `lym shuttle hook-batching`, which adds one line naming the breach and quoting the rule to a session above the block's context threshold whose recent messages make a chain of single lookups (a Bash call with a read-only lookup command such as `grep`, `find` or a git read counting as one), a sliced read of a short or already-read file, or a chain of edit-only messages;
   a subagent's or fork's call is judged against that agent's own transcript, context and nudge count;
   it never denies a call, and the block's switches and thresholds are config.
