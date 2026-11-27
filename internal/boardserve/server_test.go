@@ -179,6 +179,11 @@ func TestServer(t *testing.T) {
 		if after := f.store(); after != before {
 			t.Errorf("a refused request changed board.json")
 		}
+		// A browser puts the server's own origin on every write the page sends.
+		own := post(func(r *http.Request) { r.Header.Set("Origin", "http://"+testHost) })
+		if code, got := f.reply(own); code != http.StatusOK || !got.OK {
+			t.Errorf("OwnOrigin = %d %q; want 200", code, got.Error)
+		}
 	})
 
 	t.Run("PageCarriesAHashOnlyPolicyAndTheRoutes", func(t *testing.T) {
@@ -330,6 +335,11 @@ func TestServer(t *testing.T) {
 			t.Fatalf("change: %v", err)
 		}
 		current := f.entry("open").Revision
+		oldNote := f.entry("idea").Revision
+		if _, err := f.board.UpsertTask(map[string]any{"slug": "idea", "title": "Moved on"}); err != nil {
+			t.Fatalf("change the note: %v", err)
+		}
+		currentNote := f.entry("idea").Revision
 		before := f.store()
 		tests := []struct {
 			name      string
@@ -339,6 +349,7 @@ func TestServer(t *testing.T) {
 			{"CreateOfAnExistingSlug", writeRequest{Op: opCreate, Slug: "open", Fields: map[string]any{"kind": "task"}}, current},
 			{"Edit", writeRequest{Op: opEdit, Slug: "open", Revision: old, Fields: map[string]any{"title": "X"}}, current},
 			{"Release", writeRequest{Op: opRelease, Slug: "open", Revision: old}, current},
+			{"Promote", writeRequest{Op: opPromote, Slug: "idea", Revision: oldNote}, currentNote},
 			{"ReleaseOfARemovedEntry", writeRequest{Op: opRelease, Slug: "absent", Revision: old}, ""},
 		}
 		for _, tt := range tests {
@@ -378,6 +389,15 @@ func TestServer(t *testing.T) {
 			t.Errorf("a poll across a change = %+v; want the new view", got)
 		}
 
+		// A board with no entry store has the empty revision, which an empty after names.
+		bare, err := NewServer(ServerConfig{Board: short.board, BoardPath: t.TempDir(), Token: testToken, Port: testPort, PollBound: time.Millisecond, Now: time.Now})
+		if err != nil {
+			t.Fatalf("NewServer over no store: %v", err)
+		}
+		if _, got := poll(fixture{t: t, server: bare}, ""); !got.Unchanged {
+			t.Errorf("a poll of a board with no store = %+v; want unchanged", got)
+		}
+
 		draining := newFixture(t, time.Minute)
 		revision = current(draining)
 		go draining.server.beginDrain()
@@ -398,6 +418,23 @@ func TestServer(t *testing.T) {
 		for _, name := range []string{"README.md", "a/b.md"} {
 			if got := get(name); got.Code != http.StatusNotFound {
 				t.Errorf("GET %s = %d; want 404", name, got.Code)
+			}
+		}
+
+		if err := f.board.StoreDecisionRecord("open", []byte("The record.")); err != nil {
+			t.Fatalf("store the record: %v", err)
+		}
+		project := map[string]any{"slug": "proj", "title": "Proj", "kind": boardengine.KindProject, "labels": []string{"bug"}, "body": "Project design."}
+		if _, err := f.board.UpsertTask(project); err != nil {
+			t.Fatalf("seed the project: %v", err)
+		}
+		decision := boardengine.DecisionFileName("open")
+		if named := f.entry("open").DecisionFile; named != decision {
+			t.Errorf("decision_file = %q; want %q", named, decision)
+		}
+		for name, want := range map[string]string{decision: "The record.", "design-proj.md": "Project design."} {
+			if got := get(name); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), want) {
+				t.Errorf("GET %s = %d %q; want 200 holding %q", name, got.Code, got.Body, want)
 			}
 		}
 	})
