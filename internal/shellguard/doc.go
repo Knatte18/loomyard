@@ -12,15 +12,26 @@
 // An engine therefore quotes each pattern for its shell rather than wrapping it in bare single quotes.
 //
 // A command-shaped row reads the command from the start of the "command" value as the shell would, one unit at a time:
-// unquoted text, a single-quoted string, a double-quoted string, and at most one heredoc operator plus its line.
+// unquoted text, a single-quoted string, a double-quoted string, and at most one heredoc operator plus its line,
+// bar the shell-edit row's in-place edit match, which reads past closed heredocs.
 // It matches its command word only in command position reached that way.
 // Any of env, exec, xargs, sudo, time and the shell keywords that open a command, such as do and then, may come first.
 // The script of a sh, bash, dash, ksh or zsh -c in command position is read the same way, one level deep.
 // A guard thus refuses inside the script what it refuses outside it,
 // and the agent gets the row's way forward rather than an engine dialog.
 // Text inside other quotes, a heredoc body or another payload field does not trip it, bar the quotes the scan misreads.
-// Nothing after a heredoc operator's line is read.
-// The write-then-run shape leaves the later lines unguarded:
+// The in-place edit match skips a closed heredoc's body and reads the lines after its closing line.
+// It reads the script of a shell -c on those lines too.
+// It thus refuses sed -i or perl -pi on the line after a heredoc that writes its script.
+// It does not read the later lines of a shell -c script after a heredoc closed inside that script.
+// It reads nothing after two heredoc operators on one line.
+// Nor does it read after a delimiter word that opens with a digit or a dash.
+// The same holds for a quoted delimiter word with a space in it.
+// So it does for a closing word holding anything but letters, digits, _, . and -.
+// It ties the closing line to the operator's word for a closed set of common words, heredocDelimiterWords.
+// For another word a line holding a bare word alone closes the body,
+// so a later body line that opens with an in-place edit spelling is falsely denied.
+// For every other match, the write-then-run shape leaves the later lines unguarded:
 // a heredoc that writes a script, followed by a line that runs it.
 // A command substitution inside a double-quoted string is not read as command position, so a command behind it passes.
 // The same holds for a < before a quote or a backslash, as in <"f" or <<<"f".

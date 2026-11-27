@@ -312,15 +312,87 @@ const shellExpansionPattern = "[$][A-Za-z0-9_{@*(]|`"
 // A scratch file with a listed extension is written with Write.
 const sourceFilePattern = `[^[:space:]"\\;&|()<>'` + "`" + `]*\.(go|mod|sum|md|ya?ml|toml|sh|ps1|cs|csproj|sln|props|targets)([^A-Za-z0-9_./-]|$)`
 
-// inPlaceEditCommandPattern matches, in command position, sed with an in-place flag, perl with an in-place switch, or tee writing a source file.
+// heredocBodyLinePattern matches one line of a heredoc body as JSON encodes it, through its JSON-escaped newline.
+// The line holds any characters but the JSON string's closing quote, so the match stays inside the command.
+const heredocBodyLinePattern = `([^"\\]|\\[^n])*\\n`
+
+// heredocDelimiterWords are the delimiter words whose closing line is tied to the operator's word.
+// grep -E has no backreference, so each tied word is rendered as an alternative of its own.
+// Each word must be letters only.
+var heredocDelimiterWords = []string{"EOF", "END", "EOT", "PY"}
+
+// heredocBodyLineOtherThan returns a grep -E pattern for a heredoc body line that is not word alone after optional tabs.
+// The line is read as JSON encodes it, through its JSON-escaped newline.
+// word must hold only letters.
+func heredocBodyLineOtherThan(word string) string {
+	const unit = `([^"\\]|\\[^n])`
+	rest := unit + `+`
+	for i := len(word) - 1; i >= 0; i-- {
+		letter := word[i : i+1]
+		escape := `\\[^n]`
+		// A JSON-escaped tab ahead of the first letter belongs to the leading tabs.
+		if i == 0 {
+			escape = `\\[^nt]`
+		}
+		// The line may end here: it is blank or stops short of word.
+		rest = `([^"\\` + letter + `]` + unit + `*|` + escape + unit + `*|` + letter + rest + `)?`
+	}
+	return `(\\t)*` + rest + `\\n`
+}
+
+// closedHeredocPattern returns a grep -E pattern matching one heredoc from its operator through its closing line.
+// The match runs through the newline that ends the closing line.
+// The delimiter word may be bare, quoted or backslash-escaped.
+// For a word of heredocDelimiterWords the closing line is that word alone, after any tabs.
+// No earlier line closes such a body.
+// Any other word must not open with a digit or a dash.
+// For such a word any line holding a bare word alone may close the body.
+// A second heredoc operator on the operator's line is no match.
+func closedHeredocPattern() string {
+	const operator = `<<-?([[:space:]]|\\t)*('|\\"|\\\\)?`
+	const lineRest = `('|\\")?(([[:space:];&|)>]|\\t)` + shellLineUnitPattern + `*)?\\n`
+	alternatives := make([]string, 0, len(heredocDelimiterWords)+1)
+	for _, word := range heredocDelimiterWords {
+		alternatives = append(alternatives, word+lineRest+`(`+heredocBodyLineOtherThan(word)+`)*(\\t)*`+word+`\\n`)
+	}
+	// A digit opening the word is excluded so an arithmetic shift such as 1<<2 is no operator.
+	// A dash is excluded so the dash of <<- never opens the word.
+	otherWord := notWordFrom(`[:space:]`+unquotedWordBreakers, heredocDelimiterWords, "0-9-")
+	alternatives = append(alternatives, otherWord+lineRest+`(`+heredocBodyLinePattern+`)*(\\t)*[A-Za-z0-9_.-]+\\n`)
+	return operator + `(` + strings.Join(alternatives, "|") + `)`
+}
+
+// inPlaceEditCommandIn returns the in-place edit alternatives after a command word in the scope, grouped:
+// sed with an in-place flag, perl with an in-place switch, or tee writing a source file.
 // The flag may follow any argument words: sed takes -i, --in-place, or -i at the end of a cluster of its argument-free flags such as -Ei; perl takes -i at the end of a cluster of its argument-free switches such as -pi or -0777i.
 // A cluster holding a switch that takes the rest of the word as its value, such as perl -Mstrict, is no in-place switch.
-var inPlaceEditCommandPattern = commandRowPattern(func(scope shellScope) string {
+func inPlaceEditCommandIn(scope shellScope) string {
 	argument := scope.argument()
 	return `(sed([[:space:]]+` + argument + `)*[[:space:]]+(-[nsuzEr]*i|--in-place)` +
 		`|perl([[:space:]]+` + argument + `)*[[:space:]]+-[nlpaswcTtWX0-9]*i` +
 		`|tee([[:space:]]+` + argument + `)*[[:space:]]+` + sourceFilePattern + `)`
-})
+}
+
+// inPlaceEditAfterClosedHeredocPattern returns a grep -E pattern matching an in-place edit command after closed heredocs.
+// Each heredoc body is skipped.
+// The line after the last closing line is in command position.
+// So is a separator reached from that line as the top level reaches one.
+// The script of a shell -c there is read as at the top level.
+func inPlaceEditAfterClosedHeredocPattern() string {
+	// Each reach leads from the top level into the scope of the same index in shellScopes.
+	reaches := []string{"", singleQuotedScriptReachPattern, doubleQuotedScriptReachPattern}
+	alternatives := make([]string, len(shellScopes))
+	for i, scope := range shellScopes {
+		alternatives[i] = `(` + reaches[i] + commandWordPrefixPattern + inPlaceEditCommandIn(scope) + `)`
+	}
+	return commandFieldPattern + `(` + shellUnitPattern + `*` + closedHeredocPattern() + `)+` + topLevelReachPattern +
+		`(` + strings.Join(alternatives, "|") + `)`
+}
+
+// inPlaceEditCommandPattern matches an in-place edit command in command position.
+// It reads every scope and the lines after a closed heredoc.
+var inPlaceEditCommandPattern = commandRowPattern(inPlaceEditCommandIn) +
+	`|(` + inPlaceEditAfterClosedHeredocPattern() + `)`
 
 // redirectWritePattern matches a > or >> redirect, a >| clobbering one included, into a source file, reached through a run of shell units from the start of the command.
 // A redirect on a heredoc operator's line counts, as in cat <<EOF > f.go; one inside a heredoc body or a quoted string does not.
@@ -550,14 +622,16 @@ func quotableWord(word string) string {
 // A word in double quotes is read by what is inside them, so a listed word in quotes is no match and an unlisted one is.
 // Each word must be lowercase letters only.
 func notWordPattern(scope shellScope, words []string) string {
-	return optionalQuotePattern + notWordFrom(scope, words, true) + wordEndPattern
+	return optionalQuotePattern + notWordFrom(scope.ghWordChars(), words, "-") + wordEndPattern
 }
 
-// notWordFrom returns a grep -E group matching the rest of a word in the scope, after a prefix already read.
+// notWordFrom returns a grep -E group matching the rest of a word, after a prefix already read.
+// wordBreakers is the bracket body of the characters the word cannot hold.
 // The rest is no suffix in suffixes.
-// It matches the empty rest only when suffixes holds no empty suffix and first is false, since a word is never empty.
-func notWordFrom(scope shellScope, suffixes []string, first bool) string {
-	wordChars := scope.ghWordChars()
+// A non-empty firstExcluded marks the start of the word.
+// It is the bracket body of what may not open the word, with any literal dash last.
+// The empty rest matches only past the start and when suffixes holds no empty suffix.
+func notWordFrom(wordBreakers string, suffixes []string, firstExcluded string) string {
 	children := map[byte][]string{}
 	terminal := false
 	for _, suffix := range suffixes {
@@ -568,16 +642,13 @@ func notWordFrom(scope shellScope, suffixes []string, first bool) string {
 		children[suffix[0]] = append(children[suffix[0]], suffix[1:])
 	}
 	letters := slices.Sorted(maps.Keys(children))
-	excluded := wordChars + string(letters)
-	if first {
-		excluded += "-"
-	}
-	alternatives := []string{`[^` + excluded + `][^` + wordChars + `]*`}
+	excluded := wordBreakers + string(letters) + firstExcluded
+	alternatives := []string{`[^` + excluded + `][^` + wordBreakers + `]*`}
 	for _, letter := range letters {
-		alternatives = append(alternatives, string(letter)+notWordFrom(scope, children[letter], false))
+		alternatives = append(alternatives, string(letter)+notWordFrom(wordBreakers, children[letter], ""))
 	}
 	group := `(` + strings.Join(alternatives, "|") + `)`
-	if !terminal && !first {
+	if !terminal && firstExcluded == "" {
 		group += "?"
 	}
 	return group
@@ -806,8 +877,16 @@ func rowsAfterRawGo() []Row {
 			// An edit behind a script file, awk, cp or mv, behind find -exec or behind xargs with a flag passes.
 			// A redirect into a quoted target passes.
 			// So does a redirect into a file whose extension sourceFilePattern does not name.
-			// So does anything after a heredoc operator's line.
+			// So does a redirect after a heredoc operator's line, and an in-place edit after a heredoc with no closing line.
+			// Inside a shell -c script, an in-place edit on a later line of that script passes after a heredoc closed in it.
+			// One also passes after two heredoc operators on one line.
+			// It passes after a delimiter word that opens with a digit or a dash.
+			// It also passes after a quoted delimiter word holding a space or a breaker of unquoted words.
+			// It also passes after a closing word that holds anything but letters, digits, _, . and -.
 			// It falsely denies a matching spelling after a separator inside a quote commandPositionPattern misreads.
+			// For a delimiter word outside heredocDelimiterWords, a line holding a bare word alone is taken for the closing line,
+			// so a later body line or quoted text that opens with an in-place edit spelling is falsely denied, prose included.
+			// So is one after a tab-indented line holding the listed word of a << operator, and after a << that shifts by a name.
 			Name:        "shell-edit",
 			Patterns:    []string{shellEditPattern},
 			Steer:       steerShellEditDeny,
