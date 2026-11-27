@@ -166,6 +166,18 @@ func TestRenderBoardData(t *testing.T) {
 		}
 	})
 
+	t.Run("NamesADependencyTheBoardDoesNotHoldByItsSlug", func(t *testing.T) {
+		t.Parallel()
+		waiting := []boardengine.Task{{ID: 1, Handle: "T1", Slug: "waiter", Title: "Waiter", Kind: boardengine.KindTask, Labels: []string{"bug"}, DependsOn: []string{"unheld"}}}
+		files, err := boardengine.Render(waiting, "neve", out, renderTime)
+		if err != nil {
+			t.Fatalf("Render: %v", err)
+		}
+		if got := viewEntry(t, decodeBoardData(t, files[boardengine.BoardDataFile]), "waiter").WaitsOn; !slices.Equal(got, []string{"unheld"}) {
+			t.Errorf("waits_on = %q; want [unheld]", got)
+		}
+	})
+
 	t.Run("ListsProjectsWithTheirParents", func(t *testing.T) {
 		t.Parallel()
 		var got []string
