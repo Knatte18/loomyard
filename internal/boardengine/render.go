@@ -1,6 +1,6 @@
 // render.go turns the entry list into the board's output files.
 // Those are README.md, a project-<slug>.md for each project and the root, and a design-*.md for each entry with a body.
-// board-data.js, the view projection, is an output file too.
+// board-data.js, the view projection, and board.html, the viewer page, are output files too.
 // Render is a pure function from the entries to a map of filename to content; the caller writes the files.
 // README.md is the overview of every top-level project, each in a collapsible section, with the root's own section last.
 // A project file holds its heading, its facts and brief, and its own entries.
@@ -133,6 +133,7 @@ func renderFiles(stored, rendered []Task, primeOwner string, out Outputs, now ti
 	result := map[string]string{
 		out.Readme:      board.renderReadme(),
 		rootProjectFile: board.renderProjectFile(rootProject),
+		BoardPageFile:   viewerPage,
 	}
 	for _, twl := range ordered {
 		if twl.Kind == KindProject {

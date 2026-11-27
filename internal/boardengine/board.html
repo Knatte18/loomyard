@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Board</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --back: #ffffff;
+  --text: #1f2328;
+  --faint: #656d76;
+  --line: #d0d7de;
+  --panel: #f6f8fa;
+  --accent: #0969da;
+  --warn: #9a6700;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --back: #0d1117;
+    --text: #e6edf3;
+    --faint: #8b949e;
+    --line: #30363d;
+    --panel: #161b22;
+    --accent: #4493f8;
+    --warn: #d29922;
+  }
+}
+[hidden] { display: none !important; }
+body { background: var(--back); color: var(--text); font: 15px/1.5 system-ui, sans-serif; margin: 0 auto; max-width: 70rem; padding: 1rem; }
+a { color: var(--accent); }
+h1 { margin: 0; }
+.faint { color: var(--faint); }
+.notice, .message { color: var(--warn); }
+button, input, select, textarea { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--text); font: inherit; padding: 0.2rem 0.6rem; }
+button { cursor: pointer; }
+button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+#search { box-sizing: border-box; width: 100%; }
+.toggles { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; align-items: center; }
+section.project { border-left: 2px solid var(--line); margin-top: 1rem; padding-left: 0.8rem; }
+.entry { border-bottom: 1px solid var(--line); }
+button.row { background: none; border: 0; border-radius: 0; display: flex; flex-wrap: wrap; gap: 0.6rem; padding: 0.35rem 0; text-align: left; width: 100%; }
+.detail { background: var(--panel); border-radius: 6px; margin-bottom: 0.5rem; padding: 0.5rem 0.8rem; overflow-wrap: anywhere; }
+.tag { border: 1px solid var(--line); border-radius: 1rem; color: var(--faint); font-size: 0.85em; padding: 0 0.5rem; }
+pre { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; padding: 0.5rem; }
+.beside { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+.beside > * { flex: 1 1 20rem; }
+form label { display: block; margin-top: 0.4rem; }
+form input[type="text"], form textarea, form select { box-sizing: border-box; display: block; width: 100%; }
+textarea { min-height: 8rem; }
+.fresh { border: 1px solid var(--warn); border-radius: 6px; padding: 0.5rem; white-space: pre-wrap; }
+.actions { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
+</style>
+</head>
+<body>
+<header>
+<h1>Board</h1>
+<p id="meta" class="faint"></p>
+</header>
+<p id="notice" class="notice" hidden></p>
+<input id="search" type="search" placeholder="Search handle, slug, title, brief and body">
+<div id="filters"></div>
+<details id="create" hidden><summary>New entry</summary><div id="create-body"></div></details>
+<main id="board"></main>
+<script src="board-data.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var ROUTE_BOARD = "/api/board";
+  var ROUTE_WRITE = "/api/write";
+  var ROUTE_FILE = "/file/";
+  var TOKEN_KEY = "boardToken";
+  var RETRY_LIMIT_MS = 60000;
+  var RETRY_FIRST_MS = 1000;
+  var RETRY_MAX_MS = 8000;
+
+  var served = location.protocol !== "file:";
+  var view = null;
+  var token = "";
+  var search = "";
+  var filters = { kind: new Set(), type: new Set(), area: new Set() };
+  var filterKey = "";
+  var expanded = new Set();
+  // Edit forms outlive a redraw, so an unsent edit stays in its form.
+  var forms = new Map();
+  var messages = new Map();
+  var createForm = null;
+  var createProjects = "";
+
+  function byId(id) { return document.getElementById(id); }
+
+  function make(tag, text, className) {
+    var element = document.createElement(tag);
+    if (text !== undefined && text !== null) { element.textContent = text; }
+    if (className) { element.className = className; }
+    return element;
+  }
+
+  function button(text, onClick) {
+    var element = make("button", text);
+    element.type = "button";
+    element.addEventListener("click", onClick);
+    return element;
+  }
+
+  function showNotice(text) {
+    byId("notice").textContent = text;
+    byId("notice").hidden = !text;
+  }
+
+  // Markdown subset. The whole body is escaped first, so only the tags added here are markup.
+
+  function escapeHTML(text) {
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  function safeTarget(target) {
+    var cleaned = target.replace(/^[\u0000- ]+|[\u0000- ]+$/g, "").replace(/[\t\r\n]/g, "");
+    var scheme = /^([a-zA-Z][a-zA-Z0-9+.\-]*):/.exec(cleaned);
+    if (scheme) {
+      var name = scheme[1].toLowerCase();
+      return name === "http" || name === "https" ? cleaned : null;
+    }
+    return /^[\/\\]{2}/.test(cleaned) ? null : cleaned;
+  }
+
+  function emphasis(text) {
+    return text
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[^\w])__([^_]+)__(?!\w)/g, "$1<strong>$2</strong>")
+      .replace(/\*([^*\s][^*]*)\*/g, "<em>$1</em>")
+      .replace(/(^|[^\w])_([^_]+)_(?!\w)/g, "$1<em>$2</em>");
+  }
+
+  function inline(text) {
+    var kept = [];
+    function stash(html) { kept.push(html); return "\u0000" + (kept.length - 1) + "\u0000"; }
+    var result = text.replace(/(`+)([\s\S]*?[^`])\1(?!`)/g, function (all, fence, code) {
+      return stash("<code>" + code + "</code>");
+    });
+    result = result.replace(/\[([^\[\]]*)\]\(([^()]*)\)/g, function (all, label, target) {
+      var href = safeTarget(target);
+      if (href === null || href.indexOf("\u0000") >= 0) { return stash(all); }
+      return stash("<a href=\"" + href + "\" rel=\"noreferrer\">" + emphasis(label) + "</a>");
+    });
+    result = emphasis(result);
+    while (/\u0000\d+\u0000/.test(result)) {
+      result = result.replace(/\u0000(\d+)\u0000/g, function (all, index) { return kept[Number(index)]; });
+    }
+    return result;
+  }
+
+  function markdown(body) {
+    var lines = escapeHTML(body.replace(/\u0000/g, "")).replace(/\r\n?/g, "\n").split("\n");
+    var fencePattern = /^ {0,3}(`{3,}|~{3,})/;
+    var headingPattern = /^ {0,3}(#{1,6})(?:\s+|$)(.*)$/;
+    var bulletPattern = /^\s*[-*+]\s+(.*)$/;
+    var numberPattern = /^\s*\d+[.)]\s+(.*)$/;
+    var html = [];
+    var paragraph = [];
+    var listTag = "";
+    var items = [];
+
+    function flush() {
+      if (paragraph.length) { html.push("<p>" + inline(paragraph.join("\n")) + "</p>"); }
+      if (items.length) {
+        html.push("<" + listTag + ">" + items.map(function (item) {
+          return "<li>" + inline(item) + "</li>";
+        }).join("") + "</" + listTag + ">");
+      }
+      paragraph = [];
+      items = [];
+    }
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var fence = fencePattern.exec(line);
+      var heading = headingPattern.exec(line);
+      var bullet = bulletPattern.exec(line);
+      var numbered = numberPattern.exec(line);
+      if (fence) {
+        flush();
+        var code = [];
+        for (i++; i < lines.length; i++) {
+          var closing = fencePattern.exec(lines[i]);
+          if (closing && closing[1].indexOf(fence[1]) === 0 && lines[i].trim() === closing[1]) { break; }
+          code.push(lines[i]);
+        }
+        html.push("<pre><code>" + code.join("\n") + "</code></pre>");
+      } else if (heading) {
+        flush();
+        var level = heading[1].length;
+        html.push("<h" + level + ">" + inline(heading[2]) + "</h" + level + ">");
+      } else if (bullet || numbered) {
+        var tag = bullet ? "ul" : "ol";
+        if (paragraph.length || (items.length && tag !== listTag)) { flush(); }
+        listTag = tag;
+        items.push((bullet || numbered)[1]);
+      } else if (!line.trim()) {
+        flush();
+      } else if (items.length && /^\s/.test(line)) {
+        items[items.length - 1] += "\n" + line.trim();
+      } else {
+        if (items.length) { flush(); }
+        paragraph.push(line);
+      }
+    }
+    flush();
+    return html.join("");
+  }
+
+  // Entries and filters.
+
+  function matches(entry) {
+    if (filters.kind.size && !filters.kind.has(entry.kind)) { return false; }
+    if (filters.type.size && !entry.types.some(function (type) { return filters.type.has(type); })) { return false; }
+    if (filters.area.size && !entry.areas.some(function (area) { return filters.area.has(area); })) { return false; }
+    if (!search) { return true; }
+    return [entry.handle, entry.slug, entry.title, entry.brief, entry.body].some(function (field) {
+      return (field || "").toLowerCase().indexOf(search) >= 0;
+    });
+  }
+
+  function isRunStatus(status) {
+    var cut = status.indexOf(" · ");
+    return cut > 0 && cut + 3 < status.length;
+  }
+
+  function age(since) {
+    if (!since) { return ""; }
+    var minutes = Math.max(0, Math.floor((Date.now() - Date.parse(since)) / 60000));
+    var days = Math.floor(minutes / 1440);
+    if (minutes < 60) { return minutes + "m"; }
+    if (days < 1) { return Math.floor(minutes / 60) + "h"; }
+    if (days < 14) { return days + "d"; }
+    if (days < 91) { return Math.floor(days / 7) + "w"; }
+    if (days < 365) { return Math.floor(days / 30) + "mo"; }
+    return Math.floor(days / 365) + "y";
+  }
+
+  function fileLink(label, name) {
+    var link = make("a", label + " " + name);
+    var href = served
+      ? ROUTE_FILE + encodeURIComponent(name) + "?t=" + encodeURIComponent(token)
+      : "./" + encodeURIComponent(name);
+    link.setAttribute("href", href);
+    link.setAttribute("target", "_blank");
+    link.setAttribute("rel", "noreferrer");
+    return link;
+  }
+
+  function labelsOf(entry) { return entry.types.concat(entry.areas); }
+
+  function findEntry(slug) {
+    return view.entries.find(function (entry) { return entry.slug === slug; });
+  }
+
+  function replaceEntry(slug, fresh) {
+    var index = view.entries.findIndex(function (entry) { return entry.slug === slug; });
+    if (!fresh) {
+      if (index >= 0) { view.entries.splice(index, 1); }
+    } else if (index >= 0) {
+      view.entries[index] = fresh;
+    } else {
+      view.entries.push(fresh);
+    }
+  }
+
+  // Requests.
+
+  function api(path, options) {
+    options = options || {};
+    options.headers = Object.assign({ Authorization: "Bearer " + token }, options.headers);
+    return fetch(path, options);
+  }
+
+  // retrying runs attempt until it succeeds, backing off, and gives up once it has failed for the retry limit.
+  function retrying(attempt) {
+    var failingSince = 0;
+    var delay = RETRY_FIRST_MS;
+    function run() {
+      return attempt().catch(function (error) {
+        failingSince = failingSince || Date.now();
+        if (Date.now() - failingSince >= RETRY_LIMIT_MS) {
+          showNotice("The board server does not answer: run \"lym board open\" to open the board again.");
+          throw error;
+        }
+        return new Promise(function (resolve) { setTimeout(resolve, delay); }).then(function () {
+          delay = Math.min(delay * 2, RETRY_MAX_MS);
+          return run();
+        });
+      });
+    }
+    return run();
+  }
+
+  function poll(revision) {
+    var started = 0;
+    retrying(function () {
+      started = Date.now();
+      var path = revision === null ? ROUTE_BOARD : ROUTE_BOARD + "?after=" + encodeURIComponent(revision);
+      return api(path).then(function (response) {
+        return response.json().then(function (answer) {
+          if (!response.ok || !answer.ok) { throw new Error(answer.error); }
+          return answer;
+        });
+      });
+    }).then(function (answer) {
+      showNotice("");
+      if (!answer.unchanged) {
+        view = answer.board;
+        draw();
+      }
+      // An "unchanged" answered at once, as a stopping server gives, must not be asked again at once.
+      var wait = answer.unchanged ? Math.max(0, RETRY_FIRST_MS - (Date.now() - started)) : 0;
+      setTimeout(function () { poll(answer.revision); }, wait);
+    }, function () {
+      // The notice already names the way back, so polling stops here.
+    });
+  }
+
+  function send(request) {
+    return retrying(function () {
+      return api(ROUTE_WRITE, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request)
+      }).then(function (response) { return response.json(); });
+    });
+  }
+
+  // write sends one operation and applies its answer to the view and to the entry's form.
+  function write(op, slug, revision, fields) {
+    var request = { op: op, slug: slug };
+    if (op !== "create") { request.revision = revision; }
+    if (fields) { request.fields = fields; }
+    return send(request).then(function (answer) {
+      var state = op === "create" ? createForm : forms.get(slug);
+      // An untouched edit form is rebuilt from the answered entry.
+      if (state && !state.dirty && op !== "create") {
+        forms.delete(slug);
+        state = null;
+      }
+      messages.delete(slug);
+      if (answer.ok) {
+        replaceEntry(slug, answer.entry);
+        if (op === "create") {
+          createForm = null;
+        } else if (op === "edit") {
+          forms.delete(slug);
+        } else if (state) {
+          state.revision = answer.entry.revision;
+          state.fresh = null;
+        }
+      } else {
+        // A form's refusal stands in its form, and an action's beside the entry's actions.
+        if (op === "create" || op === "edit") {
+          if (state) { state.message = answer.error; }
+        } else {
+          messages.set(slug, answer.error);
+        }
+        // Only a stale refusal carries an entry, null when the board no longer holds one.
+        if (answer.entry !== undefined) {
+          if (answer.entry || op !== "create") { replaceEntry(slug, answer.entry); }
+          if (state) {
+            state.fresh = answer.entry;
+            if (answer.entry) { state.revision = answer.entry.revision; }
+          }
+        }
+      }
+      draw();
+    });
+  }
+
+  // Forms.
+
+  function splitList(text) {
+    return text.split(",").map(function (item) { return item.trim(); }).filter(Boolean);
+  }
+
+  function addControl(form, label, control) {
+    var wrapper = make("label", label);
+    wrapper.appendChild(control);
+    form.appendChild(wrapper);
+    return control;
+  }
+
+  function textInput(form, label, value) {
+    var input = make("input");
+    input.type = "text";
+    input.value = value;
+    return addControl(form, label, input);
+  }
+
+  function textArea(form, label, value) {
+    var area = make("textarea");
+    area.value = value;
+    return addControl(form, label, area);
+  }
+
+  function selectInput(form, label, options, value) {
+    var select = make("select");
+    options.forEach(function (option) {
+      var element = make("option", option.text);
+      element.value = option.value;
+      select.appendChild(element);
+    });
+    select.value = value;
+    return addControl(form, label, select);
+  }
+
+  function projectOptions() {
+    return view.projects.map(function (project, index) {
+      return { value: index === 0 ? "" : project.slug, text: project.handle + " " + project.title };
+    });
+  }
+
+  // buildForm builds a create form when entry is null, and otherwise the edit form of entry.
+  function buildForm(entry) {
+    var state = { dirty: false, fresh: null, message: "", pending: false, revision: entry ? entry.revision : "" };
+    var form = make("form");
+    var controls = {};
+    if (!entry) {
+      controls.slug = textInput(form, "Slug", "");
+      controls.kind = selectInput(form, "Kind", [{ value: "task", text: "task" }, { value: "note", text: "note" }], "task");
+    }
+    controls.title = textInput(form, "Title", entry ? entry.title : "");
+    controls.labels = textInput(form, "Labels, separated by commas", entry ? labelsOf(entry).join(", ") : "");
+    controls.brief = textInput(form, "Brief", entry ? entry.brief : "");
+    controls.body = textArea(form, "Body", entry ? entry.body : "");
+
+    var options = projectOptions();
+    var current = "";
+    if (entry) {
+      var found = view.projects.findIndex(function (project) { return project.handle === entry.project; });
+      if (found < 0) {
+        current = entry.project;
+        options.push({ value: current, text: entry.project + " (unchanged)" });
+      } else if (found > 0) {
+        current = view.projects[found].slug;
+      }
+    }
+    controls.project = selectInput(form, "Project", options, current);
+
+    if (!entry || entry.kind === "task") {
+      // The view does not list an entry's dependencies, so an edit replaces them only when asked to.
+      if (entry) {
+        var replace = make("input");
+        replace.type = "checkbox";
+        controls.replaceDependencies = addControl(form, "Replace the dependencies ", replace);
+      }
+      controls.dependsOn = textInput(form, "Depends on, slugs separated by commas", "");
+    }
+
+    var submit = make("button", entry ? "Save" : "Create");
+    submit.type = "submit";
+    form.appendChild(submit);
+
+    function values() {
+      return {
+        title: controls.title.value,
+        labels: splitList(controls.labels.value),
+        brief: controls.brief.value,
+        body: controls.body.value,
+        project: controls.project.value
+      };
+    }
+    var baseline = values();
+
+    function requestFields() {
+      var now = values();
+      var fields = {};
+      Object.keys(now).forEach(function (key) {
+        var changed = JSON.stringify(now[key]) !== JSON.stringify(baseline[key]);
+        if (entry ? changed : key !== "project" || now[key]) { fields[key] = now[key]; }
+      });
+      if (!entry) {
+        fields.kind = controls.kind.value;
+        var dependencies = splitList(controls.dependsOn.value);
+        if (fields.kind === "task" && dependencies.length) { fields.depends_on = dependencies; }
+      } else if (controls.replaceDependencies && controls.replaceDependencies.checked) {
+        fields.depends_on = splitList(controls.dependsOn.value);
+      }
+      return fields;
+    }
+
+    form.addEventListener("input", function () { state.dirty = true; });
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (state.pending) { return; }
+      state.pending = true;
+      state.dirty = true;
+      state.message = "";
+      var slug = entry ? entry.slug : controls.slug.value.trim();
+      write(entry ? "edit" : "create", slug, state.revision, requestFields())
+        .catch(function () {})
+        .then(function () { state.pending = false; });
+    });
+    state.element = form;
+    return state;
+  }
+
+  function freshPanel(fresh) {
+    var panel = make("div", null, "fresh");
+    panel.appendChild(make("strong", "The entry on the board now"));
+    [
+      [fresh.handle, fresh.title].join(" "),
+      "Status: " + (fresh.status || "none"),
+      "Labels: " + labelsOf(fresh).join(", "),
+      "Project: " + fresh.project,
+      "Brief: " + fresh.brief,
+      fresh.body
+    ].forEach(function (line) { panel.appendChild(make("div", line)); });
+    return panel;
+  }
+
+  function formBlock(state) {
+    var block = make("div");
+    if (state.message) { block.appendChild(make("p", state.message, "message")); }
+    var beside = make("div", null, "beside");
+    beside.appendChild(state.element);
+    if (state.fresh) { beside.appendChild(freshPanel(state.fresh)); }
+    block.appendChild(beside);
+    return block;
+  }
+
+  // Drawing.
+
+  function actionsFor(entry) {
+    var actions = [];
+    if (entry.kind === "note") { actions.push("promote"); }
+    if (entry.kind === "task") {
+      if (!entry.status) { actions.push("draft"); }
+      if (entry.status === "draft") { actions.push("undraft"); }
+      if (entry.status && !isRunStatus(entry.status)) { actions.push("release"); }
+    }
+    return actions;
+  }
+
+  function entryDetail(entry) {
+    var detail = make("div", null, "detail");
+    if (entry.brief) { detail.appendChild(make("p", entry.brief)); }
+    var facts = [entry.slug, entry.kind];
+    if (entry.owner) { facts.push("owner " + entry.owner); }
+    if (entry.recipe) { facts.push("recipe " + entry.recipe); }
+    if (entry.created) { facts.push("created " + age(entry.created) + " ago"); }
+    if (entry.revised) { facts.push("revised " + age(entry.revised) + " ago"); }
+    detail.appendChild(make("p", facts.join(" · "), "faint"));
+    var links = make("p");
+    if (entry.design_file) { links.appendChild(fileLink("Design:", entry.design_file)); }
+    if (entry.decision_file) {
+      links.appendChild(document.createTextNode(" "));
+      links.appendChild(fileLink("Decision:", entry.decision_file));
+    }
+    detail.appendChild(links);
+    var body = make("div");
+    body.innerHTML = markdown(entry.body);
+    detail.appendChild(body);
+    if (!served) { return detail; }
+
+    var actions = make("div", null, "actions");
+    actionsFor(entry).forEach(function (op) {
+      actions.appendChild(button(op, function () {
+        write(op, entry.slug, entry.revision).catch(function () {});
+      }));
+    });
+    detail.appendChild(actions);
+    if (messages.has(entry.slug)) { detail.appendChild(make("p", messages.get(entry.slug), "message")); }
+
+    var state = forms.get(entry.slug);
+    if (!state || (!state.dirty && state.revision !== entry.revision)) {
+      state = buildForm(entry);
+      forms.set(entry.slug, state);
+    }
+    detail.appendChild(formBlock(state));
+    return detail;
+  }
+
+  function entryRow(entry) {
+    var article = make("article", null, "entry");
+    var row = button("", function () {
+      if (expanded.has(entry.slug)) { expanded.delete(entry.slug); } else { expanded.add(entry.slug); }
+      draw();
+    });
+    row.className = "row";
+    row.id = "row-" + entry.slug;
+    row.setAttribute("aria-expanded", String(expanded.has(entry.slug)));
+    row.appendChild(make("strong", entry.handle));
+    row.appendChild(make("span", entry.title));
+    if (entry.status) { row.appendChild(make("span", entry.status, "faint")); }
+    labelsOf(entry).forEach(function (label) { row.appendChild(make("span", label, "tag")); });
+    article.appendChild(row);
+    if (expanded.has(entry.slug)) { article.appendChild(entryDetail(entry)); }
+    return article;
+  }
+
+  // projectGroup draws a project with its sub-projects and own entries, or returns null when it would show none.
+  function projectGroup(project, level, shown, children) {
+    var group = make("section", null, "project");
+    var count = 0;
+    var parts = [];
+    (children.get(project.handle) || []).forEach(function (child) {
+      var drawn = projectGroup(child, level + 1, shown, children);
+      if (drawn) {
+        parts.push(drawn.element);
+        count += drawn.count;
+      }
+    });
+
+    var own = shown.get(project.handle) || [];
+    var sections = view.sections.slice();
+    own.forEach(function (entry) {
+      if (sections.indexOf(entry.section) < 0) { sections.push(entry.section); }
+    });
+    sections.forEach(function (section) {
+      var entries = own.filter(function (entry) { return entry.section === section; });
+      if (!entries.length) { return; }
+      var block = make("div");
+      block.appendChild(make("h4", section + " (" + entries.length + ")"));
+      entries.forEach(function (entry) { block.appendChild(entryRow(entry)); });
+      parts.push(block);
+      count += entries.length;
+    });
+    if (!count) { return null; }
+
+    group.appendChild(make("h" + Math.min(level, 6), project.handle + " " + project.title + " (" + count + ")"));
+    if (project.brief) { group.appendChild(make("p", project.brief)); }
+    project.labels.forEach(function (label) { group.appendChild(make("span", label, "tag")); });
+    if (project.design_file) { group.appendChild(fileLink("Design:", project.design_file)); }
+    parts.forEach(function (part) { group.appendChild(part); });
+    return { element: group, count: count };
+  }
+
+  function drawFilters() {
+    var key = JSON.stringify([view.types, view.areas]);
+    if (key === filterKey) { return; }
+    filterKey = key;
+    var container = byId("filters");
+    container.textContent = "";
+    [["kind", "Kind", ["task", "note"]], ["type", "Type", view.types], ["area", "Area", view.areas]].forEach(function (group) {
+      var row = make("div", null, "toggles");
+      row.appendChild(make("span", group[1], "faint"));
+      group[2].forEach(function (value) {
+        var toggle = button(value, function () {
+          var chosen = filters[group[0]];
+          if (chosen.has(value)) { chosen.delete(value); } else { chosen.add(value); }
+          toggle.setAttribute("aria-pressed", String(chosen.has(value)));
+          draw();
+        });
+        toggle.setAttribute("aria-pressed", String(filters[group[0]].has(value)));
+        row.appendChild(toggle);
+      });
+      container.appendChild(row);
+    });
+  }
+
+  function drawCreate() {
+    byId("create").hidden = !served;
+    if (!served) { return; }
+    var projects = JSON.stringify(projectOptions());
+    if (!createForm || (!createForm.dirty && projects !== createProjects)) {
+      createForm = buildForm(null);
+      createProjects = projects;
+    }
+    var container = byId("create-body");
+    container.textContent = "";
+    container.appendChild(formBlock(createForm));
+  }
+
+  // drawRemoved keeps on screen the unsent edit and the refusal of an entry the board no longer holds.
+  function drawRemoved(main) {
+    var removed = new Set();
+    forms.forEach(function (state, slug) {
+      if (findEntry(slug)) { return; }
+      if (state.dirty) { removed.add(slug); } else { forms.delete(slug); }
+    });
+    messages.forEach(function (message, slug) {
+      if (!findEntry(slug)) { removed.add(slug); }
+    });
+    removed.forEach(function (slug) {
+      var block = make("section", null, "project");
+      block.appendChild(make("h3", "Removed entry " + slug));
+      if (messages.has(slug)) { block.appendChild(make("p", messages.get(slug), "message")); }
+      if (forms.has(slug)) { block.appendChild(formBlock(forms.get(slug))); }
+      block.appendChild(button("Discard", function () {
+        forms.delete(slug);
+        messages.delete(slug);
+        draw();
+      }));
+      main.appendChild(block);
+    });
+  }
+
+  function draw() {
+    var focused = document.activeElement;
+    var focusedId = focused ? focused.id : "";
+    byId("meta").textContent = "Rendered " + view.rendered + " · Prime owner " + (view.prime_owner || "none recorded");
+    drawFilters();
+    drawCreate();
+
+    var root = view.projects[0];
+    var handles = new Set(view.projects.map(function (project) { return project.handle; }));
+    var shown = new Map();
+    view.entries.filter(matches).forEach(function (entry) {
+      var handle = handles.has(entry.project) ? entry.project : root.handle;
+      if (!shown.has(handle)) { shown.set(handle, []); }
+      shown.get(handle).push(entry);
+    });
+    var children = new Map();
+    view.projects.slice(1).forEach(function (project) {
+      if (!children.has(project.parent)) { children.set(project.parent, []); }
+      children.get(project.parent).push(project);
+    });
+
+    var main = byId("board");
+    main.textContent = "";
+    drawRemoved(main);
+    // The root's projects stand beside it rather than under it, and its own group comes last.
+    (children.get(root.handle) || []).forEach(function (project) {
+      var drawn = projectGroup(project, 2, shown, children);
+      if (drawn) { main.appendChild(drawn.element); }
+    });
+    var rootGroup = projectGroup(root, 2, shown, new Map());
+    if (rootGroup) { main.appendChild(rootGroup.element); }
+
+    if (focused && focused.isConnected) {
+      focused.focus();
+    } else if (focusedId && byId(focusedId)) {
+      byId(focusedId).focus();
+    }
+  }
+
+  byId("search").addEventListener("input", function (event) {
+    search = event.target.value.toLowerCase();
+    if (view) { draw(); }
+  });
+
+  if (!served) {
+    if (window.BOARD === undefined) {
+      showNotice("No board data to show: run \"lym board rerender\" and reload this page.");
+      return;
+    }
+    view = window.BOARD;
+    draw();
+    return;
+  }
+
+  if (location.hash.length > 1) {
+    sessionStorage.setItem(TOKEN_KEY, location.hash.slice(1));
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+  token = sessionStorage.getItem(TOKEN_KEY) || "";
+  poll(null);
+}());
+</script>
+</body>
+</html>

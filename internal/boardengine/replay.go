@@ -29,6 +29,7 @@ import (
 )
 
 // File names a replay recognises at the Bolt root: the rendered overview and the per-entry design and decision files.
+// It also recognises board-data.js and board.html, the viewer's data and page.
 // Per-project overviews use projectFilePrefix, and the entry store is boardFile.
 const (
 	overviewFile       = "README.md"
@@ -45,10 +46,11 @@ type FabricReplay struct{}
 // Name returns the replayer's registry name.
 func (FabricReplay) Name() string { return "board" }
 
-// Claims reports whether path, a Bolt-root-relative slash path, is a file of the board:
-// the entry store, a rendered overview file, a design file, a decision record or a file of a raddle store directory.
+// Claims reports whether path, a Bolt-root-relative slash path, is a file of the board.
+// Those files are the entry store, a rendered overview file, the viewer's data and page, and a design file.
+// A decision record and a file of a raddle store directory are files of the board too.
 func (FabricReplay) Claims(path string) bool {
-	if path == boardFile || isBoardOverview(path) {
+	if path == boardFile || path == BoardDataFile || path == BoardPageFile || isBoardOverview(path) {
 		return true
 	}
 	if _, design := boardDesignSlug(path); design {

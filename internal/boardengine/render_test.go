@@ -141,8 +141,14 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, "board-data.js")); err != nil {
 			t.Errorf("board-data.js not written: %v", err)
 		}
-		if manifest, err := os.ReadFile(filepath.Join(dir, ".board-rendered.json")); err != nil || !strings.Contains(string(manifest), `"board-data.js"`) {
-			t.Errorf("manifest = %q, %v; want it to list board-data.js", manifest, err)
+		if _, err := os.Stat(filepath.Join(dir, "board.html")); err != nil {
+			t.Errorf("board.html not written: %v", err)
+		}
+		manifest, err := os.ReadFile(filepath.Join(dir, ".board-rendered.json"))
+		for _, name := range []string{`"board-data.js"`, `"board.html"`} {
+			if err != nil || !strings.Contains(string(manifest), name) {
+				t.Errorf("manifest = %q, %v; want it to list %s", manifest, err, name)
+			}
 		}
 	})
 
