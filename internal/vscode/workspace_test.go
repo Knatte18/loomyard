@@ -72,6 +72,47 @@ func TestBuildWorkspace(t *testing.T) {
 	}
 }
 
+func TestWorkspaceTasks(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		lymPath     string
+		wantCommand string
+	}{
+		{"AbsolutePath", "/opt/lym/bin/lym", "/opt/lym/bin/lym"},
+		{"EmptyPathFallsBackToBareName", "", "lym"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			name, value := WorkspaceTasks(tt.lymPath, "my-beam", "/hub/my-beam")
+			if name != "tasks" {
+				t.Errorf("WorkspaceTasks name = %q; want tasks", name)
+			}
+			var got map[string]any
+			if err := json.Unmarshal(value, &got); err != nil {
+				t.Fatalf("WorkspaceTasks value is not JSON: %v\n%s", err, value)
+			}
+			want := map[string]any{
+				"version": "2.0.0",
+				"tasks": []any{map[string]any{
+					"label":        "beam start",
+					"type":         "process",
+					"command":      tt.wantCommand,
+					"args":         []any{"beam", "start", "my-beam"},
+					"options":      map[string]any{"cwd": "/hub/my-beam"},
+					"presentation": map[string]any{"reveal": "always", "panel": "new", "echo": true, "focus": true},
+				}},
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("WorkspaceTasks value = %v; want %v", got, want)
+			}
+		})
+	}
+}
+
 func TestWorkspaceSettings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

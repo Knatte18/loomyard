@@ -130,8 +130,10 @@ func resetPrimeEditorState(t *testing.T, h *hubforge.Hub) {
 // It has no _portals folder.
 // The launch opens beside the workspace, in order, the existing files the hub's ide.yaml lists for the prime.
 // {beam} resolves to the prime's name, and an absent file is skipped.
+// The file's one task starts the root project in the prime's anchor.
 func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	resetPrimeEditorState(t, h)
+	t.Cleanup(fabricengine.InstallWorkspaceContent(WorkspaceContent))
 	l := h.Location
 	prime := primeOf(t, h)
 	launched, opened := recordLaunches(t)
@@ -146,6 +148,7 @@ func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	assertWorktreeTasks(t, primeAnchor)
 
 	wsPath := fabricengine.HubWorkspacePath(l)
+	assertBeamStartTask(t, wsPath, "root", primeAnchor)
 	if len(*launched) != 1 || (*launched)[0] != wsPath {
 		t.Fatalf("CodeLauncher calls = %v, want exactly [%s]", *launched, wsPath)
 	}
@@ -203,6 +206,43 @@ func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 		if strings.Contains(f.Path, "_portals") {
 			t.Errorf("folder %d path %q names _portals", i, f.Path)
 		}
+	}
+}
+
+// assertBeamStartTask fails the test unless the workspace file at path holds exactly one beam start process task.
+// The task must run the stand-in lym with "beam start <beam>" in the directory cwd.
+func assertBeamStartTask(t *testing.T, path, beam, cwd string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read workspace: %v", err)
+	}
+	var ws struct {
+		Tasks struct {
+			Tasks []struct {
+				Label   string   `json:"label"`
+				Type    string   `json:"type"`
+				Command string   `json:"command"`
+				Args    []string `json:"args"`
+				Options struct {
+					Cwd string `json:"cwd"`
+				} `json:"options"`
+			} `json:"tasks"`
+		} `json:"tasks"`
+	}
+	if err := json.Unmarshal(data, &ws); err != nil {
+		t.Fatalf("decode workspace: %v\n%s", err, data)
+	}
+	if len(ws.Tasks.Tasks) != 1 {
+		t.Fatalf("%s tasks = %+v; want one beam start task", filepath.Base(path), ws.Tasks.Tasks)
+	}
+	lymPath, err := LymBinary()
+	if err != nil {
+		t.Fatalf("LymBinary: %v", err)
+	}
+	task := ws.Tasks.Tasks[0]
+	if task.Label != "beam start" || task.Type != "process" || task.Command != lymPath || !slices.Equal(task.Args, []string{"beam", "start", beam}) || task.Options.Cwd != cwd {
+		t.Errorf("%s task = %+v; want a beam start process task running %s beam start %s in %s", filepath.Base(path), task, lymPath, beam, cwd)
 	}
 }
 
@@ -316,8 +356,10 @@ func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 // The workspace's settings open a markdown file rendered.
 // A task forked from the beam opens, through OpenTask and Spawn, the file ide.yaml lists for a task;
 // in that list, {beam} resolves to the beam's slug.
+// The beam workspace's one task starts that beam in its anchor.
 func checkBeamOpensBeamWorkspace(t *testing.T, h *hubforge.Hub, slug string) {
 	resetPrimeEditorState(t, h)
+	t.Cleanup(fabricengine.InstallWorkspaceContent(WorkspaceContent))
 	l := h.Location
 	launched, opened := recordLaunches(t)
 	hubforge.AddPair(t, h, slug)
@@ -350,6 +392,7 @@ func checkBeamOpensBeamWorkspace(t *testing.T, h *hubforge.Hub, slug string) {
 		t.Fatalf("CodeLauncher calls = %v, want exactly [%s]", *launched, beamPath)
 	}
 	assertWorktreeTasks(t, beamAnchor)
+	assertBeamStartTask(t, beamPath, slug, beamAnchor)
 	if files := (*opened)[0]; !slices.Equal(files, wantFiles) {
 		t.Errorf("CodeLauncher files = %v; want %v", files, wantFiles)
 	}
