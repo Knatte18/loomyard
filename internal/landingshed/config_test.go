@@ -224,6 +224,7 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 		{"finalize fix attempts below 1", "finalize_fix_attempts: 2", "finalize_fix_attempts: 0", "finalize_fix_attempts"},
 		{"finalize fix max lines below 1", "finalize_fix_max_lines: 40", "finalize_fix_max_lines: 0", "finalize_fix_max_lines"},
 		{"finalize fix review rounds below 1", "finalize_fix_review_rounds: 3", "finalize_fix_review_rounds: 0", "finalize_fix_review_rounds"},
+		{"finalize lost races below 0", "finalize_fix_review_rounds: 3", "finalize_fix_review_rounds: 3\nfinalize_lost_races: -1", "finalize_lost_races"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

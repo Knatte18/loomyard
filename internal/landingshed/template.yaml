@@ -30,4 +30,5 @@ parent_align_fix_attempts: 2  # fixer turns one Parent-Align row entry may spend
 finalize_fix_attempts: 2  # fixer turns one Finalize row entry may spend
 finalize_fix_max_lines: 40  # added plus deleted lines a fixer change may hold before it is over the cap
 finalize_fix_review_rounds: 3  # fix reviews one Finalize row entry may run over a fixer change past the caps; each review that does not approve sends its findings back to the fixer, and the last halts for the operator
+finalize_lost_races: 2  # times one Finalize may find the parent moved since its merge and landing gate, which run with no parent lock held, before it merges and gates under the parent lock instead, so a run on a busy parent is never starved; 0 merges and gates under the lock from the start
 parent_lock_idle_release_min: 10  # minutes a waiting run keeps its parent lock before the lock is released, bar a run at Finalize and running or with a live verify, which keeps it; a value below 1 reads as 10

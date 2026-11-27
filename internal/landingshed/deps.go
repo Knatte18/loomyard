@@ -259,7 +259,9 @@ type Deps struct {
 	RecordLandedSize func(from, to string) error
 
 	// ConfigChanges returns the task's changes to its own per-worktree config files since its fork point.
-	// The finalize step calls it before the catch-up merge-in, so before any parent-side mutation.
+	// The finalize step calls it before its own first merge of the parent into the task, for the changes and their base.
+	// That base is the fork point or the parent tip an earlier merge brought in.
+	// It calls it again under the parent lock, before any merge there, for the parent's current values.
 	// It only reports the result as a notice: landing never carries those files to the parent.
 	// A returned error is logged and reported as a notice, never a stop.
 	//

@@ -144,7 +144,7 @@ func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 		return end.result()
 	}
 
-	tip, lockReason, err := m.mergeTip(ctx)
+	tip, lockReason, err := parentMergeTip(ctx, m.deps, m.guard, parentAlignName, false)
 	if err != nil {
 		return fail(ctx, parentAlignName, err).result()
 	}
@@ -224,36 +224,38 @@ func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
-// mergeTip picks the parent tip to merge and returns it, or a Stuck reason of the parent lock wait.
+// parentMergeTip picks the parent tip producer merges with no parent lock held across the merge.
+// It returns that tip, or a Stuck reason of the parent lock wait.
 // With an upstream and no push skip, it fetches and takes the upstream tip, never the local tip,
 // so a landing another run made locally and has not pushed is never merged in.
-// With the push skipped (Deps.PushSkipped) or no upstream, it takes the parent lock only to read the local tip.
-// It releases the lock before returning, so the merge itself runs unlocked.
+// With the push skipped (Deps.PushSkipped) or no upstream, it takes the local tip.
+// It holds the parent lock through guard only for that read, so the merge itself runs unlocked.
+// When front is set, the read waits for the lock at the front of the queue.
 // A paused lock wait and an unreadable lock record come back as the reason, for a halting Stuck.
-func (m *ParentAlign) mergeTip(ctx context.Context) (string, string, error) {
-	branch := m.deps.ParentBranch
-	if !m.deps.PushSkipped {
-		tips, err := m.deps.ReadParentTips(true)
+func parentMergeTip(ctx context.Context, deps Deps, guard parentGuard, producer string, front bool) (string, string, error) {
+	branch := deps.ParentBranch
+	if !deps.PushSkipped {
+		tips, err := deps.ReadParentTips(true)
 		if err != nil {
-			return "", "", fmt.Errorf("landingshed: %s: read the tips of parent branch %q: %w", parentAlignName, branch, err)
+			return "", "", fmt.Errorf("landingshed: %s: read the tips of parent branch %q: %w", producer, branch, err)
 		}
 		switch tips.Relation {
 		case fabricengine.ParentNoUpstream:
 		case fabricengine.ParentEqual, fabricengine.ParentAhead, fabricengine.ParentBehind, fabricengine.ParentDiverged:
 			return tips.Upstream, "", nil
 		default:
-			return "", "", fmt.Errorf("landingshed: %s: unknown relation %q of parent branch %q to its upstream", parentAlignName, tips.Relation, branch)
+			return "", "", fmt.Errorf("landingshed: %s: unknown relation %q of parent branch %q to its upstream", producer, tips.Relation, branch)
 		}
 	}
 
-	reason, err := m.guard.ensure(ctx, parentAlignName, false)
+	reason, err := guard.ensure(ctx, producer, front)
 	if err != nil || reason != "" {
 		return "", reason, err
 	}
-	defer m.guard.release(parentAlignName)
-	tips, err := m.deps.ReadParentTips(false)
+	defer guard.release(producer)
+	tips, err := deps.ReadParentTips(false)
 	if err != nil {
-		return "", "", fmt.Errorf("landingshed: %s: read the tips of parent branch %q: %w", parentAlignName, branch, err)
+		return "", "", fmt.Errorf("landingshed: %s: read the tips of parent branch %q: %w", producer, branch, err)
 	}
 	return tips.Local, "", nil
 }

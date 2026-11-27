@@ -1,6 +1,7 @@
 // finalize.go implements the Finalize producer.
-// Under the parent lock it merges the parent branch into the task worktree and judges the merge.
-// Then it merges the task branch into the parent pair's own worktree and pushes the parent branch.
+// With no parent lock held it merges the parent's tip into the task worktree and gates the merged tree.
+// Under the parent lock it checks the parent has not moved since.
+// It then merges the task branch into the parent pair's own worktree and pushes the parent branch.
 // It reports only what the shedengine.ShedProducer seam can carry:
 // a verdict, an output pointer whose Reason the engine persists, and an error.
 //
@@ -57,8 +58,8 @@ type parentMerger interface {
 
 var _ parentMerger = (*fabricengine.Fabric)(nil)
 
-// Finalize is the ShedProducer that merges the parent branch into the task worktree under the parent lock.
-// It then merges the task branch into the parent pair's own worktree.
+// Finalize is the ShedProducer that merges the parent branch into the task worktree and gates it.
+// It then lands the task branch on the parent pair's own worktree under the parent lock.
 type Finalize struct {
 	deps     Deps
 	resolver resolver
@@ -79,12 +80,29 @@ type Finalize struct {
 	// lockFreed reports that the current locked pass freed the parent lock for an agent session.
 	// Call then runs the pass again.
 	lockFreed bool
+	// lockHeld reports that this process holds the parent lock in a lock store, so freeLock has a lock to free.
+	lockHeld bool
+	// gatedTip is the parent tip the current pass merged and gated with no parent lock held.
+	// It is empty when the pass ran no lock-free merge and gate, and the locked pass then merges and gates under the lock.
+	gatedTip string
+	// parentMoved reports that the current locked pass found the parent's head past gatedTip and freed the lock.
+	// Call then counts a lost race and runs the passes again.
+	parentMoved bool
 	// parentHeadMerged is the parent pair's head read right before the parent branch was last merged into the task worktree.
 	// It is the base of the landed diff.
 	// It is empty when this process read none, as in a Finalize resumed past the merge.
 	parentHeadMerged string
 	// flaky holds each gate failure of this process that passed when run once more on the same head.
 	flaky []flakyPass
+	// configBeforeMerge is the read of the task's config changes made before the current call's first merge of the parent.
+	// It is nil until that read.
+	configBeforeMerge *configRead
+}
+
+// configRead is what one read of the task's per-worktree config changes answered.
+type configRead struct {
+	changes fabricengine.ConfigChanges
+	err     error
 }
 
 // flakyHeading opens the landing texts' section listing the gate failures a rerun on the same head did not repeat.
@@ -180,10 +198,20 @@ func (fz *Finalize) flakySection() string {
 
 // Call runs one Finalize iteration.
 //
-// Finalize takes the parent lock before anything that reads or moves the parent, and releases it on every way out.
+// Before it takes the parent lock, Finalize merges the parent's tip into the task worktree and gates the merged tree.
+// That pass holds no lock, and neither does a fixer or fix review the gate calls for.
+// Under the lock, a parent whose head is still the tip that pass merged finds the merge up to date and the tree verified,
+// so the lock is held for the checks and the landing alone.
+// A parent that moved since frees the lock, and Finalize merges the new tip and gates it again with no lock held.
+// After `landing.finalize_lost_races` such lost races in one Call, Finalize merges and gates under the lock,
+// so a run on a busy parent is never starved.
+// A parent already holding the task's work runs no lock-free pass either.
+// Either way, what lands is a tree that passed the gate on top of the parent it lands on.
+//
+// Finalize takes the parent lock before anything that moves the parent, and releases it on every way out.
 // A paused lock wait or an unreadable lock record is a halting Stuck.
 // A landing that reaches Done, a Stuck and an error all free the lock.
-// Under that lock, Finalize runs the owner checks.
+// Finalize runs the owner checks before its lock-free merge, and again under that lock.
 // A run whose origin has ended or stopped is Stuck.
 // A run or parent that another machine owns, an unreachable origin and a failed owner read halt.
 // A parent already holding the task's work skips the owner checks and the unreachable halt,
@@ -192,13 +220,14 @@ func (fz *Finalize) flakySection() string {
 // A pair that is missing, dirty or mid-merge is Stuck with a way forward before any merge.
 // A parent that cannot be fast-forwarded to its upstream is Stuck the same way.
 // Finalize then merges the parent branch into the task worktree through its resolver.
-// The resolver resolves a conflict with the conflict session under the lock.
+// The resolver resolves a conflict with the conflict session.
 // Finalize gates the merged tree whether the merge conflicted or was large.
 // The `landing` gate judges the merged tree, and a failing gate runs the merge fixer in finalize mode.
 // A fixer change over the caps is settled in place by the fix review and the fixer.
 // Finalize never sends the run back to an earlier row.
 // The lock is freed before the fixer or a fix review starts.
-// Once their change is let through, Finalize takes the lock again at the front of the queue,
+// Once their change is let through, Finalize runs its passes again, the lock-free pass first while lost races remain.
+// It then takes the lock again at the front of the queue,
 // and it runs every step under the lock again, from the pull-request step on.
 // A Finalize resumed with such a change already let through starts at the front too.
 // After a merge-in-required error from the parent-side merge, Finalize re-runs the merge and its gate once.
@@ -280,17 +309,71 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		}
 	}
 
-	// Steps 1b2 to 7 run under the parent lock once, and again each time a fixer or fix review ran with the lock freed.
+	fz.configBeforeMerge = nil
+
+	// Step 1b1 runs with no lock held, and steps 1b2 to 7 under the parent lock.
+	// Both run again each time a fixer or fix review ran with the lock freed, and each time the parent moved past step 1b1.
 	// Each later pass queues at the front, and so does a run resumed after its fixer.
 	front, err := fz.returningFromFixer()
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
+	lostRaces := 0
 	for ; ; front = true {
+		fz.gatedTip = ""
+		if lostRaces < fz.deps.Config.FinalizeLostRaces {
+			if end := fz.gateUnlocked(ctx, front); end != nil {
+				return end.result()
+			}
+		}
 		if end := fz.landUnderLock(ctx, front, *summary, credit); end != nil {
 			return end.result()
 		}
+		if fz.parentMoved {
+			lostRaces++
+			if lostRaces == fz.deps.Config.FinalizeLostRaces {
+				logger.Info("landingshed: the parent moved past every lock-free merge and gate, so the run merges and gates under the parent lock", "producer", finalizeName, "branch", fz.deps.ParentBranch, "lostRaces", lostRaces)
+			}
+		}
 	}
+}
+
+// gateUnlocked is step 1b1: with no lock held, it merges the parent's tip into the task worktree and gates the result.
+// It runs the owner checks first, so a run this machine may not land ends before anything is merged into its worktree.
+// It keeps the tip it merged as gatedTip, which the locked pass compares with the parent it lands on.
+// A parent already holding the task's work runs no such pass and keeps no tip.
+// A failed read of whether it holds the work halts as an owner check.
+// When front is set, a lock taken to read the local parent tip is waited for at the front of the queue.
+// It returns nil when the merged tree passed and its change is settled, and how the call ends otherwise.
+func (fz *Finalize) gateUnlocked(ctx context.Context, front bool) *ending {
+	held, err := fz.parentHoldsWork()
+	if err != nil {
+		return halt(ctx, finalizeName, ownerHoldsReadReason(err))
+	}
+	if held {
+		return nil
+	}
+	// The pre-push check leaves a run at this row alone,
+	// so the owners are judged before any commit the merge or a fixer makes.
+	if end := fz.ownerChecks(ctx, held); end != nil {
+		return end
+	}
+	fz.readConfigBeforeMerge()
+	tip, lockReason, err := parentMergeTip(ctx, fz.deps, fz.guard, finalizeName, front)
+	if err != nil {
+		return fail(ctx, finalizeName, err)
+	}
+	if lockReason != "" {
+		return halt(ctx, finalizeName, lockReason)
+	}
+	if end := fz.mergeParent(ctx, tip); end != nil {
+		return end
+	}
+	if end := fz.gateAndFix(ctx); end != nil {
+		return end
+	}
+	fz.gatedTip = tip
+	return nil
 }
 
 // returningFromFixer reports whether the row's attempt record shows a fixer's change already let through.
@@ -307,12 +390,16 @@ func (fz *Finalize) returningFromFixer() (bool, error) {
 // landUnderLock runs one pass of the steps from the parent lock to the landing.
 // It takes the lock, at the front of the queue when front is set, and releases it on every way out.
 // summary and credit compose the GitHub merge's title and message and the landing commit's message once the gate passed.
-// It returns nil when the pass freed the lock for a fixer or fix review whose change was let through,
-// so the caller runs the pass again; otherwise it returns how the call ends.
+// After a lock-free merge and gate, the pass lands only while the parent's head is gatedTip;
+// a parent that moved sets parentMoved and frees the lock.
+// It returns nil when the parent moved.
+// It also returns nil when the pass freed the lock for a fixer or fix review whose change was let through.
+// On nil the caller runs the passes again.
+// Otherwise it returns how the call ends.
 func (fz *Finalize) landUnderLock(ctx context.Context, front bool, summary summaryparser.Summary, credit string) *ending {
-	fz.lockFreed = false
+	fz.lockFreed, fz.parentMoved = false, false
 
-	// Step 1b2: take the parent lock first, before anything reads or moves the parent.
+	// Step 1b2: take the parent lock before anything moves the parent.
 	// The lock is released on every way out of this pass.
 	// A lock a dead Finalize left is taken over by the acquire:
 	// the lock store grants a record whose owner process no longer lives.
@@ -323,7 +410,11 @@ func (fz *Finalize) landUnderLock(ctx context.Context, front bool, summary summa
 	if lockReason != "" {
 		return halt(ctx, finalizeName, lockReason)
 	}
-	defer fz.guard.release(finalizeName)
+	fz.lockHeld = fz.guard.lock.Store != nil
+	defer func() {
+		fz.lockHeld = false
+		fz.guard.release(finalizeName)
+	}()
 
 	// Step 1b2b: under the lock, decide how the landing relates to the run's pull request.
 	// The decision follows the resolver that `PR-Review` follows.
@@ -366,9 +457,24 @@ func (fz *Finalize) landUnderLock(ctx context.Context, front bool, summary summa
 		return end
 	}
 
-	// Step 1c: read the task's per-worktree config changes before any parent-side mutation,
-	// so the diff is taken against the parent as the task forked from it;
-	// the notice it yields is queued only at Done.
+	// Step 1b4b: after a lock-free merge and gate, land only on the parent tip that pass merged.
+	// A parent that moved since frees the lock, so the new tip is merged and gated with no lock held.
+	// A parent that came to hold the task's work since that pass was not raced, so it is not compared.
+	if fz.gatedTip != "" && !held {
+		head, err := parentHandle.HeadSHA()
+		if err != nil {
+			return fail(ctx, finalizeName, fmt.Errorf("landingshed: %s: read the head of parent branch %q: %w", finalizeName, fz.deps.ParentBranch, err))
+		}
+		if head != fz.gatedTip {
+			logger.Info("landingshed: the parent moved since the lock-free merge and gate, so the run frees the lock and merges and gates again", "producer", finalizeName, "branch", fz.deps.ParentBranch, "gated", fz.gatedTip, "head", head)
+			fz.parentMoved = true
+			return nil
+		}
+	}
+
+	// Step 1c: compose the notice about the task's per-worktree config changes after the parent pair's sync,
+	// so it holds the parent's current values, and before any merge under the lock.
+	// It is queued only at Done.
 	notice := fz.configChangeNotice()
 
 	// Steps 2 to 6 run once, and once more after a merge-in-required error from the parent-side merge:
@@ -454,14 +560,16 @@ func ownerHoldsReadReason(err error) string {
 
 // freeLock frees the parent lock before an agent session that works on the task worktree alone.
 // This lets other runs land on the parent meanwhile.
-// The run takes the lock again at the front of the queue and runs its locked pass again, merging the parent anew.
-// A Finalize with no lock store frees nothing and goes on in the same pass.
+// The run then runs its passes again and takes the lock again at the front of the queue.
+// The lock-free pass runs first while lost races remain.
+// A Finalize that holds no lock, as in its lock-free pass or with no lock store, frees nothing;
+// it goes on in the same pass.
 func (fz *Finalize) freeLock() {
-	if fz.lockFreed || fz.guard.lock.Store == nil {
+	if !fz.lockHeld {
 		return
 	}
 	fz.guard.release(finalizeName)
-	fz.lockFreed = true
+	fz.lockHeld, fz.lockFreed = false, true
 	logger.Info("landingshed: freed the parent lock for an agent session; the run takes it again after", "producer", finalizeName, "branch", fz.deps.ParentBranch)
 }
 
@@ -611,8 +719,20 @@ func (fz *Finalize) parkedMergeWayForward(checkout string) string {
 		gotoResumeWayForward, checkout)
 }
 
+// readConfigBeforeMerge reads the task's per-worktree config changes, once per call.
+// A merge of the parent moves the base the changes are measured from, so the read precedes the call's first one.
+func (fz *Finalize) readConfigBeforeMerge() {
+	if fz.configBeforeMerge != nil || fz.deps.ConfigChanges == nil {
+		return
+	}
+	changes, err := fz.deps.ConfigChanges()
+	fz.configBeforeMerge = &configRead{changes: changes, err: err}
+}
+
 // configChangeNotice composes the one-line notice about the task's per-worktree config changes, key by key.
 // It returns "" when there is nothing to report or no seam is wired.
+// The changes and their base are those read before the call's first merge of the parent.
+// The parent values are read again here, and a file that no longer differs from the parent is not named.
 // Per changed file and its module it names each key whose tip value differs from both the fork point and the parent.
 // Each named key comes with its base, tip and parent values;
 // a file that changes no key, such as a comments-only edit, and a key the parent already holds are not named.
@@ -625,7 +745,12 @@ func (fz *Finalize) configChangeNotice() string {
 	if fz.deps.ConfigChanges == nil {
 		return ""
 	}
-	changes, err := fz.deps.ConfigChanges()
+	fz.readConfigBeforeMerge()
+	changes, err := fz.configBeforeMerge.changes, fz.configBeforeMerge.err
+	var current fabricengine.ConfigChanges
+	if err == nil {
+		current, err = fz.deps.ConfigChanges()
+	}
 	if err != nil {
 		logger.Warn("landingshed: read config changes failed", "producer", finalizeName, "cause", err)
 		line := fmt.Sprintf("loom: the config changes of task branch %q could not be read: %v; diff its config files against the parent branch %q by hand",
@@ -635,7 +760,12 @@ func (fz *Finalize) configChangeNotice() string {
 
 	var keyed, unread []string
 	for _, file := range changes.Files {
+		now, differs := current.Contents[file]
+		if !differs {
+			continue
+		}
 		contents := changes.Contents[file]
+		contents.Parent = now.Parent
 		module := strings.TrimSuffix(path.Base(file), path.Ext(file))
 		keys, err := configengine.ChangedKeys(contents.Base, contents.Tip, contents.Parent)
 		if err != nil {
@@ -912,8 +1042,10 @@ func (fz *Finalize) recheckLock(ctx context.Context) *ending {
 // Every pass is committed and verified before the parent-side merge.
 // That covers the first pass and the retry after the parent moved again.
 // A halt, a gate failure or a dirty tree ends the call before the parent-side merge, the board update and the push.
+// Right before the merge it keeps the parent pair's head, the base of the landed diff.
 func (fz *Finalize) mergeAndGate(ctx context.Context, parentHandle parentMerger) *ending {
-	if end := fz.mergeParent(ctx, parentHandle); end != nil {
+	fz.keepParentHead(parentHandle)
+	if end := fz.mergeParent(ctx, ""); end != nil {
 		return end
 	}
 	return fz.gateAndFix(ctx)
@@ -1190,10 +1322,10 @@ func (fz *Finalize) endSpent(ctx context.Context, rec FixerAttempts, log string)
 	return halt(ctx, finalizeName, fmt.Sprintf("%sthe fixer spent every attempt of %s and the landing gate still fails; log: %s; fixer commits: %s; way forward: fix the failure on the task branch, then `lym loom resume`", LandingStopPrefix, finalizeName, log, commits))
 }
 
-// mergeParent merges the parent branch into the task worktree under the parent lock, and judges the merge.
+// mergeParent merges the parent branch into the task worktree, and judges the merge.
+// A non-empty tip is the parent commit merged in place of the local parent branch's tip.
 // It clears a parked merge-in, checks the tree clean and merges.
-// The merge goes through the resolver, which resolves a conflict with the conflict session under the lock.
-// Right before the merge it keeps the parent pair's head, the base of the landed diff.
+// The merge goes through the resolver, which resolves a conflict with the conflict session.
 //
 // The merge is large when a change the parent made touches a file the task changed.
 // The parent's changes are those since the merged tip the merge record names.
@@ -1203,7 +1335,7 @@ func (fz *Finalize) endSpent(ctx context.Context, rec FixerAttempts, log string)
 // The merge record is written with the new merged tip, the aligned tip as it was, and the overlap.
 // A large merge goes on to the gate like any other merge.
 // It returns nil when the merge settled and the step goes on to the gate.
-func (fz *Finalize) mergeParent(ctx context.Context, parentHandle parentMerger) *ending {
+func (fz *Finalize) mergeParent(ctx context.Context, tip string) *ending {
 	reason, err := fz.premerge.clear(finalizeName, fz.deps.ParentBranch)
 	if end := gateEnding(ctx, finalizeName, reason, err); end != nil {
 		return end
@@ -1217,8 +1349,7 @@ func (fz *Finalize) mergeParent(ctx context.Context, parentHandle parentMerger) 
 	if err != nil {
 		return &ending{err: err}
 	}
-	fz.keepParentHead(parentHandle)
-	merge, err := fz.resolver.Resolve(ctx, fz.deps.ParentBranch, "")
+	merge, err := fz.resolver.Resolve(ctx, fz.deps.ParentBranch, tip)
 	if err != nil {
 		return fail(ctx, finalizeName, fmt.Errorf("landingshed: %s: merge-in against parent branch %q: %w", finalizeName, fz.deps.ParentBranch, err))
 	}
@@ -1230,7 +1361,7 @@ func (fz *Finalize) mergeParent(ctx context.Context, parentHandle parentMerger) 
 		return end
 	}
 
-	newTip, overlap, err := fz.judgeParentMerge(before, merge.AlreadyUpToDate)
+	newTip, overlap, err := fz.judgeParentMerge(before, merge.AlreadyUpToDate, tip)
 	if err != nil {
 		return &ending{err: err}
 	}
@@ -1259,17 +1390,20 @@ func (fz *Finalize) mergeParent(ctx context.Context, parentHandle parentMerger) 
 	return nil
 }
 
-// judgeParentMerge reads the parent's tip after the merge.
+// judgeParentMerge takes the parent tip merged: tip when it is set, and the local parent branch's tip otherwise.
 // It reports the overlap between the paths the parent changed and the paths the task changed.
 // The parent's changes are measured from the earlier merge record's merged tip, or the task's merge base without one.
 // An up-to-date merge, a parent already holding the task's work, and an unchanged parent tip all report no overlap.
 // A missing path read or merge-base read also reports no overlap.
-func (fz *Finalize) judgeParentMerge(before mergeBefore, upToDate bool) (string, Overlap, error) {
-	tips, err := fz.deps.ReadParentTips(false)
-	if err != nil {
-		return "", Overlap{}, fmt.Errorf("landingshed: %s: read the tips of parent branch %q: %w", finalizeName, fz.deps.ParentBranch, err)
+func (fz *Finalize) judgeParentMerge(before mergeBefore, upToDate bool, tip string) (string, Overlap, error) {
+	newTip := tip
+	if newTip == "" {
+		tips, err := fz.deps.ReadParentTips(false)
+		if err != nil {
+			return "", Overlap{}, fmt.Errorf("landingshed: %s: read the tips of parent branch %q: %w", finalizeName, fz.deps.ParentBranch, err)
+		}
+		newTip = tips.Local
 	}
-	newTip := tips.Local
 	parentFrom := before.earlier.MergedTip
 	if parentFrom == "" {
 		parentFrom = before.taskBase

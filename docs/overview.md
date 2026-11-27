@@ -1375,13 +1375,19 @@ User-facing modules each get one `lym <module>` namespace:
   Any other ending is Stuck.
   A pause that covers the run holds it.
   The driver strand's mark reads `PR #<n>`.
-  `Finalize` takes the parent lock first and merges the parent into the task in place.
-  It resolves a conflict with the conflict session under the lock.
+  `Finalize` merges the parent's tip into the task in place with no parent lock held.
+  It runs its owner checks before that merge, and again under the lock.
+  It resolves a conflict with the conflict session.
   It runs the `finalize` gate key and the merge fixer in finalize mode.
+  It then takes the parent lock and lands only while the parent's head is still the tip it merged and gated.
+  A parent that moved frees the lock, and the merge and the gate run again unlocked.
+  After `landing.finalize_lost_races` lost races, and over a parent that already holds the task's work,
+  it merges and gates under the lock.
   It lands on the parent with the credit block and releases the lock on every exit.
   It frees the lock while its fixer or fix review works.
-  It then retakes the lock at the front of the queue.
-  It merges the parent anew and verifies under the lock before it lands.
+  It then runs both passes again, the unlocked one first while lost races remain,
+  and retakes the lock at the front of the queue.
+  It merges the parent anew and verifies under the lock before it lands; a tree already verified skips the verify.
   Finalize never reroutes.
   A fixer change over the caps goes to its fix review, which reads only the fixer's commits.
   A rejection hands the findings back to the fixer to fix in place, for up to `landing.finalize_fix_review_rounds` reviews.

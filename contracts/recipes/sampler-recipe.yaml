@@ -15,7 +15,7 @@
 # The session row carries no drift gate: the operator runs lym drift check on demand, and Drift-Verify is the check.
 # A Stuck of Drift-Verify or Drift-Recheck names lym loom goto --to Sampler-Session as the route that fixes code.
 #
-# The recipe has no Parent-Align row: Finalize merges the parent itself, under the parent lock it takes first.
+# The recipe has no Parent-Align row: Finalize merges the parent itself, before it takes the parent lock to land.
 # The build row runs no verify gate; Finalize's gate checks any code the run lands.
 #
 # The three Code-Review perch rows carry entry_gate: sampler.code_review, so with that key false each of them is
@@ -258,8 +258,11 @@ producers:
     engine: PRReview
     on_done: Finalize
 
-  # Finalize takes the parent lock first, merges the parent into the task branch, runs the landing
-  # gate and the merge fixer, then fast-forwards the parent and releases the lock on every way out.
+  # Finalize merges the parent into the task branch and runs the landing gate and the merge fixer with no parent lock held,
+  # then takes the lock, lands on the parent only while its head is still the tip it gated,
+  # and releases the lock on every way out.
+  # After landing.finalize_lost_races lost races, and over a parent already holding the work,
+  # it merges and gates under the lock.
   # An over-cap fixer change goes to Finalize's own fix review, whose findings the fixer fixes in place
   # until the review approves or its rounds run out and Finalize halts for the operator; Finalize never
   # reroutes, and a conflict or a large merge lands through the gate.

@@ -32,8 +32,14 @@
 // The task worktree must be clean before and after each merge and after the verify;
 // a dirty tree is Stuck naming the paths, so nothing uncommitted is merged over or reviewed.
 //
-// Finalize holds the parent lock, taken through the shared guard, from after the change description is parsed.
-// It holds it until every way out of its Call, and it re-reads the lock record before each landing attempt.
+// Finalize first merges the parent's tip into the task worktree and gates the merged tree with no parent lock held.
+// It then takes the parent lock through the shared guard.
+// It runs the owner checks before that lock-free merge, and again under the lock.
+// It lands only while the parent's head is the tip that pass merged.
+// A parent that moved frees the lock, and the merge and the gate run again with no lock held.
+// Finalize merges and gates under the lock after `landing.finalize_lost_races` lost races.
+// It does so too for a parent that already holds the task's work.
+// It holds the lock until every way out of its locked pass, and it re-reads the lock record before each landing attempt.
 // A record that does not name the run, or an unreadable one, is Stuck with Halt.
 // Finalize merges the parent branch into the task worktree first and then merges the task branch into the parent pair.
 // It never pushes or rewrites a parent that is ahead of or diverged from its upstream.

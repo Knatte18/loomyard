@@ -3,10 +3,11 @@
 
 Parent-Align and Finalize fix their own merge and test failures with the merge fixer;
 no pull request waits for an approval.
-A task run's Finalize takes the parent lock first.
-It then syncs the task branch with main, squashes it onto main, marks the board task done and pushes main.
+A task run's Finalize syncs the task branch with main and gates it with no lock held, then takes the parent lock.
+Under it, Finalize squashes the task onto main, marks the board task done and pushes main.
 A parent that moved since Parent-Align, a conflict or a large merge does not send a task run back:
-Finalize merges the parent in place, resolves a conflict under the lock and gates the merged tree.
+Finalize merges the parent in place, resolves a conflict and gates the merged tree.
+A main that moves before the lock is taken makes Finalize merge and gate again, under the lock after a few such races.
 
 A landing halt reaches you with the status marked `hand_back`;
 no driver, batten or arbiter routes it to another row.

@@ -55,6 +55,8 @@ type recordingParentMerger struct {
 	ffCalls  []fabricengine.SyncOptions
 	ffResult fabricengine.FastForwardResult
 	ffErr    error
+	// onFastForward, when set, runs on each FastForwardPair call, so a test can move the head it fast-forwards.
+	onFastForward func()
 }
 
 type mergeCall struct {
@@ -115,6 +117,9 @@ func (m *recordingParentMerger) FastForwardPair(opts fabricengine.SyncOptions) (
 	m.ffCalls = append(m.ffCalls, opts)
 	if m.order != nil {
 		*m.order = append(*m.order, "fast-forward")
+	}
+	if m.onFastForward != nil {
+		m.onFastForward()
 	}
 	return m.ffResult, m.ffErr
 }
@@ -1031,9 +1036,17 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 			"beam.yaml": {Base: []byte("autonomy: false\nmax_runs: 3\n"), Tip: []byte("autonomy: true\nmax_runs: 5\n"), Parent: []byte("autonomy: false\nmax_runs: 3\n")},
 		},
 	}
+	parentMoved := fabricengine.ConfigChanges{
+		Files: []string{"loom.yaml"}, Base: "base111", Tip: "tip222", ParentTip: "parent444",
+		Contents: map[string]fabricengine.ConfigFileContents{
+			"loom.yaml": {Base: []byte("code_max_bounces: 3\n"), Tip: []byte("code_max_bounces: 1\n"), Parent: []byte("code_max_bounces: 3\n")},
+		},
+	}
 	tests := []struct {
-		name        string
-		changes     fabricengine.ConfigChanges
+		name    string
+		changes fabricengine.ConfigChanges
+		// later, when set, is what every read after the first answers.
+		later       *fabricengine.ConfigChanges
 		readErr     error
 		notifyErr   error
 		noNotify    bool
@@ -1049,6 +1062,14 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 			changes:      changed,
 			wantOutcome:  shedengine.Done,
 			wantInNotice: []string{"loom:", `"task-branch"`, "loom.yaml (module loom)", "loom.code_max_bounces: base 2, tip 1, parent 2", "shuttle.yaml (module shuttle)", "shuttle.model: base absent, tip x, parent absent", "does not carry them", "re-apply"},
+		},
+		{
+			name:            "the base is the first read's, the parent values are the later read's, and a file the parent came to hold is left out",
+			changes:         changed,
+			later:           &parentMoved,
+			wantOutcome:     shedengine.Done,
+			wantInNotice:    []string{"loom.code_max_bounces: base 2, tip 1, parent 3"},
+			wantNotInNotice: []string{"shuttle"},
 		},
 		{
 			name:        "an empty diff queues none",
@@ -1107,7 +1128,14 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var notices []string
 			deps := newTestDeps(t)
-			deps.ConfigChanges = func() (fabricengine.ConfigChanges, error) { return tt.changes, tt.readErr }
+			reads := 0
+			deps.ConfigChanges = func() (fabricengine.ConfigChanges, error) {
+				reads++
+				if reads > 1 && tt.later != nil {
+					return *tt.later, nil
+				}
+				return tt.changes, tt.readErr
+			}
 			if !tt.noNotify {
 				deps.Notify = func(line string) error {
 					notices = append(notices, line)

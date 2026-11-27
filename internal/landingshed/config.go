@@ -74,6 +74,10 @@ type Config struct {
 	// FinalizeFixReviewRounds is the fix reviews one Finalize row entry may run over an over-cap fixer change.
 	// Once they are spent, it halts for the operator.
 	FinalizeFixReviewRounds int `yaml:"finalize_fix_review_rounds"`
+	// FinalizeLostRaces is the times one Finalize call may find the parent moved since its lock-free merge and gate.
+	// Once they are spent, Finalize merges and gates under the parent lock, so a run on a busy parent is never starved.
+	// 0 merges and gates under the lock from the first pass.
+	FinalizeLostRaces int `yaml:"finalize_lost_races"`
 }
 
 // defaultIdleReleaseMin is the idle bound in minutes that a missing or non-positive parent_lock_idle_release_min reads as.
@@ -171,6 +175,8 @@ func ConfigSpec() configengine.Spec {
 			"finalize_fix_attempts":      configengine.CategoryCrossPair,
 			"finalize_fix_max_lines":     configengine.CategoryCrossPair,
 			"finalize_fix_review_rounds": configengine.CategoryCrossPair,
+			// The lost-race bound decides how long one pair's landing gate holds the parent lock others wait on.
+			finalizeLostRacesKey: configengine.CategoryCrossPair,
 		},
 		// The local layer judges a retired key by the category it held, so it refuses all but landing.pr_reviewer.
 		// The machine layer refuses every retired key here, since none held the machine category.
@@ -194,7 +200,8 @@ func ConfigSpec() configengine.Spec {
 // It validates the model-spec grammar of the conflict, describe and fixer keys at load time.
 // It validates that of describe_review too when the key is set.
 // A typo in one of them fails at load, not when its session spawns.
-// It refuses a fixer timeout, fixer attempt cap, fixer line cap, fix review round cap or describe review timeout below 1.
+// It refuses a fixer timeout, fixer attempt cap, fixer line cap or fix review round cap below 1.
+// It refuses a describe review timeout below 1 and a lost-race bound below 0.
 // It also refuses a credit_engines entry whose key names no engine,
 // and a describe_forbidden_terms entry that does not compile as a regular expression or matches the empty string.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
@@ -243,6 +250,9 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		if positive.value < 1 {
 			return Config{}, fmt.Errorf("config key %q: %d is below 1; way forward: lym config landing --set %s=<n> from the prime", keyName(positive.key), positive.value, positive.key)
 		}
+	}
+	if cfg.FinalizeLostRaces < 0 {
+		return Config{}, fmt.Errorf("config key %q: %d is below 0; way forward: lym config landing --set %s=<n> from the prime", keyName(finalizeLostRacesKey), cfg.FinalizeLostRaces, finalizeLostRacesKey)
 	}
 	engines := modelspec.EngineNames()
 	for name := range cfg.CreditEngines {

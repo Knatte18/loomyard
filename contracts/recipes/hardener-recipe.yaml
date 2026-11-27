@@ -173,8 +173,11 @@ producers:
     engine: PRReview
     on_done: Finalize
 
-  # Finalize takes the parent lock first, merges the parent into the task branch, runs the landing
-  # gate and the merge fixer, then fast-forwards the parent and releases the lock on every way out.
+  # Finalize merges the parent into the task branch and runs the landing gate and the merge fixer with no parent lock held,
+  # then takes the lock, lands on the parent only while its head is still the tip it gated,
+  # and releases the lock on every way out.
+  # After landing.finalize_lost_races lost races, and over a parent already holding the work,
+  # it merges and gates under the lock.
   - name: Finalize
     engine: Finalize
     # Hands off to the reflection row rather than ending the run.

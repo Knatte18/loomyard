@@ -49,7 +49,7 @@
 #
 # Parent-Align follows Webster and brings the parent's upstream tip into the task branch with no parent
 # lock, then hands to the Code-Review perch.
-# Finalize takes the parent lock first and is the only row that lands on the parent.
+# Finalize is the only row that lands on the parent, under the parent lock.
 #
 # Drift-Verify checks the code after Parent-Align, before the Code-Review perch, against the baseline
 # Drift-Baseline captured on the branch point and the expectation Drift-Expect sealed, and spawns one judge
@@ -525,8 +525,11 @@ producers:
     engine: PRReview
     on_done: Finalize
 
-  # Finalize takes the parent lock first, merges the parent into the task branch, runs the landing
-  # gate and the merge fixer, then fast-forwards the parent and releases the lock on every way out.
+  # Finalize merges the parent into the task branch and runs the landing gate and the merge fixer with no parent lock held,
+  # then takes the lock, lands on the parent only while its head is still the tip it gated,
+  # and releases the lock on every way out.
+  # After landing.finalize_lost_races lost races, and over a parent already holding the work,
+  # it merges and gates under the lock.
   # An over-cap fixer change goes to Finalize's own fix review, whose findings the fixer fixes in place
   # until the review approves or its rounds run out and Finalize halts for the operator; Finalize never
   # reroutes, and a conflict or a large merge lands through the gate.
