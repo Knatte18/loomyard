@@ -72,7 +72,7 @@ func TestRouting_ProgressAt(t *testing.T) {
 			{loomshed.NameCodeBouncer, loomshed.NameDriftRecheck, loomshed.NameCodeBurlerReview, ""},
 			{loomshed.NameDriftRecheck, loomshed.NameDescribe, "", ""},
 			{loomshed.NameDescribe, loomshed.NamePRReview, "", ""},
-			{loomshed.NamePRReview, loomshed.NameFinalize, "", loomshed.NameCodeBouncer},
+			{loomshed.NamePRReview, loomshed.NameFinalize, "", ""},
 			{loomshed.NameFinalize, loomshed.NameFrictionReflect, "", ""},
 		} {
 			got, ok := rows[want.row]

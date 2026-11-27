@@ -65,7 +65,7 @@ func TestRunAutonomy_ForcesTheRunsKeysOverARealHub(t *testing.T) {
 		t.Fatalf("lymcwd.Resolve(task pair): %v", err)
 	}
 	writeConfigFile(t, configengine.ConfigFile(h.BoardDir(), "drift"), "judge_ask_parent: false\njudge_interactive: true\n")
-	writeConfigFile(t, configengine.LocalFile(taskAnchor, "loom"), "pr: {review_ask_parent: false}\ndiscussion: {interactive: true}\nraddle: {auto_approve: false}\n")
+	writeConfigFile(t, configengine.LocalFile(taskAnchor, "loom"), "discussion: {interactive: true}\nraddle: {auto_approve: false}\n")
 
 	tests := []struct {
 		name     string
@@ -79,11 +79,6 @@ func TestRunAutonomy_ForcesTheRunsKeysOverARealHub(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			writeConfigFile(t, configengine.ConfigFile(fabricengine.WorktreePath(l, beamPair), "beam"), tt.beamFile)
-
-			wanted, err := pullRequestDeps(taskLocation, "parent", false, nil).ParentReviewWanted()
-			if err != nil || wanted != tt.forced {
-				t.Errorf("ParentReviewWanted() = %v, %v; want %v", wanted, err, tt.forced)
-			}
 
 			drift, err := driftDeps(taskLocation, "", "", driftTables{}).Config()
 			if err != nil || drift.JudgeAskParent != tt.forced || drift.JudgeInteractive == tt.forced || drift.Autonomous != tt.forced {

@@ -3,12 +3,15 @@
 package hubreconcile
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -84,6 +87,58 @@ func TestCarryMovedRunSettings_FailedBoardWriteIsSkippedAndLeavesTheBoard(t *tes
 
 			if got, err := os.ReadFile(filepath.Join(geom.BoardDir, "board.json")); err != nil || string(got) != tt.boardJSON {
 				t.Errorf("board.json = %q, %v; want it left as %q", got, err, tt.boardJSON)
+			}
+		})
+	}
+}
+
+// TestCarryMovedRunSettings_RenamedPullRequestValuesAreRewritten does not call t.Parallel:
+// it keeps the board write off git with t.Setenv.
+// Its machine already carried the per-task settings, so only the board carry can rename the entry's value.
+func TestCarryMovedRunSettings_RenamedPullRequestValuesAreRewritten(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	tests := []struct{ renamed, want string }{
+		{"on", "review"},
+		{"merge", "trail"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.renamed, func(t *testing.T) {
+			geom, _ := carryHub(t, `{"version":1,"entries":[{"id":0,"slug":"task-a","title":"A","kind":"task",`+
+				`"run_settings":{"beam":{"pull_request":"`+tt.renamed+`"}}}]}`)
+			configPath := configengine.ConfigFile(geom.BoardDir, "board")
+			marker := geom.carriedMarker(dobbyengine.PerTaskSettingsReinterpretationID)
+			for path, content := range map[string]string{configPath: configengine.SparseBaseHeader, marker: ""} {
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(path), err)
+				}
+				if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+					t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+				}
+			}
+
+			if skipped := carryMovedRunSettings(geom.BoardDir, "build", walkHooks{}); skipped {
+				t.Fatalf("carryMovedRunSettings() skipped = true; want the carry done")
+			}
+
+			data, err := os.ReadFile(filepath.Join(geom.BoardDir, "board.json"))
+			if err != nil {
+				t.Fatalf("read board.json: %v", err)
+			}
+			var board struct {
+				Entries []struct {
+					RunSettings map[string]any `json:"run_settings"`
+				} `json:"entries"`
+			}
+			if err := json.Unmarshal(data, &board); err != nil || len(board.Entries) != 1 {
+				t.Fatalf("parse board.json %s: %v", data, err)
+			}
+			settings := board.Entries[0].RunSettings
+			if want := map[string]any{"beam": map[string]any{"pull_request": tt.want}}; !reflect.DeepEqual(settings, want) {
+				t.Errorf("run_settings = %v; want %v", settings, want)
+			}
+			if _, err := configreg.PrepareRunSettings(settings); err != nil {
+				t.Errorf("PrepareRunSettings(%v) error = %v; want the next seed to accept it", settings, err)
 			}
 		})
 	}

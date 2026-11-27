@@ -243,6 +243,16 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantDocs: map[string]string{"beam": "land_notice: \"on\"\npull_request: merge-in\n"},
 		},
 		{
+			name:     "a task's retired loom pr area is admitted",
+			settings: map[string]any{"loom": map[string]any{"pr": map[string]any{"review_small_max": float64(5)}}},
+			wantDocs: map[string]string{"loom": "pr:\n    review_small_max: 5\n"},
+		},
+		{
+			name:     "a task's retired flat pr_review_small_max is admitted",
+			settings: map[string]any{"loom": map[string]any{"pr_review_small_max": float64(5)}},
+			wantDocs: map[string]string{"loom": "pr_review_small_max: 5\n"},
+		},
+		{
 			name:     "a task's retired drift skip and verify_max_runs are admitted as retired keys of category none",
 			settings: map[string]any{"drift": map[string]any{"skip": []any{"t"}, "verify_max_runs": float64(3)}},
 			wantDocs: map[string]string{"drift": "skip:\n    - t\nverify_max_runs: 3\n"},

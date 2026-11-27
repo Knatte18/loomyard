@@ -32,25 +32,6 @@ var LandingTemplateFixer []byte
 //go:embed landing/landing-template-fix-review.md
 var LandingTemplateFixReview []byte
 
-// LandingTemplatePRReview is the PR-Review session's shipped-default prompt.
-// It is the session that reviews a run's pull request with its reviewer:
-// the operator in the pane, or the parent orch under autonomy.
-//
-//go:embed landing/landing-template-pr-review.md
-var LandingTemplatePRReview []byte
-
-// LandingBlockPRReviewOperator is the PR-Review prompt's review-mode block for a run whose autonomy is off.
-// It says the operator reviews in the pane.
-//
-//go:embed landing/landing-block-pr-review-operator.md
-var LandingBlockPRReviewOperator []byte
-
-// LandingBlockPRReviewAutonomous is the PR-Review prompt's review-mode block for a run whose autonomy is on.
-// It says the parent orch reviews through recorded asks, with no operator in the pane.
-//
-//go:embed landing/landing-block-pr-review-autonomous.md
-var LandingBlockPRReviewAutonomous []byte
-
 // DarnTemplateWrite is the darn writer's shipped-default prompt.
 // It is the whole instruction set of the one session that makes a board entry's change.
 //
@@ -928,9 +909,6 @@ var entries = []registryEntry{
 	{"landing-template-describe", &LandingTemplateDescribe},
 	{"landing-template-fixer", &LandingTemplateFixer},
 	{"landing-template-fix-review", &LandingTemplateFixReview},
-	{"landing-template-pr-review", &LandingTemplatePRReview},
-	{"landing-block-pr-review-operator", &LandingBlockPRReviewOperator},
-	{"landing-block-pr-review-autonomous", &LandingBlockPRReviewAutonomous},
 	{"darn-template-write", &DarnTemplateWrite},
 	{"darn-fragment-make-change", &DarnFragmentMakeChange},
 	{"darn-fragment-make-change-gated", &DarnFragmentMakeChangeGated},
@@ -1105,7 +1083,6 @@ var roleOpeningStencils = map[string][]string{
 	"conflict":             {"landing-template-conflict"},
 	"fixer":                {"landing-template-fixer"},
 	"fix-reviewer":         {"landing-template-fix-review"},
-	"pr-reviewer":          {"landing-template-pr-review"},
 	"bouncer-judge":        {"bouncer-template-judge"},
 	"bouncer-verify":       {"bouncer-template-verify"},
 	"bouncer-seed":         {"bouncer-template-seed", "harden-template-seed"},

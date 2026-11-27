@@ -20,7 +20,6 @@ import (
 // landingshedAllowedImports lists the only non-stdlib import paths that production code in this package may use.
 var landingshedAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/beamsetting",
-	"github.com/Knatte18/loomyard/internal/burlerengine",
 	"github.com/Knatte18/loomyard/internal/fabricengine",
 	"github.com/Knatte18/loomyard/internal/gateslot",
 	"github.com/Knatte18/loomyard/internal/githubclient",
@@ -29,17 +28,14 @@ var landingshedAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/parentlock",
 	"github.com/Knatte18/loomyard/internal/pullrequest",
 	"github.com/Knatte18/loomyard/internal/configengine",
-	"github.com/Knatte18/loomyard/internal/editdirective",
 	"github.com/Knatte18/loomyard/internal/agentconfig",
 	"github.com/Knatte18/loomyard/internal/logger",
-	"github.com/Knatte18/loomyard/internal/parentdirective",
 	"github.com/Knatte18/loomyard/internal/seatengine",
 	"github.com/Knatte18/loomyard/internal/shedengine",
 	"github.com/Knatte18/loomyard/internal/shedtransient", // classifies a failed push as a transient hard error
 	"github.com/Knatte18/loomyard/internal/summaryparser",
 	"github.com/Knatte18/loomyard/internal/segmentcolor",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
-	"github.com/Knatte18/loomyard/internal/stencil",
 	"github.com/Knatte18/loomyard/internal/stencilstore",
 	"github.com/Knatte18/loomyard/internal/verifytree",
 	"gopkg.in/yaml.v3",

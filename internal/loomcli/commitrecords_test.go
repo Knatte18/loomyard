@@ -10,12 +10,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/samplerengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -106,6 +106,9 @@ func TestPRContinueVerb(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	const url = "https://github.com/o/r/pull/7"
+	const agentRefusal = "loom: pr-continue: this call runs in the lym agent session lymhub:task:orch, and only the operator ends a pull request's review; " +
+		"way forward: tell the operator the run's pull request waits for their review, which they end by approving or merging it on GitHub, " +
+		"or by running lym loom pr-continue in the task worktree from a shell outside every lym session"
 	const noRecordWayForward = "way forward: wait until the PR-Review row has opened the pull request, then run lym loom pr-continue again"
 	newPaths := func(t *testing.T) (record, lock string) {
 		t.Helper()
@@ -120,7 +123,7 @@ func TestPRContinueVerb(t *testing.T) {
 			t.Fatalf("WriteRecord() error: %v", err)
 		}
 		var out bytes.Buffer
-		if code := prContinueVerb(&out, record, lock, prContinueReview{}); code != 0 || !strings.Contains(out.String(), url) {
+		if code := prContinueVerb(&out, "", record, lock); code != 0 || !strings.Contains(out.String(), url) {
 			t.Fatalf("prContinueVerb() = %d, %s; want 0 naming %s", code, out.String(), url)
 		}
 		got, _, err := pullrequest.ReadRecord(record, lock)
@@ -133,7 +136,7 @@ func TestPRContinueVerb(t *testing.T) {
 			t.Fatalf("stat record: %v", err)
 		}
 		out.Reset()
-		if code := prContinueVerb(&out, record, lock, prContinueReview{}); code != 0 {
+		if code := prContinueVerb(&out, "", record, lock); code != 0 {
 			t.Errorf("second prContinueVerb() = %d, %s; want 0", code, out.String())
 		}
 		after, err := os.Stat(record)
@@ -142,20 +145,49 @@ func TestPRContinueVerb(t *testing.T) {
 		}
 	})
 
-	t.Run("ARerunAfterAMailedGateFailureClearsTheMailedHead", func(t *testing.T) {
+	t.Run("ACallerWithAStrandNameIsRefusedAndWritesNothing", func(t *testing.T) {
 		t.Parallel()
 		record, lock := newPaths(t)
-		if err := pullrequest.WriteRecord(record, lock, pullrequest.Record{Number: 7, URL: url, GatedHead: "h1", MailedHead: "h2", Continue: true}); err != nil {
+		seed := pullrequest.Record{Number: 7, URL: url}
+		if err := pullrequest.WriteRecord(record, lock, seed); err != nil {
 			t.Fatalf("WriteRecord() error: %v", err)
 		}
 		var out bytes.Buffer
-		if code := prContinueVerb(&out, record, lock, prContinueReview{}); code != 0 {
-			t.Fatalf("prContinueVerb() = %d, %s; want 0", code, out.String())
+		if code := prContinueVerb(&out, "lymhub:task:orch", record, lock); code != 1 || !strings.Contains(out.String(), agentRefusal) {
+			t.Errorf("prContinueVerb() = %d, %s; want 1 with %q", code, out.String(), agentRefusal)
 		}
 		got, _, err := pullrequest.ReadRecord(record, lock)
-		want := pullrequest.Record{Number: 7, URL: url, GatedHead: "h1", Continue: true}
-		if err != nil || !reflect.DeepEqual(got, want) {
-			t.Errorf("record after prContinueVerb = %+v, %v; want %+v, the mailed head cleared", got, err, want)
+		if err != nil || !reflect.DeepEqual(got, seed) {
+			t.Errorf("record after the refusal = %+v, %v; want the untouched %+v", got, err, seed)
+		}
+	})
+
+	t.Run("ACallerWithAStrandNameIsRefusedBeforeTheRecordIsRead", func(t *testing.T) {
+		t.Parallel()
+		record, lock := newPaths(t)
+		var out bytes.Buffer
+		if code := prContinueVerb(&out, "lymhub:task:orch", record, lock); code != 1 || !strings.Contains(out.String(), agentRefusal) {
+			t.Errorf("prContinueVerb() = %d, %s; want 1 with %q", code, out.String(), agentRefusal)
+		}
+		if _, err := os.Stat(record); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("stat record after the refusal = %v; want it absent", err)
+		}
+	})
+
+	t.Run("AnEndedReviewAnswersOkWithoutAWrite", func(t *testing.T) {
+		t.Parallel()
+		record, lock := newPaths(t)
+		seed := pullrequest.Record{Number: 7, URL: url, ReviewEnded: true}
+		if err := pullrequest.WriteRecord(record, lock, seed); err != nil {
+			t.Fatalf("WriteRecord() error: %v", err)
+		}
+		var out bytes.Buffer
+		if code := prContinueVerb(&out, "", record, lock); code != 0 || !strings.Contains(out.String(), url) {
+			t.Fatalf("prContinueVerb() = %d, %s; want 0 naming %s", code, out.String(), url)
+		}
+		got, _, err := pullrequest.ReadRecord(record, lock)
+		if err != nil || !reflect.DeepEqual(got, seed) {
+			t.Errorf("record after prContinueVerb = %+v, %v; want the untouched %+v", got, err, seed)
 		}
 	})
 
@@ -163,7 +195,7 @@ func TestPRContinueVerb(t *testing.T) {
 		t.Parallel()
 		record, lock := newPaths(t)
 		var out bytes.Buffer
-		if code := prContinueVerb(&out, record, lock, prContinueReview{}); code != 1 || !strings.Contains(out.String(), noRecordWayForward) {
+		if code := prContinueVerb(&out, "", record, lock); code != 1 || !strings.Contains(out.String(), noRecordWayForward) {
 			t.Errorf("prContinueVerb() = %d, %s; want 1 with the way forward %q", code, out.String(), noRecordWayForward)
 		}
 	})
@@ -175,106 +207,37 @@ func TestPRContinueVerb(t *testing.T) {
 			t.Fatalf("write record: %v", err)
 		}
 		var out bytes.Buffer
-		if code := prContinueVerb(&out, record, lock, prContinueReview{}); code != 1 || !strings.Contains(out.String(), "decode failed") {
+		if code := prContinueVerb(&out, "", record, lock); code != 1 || !strings.Contains(out.String(), "decode failed") {
 			t.Errorf("prContinueVerb() = %d, %s; want 1 carrying the decode error", code, out.String())
 		}
 	})
+}
 
-	autonomous := true
-	const head = "h2"
-	tests := []struct {
-		name         string
-		standing     landingshed.PRReviewStanding
-		mailed       string
-		closed       bool
-		wantCode     int
-		wantOutput   []string
-		wantAbsent   []string
-		wantContinue bool
-		wantMailed   string
-	}{
-		{name: "NoSatisfiedAnswerAndNoMailedHeadIsRefusedNamingAsk", standing: landingshed.PRReviewAskAgain, wantCode: 1,
-			wantOutput: []string{"lym loom parent-review ask"}},
-		{name: "AnAwaitingAskIsRefusedNamingAwait", standing: landingshed.PRReviewAwaiting, wantCode: 1,
-			wantOutput: []string{"lym loom parent-review await"}},
-		{name: "ASatisfiedAnswerAtAnOlderHeadIsRefused", standing: landingshed.PRReviewAskAgain, wantCode: 1,
-			wantOutput: []string{"no satisfied answer from your parent stands at " + head}},
-		{name: "ASatisfiedAnswerAtTheCurrentHeadSetsContinue", standing: landingshed.PRReviewSatisfied, mailed: "h1", wantCode: 0,
-			wantOutput: []string{`"continue":true`}, wantContinue: true},
-		{name: "AMailedHeadWithNoSatisfiedAnswerIsClearedAndTheReviewStaysOpen", standing: landingshed.PRReviewAskAgain, mailed: "h1", wantCode: 0,
-			wantOutput: []string{`"continue":false`, "the review stays open"}},
-		{name: "AClosedPullRequestIsRefusedNamingTheRowsHalt", standing: landingshed.PRReviewSatisfied, closed: true, wantCode: 1,
-			wantOutput: []string{"the PR-Review row halts on its next wake", "your parent settles that halt"},
-			wantAbsent: []string{"lym loom resume", "lym batten cancel"}},
+// TestPRContinueCmd_RefusesTheStrandItsEnvironmentNames does not call t.Parallel:
+// it sets the strand name variable with t.Setenv.
+func TestPRContinueCmd_RefusesTheStrandItsEnvironmentNames(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Setenv(agentname.StrandNameEnv, "lymhub:task:orch")
+	c := &loomCLI{location: hubLocationAt(t, filepath.Join(t.TempDir(), "task"), "")}
+	record, lock := shedrun.PullRequestRecord(c.location, shedrun.SelfRunID), shedrun.PullRequestRecordLock(c.location, shedrun.SelfRunID)
+	seed := pullrequest.Record{Number: 7, URL: "u7"}
+	if err := os.MkdirAll(filepath.Dir(record), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v", filepath.Dir(record), err)
 	}
-	for _, tt := range tests {
-		t.Run("Autonomy_"+tt.name, func(t *testing.T) {
-			t.Parallel()
-			record, lock := newPaths(t)
-			if err := pullrequest.WriteRecord(record, lock, pullrequest.Record{Number: 7, URL: url, Autonomy: &autonomous, MailedHead: tt.mailed}); err != nil {
-				t.Fatalf("WriteRecord() error: %v", err)
-			}
-			review := prContinueReview{
-				head:     func() (string, error) { return head, nil },
-				standing: func(string) (landingshed.PRReviewStanding, error) { return tt.standing, nil },
-				closed:   func(pullrequest.Record) (bool, error) { return tt.closed, nil },
-			}
-			var out bytes.Buffer
-			if code := prContinueVerb(&out, record, lock, review); code != tt.wantCode {
-				t.Errorf("prContinueVerb() = %d, %s; want %d", code, out.String(), tt.wantCode)
-			}
-			for _, want := range tt.wantOutput {
-				if !strings.Contains(out.String(), want) {
-					t.Errorf("prContinueVerb() output %s; want it to contain %q", out.String(), want)
-				}
-			}
-			for _, absent := range tt.wantAbsent {
-				if strings.Contains(out.String(), absent) {
-					t.Errorf("prContinueVerb() output %s; want it to omit %q", out.String(), absent)
-				}
-			}
-			got, _, err := pullrequest.ReadRecord(record, lock)
-			if err != nil || got.Continue != tt.wantContinue || got.MailedHead != tt.wantMailed && tt.wantCode == 0 {
-				t.Errorf("record after prContinueVerb = %+v, %v; want Continue %v and no mailed head", got, err, tt.wantContinue)
-			}
-		})
+	if err := pullrequest.WriteRecord(record, lock, seed); err != nil {
+		t.Fatalf("WriteRecord() error: %v", err)
 	}
+	var out bytes.Buffer
 
-	t.Run("AnAnswerTheParentRecordsEndsTheReview", func(t *testing.T) {
-		t.Parallel()
-		record, lock := newPaths(t)
-		if err := pullrequest.WriteRecord(record, lock, pullrequest.Record{Number: 7, URL: url, Autonomy: &autonomous}); err != nil {
-			t.Fatalf("WriteRecord() error: %v", err)
-		}
-		now := time.Date(2026, 11, 22, 12, 0, 0, 0, time.UTC)
-		files := burlerengine.ParentReviewFilesOf(t.TempDir())
-		earlier := burlerengine.ParentAsk{Seed: "code-review", Tag: "[code-review request]", State: burlerengine.ParentAskTimeout}
-		if _, err := burlerengine.RecordParentAsk(files, earlier); err != nil {
-			t.Fatalf("RecordParentAsk() error: %v", err)
-		}
-		ask := burlerengine.ParentAsk{Seed: landingshed.PRReviewAskSeed, Tag: landingshed.PRReviewAskLineTag, Digest: head, State: burlerengine.ParentAskOpen, AskedAt: now, Deadline: now.Add(time.Hour)}
-		recorded, err := burlerengine.RecordParentAsk(files, ask)
-		if err != nil {
-			t.Fatalf("RecordParentAsk() error: %v", err)
-		}
-		if _, err := burlerengine.AnswerParentAskOrUnreached(files, recorded.Number, "", now, nil); err != nil {
-			t.Fatalf("AnswerParentAskOrUnreached() error: %v", err)
-		}
-		review := prContinueReview{
-			head: func() (string, error) { return head, nil },
-			standing: func(head string) (landingshed.PRReviewStanding, error) {
-				return landingshed.ReadPRReviewStanding(files, head, now)
-			},
-			closed: func(pullrequest.Record) (bool, error) { return false, nil },
-		}
-		var out bytes.Buffer
-		if code := prContinueVerb(&out, record, lock, review); code != 0 {
-			t.Fatalf("prContinueVerb() = %d, %s; want 0", code, out.String())
-		}
-		if got, _, err := pullrequest.ReadRecord(record, lock); err != nil || !got.Continue {
-			t.Errorf("record after prContinueVerb = %+v, %v; want Continue set", got, err)
-		}
-	})
+	code := clihelp.Execute(c.prContinueCmd(), &out, []string{})
+
+	if code != 1 || !strings.Contains(out.String(), "this call runs in the lym agent session lymhub:task:orch") {
+		t.Errorf("pr-continue = %d, %s; want 1 with the agent refusal", code, out.String())
+	}
+	got, _, err := pullrequest.ReadRecord(record, lock)
+	if err != nil || !reflect.DeepEqual(got, seed) {
+		t.Errorf("record after the refusal = %+v, %v; want the untouched %+v", got, err, seed)
+	}
 }
 
 // TestSamplerDoneVerb pins the refusals of the sampler-done verb.

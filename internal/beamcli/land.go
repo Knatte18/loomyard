@@ -268,7 +268,7 @@ func judgeDescribed(deps landDeps, verb, slug string) (pawlengine.LandingRecord,
 // judgeNoPullRequest refuses a beam with no pull request recorded when its landing needs one.
 // GitHub's rules for the parent branch demand a pull request;
 // an origin that lacks a fact the demand needs refuses the beam too.
-// A beam whose pull_request is merge passes, since its landing opens its own pull request.
+// A beam whose pull_request is trail passes, since its landing opens its own pull request.
 // A beam with no commits beyond its parent passes too.
 func judgeNoPullRequest(deps landDeps, verb, slug string) error {
 	mode, rulesRequired, err := deps.PullRequestMode(slug)
@@ -286,12 +286,12 @@ func judgeNoPullRequest(deps landDeps, verb, slug string) error {
 	decision := landingshed.ResolvePullRequest(mode, landingshed.BeamWithoutPullRequest, rulesRequired, side.Origin, hasCommits)
 	if decision.Halt != "" {
 		demand := "GitHub's rules for the parent branch require a pull request"
-		if mode == beamsetting.PullRequestMerge {
-			demand = "the beam's " + pullRequestName() + " is merge"
+		if mode == beamsetting.PullRequestTrail {
+			demand = "the beam's " + pullRequestName() + " is trail"
 		}
 		return fmt.Errorf("%s: a pull request is required for the beam %s (%s) but %s; way forward: give the hub a GitHub origin, an upstream for the parent branch and no push skip, then run `%s %s` again", verb, slug, demand, landingshed.OriginMissing(side.Origin), verb, slug)
 	}
-	if decision.Open && mode != beamsetting.PullRequestMerge {
+	if decision.Open && mode != beamsetting.PullRequestTrail {
 		return fmt.Errorf("%s: a pull request is required for the beam %s and none is recorded; way forward: run `lym beam pr open %s`, then `%s %s` again", verb, slug, slug, verb, slug)
 	}
 	return nil

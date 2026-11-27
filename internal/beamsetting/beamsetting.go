@@ -19,12 +19,14 @@ const (
 
 // The values of beam.yaml's pull_request.
 const (
-	// PullRequestOn lands through a pull request when the origin allows one.
-	PullRequestOn = "on"
+	// PullRequestReview lands through a pull request when the origin allows one.
+	// The pull request waits for the operator's own ending of its review.
+	PullRequestReview = "review"
 	// PullRequestOff lands with no pull request unless GitHub's rules for the parent branch require one.
 	PullRequestOff = "off"
-	// PullRequestMerge lands through a pull request squash-merged on GitHub at once, with no review.
-	PullRequestMerge = "merge"
+	// PullRequestTrail lands through a pull request squash-merged on GitHub at once, with no review,
+	// so the parent branch keeps a trail of pull requests to backtrack through.
+	PullRequestTrail = "trail"
 	// PullRequestMergeIn lands a task that merges its parent's parent branch into its parent with no pull request.
 	// It is a true merge that keeps the merged commit as a parent.
 	PullRequestMergeIn = "merge-in"
@@ -40,7 +42,7 @@ const (
 
 // PullRequestValues returns every value pull_request takes.
 func PullRequestValues() []string {
-	return []string{PullRequestOn, PullRequestOff, PullRequestMerge, PullRequestMergeIn}
+	return []string{PullRequestReview, PullRequestOff, PullRequestTrail, PullRequestMergeIn}
 }
 
 // LandNoticeValues returns every value land_notice takes.

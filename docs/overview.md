@@ -1096,7 +1096,7 @@ User-facing modules each get one `lym <module>` namespace:
   The list is `contracts/recipes/tapestry-recipe.yaml`, assembled by `internal/loomrecipe`.
   The packages are `internal/loomcli` + `internal/loomengine` + `internal/loomshed`.
   Two more packages serve it: `internal/loomrecipe` and `internal/shedverbs`.
-  The verbs are `lym loom start|resume|run|step|status|pause|commit-records|validate-discussion|validate-plan|validate-parts|join-parts|insert-card|remove-card|restore-renumber|validate-description|lint-comments|lint-pattern|fmt|circling accept|continue|decision add|decision replace|decision store|parent-review ask|parent-review answer|parent-review await|peers|peers show|raddle-propose|raddle-approve`.
+  The verbs are `lym loom start|resume|run|step|status|pause|commit-records|validate-discussion|validate-plan|validate-parts|join-parts|insert-card|remove-card|restore-renumber|validate-description|lint-comments|lint-pattern|fmt|circling accept|continue|decision add|decision replace|decision store|parent-review answer|parent-review await|peers|peers show|raddle-propose|raddle-approve`.
   `lym loom raddle-propose` checks the raddle agent's proposal against the format checks.
   `lym loom raddle-approve` records the operator's approval of a proposal that passed.
   `internal/shedverbs` owns the generic `run`/`step`/`status`/`pause` verb bodies that `loomcli` arms;
@@ -1152,7 +1152,7 @@ User-facing modules each get one `lym <module>` namespace:
   Then one `Sampler-Session` row keeps a single interactive agent session in the run's worktree.
   The agent works with the operator and commits as it goes.
   The operator ends the build with `lym loom sampler-done`.
-  The row's session is kept like PR-Review's, and the row wakes on the file event of its record.
+  The row's session is kept, and the row wakes on the file event of its record.
   `lym loom sampler-done` writes the done flag that ends the row, at the row's current entry stamp.
   The operator or the agent runs it on a committed worktree.
   The verb refuses, by the recipe's rows, on a recipe with no `SamplerSession` row.
@@ -1393,26 +1393,20 @@ User-facing modules each get one `lym <module>` namespace:
   The resolver decides from the landing run's `beam.pull_request`, which the per-task lookup reads from the run's worktree up,
   and from GitHub's rules for the parent branch.
   The row pushes the task branch and opens or finds the pull request.
+  A re-entry whose record holds another gated head than the task head leaves that push to the wait, behind its gate.
+  A re-entry on a review not ended reads the pull request before it pushes.
   It sets the pull request's title and body from the change description, records it and waits on it.
   When the resolver does not say so, the row passes.
-  The wait takes no parent lock.
-  It gates and pushes the agent's commits through the `pr-review` gate key, never onto a merged pull request.
-  It mails a failure to the agent once per head, and a failure outside the change, such as a file another process held open,
-  is retried with the agent's `lym loom pr-continue`, which makes the wait gate that head again.
+  The wait takes no parent lock, and no agent takes part in it, whatever the run's autonomy.
+  `beam.pull_request: review` waits for the operator; `trail` passes, and `Finalize` opens the pull request and merges it at once.
+  The wait gates and pushes a commit made in the task worktree through the `pr-review` gate key, never onto a merged pull request.
+  A gate failure halts the row, and the resume gates the task head again before it pushes it.
   It reads the pull request at most once a minute and before each gate.
   It ends Done when the pull request is merged or approved at the gated head.
-  It also ends Done when the operator's `lym loom pr-continue` ends the review.
-  Under a recorded autonomy of true, only the parent's satisfied answer at the gated head ends the review on the continue flag.
-  Any other standing clears the flag and mails the session that the review stays open, and the wait goes on.
-  A pull request closed on GitHub without a merge halts the row under that autonomy, and halts Finalize too.
-  With `loom.pr.review_ask_parent` on, the row asks the parent orch to review the open pull request.
-  It asks once per pull request until a send-back clears the ask, and the orch answers the row's session, whose agent fixes the findings.
-  `loom.pr.review_small_max` bounds how many findings that agent fixes in place between two send-backs, or before the first, when none is BLOCKING.
-  The agent runs `lym loom pr-findings <file>` on every findings set.
-  The verb sends the set back to Code-Review when a finding is BLOCKING or the set passes that bound, and the row then reroutes.
-  It writes a friction note for each send-back, and a set that stays is only counted.
-  The row asks and does not gate: its endings do not wait on the orch's answer.
+  It also ends Done when the operator's `lym loom pr-continue` ends the review; the verb refuses any lym agent session.
   That ending leaves the pull request for `Finalize` to merge on GitHub.
+  A commit pushed to the pull request's branch on GitHub by hand, which the task worktree lacks, halts the row.
+  A re-entry on a review not ended, with the pull request open, halts on it before any push.
   Any other ending is Stuck.
   A pause that covers the run holds it.
   The driver strand's mark reads `PR #<n>`.
@@ -1504,13 +1498,6 @@ User-facing modules each get one `lym <module>` namespace:
   `loom.raddle.model` is the raddle agent's model-spec.
   `loom.raddle.auto_approve` files a raddle proposal once its gate passes, with no operator approval;
   a run whose recipe rows hold a split perch never reads it.
-  `loom.pr.review_ask_parent` has PR-Review ask the parent orch to review the open pull request.
-  It is open to the local layer, so a task's `run_settings` sets it for one run.
-  `loom.pr.review_parent_timeout_min` sets the minutes from a PR-Review ask to its deadline, 60 by default,
-  and is open to `run_settings`.
-  `loom.pr.review_small_max` is the most findings PR-Review fixes in place between two send-backs to Code-Review,
-  or before the first, when none is BLOCKING; the default is 3.
-  It is open to the local layer too.
   `loom.discussion.review_ask_parent` has each Discussion-Review round ask the parent orch to review the decision record.
   `loom.discussion.review_parent_timeout_min` sets the minutes from that ask to its deadline,
   capped so the reviewer keeps room to consolidate before `loom.review.timeout_min`; both are open to `run_settings`.

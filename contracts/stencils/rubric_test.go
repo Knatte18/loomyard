@@ -81,7 +81,7 @@ func TestLoomRubrics(t *testing.T) {
 			const record = "Webster has begun these batches: batch 1 (done)."
 			const tier = "- tier1: the hub's first tier"
 			const amendment = "Review only the change since commit abc123."
-			const reviewInput = "This generation reads /scratch/pr-findings-1.md."
+			const reviewInput = "This generation reads /scratch/Parent-Align-fixer-report.md."
 			const reviewBase = "0123abcd4567ef"
 			const redundancyReport = "No current redundancy report: none written."
 			const reachReport = "No current reach report: none written."

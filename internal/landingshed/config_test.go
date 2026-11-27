@@ -33,6 +33,8 @@ func seedLandingConfig(t *testing.T, baseDir, contents string) {
 
 // TestLoadConfig_TemplateDefaults verifies the template's default values round-trip.
 // It covers the single-entry base-branch list, the squash default and the Describe-related keys.
+//
+//testtiming:keep pins the template default values and that a hub file holding the retired keys loads, which TestLoadConfig_InvalidKeys never asserts
 func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -61,9 +63,6 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	}
 	if cfg.DescribeTimeoutMin != 30 {
 		t.Errorf("cfg.DescribeTimeoutMin = %d; want 30", cfg.DescribeTimeoutMin)
-	}
-	if cfg.PRReviewer != "opus[high]" {
-		t.Errorf("cfg.PRReviewer = %q; want %q", cfg.PRReviewer, "opus[high]")
 	}
 	if !cfg.Credit {
 		t.Error("cfg.Credit = false; want true")
@@ -98,7 +97,7 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	if cfg.FinalizeFixMaxLines != 40 {
 		t.Errorf("cfg.FinalizeFixMaxLines = %d; want 40", cfg.FinalizeFixMaxLines)
 	}
-	retiredKeys := []string{"publish_verify", "co_authored_by", "trailer_text", "engine_trailers"}
+	retiredKeys := []string{"publish_verify", "co_authored_by", "trailer_text", "engine_trailers", "pr_reviewer"}
 	for _, key := range retiredKeys {
 		if strings.Contains(ConfigTemplate(), key) {
 			t.Errorf("ConfigTemplate() holds %s; want the retired key gone from the template", key)
@@ -106,7 +105,7 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	}
 
 	retiredDir := t.TempDir()
-	seedLandingConfig(t, retiredDir, ConfigTemplate()+"publish_verify: go test -tags tmux ./...\nco_authored_by: Someone <s@x>\ntrailer_text: Fixed\nengine_trailers:\n  claude: \"Co-Authored-By: Someone <s@x>\"\n")
+	seedLandingConfig(t, retiredDir, ConfigTemplate()+"publish_verify: go test -tags tmux ./...\nco_authored_by: Someone <s@x>\ntrailer_text: Fixed\nengine_trailers:\n  claude: \"Co-Authored-By: Someone <s@x>\"\npr_reviewer: opus[high]\n")
 	retired, err := LoadConfig(configengine.Dirs{Board: retiredDir}, "landing")
 	if err != nil {
 		t.Fatalf("LoadConfig() over a file holding the retired keys %v = _, %v; want nil error", retiredKeys, err)
@@ -191,14 +190,13 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 	t.Parallel()
 
 	const wellFormed = "deploy_branches: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
-		"describe: sonnet[medium]\ndescribe_timeout_min: 30\npr_reviewer: opus[high]\nfixer: opus[high]\nfixer_timeout_min: 60\nparent_align_fix_attempts: 2\n" +
+		"describe: sonnet[medium]\ndescribe_timeout_min: 30\nfixer: opus[high]\nfixer_timeout_min: 60\nparent_align_fix_attempts: 2\n" +
 		"finalize_fix_attempts: 2\nfinalize_fix_max_lines: 40\nfinalize_fix_review_rounds: 3\ncredit_engines:\n  claude: \"Claude Code <noreply@anthropic.com>\"\n"
 	cases := []struct {
 		name, valid, invalid, key string
 	}{
 		{"malformed conflict", "conflict: opus[high]", "conflict: \"opus[high\"", "conflict"},
 		{"malformed describe", "describe: sonnet[medium]", "describe: \"sonnet[medium\"", "describe"},
-		{"malformed pr_reviewer", "pr_reviewer: opus[high]", "pr_reviewer: not-a-spec[", "pr_reviewer"},
 		{"credit_engines key naming no engine", "  claude:", "  claud:", "credit_engines.claud"},
 		{"malformed fixer", "fixer: opus[high]", "fixer: \"opus[high\"", "fixer"},
 		{"fixer timeout below 1", "fixer_timeout_min: 60", "fixer_timeout_min: 0", "fixer_timeout_min"},
@@ -239,23 +237,40 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 		}
 	})
 
-	t.Run("a local publish_verify is refused naming the local file and the key", func(t *testing.T) {
+	t.Run("a local pr_reviewer is admitted", func(t *testing.T) {
 		t.Parallel()
 
 		board, anchor := t.TempDir(), t.TempDir()
 		seedLandingConfig(t, board, ConfigTemplate())
-		localPath := writeLocalLandingConfig(t, anchor, "publish_verify: rm -rf .\n")
+		writeLocalLandingConfig(t, anchor, "pr_reviewer: opus[high]\n")
 
-		_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "landing")
-		if !errors.Is(err, configengine.ErrInvalid) {
-			t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
-		}
-		for _, want := range []string{localPath, "publish_verify"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
-			}
+		if _, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "landing"); err != nil {
+			t.Errorf("LoadConfig() = _, %v; want nil error", err)
 		}
 	})
+
+	retiredLocalKeys := []struct{ key, line string }{
+		{"publish_verify", "publish_verify: rm -rf .\n"},
+	}
+	for _, tc := range retiredLocalKeys {
+		t.Run("a local "+tc.key+" is refused naming the local file and the key", func(t *testing.T) {
+			t.Parallel()
+
+			board, anchor := t.TempDir(), t.TempDir()
+			seedLandingConfig(t, board, ConfigTemplate())
+			localPath := writeLocalLandingConfig(t, anchor, tc.line)
+
+			_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "landing")
+			if !errors.Is(err, configengine.ErrInvalid) {
+				t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
+			}
+			for _, want := range []string{localPath, tc.key} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+				}
+			}
+		})
+	}
 }
 
 // writeLocalLandingConfig writes contents as anchor's local landing override and returns its path.

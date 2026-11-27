@@ -1,8 +1,7 @@
 // parentreview.go implements the `parent-review` loom group over a run's asks to its parent orch:
-// a Discussion-Review or Code-Review round's, the drift judge's, and the PR-Review session's.
+// a Discussion-Review or Code-Review round's, and the drift judge's.
 // `answer` writes the parent's report for the run's latest ask and sets the ask done.
 // `await` is the asking agent's capped wait for that ask to end, setting it timeout once its deadline passed.
-// `ask` is the PR-Review session's request for a new ask at the task head.
 // Each moves the ask only through burlerengine's ask record, under its one lock.
 // The caller check guards against a mistaken call, not a forged strand name.
 
@@ -23,12 +22,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/pullrequest"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -38,7 +34,6 @@ const (
 	parentReviewGroup      = "parent-review"
 	parentReviewAnswerName = "answer"
 	parentReviewAwaitName  = "await"
-	parentReviewAskName    = "ask"
 
 	// parentReviewPollInterval is how often await reads the ask record: the one-second floor of every wake.
 	parentReviewPollInterval = time.Second
@@ -49,16 +44,6 @@ const (
 	parentReviewWayRetry         = "way forward: re-run the verb; nothing was answered"
 	parentReviewWayAwaitNoAsk    = "way forward: no ask went out for this run, so consolidate the round without a parent review"
 	parentReviewWayAwaitRetry    = "way forward: re-run the verb"
-
-	// parentReviewWayPRReview is the way forward of a refused answer to a PR-Review ask that has ended.
-	// No decision ends a review, so the answer waits for the session's next ask.
-	parentReviewWayPRReview = "way forward: no decision ends a review; wait for the PR-Review session's next " + landingshed.PRReviewAskLineTag + " line, which names the ask to answer"
-
-	parentReviewWayAskNoRecord = "way forward: wait until the PR-Review row opens the pull request, then run the verb from the PR-Review session's pane"
-	parentReviewWayAskOperator = "way forward: the operator ends this review, so follow the operator's ending in the session's prompt"
-	parentReviewWayAskPane     = "way forward: run the verb from the PR-Review session's pane"
-	parentReviewWayAskRetry    = "way forward: run the verb again"
-	parentReviewWayAskContinue = "way forward: run lym loom pr-continue"
 )
 
 // parentReviewDeps holds every side effect of a parent-review verb, injected so that tests can supply fakes.
@@ -75,12 +60,6 @@ type parentReviewDeps struct {
 	awaitCap time.Duration
 	// sleep waits d, returning early with ctx's error when ctx ends.
 	sleep func(ctx context.Context, d time.Duration) error
-	// prRecord reads the run's pull request record and reports whether the run has one.
-	prRecord func() (pullrequest.Record, bool, error)
-	// head reads the task branch's current head.
-	head func() (string, error)
-	// askPR records and posts a PR-Review ask for the pull request rec records at head, signed as strandClaim.
-	askPR func(rec pullrequest.Record, head, strandClaim string) (burlerengine.ParentAsk, error)
 }
 
 // parentAnswerInput holds the flag values of one `parent-review answer` call.
@@ -177,14 +156,9 @@ func parentReviewWayDecision(slug string, parent hubgeom.Parent, parentErr error
 }
 
 // parentAnswerRefusalText returns the refusal text of an answer to the ask numbered number that refusal turned down.
-// When the run's latest ask is a PR-Review ask, the way forward of an ended ask is the session's next request.
-// No decision ends a review.
 func parentAnswerRefusalText(slug string, number int, refusal *burlerengine.ParentAnswerRefusal, parent hubgeom.Parent, parentErr error) string {
 	latest := refusal.Latest
 	wayDecision := parentReviewWayDecision(slug, parent, parentErr)
-	if latest.Tag == landingshed.PRReviewAskLineTag {
-		wayDecision = parentReviewWayPRReview
-	}
 	switch refusal.Kind {
 	case burlerengine.ParentAnswerNoAsk:
 		return "the run has no parent-review ask; " + wayDecision
@@ -201,8 +175,6 @@ func parentAnswerRefusalText(slug string, number int, refusal *burlerengine.Pare
 }
 
 // parentReviewAnswerVerb records the parent's answer in input to the run's latest ask and sets the ask done.
-// A PR-Review ask that ended no-parent or undelivered is answered too,
-// so the parent's verdict stands at the head it named.
 // A refusal carries a way forward and writes nothing.
 // An ask found at or past its deadline is the exception: the call sets it timeout.
 func parentReviewAnswerVerb(out io.Writer, slug string, deps parentReviewDeps, input parentAnswerInput) int {
@@ -233,7 +205,7 @@ func parentReviewAnswerVerb(out io.Writer, slug string, deps parentReviewDeps, i
 		return refuse("%s", refusal)
 	}
 
-	ask, err := burlerengine.AnswerParentAskOrUnreached(deps.files, input.ask, landingshed.PRReviewAskLineTag, deps.now(), findings)
+	ask, err := burlerengine.AnswerParentAsk(deps.files, input.ask, deps.now(), findings)
 	var refusal *burlerengine.ParentAnswerRefusal
 	if errors.As(err, &refusal) {
 		return refuse("%s", parentAnswerRefusalText(slug, input.ask, refusal, parent, parentErr))
@@ -296,61 +268,6 @@ func parentReviewAwaitVerb(ctx context.Context, out io.Writer, deps parentReview
 	}
 }
 
-// parentReviewAskVerb records and posts a PR-Review ask at the task head for the run's PR-Review session.
-// Each refusal carries a way forward and writes nothing.
-// It refuses a run with no pull request record and a review not recorded under autonomy.
-// It also refuses a caller that is not the record's PR-Review session.
-// It refuses an ask still awaiting its answer at the head.
-// It refuses an ask at a head where a satisfied answer stands.
-// It answers the ask's number, state, head and deadline.
-// It ends nothing: only `pr-continue` and the PR-Review row end the review.
-func parentReviewAskVerb(out io.Writer, slug string, deps parentReviewDeps) int {
-	refuse := func(format string, args ...any) int {
-		return output.Err(out, fmt.Sprintf("loom: %s %s: ", parentReviewGroup, parentReviewAskName)+fmt.Sprintf(format, args...))
-	}
-	rec, found, err := deps.prRecord()
-	if err != nil {
-		return refuse("read the run's pull request record: %s; %s", err, parentReviewWayAskRetry)
-	}
-	if !found {
-		return refuse("the run has no pull request record; %s", parentReviewWayAskNoRecord)
-	}
-	if rec.Autonomy == nil || !*rec.Autonomy {
-		return refuse("the review is not recorded under autonomy; %s", parentReviewWayAskOperator)
-	}
-	if deps.strandName == "" || deps.strandName != rec.StrandName {
-		return refuse("the caller %q is not the review's PR-Review session; %s", deps.strandName, parentReviewWayAskPane)
-	}
-	head, err := deps.head()
-	if err != nil {
-		return refuse("read the task head: %s; %s", err, parentReviewWayAskRetry)
-	}
-	standing, err := landingshed.ReadPRReviewStanding(deps.files, head, deps.now())
-	if err != nil {
-		return refuse("read the run's PR-Review asks: %s; %s", err, parentReviewWayAskRetry)
-	}
-	if standing == landingshed.PRReviewSatisfied {
-		return refuse("a satisfied answer from your parent stands at this head; %s", parentReviewWayAskContinue)
-	}
-	if standing == landingshed.PRReviewAwaiting {
-		record, _, err := burlerengine.ReadParentAsks(deps.files)
-		if err != nil {
-			return refuse("read the run's PR-Review asks: %s; %s", err, parentReviewWayAskRetry)
-		}
-		pending, _ := record.LatestTagged(landingshed.PRReviewAskLineTag)
-		return refuse("ask %d, sent at this head, awaits an answer; way forward: wait for ask %d's answer with lym loom %s %s %s", pending.Number, pending.Number, parentReviewGroup, parentReviewAwaitName, slug)
-	}
-	ask, err := deps.askPR(rec, head, deps.strandName)
-	if err != nil {
-		return refuse("record and send the ask: %s; %s", err, parentReviewWayAskRetry)
-	}
-	result := map[string]any{"slug": slug, "ask": ask.Number, "state": string(ask.State), "head": head}
-	if !ask.Deadline.IsZero() {
-		result["deadline"] = ask.Deadline.UTC().Format(time.RFC3339)
-	}
-	return output.Ok(out, result)
-}
-
 // parentReviewState carries a parent-review verb's resolved target and side effects from the group's pre-run.
 type parentReviewState struct {
 	slug   string
@@ -401,31 +318,8 @@ func (s *parentReviewState) preRun(cmd *cobra.Command, args []string) error {
 		now:        time.Now,
 		awaitCap:   shuttleengines.KeepWarm(fabricengine.ConfigDirs(target), strand).Cap,
 		sleep:      sleepContext,
-		prRecord: func() (pullrequest.Record, bool, error) {
-			return pullrequest.ReadRecord(shedrun.PullRequestRecord(target, shedrun.SelfRunID), shedrun.PullRequestRecordLock(target, shedrun.SelfRunID))
-		},
-		head: func() (string, error) {
-			fabric, err := fabricengine.Open(target)
-			if err != nil {
-				return "", err
-			}
-			return fabric.HeadSHA()
-		},
-		askPR: parentReviewPRAskFunc(target),
 	}
 	return nil
-}
-
-// parentReviewPRAskFunc returns the seam that records and posts a PR-Review ask for the run at target.
-// The seam signs each ask as the strandClaim it is called with, the strand of the session that runs the verb.
-func parentReviewPRAskFunc(target *lymcwd.Location) func(pullrequest.Record, string, string) (burlerengine.ParentAsk, error) {
-	return func(rec pullrequest.Record, head, strandClaim string) (burlerengine.ParentAsk, error) {
-		asker, err := prReviewAsker(target, rec, strandClaim)
-		if err != nil {
-			return burlerengine.ParentAsk{}, err
-		}
-		return asker.Ask(head, time.Now())
-	}
 }
 
 // parentReviewCmd builds the `parent-review` subtree.
@@ -434,20 +328,17 @@ func (c *loomCLI) parentReviewCmd() *cobra.Command {
 
 	group := &cobra.Command{
 		Use:   parentReviewGroup,
-		Short: "ask, answer or await an ask to the run's parent orch",
+		Short: "answer or await an ask to the run's parent orch",
 		Long: `parent-review holds the verbs of an ask to the run's parent orch: a
-Discussion-Review or Code-Review round's ask to review the round's subject, the
-drift judge's ask to agree with its rulings, or the PR-Review session's ask to
-review the run's pull request. "parent-review ask" sends the PR-Review ask;
-"parent-review answer" records the parent's answer; "parent-review await" is
-the asking agent's wait for it.
+Discussion-Review or Code-Review round's ask to review the round's subject, or
+the drift judge's ask to agree with its rulings. "parent-review answer" records
+the parent's answer; "parent-review await" is the asking agent's wait for it.
 
 The verb takes an optional slug naming the task worktree. A task worktree
 addresses itself; from the prime the slug is required. The ask record and the
 parent's reports are never tracked.
 
 Example:
-  lym loom parent-review ask <slug>
   lym loom parent-review answer <slug> --ask 1 --satisfied
   lym loom parent-review await <slug>`,
 		RunE:              clihelp.GroupRunE,
@@ -468,12 +359,8 @@ in the file's order.
 
 It answers only the run's latest ask while that ask is pending-post or open
 and before its deadline; an ask at or past its deadline is set timeout and the
-answer refused. A PR-Review ask that ended no-parent or undelivered never
-reached the parent, so it is answered too, and the answer stands at the head
-the ask named. A call the parent still wants made after a refusal goes in with
-"lym loom decision add <slug> --by parent". A refused answer to a PR-Review ask
-waits for the PR-Review session's next "[pr-review request]" line instead,
-since no decision ends a review.
+answer refused. A call the parent still wants made after a refusal goes in with
+"lym loom decision add <slug> --by parent".
 
 The callers are the run's parent orch, resolved at call time, the orch strand
 the ask went to, and the operator's own unnamed shell; the strand name is not
@@ -519,33 +406,6 @@ Example:
 		},
 	}
 
-	ask := &cobra.Command{
-		Use:         parentReviewAskName + " [<slug>]",
-		Short:       "send the PR-Review ask to the run's parent orch at the task head",
-		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
-		Long: `ask records a PR-Review ask to the run's parent orch for the run's pull
-request at the task branch's current head, and sends it. It prints ok with the
-ask's number, state, head and deadline. Run it after each set of fixes, then
-wait for the answer with "parent-review await". The ask is signed as the
-session's own strand, since creel lets only an orch's pane sign as a program.
-An ask creel refuses or fails to deliver ends undelivered, with the error as its reason.
-
-Only the PR-Review session of a review recorded under autonomy may run it, from
-its own pane, and at most one ask stands open per head. The verb ends nothing:
-only "pr-continue" and the PR-Review row end the review.
-
-Example:
-  lym loom parent-review ask <slug>`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if clihelp.ShouldAbort(cmd.Context()) {
-				return nil
-			}
-			clihelp.SetExit(cmd.Context(), parentReviewAskVerb(cmd.OutOrStdout(), st.slug, st.deps))
-			return nil
-		},
-	}
-
-	group.AddCommand(ask, answer, await)
+	group.AddCommand(answer, await)
 	return group
 }

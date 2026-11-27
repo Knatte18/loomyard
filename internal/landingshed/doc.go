@@ -14,18 +14,13 @@
 // So does branch protection set outside repository rules.
 //
 // PR-Review takes no parent lock and never lands a run by a direct push.
-// It keeps one agent session per run to review the pull request in.
-// The first session start of a review records the run's autonomy in the pull request record.
-// The review keeps that value.
-// Under a recorded autonomy of false the session is interactive, for the operator to discuss the pull request in.
-// Under a recorded autonomy of true it is non-interactive, and the parent orch reviews through recorded asks.
-// The parent's latest answer at a head stands there until the parent answers again at that head;
-// a later ask at that head that awaits or ended unanswered does not hide it.
-// The session runs under the publish shell guard: it cannot push, merge, close or open a pull request.
+// No agent takes part in it: when the pull request is made, the run's agents are done.
+// Under beam.yaml's review the row opens the pull request and waits on it, whatever the run's autonomy.
+// The wait ends only on the operator's own ending:
+// an approval or a merge on GitHub, or `lym loom pr-continue`, which refuses a call from any lym agent session.
 // A wait on the pull request has no timeout.
-// A session that ends while the review is open halts the row, and `lym loom resume` resumes it.
-// The agent records the operator's ending and a send-back to Code-Review.
-// It does so with `lym loom pr-continue` and `lym loom pr-findings`.
+// A commit made in the task worktree while the row waits is gated and pushed;
+// a gate failure, and a commit pushed to the pull request's branch on GitHub by hand, halt the row.
 // A transient push or GitHub failure is an error the driver re-steps.
 // Any other failure is Stuck with Halt, and each Halt names its way forward.
 //

@@ -14,30 +14,34 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// TestLookup_BeamCarriesThePerTaskSettingsReinterpretation pins that the beam module registers its reinterpretation.
-// It carries a hub's retired pull_request and land_notice values.
-// Dropping it leaves such a hub's beam.yaml unloadable.
+// TestLookup_BeamCarriesThePullRequestModesReinterpretationAfterThePerTaskOne pins a registration of the beam module.
+// The reinterpretation of pull_request's renamed on and merge comes after the per-task one.
+// Dropping it leaves a hub's beam.yaml holding on or merge unloadable.
 //
-//testtiming:keep pins the beam module's registration of the beam-per-task-settings reinterpretation, with a Rewrite and RunsWithoutFile set, which TestPrepareRunSettings never asserts
-func TestLookup_BeamCarriesThePerTaskSettingsReinterpretation(t *testing.T) {
+//testtiming:keep pins the order and shape of the beam module's two Reinterpretations entries, which no walk test reads
+func TestLookup_BeamCarriesThePullRequestModesReinterpretationAfterThePerTaskOne(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	module, ok := Lookup("beam")
 	if !ok {
 		t.Fatal("Lookup(beam) found = false; want true")
 	}
-	carries := slices.ContainsFunc(module.Reinterpretations, func(change Reinterpretation) bool {
-		return change.ID == dobbyengine.PerTaskSettingsReinterpretationID && change.Rewrite != nil && change.RunsWithoutFile
-	})
-	if !carries {
-		t.Errorf("Lookup(beam).Reinterpretations = %v; want one with ID %q, a Rewrite and RunsWithoutFile set", module.Reinterpretations, dobbyengine.PerTaskSettingsReinterpretationID)
+	var ids []string
+	for _, change := range module.Reinterpretations {
+		ids = append(ids, change.ID)
+		if change.Rewrite == nil || !change.RunsWithoutFile {
+			t.Errorf("reinterpretation %q has Rewrite nil %t, RunsWithoutFile %t; want a Rewrite and RunsWithoutFile set", change.ID, change.Rewrite == nil, change.RunsWithoutFile)
+		}
+	}
+	want := []string{"beam-per-task-settings", "beam-pull-request-modes"}
+	if !slices.Equal(ids, want) {
+		t.Errorf("Lookup(beam).Reinterpretations IDs = %q; want %q", ids, want)
 	}
 }
 
@@ -162,7 +166,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 		"drift":    {"enabled", "expect_model", "judge_ask_parent", "judge_interactive", "judge_model", "judge_parent_timeout_min", "scope"},
 		"hardener": {"concurrency", "fixer", "hard_max_bounces", "judge", "live_attempts", "llm_driving", "max_bounces", "packages", "reviewer", "seed", "verify_attempts"},
 		"ide":      {"open_files", "render_markdown"},
-		"landing":  {"conflict", "conflict_timeout_min", "describe", "describe_timeout_min", "fixer", "fixer_timeout_min", "pr_reviewer"},
+		"landing":  {"conflict", "conflict_timeout_min", "describe", "describe_timeout_min", "fixer", "fixer_timeout_min"},
 		"sampler":  {"agent", "code_review"},
 		"slack":    {"remind_after_min"},
 	}

@@ -142,4 +142,4 @@ Rule: Writing a hub base file, from any package: only the units the hub tuned, n
 
 ## Config reinterpretation
 
-Rule: Changing a hub config value's meaning: a binary carries a `configreg.Reinterpretation` on its module that rewrites the value to its old meaning, or flags it with a way forward; only `hubreconcile`'s walk applies it, once per hub behind its board marker, and mails the prime orch. Moving a key ships a move table on the module's `ConfigSpec`, which `configsync` applies on every reconcile and `hubreconcile`'s walk carries to the board's `run_settings`.
+Rule: Changing a hub config value's meaning: a binary carries a `configreg.Reinterpretation` on its module that rewrites the value to its old meaning, or flags it with a way forward; only `hubreconcile`'s walk applies it, once per hub behind its board marker, and mails the prime orch. Moving a key ships a move table on the module's `ConfigSpec`, which `configsync` applies on every reconcile and `hubreconcile`'s walk carries to the board's `run_settings`. A value no layer admits any more is renamed in the board's `run_settings` by that walk too, on every walk, with no marker.

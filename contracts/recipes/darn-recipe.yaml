@@ -26,8 +26,8 @@
 # Drift-Recheck runs the same check on the code the perch's fixes changed, so a Stuck of either row
 # halts the run with the fix route and the parent's amendment in its reason.
 # No compare sees a Finalize merge and its fixer.
-# PR-Review carries no on_stuck because its Stuck halts the run, except a marked send-back's reroute to
-# Code-Bouncer, which only lym loom pr-findings marks; Friction-Reflect carries none because it never returns Stuck.
+# PR-Review carries no on_stuck because its Stuck halts the run, and no on_reroute, since no agent reviews the pull request;
+# Friction-Reflect carries none because it never returns Stuck.
 # PR-Review carries no entry_gate either: whether it opens a pull request reads the parent's anchor, a
 # board field and the origin, which the row decides in its own call.
 #
@@ -293,12 +293,10 @@ producers:
           attempts: 3
 
   # PR-Review lands the task through a GitHub pull request when the pull-request resolver says so.
-  # It carries no entry_gate and no on_stuck, because its Stuck halts the run, except a marked send-back's
-  # reroute to Code-Bouncer.
+  # It carries no entry_gate and no on_stuck, because its Stuck halts the run.
   - name: PR-Review
     engine: PRReview
     on_done: Finalize
-    on_reroute: Code-Bouncer
 
   # Finalize takes the parent lock first, merges the parent into the task branch, runs the landing
   # gate and the merge fixer, then fast-forwards the parent and releases the lock on every way out.

@@ -225,7 +225,7 @@ func (fz *Finalize) flakySection() string {
 // The merge takes the pushed task head as its expected head.
 // Then the parent pair is fast-forwarded to that merge,
 // so the parent-side merge finds the parent holding the task's work.
-// A landing whose beam.yaml pull_request is merge needs no record:
+// A landing whose beam.yaml pull_request is trail needs no record:
 // Finalize opens the pull request itself at that point and squash-merges it with no review.
 // A no marked TrueMerge never squashes the parent-side merge,
 // so the parent's history keeps the task branch's merge commits.
@@ -879,9 +879,9 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, n
 
 // protectedParentWayForward is the way forward of a parent push refused as a protected branch.
 // It applies to a task landing on its parent.
-// It names beam.yaml's `pull_request=merge`.
+// It names beam.yaml's `pull_request=trail`.
 // The way forward sets it at the parent's worktree, at the hub's default layer or in the task's run_settings.
-// A parent marked merge takes effect through the per-task lookup.
+// A parent marked trail takes effect through the per-task lookup.
 // It leaves that setting out when `parentMerges` is true, since it would change nothing.
 // It also names the hand landing of the work the local parent alone holds.
 func protectedParentWayForward(task, parent string, parentMerges bool) string {
@@ -889,7 +889,7 @@ func protectedParentWayForward(task, parent string, parentMerges bool) string {
 	if parentMerges {
 		return "way forward: " + handLanding
 	}
-	return `way forward: mark the parent to land through a pull request lym squash-merges on GitHub at once, with "lym config beam --set pull_request=merge" in the parent's worktree, or for every branch of the hub with "lym config beam --layer default --set pull_request=merge" from the prime, or by setting ` + beamPullRequestName() + ` to merge in the task's run_settings; ` + handLanding
+	return `way forward: mark the parent to land through a pull request lym squash-merges on GitHub at once, with "lym config beam --set pull_request=trail" in the parent's worktree, or for every branch of the hub with "lym config beam --layer default --set pull_request=trail" from the prime, or by setting ` + beamPullRequestName() + ` to trail in the task's run_settings; ` + handLanding
 }
 
 // recheckLock re-reads the parent lock record immediately before a landing attempt.

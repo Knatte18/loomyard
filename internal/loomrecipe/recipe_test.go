@@ -421,11 +421,11 @@ func TestRecipe_FinalizeDeclaresNoReroute(t *testing.T) {
 	}
 }
 
-// TestRecipe_PRReviewReroutesToCodeBouncer pins the edge a marked send-back travels:
-// the PR-Review row of the tapestry, darn and sampler recipes reroutes to Code-Bouncer.
+// TestRecipe_PRReviewDeclaresNoReroute pins that the PR-Review row declares no reroute edge.
+// It checks the tapestry, darn and sampler recipes.
 //
-//testtiming:keep pins PR-Review's on_reroute edge in the tapestry, darn and sampler recipes, which the covering tests do not assert
-func TestRecipe_PRReviewReroutesToCodeBouncer(t *testing.T) {
+//testtiming:keep pins PR-Review's missing on_reroute edge in the tapestry, darn and sampler recipes, which the covering tests do not assert
+func TestRecipe_PRReviewDeclaresNoReroute(t *testing.T) {
 	tiergate.Require(t, 0)
 	for _, recipe := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipeSampler} {
 		t.Run(recipe, func(t *testing.T) {
@@ -440,8 +440,8 @@ func TestRecipe_PRReviewReroutesToCodeBouncer(t *testing.T) {
 					continue
 				}
 				found = true
-				if p.OnReroute != loomshed.NameCodeBouncer {
-					t.Errorf("PR-Review.OnReroute = %q; want %q", p.OnReroute, loomshed.NameCodeBouncer)
+				if p.OnReroute != "" {
+					t.Errorf("PR-Review.OnReroute = %q; want none", p.OnReroute)
 				}
 			}
 			if !found {

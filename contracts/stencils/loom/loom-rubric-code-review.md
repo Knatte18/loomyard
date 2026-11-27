@@ -187,8 +187,6 @@ When the note above is not `none`, this generation reviews the whole range, and 
 Read each such file as an input besides the diff.
 When the amendment note names a review input, that file is a report written after this perch last settled: the merge fixer's report of the latest Parent-Align.
 Read it as an input besides the diff: judge from it whether the alignment it reports, and the parent changes it names, keep the code consistent with the answer key.
-A PR-findings input is a `pr-findings-<n>.md` file of findings PR-Review received after Code-Review approved.
-Review the whole range as usual, read the file, and file each of its findings that holds against the code as a finding of this round.
 A finding about an input file itself is never raised; each finding is about the code.
 
 ## Finding class

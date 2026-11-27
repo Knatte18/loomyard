@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
@@ -407,22 +408,28 @@ func reconcileWorktree(boardDir string, w fabricengine.CodeWorktree, revision st
 }
 
 // carryMovedRunSettings moves the old keys of the run_settings held by the entries of the board at boardDir.
-// It mails the hub's orch one line of what it moved.
+// It also renames a renamed beam pull_request value there, which every later seed of the entry would refuse.
+// It mails the hub's orch one line of what it moved and renamed.
 // A failed read or write is logged and reported as skipped, so the next walk tries again.
 func carryMovedRunSettings(boardDir, label string, hooks walkHooks) (skipped bool) {
 	lines, err := boardengine.RewriteRunSettings(boardDir, func(_ string, settings map[string]any) (map[string]any, []string, error) {
-		return configreg.MoveRunSettings(settings)
+		settings, moved, err := configreg.MoveRunSettings(settings)
+		if err != nil {
+			return nil, nil, err
+		}
+		settings, renamed := dobbyengine.RenameRunSettingsModes(settings)
+		return settings, append(moved, renamed...), nil
 	}, hooks.afterRunSettingsCarrySave)
 	if err != nil {
-		logger.Warn("hubreconcile: the board entries' run_settings were not carried to their new key names", "board", boardDir, "error", err,
-			"way_forward", "fix the cause the error names; the next verb that loads the loom or tapestry config retries the carry")
+		logger.Warn("hubreconcile: the board entries' run_settings were not carried to their new key names and values", "board", boardDir, "error", err,
+			"way_forward", "fix the cause the error names; the next verb that loads a reconciled config retries the carry")
 		return true
 	}
 	if len(lines) == 0 {
 		return false
 	}
-	line := fmt.Sprintf("%s lym build %s moved the board entries' run_settings keys to their new names: %s", noticePrefix, label, strings.Join(lines, "; "))
-	logger.Info("hubreconcile: the board entries' run_settings keys were moved", "board", boardDir, "lines", lines)
+	line := fmt.Sprintf("%s lym build %s moved the board entries' run_settings keys to their new names and renamed their retired values: %s", noticePrefix, label, strings.Join(lines, "; "))
+	logger.Info("hubreconcile: the board entries' run_settings were carried to their new keys and values", "board", boardDir, "lines", lines)
 	mailOrch(boardDir, line)
 	return false
 }

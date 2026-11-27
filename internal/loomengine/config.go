@@ -415,7 +415,6 @@ type Config struct {
 	Split      SplitConfig      `yaml:"split"`
 	Raddle     RaddleConfig     `yaml:"raddle"`
 	Friction   FrictionConfig   `yaml:"friction"`
-	PR         PRConfig         `yaml:"pr"`
 	Review     ReviewConfig     `yaml:"review"`
 	Plan       PlanConfig       `yaml:"-"`
 	Parts      PartsConfig      `yaml:"-"`
@@ -527,20 +526,6 @@ type FrictionConfig struct {
 	TimeoutMin int    `yaml:"timeout_min"`
 }
 
-// PRConfig is the pr area: the PR-Review row.
-type PRConfig struct {
-	// ReviewAskParent makes the PR-Review row ask the parent orch for a review of the run's open pull request.
-	// It is open to the local layer, so a task's run_settings turns it on or off for one run.
-	ReviewAskParent bool `yaml:"review_ask_parent"`
-	// ReviewParentTimeoutMin is the minutes from a PR-Review ask to the parent orch to its deadline.
-	// It is a positive integer, and a task's run_settings sets it for one run.
-	ReviewParentTimeoutMin int `yaml:"review_parent_timeout_min"`
-	// ReviewSmallMax is the most findings PR-Review fixes in place when none is BLOCKING.
-	// The count runs between two send-backs, or before the first.
-	// It is open to the local layer, so a task's run_settings sets it for one run.
-	ReviewSmallMax int `yaml:"review_small_max"`
-}
-
 // ReviewConfig is the review area: the settings every review segment shares.
 type ReviewConfig struct {
 	// ReviewerModel and FixerModel are the shared reviewer and fixer model lists;
@@ -569,27 +554,26 @@ type ReviewConfig struct {
 
 // The loom keys the run's autonomy forces.
 const (
-	keyPRReviewAskParent     = prReviewAskParentKey
 	keyDiscussionInteractive = discussionInteractiveKey
 	keyRaddleAutoApprove     = raddleAutoApproveKey
 )
 
 // ApplyAutonomy returns cfg with the keys the run's autonomy forces, when autonomous is true:
-// the pr area's parent ask and the raddle auto-approval on, and the discussion interview off.
+// the raddle auto-approval on and the discussion interview off.
 // The code and discussion areas' own parent asks keep their values.
 // It rewrites no layer file, so autonomy off restores each key's layered value at the next load.
 func ApplyAutonomy(cfg Config, autonomous bool) Config {
 	if autonomous {
-		cfg.PR.ReviewAskParent, cfg.Discussion.Interactive, cfg.Raddle.AutoApprove = true, false, true
+		cfg.Discussion.Interactive, cfg.Raddle.AutoApprove = false, true
 	}
 	return cfg
 }
 
 // AutonomyForcedSetting answers the value the run's autonomy forces on the loom key, and whether it forces one.
-// It forces the three keys ApplyAutonomy forces and no other.
+// It forces the two keys ApplyAutonomy forces and no other.
 func AutonomyForcedSetting(key string) (value bool, forced bool) {
 	switch key {
-	case keyPRReviewAskParent, keyRaddleAutoApprove:
+	case keyRaddleAutoApprove:
 		return true, true
 	case keyDiscussionInteractive:
 		return false, true
@@ -719,9 +703,6 @@ func ConfigSpec() configengine.Spec {
 			"step_idle_timeout_min":              none,
 			"review.circling_checkpoint":         none,
 			"review.stalemate_rounds":            none,
-			"pr.review_ask_parent":               none,
-			"pr.review_parent_timeout_min":       none,
-			"pr.review_small_max":                none,
 
 			"discussion.review_ask_parent":         none,
 			"discussion.review_parent_timeout_min": none,
@@ -729,9 +710,15 @@ func ConfigSpec() configengine.Spec {
 			"code.review_parent_timeout_min":       none,
 			"notify_parent_on":                     none,
 		},
+		// The pr area and its old flat names set the PR-Review row's parent ask and in-place fixes.
+		// Both are gone now that no agent reviews a pull request.
 		RetiredKeys: map[string]configengine.Category{
-			"fan_review": none,
-			"pr_review":  none,
+			"fan_review":                   none,
+			"pr_review":                    none,
+			areaPR:                         none,
+			"pr_review_ask_parent":         none,
+			"pr_review_parent_timeout_min": none,
+			"pr_review_small_max":          none,
 		},
 		RetiredWayForward: map[string]string{},
 		MovedKeys:         loomMovedKeys(),
@@ -1039,9 +1026,6 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	}
 	if cfg.Code.ReviewParentTimeoutMin < 1 {
 		return Config{}, fmt.Errorf("config key %q: must be at least 1, got %d; set it to a positive integer in loom.yaml", FullKeyName(codeReviewParentTimeoutKey), cfg.Code.ReviewParentTimeoutMin)
-	}
-	if cfg.PR.ReviewParentTimeoutMin < 1 {
-		return Config{}, fmt.Errorf("config key %q: must be at least 1, got %d; set it to a positive integer in loom.yaml", FullKeyName(prReviewParentTimeoutKey), cfg.PR.ReviewParentTimeoutMin)
 	}
 
 	if err := reviewbudget.CheckResolved(dirs, spec, reviewbudget.Values{

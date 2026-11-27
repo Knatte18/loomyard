@@ -91,7 +91,7 @@ func TestUpsertKindAndRetiredKeys(t *testing.T) {
 	}
 
 	for key, wantHint := range map[string]string{"tier": `"kind"`, "type": `"labels"`, "deferred": `"kind": "note"`,
-		"pull_request": `"pull_request": "<on|off|merge|merge-in>"`, "notify_on_land": `"land_notice": "on"`} {
+		"pull_request": `"pull_request": "<review|off|trail|merge-in>"`, "notify_on_land": `"land_notice": "on"`} {
 		_, err = s.UpsertTask(map[string]any{"slug": "a", key: 1})
 		if err == nil || !stringContains(err.Error(), "unknown field") || !stringContains(err.Error(), wantHint) {
 			t.Errorf("key %q: expected unknown-field refusal naming %s, got %v", key, wantHint, err)

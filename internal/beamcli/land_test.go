@@ -520,7 +520,7 @@ func TestMarkReady(t *testing.T) {
 			name: "RulesRequiredOnParentWithNoneRecordedRefusedNamingOpen",
 			slug: "b",
 			setup: unflagged(func(w *landWorld) {
-				w.mode = "on"
+				w.mode = "review"
 				w.rulesRequired = true
 			}),
 			wantErr: []string{"lym beam pr open b"},
@@ -529,7 +529,7 @@ func TestMarkReady(t *testing.T) {
 			name: "RulesRequiredWithNoUpstreamRefusedNamingTheFactAndReady",
 			slug: "b",
 			setup: unflagged(func(w *landWorld) {
-				w.mode = "on"
+				w.mode = "review"
 				w.rulesRequired = true
 				w.origin = landingshed.Origin{URL: "https://github.com/o/r.git"}
 			}),
@@ -540,10 +540,10 @@ func TestMarkReady(t *testing.T) {
 			name: "MergeWithTheSameMissingFactRefused",
 			slug: "b",
 			setup: unflagged(func(w *landWorld) {
-				w.mode = "merge"
+				w.mode = "trail"
 				w.origin = landingshed.Origin{URL: "https://github.com/o/r.git"}
 			}),
-			wantErr:   []string{"no upstream", "lym beam ready b", "the beam's beam.pull_request is merge"},
+			wantErr:   []string{"no upstream", "lym beam ready b", "the beam's beam.pull_request is trail"},
 			wantNoErr: []string{"lym loom resume"},
 		},
 		{
@@ -641,14 +641,14 @@ func TestMarkReady(t *testing.T) {
 		{
 			name:          "MergeWithNoneRecordedWritesTheRecord",
 			slug:          "b",
-			setup:         unflagged(func(w *landWorld) { w.mode = "merge" }),
+			setup:         unflagged(func(w *landWorld) { w.mode = "trail" }),
 			wantMarkCalls: 1,
 		},
 		{
 			name: "RulesRequiredWithNoCommitsBeyondItsParentWritesTheRecord",
 			slug: "b",
 			setup: unflagged(func(w *landWorld) {
-				w.mode = "on"
+				w.mode = "review"
 				w.rulesRequired = true
 				w.hasCommits = false
 			}),

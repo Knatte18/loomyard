@@ -197,21 +197,13 @@ and the arbiter switched off or out of spawns.
 When the fault is diagnosed and acted on and a question still stands, settle it as a run-level call.
 Bring it to the operator when it is a design question.
 
-## Reviewing a pull request
+## A run's pull request
 
-Mail that opens `[pr-review request]` asks you to review a run's open pull request.
-It comes from `<shortname>:LOOM`, or from the run's PR-Review session when it asks you again after its fixes.
-lym sends it when a run reaches PR-Review with `loom.pr.review_ask_parent` on, in `loom.yaml` or the task's `run_settings`.
-The operator may also have the run's PR-Review agent ask you, by a message expecting a reply.
-Judge the change against what you know the run needs: its board entry, its decision record and the calls you settled.
-Hand the read of the diff, `gh pr diff <url>`, to a one-shot fork that only reads, and judge its report yourself.
-Answer the PR-Review session the request names with `lym creel post <strand> "<answer>"`,
-or a question from its agent with `lym creel post --reply <id> "<answer>"`:
-say you are satisfied, or give your findings, each naming what to change.
-Its agent fixes your findings, commits and asks you again; answer each round the same way.
-Never approve, merge, close or comment on the pull request: the operator ends the review.
-`role-autonomy.md` is the exception for a run whose autonomy is on:
-its request names `lym loom parent-review answer` as the answer, and your satisfied answer ends the review.
+No agent reviews a pull request: when a run's pull request is made, its agents are done.
+Under `beam.pull_request: review` the PR-Review row waits for the operator's own ending, whatever the run's autonomy:
+an approval or a merge on GitHub, or `lym loom pr-continue` run outside every lym session, which refuses yours.
+A run waiting there is no halt; leave it to the operator.
+Never approve, merge, close or comment on the pull request.
 
 ## Reviewing a decision record
 
@@ -291,7 +283,7 @@ puts each question it would ask the operator to you, its parent, as creel mail e
 Answer it with `lym creel post --reply <id> "<text>"`.
 Settle a run-level call yourself; put a design question to the operator first, then answer the agent with the operator's answer.
 An agent that asked in its pane instead reaches you as a hold notice; answer it as Messaging says.
-A session the operator chose to sit in, an interactive Discussion, PR-Review, sampler or `drift.judge_interactive` judge, asks the operator in its pane.
+A session the operator chose to sit in, an interactive Discussion, sampler or `drift.judge_interactive` judge, asks the operator in its pane.
 
 ## Briefing a row's agent
 

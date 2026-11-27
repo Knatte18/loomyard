@@ -98,8 +98,6 @@ const (
 	raddleAutoApproveKey             = areaRaddle + "." + leafAutoApprove
 	frictionModelKey                 = areaFriction + "." + leafModel
 	frictionTimeoutMinKey            = areaFriction + "." + leafTimeoutMin
-	prReviewAskParentKey             = areaPR + "." + leafReviewAskParent
-	prReviewParentTimeoutKey         = areaPR + "." + leafReviewParentTimeoutMin
 	reviewReviewerModelKey           = areaReview + "." + leafReviewerModel
 	reviewFixerModelKey              = areaReview + "." + leafFixerModel
 	reviewJudgeKey                   = areaReview + "." + leafJudge

@@ -448,15 +448,15 @@ func prClose(ctx context.Context, deps landDeps, slug string) (map[string]any, e
 // closeFollowUp names what follows a dropped pull request.
 // The caller passes whether the beam's landing decision, with no pull request recorded, still wants one.
 // It also passes the beam's pull_request.
-// When that is merge, Finalize opens its own pull request.
+// When that is trail, Finalize opens its own pull request.
 // Any other wanted pull request comes from GitHub's rules,
 // and `lym beam ready` refuses until one is recorded again.
 func closeFollowUp(slug, mode string, wantsPullRequest bool) string {
 	switch {
 	case !wantsPullRequest:
 		return fmt.Sprintf("the pull request is dropped from the landing record; run `lym beam ready %s` when the operator says so, after which Finalize lands the beam without a pull request", slug)
-	case mode == beamsetting.PullRequestMerge:
-		return fmt.Sprintf("the pull request is dropped, but the beam's %s is merge, so Finalize still lands through a pull request it finds or opens; run `lym beam ready %s` when the operator says so", pullRequestName(), slug)
+	case mode == beamsetting.PullRequestTrail:
+		return fmt.Sprintf("the pull request is dropped, but the beam's %s is trail, so Finalize still lands through a pull request it finds or opens; run `lym beam ready %s` when the operator says so", pullRequestName(), slug)
 	default:
 		return fmt.Sprintf("the pull request is dropped, but GitHub's rules for the parent branch require one, so `lym beam ready %s` refuses until one is recorded again; run `lym beam pr open %s`", slug, slug)
 	}

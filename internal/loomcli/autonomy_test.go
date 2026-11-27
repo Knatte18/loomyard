@@ -41,8 +41,9 @@ func TestAutonomySettingLookup(t *testing.T) {
 		{"AnUnforcedKeyErrorPassesThrough", true, "loom", "code.review_ask_parent", nil, errStub},
 		{"NoAutonomyAnswersTheLookupsRaddleAutoApprove", false, "loom", "raddle.auto_approve", false, nil},
 		{"NoAutonomyAnswersTheLookupsJudgeInteractive", false, "drift", "judge_interactive", true, nil},
-		{"AForcedKeyErrorIsNotReachedUnderAutonomy", true, "loom", "pr.review_ask_parent", true, nil},
-		{"NoAutonomyPassesAForcedKeyErrorThrough", false, "loom", "pr.review_ask_parent", nil, errStub},
+		{"AForcedKeyErrorIsNotReachedUnderAutonomy", true, "loom", "discussion.interactive", false, nil},
+		{"NoAutonomyPassesAForcedKeyErrorThrough", false, "loom", "discussion.interactive", nil, errStub},
+		{"APullRequestKeyIsNotForcedUnderAutonomy", true, "loom", "pr.review_ask_parent", nil, errStub},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

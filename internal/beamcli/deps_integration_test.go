@@ -67,11 +67,11 @@ func TestHubLandDeps_ReadyReads(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(beamLayer), 0o755); err != nil {
 		t.Fatalf("create %s: %v", filepath.Dir(beamLayer), err)
 	}
-	if err := os.WriteFile(beamLayer, []byte("pull_request: \"merge\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(beamLayer, []byte("pull_request: \"trail\"\n"), 0o644); err != nil {
 		t.Fatalf("write %s: %v", beamLayer, err)
 	}
-	if mode, _, err := deps.PullRequestMode("b"); mode != "merge" || err != nil {
-		t.Errorf("PullRequestMode(b) with the beam's own beam.yaml = %q, %v; want merge and no error", mode, err)
+	if mode, _, err := deps.PullRequestMode("b"); mode != "trail" || err != nil {
+		t.Errorf("PullRequestMode(b) with the beam's own beam.yaml = %q, %v; want trail and no error", mode, err)
 	}
 
 	gitkit.CommitFile(t, worktree, "widgets.txt", "widgets\n", "Add widgets")

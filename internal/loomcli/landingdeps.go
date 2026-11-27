@@ -8,7 +8,6 @@ package loomcli
 import (
 	"errors"
 	"fmt"
-	"io/fs"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -16,11 +15,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
-	"github.com/Knatte18/loomyard/internal/creelcli"
-	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -87,7 +83,7 @@ func landingDeps(
 	// Only a pawl run lands a beam, so only its Finalize backstops the landing re-check.
 	// The land check covers the members and pairs still working under the beam.
 	var landBlockers func() ([]landingshed.LandBlocker, error)
-	pullRequest := pullRequestDeps(l, parentBranch, pushSkipped, runner)
+	pullRequest := pullRequestDeps(l, parentBranch, pushSkipped)
 	if recipe == shedrun.RecipePawl {
 		pullRequest.BeamRecord, pullRequest.DropBeamRecord = beamLandingRecordSeams(l, seedSlug(l.WorktreeName))
 		// A beam's merged pull request lacks the commits that `lym beam ready` counts as lacking.
@@ -374,28 +370,18 @@ func beamLandingRecordSeams(l *lymcwd.Location, slug string) (read func() (landi
 
 // pullRequestDeps assembles the PR-Review row's seams for the run of the worktree l.
 // Each seam reads at call time, so a beam.yaml, run_settings or origin changed after bootstrap is read as it stands.
-// SessionLive and RegisterSession read reed's strand table, which only the run's wiring holds, so the wiring fills them.
-func pullRequestDeps(l *lymcwd.Location, parentBranch string, pushSkipped bool, runner *shuttleengine.Runner) landingshed.PullRequestDeps {
-	return pullRequestDepsGuardedBy(newPrePushCheck(l, shedrun.SelfRunID), l, parentBranch, pushSkipped, runner)
+func pullRequestDeps(l *lymcwd.Location, parentBranch string, pushSkipped bool) landingshed.PullRequestDeps {
+	return pullRequestDepsGuardedBy(newPrePushCheck(l, shedrun.SelfRunID), l, parentBranch, pushSkipped)
 }
 
 // pullRequestDepsGuardedBy builds the PR-Review row's seams for l, with check as the pre-push check.
-func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBranch string, pushSkipped bool, runner *shuttleengine.Runner) landingshed.PullRequestDeps {
+func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBranch string, pushSkipped bool) landingshed.PullRequestDeps {
 	slug := seedSlug(l.WorktreeName)
 	return landingshed.PullRequestDeps{
 		RecordPath:     shedrun.PullRequestRecord(l, shedrun.SelfRunID),
 		RecordLockPath: shedrun.PullRequestRecordLock(l, shedrun.SelfRunID),
 		CommitRecord:   pullRequestRecordCommitter(check, l),
-		ShedStatus: func() (shedengine.Status, error) {
-			status, _, err := state.ReadJSON[shedengine.Status](shedrun.StatusFile(l, shedrun.SelfRunID), shedrun.StatusLock(l, shedrun.SelfRunID))
-			// A run directory not yet created fails the lock open with not-exist; that is an absent status file too.
-			if errors.Is(err, fs.ErrNotExist) {
-				return shedengine.Status{}, nil
-			}
-			return status, err
-		},
-		Mode:     pullRequestModeSeam(l),
-		Sessions: runner,
+		Mode:           pullRequestModeSeam(l),
 		Origin: func() (landingshed.Origin, error) {
 			f, err := fabricengine.Open(l)
 			if err != nil {
@@ -448,42 +434,6 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 			return f.HeadHoldsCommitsNotIn("refs/heads/" + parentBranch)
 		},
 		DirtyPaths: func() ([]string, error) { return verifytree.DirtyPaths(l.WorktreePath()) },
-		MailAgent: func(strandName, line string) error {
-			client, err := creelcli.NewProgramClient(l, loomProgram)
-			if err != nil {
-				return err
-			}
-			_, err = client.Post(strandName, line)
-			return err
-		},
-		// ParentReviewWanted reads loom.pr.review_ask_parent over the pair's layers, the task's run_settings included.
-		// The run's autonomy, read at each call, forces it on.
-		ParentReviewWanted: func() (bool, error) {
-			cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(l), "loom")
-			return loomengine.ApplyAutonomy(cfg, runAutonomy(l)).PR.ReviewAskParent, err
-		},
-		AskParent: func(line string) (bool, error) {
-			return orchcli.NotifyParent(l, loomProgram, line)
-		},
-		Autonomy: func() bool { return runAutonomy(l) },
-		// AskPRReview reads the record at the call, so the ask names the pull request the record holds now.
-		AskPRReview: func(head, _ string) (burlerengine.ParentAsk, error) {
-			rec, found, err := pullrequest.ReadRecord(shedrun.PullRequestRecord(l, shedrun.SelfRunID), shedrun.PullRequestRecordLock(l, shedrun.SelfRunID))
-			if err != nil {
-				return burlerengine.ParentAsk{}, err
-			}
-			if !found {
-				return burlerengine.ParentAsk{}, errors.New("loomcli: the run has no pull request record to ask the parent orch about")
-			}
-			asker, err := prReviewAsker(l, rec, "")
-			if err != nil {
-				return burlerengine.ParentAsk{}, err
-			}
-			return asker.Ask(head, time.Now())
-		},
-		PRReviewStanding: func(head string) (landingshed.PRReviewStanding, error) {
-			return landingshed.ReadPRReviewStanding(burlerengine.ParentReviewFilesOf(l.AnchorPath()), head, time.Now())
-		},
 		// PauseCovered reports whether the pause record covers the slug; an unreadable record covers nothing.
 		PauseCovered: func() (bool, error) { return pauseCovered(l)(slug), nil },
 		Now:          time.Now,
@@ -492,30 +442,6 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 			return watchFileChanges(shedrun.PullRequestRecord(l, shedrun.SelfRunID), "the PR-Review wait")
 		},
 	}
-}
-
-// prReviewAsker builds the asker of the PR-Review ask for the run at l and the pull request rec records.
-// The wait from an ask to its deadline is loom.pr.review_parent_timeout_min over l's layers.
-// The ask goes to the orch the run's parent resolves to, tagged with the run.
-// It is signed as strandClaim when that names a strand that is not an orch, and as lym's loom program otherwise.
-// The PR-Review session's own ask passes its strand; the row's ask passes none.
-func prReviewAsker(l *lymcwd.Location, rec pullrequest.Record, strandClaim string) (landingshed.PRReviewAsker, error) {
-	cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(l), "loom")
-	if err != nil {
-		return landingshed.PRReviewAsker{}, err
-	}
-	return landingshed.PRReviewAsker{
-		Files:        burlerengine.ParentReviewFilesOf(l.AnchorPath()),
-		Slug:         seedSlug(l.WorktreeName),
-		URL:          rec.URL,
-		TaskBranch:   rec.Head,
-		ParentBranch: rec.Base,
-		Wait:         time.Duration(cfg.PR.ReviewParentTimeoutMin) * time.Minute,
-		Resolve:      func() (string, bool, error) { return orchcli.ParentStrand(l) },
-		Post: func(strand, line string) error {
-			return orchcli.PostAsCaller(l, strand, loomProgram, strandClaim, line, creelengine.PostTags{Run: l.WorktreeName})
-		},
-	}, nil
 }
 
 // pullRequestRecordCommitter returns the seam that commits the run's pull request record to the pair's records.
@@ -1050,7 +976,7 @@ func driverWaitMark(
 	}
 }
 
-// sessionLiveness returns the seam landingshed reads to learn whether the PR-Review session's strand is live.
+// sessionLiveness returns the seam a row reads to learn whether its kept session's strand is live.
 // It is built over reed's strand table, so a test needs no tmux.
 // The table is read at call time, and a strand is live when it is present, live and not retiring.
 func sessionLiveness(status func() (reedengine.StatusResult, error)) func(guid string) (bool, error) {
@@ -1068,7 +994,7 @@ func sessionLiveness(status func() (reedengine.StatusResult, error)) func(guid s
 	}
 }
 
-// sessionRegistrar returns the seam landingshed uses to register the PR-Review session's pane process.
+// sessionRegistrar returns the seam a row uses to register its kept session's pane process.
 // It is built over reed's strand table and a register seam, so a test needs no tmux.
 // A strand with no live pane process has nothing to register and is an error, which the caller logs.
 func sessionRegistrar(status func() (reedengine.StatusResult, error), register func(pid int) error) func(guid string) error {

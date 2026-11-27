@@ -37,7 +37,7 @@ var InterruptPolicies = map[string]string{
 	NameCodeBouncer:       shedverbs.InterruptPolicyReinvoke,
 	NameDescribe:          shedverbs.InterruptPolicyReinvoke,
 	NameParentAlign:       shedverbs.InterruptPolicyReinvoke, // spawns only the conflict session the resolver reattaches
-	// PR-Review reattaches the live interactive session or resumes its recorded one, rather than spawning a second one.
+	// PR-Review spawns no session, and its re-call finds the recorded pull request and waits on it again.
 	NamePRReview:        shedverbs.InterruptPolicyReinvoke,
 	NameDarnWrite:       shedverbs.InterruptPolicyReinvoke, // the single-session adapter reattaches rather than double-spawns
 	NameFinalize:        shedverbs.InterruptPolicyReinvoke,

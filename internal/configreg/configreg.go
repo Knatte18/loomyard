@@ -145,10 +145,10 @@ func checkLoadNamed[T any](load func(configengine.Dirs, string) (T, error), modu
 // Keep new entries in sort order.
 func Modules() []Module {
 	modules := []Module{
-		{Name: agentconfig.ModuleName, Template: agentconfig.ConfigTemplate, OpenMaps: agentconfig.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoad(agentconfig.Load), Spec: agentconfig.ConfigSpec},
+		{Name: agentconfig.ModuleName, Template: agentconfig.ConfigTemplate, OpenMaps: agentconfig.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoad(agentconfig.Load), Reinterpretations: []Reinterpretation{{ID: agentconfig.PRReviewerRetiredReinterpretationID, Rewrite: agentconfig.DropPRReviewerRole, RunsWithoutFile: true}}, Spec: agentconfig.ConfigSpec},
 		{Name: "batcher", Template: batcher.ConfigTemplate, PerNameMaps: batcher.ConfigPerNameMaps(), CheckLoad: checkLoad(batcher.Active), Spec: batcher.ConfigSpec},
 		{Name: "batten", Template: battenshed.ConfigTemplate, CheckValues: battenshed.ValidateLocalValues, CheckLoad: checkLoad(battenshed.LoadConfig), Spec: battenshed.ConfigSpec},
-		{Name: beamsetting.Module, Template: dobbyengine.ConfigTemplate, CheckValues: dobbyengine.CheckLocalValues, CheckLoad: checkLoad(dobbyengine.LoadConfig), Reinterpretations: []Reinterpretation{{ID: dobbyengine.PerTaskSettingsReinterpretationID, Rewrite: dobbyengine.ReinterpretPerTaskSettings, RunsWithoutFile: true}}, Spec: dobbyengine.ConfigSpec},
+		{Name: beamsetting.Module, Template: dobbyengine.ConfigTemplate, CheckValues: dobbyengine.CheckLocalValues, CheckLoad: checkLoad(dobbyengine.LoadConfig), Reinterpretations: []Reinterpretation{{ID: dobbyengine.PerTaskSettingsReinterpretationID, Rewrite: dobbyengine.ReinterpretPerTaskSettings, RunsWithoutFile: true}, {ID: dobbyengine.PullRequestModesReinterpretationID, Rewrite: dobbyengine.ReinterpretPullRequestModes, RunsWithoutFile: true}}, Spec: dobbyengine.ConfigSpec},
 		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoadNamed(boardengine.LoadConfig, "board"), Spec: boardengine.ConfigSpec},
 		{Name: "creel", Template: creelconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(creelconfig.LoadConfig), Spec: creelconfig.ConfigSpec},
 		{Name: "darn", Template: darnengine.ConfigTemplate, OpenMaps: darnengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoadNamed(darnengine.LoadConfig, "darn"), Spec: darnengine.ConfigSpec},
@@ -168,7 +168,7 @@ func Modules() []Module {
 		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps(), CheckValues: loomengine.ValidateLocalValues, CheckLoad: checkLoadNamed(loomengine.LoadConfig, "loom"), Reinterpretations: []Reinterpretation{{ID: loomengine.CodeAutoAcceptBlockingReinterpretationID, Rewrite: loomengine.FlagCodeAutoAccept, RunsWithoutFile: true}}, Spec: loomengine.ConfigSpec},
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true, CheckLoad: checkLoad(modelspec.LoadRegistry), Spec: modelspec.ConfigSpec},
 		{Name: "orch", Template: orchengine.ConfigTemplate, CheckLoad: checkLoadNamed(orchengine.LoadConfig, "orch"), Reinterpretations: []Reinterpretation{{ID: orchengine.RemoteControlOffReinterpretationID, Rewrite: orchengine.FlagRemoteControlDefault}}, Spec: orchengine.ConfigSpec},
-		{Name: runprofile.ModuleName, Template: runprofile.ConfigTemplate, HubWide: true, SeedOnly: true, RunSettingsBlocks: true, CheckLoad: checkProfiles, Spec: runprofile.ConfigSpec},
+		{Name: runprofile.ModuleName, Template: runprofile.ConfigTemplate, HubWide: true, SeedOnly: true, RunSettingsBlocks: true, CheckLoad: checkProfiles, Reinterpretations: []Reinterpretation{{ID: dobbyengine.ProfilePullRequestModesReinterpretationID, Rewrite: dobbyengine.ReinterpretProfilePullRequestModes}}, Spec: runprofile.ConfigSpec},
 		{Name: "reed", Template: reedengine.ConfigTemplate, OpenMaps: reedengine.ConfigOpenMaps(), CheckLoad: checkLoadNamed(reedengine.LoadConfig, "reed"), Spec: reedengine.ConfigSpec},
 		{Name: "report", Template: reportconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(reportconfig.LoadConfig), Spec: reportconfig.ConfigSpec},
 		{Name: "sampler", Template: samplerengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoadNamed(samplerengine.LoadConfig, "sampler"), Spec: samplerengine.ConfigSpec},

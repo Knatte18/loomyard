@@ -92,29 +92,29 @@ func TestPostAsProgram_PostsOnceThroughTheProgramClient(t *testing.T) {
 	}
 }
 
-// TestPostAsCaller_BuildsTheClientOfTheIdentityItSignsAs proves which client PostAsCaller builds.
+// TestPostSigned_BuildsTheClientOfTheIdentityItSignsAs proves which client a signed post builds.
 // A non-orch strand claim builds the strand client first and the program client for an empty claim.
 // Outside a hub neither client builds, so the error carries the line and the hub refusal.
-func TestPostAsCaller_BuildsTheClientOfTheIdentityItSignsAs(t *testing.T) {
+func TestPostSigned_BuildsTheClientOfTheIdentityItSignsAs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	const line = "[pr-review request] a-slug ask 1: review the pull request"
+	const line = "[code-review request] a-slug ask 1: review the pull request"
 	tests := []struct {
 		name        string
 		strandClaim string
 	}{
-		{"NonOrchStrandClaimBuildsTheStrandClient", "tst:a-slug:pr-reviewer"},
+		{"NonOrchStrandClaimBuildsTheStrandClient", "tst:a-slug:code-reviewer"},
 		{"EmptyClaimBuildsTheProgramClient", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := PostAsCaller(&lymcwd.Location{}, "tst:orch", "LOOM", tt.strandClaim, line, creelengine.PostTags{Run: "a-slug"})
+			err := postSigned("tst:orch", line, creelengine.PostTags{Run: "a-slug"}, tt.strandClaim, notifyClientsOf(&lymcwd.Location{}, "", "LOOM"))
 
 			if err == nil || !strings.Contains(err.Error(), line) || !strings.Contains(err.Error(), "not in one") {
-				t.Errorf("PostAsCaller() error = %v; want it to hold the line and the hub refusal", err)
+				t.Errorf("postSigned() error = %v; want it to hold the line and the hub refusal", err)
 			}
 		})
 	}

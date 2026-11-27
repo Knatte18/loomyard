@@ -79,7 +79,7 @@ It lists each failure of its landing gate that passed when run once more on the 
 it opens one from the artifact, or refreshes an open one's title and body,
 so a re-run Publish carries a rewritten description onto the pull request.
 While its review runs, PR-Review reads the artifact at each status poll of an open pull request.
-It sets the title and body again when the artifact yields other text, so the pr-reviewer changes them by rewriting the artifact.
+It sets the title and body again when the artifact yields other text, so a rewrite of the artifact while the review waits reaches the pull request.
 A read that fails there is logged and retried at the next poll, never an error.
 
 ## Producer-appended sections

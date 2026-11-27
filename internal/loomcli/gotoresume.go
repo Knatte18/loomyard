@@ -5,19 +5,17 @@ package loomcli
 import "github.com/Knatte18/loomyard/internal/logger"
 
 // gotoAdmitted returns the hook a written goto calls with its target.
-// It first sets aside every interrupted shuttle run of the worktree:
+// It sets aside every interrupted shuttle run of the worktree:
 // a goto restarts the work on purpose,
 // and a start that resumed such a run's session would carry on the work the goto discards.
-// It then resets a PR-Review review the move lands on.
 // A receiver with no location returns nil.
 func (c *loomCLI) gotoAdmitted() func(target string) error {
-	reset := c.prReviewGotoAdmitted()
-	if reset == nil {
+	if c.location == nil {
 		return nil
 	}
-	return func(target string) error {
+	return func(string) error {
 		c.retireInterruptedRuns()
-		return reset(target)
+		return nil
 	}
 }
 

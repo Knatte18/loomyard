@@ -15,9 +15,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/landingshed"
-	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"gopkg.in/yaml.v3"
@@ -29,35 +26,8 @@ var parentReviewNow = time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
 // parentReviewParent is the run's parent orch as the fakes resolve it.
 const parentReviewParent = "ly:orch"
 
-const (
-	// parentReviewSession is the strand name of the PR-Review session the fixture's pull request record names.
-	parentReviewSession = "ly:task-a:pr-reviewer"
-	// parentReviewHead is the task head the fixture reads.
-	parentReviewHead = "head-1"
-)
-
-// parentReviewPRAsker returns the askPR seam that records through a real PRReviewAsker over files.
-// It asks at now() and its post succeeds.
-func parentReviewPRAsker(files burlerengine.ParentReviewFiles, now func() time.Time) func(pullrequest.Record, string, string) (burlerengine.ParentAsk, error) {
-	return func(rec pullrequest.Record, head, _ string) (burlerengine.ParentAsk, error) {
-		asker := landingshed.PRReviewAsker{
-			Files:        files,
-			Slug:         "task-a",
-			URL:          rec.URL,
-			TaskBranch:   rec.Head,
-			ParentBranch: rec.Base,
-			Wait:         time.Hour,
-			Resolve:      func() (string, bool, error) { return parentReviewParent, true, nil },
-			Post:         func(string, string) error { return nil },
-		}
-		return asker.Ask(head, now())
-	}
-}
-
 // parentReviewFixture records asks into a fresh run's files and returns deps over them.
 // The parent resolves to parentReviewParent and the caller is the operator's unnamed shell until the test sets them.
-// The run's pull request record is a temp file recorded under autonomy for the session parentReviewSession,
-// and the task head reads parentReviewHead.
 func parentReviewFixture(t *testing.T, asks ...burlerengine.ParentAsk) parentReviewDeps {
 	t.Helper()
 	files := burlerengine.ParentReviewFilesOf(t.TempDir())
@@ -66,22 +36,11 @@ func parentReviewFixture(t *testing.T, asks ...burlerengine.ParentAsk) parentRev
 			t.Fatalf("RecordParentAsk() error = %v", err)
 		}
 	}
-	dir := t.TempDir()
-	recordPath, lockPath := filepath.Join(dir, "pull-request.json"), filepath.Join(dir, "pull-request.lock")
-	autonomous := true
-	record := pullrequest.Record{Number: 7, URL: "https://example.test/pull/7", Base: "main", Head: "task-a", Autonomy: &autonomous, StrandName: parentReviewSession}
-	if err := pullrequest.WriteRecord(recordPath, lockPath, record); err != nil {
-		t.Fatalf("WriteRecord() error = %v", err)
+	return parentReviewDeps{
+		parent: func() (hubgeom.Parent, error) { return hubgeom.Parent{Name: parentReviewParent}, nil },
+		files:  files,
+		now:    func() time.Time { return parentReviewNow },
 	}
-	deps := parentReviewDeps{
-		parent:   func() (hubgeom.Parent, error) { return hubgeom.Parent{Name: parentReviewParent}, nil },
-		files:    files,
-		now:      func() time.Time { return parentReviewNow },
-		prRecord: func() (pullrequest.Record, bool, error) { return pullrequest.ReadRecord(recordPath, lockPath) },
-		head:     func() (string, error) { return parentReviewHead, nil },
-	}
-	deps.askPR = parentReviewPRAsker(files, deps.now)
-	return deps
 }
 
 // openParentAsk is an open ask whose deadline is d past parentReviewNow.
@@ -105,9 +64,7 @@ func TestParentReviewAnswerVerb(t *testing.T) {
 		input             parentAnswerInput
 		setup             func(*parentReviewDeps)
 		// want lists text the refusal must hold; empty wants an answer.
-		want []string
-		// wantNot lists text the refusal must not hold.
-		wantNot    []string
+		want       []string
 		wantStates []burlerengine.ParentAskState
 		// wantReport, when set, is the findings the written report must hold.
 		wantReport []burlerengine.ParentFinding
@@ -235,77 +192,12 @@ func TestParentReviewAnswerVerb(t *testing.T) {
 			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskTimeout},
 		},
 		{
-			name: "the parent answers the newest PR-Review ask after a review ask and a judge ask",
-			asks: []burlerengine.ParentAsk{
-				{Tag: "[code-review request]", State: burlerengine.ParentAskTimeout},
-				{Seed: "drift-judge-1", State: burlerengine.ParentAskTimeout},
-				{Tag: landingshed.PRReviewAskLineTag, Digest: parentReviewHead, State: burlerengine.ParentAskOpen, Strand: "ly:orch-asked", Deadline: parentReviewNow.Add(time.Minute)},
-			},
-			input:      parentAnswerInput{ask: 3, satisfied: true},
-			setup:      func(d *parentReviewDeps) { d.strandName = parentReviewParent },
-			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskTimeout, burlerengine.ParentAskTimeout, burlerengine.ParentAskDone},
-		},
-		{
-			name: "the operator's unnamed shell answers the newest PR-Review ask",
-			asks: []burlerengine.ParentAsk{
-				{Tag: "[code-review request]", State: burlerengine.ParentAskTimeout},
-				{Tag: landingshed.PRReviewAskLineTag, Digest: parentReviewHead, State: burlerengine.ParentAskOpen, Strand: "ly:orch-asked", Deadline: parentReviewNow.Add(time.Minute)},
-			},
-			input:      parentAnswerInput{ask: 2, satisfied: true},
-			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskTimeout, burlerengine.ParentAskDone},
-		},
-		{
-			name:       "an answer to a PR-Review ask past its deadline waits for the session's next request",
-			asks:       []burlerengine.ParentAsk{{Tag: landingshed.PRReviewAskLineTag, State: burlerengine.ParentAskOpen, Deadline: parentReviewNow}},
-			input:      parentAnswerInput{ask: 1, satisfied: true},
-			want:       []string{"reached its deadline", landingshed.PRReviewAskLineTag},
-			wantNot:    []string{"lym loom decision add"},
-			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskTimeout},
-		},
-		{
-			name: "an answer to a PR-Review ask a newer ended one replaced waits for the session's next request",
-			asks: []burlerengine.ParentAsk{
-				{Tag: landingshed.PRReviewAskLineTag, State: burlerengine.ParentAskOpen, Deadline: parentReviewNow.Add(time.Minute)},
-				{Tag: landingshed.PRReviewAskLineTag, State: burlerengine.ParentAskTimeout},
-			},
-			input:      parentAnswerInput{ask: 1, satisfied: true},
-			want:       []string{"which is ask 2, already timeout", landingshed.PRReviewAskLineTag},
-			wantNot:    []string{"lym loom decision add"},
-			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskOpen, burlerengine.ParentAskTimeout},
-		},
-		{
-			name:       "the parent answers a no-parent PR-Review ask at the head it named",
-			asks:       []burlerengine.ParentAsk{{Tag: landingshed.PRReviewAskLineTag, Digest: parentReviewHead, State: burlerengine.ParentAskNoParent}},
+			name:       "an undelivered ask is refused with no exception for an ask the session never reached",
+			asks:       []burlerengine.ParentAsk{{State: burlerengine.ParentAskUndelivered, Strand: "ly:orch-asked", Deadline: parentReviewNow}},
 			input:      parentAnswerInput{ask: 1, satisfied: true},
 			setup:      func(d *parentReviewDeps) { d.strandName = parentReviewParent },
-			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskDone},
-		},
-		{
-			name:       "the parent answers an undelivered PR-Review ask with findings",
-			asks:       []burlerengine.ParentAsk{{Tag: landingshed.PRReviewAskLineTag, Digest: parentReviewHead, State: burlerengine.ParentAskUndelivered, Strand: "ly:orch-asked", Deadline: parentReviewNow}},
-			findings:   "findings:\n  - change: rename the helper\n",
-			input:      parentAnswerInput{ask: 1},
-			setup:      func(d *parentReviewDeps) { d.strandName = parentReviewParent },
-			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskDone},
-			wantReport: []burlerengine.ParentFinding{{ID: "P1", Change: "rename the helper"}},
-		},
-		{
-			name:       "a cleared no-parent PR-Review ask is refused",
-			asks:       []burlerengine.ParentAsk{{Tag: landingshed.PRReviewAskLineTag, State: burlerengine.ParentAskNoParent, Cleared: true}},
-			input:      parentAnswerInput{ask: 1, satisfied: true},
-			want:       []string{"already no-parent", landingshed.PRReviewAskLineTag},
-			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskNoParent},
-		},
-		{
-			name: "an answer to a PR-Review ask a newer open one replaced names the newer ask",
-			asks: []burlerengine.ParentAsk{
-				{Tag: landingshed.PRReviewAskLineTag, State: burlerengine.ParentAskTimeout},
-				{Tag: landingshed.PRReviewAskLineTag, State: burlerengine.ParentAskOpen, Deadline: parentReviewNow.Add(time.Minute)},
-			},
-			input:      parentAnswerInput{ask: 1, satisfied: true},
-			want:       []string{"a newer ask, ask 2, awaits an answer"},
-			wantNot:    []string{"lym loom decision add", landingshed.PRReviewAskLineTag},
-			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskTimeout, burlerengine.ParentAskOpen},
+			want:       []string{"already undelivered", decisionWay},
+			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskUndelivered},
 		},
 	}
 	for _, tt := range tests {
@@ -342,11 +234,6 @@ func TestParentReviewAnswerVerb(t *testing.T) {
 						t.Errorf("refusal = %q; want it to hold %q", env.Error, want)
 					}
 				}
-				for _, unwanted := range tt.wantNot {
-					if strings.Contains(env.Error, unwanted) {
-						t.Errorf("refusal = %q; want it not to hold %q", env.Error, unwanted)
-					}
-				}
 				if code == 0 {
 					t.Errorf("parentReviewAnswerVerb() = 0; want a non-zero exit")
 				}
@@ -371,206 +258,6 @@ func TestParentReviewAnswerVerb(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-// TestParentReviewAskVerb verifies the ask verb records a PR-Review ask for the recorded session of an autonomous review,
-// and that each refusal names its way forward and leaves the asks as stated.
-func TestParentReviewAskVerb(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	prAsk := func(state burlerengine.ParentAskState, d time.Duration) burlerengine.ParentAsk {
-		return burlerengine.ParentAsk{Tag: landingshed.PRReviewAskLineTag, Digest: parentReviewHead, State: state, Strand: parentReviewParent, Deadline: parentReviewNow.Add(d)}
-	}
-	asSession := func(d *parentReviewDeps) { d.strandName = parentReviewSession }
-	withRecord := func(rec pullrequest.Record, found bool) func(*parentReviewDeps) {
-		return func(d *parentReviewDeps) {
-			asSession(d)
-			d.prRecord = func() (pullrequest.Record, bool, error) { return rec, found, nil }
-		}
-	}
-	autonomyOff := false
-	autonomyOn := true
-	later := parentReviewNow.Add(2 * time.Hour)
-	tests := []struct {
-		name string
-		asks []burlerengine.ParentAsk
-		// satisfiedThen, when set, is recorded after the latest of asks is answered satisfied.
-		satisfiedThen []burlerengine.ParentAsk
-		setup         func(*parentReviewDeps)
-		// want lists text the refusal must hold; empty wants an answer.
-		want       []string
-		wantStates []burlerengine.ParentAskState
-		// wantOK is the envelope an answered call prints.
-		wantOK map[string]any
-	}{
-		{
-			name:       "a run with no pull request record is refused",
-			setup:      withRecord(pullrequest.Record{}, false),
-			want:       []string{"no pull request record", parentReviewWayAskNoRecord},
-			wantStates: []burlerengine.ParentAskState{},
-		},
-		{
-			name:       "a record holding no autonomy is refused",
-			setup:      withRecord(pullrequest.Record{Number: 7, StrandName: parentReviewSession}, true),
-			want:       []string{"not recorded under autonomy", parentReviewWayAskOperator},
-			wantStates: []burlerengine.ParentAskState{},
-		},
-		{
-			name:       "a record holding autonomy false is refused",
-			setup:      withRecord(pullrequest.Record{Number: 7, StrandName: parentReviewSession, Autonomy: &autonomyOff}, true),
-			want:       []string{"not recorded under autonomy", parentReviewWayAskOperator},
-			wantStates: []burlerengine.ParentAskState{},
-		},
-		{
-			name:       "a caller that is not the recorded session is refused",
-			setup:      func(d *parentReviewDeps) { d.strandName = "ly:task-a:other" },
-			want:       []string{`"ly:task-a:other"`, parentReviewWayAskPane},
-			wantStates: []burlerengine.ParentAskState{},
-		},
-		{
-			name:       "the unnamed shell is refused",
-			want:       []string{`""`, parentReviewWayAskPane},
-			wantStates: []burlerengine.ParentAskState{},
-		},
-		{
-			name:       "a record that names no session refuses even the unnamed shell",
-			setup:      withRecord(pullrequest.Record{Number: 7, Autonomy: &autonomyOn}, true),
-			want:       []string{parentReviewWayAskPane},
-			wantStates: []burlerengine.ParentAskState{},
-		},
-		{
-			name:       "an ask awaiting its answer at the head is refused naming the await verb",
-			asks:       []burlerengine.ParentAsk{prAsk(burlerengine.ParentAskOpen, time.Hour)},
-			setup:      asSession,
-			want:       []string{"ask 1", "lym loom parent-review await task-a"},
-			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskOpen},
-		},
-		{
-			name:          "a satisfied answer at the head is refused naming pr-continue while a later ask is open",
-			asks:          []burlerengine.ParentAsk{prAsk(burlerengine.ParentAskOpen, time.Hour)},
-			satisfiedThen: []burlerengine.ParentAsk{prAsk(burlerengine.ParentAskOpen, time.Hour)},
-			setup:         asSession,
-			want:          []string{"a satisfied answer from your parent stands at this head", "lym loom pr-continue"},
-			wantStates:    []burlerengine.ParentAskState{burlerengine.ParentAskDone, burlerengine.ParentAskOpen},
-		},
-		{
-			name:       "the session records a PR-Review ask at the head after an earlier review ask",
-			asks:       []burlerengine.ParentAsk{{Tag: "[code-review request]", State: burlerengine.ParentAskTimeout}},
-			setup:      asSession,
-			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskTimeout, burlerengine.ParentAskOpen},
-			wantOK: map[string]any{
-				"slug": "task-a", "ask": float64(2), "state": "open", "head": parentReviewHead, "deadline": parentReviewNow.Add(time.Hour).UTC().Format(time.RFC3339),
-			},
-		},
-		{
-			name: "an ask unanswered past its deadline is followed by a new ask",
-			asks: []burlerengine.ParentAsk{prAsk(burlerengine.ParentAskOpen, time.Hour)},
-			setup: func(d *parentReviewDeps) {
-				asSession(d)
-				d.now = func() time.Time { return later }
-				d.askPR = parentReviewPRAsker(d.files, d.now)
-			},
-			wantStates: []burlerengine.ParentAskState{burlerengine.ParentAskOpen, burlerengine.ParentAskOpen},
-			wantOK: map[string]any{
-				"slug": "task-a", "ask": float64(2), "state": "open", "head": parentReviewHead, "deadline": later.Add(time.Hour).UTC().Format(time.RFC3339),
-			},
-		},
-		{
-			name: "a failed ask is an error naming the cause and running the verb again",
-			setup: func(d *parentReviewDeps) {
-				asSession(d)
-				d.askPR = func(pullrequest.Record, string, string) (burlerengine.ParentAsk, error) {
-					return burlerengine.ParentAsk{}, errors.New("disk full")
-				}
-			},
-			want:       []string{"record and send the ask", "disk full", parentReviewWayAskRetry},
-			wantStates: []burlerengine.ParentAskState{},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			deps := parentReviewFixture(t, tt.asks...)
-			if len(tt.satisfiedThen) > 0 {
-				latest, _ := func() (burlerengine.ParentAsk, bool) {
-					record, _, err := burlerengine.ReadParentAsks(deps.files)
-					if err != nil {
-						t.Fatalf("ReadParentAsks() error = %v", err)
-					}
-					return record.Latest()
-				}()
-				if _, err := burlerengine.AnswerParentAskOrUnreached(deps.files, latest.Number, "", parentReviewNow, nil); err != nil {
-					t.Fatalf("AnswerParentAskOrUnreached() error = %v", err)
-				}
-				for _, ask := range tt.satisfiedThen {
-					if _, err := burlerengine.RecordParentAsk(deps.files, ask); err != nil {
-						t.Fatalf("RecordParentAsk() error = %v", err)
-					}
-				}
-			}
-			if tt.setup != nil {
-				tt.setup(&deps)
-			}
-			var out bytes.Buffer
-			var gotClaim string
-			recordAsk := deps.askPR
-			deps.askPR = func(rec pullrequest.Record, head, strandClaim string) (burlerengine.ParentAsk, error) {
-				gotClaim = strandClaim
-				return recordAsk(rec, head, strandClaim)
-			}
-			code := parentReviewAskVerb(&out, "task-a", deps)
-			record, _, err := burlerengine.ReadParentAsks(deps.files)
-			if err != nil {
-				t.Fatalf("ReadParentAsks() error = %v", err)
-			}
-			states := []burlerengine.ParentAskState{}
-			for _, ask := range record.Asks {
-				states = append(states, ask.State)
-			}
-			if !reflect.DeepEqual(states, tt.wantStates) {
-				t.Errorf("ask states = %v; want %v", states, tt.wantStates)
-			}
-			if len(tt.want) > 0 {
-				env := envelope.RequireErr(t, out.String(), "loom: parent-review ask: ")
-				for _, want := range tt.want {
-					if !strings.Contains(env.Error, want) {
-						t.Errorf("refusal = %q; want it to hold %q", env.Error, want)
-					}
-				}
-				if code == 0 {
-					t.Errorf("parentReviewAskVerb() = 0; want a non-zero exit")
-				}
-				return
-			}
-			env := envelope.RequireOK(t, out.String())
-			if !reflect.DeepEqual(env.Raw, tt.wantOK) {
-				t.Errorf("envelope = %v; want %v", env.Raw, tt.wantOK)
-			}
-			if gotClaim != parentReviewSession {
-				t.Errorf("the ask was signed as %q; want the session's strand %q", gotClaim, parentReviewSession)
-			}
-			if latest, _ := record.Latest(); latest.Tag != landingshed.PRReviewAskLineTag || latest.Digest != parentReviewHead {
-				t.Errorf("latest ask tag %q, digest %q; want the PR-Review tag and the head %q", latest.Tag, latest.Digest, parentReviewHead)
-			}
-		})
-	}
-}
-
-// TestParentReviewPRAskFunc_ReturnsTheErrorOfAHubItCannotResolveTheParentIn drives the ask seam over a run's location.
-// A hub with no parent orch resolvable returns that error and records no ask.
-func TestParentReviewPRAskFunc_ReturnsTheErrorOfAHubItCannotResolveTheParentIn(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "task-a", AnchorRel: "."}
-
-	ask, err := parentReviewPRAskFunc(location)(pullrequest.Record{URL: "https://example.test/pull/7", Head: "task-a", Base: "main"}, parentReviewHead, parentReviewSession)
-
-	if err == nil || !strings.Contains(err.Error(), "not initialized here") {
-		t.Errorf("ask seam error = %v; want the hub's not-initialized refusal", err)
-	}
-	if ask.Number != 0 {
-		t.Errorf("ask = %+v; want no ask recorded", ask)
 	}
 }
 
@@ -660,8 +347,8 @@ func TestParentReviewAwaitVerb(t *testing.T) {
 				}
 				clock = clock.Add(d)
 				if tt.answerAfter > 0 && !clock.Before(parentReviewNow.Add(tt.answerAfter)) {
-					if _, err := burlerengine.AnswerParentAskOrUnreached(deps.files, len(tt.asks), "", clock, nil); err != nil {
-						t.Errorf("AnswerParentAskOrUnreached() error = %v", err)
+					if _, err := burlerengine.AnswerParentAsk(deps.files, len(tt.asks), clock, nil); err != nil {
+						t.Errorf("AnswerParentAsk() error = %v", err)
 					}
 				}
 				return nil

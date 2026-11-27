@@ -21,7 +21,6 @@ skills:  # the skills each role lym starts loads in its first turn, in order, ke
   merge-fixer: [scribe:prose, scribe:code-quality, scribe:testing]
   orch: [scribe:prose, scribe:conversation, ly:board, ly:board-policy]
   plan: [scribe:prose, scribe:testing]
-  pr-reviewer: [scribe:prose, scribe:conversation]
   raddle: [scribe:prose, scribe:conversation]
   sampler: [scribe:prose, scribe:conversation, scribe:code-quality, scribe:testing]
   tackler: []

@@ -63,8 +63,8 @@ func genericShedVerb(verb string) bool {
 func (c *loomCLI) resolveRunID(location *lymcwd.Location, verb string, args []string) error {
 	runID := shedrun.SelfRunID
 	// insert-card's and remove-card's first positional is a card position.
-	// fmt's arguments are the Go files to format, and pr-findings' is the findings file; neither is a run-id.
-	if len(args) > 0 && verb != "insert-card" && verb != "remove-card" && verb != "fmt" && verb != "pr-findings" {
+	// fmt's arguments are the Go files to format, not a run-id.
+	if len(args) > 0 && verb != "insert-card" && verb != "remove-card" && verb != "fmt" {
 		runID = args[0]
 	}
 	c.runID = runID

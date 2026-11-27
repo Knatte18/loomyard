@@ -57,10 +57,6 @@ func loomMovedKeys() map[string]string {
 		"friction":             frictionModelKey,
 		"friction_timeout_min": frictionTimeoutMinKey,
 
-		"pr_review_ask_parent":         prReviewAskParentKey,
-		"pr_review_parent_timeout_min": prReviewParentTimeoutKey,
-		"pr_review_small_max":          segmentKey(areaPR, "review_small_max"),
-
 		"review_timeout_min":         reviewTimeoutMinKey,
 		"review_circling_checkpoint": reviewCirclingCheckpointKey,
 		"review_stalemate_rounds":    reviewStalemateRoundsKey,

@@ -8,13 +8,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
-	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -351,7 +349,6 @@ type Deps struct {
 
 	// DriftVerdict returns the task's regression check as a markdown section.
 	// PR-Review and the finalize step append it to the change description's body in the pull request and the landing commit.
-	// The PR-Review session's prompt shows it as well.
 	// An empty answer carries no section, and a returned error is returned from Call.
 	//
 	// Nil means "no regression check".
@@ -409,7 +406,6 @@ type Deps struct {
 // PullRequestDeps carries the told seams the PR-Review row decides and opens the run's pull request through.
 // The row treats every field as required but the ones `optionalPullRequestSeams` names.
 // It returns an error naming the first one left unset.
-// A review recorded under autonomy also requires `AskPRReview` and `PRReviewStanding`.
 type PullRequestDeps struct {
 	// RecordPath is the run's pull-request record file, tracked with the run's records.
 	// RecordLockPath is the advisory lock that guards it.
@@ -418,9 +414,6 @@ type PullRequestDeps struct {
 	// CommitRecord commits the record's file, or its removal, to the pair's records and starts their push.
 	// The row calls it after every successful write or removal of the record, and returns its error.
 	CommitRecord func() error
-	// ShedStatus reads the run's shed status, whose history shows whether shed persisted the row's last reroute.
-	// A producer's call receives no history, so the row reads it through this seam.
-	ShedStatus func() (shedengine.Status, error)
 	// Mode reads beam.yaml's `pull_request` for the landing run through the per-task lookup.
 	// The run's own worktree's files apply first, then the nearest parent worktree's value.
 	// After those come the hub's default layer and the template.
@@ -438,8 +431,6 @@ type PullRequestDeps struct {
 	TaskHasCommits func() (bool, error)
 	// DirtyPaths lists the task worktree's uncommitted paths.
 	DirtyPaths func() ([]string, error)
-	// MailAgent posts line to the creel strand named strandName.
-	MailAgent func(strandName, line string) error
 	// PauseCovered reports whether a pause covers the run at the time of the call.
 	PauseCovered func() (bool, error)
 	// Now reads the clock the wait's poll spacing runs on.
@@ -450,36 +441,12 @@ type PullRequestDeps struct {
 	// It also returns the function that ends the watch.
 	// A nil channel, as when no watch can be opened, leaves the wait on its timer.
 	RecordChanges func() (changes <-chan struct{}, stop func())
-	// Sessions starts and stops the interactive session the operator discusses the pull request with.
-	// `*shuttleengine.Runner` satisfies it.
-	Sessions prSessions
-	// SessionLive reports whether the strand guid names is live.
-	SessionLive func(guid string) (bool, error)
-	// RegisterSession registers the process of the session's pane under the run, so a teardown ends it.
-	RegisterSession func(guid string) error
-	// ParentReviewWanted reports whether the hub or the task turns on the parent orch's review of the pull request.
-	// It is read at each entry of the row, and nil reads as off.
-	ParentReviewWanted func() (bool, error)
-	// AskParent posts line to the orch the run's agents reach as their parent, and reports whether it posted.
-	// It reports false with no error when no orch is recorded to take the line.
-	AskParent func(line string) (bool, error)
 	// BeamRecord reads the pull request the beam's landing record holds and reports whether it holds one.
 	// A non-nil BeamRecord marks the landing as a beam's, and is nil on every run but a beam's.
 	BeamRecord func() (pullRequest BeamPullRequest, recorded bool, err error)
 	// DropBeamRecord drops the pull request from the beam's landing record and commits the landing directory.
 	// It is nil on every run but a beam's.
 	DropBeamRecord func() error
-	// Autonomy reads the run's autonomy at the moment of the call.
-	// The review reads it once, when it first starts a session, and records the value in the pull request record.
-	// A nil Autonomy reads as false.
-	Autonomy func() bool
-	// AskPRReview records a PR-Review ask to the run's parent orch for the pull request at prURL at head, and posts it.
-	// It returns the ask as it then stands.
-	// A review recorded under autonomy needs it.
-	AskPRReview func(head, prURL string) (burlerengine.ParentAsk, error)
-	// PRReviewStanding reads where the run's newest PR-Review ask stands at head.
-	// A review recorded under autonomy needs it.
-	PRReviewStanding func(head string) (PRReviewStanding, error)
 }
 
 // ParentOwnership is who owns the parent a run lands on.

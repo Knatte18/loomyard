@@ -577,7 +577,7 @@ func TestPRClose(t *testing.T) {
 			name: "MergeReportsFinalizeLandsThroughAPullRequest",
 			setup: func(w *landWorld) {
 				recordPullRequest(w)
-				w.mode = "merge"
+				w.mode = "trail"
 				w.api.Script(prkit.MethodStatus, prkit.Answer{Status: openPullRequestAtBeamHead})
 			},
 			wantCloses:     []string{"5|" + closeOnlyComment},
@@ -588,7 +588,7 @@ func TestPRClose(t *testing.T) {
 			name: "RulesRequiredOnParentReportsReadyRefusesUntilOpen",
 			setup: func(w *landWorld) {
 				recordPullRequest(w)
-				w.mode = "on"
+				w.mode = "review"
 				w.rulesRequired = true
 				w.api.Script(prkit.MethodStatus, prkit.Answer{Status: openPullRequestAtBeamHead})
 			},
@@ -599,7 +599,7 @@ func TestPRClose(t *testing.T) {
 			name: "RulesRequiredWithNoCommitsBeyondItsParentCommentsTheOperatorsChoiceAndReportsNoRefusal",
 			setup: func(w *landWorld) {
 				recordPullRequest(w)
-				w.mode = "on"
+				w.mode = "review"
 				w.rulesRequired = true
 				w.hasCommits = false
 				w.api.Script(prkit.MethodStatus, prkit.Answer{Status: openPullRequestAtBeamHead})

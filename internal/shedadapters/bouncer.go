@@ -748,10 +748,8 @@ const (
 // reenterUnchanged settles a live settle record again without a review when its subject is unchanged against the live one.
 // It reports handled false, reading nothing from disk, when the Subject seam is nil;
 // it also does so when there is no live record, when the seam answers no subject, or when the subject changed.
-// A non-full input written after the record's settle time also yields handled false, unless FullGeneration is set;
+// An input written after the record's settle time also yields handled false, unless FullGeneration is set;
 // the Call then starts an amendment generation over it.
-// A full input written after it starts the full generation here and reports handled true,
-// so a round-0 settle record never falls through to the seed path with no generation record naming the input.
 func (b *Bouncer) reenterUnchanged(ctx context.Context) (outcome shedengine.Outcome, ptr shedengine.OutputPointer, handled bool, err error) {
 	if b.cfg.Subject == nil {
 		return "", shedengine.OutputPointer{}, false, nil
@@ -780,10 +778,6 @@ func (b *Bouncer) reenterUnchanged(ctx context.Context) (outcome shedengine.Outc
 	kept, err := b.keptReviewInput(record.SettledAt)
 	if err != nil {
 		return "", shedengine.OutputPointer{}, true, err
-	}
-	if hasFullInput(kept) {
-		outcome, ptr, err = b.startNextGeneration(ctx, record, record.Base)
-		return outcome, ptr, true, err
 	}
 	if len(kept) > 0 && !b.cfg.FullGeneration {
 		return "", shedengine.OutputPointer{}, false, nil

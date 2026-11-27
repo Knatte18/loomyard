@@ -134,16 +134,6 @@ func PostAsProgram(location *lymcwd.Location, receiver, program, line string, ta
 	})
 }
 
-// PostAsCaller sends line as creel mail carrying tags to the strand receiver, signed as the calling agent may sign.
-// It signs as strandClaim when that names a strand that is not an orch, and as program otherwise.
-// It serves a post from an agent's own pane.
-// Creel refuses a program claim from the pane of a strand that is not an orch.
-// A strand claim creel refuses as coming from outside that strand's pane is posted once more as program.
-// A refusal or failure comes back as an error carrying the full line.
-func PostAsCaller(location *lymcwd.Location, receiver, program, strandClaim, line string, tags creelengine.PostTags) error {
-	return postSigned(receiver, line, tags, strandClaim, notifyClientsOf(location, "", program))
-}
-
 // postAsProgram posts line carrying tags to receiver once through the client program builds.
 func postAsProgram(receiver, line string, tags creelengine.PostTags, program func() (notifyPoster, error)) error {
 	poster, err := program()

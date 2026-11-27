@@ -182,8 +182,6 @@ var templateDefaults = map[string]any{
 	"Split.MaxBounces":                  intPtr(2),
 	"Discussion.AutoAccept":             false,
 	"Code.AutoAccept":                   true,
-	"PR.ReviewSmallMax":                 3,
-	"PR.ReviewParentTimeoutMin":         60,
 	"Discussion.ReviewAskParent":        false,
 	"Discussion.ReviewParentTimeoutMin": 30,
 	"Code.ReviewAskParent":              false,
@@ -264,9 +262,6 @@ func TestLoadConfig_Loads(t *testing.T) {
 			"raddle_auto_approve":                  "raddle.auto_approve",
 			"friction":                             "friction.model",
 			"friction_timeout_min":                 "friction.timeout_min",
-			"pr_review_ask_parent":                 "pr.review_ask_parent",
-			"pr_review_parent_timeout_min":         "pr.review_parent_timeout_min",
-			"pr_review_small_max":                  "pr.review_small_max",
 			"review_timeout_min":                   "review.timeout_min",
 			"review_circling_checkpoint":           "review.circling_checkpoint",
 			"review_stalemate_rounds":              "review.stalemate_rounds",
@@ -360,24 +355,19 @@ review:
 			mutate:   func(*Config) {},
 		},
 		{
+			name:     "retired pr area ignored",
+			contents: ConfigTemplate() + "pr:\n  review_small_max: 5\n",
+			mutate:   func(*Config) {},
+		},
+		{
+			name:     "retired flat pr_review_small_max key ignored",
+			contents: ConfigTemplate() + "pr_review_small_max: 5\n",
+			mutate:   func(*Config) {},
+		},
+		{
 			name:   "raddle keys overridden",
 			values: map[string]string{"raddle.model": "sonnet[high]", "raddle.auto_approve": "true"},
 			mutate: func(c *Config) { c.Raddle.Model, c.Raddle.AutoApprove = "sonnet[high]", true },
-		},
-		{
-			name:   "pr.review_ask_parent overridden",
-			values: map[string]string{"pr.review_ask_parent": "true"},
-			mutate: func(c *Config) { c.PR.ReviewAskParent = true },
-		},
-		{
-			name:   "pr.review_small_max overridden",
-			values: map[string]string{"pr.review_small_max": "5"},
-			mutate: func(c *Config) { c.PR.ReviewSmallMax = 5 },
-		},
-		{
-			name:   "pr.review_parent_timeout_min overridden",
-			values: map[string]string{"pr.review_parent_timeout_min": "5"},
-			mutate: func(c *Config) { c.PR.ReviewParentTimeoutMin = 5 },
 		},
 		{
 			name:   "Discussion-Review parent-review keys overridden",
@@ -674,6 +664,16 @@ review:
 			mutate     func(*Config)
 		}{
 			{
+				name:   "a retired pr area in the local layer is ignored",
+				local:  "pr: {review_ask_parent: true}\n",
+				mutate: func(*Config) {},
+			},
+			{
+				name:   "a retired flat pr_review_small_max in the local layer is ignored",
+				local:  "pr_review_small_max: 5\n",
+				mutate: func(*Config) {},
+			},
+			{
 				name:   "a local value wins over the repo default",
 				board:  map[string]string{"review.max_bounces": "3"},
 				local:  "review: {max_bounces: 2}\n",
@@ -858,8 +858,6 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"zero discussion.review_parent_timeout_min", "discussion.review_parent_timeout_min", "0", []string{"must be at least 1", positiveIntegerForward}, ""},
 		{"negative discussion.review_parent_timeout_min", "discussion.review_parent_timeout_min", "-1", []string{"must be at least 1", positiveIntegerForward}, ""},
 		{"zero code.review_parent_timeout_min", "code.review_parent_timeout_min", "0", []string{"must be at least 1", positiveIntegerForward}, ""},
-		{"zero pr.review_parent_timeout_min", "pr.review_parent_timeout_min", "0", []string{"must be at least 1", positiveIntegerForward}, ""},
-		{"negative pr.review_parent_timeout_min", "pr.review_parent_timeout_min", "-1", []string{"must be at least 1", positiveIntegerForward}, ""},
 		{"negative review.max_bounces", "review.max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, or to a positive integer"}, ""},
 		{"negative discussion.max_bounces", "discussion.max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, to a positive integer, or to null to take loom.review.max_bounces"}, ""},
 		{"negative code.max_bounces", "code.max_bounces", "-1", []string{"must not be negative", "or to null to take loom.review.max_bounces"}, ""},
@@ -1217,7 +1215,7 @@ func TestLandingAndApprovalAccessors(t *testing.T) {
 
 // TestApplyAutonomy pins what the run's autonomy forces on the resolved config.
 // It also pins what the setting lookup answers for it.
-// Autonomy on forces three keys from their layered values and keeps the two review ask keys as layered.
+// Autonomy on forces two keys from their layered values and keeps the review ask keys as layered.
 // Autonomy off keeps every layered value.
 func TestApplyAutonomy(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -1225,7 +1223,7 @@ func TestApplyAutonomy(t *testing.T) {
 	layered := Config{Discussion: DiscussionConfig{Interactive: true}, Code: CodeConfig{ReviewAskParent: true}}
 
 	want := layered
-	want.PR.ReviewAskParent, want.Discussion.Interactive, want.Raddle.AutoApprove = true, false, true
+	want.Discussion.Interactive, want.Raddle.AutoApprove = false, true
 	if got := ApplyAutonomy(layered, true); !reflect.DeepEqual(got, want) {
 		t.Errorf("ApplyAutonomy(layered, true) = %+v; want %+v", got, want)
 	}
@@ -1238,7 +1236,6 @@ func TestApplyAutonomy(t *testing.T) {
 		wantValue  bool
 		wantForced bool
 	}{
-		{"pr.review_ask_parent", true, true},
 		{"discussion.interactive", false, true},
 		{"raddle.auto_approve", true, true},
 		{"code.review_ask_parent", false, false},
@@ -1265,7 +1262,6 @@ func TestApplyAutonomy(t *testing.T) {
 //lym:seam internal/loomengine#SplitConfig
 //lym:seam internal/loomengine#RaddleConfig
 //lym:seam internal/loomengine#FrictionConfig
-//lym:seam internal/loomengine#PRConfig
 //lym:seam internal/loomengine#ReviewConfig
 //lym:seam internal/loomengine#PlanConfig
 //lym:seam internal/loomengine#PartsConfig

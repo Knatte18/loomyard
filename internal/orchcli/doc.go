@@ -111,8 +111,6 @@
 // They route to the prime's orch when none is live.
 // `NotifyAsker` routes a hold notice to the orch the held agent's own question reached.
 // `PostAsProgram` signs a post as a lym program alone.
-// `PostAsCaller` signs as the calling agent's own strand when that strand is not an orch.
-// Creel lets only an orch strand's pane claim a program name.
 // `HubOrchs` lists every worktree an orch may run in, skipping a pair still being created.
 // `InstallPushNotifier`, `InstallReconcileNotifier` and `InstallRunMailDropper` wire notices to those routes.
 // They serve fabric, the hub config reconcile and pairteardown; the root pre-run installs them for every lym process.

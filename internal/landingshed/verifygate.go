@@ -337,17 +337,17 @@ func (g verifyGate) rerunTestFailure(ctx context.Context, producer string, site 
 	return second, nil
 }
 
-// checkHead runs the pr-review gate over an agent's commits:
+// checkHead runs the pr-review gate over the commits made in the task worktree while the review waits:
 // the call of the row's gate key over the task head for producer.
 // It reads the key's command and base command, and it marks the wait as verifying the producer while the call runs.
 // It skips with a warning when no command is configured, and it writes no landing failure record.
 //
-// It returns the reason the gate refuses the head, written for the agent to act on in a new commit.
+// It returns the reason the gate refuses the head, written for whoever made the commit to act on in a new one.
 // It returns an error for an infrastructure fault or a cancellation, and ("", false, nil) on a pass or a skip.
 // A dirty result returns the dirty reason.
 // crashed is set when every failed run of the call crashed its test runner with no failing test:
 // no test judged the head, so the reason is a halt reason opening with `LandingStopPrefix`.
-// The caller halts the row with that reason instead of telling the agent.
+// The caller halts the row with that reason as it stands.
 func (g verifyGate) checkHead(ctx context.Context, producer string) (reason string, crashed bool, err error) {
 	command, site, ok, err := g.gateCall(producer, "landingshed: the pr-review gate skipped because no verify command is configured")
 	if !ok {
@@ -373,11 +373,11 @@ func (g verifyGate) checkHead(ctx context.Context, producer string) (reason stri
 	return "", false, nil
 }
 
-// headFailureReason is the reason a failed run of the pr-review gate gives the agent:
+// headFailureReason is the reason a failed run of the pr-review gate gives:
 // the failing tier or the build, the log and the instruction to fix it in a new commit.
 // A timeout, a runner crash and a shell that could not start name no tier, since none names a failing test.
 // A runner crash is a halt reason opening with `LandingStopPrefix`:
-// no change to the code mends it, and the agent has no commit to make.
+// no change to the code mends it, and there is no commit to make.
 func (g verifyGate) headFailureReason(result verifytree.Result) string {
 	switch {
 	case result.TimedOut:

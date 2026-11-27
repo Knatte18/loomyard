@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/Knatte18/loomyard/internal/beamsetting"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
@@ -110,6 +111,10 @@ func (b boardView) modeHeader() []string {
 		"On the mode line of a beam or the root, a **bold** value is that project's own setting,",
 		"and an _italic_ value is inherited from the place in brackets.",
 		"A setting that the root and every beam read by this render take from the hub-wide default is stated here alone.",
+		fmt.Sprintf("%s %s opens a pull request that waits for the operator to approve or merge it, %s opens one and merges it at once with no review, "+
+			"%s opens none unless GitHub's rules for the parent branch require one, and %s lands by a true merge with no pull request;",
+			pullRequestLabel, codeSpan(beamsetting.PullRequestReview), codeSpan(beamsetting.PullRequestTrail), codeSpan(beamsetting.PullRequestOff), codeSpan(beamsetting.PullRequestMergeIn)),
+		"no agent reviews a pull request under any of them.",
 		"A beam the render could not read, such as one whose worktree is on another machine, has no mode line,",
 		"and its settings may differ.",
 		beamPRLabel + " links the pull request the beam's landing record names; it may already be closed or merged on GitHub.",

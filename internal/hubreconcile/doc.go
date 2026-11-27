@@ -43,8 +43,9 @@
 // A reconcile moves the old keys of every config file it reconciles to the paths their module's move table names.
 // The walk mails the hub's orch one line of what it moved, through notifyMovedKeys, even when a later step failed;
 // the pair call only logs its moves.
-// After a committed hub-wide write, carryMovedRunSettings moves the old keys of the board entries' run_settings;
-// a failed carry leaves board.json as it was and the stamp stale.
+// After a committed hub-wide write, carryMovedRunSettings moves the old keys of the board entries' run_settings.
+// It renames a renamed beam pull_request value there too, on every walk, since no layer admits one.
+// A failed carry leaves board.json as it was and the stamp stale.
 //
 // # Reinterpretations
 //

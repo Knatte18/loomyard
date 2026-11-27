@@ -35,12 +35,12 @@ const (
 
 // The values of beam.yaml's pull_request, declared once in beamsetting.
 const (
-	// PullRequestOn lands through a pull request when the origin allows one.
-	PullRequestOn = beamsetting.PullRequestOn
+	// PullRequestReview lands through a pull request that waits for the operator's own ending of its review.
+	PullRequestReview = beamsetting.PullRequestReview
 	// PullRequestOff lands with no pull request unless GitHub's rules for the parent branch require one.
 	PullRequestOff = beamsetting.PullRequestOff
-	// PullRequestMerge lands through a pull request squash-merged on GitHub at once, with no review.
-	PullRequestMerge = beamsetting.PullRequestMerge
+	// PullRequestTrail lands through a pull request squash-merged on GitHub at once, with no review.
+	PullRequestTrail = beamsetting.PullRequestTrail
 	// PullRequestMergeIn lands a task that merges its parent's parent branch into its parent with no pull request.
 	PullRequestMergeIn = beamsetting.PullRequestMergeIn
 )
@@ -97,7 +97,7 @@ func ConfigSpec() configengine.Spec {
 
 // LoadConfig resolves beam.yaml strictly from the layer stack under dirs, since dobby only ever runs inside a hub.
 // A negative value is refused, naming its key.
-// So is a resolved pull_request other than on, off, merge or merge-in, a land_notice other than on or off,
+// So is a resolved pull_request other than review, off, trail or merge-in, a land_notice other than on or off,
 // and an autonomy that is no YAML boolean,
 // so a write the per-task lookup would refuse is refused when it is made.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {

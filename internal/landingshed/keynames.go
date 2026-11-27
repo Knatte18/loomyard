@@ -14,7 +14,6 @@ const configModule = "landing"
 const (
 	conflictKey        = "conflict"
 	describeKey        = "describe"
-	prReviewerKey      = "pr_reviewer"
 	fixerKey           = "fixer"
 	squashKey          = "squash"
 	fixerTimeoutMinKey = "fixer_timeout_min"

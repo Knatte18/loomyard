@@ -23,7 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
@@ -193,18 +192,6 @@ func (noopFixerSeats) Run(seatengine.Table) (seatengine.Result, error) {
 	return seatengine.Result{}, nil
 }
 
-// noopSessions is a session runner that starts nothing and stops nothing.
-// The fixture's landing takes the local path and opens no session, so the runner is never reached.
-type noopSessions struct{}
-
-func (noopSessions) StartSession(shuttleengine.Spec) (shuttleengine.OpenResult, error) {
-	return shuttleengine.OpenResult{}, errors.New("envkit: the fixture's landing starts no session")
-}
-
-func (noopSessions) StopStrand(string) error { return nil }
-
-func (noopSessions) EngineName(choice shuttleengine.ModelChoice) string { return choice.Engine }
-
 // LandingDeps returns a `landingshed.Deps` with every field the landing constructors require.
 // The fields hold fixed values derived from dir.
 func LandingDeps(dir string) landingshed.Deps {
@@ -254,37 +241,23 @@ func LandingDeps(dir string) landingshed.Deps {
 			RecordPath:     filepath.Join(dir, "landing-scratch", "pull-request.json"),
 			RecordLockPath: filepath.Join(dir, "landing-scratch", "pull-request.lock"),
 			CommitRecord:   func() error { return nil },
-			ShedStatus:     func() (shedengine.Status, error) { return shedengine.Status{}, nil },
 			Mode:           func() (string, error) { return "off", nil },
 			Origin:         func() (landingshed.Origin, error) { return landingshed.Origin{}, nil },
 			API: func(string) (pullrequest.API, error) {
 				return nil, errors.New("envkit: the fixture's landing reaches no GitHub")
 			},
-			PushTask:           func() error { return nil },
-			CommitsMissing:     func(string, string) ([]string, error) { return nil, nil },
-			TaskHasCommits:     func() (bool, error) { return true, nil },
-			DirtyPaths:         func() ([]string, error) { return nil, nil },
-			MailAgent:          func(string, string) error { return nil },
-			ParentReviewWanted: func() (bool, error) { return false, nil },
-			AskParent:          func(string) (bool, error) { return false, nil },
-			PauseCovered:       func() (bool, error) { return false, nil },
-			Now:                time.Now,
-			Sleep:              func(context.Context, time.Duration) error { return nil },
-			RecordChanges:      func() (<-chan struct{}, func()) { return nil, func() {} },
-			Sessions:           noopSessions{},
-			SessionLive:        func(string) (bool, error) { return false, nil },
-			RegisterSession:    func(string) error { return nil },
+			PushTask:       func() error { return nil },
+			CommitsMissing: func(string, string) ([]string, error) { return nil, nil },
+			TaskHasCommits: func() (bool, error) { return true, nil },
+			DirtyPaths:     func() ([]string, error) { return nil, nil },
+			PauseCovered:   func() (bool, error) { return false, nil },
+			Now:            time.Now,
+			Sleep:          func(context.Context, time.Duration) error { return nil },
+			RecordChanges:  func() (<-chan struct{}, func()) { return nil, func() {} },
 			BeamRecord: func() (landingshed.BeamPullRequest, bool, error) {
 				return landingshed.BeamPullRequest{}, false, nil
 			},
 			DropBeamRecord: func() error { return nil },
-			Autonomy:       func() bool { return false },
-			AskPRReview: func(string, string) (burlerengine.ParentAsk, error) {
-				return burlerengine.ParentAsk{}, nil
-			},
-			PRReviewStanding: func(string) (landingshed.PRReviewStanding, error) {
-				return landingshed.PRReviewAskAgain, nil
-			},
 		},
 	}
 }

@@ -209,18 +209,18 @@ func TestLandingDeps_PullRequestModeReadsThePerTaskLookup(t *testing.T) {
 
 	prime, task, beam, member, plainBeam := h.Location, locate(h.PairCodeWorktree("task")), locate(h.PairCodeWorktree("beam")), locate(h.PairCodeWorktree("member")), locate(h.PairCodeWorktree("plainbeam"))
 	setMode(prime, "off")
-	setMode(task, "merge")
-	setMode(beam, "on")
+	setMode(task, "trail")
+	setMode(beam, "review")
 
 	tests := []struct {
 		name     string
 		location *lymcwd.Location
 		wantMode string
 	}{
-		{"TaskReadsItsOwnValueNotThePrimes", task, "merge"},
-		{"MemberWithNoValueReadsItsParentBeams", member, "on"},
+		{"TaskReadsItsOwnValueNotThePrimes", task, "trail"},
+		{"MemberWithNoValueReadsItsParentBeams", member, "review"},
 		{"BeamWithNoValueReadsThePrimes", plainBeam, "off"},
-		{"BeamReadsItsOwnValue", beam, "on"},
+		{"BeamReadsItsOwnValue", beam, "review"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -329,7 +329,7 @@ func TestPullRequestDeps_CommitsTheRecord(t *testing.T) {
 		}
 	}
 
-	deps := pullRequestDepsGuardedBy(prePushCheck{slug: "task", skip: func() (bool, error) { return true, nil }}, location, "main", true, nil)
+	deps := pullRequestDepsGuardedBy(prePushCheck{slug: "task", skip: func() (bool, error) { return true, nil }}, location, "main", true)
 	rel := filepath.ToSlash(shedrun.PullRequestRecordRel(location, shedrun.SelfRunID))
 	headFiles := func(format string) string {
 		t.Helper()

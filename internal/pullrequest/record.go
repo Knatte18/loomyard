@@ -13,7 +13,7 @@ import (
 
 // Record is the state a run keeps about its pull request, one JSON file tracked with the run's records.
 // It reaches another machine with the pair's push.
-// Its session ids hold only on the machine that wrote them, and a session whose transcript is absent starts fresh.
+// A key an older build wrote and Record no longer declares survives every rewrite and is never read.
 type Record struct {
 	// Number is the pull request's number and the one field always written.
 	Number int `json:"number"`
@@ -25,18 +25,7 @@ type Record struct {
 	Head string `json:"head,omitempty"`
 	// GatedHead is the head the PR-Review row last gated and pushed.
 	GatedHead string `json:"gated_head,omitempty"`
-	// MailedHead is the head whose gate failure was mailed, so one failure is mailed once and the head is not gated again.
-	// `lym loom pr-continue` clears it, so the PR-Review row gates that head again.
-	MailedHead string `json:"mailed_head,omitempty"`
-	// Autonomy is the run's autonomy as the review recorded it, true or false for the rest of the review.
-	// It is nil until PR-Review records it, which a record written before the key existed also reads as.
-	Autonomy *bool `json:"autonomy,omitempty"`
-	// StrandGUID, StrandName, SessionID and Engine name the PR-Review session, so a later pass resumes it.
-	StrandGUID string `json:"strand_guid,omitempty"`
-	StrandName string `json:"strand_name,omitempty"`
-	SessionID  string `json:"session_id,omitempty"`
-	Engine     string `json:"engine,omitempty"`
-	// Continue is the operator's continue flag, set by `lym loom pr-continue`.
+	// Continue is the operator's ending of the review, set by `lym loom pr-continue`.
 	Continue bool `json:"continue,omitempty"`
 	// ReviewEnded records that the review ended.
 	// The PR-Review row sets it when it closes the pull request on the continue flag.
@@ -44,18 +33,6 @@ type Record struct {
 	// In that case the pull request is left for Finalize to merge.
 	// The JSON key stays `closed_for_continue`, so a record written by an older build reads the same.
 	ReviewEnded bool `json:"closed_for_continue,omitempty"`
-	// ParentReviewAsked records that the PR-Review row asked the parent orch to review this pull request.
-	ParentReviewAsked bool `json:"parent_review_asked,omitempty"`
-	// SendBack is the send-back mark: the absolute path of the findings file the verb stored.
-	SendBack string `json:"send_back,omitempty"`
-	// FixHereCount is the number of findings PR-Review fixed in place since the last send-back.
-	FixHereCount int `json:"fix_here_count,omitempty"`
-	// SendBacks is the run's send-backs so far, which numbers the next findings file; no clear resets it.
-	SendBacks int `json:"send_backs,omitempty"`
-	// CountedSets holds the sha256 of each findings file FixHereCount already counts,
-	// so a repeated call over one file counts it once.
-	// It is cleared with FixHereCount.
-	CountedSets []string `json:"counted_sets,omitempty"`
 }
 
 // ErrNoRecord is returned when the record's file does not exist.
@@ -86,25 +63,6 @@ func UpdateRecord(path, lockPath string, mutate func(rec *Record) error) error {
 		}
 		return cur, nil
 	})
-}
-
-// ClearReviewSession clears the record's Autonomy and ParentReviewAsked under its lock.
-// It also clears StrandGUID, StrandName, SessionID and Engine.
-// Every other field is kept.
-// A re-entry of the review then records its autonomy anew.
-// It sends its first ask to the parent again and starts a new session.
-// A missing record is no error and creates no file.
-func ClearReviewSession(recordPath, lockPath string) error {
-	err := UpdateRecord(recordPath, lockPath, func(rec *Record) error {
-		rec.Autonomy = nil
-		rec.ParentReviewAsked = false
-		rec.StrandGUID, rec.StrandName, rec.SessionID, rec.Engine = "", "", "", ""
-		return nil
-	})
-	if errors.Is(err, ErrNoRecord) {
-		return nil
-	}
-	return err
 }
 
 // RemoveRecord deletes the record's file under the lock at lockPath; a file already absent is no error.

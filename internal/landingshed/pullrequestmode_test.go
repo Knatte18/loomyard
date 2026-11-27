@@ -25,9 +25,9 @@ func TestResolvePullRequest(t *testing.T) {
 			wantAtOnce    bool
 			wantTrueMerge bool
 		}{
-			{"on", true, false, false},
+			{"review", true, false, false},
 			{"off", false, false, false},
-			{"merge", true, true, false},
+			{"trail", true, true, false},
 			{"merge-in", false, false, true},
 		}
 		for _, tt := range tests {
@@ -70,7 +70,7 @@ func TestResolvePullRequest(t *testing.T) {
 			wantHalt bool
 		}{
 			{name: "OffOpensOne", mode: "off", origin: githubOrigin, taskHasCommits: true, wantOpen: true, wantIn: "GitHub's rules for the parent branch require one"},
-			{name: "OnOpensOne", mode: "on", origin: githubOrigin, taskHasCommits: true, wantOpen: true, wantIn: "GitHub's rules for the parent branch require one"},
+			{name: "ReviewOpensOne", mode: "review", origin: githubOrigin, taskHasCommits: true, wantOpen: true, wantIn: "GitHub's rules for the parent branch require one"},
 			{name: "AMissingOriginFactHalts", mode: "off", origin: local, taskHasCommits: true, wantHalt: true, wantIn: ruleDemand},
 			{name: "AnEmptyTaskBranchIsNo", mode: "off", origin: githubOrigin, wantIn: "the task branch has no commits beyond its parent"},
 		}
@@ -107,19 +107,19 @@ func TestResolvePullRequest(t *testing.T) {
 			// wantIn is a substring the reason, or the halt when one is wanted, holds.
 			wantIn string
 		}{
-			{"LocalPathUnderOnIsNo", "on", local, false, "/srv/hub.git"},
-			{"LocalPathUnderMergeHalts", "merge", local, true, "beam.pull_request for this landing is merge"},
-			{"OwnerOnlyHalts", "on", Origin{URL: "https://github.com/onlyowner", Upstream: true}, true, "names no repository"},
-			{"EmptyUserInfoHalts", "on", Origin{URL: "https://@github.com/o/r", Upstream: true}, true, "names no repository"},
-			{"SSHWithPortHalts", "on", Origin{URL: "ssh://git@github.com:22/o/r.git", Upstream: true}, true, "names no repository"},
-			{"GitSchemeHalts", "on", Origin{URL: "git://github.com/o/r", Upstream: true}, true, "names no repository"},
-			{"UpperCaseHostHalts", "on", Origin{URL: "https://GitHub.com/o/r", Upstream: true}, true, "names no repository"},
-			{"OtherHostUnderOnIsNo", "on", Origin{URL: "ssh://git@gitlab.com/o/r.git", Upstream: true}, false, "gitlab.com"},
-			{"NoOriginUnderOnIsNo", "on", Origin{Upstream: true}, false, "no origin remote"},
-			{"NoUpstreamUnderOnIsNo", "on", Origin{URL: githubOrigin.URL}, false, "no upstream"},
-			{"NoUpstreamUnderMergeHalts", "merge", Origin{URL: githubOrigin.URL}, true, "no upstream"},
-			{"PushSkipUnderOnIsNo", "on", Origin{URL: githubOrigin.URL, Upstream: true, PushSkipped: true}, false, "push skip"},
-			{"PushSkipUnderMergeHalts", "merge", Origin{URL: githubOrigin.URL, Upstream: true, PushSkipped: true}, true, "push skip"},
+			{"LocalPathUnderReviewIsNo", "review", local, false, "/srv/hub.git"},
+			{"LocalPathUnderTrailHalts", "trail", local, true, "beam.pull_request for this landing is trail"},
+			{"OwnerOnlyHalts", "review", Origin{URL: "https://github.com/onlyowner", Upstream: true}, true, "names no repository"},
+			{"EmptyUserInfoHalts", "review", Origin{URL: "https://@github.com/o/r", Upstream: true}, true, "names no repository"},
+			{"SSHWithPortHalts", "review", Origin{URL: "ssh://git@github.com:22/o/r.git", Upstream: true}, true, "names no repository"},
+			{"GitSchemeHalts", "review", Origin{URL: "git://github.com/o/r", Upstream: true}, true, "names no repository"},
+			{"UpperCaseHostHalts", "review", Origin{URL: "https://GitHub.com/o/r", Upstream: true}, true, "names no repository"},
+			{"OtherHostUnderReviewIsNo", "review", Origin{URL: "ssh://git@gitlab.com/o/r.git", Upstream: true}, false, "gitlab.com"},
+			{"NoOriginUnderReviewIsNo", "review", Origin{Upstream: true}, false, "no origin remote"},
+			{"NoUpstreamUnderReviewIsNo", "review", Origin{URL: githubOrigin.URL}, false, "no upstream"},
+			{"NoUpstreamUnderTrailHalts", "trail", Origin{URL: githubOrigin.URL}, true, "no upstream"},
+			{"PushSkipUnderReviewIsNo", "review", Origin{URL: githubOrigin.URL, Upstream: true, PushSkipped: true}, false, "push skip"},
+			{"PushSkipUnderTrailHalts", "trail", Origin{URL: githubOrigin.URL, Upstream: true, PushSkipped: true}, true, "push skip"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -167,12 +167,12 @@ func TestResolvePullRequest(t *testing.T) {
 			wantIn string
 		}{
 			{"RecordedPullRequestIsYesUnderOff", "off", BeamWithPullRequest, false, githubOrigin, true, false, recordDemand},
-			{"RecordedPullRequestIsYesUnderOn", "on", BeamWithPullRequest, false, githubOrigin, true, false, recordDemand},
+			{"RecordedPullRequestIsYesUnderReview", "review", BeamWithPullRequest, false, githubOrigin, true, false, recordDemand},
 			{"RecordedPullRequestIsYesUnderMergeIn", "merge-in", BeamWithPullRequest, false, githubOrigin, true, false, recordDemand},
-			{"NoneRecordedUnderOnIsNo", "on", BeamWithoutPullRequest, false, githubOrigin, false, false, noRecord},
+			{"NoneRecordedUnderReviewIsNo", "review", BeamWithoutPullRequest, false, githubOrigin, false, false, noRecord},
 			{"NoneRecordedUnderOffIsNo", "off", BeamWithoutPullRequest, false, githubOrigin, false, false, noRecord},
 			{"NoneRecordedUnderMergeInReadsAsOff", "merge-in", BeamWithoutPullRequest, false, githubOrigin, false, false, noRecord},
-			{"NoneRecordedUnderMergeIsYes", "merge", BeamWithoutPullRequest, false, githubOrigin, true, false, "beam.pull_request for this landing is merge"},
+			{"NoneRecordedUnderTrailIsYes", "trail", BeamWithoutPullRequest, false, githubOrigin, true, false, "beam.pull_request for this landing is trail"},
 			{"NoneRecordedUnderAParentRuleIsYes", "off", BeamWithoutPullRequest, true, githubOrigin, true, false, "GitHub's rules for the parent branch require one"},
 			{"NoneRecordedUnderMergeInAndAParentRuleIsYes", "merge-in", BeamWithoutPullRequest, true, githubOrigin, true, false, "GitHub's rules for the parent branch require one"},
 			{"RecordedPullRequestWithALocalOriginHalts", "off", BeamWithPullRequest, false, local, false, true, recordDemand},
@@ -208,10 +208,10 @@ func TestResolvePullRequest(t *testing.T) {
 			// wantIn is a substring the reason holds.
 			wantIn string
 		}{
-			{"OnIsNo", "on", githubOrigin, emptyClause},
-			{"MergeIsNo", "merge", githubOrigin, emptyClause},
-			{"MergeWithALocalOriginIsNoRatherThanAHalt", "merge", local, emptyClause},
-			{"GitHubOriginNamingNoRepositoryIsNoRatherThanAHalt", "on", Origin{URL: "https://github.com/onlyowner", Upstream: true}, emptyClause},
+			{"ReviewIsNo", "review", githubOrigin, emptyClause},
+			{"TrailIsNo", "trail", githubOrigin, emptyClause},
+			{"TrailWithALocalOriginIsNoRatherThanAHalt", "trail", local, emptyClause},
+			{"GitHubOriginNamingNoRepositoryIsNoRatherThanAHalt", "review", Origin{URL: "https://github.com/onlyowner", Upstream: true}, emptyClause},
 			{"OffKeepsItsOffReason", "off", githubOrigin, "pull request off:"},
 		}
 		for _, tt := range tests {

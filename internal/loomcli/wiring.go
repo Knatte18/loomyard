@@ -1171,9 +1171,8 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		CodeDiff:        committedCodeDiff(location),
 		MergeInOnly:     parentMergeInOnly(location),
 		RecordHead:      recordHead(location),
-		// ReviewInputs are the merge fixer's latest Parent-Align report and the newest send-back findings file.
+		// ReviewInputs are the merge fixer's latest Parent-Align report.
 		// A report newer than the Code-Perch's settled verdict re-opens the perch as an amendment over it.
-		// A findings file newer than it re-opens the perch as a full generation.
 		ReviewInputs: reviewInputs(loomengine.LoomScratchDir(location)),
 		// SkipPlanReview lets Plan-Bouncer approve an exempt rework generation without a judge.
 		// It reads committed state on demand and opens nothing at wire time.

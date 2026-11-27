@@ -147,13 +147,10 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		}
 	}
 
-	// SessionLive and RegisterSession read reed's strand table, which only wireLanding holds, so it fills them.
 	// BeamRecord and DropBeamRecord are a pawl run's, which a tapestry run leaves unset.
 	unfilledPullRequest := map[string]bool{
-		"SessionLive":     true,
-		"RegisterSession": true,
-		"BeamRecord":      true,
-		"DropBeamRecord":  true,
+		"BeamRecord":     true,
+		"DropBeamRecord": true,
 	}
 	pullRequest := reflect.ValueOf(deps.PullRequest)
 	pullRequestType := pullRequest.Type()
@@ -467,84 +464,6 @@ func TestPRSessionSeams(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestPullRequestDeps_ParentReviewWantedReadsThePairsLayers asserts what the setting seam reads.
-// It reads pr.review_ask_parent over the pair's layers.
-// It reads false when no layer sets it, and true when the worktree's loom.yaml or the task's local layer does.
-// The local layer is where a task's run_settings land.
-func TestPullRequestDeps_ParentReviewWantedReadsThePairsLayers(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-	tests := []struct {
-		name       string
-		hubValue   string
-		localLayer string
-		wantWanted bool
-	}{
-		{name: "no layer setting it reads false", wantWanted: false},
-		{name: "the worktree's loom.yaml set to true reads true", hubValue: "true", wantWanted: true},
-		{name: "the task's local layer set to true over a loom.yaml of false reads true", hubValue: "false", localLayer: "pr: {review_ask_parent: true}\n", wantWanted: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			loc := hubLocation(t, "pair", ".")
-			if tt.hubValue != "" {
-				seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"pr.review_ask_parent": tt.hubValue})
-			}
-			if tt.localLayer != "" {
-				localConfig := configengine.LocalFile(loc.AnchorPath(), "loom")
-				if err := os.MkdirAll(filepath.Dir(localConfig), 0o755); err != nil {
-					t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(localConfig), err)
-				}
-				if err := os.WriteFile(localConfig, []byte(tt.localLayer), 0o644); err != nil {
-					t.Fatalf("WriteFile(%q) = %v; want nil", localConfig, err)
-				}
-			}
-
-			pullRequest := pullRequestDepsGuardedBy(prePushCheck{}, loc, "main", false, &shuttleengine.Runner{})
-			got, err := pullRequest.ParentReviewWanted()
-			if err != nil || got != tt.wantWanted {
-				t.Errorf("ParentReviewWanted() = %v, %v; want %v, nil", got, err, tt.wantWanted)
-			}
-		})
-	}
-}
-
-// TestPullRequestDeps_ShedStatus asserts what the PR-Review row's status seam reads.
-// A run directory not yet created reads as an empty status with no error.
-// A status file that cannot be parsed is an error.
-func TestPullRequestDeps_ShedStatus(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	t.Run("NoRunDirectoryReadsAsAnEmptyStatus", func(t *testing.T) {
-		t.Parallel()
-		loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-
-		status, err := pullRequestDepsGuardedBy(prePushCheck{}, loc, "main", false, &shuttleengine.Runner{}).ShedStatus()
-
-		if err != nil || !reflect.DeepEqual(status, shedengine.Status{}) {
-			t.Errorf("ShedStatus() = %+v, %v; want an empty status and nil", status, err)
-		}
-	})
-
-	t.Run("UnparsableStatusFileIsAnError", func(t *testing.T) {
-		t.Parallel()
-		loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-		statusPath := shedrun.StatusFile(loc, shedrun.SelfRunID)
-		if err := os.MkdirAll(filepath.Dir(statusPath), 0o755); err != nil {
-			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(statusPath), err)
-		}
-		if err := os.WriteFile(statusPath, []byte("{not json"), 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", statusPath, err)
-		}
-
-		if _, err := pullRequestDepsGuardedBy(prePushCheck{}, loc, "main", false, &shuttleengine.Runner{}).ShedStatus(); err == nil {
-			t.Error("ShedStatus() over an unparsable status file = nil; want an error")
-		}
-	})
 }
 
 // TestParentLockDeps_PauseAfterTheWaitingRowEndsTheWait writes Publish's status as running and asserts the pause seam.

@@ -344,7 +344,7 @@ const (
 	ParentAnswerPastDeadline ParentAnswerRefusalKind = "past-deadline"
 )
 
-// ParentAnswerRefusal is the error AnswerParentAskOrUnreached returns for an answer it did not record.
+// ParentAnswerRefusal is the error AnswerParentAsk returns for an answer it did not record.
 // Latest is the run's latest ask as it stands after the call, and the zero ask when the run holds none.
 type ParentAnswerRefusal struct {
 	Kind   ParentAnswerRefusalKind
@@ -355,21 +355,17 @@ func (r *ParentAnswerRefusal) Error() string {
 	return fmt.Sprintf("burler: parent-review answer refused (%s); the latest ask is %d, %s", r.Kind, r.Latest.Number, r.Latest.State)
 }
 
-// AnswerParentAskOrUnreached records the parent's answer to the ask numbered number as one step under the record's lock.
+// AnswerParentAsk records the parent's answer to the ask numbered number as one step under the record's lock.
 // It writes the report and sets the ask done.
 // findings become the report's items in their order, with ids P1, P2 and so on; no findings make a satisfied report.
 // It answers only the run's latest ask, and only while that ask is pending-post or open and now is before its deadline.
 // An ask still pending-post or open at or past its deadline is set timeout instead, and the answer refused.
-// A latest ask made under a non-empty unreachedTag that ended no-parent or undelivered is answered too, unless cleared.
-// Its request never reached the parent through lym, and the parent may still review the subject it named, at any time.
 // Every refusal is a *ParentAnswerRefusal and writes no report.
-func AnswerParentAskOrUnreached(files ParentReviewFiles, number int, unreachedTag string, now time.Time, findings []ParentFinding) (ParentAsk, error) {
+func AnswerParentAsk(files ParentReviewFiles, number int, now time.Time, findings []ParentFinding) (ParentAsk, error) {
 	var refusal *ParentAnswerRefusal
 	var answered ParentAsk
 	err := state.UpdateJSON(files.Record, files.Lock, func(record ParentAskRecord, _ bool) (ParentAskRecord, error) {
 		latest, ok := record.Latest()
-		unreached := ok && unreachedTag != "" && latest.Tag == unreachedTag && !latest.Cleared &&
-			(latest.State == ParentAskNoParent || latest.State == ParentAskUndelivered)
 		switch {
 		case !ok:
 			refusal = &ParentAnswerRefusal{Kind: ParentAnswerNoAsk}
@@ -377,12 +373,12 @@ func AnswerParentAskOrUnreached(files ParentReviewFiles, number int, unreachedTa
 		case latest.Number != number:
 			refusal = &ParentAnswerRefusal{Kind: ParentAnswerNotLatest, Latest: latest}
 			return record, errParentAskUnchanged
-		case latest.State.Ended() && !unreached:
+		case latest.State.Ended():
 			refusal = &ParentAnswerRefusal{Kind: ParentAnswerEnded, Latest: latest}
 			return record, errParentAskUnchanged
 		}
 		ask := &record.Asks[len(record.Asks)-1]
-		if !unreached && !now.Before(ask.Deadline) {
+		if !now.Before(ask.Deadline) {
 			ask.State = ParentAskTimeout
 			refusal = &ParentAnswerRefusal{Kind: ParentAnswerPastDeadline, Latest: *ask}
 			return record, nil

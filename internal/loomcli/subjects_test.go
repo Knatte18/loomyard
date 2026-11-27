@@ -168,38 +168,29 @@ func TestReviewInputSeams(t *testing.T) {
 		})
 	}
 
-	t.Run("ReviewInputsAnswerTheFixerReportAsNonFullAndOnlyTheNewestFindingsAsFull", func(t *testing.T) {
+	t.Run("ReviewInputsAnswerOnlyTheFixerReportAndIgnoreAPRFindingsFile", func(t *testing.T) {
 		t.Parallel()
 		scratchDir := t.TempDir()
 		seam := reviewInputs(scratchDir)
-		check := func(step string, want ...shedadapters.ReviewInput) {
+		check := func(step string, want ...string) {
 			t.Helper()
 			got, err := seam()
 			if err != nil || len(got) != len(want) {
 				t.Fatalf("%s: reviewInputs() = %+v, %v; want %d inputs, nil", step, got, err, len(want))
 			}
 			for i := range want {
-				if got[i].Path != want[i].Path || got[i].Full != want[i].Full {
-					t.Errorf("%s: reviewInputs()[%d] = %q full %v; want %q full %v", step, i, got[i].Path, got[i].Full, want[i].Path, want[i].Full)
+				if got[i].Path != want[i] {
+					t.Errorf("%s: reviewInputs()[%d] = %q; want %q", step, i, got[i].Path, want[i])
 				}
 			}
 		}
 
 		check("no file")
-		writeSubjectFile(t, filepath.Join(scratchDir, "pr-findings-notes.md"), "not a findings file\n")
-		check("a file that is no findings file")
+		writeSubjectFile(t, filepath.Join(scratchDir, "pr-findings-1.md"), "findings\n")
+		check("a pr-findings file")
 
 		fixer := filepath.Join(scratchDir, loomshed.NameParentAlign+"-fixer-report.md")
 		writeSubjectFile(t, fixer, "report\n")
-		check("fixer report", shedadapters.ReviewInput{Path: fixer})
-
-		writeSubjectFile(t, prFindingsFile(scratchDir, 1), "findings\n")
-		check("findings 1", shedadapters.ReviewInput{Path: fixer}, shedadapters.ReviewInput{Path: prFindingsFile(scratchDir, 1), Full: true})
-
-		writeSubjectFile(t, prFindingsFile(scratchDir, 2), "findings\n")
-		check("findings 1 and 2", shedadapters.ReviewInput{Path: fixer}, shedadapters.ReviewInput{Path: prFindingsFile(scratchDir, 2), Full: true})
-
-		writeSubjectFile(t, prFindingsFile(scratchDir, 10), "findings\n")
-		check("findings 1, 2 and 10", shedadapters.ReviewInput{Path: fixer}, shedadapters.ReviewInput{Path: prFindingsFile(scratchDir, 10), Full: true})
+		check("fixer report beside a pr-findings file", fixer)
 	})
 }

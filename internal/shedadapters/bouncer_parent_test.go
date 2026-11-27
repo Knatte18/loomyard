@@ -69,8 +69,8 @@ func TestBouncer_JudgeCall_AsksTheParentBeforeJudging(t *testing.T) {
 				inner := shuttle.DuringRun
 				shuttle.DuringRun = func() {
 					findings := []burlerengine.ParentFinding{{Change: "tighten the seam"}}
-					if _, err := burlerengine.AnswerParentAskOrUnreached(files, 1, "", bouncerJudgeTestClock, findings); err != nil {
-						t.Errorf("AnswerParentAskOrUnreached() error = %v; want nil", err)
+					if _, err := burlerengine.AnswerParentAsk(files, 1, bouncerJudgeTestClock, findings); err != nil {
+						t.Errorf("AnswerParentAsk() error = %v; want nil", err)
 					}
 					inner()
 				}
@@ -153,8 +153,8 @@ func TestBouncer_Call_RefusesARecoveredConvergedOverParentFindings(t *testing.T)
 		t.Fatalf("RecordParentAsk() error = %v; want nil", err)
 	}
 	findings := []burlerengine.ParentFinding{{Change: "tighten the seam"}}
-	if _, err := burlerengine.AnswerParentAskOrUnreached(files, asked.Number, "", bouncerJudgeTestClock, findings); err != nil {
-		t.Fatalf("AnswerParentAskOrUnreached() error = %v; want nil", err)
+	if _, err := burlerengine.AnswerParentAsk(files, asked.Number, bouncerJudgeTestClock, findings); err != nil {
+		t.Fatalf("AnswerParentAsk() error = %v; want nil", err)
 	}
 
 	ptr := shedfake.RequireOutcome(t, h.b, shedengine.Stuck)

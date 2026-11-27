@@ -56,7 +56,7 @@
 //  5. a pull request GitHub's rules for the parent branch demand and none recorded, naming `lym beam pr open <slug>`;
 //  6. a recorded pull request that is closed, open at another head, unmergeable or merged without every beam commit.
 //
-// A beam whose `pull_request` is `merge` passes with none recorded, since Finalize opens its own.
+// A beam whose `pull_request` is `trail` passes with none recorded, since Finalize opens its own.
 // That value is found by the per-task lookup from the beam's own worktree up, as for any run.
 // A beam with no commits beyond its parent also passes, since Finalize lands it with no pull request.
 // The record names its beam because a pair forked from the beam inherits the beam's `_lym` records.

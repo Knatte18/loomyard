@@ -27,6 +27,7 @@ func writeBeamLocalLayer(t *testing.T, anchor, document string) {
 }
 
 // lookupAsText runs the lookup of key and returns its answer as on or off text where the key is a switch.
+// pull_request's review reads as on, so one set of rows runs under every key.
 func lookupAsText(key string, chain TaskSettingChain) (string, error) {
 	if key == LandNoticeKey || key == AutonomyKey {
 		lookup := LookupLandNotice
@@ -42,14 +43,22 @@ func lookupAsText(key string, chain TaskSettingChain) (string, error) {
 		}
 		return LandNoticeOff, nil
 	}
-	return LookupPullRequest(chain)
+	got, err := LookupPullRequest(chain)
+	if got == PullRequestReview {
+		return LandNoticeOn, err
+	}
+	return got, err
 }
 
 // settingDocument returns a beam document setting key to value, or "" when value is empty.
 // autonomy's value is written unquoted, on as true and off as false, any other value as given.
+// pull_request's on is written as review.
 func settingDocument(key, value string) string {
 	if value == "" {
 		return ""
+	}
+	if key == PullRequestKey && value == "on" {
+		value = PullRequestReview
 	}
 	if key == AutonomyKey {
 		switch value {
@@ -120,9 +129,9 @@ func TestLookupTaskSettings(t *testing.T) {
 		}
 	}
 
-	t.Run("pull_request merge-in and merge pass through as set", func(t *testing.T) {
+	t.Run("pull_request merge-in and trail pass through as set", func(t *testing.T) {
 		t.Parallel()
-		for _, value := range []string{PullRequestMergeIn, PullRequestMerge} {
+		for _, value := range []string{PullRequestMergeIn, PullRequestTrail} {
 			anchor := t.TempDir()
 			writeBeamLayer(t, anchor, settingDocument(PullRequestKey, value))
 			got, err := LookupPullRequest(TaskSettingChain{Anchors: []string{anchor}})
@@ -135,8 +144,8 @@ func TestLookupTaskSettings(t *testing.T) {
 	t.Run("nothing set anywhere takes the template's values", func(t *testing.T) {
 		t.Parallel()
 		chain := TaskSettingChain{Anchors: []string{t.TempDir(), t.TempDir()}, Board: t.TempDir()}
-		if got, err := LookupPullRequest(chain); err != nil || got != "on" {
-			t.Errorf("LookupPullRequest() = %q, %v; want on", got, err)
+		if got, err := LookupPullRequest(chain); err != nil || got != "review" {
+			t.Errorf("LookupPullRequest() = %q, %v; want review", got, err)
 		}
 		if got, err := LookupLandNotice(chain); err != nil || got {
 			t.Errorf("LookupLandNotice() = %v, %v; want false", got, err)
@@ -144,16 +153,16 @@ func TestLookupTaskSettings(t *testing.T) {
 		if got, err := LookupAutonomy(chain); err != nil || got {
 			t.Errorf("LookupAutonomy() = %v, %v; want false", got, err)
 		}
-		if got, source, err := LookupWithSource(chain, PullRequestKey); err != nil || got != "on" || source != HubWideSource {
-			t.Errorf("LookupWithSource(pull_request) = %q, %d, %v; want on, %d", got, source, err, HubWideSource)
+		if got, source, err := LookupWithSource(chain, PullRequestKey); err != nil || got != "review" || source != HubWideSource {
+			t.Errorf("LookupWithSource(pull_request) = %q, %d, %v; want review, %d", got, source, err, HubWideSource)
 		}
 	})
 
 	t.Run("a chain with no board dir skips the hub default", func(t *testing.T) {
 		t.Parallel()
 		got, err := LookupPullRequest(TaskSettingChain{Anchors: []string{t.TempDir()}})
-		if err != nil || got != "on" {
-			t.Errorf("LookupPullRequest() = %q, %v; want on", got, err)
+		if err != nil || got != "review" {
+			t.Errorf("LookupPullRequest() = %q, %v; want review", got, err)
 		}
 	})
 }
@@ -169,7 +178,7 @@ func TestLookupTaskSettings_ExpandsAnEnvMarkerAsLoadConfigDoes(t *testing.T) {
 		// want is the lookup's answer; wantRefusal names a substring of its refusal instead.
 		want, wantRefusal string
 	}{
-		{name: "a marker the place's .env resolves reads as its value", env: "LYM_TEST_PULL_REQUEST_MODE=merge\n", want: PullRequestMerge},
+		{name: "a marker the place's .env resolves reads as its value", env: "LYM_TEST_PULL_REQUEST_MODE=trail\n", want: PullRequestTrail},
 		{name: "a marker that resolves to a value the key does not take is refused", env: "LYM_TEST_PULL_REQUEST_MODE=required\n", wantRefusal: "required"},
 	}
 	for _, tt := range tests {
@@ -210,6 +219,8 @@ func TestLookupTaskSettings_RefusesAValueTheKeyDoesNotTake(t *testing.T) {
 		{name: "pull_request required in a worktree file", key: PullRequestKey, value: "required", place: "worktree"},
 		{name: "land_notice all in a worktree file", key: LandNoticeKey, value: "all", place: "worktree"},
 		{name: "land_notice per-task in a worktree file", key: LandNoticeKey, value: "per-task", place: "worktree"},
+		{name: "pull_request on, renamed to review, in a worktree file", key: PullRequestKey, value: "on", place: "worktree"},
+		{name: "pull_request merge, renamed to trail, in a local file", key: PullRequestKey, value: "merge", place: "local"},
 		{name: "pull_request unknown in a local file", key: PullRequestKey, value: "maybe", place: "local"},
 		{name: "land_notice merge in the hub default", key: LandNoticeKey, value: "merge", place: "hub"},
 		{name: "autonomy yes in a worktree file", key: AutonomyKey, value: "yes", place: "worktree"},

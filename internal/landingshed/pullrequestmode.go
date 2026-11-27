@@ -31,7 +31,7 @@ type PullRequestDecision struct {
 	// Open reports whether the landing goes through a pull request.
 	Open bool
 	// MergeAtOnce reports whether the landing opens a pull request and squash-merges it on GitHub at once, with no review.
-	// A landing whose beam.yaml pull_request is merge asks for it, and so does every beam.
+	// A landing whose beam.yaml pull_request is trail asks for it, and so does every beam.
 	MergeAtOnce bool
 	// TrueMerge reports whether the landing keeps the task branch's history.
 	// It lands as a fast-forward or a merge commit, never a squash,
@@ -66,17 +66,17 @@ type BeamPullRequest struct {
 
 // ResolvePullRequest decides whether a landing goes through a pull request.
 // mode is beam.yaml's pull_request for this landing, found by the per-task lookup:
-// one of on, off, merge or merge-in.
+// one of review, off, trail or merge-in.
 // A merge-in mode on a landing that is no beam's wants no pull request, whatever GitHub's rules say, and marks TrueMerge:
 // a pull request squashes away the merged commit, and the merge is reviewed again in the beam's own pull request.
 // On a beam, merge-in reads as off.
 // parentRuleRequired reports whether GitHub's rules for the parent branch require a pull request.
 // A landing without a pull request ends in a direct push, and GitHub refuses that push.
-// A pull request is required when the mode is merge or GitHub's rules require one.
+// A pull request is required when the mode is trail or GitHub's rules require one.
 // A pull request is wanted when the beam's landing record holds one or when it is required.
-// It is also wanted when the mode is on and the landing is no beam's.
-// Under on or off, a beam whose record holds none wants none.
-// A pull request is marked MergeAtOnce when the mode is merge or the landing is a beam's.
+// It is also wanted when the mode is review and the landing is no beam's.
+// Under review or off, a beam whose record holds none wants none.
+// A pull request is marked MergeAtOnce when the mode is trail or the landing is a beam's.
 // A beam always lands by squash on GitHub with no review.
 // A wanted pull request needs, in this order:
 // an origin on github.com, an origin whose URL names owner and repository, an upstream for the parent and no push skip.
@@ -93,8 +93,8 @@ func ResolvePullRequest(mode string, beam BeamRecord, parentRuleRequired bool, o
 	if !isBeam && mode == beamsetting.PullRequestMergeIn {
 		return PullRequestDecision{TrueMerge: true, Reason: fmt.Sprintf("no pull request: %s, so the task lands by a true merge whatever GitHub's rules say", modeClause)}
 	}
-	mergeAtOnce := mode == beamsetting.PullRequestMerge || isBeam
-	required := mode == beamsetting.PullRequestMerge || parentRuleRequired
+	mergeAtOnce := mode == beamsetting.PullRequestTrail || isBeam
+	required := mode == beamsetting.PullRequestTrail || parentRuleRequired
 
 	beamClause := ""
 	switch beam {
@@ -108,11 +108,11 @@ func ResolvePullRequest(mode string, beam BeamRecord, parentRuleRequired bool, o
 	switch {
 	case beam == BeamWithPullRequest:
 		wanted, demand = true, "the beam's landing record holds a pull request"
-	case mode == beamsetting.PullRequestMerge:
+	case mode == beamsetting.PullRequestTrail:
 		wanted, demand = true, modeClause
 	case parentRuleRequired:
 		wanted, demand = true, "GitHub's rules for the parent branch require a pull request"
-	case mode == beamsetting.PullRequestOn && !isBeam:
+	case mode == beamsetting.PullRequestReview && !isBeam:
 		wanted, demand = true, modeClause
 	}
 	if !wanted {

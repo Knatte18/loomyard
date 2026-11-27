@@ -76,7 +76,7 @@ func withAmendConfig(allowance, hardCap int, bounces func() (int, int, bool, err
 	}
 }
 
-// withReviewInput makes the Bouncer read path as its one non-full review input, stamped offset after the harness's clock.
+// withReviewInput makes the Bouncer read path as its one review input, stamped offset after the harness's clock.
 func withReviewInput(path string, offset time.Duration) reentryOption {
 	return withReviewInputs(offset, ReviewInput{Path: path})
 }
@@ -455,78 +455,19 @@ func TestBouncer_Amendment(t *testing.T) {
 				t.Errorf("AmendmentNote() = %q; want the amendment scope and no input named", note)
 			}
 		}},
-		{"SendBackInputOverAnUnchangedSubjectStartsAFullGeneration", func(t *testing.T) {
-			const sendBack = "/scratch/pr-findings-1.md"
+		{"ReviewInputStartsAFullGenerationWhenFullGenerationSays", func(t *testing.T) {
+			const input = "/scratch/Parent-Align-fixer-report.md"
 			verdict := "CONVERGED"
-			h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil), withReviewInputs(time.Hour, ReviewInput{Path: sendBack, Full: true}))
-			if err := h.settleRoundOne(nil); err != nil {
-				t.Fatalf("first Call() error = %v; want nil", err)
-			}
-
-			if ptr := shedfake.RequireOutcome(t, h.b, shedengine.Stuck); !ptr.GenerationStart {
-				t.Error("seed Stuck GenerationStart = false; want true")
-			}
-			requireFullGenerationOver(t, h, sendBack)
-		}},
-		{"SendBackInputAfterAnAllowanceZeroSettleStartsAFullGeneration", func(t *testing.T) {
-			const sendBack = "/scratch/pr-findings-1.md"
-			verdict := "CONVERGED"
-			var inputs []ReviewInput
-			h := newAmendment(t, &verdict, nil, withAmendConfig(0, 0, nil), func(h *reentry, cfg *BouncerConfig) {
-				cfg.ReviewInputs = func() ([]ReviewInput, error) { return inputs, nil }
-			})
-			h.layoutSettledRound1(h.subject, nil)
-			h.subject = amendmentChangedSubject
-			shedfake.RequireOutcome(t, h.b, shedengine.Done)
-			if record := h.settleRecord(); record.Generation != 2 || record.Round != 0 {
-				t.Fatalf("settle record = generation %d round %d; want the round-0 record of generation 2", record.Generation, record.Round)
-			}
-
-			inputs = []ReviewInput{{Path: sendBack, WrittenAt: h.now.Add(time.Hour), Full: true}}
-			if ptr := shedfake.RequireOutcome(t, h.b, shedengine.Stuck); !ptr.GenerationStart {
-				t.Error("seed Stuck GenerationStart = false; want true")
-			}
-			generation := h.generation()
-			if generation.Number != 3 || generation.Amendment || !hasInputPaths(generation, sendBack) {
-				t.Errorf("generation record = %+v; want generation 3, not an amendment, over %q", generation, sendBack)
-			}
-		}},
-		{"SendBackInputStartsAFullGenerationWhateverFullGenerationSays", func(t *testing.T) {
-			const sendBack = "/scratch/pr-findings-1.md"
-			verdict := "CONVERGED"
-			h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil), withReviewInputs(time.Hour, ReviewInput{Path: sendBack, Full: true}), func(h *reentry, cfg *BouncerConfig) {
+			h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil), withReviewInputs(time.Hour, ReviewInput{Path: input}), func(h *reentry, cfg *BouncerConfig) {
 				cfg.FullGeneration = true
 			})
 			if err := h.settleRoundOne(nil); err != nil {
 				t.Fatalf("first Call() error = %v; want nil", err)
 			}
-
-			shedfake.RequireOutcome(t, h.b, shedengine.Stuck)
-			requireFullGenerationOver(t, h, sendBack)
-		}},
-		{"SendBackInputAndFixerReportBothStartAFullGenerationHoldingBoth", func(t *testing.T) {
-			const sendBack = "/scratch/pr-findings-1.md"
-			const fixerReport = "/scratch/Parent-Align-fixer-report.md"
-			verdict := "CONVERGED"
-			h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil), withReviewInputs(time.Hour, ReviewInput{Path: fixerReport}, ReviewInput{Path: sendBack, Full: true}))
-			if err := h.settleRoundOne(nil); err != nil {
-				t.Fatalf("first Call() error = %v; want nil", err)
-			}
-
-			shedfake.RequireOutcome(t, h.b, shedengine.Stuck)
-			requireFullGenerationOver(t, h, fixerReport, sendBack)
-		}},
-		{"SendBackInputOverAChangedSubjectStartsAFullGeneration", func(t *testing.T) {
-			const sendBack = "/scratch/pr-findings-1.md"
-			verdict := "CONVERGED"
-			h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil), withReviewInputs(time.Hour, ReviewInput{Path: sendBack, Full: true}))
-			h.layoutSettledRound1(h.subject, nil)
 			h.subject = amendmentChangedSubject
 
-			if ptr := shedfake.RequireOutcome(t, h.b, shedengine.Stuck); !ptr.GenerationStart {
-				t.Error("seed Stuck GenerationStart = false; want true")
-			}
-			requireFullGenerationOver(t, h, sendBack)
+			shedfake.RequireOutcome(t, h.b, shedengine.Stuck)
+			requireFullGenerationOver(t, h, input)
 		}},
 		{"AmendmentRecordHoldingAReviewInputRendersNoReviewInputNote", func(t *testing.T) {
 			verdict := "CONVERGED"

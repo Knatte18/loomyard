@@ -53,7 +53,7 @@ func TestBeamModes(t *testing.T) {
 	}
 	writeBeamFile(t, h.BoardDir(), "autonomy: false\npull_request: \"off\"\n")
 	writeBeamFile(t, l.AnchorPath(), "autonomy: true\n")
-	writeBeamFile(t, beamLocation.AnchorPath(), "pull_request: \"merge\"\n")
+	writeBeamFile(t, beamLocation.AnchorPath(), "pull_request: \"trail\"\n")
 	const pullRequestURL = "https://github.com/example/repo/pull/12"
 	setPullRequest := func(rec *pawlengine.LandingRecord) error {
 		rec.PullRequest = &pawlengine.LandingPullRequest{Number: 12, URL: pullRequestURL}
@@ -79,7 +79,7 @@ func TestBeamModes(t *testing.T) {
 		},
 		Beams: map[string]boardengine.BeamMode{beam: {
 			Autonomy:          boardengine.SettingValue{Value: "on", SetBy: boardengine.RootSubject},
-			PullRequest:       boardengine.SettingValue{Value: "merge", SetBy: beam},
+			PullRequest:       boardengine.SettingValue{Value: "trail", SetBy: beam},
 			ParentBranch:      primeBranch,
 			PullRequestNumber: 12,
 			PullRequestURL:    pullRequestURL,

@@ -41,13 +41,10 @@ File the bug a repeating stop shows with `lym selfreport create` before you rela
 lym classifies no halt: you classify each one against this list, and a halt outside it is never relayed as severe.
 A relay opens `[operator] severe halt <slug>:`, then the halt, what you tried and the one action you ask for.
 
-## PR-Review requests
+## A run at PR-Review
 
-A `[pr-review request]` line asks you to review a run's open pull request.
-Answer it with `lym loom parent-review answer <slug> --ask <n>`, with `--satisfied` or `--findings-file <path>`.
-When a run's latest PR-Review ask ended no-parent or undelivered, such as one its PR-Review session mails you, answer that ask the same way:
-your answer stands at the head the ask named.
-Never approve, merge, close or comment on the pull request on GitHub.
+Autonomy leaves a run's pull request to the operator: a run waiting at PR-Review waits for the operator's own ending.
+Never approve, merge, close or comment on the pull request on GitHub, and never end its review.
 
 ## A drained beam
 

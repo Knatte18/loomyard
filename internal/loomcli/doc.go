@@ -48,14 +48,7 @@
 //
 // `parent-review answer` records the parent orch's answer to the run's latest ask.
 // It admits the operator's unnamed shell, the run's parent orch and the strand the ask went to.
-// It also answers a latest PR-Review ask that ended no-parent or undelivered,
-// so a parent the ask never reached can still settle its head.
 // `parent-review await` is the asking agent's capped wait on the same ask, and it writes nothing but a timeout.
-// `parent-review ask` records and posts a PR-Review ask at the task head for the review's session.
-// It signs the post as the session's own strand, where the PR-Review row's own ask signs as the loom program.
-// Only that session runs it.
-// It admits only a review recorded under autonomy, and it refuses an ask that already awaits an answer at the head.
-// It also refuses an ask at a head where a satisfied answer stands.
 // The Discussion-Review parent seat reads `loom.discussion.review_ask_parent`.
 // The Code-Review parent seat reads `loom.code.review_ask_parent`.
 // They read them on each call, and an unreadable value reads as false.
@@ -224,13 +217,7 @@
 //
 // `lym loom pr-continue` sets the continue flag in the run's pull-request record when the operator ends a review.
 // It is refused until the PR-Review row has opened the pull request.
-// Under a review whose record holds autonomy true, it sets the flag only on the parent's satisfied answer.
-// That answer must stand at the current head.
-// A record whose autonomy is false or absent takes no parent answer.
-// `lym loom pr-findings <file>` takes findings in burler's review format.
-// It sends the set back to Code-Review when the reroute edge can fire.
-// That needs a BLOCKING finding or findings exceeding `pr.review_small_max`; otherwise it only counts them.
-// It is refused while the task worktree has uncommitted paths.
+// It is also refused from any lym agent session, one whose LYM_STRAND_NAME is set, so no agent ends a review.
 // `lym loom sampler-done` sets the done flag in the Sampler-Session record and nothing else.
 // It is refused on a recipe with no SamplerSession row and while the run stands at another row.
 // It is also refused when the record names no session or the task worktree has uncommitted paths.

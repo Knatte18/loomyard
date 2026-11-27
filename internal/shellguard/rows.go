@@ -922,7 +922,7 @@ func rowsAfterRawGo() []Row {
 			Switch:   SwitchNone,
 		},
 		{
-			// Installed only for a launch spec that sets DenyPublish, such as the PR-Review session's, which reads the pull request, comments on it and edits its title and body through gh.
+			// Installed only for a launch spec that sets DenyPublish, such as the Sampler-Session's launch.
 			// A guardrail, not a barrier.
 			// A script file, env forms the pattern does not list, a git alias or hub pass.
 			// So does a flag word between gh and its command.
@@ -931,7 +931,8 @@ func rowsAfterRawGo() []Row {
 			// A gh spelling after a separator inside a quote commandPositionPattern misreads is falsely denied.
 			// So is a gh pr review short-flag cluster whose attached body holds an a or an r.
 			// A gh api call with an unbalanced apostrophe before its mutation word passes, since the scan reads a quoted string whole.
-			// A lym verb that pushes the task branch, such as lym fabric push or the detached both-sides push a run-record commit fires, reaches origin from the session too, so the row gates what lands, not what reaches the pull request.
+			// A lym verb that pushes the task branch reaches origin from the session too.
+			// lym fabric push is one, and so is the detached both-sides push a run-record commit fires.
 			Name:     "publish",
 			Patterns: []string{publishCommandPattern()},
 			Steer:    steerPublishDeny(),

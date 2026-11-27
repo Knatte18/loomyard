@@ -13,7 +13,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -395,7 +394,7 @@ func TestPrePushCheckWiredIntoDeps(t *testing.T) {
 	t.Parallel()
 	location := &lymcwd.Location{RepoName: "repo", HubPath: t.TempDir(), WorktreeName: "task", AnchorRel: "."}
 
-	pullRequest := pullRequestDepsGuardedBy(stoppingPrePushCheck(), location, "main", false, &shuttleengine.Runner{})
+	pullRequest := pullRequestDepsGuardedBy(stoppingPrePushCheck(), location, "main", false)
 	if err := pullRequest.PushTask(); !errors.Is(err, errPushStopped) {
 		t.Errorf("PushTask() error = %v; want it to wrap errPushStopped", err)
 	}

@@ -50,7 +50,7 @@ type prLanding struct {
 // beamModeUnreadableReason is the Stuck reason of a failed lookup of beam.yaml's pull_request for a landing.
 // err is the lookup's error.
 func beamModeUnreadableReason(err error) string {
-	return fmt.Sprintf("%s for this landing could not be read: %v; way forward: fix the beam.yaml file the error names, with lym config beam --set pull_request=<on|off|merge|merge-in> run in that worktree, or for the hub's default file with lym config beam --layer default --set pull_request=<on|off|merge|merge-in> from the prime, then run lym loom resume; a run_settings change applies from the next run", beamPullRequestName(), err)
+	return fmt.Sprintf("%s for this landing could not be read: %v; way forward: fix the beam.yaml file the error names, with lym config beam --set pull_request=<review|off|trail|merge-in> run in that worktree, or for the hub's default file with lym config beam --layer default --set pull_request=<review|off|trail|merge-in> from the prime, then run lym loom resume; a run_settings change applies from the next run", beamPullRequestName(), err)
 }
 
 // pushHaltReason is the Stuck reason of a push of the task branch that failed for a reason other than a transient one.
@@ -324,8 +324,8 @@ func (fz *Finalize) pullRequestLanding(ctx context.Context) (prLanding, *ending)
 // A no closes a recorded pull request GitHub reports open and lands locally.
 // A yes needs the recorded pull request, unless it is marked MergeAtOnce;
 // a MergeAtOnce yes has the pull request opened, or reopened if closed, when it merges.
-// A closed pull request whose record holds autonomy true halts whatever the operator's ending and MergeAtOnce say.
-// It is neither reopened nor merged.
+// A closed pull request is reopened and merged when the operator ended its review or the yes is marked MergeAtOnce.
+// Any other closed one halts.
 // A non-nil ending ends the call at once.
 func (fz *Finalize) landingForDecision(ctx context.Context, decision PullRequestDecision, origin Origin, rec pullrequest.Record, found bool) (prLanding, *ending) {
 	pr := fz.deps.PullRequest
@@ -354,7 +354,7 @@ func (fz *Finalize) landingForDecision(ctx context.Context, decision PullRequest
 	case pullrequest.StateOpen:
 		return prLanding{merge: true, atOnce: decision.MergeAtOnce, api: api, record: rec}, nil
 	case pullrequest.StateClosed:
-		if recordedAutonomy(rec) || (!rec.ReviewEnded && !decision.MergeAtOnce) {
+		if !rec.ReviewEnded && !decision.MergeAtOnce {
 			return prLanding{}, halt(ctx, finalizeName, LandingStopPrefix+fmt.Sprintf("the run's pull request %s was closed without a merge; way forward: reopen it on GitHub, then lym loom goto PR-Review, or lym batten cancel %s", rec.URL, fz.deps.Slug))
 		}
 		if decision.MergeAtOnce {
@@ -609,7 +609,7 @@ func (fz *Finalize) mergeRefusalReason(landing prLanding, refusal *pullrequest.M
 		return fmt.Sprintf("GitHub refused to merge pull request %s: %s%s; way forward: settle on GitHub what the message names, then %s", rec.URL, refusal.Message, reported, check)
 	}
 	if refusal.Kind == pullrequest.RefusalMethod && landing.atOnce {
-		return fmt.Sprintf("GitHub refused the squash merge of pull request %s: %s; way forward: allow squash merging in the repository's settings on GitHub, since a landing whose %s is merge always squashes, then run lym loom resume", rec.URL, refusal.Message, beamPullRequestName())
+		return fmt.Sprintf("GitHub refused the squash merge of pull request %s: %s; way forward: allow squash merging in the repository's settings on GitHub, since a landing whose %s is trail always squashes, then run lym loom resume", rec.URL, refusal.Message, beamPullRequestName())
 	}
 	if refusal.Kind == pullrequest.RefusalMethod {
 		return fmt.Sprintf("GitHub refused the merge method for pull request %s: %s; way forward: set %s to the method the repository allows with lym config landing --set squash=<true|false> in the prime worktree, or allow the method in the repository's settings, then run lym loom resume", rec.URL, refusal.Message, keyName(squashKey))
