@@ -36,6 +36,7 @@
 // A payload may carry either only as the entry's stored value; any other value is refused.
 // A front task's project and kind are fixed, and a run-held entry takes no change to either field.
 // SetOwners writes the beam flag through OwnerRequest.Beam, in the one commit that records the owner.
+// Board.EndBeam clears it for a beam that ends with no landing, leaving a plain project with its members.
 //
 // # Labels
 //
@@ -76,7 +77,7 @@
 // ParentBeam and Board.ParentBeamOf keep the empty slug for the prime, and every owner read and beam verb takes it so.
 // The list view prints the prime as RootSubject, `root`, since an empty value reads as no beam.
 //
-// SetOwners is the only writer of an owner or the prime owner.
+// SetOwners is the only writer that records an owner or the prime owner.
 // It pulls the board level with its upstream, writes one commit, and pushes it.
 // Without Takeover, it leaves an entry whose effective owner is another machine untouched.
 // The exception is an entry whose recorded owner Replace names, which it reports in OwnerWrite.Lost.
@@ -86,6 +87,9 @@
 // and a push a held lock keeps deferring is refused naming `lym board sync`.
 // An upsert payload may carry owner_machine only as the entry's effective owner, which is dropped as a no-op;
 // any other value is refused naming `lym adopt`.
+// Board.EndBeam is the one other write of an owner: it clears the owner of a beam whose life ends with no landing.
+// It takes the ordinary write and detached sync.
+// That is enough because the cancel that ends such a beam has already refused one another machine owns.
 //
 // # Machine registry and holds
 //

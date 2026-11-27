@@ -26,7 +26,7 @@
 // A second cancel reads them to finish an interrupted one.
 // The order is: end the registered processes; take batten's locks; stop the pair's strands and the tackler;
 // remove the pair and its task branches with --remove; remove the records; leave the claim draft;
-// lift the slug's own pauses; push and notify; and release the cancel's lock last.
+// lift the slug's own pauses; push; clear a beam's flag with --remove; notify; and release the cancel's lock last.
 // Without --remove, the pair is kept.
 // The cancel names "lym batten cancel <slug> --remove" as the step before the slug runs again.
 // Records already removed and untracked at the records HEAD count as removed.
@@ -34,12 +34,17 @@
 // An unreachable origin ends only the processes and strands.
 // It leaves the intent in the record and posts a notice naming the cancel to run once origin answers.
 // The cancel of a beam project first runs the hub's origin reconcile.
-// It refuses while the beam has members, and names the way out for each one:
-// to land or cancel first, or, once the beam's pawl run holds its entry, to cancel and move off the beam.
+// It refuses while work remains under the beam: a member, or a pair forked from it.
+// With --remove, a task member with neither a pair here nor a run status is no such work.
+// It names the way out for each blocker, which is to land or cancel it first.
+// Once the beam's pawl run holds its entry, the way out is to cancel it.
+// Without --remove, a member is then moved off the beam too.
 // With origin unreachable it refuses and names the reconcile's way forward.
-// A beam with no members is ended like a task, its dobby with its run.
+// A beam with nothing refusing it is ended like a task, its dobby with its run.
 // Its orch and watcher are then stopped; a failure there is only a warning on the report.
 // `lym beam create <slug>` starts the run again.
+// With --remove the beam's life ends too: the project's beam flag is cleared and its members are untouched.
+// A beam flag that is all that is left of the slug still counts as left for --remove.
 //
 // "lym batten overview" (overview.go) is the hidden pane verb that `lym beam start` runs.
 // `lym beam start` runs it in the runs strand of the prime and of each beam.

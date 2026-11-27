@@ -26,7 +26,8 @@ The rest of a Finalize already past its parent-side merge finishes on the run's 
 - The rest of a Finalize already past its parent-side merge finishes on the run's owner.
   A landing in flight is therefore never stranded.
 - An owner is recorded for a beam project as `owner_machine` and for the root as `prime_owner`.
-  Only `boardengine`'s owner setter writes either.
+  Only `boardengine`'s owner setter records either.
+  `Board.EndBeam` alone also clears one: the owner of a beam whose life ends with no landing.
   It takes a project or the prime another machine owns only when `lym adopt` asks for it, or when `lym machine name`'s sweep names that recorded owner among this machine's former names.
   A task and a grouping project record none, and a load drops the key an older machine recorded on one.
 - Every other entry reads the owner of its parent, and so does a beam project with no owner recorded.

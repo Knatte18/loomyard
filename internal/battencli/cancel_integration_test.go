@@ -1,6 +1,6 @@
 // cancel_integration_test.go drives "lym batten cancel" through clihelp.ExecuteIn over hubforge hubs.
-// It covers a blocked run with no pair, a kept pair whose reconcile only judges, a removed pair,
-// and the re-run that finishes an unfinished removal.
+// It covers a blocked run with no pair, a kept pair whose reconcile only judges, and a removed pair.
+// It also covers the re-run that finishes an unfinished removal, and the removal of a beam.
 
 package battencli
 
@@ -24,15 +24,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/runfsm"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/permkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -48,7 +51,12 @@ func seedCancelRun(t *testing.T, h *hubforge.Hub, slug, producer string, rowStat
 	if err := board.SetStatus(slug, &claim); err != nil {
 		t.Fatalf("claim %q on the board: %v", claim, err)
 	}
+	seedRunRecords(t, h, slug, producer, rowState)
+}
 
+// seedRunRecords writes and commits a batten seed and a status at producer in rowState for slug on h's prime.
+func seedRunRecords(t *testing.T, h *hubforge.Hub, slug, producer string, rowState shedengine.State) {
+	t.Helper()
 	if err := shedrun.WriteSeed(h.Location, slug, shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatalf("write the seed: %v", err)
 	}
@@ -408,6 +416,121 @@ func TestCancelIntegration_FinishesAnUnfinishedRemoval(t *testing.T) {
 		t.Errorf("PendingTeardowns() after the cancel of a gone pair = (%+v, %v); want none", pending, err)
 	}
 	envelope.RequireErr(t, runCancel(t, h.PrimeWorktree(), slug, "--remove"), "nothing of "+slug+" is left to cancel")
+}
+
+// TestCancelIntegration_RemoveOfABeamLeavesAPlainProject cancels beams with --remove over a real hub board.
+// The first beam has a paused run, a draft member with no pair, and a pair whose origin record has no beam mark.
+// The removal ends the beam, leaves its member, and warns of no orch left unstopped.
+// The second beam has only its flag left once a removal fails to clear it.
+// A board that cannot be read refuses that cancel, and the re-run clears the flag.
+func TestCancelIntegration_RemoveOfABeamLeavesAPlainProject(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	const lone, member = "cancel-lone-beam", "cancel-beam-member"
+	slug := hubforge.TemplatePairSlug
+	boardkit.InstallReplay(t)
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{slug}})
+	board, err := boardengine.OpenHub(h.Path)
+	if err != nil {
+		t.Fatalf("open the hub board: %v", err)
+	}
+	for _, entry := range []map[string]any{
+		{"slug": slug, "kind": "project"},
+		{"slug": lone, "kind": "project"},
+		{"slug": member, "kind": "task", "project": slug},
+	} {
+		entry["title"] = entry["slug"]
+		entry["labels"] = []string{"bug"}
+		if _, err := board.UpsertTask(entry); err != nil {
+			t.Fatalf("seed board entry %v: %v", entry["slug"], err)
+		}
+	}
+	machine, err := machinename.Name()
+	if err != nil {
+		t.Fatalf("machine name: %v", err)
+	}
+	if _, err := boardengine.SetOwners(h.BoardDir(), boardengine.OwnerRequest{Machine: machine, Slugs: []string{slug, lone}, Beam: true}); err != nil {
+		t.Fatalf("flag the beam projects: %v", err)
+	}
+	seedRunRecords(t, h, slug, battenrecipe.NameRunShed, shedengine.StatePaused)
+
+	got := envelope.RequireOK(t, runCancel(t, h.PrimeWorktree(), slug, "--remove"))
+
+	if got.Raw["beam_ended"] != true || got.Raw["pair_removed"] != true {
+		t.Errorf("envelope = %v; want the pair removed and the beam ended", got.Raw)
+	}
+	if warnings, _ := got.Raw["warnings"].([]any); slices.ContainsFunc(warnings, func(warning any) bool {
+		text, _ := warning.(string)
+		return strings.Contains(text, "the beam's orch was not stopped")
+	}) {
+		t.Errorf("warnings = %v; want no orch stop attempted on an unmarked pair", warnings)
+	}
+	ended, found, err := board.GetTask(slug)
+	if err != nil || !found {
+		t.Fatalf("GetTask(%s) = found %v, %v; want the project kept", slug, found, err)
+	}
+	if ended.Beam || ended.Recipe != "" || ended.OwnerMachine != "" || ended.BeamColor != "" {
+		t.Errorf("beam, recipe, owner, colour = %v, %q, %q, %q; want false and all empty", ended.Beam, ended.Recipe, ended.OwnerMachine, ended.BeamColor)
+	}
+	kept, found, err := board.GetTask(member)
+	if err != nil || !found || kept.Project != slug || kept.Status == nil || *kept.Status != boardengine.StatusDraft {
+		t.Errorf("member = %+v, found %v, %v; want a draft still under %s", kept, found, err, slug)
+	}
+	if _, err := board.UpsertTask(map[string]any{"slug": slug, "beam": false}); err != nil {
+		t.Errorf("UpsertTask(%s, beam false) error = %v; want nil once the beam is ended", slug, err)
+	}
+
+	boardFile := filepath.Join(h.BoardDir(), "board.json")
+	// Each subtest makes the board unreadable partway through a cancel, and its end restores it.
+	t.Run("FailedFlagClearNamesTheRerunAfterThePush", func(t *testing.T) {
+		seedRunRecords(t, h, lone, battenrecipe.NameRunShed, shedengine.StatePaused)
+		deps, err := hubCancelDeps(h.Location, lone)
+		if err != nil {
+			t.Fatalf("hubCancelDeps(%s): %v", lone, err)
+		}
+		push, pushed := deps.PushRecords, false
+		deps.PushRecords = func() (bool, error) {
+			owed, err := push()
+			pushed = true
+			permkit.Chmod(t, boardFile, 0)
+			return owed, err
+		}
+
+		_, err = cancelRun(context.Background(), lone, true, deps)
+
+		want := "could not clear the beam flag of " + lone
+		if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), `run "lym batten cancel `+lone+` --remove" again`) {
+			t.Errorf("cancelRun() error = %v; want %q naming the re-run", err, want)
+		}
+		if !pushed {
+			t.Error("the records were not pushed before the failed flag clear")
+		}
+	})
+
+	t.Run("UnreadableBoardRefusesTheFlagAloneCancel", func(t *testing.T) {
+		deps, err := hubCancelDeps(h.Location, lone)
+		if err != nil {
+			t.Fatalf("hubCancelDeps(%s): %v", lone, err)
+		}
+		list := deps.LiveRecords
+		deps.LiveRecords = func() ([]runproc.Record, error) {
+			permkit.Chmod(t, boardFile, 0)
+			return list()
+		}
+
+		_, err = cancelRun(context.Background(), lone, true, deps)
+
+		if want := "could not read the board entry of " + lone; err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("cancelRun() error = %v; want it to contain %q", err, want)
+		}
+	})
+
+	got = envelope.RequireOK(t, runCancel(t, h.PrimeWorktree(), lone, "--remove"))
+
+	if got.Raw["beam_ended"] != true {
+		t.Errorf("envelope = %v; want the flag left alone cleared", got.Raw)
+	}
 }
 
 // mustRunGit runs git with args in dir and returns its output, failing the test on an error.

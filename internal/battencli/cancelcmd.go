@@ -70,12 +70,13 @@ It skips every wait a teardown makes for a working driver.
 With origin unreachable it only ends the run's processes and strands and posts a notice;
 running it again finishes the cancel.
 
-The cancel of a beam first runs the hub's origin reconcile and refuses while members remain,
-naming each to land or cancel first. A beam with no members ends the pawl run's processes and
-the beam's dobby, then stops its orch and watcher; "lym beam create <slug>" starts the run again.
+A beam's cancel first reconciles the hub with origin and refuses while members remain, naming each
+way forward. It ends the pawl run and dobby, then stops the orch and watcher; "lym beam create <slug>"
+restarts it. --remove passes a task with no pair here and no run status, and clears the beam flag.
 
-Output: a JSON envelope of the slug, its state and row, what ended, and whether the pair and record were
-removed or kept, the claim cleared and the push spawned; push_spawned says the push was started, not that origin took it.
+Output: a JSON envelope of the slug, state, row, what ended, whether the pair and record were removed
+or kept, the claim and beam flag (beam_ended) cleared, and push_spawned: whether the push
+started, not whether origin took it.
 
 Example:
   lym batten cancel some-slug
@@ -166,6 +167,7 @@ func cancelEnvelope(report cancelReport) map[string]any {
 		"records_removed":         report.RecordsRemoved,
 		"record_kept":             report.RecordKept,
 		"claim_cleared":           report.ClaimCleared,
+		"beam_ended":              report.BeamEnded,
 		"lifted":                  slices.Concat([]string{}, report.Lifted),
 		"push_spawned":            report.PushSpawned,
 		"notice_posted":           report.NoticePosted,
@@ -392,8 +394,20 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 			if err != nil {
 				return err
 			}
+			// A pair the pawl run ended before its Beam-Up marked it runs no orch, which refuses an unmarked pair.
+			origin, found, err := fabricengine.ReadOrigin(beamLocation)
+			if err != nil || !found || !origin.Beam {
+				return err
+			}
 			_, err = orchcli.BeamDown(beamLocation)
 			return err
+		},
+		EndBeam: func() (bool, error) {
+			hubBoard, err := board()
+			if err != nil {
+				return false, err
+			}
+			return hubBoard.EndBeam(slug)
 		},
 	}, nil
 }

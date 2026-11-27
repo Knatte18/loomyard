@@ -65,7 +65,7 @@ func checkBeamPayload(s *Store, fields map[string]any) error {
 		return nil
 	}
 	if !proposed {
-		return fmt.Errorf("entry %q is a beam, and the beam flag stays set for the beam's life, which ends when `lym beam land %s` lands it and marks the project done: drop the beam key from the payload", slug, slug)
+		return fmt.Errorf("entry %q is a beam, and the beam flag stays set for the beam's life, which ends when `lym beam land %s` lands it and marks the project done, or when `lym batten cancel %s --remove` ends it and clears the flag: drop the beam key from the payload", slug, slug, slug)
 	}
 	kind, _ := fields["kind"].(string)
 	if held {

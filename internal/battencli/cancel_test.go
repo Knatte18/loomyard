@@ -25,7 +25,7 @@ import (
 const cancelSlug = "some-slug"
 
 // destructiveCancelCalls are the seams whose call means the cancel ended, removed, cleared or lifted something.
-var destructiveCancelCalls = []string{"WriteIntent", "CommitRecord", "EndForCancel", "StopTackler", "RemovePair", "DiscardTaskBranch", "FinishCancel", "RemoveRecords", "ClearClaim", "LiftPauses", "SettleTeardown"}
+var destructiveCancelCalls = []string{"WriteIntent", "CommitRecord", "EndForCancel", "StopTackler", "RemovePair", "DiscardTaskBranch", "FinishCancel", "RemoveRecords", "ClearClaim", "LiftPauses", "SettleTeardown", "EndBeam"}
 
 // cancelFake is a set of fake substrates for cancelRun that records every call and answers from its knobs.
 // Its zero value has no status, no board entry and no records, and nothing alive.
@@ -85,8 +85,8 @@ type cancelFake struct {
 	intentRemove bool
 	finishRemove bool
 
-	// beamProject, hubReport, hubReconcileErr, landRefusal, landingHeld, landBlockers and stopBeamErr answer the beam seams;
-	// the zero value is a task.
+	// The fields from beamProject through stopBeamErr answer the beam seams;
+	// their zero values make the slug a task.
 	beamProject     bool
 	hubReport       fabricengine.OriginReport
 	hubReconcileErr error
@@ -253,6 +253,8 @@ func (f *cancelFake) deps() cancelDeps {
 		LandingHeld:  func() (bool, error) { f.call("LandingHeld"); return f.landingHeld, nil },
 		LandBlockers: func() (BeamLandBlockers, error) { f.call("LandBlockers"); return f.landBlockers, nil },
 		StopBeam:     func() error { f.call("StopBeam"); return f.stopBeamErr },
+		// EndBeam only records the call; what it does to the board is pinned over a real hub.
+		EndBeam: func() (bool, error) { f.call("EndBeam"); return false, nil },
 	}
 }
 
@@ -990,11 +992,103 @@ func TestCancelRun(t *testing.T) {
 			marker:      "none",
 		},
 		{
-			name:      "BeamWithNoMembersEndsAndStopsItsOrchAfterTheEnd",
+			name:      "BeamWithNoMembersEndsAndStopsItsOrchAfterTheEndKeepingItsFlag",
 			setup:     func(f *cancelFake) { f.beamProject = true },
 			wantCalls: []string{"BeamProject", "ReconcileHub", "LandRefusal", "TakeMarker", "EndForCancel", "StopTackler", "StopBeam", "FinishCancel", "ClearClaim"},
-			noCalls:   []string{"LandBlockers"},
+			noCalls:   []string{"LandBlockers", "EndBeam"},
 			marker:    "removed",
+			check: func(t *testing.T, r cancelReport, _ *cancelFake) {
+				if r.BeamEnded {
+					t.Error("BeamEnded = true; want the flag kept by a cancel that keeps the pair")
+				}
+			},
+		},
+		{
+			name:      "RemoveOfABeamClearsItsFlagAfterTheClaim",
+			remove:    true,
+			setup:     func(f *cancelFake) { f.beamProject = true },
+			wantCalls: []string{"StopBeam", "RemovePair", "RemoveRecords", "ClearClaim", "LiftPauses", "PushRecords", "EndBeam", "Notify"},
+			marker:    "removed",
+			check: func(t *testing.T, r cancelReport, _ *cancelFake) {
+				if !r.PairRemoved || !r.ClaimCleared {
+					t.Errorf("report = %+v; want the pair removed and the claim cleared", r)
+				}
+				notice := cancelNotice(cancelReport{Slug: cancelSlug, PairRemoved: true, BeamEnded: true})
+				if !strings.Contains(notice, "its beam flag cleared, leaving a plain project") {
+					t.Errorf("notice = %q; want it to name the cleared beam flag", notice)
+				}
+			},
+		},
+		{
+			name:   "BeamFlagAloneIsLeftToClearWithRemove",
+			remove: true,
+			setup: func(f *cancelFake) {
+				f.beamProject = true
+				f.recordsPresent, f.boardStatus, f.boardFound, f.statusFound = false, nil, false, false
+			},
+			wantCalls: []string{"TakeMarker", "EndForCancel", "RemovePair", "ClearClaim", "EndBeam"},
+			noCalls:   []string{"TeardownPending"},
+			marker:    "removed",
+		},
+		{
+			name: "BeamFlagAloneRefusesWithoutRemove",
+			setup: func(f *cancelFake) {
+				f.beamProject = true
+				f.recordsPresent, f.boardStatus, f.boardFound, f.statusFound = false, nil, false, false
+			},
+			wantErr:     `nothing of some-slug is left to cancel`,
+			nothingLeft: true,
+			noCalls:     append([]string{"TakeMarker"}, destructiveCancelCalls...),
+			marker:      "none",
+		},
+		{
+			name:   "RemoveOfABeamWithOnlyIdleMembersEndsItAndItsFlag",
+			remove: true,
+			setup: func(f *cancelFake) {
+				f.beamProject = true
+				f.landRefusal = errors.New("battencli: the beam some-slug cannot land")
+				f.landBlockers = BeamLandBlockers{Members: []BeamLandMember{{Slug: "n"}}}
+			},
+			wantCalls: []string{"LandRefusal", "LandBlockers", "TakeMarker", "EndForCancel", "EndBeam"},
+			marker:    "removed",
+		},
+		{
+			name:   "RemoveOfAHeldBeamWithOnlyIdleMembersEndsIt",
+			remove: true,
+			setup: func(f *cancelFake) {
+				f.beamProject, f.landingHeld = true, true
+				f.landRefusal = errors.New("battencli: the beam some-slug cannot land")
+				f.landBlockers = BeamLandBlockers{Members: []BeamLandMember{{Slug: "n"}}}
+			},
+			wantCalls: []string{"LandingHeld", "LandBlockers", "EndForCancel", "EndBeam"},
+			marker:    "removed",
+		},
+		{
+			name:   "RemoveOfABeamRefusesOnlyWhatStillWorksUnderIt",
+			remove: true,
+			setup: func(f *cancelFake) {
+				f.beamProject = true
+				f.landRefusal = errors.New("battencli: the beam some-slug cannot land")
+				f.landBlockers = BeamLandBlockers{Members: []BeamLandMember{{Slug: "m", HasPair: true}, {Slug: "n"}, {Slug: "s", Beam: true}}}
+			},
+			wantErr:     "the open entry m is a member of the beam",
+			wantErrAlso: []string{"the open entry s is a member of the beam", `then run "lym batten cancel some-slug --remove" again`},
+			errAbsent:   []string{"the open entry n "},
+			noCalls:     append([]string{"TakeMarker", "StopBeam"}, destructiveCancelCalls...),
+			marker:      "none",
+		},
+		{
+			name:   "RemoveOfAHeldBeamNamesNoMoveForAMemberItCancels",
+			remove: true,
+			setup: func(f *cancelFake) {
+				f.beamProject, f.landingHeld = true, true
+				f.landRefusal = errors.New("battencli: the beam some-slug cannot land")
+				f.landBlockers = BeamLandBlockers{Members: []BeamLandMember{{Slug: "k", Running: true}, {Slug: "n"}}}
+			},
+			wantErr:   "the open entry k is a member of the beam: end it with `lym batten cancel k --remove`",
+			errAbsent: []string{"the open entry n ", "move its `project`", "lym batten run"},
+			noCalls:   append([]string{"TakeMarker", "StopBeam"}, destructiveCancelCalls...),
+			marker:    "none",
 		},
 		{
 			name: "FailingStopBeamWarnsAndTheCancelSucceeds",
