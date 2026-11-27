@@ -20,6 +20,9 @@ const (
 	DeadReasonTimeout = "timeout"
 	// DeadReasonDied is a fixer whose strand is gone.
 	DeadReasonDied = "died"
+	// DeadReasonInterrupted is a fixer whose strand is gone and whose shuttle run lym recorded as interrupted.
+	// A machine stop or a killed pane leaves a run recorded that way.
+	DeadReasonInterrupted = "interrupted"
 )
 
 // Record is what a caller keeps of one spawned fixer strand.

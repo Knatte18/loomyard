@@ -214,7 +214,14 @@ func FixPlanAwait(deps FixPlanDeps, rec *PlanFixerState, wait time.Duration, clk
 		EventsOffset:  rec.EventsOffset,
 		ReplyPath:     PlanFixReplyPath(deps.Geom.ScratchDir),
 	}
-	waited, err := awaitFixerStrand(deps.Engines, deps.Reed, deps.Stopper, strand, "fix-plan", time.Duration(deps.Config.RecoveryTimeoutMin)*time.Minute, wait, clk)
+	waited, err := awaitFixerStrand(gatefixer.Deps{
+		Stopper:    deps.Stopper,
+		Reed:       deps.Reed,
+		Engines:    deps.Engines,
+		ShuttleCfg: deps.ShuttleCfg,
+		AnchorRoot: deps.Geom.AnchorRoot,
+		Clock:      clk,
+	}, strand, "fix-plan", time.Duration(deps.Config.RecoveryTimeoutMin)*time.Minute, wait)
 	if err != nil {
 		return nil, err
 	}

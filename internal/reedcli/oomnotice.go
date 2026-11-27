@@ -70,6 +70,8 @@ func engineOOMBoundaries(eng *reedengine.Engine, location *lymcwd.Location) pane
 // that cgroup may hold other panes or the tmux server, and its kills are none of this strand's.
 // seen is not advanced; it loses each cgroup no live pane is in any more.
 // A cgroup first seen counts from 0, so a kill before the daemon first looked is still told.
+// A cgroup gets at most one notice, under the first strand in it.
+// Strands sharing a pane scope therefore never tell one kill twice.
 func planPaneOOMNotices(strands []reedengine.StrandStatus, readKills func(pid int) (string, int, error), seen paneOOMKills) []paneOOMNotice {
 	var notices []paneOOMNotice
 	current := make(map[string]bool, len(strands))
@@ -79,6 +81,9 @@ func planPaneOOMNotices(strands []reedengine.StrandStatus, readKills func(pid in
 		}
 		cgroup, kills, err := readKills(s.PanePID)
 		if cgroup != "" {
+			if current[cgroup] {
+				continue
+			}
 			current[cgroup] = true
 		}
 		if err != nil || !strings.HasPrefix(path.Base(cgroup), reedengine.PaneScopeUnitPrefix) {

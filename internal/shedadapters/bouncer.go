@@ -1033,7 +1033,21 @@ func (b *Bouncer) recordPass(round int, seed bool, result shuttleengine.Result) 
 	}
 }
 
-// degrade is the single exit for every judge-call infrastructure failure.
+// judgeDiedError is the error of producer's judge run result, which died with no verdict written.
+// It wraps shuttleengine.ErrNotStarted for a judge that never came up.
+// The driver re-steps that error as a transient agent start.
+// It wraps shuttleengine.ErrAgentDied for a judge that died after it started.
+func judgeDiedError(producer string, result shuttleengine.Result) error {
+	switch {
+	case result.NotStarted && result.StartError != "":
+		return fmt.Errorf("shedadapters: %s (%s): judge run outcome %s: %w: %s", producer, bouncerEngineLabel, result.Outcome, shuttleengine.ErrNotStarted, result.StartError)
+	case result.NotStarted:
+		return fmt.Errorf("shedadapters: %s (%s): judge run outcome %s: %w", producer, bouncerEngineLabel, result.Outcome, shuttleengine.ErrNotStarted)
+	}
+	return fmt.Errorf("shedadapters: %s (%s): judge run outcome %s: %w", producer, bouncerEngineLabel, result.Outcome, shuttleengine.ErrAgentDied)
+}
+
+// degrade is the single exit for every judge-call failure that degrades the round rather than failing the call.
 // It first returns a cancellation error for ctx, if there is one, with an empty outcome and pointer.
 // Otherwise it logs args via logger.Warn and returns shedengine.Stuck with the Reason set to msg and a nil error.
 // It never returns shedengine.Done.
@@ -2126,7 +2140,10 @@ func (b *Bouncer) renderParentReviewBlock() (string, error) {
 // The judge's prompt then tells the judge to wait for the answer.
 // It then runs the judge spawn and harvests whatever the spawn produced.
 // A judgment that provably happened after the run returns is acted on whatever the run reported.
-// Without such a judgment, the call degrades on a run error or a non-done outcome.
+// Without such a judgment, a judge run that died fails the call with the error judgeDiedError builds,
+// so a judge that never gave a verdict spends no bounce budget.
+// A run error without such a judgment fails the call the same way, with an error wrapping it.
+// The call degrades on any other non-done outcome.
 // It also degrades on an unreadable or unparseable verdict or ledger.
 func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	reportPath := filepath.Join(b.cfg.RunDir, b.cfg.ReportName(n))
@@ -2183,11 +2200,12 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 	// Respawning over it would start two judges racing to write one verdict.
 	// Archiving first would rename those files out from under the surviving one.
 	result, attached, attachErr := b.cfg.Shuttle.Attach(spec)
-	if attachErr != nil {
+	if attachErr != nil && !attached {
 		return b.degrade(ctx, "shedadapters: bouncer judge attach probe failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", attachErr)
 	}
 
-	var runErr error
+	// An error beside an attached run is that run's own, from the wait on it.
+	runErr := attachErr
 	if attached {
 		logger.Info("shedadapters: attached to a live bouncer judge run instead of respawning", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "sessionID", result.SessionID, "strandGUID", result.StrandGUID)
 	} else {
@@ -2202,7 +2220,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 
 	// A pass whose Run errored has no result to record.
 	// Recording precedes the harvest, so a judgment the guard refuses still shows.
-	if attached || runErr == nil {
+	if runErr == nil {
 		b.recordPass(n, false, result)
 	}
 
@@ -2213,7 +2231,21 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 	}
 
 	if runErr != nil {
-		return b.degrade(ctx, "shedadapters: bouncer judge shuttle run failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", runErr)
+		if cerr := cancelErr(ctx, b.cfg.Name, bouncerEngineLabel); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		logger.Warn("shedadapters: bouncer judge shuttle run failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", runErr)
+		// Wrapped so the driver can still class the start failure, such as a spawn the host refused for now.
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): judge run: %w", b.cfg.Name, bouncerEngineLabel, runErr)
+	}
+	if result.Outcome == shuttleengine.OutcomeDied {
+		// A judge that died before its verdict judged nothing, so its round is no bounce:
+		// the call fails as an infrastructure failure, which spends none of the row's bounce budget.
+		if cerr := cancelErr(ctx, b.cfg.Name, bouncerEngineLabel); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		logger.Warn("shedadapters: bouncer judge run died before giving a verdict", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "notStarted", result.NotStarted)
+		return "", shedengine.OutputPointer{}, judgeDiedError(b.cfg.Name, result)
 	}
 	if result.Outcome != shuttleengine.OutcomeDone {
 		return b.degrade(ctx, "shedadapters: bouncer judge run did not complete", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "outcome", result.Outcome)

@@ -59,6 +59,11 @@ func TestIdleSession(t *testing.T) {
 			want:    true,
 		},
 		{
+			name:    "the prompt Claude Code leaves after an API error",
+			capture: "● API Error: Connection refused (ECONNREFUSED)\n\n" + rule + "\n❯ Resend your message to try again\n" + rule + "\n  ? for shortcuts\n",
+			want:    true,
+		},
+		{
 			name:    "draft line shaped like a labelled rule below the caret",
 			capture: rule + "\n❯ \n  ─── note ─\n  more text\n" + rule + "\n  ? for shortcuts\n",
 			want:    false,
@@ -190,6 +195,9 @@ func TestInputBoxText(t *testing.T) {
 		{"empty box under a done reply and the bypass-permissions footer", doneReplyLayout, "", true},
 		{"styled empty box under a done reply and the bypass-permissions footer", plainBox(styledDoneReplyLayout), "", true},
 		{"draft in box", readPaneFixture(t, "pane-idle-draft.txt"), "please also run the linter", true},
+		{"the prompt Claude Code leaves after an API error", rule + "\n❯ Resend your message to try again\n" + rule + "\n  ? for shortcuts\n", "", true},
+		{"the API error prompt wrapped over two box lines", rule + "\n❯ Resend your message\n  to try again\n" + rule + "\n  ? for shortcuts\n", "", true},
+		{"a draft that only opens with the API error prompt", rule + "\n❯ Resend your message to try again later\n" + rule + "\n  ? for shortcuts\n", "Resend your message to try again later", true},
 		{"wrapped two-line draft", rule + "\n❯ first half of the draft\n  second half of the draft\n" + rule + "\n  ? for shortcuts\n", "first half of the draft second half of the draft", true},
 		{"collapsed paste placeholder", rule + "\n❯ [Pasted text #1 +42 lines]\n" + rule + "\n  ? for shortcuts\n", "[Pasted text #1 +42 lines]", true},
 		{"turn running over an empty box", readPaneFixture(t, "pane-turn-running.txt"), "", true},

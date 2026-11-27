@@ -1376,6 +1376,16 @@ func (e *styledReadinessEngine) PlainBoxCapture(styled string) string {
 	return blankMarkedSpans(styled)
 }
 
+// boxLosingStyledEngine is a test engine whose styled box read loses the input box the plain capture shows.
+// A styled capture whose parse drops a rule line loses the box the same way.
+type boxLosingStyledEngine struct {
+	*readinessEngine
+}
+
+func (e *boxLosingStyledEngine) PlainBoxCapture(string) string {
+	return "no box here"
+}
+
 // guardedReadinessEngine is a test engine with the InterruptGuard capability:
 // a capture shows a running turn when it contains "RUNNING".
 // The capture has both the input box and the running-turn check that Claude's pane probe uses.

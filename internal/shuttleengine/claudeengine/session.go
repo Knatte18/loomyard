@@ -88,6 +88,7 @@ func (c *Claude) PaneTooShort(capture string) bool {
 // The running-turn hint is matched over the whole capture.
 //
 // A box holding only a lone `%` reads idle: that is the shell's end-of-line mark left on screen, never input.
+// A box holding only the prompt Claude Code leaves there after an API error reads idle too.
 // Bound: an operator draft of exactly `%` typed outside reed's quiet window reads as empty,
 // so a paste can merge with it.
 // The operator-activity hold runs before every write behind the pre-write guard,
@@ -100,7 +101,7 @@ func (c *Claude) IdleSession(capture string) bool {
 	if !ok {
 		return false
 	}
-	if holdsOnlyEOLMark(interior) {
+	if holdsOnlyEOLMark(interior) || holdsOnlyAPIErrorPrompt(interior) {
 		return true
 	}
 	for _, line := range interior {
@@ -117,14 +118,16 @@ func (c *Claude) IdleSession(capture string) bool {
 // The box is located from the last caret line to the rules on either side of it;
 // a running turn over an empty box answers ok true with empty text.
 // A box holding only a lone `%`, the shell's end-of-line mark left on screen, answers empty text too.
-// Bound: an operator draft of exactly `%` typed outside reed's quiet window reads as empty, so a paste can merge with it;
+// So does a box holding only the prompt Claude Code puts there after an API error, which nobody typed.
+// Bound: an operator draft of exactly `%`, or of exactly that prompt, typed outside reed's quiet window reads as empty,
+// so a paste can merge with it;
 // the pre-write guard's operator-activity hold still runs before every write.
 func (c *Claude) InputBoxText(capture string) (text string, ok bool) {
 	interior, ok := inputBoxInterior(capture)
 	if !ok {
 		return "", false
 	}
-	if holdsOnlyEOLMark(interior) {
+	if holdsOnlyEOLMark(interior) || holdsOnlyAPIErrorPrompt(interior) {
 		return "", true
 	}
 	var parts []string
@@ -365,6 +368,22 @@ func isBoxRule(line string) bool {
 		}
 	}
 	return true
+}
+
+// apiErrorRetryPrompt is the text Claude Code leaves in its input box after an API error ends a turn.
+// It is Claude Code's own prompt, never input anyone typed.
+const apiErrorRetryPrompt = "Resend your message to try again"
+
+// holdsOnlyAPIErrorPrompt reports whether interior holds nothing but apiErrorRetryPrompt.
+// The caret and side bars are stripped, and the words of every line are joined by single spaces,
+// so the prompt wrapped over lines still matches.
+func holdsOnlyAPIErrorPrompt(interior []string) bool {
+	stripper := strings.NewReplacer(gateCaretMarker, "", "│", "")
+	var words []string
+	for _, line := range interior {
+		words = append(words, strings.Fields(stripper.Replace(line))...)
+	}
+	return strings.Join(words, " ") == apiErrorRetryPrompt
 }
 
 // holdsOnlyEOLMark reports whether interior holds nothing but the shell's end-of-line mark.

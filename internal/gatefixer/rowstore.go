@@ -69,13 +69,23 @@ func (s rowStore) Save(rec *Record) error {
 	})
 }
 
-// count returns how many records the set holds, terminal ones included.
-func (s rowStore) count() (int, error) {
+// budget returns two counts over the set's records, live and terminal ones alike.
+// spent counts the records that spend the visit's fixer budget.
+// interrupted counts the records of an interrupted fixer.
+// An interrupted fixer spends none, so a machine stop never uses up the visit's fixers.
+func (s rowStore) budget() (spent, interrupted int, err error) {
 	records, err := s.load()
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	return len(records), nil
+	for _, rec := range records {
+		if rec.Status == StatusDead && rec.DeadReason == DeadReasonInterrupted {
+			interrupted++
+			continue
+		}
+		spent++
+	}
+	return spent, interrupted, nil
 }
 
 // markTerminal gives the record of guid the status and dead reason, leaving every other record unchanged.

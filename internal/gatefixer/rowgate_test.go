@@ -29,9 +29,13 @@ type fakeFixer struct {
 	// reply is the reply of a fixer that ends done; a non-empty deadReason makes it end dead instead.
 	reply      string
 	deadReason string
-	spawnErr   error
-	awaitErr   error
-	stopErr    error
+	// interruptedFirst is how many terminal answers end interrupted before the scripted one.
+	interruptedFirst int
+	spawnErr         error
+	// spawnErrAfter is how many spawns succeed before spawnErr applies.
+	spawnErrAfter int
+	awaitErr      error
+	stopErr       error
 
 	// onAwait, when set, runs at the start of every wait, outside the fixer's lock.
 	onAwait func()
@@ -45,7 +49,7 @@ type fakeFixer struct {
 func (f *fakeFixer) SpawnOrAttach(store Store, spec Spec) (*Record, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.spawnErr != nil {
+	if f.spawnErr != nil && len(f.specs) >= f.spawnErrAfter {
 		return nil, false, f.spawnErr
 	}
 	f.specs = append(f.specs, spec)
@@ -68,6 +72,10 @@ func (f *fakeFixer) Await(rec *Record, timeout, wait time.Duration) (*Result, er
 		return &Result{Status: StatusRunning}, nil
 	}
 	f.polls = 0
+	if f.interruptedFirst > 0 {
+		f.interruptedFirst--
+		return &Result{Status: StatusDead, DeadReason: DeadReasonInterrupted}, nil
+	}
 	if f.deadReason != "" {
 		return &Result{Status: StatusDead, DeadReason: f.deadReason}, nil
 	}
@@ -498,8 +506,8 @@ func TestWrapRowGate(t *testing.T) {
 		if !strings.HasPrefix(got.Findings, "lint broke") || !strings.Contains(got.Findings, "no provider") || !strings.Contains(got.Findings, "no fixer ran") {
 			t.Errorf("Gate().Findings = %q; want the inner findings and a line naming the spawn error and that no fixer ran", got.Findings)
 		}
-		if count, _ := h.store().count(); count != 0 || gate.calls != 1 {
-			t.Errorf("records = %d, inner calls = %d; want none and 1", count, gate.calls)
+		if spent, interrupted, _ := h.store().budget(); spent+interrupted != 0 || gate.calls != 1 {
+			t.Errorf("records = %d, inner calls = %d; want none and 1", spent+interrupted, gate.calls)
 		}
 	})
 
@@ -513,6 +521,145 @@ func TestWrapRowGate(t *testing.T) {
 		got, err := entry.Gate()
 		if err != nil || got.Passed || got.Findings != "lint broke" || len(h.fixer.specs) != 0 {
 			t.Errorf("Gate() = %+v, %v with %d spawns; want the unchanged failure and no spawn", got, err, len(h.fixer.specs))
+		}
+	})
+
+	t.Run("InterruptedRecordsSpendNoBudget", func(t *testing.T) {
+		t.Parallel()
+		h := newRowHarness(t)
+		h.seed(t, Record{StrandGUID: "a", Status: StatusDone}, Record{StrandGUID: "b", Status: StatusDead, DeadReason: DeadReasonInterrupted}, Record{StrandGUID: "c", Status: StatusDone})
+		gate := &scriptedGate{results: []shuttleengine.GateResult{failing("lint broke"), passing()}}
+		entry := h.wrap(t, verifyEntry(gate, 2))
+
+		got, err := entry.Gate()
+		if err != nil || !got.Passed {
+			t.Errorf("Gate() = %+v, %v; want the pass judged over the fixer's tree", got, err)
+		}
+		if len(h.fixer.specs) != 1 || h.fixer.specs[0].ReportPath != h.store().reportPath(3) {
+			t.Errorf("spawned specs = %+v; want one fixer on report 3", h.fixer.specs)
+		}
+	})
+
+	t.Run("AnInterruptedFixerIsReplacedOnItsOwnFiles", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name string
+			// seedLive leaves a live record of fixer 1 in the set, as a driver a machine stop ended leaves it.
+			seedLive bool
+			// final drives the entry's final closure in place of its gate.
+			final   bool
+			results []shuttleengine.GateResult
+		}{
+			{"SpawnedByThisWrap", false, false, []shuttleengine.GateResult{failing("lint broke"), passing()}},
+			{"LeftLiveByARestartedDriver", true, false, []shuttleengine.GateResult{passing()}},
+			{"FinalOverALeftLiveRecord", true, true, []shuttleengine.GateResult{passing()}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				h := newRowHarness(t)
+				h.fixer.interruptedFirst = 1
+				store := h.store()
+				if tt.seedLive {
+					h.seed(t, Record{StrandGUID: "left-live", SpawnedAt: "1970-01-01T00:00:00Z", ReportPath: store.reportPath(1), ReplyPath: store.replyPath(1)})
+				}
+				gate := &scriptedGate{results: tt.results}
+				entry := h.wrap(t, verifyEntry(gate, 0))
+				run := entry.Gate
+				if tt.final {
+					run = entry.Final
+				}
+				var expiredOnReplacement []bool
+				h.fixer.onAwait = func() {
+					// The second wait is the one on the replacement.
+					if h.fixer.awaits != 1 {
+						return
+					}
+					expired, err := entry.Expired()
+					if err != nil {
+						t.Errorf("Expired() error = %v; want none", err)
+					}
+					expiredOnReplacement = append(expiredOnReplacement, expired)
+				}
+
+				got, err := run()
+				if err != nil || !got.Passed {
+					t.Fatalf("gate() = %+v, %v; want the pass judged over the replacement's tree", got, err)
+				}
+				if want := []bool{false}; !slices.Equal(expiredOnReplacement, want) {
+					t.Errorf("Expired() while waiting on the replacement = %v; want %v", expiredOnReplacement, want)
+				}
+				replacement := h.fixer.specs[len(h.fixer.specs)-1]
+				if replacement.ReportPath != store.reportPath(1) || replacement.ReplyPath != store.replyPath(1) {
+					t.Errorf("replacement spec = %+v; want fixer 1's report and reply files", replacement)
+				}
+				records, err := store.load()
+				if err != nil {
+					t.Fatalf("load records: %v", err)
+				}
+				if len(records) != 2 || records[0].DeadReason != DeadReasonInterrupted || records[1].Status != StatusDone {
+					t.Errorf("records = %+v; want the interrupted fixer and its replacement marked done", records)
+				}
+				if spent, interrupted, _ := store.budget(); spent != 1 || interrupted != 1 {
+					t.Errorf("budget() = %d spent, %d interrupted; want 1 and 1", spent, interrupted)
+				}
+			})
+		}
+	})
+
+	t.Run("AnInterruptionPastTheCapStandsWithItsNote", func(t *testing.T) {
+		t.Parallel()
+		h := newRowHarness(t)
+		h.fixer.interruptedFirst = 5
+		gate := &scriptedGate{results: []shuttleengine.GateResult{failing("lint broke")}}
+		entry := h.wrap(t, verifyEntry(gate, 0))
+
+		got, err := entry.Gate()
+		if err != nil || got.Passed || !strings.Contains(got.Findings, "The cold fixer was interrupted") {
+			t.Errorf("Gate() = %+v, %v; want the failure carrying the interrupted note", got, err)
+		}
+		if len(h.fixer.specs) != 2 {
+			t.Errorf("spawns = %d; want the first fixer and one replacement", len(h.fixer.specs))
+		}
+	})
+
+	t.Run("AFailedReplacementSpawnLeavesTheInterruptionStandingWithItsError", func(t *testing.T) {
+		t.Parallel()
+		h := newRowHarness(t)
+		h.fixer.interruptedFirst = 1
+		h.fixer.spawnErr, h.fixer.spawnErrAfter = errors.New("no provider"), 1
+		gate := &scriptedGate{results: []shuttleengine.GateResult{failing("lint broke")}}
+		entry := h.wrap(t, verifyEntry(gate, 0))
+
+		got, err := entry.Gate()
+		if err != nil || got.Passed || !strings.Contains(got.Findings, "The cold fixer was interrupted") || !strings.Contains(got.Findings, "its replacement could not be started (no provider)") {
+			t.Errorf("Gate() = %+v, %v; want the interrupted note naming the replacement's spawn error", got, err)
+		}
+	})
+
+	t.Run("AnotherEntryFailingOverAnInterruptedFixerLeavesItLive", func(t *testing.T) {
+		t.Parallel()
+		h := newRowHarness(t)
+		h.fixer.interruptedFirst = 1
+		h.seed(t, Record{StrandGUID: "left-live"})
+		spec := shuttleengine.GateSpec{
+			{Name: "other", Gate: (&scriptedGate{results: []shuttleengine.GateResult{failing("other broke")}}).Gate, Attempts: 1},
+			verifyEntry(&scriptedGate{results: []shuttleengine.GateResult{passing()}}, 2),
+		}
+		wrapped, err := WrapRowGate(spec, rowEntry, h.rf)
+		if err != nil {
+			t.Fatalf("WrapRowGate() error = %v; want none", err)
+		}
+
+		got, err := wrapped[0].Gate()
+		if err != nil || got.Passed || !strings.HasPrefix(got.Findings, "other broke") || !strings.Contains(got.Findings, "The cold fixer was interrupted") {
+			t.Errorf("other Gate() = %+v, %v; want the failure carrying the interrupted note", got, err)
+		}
+		if got := h.statuses(t); len(got) != 1 || got[0] != "" || len(h.fixer.specs) != 0 {
+			t.Errorf("record statuses = %v with %d spawns; want the record still live and no spawn", got, len(h.fixer.specs))
+		}
+		if expired, err := wrapped[1].Expired(); err != nil || expired {
+			t.Errorf("Expired() = %v, %v while the writer reworks; want false", expired, err)
 		}
 	})
 
@@ -661,7 +808,7 @@ func TestWrapRowGate(t *testing.T) {
 		}
 	})
 
-	t.Run("FinalNeverSpawnsAndWaitsOnlyForALiveRecord", func(t *testing.T) {
+	t.Run("FinalSpawnsNoFixerForItsOwnFailureAndWaitsOnlyForALiveRecord", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
 			name       string

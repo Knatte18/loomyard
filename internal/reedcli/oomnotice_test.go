@@ -22,6 +22,7 @@ func TestPlanPaneOOMNotices(t *testing.T) {
 
 	// Each pane shell's pid reads as the cgroup and kill count below; pid 4 cannot be read.
 	// Pid 6 shares a tmux scope the memory cap never reached.
+	// Pid 7 is in pid 3's pane scope, so its kills are the ones pid 3's notice tells.
 	kills := map[int]struct {
 		cgroup string
 		count  int
@@ -30,6 +31,7 @@ func TestPlanPaneOOMNotices(t *testing.T) {
 		2: {"/app.slice/lym-pane-2.scope", 2},
 		3: {"/app.slice/lym-pane-3.scope", 3},
 		6: {"/app.slice/tmux-spawn-0a1b.scope", 3},
+		7: {"/app.slice/lym-pane-3.scope", 3},
 	}
 	readKills := func(pid int) (string, int, error) {
 		k, ok := kills[pid]
@@ -45,6 +47,7 @@ func TestPlanPaneOOMNotices(t *testing.T) {
 		{Name: "unreadable", PaneID: "%4", PanePID: 4},
 		{Name: "dead", PaneID: "%5"},
 		{Name: "uncapped", PaneID: "%6", PanePID: 6},
+		{Name: "shares-a-pane-scope", PaneID: "%7", PanePID: 7},
 	}
 	tests := []struct {
 		name     string

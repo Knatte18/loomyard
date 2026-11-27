@@ -7,8 +7,19 @@ package shuttleengine
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
+
+// warnedBoxDisagreements holds the guid of every strand whose box disagreement this process has warned of.
+// The disagreement lasts across polls, so every later sighting of it logs at Debug.
+var warnedBoxDisagreements sync.Map
+
+// styledTailLines is how many of a styled capture's last lines the log quotes.
+// The log quotes them when the styled box reading disagrees with the plain capture's.
+const styledTailLines = 12
 
 // Reasons a readiness reading is held that callers tell apart or pin.
 const (
@@ -54,7 +65,12 @@ type boxReading struct {
 
 // boxCapture takes the one pane capture a box reading decides on.
 // An engine with StyledBoxReader gets a styled capture turned plain with its placeholder blanked, and any other engine gets the plain capture.
-// An error is the capture's, unchanged.
+// When the styled capture turned plain shows no input box, the plain capture is taken too,
+// and it is read instead when it shows a box:
+// a styled capture whose parse loses a rule line would otherwise read a session as having no box for as long as it lasts.
+// The plain capture blanks no placeholder, so a placeholder then reads as a draft and holds the send.
+// The disagreement is logged with the styled capture's last lines, as a warning the first time for each strand.
+// An error is the styled capture's, unchanged; a failed plain capture keeps the styled reading.
 func boxCapture(reed ReedOps, engine Engine, guid string) (string, error) {
 	styledReader, ok := engine.(StyledBoxReader)
 	if !ok {
@@ -64,7 +80,29 @@ func boxCapture(reed ReedOps, engine Engine, guid string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return styledReader.PlainBoxCapture(styled), nil
+	capture := styledReader.PlainBoxCapture(styled)
+	boxReader, reads := engine.(InputBoxReader)
+	if !reads {
+		return capture, nil
+	}
+	if _, found := boxReader.InputBoxText(capture); found {
+		return capture, nil
+	}
+	plain, err := reed.CapturePane(guid)
+	if err != nil {
+		return capture, nil
+	}
+	if _, found := boxReader.InputBoxText(plain); !found {
+		return capture, nil
+	}
+	lines := strings.Split(styled, "\n")
+	tail := strings.Join(lines[max(0, len(lines)-styledTailLines):], "\n")
+	logDisagreement := logger.Warn
+	if _, warned := warnedBoxDisagreements.LoadOrStore(guid, true); warned {
+		logDisagreement = logger.Debug
+	}
+	logDisagreement("shuttle: the styled capture showed no input box where the plain capture shows one, so the box is read from the plain capture", "strandGUID", guid, "styledTail", fmt.Sprintf("%q", tail))
+	return plain, nil
 }
 
 // readBox reads the input box out of capture.

@@ -20,7 +20,9 @@
 // A spawn that cannot be recorded or registered stops the strand again, so no fixer outlives its call unrecorded.
 // Await polls the strand until it is done or dead.
 // The strand is done on its reply file.
-// It is dead when its newest turn ended without one, its timeout passed or its strand is gone.
+// It is dead when its newest turn ended without one, its strand is gone or its timeout passed.
+// A gone strand whose shuttle run lym recorded as interrupted is dead as interrupted, never as timed out.
+// A machine stop leaves a run recorded that way.
 // Every terminal result stops the strand.
 // Await never marks a record terminal; the caller does.
 // Registrar builds the Deps.Register seam that registers a fixer's pane process with runproc,
@@ -33,9 +35,10 @@
 // A failure of one named entry at the writer's idle boundary then goes to a fixer,
 // and the entry is judged again over the fixer's finished tree.
 // At most one fixer runs per failed evaluation, and at most the entry's attempts plus one per row visit.
+// An interrupted fixer is replaced on the same files and counts toward neither bound.
 // A failing result its gate marks WriterOnly is meant for the writer alone, so it spawns no fixer.
 // The judging run after a fixer goes through the entry's RerunMark, so a gate can tell that run from the first.
-// The entry's final closure and every other entry only wait for a live fixer,
+// Every other entry only waits for a live fixer, and the entry's final closure spawns none but a replacement,
 // so every entry is judged over the fixer's finished tree.
 //
 // # Judging
