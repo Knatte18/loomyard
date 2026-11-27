@@ -796,7 +796,8 @@ func TestGateTestMap(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(excludePath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(excludePath, []byte("ignored/\n"), 0o644); err != nil {
+	// The line is added to the hub's own exclusions, which keep its links out of the tree's status.
+	if err := appendLine(excludePath, "ignored/"); err != nil {
 		t.Fatal(err)
 	}
 	gitkit.Git(t, prime, append([]string{"add", "go.mod", "testdata", ".dot", "nested"}, slices.Sorted(maps.Keys(packageTests))...)...)
@@ -1058,7 +1059,7 @@ func TestGateTestMap(t *testing.T) {
 			Cards: []plankit.Card{{Number: 1, Slug: "steady", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"steady/steady.go"}}}}},
 		})
 		plankit.WriteTree(t, prime, map[string]string{
-			"tool/tool.go":      strings.Replace(testMapSource("main"), "package main\n", "package main", 1) + "\nfunc main() {}\n",
+			"tool/tool.go":      testMapSource("main") + "\nfunc main() {}\n",
 			"tool/tool_test.go": testMapTestFile("main", map[string]int{"TestToolOne": 0}),
 		})
 		gitkit.Git(t, prime, "add", "tool")
