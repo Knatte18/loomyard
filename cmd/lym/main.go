@@ -125,6 +125,28 @@ func runCommand(cmd *cobra.Command) bool {
 	return cmd.Annotations[clihelp.RunProcessAnnotation] == clihelp.AnnotationEnabled
 }
 
+// readStandingPassages returns what heddle's layers in the Bolt checkout boltDir hold for a session of engine in a strand role:
+// the passages for its system prompt and the entries of the instruction file it loads.
+func readStandingPassages(boltDir, engine, role string) (shuttleengine.Standing, error) {
+	renderer := heddleengine.Renderer{}
+	passages, err := renderer.Passages(boltDir, engine, role)
+	if err != nil {
+		return shuttleengine.Standing{}, err
+	}
+	fileEntries, err := renderer.FileEntries(boltDir, engine)
+	if err != nil {
+		return shuttleengine.Standing{}, err
+	}
+	var standing shuttleengine.Standing
+	for _, passage := range passages {
+		standing.Passages = append(standing.Passages, shuttleengine.Passage(passage))
+	}
+	for _, entry := range fileEntries {
+		standing.FileEntries = append(standing.FileEntries, shuttleengine.Passage(entry))
+	}
+	return standing, nil
+}
+
 // newRoot builds the lym cobra root with all module subcommands, --json flag, and JSON help.
 func newRoot() *cobra.Command {
 	var verbosity int
@@ -177,25 +199,7 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				// That replayer also claims HEDDLE.md and renders it afresh after each replay.
 				fabricengine.RegisterBoltReplayer(heddleengine.Replayer{})
 				// Every Claude session launched in a hub appends the passages heddle stores for its engine and role, an orch session's orch-prompt ones included.
-				shuttleengine.InstallPassageReader(func(boltDir, engine, role string) (shuttleengine.Standing, error) {
-					renderer := heddleengine.Renderer{}
-					passages, err := renderer.Passages(boltDir, engine, role)
-					if err != nil {
-						return shuttleengine.Standing{}, err
-					}
-					fileEntries, err := renderer.FileEntries(boltDir, engine)
-					if err != nil {
-						return shuttleengine.Standing{}, err
-					}
-					var standing shuttleengine.Standing
-					for _, passage := range passages {
-						standing.Passages = append(standing.Passages, shuttleengine.Passage(passage))
-					}
-					for _, entry := range fileEntries {
-						standing.FileEntries = append(standing.FileEntries, shuttleengine.Passage(entry))
-					}
-					return standing, nil
-				})
+				shuttleengine.InstallPassageReader(readStandingPassages)
 			}
 			// Seeding must never block a command from running, regardless of its outcome.
 			seedStencils(cmd)
