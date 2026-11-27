@@ -145,6 +145,10 @@ type RunState struct {
 	// Wait persists it before typing the line and clears it at the next held turn end that is not an API error.
 	// One turn thus gets at most one continue, and a reattached Wait never sends twice.
 	APIContinued bool `json:"apiContinued,omitempty"`
+	// OperatorHoldReminded is true once the run's agent got the line naming its missing output files.
+	// The line follows a held turn end of a turn the operator started.
+	// Wait persists it before typing the line and clears it when the send fails, so a run gets at most one.
+	OperatorHoldReminded bool `json:"operatorHoldReminded,omitempty"`
 	// PromptOffset is the events-file size just before Start sends the prompt.
 	// It is zero when Start loaded no skills.
 	// Readers that replay the events file begin here, so a load turn's end is never read as the run's own.

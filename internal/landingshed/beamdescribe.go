@@ -134,14 +134,15 @@ func DraftBeamDescription(deps BeamDraftDeps) error {
 // It then commits it through commit.
 // slug names the beam in the way forward of a refusal.
 // It refuses a missing file, naming the draft verb that offers a starting point.
-// It refuses a description with a finding, naming each finding and the file to fix;
-// a refused description is not committed.
+// It refuses a description with a finding, naming each finding and the file to fix.
+// A line that one of forbidden matches is such a finding.
+// A refused description is not committed.
 // A validation or commit failure is an error naming the step.
-func RecordBeamDescription(slug, path string, commit func() error) error {
+func RecordBeamDescription(slug, path string, forbidden []*regexp.Regexp, commit func() error) error {
 	fail := func(step string, err error) error {
 		return fmt.Errorf("landingshed: record the beam description: %s: %w", step, err)
 	}
-	findings, err := summaryparser.ValidateDescription(path)
+	findings, err := summaryparser.ValidateDescription(path, forbidden)
 	if err != nil {
 		return fail("validate the description", err)
 	}
@@ -165,14 +166,15 @@ func RecordBeamDescription(slug, path string, commit func() error) error {
 // It then writes the draft over the description at path atomically and commits it through commit.
 // A write that fails leaves the description at path as it stood.
 // slug names the beam in the way forward of a refusal.
-// It refuses a missing draft or one with a finding, naming each finding, and leaves the description at path as it stands.
+// It refuses a missing draft or one with a finding, a line that one of forbidden matches included, naming each finding;
+// it then leaves the description at path as it stands.
 // A failed commit puts back the description that stood at path, or removes the file when none stood.
 // A read, write or commit failure is an error naming the step.
-func ReplaceBeamDescription(slug, draftPath, path string, commit func() error) error {
+func ReplaceBeamDescription(slug, draftPath, path string, forbidden []*regexp.Regexp, commit func() error) error {
 	fail := func(step string, err error) error {
 		return fmt.Errorf("landingshed: replace the beam description: %s: %w", step, err)
 	}
-	findings, err := summaryparser.ValidateDescription(draftPath)
+	findings, err := summaryparser.ValidateDescription(draftPath, forbidden)
 	if err != nil {
 		return fail("validate the draft", err)
 	}

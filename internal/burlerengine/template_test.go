@@ -71,7 +71,10 @@ func fixStepMarkerValues() map[string]string {
 
 // fixStepIncludes returns the fragments the fix step includes by name, keyed by include name.
 func fixStepIncludes() map[string][]byte {
-	return map[string][]byte{"loom-fragment-loosened-check": stencils.LoomFragmentLoosenedCheck}
+	return map[string][]byte{
+		"loom-fragment-loosened-check": stencils.LoomFragmentLoosenedCheck,
+		"loom-fragment-tooling-names":  stencils.LoomFragmentToolingNames,
+	}
 }
 
 // instruction1MarkerValues returns a values map with a placeholder for each marker of the explore step.

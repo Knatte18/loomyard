@@ -80,6 +80,8 @@
 // A turn end is not notified when the parent has nothing to answer:
 // a usage-limited one; one built from a waiting turn end with RequirementBackgroundWake;
 // and one an operator instruction began.
+// After the last of these the agent is typed one line per run naming its missing output files.
+// That holds for every autonomous run, with or without a notifier.
 // A turn end that is an API error across a detected sleep is first given one automatic continue line.
 // A run with Spec.APIErrorRetries re-sends such a turn after a back-off, then ends OutcomeAPIError.
 // A turn end the engine marks ModelRejected ends the run OutcomeAPIError at once.

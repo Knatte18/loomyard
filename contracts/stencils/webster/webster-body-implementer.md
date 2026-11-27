@@ -92,6 +92,8 @@ A card that departs from its own text because a PATTERN entry forbids the card's
 
 {{template "loom-fragment-loosened-check"}}
 
+{{template "loom-fragment-tooling-names"}}
+
 If any card's gate fails, or a test the card broke fails, and you cannot fix it within your self-fix bound (see next section), stop and report `status: FAILED` — do not continue to a later card on top of a broken one.
 
 ## External tools and processes

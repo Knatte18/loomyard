@@ -7,6 +7,7 @@ package shedrecipe
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -43,7 +44,7 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // it also requires the non-nil env.RaddleWrite.Check.Board and env.RaddleWrite.Deps.StoreCold;
 // it returns loomshed.NewRaddleGate over them;
 // "description" requires env.DescriptionPath to pass requireAbsRoot;
-// it returns landingshed.NewDescriptionGate over it;
+// it returns landingshed.NewDescriptionGate over it and the patterns env.DescriptionTerms returns, none when it is nil;
 // "verify" requires the absolute env.WorktreeRoot and env.VerifyDir and a non-nil env.VerifyCommand;
 // it takes the optional env.VerifyMergeBase and env.VerifyTreeScope, and returns loomshed.NewVerifyGate over them;
 // the site label is "<row name> gate";
@@ -285,7 +286,15 @@ func resolvePlainGateClosure(entry, row, gateKey string, index int, name string,
 		if err := requireAbsRoot(entry, "DescriptionPath", env.DescriptionPath); err != nil {
 			return nil, err
 		}
-		return landingshed.NewDescriptionGate(env.DescriptionPath), nil
+		var forbidden []*regexp.Regexp
+		if env.DescriptionTerms != nil {
+			terms, err := env.DescriptionTerms()
+			if err != nil {
+				return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: read the forbidden terms: %w", entry, "gates", index, err)
+			}
+			forbidden = terms
+		}
+		return landingshed.NewDescriptionGate(env.DescriptionPath, forbidden), nil
 	case "verify":
 		if err := requireAbsRoot(entry, "WorktreeRoot", env.WorktreeRoot); err != nil {
 			return nil, err

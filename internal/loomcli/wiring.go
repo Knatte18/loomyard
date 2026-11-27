@@ -12,6 +12,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"time"
 
@@ -363,7 +364,9 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 // The committed-file seam that validate-plan --rework reads is filled for them too.
 // It also fills the history seam and the record row's engine that validate-discussion uses;
 // the seam reads committed history through the fabric at call time.
-// It loads no module config, constructs no engine, and can fail only if the run's recipe selects no embedded recipe.
+// It loads no module config itself and constructs no engine.
+// It can fail only if the run's recipe selects no embedded recipe.
+// Only validate-description loads a module config on this path: landing.yaml, for its forbidden terms, when it runs.
 // validate-plan loads the hub-wide language.yaml itself for its rename-tool-missing check;
 // the full wiring does not load that file.
 //
@@ -376,7 +379,8 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 // A sibling process may be rewriting a config the full wiring loads at that moment.
 // validate-discussion reads only `DecisionRecordPath`, `SupportLogPath`, `AnchorPath` and `WorktreeRoot`.
 // On a tapestry run it also reads `PlanIndex`.
-// validate-plan reads language.yaml alone, and validate-description reads `DescriptionPath` alone.
+// validate-plan reads language.yaml alone.
+// validate-description reads only `DescriptionPath` and the forbidden terms of landing.yaml.
 //
 // approve is on this path because it builds no producer:
 // it reads the status file, opens the fabric on demand, queries GitHub, then writes the approval record.
@@ -417,6 +421,14 @@ func (c *loomCLI) wireLightweight(location *lymcwd.Location, cwd string) error {
 	c.env.SupportLogPath = record.supportLog
 	c.env.RelevantPath = loomengine.DiscussionRelevant(location)
 	c.env.DescriptionPath = summaryparser.Path(loomengine.LandingDir(location))
+	// The forbidden terms load landing.yaml only when validate-description runs, so no other verb here reads a config.
+	c.env.DescriptionTerms = func() ([]*regexp.Regexp, error) {
+		cfg, err := landingshed.LoadConfig(fabricengine.ConfigDirs(location), "landing")
+		if err != nil {
+			return nil, err
+		}
+		return cfg.ForbiddenTerms(), nil
+	}
 	c.env.Rework.ReadCommitted = committedAnchoredReader(location)
 	c.env.DiscussionHistory = recordHistory(location, record)
 	recordEngine, err := loomrecipe.RecordEngine(c.recipe)
@@ -1041,7 +1053,8 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		RaddleFile:  raddleFileDeps(location, seedSlug(location.WorktreeName)),
 		// DescriptionPath is the change description Describe writes and its gate and the landing
 		// rows read.
-		DescriptionPath: summaryparser.Path(loomengine.LandingDir(location)),
+		DescriptionPath:  summaryparser.Path(loomengine.LandingDir(location)),
+		DescriptionTerms: func() ([]*regexp.Regexp, error) { return landingCfg.ForbiddenTerms(), nil },
 		// DescribeTable is evaluated per Call, so the stencil is read at call time.
 		// It opens the fabric lazily.
 		// wire() also runs for status and pause, where opening the fabric must not happen.
@@ -1083,6 +1096,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 				RunRecordPath:       runRecordPath,
 				PriorRunRecordPaths: priorRecords,
 				DescriptionPath:     summaryparser.Path(loomengine.LandingDir(location)),
+				ReviewDir:           loomengine.DescribeReviewDir(location),
 				TaskBranch:          taskBranch,
 				ParentBranch:        parentBranch,
 				MergeBase:           mergeBase,

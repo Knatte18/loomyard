@@ -12,11 +12,14 @@ const configModule = "landing"
 
 // The landing.yaml key paths that messages cite.
 const (
-	conflictKey        = "conflict"
-	describeKey        = "describe"
-	fixerKey           = "fixer"
-	squashKey          = "squash"
-	fixerTimeoutMinKey = "fixer_timeout_min"
+	conflictKey                 = "conflict"
+	describeKey                 = "describe"
+	fixerKey                    = "fixer"
+	squashKey                   = "squash"
+	fixerTimeoutMinKey          = "fixer_timeout_min"
+	forbiddenTermsKey           = "describe_forbidden_terms"
+	describeReviewKey           = "describe_review"
+	describeReviewTimeoutMinKey = "describe_review_timeout_min"
 )
 
 // beamPullRequestName returns the full name of the beam key that decides how a landing goes.

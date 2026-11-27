@@ -48,6 +48,8 @@ When the landing failure record holds `build: true`, the gate failed in its buil
 
 {{template "loom-fragment-loosened-check"}}
 
+{{template "loom-fragment-tooling-names"}}
+
 ## External tools and processes
 
 Learn how an external tool such as tmux behaves from a test in the repository, in the tier the hub runs that tool's tests in, never from processes you start in the shell.

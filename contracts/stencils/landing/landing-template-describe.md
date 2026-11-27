@@ -59,8 +59,24 @@ Write exactly one file, `{{.description_path}}`, in the format of the final-summ
 Never describe the pipeline's process: no batches, cards, forks, the Master, verify gates, glyph deviations or review rounds.
 Naming a module is fine when the change touches it.
 
+The reader knows this repository and nothing of the tooling that wrote the change.
+Name nothing of that tooling that the repository itself does not hold: not LoomYard or lym, the board or a board entry, the task, the Sketch or the decision record, the parent or an orch, the scoper, a gate, a tier or a perch.
+Never point at the scope by its numbering, as "item 3 of the task" does, and never report what the parent recorded or ruled: state the requirement or the decision itself.
+`lym loom validate-description` names each line that matches one of the hub's forbidden terms; rewrite such a line in the repository's own words.
+
 A claim that a result agrees with a reference, or that the change improves one, carries before and after figures from the current code, taken from the commits or the regression check.
 Leave out a claim that has none.
+
+{{template "seat-directive-assistant-chair"}}
+
+## Your reviewer
+
+Your one assistant reviews your description once you have ended your turn on a text that passes the check: it looks for the tooling's terms, for claims the diff does not bear out, and for deliverables the scope says the description states.
+You never wait for it yourself.
+Once your description passes `lym loom validate-description` and you end your turn, lym holds the turn end until the reviewer's end marker appears or the review's time runs out.
+When the reviewer reports findings, they reach you once, as a message naming a file that holds its report.
+Weigh each finding against the diff and the decision record, fix the description where a finding holds, run `lym loom validate-description` again, and end your turn.
+When its end marker reads anything other than `done`, or its report approves, your description stands as you wrote it.
 
 ## Rules
 

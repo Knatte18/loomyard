@@ -667,6 +667,9 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 	run.boundaryHeld = false
 	run.gateFails[failed]++
 	run.gateSent[failed]++
+	if run.gateReprompted != nil {
+		run.gateReprompted.RecordReprompt()
+	}
 	run.gateReworkSince[failed] = run.clock.Now()
 	for i, entry := range verdict.Entries {
 		if entry.State == GateEntryPassed {
@@ -1864,6 +1867,7 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 	pendingAt := -1
 	pendingSend, pendingWayForward := "", ""
 	var pendingDelivered *bool
+	var reprompted RepromptRecorder
 	findingsPath, findings := "", ""
 	terminal, reason := false, ""
 	for i, entry := range run.gate {
@@ -1930,6 +1934,7 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 				return nil, writeErr
 			}
 			findings = result.Findings
+			reprompted = result.Reprompted
 			line.State = GateEntryFailed
 			failedAt = i
 			if !entry.PassOnCap {
@@ -1966,6 +1971,7 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 	run.gatePendingSend = pendingSend
 	run.gatePendingWayForward = pendingWayForward
 	run.gatePendingDelivered = pendingDelivered
+	run.gateReprompted = reprompted
 	return outcome, nil
 }
 

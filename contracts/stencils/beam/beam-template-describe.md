@@ -42,6 +42,10 @@ Never list the decisions made along the way, from the project record or elsewher
 Never describe how the work was run.
 Write no `Co-Authored-By` line and no credit lines.
 
+The reader knows this repository and nothing of the tooling that wrote the change.
+Name nothing of that tooling that the repository itself does not hold: not LoomYard or lym, the board or a board entry, the task, the Sketch or the decision record, the parent or an orch, the scoper, a gate, a tier or a perch.
+Never point at the scope by its numbering, as "item 3 of the task" does, and never report what the parent recorded or ruled: state the requirement or the decision itself.
+
 ## Rules
 
 - Write only `{{.draft_path}}`, and never edit `{{.description_path}}`.

@@ -66,6 +66,17 @@
 // The landing commit carries the change description, the regression check and the credit block.
 // They are separated by blank lines; the credit block is plain lines, never git trailers.
 // PR-Review sets the pull request's body to the same text, so the commit and its pull request carry one credit.
+// The pull request's title and body are set again when GitHub holds other text than the change description yields.
+// PR-Review does this at every poll.
+// Finalize does it before it merges a recorded pull request that is not a beam's.
+//
+// DescribeTable builds the Describe session: the lead writes the change description and an assistant reviews it.
+// The reviewer checks the text for the tooling's terms and for missing deliverables.
+// It also checks for claims the diff does not bear out.
+// The table's gate runs behind the row's own description gate.
+// Its first call releases the reviewer, which waits for it before it reads the description.
+// It holds the lead's turn end until the reviewer's end marker exists or the review's time runs out.
+// It then hands the lead a review with findings once.
 //
 // DraftBeamDescription writes a starting point for a beam's change description and starts no agent.
 // RecordBeamDescription validates the orch's text with the check the Describe gate runs, and commits it.

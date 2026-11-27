@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -331,9 +332,15 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 				_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), beam, []string{loomengine.LandingDirRel()}, fmt.Sprintf("beam: change description for %s", slug), fabricengine.EnvSyncOptions())
 				return err
 			}
-			record := func() error { return landingshed.RecordBeamDescription(slug, path, commit) }
+			cfg, err := landingshed.LoadConfig(fabricengine.ConfigDirs(beam), "landing")
+			if err != nil {
+				return "", err
+			}
+			record := func() error { return landingshed.RecordBeamDescription(slug, path, cfg.ForbiddenTerms(), commit) }
 			if from != "" {
-				record = func() error { return landingshed.ReplaceBeamDescription(slug, from, path, commit) }
+				record = func() error {
+					return landingshed.ReplaceBeamDescription(slug, from, path, cfg.ForbiddenTerms(), commit)
+				}
 			}
 			if err := record(); err != nil {
 				return "", err
@@ -456,7 +463,11 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			if err != nil {
 				return nil, err
 			}
-			return descriptionFindings(summaryparser.Path(loomengine.LandingDir(beam)))
+			cfg, err := landingshed.LoadConfig(fabricengine.ConfigDirs(beam), "landing")
+			if err != nil {
+				return nil, err
+			}
+			return descriptionFindings(summaryparser.Path(loomengine.LandingDir(beam)), cfg.ForbiddenTerms())
 		},
 		// A pawl run's Finalize reads merged pull requests through this list, so ready and Finalize agree on what one lacks.
 		MergedLacks: func(slug, mergedHead string) ([]string, error) {
@@ -539,9 +550,9 @@ func beamDraftDeps(location *lymcwd.Location, slug, parentBranch string) landing
 }
 
 // descriptionFindings lists the findings of the change description at path as their error texts, none when it is valid.
-// A missing file is a finding.
-func descriptionFindings(path string) ([]string, error) {
-	findings, err := summaryparser.ValidateDescription(path)
+// A missing file is a finding, and so is a line that one of forbidden matches.
+func descriptionFindings(path string, forbidden []*regexp.Regexp) ([]string, error) {
+	findings, err := summaryparser.ValidateDescription(path, forbidden)
 	if err != nil {
 		return nil, err
 	}

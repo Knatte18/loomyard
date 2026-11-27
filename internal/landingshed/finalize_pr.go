@@ -450,6 +450,8 @@ func pullRequestCommitTitle(title string, number int) string {
 // mergeOnGitHub merges the run's pull request on GitHub, after the lock re-check and before the parent-side merge.
 // It pushes the task branch first.
 // It reopens the pull request when marked to reopen it, and finds or opens it when marked to open it.
+// For a recorded pull request of a run that is not a beam's, it then reads the pull request's status.
+// When GitHub holds other text, it sets the pull request's title and body to title and message.
 // It merges with the pushed head as the expected head.
 // The merge squashes when landing.yaml's squash is set;
 // it always squashes for a parent that takes its pull request with no review.
@@ -487,6 +489,10 @@ func (fz *Finalize) mergeOnGitHub(ctx context.Context, parentHandle parentMerger
 			return end
 		}
 		landing.record = rec
+	} else if pr.BeamRecord == nil {
+		if end := fz.setRecordedText(ctx, landing, title, message); end != nil {
+			return end
+		}
 	}
 
 	squash := fz.deps.Config.Squash || landing.atOnce
@@ -535,6 +541,24 @@ func (fz *Finalize) mergeOnGitHub(ctx context.Context, parentHandle parentMerger
 	}
 	if result.Refusal != "" {
 		return halt(ctx, finalizeName, LandingStopPrefix+fz.mergedButNotPulledReason(landing.record, fmt.Sprintf("the parent pair refused the fast-forward: %s", result.Refusal)))
+	}
+	return nil
+}
+
+// setRecordedText sets the title and body of the landing's recorded pull request to title and body.
+// It edits only when GitHub holds other text, so the pull request follows the change description when it merges.
+// A non-nil ending ends the call at once: a GitHub failure is either a transient error or a halt.
+func (fz *Finalize) setRecordedText(ctx context.Context, landing prLanding, title, body string) *ending {
+	number := landing.record.Number
+	status, err := landing.api.Status(ctx, number)
+	if err != nil {
+		return fz.githubFailure(ctx, "read the pull request's status", err)
+	}
+	if (prText{title: title, body: body}).matches(status.Title, status.Body) {
+		return nil
+	}
+	if err := landing.api.Edit(ctx, number, title, body); err != nil {
+		return fz.githubFailure(ctx, "set the pull request's title and body", err)
 	}
 	return nil
 }

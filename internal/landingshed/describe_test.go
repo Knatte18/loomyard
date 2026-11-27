@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -22,7 +23,8 @@ import (
 )
 
 const describeStencilFixture = "{{.parent_directive}}\n{{.edit_directive}}\nslug={{.slug}}\ndecision={{.decision_record_path}}\nrun={{.run_record_paths}}\n" +
-	"out={{.description_path}}\ntask={{.task_branch}}\nparent={{.parent_branch}}\nbase={{.merge_base}}\ndrift={{.drift_verdict}}\n"
+	"out={{.description_path}}\ntask={{.task_branch}}\nparent={{.parent_branch}}\nbase={{.merge_base}}\ndrift={{.drift_verdict}}\n" +
+	"{{template \"seat-directive-assistant-chair\"}}\n"
 
 // writeRunRecord writes a run record file at <dir>/<name>/webster/summary.md and returns its path.
 func writeRunRecord(t *testing.T, dir, name string) string {
@@ -50,6 +52,7 @@ func newDescribeInputs(t *testing.T) DescribeInputs {
 		DecisionRecordPath: "/x/decision-record.md",
 		RunRecordPath:      writeRunRecord(t, t.TempDir(), "live"),
 		DescriptionPath:    "/x/landing/summary.md",
+		ReviewDir:          "/x/.lym/landing/describe-review",
 		TaskBranch:         "task-branch",
 		ParentBranch:       "parent-branch",
 		MergeBase:          "merge-base-sha",
@@ -76,14 +79,14 @@ func describeLeadPrompt(t *testing.T, stencilsDir, parentName string, table seat
 	return prompts[""]
 }
 
-// requireDescribeLead asserts that table is the Describe session: the lead alone.
+// requireDescribeLead asserts that table is the Describe session: the lead and its reviewer.
 // The lead runs in the describe role, segment and skills, writes wantOutput, and has no version choice.
 // It runs non-interactively and without forks.
 func requireDescribeLead(t *testing.T, table seatengine.Table, wantOutput string) {
 	t.Helper()
 	lead := table.Chair()
-	if len(table.Seats) != 1 {
-		t.Fatalf("table has %d seats; want the lead alone", len(table.Seats))
+	if len(table.Seats) != 2 || table.Seats[1].Name != DescribeReviewSeatName {
+		t.Fatalf("table has %d seats; want the lead and the %s seat", len(table.Seats), DescribeReviewSeatName)
 	}
 	if role := seatengine.SeatRole(table.RolePrefix, lead.Name); lead.Name != "" || role != "describe" {
 		t.Errorf("lead name %q and role %q; want no name and the role %q", lead.Name, role, "describe")
@@ -333,10 +336,12 @@ func TestNewDescriptionGate(t *testing.T) {
 		{"valid", write("ok.md", "# A title\n\nA body.\n\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** landing\n"), true, ""},
 		{"co-author trailer", write("trailer.md", "# A title\n\nBody.\n\nCo-Authored-By: X <x@y.z>\n"), false, "co-authored-by-trailer"},
 		{"missing file", filepath.Join(dir, "absent.md"), false, "missing-file"},
+		{"forbidden term", write("term.md", "# A title\n\nThe lym board asked for it.\n\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** landing\n"), false, `forbidden-term: line 3 names "lym"`},
 	}
+	forbidden := []*regexp.Regexp{regexp.MustCompile(`(?i)\blym\b`)}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res, err := NewDescriptionGate(tt.path)()
+			res, err := NewDescriptionGate(tt.path, forbidden)()
 			if err != nil {
 				t.Fatalf("gate error = %v; want nil", err)
 			}

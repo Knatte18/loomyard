@@ -10,6 +10,8 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -63,6 +65,19 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	}
 	if cfg.DescribeTimeoutMin != 30 {
 		t.Errorf("cfg.DescribeTimeoutMin = %d; want 30", cfg.DescribeTimeoutMin)
+	}
+	if cfg.DescribeReview != "sonnet[medium]" || cfg.DescribeReviewTimeoutMin != 15 {
+		t.Errorf("cfg.DescribeReview, cfg.DescribeReviewTimeoutMin = %q, %d; want %q, 15", cfg.DescribeReview, cfg.DescribeReviewTimeoutMin, "sonnet[medium]")
+	}
+	for _, line := range []string{"Built by LoomYard.", "Run lym loom resume.", "The Sketch says so.", "Item 3 of the task.", "The parent recorded it."} {
+		if !slices.ContainsFunc(cfg.ForbiddenTerms(), func(p *regexp.Regexp) bool { return p.MatchString(line) }) {
+			t.Errorf("cfg.ForbiddenTerms() matches no pattern in %q; want the template's terms to refuse it", line)
+		}
+	}
+	for _, line := range []string{"The sketch of a design.", "The lymph node.", "Ship the parser."} {
+		if slices.ContainsFunc(cfg.ForbiddenTerms(), func(p *regexp.Regexp) bool { return p.MatchString(line) }) {
+			t.Errorf("cfg.ForbiddenTerms() matches %q; want the template's terms to admit it", line)
+		}
 	}
 	if !cfg.Credit {
 		t.Error("cfg.Credit = false; want true")
@@ -190,13 +205,18 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 	t.Parallel()
 
 	const wellFormed = "deploy_branches: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
-		"describe: sonnet[medium]\ndescribe_timeout_min: 30\nfixer: opus[high]\nfixer_timeout_min: 60\nparent_align_fix_attempts: 2\n" +
+		"describe: sonnet[medium]\ndescribe_timeout_min: 30\ndescribe_review_timeout_min: 15\nfixer: opus[high]\nfixer_timeout_min: 60\nparent_align_fix_attempts: 2\n" +
 		"finalize_fix_attempts: 2\nfinalize_fix_max_lines: 40\nfinalize_fix_review_rounds: 3\ncredit_engines:\n  claude: \"Claude Code <noreply@anthropic.com>\"\n"
 	cases := []struct {
 		name, valid, invalid, key string
 	}{
 		{"malformed conflict", "conflict: opus[high]", "conflict: \"opus[high\"", "conflict"},
 		{"malformed describe", "describe: sonnet[medium]", "describe: \"sonnet[medium\"", "describe"},
+		{"malformed describe review", "describe: sonnet[medium]", "describe: sonnet[medium]\ndescribe_review: \"sonnet[medium\"", "describe_review"},
+		{"describe review timeout below 1", "describe_review_timeout_min: 15", "describe_review_timeout_min: 0", "describe_review_timeout_min"},
+		{"forbidden term that is no regular expression", "describe_timeout_min: 30", "describe_timeout_min: 30\ndescribe_forbidden_terms: ['(']", "describe_forbidden_terms"},
+		{"forbidden term that matches the empty string", "describe_timeout_min: 30", "describe_timeout_min: 30\ndescribe_forbidden_terms: ['lym|']", "matches the empty string"},
+		{"forbidden term that matches empty at a word boundary", "describe_timeout_min: 30", "describe_timeout_min: 30\ndescribe_forbidden_terms: ['\\b|lym']", "matches the empty string"},
 		{"credit_engines key naming no engine", "  claude:", "  claud:", "credit_engines.claud"},
 		{"malformed fixer", "fixer: opus[high]", "fixer: \"opus[high\"", "fixer"},
 		{"fixer timeout below 1", "fixer_timeout_min: 60", "fixer_timeout_min: 0", "fixer_timeout_min"},
@@ -323,6 +343,7 @@ func TestLoadConfig_OptionalStringKeys(t *testing.T) {
 		{"credit_engines empty names no engine", withoutKeys + "credit_engines: {}\n", "map[]", func(c Config) string { return fmt.Sprint(c.CreditEngines) }},
 		{"deploy set", withoutKeys + "deploy: ./update-plugins.sh\n", "./update-plugins.sh", func(c Config) string { return c.Deploy }},
 		{"deploy absent", withoutKeys, "", func(c Config) string { return c.Deploy }},
+		{"describe_review empty runs no reviewer", withoutKeys + "describe_review: \"\"\n", "", func(c Config) string { return c.DescribeReview }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

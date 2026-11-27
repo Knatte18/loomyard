@@ -3,7 +3,20 @@ squash: true  # whether Finalize's parent-side merge squashes; true because a ru
 conflict: opus[high]  # model-spec for the conflict-resolution session both producers' resolver runs under (see contracts/specs/llm-model-spec.md)
 conflict_timeout_min: 60  # minutes the conflict-resolution session's shuttle run is allowed to run
 describe: sonnet[medium]  # model-spec for the Describe row's session, which writes the change description that becomes the PR title and body and the landing commit message (see contracts/specs/llm-model-spec.md)
-describe_timeout_min: 30  # minutes the Describe session's shuttle run is allowed to run
+describe_timeout_min: 30  # minutes the Describe session's writer is allowed to run; while a describe_review reviewer runs, the writer's and the reviewer's shuttle runs may each run for this plus describe_review_timeout_min
+describe_review: sonnet[medium]  # model-spec for the Describe row's reviewer, an assistant seat that checks the change description against the diff and the scope; the writer's turn end waits for its report, and its findings go back to the writer once; empty runs no reviewer (see contracts/specs/llm-model-spec.md)
+describe_review_timeout_min: 15  # the longest the Describe writer's turn end waits without a break for the reviewer's report, in minutes, once the description passes its check; it is also added to describe_timeout_min as the limit of both runs while a reviewer runs
+describe_forbidden_terms:  # Go regular expressions no line of a change description may match: names of the tooling that wrote the change, which the repository's reader never sees; the credit block the landing appends is never checked; set [] in a hub whose repository owns these names
+  - '(?i)\bloomyard\b'
+  - '(?i)\blym\b'
+  - '\bSketch(es)?\b'
+  - '(?i)\bdecision records?\b'
+  - '(?i)\bboard (entry|entries|note|notes)\b'
+  - '(?i)\bscoper\b'
+  - '(?i)\bperch\b'
+  - '(?i)\borch\b'
+  - '(?i)\bitems? \d+ of the (task|board entry|issue|note)\b'
+  - '(?i)\bthe parent (recorded|ruled|decided|asked)\b'
 credit: true  # whether the landing commit and the pull request's body end with the credit block: landing.credit_heading, then the landing.credit_loomyard item, then the landing.credit_engines item of each engine that ran a session in the task
 credit_heading: "Created using"  # first line of the credit block; empty leaves the items without a heading
 credit_loomyard: "LoomYard https://github.com/Knatte18/loomyard"  # credit block item listed whatever engines ran; empty adds none

@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
@@ -202,6 +203,7 @@ func TestHubLandDeps_ParentUnmergedReadsTheUpstreamTip(t *testing.T) {
 // It also asserts that the draft skips a records-only commit.
 // Recording the draft stamps the landing record with the beam's slug and the time, and both files go in one commit.
 // The describer agent's facts list the same landing, and a draft recorded from its own path replaces the description.
+// Under the template's landing.yaml, both recorders and the findings seam refuse a line holding a forbidden term.
 func TestHubLandDeps_DraftThenRecordStampsAndCommits(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -300,5 +302,29 @@ func TestHubLandDeps_DraftThenRecordStampsAndCommits(t *testing.T) {
 	}
 	if description, err := os.ReadFile(path); err != nil || string(description) != rewritten {
 		t.Errorf("description after the rewrite = %q, %v; want the draft %q", description, err, rewritten)
+	}
+
+	landingConfig := configengine.ConfigFile(h.BoardDir(), "landing")
+	if err := os.MkdirAll(filepath.Dir(landingConfig), 0o755); err != nil {
+		t.Fatalf("create %s: %v", filepath.Dir(landingConfig), err)
+	}
+	if err := os.WriteFile(landingConfig, []byte(landingshed.ConfigTemplate()), 0o644); err != nil {
+		t.Fatalf("write %s: %v", landingConfig, err)
+	}
+	forbidden := strings.Replace(rewritten, "Groups the work and its widgets.", "Run lym.", 1)
+	if err := os.WriteFile(draftPath, []byte(forbidden), 0o644); err != nil {
+		t.Fatalf("write the describer's draft: %v", err)
+	}
+	if _, err := deps.RecordDescription("b", draftPath, at); err == nil || !strings.Contains(err.Error(), summaryparser.CheckForbiddenTerm) {
+		t.Errorf("RecordDescription(from a draft naming lym) = %v; want the %s refusal", err, summaryparser.CheckForbiddenTerm)
+	}
+	if err := os.WriteFile(path, []byte(forbidden), 0o644); err != nil {
+		t.Fatalf("write the description: %v", err)
+	}
+	if _, err := deps.RecordDescription("b", "", at); err == nil || !strings.Contains(err.Error(), summaryparser.CheckForbiddenTerm) {
+		t.Errorf("RecordDescription(of a description naming lym) = %v; want the %s refusal", err, summaryparser.CheckForbiddenTerm)
+	}
+	if findings, err := deps.DescriptionFindings("b"); err != nil || len(findings) != 1 || !strings.Contains(findings[0], summaryparser.CheckForbiddenTerm) {
+		t.Errorf("DescriptionFindings(b) = %v, %v for a description naming lym; want the one %s finding", findings, err, summaryparser.CheckForbiddenTerm)
 	}
 }

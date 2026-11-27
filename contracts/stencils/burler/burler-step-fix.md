@@ -91,6 +91,8 @@ The round is not done until `{{.fixer_report_path}}` exists on disk — a skippe
 
 {{template "loom-fragment-loosened-check"}}
 
+{{template "loom-fragment-tooling-names"}}
+
 ## Never push, never touch `_lym`
 
 You must never push,

@@ -7,6 +7,7 @@
 You may settle the stop with one fix of your own, made and committed in `{{.worktree}}` before you write the verdict.
 
 - Fix only what the stop needs and the board entry's design and the decision record already settle, in the task's code, tests and docs.
+- A line you write into the code, tests or docs names nothing of the tooling that runs this session which the repository itself does not already hold, such as LoomYard or lym, a task or a gate: state the requirement itself.
 - Change the plan, the decision record or a PATTERN entry only through the repair verbs above, never by editing the file.
 - Never edit under `_lym/` or `.lym/`, which hold the run's records and state, nor any file outside `{{.worktree}}`.
 - Commit every edit on the branch you found, with a message whose last line is the trailer `Arbiter-Attempt: {{.run_id}}`.

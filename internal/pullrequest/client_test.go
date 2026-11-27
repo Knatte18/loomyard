@@ -90,7 +90,7 @@ func (s *scriptedServer) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		reply(200, `{"data": {}}`)
 	case "GET " + pullsPath + "/1":
-		reply(200, `{"state": "open", "mergeable_state": "clean", "head": {"sha": "h1"}}`)
+		reply(200, `{"state": "open", "mergeable_state": "clean", "title": "First title", "body": "First body\r\nsecond line", "head": {"sha": "h1"}}`)
 	case "GET " + pullsPath + "/2":
 		reply(200, `{"state": "closed", "merged": true, "head": {"sha": "h2"}}`)
 	case "GET " + pullsPath + "/3":
@@ -326,7 +326,7 @@ func TestClient_Calls(t *testing.T) {
 			number int
 			want   pullrequest.Status
 		}{
-			{1, pullrequest.Status{State: pullrequest.StateOpen, HeadSHA: "h1", Approved: true, ChangesRequested: true, MergeableState: "clean"}},
+			{1, pullrequest.Status{State: pullrequest.StateOpen, HeadSHA: "h1", Approved: true, ChangesRequested: true, MergeableState: "clean", Title: "First title", Body: "First body\r\nsecond line"}},
 			{2, pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: "h2"}},
 			{3, pullrequest.Status{State: pullrequest.StateClosed, HeadSHA: "h3"}},
 			{6, pullrequest.Status{State: pullrequest.StateOpen, HeadSHA: "h6", Draft: true, MergeableState: "draft"}},

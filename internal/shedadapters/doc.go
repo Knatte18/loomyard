@@ -30,9 +30,12 @@
 //     A non-done shuttle outcome that survives the bounded retry is an engine-level error.
 //   - MultiLLMProducer: the chair's done outcome is Done with the chair's first output as the path.
 //     A done chair whose gate failed is Stuck.
-//     A died or timed-out chair is an engine-level error wrapping shuttleengine.ErrNotStarted or ErrAgentDied.
+//     A chair that started and timed out is Stuck with an empty path, because its outputs may not exist.
+//     Its reason names the elapsed time, the limit and the last session state.
+//     A chair that never started, or that started and died, is an engine-level error
+//     wrapping shuttleengine.ErrNotStarted or ErrAgentDied.
 //     A writer seat that ended the step decides it instead of the chair.
-//     Every such Stuck reason ends with the way forward of re-running the row with `lym loom resume`.
+//     Every such Stuck reason ends with the way forward of running `lym loom resume`.
 //   - Bouncer: the judge's verdict is CONVERGED, CONTINUE or CIRCLING.
 //     CONVERGED maps to Done only on the harvest that earns it, within the Call that produced it.
 //     CONTINUE maps to Stuck, and CIRCLING to Awaiting.

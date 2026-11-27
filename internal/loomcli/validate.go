@@ -8,6 +8,7 @@ package loomcli
 import (
 	"errors"
 	"fmt"
+	"regexp"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -118,7 +119,16 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			findings, err := summaryparser.ValidateDescription(c.env.DescriptionPath)
+			var forbidden []*regexp.Regexp
+			if c.env.DescriptionTerms != nil {
+				terms, err := c.env.DescriptionTerms()
+				if err != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: read the landing config: "+err.Error()+"; way forward: fix landing.yaml with lym config landing from the prime, then run lym loom validate-description again"))
+					return nil
+				}
+				forbidden = terms
+			}
+			findings, err := summaryparser.ValidateDescription(c.env.DescriptionPath, forbidden)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate change description "+c.env.DescriptionPath+": "+err.Error()))
 				return nil

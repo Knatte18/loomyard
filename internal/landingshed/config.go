@@ -4,6 +4,7 @@ package landingshed
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -27,8 +28,22 @@ type Config struct {
 	ConflictTimeoutMin int `yaml:"conflict_timeout_min"`
 	// Describe is the model-spec string selecting the model the Describe row's session runs under.
 	Describe string `yaml:"describe"`
-	// DescribeTimeoutMin is the Describe session's wall-clock budget in minutes.
+	// DescribeTimeoutMin is the wall-clock budget in minutes of the Describe session's writer.
+	// While a reviewer runs, the writer's and the reviewer's runs are each bounded by this plus DescribeReviewTimeoutMin.
 	DescribeTimeoutMin int `yaml:"describe_timeout_min"`
+	// DescribeForbiddenTerms are the regular expressions a change description's line may not match:
+	// the names of the tooling that wrote the change, which a repository's reader never sees.
+	// An empty list checks no term, for a repository whose own names they are.
+	DescribeForbiddenTerms []string `yaml:"describe_forbidden_terms"`
+	// forbiddenTerms are DescribeForbiddenTerms compiled, set by LoadConfig.
+	forbiddenTerms []*regexp.Regexp
+	// DescribeReview is the model-spec string of the Describe row's reviewer, which reviews the change description.
+	// Empty runs no reviewer.
+	DescribeReview string `yaml:"describe_review"`
+	// DescribeReviewTimeoutMin is the longest unbroken wait of the writer's turn end on the reviewer, in minutes.
+	// The wait begins once the description has passed its check.
+	// While a reviewer runs, it is also added to DescribeTimeoutMin as the limit of both seats' runs.
+	DescribeReviewTimeoutMin int `yaml:"describe_review_timeout_min"`
 	// Credit selects whether the landing commit and the pull request's body end with the credit block.
 	Credit bool `yaml:"credit"`
 	// CreditHeading is the credit block's first line; empty leaves the items without a heading.
@@ -107,6 +122,12 @@ func (c Config) CreditBlock(enginesRun []string) string {
 	return strings.Join(lines, "\n")
 }
 
+// ForbiddenTerms returns the compiled describe_forbidden_terms, which a change description's check refuses a line for.
+// It is empty for a Config LoadConfig did not return.
+func (c Config) ForbiddenTerms() []*regexp.Regexp {
+	return c.forbiddenTerms
+}
+
 // creditEnginesKey is the landing.yaml key whose entries map engine names to credit block items.
 const creditEnginesKey = "credit_engines"
 
@@ -132,11 +153,15 @@ func ConfigSpec() configengine.Spec {
 			"conflict_timeout_min": configengine.CategoryNone,
 			"describe":             configengine.CategoryNone,
 			"describe_timeout_min": configengine.CategoryNone,
-			"credit":               configengine.CategoryCrossPair,
-			"credit_heading":       configengine.CategoryCrossPair,
-			"credit_loomyard":      configengine.CategoryCrossPair,
-			creditEnginesKey:       configengine.CategoryCrossPair,
-			"deploy":               configengine.CategoryExecutable,
+			// The forbidden terms shape the text that lands on the parent branch and in the pull request.
+			forbiddenTermsKey:           configengine.CategoryCrossPair,
+			describeReviewKey:           configengine.CategoryNone,
+			describeReviewTimeoutMinKey: configengine.CategoryNone,
+			"credit":                    configengine.CategoryCrossPair,
+			"credit_heading":            configengine.CategoryCrossPair,
+			"credit_loomyard":           configengine.CategoryCrossPair,
+			creditEnginesKey:            configengine.CategoryCrossPair,
+			"deploy":                    configengine.CategoryExecutable,
 			// The idle bound decides when one pair's parent lock frees for the next pair waiting on it.
 			"parent_lock_idle_release_min": configengine.CategoryCrossPair,
 			"fixer":                        configengine.CategoryNone,
@@ -166,10 +191,12 @@ func ConfigSpec() configengine.Spec {
 // LoadConfig loads and unmarshals the landing module's configuration through the hub-wide layer stack under dirs.
 // The load is strict: an absent config file is an error.
 // Its producers are reachable only inside a hub, where a missing config means the hub is broken.
-// It validates the conflict, describe and fixer keys' model-spec grammar at load time.
+// It validates the model-spec grammar of the conflict, describe and fixer keys at load time.
+// It validates that of describe_review too when the key is set.
 // A typo in one of them fails at load, not when its session spawns.
-// It refuses a fixer timeout, fixer attempt cap, fixer line cap or fix review round cap below 1.
-// It also refuses a credit_engines entry whose key names no engine.
+// It refuses a fixer timeout, fixer attempt cap, fixer line cap, fix review round cap or describe review timeout below 1.
+// It also refuses a credit_engines entry whose key names no engine,
+// and a describe_forbidden_terms entry that does not compile as a regular expression or matches the empty string.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -197,6 +224,11 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	if _, err := modelspec.Parse(cfg.Fixer); err != nil {
 		return Config{}, fmt.Errorf("config key %q: %w", keyName(fixerKey), err)
 	}
+	if cfg.DescribeReview != "" {
+		if _, err := modelspec.Parse(cfg.DescribeReview); err != nil {
+			return Config{}, fmt.Errorf("config key %q: %w", keyName(describeReviewKey), err)
+		}
+	}
 	for _, positive := range []struct {
 		key   string
 		value int
@@ -206,6 +238,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		{"finalize_fix_attempts", cfg.FinalizeFixAttempts},
 		{"finalize_fix_max_lines", cfg.FinalizeFixMaxLines},
 		{"finalize_fix_review_rounds", cfg.FinalizeFixReviewRounds},
+		{describeReviewTimeoutMinKey, cfg.DescribeReviewTimeoutMin},
 	} {
 		if positive.value < 1 {
 			return Config{}, fmt.Errorf("config key %q: %d is below 1; way forward: lym config landing --set %s=<n> from the prime", keyName(positive.key), positive.value, positive.key)
@@ -216,6 +249,19 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		if !slices.Contains(engines, name) {
 			return Config{}, fmt.Errorf("config key %q: %q is no engine; use one of %v, or remove the entry", keyName(creditEnginesKey+"."+name), name, engines)
 		}
+	}
+	for i, term := range cfg.DescribeForbiddenTerms {
+		pattern, err := regexp.Compile(term)
+		if err != nil {
+			return Config{}, fmt.Errorf("config key %q: entry %d %q is no regular expression: %w; way forward: fix the entry with lym config landing --set from the prime", keyName(forbiddenTermsKey), i, term, err)
+		}
+		// A line's match of such a pattern may be empty, which the check reads as no match.
+		// The probe's word boundaries catch a pattern that matches empty only at one, such as `\b|term`.
+		probe := pattern.FindStringIndex("a b")
+		if pattern.MatchString("") || probe != nil && probe[0] == probe[1] {
+			return Config{}, fmt.Errorf("config key %q: entry %d %q matches the empty string, so it would let lines holding its term through; way forward: fix the entry with lym config landing --set from the prime", keyName(forbiddenTermsKey), i, term)
+		}
+		cfg.forbiddenTerms = append(cfg.forbiddenTerms, pattern)
 	}
 
 	return cfg, nil

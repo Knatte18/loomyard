@@ -45,7 +45,7 @@ const (
 	StateMerged State = "merged"
 )
 
-// Status is a pull request's state, head commit and standing review verdicts as GitHub reports them.
+// Status is a pull request's state, head commit, standing review verdicts, title and body as GitHub reports them.
 type Status struct {
 	State State
 	// HeadSHA is the pull request's current head commit.
@@ -59,6 +59,10 @@ type Status struct {
 	// MergeableState is GitHub's mergeable_state of the pull request:
 	// clean, dirty, blocked, behind, unstable, has_hooks, unknown or draft.
 	MergeableState string
+	// Title is the pull request's title as GitHub holds it.
+	Title string
+	// Body is the pull request's body as GitHub holds it, with the line endings GitHub stored.
+	Body string
 }
 
 // CheckMissing is the conclusion of a required check that neither a check run nor a commit status carries at the head.
@@ -113,7 +117,7 @@ type API interface {
 	Create(ctx context.Context, head, base, title, body string) (Ref, error)
 	// Edit sets the title and body of an open pull request.
 	Edit(ctx context.Context, number int, title, body string) error
-	// Status reads a pull request's state, head and standing reviews.
+	// Status reads a pull request's state, head, standing reviews, title and body.
 	Status(ctx context.Context, number int) (Status, error)
 	// Close comments on a pull request, then closes it without merging.
 	Close(ctx context.Context, number int, comment string) error
@@ -203,14 +207,21 @@ func (c *Client) Edit(ctx context.Context, number int, title, body string) error
 	return nil
 }
 
-// Status reads a pull request's state, with merged winning over closed, and its head commit.
+// Status reads a pull request's state, with merged winning over closed, its head commit, title and body.
 // It reads the standing verdict across every page of its reviews.
 func (c *Client) Status(ctx context.Context, number int) (Status, error) {
 	pull, _, err := c.gh.PullRequests.Get(ctx, c.owner, c.repo, number)
 	if err != nil {
 		return Status{}, fmt.Errorf("pullrequest: read pull request #%d: %w", number, err)
 	}
-	status := Status{State: StateOpen, HeadSHA: pull.GetHead().GetSHA(), Draft: pull.GetDraft(), MergeableState: pull.GetMergeableState()}
+	status := Status{
+		State:          StateOpen,
+		HeadSHA:        pull.GetHead().GetSHA(),
+		Draft:          pull.GetDraft(),
+		MergeableState: pull.GetMergeableState(),
+		Title:          pull.GetTitle(),
+		Body:           pull.GetBody(),
+	}
 	switch {
 	case pull.GetMerged():
 		status.State = StateMerged

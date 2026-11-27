@@ -228,6 +228,11 @@ func TestPRReview_Wait(t *testing.T) {
 		w.tree.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1, Log: "/logs/gate.log"}
 	}
 
+	// openHoldingText is an open pull request whose title and body on GitHub are the given ones, not what the row set.
+	openHoldingText := func(title, body string) scriptedCall {
+		return scriptedCall{status: pullrequest.Status{State: pullrequest.StateOpen, Title: title, Body: body}}
+	}
+
 	// openAtGitHubHead is an open pull request whose branch on GitHub is at head.
 	openAtGitHubHead := func(head string) scriptedCall {
 		return scriptedCall{status: pullrequest.Status{State: pullrequest.StateOpen, HeadSHA: head}}
@@ -688,6 +693,21 @@ func TestPRReview_Wait(t *testing.T) {
 			},
 		},
 		{
+			// The 7th wake is the first poll after the entry's, and it reads a body edited on GitHub by hand.
+			name: "ABodyEditedOnGitHubIsSetBackToTheDescriptionAtTheNextPoll", record: seed("h1"),
+			scripts:   statusScript(open, openHoldingText("Change title", "A body edited on GitHub")),
+			setup:     func(w *waitWorld) { w.cancelAfter(7) },
+			wantErr:   context.Canceled,
+			wantCalls: []string{"Status 7", editSeven, "Status 7", editSeven},
+		},
+		{
+			name: "ABodyThatDiffersOnlyInLineEndingsAndTrailingWhitespaceIsNotEdited", record: seed("h1"),
+			scripts:   statusScript(open, openHoldingText("Change title", strings.ReplaceAll(wantPRBody, "\n", "\r\n")+"  \r\n")),
+			setup:     func(w *waitWorld) { w.cancelAfter(7) },
+			wantErr:   context.Canceled,
+			wantCalls: []string{"Status 7", editSeven, "Status 7"},
+		},
+		{
 			name: "ADescriptionThatYieldsNoTextIsLoggedOnceAndEditsNothing", record: seed("h1"), scripts: statusScript(open),
 			setup:     rewriteDescriptionThenCancel("", 8),
 			wantErr:   context.Canceled,
@@ -711,10 +731,69 @@ func TestPRReview_Wait(t *testing.T) {
 			},
 		},
 		{
-			name: "AnEditedDescriptionIsNotSetAfterTheOperatorsEnding", record: seed("h1", withContinue), scripts: statusScript(open), dirty: []string{"wip.go"},
+			name: "AnEditedDescriptionIsSetWhileAContinuedReviewStillWaits", record: seed("h1", withContinue), scripts: statusScript(open), dirty: []string{"wip.go"},
 			setup:     rewriteDescriptionThenCancel(newDescription, 8),
 			wantErr:   context.Canceled,
-			wantCalls: []string{"Status 7", editSeven, "Status 7", "Status 7"},
+			wantCalls: []string{"Status 7", editSeven, "Status 7", editNew, "Status 7"},
+		},
+		{
+			name: "AContinuedReviewSetsAStaleTextBeforeItEnds", record: seed("h1"), scripts: statusScript(open),
+			setup: func(w *waitWorld) {
+				rewriteDescriptionThenCancel(newDescription, 20)(w)
+				rewrite := w.onSleep
+				w.onSleep = func(w *waitWorld, n int) {
+					rewrite(w, n)
+					if n == 1 {
+						writeContinue(w)
+					}
+				}
+			},
+			wantOutcome: shedengine.Done,
+			wantCalls:   []string{"Status 7", editSeven, "Status 7", editNew},
+		},
+		{
+			name: "ADescriptionThatYieldsNoTextHoldsTheContinuedEnding", record: seed("h1"), scripts: statusScript(open),
+			setup: func(w *waitWorld) {
+				rewriteDescriptionThenCancel("", 8)(w)
+				rewrite := w.onSleep
+				w.onSleep = func(w *waitWorld, n int) {
+					rewrite(w, n)
+					if n == 1 {
+						writeContinue(w)
+					}
+				}
+			},
+			wantErr: context.Canceled, wantRecord: recorded("h1", withContinue),
+			check: func(t *testing.T, _ *waitWorld, logs string) {
+				for _, want := range []string{"the review stays open", "way forward: fix what the cause names", "lym loom validate-description", "lym loom pr-continue"} {
+					if !strings.Contains(logs, want) {
+						t.Errorf("logs = %q; want the Warn to carry %q", logs, want)
+					}
+				}
+			},
+		},
+		{
+			name: "ATransientEditFailureHoldsTheContinuedEndingUntilTheTextIsSet", record: seed("h1"),
+			scripts: editFailing(scriptedCall{err: context.DeadlineExceeded}, scriptedCall{}),
+			setup: func(w *waitWorld) {
+				rewriteDescriptionThenCancel(newDescription, 20)(w)
+				rewrite := w.onSleep
+				w.onSleep = func(w *waitWorld, n int) {
+					rewrite(w, n)
+					if n == 1 {
+						writeContinue(w)
+					}
+				}
+			},
+			wantOutcome: shedengine.Done,
+			wantCalls:   []string{"Status 7", editSeven, "Status 7", editNew, "Status 7", editNew},
+		},
+		{
+			name: "ATransientEditFailureHoldsAnApprovalUntilTheTextIsSet", record: seed("h1"),
+			scripts:     map[string][]scriptedCall{"Status": {open, approvedAt("h1", false)}, "Edit": {{}, {err: context.DeadlineExceeded}, {}}},
+			setup:       rewriteDescriptionThenCancel(newDescription, 20),
+			wantOutcome: shedengine.Done,
+			wantCalls:   []string{"Status 7", editSeven, "Status 7", editNew, "Status 7", editNew},
 		},
 		{
 			name: "AnEditedDescriptionIsNotSetOnAPullRequestThatIsClosedAtThePoll", record: seed("h1"), scripts: statusScript(open, closed),
@@ -865,11 +944,12 @@ func TestPRReview_Wait(t *testing.T) {
 	}
 }
 
-func TestPRReview_WaitWithNoLastSetTextTakesTheDescriptionAsTheBaselineAndEditsNothing(t *testing.T) {
+func TestPRReview_WaitThatStartsWithNoTextSetEditsAPullRequestWhoseTextDiffers(t *testing.T) {
 	tiergate.Require(t, 0)
 	// The wait captures the process-global logger, so this test stays serial.
 	logcapture.CaptureVerbose(t)
-	w, ctx := newWaitWorld(t, map[string][]scriptedCall{"Status": {{status: pullrequest.Status{State: pullrequest.StateOpen}}}})
+	handEdited := pullrequest.Status{State: pullrequest.StateOpen, Title: "Hand title", Body: "Hand body"}
+	w, ctx := newWaitWorld(t, map[string][]scriptedCall{"Status": {{status: handEdited}}})
 	rec := pullrequest.Record{Number: 7, URL: "u7", GatedHead: "h1"}
 	if err := pullrequest.WriteRecord(w.deps.PullRequest.RecordPath, w.deps.PullRequest.RecordLockPath, rec); err != nil {
 		t.Fatalf("write record: %v", err)
@@ -878,12 +958,12 @@ func TestPRReview_WaitWithNoLastSetTextTakesTheDescriptionAsTheBaselineAndEditsN
 	row := NewPRReview("PR-Review", w.deps)
 	row.gate.verify = w.tree.verify
 
-	err := row.wait(ctx, w.api, rec, nil, time.Time{}, prText{}).err
+	err := row.wait(ctx, w.api, rec, nil, time.Time{}).err
 
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("wait() error = %v; want one wrapping %v", err, context.Canceled)
 	}
-	if diff := cmp.Diff([]string{"Status 7"}, w.api.calls); diff != "" {
+	if diff := cmp.Diff([]string{"Status 7", "Edit 7|Change title|" + wantPRBody}, w.api.calls); diff != "" {
 		t.Errorf("GitHub calls mismatch (-want +got):\n%s", diff)
 	}
 }

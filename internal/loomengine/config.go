@@ -103,6 +103,16 @@ func LandingDir(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LandingDirRel())
 }
 
+// describeReviewDirName is the directory, inside the never-tracked landing directory, the Describe reviewer writes in.
+const describeReviewDirName = "describe-review"
+
+// DescribeReviewDir returns the directory that holds the files of the Describe row's review.
+// It lies at the mirrored, never-tracked landing path under the dot-lym directory, so none of them is committed.
+// It is AnchorPath-anchored.
+func DescribeReviewDir(l *lymcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, landingDirName, describeReviewDirName)
+}
+
 // beamReadyFileName is the file name of a beam's ready record within the landing directory.
 // loomengine is the only package that declares it.
 const beamReadyFileName = "beam-ready.json"

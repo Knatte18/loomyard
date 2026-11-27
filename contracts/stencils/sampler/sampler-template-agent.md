@@ -48,6 +48,8 @@ Commit what the trial settled as an ordinary change.
 
 {{template "loom-fragment-loosened-check"}}
 
+{{template "loom-fragment-tooling-names"}}
+
 ## The operator's ending
 
 The build ends when the operator says the work is done.

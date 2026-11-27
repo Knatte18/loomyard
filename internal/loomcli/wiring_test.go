@@ -298,6 +298,10 @@ func TestWire_DefaultConfig(t *testing.T) {
 		if !reflect.DeepEqual(c.landingCfg, want) {
 			t.Errorf("c.landingCfg = %+v; want %+v", c.landingCfg, want)
 		}
+		terms, err := c.env.DescriptionTerms()
+		if err != nil || len(terms) == 0 || len(terms) != len(want.ForbiddenTerms()) {
+			t.Errorf("c.env.DescriptionTerms() = %d patterns, %v; want the %d of landing.yaml", len(terms), err, len(want.ForbiddenTerms()))
+		}
 	})
 
 	// landing is hub-wide: the pair's own landing.yaml, which blanks deploy, never reaches the wired config.
@@ -800,6 +804,11 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	// A darn run is told the record as its PATTERN declaration path, as every loom recipe is.
 	if darn.env.PatternRecordPath != loomengine.DiscussionDecisionRecord(location) {
 		t.Errorf("darn env.PatternRecordPath = %q; want %q", darn.env.PatternRecordPath, loomengine.DiscussionDecisionRecord(location))
+	}
+	// The forbidden terms are read from the hub's landing.yaml at call time, once one is there.
+	seedLandingConfig(t, fabricengine.BoardDir(location.HubPath), "")
+	if terms, err := c.env.DescriptionTerms(); err != nil || len(terms) == 0 {
+		t.Errorf("env.DescriptionTerms() = %d patterns, %v; want the patterns of landing.yaml", len(terms), err)
 	}
 	// Nothing that a module config would have filled may be populated.
 	// That proves no load happened, rather than that none failed.

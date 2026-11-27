@@ -7,11 +7,14 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -28,10 +31,12 @@ func TestDescribeGate_JudgesTheSpecsOneOutputFile(t *testing.T) {
 		name string
 		// content is the draft's content; empty leaves no draft.
 		content    string
+		forbidden  []*regexp.Regexp
 		wantPassed bool
 	}{
 		{name: "ValidDraftPasses", content: validBeamDescription, wantPassed: true},
 		{name: "DraftWithAFindingFails", content: "# Ship the beam\n"},
+		{name: "DraftWithAForbiddenTermFails", content: validBeamDescription, forbidden: []*regexp.Regexp{regexp.MustCompile(`Groups`)}},
 		{name: "MissingDraftFails"},
 	}
 	for _, tt := range tests {
@@ -43,7 +48,7 @@ func TestDescribeGate_JudgesTheSpecsOneOutputFile(t *testing.T) {
 					t.Fatalf("WriteFile(%s) = %v; want nil", draft, err)
 				}
 			}
-			gate := describeGate(shuttleengine.Spec{OutputFiles: []string{draft}})
+			gate := describeGate(tt.forbidden)(shuttleengine.Spec{OutputFiles: []string{draft}})
 			if len(gate) != 1 || gate[0].Name != describeGateName || gate[0].Attempts != describeGateAttempts {
 				t.Fatalf("describeGate() = %+v; want the one %s entry with %d attempts", gate, describeGateName, describeGateAttempts)
 			}
@@ -63,9 +68,11 @@ func TestDescriptionFindings(t *testing.T) {
 		name string
 		// content is the description's content; empty leaves no file.
 		content   string
+		forbidden []*regexp.Regexp
 		wantCheck string
 	}{
 		{name: "ValidDescriptionHasNone", content: validBeamDescription},
+		{name: "ForbiddenTermIsNamed", content: validBeamDescription, forbidden: []*regexp.Regexp{regexp.MustCompile(`Groups`)}, wantCheck: summaryparser.CheckForbiddenTerm},
 		{name: "EmptyBodyIsNamed", content: "# Ship the beam\n", wantCheck: summaryparser.CheckEmptyBody},
 		{name: "MissingFileIsAFinding", wantCheck: summaryparser.CheckMissing},
 	}
@@ -78,7 +85,7 @@ func TestDescriptionFindings(t *testing.T) {
 					t.Fatalf("WriteFile(%s) = %v; want nil", path, err)
 				}
 			}
-			findings, err := descriptionFindings(path)
+			findings, err := descriptionFindings(path, tt.forbidden)
 			if err != nil {
 				t.Fatalf("descriptionFindings() = _, %v; want nil", err)
 			}
@@ -92,6 +99,42 @@ func TestDescriptionFindings(t *testing.T) {
 				t.Errorf("descriptionFindings() = %v; want the one %s finding", findings, tt.wantCheck)
 			}
 		})
+	}
+}
+
+// The describer's gate and findings both refuse what the hub's landing.yaml forbids.
+func TestBeamDescribeDeps_CarriesTheForbiddenTerms(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	board := t.TempDir()
+	configPath := configengine.ConfigFile(board, "landing")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s) = %v; want nil", filepath.Dir(configPath), err)
+	}
+	if err := os.WriteFile(configPath, []byte(landingshed.ConfigTemplate()), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s) = %v; want nil", configPath, err)
+	}
+	draft := filepath.Join(t.TempDir(), "draft.md")
+	if err := os.WriteFile(draft, []byte(strings.Replace(validBeamDescription, "Groups the work.", "Run lym.", 1)), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s) = %v; want nil", draft, err)
+	}
+
+	deps, err := beamDescribeDeps(nil, nil, "pay", configengine.Dirs{Board: board})
+	if err != nil {
+		t.Fatalf("beamDescribeDeps() = _, %v; want nil", err)
+	}
+	findings, err := deps.Findings(draft)
+	if err != nil || len(findings) != 1 || !strings.Contains(findings[0], summaryparser.CheckForbiddenTerm) {
+		t.Errorf("Findings() = %v, %v; want the one %s finding", findings, err, summaryparser.CheckForbiddenTerm)
+	}
+	shuttle, ok := deps.Shuttle.(*runnerAgentShuttle)
+	if !ok {
+		t.Fatalf("deps.Shuttle = %T; want *runnerAgentShuttle", deps.Shuttle)
+	}
+	result, err := shuttle.gate(shuttleengine.Spec{OutputFiles: []string{draft}})[0].Gate()
+	if err != nil || result.Passed {
+		t.Errorf("gate() = %+v, %v; want a failure on the forbidden term", result, err)
 	}
 }
 

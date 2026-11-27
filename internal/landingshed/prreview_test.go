@@ -49,6 +49,10 @@ type fakePullRequestAPI struct {
 	statusCalls int
 	// onCall, when set, is told each method's name as it is called.
 	onCall func(method string)
+	// title and body are the text the pull request holds on this fake's GitHub.
+	// A successful Create or Edit sets them, and a test may preset them.
+	title string
+	body  string
 }
 
 var _ pullrequest.API = (*fakePullRequestAPI)(nil)
@@ -82,16 +86,40 @@ func (f *fakePullRequestAPI) FindOpen(_ context.Context, head, base string) (pul
 
 func (f *fakePullRequestAPI) Create(_ context.Context, head, base, title, body string) (pullrequest.Ref, error) {
 	s := f.next("Create", fmt.Sprintf("%s %s|%s|%s", head, base, title, body))
+	if s.err == nil {
+		f.hold(title, body)
+	}
 	return s.ref, s.err
 }
 
 func (f *fakePullRequestAPI) Edit(_ context.Context, number int, title, body string) error {
-	return f.next("Edit", fmt.Sprintf("%d|%s|%s", number, title, body)).err
+	s := f.next("Edit", fmt.Sprintf("%d|%s|%s", number, title, body))
+	if s.err == nil {
+		f.hold(title, body)
+	}
+	return s.err
 }
 
+// Status answers the scripted status, with the title and body the fake holds where the script sets none.
 func (f *fakePullRequestAPI) Status(_ context.Context, number int) (pullrequest.Status, error) {
 	s := f.next("Status", fmt.Sprint(number))
-	return s.status, s.err
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	status := s.status
+	if status.Title == "" {
+		status.Title = f.title
+	}
+	if status.Body == "" {
+		status.Body = f.body
+	}
+	return status, s.err
+}
+
+// hold sets the text the pull request holds on this fake's GitHub.
+func (f *fakePullRequestAPI) hold(title, body string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.title, f.body = title, body
 }
 
 func (f *fakePullRequestAPI) Close(_ context.Context, number int, comment string) error {

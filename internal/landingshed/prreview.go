@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -41,7 +42,9 @@ const (
 // Its body comes from the description's body, the regression check and the credit block.
 // The row records the pull request and waits on it, whatever the run's autonomy, and no agent takes part.
 // The wait gates and pushes a commit made in the task worktree while it waits.
-// When the text built from the change description changes, the wait sets the title and body again.
+// While the pull request is open and the review goes on, the wait compares its text at each poll.
+// It sets the title and body again when GitHub holds other text than the change description yields.
+// An open pull request's review does not end while its title and body could not be built or set.
 // The wait ends when the pull request is merged or approved on GitHub, or the operator runs `lym loom pr-continue`.
 // It halts on a pull request closed without a merge, a gate failure and a commit pushed to the branch on GitHub by hand.
 // It takes no parent lock.
@@ -196,7 +199,7 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) *ending {
 		// The operator already ended this review.
 		// A head other than the gated head means commits were added that need review, so the review starts afresh.
 		if head == rec.GatedHead {
-			return p.wait(ctx, api, rec, nil, time.Time{}, prText{})
+			return p.wait(ctx, api, rec, nil, time.Time{})
 		}
 		if err := removePRRecord(pr, p.name); err != nil {
 			return &ending{err: err}
@@ -240,7 +243,7 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) *ending {
 			}
 		}
 		if status.State != pullrequest.StateOpen {
-			return p.wait(ctx, api, rec, entryStatus, entryReadAt, prText{})
+			return p.wait(ctx, api, rec, entryStatus, entryReadAt)
 		}
 		ref = pullrequest.Ref{Number: rec.Number, URL: rec.URL}
 	} else {
@@ -253,6 +256,10 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) *ending {
 		if err := api.Edit(ctx, ref.Number, text.title, text.body); err != nil {
 			return p.githubFailure(ctx, "set the pull request's title and body", err)
 		}
+		// The status read before the edit holds the text just set, so the wait's first poll does not edit again.
+		if entryStatus != nil {
+			entryStatus.Title, entryStatus.Body = text.title, text.body
+		}
 	}
 	if err := p.recordPullRequest(ref, head, found); err != nil {
 		return &ending{err: err}
@@ -261,14 +268,25 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) *ending {
 	if err != nil || !found {
 		return &ending{err: fmt.Errorf("landingshed: %s: read back the pull request record (found %v): %w", p.name, found, err)}
 	}
-	return p.wait(ctx, api, rec, entryStatus, entryReadAt, text)
+	return p.wait(ctx, api, rec, entryStatus, entryReadAt)
 }
 
 // prText is a pull request's title and body.
-// A title is never empty, so the zero prText stands for a text not known.
 type prText struct {
 	title string
 	body  string
+}
+
+// matches reports whether a pull request holding title and body carries this text.
+// GitHub may store a body with \r\n line endings.
+// Both sides are therefore compared with those read as \n and with their trailing whitespace trimmed.
+func (t prText) matches(title, body string) bool {
+	return normalisedText(t.title) == normalisedText(title) && normalisedText(t.body) == normalisedText(body)
+}
+
+// normalisedText returns s with every \r\n read as \n and its trailing whitespace trimmed.
+func normalisedText(s string) string {
+	return strings.TrimRight(strings.ReplaceAll(s, "\r\n", "\n"), " \t\r\n")
 }
 
 // pullRequestText returns the title and body the pull request carries for the change description read at the call.
@@ -286,36 +304,36 @@ func (p *PRReview) pullRequestText() (prText, error) {
 	return prText{title: summary.Title, body: bodyWithCredit(summary.Body, credit)}, nil
 }
 
-// syncText sets the pull request's title and body again when the change description yields other text than the last set,
-// so an edit of the description reaches the pull request at the next poll.
-// A wait that knows no last-set text records the description's text as the last set, and edits nothing.
-// A text that cannot be built is logged once per episode and left for a later poll, since the file may be mid-edit.
+// syncText sets pull request number's title and body again when status, as polled, holds stale text.
+// Stale text is any other than what the change description yields.
+// The pull request therefore follows the description at every poll, whatever set the text GitHub holds.
+// A text that cannot be built is left for a later poll, since the file may be mid-edit.
+// That failure is logged once per episode, with the way forward.
 // A transient failure of the edit is logged once per episode of failed edits and left for a later poll;
 // any other failed edit ends the call with a verdict.
 // It returns nil when the wait goes on.
-func (p *PRReview) syncText(ctx context.Context, api pullrequest.API, state *prWaitState, number int) *ending {
+func (p *PRReview) syncText(ctx context.Context, api pullrequest.API, state *prWaitState, number int, status pullrequest.Status) *ending {
 	text, err := p.pullRequestText()
 	if err != nil {
 		if !state.textWarned {
-			logger.Warn("landingshed: no pull request text could be built, so the pull request keeps its title and body", "row", p.name, "cause", err)
+			logger.Warn("landingshed: no pull request text could be built, so the review stays open and the pull request keeps its title and body; "+
+				"way forward: fix what the cause names, for the change description until lym loom validate-description passes, "+
+				"and a later poll sets the text and lets an approval or lym loom pr-continue end the review", "row", p.name, "cause", err)
 			state.textWarned = true
 		}
+		state.textStale = true
 		return nil
 	}
 	state.textWarned = false
-	switch {
-	case state.synced == prText{}:
-		state.synced = text
-		return nil
-	case text == state.synced:
-		state.editWarned = false
+	if text.matches(status.Title, status.Body) {
+		state.editWarned, state.textStale = false, false
 		return nil
 	}
 	if err := api.Edit(ctx, number, text.title, text.body); err != nil {
+		state.textStale = true
 		return p.pollFailure(ctx, &state.editWarned, "set the pull request's title and body", err)
 	}
-	state.synced = text
-	state.editWarned = false
+	state.editWarned, state.textStale = false, false
 	return nil
 }
 
@@ -399,14 +417,15 @@ type prWaitState struct {
 	lastPoll time.Time
 	// transientWarned is set after a transient poll failure logged its Warn and cleared by the next good poll.
 	transientWarned bool
-	// synced is the title and body the pull request was last set to, zero until the wait knows them.
-	synced prText
 	// textWarned is set after a failure to build the pull request text logged its Warn.
 	// The next build that succeeds clears it.
 	textWarned bool
 	// editWarned is set after a transient failure of the title and body edit logged its Warn.
-	// The next edit that succeeds clears it.
+	// The next edit that succeeds, and a poll that finds the text current, clear it.
 	editWarned bool
+	// textStale is true while the last compare could not bring the pull request's text to the description's.
+	// The text could not be built, or the edit failed; an open pull request's review does not end then.
+	textStale bool
 }
 
 // wait holds the call on the pull request until the review ends.
@@ -417,21 +436,23 @@ type prWaitState struct {
 // A wake with a head to gate reads the status whatever the minute says.
 // A change to the record ends the sleep between two wakes early,
 // so a continue flag the operator writes is read within a second.
-// A poll that finds the pull request open and the review going re-sets its title and body when the text has changed.
+// A poll that finds the pull request open and its review not ended compares its title and body.
+// A poll that reads the continue flag compares them too.
+// It sets them again when GitHub holds other text than the change description yields.
+// An approval or the continue flag does not end the wait while the text cannot be built.
+// Neither ends it while that edit fails transiently.
 // The text is yielded from the change description, the regression check and the credit block.
-// It has changed when it differs from the text last set.
 // rec is the record the wait starts from.
 // entryStatus and entryReadAt are the status read before the wait and its time, nil and zero when none was read.
-// synced is the title and body set before the wait, zero when none was set.
 // A cancelled context is an error.
-func (p *PRReview) wait(ctx context.Context, api pullrequest.API, rec pullrequest.Record, entryStatus *pullrequest.Status, entryReadAt time.Time, synced prText) *ending {
+func (p *PRReview) wait(ctx context.Context, api pullrequest.API, rec pullrequest.Record, entryStatus *pullrequest.Status, entryReadAt time.Time) *ending {
 	label := fmt.Sprintf("PR #%d", rec.Number)
 	p.gate.markWait(label)
 	defer p.gate.markWait("")
 	changes, stopWatch := p.deps.PullRequest.RecordChanges()
 	defer stopWatch()
 
-	state := prWaitState{continueSeen: rec.Continue, pending: entryStatus, lastPoll: entryReadAt, synced: synced}
+	state := prWaitState{continueSeen: rec.Continue, pending: entryStatus, lastPoll: entryReadAt}
 	for {
 		if end := p.wake(ctx, api, &state, label); end != nil {
 			return end
@@ -517,12 +538,12 @@ func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitS
 	if !polled {
 		return nil
 	}
-	if status.State == pullrequest.StateOpen && !rec.ReviewEnded && !rec.Continue {
-		if end := p.syncText(ctx, api, state, rec.Number); end != nil {
+	if status.State == pullrequest.StateOpen && !rec.ReviewEnded {
+		if end := p.syncText(ctx, api, state, rec.Number, status); end != nil {
 			return end
 		}
 	}
-	return p.judge(ctx, status, rec, head, dirty)
+	return p.judge(ctx, status, rec, head, dirty, state.textStale)
 }
 
 // readTree reads the task head and the task worktree's uncommitted paths.
@@ -640,7 +661,8 @@ func (p *PRReview) pollFailure(ctx context.Context, warned *bool, action string,
 // The operator's ending leaves the pull request as GitHub has it, for Finalize to merge on GitHub.
 // Ending the review therefore never lands the run by a direct push to the parent.
 // An open pull request whose branch on GitHub holds a commit the task worktree lacks halts before any ending.
-func (p *PRReview) judge(ctx context.Context, status pullrequest.Status, rec pullrequest.Record, head string, dirty []string) *ending {
+// While staleText says an open pull request's text could not be built or set, its review goes on.
+func (p *PRReview) judge(ctx context.Context, status pullrequest.Status, rec pullrequest.Record, head string, dirty []string, staleText bool) *ending {
 	clean := len(dirty) == 0
 	gated := head == rec.GatedHead
 
@@ -682,6 +704,9 @@ func (p *PRReview) judge(ctx context.Context, status pullrequest.Status, rec pul
 		}
 		if end := p.foreignHeadHalt(ctx, status, rec, head); end != nil {
 			return end
+		}
+		if staleText {
+			return nil
 		}
 		if rec.Continue {
 			if !clean || !gated {

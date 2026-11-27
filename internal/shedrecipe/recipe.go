@@ -4,6 +4,7 @@ package shedrecipe
 
 import (
 	"context"
+	"regexp"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
@@ -175,6 +176,10 @@ type Env struct {
 	// DescriptionPath is the told absolute path of the change description.
 	// The gate resolver's "description" gate reads it.
 	DescriptionPath string
+	// DescriptionTerms returns the patterns a change description's line may not match.
+	// They are landing.describe_forbidden_terms, compiled.
+	// The gate resolver's "description" gate and the validate-description verb read it; nil checks no term.
+	DescriptionTerms func() ([]*regexp.Regexp, error)
 
 	// ReviewTimeout is the run-wide review round deadline, used when a BurlerReview or BurlerFix row's timeout_s is absent.
 	// One deadline is shared by every review segment, so it is a run-wide value.

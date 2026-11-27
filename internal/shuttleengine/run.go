@@ -465,6 +465,9 @@ type Run struct {
 	// gateFindingsPath is the findings file the memoised arrival's failing entry wrote, empty when gateFailedAt is -1.
 	// It is kept apart from GateOutcome.FindingsPath, which is empty on a pass; a failing PassOnCap entry still needs it.
 	gateFindingsPath string
+	// gateReprompted is the Reprompted field of the failing result at the memoised arrival, nil when none.
+	// Every real evaluation resets it.
+	gateReprompted RepromptRecorder
 	// gateFails and gateSent are index-aligned with gate and sized from len(gate) on first use:
 	// the consecutive failures of each entry, and the re-prompts successfully delivered (Send returned no error) for it.
 	// Both live in memory for this run only.

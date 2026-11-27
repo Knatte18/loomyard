@@ -18,7 +18,8 @@
 // whatever the token.
 // SetDraft uses GraphQL, since the REST API cannot change a pull request's draft state.
 // An error GitHub lists in the GraphQL response is a failure.
-// Status reads the state (merged wins over closed), the head SHA and whether the pull request is a draft.
+// Status reads the state (merged wins over closed), the head SHA, whether the pull request is a draft,
+// and the title and body as GitHub holds them.
 // A reviewer's standing review is the latest of their approvals, change requests and dismissals,
 // so a later comment changes nothing.
 // ReadMergeState judges whether GitHub would merge a pull request now, naming each cause when it would not;

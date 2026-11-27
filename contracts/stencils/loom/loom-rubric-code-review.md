@@ -101,6 +101,9 @@ Do not flag any of the following as a finding:
   Raise nothing when every declared entry lands, or when your directive declares none.
 - **The change description.**
   A claim in `_lym/landing/summary.md` that the diff does not bear out is a finding.
+- **Names of the tooling.**
+  A repository document the diff adds or changes, or the change description, that names the tooling which wrote the change is a finding: LoomYard or lym, the board or a board entry, the Sketch or the decision record, another task, a gate or a tier of that tooling, or what the parent recorded.
+  A name the repository itself holds, as its own subject, is not flagged.
 - **Merge danger.**
   Check the door the change description's `## Merge danger` section calls against the diff;
   a `two-way` call earns the most suspicion.

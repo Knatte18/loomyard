@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -423,6 +424,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		SupportLogPath:     filepath.Join(dir, "support-log.md"),
 		RelevantPath:       filepath.Join(dir, "relevant.md"),
 		DescriptionPath:    filepath.Join(dir, "description.md"),
+		DescriptionTerms:   func() ([]*regexp.Regexp, error) { return nil, nil },
 		Shuttle:            &shedfake.Shuttle{},
 		Burler:             &shedfake.BurlerHalfRunner{},
 		Seats:              &shedfake.SeatRunner{},

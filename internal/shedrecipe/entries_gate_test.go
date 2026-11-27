@@ -1,8 +1,10 @@
 package shedrecipe
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -107,6 +109,34 @@ func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
 			}
 		})
 	}
+
+	// The description gate refuses a line the env's forbidden terms match, so a site passing no pattern fails here.
+	t.Run("description with a forbidden term", func(t *testing.T) {
+		env := reworkTestEnv(t)
+		env.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
+		env.DescriptionTerms = func() ([]*regexp.Regexp, error) {
+			return []*regexp.Regexp{regexp.MustCompile(`\blym\b`)}, nil
+		}
+		content := "# Title\n\nRun lym.\n\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** loom\n"
+		if err := os.WriteFile(env.DescriptionPath, []byte(content), 0o644); err != nil {
+			t.Fatalf("WriteFile() error = %v", err)
+		}
+		spec, err := resolveGateSpec("Row", gatesCfg("description", 4), env)
+		if err != nil {
+			t.Fatalf("resolveGateSpec() error = %v; want nil", err)
+		}
+		result, err := spec[0].Gate()
+		if err != nil || result.Passed || !strings.Contains(result.Findings, `forbidden-term: line 3 names "lym"`) {
+			t.Errorf("Gate() = %+v, %v; want a forbidden-term finding on line 3", result, err)
+		}
+	})
+	t.Run("description whose forbidden terms cannot be read", func(t *testing.T) {
+		env := reworkTestEnv(t)
+		env.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
+		env.DescriptionTerms = func() ([]*regexp.Regexp, error) { return nil, errors.New("bad yaml") }
+		_, err := resolveGateSpec("Row", gatesCfg("description", 4), env)
+		assertErrContains(t, err, "read the forbidden terms: bad yaml")
+	})
 
 	// The "verify" gate reads the call of the row's own gate key: its name in lower case, else the "gate_key" the row names.
 	for _, tt := range []struct {

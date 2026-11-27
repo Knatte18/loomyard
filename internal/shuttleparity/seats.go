@@ -127,7 +127,7 @@ const soloSessionHolder = "internal/landingshed#soloSession.table"
 // seatTables is the catalog: one entry per seat table builder of production code.
 var seatTables = []seatTable{
 	{Builder: "internal/darnengine#DarnTable", Holders: []string{"internal/darnengine#DarnTable"}, Build: buildDarn},
-	{Builder: "internal/landingshed#DescribeTable", Holders: []string{soloSessionHolder}, Build: buildDescribe},
+	{Builder: "internal/landingshed#DescribeTable", Holders: []string{soloSessionHolder, "internal/landingshed#describeReviewSeat"}, Build: buildDescribe},
 	{Builder: "internal/landingshed#FixerTable", Holders: []string{soloSessionHolder}, Build: buildFixer},
 	{Builder: "internal/landingshed#FixReviewSeatTable", Holders: []string{soloSessionHolder}, Build: buildFixReview},
 	{
@@ -230,6 +230,7 @@ func buildDescribe(env SeatEnv) ([]seatengine.Table, error) {
 		StencilsDir:        env.StencilsDir,
 		DecisionRecordPath: standInPath(env, "decision-record.md"),
 		DescriptionPath:    standInPath(env, "description.md"),
+		ReviewDir:          standInPath(env, "describe-review"),
 		TaskBranch:         "task",
 		ParentBranch:       "parent",
 		MergeBase:          "merge-base",

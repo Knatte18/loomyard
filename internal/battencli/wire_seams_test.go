@@ -131,6 +131,7 @@ var intentionallyNil = map[string]string{
 	"DiscussionTable":                    "loom-only seam, batten has no discussion segment",
 	"CommitDiscussion":                   "loom-only seam, batten has no discussion segment",
 	"DescribeTable":                      "loom-only seam, batten has no describe segment",
+	"DescriptionTerms":                   "loom-only seam, batten has no describe segment",
 	"CommitDescription":                  "loom-only seam, batten has no describe segment",
 	"PlanTable":                          "loom-only seam, batten has no plan segment",
 	"CommitPlan":                         "loom-only seam, batten has no plan segment",

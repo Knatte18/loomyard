@@ -43,6 +43,8 @@ Never run `git` in any form — resolving a path means editing its file content,
 Edit a file outside the listed paths only when the merged tree would otherwise stop building or its tests would fail, and only to keep it building and passing.
 Create no new file: a file you add is never part of the merge, and it halts the merge as stuck.
 
+A line you write into a repository file names nothing of the tooling that runs this session which the repository itself does not already hold, such as LoomYard or lym, a task or a gate: state the requirement itself.
+
 Never start a background or detached process from the shell: such a process outlives your command and runs outside every memory cap lym sets.
 
 ## The report — your terminal act

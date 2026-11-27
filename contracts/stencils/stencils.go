@@ -21,6 +21,12 @@ var LandingTemplateConflict []byte
 //go:embed landing/landing-template-describe.md
 var LandingTemplateDescribe []byte
 
+// LandingTemplateDescribeReview is the landing Describe reviewer's shipped-default prompt.
+// It is the assistant seat that reviews the change description the Describe lead writes.
+//
+//go:embed landing/landing-template-describe-review.md
+var LandingTemplateDescribeReview []byte
+
 // LandingTemplateFixer is the landing merge fixer's shipped-default prompt.
 //
 //go:embed landing/landing-template-fixer.md
@@ -201,6 +207,12 @@ var LoomFragmentArbiterNoFix []byte
 //
 //go:embed loom/loom-fragment-loosened-check.md
 var LoomFragmentLoosenedCheck []byte
+
+// LoomFragmentToolingNames is the rule that a repository file names nothing of the tooling which wrote it.
+// Every brief of a session that commits code includes it.
+//
+//go:embed loom/loom-fragment-tooling-names.md
+var LoomFragmentToolingNames []byte
 
 // LoomRubricDiscussionReview is the Discussion-Review rubric, read by every row of the Discussion-Review perch.
 //
@@ -907,6 +919,7 @@ type registryEntry struct {
 var entries = []registryEntry{
 	{"landing-template-conflict", &LandingTemplateConflict},
 	{"landing-template-describe", &LandingTemplateDescribe},
+	{"landing-template-describe-review", &LandingTemplateDescribeReview},
 	{"landing-template-fixer", &LandingTemplateFixer},
 	{"landing-template-fix-review", &LandingTemplateFixReview},
 	{"darn-template-write", &DarnTemplateWrite},
@@ -939,6 +952,7 @@ var entries = []registryEntry{
 	{"loom-fragment-arbiter-fix", &LoomFragmentArbiterFix},
 	{"loom-fragment-arbiter-no-fix", &LoomFragmentArbiterNoFix},
 	{"loom-fragment-loosened-check", &LoomFragmentLoosenedCheck},
+	{"loom-fragment-tooling-names", &LoomFragmentToolingNames},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
 	{"loom-rubric-raddle-review", &LoomRubricRaddleReview},

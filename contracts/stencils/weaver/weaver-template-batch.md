@@ -72,6 +72,8 @@ A card that departs from its own text because a PATTERN entry forbids the card's
 
 {{template "loom-fragment-loosened-check"}}
 
+{{template "loom-fragment-tooling-names"}}
+
 ## Where and how you run commands
 
 Your session's working directory already is the worktree root: run every Bash command from there and give paths in Bash commands worktree-relative.

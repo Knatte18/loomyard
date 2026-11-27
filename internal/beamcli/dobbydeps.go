@@ -14,6 +14,7 @@ import (
 	"maps"
 	"os"
 	"os/exec"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -411,7 +412,6 @@ func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, sta
 // beamDescribeDeps fills the description rewrite's seams for the beam slug over the hub of prime.
 // beam is the beam's worktree.
 // The describer agent runs on landing.yaml's describe model for its describe_timeout_min.
-// The Describe row's session runs on the same two keys.
 // Its shuttle run is gated on its draft passing as a change description, so a draft with a finding re-prompts it.
 func beamDescribeDeps(prime, beam *lymcwd.Location, slug string, dirs configengine.Dirs) (dobbyengine.BeamDescribeDeps, error) {
 	cfg, err := landingshed.LoadConfig(dirs, "landing")
@@ -423,11 +423,11 @@ func beamDescribeDeps(prime, beam *lymcwd.Location, slug string, dirs configengi
 		return dobbyengine.BeamDescribeDeps{}, err
 	}
 	return dobbyengine.BeamDescribeDeps{
-		Shuttle:  &runnerAgentShuttle{worktree: beam, gate: describeGate},
+		Shuttle:  &runnerAgentShuttle{worktree: beam, gate: describeGate(cfg.ForbiddenTerms())},
 		Model:    choice,
 		Timeout:  time.Duration(cfg.DescribeTimeoutMin) * time.Minute,
 		Facts:    func() (dobbyengine.BeamDescribeFacts, error) { return beamDescribeFacts(prime, beam, slug) },
-		Findings: descriptionFindings,
+		Findings: func(path string) ([]string, error) { return descriptionFindings(path, cfg.ForbiddenTerms()) },
 		Record: func(ctx context.Context, draftPath string) (bool, error) {
 			_, err := rewriteDescription(ctx, hubLandDeps(prime), slug, draftPath)
 			var afterRecord afterRecordError
@@ -467,9 +467,12 @@ func beamDescribeFacts(prime, beam *lymcwd.Location, slug string) (dobbyengine.B
 	}, nil
 }
 
-// describeGate is the gate the describer agent's run carries over its one output file, the draft.
-func describeGate(spec shuttleengine.Spec) shuttleengine.GateSpec {
-	return shuttleengine.GateSpec{{Name: describeGateName, Gate: landingshed.NewDescriptionGate(spec.OutputFiles[0]), Attempts: describeGateAttempts}}
+// describeGate returns the gate builder of the describer agent's run, over its one output file, the draft.
+// The gate refuses a line of the draft that one of forbidden matches.
+func describeGate(forbidden []*regexp.Regexp) func(spec shuttleengine.Spec) shuttleengine.GateSpec {
+	return func(spec shuttleengine.Spec) shuttleengine.GateSpec {
+		return shuttleengine.GateSpec{{Name: describeGateName, Gate: landingshed.NewDescriptionGate(spec.OutputFiles[0], forbidden), Attempts: describeGateAttempts}}
+	}
 }
 
 // tearDownLeftovers tears down each of pairs by its kind in a goroutine of its own.

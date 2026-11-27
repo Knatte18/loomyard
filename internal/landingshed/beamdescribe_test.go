@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -153,12 +154,17 @@ func TestRecordBeamDescription(t *testing.T) {
 		// content is the description at the path; empty leaves no file.
 		content   string
 		commitErr error
+		forbidden []*regexp.Regexp
 		// wantErr are the substrings the failure carries; empty wants the description recorded.
 		wantErr     []string
 		wantIs      error
 		wantCommits int
 	}{
 		{name: "ValidDescriptionIsCommitted", content: valid, wantCommits: 1},
+		{
+			name: "ForbiddenTermIsRefused", content: valid, forbidden: []*regexp.Regexp{regexp.MustCompile(`hydraulics model`)},
+			wantErr: []string{"forbidden-term: line 3"},
+		},
 		{
 			name:    "UneditedDraftIsRefusedNamingTheMergeDangerFindings",
 			content: beamDraft("Ship the beam", "The beam adds the hydraulics model.", nil),
@@ -188,7 +194,7 @@ func TestRecordBeamDescription(t *testing.T) {
 			commits := 0
 			commit := func() error { commits++; return tt.commitErr }
 
-			err := RecordBeamDescription(slug, path, commit)
+			err := RecordBeamDescription(slug, path, tt.forbidden, commit)
 
 			if commits != tt.wantCommits {
 				t.Errorf("commits = %d; want %d", commits, tt.wantCommits)
@@ -238,6 +244,7 @@ func TestReplaceBeamDescription(t *testing.T) {
 		existing  string
 		draft     string
 		commitErr error
+		forbidden []*regexp.Regexp
 		// wantErr are the substrings the failure carries; empty wants the draft committed.
 		wantErr     []string
 		wantIs      error
@@ -249,6 +256,11 @@ func TestReplaceBeamDescription(t *testing.T) {
 		{
 			name: "DraftWithAFindingLeavesTheDescriptionStanding", existing: recorded, draft: "# Ship the beam\n",
 			wantErr: []string{"empty-body: body is empty", "stands", `"lym beam describe my-beam"`}, wantFile: recorded,
+		},
+		{
+			name: "DraftHoldingAForbiddenTermLeavesTheDescriptionStanding", existing: recorded, draft: rewritten,
+			forbidden: []*regexp.Regexp{regexp.MustCompile(`its tool joints`)},
+			wantErr:   []string{"forbidden-term: line 3", "stands"}, wantFile: recorded,
 		},
 		{name: "MissingDraftLeavesTheDescriptionStanding", existing: recorded, wantErr: []string{"validate the draft"}, wantFile: recorded},
 		{
@@ -285,7 +297,7 @@ func TestReplaceBeamDescription(t *testing.T) {
 				return tt.commitErr
 			}
 
-			err := ReplaceBeamDescription(slug, draftPath, path, commit)
+			err := ReplaceBeamDescription(slug, draftPath, path, tt.forbidden, commit)
 
 			if commits != tt.wantCommits {
 				t.Errorf("commits = %d; want %d", commits, tt.wantCommits)

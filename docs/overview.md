@@ -1434,6 +1434,15 @@ User-facing modules each get one `lym <module>` namespace:
   `Webster` reroutes to `Plan-Burler-Review` after begin-batch leaves a new plan conflict.
   The plan fixer `lym webster fix-plan` could not clear that conflict.
   `Describe` writes the change description at `_lym/landing/summary.md`, the single source for the landing commit.
+  Its `description` gate, `validate-description` and `lym beam describe` refuse each line that matches a `landing.describe_forbidden_terms` pattern.
+  The template's patterns name LoomYard's own vocabulary, which a repository's reader never sees;
+  a hub whose repository owns those names, as LoomYard's own hub does, sets the key to `[]`.
+  A reviewer assistant on `landing.describe_review`'s model checks the description against the diff and the scope.
+  Once the description passes that gate, the reviewer is released to read it,
+  and the writer's turn end waits for the reviewer's report, at most `landing.describe_review_timeout_min` without a break.
+  While a reviewer runs, the writer's run and the reviewer's are each limited to
+  `landing.describe_timeout_min` plus `landing.describe_review_timeout_min`.
+  The writer gets the findings once and fixes the description; an empty `landing.describe_review` runs no reviewer.
   The landing commit's message and the pull request's body both end in a plain-line credit block.
   Go appends the block while `landing.credit` is on.
   The block is `landing.credit_heading`, then a ` - ` line for `landing.credit_loomyard`.
