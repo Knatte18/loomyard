@@ -34,6 +34,16 @@ func (e *Engine) seatSkills(p *Profile) []string {
 	return e.languageSkills
 }
 
+// SeatTables returns the review table and the fix table of p's round under opts, for a caller that runs no seat.
+// The review table holds the assistant seat when opts names an assistant.
+// The instruction files its seats are pointed at are not written.
+func (e *Engine) SeatTables(p Profile, opts RunOpts) []seatengine.Table {
+	return []seatengine.Table{
+		e.probeTable(&p, opts),
+		p.fixTable(opts, fixSeatValues(&p, fixFilesIn(e.probeDirOf())), e.seatSkills(&p)),
+	}
+}
+
 // New returns an Engine ready to run halves.
 // It resolves relative Profile paths against geom.WorktreeRoot, and any Profile.ClusterFan against cfg.
 // cfg is the lens and fan library in lenses.yaml, loaded by lenses.Load.

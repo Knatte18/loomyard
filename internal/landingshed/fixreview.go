@@ -173,6 +173,26 @@ func fixReviewTable(in fixReviewInputs, cfg Config, reg modelspec.Registry) (sea
 	}, nil
 }
 
+// FixReviewSeatTable returns the fix review's one-seat table built over stand-in run inputs.
+// It serves a caller that reads what the session is given and runs none.
+// Every stand-in path lies under stencilsDir.
+func FixReviewSeatTable(stencilsDir string, languageSkills []string, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
+	standIn := func(name string) string { return filepath.Join(stencilsDir, "stand-in", name) }
+	return fixReviewTable(fixReviewInputs{
+		StencilsDir:        stencilsDir,
+		DecisionRecordPath: standIn("decision-record.md"),
+		FixerReportPath:    standIn("fixer-report.md"),
+		Baseline:           "baseline",
+		Head:               "head",
+		CapReason:          "cap reason",
+		ReportPath:         standIn("fix-review.md"),
+		TaskBranch:         "task",
+		ParentBranch:       "parent",
+		Slug:               "task",
+		LanguageSkills:     languageSkills,
+	}, cfg, reg)
+}
+
 // fixReviewEnd names how one fix review session ended.
 type fixReviewEnd string
 
