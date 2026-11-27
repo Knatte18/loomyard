@@ -81,8 +81,10 @@ func withOnlyTests(ctx context.Context, cfg gateslot.Config, request testRequest
 
 // markedScope returns the scope of a key whose scope is gateslot.ScopeMarked: no listed tier runs a package,
 // and the guard step runs the tests marked for the key, each under its file's tier.
-// It refuses a marked test of a tier no listed tier is or covers, and a module with no test marked for the key,
-// so the key's tiers never leave a marked test out silently.
+// The key's listed tiers limit only the marked tests of a manual tier:
+// every other marked test runs whatever the key lists, so a hub never sets them to reach a higher tier.
+// It refuses a marked test of a manual tier that the key neither lists nor covers through a listed tier,
+// and a module with no test marked for the key.
 // Any scoper but go is refused, since the scan is Go's.
 func markedScope(cfg gateslot.Config, request testRequest) (scope, error) {
 	if cfg.Scoper != "go" {
@@ -91,19 +93,6 @@ func markedScope(cfg gateslot.Config, request testRequest) (scope, error) {
 	dir, err := guardScanDir(cfg, request, scope{})
 	if err != nil {
 		return scope{}, err
-	}
-	listed := coveredTiers(cfg, request)
-	var unlisted []int
-	var unrun []string
-	for _, number := range slices.Sorted(maps.Keys(request.marked)) {
-		if !slices.Contains(listed, number) {
-			unlisted = append(unlisted, number)
-			unrun = append(unrun, markedNames(request.marked[number])...)
-		}
-	}
-	if len(unlisted) > 0 {
-		return scope{}, configRefusal("--gate %q lists no tier that is or covers %s, so its marked tests there cannot run: %s; set %s to list %s",
-			request.gate, tierNames(unlisted), strings.Join(unrun, ", "), keyName(gatesKey+"."+request.gate), tierNames(unlisted))
 	}
 	if len(request.marked) == 0 {
 		moduleDir := resolveRunDir(request.root, dir)
@@ -114,17 +103,23 @@ func markedScope(cfg gateslot.Config, request testRequest) (scope, error) {
 		return scope{}, fmt.Errorf("gate test: --gate %q has scope %s and would run no test: no test of the module at %s is marked //lym:only %s; way forward: mark a test of the module `//lym:only %s`, then re-run the same command",
 			request.gate, gateslot.ScopeMarked, moduleDir, request.gate, request.gate)
 	}
-	return scope{form: scopeMarked, guardStep: true, guardDir: dir, guards: request.marked}, nil
-}
-
-// markedNames returns the sorted test names of a tier's marked tests, keyed by package directory.
-func markedNames(byDir map[string][]string) []string {
-	var names []string
-	for _, dirNames := range byDir {
-		names = append(names, dirNames...)
+	// A manual tier runs only when named, such as one that spends tokens, so a marker alone never starts it.
+	for _, number := range slices.Sorted(maps.Keys(request.marked)) {
+		named := slices.ContainsFunc(cfg.Gates[request.gate].Tiers, func(listed int) bool {
+			return listed == number || slices.Contains(cfg.Tiers[tierName(listed)].Covers, number)
+		})
+		if named || !cfg.Tiers[tierName(number)].Manual {
+			continue
+		}
+		var names []string
+		for _, inDir := range request.marked[number] {
+			names = append(names, inDir...)
+		}
+		slices.Sort(names)
+		return scope{}, configRefusal("--gate %q marks %s in %s, which is manual and runs only when the key lists it or a tier that covers it; list %s in %s",
+			request.gate, strings.Join(names, ", "), tierName(number), tierName(number), keyName(gatesKey+"."+request.gate))
 	}
-	sort.Strings(names)
-	return slices.Compact(names)
+	return scope{form: scopeMarked, guardStep: true, guardDir: dir, guards: request.marked}, nil
 }
 
 // withoutHeld returns guards with the held test names removed, dropping a directory or tier left with none.

@@ -227,7 +227,7 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 		}
 		tier, declared := cfg.Tiers[tierName(number)]
 		if !declared {
-			return nil, configRefusal("the guard tests of %s run under its command, but the hub declares no %s", tierName(number), tierName(number))
+			return nil, configRefusal("the guard step runs the guard and marked tests of %s under its command, but the hub declares no %s", tierName(number), tierName(number))
 		}
 		if !gateslot.HoldsTargets(tier.Command) || !strings.Contains(tier.Command, "{args}") {
 			return nil, configRefusal("the guard step runs the command of %s, which must hold {targets} or {test_targets} and {args}", tierName(number))

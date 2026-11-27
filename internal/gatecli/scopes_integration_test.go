@@ -490,12 +490,45 @@ func TestGateTest_Scopes(t *testing.T) {
 		wantRefusal(t, gate(t, pair, nil, "--gate", "upkeep"), "needs the go scoper", `"none"`)
 		writeScoper(t, "go")
 
-		unlisted := filepath.Join(pair, "heldpkg", "h1_test.go")
+		// The key lists tier0 alone, and its marked tier1 test still runs, under tier1's command.
+		tierOne := filepath.Join(pair, "heldpkg", "h1_test.go")
 		plankit.WriteTree(t, pair, map[string]string{
 			"heldpkg/h1_test.go": "//go:build tier1\n\npackage heldpkg\n\nimport \"testing\"\n\n//lym:only upkeep\nfunc TestHeldTierOne(t *testing.T) {}\n",
 		})
-		wantRefusal(t, gate(t, pair, nil, "--gate", "upkeep"), "lists no tier that is or covers tier1", "TestHeldTierOne", "gate.gates.upkeep", "way forward")
-		if err := os.Remove(unlisted); err != nil {
+		bothTiers := [][]string{{"./heldpkg", "-run", "^(TestHeld)$"}, {"./heldpkg", "-run", "^(TestHeldTierOne)$"}}
+		upkeep := gate(t, pair, nil, "--gate", "upkeep")
+		wantArgs(t, upkeep, bothTiers...)
+		// The two tiers share one command, so the settings tell them apart:
+		// tier1's slots: all records as 0, where tier0 records 1.
+		if run, _ := guardRunRecordOf(t, upkeep.stdout.String(), 1); !run.GuardStep || run.Tier != 1 || run.Slots != 0 {
+			t.Errorf("tier1 guard run record = %+v; want a guard step of tier1 under its slots: all", run)
+		}
+
+		// A manual tier1 runs its marked test only for a key that lists it or a tier covering it.
+		writeManualTierOne := func(mutate func(cfg map[string]any)) {
+			config := scopesConfigWith(t, "go", func(cfg map[string]any) {
+				cfg["tiers"].(map[string]any)["tier1"].(map[string]any)["manual"] = true
+				if mutate != nil {
+					mutate(cfg)
+				}
+			})
+			if err := os.WriteFile(configPath, config, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		writeManualTierOne(nil)
+		wantRefusal(t, gate(t, pair, nil, "--gate", "upkeep"), "marks TestHeldTierOne in tier1, which is manual", "list tier1 in gate.gates.upkeep")
+		writeManualTierOne(func(cfg map[string]any) {
+			cfg["gates"] = map[string]any{"upkeep": map[string]any{"tiers": []int{0, 1}, "scope": "marked"}}
+		})
+		wantArgs(t, gate(t, pair, nil, "--gate", "upkeep"), bothTiers...)
+		writeManualTierOne(func(cfg map[string]any) {
+			cfg["tiers"].(map[string]any)["tier6"].(map[string]any)["covers"] = []int{1}
+			cfg["gates"] = map[string]any{"upkeep": map[string]any{"tiers": []int{6}, "scope": "marked"}}
+		})
+		wantArgs(t, gate(t, pair, nil, "--gate", "upkeep"), bothTiers...)
+		writeScoper(t, "go")
+		if err := os.Remove(tierOne); err != nil {
 			t.Fatal(err)
 		}
 

@@ -269,8 +269,10 @@
 //
 // A key of scope `marked` runs no package in its listed tiers, under any flag or tier setting.
 // Its guard step runs every test marked for the key under its file's tier, the guard step's way.
-// A marked test whose tier no listed tier is or covers refuses the call, naming the tests and the key to set.
-// In a hub that declares tiers, so does a call that would run no test:
+// The key's tiers play no part in that, so no hub sets them to reach its marked tests, except for a manual tier:
+// its marked tests run only when the key lists that tier or one that covers it, and any other call is refused.
+// A marked test of a tier the hub does not declare refuses the call, as a guard test of such a tier does.
+// In a hub that declares tiers, a call that would run no test is refused too:
 // no test is marked for the key, or the scanned directory holds no `go.mod`.
 // The scope needs the `go` scoper, and a listing failure refuses the call, since the scope would run nothing.
 // The template's `gateslot.UpkeepGateKey` is such a key.

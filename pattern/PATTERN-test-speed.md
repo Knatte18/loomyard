@@ -152,7 +152,10 @@ Bound: a forged value misleads only an ungated raw run, since `lym gate test` se
   the dead-code guard of [PATTERN-test-only-code](PATTERN-test-only-code.md),
   and every test that builds a real .NET project, whatever its package and whether or not it is watched.
   The `upkeep` key's scope `marked` runs only the tests marked for it,
-  and refuses a call that would leave a marked test out or run none.
+  each under its own file's tier whatever tiers the key lists,
+  except that a `manual` tier must be listed by the key or covered by a tier it lists.
+  It refuses a call with a marked test of a `manual` tier named in neither way or of a tier the hub does not declare,
+  or one that would run none.
   The prime's board-tidy agent runs it on the main branch every `beam.board_tidy_every` landings
   and files a board note per failure: one per dead function, and a bug note for any other test.
 - A watched guard that reads a bounded set of files, and a guard of any package but `cmd/lym`, stays at the task gates.
