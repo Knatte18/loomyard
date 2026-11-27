@@ -56,7 +56,8 @@ const (
 	fixerEndNoReport fixerEnd = "no-report"
 	// fixerEndDirty is a turn that left the working tree dirty with no turn left to clean it.
 	fixerEndDirty fixerEnd = "dirty"
-	// fixerEndPushed is a session during which the task branch's remote ref moved.
+	// fixerEndPushed is a session during which the task branch's remote ref was deleted or moved.
+	// A move counts only when the new tip holds commits that the task head the session started from lacks.
 	fixerEndPushed fixerEnd = "pushed"
 	// fixerEndUnjudged is a landing gate after a turn whose result judged no code:
 	// a runner crash or a memory pressure stop.
@@ -68,14 +69,18 @@ type fixerOutcome struct {
 	end fixerEnd
 	// reportPath is the report the session writes.
 	reportPath string
-	// sessionLog is the session's run directory, which holds its log.
-	sessionLog string
+	// session names the session by its engine session id, and by its run directory while that survives.
+	session string
 	// failureLog is the log the landing failure record names; set for a spent end.
 	failureLog string
 	// conflict is the report's conflict text; set for an escalate end.
 	conflict string
-	// pushedRef is the remote ref that moved, with its new tip; set for a pushed end.
-	pushedRef string
+	// remoteRef is the task branch's remote-tracking ref that moved; set for a pushed end.
+	remoteRef string
+	// remoteTip is remoteRef's tip after the session, "" for a deleted ref; set for a pushed end.
+	remoteTip string
+	// startHead is the task head the session started from; set for a pushed end.
+	startHead string
 	// dirty lists the uncommitted or untracked paths the last turn left; set for a dirty end.
 	dirty []string
 	// unjudged is the landing gate's halt reason naming the runs that judged no code; set for an unjudged end.
@@ -102,6 +107,9 @@ func newFixerRun(deps Deps, row string, gate verifyGate) fixerRun {
 // A turn is charged into the record when it starts, so a turn that never returns to the gate is still spent.
 // The first turn's charge is taken back when the session fails to start with an error marked transient.
 // An escalate report takes its own turn back.
+// A deletion of the task branch's remote ref during the session ends the run pushed.
+// A move of that ref does too, except to a commit the task head held when the session started.
+// The session cannot have added such a commit.
 func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, cap int, tips [2]string) (fixerOutcome, FixerAttempts, error) {
 	reportPath := filepath.Join(f.deps.ScratchDir, f.row+"-fixer-report.md")
 	attemptsPath := FixerAttemptsPath(f.deps.RecordsDir, f.row)
@@ -134,6 +142,10 @@ func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, ca
 	if err != nil {
 		return fixerOutcome{}, rec, fmt.Errorf("landingshed: %s: read the task branch's remote tip: %w", f.row, err)
 	}
+	startHead, err := f.deps.TaskHead()
+	if err != nil {
+		return fixerOutcome{}, rec, fmt.Errorf("landingshed: %s: read the task head: %w", f.row, err)
+	}
 
 	original := rec
 	session := &fixerSession{run: f, ctx: ctx, rec: rec, cap: cap, attemptsPath: attemptsPath, turnLimit: turnLimit, outcome: fixerOutcome{reportPath: reportPath}}
@@ -158,7 +170,7 @@ func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, ca
 	}
 
 	outcome := session.outcome
-	outcome.sessionLog = result.Chair.RunDir
+	outcome.session = sessionRef(result.Chair)
 	switch {
 	case session.end != "":
 		outcome.end = session.end
@@ -175,8 +187,19 @@ func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, ca
 		return fixerOutcome{}, session.rec, fmt.Errorf("landingshed: %s: read the task branch's remote tip: %w", f.row, err)
 	}
 	if remoteAfter != remoteBefore {
-		outcome.end = fixerEndPushed
-		outcome.pushedRef = fmt.Sprintf("origin/%s at %s", f.deps.TaskBranch, remoteAfter)
+		remoteRef := "origin/" + f.deps.TaskBranch
+		predates := false
+		if remoteAfter != "" {
+			if predates, err = f.deps.IsAncestor(remoteAfter, startHead); err != nil {
+				return fixerOutcome{}, session.rec, fmt.Errorf("landingshed: %s: test whether %s at %s predates the fixer session: %w", f.row, remoteRef, remoteAfter, err)
+			}
+		}
+		if predates {
+			logger.Info("landingshed: the task branch's remote ref moved during the fixer session to a commit the session started from", "row", f.row, "ref", remoteRef, "tip", remoteAfter, "startHead", startHead)
+		} else {
+			outcome.end = fixerEndPushed
+			outcome.remoteRef, outcome.remoteTip, outcome.startHead = remoteRef, remoteAfter, startHead
+		}
 	}
 	logger.Info("landingshed: fixer run ended", "row", f.row, "mode", string(mode), "end", string(outcome.end), "spent", session.rec.Spent, "cap", cap)
 	return outcome, session.rec, nil
@@ -201,6 +224,25 @@ func archiveStaleReport(reportPath string, now time.Time, row, what string) erro
 		return fmt.Errorf("landingshed: %s: archive the stale %s report: %w", row, what, err)
 	}
 	return nil
+}
+
+// sessionRef names a finished session for a halt reason by its engine and session id.
+// Those outlive the run directory, which the session runner removes after a done outcome;
+// the run directory is named too while it still exists, as after a timeout.
+func sessionRef(chair shuttleengine.Result) string {
+	var parts []string
+	if chair.SessionID != "" {
+		parts = append(parts, strings.TrimSpace(chair.Engine+" session "+chair.SessionID))
+	}
+	if chair.RunDir != "" {
+		if _, err := os.Stat(chair.RunDir); err == nil {
+			parts = append(parts, "run dir "+chair.RunDir)
+		}
+	}
+	if len(parts) == 0 {
+		return "none recorded"
+	}
+	return strings.Join(parts, ", ")
 }
 
 // startFailure returns why a seat run's chair session did not start, or nil when it started.
@@ -363,14 +405,19 @@ func (o fixerOutcome) haltReason(row string, escalateJudgedFirst bool) string {
 			wayForward = "settle the conflict on the task branch, then `lym loom resume`"
 		}
 	case fixerEndTimeout, fixerEndNoReport:
-		cause = fmt.Sprintf("the fixer session of %s ended without a usable turn (%s); session log: %s; report: %s", row, o.end, o.sessionLog, o.reportPath)
+		cause = fmt.Sprintf("the fixer session of %s ended without a usable turn (%s); session: %s; report: %s", row, o.end, o.session, o.reportPath)
 		wayForward = "fix or clean the task branch, then `lym loom resume`"
 	case fixerEndDirty:
-		cause = fmt.Sprintf("the fixer session of %s left uncommitted or untracked paths in the task worktree after its last turn: %s; session log: %s; report: %s", row, listShown(o.dirty), o.sessionLog, o.reportPath)
+		cause = fmt.Sprintf("the fixer session of %s left uncommitted or untracked paths in the task worktree after its last turn: %s; session: %s; report: %s", row, listShown(o.dirty), o.session, o.reportPath)
 		wayForward = "commit or remove them on the task branch, then `lym loom resume`"
 	case fixerEndPushed:
-		cause = fmt.Sprintf("the fixer session of %s pushed %s; session log: %s", row, o.pushedRef, o.sessionLog)
-		wayForward = "check the pushed commits are the task's, then `lym loom resume`"
+		if o.remoteTip == "" {
+			cause = fmt.Sprintf("the remote ref %s was deleted during the fixer session of %s; session: %s", o.remoteRef, row, o.session)
+			wayForward = "check why the task branch is gone from origin, then `lym loom resume`"
+			break
+		}
+		cause = fmt.Sprintf("the remote ref %s moved during the fixer session of %s to %s, which holds commits the task head %s the session started from lacks; session: %s", o.remoteRef, row, o.remoteTip, o.startHead, o.session)
+		wayForward = fmt.Sprintf("check the commits %s..%s are the task's, then `lym loom resume`", o.startHead, o.remoteTip)
 	default:
 		return ""
 	}

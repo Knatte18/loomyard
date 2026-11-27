@@ -172,12 +172,15 @@ func (r *Repo) pushPlainWithRetry(remote, source, branch string, ns RefNamespace
 	return nil
 }
 
-// recordLandedPush records a push whose transfer already landed.
+// recordLandedPush records a push whose transfer already landed, sha being the remote ref's new tip, "" for a delete.
+// It first leaves a trace line naming the checkout, the remote ref and its new tip,
+// so the process that moved a remote ref can be found from the logs.
 // It logs a failure of the record instead of returning it.
 // The remote has changed, so reporting the push as failed would be wrong.
 // A fetch corrects a tracking ref that the push moved.
 // A ref that a delete left behind stays until something drops it, so the warning names that ref.
 func (r *Repo) recordLandedPush(dest pushDestination, sha string, keepNewer bool) {
+	logger.Info("gitrepo: push landed", "repo", r.path, "remote", dest.remote, "ref", dest.namespace.Branch(dest.branch), "tip", sha)
 	if err := r.recordPush(dest, sha, keepNewer); err != nil {
 		logger.Warn("gitrepo: push landed but its tracking ref was not recorded", "branch", dest.branch, "trackingRef", dest.trackingRef, "error", err)
 	}

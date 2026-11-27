@@ -173,14 +173,14 @@ const (
 	fixReviewEndChanged fixReviewEnd = "changed"
 )
 
-// fixReviewOutcome is how a fix review session ended, with the report it wrote and the run directory holding its log.
+// fixReviewOutcome is how a fix review session ended, with the report it wrote and the session that wrote it.
 // It also carries a rejected report's findings, and the cause of a no-verdict or changed end.
 type fixReviewOutcome struct {
 	end fixReviewEnd
 	// reportPath is the report the session writes.
 	reportPath string
-	// sessionLog is the session's run directory, which holds its log.
-	sessionLog string
+	// session names the session by its engine session id, and by its run directory while that survives.
+	session string
 	// findings are the rejected report's findings.
 	findings []string
 	// cause is why a no-verdict or changed session ended so.
@@ -230,7 +230,7 @@ func runFixReview(deps Deps, gate verifyGate, row, baseline, head, capReason str
 		return fixReviewOutcome{}, fmt.Errorf("landingshed: %s: run the fix review session: %w", row, runErr)
 	}
 
-	outcome := fixReviewOutcome{reportPath: reportPath, sessionLog: result.Chair.RunDir}
+	outcome := fixReviewOutcome{reportPath: reportPath, session: sessionRef(result.Chair)}
 	defer func() {
 		logger.Info("landingshed: fix review ended", "row", row, "end", string(outcome.end), "range", baseline+".."+head)
 	}()
@@ -271,7 +271,7 @@ func (o fixReviewOutcome) verdictSummary() string {
 	if o.end == fixReviewEndRejected {
 		return fmt.Sprintf("the fix review rejected it: %s; review: %s", singleLine(strings.Join(o.findings, "; ")), o.reportPath)
 	}
-	return fmt.Sprintf("the fix review gave no verdict (%s); session log: %s", o.cause, o.sessionLog)
+	return fmt.Sprintf("the fix review gave no verdict (%s); session: %s", o.cause, o.session)
 }
 
 // openFindings returns what a rejected or verdict-less review left open.

@@ -1141,7 +1141,7 @@ func (fz *Finalize) judgeFixerChange(ctx context.Context, rec FixerAttempts) *en
 			if err := WriteFixerAttempts(attemptsPath, rec); err != nil {
 				return fail(ctx, finalizeName, err)
 			}
-			return halt(ctx, finalizeName, fmt.Sprintf("%sthe fix review session of %s changed the task branch: %s; session log: %s; way forward: restore the task branch to the fixer's commits %s..%s with a clean tree, then `lym loom resume`", LandingStopPrefix, finalizeName, review.cause, review.sessionLog, rec.Baseline, head))
+			return halt(ctx, finalizeName, fmt.Sprintf("%sthe fix review session of %s changed the task branch: %s; session: %s; way forward: restore the task branch to the fixer's commits %s..%s with a clean tree, then `lym loom resume`", LandingStopPrefix, finalizeName, review.cause, review.session, rec.Baseline, head))
 		}
 		if rec.ReviewRounds >= fz.deps.Config.FinalizeFixReviewRounds {
 			return fz.haltReviewCapped(ctx, rec, head, capReason, review)

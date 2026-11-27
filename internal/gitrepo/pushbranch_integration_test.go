@@ -1,16 +1,81 @@
-// pushbranch_integration_test.go covers PushBranch and DropRemoteTracking against a real bare remote and clones.
-// It reuses push_test.go's fixtures.
+// pushbranch_integration_test.go covers PushBranch, DropRemoteTracking and the trace line of a landed push or delete.
+// It runs them against a real bare remote and clones, and reuses push_test.go's fixtures.
 
 package gitrepo_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+// TestLandedPush_LeavesTraceLine is not parallel, nor are its subtests:
+// each points the process-global logger at its own buffer.
+func TestLandedPush_LeavesTraceLine(t *testing.T) {
+	tiergate.Require(t, 1)
+	tests := []struct {
+		name string
+		// onOrigin pushes the branch with plain git before act, which leaves no trace line.
+		onOrigin bool
+		act      func(repo *gitrepo.Repo, tip string) error
+		// wantTip returns the tip field the line must hold for a branch whose local tip is tip.
+		wantTip func(tip string) string
+	}{
+		{
+			name: "PushBranch names the new tip",
+			act: func(repo *gitrepo.Repo, _ string) error {
+				return repo.PushBranch("origin", "feat", gitrepo.RefNamespace{})
+			},
+			wantTip: func(tip string) string { return "tip=" + tip },
+		},
+		{
+			name:     "DeleteRemoteBranch names an empty tip",
+			onOrigin: true,
+			act: func(repo *gitrepo.Repo, _ string) error {
+				_, err := repo.DeleteRemoteBranch("origin", "feat", gitrepo.RefNamespace{})
+				return err
+			},
+			wantTip: func(string) string { return `tip=""` },
+		},
+		{
+			name:     "DeleteRemoteBranchLeased names an empty tip",
+			onOrigin: true,
+			act: func(repo *gitrepo.Repo, tip string) error {
+				return repo.DeleteRemoteBranchLeased("origin", "feat", tip, gitrepo.RefNamespace{})
+			},
+			wantTip: func(string) string { return `tip=""` },
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := logcapture.CaptureVerbose(t)
+			_, _, clonePath, repo := newPushedMainClone(t)
+			tip := commitOnUncheckedBranch(t, clonePath, "feat")
+			if tt.onOrigin {
+				gitkit.Git(t, clonePath, "push", "origin", "feat")
+			}
+
+			if err := tt.act(repo, tip); err != nil {
+				t.Fatalf("act error = %v; want nil", err)
+			}
+			want := tt.wantTip(tip)
+			for _, line := range strings.Split(logs.String(), "\n") {
+				if strings.Contains(line, "gitrepo: push landed") && strings.Contains(line, "ref=refs/heads/feat") {
+					if !strings.Contains(line, "remote=origin") || !strings.Contains(line, want) {
+						t.Errorf("push trace line = %q; want it to name remote=origin and %s", line, want)
+					}
+					return
+				}
+			}
+			t.Errorf("logs = %q; want a push landed line naming ref=refs/heads/feat", logs.String())
+		})
+	}
+}
 
 // newPushedMainClone returns a clone whose main is pushed to a fresh bare remote, with main checked out.
 func newPushedMainClone(t *testing.T) (container, bareRemote, clonePath string, repo *gitrepo.Repo) {

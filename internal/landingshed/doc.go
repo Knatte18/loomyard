@@ -49,6 +49,11 @@
 // the row halts with LandingStopPrefix, spawns no fixer and writes no landing failure record.
 // A failing gate spawns the merge fixer, whose whole change is judged against the size and kind caps.
 // A change over the caps lands only behind the fix review's approval or the operator's acceptance.
+// A move of the task branch's remote ref during a fixer session can halt the row.
+// It does so only when the new tip holds commits that the task head the session started from lacks.
+// The halt says the ref moved, since the writer is unknown.
+// A fixer or fix review halt names the session by its engine session id.
+// That id outlives the run directory removed after a done session.
 // Each of these halts with LandingStopPrefix for the orch:
 // a spent fixer, a fix review out of rounds, a turn without a usable result and a tree left dirty.
 // Bound: the fix review lets an over-cap change land behind one reviewer's approval of the fixer's own commits.

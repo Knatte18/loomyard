@@ -343,6 +343,13 @@ func landingDeps(
 			}
 			return tip, err
 		},
+		IsAncestor: func(sha, ref string) (bool, error) {
+			f, err := fabricengine.Open(l)
+			if err != nil {
+				return false, err
+			}
+			return f.IsAncestor(sha, ref)
+		},
 	}
 }
 

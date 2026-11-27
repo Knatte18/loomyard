@@ -848,7 +848,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 				name:          "a session past its timeout runs again, and the last round halts naming the timeout key",
 				review:        func(*testing.T, *finalizeGateFixture) func() { return func() {} },
 				reviewTimeout: true,
-				wantReason:    []string{"the fix review gave no verdict", "fixer_timeout_min", "session log: " + fakeFixerRunDir, "fixer commits: t2..f1"},
+				wantReason:    []string{"the fix review gave no verdict", "fixer_timeout_min", "session: " + fakeFixerSession, "fixer commits: t2..f1"},
 				wantReviews:   2,
 			},
 			{
@@ -859,9 +859,9 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 				wantReviews: 1,
 			},
 			{
-				name:        "a session that leaves no report runs again, and the last round halts naming the session log",
+				name:        "a session that leaves no report runs again, and the last round halts naming the session",
 				review:      func(*testing.T, *finalizeGateFixture) func() { return func() {} },
-				wantReason:  []string{"the fix review gave no verdict", "session log: " + fakeFixerRunDir, "fixer commits: t2..f1"},
+				wantReason:  []string{"the fix review gave no verdict", "session: " + fakeFixerSession, "fixer commits: t2..f1"},
 				wantReviews: 2,
 			},
 			{
@@ -880,7 +880,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 					}
 				},
 				wantReviews:  1,
-				wantReason:   []string{"the fix review session of Finalize changed the task branch", "a/a.go", "way forward: restore the task branch to the fixer's commits t2..f1", "`lym loom resume`"},
+				wantReason:   []string{"the fix review session of Finalize changed the task branch", "a/a.go", "session: " + fakeFixerSession, "way forward: restore the task branch to the fixer's commits t2..f1", "`lym loom resume`"},
 				absentReason: "commit or remove them",
 			},
 			{

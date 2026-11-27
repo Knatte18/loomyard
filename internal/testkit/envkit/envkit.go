@@ -236,6 +236,7 @@ func LandingDeps(dir string) landingshed.Deps {
 		IsTestFile:         func(string) bool { return false },
 		RowEntry:           func(string) (int, error) { return 1, nil },
 		TaskRemoteTip:      func() (string, error) { return "", nil },
+		IsAncestor:         func(string, string) (bool, error) { return false, nil },
 		CodeReviewOff:      func() (bool, error) { return false, nil },
 		// Mode answers off and Origin is empty, so a landing through this deps takes the local path and calls no GitHub.
 		PullRequest: landingshed.PullRequestDeps{

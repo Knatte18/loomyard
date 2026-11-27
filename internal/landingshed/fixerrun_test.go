@@ -43,6 +43,11 @@ type fakeFixerSeats struct {
 	// hangAfter, when above zero, ends the turn at that index with hangOutcome after its callback, never reaching the gate.
 	hangAfter   int
 	hangOutcome shuttleengine.Outcome
+	// runDir is the run directory the session reports; empty reports fakeFixerRunDir.
+	runDir string
+	// omitSessionID and omitEngine have the session report no session id and no engine.
+	omitSessionID bool
+	omitEngine    bool
 
 	// tables records every table Run was given.
 	tables []seatengine.Table
@@ -52,7 +57,30 @@ type fakeFixerSeats struct {
 	turnsRun int
 }
 
-const fakeFixerRunDir = "/runs/fixer"
+const (
+	// fakeFixerRunDir is the run directory a fake session reports by default.
+	// Nothing exists there, as after the cleanup that follows a done session.
+	fakeFixerRunDir    = "/runs/fixer"
+	fakeFixerSessionID = "sess-fixer"
+	// fakeFixerSession is how a halt reason names the fake session.
+	fakeFixerSession = "claude session " + fakeFixerSessionID
+)
+
+// chair returns the seat run's result for a chair session that ended with outcome.
+func (f *fakeFixerSeats) chair(outcome shuttleengine.Outcome) seatengine.Result {
+	runDir := f.runDir
+	if runDir == "" {
+		runDir = fakeFixerRunDir
+	}
+	chair := shuttleengine.Result{Outcome: outcome, RunDir: runDir, SessionID: fakeFixerSessionID, Engine: "claude"}
+	if f.omitSessionID {
+		chair.SessionID = ""
+	}
+	if f.omitEngine {
+		chair.Engine = ""
+	}
+	return seatengine.Result{Chair: chair}
+}
 
 // Run runs the scripted turns until the gate passes, ends the run, or its re-prompts are spent.
 func (f *fakeFixerSeats) Run(table seatengine.Table) (seatengine.Result, error) {
@@ -65,7 +93,7 @@ func (f *fakeFixerSeats) Run(table seatengine.Table) (seatengine.Result, error) 
 		return seatengine.Result{}, f.reviewStartErr
 	}
 	if f.sessionTimeout || (isReview && f.reviewTimeout) {
-		return seatengine.Result{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout, RunDir: fakeFixerRunDir}}, nil
+		return f.chair(shuttleengine.OutcomeTimeout), nil
 	}
 	turns := f.turns
 	if isReview {
@@ -78,7 +106,7 @@ func (f *fakeFixerSeats) Run(table seatengine.Table) (seatengine.Result, error) 
 			turns[turn]()
 		}
 		if f.hangAfter > 0 && turn == f.hangAfter {
-			return seatengine.Result{Chair: shuttleengine.Result{Outcome: f.hangOutcome, RunDir: fakeFixerRunDir}}, nil
+			return f.chair(f.hangOutcome), nil
 		}
 		result, err := entry.Gate()
 		if err != nil {
@@ -89,17 +117,23 @@ func (f *fakeFixerSeats) Run(table seatengine.Table) (seatengine.Result, error) 
 		}
 		f.findings = append(f.findings, result.Findings)
 	}
-	return seatengine.Result{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, RunDir: fakeFixerRunDir}}, nil
+	return f.chair(shuttleengine.OutcomeDone), nil
 }
 
 // fixerRunFixture wires one fixer run to a gate fixture, a fake seat runner, a fake clock and a fake remote tip.
+// head is the task head a turn may move by committing.
+// ancestors holds each "sha..ref" pair the ancestry seam answers true for; any other pair answers false.
+// ancestorErr, when set, is the error the ancestry seam fails with.
 type fixerRunFixture struct {
-	run       fixerRun
-	gate      *gateFixture
-	seats     *fakeFixerSeats
-	deps      Deps
-	clock     time.Time
-	remoteTip string
+	run         fixerRun
+	gate        *gateFixture
+	seats       *fakeFixerSeats
+	deps        Deps
+	clock       time.Time
+	remoteTip   string
+	head        string
+	ancestors   map[string]bool
+	ancestorErr error
 }
 
 const (
@@ -115,6 +149,7 @@ func newFixerRunFixture(t *testing.T) *fixerRunFixture {
 		seats:     &fakeFixerSeats{},
 		clock:     gateMarkStart,
 		remoteTip: "remote-1",
+		head:      "head-1",
 	}
 	scratch := t.TempDir()
 	stencilsDir := t.TempDir()
@@ -143,6 +178,8 @@ func newFixerRunFixture(t *testing.T) *fixerRunFixture {
 		Registry:           modelspec.Registry{},
 		FixerSeats:         fx.seats,
 		TaskRemoteTip:      func() (string, error) { return fx.remoteTip, nil },
+		TaskHead:           func() (string, error) { return fx.head, nil },
+		IsAncestor:         func(sha, ref string) (bool, error) { return fx.ancestors[sha+".."+ref], fx.ancestorErr },
 	}
 	fx.run = newFixerRun(fx.deps, fixerTestRow, fx.gate.gate)
 	return fx
@@ -184,6 +221,9 @@ func TestFixerRun_Outcomes(t *testing.T) {
 		wantFindings []string
 		wantReason   []string
 		avoidReason  []string
+		// keepRunDir has the session report a run directory that exists, which the reason must then name;
+		// otherwise the reported run directory is absent and the reason must not name one.
+		keepRunDir bool
 	}{
 		{
 			name: "fixed over a passing gate with an unmoved remote tip",
@@ -226,7 +266,26 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				fx.seats.sessionTimeout = true
 			},
 			wantEnd: fixerEndTimeout, wantSpent: 1,
-			wantReason: []string{LandingStopPrefix, fakeFixerRunDir, "`lym loom resume`"},
+			wantReason: []string{LandingStopPrefix, "session: " + fakeFixerSession + ", run dir ", "`lym loom resume`"},
+			keepRunDir: true,
+		},
+		{
+			name: "a session with no session id and no surviving run dir is named as none recorded",
+			setup: func(t *testing.T, fx *fixerRunFixture) {
+				fx.seats.sessionTimeout = true
+				fx.seats.omitSessionID = true
+			},
+			wantEnd: fixerEndTimeout, wantSpent: 1,
+			wantReason: []string{"session: none recorded;"},
+		},
+		{
+			name: "a session with no engine is named by its session id alone",
+			setup: func(t *testing.T, fx *fixerRunFixture) {
+				fx.seats.sessionTimeout = true
+				fx.seats.omitEngine = true
+			},
+			wantEnd: fixerEndTimeout, wantSpent: 1,
+			wantReason: []string{"session: session " + fakeFixerSessionID + ";"},
 		},
 		{
 			name: "a later turn that hangs after a failing gate is the timeout end, not fixed",
@@ -237,7 +296,7 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				fx.seats.hangOutcome = shuttleengine.OutcomeTimeout
 			},
 			wantEnd: fixerEndTimeout, wantSpent: fixerTestCap, wantTurns: 2,
-			wantReason: []string{LandingStopPrefix, fakeFixerRunDir, "`lym loom resume`"},
+			wantReason: []string{LandingStopPrefix, fakeFixerSession, "`lym loom resume`"},
 		},
 		{
 			name: "a later turn that dies after a failing gate is the no-report end, not fixed",
@@ -248,7 +307,7 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				fx.seats.hangOutcome = shuttleengine.OutcomeDone
 			},
 			wantEnd: fixerEndNoReport, wantSpent: fixerTestCap, wantTurns: 2,
-			wantReason: []string{LandingStopPrefix, fakeFixerRunDir, "`lym loom resume`"},
+			wantReason: []string{LandingStopPrefix, fakeFixerSession, "`lym loom resume`"},
 		},
 		{
 			name: "a turn that returns past fixer_timeout_min is the timeout end",
@@ -266,7 +325,7 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				fx.writeReport(t, fixedReport)
 			},
 			wantEnd: fixerEndNoReport, wantSpent: 1, wantTurns: 1,
-			wantReason: []string{LandingStopPrefix, fakeFixerRunDir, "`lym loom resume`"},
+			wantReason: []string{LandingStopPrefix, fakeFixerSession, "`lym loom resume`"},
 		},
 		{
 			name: "an unparseable report is the no-report end",
@@ -293,7 +352,7 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				fx.seats.turns = []func(){func() { fx.writeReport(t, fixedReport) }}
 			},
 			wantEnd: fixerEndDirty, wantSpent: fixerTestCap, wantTurns: 1,
-			wantReason:  []string{LandingStopPrefix, "after its last turn: a.go;", fakeFixerRunDir, "commit or remove them on the task branch", "`lym loom resume`"},
+			wantReason:  []string{LandingStopPrefix, "after its last turn: a.go;", fakeFixerSession, "commit or remove them on the task branch", "`lym loom resume`"},
 			avoidReason: []string{"without a usable turn"},
 		},
 		{
@@ -307,7 +366,7 @@ func TestFixerRun_Outcomes(t *testing.T) {
 			wantReason: []string{LandingStopPrefix, "test runner crashed", "tier1 (exit 134, SIGABRT)", "`lym loom resume`"},
 		},
 		{
-			name: "a remote tip that moved during the session is the pushed end",
+			name: "a remote tip that moved during the session to a commit the start head lacks is the pushed end",
 			setup: func(t *testing.T, fx *fixerRunFixture) {
 				fx.seats.turns = []func(){func() {
 					fx.writeReport(t, fixedReport)
@@ -315,7 +374,49 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				}}
 			},
 			wantEnd: fixerEndPushed, wantSpent: 1, wantTurns: 1,
-			wantReason: []string{LandingStopPrefix, "origin/task-branch at remote-2", "check the pushed commits are the task's", "`lym loom resume`"},
+			wantReason: []string{
+				LandingStopPrefix,
+				"the remote ref origin/task-branch moved during the fixer session of Parent-Align to remote-2",
+				"the task head head-1 the session started from lacks",
+				fakeFixerSession,
+				"check the commits head-1..remote-2 are the task's",
+				"`lym loom resume`",
+			},
+			avoidReason: []string{"pushed"},
+		},
+		{
+			name: "a remote tip that moved during the session to a commit the start head holds is no push",
+			setup: func(t *testing.T, fx *fixerRunFixture) {
+				fx.ancestors = map[string]bool{"head-1..head-1": true}
+				fx.seats.turns = []func(){func() {
+					fx.writeReport(t, fixedReport)
+					fx.head = "f1"
+					fx.remoteTip = "head-1"
+				}}
+			},
+			wantEnd: fixerEndFixed, wantSpent: 1, wantTurns: 1,
+		},
+		{
+			name: "a remote tip that moved back to an ancestor of the start head is no push",
+			setup: func(t *testing.T, fx *fixerRunFixture) {
+				fx.ancestors = map[string]bool{"older..head-1": true}
+				fx.seats.turns = []func(){func() {
+					fx.writeReport(t, fixedReport)
+					fx.remoteTip = "older"
+				}}
+			},
+			wantEnd: fixerEndFixed, wantSpent: 1, wantTurns: 1,
+		},
+		{
+			name: "a remote ref deleted during the session is the pushed end",
+			setup: func(t *testing.T, fx *fixerRunFixture) {
+				fx.seats.turns = []func(){func() {
+					fx.writeReport(t, fixedReport)
+					fx.remoteTip = ""
+				}}
+			},
+			wantEnd: fixerEndPushed, wantSpent: 1, wantTurns: 1,
+			wantReason: []string{LandingStopPrefix, "the remote ref origin/task-branch was deleted during the fixer session of Parent-Align", fakeFixerSession, "`lym loom resume`"},
 		},
 	}
 	for _, tt := range tests {
@@ -325,6 +426,9 @@ func TestFixerRun_Outcomes(t *testing.T) {
 			start := tt.start
 			if start.Entry == 0 {
 				start = FixerAttempts{Entry: 1}
+			}
+			if tt.keepRunDir {
+				fx.seats.runDir = t.TempDir()
 			}
 			tt.setup(t, fx)
 
@@ -360,6 +464,12 @@ func TestFixerRun_Outcomes(t *testing.T) {
 					t.Errorf("haltReason() = %q, %q for a fixed run; want none", reason, judged)
 				}
 				return
+			}
+			if named := strings.Contains(reason, "run dir "+fx.seats.runDir); tt.keepRunDir != named {
+				t.Errorf("haltReason() = %q; naming the run dir %q = %v; want %v", reason, fx.seats.runDir, named, tt.keepRunDir)
+			}
+			if !tt.keepRunDir && strings.Contains(reason, fakeFixerRunDir) {
+				t.Errorf("haltReason() = %q; want it to omit the removed run dir %q", reason, fakeFixerRunDir)
 			}
 			for _, avoid := range tt.avoidReason {
 				if strings.Contains(reason, avoid) {
@@ -408,6 +518,21 @@ func TestFixerRun_Outcomes(t *testing.T) {
 		}
 		if table.Values["aligned_tip"] != "aligned" || table.Values["merged_tip"] != "merged" {
 			t.Errorf("table tips = %q, %q; want aligned, merged", table.Values["aligned_tip"], table.Values["merged_tip"])
+		}
+	})
+
+	t.Run("a failing ancestry query over a moved remote tip is returned as an error", func(t *testing.T) {
+		t.Parallel()
+		fx := newFixerRunFixture(t)
+		fx.ancestorErr = errors.New("ancestry query broke")
+		fx.seats.turns = []func(){func() {
+			fx.writeReport(t, fixedReport)
+			fx.remoteTip = "remote-2"
+		}}
+
+		_, _, err := fx.execute(t, FixerAttempts{Entry: 1})
+		if !errors.Is(err, fx.ancestorErr) || !strings.Contains(err.Error(), "predates the fixer session") {
+			t.Errorf("run() error = %v; want it to wrap %v and say what the query tested", err, fx.ancestorErr)
 		}
 	})
 

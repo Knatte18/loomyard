@@ -391,8 +391,11 @@ type Deps struct {
 	RowEntry func(row string) (int, error)
 	// TaskRemoteTip reads the task branch's remote-tracking tip, `origin/<task branch>`, without a fetch.
 	// It answers "" when there is none.
-	// A push the fixer session makes from the task pair updates that ref, so a changed tip shows the push.
+	// A changed tip shows that some writer moved that ref during a fixer session, which need not be the session.
 	TaskRemoteTip func() (string, error)
+	// IsAncestor reports whether the commit sha is ref or one of its ancestors, over the task pair.
+	// The fixer loop uses it to tell a remote tip the session cannot have added from one it could have.
+	IsAncestor func(sha, ref string) (bool, error)
 	// CodeReviewOff reports whether the Code-Perch reads as off:
 	// its effective review budget is 0, or the Code-Review rows' entry gate leaves them out.
 	// With the perch off no review follows Parent-Align and its fixer's change is judged against the caps instead.

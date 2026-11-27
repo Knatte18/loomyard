@@ -95,6 +95,7 @@
 // so a hook's own refusal text reaches the caller.
 // PushCoalesced takes a single-pusher lock file in the checkout's own git dir before it checks for unpushed work,
 // so a burst of concurrent callers collapses into as few pushes as possible.
+// Every push or remote-branch delete that lands leaves a trace line naming the checkout, the remote ref and its new tip.
 //
 // # Pull and reset
 //
