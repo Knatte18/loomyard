@@ -14,13 +14,16 @@
 // So does branch protection set outside repository rules.
 //
 // PR-Review takes no parent lock and never lands a run by a direct push.
-// No agent takes part in it: when the pull request is made, the run's agents are done.
 // Under beam.yaml's review the row opens the pull request and waits on it, whatever the run's autonomy.
-// The wait ends only on the operator's own ending:
-// an approval or a merge on GitHub, or `lym loom pr-continue`, which refuses a call from any lym agent session.
+// It keeps one interactive agent session per run in the task's window, which the operator works the pull request with.
+// The session runs under the publish shell guard: it cannot push, merge, close or open a pull request.
+// The wait ends on an approval or a merge on GitHub, or on `lym loom pr-continue`.
+// The session or an orch runs that verb on the operator's word, and it refuses every other lym agent session.
 // A wait on the pull request has no timeout.
-// A commit made in the task worktree while the row waits is gated and pushed;
-// a gate failure, and a commit pushed to the pull request's branch on GitHub by hand, halt the row.
+// A session that ends while the review is open halts the row, and `lym loom resume` resumes it.
+// A commit made in the task worktree while the row waits is gated and pushed.
+// A gate failure is mailed to the session; one that cannot be mailed, or in an ended review, halts the row.
+// A commit pushed to the pull request's branch on GitHub by hand halts the row.
 // A transient push or GitHub failure is an error the driver re-steps.
 // Any other failure is Stuck with Halt, and each Halt names its way forward.
 //

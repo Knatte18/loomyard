@@ -721,7 +721,8 @@ func ConfigSpec() configengine.Spec {
 			"notify_parent_on":                     none,
 		},
 		// The pr area and its old flat names set the PR-Review row's parent ask and in-place fixes.
-		// Both are gone now that no agent reviews a pull request.
+		// Both are gone: the parent orch never reviews a pull request.
+		// The PR-Review session fixes every finding in place.
 		RetiredKeys: map[string]configengine.Category{
 			"fan_review":                   none,
 			"pr_review":                    none,

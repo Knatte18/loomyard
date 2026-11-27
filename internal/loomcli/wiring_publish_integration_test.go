@@ -26,6 +26,7 @@ import (
 )
 
 // TestWireLanding_TellsLanguageSkills asserts wireLanding hands the landing deps the language skills that wire loaded.
+// It also asserts wireLanding fills the PR-Review session's liveness and registration seams.
 // The test runs over a real hub and pair.
 func TestWireLanding_TellsLanguageSkills(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -54,6 +55,9 @@ func TestWireLanding_TellsLanguageSkills(t *testing.T) {
 
 	if want := []string{"scribe:golang-testing"}; !slices.Equal(c.env.Landing.LanguageSkills, want) {
 		t.Errorf("env.Landing.LanguageSkills = %v; want %v", c.env.Landing.LanguageSkills, want)
+	}
+	if pr := c.env.Landing.PullRequest; pr.SessionLive == nil || pr.RegisterSession == nil {
+		t.Errorf("after wireLanding: PullRequest.SessionLive nil = %v, RegisterSession nil = %v; want both filled", pr.SessionLive == nil, pr.RegisterSession == nil)
 	}
 }
 

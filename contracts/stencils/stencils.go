@@ -38,6 +38,12 @@ var LandingTemplateFixer []byte
 //go:embed landing/landing-template-fix-review.md
 var LandingTemplateFixReview []byte
 
+// LandingTemplatePRReview is the PR-Review session's shipped-default prompt.
+// It is the interactive session the operator works a run's pull request with while the review waits.
+//
+//go:embed landing/landing-template-pr-review.md
+var LandingTemplatePRReview []byte
+
 // DarnTemplateWrite is the darn writer's shipped-default prompt.
 // It is the whole instruction set of the one session that makes a board entry's change.
 //
@@ -933,6 +939,7 @@ var entries = []registryEntry{
 	{"landing-template-describe-review", &LandingTemplateDescribeReview},
 	{"landing-template-fixer", &LandingTemplateFixer},
 	{"landing-template-fix-review", &LandingTemplateFixReview},
+	{"landing-template-pr-review", &LandingTemplatePRReview},
 	{"darn-template-write", &DarnTemplateWrite},
 	{"darn-fragment-make-change", &DarnFragmentMakeChange},
 	{"darn-fragment-make-change-gated", &DarnFragmentMakeChangeGated},
@@ -1110,6 +1117,7 @@ var roleOpeningStencils = map[string][]string{
 	"conflict":             {"landing-template-conflict"},
 	"fixer":                {"landing-template-fixer"},
 	"fix-reviewer":         {"landing-template-fix-review"},
+	"pr-reviewer":          {"landing-template-pr-review"},
 	"bouncer-judge":        {"bouncer-template-judge"},
 	"bouncer-verify":       {"bouncer-template-verify"},
 	"bouncer-seed":         {"bouncer-template-seed", "harden-template-seed"},

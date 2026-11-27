@@ -21,11 +21,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/frictionengine"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/samplerengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedarbiter"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
@@ -99,6 +101,7 @@ func producers(t *testing.T, fx parityFixture) []producer {
 		{"internal/websterengine#recoverSpawn", buildRecovery},
 		{"internal/websterengine#Run", buildMerriam},
 		{"internal/samplerengine#SessionSpec", buildSampler},
+		{"internal/landingshed#PRReview.sessionSpec", buildPRReview},
 		{"internal/loomcli#driverSpec", buildDriver},
 		{"internal/dobbyengine#TidySpec", buildBoardTidy},
 		{"internal/dobbyengine#BeamDescribeSpec", buildBeamDescribe},
@@ -252,6 +255,37 @@ func buildSampler(fx parityFixture, engine string) (shuttleengine.Spec, error) {
 		ConfigRole:  agentconfig.RoleSampler,
 		Skills:      skills,
 		Role:        samplerengine.Role,
+	}), nil
+}
+
+func buildPRReview(fx parityFixture, engine string) (shuttleengine.Spec, error) {
+	env := fx.env
+	skills, err := languageSkillsOf(env)
+	if err != nil {
+		return shuttleengine.Spec{}, err
+	}
+	prompt, err := landingshed.RenderPRReviewPrompt(landingshed.Deps{
+		WorktreeRoot:       env.Location.WorktreePath(),
+		TaskBranch:         "task",
+		ParentBranch:       "parent",
+		DescriptionPath:    standInPath(env, "description.md"),
+		StencilsDir:        env.StencilsDir,
+		ParentName:         env.ParentName,
+		Slug:               env.Slug,
+		DecisionRecordPath: standInPath(env, "decision-record.md"),
+		PlanDir:            standInPath(env, "plan"),
+	}, "https://example.test/pull/1", engine)
+	if err != nil {
+		return shuttleengine.Spec{}, err
+	}
+	return promptSpec(engine, prompt, shuttleengine.Spec{
+		Interactive: true,
+		Unawaited:   true,
+		DenyPublish: true,
+		Segment:     segmentcolor.Landing,
+		ConfigRole:  agentconfig.RolePRReviewer,
+		Skills:      skills,
+		Role:        string(agentconfig.RolePRReviewer),
 	}), nil
 }
 

@@ -47,8 +47,8 @@ A relay opens `[operator] severe halt <slug>:`, then the halt, what you tried an
 
 ## A run at PR-Review
 
-Autonomy leaves a run's pull request to the operator: a run waiting at PR-Review waits for the operator's own ending.
-Never approve, merge, close or comment on the pull request on GitHub, and never end its review.
+Autonomy leaves a run's pull request to the operator: a run waiting at PR-Review waits for the operator, who works it with the run's PR-Review session.
+Never approve, merge, close or comment on the pull request on GitHub, and never end its review without the operator's word.
 
 ## A drained beam
 

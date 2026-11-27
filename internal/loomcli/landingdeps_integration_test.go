@@ -329,7 +329,7 @@ func TestPullRequestDeps_CommitsTheRecord(t *testing.T) {
 		}
 	}
 
-	deps := pullRequestDepsGuardedBy(prePushCheck{slug: "task", skip: func() (bool, error) { return true, nil }}, location, "main", true)
+	deps := pullRequestDepsGuardedBy(prePushCheck{slug: "task", skip: func() (bool, error) { return true, nil }}, location, "main", true, &shuttleengine.Runner{})
 	rel := filepath.ToSlash(shedrun.PullRequestRecordRel(location, shedrun.SelfRunID))
 	headFiles := func(format string) string {
 		t.Helper()

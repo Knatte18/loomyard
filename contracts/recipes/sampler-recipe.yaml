@@ -40,7 +40,7 @@
 # fix halts the run for the orch.
 # Record-Write, the Drift rows, Sampler-Session and Describe carry none either: a Stuck of each halts the run for the parent
 # with the ways forward in its reason.
-# PR-Review carries no on_stuck because its Stuck halts the run, and no on_reroute, since no agent reviews the pull request;
+# PR-Review carries no on_stuck because its Stuck halts the run, and no on_reroute, since its session fixes findings in place;
 # Friction-Reflect carries none because it never returns Stuck.
 # Code-Bouncer keeps its sampler.code_review entry gate, so with the review off the verb answers fix-here.
 # PR-Review carries no entry_gate either: whether it opens a pull request reads the parent's anchor, a

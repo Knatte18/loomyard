@@ -37,6 +37,7 @@ const (
 	RoleMergeFixer        Role = "merge-fixer"
 	RoleOrch              Role = "orch"
 	RolePlan              Role = "plan"
+	RolePRReviewer        Role = "pr-reviewer"
 	RoleRaddle            Role = "raddle"
 	RoleSampler           Role = "sampler"
 	RoleTackler           Role = "tackler"
@@ -48,7 +49,7 @@ var roles = []Role{
 	RoleArbiter, RoleBoardTidy, RoleBouncerJudge, RoleBouncerSeed, RoleBurler, RoleConflictResolver,
 	RoleDarn, RoleDescriber, RoleDiscussion, RoleDiscussionAdvisor, RoleDriftExpect, RoleDriftJudge,
 	RoleDriver, RoleFixReview, RoleFriction, RoleGateFixer, RoleMergeFixer, RoleOrch, RolePlan,
-	RoleRaddle, RoleSampler, RoleTackler, RoleWebster,
+	RolePRReviewer, RoleRaddle, RoleSampler, RoleTackler, RoleWebster,
 }
 
 // ModuleName is the agents module's configreg name, the Name of the spec ConfigSpec returns.

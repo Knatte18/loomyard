@@ -227,9 +227,11 @@
 // A pair's pusher, not the commit, runs the pre-push reconcile before each push.
 // The prime's pusher pushes its records for every batten run and runs no check.
 //
-// `lym loom pr-continue` sets the continue flag in the run's pull-request record when the operator ends a review.
+// `lym loom pr-continue` sets the continue flag in the run's pull-request record to end a review on the operator's word.
+// It also clears the head whose gate failure the PR-Review row mailed, so the row gates that head again.
 // It is refused until the PR-Review row has opened the pull request.
-// It is also refused from any lym agent session, one whose LYM_STRAND_NAME is set, so no agent ends a review.
+// It admits the operator's unnamed shell, the run's PR-Review session and an orch.
+// It refuses every other lym agent session, one whose LYM_STRAND_NAME names another role.
 // `lym loom sampler-done` sets the done flag in the Sampler-Session record and nothing else.
 // It is refused on a recipe with no SamplerSession row and while the run stands at another row.
 // It is also refused when the record names no session or the task worktree has uncommitted paths.

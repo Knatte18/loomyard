@@ -1112,7 +1112,7 @@ User-facing modules each get one `lym <module>` namespace:
   Then one `Sampler-Session` row keeps a single interactive agent session in the run's worktree.
   The agent works with the operator and commits as it goes.
   The operator ends the build with `lym loom sampler-done`.
-  The row's session is kept, and the row wakes on the file event of its record.
+  The row's session is kept like PR-Review's, and the row wakes on the file event of its record.
   `lym loom sampler-done` writes the done flag that ends the row, at the row's current entry stamp.
   The operator or the agent runs it on a committed worktree.
   The verb refuses, by the recipe's rows, on a recipe with no `SamplerSession` row.
@@ -1362,13 +1362,22 @@ User-facing modules each get one `lym <module>` namespace:
   A re-entry on a review not ended reads the pull request before it pushes.
   It sets the pull request's title and body from the change description, records it and waits on it.
   When the resolver does not say so, the row passes.
-  The wait takes no parent lock, and no agent takes part in it, whatever the run's autonomy.
+  The wait takes no parent lock.
   `beam.pull_request: review` waits for the operator; `trail` passes, and `Finalize` opens the pull request and merges it at once.
+  Under `review` the row keeps one interactive PR-Review session in the task's window, whatever the run's autonomy,
+  on `landing.pr_reviewer`'s model and under the publish shell guard.
+  The operator works the pull request with its agent, which answers comments and commits fixes.
+  The row stops the session at every verdict and around each read that may end the review, and resumes it after;
+  a session that ends while the review is open halts the row, and the resume resumes it.
   The wait gates and pushes a commit made in the task worktree through the `pr-review` gate key, never onto a merged pull request.
-  A gate failure halts the row, and the resume gates the task head again before it pushes it.
+  It mails a failure to the session once per head;
+  a failure it cannot mail, and one in an ended review, halts the row.
+  A failure outside the change, such as a file another process held open, is retried with `lym loom pr-continue`.
+  That verb also ends the review once a head passes the gate, so it needs the operator's word.
   It reads the pull request at most once a minute and before each gate.
   It ends Done when the pull request is merged or approved at the gated head.
-  It also ends Done when the operator's `lym loom pr-continue` ends the review; the verb refuses any lym agent session.
+  It also ends Done when `lym loom pr-continue` ends the review on the operator's word.
+  The operator runs the verb, or the session or an orch runs it when the operator says so; it refuses any other lym agent session.
   That ending leaves the pull request for `Finalize` to merge on GitHub.
   A commit pushed to the pull request's branch on GitHub by hand, which the task worktree lacks, halts the row.
   A re-entry on a review not ended, with the pull request open, halts on it before any push.

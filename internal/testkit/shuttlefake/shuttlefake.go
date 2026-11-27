@@ -7,6 +7,7 @@
 // Agents is the kit's one helper that takes a testing.TB.
 // SignalEngine is the kit's opt-in signal-reading engine.
 // Engine implements no session-signal reading, so a consumer keeps the readings of an engine without one.
+// Nor does it resume a session; ResumeEngine is the kit's opt-in engine that does.
 // The kit also holds a golden of a Claude reading in neutral types, TokencountRunReads.
 //
 // internal/shuttleengine's own tests keep their richer in-package fake, because the import cycle forbids this kit there.
@@ -126,6 +127,19 @@ func (e *SignalEngine) ParseSessionSignals(data []byte) ([]shuttleengine.Session
 		}
 	}
 	return signals, stampRunStart
+}
+
+// ResumeEngine embeds Engine and adds the shuttleengine.SessionResumer capability,
+// so a consumer's start of a recorded session goes through.
+type ResumeEngine struct {
+	*Engine
+}
+
+var _ shuttleengine.SessionResumer = (*ResumeEngine)(nil)
+
+// CheckResume confirms every session as resumable.
+func (e *ResumeEngine) CheckResume(sessionID, workdir string) (string, error) {
+	return "", nil
 }
 
 //go:embed tokencount-run-reads.json

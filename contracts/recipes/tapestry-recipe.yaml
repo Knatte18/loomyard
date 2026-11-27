@@ -40,7 +40,7 @@
 # Plan-Burler-Review, and its producer marks a Stuck Reroute only when begin-batch left a new
 # plan-conflict record.
 # Shed's reroute cap bounds that edge, and a reroute spends no bounce budget.
-# PR-Review declares no on_reroute: no agent reviews the pull request, so nothing sends the run back to the ring.
+# PR-Review declares no on_reroute: its session fixes the pull request's findings in place, so nothing sends the run back to the ring.
 # Finalize declares no on_reroute: it settles a fixer change in place, through its own fix review
 # and the fixer, and never sends the run back to an earlier row.
 #

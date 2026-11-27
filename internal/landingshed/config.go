@@ -44,6 +44,8 @@ type Config struct {
 	// The wait begins once the description has passed its check.
 	// While a reviewer runs, it is also added to DescribeTimeoutMin as the limit of both seats' runs.
 	DescribeReviewTimeoutMin int `yaml:"describe_review_timeout_min"`
+	// PRReviewer is the model-spec string selecting the model the PR-Review row's interactive session runs under.
+	PRReviewer string `yaml:"pr_reviewer"`
 	// Credit selects whether the landing commit and the pull request's body end with the credit block.
 	Credit bool `yaml:"credit"`
 	// CreditHeading is the credit block's first line; empty leaves the items without a heading.
@@ -161,6 +163,7 @@ func ConfigSpec() configengine.Spec {
 			forbiddenTermsKey:           configengine.CategoryCrossPair,
 			describeReviewKey:           configengine.CategoryNone,
 			describeReviewTimeoutMinKey: configengine.CategoryNone,
+			prReviewerKey:               configengine.CategoryNone,
 			"credit":                    configengine.CategoryCrossPair,
 			"credit_heading":            configengine.CategoryCrossPair,
 			"credit_loomyard":           configengine.CategoryCrossPair,
@@ -178,14 +181,10 @@ func ConfigSpec() configengine.Spec {
 			// The lost-race bound decides how long one pair's landing gate holds the parent lock others wait on.
 			finalizeLostRacesKey: configengine.CategoryCrossPair,
 		},
-		// The local layer judges a retired key by the category it held, so it refuses all but landing.pr_reviewer.
-		// The machine layer refuses every retired key here, since none held the machine category.
+		// The local and machine layers judge a retired key by the category it held, so both refuse every one here.
 		// publish_verify belongs to the hub's publish gate.
 		// The co-author and trailer keys are not carried into the credit keys, since their values are co-author lines.
-		// landing.pr_reviewer chose the model of the PR-Review session.
-		// No run starts that session now that no agent reviews a pull request.
 		RetiredKeys: map[string]configengine.Category{
-			"pr_reviewer":     configengine.CategoryNone,
 			"publish_verify":  configengine.CategoryExecutable,
 			"co_authored_by":  configengine.CategoryCrossPair,
 			"trailer_text":    configengine.CategoryCrossPair,
@@ -197,8 +196,9 @@ func ConfigSpec() configengine.Spec {
 // LoadConfig loads and unmarshals the landing module's configuration through the hub-wide layer stack under dirs.
 // The load is strict: an absent config file is an error.
 // Its producers are reachable only inside a hub, where a missing config means the hub is broken.
-// It validates the model-spec grammar of the conflict, describe and fixer keys at load time.
-// It validates that of describe_review too when the key is set.
+// At load time it validates the model-spec grammar of these keys:
+// `landing.conflict`, `landing.describe`, `landing.pr_reviewer` and `landing.fixer`.
+// It validates that of `landing.describe_review` too when the key is set.
 // A typo in one of them fails at load, not when its session spawns.
 // It refuses a fixer timeout, fixer attempt cap, fixer line cap or fix review round cap below 1.
 // It refuses a describe review timeout below 1 and a lost-race bound below 0.
@@ -226,6 +226,10 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 	if _, err := modelspec.Parse(cfg.Describe); err != nil {
 		return Config{}, fmt.Errorf("config key %q: %w", keyName(describeKey), err)
+	}
+
+	if _, err := modelspec.Parse(cfg.PRReviewer); err != nil {
+		return Config{}, fmt.Errorf("config key %q: %w", keyName(prReviewerKey), err)
 	}
 
 	if _, err := modelspec.Parse(cfg.Fixer); err != nil {

@@ -1001,7 +1001,8 @@ func rowsAfterRawGo() []Row {
 			Switch:   SwitchNone,
 		},
 		{
-			// Installed only for a launch spec that sets DenyPublish, such as the Sampler-Session's launch.
+			// Installed only for a launch spec that sets DenyPublish, such as the PR-Review session's.
+			// That session reads the pull request, comments on it and edits its title and body through gh.
 			// A guardrail, not a barrier.
 			// A script file, env forms the pattern does not list, a git alias or hub pass.
 			// So does a flag word between gh and its command.

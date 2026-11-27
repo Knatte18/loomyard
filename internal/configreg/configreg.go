@@ -145,7 +145,7 @@ func checkLoadNamed[T any](load func(configengine.Dirs, string) (T, error), modu
 // Keep new entries in sort order.
 func Modules() []Module {
 	modules := []Module{
-		{Name: agentconfig.ModuleName, Template: agentconfig.ConfigTemplate, OpenMaps: agentconfig.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoad(agentconfig.Load), Reinterpretations: []Reinterpretation{{ID: agentconfig.PRReviewerRetiredReinterpretationID, Rewrite: agentconfig.DropPRReviewerRole, RunsWithoutFile: true}}, Spec: agentconfig.ConfigSpec},
+		{Name: agentconfig.ModuleName, Template: agentconfig.ConfigTemplate, OpenMaps: agentconfig.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoad(agentconfig.Load), Spec: agentconfig.ConfigSpec},
 		{Name: "batcher", Template: batcher.ConfigTemplate, PerNameMaps: batcher.ConfigPerNameMaps(), CheckLoad: checkLoad(batcher.Active), Spec: batcher.ConfigSpec},
 		{Name: "batten", Template: battenshed.ConfigTemplate, CheckValues: battenshed.ValidateLocalValues, CheckLoad: checkLoad(battenshed.LoadConfig), Spec: battenshed.ConfigSpec},
 		{Name: beamsetting.Module, Template: dobbyengine.ConfigTemplate, CheckValues: dobbyengine.CheckLocalValues, CheckLoad: checkLoad(dobbyengine.LoadConfig), Reinterpretations: []Reinterpretation{{ID: dobbyengine.PerTaskSettingsReinterpretationID, Rewrite: dobbyengine.ReinterpretPerTaskSettings, RunsWithoutFile: true}, {ID: dobbyengine.PullRequestModesReinterpretationID, Rewrite: dobbyengine.ReinterpretPullRequestModes, RunsWithoutFile: true}}, Spec: dobbyengine.ConfigSpec},

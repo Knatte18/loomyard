@@ -20,6 +20,9 @@ import (
 // landingshedAllowedImports lists the only non-stdlib import paths that production code in this package may use.
 var landingshedAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/beamsetting",
+	"github.com/Knatte18/loomyard/internal/editdirective",
+	"github.com/Knatte18/loomyard/internal/parentdirective",
+	"github.com/Knatte18/loomyard/internal/stencil",
 	"github.com/Knatte18/loomyard/internal/fabricengine",
 	"github.com/Knatte18/loomyard/internal/fabriclayout",
 	"github.com/Knatte18/loomyard/internal/gateslot",

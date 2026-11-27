@@ -216,7 +216,7 @@ func TestPRReview_Call(t *testing.T) {
 			wantCalls:   []string{"RequiresPullRequest main"},
 		},
 		{
-			name: "OffWithAParentRuleRequiringAPullRequestOpensOne", mode: "off", origin: githubOrigin, wantCommits: 1,
+			name: "OffWithAParentRuleRequiringAPullRequestOpensOne", mode: "off", origin: githubOrigin, wantCommits: 2,
 			scripts:     map[string][]scriptedCall{"RequiresPullRequest": {{found: true}}, "Create": {created}, "Status": {mergedAtHead}},
 			wantOutcome: shedengine.Done, wantPushes: 1,
 			wantCalls:  []string{"RequiresPullRequest main", "FindOpen task main", wantCreateCall, "Status 7"},
@@ -287,14 +287,14 @@ func TestPRReview_Call(t *testing.T) {
 			wantOutcome: shedengine.Done, wantNoRecord: true,
 		},
 		{
-			name: "FirstYesPushesCreatesAndRecordsThePullRequest", mode: "review", origin: githubOrigin, wantCommits: 1,
+			name: "FirstYesPushesCreatesAndRecordsThePullRequest", mode: "review", origin: githubOrigin, wantCommits: 2,
 			scripts:     map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
 			wantOutcome: shedengine.Done, wantPushes: 1,
 			wantCalls:  []string{"FindOpen task main", wantCreateCall, "Status 7"},
 			wantRecord: &pullrequest.Record{Number: 7, URL: recordedURLSeen, Base: "main", Head: "task", GatedHead: taskHead},
 		},
 		{
-			name: "ReentryEditsTheRecordedPullRequestKeepsItsGatedHeadAndTheContinueFlag", mode: "review", origin: githubOrigin, wantCommits: 1,
+			name: "ReentryEditsTheRecordedPullRequestKeepsItsGatedHeadAndTheContinueFlag", mode: "review", origin: githubOrigin, wantCommits: 2,
 			record:      &pullrequest.Record{Number: 7, URL: recordedURLSeen, GatedHead: recordedGated, Continue: true},
 			dirty:       []string{"wip.go"},
 			scripts:     map[string][]scriptedCall{"Status": {open, {status: pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: recordedGated}}}},
@@ -304,7 +304,7 @@ func TestPRReview_Call(t *testing.T) {
 			wantRecord: &pullrequest.Record{Number: 7, URL: recordedURLSeen, Base: "main", Head: "task", GatedHead: recordedGated, Continue: true},
 		},
 		{
-			name: "ReentryOnADraftMarksItReadyForReviewBeforeTheEdit", mode: "review", origin: githubOrigin, wantCommits: 1,
+			name: "ReentryOnADraftMarksItReadyForReviewBeforeTheEdit", mode: "review", origin: githubOrigin, wantCommits: 2,
 			record:      &pullrequest.Record{Number: 7, URL: recordedURLSeen, GatedHead: recordedGated},
 			dirty:       []string{"wip.go"},
 			scripts:     map[string][]scriptedCall{"Status": {{status: pullrequest.Status{State: pullrequest.StateOpen, Draft: true}}, {status: pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: recordedGated}}}},
@@ -313,7 +313,7 @@ func TestPRReview_Call(t *testing.T) {
 			wantCalls:  []string{"Status 7", "SetDraft 7 false", wantEditSeven, "Status 7"},
 		},
 		{
-			name: "ReentryRefreshesTheBodyWithTheRegressionCheckOnce", mode: "review", origin: githubOrigin, verdict: testVerdict, wantCommits: 1,
+			name: "ReentryRefreshesTheBodyWithTheRegressionCheckOnce", mode: "review", origin: githubOrigin, verdict: testVerdict, wantCommits: 2,
 			record:      &pullrequest.Record{Number: 7, URL: recordedURLSeen, GatedHead: recordedGated},
 			dirty:       []string{"wip.go"},
 			scripts:     map[string][]scriptedCall{"Status": {open, {status: pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: recordedGated}}}},
@@ -322,7 +322,7 @@ func TestPRReview_Call(t *testing.T) {
 			wantCalls:  []string{"Status 7", "Edit 7|Change title|" + wantPRBodyWithVerdict, "Status 7"},
 		},
 		{
-			name: "YesWithNoneRecordedButOneOpenReusesIt", mode: "review", origin: githubOrigin, wantCommits: 1,
+			name: "YesWithNoneRecordedButOneOpenReusesIt", mode: "review", origin: githubOrigin, wantCommits: 2,
 			scripts:     map[string][]scriptedCall{"FindOpen": {{ref: pullrequest.Ref{Number: 9, URL: "u9"}, found: true}}, "Status": {mergedAtHead}},
 			wantOutcome: shedengine.Done, wantPushes: 1,
 			wantCalls:  []string{"FindOpen task main", "Edit 9|Change title|" + wantPRBody, "Status 9"},
@@ -337,7 +337,7 @@ func TestPRReview_Call(t *testing.T) {
 			wantRecord: &pullrequest.Record{Number: 7, ReviewEnded: true, GatedHead: taskHead},
 		},
 		{
-			name: "ReviewEndedPastTheGatedHeadOpensANewPullRequest", mode: "review", origin: githubOrigin, wantCommits: 2,
+			name: "ReviewEndedPastTheGatedHeadOpensANewPullRequest", mode: "review", origin: githubOrigin, wantCommits: 3,
 			record:      &pullrequest.Record{Number: 7, ReviewEnded: true, GatedHead: recordedGated},
 			scripts:     map[string][]scriptedCall{"Create": {{ref: pullrequest.Ref{Number: 8, URL: "u8"}}}, "Status": {mergedAtHead}},
 			wantOutcome: shedengine.Done, wantPushes: 1,
@@ -493,7 +493,7 @@ func TestPRReview_Call(t *testing.T) {
 			if !found {
 				t.Fatalf("Call() left no record; want %+v", *tt.wantRecord)
 			}
-			if diff := cmp.Diff(*tt.wantRecord, got); diff != "" {
+			if diff := cmp.Diff(*tt.wantRecord, got, recordComparison(*tt.wantRecord)...); diff != "" {
 				t.Errorf("record mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -502,21 +502,25 @@ func TestPRReview_Call(t *testing.T) {
 	t.Run("NilSeamIsAnErrorNamingIt", func(t *testing.T) {
 		t.Parallel()
 		unsetters := map[string]func(d *Deps){
-			"PullRequest.RecordPath":     func(d *Deps) { d.PullRequest.RecordPath = "" },
-			"PullRequest.RecordLockPath": func(d *Deps) { d.PullRequest.RecordLockPath = "" },
-			"PullRequest.Mode":           func(d *Deps) { d.PullRequest.Mode = nil },
-			"PullRequest.Origin":         func(d *Deps) { d.PullRequest.Origin = nil },
-			"PullRequest.API":            func(d *Deps) { d.PullRequest.API = nil },
-			"PullRequest.PushTask":       func(d *Deps) { d.PullRequest.PushTask = nil },
-			"PullRequest.CommitsMissing": func(d *Deps) { d.PullRequest.CommitsMissing = nil },
-			"PullRequest.TaskHasCommits": func(d *Deps) { d.PullRequest.TaskHasCommits = nil },
-			"PullRequest.DirtyPaths":     func(d *Deps) { d.PullRequest.DirtyPaths = nil },
-			"PullRequest.PauseCovered":   func(d *Deps) { d.PullRequest.PauseCovered = nil },
-			"PullRequest.Now":            func(d *Deps) { d.PullRequest.Now = nil },
-			"PullRequest.Sleep":          func(d *Deps) { d.PullRequest.Sleep = nil },
-			"PullRequest.RecordChanges":  func(d *Deps) { d.PullRequest.RecordChanges = nil },
-			"PullRequest.CommitRecord":   func(d *Deps) { d.PullRequest.CommitRecord = nil },
-			"TaskHead":                   func(d *Deps) { d.TaskHead = nil },
+			"PullRequest.RecordPath":      func(d *Deps) { d.PullRequest.RecordPath = "" },
+			"PullRequest.RecordLockPath":  func(d *Deps) { d.PullRequest.RecordLockPath = "" },
+			"PullRequest.Mode":            func(d *Deps) { d.PullRequest.Mode = nil },
+			"PullRequest.Origin":          func(d *Deps) { d.PullRequest.Origin = nil },
+			"PullRequest.API":             func(d *Deps) { d.PullRequest.API = nil },
+			"PullRequest.PushTask":        func(d *Deps) { d.PullRequest.PushTask = nil },
+			"PullRequest.CommitsMissing":  func(d *Deps) { d.PullRequest.CommitsMissing = nil },
+			"PullRequest.TaskHasCommits":  func(d *Deps) { d.PullRequest.TaskHasCommits = nil },
+			"PullRequest.DirtyPaths":      func(d *Deps) { d.PullRequest.DirtyPaths = nil },
+			"PullRequest.MailAgent":       func(d *Deps) { d.PullRequest.MailAgent = nil },
+			"PullRequest.Sessions":        func(d *Deps) { d.PullRequest.Sessions = nil },
+			"PullRequest.SessionLive":     func(d *Deps) { d.PullRequest.SessionLive = nil },
+			"PullRequest.RegisterSession": func(d *Deps) { d.PullRequest.RegisterSession = nil },
+			"PullRequest.PauseCovered":    func(d *Deps) { d.PullRequest.PauseCovered = nil },
+			"PullRequest.Now":             func(d *Deps) { d.PullRequest.Now = nil },
+			"PullRequest.Sleep":           func(d *Deps) { d.PullRequest.Sleep = nil },
+			"PullRequest.RecordChanges":   func(d *Deps) { d.PullRequest.RecordChanges = nil },
+			"PullRequest.CommitRecord":    func(d *Deps) { d.PullRequest.CommitRecord = nil },
+			"TaskHead":                    func(d *Deps) { d.TaskHead = nil },
 		}
 		for field, unset := range unsetters {
 			fx := newPRReviewFixture(t, "review", nil, githubOrigin, nil, nil, nil)
@@ -667,6 +671,8 @@ const testVerdict = "## Regression check\n\n- Scope: full.\n- Compare: passed at
 // Its change description is titled "Change title", and its body is "\nChange body\n".
 // The credit is on, and claude is the one engine that ran.
 // Every PullRequest seam is filled.
+// The sessions run in a fresh session world.
+// The PR-Review model-spec is claude:fixture-model, and a gate failure's mail is dropped.
 // The origin is a GitHub one, beam.yaml's pull_request is review, the task head is "head-new", and the worktree is clean.
 // No pause covers the run, and the clock moves only when the wait sleeps.
 // A test replaces the seams it scripts.
@@ -678,7 +684,7 @@ func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
 		t.Fatalf("write description: %v", err)
 	}
 	now := prReviewFixtureNow
-	return Deps{
+	deps := Deps{
 		Slug:            "the-slug",
 		WorktreeRoot:    "/wt/task",
 		TaskBranch:      "task",
@@ -687,6 +693,7 @@ func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
 		StencilsDir:     stencilkit.Seed(t),
 		ParentName:      "parent-session",
 		Config: Config{
+			PRReviewer:     "claude:fixture-model",
 			Credit:         true,
 			CreditHeading:  "Created using",
 			CreditLoomYard: "LoomYard",
@@ -706,6 +713,7 @@ func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
 			CommitsMissing: func(string, string) ([]string, error) { return nil, nil },
 			TaskHasCommits: func() (bool, error) { return true, nil },
 			DirtyPaths:     func() ([]string, error) { return nil, nil },
+			MailAgent:      func(string, string) error { return nil },
 			PauseCovered:   func() (bool, error) { return false, nil },
 			Now:            func() time.Time { return now },
 			Sleep: func(_ context.Context, d time.Duration) error {
@@ -716,6 +724,8 @@ func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
 			CommitRecord:  func() error { return nil },
 		},
 	}
+	newPRSessionWorld(t).fill(&deps)
+	return deps
 }
 
 // newPRReviewFixture builds a prReviewTestDeps Deps with the given mode, mode error, origin and push result.

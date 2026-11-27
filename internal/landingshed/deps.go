@@ -437,6 +437,15 @@ type PullRequestDeps struct {
 	TaskHasCommits func() (bool, error)
 	// DirtyPaths lists the task worktree's uncommitted paths.
 	DirtyPaths func() ([]string, error)
+	// MailAgent posts line to the creel strand named strandName.
+	MailAgent func(strandName, line string) error
+	// Sessions starts and stops the interactive session the operator works the pull request with.
+	// `*shuttleengine.Runner` satisfies it.
+	Sessions prSessions
+	// SessionLive reports whether the strand guid names is live.
+	SessionLive func(guid string) (bool, error)
+	// RegisterSession registers the process of the session's pane under the run, so a teardown ends it.
+	RegisterSession func(guid string) error
 	// PauseCovered reports whether a pause covers the run at the time of the call.
 	PauseCovered func() (bool, error)
 	// Now reads the clock the wait's poll spacing runs on.

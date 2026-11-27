@@ -218,11 +218,11 @@ Bring it to the operator when it is a design question.
 
 ## A run's pull request
 
-No agent reviews a pull request: when a run's pull request is made, its agents are done.
-Under `beam.pull_request: review` the PR-Review row waits for the operator's own ending, whatever the run's autonomy:
-an approval or a merge on GitHub, or `lym loom pr-continue` run outside every lym session, which refuses yours.
+Under `beam.pull_request: review` the PR-Review row opens the pull request and keeps an interactive PR-Review session in the task's window, whatever the run's autonomy.
+The operator works the pull request with that session's agent, which ends the review with `lym loom pr-continue` on the operator's word.
 A run waiting there is no halt; leave it to the operator.
-Never approve, merge, close or comment on the pull request.
+When the operator tells you to end a run's review, run `lym loom pr-continue` in the task worktree, or tell its PR-Review session to.
+Never approve, merge, close or comment on the pull request, and never end its review without the operator's word.
 
 ## Reviewing a decision record
 
@@ -303,7 +303,7 @@ puts each question it would ask the operator to you, its parent, as creel mail e
 Answer it with `lym creel post --reply <id> "<text>"`.
 Settle a run-level call yourself; put a design question to the operator first, then answer the agent with the operator's answer.
 An agent that asked in its pane instead reaches you as a hold notice; answer it as Messaging says.
-A session the operator chose to sit in, an interactive Discussion, sampler or `drift.judge_interactive` judge, asks the operator in its pane.
+A session the operator chose to sit in, an interactive Discussion, PR-Review, sampler or `drift.judge_interactive` judge, asks the operator in its pane.
 
 ## Briefing a row's agent
 

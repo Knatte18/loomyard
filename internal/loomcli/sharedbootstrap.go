@@ -431,14 +431,17 @@ func (c *loomCLI) wireLanding() error {
 		c.verifySource(),
 		parentLockDeps(c.location, c.runID, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath),
 	)
-	// The sampler run's session is checked for liveness and registered, and its row wakes on its record's file event.
-	// Its liveness and process registration read reed's strand table.
+	// The PR-Review session's liveness and process registration read reed's strand table.
+	slug := seedSlug(c.location.WorktreeName)
+	registerPane := func(pid int) error {
+		return runproc.Register(fabriclayout.RunProcDir(c.location.HubPath), slug, runproc.ChildRecord(pid, runproc.RoleSession, nil))
+	}
+	c.env.Landing.PullRequest.SessionLive = sessionLiveness(c.reed.Status)
+	c.env.Landing.PullRequest.RegisterSession = sessionRegistrar(c.reed.Status, registerPane)
+	// The sampler run's session is checked for liveness and registered the same way,
+	// and its row wakes on its record's file event.
 	// The building paths pass through here; status and pause never do.
 	if recipeHasEngine(c.recipe, samplerSessionEngine) {
-		slug := seedSlug(c.location.WorktreeName)
-		registerPane := func(pid int) error {
-			return runproc.Register(fabriclayout.RunProcDir(c.location.HubPath), slug, runproc.ChildRecord(pid, runproc.RoleSession, nil))
-		}
 		c.env.Sampler.Sessions = c.runner
 		c.env.Sampler.SessionLive = sessionLiveness(c.reed.Status)
 		c.env.Sampler.RegisterSession = sessionRegistrar(c.reed.Status, registerPane)

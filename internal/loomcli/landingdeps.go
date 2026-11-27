@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
+	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -84,7 +85,7 @@ func landingDeps(
 	// Only a pawl run lands a beam, so only its Finalize backstops the landing re-check.
 	// The land check covers the members and pairs still working under the beam.
 	var landBlockers func() ([]landingshed.LandBlocker, error)
-	pullRequest := pullRequestDeps(l, parentBranch, pushSkipped)
+	pullRequest := pullRequestDeps(l, parentBranch, pushSkipped, runner)
 	if recipe == shedrun.RecipePawl {
 		pullRequest.BeamRecord, pullRequest.DropBeamRecord = beamLandingRecordSeams(l, seedSlug(l.WorktreeName))
 		// A beam's merged pull request lacks the commits that `lym beam ready` counts as lacking.
@@ -378,18 +379,28 @@ func beamLandingRecordSeams(l *lymcwd.Location, slug string) (read func() (landi
 
 // pullRequestDeps assembles the PR-Review row's seams for the run of the worktree l.
 // Each seam reads at call time, so a beam.yaml, run_settings or origin changed after bootstrap is read as it stands.
-func pullRequestDeps(l *lymcwd.Location, parentBranch string, pushSkipped bool) landingshed.PullRequestDeps {
-	return pullRequestDepsGuardedBy(newPrePushCheck(l, shedrun.SelfRunID), l, parentBranch, pushSkipped)
+// SessionLive and RegisterSession read reed's strand table, which only the run's wiring holds, so the wiring fills them.
+func pullRequestDeps(l *lymcwd.Location, parentBranch string, pushSkipped bool, runner *shuttleengine.Runner) landingshed.PullRequestDeps {
+	return pullRequestDepsGuardedBy(newPrePushCheck(l, shedrun.SelfRunID), l, parentBranch, pushSkipped, runner)
 }
 
 // pullRequestDepsGuardedBy builds the PR-Review row's seams for l, with check as the pre-push check.
-func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBranch string, pushSkipped bool) landingshed.PullRequestDeps {
+func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBranch string, pushSkipped bool, runner *shuttleengine.Runner) landingshed.PullRequestDeps {
 	slug := seedSlug(l.WorktreeName)
 	return landingshed.PullRequestDeps{
 		RecordPath:     shedrun.PullRequestRecord(l, shedrun.SelfRunID),
 		RecordLockPath: shedrun.PullRequestRecordLock(l, shedrun.SelfRunID),
 		CommitRecord:   pullRequestRecordCommitter(check, l),
 		Mode:           pullRequestModeSeam(l),
+		Sessions:       runner,
+		MailAgent: func(strandName, line string) error {
+			client, err := creelcli.NewProgramClient(l, loomProgram)
+			if err != nil {
+				return err
+			}
+			_, err = client.Post(strandName, line)
+			return err
+		},
 		Origin: func() (landingshed.Origin, error) {
 			f, err := fabricengine.Open(l)
 			if err != nil {

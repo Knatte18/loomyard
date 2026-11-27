@@ -112,7 +112,10 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	if cfg.FinalizeFixMaxLines != 40 {
 		t.Errorf("cfg.FinalizeFixMaxLines = %d; want 40", cfg.FinalizeFixMaxLines)
 	}
-	retiredKeys := []string{"publish_verify", "co_authored_by", "trailer_text", "engine_trailers", "pr_reviewer"}
+	if cfg.PRReviewer != "opus[high]" {
+		t.Errorf("cfg.PRReviewer = %q; want %q", cfg.PRReviewer, "opus[high]")
+	}
+	retiredKeys := []string{"publish_verify", "co_authored_by", "trailer_text", "engine_trailers"}
 	for _, key := range retiredKeys {
 		if strings.Contains(ConfigTemplate(), key) {
 			t.Errorf("ConfigTemplate() holds %s; want the retired key gone from the template", key)
@@ -120,7 +123,7 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	}
 
 	retiredDir := t.TempDir()
-	seedLandingConfig(t, retiredDir, ConfigTemplate()+"publish_verify: go test -tags tmux ./...\nco_authored_by: Someone <s@x>\ntrailer_text: Fixed\nengine_trailers:\n  claude: \"Co-Authored-By: Someone <s@x>\"\npr_reviewer: opus[high]\n")
+	seedLandingConfig(t, retiredDir, ConfigTemplate()+"publish_verify: go test -tags tmux ./...\nco_authored_by: Someone <s@x>\ntrailer_text: Fixed\nengine_trailers:\n  claude: \"Co-Authored-By: Someone <s@x>\"\n")
 	retired, err := LoadConfig(configengine.Dirs{Board: retiredDir}, "landing")
 	if err != nil {
 		t.Fatalf("LoadConfig() over a file holding the retired keys %v = _, %v; want nil error", retiredKeys, err)
@@ -218,6 +221,7 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 		{"forbidden term that matches the empty string", "describe_timeout_min: 30", "describe_timeout_min: 30\ndescribe_forbidden_terms: ['lym|']", "matches the empty string"},
 		{"forbidden term that matches empty at a word boundary", "describe_timeout_min: 30", "describe_timeout_min: 30\ndescribe_forbidden_terms: ['\\b|lym']", "matches the empty string"},
 		{"credit_engines key naming no engine", "  claude:", "  claud:", "credit_engines.claud"},
+		{"malformed pr_reviewer", "fixer: opus[high]", "fixer: opus[high]\npr_reviewer: \"opus[high\"", "pr_reviewer"},
 		{"malformed fixer", "fixer: opus[high]", "fixer: \"opus[high\"", "fixer"},
 		{"fixer timeout below 1", "fixer_timeout_min: 60", "fixer_timeout_min: 0", "fixer_timeout_min"},
 		{"parent align fix attempts below 1", "parent_align_fix_attempts: 2", "parent_align_fix_attempts: 0", "parent_align_fix_attempts"},
@@ -258,15 +262,19 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 		}
 	})
 
-	t.Run("a local pr_reviewer is admitted", func(t *testing.T) {
+	t.Run("a local pr_reviewer wins over the hub file's", func(t *testing.T) {
 		t.Parallel()
 
 		board, anchor := t.TempDir(), t.TempDir()
 		seedLandingConfig(t, board, ConfigTemplate())
-		writeLocalLandingConfig(t, anchor, "pr_reviewer: opus[high]\n")
+		writeLocalLandingConfig(t, anchor, "pr_reviewer: sonnet[high]\n")
 
-		if _, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "landing"); err != nil {
-			t.Errorf("LoadConfig() = _, %v; want nil error", err)
+		cfg, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "landing")
+		if err != nil {
+			t.Fatalf("LoadConfig() = _, %v; want nil error", err)
+		}
+		if cfg.PRReviewer != "sonnet[high]" {
+			t.Errorf("cfg.PRReviewer = %q; want %q", cfg.PRReviewer, "sonnet[high]")
 		}
 	})
 

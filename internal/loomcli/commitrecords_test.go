@@ -106,9 +106,11 @@ func TestPRContinueVerb(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	const url = "https://github.com/o/r/pull/7"
-	const agentRefusal = "loom: pr-continue: this call runs in the lym agent session lymhub:task:orch, and only the operator ends a pull request's review; " +
+	const refusedStrand = "lymhub:task:darn"
+	const agentRefusal = "loom: pr-continue: this call runs in the lym agent session lymhub:task:darn, " +
+		"and only the operator, the run's PR-Review session or an orch ends a pull request's review; " +
 		"way forward: tell the operator the run's pull request waits for their review, which they end by approving or merging it on GitHub, " +
-		"or by running lym loom pr-continue in the task worktree from a shell outside every lym session"
+		"or by telling the PR-Review session in the task's window to continue"
 	const noRecordWayForward = "way forward: wait until the PR-Review row has opened the pull request, then run lym loom pr-continue again"
 	newPaths := func(t *testing.T) (record, lock string) {
 		t.Helper()
@@ -145,28 +147,74 @@ func TestPRContinueVerb(t *testing.T) {
 		}
 	})
 
-	t.Run("ACallerWithAStrandNameIsRefusedAndWritesNothing", func(t *testing.T) {
+	t.Run("APRReviewOrOrchStrandSetsContinue", func(t *testing.T) {
 		t.Parallel()
-		record, lock := newPaths(t)
-		seed := pullrequest.Record{Number: 7, URL: url}
-		if err := pullrequest.WriteRecord(record, lock, seed); err != nil {
-			t.Fatalf("WriteRecord() error: %v", err)
-		}
-		var out bytes.Buffer
-		if code := prContinueVerb(&out, "lymhub:task:orch", record, lock); code != 1 || !strings.Contains(out.String(), agentRefusal) {
-			t.Errorf("prContinueVerb() = %d, %s; want 1 with %q", code, out.String(), agentRefusal)
-		}
-		got, _, err := pullrequest.ReadRecord(record, lock)
-		if err != nil || !reflect.DeepEqual(got, seed) {
-			t.Errorf("record after the refusal = %+v, %v; want the untouched %+v", got, err, seed)
+		for _, strand := range []string{"lymhub:task:pr-reviewer", "lymhub:task:pr-reviewer-2", "lymhub:orch", "lymhub:task:orch", "lymhub:task:orch-2"} {
+			t.Run(strand, func(t *testing.T) {
+				t.Parallel()
+				record, lock := newPaths(t)
+				// The record names the strand, which a PR-Review session needs and an orch does not.
+				if err := pullrequest.WriteRecord(record, lock, pullrequest.Record{Number: 7, URL: url, StrandName: strand}); err != nil {
+					t.Fatalf("WriteRecord() error: %v", err)
+				}
+				var out bytes.Buffer
+				if code := prContinueVerb(&out, strand, record, lock); code != 0 || !strings.Contains(out.String(), url) {
+					t.Fatalf("prContinueVerb(%q) = %d, %s; want 0 naming %s", strand, code, out.String(), url)
+				}
+				got, _, err := pullrequest.ReadRecord(record, lock)
+				if err != nil || !got.Continue || got.Number != 7 {
+					t.Errorf("record after prContinueVerb(%q) = %+v, %v; want Continue set on pull request 7", strand, got, err)
+				}
+			})
 		}
 	})
 
-	t.Run("ACallerWithAStrandNameIsRefusedBeforeTheRecordIsRead", func(t *testing.T) {
+	t.Run("AMailedHeadIsClearedAndContinueStaysSet", func(t *testing.T) {
+		t.Parallel()
+		record, lock := newPaths(t)
+		if err := pullrequest.WriteRecord(record, lock, pullrequest.Record{Number: 7, URL: url, Continue: true, MailedHead: "abc123"}); err != nil {
+			t.Fatalf("WriteRecord() error: %v", err)
+		}
+		var out bytes.Buffer
+		if code := prContinueVerb(&out, "", record, lock); code != 0 || !strings.Contains(out.String(), url) {
+			t.Fatalf("prContinueVerb() = %d, %s; want 0 naming %s", code, out.String(), url)
+		}
+		want := pullrequest.Record{Number: 7, URL: url, Continue: true}
+		got, _, err := pullrequest.ReadRecord(record, lock)
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("record after prContinueVerb = %+v, %v; want %+v with the mailed head cleared", got, err, want)
+		}
+	})
+
+	t.Run("ACallerWithAnotherStrandNameIsRefusedAndWritesNothing", func(t *testing.T) {
+		t.Parallel()
+		// Another role, another run's PR-Review session, another hub's and a name that does not parse.
+		for _, strand := range []string{refusedStrand, "lymhub:other:pr-reviewer", "otherh:task:pr-reviewer", "notastrand"} {
+			t.Run(strand, func(t *testing.T) {
+				t.Parallel()
+				record, lock := newPaths(t)
+				seed := pullrequest.Record{Number: 7, URL: url, StrandName: "lymhub:task:pr-reviewer"}
+				if err := pullrequest.WriteRecord(record, lock, seed); err != nil {
+					t.Fatalf("WriteRecord() error: %v", err)
+				}
+				var out bytes.Buffer
+				want := "this call runs in the lym agent session " + strand + ", and only the operator"
+				if code := prContinueVerb(&out, strand, record, lock); code != 1 || !strings.Contains(out.String(), want) {
+					t.Errorf("prContinueVerb(%q) = %d, %s; want 1 with %q", strand, code, out.String(), want)
+				}
+				got, _, err := pullrequest.ReadRecord(record, lock)
+				if err != nil || !reflect.DeepEqual(got, seed) {
+					t.Errorf("record after the refusal = %+v, %v; want the untouched %+v", got, err, seed)
+				}
+			})
+		}
+	})
+
+	t.Run("ACallerWithAnotherStrandNameIsRefusedBeforeTheRecordIsRead", func(t *testing.T) {
 		t.Parallel()
 		record, lock := newPaths(t)
 		var out bytes.Buffer
-		if code := prContinueVerb(&out, "lymhub:task:orch", record, lock); code != 1 || !strings.Contains(out.String(), agentRefusal) {
+		if code := prContinueVerb(&out, refusedStrand, record, lock); code != 1 || !strings.Contains(out.String(), agentRefusal) {
 			t.Errorf("prContinueVerb() = %d, %s; want 1 with %q", code, out.String(), agentRefusal)
 		}
 		if _, err := os.Stat(record); !errors.Is(err, os.ErrNotExist) {
@@ -217,7 +265,7 @@ func TestPRContinueVerb(t *testing.T) {
 // it sets the strand name variable with t.Setenv.
 func TestPRContinueCmd_RefusesTheStrandItsEnvironmentNames(t *testing.T) {
 	tiergate.Require(t, 0)
-	t.Setenv(agentname.StrandNameEnv, "lymhub:task:orch")
+	t.Setenv(agentname.StrandNameEnv, "lymhub:task:darn")
 	c := &loomCLI{location: hubLocationAt(t, filepath.Join(t.TempDir(), "task"), "")}
 	record, lock := shedrun.PullRequestRecord(c.location, shedrun.SelfRunID), shedrun.PullRequestRecordLock(c.location, shedrun.SelfRunID)
 	seed := pullrequest.Record{Number: 7, URL: "u7"}
@@ -231,7 +279,7 @@ func TestPRContinueCmd_RefusesTheStrandItsEnvironmentNames(t *testing.T) {
 
 	code := clihelp.Execute(c.prContinueCmd(), &out, []string{})
 
-	if code != 1 || !strings.Contains(out.String(), "this call runs in the lym agent session lymhub:task:orch") {
+	if code != 1 || !strings.Contains(out.String(), "this call runs in the lym agent session lymhub:task:darn") {
 		t.Errorf("pr-continue = %d, %s; want 1 with the agent refusal", code, out.String())
 	}
 	got, _, err := pullrequest.ReadRecord(record, lock)

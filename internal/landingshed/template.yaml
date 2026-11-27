@@ -17,6 +17,7 @@ describe_forbidden_terms:  # Go regular expressions no line of a change descript
   - '(?i)\borch\b'
   - '(?i)\bitems? \d+ of the (task|board entry|issue|note)\b'
   - '(?i)\bthe parent (recorded|ruled|decided|asked)\b'
+pr_reviewer: opus[high]  # model-spec for the PR-Review row's interactive session under beam.pull_request review, the agent the operator works the pull request with (see contracts/specs/llm-model-spec.md)
 credit: true  # whether the landing commit and the pull request's body end with the credit block: landing.credit_heading, then the landing.credit_loomyard item, then the landing.credit_engines item of each engine that ran a session in the task
 credit_heading: "Created using"  # first line of the credit block; empty leaves the items without a heading
 credit_loomyard: "LoomYard https://github.com/Knatte18/loomyard"  # credit block item listed whatever engines ran; empty adds none

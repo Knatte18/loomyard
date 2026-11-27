@@ -50,6 +50,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/weaverengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -255,7 +256,11 @@ func LandingDeps(dir string) landingshed.Deps {
 			BeamRecord: func() (landingshed.BeamPullRequest, bool, error) {
 				return landingshed.BeamPullRequest{}, false, nil
 			},
-			DropBeamRecord: func() error { return nil },
+			DropBeamRecord:  func() error { return nil },
+			MailAgent:       func(string, string) error { return nil },
+			Sessions:        shuttleengine.NewRunner(&shuttlefake.Reed{}, shuttlefake.EngineSet(&shuttlefake.Engine{}), dir, dir, shuttleengine.Config{}),
+			SessionLive:     func(string) (bool, error) { return false, nil },
+			RegisterSession: func(string) error { return nil },
 		},
 	}
 }

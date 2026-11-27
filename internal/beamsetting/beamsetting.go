@@ -32,7 +32,8 @@ const (
 // The values of beam.yaml's pull_request.
 const (
 	// PullRequestReview lands through a pull request when the origin allows one.
-	// The pull request waits for the operator's own ending of its review.
+	// Its review ends on the operator's word, given on GitHub or through `lym loom pr-continue`.
+	// A PR-Review session sits in the task's window meanwhile.
 	PullRequestReview = "review"
 	// PullRequestOff lands with no pull request unless GitHub's rules for the parent branch require one.
 	PullRequestOff = "off"

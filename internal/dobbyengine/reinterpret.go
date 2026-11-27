@@ -68,7 +68,7 @@ func renamedModes() map[string]map[string]string {
 // ReinterpretPullRequestModes carries a hub's beam config across the renamed values of pull_request.
 // An on in the hub file becomes review and a merge becomes trail.
 // A merge keeps what it meant.
-// An on does too, except that its review now waits for the operator's own ending whatever the autonomy.
+// An on does too, except that its review now ends only on the operator's word whatever the autonomy.
 // The own beam.yaml files of each worktree it is told are read too.
 // A renamed value in one is flagged with the way forward, since only the hub file is rewritten.
 // A read that fails is flagged and never fails the reinterpretation.
@@ -295,7 +295,7 @@ func retiredMeaning(key, retired string) string {
 	case key == PullRequestKey && retired == retiredPullRequestRequired:
 		return "which only lets beam.yaml load, and the flag on required names what it no longer does"
 	case key == PullRequestKey && retired == renamedPullRequestOn:
-		return "which keeps what on meant, except that the review now waits for the operator's own ending whatever " +
+		return "which keeps what on meant, except that the review now ends only on the operator's word whatever " +
 			keyName(AutonomyKey) + " says, since no parent review ends it"
 	case key == PullRequestKey:
 		return "which keeps what it meant"

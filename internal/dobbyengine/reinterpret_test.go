@@ -231,7 +231,7 @@ func TestReinterpretPullRequestModes(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	const onMeaning = "which keeps what on meant, except that the review now waits for the operator's own ending " +
+	const onMeaning = "which keeps what on meant, except that the review now ends only on the operator's word " +
 		"whatever beam.autonomy says, since no parent review ends it"
 	tests := []struct {
 		name     string

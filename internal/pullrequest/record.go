@@ -13,6 +13,7 @@ import (
 
 // Record is the state a run keeps about its pull request, one JSON file tracked with the run's records.
 // It reaches another machine with the pair's push.
+// Its session ids hold only on the machine that wrote them, and a session whose transcript is absent starts fresh.
 // A key an older build wrote and Record no longer declares survives every rewrite and is never read.
 type Record struct {
 	// Number is the pull request's number and the one field always written.
@@ -25,7 +26,15 @@ type Record struct {
 	Head string `json:"head,omitempty"`
 	// GatedHead is the head the PR-Review row last gated and pushed.
 	GatedHead string `json:"gated_head,omitempty"`
-	// Continue is the operator's ending of the review, set by `lym loom pr-continue`.
+	// MailedHead is the head whose gate failure was mailed, so one failure is mailed once and the head is not gated again.
+	// `lym loom pr-continue` clears it, so the PR-Review row gates that head again.
+	MailedHead string `json:"mailed_head,omitempty"`
+	// StrandGUID, StrandName, SessionID and Engine name the PR-Review session, so a later pass resumes it.
+	StrandGUID string `json:"strand_guid,omitempty"`
+	StrandName string `json:"strand_name,omitempty"`
+	SessionID  string `json:"session_id,omitempty"`
+	Engine     string `json:"engine,omitempty"`
+	// Continue is the ending of the review on the operator's word, set by `lym loom pr-continue`.
 	Continue bool `json:"continue,omitempty"`
 	// ReviewEnded records that the review ended.
 	// The PR-Review row sets it when it closes the pull request on the continue flag.

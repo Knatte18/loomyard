@@ -166,7 +166,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 		"drift":    {"enabled", "expect_model", "judge_ask_parent", "judge_interactive", "judge_model", "judge_parent_timeout_min", "scope"},
 		"hardener": {"concurrency", "fixer", "hard_max_bounces", "judge", "live_attempts", "llm_driving", "max_bounces", "packages", "reviewer", "seed", "verify_attempts"},
 		"ide":      {"open_files", "render_markdown"},
-		"landing":  {"conflict", "conflict_timeout_min", "describe", "describe_review", "describe_review_timeout_min", "describe_timeout_min", "fixer", "fixer_timeout_min"},
+		"landing":  {"conflict", "conflict_timeout_min", "describe", "describe_review", "describe_review_timeout_min", "describe_timeout_min", "fixer", "fixer_timeout_min", "pr_reviewer"},
 		"sampler":  {"agent", "code_review"},
 		"slack":    {"remind_after_min"},
 	}

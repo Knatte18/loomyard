@@ -149,9 +149,12 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	}
 
 	// BeamRecord and DropBeamRecord are a pawl run's, which a tapestry run leaves unset.
+	// SessionLive and RegisterSession read reed's strand table, which only wireLanding holds, so it fills them.
 	unfilledPullRequest := map[string]bool{
-		"BeamRecord":     true,
-		"DropBeamRecord": true,
+		"BeamRecord":      true,
+		"DropBeamRecord":  true,
+		"SessionLive":     true,
+		"RegisterSession": true,
 	}
 	pullRequest := reflect.ValueOf(deps.PullRequest)
 	pullRequestType := pullRequest.Type()
