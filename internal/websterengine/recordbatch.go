@@ -410,7 +410,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, err
 	}
 	var candidates []AuditViolation
-	candidates = append(candidates, CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.State.MasterNotePath, deps.Geom.PaneCwd, deps.RefMatcher)...)
+	candidates = append(candidates, CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.State.MasterNotePaths, deps.Geom.PaneCwd, deps.RefMatcher)...)
 	for _, f := range append(slices.Clone(newReports), bracketForks...) {
 		candidates = append(candidates, CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.PaneCwd, planDirs, websterDirs, ownReport, deps.RefMatcher)...)
 		forkWarnings = append(forkWarnings, ForkWarnings(f)...)

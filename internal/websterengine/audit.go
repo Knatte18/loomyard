@@ -1,7 +1,8 @@
 // audit.go implements webster's fail-loud policy over the fork facts in shuttleengine.ForkAudit and ForkReport.
 // Forks are implementers, so CheckFork allows Write/Edit and repo-native git.
 // It bans nested Agent calls, fabric references, and writes to contract files, the plan, or run state.
-// CheckParent guards Master's own parent transcript, which may write only the two contract files and its friction note.
+// CheckParent guards Master's own parent transcript.
+// Master may write only the two contract files and the friction notes the run's Master prompts named.
 // Every function here is pure: facts in, verdict out. Transcript reading stays in claudeengine.
 
 package websterengine
@@ -10,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -51,8 +53,8 @@ const (
 	// ClassNamedSpawn means Master's parent transcript recorded one or more Agent calls carrying a name parameter.
 	// Named forks silently lose inherited context.
 	ClassNamedSpawn AuditViolationClass = "named-spawn"
-	// ClassParentWrite means Master's parent transcript wrote a file besides the two contract files and its friction note.
-	// Master may write only outcome.yaml, summary.md and the friction note its prompt names.
+	// ClassParentWrite means Master's parent transcript wrote a file Master may not write.
+	// Master may write only outcome.yaml, summary.md and any friction note a Master prompt of the run named.
 	// Any other write means Master is implementing a batch itself or hand-writing a batch report.
 	ClassParentWrite AuditViolationClass = "parent-write"
 	// ClassForkContractWrite means a fork's transcript wrote one of the run's two contract files.
@@ -251,15 +253,16 @@ func dirSpellings(dir string) ([]string, error) {
 }
 
 // CheckParent reports the violations in Master's own parent session.
-// Master may write only to the two contract files, outcomePath and summaryPath, and to notePath.
-// notePath is the friction note its prompt names, compared in its told and link-resolved spellings.
-// An empty notePath allows no note.
+// Master may write only to the two contract files, outcomePath and summaryPath, and to any of notePaths.
+// notePaths are the friction notes the run's Master prompts named, each compared in its told and link-resolved spellings;
+// a resumed Master's prompt names a fresh note, and the note an earlier Master wrote stays Master's own.
+// Empty notePaths allow no note.
 // It bans three hard violations:
 // any named spawn, any other parent write, and any Bash command referencing the fabric repo.
 // fabricRef classifies fabric-reference commands.
 // It must not be nil: Matches is called unguarded, and a nil interface panics.
 // A hub run passes the fabric reference scanner; a standalone run passes a matcher that never matches.
-func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, notePath, workdir string, fabricRef RefMatcher) []AuditViolation {
+func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath string, notePaths []string, workdir string, fabricRef RefMatcher) []AuditViolation {
 	var violations []AuditViolation
 
 	for i := 1; i <= a.NamedSpawns; i++ {
@@ -277,14 +280,15 @@ func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, notePath, 
 	cleanSummary := filepath.Clean(summaryPath)
 	for i, w := range a.ParentWrites {
 		cw := runplan.ResolveWritePath(workdir, w)
-		if cw == cleanOutcome || cw == cleanSummary || (notePath != "" && isWriteOf(workdir, w, notePath)) {
+		isNoteWrite := slices.ContainsFunc(notePaths, func(notePath string) bool { return isWriteOf(workdir, w, notePath) })
+		if cw == cleanOutcome || cw == cleanSummary || isNoteWrite {
 			continue
 		}
 		violations = append(violations, AuditViolation{
 			Class:  ClassParentWrite,
 			Key:    parentKey(ClassParentWrite, i),
 			Path:   w,
-			Detail: fmt.Sprintf("Master wrote %q — Master may write only its two contract files (outcome.yaml and summary.md) and its friction note; any other write means Master implemented a batch itself or hand-wrote a batch report", w),
+			Detail: fmt.Sprintf("Master wrote %q — Master may write only its two contract files (outcome.yaml and summary.md) and the friction notes the run's Master prompts named; any other write means Master implemented a batch itself or hand-wrote a batch report", w),
 		})
 	}
 

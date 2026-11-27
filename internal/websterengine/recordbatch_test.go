@@ -582,12 +582,13 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 			},
 		},
 		{
-			name:   "a Master write to the saved friction note path is no finding",
+			name:   "a Master write to any saved friction note path, an earlier Master's included, is no finding",
 			audits: oneFork,
 			prepare: func(t *testing.T, fx *recordFixture) {
-				note := filepath.Join(t.TempDir(), "webster-master.md")
-				fx.Deps.State.MasterNotePath = note
-				fx.Audit.scripted[0].ParentWrites = []string{note}
+				dir := t.TempDir()
+				earlier, latest := filepath.Join(dir, "webster-master.md"), filepath.Join(dir, "webster-master-2.md")
+				fx.Deps.State.MasterNotePaths = []string{earlier, latest}
+				fx.Audit.scripted[0].ParentWrites = []string{earlier, latest}
 			},
 			report: okReport,
 			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {

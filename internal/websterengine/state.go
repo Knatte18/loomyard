@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/runplan"
@@ -93,9 +94,13 @@ type State struct {
 	// Webster reads the session through it, since a shuttle run record does not outlive its run.
 	// Empty for a state written before the field existed.
 	MasterEngine string `json:"masterEngine,omitempty"`
-	// MasterNotePath is the friction note path the most recent Master's prompt names, captured at spawn.
-	// The parent audit lets Master write it, since the prompt asks Master to.
-	// Empty when friction notes are off, and for a state written before the field existed.
+	// MasterNotePaths holds every friction note path a Master prompt of this run named, in spawn order, each once.
+	// A spawn appends its prompt's path, so a resumed Master's fresh note joins the note an earlier Master was given.
+	// The parent audit lets Master write each of them, since a prompt of this run asked Master to.
+	// Empty when friction notes were off at every Master spawn.
+	MasterNotePaths []string `json:"masterNotePaths,omitempty"`
+	// MasterNotePath is the single note path written by a binary that records no MasterNotePaths.
+	// LoadState moves it to the end of MasterNotePaths, so a loaded state holds it empty and a save drops its key.
 	MasterNotePath string `json:"masterNotePath,omitempty"`
 	// MasterRecordsBase is the records side's HEAD commit from before the most recent Master spawned.
 	// accept-audit compares a suspect records-side path against it.
@@ -218,6 +223,10 @@ func LoadState(websterDir, scratchDir string) (*State, error) {
 	if !found {
 		return nil, nil
 	}
+	if st.MasterNotePath != "" && !slices.Contains(st.MasterNotePaths, st.MasterNotePath) {
+		st.MasterNotePaths = append(st.MasterNotePaths, st.MasterNotePath)
+	}
+	st.MasterNotePath = ""
 	return &st, nil
 }
 

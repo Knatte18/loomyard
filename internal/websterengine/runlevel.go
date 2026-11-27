@@ -719,7 +719,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	}
 
 	// The fixer fork's prompt is rendered and written by Go up front:
-	// Merriam may write nothing but its two contract files and its friction note.
+	// Master may write nothing but its two contract files and the friction notes the run's Master prompts named.
 	verifyFixNotePath := friction.NotePath(deps.FrictionDir, "webster-verify-fix")
 	choice, ok := deps.Roles[RoleMaster]
 	if !ok {
@@ -807,7 +807,9 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// that pane would be invisible to every future reclaim.
 	// Two saves, not one, keep the reclaimable record ahead of the fallible resolve.
 	st.MasterStrand = handle.StrandGUID()
-	st.MasterNotePath = masterNotePath
+	if masterNotePath != "" && !slices.Contains(st.MasterNotePaths, masterNotePath) {
+		st.MasterNotePaths = append(st.MasterNotePaths, masterNotePath)
+	}
 	st.MasterRecordsBase = masterRecordsBase
 	if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
 		return RunResult{}, err
@@ -1088,7 +1090,7 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 		return nil, "", err
 	}
 	var candidates []AuditViolation
-	candidates = append(candidates, CheckParent(*result.ForkAudit, outcomePath, summaryPath, st.MasterNotePath, deps.Geom.PaneCwd, deps.RefMatcher)...)
+	candidates = append(candidates, CheckParent(*result.ForkAudit, outcomePath, summaryPath, st.MasterNotePaths, deps.Geom.PaneCwd, deps.RefMatcher)...)
 	for _, f := range result.ForkAudit.Forks {
 		candidates = append(candidates, CheckFork(f, outcomePath, summaryPath, deps.Geom.PaneCwd, planDirs, websterDirs, forkOwnReport(st, deps.Geom, f.TranscriptPath), deps.RefMatcher)...)
 	}

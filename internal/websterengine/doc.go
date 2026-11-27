@@ -124,7 +124,7 @@
 // A correctness finding means the delta or the run's own state may be wrong:
 // a fork writing Master's contract files, the plan directory or webster's run directory beyond its report;
 // a parent write under `_lym`, to tracked content, under `.lym`, or in another worktree;
-// Master's write to the friction note its prompt names (State.MasterNotePath) is no finding at all;
+// Master's write to a friction note any Master prompt of the run named (State.MasterNotePaths) is no finding at all;
 // a fabric reference whose command the injected ReadOnly classifier does not accept.
 // A policy finding breaks a steering rule without touching correctness, such as a named spawn or a nested agent call.
 // The ledger in state.json dispositions each finding once per run.

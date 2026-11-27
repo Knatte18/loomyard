@@ -335,7 +335,9 @@ func TestCheckParent(t *testing.T) {
 		name  string
 		audit shuttleengine.ForkAudit
 		// workdir is the audit workdir a relative write path resolves against; empty means the anchor root.
-		workdir     string
+		workdir string
+		// notePaths are the friction notes the run's Master prompts named; nil means notePath alone.
+		notePaths   []string
 		wantClasses []AuditViolationClass
 	}{
 		{
@@ -407,6 +409,20 @@ func TestCheckParent(t *testing.T) {
 			wantClasses: []AuditViolationClass{ClassParentWrite},
 		},
 		{
+			name: "write to the note an earlier Master's prompt named is allowed",
+			audit: shuttleengine.ForkAudit{
+				ParentWrites: []string{notePath},
+			},
+			notePaths:   []string{notePath, "/hub/master-builder/_lym/loom/friction/webster-master-2.md"},
+			wantClasses: nil,
+		},
+		{
+			name:        "with no note named, a write to Master's friction note is a hard error",
+			audit:       shuttleengine.ForkAudit{ParentWrites: []string{notePath}},
+			notePaths:   []string{},
+			wantClasses: []AuditViolationClass{ClassParentWrite},
+		},
+		{
 			name: "relative write to a source file is a hard error",
 			audit: shuttleengine.ForkAudit{
 				ParentWrites: []string{"internal/websterengine/audit.go"},
@@ -449,7 +465,11 @@ func TestCheckParent(t *testing.T) {
 			if workdir == "" {
 				workdir = "/hub/master-builder"
 			}
-			got := CheckParent(tt.audit, outcomePath, summaryPath, notePath, workdir, fabricRef)
+			notePaths := tt.notePaths
+			if notePaths == nil {
+				notePaths = []string{notePath}
+			}
+			got := CheckParent(tt.audit, outcomePath, summaryPath, notePaths, workdir, fabricRef)
 			if len(got) != len(tt.wantClasses) {
 				t.Fatalf("CheckParent() = %v; want %d violation(s) of class %v", got, len(tt.wantClasses), tt.wantClasses)
 			}
@@ -472,7 +492,7 @@ func TestCheckParent(t *testing.T) {
 		told := filepath.Join(workdir, "_lym", "loom", "friction", "webster-master.md")
 		resolved := filepath.Join(records, "loom", "friction", "webster-master.md")
 
-		got := CheckParent(shuttleengine.ForkAudit{ParentWrites: []string{resolved}}, outcomePath, summaryPath, told, workdir, fabricRef)
+		got := CheckParent(shuttleengine.ForkAudit{ParentWrites: []string{resolved}}, outcomePath, summaryPath, []string{told}, workdir, fabricRef)
 
 		if len(got) != 0 {
 			t.Errorf("CheckParent() = %v; want no violation", got)
