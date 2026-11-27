@@ -359,7 +359,11 @@ func (r Renderer) Show(boltDir, target, anchor string) (string, error) {
 		return "", err
 	}
 	if named.Delivery == DeliveryPrompt {
-		return strings.Join(passagesOf(layers, named.Name), "\n\n"), nil
+		var texts []string
+		for _, passage := range passagesOf(layers, "", named.Name) {
+			texts = append(texts, passage.Text)
+		}
+		return strings.Join(texts, "\n\n"), nil
 	}
 	if named.JSONObject {
 		layers.addDerived(configengine.Dirs{Anchor: anchor, Board: boltDir})
@@ -373,10 +377,19 @@ func (r Renderer) Show(boltDir, target, anchor string) (string, error) {
 	return text, err
 }
 
-// Passages returns the texts of the entries aimed at prompt targets that reach a session of engine in strand role role.
-// The texts come in render order, and an entry aimed at several of those targets gives its text once.
+// Passage is one entry as it reaches a session: its slug, its text and the engine it is keyed to.
+// Engine is empty for an entry that reaches the session through a target not aimed at one engine.
+// It names the engine for an entry that reaches the session only through targets aimed at that engine.
+type Passage struct {
+	Slug   string
+	Text   string
+	Engine string
+}
+
+// Passages returns the entries aimed at prompt targets that reach a session of engine in strand role role.
+// They come in render order, and an entry aimed at several of those targets comes once.
 // A session no prompt target reaches gets none.
-func (r Renderer) Passages(boltDir, engine, role string) ([]string, error) {
+func (r Renderer) Passages(boltDir, engine, role string) ([]Passage, error) {
 	targets := promptTargetsFor(engine, role)
 	if len(targets) == 0 {
 		return nil, nil
@@ -385,17 +398,50 @@ func (r Renderer) Passages(boltDir, engine, role string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return passagesOf(layers, targets...), nil
+	return passagesOf(layers, engine, targets...), nil
 }
 
-// passagesOf returns the texts of the layered entries in render order.
-// An entry counts when it names one of targets or a shared target rendering into one.
-func passagesOf(layers Layers, targets ...string) []string {
-	var passages []string
+// FileEntries returns the entries that render into the file a session of engine reads, in render order.
+// It reads the store only and writes nothing.
+// An engine with no file target of its own gets none.
+func (r Renderer) FileEntries(boltDir, engine string) ([]Passage, error) {
+	index := slices.IndexFunc(targetTable, func(target Target) bool {
+		return target.Delivery == DeliveryFile && engine != "" && target.Engine == engine
+	})
+	if index < 0 {
+		return nil, nil
+	}
+	layers, err := r.read(boltDir)
+	if err != nil {
+		return nil, err
+	}
+	return passagesOf(layers, engine, targetTable[index].Name), nil
+}
+
+// passagesOf returns the layered entries that reach one of targets, in render order.
+// An entry reaches a target when it names it or a shared target rendering into it.
+// An entry that reaches them only through targets aimed at one engine is keyed to engine.
+func passagesOf(layers Layers, engine string, targets ...string) []Passage {
+	var passages []Passage
 	for _, entry := range layers.Ordered() {
-		if slices.ContainsFunc(targets, func(name string) bool { return reachesFileTarget(name, entry.Targets) }) {
-			passages = append(passages, strings.Trim(entry.Text, "\n"))
+		reached, neutral := false, false
+		for _, aimed := range entry.Targets {
+			if !slices.ContainsFunc(targets, func(name string) bool { return reachesFileTarget(name, []string{aimed}) }) {
+				continue
+			}
+			reached = true
+			if target, ok := LookupTarget(aimed); ok && target.Engine == "" {
+				neutral = true
+			}
 		}
+		if !reached {
+			continue
+		}
+		passage := Passage{Slug: entry.Slug, Text: strings.Trim(entry.Text, "\n")}
+		if !neutral {
+			passage.Engine = engine
+		}
+		passages = append(passages, passage)
 	}
 	return passages
 }

@@ -52,6 +52,9 @@
 // The shared `agents-prompt` target has no engine or role of its own:
 // its entries reach every session `claude-prompt` or `codex-prompt` reaches, the Claude orch included.
 // An engine whose launch appends no passages delivers none of them.
+// Each entry read for a session carries its slug, and the engine it is keyed to when only one engine's targets reach it;
+// an entry a shared or role target also reaches is keyed to none.
+// FileEntries reads the entries of the file one engine's sessions load, in the same keying.
 // A hub whose heddle.yaml sets lym_override renders a shipped entry with the text of its override.
 // The override lives in heddle-lym-override.json beside heddle.json, so lym's own text is tuned there with no build.
 // With the setting off every override is ignored.

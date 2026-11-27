@@ -29,7 +29,9 @@
 // concrete engines import shuttleengine, not the reverse.
 // Only internal/shuttleengines and an engine's own directory import a concrete engine.
 // seam_enforcement_test.go enforces that rule module-wide.
-// StandingPassages returns the instruction passages heddle's layers hold for a session of an engine and a strand role.
+// StandingPassages returns what heddle's layers hold for a session of an engine and a strand role:
+// the passages and the entries of the instruction file the session loads.
+// Each carries its slug and the engine it is keyed to.
 // It reads them through the reader InstallPassageReader installs for the process.
 // It returns none outside a hub, with no reader installed, or when the reader fails, which is logged at Warn.
 // A launch therefore never waits on the store.

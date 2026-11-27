@@ -51,6 +51,7 @@ const (
 // Engine and Role narrow the sessions a prompt target reaches.
 // Engine must equal the session's engine, and Role must match the session's role or a numbered sibling of it;
 // an empty field narrows nothing.
+// A file target's Engine names the engine whose sessions read its file.
 type Target struct {
 	Name        string
 	Delivery    string
@@ -64,8 +65,8 @@ type Target struct {
 
 // targetTable holds one row per target; a further target is one new row.
 var targetTable = []Target{
-	{Name: claudeFileTarget, Delivery: DeliveryFile, File: "CLAUDE.local.md", ReRender: []string{"CLAUDE.local.md", "AGENTS.md", "CLAUDE.md", ".claude/AGENTS.md", ".claude/CLAUDE.md"}},
-	{Name: codexFileTarget, Delivery: DeliveryFile, File: "AGENTS.override.md", ReRender: []string{"AGENTS.md", "CLAUDE.md", "AGENTS.override.md"}},
+	{Name: claudeFileTarget, Delivery: DeliveryFile, File: "CLAUDE.local.md", ReRender: []string{"CLAUDE.local.md", "AGENTS.md", "CLAUDE.md", ".claude/AGENTS.md", ".claude/CLAUDE.md"}, Engine: "claude"},
+	{Name: codexFileTarget, Delivery: DeliveryFile, File: "AGENTS.override.md", ReRender: []string{"AGENTS.md", "CLAUDE.md", "AGENTS.override.md"}, Engine: "codex"},
 	{Name: agentsFileTarget, Delivery: DeliveryFile, RendersInto: []string{claudeFileTarget, codexFileTarget}},
 	{Name: claudeSettingsTarget, Delivery: DeliveryFile, File: ClaudeSettingsFile, JSONObject: true},
 	{Name: "claude-prompt", Delivery: DeliveryPrompt, Engine: "claude"},

@@ -259,9 +259,12 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	}
 	notice := buildDenyNotice(spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish)
 	// The told Board dir is the hub's Bolt checkout, empty outside a hub.
-	passages := shuttleengine.StandingPassages(c.dirs.Board, "claude", spec.Role)
+	var passages []string
 	if passage := subagentPassage(cfg.Agents, spec.ConfigRole, spec.Skills); passage != "" {
-		passages = append([]string{passage}, passages...)
+		passages = append(passages, passage)
+	}
+	for _, passage := range shuttleengine.StandingPassages(c.dirs.Board, engineName, spec.Role).Passages {
+		passages = append(passages, passage.Text)
 	}
 	if err := os.WriteFile(appendPromptPath, []byte(appendPromptText(notice, passages)), 0o644); err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("write append system prompt: %w", err)

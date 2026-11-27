@@ -8,9 +8,24 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// PassageReader returns the standing passages heddle's layers hold for a session of an engine in a strand role.
-// The passages come in the order they are appended.
-type PassageReader func(boltDir, engine, role string) ([]string, error)
+// Passage is one instruction entry heddle holds for a session: its slug, its text and the engine it is keyed to.
+// Engine is empty for an entry every engine's session gets, and names the engine for an entry aimed at that engine alone.
+type Passage struct {
+	Slug   string
+	Text   string
+	Engine string
+}
+
+// Standing is what heddle's layers hold for one session.
+// Passages are appended to the system prompt, in order.
+// FileEntries are the entries of the instruction file the session loads.
+type Standing struct {
+	Passages    []Passage
+	FileEntries []Passage
+}
+
+// PassageReader returns what heddle's layers hold for a session of an engine in a strand role.
+type PassageReader func(boltDir, engine, role string) (Standing, error)
 
 var installedPassageReader atomic.Pointer[PassageReader]
 
@@ -20,22 +35,22 @@ func InstallPassageReader(r PassageReader) (restore func()) {
 	return func() { installedPassageReader.Store(previous) }
 }
 
-// StandingPassages returns the passages the installed reader finds for a session of engine in a strand role.
+// StandingPassages returns what the installed reader finds for a session of engine in a strand role.
 // The hub is the one whose Bolt checkout is boltDir.
-// It returns none for an empty boltDir (a session outside a hub) or with no reader installed.
-// A reader error also returns none and is logged at Warn, so an unreadable store never blocks a launch.
-func StandingPassages(boltDir, engine, role string) []string {
+// It returns the zero Standing for an empty boltDir (a session outside a hub) or with no reader installed.
+// A reader error also returns the zero Standing and is logged at Warn, so an unreadable store never blocks a launch.
+func StandingPassages(boltDir, engine, role string) Standing {
 	if boltDir == "" {
-		return nil
+		return Standing{}
 	}
 	reader := installedPassageReader.Load()
 	if reader == nil {
-		return nil
+		return Standing{}
 	}
-	passages, err := (*reader)(boltDir, engine, role)
+	standing, err := (*reader)(boltDir, engine, role)
 	if err != nil {
 		logger.Warn("shuttleengine: the standing passages are unreadable, so the launch carries lym's own sentences only; run `lym heddle list` to inspect the store", "engine", engine, "error", err)
-		return nil
+		return Standing{}
 	}
-	return passages
+	return standing
 }

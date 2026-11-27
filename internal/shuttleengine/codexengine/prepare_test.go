@@ -412,7 +412,7 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 		{name: "AtTheArgumentCap", passages: []string{strings.Repeat("a", fillBytes)}, wantInstructions: head + "\n\n" + strings.Repeat("a", fillBytes)},
 		{
 			name: "OverTheArgumentCap", passages: []string{strings.Repeat("a", fillBytes+1)},
-			wantErr: []string{"codexengine:", strconv.Itoa(maxArgumentBytes), strconv.Itoa(fillBytes + 1), "heddle passage 1", "lym heddle show codex-prompt", "way forward"},
+			wantErr: []string{"codexengine:", strconv.Itoa(maxArgumentBytes), strconv.Itoa(fillBytes + 1), "heddle passage entry-1", "lym heddle show codex-prompt", "way forward"},
 		},
 	}
 	for _, tt := range tests {
@@ -424,9 +424,13 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 			repo.writeCodexConfig(t, configengine.ConfigFile(board, "codex"), "")
 			engine.dirs.Board = board
 			var asked []string
-			restore := shuttleengine.InstallPassageReader(func(boltDir, engine, role string) ([]string, error) {
+			restore := shuttleengine.InstallPassageReader(func(boltDir, engine, role string) (shuttleengine.Standing, error) {
 				asked = append(asked, engine, role)
-				return tt.passages, nil
+				var standing shuttleengine.Standing
+				for i, text := range tt.passages {
+					standing.Passages = append(standing.Passages, shuttleengine.Passage{Slug: fmt.Sprintf("entry-%d", i+1), Text: text})
+				}
+				return standing, nil
 			})
 			t.Cleanup(restore)
 

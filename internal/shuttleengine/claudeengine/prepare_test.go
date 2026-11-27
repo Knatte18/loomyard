@@ -575,6 +575,15 @@ func TestPrepare_LogsResolvedPromptCacheTTL(t *testing.T) {
 	}
 }
 
+// standingOf returns a Standing whose passages hold texts in order.
+func standingOf(texts ...string) shuttleengine.Standing {
+	var standing shuttleengine.Standing
+	for _, text := range texts {
+		standing.Passages = append(standing.Passages, shuttleengine.Passage{Slug: text, Text: text})
+	}
+	return standing
+}
+
 // TestPrepare_AppendsStandingPassages proves the append-system-prompt file carries the reader's standing passages.
 // The reader is asked for the claude engine and the spec's role.
 // Its passages follow lym's own sentences, each after a blank line and in order.
@@ -601,8 +610,8 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 		{
 			name:  "two_passages",
 			board: "bolt",
-			reader: func(string, string, string) ([]string, error) {
-				return []string{"first passage", "second\nspans lines"}, nil
+			reader: func(string, string, string) (shuttleengine.Standing, error) {
+				return standingOf("first passage", "second\nspans lines"), nil
 			},
 			want: sentences + "\n\nfirst passage\n\nsecond\nspans lines",
 		},
@@ -610,8 +619,8 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 			name:  "role_reaches_reader",
 			board: "bolt",
 			role:  "orch",
-			reader: func(_, engine, role string) ([]string, error) {
-				return []string{engine + " " + role}, nil
+			reader: func(_, engine, role string) (shuttleengine.Standing, error) {
+				return standingOf(engine + " " + role), nil
 			},
 			want: sentences + "\n\nclaude orch",
 		},
@@ -619,8 +628,8 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 		{
 			name:  "outside_hub",
 			board: "",
-			reader: func(string, string, string) ([]string, error) {
-				return []string{"never read"}, nil
+			reader: func(string, string, string) (shuttleengine.Standing, error) {
+				return standingOf("never read"), nil
 			},
 			want:        sentences,
 			wantNoCalls: true,
@@ -628,8 +637,8 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 		{
 			name:  "reader_error",
 			board: "bolt",
-			reader: func(string, string, string) ([]string, error) {
-				return nil, errors.New("heddle.json does not decode")
+			reader: func(string, string, string) (shuttleengine.Standing, error) {
+				return shuttleengine.Standing{}, errors.New("heddle.json does not decode")
 			},
 			want:       sentences,
 			wantLogged: "lym heddle list",
@@ -641,7 +650,7 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 			calls := 0
 			if tt.reader != nil {
 				reader := tt.reader
-				t.Cleanup(shuttleengine.InstallPassageReader(func(boltDir, engine, role string) ([]string, error) {
+				t.Cleanup(shuttleengine.InstallPassageReader(func(boltDir, engine, role string) (shuttleengine.Standing, error) {
 					calls++
 					return reader(boltDir, engine, role)
 				}))

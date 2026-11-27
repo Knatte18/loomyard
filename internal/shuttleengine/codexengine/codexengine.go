@@ -164,7 +164,7 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 		questionDeny: !spec.Interactive,
 	}
 	// The told Board dir is the hub's Bolt checkout, empty outside a hub.
-	passages := shuttleengine.StandingPassages(c.dirs.Board, engineName, spec.Role)
+	passages := shuttleengine.StandingPassages(c.dirs.Board, engineName, spec.Role).Passages
 	items := []instructionItem{creelHeadItem(denyNotice(tools.questionDeny, tools.guards))}
 	subagentEffort := c.subagentEffort(cfg.Agents, spec.ConfigRole, codex)
 	if passage := subagentPassage(subagentEffort, spec.Skills); passage != "" {
