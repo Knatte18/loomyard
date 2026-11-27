@@ -216,6 +216,13 @@ textarea { min-height: 6rem; }
       select.appendChild(option);
     });
     select.value = value;
+    if (select.value !== value) {
+      // A project the view does not list, such as a done one, stays selectable, so a save does not move the entry.
+      var unlisted = element("option", value);
+      unlisted.value = value;
+      select.appendChild(unlisted);
+      select.value = value;
+    }
   }
 
   function slugOfHandle(handle) {
@@ -270,7 +277,7 @@ textarea { min-height: 6rem; }
     Object.keys(panel.inputs).forEach(function (name) {
       var control = panel.inputs[name];
       var untouched = panel.baseline === null || control.value === panel.baseline[name];
-      if (name === "project") { projectOptions(control); }
+      if (name === "project") { projectOptions(control, untouched ? values[name] : control.value); }
       if (untouched) { control.value = values[name]; }
     });
     panel.baseline = values;
