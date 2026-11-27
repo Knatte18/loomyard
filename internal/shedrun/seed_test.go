@@ -196,6 +196,9 @@ func TestValidateRecipe(t *testing.T) {
 					t.Errorf("ValidateRecipe(%q) error = %q; want it to contain %q", tt.recipe, err.Error(), want)
 				}
 			}
+			if strings.Contains(err.Error(), RecipeArras) {
+				t.Errorf("ValidateRecipe(%q) error = %q; want it not to offer %q", tt.recipe, err.Error(), RecipeArras)
+			}
 		})
 	}
 }

@@ -97,11 +97,11 @@ var recipes = map[string]entry{
 
 // lookup returns the entry for the recipe name, or an error for an unknown name.
 //
-// The error lists the available recipes from names(), so the message cannot drift from recipes.
+// The error lists the offered recipe names, which leave out a recipe that is armed but no longer offered.
 func lookup(name string) (entry, error) {
 	e, ok := recipes[name]
 	if !ok {
-		return entry{}, fmt.Errorf("shedcli: unknown recipe %q; available recipes: %v", name, names())
+		return entry{}, fmt.Errorf("shedcli: unknown recipe %q; available recipes: %v", name, shedrun.OfferedRecipeNames())
 	}
 	return e, nil
 }

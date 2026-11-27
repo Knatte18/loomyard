@@ -145,6 +145,8 @@
 //   - A run seen past its Land row that dobby remembered ahead of it with `land_notice` on owes one line
 //     through Deps.Notice to the nearest live orch.
 //     A run whose `land_notice` read off owes none.
+//   - A remembered motif run that landed owes one line saying its entry is now a Sketch, whatever `land_notice` reads,
+//     since a Sketch runs only once it is promoted; its line replaces the landed line.
 //   - A landed line asks the orch for nothing:
 //     a member landing under a recorded pull request gets the description rewrite.
 //   - An owed line stays in the state record and is posted every tick until a post succeeds.

@@ -3,7 +3,8 @@
 # Autonomy
 
 Read this file while your own autonomy is on, and when a halt notice carries `autonomy: true`.
-Under autonomy you settle every halt and run-level call yourself and reach the operator only for a severe halt or a merge-ready beam.
+Under autonomy you settle every halt and run-level call yourself,
+and reach the operator only for a severe halt, a merge-ready beam or a raddle split's approval.
 Where the role waits for the operator's word, this file is the exception for the runs and beams it covers.
 
 ## Whose value applies
@@ -50,6 +51,25 @@ A relay opens `[operator] severe halt <slug>:`, then the halt, what you tried an
 Autonomy leaves a run's pull request to the operator: a run waiting at PR-Review waits for the operator, who works it with the run's PR-Review session.
 Never approve, merge, close or comment on the pull request on GitHub, and never end its review without the operator's word.
 
+## A Sketch a motif run left
+
+On a motif run's landing line, follow up the Sketch it left yourself:
+
+1. Read the Sketch with `lym board get <slug>` and its record with `--record`,
+   then `lym board list` and `lym loom peers` for what it waits for:
+   a running or released task that changes a package its record names, and any entry its record or body says must land first.
+2. Promote it to its raddle run with `lym board promote '{"slug":"<slug>","depends_on":[...]}'`,
+   naming in `depends_on` each of those entries still open, so the board shows why it waits;
+   the raddle run starts only once none of them is open.
+   A wait on something no board entry holds goes in a note of its own, which `depends_on` names.
+
+A raddle run's split approval stays the operator's, whatever your autonomy, as a merge-ready beam does:
+it is no halt you settle.
+The run waits for that approval when you receive a line opening
+`raddle: the proposal for the Sketch <slug> passes its checks and waits for the operator's approval`.
+Then notify `[operator] split ready <slug>:` with the run's attach command,
+and never approve, change or file the split yourself.
+
 ## A drained beam
 
 On `[beam drained] <slug>`, take these steps from the first not done, for the beam the line names:
@@ -64,6 +84,6 @@ On `[beam drained] <slug>`, take these steps from the first not done, for the be
 
 ## Reaching Slack
 
-Post each severe-halt relay and merge-ready notice to `<shortname>:SLACK` with `lym creel post` as well,
+Post each severe-halt relay, merge-ready and split-ready notice to `<shortname>:SLACK` with `lym creel post` as well,
 so the hook's filter on turn replies never loses one.
 Send one relay per turn, and open that turn's reply with it.

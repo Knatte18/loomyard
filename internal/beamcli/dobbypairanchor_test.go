@@ -240,7 +240,7 @@ func TestDobbyRuns_ReadsWhetherAPausedRunsWorkReachedItsParent(t *testing.T) {
 	}
 }
 
-func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitAndTheEndedEntryAndPair(t *testing.T) {
+func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitTheEndedEntryThePairAndTheMotifRecipe(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -284,6 +284,12 @@ func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitAndTheEndedEntryAndPair(t 
 	if err := shedrun.WriteLandedCommit(prime, "landed", shedrun.LandedCommit{Commit: "abc123", EmptyDiff: true}); err != nil {
 		t.Fatalf("WriteLandedCommit() = %v; want nil", err)
 	}
+	// "landed" ran the motif recipe, and "unlanded" another one.
+	for slug, recipe := range map[string]string{"landed": shedrun.RecipeMotif, "unlanded": shedrun.RecipeTapestry} {
+		if err := shedrun.WriteChildRecipe(prime, slug, recipe); err != nil {
+			t.Fatalf("WriteChildRecipe(%s) = %v; want nil", slug, err)
+		}
+	}
 
 	// A directory where the landed-commit file belongs makes the read fail for a reason other than a missing file.
 	if err := os.MkdirAll(shedrun.LandedCommitFile(prime, "unreadable"), 0o755); err != nil {
@@ -301,6 +307,7 @@ func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitAndTheEndedEntryAndPair(t 
 		emptyLanding            bool
 		entryEnded, pairPresent bool
 		cancelMarker            bool
+		motif                   bool
 	}
 	type judged struct {
 		run    runfsm.State
@@ -310,7 +317,7 @@ func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitAndTheEndedEntryAndPair(t 
 	got := map[string]landing{}
 	gotJudged := map[string]judged{}
 	for _, view := range views {
-		got[view.Slug] = landing{view.PastLand, view.Landed, view.LandingCommit, view.EmptyLanding, view.EntryEnded, view.PairPresent, view.CancelMarker}
+		got[view.Slug] = landing{view.PastLand, view.Landed, view.LandingCommit, view.EmptyLanding, view.EntryEnded, view.PairPresent, view.CancelMarker, view.Motif}
 		gotJudged[view.Slug] = judged{view.Run, view.Verdict.Answer, view.Verdict.Reason}
 	}
 	wantJudged := map[string]judged{
@@ -327,12 +334,21 @@ func TestDobbyRuns_ReadsTheLandOutcomeTheLandingCommitAndTheEndedEntryAndPair(t 
 		"ahead":      {pairPresent: true},
 		"paused":     {pairPresent: true},
 		"cancelling": {pairPresent: true, cancelMarker: true},
-		"landed":     {pastLand: true, landed: true, commit: "abc123", emptyLanding: true, entryEnded: true, pairPresent: true},
+		"landed":     {pastLand: true, landed: true, commit: "abc123", emptyLanding: true, entryEnded: true, pairPresent: true, motif: true},
 		"unlanded":   {pastLand: true, entryEnded: true, pairPresent: true},
 		"unreadable": {pastLand: true, landed: true, pairPresent: true},
 		"pairless":   {pastLand: true, entryEnded: true},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("DobbyRuns() land readings = %+v; want %+v", got, want)
+	}
+
+	// A directory where the child-recipe record belongs makes the read fail, which fails the whole listing.
+	if err := os.MkdirAll(shedrun.ChildRecipeFile(prime, "ahead"), 0o755); err != nil {
+		t.Fatalf("make the child-recipe path a directory: %v", err)
+	}
+	views, err = battencli.DobbyRuns(prime, geom, battencli.NewDobbyParents(prime), filepath.Join(t.TempDir(), "pause.json"), runpusher.StartIfAhead)
+	if err == nil || !strings.Contains(err.Error(), "read the run ahead") {
+		t.Errorf("DobbyRuns() with an unreadable child recipe = %v, %v; want an error naming the run ahead", views, err)
 	}
 }

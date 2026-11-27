@@ -2,7 +2,7 @@
 //
 // Load reads board.json, and Save writes board.json only.
 // The store applies the CRUD and validation rules:
-// dangling-dependency, isolated, kind and label rules, and cycle detection.
+// dangling-dependency, isolated, kind, label and offered-recipe rules, and cycle detection.
 // Batch and merge apply atomically.
 // Save and Load take the fine-grained swap lock so a concurrent read never sees a half-written file.
 
@@ -481,6 +481,10 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 		snapshotIndex[snapshot[i].Slug] = &snapshot[i]
 	}
 
+	if err := checkOfferedRecipe(incoming, snapshotIndex[incoming.Slug]); err != nil {
+		return err
+	}
+
 	seenIssues := make(map[int]bool, len(incoming.Issues))
 	for _, n := range incoming.Issues {
 		if n <= 0 {
@@ -544,6 +548,18 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 		return validateLabels(incoming, snapshotIndex[incoming.Slug], *s.vocab)
 	}
 	return nil
+}
+
+// checkOfferedRecipe refuses a write that gives an entry the arras recipe, which is no longer offered.
+// The refusal names motif, the design-first route, as the way forward.
+// prior is the entry of the same slug as it stood before the write, nil for a new entry:
+// an entry that already holds the recipe keeps taking writes, so a run started under it goes on to its end.
+func checkOfferedRecipe(incoming Task, prior *Task) error {
+	if incoming.Recipe != shedrun.RecipeArras || (prior != nil && prior.Recipe == shedrun.RecipeArras) {
+		return nil
+	}
+	return fmt.Errorf("entry %q names recipe %q, which is not offered: a design-first entry runs %q, whose Discussion stores the decision record and leaves a Sketch its raddle run splits; "+
+		"way forward: write the entry again with \"recipe\":%q", incoming.Slug, shedrun.RecipeArras, shedrun.RecipeMotif, shedrun.RecipeMotif)
 }
 
 // findCycle walks adjacency depth-first from start and reports the first slug it meets again on its own path.
@@ -1112,6 +1128,14 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 				incoming = t
 				break
 			}
+		}
+		// The snapshot already holds the incoming entry, so what the entry held before the batch is read from the store.
+		var prior *Task
+		if i, found := s.index(slugStr); found {
+			prior = &s.tasks[i]
+		}
+		if err := checkOfferedRecipe(incoming, prior); err != nil {
+			return err
 		}
 		if err := s.validateWrite(snapshot, incoming); err != nil {
 			return err

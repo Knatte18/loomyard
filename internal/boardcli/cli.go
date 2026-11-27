@@ -578,7 +578,7 @@ Optional fields:
   "status"     string — lifecycle status
   "kind"       string — "task", "note" or "project", default "note"
   "labels"     array  — replaces the list; a task needs a type label, a note exactly one
-  "recipe"    string — "darn", "tapestry", "arras", "hardener" or "motif", or ` + boardKeyName("default_recipe") + `
+  "recipe"    string — "darn", "tapestry", "hardener" or "motif", or ` + boardKeyName("default_recipe") + `
   "priority"   string — a note's "high", "normal" or "low"; "normal" clears it
   "short_name" string — display label; falls back to the slug
   "issues"     array  — hub issue numbers

@@ -81,6 +81,8 @@ type RunView struct {
 	LandingCommit string
 	// EmptyLanding reports that the run's landing changed no code path on its parent branch, so none of its work reached it.
 	EmptyLanding bool
+	// Motif reports whether the run's child ran the motif recipe, whose landing leaves its entry a Sketch.
+	Motif bool
 	// ReachedParent reports whether the run's work already reached its parent branch.
 	// Then only its Land and Worktree-Teardown rows are left.
 	// It is read for a paused run only.

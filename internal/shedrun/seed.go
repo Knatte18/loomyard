@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"time"
 
@@ -98,15 +99,21 @@ func RecipeNames() []string {
 	return []string{RecipeArras, RecipeBatten, RecipeDarn, RecipeHardener, RecipeMotif, RecipePawl, RecipeRaddle, RecipeSampler, RecipeTapestry}
 }
 
+// OfferedRecipeNames returns the recipe names a message may list to a user, sorted and freshly allocated.
+// It leaves out the arras recipe, which is still legal in a seed but no longer offered.
+func OfferedRecipeNames() []string {
+	return slices.DeleteFunc(RecipeNames(), func(name string) bool { return name == RecipeArras })
+}
+
 // ValidateRecipe reports whether name is a legal Seed.Recipe value.
-// On refusal, the error names the available recipes from RecipeNames().
+// On refusal, the error names the offered recipes.
 func ValidateRecipe(name string) error {
 	for _, candidate := range RecipeNames() {
 		if name == candidate {
 			return nil
 		}
 	}
-	return fmt.Errorf("shedrun: unknown recipe %q; available recipes: %v", name, RecipeNames())
+	return fmt.Errorf("shedrun: unknown recipe %q; available recipes: %v", name, OfferedRecipeNames())
 }
 
 // ReadSeed reads the seed for runID under l, returning (Seed{}, false, nil) when no seed has been written yet.

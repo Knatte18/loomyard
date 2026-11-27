@@ -11,9 +11,10 @@ const (
 	// PullRequestKey decides whether a task's landing goes through a GitHub pull request.
 	PullRequestKey = "pull_request"
 	// LandNoticeKey decides whether dobby posts a line to the orch once a task's run lands or ends without landing.
+	// A landed motif run's line goes whatever it reads.
 	LandNoticeKey = "land_notice"
 	// AutonomyKey decides whether the orch settles every halt of a task's runs.
-	// Under it the orch reaches the operator only for a severe halt or a merge-ready beam.
+	// Under it the orch reaches the operator only for a severe halt, a merge-ready beam or a raddle split's approval.
 	AutonomyKey = "autonomy"
 	// RunWatchKey decides which changes of a task's run dobby mails the orch as a watch line.
 	RunWatchKey = "run_watch"

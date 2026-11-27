@@ -611,9 +611,9 @@ func childRecipeSupported(recipe string) bool {
 }
 
 // unsupportedChildRecipeRefusal returns the refusal for a recipe that a task worktree's bootstrap verb cannot run.
-// It wraps battenshed.ErrUnsupportedChildRecipe and names the admitted recipes.
+// It wraps battenshed.ErrUnsupportedChildRecipe and names the offered recipes among the admitted ones.
 func unsupportedChildRecipeRefusal(recipe string) error {
-	return fmt.Errorf("%w: only %q, %q, %q, %q, %q, %q, %q and %q have a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q, %q, %q, %q, %q, %q, %q or empty, and a project entry seeds %q; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeRaddle, shedrun.RecipeArras, shedrun.RecipeHardener, shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipeSampler, shedrun.RecipeRaddle, shedrun.RecipeArras, shedrun.RecipeHardener, shedrun.RecipePawl, recipe)
+	return fmt.Errorf("%w: only %q, %q, %q, %q, %q, %q and %q have a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q, %q, %q, %q, %q, %q or empty, and a project entry seeds %q; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeRaddle, shedrun.RecipeHardener, shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipeSampler, shedrun.RecipeRaddle, shedrun.RecipeHardener, shedrun.RecipePawl, recipe)
 }
 
 // childSeedParams returns the params of a child's seed.

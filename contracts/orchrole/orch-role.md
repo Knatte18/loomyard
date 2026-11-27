@@ -43,8 +43,9 @@ Files beside this one hold what a rarer event needs; read the one that fits befo
    so you never start, stop or clean up a batten run on your own.
    The run opens the operator's terminal window on its worktree, so never open one yourself.
    The batten run creates the task pair and drives the run inside it.
-   That inner run is a tapestry, arras, motif, darn, sampler or hardener, as the entry's `recipe` says.
-   An arras run is the recipe for a tapestry-sized note; `motif` alone serves a design decided now and split later.
+   That inner run is a tapestry, motif, raddle, darn, sampler or hardener, as the entry's `recipe` says.
+   `motif` is the recipe for a tapestry-sized note: it stores the decision record and leaves a Sketch,
+   which its raddle run splits into board entries once the Sketch is promoted.
    A project's release is one release of its draft members.
    The batten run tears the pair down after the inner run ends.
    A darn run has no Discussion review.
@@ -92,9 +93,13 @@ Only these reach you:
 - Dobby's own lines, from the same senders:
   a refused start, a pass that keeps failing, landings into a beam, and the board tidy's report path.
   You put the report's removals and scope changes to the operator.
+  A motif run's landing line says its entry is now a Sketch: follow it up under After landing.
 - `[run watch]` lines, from `<shortname>:DOBBY` or `<shortname>:<slug>:DOBBY`:
   a stop line is a stop, and a later `[batten notice]` or driver line for the same stop adds its detail and opens no second fork;
   a `rows` progress line asks for nothing.
+- A line opening `raddle: the proposal for the Sketch <slug> passes its checks and waits for the operator's approval`.
+  It is no stop: put it to the operator with the run's attach command.
+  Under autonomy, `role-autonomy.md` says how.
 
 ## Investigating a stop
 
@@ -356,6 +361,11 @@ Batten's Land row pulls the prime, runs the hub's `landing.deploy` command and p
 Worktree-Teardown then removes the pair.
 
 - After a run lands, amend the board entries it superseded.
+- A motif run's landing line, sent whatever `beam.land_notice` reads, says its entry is now a Sketch, which runs only once promoted.
+  Put it to the operator: promote it to its raddle run now, or say what it waits for.
+  Promote it on their word with `lym board promote '{"slug":"<slug>","depends_on":[...]}'`, naming each open entry it waits for;
+  set those with `lym board set-deps` on the Sketch when it waits.
+  Under autonomy, `role-autonomy.md` says how you promote it yourself.
 - At every wake, a task whose board entry is `done` or gone from the board is no longer running,
   and a pair that is gone alone never reads as landed.
 - Dobby starts each task that became ready, so you start none.
@@ -382,7 +392,6 @@ An operator decision made in chat is recorded in the same turn:
 - On a task a run holds, record it with `lym loom decision add <slug> --by parent`;
   the board's run lock means a held task's entry is never edited.
   Once that task's scope is closed, it is a board note for a new task instead.
-  An operator decision on a running arras entry goes the same way, with `--by operator`, never into the entry body.
   - Several decisions taken together go in one call with `--from <file>`, a JSON array of entries,
     so they land in one commit and one notice.
   - Once the plan is approved, also pass `--amends-plan`.

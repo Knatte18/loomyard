@@ -1703,11 +1703,11 @@ User-facing modules each get one `lym <module>` namespace:
 - **batten** — drives one task worktree's whole lifecycle as a single Shed run from the hub's prime worktree.
   The lifecycle is to create the worktree, seed the child's own inner run from the Board task's own `recipe`,
   run it to a terminal state, land it into the prime, and tear down.
-  The `recipe` is one of `tapestry`, `motif`, `raddle`, `arras`, `darn` and `sampler`.
+  The `recipe` is one of `tapestry`, `motif`, `raddle`, `darn` and `sampler`.
   An empty `recipe` means `board.default_recipe`.
   `motif` is for a Discussion-only child that lands no code.
   `raddle` is for a child that files a Sketch's split on the board.
-  `arras` is for a child that discusses a task and splits its decision record into board entries.
+  `arras` is no longer offered on the board: a tapestry-sized note runs `motif`.
   `darn` is for a darn child, and `sampler` for a sampler child.
   The code is `internal/battenshed`, `internal/battenrecipe` and `internal/battencli`.
   Its verbs are `lym batten run|step|status|pause|goto|cancel <run-id>` and `lym batten cleanup [--apply]`.

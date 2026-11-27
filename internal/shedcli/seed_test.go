@@ -101,10 +101,13 @@ func TestWriteSeed_UnknownRecipeRefusesWithTheAvailableNames(t *testing.T) {
 			if !strings.Contains(err.Error(), "unknown recipe") {
 				t.Errorf("writeSeed(%q) error = %q; want it to say unknown recipe", recipe, err.Error())
 			}
-			for _, name := range names() {
+			for _, name := range shedrun.OfferedRecipeNames() {
 				if !strings.Contains(err.Error(), name) {
 					t.Errorf("writeSeed(%q) error = %q; want it to name recipe %q", recipe, err.Error(), name)
 				}
+			}
+			if strings.Contains(err.Error(), shedrun.RecipeArras) {
+				t.Errorf("writeSeed(%q) error = %q; want it not to offer %q", recipe, err.Error(), shedrun.RecipeArras)
 			}
 		})
 	}

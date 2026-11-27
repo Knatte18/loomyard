@@ -47,7 +47,7 @@ func LookupLandNotice(chain TaskSettingChain) (bool, error) {
 
 // LookupAutonomy reports whether autonomy is on for the task at the chain's head.
 // Under it the orch settles every halt of the task's runs.
-// It reaches the operator only for a severe halt or a merge-ready beam.
+// It reaches the operator only for a severe halt, a merge-ready beam or a raddle split's approval.
 // A value the key does not take is refused, naming the file that set it.
 func LookupAutonomy(chain TaskSettingChain) (bool, error) {
 	value, err := lookupTaskSetting(chain, AutonomyKey)

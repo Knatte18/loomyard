@@ -299,6 +299,10 @@
 // That refusal applies only to a write that adds the label, makes the entry a task or project, or changes its recipe.
 // The Bolt replayer admits an entry through the run lock and the kind and label checks only, never the promotion rule.
 //
+// A write that gives an entry the arras recipe is refused, naming motif as the way forward:
+// motif and the Sketch's raddle run are the one design-first route.
+// An entry that already holds the arras recipe keeps taking writes, so a run started under it goes on to its end.
+//
 // # Raddle store
 //
 // A raddle run that files a Sketch's entries keeps a store on the Bolt beside board.json.

@@ -153,6 +153,7 @@ var unsettledCodeTip logger.EpisodeSet
 // A run whose code tip does not settle is left out of the call, with one Warn per episode.
 // A run's place against its Land row is read from its status,
 // and a landed run carries the landing commit its landing recorded, empty when none is readable.
+// Whether its child ran the motif recipe is read from the run's child-recipe record.
 // Whether the run takes no slot is judged from its board entry on the local board at geom.BoardDir.
 // Whether that entry ended, done or gone from the board, is judged from the same board.
 // Whether its pair is present is read from its task worktree's path.
@@ -226,6 +227,11 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 				return err
 			},
 			func() (err error) { view.DriverLockHeld, err = lockHeld(shedrun.DriverLock(prime, slug)); return },
+			func() error {
+				recipe, err := shedrun.ReadChildRecipe(prime, slug)
+				view.Motif = recipe == shedrun.RecipeMotif
+				return err
+			},
 			func() (err error) { view.PairPresent, err = markerExists(pair.WorktreePath()); return },
 			func() (err error) {
 				_, view.HandOverMarked, err = fabricengine.ReadHandOverMark(prime.HubPath, slug)

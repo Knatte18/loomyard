@@ -1,6 +1,7 @@
 // landnotice.go implements the landing notice: one creel line to the nearest live orch.
 // It goes out once a run seen ahead of its Land row lands or ends without landing.
 // It goes only when the run's land_notice setting read on, as read ahead of Land or, when that never read, after it.
+// A landed motif run's line goes whatever land_notice reads, since nothing else follows up the Sketch it leaves.
 
 package dobbyengine
 
@@ -110,7 +111,8 @@ func (d *daemon) unreadLandNoticeRuns(runs []RunView) map[string]bool {
 
 // rememberRuns refreshes memory from the runs listed this tick.
 // A run is remembered with the land_notice reading in requests, when it has one.
-// A remembered run past its Land row that was read at least once gets its notice decided:
+// A remembered motif run that landed owes the Sketch line, whatever its reading.
+// Any other remembered run past its Land row that was read at least once gets its notice decided:
 // a line when its remembered reading is on, and none when it is off.
 // A remembered run past Land that was never read stays undecided until a read succeeds.
 // A run that owes nothing after this is forgotten, and so is one whose line an older binary had already posted.
@@ -136,10 +138,12 @@ func rememberRuns(memory map[string]LandNoticeState, runs []RunView, requests ma
 			continue
 		}
 		memory[run.Slug] = note
-		if !note.read() {
+		switch {
+		case run.Motif && run.Landed:
+			note.Line = sketchNoticeLine(run)
+		case !note.read():
 			continue
-		}
-		if note.Requested {
+		case note.Requested:
 			note.Line = landNoticeLine(run)
 		}
 		if !note.owed() {
@@ -204,6 +208,12 @@ func landNoticeLine(run RunView) string {
 		return fmt.Sprintf("%s %s: landed with an empty diff: no file of its parent branch changed, which stays at %s", runNoticePrefix, run.Slug, commit)
 	}
 	return fmt.Sprintf("%s %s: landed as %s", runNoticePrefix, run.Slug, commit)
+}
+
+// sketchNoticeLine is the line a landed motif run's notice posts.
+// It says the run's entry is now a Sketch, which runs only once it is promoted, so the orch follows it up.
+func sketchNoticeLine(run RunView) string {
+	return fmt.Sprintf("%s %s: the motif run landed and left its entry a Sketch, which runs only once promoted; lym board get %s shows it", runNoticePrefix, run.Slug, run.Slug)
 }
 
 // landNoticeOutcome names how a run past its Land row ended.

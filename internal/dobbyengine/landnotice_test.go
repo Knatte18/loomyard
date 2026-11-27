@@ -1,5 +1,6 @@
 // landnotice_test.go pins the landing notice over a pass harness.
 // It covers which runs get a line under each reading of land_notice and the line's text.
+// It covers a landed motif run, whose Sketch line goes whatever land_notice reads.
 // It covers a member landing under a recorded pull request, whose line carries no follow-up.
 // It covers the owed line's posts until one succeeds, and the memory's upkeep.
 
@@ -29,6 +30,10 @@ func TestLandNotices(t *testing.T) {
 	const emptyLandingLine = "[dobby notice] task: landed with an empty diff: no file of its parent branch changed, which stays at 0123456789ab"
 	const unknownCommitLine = "[dobby notice] task: landed, commit unknown"
 	const unlandedLine = "[dobby notice] task: ended without landing; lym batten status task shows the run"
+	runningMotif := RunView{Slug: "task", State: runStateRunning, Producer: producerRunShed, Motif: true}
+	landedMotif := RunView{Slug: "task", State: runStateDone, Producer: "Worktree-Teardown", PastLand: true, Landed: true, Motif: true}
+	unlandedMotif := RunView{Slug: "task", State: runStateDone, Producer: "Worktree-Teardown", PastLand: true, Motif: true}
+	const sketchLine = "[dobby notice] task: the motif run landed and left its entry a Sketch, which runs only once promoted; lym board get task shows it"
 
 	tests := []struct {
 		name string
@@ -75,6 +80,11 @@ func TestLandNotices(t *testing.T) {
 		{name: "ARunNeverReadAheadOfLandWaitsPastLandForARead", requested: true, failLookupThroughTick: 3, ticks: [][]RunView{{running}, {running}, {landed}, {landed}, {landed}}, want: []string{landedLine}},
 		{name: "AnOlderMemoryHoldingARequestIsNotReadAgainPastLand", seed: &LandNoticeState{Requested: true}, ticks: [][]RunView{{landed}, {landed}}, want: []string{landedLine}},
 		{name: "AClearOnlyMemoryOfAnOlderBinaryGetsNoSecondNotice", requested: true, seed: &LandNoticeState{Requested: true, ClearOwed: true}, ticks: [][]RunView{{landed}, {landed}}},
+		{name: "ALandedMotifRunTellsOfItsSketchWithTheNoticeOff", ticks: [][]RunView{{runningMotif}, {landedMotif}, {landedMotif}}, want: []string{sketchLine}},
+		{name: "ALandedMotifRunSendsOnlyTheSketchLineWithTheNoticeOn", requested: true, ticks: [][]RunView{{runningMotif}, {landedMotif}}, want: []string{sketchLine}},
+		{name: "ALandedMotifRunNeverReadAheadOfLandTellsOfItsSketch", failLookupThroughTick: 3, ticks: [][]RunView{{runningMotif}, {landedMotif}}, want: []string{sketchLine}},
+		{name: "AMotifRunEndingWithoutLandingFollowsTheSetting", ticks: [][]RunView{{runningMotif}, {unlandedMotif}}},
+		{name: "AMotifRunFirstSeenPastLandSendsNothing", ticks: [][]RunView{{landedMotif}, {landedMotif}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

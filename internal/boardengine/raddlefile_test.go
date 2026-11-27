@@ -73,7 +73,21 @@ func raddleProject(slug string) *RaddleEntry {
 // a task with a run status, a body and a stored decision record.
 func startArrasRun(t *testing.T, b *Board, slug string) Task {
 	t.Helper()
-	upsertForRaddle(t, b, map[string]any{"slug": slug, "title": "Arras", "kind": "task", "labels": []string{"bug", "board"}, "body": "former body", "recipe": shedrun.RecipeArras, "status": RunStatus("running", RaddleFileProducer)})
+	upsertForRaddle(t, b, map[string]any{"slug": slug, "title": "Arras", "kind": "task", "labels": []string{"bug", "board"}, "body": "former body"})
+	// No write gives an entry the arras recipe, so the recipe of a run started under it is set in the store.
+	// It is set before the run status that locks the entry.
+	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
+		i, _ := store.index(slug)
+		store.tasks[i].Recipe = shedrun.RecipeArras
+		return nil, nil
+	}, nil)
+	if err != nil {
+		t.Fatalf("set the arras recipe: %v", err)
+	}
+	status := RunStatus("running", RaddleFileProducer)
+	if err := b.SetStatus(slug, &status); err != nil {
+		t.Fatalf("SetStatus(%q) = %v; want nil", slug, err)
+	}
 	if err := b.StoreDecisionRecord(slug, []byte("arras record\n")); err != nil {
 		t.Fatalf("StoreDecisionRecord() error = %v; want nil", err)
 	}

@@ -28,9 +28,10 @@ const (
 	// PullRequestKey decides whether a task's landing goes through a GitHub pull request.
 	PullRequestKey = beamsetting.PullRequestKey
 	// LandNoticeKey decides whether dobby posts a line to the orch once a task's run lands or ends without landing.
+	// A landed motif run's line goes whatever it reads.
 	LandNoticeKey = beamsetting.LandNoticeKey
 	// AutonomyKey decides whether the orch settles every halt of a task's runs.
-	// Under it the orch reaches the operator only for a severe halt or a merge-ready beam.
+	// Under it the orch reaches the operator only for a severe halt, a merge-ready beam or a raddle split's approval.
 	AutonomyKey = beamsetting.AutonomyKey
 )
 

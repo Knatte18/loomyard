@@ -469,10 +469,13 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 	if !errors.Is(err, battenshed.ErrUnsupportedChildRecipe) {
 		t.Fatalf("WriteSeed(batten) error = %v; want it to wrap ErrUnsupportedChildRecipe", err)
 	}
-	for _, admitted := range []string{shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeArras} {
-		if !strings.Contains(err.Error(), admitted) {
-			t.Errorf("WriteSeed(batten) error = %q; want it to name the admitted recipe %q", err, admitted)
+	for _, offered := range []string{shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler} {
+		if !strings.Contains(err.Error(), offered) {
+			t.Errorf("WriteSeed(batten) error = %q; want it to name the offered recipe %q", err, offered)
 		}
+	}
+	if strings.Contains(err.Error(), shedrun.RecipeArras) {
+		t.Errorf("WriteSeed(batten) error = %q; want it not to offer %q", err, shedrun.RecipeArras)
 	}
 
 	err = c.env.SeedChild.WriteSeed(context.Background(), "no-such-recipe", shedrun.DriverGo)

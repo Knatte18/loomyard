@@ -51,7 +51,7 @@ func WithPresence(p Paths, pointer string) string {
 
 const (
 	// autonomyOnLine is appended to a pointer's own line while the orch's autonomy is on.
-	autonomyOnLine = " Autonomy is on: settle every halt yourself and reach the operator only for a severe halt or a merge-ready beam, as role-autonomy.md beside your role says."
+	autonomyOnLine = " Autonomy is on: settle every halt yourself and reach the operator only for a severe halt, a merge-ready beam or a raddle split's approval, as role-autonomy.md beside your role says."
 	// autonomyOffLine is appended to a pointer's own line while the orch's autonomy is off.
 	autonomyOffLine = " Autonomy is off."
 )

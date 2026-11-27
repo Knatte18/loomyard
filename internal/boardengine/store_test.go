@@ -322,6 +322,58 @@ func TestUpsertTaskGroupKeyError(t *testing.T) {
 	}
 }
 
+// TestUpsertRefusesTheArrasRecipe pins that a write giving an entry the arras recipe is refused with nothing written,
+// and that the motif recipe its refusal names as the way forward is taken.
+func TestUpsertRefusesTheArrasRecipe(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name string
+		// prior is the entry upserted before the arras write, nil for none.
+		prior      map[string]any
+		wantRecipe string
+	}{
+		{name: "ANewEntry", prior: nil, wantRecipe: ""},
+		{name: "AnEntryOfAnotherRecipe", prior: map[string]any{"slug": "design", "title": "Design", "kind": "task", "recipe": "darn"}, wantRecipe: "darn"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			s := boardengine.NewStore("")
+			if tt.prior != nil {
+				if _, err := s.UpsertTask(tt.prior); err != nil {
+					t.Fatalf("UpsertTask(prior) = %v; want nil", err)
+				}
+			}
+
+			_, err := s.UpsertTask(map[string]any{"slug": "design", "title": "Design", "kind": "task", "recipe": "arras"})
+			if err == nil || !strings.Contains(err.Error(), `"recipe":"motif"`) {
+				t.Fatalf("UpsertTask(recipe arras) = %v; want a refusal naming \"recipe\":\"motif\"", err)
+			}
+			task, _ := s.GetTask("design")
+			if task.Recipe != tt.wantRecipe {
+				t.Errorf("recipe after the refused write = %q; want %q", task.Recipe, tt.wantRecipe)
+			}
+
+			err = s.UpsertTasksBatch([]map[string]any{{"slug": "design", "title": "Design", "kind": "task", "recipe": "arras"}})
+			if err == nil || !strings.Contains(err.Error(), `"recipe":"motif"`) {
+				t.Fatalf("UpsertTasksBatch(recipe arras) = %v; want a refusal naming \"recipe\":\"motif\"", err)
+			}
+			task, _ = s.GetTask("design")
+			if task.Recipe != tt.wantRecipe {
+				t.Errorf("recipe after the refused batch = %q; want %q", task.Recipe, tt.wantRecipe)
+			}
+
+			if _, err := s.UpsertTask(map[string]any{"slug": "design", "title": "Design", "kind": "task", "recipe": "motif"}); err != nil {
+				t.Fatalf("UpsertTask(recipe motif) = %v; want nil", err)
+			}
+			if task, _ := s.GetTask("design"); task.Recipe != "motif" {
+				t.Errorf("recipe after the way forward = %q; want %q", task.Recipe, "motif")
+			}
+		})
+	}
+}
+
 // TestUpsertFieldAllowlist verifies that the store rejects unknown upsert fields on all three entry points:
 // UpsertTask, UpsertTasksBatch, and MergeTasks.
 // It also verifies that `status` is in the allowed set and is persisted correctly.
