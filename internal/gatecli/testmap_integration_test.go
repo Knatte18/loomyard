@@ -233,6 +233,7 @@ func testMapTestFile(pkg string, tiers map[string]int) string {
 // and a test ending in Calls or Elsewhere covers the first of them.
 // A test ending in Fails reports FAIL and one ending in Skips reports SKIP, each writing no profile.
 // A test ending in Hangs never ends, after it records its name in the file testMapHangingEnv names.
+// One ending in HangsOnCue hangs that way only when testMapHangingEnv names a file, and otherwise passes.
 // One ending in Moves first commits a change to the package's file.
 // One ending in Lands first commits a change to a file outside the package.
 // One ending in LandsLinked first commits a change to a file of the package testMapLandEnv names, when it names one:
@@ -299,6 +300,13 @@ func runTestMapStandIn() int {
 	case strings.HasSuffix(name, "Skips"):
 		fmt.Printf("--- SKIP: %s (0.00s)\n", name)
 		return 0
+	case strings.HasSuffix(name, "HangsOnCue"):
+		if hanging := os.Getenv(testMapHangingEnv); hanging != "" {
+			if appendLine(hanging, name) != nil {
+				return 1
+			}
+			time.Sleep(time.Hour)
+		}
 	case strings.HasSuffix(name, "Hangs"):
 		if hanging := os.Getenv(testMapHangingEnv); hanging != "" {
 			if appendLine(hanging, name) != nil {
@@ -642,11 +650,17 @@ func runTestMapIn(prime, goBinary string, env []string, minuteUnit time.Duration
 	var stderr bytes.Buffer
 	code, out := runTestMapRequest(prime, testMapRequest{
 		scope: mapScope(targets), goBinary: goBinary, environ: env,
-		secondUnit: 150 * time.Millisecond, minuteUnit: minuteUnit, grace: time.Second, cappedParallel: unclampedParallel,
+		secondUnit: testMapSecondUnit, minuteUnit: minuteUnit, grace: time.Second, cappedParallel: unclampedParallel,
 		stderr: &stderr,
 	})
 	return code, out, stderr.String()
 }
+
+// testMapSecondUnit is the length of one `gate.redundancy_test_timeout_sec` second in the map calls of these tests.
+// The fixtures' 20 seconds make a 10 second test limit.
+// A healthy stand-in test's start stays under that limit in a loaded tier run.
+// A call where a test hangs waits that limit out, twice when the test ran beside another and reruns alone.
+const testMapSecondUnit = 500 * time.Millisecond
 
 // unclampedParallel keeps every test run of a call side by side, whatever memory the machine has left.
 func unclampedParallel(parallel int, _ int64) int { return parallel }
@@ -801,7 +815,7 @@ func TestGateTestMapInATaskWorktreeKeepsItsOwnMaps(t *testing.T) {
 	}}})
 	code, out2 := runTestMapRequest(pair, testMapRequest{
 		scope: testRequest{cards: []string{"1"}}, goBinary: standIn, environ: env,
-		secondUnit: 150 * time.Millisecond, minuteUnit: time.Minute, grace: time.Second, cappedParallel: unclampedParallel,
+		secondUnit: testMapSecondUnit, minuteUnit: time.Minute, grace: time.Second, cappedParallel: unclampedParallel,
 	})
 	if diff := cmp.Diff(testMapOutcome{Built: []string{"solo"}}, decodeTestMap(t, code, out2), cmpopts.EquateEmpty()); diff != "" {
 		t.Errorf("runTestMap() --card 1 from the task worktree mismatch (-want +got):\n%s", diff)
@@ -821,7 +835,7 @@ func TestGateTestMap(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})
 	prime := h.PrimeWorktree()
 	const module = "example.com/mapped"
-	// A test past 20 seconds of 150 milliseconds each times out: 3 seconds, long enough for a stand-in to start under load.
+	// A test past `gate.redundancy_test_timeout_sec`'s 20 seconds of testMapSecondUnit each times out.
 	// tierFields adds fields to the flow mapping of tier0 and tier1.
 	// Two slots let a call hold one while a test takes the other, and tier0's parallel of two runs two tests side by side.
 	gateYAML := func(tierFields string) string {
@@ -840,8 +854,10 @@ func TestGateTestMap(t *testing.T) {
 
 	// zmoved's test commits a change to its own file, and its name puts its job last.
 	// outcomes holds a test for each outcome but a timeout: a pass, a failure, a skip and a pass covering nothing.
+	// alpha's HangsOnCue test times out only in a call that sets testMapHangingEnv,
+	// so the other calls wait out no test limit.
 	packageTests := map[string]map[string]int{
-		"alpha":    {"TestAlphaOne": 0, "TestAlphaTwo": 1, "TestAlphaHangs": 1, "TestAlphaTier2": 2, "TestAlphaUntiered": -1},
+		"alpha":    {"TestAlphaOne": 0, "TestAlphaTwo": 1, "TestAlphaHangsOnCue": 1, "TestAlphaTier2": 2, "TestAlphaUntiered": -1},
 		"broken":   {"TestBrokenOne": 0},
 		"outcomes": {"TestOutcomesPass": 0, "TestOutcomesFails": 0, "TestOutcomesSkips": 0, "TestOutcomesElsewhere": 0},
 		"zmoved":   {"TestZmovedMoves": 0},
@@ -904,7 +920,7 @@ func TestGateTestMap(t *testing.T) {
 		t.Helper()
 		code, out := runTestMapRequest(prime, testMapRequest{
 			scope: scope, goBinary: standIn, environ: environ,
-			secondUnit: 150 * time.Millisecond, minuteUnit: time.Minute, grace: time.Second, cappedParallel: unclampedParallel,
+			secondUnit: testMapSecondUnit, minuteUnit: time.Minute, grace: time.Second, cappedParallel: unclampedParallel,
 		})
 		return decodeTestMap(t, code, out)
 	}
@@ -912,10 +928,10 @@ func TestGateTestMap(t *testing.T) {
 		t.Helper()
 		return readTestMap(t, mapsDir, pkg)
 	}
-	// callCounts runs the verb under the standard environment, and returns the package times of its envelope too.
-	callCounts := func(t *testing.T, targets ...string) (testMapOutcome, testMapVerbCounts) {
+	// callCounts runs the verb under the environment env, and returns the package times of its envelope too.
+	callCounts := func(t *testing.T, env []string, targets ...string) (testMapOutcome, testMapVerbCounts) {
 		t.Helper()
-		return callTestMapCounts(t, prime, standIn, environ, time.Minute, targets...)
+		return callTestMapCounts(t, prime, standIn, env, time.Minute, targets...)
 	}
 	// withEnv returns the standard environment with the variable name set to value.
 	withEnv := func(name, value string) []string {
@@ -1045,14 +1061,14 @@ func TestGateTestMap(t *testing.T) {
 
 	t.Run("AnAllCallMapsEveryPackageWithATestAndRecordsAFailedBuild", func(t *testing.T) {
 		head := gitkit.RevParse(t, prime, "HEAD")
-		got, counts := callCounts(t)
+		got, counts := callCounts(t, withEnv(testMapHangingEnv, filepath.Join(t.TempDir(), "hanging")))
 		// notests holds no test and no map, and ignored tracks no Go file, so neither is in the set.
 		// zmoved goes last, and its test moves HEAD, so its job is discarded and its package is left unmeasured.
 		// The call exits 1: a test timed out, another failed, broken's build failed, and zmoved is unmeasured.
 		wantOutcome(t, got, testMapOutcome{
-			Exit: 1, Built: []string{"alpha", "outcomes", "steady"}, TimedOut: []string{"alpha.TestAlphaHangs"},
+			Exit: 1, Built: []string{"alpha", "outcomes", "steady"}, TimedOut: []string{"alpha.TestAlphaHangsOnCue"},
 			Unmeasured:  []testMapSkip{{Package: "zmoved", Reason: headMovedReason(head, gitkit.RevParse(t, prime, "HEAD"))}},
-			FailedTests: []string{"alpha.TestAlphaHangs", "outcomes.TestOutcomesFails"},
+			FailedTests: []string{"alpha.TestAlphaHangsOnCue", "outcomes.TestOutcomesFails"},
 		})
 		wantBrokenFailed(t, got)
 		// zmoved's test moved HEAD, which ended the walk, so the call wrote no index.
@@ -1062,7 +1078,7 @@ func TestGateTestMap(t *testing.T) {
 
 		alpha := readMap(t, "alpha")
 		wantTests := []testcover.MapTest{
-			{Name: "TestAlphaHangs", Tier: 1, Outcome: testcover.OutcomeTimedOut},
+			{Name: "TestAlphaHangsOnCue", Tier: 1, Outcome: testcover.OutcomeTimedOut},
 			{Name: "TestAlphaOne", Tier: 0, Blocks: []int{0}},
 			{Name: "TestAlphaTwo", Tier: 1, Blocks: []int{0, 1}},
 		}
@@ -1120,8 +1136,7 @@ func TestGateTestMap(t *testing.T) {
 	t.Run("NamedPackageIsRebuiltWhenFresh", func(t *testing.T) {
 		before := readMap(t, "alpha")
 		got := call(t, "./alpha")
-		// The timeout alone causes the exit.
-		wantOutcome(t, got, testMapOutcome{Exit: 1, Built: []string{"alpha"}, TimedOut: []string{"alpha.TestAlphaHangs"}, FailedTests: []string{"alpha.TestAlphaHangs"}})
+		wantOutcome(t, got, testMapOutcome{Built: []string{"alpha"}})
 		if after := readMap(t, "alpha"); !after.BuiltAt.After(before.BuiltAt) {
 			t.Errorf("alpha map built at %v; want after %v", after.BuiltAt, before.BuiltAt)
 		}
@@ -1213,7 +1228,7 @@ func TestGateTestMap(t *testing.T) {
 		if diff := cmp.Diff(everything.Built, ellipsis.Built, cmpopts.EquateEmpty()); diff != "" || len(ellipsis.LeftOut) != 0 {
 			t.Errorf("runTestMap() over ./... built mismatch against --all (-all +ellipsis):\n%s\nleft out %+v; want none, since no target named a package by its directory", diff, ellipsis.LeftOut)
 		}
-		// ./... holds outcomes, alpha's TestAlphaHangs and broken's failed build.
+		// ./... holds outcomes' failing test and broken's failed build.
 		if everything.Exit != 1 || ellipsis.Exit != 1 {
 			t.Errorf("runTestMap() exits = %d over --all and %d over ./...; want 1 for both", everything.Exit, ellipsis.Exit)
 		}
@@ -1269,7 +1284,7 @@ func TestGateTestMap(t *testing.T) {
 		// Only the built set is asserted: the exit code follows the failing tests of the set.
 		code, out := runTestMapRequest(prime, testMapRequest{
 			scope: testRequest{}, goBinary: standIn, environ: environ,
-			secondUnit: 150 * time.Millisecond, minuteUnit: time.Minute, grace: time.Second, cappedParallel: unclampedParallel,
+			secondUnit: testMapSecondUnit, minuteUnit: time.Minute, grace: time.Second, cappedParallel: unclampedParallel,
 		})
 		var got testMapOutcome
 		if err := json.Unmarshal(out, &got); err != nil {
@@ -1318,9 +1333,7 @@ func TestGateTestMap(t *testing.T) {
 		builds, seen := filepath.Join(records, "builds"), filepath.Join(records, "seen")
 		lymEnviron := append(withEnv(gateslot.PrebuiltLymEnv, "/forged/lym"), testMapLymBuildsEnv+"="+builds, testMapLymSeenEnv+"="+seen)
 		got := callWith(t, lymEnviron, time.Minute, "alpha", "steady")
-		wantOutcome(t, got, testMapOutcome{
-			Exit: 1, Built: []string{"alpha", "steady"}, TimedOut: []string{"alpha.TestAlphaHangs"}, FailedTests: []string{"alpha.TestAlphaHangs"},
-		})
+		wantOutcome(t, got, testMapOutcome{Built: []string{"alpha", "steady"}})
 		if len(got.Failed) != 0 {
 			t.Errorf("runTestMap() failed = %+v; want none", got.Failed)
 		}
@@ -1398,7 +1411,7 @@ func TestGateTestMap(t *testing.T) {
 		ctx, cancel := context.WithTimeout(lymcwd.WithCwd(context.Background(), prime), time.Minute)
 		t.Cleanup(cancel)
 		var out bytes.Buffer
-		code := runTestMap(ctx, &out, request(enclosing.InheritEnv(environ), 150*time.Millisecond, "steady"))
+		code := runTestMap(ctx, &out, request(enclosing.InheritEnv(environ), testMapSecondUnit, "steady"))
 		wantOutcome(t, decodeTestMap(t, code, out.Bytes()), testMapOutcome{Built: []string{"steady"}})
 	})
 
@@ -1564,7 +1577,7 @@ func TestGateTestMap(t *testing.T) {
 		ctx, cancel := context.WithTimeout(lymcwd.WithCwd(context.Background(), prime), 2*time.Second)
 		t.Cleanup(cancel)
 		var out bytes.Buffer
-		code := runTestMap(ctx, &out, request(environ, 150*time.Millisecond, "steady"))
+		code := runTestMap(ctx, &out, request(environ, testMapSecondUnit, "steady"))
 		if code != 1 || !strings.Contains(out.String(), "the call was cancelled") {
 			t.Errorf("runTestMap() with tier1 asking every slot = exit %d, output %q; want exit 1, naming the cancelled call", code, out.String())
 		}
