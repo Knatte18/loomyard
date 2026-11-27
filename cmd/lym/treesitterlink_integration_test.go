@@ -24,6 +24,7 @@ var treeSitterAllowedLinks = []scankit.Entry{
 	{Key: "internal/websterengine", Why: "its tests drive the real index through the seam"},
 	{Key: "internal/loomshed", Why: "its gate tests assert resolve-backed findings through planglyph.NewIndex"},
 	{Key: "internal/failuretrace", Why: "traces a failed verify through planglyph's EncloseAt"},
+	{Key: "internal/shuttleparity", Why: "its tests render the loom driver prompt through loomcli's own renderer"},
 }
 
 // treeSitterLinkMinTestBinaries is the vacuous-scan floor for the test binaries `go list` reports.

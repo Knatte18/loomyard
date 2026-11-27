@@ -151,6 +151,33 @@ func (fx parityFixture) addSkills(t *testing.T, skills []string) {
 	writeFiles(t, files)
 }
 
+// codexDeliveryWayForward is what a failure over a missing compared item tells its reader to do.
+const codexDeliveryWayForward = "way forward: give the Codex engine a delivery for it in internal/shuttleengine/codexengine"
+
+// addSkillsOfSpecs adds every skill the specs hold, a config role's skills included, as a start expands them.
+func (fx parityFixture) addSkillsOfSpecs(t *testing.T, cfg shuttleengine.Config, specs []map[string]shuttleengine.Spec) {
+	t.Helper()
+	var skills []string
+	for _, byEngine := range specs {
+		for _, spec := range byEngine {
+			named := spec.Skills
+			if spec.ConfigRole != "" {
+				var err error
+				if named, err = cfg.Agents.Skills(spec.ConfigRole, spec.Skills); err != nil {
+					t.Fatalf("expand the skills of role %q: %v", spec.ConfigRole, err)
+				}
+			}
+			for _, skill := range named {
+				if !slices.Contains(skills, skill) {
+					skills = append(skills, skill)
+				}
+			}
+		}
+	}
+	slices.Sort(skills)
+	fx.addSkills(t, skills)
+}
+
 // TestSeats_CodexManifestHoldsClaudes pins Codex's launch against Claude's for every seat of every production table.
 // Each compared item Claude's launch gets, Codex's gets too.
 // It sets CLAUDE_CONFIG_DIR and HOME and installs the process passage reader, so it does not run in parallel.
@@ -170,7 +197,6 @@ func TestSeats_CodexManifestHoldsClaudes(t *testing.T) {
 	}
 
 	specs := make([]map[string]shuttleengine.Spec, len(seats))
-	var skills []string
 	for i, seat := range seats {
 		specs[i] = map[string]shuttleengine.Spec{}
 		for _, engine := range []string{ReferenceEngine, ComparedEngine} {
@@ -179,20 +205,9 @@ func TestSeats_CodexManifestHoldsClaudes(t *testing.T) {
 				t.Fatalf("seat %s: %v", seat.Name, err)
 			}
 			specs[i][engine] = spec
-			named := spec.Skills
-			if spec.ConfigRole != "" {
-				if named, err = cfg.Agents.Skills(spec.ConfigRole, spec.Skills); err != nil {
-					t.Fatalf("seat %s: %v", seat.Name, err)
-				}
-			}
-			for _, skill := range named {
-				if !slices.Contains(skills, skill) {
-					skills = append(skills, skill)
-				}
-			}
 		}
 	}
-	fx.addSkills(t, skills)
+	fx.addSkillsOfSpecs(t, cfg, specs)
 
 	set, err := shuttleengines.NewWithSeams(cfg, fx.env.Dirs, shuttleengines.LaunchSeams{RunHook: UnrunHooks, SandboxProbe: ConfiguredSandbox})
 	if err != nil {
@@ -205,7 +220,7 @@ func TestSeats_CodexManifestHoldsClaudes(t *testing.T) {
 			continue
 		}
 		for _, item := range Compare(set, manifests) {
-			t.Errorf("seat %s: Codex's launch lacks %s %q; way forward: give the Codex engine a delivery for it in internal/shuttleengine/codexengine", seat.Name, item.Channel, item.Key)
+			t.Errorf("seat %s: Codex's launch lacks %s %q; %s", seat.Name, item.Channel, item.Key, codexDeliveryWayForward)
 		}
 		sandbox := slices.IndexFunc(manifests[ComparedEngine].Items, func(item shuttleengine.ManifestItem) bool {
 			return item.Channel == shuttleengine.ManifestChannelSettings && item.Detail == "workspace-write"
