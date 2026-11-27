@@ -5,6 +5,7 @@ package shuttleparity
 import (
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -138,6 +139,10 @@ func TestCompare(t *testing.T) {
 		if got := Unmet(&manifestEngine{}, shuttleengine.Spec{ForkSubagents: true}); !reflect.DeepEqual(got, want) {
 			t.Errorf("Unmet(a forking spec) = %v; want %v", got, want)
 		}
+		wake := []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake}
+		if got := Unmet(&manifestEngine{}, shuttleengine.Spec{Requires: wake}); !reflect.DeepEqual(got, wake) {
+			t.Errorf("Unmet(a spec requiring a background wake) = %v; want %v", got, wake)
+		}
 		if got := Unmet(&manifestEngine{}, shuttleengine.Spec{}); got != nil {
 			t.Errorf("Unmet(a plain spec) = %v; want none", got)
 		}
@@ -163,12 +168,15 @@ func TestCompare(t *testing.T) {
 			name     string
 			compared manifestEngine
 			spec     shuttleengine.Spec
-			wantErr  []string
+			// directive gives each engine's spec a prompt holding that engine's edit directive.
+			directive bool
+			wantErr   []string
 		}{
 			{name: "a failing Prepare", compared: manifestEngine{err: errors.New("boom")}, wantErr: []string{ComparedEngine, "boom"}},
 			{name: "no record", wantErr: []string{ComparedEngine, "shuttleengine.WriteManifest"}},
 			{name: "a config role's skills", compared: manifestEngine{manifest: written}, spec: shuttleengine.Spec{ConfigRole: "darn", Skills: []string{"own:skill"}}},
 			{name: "a role with no skill list", compared: manifestEngine{manifest: written}, spec: shuttleengine.Spec{ConfigRole: "nobody"}, wantErr: []string{"nobody"}},
+			{name: "prompts holding the edit directive", compared: manifestEngine{manifest: written}, spec: shuttleengine.Spec{ConfigRole: "darn", Skills: []string{"own:skill"}}, directive: true},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -176,8 +184,18 @@ func TestCompare(t *testing.T) {
 				reference := &manifestEngine{manifest: written}
 				compared := tt.compared
 				specs := map[string]shuttleengine.Spec{ReferenceEngine: tt.spec, ComparedEngine: tt.spec}
+				if tt.directive {
+					for name, spec := range specs {
+						directive, err := editdirective.Directive(stencils, name)
+						if err != nil {
+							t.Fatal(err)
+						}
+						spec.Prompt = directive
+						specs[name] = spec
+					}
+				}
 
-				_, err := PrepareEach(fakeSet(reference, &compared), cfg, stencils, t.TempDir(), specs)
+				manifests, err := PrepareEach(fakeSet(reference, &compared), cfg, stencils, t.TempDir(), specs)
 
 				if tt.wantErr != nil {
 					for _, want := range tt.wantErr {
@@ -193,6 +211,13 @@ func TestCompare(t *testing.T) {
 				for name, engine := range map[string]*manifestEngine{ReferenceEngine: reference, ComparedEngine: &compared} {
 					if len(engine.prepared) != 1 || !reflect.DeepEqual(engine.prepared[0].Skills, roleSkills) {
 						t.Errorf("engine %q was prepared with %+v; want the skills %v", name, engine.prepared, roleSkills)
+					}
+					var want []shuttleengine.ManifestItem
+					if tt.directive {
+						want = []shuttleengine.ManifestItem{item(shuttleengine.ManifestChannelEditDirective, "edit-directive", "", shuttleengine.ManifestDelivered)}
+					}
+					if got := manifests[name].Items; !slices.Equal(got, want) {
+						t.Errorf("PrepareEach() items of engine %q = %+v; want %+v", name, got, want)
 					}
 				}
 			})
