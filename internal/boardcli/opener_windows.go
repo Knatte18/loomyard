@@ -23,6 +23,10 @@ func startOpener(path string) (<-chan error, error) {
 	}
 	exited := make(chan error, 1)
 	// This wait is the opener's reap, and keeps the exit status a failed opener is reported by.
-	go func() { exited <- cmd.Wait() }()
+	go func() {
+		err := cmd.Wait()
+		logger.Info("boardcli: the opener exited", "args", cmd.Args, "error", err)
+		exited <- err
+	}()
 	return exited, nil
 }
