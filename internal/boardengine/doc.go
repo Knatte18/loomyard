@@ -338,6 +338,12 @@
 // RootProjectBrief gives the root as one listing row, with the slug RootSubject.
 // Every write renders README.md, the overview of every project, and one board file per project.
 // Every project, open or done, renders to project-<slug>.md beside it, and the root to project-root.md.
+// Every write also renders board-data.js, the board's view projection (BoardView) for a viewer page.
+// Its content is `window.BOARD = `, the projection's JSON, `;` and a newline.
+// The projection takes its order, sections, waits and owners from the view the README renders from.
+// Each entry carries its revision (EntryRevision), taken over the entry as board.json stores it.
+// The rest of the entry reads as the board files show it.
+// Board.View builds the same projection from the board on disk, after the load migrations and with nothing persisted.
 // A render rewrites each board file in place rather than by temp file and rename,
 // so an open VS Code markdown preview, which refreshes only on a file change event, shows the new content.
 // The split is rendering only: every entry stays in the one store, and handles stay numbered across the hub.

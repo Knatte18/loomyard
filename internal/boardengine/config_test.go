@@ -360,13 +360,14 @@ func TestOutputs(t *testing.T) {
 				Readme:       "Home.md",
 				DesignPrefix: "proposal-",
 				Types:        []boardengine.Label{{Name: "bug"}, {Name: "enhancement"}},
+				Labels:       []boardengine.Label{{Name: "board"}},
 			},
-			want: boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-", Types: []string{"bug", "enhancement"}},
+			want: boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-", Types: []string{"bug", "enhancement"}, Labels: []string{"board"}},
 		},
 		{
 			name: "types follow file order",
 			cfg:  boardengine.Config{Types: []boardengine.Label{{Name: "idea"}, {Name: "bug"}, {Name: "enhancement"}}},
-			want: boardengine.Outputs{Types: []string{"idea", "bug", "enhancement"}},
+			want: boardengine.Outputs{Types: []string{"idea", "bug", "enhancement"}, Labels: []string{}},
 		},
 	}
 	for _, tt := range tests {

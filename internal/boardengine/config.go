@@ -88,6 +88,8 @@ type Outputs struct {
 	DefaultRecipe string
 	// Types is the configured type-label order, which the renderer sorts Notes sections by.
 	Types []string
+	// Labels is the configured order of the area labels, every label that is not a type.
+	Labels []string
 }
 
 // Outputs returns the values a board's rendering reads from c.
@@ -97,6 +99,7 @@ func (c Config) Outputs() Outputs {
 		DesignPrefix:  c.DesignPrefix,
 		DefaultRecipe: c.DefaultRecipe,
 		Types:         labelNames(c.Types),
+		Labels:        labelNames(c.Labels),
 	}
 }
 

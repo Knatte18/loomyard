@@ -1,5 +1,6 @@
 // render.go turns the entry list into the board's output files.
 // Those are README.md, a project-<slug>.md for each project and the root, and a design-*.md for each entry with a body.
+// Render also returns board-data.js, the view projection a viewer page loads.
 // Render is a pure function from the entries to a map of filename to content; the caller writes the files.
 // README.md is the overview of every top-level project, each in a collapsible section, with the root's own section last.
 // A project file holds its heading, its facts and brief, and its own entries.
@@ -41,7 +42,7 @@ const renderManifestFile = ".board-rendered.json"
 // An entry flagged discussed whose decision record file is missing from boardPath renders as undiscussed,
 // so no board file links a missing record.
 func RenderToDisk(boardPath string, tasks []Task, primeOwner string, out Outputs, now time.Time) error {
-	files, err := Render(withMissingRecordsUndiscussed(boardPath, tasks), primeOwner, out, now)
+	files, err := renderFiles(tasks, withMissingRecordsUndiscussed(boardPath, tasks), primeOwner, out, now)
 	if err != nil {
 		return err
 	}
@@ -118,7 +119,13 @@ func writeRenderManifest(boardPath string, files map[string]string) {
 // Every project, open or done, gets a file named by projectFileName, and the root project gets rootProjectFile.
 // Every entry flagged discussed is linked to its decision record, which Render takes to exist.
 func Render(tasks []Task, primeOwner string, out Outputs, now time.Time) (map[string]string, error) {
-	ordered, err := RenderOrder(tasks)
+	return renderFiles(tasks, tasks, primeOwner, out, now)
+}
+
+// renderFiles renders the board files from rendered, the entries as the files show them.
+// stored holds the same entries as board.json does, which the view projection takes each entry's revision over.
+func renderFiles(stored, rendered []Task, primeOwner string, out Outputs, now time.Time) (map[string]string, error) {
+	ordered, err := RenderOrder(rendered)
 	if err != nil {
 		return nil, err
 	}
@@ -134,8 +141,16 @@ func Render(tasks []Task, primeOwner string, out Outputs, now time.Time) (map[st
 		}
 	}
 
-	for name, content := range renderDesigns(tasks, out.DesignPrefix) {
+	for name, content := range renderDesigns(rendered, out.DesignPrefix) {
 		result[name] = content
+	}
+
+	view, err := buildView(stored, rendered, primeOwner, out, now)
+	if err != nil {
+		return nil, err
+	}
+	if result[BoardDataFile], err = boardDataScript(view); err != nil {
+		return nil, err
 	}
 	return result, nil
 }
@@ -775,18 +790,27 @@ func (b boardView) childProjects(project Task) []TaskWithLayer {
 // A dependency the board holds no handle for is shown by its slug.
 func (b boardView) afterCell(t Task) string {
 	var after []string
-	for _, dep := range t.DependsOn {
-		entry, found := b.bySlug[dep]
-		switch {
-		case found && b.dependencies.met(dep):
-			// A met dependency does not hold t back.
-		case found && entry.Handle != "":
+	for _, dep := range b.unmetDependencies(t) {
+		if entry, found := b.bySlug[dep]; found && entry.Handle != "" {
 			after = append(after, cellText(entry.Handle))
-		default:
+		} else {
 			after = append(after, codeSpan(dep))
 		}
 	}
 	return strings.Join(after, cellBreak)
+}
+
+// unmetDependencies returns the slugs of t's dependencies that are not met, in depends_on order.
+// A dependency naming no entry of the board is unmet.
+func (b boardView) unmetDependencies(t Task) []string {
+	var unmet []string
+	for _, dep := range t.DependsOn {
+		if _, found := b.bySlug[dep]; found && b.dependencies.met(dep) {
+			continue
+		}
+		unmet = append(unmet, dep)
+	}
+	return unmet
 }
 
 // primeOwnerText is a board file's statement of the prime owner: the machine in a code span, or none recorded.
