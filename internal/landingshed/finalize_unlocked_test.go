@@ -63,12 +63,12 @@ func TestFinalize_GatesWithNoLockAndLocksToLand(t *testing.T) {
 		// wantParentCalls is what the parent pair was asked to do, in order.
 		wantParentCalls []string
 	}{
-		{name: "an unmoved parent lands on the tree gated with no lock", lostRaces: 2, wantLockAtVerify: []bool{false}, wantTips: []string{"p1", ""}, wantParentCalls: []string{"merge", "push"}},
-		{name: "a parent that moved before the lock is merged and gated again with no lock", lostRaces: 2, movesAt: []int{1}, wantLockAtVerify: []bool{false, false}, wantTips: []string{"p1", "p2", ""}, wantParentCalls: []string{"merge", "push"}},
-		{name: "a spent lost-race bound merges and gates under the lock", lostRaces: 1, movesAt: []int{1}, wantLockAtVerify: []bool{false, true}, wantTips: []string{"p1", ""}, wantParentCalls: []string{"merge", "push"}},
-		{name: "a bound of 0 merges and gates under the lock from the start", wantLockAtVerify: []bool{true}, wantTips: []string{""}, wantParentCalls: []string{"merge", "push"}},
-		{name: "a parent already holding the work merges and gates under the lock", lostRaces: 2, held: true, wantLockAtVerify: []bool{true}, wantTips: []string{""}, wantParentCalls: []string{"merge", "push"}},
-		{name: "a parent behind its upstream is fast-forwarded to the gated tip", lostRaces: 2, behind: true, wantLockAtVerify: []bool{false}, wantTips: []string{"u1", ""}, wantParentCalls: []string{"fast-forward", "merge", "push"}},
+		{name: "an unmoved parent lands on the tree gated with no lock", lostRaces: 2, wantLockAtVerify: []bool{false}, wantTips: []string{"p1", ""}, wantParentCalls: []string{"merge"}},
+		{name: "a parent that moved before the lock is merged and gated again with no lock", lostRaces: 2, movesAt: []int{1}, wantLockAtVerify: []bool{false, false}, wantTips: []string{"p1", "p2", ""}, wantParentCalls: []string{"merge"}},
+		{name: "a spent lost-race bound merges and gates under the lock", lostRaces: 1, movesAt: []int{1}, wantLockAtVerify: []bool{false, true}, wantTips: []string{"p1", ""}, wantParentCalls: []string{"merge"}},
+		{name: "a bound of 0 merges and gates under the lock from the start", wantLockAtVerify: []bool{true}, wantTips: []string{""}, wantParentCalls: []string{"merge"}},
+		{name: "a parent already holding the work merges and gates under the lock", lostRaces: 2, held: true, wantLockAtVerify: []bool{true}, wantTips: []string{""}, wantParentCalls: []string{"merge"}},
+		{name: "a parent behind its upstream is fast-forwarded to the gated tip", lostRaces: 2, behind: true, wantLockAtVerify: []bool{false}, wantTips: []string{"u1", ""}, wantParentCalls: []string{"fast-forward", "merge"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"context"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/creelengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -156,6 +158,33 @@ func TestHaltNoticeSeams_CarryTheRunsAutonomy(t *testing.T) {
 
 	if got := postedSubjects(t, h); !slices.Equal(got, want) {
 		t.Errorf("posted subjects = %q; want %q", got, want)
+	}
+}
+
+// TestGoDriverDeps_CarryTheConfiguredNetworkWait pins the Go driver's network wait ceiling and wait record path.
+func TestGoDriverDeps_CarryTheConfiguredNetworkWait(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, pairHubShape)
+	writeConfigFile(t, configengine.ConfigFile(h.BoardDir(), "fabric"),
+		strings.Replace(fabricengine.ConfigTemplate(), "push_ceiling_s: 300", "push_ceiling_s: 77", 1))
+	pair, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(hubforge.TemplatePairSlug))
+	if err != nil {
+		t.Fatalf("lymcwd.ResolveWorktree(%s) = %v; want nil", hubforge.TemplatePairSlug, err)
+	}
+	c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeTapestry}
+	if err := c.wire(pair, pair.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	deps, err := c.goDriverDepsFor(func() error { return nil })
+
+	if err != nil {
+		t.Fatalf("goDriverDepsFor() = %v; want nil", err)
+	}
+	if want := shedrun.DriveWaitRecord(pair, shedrun.SelfRunID); deps.NetworkWaitCeiling != 77*time.Second || deps.WaitRecordPath != want {
+		t.Errorf("ceiling = %s, wait record = %q; want 1m17s and %q", deps.NetworkWaitCeiling, deps.WaitRecordPath, want)
 	}
 }
 

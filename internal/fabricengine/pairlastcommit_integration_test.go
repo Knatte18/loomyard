@@ -1,4 +1,4 @@
-// pairpushdeferred_integration_test.go covers PairPushDeferred and PairLastCommit over the pair of a hubforge hub.
+// pairlastcommit_integration_test.go covers PairLastCommit over the pair of a hubforge hub.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -28,42 +27,6 @@ func newHubPair(t *testing.T, slug string) (*hubforge.Hub, *lymcwd.Location) {
 		t.Fatalf("ResolveWorktree: %v", err)
 	}
 	return h, pair
-}
-
-func TestPairPushDeferred(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		// flagSides are the sides whose pending flag the row writes.
-		flagSides []string
-		want      bool
-	}{
-		{name: "NoPendingFlag", want: false},
-		{name: "ACodeSideFlag", flagSides: []string{fabricengine.PushSideCodeForTest}, want: true},
-		{name: "ARecordsSideFlag", flagSides: []string{fabricengine.PushSideRecordsForTest}, want: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			_, pair := newHubPair(t, "deferred-run")
-			lockDir := fabriclayout.RecordsLockDirPath(fabricengine.RecordsWorktree(pair))
-			if err := os.MkdirAll(lockDir, 0o755); err != nil {
-				t.Fatalf("create the lock directory: %v", err)
-			}
-			for _, side := range tt.flagSides {
-				if err := os.WriteFile(fabricengine.PendingFlagPathForTest(lockDir, side), []byte("{}"), 0o644); err != nil {
-					t.Fatalf("write the %s pending flag: %v", side, err)
-				}
-			}
-
-			if got := fabricengine.PairPushDeferred(pair); got != tt.want {
-				t.Errorf("PairPushDeferred() = %v; want %v", got, tt.want)
-			}
-		})
-	}
 }
 
 // commitEmptyAt commits an empty commit in dir whose committer time is date, an RFC 3339 time.

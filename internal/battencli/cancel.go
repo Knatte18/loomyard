@@ -31,7 +31,7 @@ const windowsGOOS = "windows"
 
 // cancelDeps carries every substrate call a cancel makes, as function values.
 // Production fills each one over the hub, and a test replaces each one with a fake.
-// None is nil except BeamProject and LandingHeld, and EndBeam while BeamProject is nil.
+// None is nil except BeamProject, LandingHeld and LandingStands, and EndBeam while BeamProject is nil.
 type cancelDeps struct {
 	// HubPaused reports whether a live hub-scope pause entry covers the prime.
 	HubPaused func() (bool, error)
@@ -58,6 +58,9 @@ type cancelDeps struct {
 	ChildReachedParent func(batten shedengine.Status, battenFound bool) (bool, error)
 	// ReadMarker reads the slug's cancel intent in batten's record and the liveness of its writer.
 	ReadMarker func() (cancelMarkerReading, error)
+	// LandingStands reports whether a landing the slug's pair carries or holds is still owed.
+	// A nil LandingStands reads none standing.
+	LandingStands func() (bool, error)
 	// TakeMarker takes the cancel's local lock, which the cancel holds until it ends.
 	// It writes no file; release drops the lock.
 	TakeMarker func() (release func() error, err error)
@@ -365,6 +368,17 @@ func endRunPhase(ctx context.Context, slug string, remove bool, rerun string, de
 	}
 	if reading.Present && reading.WriterAlive {
 		return report, cancelMarkerRefusal(slug, reading)
+	}
+
+	// Read before the intent is written: the pair stays while a landing stands, so the cancel must commit nothing.
+	if deps.LandingStands != nil {
+		stands, err := deps.LandingStands()
+		if err != nil {
+			return report, probeRefusal("the run's landing", slug, rerun, err)
+		}
+		if stands {
+			return report, fmt.Errorf("%w; way forward: wait for the pusher to push the parent branch, or run the step the parent's refused-push record names, then run %s again", pairteardown.ErrLandingStands, rerun)
+		}
 	}
 
 	hold.releaseMarker, err = deps.TakeMarker()

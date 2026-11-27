@@ -13,8 +13,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
+	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -26,6 +28,9 @@ type RunPush struct {
 	TeardownWait time.Duration
 	// OwedUnrecorded returns an owed push's error with no failed-push record, for a caller that retries the push itself.
 	OwedUnrecorded bool
+	// SingleAttempt makes a push that cannot reach origin fail after one transport attempt.
+	// It serves a caller that retries on its own schedule.
+	SingleAttempt bool
 	// InsidePair says the caller runs inside the run's task pair.
 	// A hand-over then leaves the pair for the parent's dobby to remove.
 	InsidePair bool
@@ -34,6 +39,11 @@ type RunPush struct {
 	// PrimeRecords says the run's unpushed transitions sit in the prime's records.
 	// A hand-over then archives the prime's local records tip under an owner archive tag, before its hand-over mark.
 	PrimeRecords bool
+	// CodeCeiling is the newest code commit the push may send.
+	// Empty derives it: a pair whose branch carries unpushed landings, recorded or not, stops below the oldest one's commit.
+	CodeCeiling string
+	// BackoffSleep sleeps one delay of the push's backoff; nil sleeps for real.
+	BackoffSleep func(time.Duration)
 }
 
 // ThisMachine returns the names that read as this machine in the hub at hubPath.
@@ -86,18 +96,31 @@ func machineNamesOf(here machinename.Identity, registry boardengine.Registry) fa
 // It returns an error wrapping fabricengine.ErrTakeoverPassOwed that names the run and the step.
 // An error wrapping fabricengine.ErrHandedOver from the push itself passes through unchanged:
 // this machine's hand-over mark already names the entry's machine, so nothing more is pushed.
+// It never sends a records commit held back for the pair's run.
+// With push.CodeCeiling empty, it also stops short of the oldest unpushed landing's commit on the pair's branch.
+// That covers a landing the push ledger records and one only the branch's own history names.
 func PushRun(prime, l *lymcwd.Location, slug string, push RunPush) (fabriclayout.PushResult, error) {
 	here, err := ThisMachine(prime.HubPath)
 	if err != nil {
 		return fabriclayout.PushResult{}, err
 	}
+	codeCeiling := push.CodeCeiling
+	if codeCeiling == "" {
+		if codeCeiling, err = landingCodeCeiling(prime.HubPath, l); err != nil {
+			return fabriclayout.PushResult{}, err
+		}
+	}
+	options := fabricengine.EnvSyncOptions()
+	options.BackoffSleep = push.BackoffSleep
 	pushPair := func() (fabriclayout.PushResult, error) {
-		return fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabriclayout.PairPush{
+		return fabricengine.PushPairAnchored(l, options, fabriclayout.PairPush{
 			LockWait:       push.LockWait,
 			TeardownWait:   push.TeardownWait,
 			RunSlug:        slug,
 			Here:           here,
 			OwedUnrecorded: push.OwedUnrecorded,
+			SingleAttempt:  push.SingleAttempt,
+			CodeCeiling:    codeCeiling,
 		})
 	}
 	result, err := pushPair()
@@ -129,6 +152,67 @@ func PushRun(prime, l *lymcwd.Location, slug string, push RunPush) (fabriclayout
 	return result, err
 }
 
+// landingCodeCeiling returns the newest code commit an ordinary push of the pair at l may send.
+// That is the first parent of the oldest unpushed landing on the pair's branch.
+// A landing counts when the push ledger records it, or when a landing commit of a run not yet done names it.
+// It returns "" for a pair carrying no landing, and for the prime, whose code branch no run push sends.
+func landingCodeCeiling(hubPath string, l *lymcwd.Location) (string, error) {
+	candidates, err := pushledger.OwedTips(hubPath, pushledger.RecordsKey(fabricengine.RecordsWorktree(l)))
+	if err != nil {
+		return "", err
+	}
+	prime, err := fabricengine.IsPrimeWorktree(l)
+	if err != nil || prime {
+		return "", err
+	}
+	unsettled, err := fabricengine.UnsettledLandings(l)
+	if err != nil {
+		return "", err
+	}
+	for _, commit := range unsettled {
+		candidates = append(candidates, commit)
+	}
+	if len(candidates) == 0 {
+		return "", nil
+	}
+	repo := gitrepo.New(l.WorktreePath())
+	oldest := candidates[0]
+	for _, candidate := range candidates[1:] {
+		older, err := repo.IsAncestor(candidate, oldest)
+		if err != nil {
+			return "", fmt.Errorf("pairteardown: order the landing commits of %s: %w", l.WorktreePath(), err)
+		}
+		if older {
+			oldest = candidate
+		}
+	}
+	parents, err := repo.CommitParents(oldest)
+	if err != nil {
+		return "", fmt.Errorf("pairteardown: read the landing commit %s of %s: %w", oldest, l.WorktreePath(), err)
+	}
+	if len(parents) == 0 {
+		return "", fmt.Errorf("pairteardown: the landing commit %s of %s has no parent to push up to", oldest, l.WorktreePath())
+	}
+	return parents[0], nil
+}
+
+// RefreshOwners runs the run-scope origin reconcile of the run slug from prime, so its owner records are origin's.
+// An unreachable origin is an error.
+func RefreshOwners(prime *lymcwd.Location, slug string) error {
+	teardown, err := New(prime)
+	if err != nil {
+		return err
+	}
+	report, err := fabricengine.ReconcileOrigin(prime, fabriclayout.ReconcileScope{Run: slug}, teardown.OriginSeams(HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
+	if err != nil {
+		return fmt.Errorf("pairteardown: reconcile the run %q with origin: %w", slug, err)
+	}
+	if report.Unreachable {
+		return fmt.Errorf("pairteardown: reconcile the run %q: %w", slug, boardengine.ErrOwnerOriginUnreachable)
+	}
+	return nil
+}
+
 // HandOver hands the run slug over to the machine of entry.
 // It ends the processes this machine runs for the run.
 // It then hands the run's git state over through fabricengine.HandOverTips.
@@ -136,6 +220,7 @@ func PushRun(prime, l *lymcwd.Location, slug string, push RunPush) (fabriclayout
 // The pause and cancel intents origin lacks are named in the notice.
 // Unless push.InsidePair, it then removes the local pair, whose uncommitted files the archive holds by then;
 // inside the pair the removal is left to the parent's dobby.
+// While the run's landing is still owed the pair also stays, until that landing is dropped.
 // It returns an error wrapping fabricengine.ErrHandedOver naming the new owner, so its caller stops.
 // A failed step returns that step's error instead, naming the run and the step.
 // The next rejected push then hands over again.
@@ -187,6 +272,13 @@ func HandOver(prime *lymcwd.Location, slug string, entry shedengine.Takeover, pu
 	}
 	if push.InsidePair {
 		return fmt.Errorf("%w: machine %q holds the run %q now; its pair is left standing for its parent's dobby to remove", fabricengine.ErrHandedOver, entry.Machine, slug)
+	}
+	stands, err := td.standingLanding(slug)
+	if err != nil {
+		return fmt.Errorf("pairteardown: hand over the run %q: read its landing: %w", slug, err)
+	}
+	if stands {
+		return fmt.Errorf("%w: machine %q holds the run %q now; its pair stays until its landing is dropped", fabricengine.ErrHandedOver, entry.Machine, slug)
 	}
 	if _, err := td.RemovePair(Request{Slug: slug, Local: true, Force: true, Verdict: fabriclayout.EntryOwnedElsewhere}); err != nil {
 		return fmt.Errorf("pairteardown: hand over the run %q: remove its local pair: %w", slug, err)

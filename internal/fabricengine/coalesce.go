@@ -63,10 +63,17 @@ func headOrEmpty(path string) (string, error) {
 
 // pushSideDetached pushes one side of a detached push and reports whether the side landed.
 // A side landed when its push returned nil and its worktree then holds nothing unpushed.
+// A side with a ceiling in opts landed once origin holds the ceiling, and is not pushed when origin already does.
 // A push failure it records, a deferral and an ended branch leave the commits unpushed for a later push:
 // each returns landed false and a nil error.
 // Any other error is returned.
 func pushSideDetached(rec *Mutations, hubPath, side, path string, opts SyncOptions, retryRecords func() (bool, error)) (landed bool, err error) {
+	if opts.ceiling != "" {
+		unpushed, err := unpushedUnder(path, opts.ceiling)
+		if err != nil || !unpushed {
+			return err == nil, err
+		}
+	}
 	err = pushClassified(rec, hubPath, side, path, opts, retryRecords)
 	var failed *PushFailedError
 	switch {
@@ -77,7 +84,7 @@ func pushSideDetached(rec *Mutations, hubPath, side, path string, opts SyncOptio
 	default:
 		return false, err
 	}
-	unpushed, err := gitrepo.New(path).HasUnpushed()
+	unpushed, err := unpushedUnder(path, opts.ceiling)
 	if err != nil {
 		return false, fmt.Errorf("fabricengine: push %s side at %s: %w", side, path, err)
 	}
@@ -122,6 +129,7 @@ func CoalescePushRequest(req fabriclayout.PushSpawn, opts SyncOptions, here fabr
 // The prime has no such slug, so it reads req.PauseSlug.
 // caller names the public entry point in the error for a missing weft path.
 // The code side goes out with SyncOptions.AfterRecords set, after the records side landed.
+// A records commit held back for the pair's run caps the records side at that commit's first parent.
 // For the duration of the call it installs a gate deferral.
 // A pause triggers it at the gate before an acquire of the lock:
 // the flags of the owed sides go back, and the process exits.
@@ -175,8 +183,16 @@ func coalescePushSides(req fabriclayout.PushSpawn, opts SyncOptions, here fabric
 		// The records side goes first, and the code side only once the records side landed.
 		recordsLanded := true
 		if beforeWeft != "" {
-			retryWeft := func() (bool, error) { return retryWeftPush(rec, hubPath, weftPath, runSlug, here) }
-			recordsLanded, err = pushSideDetached(rec, hubPath, fabriclayout.RepoRecords, weftPath, opts, retryWeft)
+			recordsOpts := opts
+			// The records worktree's name carries the slug of the pair whose run may hold a commit.
+			heldSlug, _ := fabriclayout.WeftWarpSlug(filepath.Base(weftPath))
+			if recordsOpts.ceiling, err = recordsCeilingAt(hubPath, weftPath, heldSlug); err != nil {
+				return false, err
+			}
+			retryWeft := func() (bool, error) {
+				return retryWeftPush(rec, hubPath, weftPath, runSlug, here, recordsOpts.ceiling)
+			}
+			recordsLanded, err = pushSideDetached(rec, hubPath, fabriclayout.RepoRecords, weftPath, recordsOpts, retryWeft)
 			if err != nil {
 				return false, err
 			}

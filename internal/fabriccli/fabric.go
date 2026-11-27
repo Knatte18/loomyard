@@ -126,10 +126,10 @@ A pair whose weft branch already exists, locally or on origin, is adopted
 rather than forked.
 
 The command commits the new pair locally and returns without waiting on
-origin: a detached child pushes the code and records branches, as "lym fabric
-sync" does, and the envelope's mutations record one push_spawned entry per
-side. A failed spawn is reported in push_error and leaves the branches for the
-pair's next push.
+origin: the pair's background pusher pushes the code and records branches, as
+after "lym fabric sync", and the envelope's mutations record one push_spawned
+entry per side. A pusher that does not start is reported in push_error and
+leaves the branches for the pair's next push.
 
 The command errors if the worktree is on a detached HEAD or an unborn branch,
 because a fork point cannot be determined in either case.
@@ -156,6 +156,7 @@ Example:
 	addCmd.Flags().Bool("adopt-local", false, "make the pair over a local branch of the slug that already exists, instead of refusing it")
 	cmd.AddCommand(addCmd)
 	cmd.AddCommand(teardownChildCmd())
+	cmd.AddCommand(syncStatusCmd())
 
 	cmd.AddCommand(&cobra.Command{
 		Use:         "list",

@@ -260,7 +260,7 @@ func (t *Topology) cleanupOrphan(rec *Mutations, l *lymcwd.Location, warpBranch 
 		return false
 	}
 
-	tip, archiveTag, archiveSkipped, err := tagWeftTipForArchive(l, slug, entry.Branch)
+	tip, archiveTag, archiveSkipped, err := tagWeftTipForArchive(l, slug, entry.Branch, "")
 	if err != nil {
 		entry.Error = fmt.Sprintf("archive weft branch %q failed: %v", entry.Branch, err)
 		return true

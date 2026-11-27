@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -262,6 +263,10 @@ func TestGoDriver_Settle(t *testing.T) {
 		waitMovesTo *shedengine.Status
 		// wantRunErr is the error Run must return; nil wants none.
 		wantRunErr error
+		// seedWait leaves a wait record an earlier driver wrote.
+		seedWait bool
+		// wantStepWaits, when set, is whether a wait record stood at each step.
+		wantStepWaits []bool
 	}{
 		{name: "done commits and exits with no park", steps: []func(*testing.T) []byte{done}, wantCalls: []string{"step", "commit-records"}, wantExit: ExitDone},
 		{
@@ -320,20 +325,22 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleRestep}, wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerTackler}, wantReports: 1, wantExit: ExitDone,
 		},
 		{
-			name:  "a network failure that outlasts every wait is re-stepped after each, then parked with a notice naming the failing operation and no tackler",
-			steps: []func(*testing.T) []byte{networkFailure, networkFailure, networkFailure, networkFailure}, orchRecorded: true,
-			wantCalls:    []string{"step", "wait:15s", "step", "wait:30s", "step", "wait:1m0s", "step"},
-			wantActions:  []string{shedrun.SettleRestep, shedrun.SettleRestep, shedrun.SettleRestep, shedrun.SettleHandBack},
-			wantSettlers: []string{shedrun.SettlerGoRule, shedrun.SettlerGoRule, shedrun.SettlerGoRule, shedrun.SettlerParent},
-			wantReports:  1, wantParked: true, wantNotifies: 1, wantHandBack: true, wantExit: ExitHandBack,
-			wantNotice: "Run run-1 stopped at Run-Shed: a network failure outlasted 3 re-steps over 1m45s. Failing remote operation: " + fetchFailure +
-				". Resume the run once the remote answers. " + driveNoticeTail,
-			wantNoNotice: "Question:",
+			name:  "a network failure is re-stepped with doubling waits under one wait record until the run is done, with no hand-back",
+			steps: []func(*testing.T) []byte{networkFailure, networkFailure, networkFailure, networkFailure, done}, orchRecorded: true,
+			wantCalls:     []string{"step", "wait:15s", "step", "wait:30s", "step", "wait:1m0s", "step", "wait:2m0s", "step", "commit-records"},
+			wantActions:   []string{shedrun.SettleRestep, shedrun.SettleRestep, shedrun.SettleRestep, shedrun.SettleRestep},
+			wantSettlers:  []string{shedrun.SettlerGoRule, shedrun.SettlerGoRule, shedrun.SettlerGoRule, shedrun.SettlerGoRule},
+			wantStepWaits: []bool{false, true, true, true, true}, wantExit: ExitDone,
 		},
 		{
-			name:  "a wait the context ends returns its error with no re-step, settle record or hand-back",
+			name:  "a wait the context ends returns its error with no re-step, settle record or hand-back, and removes the wait record",
 			steps: []func(*testing.T) []byte{networkFailure}, orchRecorded: true, waitErr: context.Canceled,
 			wantCalls: []string{"step", "wait:15s"}, wantRunErr: context.Canceled,
+		},
+		{
+			name:  "a wait record an earlier driver left is gone before the first step",
+			steps: []func(*testing.T) []byte{done}, seedWait: true,
+			wantCalls: []string{"step", "commit-records"}, wantStepWaits: []bool{false}, wantExit: ExitDone,
 		},
 		{
 			name:  "an orch goto made during the network wait is honoured: a moved record and a re-step at the new row, none at the failed stop",
@@ -810,9 +817,33 @@ func TestGoDriver_Settle(t *testing.T) {
 				}
 			}
 
+			waitPath := filepath.Join(root, "scratch", "drive-wait.json")
+			if tt.seedWait {
+				if err := state.WriteJSON(waitPath, driveWaitLock(waitPath), DriveWait{Producer: "Old"}); err != nil {
+					t.Fatalf("seed the wait record: %v", err)
+				}
+			}
+			// The clock advances by each wait, so a record that restarted its start time would differ.
+			var waited time.Duration
+			var stepWaits []bool
+			checkWait := func() bool {
+				record, found, err := state.ReadJSON[DriveWait](waitPath, driveWaitLock(waitPath))
+				if err != nil {
+					t.Errorf("read the wait record: %v", err)
+				}
+				want := DriveWait{Producer: "Run-Shed", Class: string(shedengine.TransientGitTransport), Since: driveTestEpoch}
+				if found && !tt.seedWait && record != want {
+					t.Errorf("wait record = %+v; want %+v", record, want)
+				}
+				return found
+			}
+
 			deps := Deps{
-				RunID: "run-1",
+				RunID:              "run-1",
+				WaitRecordPath:     waitPath,
+				NetworkWaitCeiling: 5 * time.Minute,
 				Step: func(ctx context.Context, attempt string) ([]byte, error) {
+					stepWaits = append(stepWaits, checkWait())
 					if stepsTaken >= len(tt.steps) {
 						t.Fatalf("Step called %d times; the row scripts %d", stepsTaken+1, len(tt.steps))
 					}
@@ -909,9 +940,13 @@ func TestGoDriver_Settle(t *testing.T) {
 					}
 					return openTackler, tt.openArbiter, tt.openApplied, nil
 				},
-				Now: func() time.Time { return driveTestEpoch },
+				Now: func() time.Time { return driveTestEpoch.Add(waited) },
 				Wait: func(_ context.Context, delay time.Duration) error {
 					calls = append(calls, "wait:"+delay.String())
+					if !checkWait() {
+						t.Error("no wait record stands during a network wait")
+					}
+					waited += delay
 					return tt.waitErr
 				},
 				CommitRecords: func() error {
@@ -1013,6 +1048,12 @@ func TestGoDriver_Settle(t *testing.T) {
 			if !slices.Equal(calls, tt.wantCalls) {
 				t.Errorf("seam calls = %q; want %q", calls, tt.wantCalls)
 			}
+			if tt.wantStepWaits != nil && !slices.Equal(stepWaits, tt.wantStepWaits) {
+				t.Errorf("wait record standing at each step = %v; want %v", stepWaits, tt.wantStepWaits)
+			}
+			if _, err := os.Stat(waitPath); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("stat the wait record after Run = %v; want it removed", err)
+			}
 			records, err := ReadSettleRecords(settlePath)
 			if err != nil {
 				t.Fatalf("ReadSettleRecords: %v", err)
@@ -1103,6 +1144,63 @@ func TestGoDriver_Settle(t *testing.T) {
 						t.Errorf("Notify line %q holds %q; want no such line", line, tt.wantNoNotice)
 					}
 				}
+			}
+		})
+	}
+}
+
+func TestReadDriveWait(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	record := DriveWait{Producer: "Finalize", Class: string(shedengine.TransientGitTransport), Since: driveTestEpoch}
+	tests := []struct {
+		name string
+		// content is written verbatim as the record when set, else record is written when seeded.
+		content      string
+		seeded       bool
+		held         bool
+		want         DriveWait
+		wantStanding bool
+		wantGone     bool
+		wantErr      error
+	}{
+		{name: "NoRecordIsNotStanding"},
+		{name: "ARecordUnderAHeldLockStands", seeded: true, held: true, want: record, wantStanding: true},
+		{name: "ARecordWithTheLockFreeNamesADeadDriver", seeded: true, want: record, wantStanding: true, wantGone: true},
+		{name: "AnUndecodableRecordReturnsItsError", content: "{", wantErr: state.ErrDecode},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			recordPath, lockPath := filepath.Join(dir, "drive-wait.json"), filepath.Join(dir, "driver.lock")
+			if tt.seeded {
+				if err := state.WriteJSON(recordPath, driveWaitLock(recordPath), record); err != nil {
+					t.Fatalf("seed the wait record: %v", err)
+				}
+			}
+			if tt.content != "" {
+				if err := os.WriteFile(recordPath, []byte(tt.content), 0o644); err != nil {
+					t.Fatalf("seed the wait record: %v", err)
+				}
+			}
+			if tt.held {
+				held, acquired, err := lock.TryAcquireWriteLock(lockPath)
+				if err != nil || !acquired {
+					t.Fatalf("take the driver lock: acquired %t, %v", acquired, err)
+				}
+				t.Cleanup(func() { _ = held.Release() })
+			}
+
+			got, standing, gone, err := ReadDriveWait(recordPath, lockPath)
+
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("ReadDriveWait() error = %v; want %v", err, tt.wantErr)
+			}
+			if got != tt.want || standing != tt.wantStanding || gone != tt.wantGone {
+				t.Errorf("ReadDriveWait() = %+v, standing %t, gone %t; want %+v, %t, %t", got, standing, gone, tt.want, tt.wantStanding, tt.wantGone)
 			}
 		})
 	}

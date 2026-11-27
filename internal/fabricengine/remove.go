@@ -81,6 +81,8 @@ var ErrStrayPathKept = errors.New("a directory that is no worktree stays at the 
 // In order, the child pushes the local weft tip to origin when origin lacks it, and a refusal is only logged.
 // It then pushes the archive tag;
 // a second tag goes to origin's tip when that tip is neither the local tip nor an ancestor of it.
+// A records commit held back for the pair's run is neither pushed nor tagged:
+// the child pushes and tags up to that commit's first parent.
 // With remote, it deletes the weft branch on origin.
 // The lease is on the origin tip it read, or on the local tip once its push landed.
 // A branch that origin moved since is kept.
@@ -167,6 +169,12 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 		return fabriclayout.RemoveResult{}, fmt.Errorf("read the anchor of %q: %w", slug, err)
 	}
 	steps := []string{}
+	// Read before the first mutation and carried on the teardown job:
+	// the child runs detached, after the removal's caller has dropped what the hub records of the pair.
+	recordsHold, _, err := recordsPushCeiling(l.HubPath, slug)
+	if err != nil {
+		return fabriclayout.RemoveResult{}, err
+	}
 
 	// Registered before the teardown lock, so it runs after the lock's release on every exit past the refusals.
 	if localMode {
@@ -229,7 +237,7 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 		// Tag the weft tip after every refusal and before the first teardown mutation:
 		// a failed tag leaves the worktrees and both branches untouched, so a plain re-run retries it.
 		// force answers dirtiness only, so it never skips this step; the tag's push is the teardown child's.
-		weftTip, archiveTag, archiveSkippedReason, err = tagWeftTipForArchive(l, slug, weftBranch)
+		weftTip, archiveTag, archiveSkippedReason, err = tagWeftTipForArchive(l, slug, weftBranch, recordsHold)
 		if err != nil {
 			return fabriclayout.RemoveResult{}, err
 		}
@@ -306,6 +314,7 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 			logger.Warn("fabricengine: failed-push record of a removed pair not cleared", "slug", slug, "side", side.repo, "error", err)
 		}
 	}
+	dropHeldRecordsRef(l, slug)
 
 	// Both worktrees are gone: reclaim the stores' unreferenced objects while lym is already doing slow work.
 	// A refused or failed Remove returns above and runs no housekeeping,
@@ -350,6 +359,7 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 		Worktree:           l.WorktreePath(),
 		WeftBranch:         weftBranch,
 		WeftTip:            weftTip,
+		RecordsHold:        recordsHold,
 		DeleteWeftOnOrigin: remote && !weftBranchExists(l, weftBranch),
 		WarpBranch:         warpBranch,
 		ParentBranch:       parentBranch,

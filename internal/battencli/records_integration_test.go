@@ -21,8 +21,10 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -148,6 +150,11 @@ func stepAwaitingChildDoneTeardown_ArchivesTheRunRecords(t *testing.T, h *hubfor
 	}
 	if step.Producer != battenrecipe.NameLand || step.Outcome != shedengine.Done {
 		t.Fatalf("land step = producer %q outcome %q reason %q; want %q Done", step.Producer, step.Outcome, step.Reason, battenrecipe.NameLand)
+	}
+
+	// The teardown pushes nothing itself, so the pair's tips are brought to origin here, as the pair's pusher does.
+	if _, err := pairteardown.PushRun(h.Location, childLocation, slug, pairteardown.RunPush{LockWait: fabriclayout.LockWaitUnbounded}); err != nil {
+		t.Fatalf("push the task pair: %v", err)
 	}
 
 	step, err = shed.Step(ctx)

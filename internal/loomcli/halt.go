@@ -105,6 +105,7 @@ func (c *loomCLI) reflectHalt(n haltNote) string {
 // A stale `failed` status left by an earlier invocation therefore never writes a second note.
 // The halt is a build skew when err's chain holds a board stencil that a newer lym build wrote.
 // It is transient when the status records a transient class.
+// A network-class stop is no halt while a Go driver holds the run's driver lock, since that driver waits it out.
 func (c *loomCLI) failedHalt(err error) (haltNote, bool) {
 	if err == nil || errors.Is(err, shedengine.ErrShedBusy) {
 		return haltNote{}, false
@@ -115,6 +116,15 @@ func (c *loomCLI) failedHalt(err error) (haltNote, bool) {
 	}
 	if st.State != shedengine.StateFailed || st.Error != err.Error() {
 		return haltNote{}, false
+	}
+	class := shedengine.TransientClass(st.Transient)
+	if class == shedengine.TransientGitTransport || class == shedengine.TransientGitHubAPI {
+		held, lockErr := c.driverLockHeld()
+		if lockErr != nil {
+			logger.Warn("loom: could not probe the driver lock; writing the halt note", "error", lockErr)
+		} else if held {
+			return haltNote{}, false
+		}
 	}
 	var skew *stencilstore.NewerBoardCopyError
 	return haltNote{

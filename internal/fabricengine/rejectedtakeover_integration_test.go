@@ -244,19 +244,6 @@ func TestRejectedRecordsPush_ReadsTheTakeover(t *testing.T) {
 		d.requireNothingPushed(t)
 	})
 
-	t.Run("TheAnchorChangesPushPushesNoCodeSideOverATakeover", func(t *testing.T) {
-		d := newDivergedPair(t, slug, entry)
-		spawned, err := fabricengine.SpawnStatusPush(d.location, "")
-		if !errors.Is(err, fabricengine.ErrSpawnUnderTest) {
-			t.Fatalf("SpawnStatusPush() error = %v; want ErrSpawnUnderTest, which still reports the request", err)
-		}
-
-		_, err = fabricengine.CoalescePushRequest(spawned.Request, d.fake.options(nil), here)
-
-		d.requireTakeoverError(t, err, entry)
-		d.requireNothingPushed(t)
-	})
-
 	t.Run("EntryNamingAFormerNameOfThisMachineReplaysAndLandsBothSides", func(t *testing.T) {
 		d := newDivergedPair(t, slug, entry)
 

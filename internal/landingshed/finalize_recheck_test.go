@@ -73,8 +73,8 @@ func TestFinalize_LockRecheckAndLanding(t *testing.T) {
 			outcome, ptr := fx.call(t)
 
 			requireHalt(t, outcome, ptr, haltFragments...)
-			if len(fx.merger.calls) != 0 || len(fx.merger.pushCalls) != 0 {
-				t.Errorf("parent-side merges = %d, pushes = %d; want none after the halt", len(fx.merger.calls), len(fx.merger.pushCalls))
+			if len(fx.merger.calls) != 0 {
+				t.Errorf("parent-side merges = %d; want none after the halt", len(fx.merger.calls))
 			}
 			if lockHeld(fx) {
 				t.Error("the halted Finalize holds the parent lock; want it to have taken none")
@@ -83,9 +83,6 @@ func TestFinalize_LockRecheckAndLanding(t *testing.T) {
 			outcome, ptr = fx.call(t)
 
 			fx.requireLanded(t, outcome, ptr)
-			if len(fx.merger.pushCalls) != 1 {
-				t.Errorf("pushes = %d; want the resume's one", len(fx.merger.pushCalls))
-			}
 			if lockHeld(fx) {
 				t.Error("the lock outlived the landed Finalize")
 			}
@@ -117,8 +114,8 @@ func TestFinalize_LockRecheckAndLanding(t *testing.T) {
 		outcome, ptr := fx.call(t)
 
 		requireHalt(t, outcome, ptr, haltFragments...)
-		if len(fx.merger.calls) != 1 || len(fx.merger.pushCalls) != 0 {
-			t.Errorf("parent-side merges = %d, pushes = %d; want the first attempt's one and no push", len(fx.merger.calls), len(fx.merger.pushCalls))
+		if len(fx.merger.calls) != 1 {
+			t.Errorf("parent-side merges = %d; want the first attempt's one", len(fx.merger.calls))
 		}
 	})
 

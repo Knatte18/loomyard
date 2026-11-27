@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 )
@@ -56,7 +57,7 @@ type starter struct {
 }
 
 // Start starts the pusher of t when its start conditions hold, and reports whether it spawned one.
-// The conditions are a free pusher lock and no refused-push record.
+// The conditions are a free pusher lock and no refused push of the target's branch.
 // A pair also needs no pause covering its run and no hand-over mark naming it.
 // A process with FABRIC_SKIP_GIT or FABRIC_SKIP_PUSH set starts none.
 // Two racing starts may both spawn: the loser exits at the lock.
@@ -65,7 +66,8 @@ func Start(t Target) (bool, error) {
 	return newStarter().start(t, false)
 }
 
-// StartIfAhead is Start for a worktree that also holds commits origin lacks.
+// StartIfAhead is Start for a target that also holds something origin lacks.
+// It writes the target's ledger entry when it is ahead and not refused, and drops it when it is level and holds nothing.
 func StartIfAhead(t Target) (bool, error) {
 	return newStarter().start(t, true)
 }
@@ -95,32 +97,47 @@ func newStarter() starter {
 			}
 			return acquired, err
 		},
-		refusedPushStands: func(t Target) (bool, error) { return fabricengine.RefusedPushStands(t.Location) },
+		refusedPushStands: TargetRefused,
 		pauseCovers:       pauseCovers,
 		handedOver:        handedOver,
-		ahead:             func(t Target) (bool, error) { return fabricengine.RunCommitsAhead(t.Location) },
+		ahead:             targetAhead,
 		spawn:             spawnPusher,
 	}
 }
 
 // start spawns the pusher of t when the conditions hold, and reports whether it did.
-// With ifAhead it also requires commits origin lacks.
+// With ifAhead it also requires something origin lacks, and keeps the target's ledger entry in step.
 func (s starter) start(t Target, ifAhead bool) (bool, error) {
 	if s.skipped() {
 		return false, nil
 	}
+	ledger := Deps{HubPath: t.Location.HubPath, Now: time.Now}
 	if ifAhead {
+		ledger.Key = ledgerKey(t)
 		ahead, err := s.ahead(t)
-		if err != nil || !ahead {
+		if err != nil {
+			return false, err
+		}
+		if !ahead {
+			return false, settleLevelEntry(t, ledger)
+		}
+	}
+	stands, err := s.refusedPushStands(t)
+	if err != nil || stands {
+		return false, err
+	}
+	if ifAhead {
+		err := updateEntry(t, ledger, func(entry *pushledger.Entry) {
+			if entry.FirstOwed.IsZero() {
+				entry.FirstOwed = ledger.Now()
+			}
+		})
+		if err != nil {
 			return false, err
 		}
 	}
 	free, err := s.lockFree(LockPath(t))
 	if err != nil || !free {
-		return false, err
-	}
-	stands, err := s.refusedPushStands(t)
-	if err != nil || stands {
 		return false, err
 	}
 	if t.Pair {
@@ -143,10 +160,12 @@ func (s starter) start(t Target, ifAhead bool) (bool, error) {
 // It starts in the hub's Bolt directory, outside the pair, so a removal of the pair leaves it standing.
 // It is registered under the hub's owner, so no run's teardown, cancel or hand-over reaches it.
 func pusherRequest(t Target) spawnRequest {
-	args := []string{"loom", "pusher", "--" + WorktreeFlag, t.Location.WorktreePath()}
-	if t.Slug != "" {
-		args = append(args, "--"+SlugFlag, t.Slug)
-	}
+	args := fabriclayout.PusherCommand(fabriclayout.PusherFlags{
+		Worktree: t.Location.WorktreePath(),
+		Slug:     t.Slug,
+		Board:    t.Kind == KindBoard,
+		Landing:  t.Kind == KindLanding,
+	})
 	return spawnRequest{
 		Args:       args,
 		Dir:        fabriclayout.BoltDir(t.Location.HubPath),

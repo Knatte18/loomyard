@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
@@ -40,19 +39,6 @@ var takenFlagCounter atomic.Uint64
 // pendingFlagPath returns the path of side's pending flag in lockDir, the lock directory that holds fabric.push.lock.
 func pendingFlagPath(lockDir, side string) string {
 	return filepath.Join(lockDir, "pending."+side)
-}
-
-// PairPushDeferred reports whether a detached push of the pair at l left a side's pending flag on disk.
-// A push that a pause deferred leaves one.
-// The flag stays until the pair's next push carries that side, so a lift reads from it whether a push is owed.
-func PairPushDeferred(l *lymcwd.Location) bool {
-	lockDir := fabriclayout.RecordsLockDirPath(RecordsWorktree(l))
-	for _, side := range []string{pushSideCode, pushSideRecords} {
-		if pathPresent(pendingFlagPath(lockDir, side)) {
-			return true
-		}
-	}
-	return false
 }
 
 // exitDeferred ends a detached push child that a pause covers; a test swaps it for a recorder.

@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedtransient"
@@ -698,6 +699,7 @@ func (c *loomCLI) loomBarePause(st shedengine.Status) error {
 // loomStatusExtras implements the StatusExtras hook for loom's spec: loom's own status keys
 // (pause_requested, slug, parent), decoded from st.Product only when non-empty, and no others.
 // A run that a live pause covers also carries paused_since and paused_by.
+// A run whose live driver waits out a network failure also carries waiting: the row, the failure class and the start.
 func (c *loomCLI) loomStatusExtras(st shedengine.Status) (map[string]any, error) {
 	var product loomengine.Status
 	if len(st.Product) > 0 {
@@ -713,6 +715,15 @@ func (c *loomCLI) loomStatusExtras(st shedengine.Status) (map[string]any, error)
 	}
 	for key, value := range c.pausedExtras() {
 		extras[key] = value
+	}
+	if c.location != nil {
+		wait, standing, driverGone, err := sheddriver.ReadDriveWait(shedrun.DriveWaitRecord(c.location, c.runID), shedrun.DriverLock(c.location, c.runID))
+		switch {
+		case err != nil:
+			logger.Warn("loomcli: the wait record is unreadable, status omits waiting", "cause", err)
+		case standing && !driverGone:
+			extras["waiting"] = wait
+		}
 	}
 	return extras, nil
 }

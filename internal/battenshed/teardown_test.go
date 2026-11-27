@@ -72,8 +72,7 @@ func recordingPrimeLock(rec *teardownCallRecorder) PrimeLock {
 }
 
 // TestWorktreeTeardown_ShutdownFailureNeverCallsRemove covers each way the row stops before the removal.
-// A failed shutdown, a refused push, a handed-over push and a failed level read are Stuck and never call Remove.
-// A push that reports the entry ended removes the pair without reading Level.
+// A failed shutdown, a refused push and a failed level read are Stuck and never call Remove.
 func TestWorktreeTeardown_ShutdownFailureNeverCallsRemove(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -101,18 +100,9 @@ func TestWorktreeTeardown_ShutdownFailureNeverCallsRemove(t *testing.T) {
 			wantReason: []string{pushErr.Error(), "lym batten run myslug"},
 		},
 		{
-			name: "a handed-over push", pushErr: fmt.Errorf("%w: machine oslo holds the run", ErrPushHandedOver), wantOutcome: shedengine.Stuck,
-			wantCalls:  []string{"shutdown", "push"},
-			wantReason: []string{"handed over", "machine oslo holds the run"},
-		},
-		{
 			name: "a failed level read", levelErr: levelErr, wantOutcome: shedengine.Stuck,
 			wantCalls:  []string{"shutdown", "push", "level"},
 			wantReason: []string{levelErr.Error(), "lym batten run myslug"},
-		},
-		{
-			name: "an ended entry removes without reading level", pushErr: fmt.Errorf("%w: branch gone", ErrPushEntryEnded), wantOutcome: shedengine.Done,
-			wantCalls: []string{"shutdown", "push", "remove"},
 		},
 	}
 	for _, tt := range tests {
@@ -132,9 +122,6 @@ func TestWorktreeTeardown_ShutdownFailureNeverCallsRemove(t *testing.T) {
 			}
 			if !released {
 				t.Error("release was not invoked")
-			}
-			if tt.wantOutcome != shedengine.Stuck {
-				return
 			}
 			reason := readStuckFile(t, scratchDir, "teardown", ptr)
 			for _, want := range tt.wantReason {
@@ -173,35 +160,33 @@ func TestWorktreeTeardown_RemoveFailureNamesRemovalHalf(t *testing.T) {
 	}
 }
 
-// TestWorktreeTeardown_LevelThatNeverReadsTrueIsStuckAfterTheBound asserts the row stops pushing and keeps the pair.
-// A Level that reads false after every push yields Stuck after three pushes, naming the resume, and never calls Remove.
-func TestWorktreeTeardown_LevelThatNeverReadsTrueIsStuckAfterTheBound(t *testing.T) {
+// TestWorktreeTeardown_AFalseLevelEndsDoneWithThePairStanding asserts one push and one level read.
+// The calls run over two lock holds.
+// A false read ends Done with no removal, which also covers an unreachable origin, and a true read removes once.
+func TestWorktreeTeardown_AFalseLevelEndsDoneWithThePairStanding(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	scratchDir := t.TempDir()
-	rec := &teardownCallRecorder{levelFalseReads: 100}
-	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", nil), recordingPrimeLock(rec), scratchDir)
-
-	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
-
-	pushes := 0
-	for _, call := range rec.calls {
-		switch call {
-		case "push":
-			pushes++
-		case "remove":
-			t.Errorf("call order = %v; want no remove while origin lacks a tip", rec.calls)
-		}
+	tests := []struct {
+		name            string
+		levelFalseReads int
+		wantCalls       []string
+	}{
+		{"LevelFalse", 1, []string{"lock", "shutdown", "release", "push", "lock", "level", "release"}},
+		{"LevelTrue", 0, []string{"lock", "shutdown", "release", "push", "lock", "level", "remove", "release"}},
 	}
-	if pushes != 3 {
-		t.Errorf("pushes = %d; want 3", pushes)
-	}
-	reason := readStuckFile(t, scratchDir, "teardown", ptr)
-	for _, want := range []string{"origin still lacks a tip", "lym batten run myslug"} {
-		if !strings.Contains(reason, want) {
-			t.Errorf("stuck-reason file = %q; want it to contain %q", reason, want)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rec := &teardownCallRecorder{levelFalseReads: tt.levelFalseReads}
+			producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", nil), recordingPrimeLock(rec), t.TempDir())
+
+			shedfake.RequireOutcome(t, producer, shedengine.Done)
+			if !slices.Equal(rec.calls, tt.wantCalls) {
+				t.Errorf("call order = %v; want %v", rec.calls, tt.wantCalls)
+			}
+		})
 	}
 }
 
@@ -360,9 +345,8 @@ func TestRecordAbandonedSession(t *testing.T) {
 	}
 }
 
-// TestWorktreeTeardown_TearsDownInOrderOnceTheLockIsFree asserts the row's order over its two prime-lock holds:
-// lock, shutdown, release, push, lock, level, remove, release.
-// A Level that reads false once releases the second hold and pushes again, so the row records two pushes and one remove.
+// TestWorktreeTeardown_TearsDownInOrderOnceTheLockIsFree asserts the row's order:
+// shutdown, push, level, remove.
 // It also asserts that the row reports Done whether the prime lock is free at once or contended for a few polls,
 // and that it sleeps once per contended poll and releases the lock afterwards.
 func TestWorktreeTeardown_TearsDownInOrderOnceTheLockIsFree(t *testing.T) {
@@ -389,32 +373,6 @@ func TestWorktreeTeardown_TearsDownInOrderOnceTheLockIsFree(t *testing.T) {
 			}
 			if !released {
 				t.Error("release was not invoked on the Done path")
-			}
-		})
-	}
-
-	holds := []struct {
-		name            string
-		levelFalseReads int
-		wantCalls       []string
-	}{
-		{"LevelOnTheFirstRead", 0, []string{"lock", "shutdown", "release", "push", "lock", "level", "remove", "release"}},
-		{"LevelFalseOnce", 1, []string{
-			"lock", "shutdown", "release",
-			"push", "lock", "level", "release",
-			"push", "lock", "level", "remove", "release",
-		}},
-	}
-	for _, tt := range holds {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			rec := &teardownCallRecorder{levelFalseReads: tt.levelFalseReads}
-			producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", nil), recordingPrimeLock(rec), t.TempDir())
-
-			shedfake.RequireOutcome(t, producer, shedengine.Done)
-			if !slices.Equal(rec.calls, tt.wantCalls) {
-				t.Errorf("call order = %v; want %v", rec.calls, tt.wantCalls)
 			}
 		})
 	}

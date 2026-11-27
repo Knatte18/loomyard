@@ -288,6 +288,12 @@ func recordPushIfAdvanced(rec *Mutations, repo *gitrepo.Repo, side, repoPath str
 	if err != nil || stillUnpushed {
 		return
 	}
+	appendBranchPushed(rec, repo, side, repoPath)
+}
+
+// appendBranchPushed records on rec a push of the checked-out branch of repo, of side at repoPath.
+// A branch that cannot be read records nothing.
+func appendBranchPushed(rec *Mutations, repo *gitrepo.Repo, side, repoPath string) {
 	branch, err := repo.CurrentBranch()
 	if err != nil {
 		return

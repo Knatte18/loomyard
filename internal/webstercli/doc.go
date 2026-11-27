@@ -31,6 +31,9 @@
 // re-running converges.
 // In hub mode the reset's records commit carries a `Run-Transition` trailer naming the worktree's run,
 // so the run's last transition names the code tip the reset moved to, not the tip it dropped.
+// The verb then pushes the pair's records before it returns, waiting for a push already running.
+// A push that fails is reported in `push_error` and leaves a failed-push record, which holds the run.
+// A push that finds the run taken over by another machine fails the verb, with the reset already made.
 //
 // In standalone mode reset moves HEAD with git's keep form and touches no remote.
 // If the checkout rewrite fails after the remote moved, the error envelope carries `partial` true;

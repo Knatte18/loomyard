@@ -264,6 +264,25 @@ func composeSlackStateCommand(sh shell.Shell, executablePath func() (string, err
 	return strings.ReplaceAll(sh.Invoke(exe), "#", "##") + " slack bar --dir #{" + orchDirOption + "}", true
 }
 
+// composeSyncStatusCommand returns the shell line the sync field's job runs, on sh's dialect:
+// the absolute path of this binary with `fabric sync-status --hub` and the hub directory.
+// The job's format expands the line once more, so the path and the hub have each # doubled.
+// An empty hubPath returns false.
+// An executable path that does not resolve, or names the running test binary, logs a named logger.Warn.
+// It then returns false, so no sync field is drawn.
+func composeSyncStatusCommand(sh shell.Shell, executablePath func() (string, error), hubPath string) (string, bool) {
+	if hubPath == "" {
+		return "", false
+	}
+	exe, err := selfexec.ResolveLymBinary(executablePath)
+	if err != nil {
+		logger.Warn("reed: could not resolve this binary, pinning no sync status line", "err", err)
+		return "", false
+	}
+	pinned := func(token string) string { return strings.ReplaceAll(token, "#", "##") }
+	return pinned(sh.Invoke(exe)) + " fabric sync-status --hub " + pinned(sh.Quote(hubPath)), true
+}
+
 // composeRemoteControlClickCommand returns the shell line the click binding runs for the RC button, on sh's dialect.
 // It changes into the session's run directory, as composeButtonCommand's line does.
 // Then it runs the absolute path of this binary with `orch rc-on`.

@@ -49,7 +49,7 @@ var gitrepoPinnedRunBoundMethods = []string{
 	"DropRemoteTracking",
 	"CommitsNotIn",
 	"BlameLines",
-	"MergeStart",
+	"mergeWithoutCommit",
 	"MergeConclude",
 	"ConflictedFiles",
 	"MergeHeadPresent",

@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
+	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -360,8 +361,33 @@ func TestRemovePair_ClearStray(t *testing.T) {
 	}
 }
 
+// useLedger points td at a fresh hub directory whose push ledger holds entry, and fills td's landing read over it.
+// The entry's key is that of the records worktree name, or the landing key for an empty name.
+// It returns the hub directory and the key.
+func useLedger(t *testing.T, td *Teardown, name string, entry pushledger.Entry) (string, pushledger.Key) {
+	t.Helper()
+	hub := t.TempDir()
+	td.prime = &lymcwd.Location{HubPath: hub, WorktreeName: "prime", AnchorRel: "."}
+	key := pushledger.LandingKey
+	if name != "" {
+		key = pushledger.RecordsKey(fabricengine.RecordsWorktreePath(td.prime, name))
+	}
+	err := pushledger.Update(hub, key, time.Unix(1, 0), func(pushledger.Entry, bool) (pushledger.Entry, bool, error) {
+		return entry, true, nil
+	})
+	if err != nil {
+		t.Fatalf("pushledger.Update: %v", err)
+	}
+	td.landingStands = func(slug string) (bool, error) {
+		return LandingStands(hub, slug, &lymcwd.Location{HubPath: hub, WorktreeName: slug, AnchorRel: "."})
+	}
+	return hub, key
+}
+
 // TestTeardown_CallSequence drives EndSession and Run through the fake substrates and pins which substrate calls each makes, in what order, and what it returns.
 // The board-claim rows pin the settlement rule through Run: which reads precede the removal and the write, and what is written.
+// The landing rows pin that a standing landing refuses with nothing called.
+// They also pin that a removal drops the pair's ledger entry.
 func TestTeardown_CallSequence(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -429,8 +455,13 @@ func TestTeardown_CallSequence(t *testing.T) {
 		// removeCancelledErr fails the deletion of a cancelled run record.
 		removeCancelledErr error
 		// gone makes the task worktree read as gone.
-		gone    bool
-		request Request
+		gone bool
+		// ledger, when set, is the push ledger entry under the records worktree ledgerName, the landing key when empty.
+		ledger     *pushledger.Entry
+		ledgerName string
+		// wantEntryGone requires that ledger entry to be gone afterwards.
+		wantEntryGone bool
+		request       Request
 		// wantErrIs is a sentinel the error must wrap; wantErrContains are substrings it must hold.
 		wantErrIs       error
 		wantErrContains []string
@@ -444,6 +475,38 @@ func TestTeardown_CallSequence(t *testing.T) {
 		// wantSawGone requires the session end to have been told the task worktree is gone.
 		wantSawGone bool
 	}{
+		{
+			name:      "StandingLandingRefusesRunWithNothingCalled",
+			run:       true,
+			ledger:    &pushledger.Entry{Landings: []pushledger.Landing{{Run: "slug"}}},
+			request:   Request{Slug: "slug"},
+			wantErrIs: ErrLandingStands,
+		},
+		{
+			name:      "StandingLandingRefusesAForcedRemoteRun",
+			run:       true,
+			ledger:    &pushledger.Entry{Landings: []pushledger.Landing{{Run: "slug"}}},
+			request:   Request{Slug: "slug", Force: true, Remote: true},
+			wantErrIs: ErrLandingStands,
+		},
+		{
+			name:       "BeamPairHoldingAChildsLandingRefusesRun",
+			run:        true,
+			ledger:     &pushledger.Entry{Landings: []pushledger.Landing{{Run: "child"}}},
+			ledgerName: "slug",
+			request:    Request{Slug: "slug"},
+			wantErrIs:  ErrLandingStands,
+		},
+		{
+			name:          "SuccessfulRemovalDropsThePairsLedgerEntry",
+			run:           true,
+			quiets:        []quietState{{quiet: true}},
+			ledger:        &pushledger.Entry{Slug: "slug", HeldRecords: "held"},
+			ledgerName:    "slug",
+			wantEntryGone: true,
+			request:       Request{Slug: "slug"},
+			wantCalls:     sessionEnd + ",landed,archive,remove,dropRunMail,readClaim",
+		},
 		{
 			name:            "BusyDriverAtBoundRefusesWithoutTouchingAnything",
 			quiets:          []quietState{busy},
@@ -1001,6 +1064,11 @@ func TestTeardown_CallSequence(t *testing.T) {
 			if tt.goos != "" {
 				td.goos = tt.goos
 			}
+			var ledgerHub string
+			var ledgerKey pushledger.Key
+			if tt.ledger != nil {
+				ledgerHub, ledgerKey = useLedger(t, td, tt.ledgerName, *tt.ledger)
+			}
 			if tt.withAfterSnapshot {
 				tt.request.AfterSnapshot = func() error {
 					f.calls = append(f.calls, "after")
@@ -1052,6 +1120,11 @@ func TestTeardown_CallSequence(t *testing.T) {
 			}
 			if got, want := f.droppedRunMail, wantDroppedRunMail(tt.wantCalls); !slices.Equal(got, want) {
 				t.Errorf("run mail dropped for %v, want %v", got, want)
+			}
+			if tt.wantEntryGone {
+				if entry, found, err := pushledger.Read(ledgerHub, ledgerKey); err != nil || found {
+					t.Errorf("pair ledger entry = %+v, found %v, %v; want none", entry, found, err)
+				}
 			}
 			if removal.SnapshotTag != tt.wantSnapshotTag {
 				t.Errorf("SnapshotTag = %q, want %q", removal.SnapshotTag, tt.wantSnapshotTag)

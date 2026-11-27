@@ -266,22 +266,31 @@ func (r runReader) read(slug string) (runfsm.Records, runfsm.Inputs, error) {
 		}
 	}
 
-	switch {
-	case battenAtLanding:
-		inputs.PastParentMerge = true
-	case records.ChildFound && pairHere:
-		parentHolds := r.originParentHolds
-		if r.skipPush {
-			parentHolds = r.localParentHolds
+	// A local landing reaches the local parent first, and origin's only once the parent's push is made.
+	// Either one holding the work puts the run past its merge, so a resume never drives the merge again.
+	parentHolds := func() (bool, error) {
+		if !r.skipPush {
+			if held, err := r.originParentHolds(slug); err != nil || held {
+				return held, err
+			}
 		}
+		return r.localParentHolds(slug)
+	}
+	switch {
+	case battenAtLanding && !pairHere:
+		// A pair is removed only once origin holds the work, so there is no parent read left to make.
+		inputs.PastParentMerge = true
+	case battenAtLanding:
+		inputs.PastParentMerge, err = parentHolds()
+	case records.ChildFound && pairHere:
 		inputs.PastParentMerge, err = battenshed.FinalizePastMerge(
 			records.Child,
 			func(status shedengine.Status) (bool, error) { return r.restepped(slug, status) },
-			func() (bool, error) { return parentHolds(slug) },
+			parentHolds,
 		)
-		if err != nil {
-			return fail("whether the work reached its parent", err)
-		}
+	}
+	if err != nil {
+		return fail("whether the work reached its parent", err)
 	}
 	return records, inputs, nil
 }

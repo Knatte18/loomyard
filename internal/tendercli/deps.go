@@ -140,7 +140,7 @@ func HubDeps(location *lymcwd.Location, strand string) (tenderengine.Deps, []str
 		PushPair: func(slug string) error {
 			return fabricengine.SpawnPairPush(pairLocations[slug])
 		},
-		PushDeferred: func(slug string) bool { return fabricengine.PairPushDeferred(pairLocations[slug]) },
+		PushOwed: func(slug string) (bool, error) { return fabricengine.RunCommitsAhead(pairLocations[slug]) },
 		PushPrimeRecords: func() error {
 			if prime == nil {
 				return nil

@@ -73,8 +73,16 @@ const DriftJudgeDirName = "drift-judge"
 const HandOverDirName = "hand-over"
 
 // PusherDirName is the directory under the hub's board-level `.lym` that holds the pusher locks.
-// It holds one lock per records worktree, which the worktree's one background pusher holds while it runs.
+// It holds one lock per push target, which the target's one background pusher holds while it runs.
 const PusherDirName = "pusher"
+
+// PushLedgerDirName is the directory under the hub's board-level `.lym` that holds the ledger of owed pushes.
+// It holds one entry per push target, the ledger lock and the time the hub last had nothing owed.
+const PushLedgerDirName = "push-ledger"
+
+// IgnoreCheckDirName is the directory under the hub's board-level `.lym` that holds scratch repositories.
+// Ignore rules are checked in them, each in its own, removed after use.
+const IgnoreCheckDirName = "ignore-check"
 
 // OrphanDirName is the directory under the hub's board-level `.lym` that holds the dobby's record of orphan pairs.
 // The record keeps when each orphan was first noticed, so a dobby restart neither resets nor skips its grace.

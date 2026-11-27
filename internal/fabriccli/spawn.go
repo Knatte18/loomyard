@@ -1,6 +1,5 @@
-// spawn.go holds the async-push call sites of `lym fabric sync` and `lym fabric add`.
-// spawnPush delegates to fabricengine.SpawnStatusPush with the location it is given,
-// so the detached child pushes the sides the engine's prime rule and local-branch check leave in the request.
+// spawn.go holds the pusher-start call sites of `lym fabric sync` and `lym fabric add`.
+// Both start the background pusher of the worktree they are given, which brings its commits to origin.
 
 package fabriccli
 
@@ -10,11 +9,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// spawnPush launches the detached status push of the worktree at l.
+// spawnPush starts the pusher of the worktree at l.
 func spawnPush(l *lymcwd.Location) (fabriclayout.SpawnResult, error) {
 	return fabricengine.SpawnStatusPush(l, "")
 }
 
-// spawnPairPush launches the detached push of the new pair at the given location: its code and records worktrees.
+// spawnPairPush starts the pusher of the new pair at the given location.
 // It is a variable so tests can replace it, since a detached push forks the running binary.
 var spawnPairPush = fabricengine.SpawnPairPush

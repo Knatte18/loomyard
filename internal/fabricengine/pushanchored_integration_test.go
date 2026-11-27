@@ -222,6 +222,7 @@ func branchPushedPosition(res fabriclayout.PushResult, detailPrefix string) int 
 // an unborn code side is skipped while the records side still pushes;
 // and a diverged code side is reported while the records side still pushes.
 // Subtests run on hubs of their own.
+// A held records commit and a code ceiling each stop their side's push short.
 // A refusing records remote fails the call and leaves origin's code branch at its old tip.
 // So does a records side deferred by a held write lock, and so does one deferred over uncommitted changes.
 // A prime pushes its records side only and reports the skipped code push;
@@ -394,6 +395,110 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 		requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabriclayout.PushFailureAuth)
 	})
 
+	// A held records commit caps the records side at its first parent, and the code side still goes.
+	// A second push finds origin holding that parent and skips the records side.
+	t.Run("HeldRecordsCommitStopsTheRecordsPushShortOfIt", func(t *testing.T) {
+		t.Parallel()
+		p := newPairFixture(t, "heldpush")
+		below := gitkit.CommitFile(t, p.weftPath, "below.txt", "below\n", "records below the hold")
+		held := gitkit.CommitFile(t, p.weftPath, "held.txt", "held\n", "held records")
+		gitkit.CommitFile(t, p.weftPath, "after.txt", "after\n", "records after the hold")
+		holdRecordsCommit(t, p, "heldpush", held)
+
+		for _, content := range []string{"first\n", "second\n"} {
+			codeSHA := gitkit.CommitFile(t, p.warpPath, "warp-file.txt", content, "warp change")
+
+			_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(func(time.Duration) {}), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
+
+			if err != nil {
+				t.Fatalf("PushPairAnchored() with a held records commit error = %v; want nil", err)
+			}
+			if got := bareBranchTip(t, p.hub.RecordsBare, p.weftBranch); got != below {
+				t.Errorf("records bare = %q; want the held commit's first parent %q", got, below)
+			}
+			if got := bareBranchTip(t, p.hub.CodeBare, p.warpBranch); got != codeSHA {
+				t.Errorf("code bare = %q; want local HEAD %q", got, codeSHA)
+			}
+		}
+		requireNoFailedPush(t, p.hub.Location.HubPath)
+	})
+
+	// A removal of a held pair pushes its records branch and its archive tag only up to the held commit's first parent.
+	t.Run("RemovalOfAHeldPairPushesAndTagsNothingPastTheHold", func(t *testing.T) {
+		t.Parallel()
+		p := newPairFixture(t, "heldremoval")
+		below := gitkit.CommitFile(t, p.weftPath, "below.txt", "below\n", "records below the hold")
+		held := gitkit.CommitFile(t, p.weftPath, "held.txt", "held\n", "held records")
+		holdRecordsCommit(t, p, "heldremoval", held)
+
+		if _, err := p.hub.Topology.Remove(p.hub.Location, "heldremoval", true, false, ""); err != nil {
+			t.Fatalf("Remove() error = %v; want nil", err)
+		}
+
+		if got := bareBranchTip(t, p.hub.RecordsBare, p.weftBranch); got != below {
+			t.Errorf("records bare = %q; want the held commit's first parent %q", got, below)
+		}
+		tagged := gitkit.Git(t, p.hub.RecordsBare, "for-each-ref", "--format=%(objectname)", "refs/tags/"+fabriclayout.ArchiveTagPrefix+"heldremoval")
+		if tagged != below {
+			t.Errorf("archive tags of the pair on origin = %q; want one at %q", tagged, below)
+		}
+	})
+
+	t.Run("CodeCeilingStopsTheCodePushThere", func(t *testing.T) {
+		t.Parallel()
+		p := newPairFixture(t, "codeceiling")
+		first := gitkit.CommitFile(t, p.warpPath, "first.txt", "first\n", "first code")
+		gitkit.CommitFile(t, p.warpPath, "second.txt", "second\n", "second code")
+
+		_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded, CodeCeiling: first})
+
+		if err != nil {
+			t.Fatalf("PushPairAnchored() with a code ceiling error = %v; want nil", err)
+		}
+		if got := bareBranchTip(t, p.hub.CodeBare, p.warpBranch); got != first {
+			t.Errorf("code bare = %q; want the ceiling %q", got, first)
+		}
+	})
+
+	// A push capped by a records hold or a code ceiling that origin rejects as moved neither replays nor resets.
+	for _, side := range []string{"records", "code"} {
+		t.Run("ARejectedCappedPushOfTheSideIsNeitherReplayedNorReset_"+side, func(t *testing.T) {
+			t.Parallel()
+			slug := "capped" + side
+			p := newPairFixture(t, slug)
+			path, bare, branch := p.warpPath, p.hub.CodeBare, p.warpBranch
+			if side == "records" {
+				path, bare, branch = p.weftPath, p.hub.RecordsBare, p.weftBranch
+			}
+			if _, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}); err != nil {
+				t.Fatalf("PushPairAnchored() of the level pair error = %v; want nil", err)
+			}
+			clone := cloneBareForTest(t, bare, branch)
+			moved := gitkit.CommitFile(t, clone, "origin.txt", "origin\n", "another clone's commit")
+			gitkit.MustRun(t, clone, "git", "push")
+			below := gitkit.CommitFile(t, path, "below.txt", "below\n", "below the cap")
+			past := gitkit.CommitFile(t, path, "past.txt", "past\n", "past the cap")
+			push := fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}
+			if side == "records" {
+				holdRecordsCommit(t, p, slug, past)
+			} else {
+				push.CodeCeiling = below
+			}
+
+			_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(func(time.Duration) {}), push)
+
+			if !fabricengine.IsPushRejected(err) {
+				t.Errorf("PushPairAnchored() error = %v; want a rejected push", err)
+			}
+			if got := bareBranchTip(t, bare, branch); got != moved {
+				t.Errorf("origin %s tip = %s; want it left at %s", side, got, moved)
+			}
+			if got := gitkit.RevParse(t, path, "HEAD"); got != past {
+				t.Errorf("local %s HEAD = %s; want it unmoved at %s", side, got, past)
+			}
+		})
+	}
+
 	// A code branch whose tracking ref was pruned while origin still holds the branch is pushed, with no rewind check.
 	t.Run("PrunedTrackingRefOfABranchOriginStillHoldsPushesTheLocalTip", func(t *testing.T) {
 		t.Parallel()
@@ -493,25 +598,15 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 		}
 	}
 
-	// The owner's guard: a code side rejected by an origin tip past the tip the last transition names resets that tip.
-	// A tip equal to the named one, and a push sent with no records side before it, keep the rejection.
+	// The owner's guard keeps the rejection when origin's tip is the one the last transition names.
+	// It also keeps it when the push is sent with no records side before it.
 	guardRows := []struct {
 		name string
 		// namedIsOriginTip makes the last transition name the commit another machine pushed, not the pair's earlier tip.
 		namedIsOriginTip bool
 		// push runs the code-side push under test and returns its error.
-		push      func(p *pairFixture) error
-		wantReset bool
+		push func(p *pairFixture) error
 	}{
-		{
-			"ResetsATipPastTheNamedOneAndLandsItsOwnCodeSide",
-			false,
-			func(p *pairFixture) error {
-				_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
-				return err
-			},
-			true,
-		},
 		{
 			"OriginTipEqualToTheNamedTipKeepsTheRejection",
 			true,
@@ -519,7 +614,6 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 				_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(nil), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
 				return err
 			},
-			false,
 		},
 		{
 			"APushWithNoRecordsSideBeforeItKeepsTheRejection",
@@ -528,7 +622,6 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 				_, err := fabricengine.PushWarpRebaseFreeAt(p.warpPath, p.fake.options(nil))
 				return err
 			},
-			false,
 		},
 	}
 	for _, tt := range guardRows {
@@ -544,19 +637,10 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 				named = otherMachinesTip
 			}
 			plantRunTransition(t, p, "ownerguard", named, "oslo")
-			ownTip := gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp\n", "this machine's code")
+			gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp\n", "this machine's code")
 
 			err := tt.push(p)
 
-			if tt.wantReset {
-				if err != nil {
-					t.Fatalf("push error = %v; want none after the reset", err)
-				}
-				if got := bareBranchTip(t, p.hub.CodeBare, p.warpBranch); got != ownTip {
-					t.Errorf("code bare = %q; want this machine's tip %q", got, ownTip)
-				}
-				return
-			}
 			if !fabricengine.IsPushRejected(err) {
 				t.Errorf("push error = %v; want the rejection kept", err)
 			}
@@ -684,6 +768,68 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 		}
 	}
 
+	// A single attempt over an unreachable origin returns the push owed with no transport retry.
+	// The origin is an ext:: command that counts its runs and fails as a refused connection.
+	t.Run("SingleAttemptOverAnUnreachableOriginTriesOnce", func(t *testing.T) {
+		p := newPushPair(t)
+		gitkit.CommitFile(t, p.weftPath, "weft-file.txt", "weft change", "weft change")
+		dir := t.TempDir()
+		runs := filepath.ToSlash(filepath.Join(dir, "runs"))
+		script := filepath.ToSlash(filepath.Join(dir, "origin.sh"))
+		if err := os.WriteFile(script, []byte("echo run >> '"+runs+"'\necho 'connection refused' >&2\nexit 1\n"), 0o644); err != nil {
+			t.Fatalf("write the origin script: %v", err)
+		}
+		gitkit.MustRun(t, p.weftPath, "git", "config", "protocol.ext.allow", "always")
+		gitkit.MustRun(t, p.weftPath, "git", "config", "remote.origin.url", "ext::sh "+script)
+		sleeps := 0
+
+		_, err := fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{BackoffSleep: countingBackoff(&sleeps, nil)},
+			fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded, SingleAttempt: true, OwedUnrecorded: true})
+
+		if !fabricengine.IsPushOwed(err) {
+			t.Fatalf("PushPairAnchored() error = %v; want an owed push", err)
+		}
+		recorded, readErr := os.ReadFile(runs)
+		if readErr != nil {
+			t.Fatalf("read the origin's run count: %v", readErr)
+		}
+		if got := strings.Count(string(recorded), "run"); got != 1 || sleeps != 0 {
+			t.Errorf("transport attempts = %d, backoff sleeps = %d; want one attempt and no sleep", got, sleeps)
+		}
+	})
+
+	// With no ledger entry, a landing commit of the pair's run past origin on its parent holds the records back.
+	// The hold lasts until the run's entry is done, and the code side still goes.
+	t.Run("ALandingCommitPastOriginHoldsTheRecordsUntilTheRunIsDone", func(t *testing.T) {
+		boardkit.InstallReplay(t)
+		p := newPushPair(t)
+		gitkit.Git(t, p.hub.PrimeWorktree(), "push", "-q", "-u", "origin", "HEAD")
+		landOn(t, p.hub.PrimeWorktree(), "pushpair")
+		recordsBefore := fabricengine.BareBranchSHAForTest(t, p.hub.RecordsBare, p.weftBranch)
+		recordsSHA := gitkit.CommitFile(t, p.weftPath, "weft-file.txt", "weft change", "weft change")
+		codeSHA := gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp change", "warp change")
+		push := func() {
+			t.Helper()
+			if _, err := fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded}); err != nil {
+				t.Fatalf("PushPairAnchored() error = %v; want nil", err)
+			}
+		}
+
+		push()
+		if got := fabricengine.BareBranchSHAForTest(t, p.hub.RecordsBare, p.weftBranch); got != recordsBefore {
+			t.Errorf("records bare = %q; want it held at %q", got, recordsBefore)
+		}
+		if got := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch); got != codeSHA {
+			t.Errorf("code bare = %q; want local HEAD %q", got, codeSHA)
+		}
+
+		boardkit.WriteBoard(t, fabriclayout.BoardDir(p.hub.Location.HubPath), `{"id":1,"slug":"pushpair","title":"t","status":"done"}`)
+		push()
+		if got := fabricengine.BareBranchSHAForTest(t, p.hub.RecordsBare, p.weftBranch); got != recordsSHA {
+			t.Errorf("records bare with the run done = %q; want local HEAD %q", got, recordsSHA)
+		}
+	})
+
 	// A prime that cannot be resolved fails the call with nothing pushed.
 	t.Run("UnresolvablePrimePushesNothing", func(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -701,6 +847,70 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 			t.Errorf("records bare holds %q; want nothing pushed", recordsBranch)
 		}
 	})
+}
+
+// TestRejectedCodePush_RefusesACommitThisMachineDidNotMake asserts which commits a rejected code push resets past.
+// It never resets origin past a commit another clone made.
+// It still resets past a commit only the local branch's reflog holds.
+func TestRejectedCodePush_RefusesACommitThisMachineDidNotMake(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	noSleep := func(time.Duration) {}
+	tests := []struct {
+		name string
+		// madeHere commits and pushes the extra commit from the pair itself, then resets the branch off it.
+		madeHere bool
+	}{
+		{"ACommitFromAnotherCloneIsRefusedByName", false},
+		{"ACommitOnlyTheReflogHoldsIsResetPast", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			p := newPairFixture(t, "madehere")
+			earlier := bareBranchTip(t, p.hub.CodeBare, p.warpBranch)
+			var extra string
+			if tt.madeHere {
+				extra = gitkit.CommitFile(t, p.warpPath, "extra.txt", "extra\n", "made on this machine")
+				gitkit.MustRun(t, p.warpPath, "git", "push")
+				gitkit.Git(t, p.warpPath, "reset", "--keep", earlier)
+			} else {
+				clone := cloneBareForTest(t, p.hub.CodeBare, p.warpBranch)
+				extra = gitkit.CommitFile(t, clone, "extra.txt", "extra\n", "made on another machine")
+				gitkit.MustRun(t, clone, "git", "push")
+			}
+			plantRunTransition(t, p, "madehere", earlier, "oslo")
+			ownTip := gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp\n", "this machine's code")
+
+			_, err := fabricengine.PushPairAnchored(p.location, p.fake.options(noSleep), fabriclayout.PairPush{LockWait: fabriclayout.LockWaitUnbounded})
+
+			if tt.madeHere {
+				if err != nil {
+					t.Fatalf("PushPairAnchored() = %v; want nil after the reset", err)
+				}
+				if got := bareBranchTip(t, p.hub.CodeBare, p.warpBranch); got != ownTip {
+					t.Errorf("code bare = %q; want %q", got, ownTip)
+				}
+				return
+			}
+			var failed *fabricengine.PushFailedError
+			if !errors.As(err, &failed) || failed.Record.Class != fabriclayout.PushFailureNotFastForward {
+				t.Fatalf("PushPairAnchored() = %v; want a not_fast_forward *PushFailedError", err)
+			}
+			if !slices.Equal(failed.Record.Commits, []string{extra}) {
+				t.Errorf("record commits = %q; want %q", failed.Record.Commits, extra)
+			}
+			for _, want := range []string{extra, "`git merge origin/" + p.warpBranch + "`", "`lym fabric push`"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error = %q; want it to name %q", err, want)
+				}
+			}
+			if got := bareBranchTip(t, p.hub.CodeBare, p.warpBranch); got != extra {
+				t.Errorf("code bare = %q; want it left at %q", got, extra)
+			}
+		})
+	}
 }
 
 // TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks covers the push lock PushPairAnchored takes:

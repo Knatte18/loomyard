@@ -51,6 +51,16 @@
 // A failed delete returns an error wrapping fabricengine.ErrStrayPathKept;
 // a delete that removed a directory sets StrayPathDeleted on the result.
 //
+// # Standing landings
+//
+// Every removal refuses with ErrLandingStands while LandingStands reads true for the pair:
+// a landing of its run is still owed, the pair carries other runs' landings,
+// or the parent's branch has an unrecorded landing commit of the run that origin lacks.
+// Teardown.Run refuses before the session end, and RemovePair refuses before its snapshot.
+// EndForCancel refuses before it ends any process.
+// A refusal touches nothing.
+// A successful RemovePair removes the pair's push ledger entry, with the records commit it held back.
+//
 // # Pull request
 //
 // A pair torn down unlanded leaves no open pull request that looks like pending work.
@@ -167,11 +177,14 @@
 //
 // PushRun is the push the background pusher, the teardown and the catch-up run.
 // Every such push outside fabric goes through it.
+// A push of a run's pair stops short of the records commit a landing holds.
+// A push of a beam holding landings stops its code side below the oldest one, unless its caller sets the ceiling.
 // A rejected records push that meets another machine's takeover entry for the run gets a hand-over, not a replay.
 // A rejected push of the prime's records hands over every batten run taken over on origin, then pushes the rest.
 // HandOver ends the processes this machine runs for the run and archives the local tips.
 // It then moves the owed code tip and writes the hand-over mark.
 // Unless the caller runs inside the pair, it removes the local pair; inside the pair the parent's dobby removes it.
+// While the run's landing entry stands, it keeps the pair until that landing is dropped.
 // Its error wraps fabricengine.ErrHandedOver and names the new owner, so the caller stops.
 // A failed step returns its own error before the mark is written, and the next rejected push hands the run over again.
 //

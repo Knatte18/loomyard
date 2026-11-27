@@ -168,6 +168,7 @@ func TestDetachedChild(t *testing.T) {
 	}{
 		{"PauseSlugSet", []string{fabriclayout.PauseSlugFlag}, []string{"--pause-slug", "child"}, tendercli.DetachedChild{Deferrable: true}},
 		{"DeferrableSet", []string{boardengine.DeferrableSyncFlag}, []string{"--deferrable"}, tendercli.DetachedChild{Deferrable: true, HubScope: true}},
+		{"BoardPusherSet", []string{fabriclayout.PusherBoardFlag}, []string{"--board"}, tendercli.DetachedChild{Deferrable: true, HubScope: true}},
 		{"ParentLockedBesidePauseSlug", []string{fabriclayout.PauseSlugFlag, fabriclayout.ParentLockedFlag}, []string{"--pause-slug=child", "--parent-locked"}, tendercli.DetachedChild{Deferrable: true, ParentLocked: true}},
 		{"DeclaredButUnset", []string{fabriclayout.PauseSlugFlag, boardengine.DeferrableSyncFlag, fabriclayout.ParentLockedFlag}, nil, tendercli.DetachedChild{}},
 		{"NotDeclared", nil, nil, tendercli.DetachedChild{}},

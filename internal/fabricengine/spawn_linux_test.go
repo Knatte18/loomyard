@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -19,7 +20,7 @@ import (
 )
 
 // TestStartDetachedPush_RegistersTheChild covers the owner record of a started push child.
-// A pair request registers under its teardown slug, and a prime request registers under the hub owner.
+// A pair's and the prime's request both register under the hub owner with the push role, running the pusher's line.
 // A record directory that cannot be written logs a warning and still starts the child.
 // It is not parallel: it captures the process-wide logger.
 func TestStartDetachedPush_RegistersTheChild(t *testing.T) {
@@ -30,14 +31,22 @@ func TestStartDetachedPush_RegistersTheChild(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		req       fabriclayout.PushSpawn
-		wantOwner string
-		blocked   bool
+		name     string
+		req      fabriclayout.PushSpawn
+		wantArgs []string
+		blocked  bool
 	}{
-		{name: "PairPushOwnsUnderItsSlug", req: fabriclayout.PushSpawn{WeftPath: "/weft", PauseSlug: "task", TeardownSlug: "task"}, wantOwner: "task"},
-		{name: "PrimePushOwnsUnderTheHubOwner", req: fabriclayout.PushSpawn{WeftPath: "/weft", PauseSlug: "gate"}, wantOwner: runproc.HubOwner},
-		{name: "UnwritableRecordDirStillStartsTheChild", req: fabriclayout.PushSpawn{WeftPath: "/weft", TeardownSlug: "task"}, blocked: true},
+		{
+			name:     "PairPushOwnsUnderTheHubOwner",
+			req:      fabriclayout.PushSpawn{WarpPath: "/hub/task", WeftPath: "/hub/task-weft"},
+			wantArgs: []string{"loom", "pusher", "--worktree", "/hub/task", "--slug", "task"},
+		},
+		{
+			name:     "PrimePushOwnsUnderTheHubOwner",
+			req:      fabriclayout.PushSpawn{WeftPath: "/hub/prime-weft"},
+			wantArgs: []string{"loom", "pusher", "--worktree", "/hub/prime"},
+		},
+		{name: "UnwritableRecordDirStillStartsTheChild", req: fabriclayout.PushSpawn{WeftPath: "/hub/prime-weft"}, blocked: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -73,12 +82,12 @@ func TestStartDetachedPush_RegistersTheChild(t *testing.T) {
 			if err := startDetachedPush(truePath, req); err != nil {
 				t.Fatalf("startDetachedPush() = %v; want nil", err)
 			}
-			records, err := filepath.Glob(filepath.Join(fabriclayout.RunProcDir(hub), tt.wantOwner, "*.json"))
+			records, err := filepath.Glob(filepath.Join(fabriclayout.RunProcDir(hub), runproc.HubOwner, "*.json"))
 			if err != nil {
 				t.Fatal(err)
 			}
 			if len(records) != 1 {
-				t.Fatalf("owner %q holds %d record files; want 1", tt.wantOwner, len(records))
+				t.Fatalf("the hub owner holds %d record files; want 1", len(records))
 			}
 			data, err := os.ReadFile(records[0])
 			if err != nil {
@@ -94,6 +103,9 @@ func TestStartDetachedPush_RegistersTheChild(t *testing.T) {
 			})
 			if rec.Role != runproc.RolePush || rec.PID <= 0 || rec.PGID != rec.PID {
 				t.Errorf("record = %+v; want role %q and a pid that leads its group", rec, runproc.RolePush)
+			}
+			if !slices.Equal(rec.Argv, tt.wantArgs) {
+				t.Errorf("record argv = %q; want %q", rec.Argv, tt.wantArgs)
 			}
 		})
 	}

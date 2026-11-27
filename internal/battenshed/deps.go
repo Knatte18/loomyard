@@ -356,14 +356,6 @@ type SeedChildDeps struct {
 	MarkWatched func(ctx context.Context) (held bool, err error)
 }
 
-// ErrPushEntryEnded is the sentinel a teardown push wraps when origin ended the pair's records branch.
-// Nothing is left to push then, and the teardown removes the pair without reading whether origin holds its tips.
-var ErrPushEntryEnded = errors.New("battenshed: origin ended the pair's entry, so nothing is left to push")
-
-// ErrPushHandedOver is the sentinel a teardown push wraps when this machine already handed the run over.
-// The hand-over removed the pair, and the run belongs to the other machine.
-var ErrPushHandedOver = errors.New("battenshed: the run was handed over to another machine")
-
 // TeardownDeps carries the closures a worktree teardown calls in sequence:
 // Shutdown strictly before Push, Push before Level, and Level before Remove.
 // They are separate fields so that Remove never runs when Shutdown, Push or Level fails,
@@ -374,14 +366,12 @@ type TeardownDeps struct {
 	// Shutdown ends the loom session's own driving process, if one is still attached.
 	// It returns the name of any session it had to abandon rather than cleanly end.
 	Shutdown func(ctx context.Context) (abandonedSession string, err error)
-	// Push brings the pair's commits to origin and returns once they landed, with no prime lock held.
-	// An error wrapping ErrPushEntryEnded means origin ended the pair's entry.
-	// One wrapping ErrPushHandedOver means the run was handed over.
-	// Any other error, from the push or from a step the closure runs ahead of it, keeps the pair.
+	// Push asks for the pair's commits to be brought to origin, with no prime lock held and without waiting for them.
+	// An error, from the push or from a step the closure runs ahead of it, keeps the pair.
 	// A nil Push pushes nothing.
 	Push func(ctx context.Context) error
-	// Level reports whether origin's tracking refs hold the pair's tips.
-	// A false read means origin lacks a tip, so the teardown pushes again, a bounded number of times.
+	// Level reports whether the pair may be removed: origin holds its tips and no landing of it is owed.
+	// A false read leaves the pair standing and ends the row.
 	// A nil Level reads level.
 	Level func() (bool, error)
 	// Remove deletes the task worktree pair, and runs only after Shutdown, Push and Level succeeded.

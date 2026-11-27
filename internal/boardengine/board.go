@@ -18,7 +18,7 @@ import (
 
 // Board is the high-level facade over a board directory.
 // Every mutating method acquires an exclusive file lock, mutates the store, and renders output files;
-// the remote backup (commit + push) is detached.
+// the remote backup (commit + push) is left to the board's background pusher.
 type Board struct {
 	boardPath string
 	out       Outputs
@@ -83,7 +83,7 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 // it refuses a net change to a run-held entry's scope and a run agent's new task.
 // It saves board.json and runs afterSave when non-nil.
 // It then moves or removes the decision record files of the entries the write renamed or removed;
-// it renders the outputs and spawns a detached sync.
+// it renders the outputs and starts the board's background pusher.
 // A fn returning a RenameResult has its dates and run lock judged against the loaded entries with that rename applied.
 // afterSave runs under the lock after the save and before the render.
 // When afterSave or the render fails, a non-nil rollback runs before the lock is released,
@@ -356,8 +356,7 @@ func (b *Board) Rerender() error {
 }
 
 // Sync backs up pending local changes to the remote (commit and push), looping until nothing is left.
-// The detached `lym board sync` process runs it.
-// It can also be called directly to force a synchronous backup.
+// It forces a synchronous backup.
 func (b *Board) Sync() error {
 	return Sync(b.boardPath, b.skipGit, b.skipPush)
 }

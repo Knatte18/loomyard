@@ -210,14 +210,11 @@ dialog on screen or an open rewind picker; those are named with the reason. A
 session another live entry still covers moves to that entry with no line. The
 orchestrator's line comes from its own watcher.
 
-A lift also spawns what a pause deferred: the detached push of each pair the
-lifted entries covered whose push a pause deferred, such as an anchor change's,
-the prime's records push and the board sync. A lift spawns no push for a run's
-transition commits: the dobby's tick restarts the pair's pusher once no pause
-covers it. A pair a live entry still
-covers, one another machine owns and one that is gone is not pushed. The
-report's "spawned" lists the spawns and "spawn_failed" the ones that failed;
-neither fails the resume.
+A lift also spawns what a pause held back: the background pusher of each pair
+the lifted entries covered that holds commits origin lacks, the prime's records
+push and the board sync. A pair a live entry still covers, one another machine
+owns and one that is gone is not pushed. The report's "spawned" lists the spawns
+and "spawn_failed" the ones that failed; neither fails the resume.
 
 Example:
   lym tender resume

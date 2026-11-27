@@ -72,6 +72,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			{"set-option", "-gu", "@lym_slack_toggle_command"},
 			{"set-option", "-gu", "@lym_slack_state_command"},
 			{"set-option", "-gu", "@lym_rc_click_command"},
+			{"set-option", "-gu", "@lym_sync_status_command"},
 			// The test binary carries no VCS stamp, so the bindings' build stamp is unset.
 			{"set-option", "-gu", "@lym_bindings_build"},
 		}
@@ -99,6 +100,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			{"set-option", "-gu", "@lym_slack_toggle_command"},
 			{"set-option", "-gu", "@lym_slack_state_command"},
 			{"set-option", "-gu", "@lym_rc_click_command"},
+			{"set-option", "-gu", "@lym_sync_status_command"},
 			{"set-option", "-gu", "@lym_bindings_build"},
 		}
 		if len(calls) < len(wantTail)+len(wantLast) {
@@ -254,8 +256,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			wantCalls int
 			wantWarn  string
 		}{
-			{"Pair", false, func(call int, _ []string) bool { return call == 1 }, 15, ""},
-			{"PrimeMark", true, func(_ int, args []string) bool { return slices.Contains(args, primeSessionOption) }, 16, primeSessionOption},
+			{"Pair", false, func(call int, _ []string) bool { return call == 1 }, 16, ""},
+			{"PrimeMark", true, func(_ int, args []string) bool { return slices.Contains(args, primeSessionOption) }, 17, primeSessionOption},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -309,8 +311,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 
 		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 
-		if got := fake.Count("set-option"); got != 15 {
-			t.Errorf("set-option calls = %d, want 15 (every pin still attempted)", got)
+		if got := fake.Count("set-option"); got != 16 {
+			t.Errorf("set-option calls = %d, want 16 (every pin still attempted)", got)
 		}
 		if got, want := fake.Count("bind-key"), bindKeyArgvCount(); got != want {
 			t.Errorf("bind-key calls = %d, want all %d still issued", got, want)

@@ -45,8 +45,11 @@
 // It holds the lock until every way out of its locked pass, and it re-reads the lock record before each landing attempt.
 // A record that does not name the run, or an unreadable one, is Stuck with Halt.
 // Finalize merges the parent branch into the task worktree first and then merges the task branch into the parent pair.
-// It never pushes or rewrites a parent that is ahead of or diverged from its upstream.
+// It lands on a parent ahead of its upstream by landing tips whose push is still owed, and on no other ahead parent.
+// It never rewrites a parent, and refuses one diverged from its upstream.
+// It pushes nothing: it records the landing, and the parent branch's pusher pushes it and marks the board entry done.
 // It lands only on the machine that owns the run and its parent; any other owner halts behind OwnerHaltPrefix.
+// An origin it cannot reach to judge that is a transient error.
 // A parent that already holds the task's work makes Finalize idempotent:
 // it takes the already-landed path rather than merging again.
 // The parent-side merge squashes by default, except a landing the resolver marks TrueMerge.

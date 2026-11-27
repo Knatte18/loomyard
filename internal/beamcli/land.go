@@ -48,6 +48,7 @@ import (
 // PullRequestSide reads the beam pair's origin facts: its branch and its parent branch.
 // It uses the pull request API when the origin allows one.
 // PushBeam pushes the beam branch and returns the head it pushed.
+// It refuses while the beam holds landings its parent push has not settled.
 // BeamHasCommits reports whether the beam holds a commit its parent branch lacks.
 // Landing reads the beam's landing record, found false when it has none.
 // WriteLanding updates it and commits the landing directory.

@@ -23,11 +23,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hibernatecli"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -37,7 +39,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/runpusher"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/slackengine"
@@ -163,8 +167,95 @@ func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
 	}
 }
 
+// TestHubDobbyDeps_PushSummaryWaitsReadBattenAndPairRecords pins the wired push summary's read of waiting runs.
+// A wait record counts only while a driver holds its run's lock, in the prime and in the pair alike.
+func TestHubDobbyDeps_PushSummaryWaitsReadBattenAndPairRecords(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPair(t, h, "task1")
+	prime := h.Location
+	seedBattenRun(t, prime, "task1")
+	primeGeom, err := hubgeom.DobbyGeometry(prime, prime.WorktreeName)
+	if err != nil {
+		t.Fatalf("DobbyGeometry(prime) = %v; want nil", err)
+	}
+	deps, err := hubDobbyDeps(prime, primeGeom)
+	if err != nil {
+		t.Fatalf("hubDobbyDeps(prime) = %v; want nil", err)
+	}
+	pair, err := pairLocation(prime, "task1")
+	if err != nil {
+		t.Fatalf("pairLocation(task1) = %v; want nil", err)
+	}
+
+	runs := []struct {
+		location *lymcwd.Location
+		id       string
+		producer string
+	}{{prime, "task1", "Land"}, {pair, shedrun.SelfRunID, "Finalize"}}
+	for _, run := range runs {
+		record := shedrun.DriveWaitRecord(run.location, run.id)
+		if err := os.MkdirAll(filepath.Dir(record), 0o755); err != nil {
+			t.Fatalf("mkdir the scratch directory: %v", err)
+		}
+		if err := state.WriteJSON(record, record+".lock", sheddriver.DriveWait{Producer: run.producer, Class: "git-transport"}); err != nil {
+			t.Fatalf("write the wait record: %v", err)
+		}
+		held, err := lock.AcquireWriteLock(shedrun.DriverLock(run.location, run.id))
+		if err != nil {
+			t.Fatalf("hold the driver lock: %v", err)
+		}
+		waits, err := deps.PushSummary.Waits()
+		if err != nil || len(waits) != 1 || waits[0].Slug != "task1" || waits[0].WaitProducer != run.producer {
+			t.Errorf("Waits() with the driver lock held at %s = %+v, %v; want task1 at %s alone", run.producer, waits, err, run.producer)
+		}
+		if err := held.Release(); err != nil {
+			t.Fatalf("release the driver lock: %v", err)
+		}
+		if waits, err := deps.PushSummary.Waits(); err != nil || len(waits) != 0 {
+			t.Errorf("Waits() with the driver lock free at %s = %+v, %v; want none", run.producer, waits, err)
+		}
+	}
+}
+
+// TestHubDobbyDeps_PushSummaryRefusedReadsThePrimeCodeRecord pins the wired push summary's refusal read:
+// the prime's code-branch record refuses the landing target alone, until it is cleared.
+func TestHubDobbyDeps_PushSummaryRefusedReadsThePrimeCodeRecord(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	prime := h.Location
+	refused := hubPushSummary(prime).Refused
+	records := pushledger.RecordsKey(fabricengine.RecordsWorktree(prime))
+	requireRefused := func(key pushledger.Key, entry pushledger.Entry, want string) {
+		t.Helper()
+		wayForward, stands, err := refused(key, entry)
+		if err != nil || stands != (want != "") || wayForward != want {
+			t.Errorf("Refused(%s) = %q, %v, %v; want %q", key, wayForward, stands, err, want)
+		}
+	}
+	record := fabriclayout.FailedPush{
+		Repo: fabriclayout.RepoCode, RepoPath: prime.WorktreePath(), Branch: gitkit.CurrentBranch(t, prime.WorktreePath()),
+		Prime: true, Class: fabriclayout.PushFailureHeldBack, WayForward: "run the recorded step",
+	}
+	if err := fabricengine.RecordPushFailure(h.Path, record, time.Now()); err != nil {
+		t.Fatalf("RecordPushFailure() = %v", err)
+	}
+
+	requireRefused(pushledger.LandingKey, pushledger.Entry{}, "run the recorded step")
+	requireRefused(records, pushledger.Entry{Worktree: prime.WorktreePath()}, "")
+
+	if err := fabricengine.ClearPrimeCodeRefusal(prime); err != nil {
+		t.Fatalf("ClearPrimeCodeRefusal() = %v", err)
+	}
+	requireRefused(pushledger.LandingKey, pushledger.Entry{}, "")
+}
+
 // TestHubDobbyDeps_PrimeTickStartsThePrimesPusherAndABeamsTickNone pins the pushers a dobby asks for.
-// The prime's tick asks for the prime's pusher, and its run read asks for each owned pair's.
+// The prime's tick asks for the pushers of the hub's own targets, and its run read asks for each owned pair's.
 // A beam's dobby has no tick.
 func TestHubDobbyDeps_PrimeTickStartsThePrimesPusherAndABeamsTickNone(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -190,8 +281,8 @@ func TestHubDobbyDeps_PrimeTickStartsThePrimesPusherAndABeamsTickNone(t *testing
 	if _, err := primeDeps.Tick(t.Context(), dobbyengine.TickInput{}); err != nil {
 		t.Fatalf("prime Tick() = %v; want nil", err)
 	}
-	if want := []runpusher.Target{{Location: prime}}; !slices.Equal(started, want) {
-		t.Errorf("pushers asked for by the prime's tick = %+v; want the prime's alone, %+v", started, want)
+	if want := []runpusher.Target{{Location: prime}, runpusher.BoardTarget(prime), runpusher.LandingTarget(prime)}; !slices.Equal(started, want) {
+		t.Errorf("pushers asked for by the prime's tick = %+v; want the hub's own, %+v", started, want)
 	}
 
 	// The run read asks for the pusher of each owned pair that stands here.

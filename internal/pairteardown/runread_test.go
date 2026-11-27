@@ -228,7 +228,21 @@ func TestReadRun(t *testing.T) {
 			wantCalls: []string{"child-here", "restepped", "parent-origin"},
 		},
 		{
-			name: "BattenAtLandIsPastTheParentMergeWithNoParentRead",
+			name: "FinalizeRunningWithTheWorkOnTheLocalParentAloneIsPastTheMerge",
+			fakes: runFakes{
+				batten: statusAt(shedengine.StateRunning, runShedRow), battenFound: true,
+				pairHere: true, childHere: statusAt(shedengine.StateRunning, loomshed.NameFinalize), childHereFound: true,
+				localParentHolds: true,
+			},
+			want: runfsm.Records{
+				Batten: statusAt(shedengine.StateRunning, runShedRow), BattenFound: true, BattenStarted: true,
+				Child: statusAt(shedengine.StateRunning, loomshed.NameFinalize), ChildFound: true, ChildLanding: true,
+			},
+			wantIn:    runfsm.Inputs{PastParentMerge: true},
+			wantCalls: []string{"child-here", "parent-origin", "parent-local"},
+		},
+		{
+			name: "BattenAtLandWithThePairHereAndNeitherParentHoldingTheWorkIsNotPastTheMerge",
 			fakes: runFakes{
 				batten: statusAt(shedengine.StateRunning, landRow), battenFound: true,
 				pairHere: true, childHere: statusAt(shedengine.StateRunning, loomshed.NameFinalize), childHereFound: true,
@@ -237,8 +251,18 @@ func TestReadRun(t *testing.T) {
 				Batten: statusAt(shedengine.StateRunning, landRow), BattenFound: true, BattenStarted: true,
 				Child: statusAt(shedengine.StateRunning, loomshed.NameFinalize), ChildFound: true, ChildLanding: true,
 			},
+			wantCalls: []string{"child-here", "parent-origin", "parent-local"},
+		},
+		{
+			name: "BattenAtLandWithThePairGoneIsPastTheMergeWithNoParentRead",
+			fakes: runFakes{
+				batten: statusAt(shedengine.StateRunning, landRow), battenFound: true,
+			},
+			want: runfsm.Records{
+				Batten: statusAt(shedengine.StateRunning, landRow), BattenFound: true, BattenStarted: true, ChildLanding: true,
+			},
 			wantIn:    runfsm.Inputs{PastParentMerge: true},
-			wantCalls: []string{"child-here"},
+			wantCalls: []string{"child-origin"},
 		},
 		{
 			name: "BattenAtWorktreeTeardownIsPastTheParentMergeWithNoChild",

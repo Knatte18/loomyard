@@ -106,6 +106,7 @@
 //
 // `update` refuses a beam with no pull request recorded.
 // Otherwise it pushes the branch and sets the title and body from the description.
+// `open` and `update` refuse while the beam carries a landing commit its parent push has not settled.
 //
 // `status <slug>` is read-only and answers at any row up to Beam-Down.
 //
@@ -226,7 +227,9 @@
 // `hubDobbyDeps` fills every seam of the engine from told paths.
 // The dobby's working directory is the hub root and never a worktree.
 // Only the prime's dobby carries the hub's hibernate request and Slack relay.
-// It also restarts the prime's pusher at the start of its `Tick`, the one hub-wide pusher restart.
+// It also restarts the hub's pushers at the start of its `Tick`, the one hub-wide pusher restart:
+// the prime's, the board's, the landing target's and that of each beam pair with parent work.
+// A parent target whose push is refused is settled instead.
 // Only a beam's dobby is given the landing step, the start hold and the member flagging.
 // Bound: a teardown in flight when the dobby stops ends half done;
 // the next attempt or `lym cleanup --apply` finishes it.

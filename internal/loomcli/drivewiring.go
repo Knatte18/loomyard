@@ -178,6 +178,14 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 	if err != nil {
 		return sheddriver.Deps{}, fmt.Errorf("loom: drive: resolve the lym executable: %w", err)
 	}
+	fabricConfig, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(c.location))
+	if err != nil {
+		return sheddriver.Deps{}, err
+	}
+	timing, timingWarnings := fabricConfig.PushTiming()
+	for _, warning := range timingWarnings {
+		logger.Warn("loom: drive: " + warning)
+	}
 
 	location := c.location
 	runID := shedrun.ResolveRunID(location, c.runID)
@@ -246,8 +254,10 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 			}
 			return path, os.WriteFile(path, raw, 0o644)
 		},
-		SettlePath:  settlePath,
-		FrictionDir: loomengine.LoomFrictionDir(location),
+		SettlePath:         settlePath,
+		NetworkWaitCeiling: timing.Ceiling,
+		WaitRecordPath:     shedrun.DriveWaitRecord(location, c.runID),
+		FrictionDir:        loomengine.LoomFrictionDir(location),
 		Pause: func(now time.Time) (pauserecord.Coverage, error) {
 			geometry, err := pauseGeometry()
 			if err != nil {

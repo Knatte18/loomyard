@@ -76,11 +76,11 @@ func resolved(alreadyUpToDate bool) mergeresolve.Result {
 	return mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved, AlreadyUpToDate: alreadyUpToDate}
 }
 
-// requireNotLanded fails the test when the parent-side merge, the push or the board update ran.
+// requireNotLanded fails the test when the parent-side merge or the board update ran.
 func (fx *finalizeVerifyFixture) requireNotLanded(t *testing.T) {
 	t.Helper()
-	if len(fx.merger.calls) != 0 || len(fx.merger.pushCalls) != 0 {
-		t.Errorf("merge calls = %d, push calls = %d; want none after a halted gate", len(fx.merger.calls), len(fx.merger.pushCalls))
+	if len(fx.merger.calls) != 0 {
+		t.Errorf("merge calls = %d; want none after a halted gate", len(fx.merger.calls))
 	}
 	if fx.markedDone != 0 {
 		t.Errorf("MarkTaskDone called %d time(s); want never", fx.markedDone)
@@ -88,7 +88,7 @@ func (fx *finalizeVerifyFixture) requireNotLanded(t *testing.T) {
 }
 
 // TestFinalizeVerify_Lands pins that a passing verify, or one the verified-tree record skips, lets the landing proceed:
-// the merge and the push run once, the verify is asked once at site Finalize, and the three clean-tree checks are made.
+// the merge runs once, the verify is asked once at site Finalize, and the three clean-tree checks are made.
 //
 //testtiming:keep pins the verify call count, the Finalize site label and the clean-tree check count on the landing path, which its covering tests do not assert
 func TestFinalizeVerify_Lands(t *testing.T) {
@@ -106,8 +106,8 @@ func TestFinalizeVerify_Lands(t *testing.T) {
 			fx := newFinalizeVerifyFixture(t, &recordingResolver{result: resolved(tt.alreadyUpToDate)})
 			fx.gate.fake.result = tt.result
 			shedfake.RequireOutcome(t, fx.fz, shedengine.Done)
-			if len(fx.merger.calls) != 1 || len(fx.merger.pushCalls) != 1 {
-				t.Errorf("merge calls = %d, push calls = %d; want 1 each", len(fx.merger.calls), len(fx.merger.pushCalls))
+			if len(fx.merger.calls) != 1 {
+				t.Errorf("merge calls = %d; want 1", len(fx.merger.calls))
 			}
 			if fx.gate.fake.verifyCalls != 1 || fx.gate.fake.site.Label != "Finalize" {
 				t.Errorf("verify calls = %d, site = %+v; want 1 call at site Finalize", fx.gate.fake.verifyCalls, fx.gate.fake.site)
@@ -142,8 +142,8 @@ func TestFinalizeVerify_Fail(t *testing.T) {
 	if err != nil || !found || failure.Kind != "finalize" || failure.LogPath != log {
 		t.Errorf("landing failure record = %+v, %v, %v; want kind finalize naming %s", failure, found, err, log)
 	}
-	if len(fx.merger.calls) != 0 || len(fx.merger.pushCalls) != 0 {
-		t.Errorf("merge calls = %d, push calls = %d; want none after a halted gate", len(fx.merger.calls), len(fx.merger.pushCalls))
+	if len(fx.merger.calls) != 0 {
+		t.Errorf("merge calls = %d; want none after a halted gate", len(fx.merger.calls))
 	}
 }
 
@@ -163,8 +163,8 @@ func TestFinalizeVerify_RunnerCrashHaltsWithoutFixer(t *testing.T) {
 	if _, found, err := verifytree.ReadLandingFailure(fx.gate.paths); err != nil || found {
 		t.Errorf("ReadLandingFailure() = (_, %v, %v); want no record for a runner crash", found, err)
 	}
-	if len(fx.merger.calls) != 0 || len(fx.merger.pushCalls) != 0 {
-		t.Errorf("merge calls = %d, push calls = %d; want none after a halted gate", len(fx.merger.calls), len(fx.merger.pushCalls))
+	if len(fx.merger.calls) != 0 {
+		t.Errorf("merge calls = %d; want none after a halted gate", len(fx.merger.calls))
 	}
 }
 
@@ -250,8 +250,8 @@ func TestFinalizeVerify_RetryMergeInIsBracketedAgain(t *testing.T) {
 
 			reason := requireFinalizeReason(t, shedfake.RequireOutcome(t, fx.fz, shedengine.Stuck))
 			tt.check(t, fx, reason)
-			if res.calls != 2 || len(fx.merger.calls) != 1 || len(fx.merger.pushCalls) != 0 || fx.markedDone != 0 {
-				t.Errorf("resolver calls = %d, merge calls = %d, push calls = %d, marked done = %d; want 2, 1, 0, 0", res.calls, len(fx.merger.calls), len(fx.merger.pushCalls), fx.markedDone)
+			if res.calls != 2 || len(fx.merger.calls) != 1 || fx.markedDone != 0 {
+				t.Errorf("resolver calls = %d, merge calls = %d, marked done = %d; want 2, 1, 0", res.calls, len(fx.merger.calls), fx.markedDone)
 			}
 		})
 	}

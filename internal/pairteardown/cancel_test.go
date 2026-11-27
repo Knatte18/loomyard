@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
+	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
@@ -53,7 +54,15 @@ func TestEndForCancel(t *testing.T) {
 		wantAnyError          bool
 		wantErrContains       []string
 		wantResult            CancelResult
+		// landing makes a landing of the run stand in the push ledger.
+		landing bool
 	}{
+		{
+			name:            "StandingLandingRefusesBeforeAnyProcessIsEnded",
+			landing:         true,
+			wantErrIs:       ErrLandingStands,
+			wantErrContains: []string{"wait for the pusher", refusalTail},
+		},
 		{
 			name:       "PresentPairKeptWithdrawsTheTeardownMark",
 			keep:       true,
@@ -163,6 +172,9 @@ func TestEndForCancel(t *testing.T) {
 				killCaptureErr: tt.killCaptureErr,
 			}
 			td := f.teardown()
+			if tt.landing {
+				useLedger(t, td, "", pushledger.Entry{Landings: []pushledger.Landing{{Run: "slug"}}})
+			}
 			request := CancelRequest{Slug: "slug", Keep: tt.keep}
 			if len(tt.hooks) > 0 {
 				hooks := tt.hooks

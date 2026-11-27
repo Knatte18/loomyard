@@ -17,7 +17,7 @@ import (
 )
 
 // TestConfigTemplate covers the generated template, resolved against an empty environment:
-// it is valid YAML carrying the branch_prefix, pathspec, warp_exclude and secret_paths keys;
+// it is valid YAML carrying the branch_prefix, pathspec, warp_exclude, secret_paths and push timing keys;
 // branch_prefix and secret_paths resolve to an empty string;
 // pathspec resolves to an empty set, whatever the environment.
 // _lym and .lym are structural and injected in code, so the key never supplies them;
@@ -37,7 +37,7 @@ func TestConfigTemplate(t *testing.T) {
 	if err := yaml.Unmarshal([]byte(got), &template); err != nil {
 		t.Fatalf("ConfigTemplate() is not valid YAML: %v", err)
 	}
-	for _, key := range []string{"branch_prefix", "pathspec", "warp_exclude", "secret_paths"} {
+	for _, key := range []string{"branch_prefix", "pathspec", "warp_exclude", "secret_paths", "push_interval_s", "push_ceiling_s", "push_notice_after_min"} {
 		if _, ok := template[key]; !ok {
 			t.Errorf("ConfigTemplate() missing expected key: %s", key)
 		}

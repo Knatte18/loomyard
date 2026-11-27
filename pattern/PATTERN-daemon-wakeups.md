@@ -96,8 +96,11 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
   `post --wait-reply`, `inject --wait`, `read --wait` and `hook-wait` wait on their connection;
   they reconnect from one second;
   the client's connect wait after a spawn also ends when the daemon it started exits, except a lost start race,
-- the pusher's owed retry in `internal/runpusher`:
-  it waits from one second, doubling to a minute while the push stays owed,
+- the pusher's interval wait in `internal/runpusher/run.go`:
+  it waits from `fabric.push_interval_s`, doubling to `fabric.push_ceiling_s` while the push stays owed,
+  and an `internal/fswatch` event on a push-now mark wakes it, never within a second of the wait's start,
+- the Go driver's network wait in `internal/sheddriver/drive.go`:
+  it waits from 15 seconds, doubling to `fabric.push_ceiling_s` while the stop stays a network failure,
 - the Slack relay's loops:
   the outbound read in `internal/slackengine/relay.go`, with the binary check and the retried work after it, from five seconds doubling to sixty;
   the bridge poll in `internal/slackengine/bridgepoll.go`, from five seconds doubling to sixty and never within a second of the previous round's start;

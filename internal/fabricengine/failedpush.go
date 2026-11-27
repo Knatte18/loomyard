@@ -248,6 +248,7 @@ func lymVerbDir(worktreeRoot string) string {
 // pushStep names the push that retries f, with the directory it runs in.
 // A bolt record is pushed by the board sync, since the pair push never reaches Bolt.
 // A prime's code branch is pushed by a plain git push, since the prime's pair push is records-only.
+// Every other code branch, a beam parent's included, is pushed by the pair push.
 func pushStep(f fabriclayout.FailedPush) string {
 	switch {
 	case f.Repo == fabriclayout.RepoBolt:
@@ -268,12 +269,21 @@ func FailedPushWayForward(f fabriclayout.FailedPush) string {
 		return fmt.Sprintf("fix this machine's permission to push %s on origin, then run %s", f.Branch, pushStep(f))
 	case fabriclayout.PushFailureNotFastForward:
 		if f.Repo == fabriclayout.RepoCode {
-			return codeDivergedWayForward(f.RepoPath, f.Branch, f.Prime)
+			// A refused landing push carries its own line, which names the landing commits too.
+			if f.WayForward != "" {
+				return f.WayForward
+			}
+			// Only a refused reset records origin's head on a diverged code branch; its commits are then origin's.
+			var unmade []string
+			if f.OriginHead != "" {
+				unmade = f.Commits
+			}
+			return codeDivergedWayForward(f.RepoPath, f.Branch, f.Prime, unmade...)
 		}
 		return recordsConflictWayForward(f.RepoPath, f.Branch, f.Paths, f.Commits, pushStep(f))
 	case fabriclayout.PushFailureRewound:
 		return rewoundWayForward(f.RepoPath, f.Branch, f.OriginHead, f.Commits)
-	case fabriclayout.PushFailureAnchorChange:
+	case fabriclayout.PushFailureAnchorChange, fabriclayout.PushFailureHeldBack:
 		return f.WayForward
 	case fabriclayout.PushFailureTeardownLock:
 		return fmt.Sprintf("the push retries once the removal or push holding the pair's teardown lock lets go, so run %s again then, "+
@@ -288,6 +298,10 @@ func FailedPushWayForward(f fabriclayout.FailedPush) string {
 			"once origin's board shows the entry done or removed, `lym cleanup --apply` tears it down instead",
 			f.Branch, pairWorktree)
 	default:
+		// A refusal of the other class that a retry cannot clear carries its own line.
+		if f.Class == fabriclayout.PushFailureOther && f.WayForward != "" {
+			return f.WayForward
+		}
 		return fmt.Sprintf("run %s to retry the push", pushStep(f))
 	}
 }
@@ -312,13 +326,18 @@ func recordsConflictWayForward(worktree, branch string, paths, commits []string,
 // codeDivergedWayForward names the merge that settles a code branch origin moved past.
 // The merge runs at the worktree root and the push in its anchored directory.
 // A prime's branch is pushed by a plain git push, since the pair push leaves the prime's code branch unpushed.
-func codeDivergedWayForward(worktree, branch string, prime bool) string {
+// unmade names the commits on origin's branch that this machine did not make, so the branch was not reset past them.
+func codeDivergedWayForward(worktree, branch string, prime bool, unmade ...string) string {
 	push := fmt.Sprintf("`lym fabric push` in %s", lymVerbDir(worktree))
 	if prime {
 		push = fmt.Sprintf("`git push` in %s", worktree)
 	}
-	return fmt.Sprintf("origin/%s holds commits this branch lacks; run `git merge origin/%s` in %s, settle any conflict and commit, then run %s",
-		branch, branch, worktree, push)
+	found := fmt.Sprintf("origin/%s holds commits this branch lacks", branch)
+	if len(unmade) > 0 {
+		found = fmt.Sprintf("origin/%s holds commits this machine did not make (%s), so it was not reset", branch, strings.Join(unmade, " "))
+	}
+	return fmt.Sprintf("%s; run `git merge origin/%s` in %s, settle any conflict and commit, then run %s",
+		found, branch, worktree, push)
 }
 
 // rewoundWayForward names the two ways to settle a task branch origin rewound to originHead.

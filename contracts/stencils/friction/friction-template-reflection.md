@@ -50,7 +50,8 @@ which is a binary to update and not a lym defect;
 the driver hands such a run to a fresh driver when a newer build is on disk.
 A `transient-stop` halt is dropped too: an infrastructure failure that lym classed transient, which a re-step can clear.
 A step loop re-steps it once.
-The Go driver also re-steps a git-transport or GitHub API stop with waits, and sends any other class to the tackler;
+The Go driver re-steps only a git-transport or GitHub API stop with waits, for as long as it stays network-class.
+It sends every other class to the tackler;
 the prompt-driven driver repairs what outlasts the loop's re-step under its repair cap.
 File one only when the notes show such halts at one row that the re-steps never cleared,
 or a failure classed transient that no retry could fix.

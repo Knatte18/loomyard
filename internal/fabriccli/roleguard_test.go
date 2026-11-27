@@ -49,17 +49,19 @@ var guardVerbs = map[string]guardVerb{
 	"remove":    {args: []string{"remove", "slug"}},
 	// The hidden teardown child passes by name, since it inherits the removal's strand name; the walk counts it a reader.
 	"remote-teardown": {args: []string{"remote-teardown"}, reader: true},
-	"checkout":        {args: []string{"checkout"}},
-	"reconcile":       {args: []string{"reconcile"}},
-	"anchor":          {args: []string{"anchor"}},
-	"unwire":          {args: []string{"unwire"}},
-	"commit":          {args: []string{"commit"}},
-	"push":            {args: []string{"push"}},
-	"pull":            {args: []string{"pull"}},
-	"sync":            {args: []string{"sync"}},
-	"merge":           {args: []string{"merge", "branch"}},
-	"merge-in":        {args: []string{"merge-in", "branch"}},
-	"merge-stage":     {args: []string{"merge-stage", "path"}},
+	// The bar's job passes by name too.
+	"sync-status": {args: []string{"sync-status"}, reader: true},
+	"checkout":    {args: []string{"checkout"}},
+	"reconcile":   {args: []string{"reconcile"}},
+	"anchor":      {args: []string{"anchor"}},
+	"unwire":      {args: []string{"unwire"}},
+	"commit":      {args: []string{"commit"}},
+	"push":        {args: []string{"push"}},
+	"pull":        {args: []string{"pull"}},
+	"sync":        {args: []string{"sync"}},
+	"merge":       {args: []string{"merge", "branch"}},
+	"merge-in":    {args: []string{"merge-in", "branch"}},
+	"merge-stage": {args: []string{"merge-stage", "path"}},
 }
 
 // refusalMarker is the text every guard refusal carries.

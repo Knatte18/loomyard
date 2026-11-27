@@ -1,7 +1,7 @@
 // config_test.go — unit tests for fabricengine.LoadConfig.
 //
 // Covers: happy-path with template keys present, branch_prefix/pathspec parsing, and environment variable resolution;
-// the not-initialized error path; and the secret-file matcher a hub's secret_paths yields.
+// the not-initialized error path; the secret-file matcher a hub's secret_paths yields; and the push timing.
 
 package fabricengine_test
 
@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -164,6 +165,71 @@ func TestLoadConfig(t *testing.T) {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
 				}
+			}
+		})
+	}
+}
+
+// TestConfig_PushTiming covers the push timing a fabric.yaml yields:
+// the shipped template's defaults, a value below one second floored,
+// and a ceiling below the interval raised to it, each raised value with one warning line naming its key.
+func TestConfig_PushTiming(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name    string
+		old     string
+		new     string
+		want    fabricengine.PushTiming
+		wantKey string
+	}{
+		{
+			name: "TemplateDefaults",
+			want: fabricengine.PushTiming{Interval: 60 * time.Second, Ceiling: 300 * time.Second, NoticeAfter: 30 * time.Minute},
+		},
+		{
+			name:    "IntervalBelowFloor",
+			old:     "push_interval_s: 60",
+			new:     "push_interval_s: 0",
+			want:    fabricengine.PushTiming{Interval: time.Second, Ceiling: 300 * time.Second, NoticeAfter: 30 * time.Minute},
+			wantKey: "fabric.push_interval_s",
+		},
+		{
+			name:    "CeilingBelowInterval",
+			old:     "push_ceiling_s: 300",
+			new:     "push_ceiling_s: 10",
+			want:    fabricengine.PushTiming{Interval: 60 * time.Second, Ceiling: 60 * time.Second, NoticeAfter: 30 * time.Minute},
+			wantKey: "fabric.push_ceiling_s",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			board := t.TempDir()
+			if err := os.MkdirAll(configengine.ConfigDir(board), 0o755); err != nil {
+				t.Fatalf("failed to create _lym/config: %v", err)
+			}
+			content := strings.Replace(fabricengine.ConfigTemplate(), tt.old, tt.new, 1)
+			if err := os.WriteFile(configengine.ConfigFile(board, "fabric"), []byte(content), 0o644); err != nil {
+				t.Fatalf("failed to write config: %v", err)
+			}
+			cfg, err := fabricengine.LoadConfig(configengine.Dirs{Board: board})
+			if err != nil {
+				t.Fatalf("LoadConfig() error = %v", err)
+			}
+
+			got, warnings := cfg.PushTiming()
+			if got != tt.want {
+				t.Errorf("PushTiming() = %+v; want %+v", got, tt.want)
+			}
+			if tt.wantKey == "" {
+				if len(warnings) != 0 {
+					t.Errorf("PushTiming() warnings = %q; want none", warnings)
+				}
+				return
+			}
+			if len(warnings) != 1 || !strings.HasPrefix(warnings[0], tt.wantKey+" ") {
+				t.Errorf("PushTiming() warnings = %q; want one line naming %s", warnings, tt.wantKey)
 			}
 		})
 	}

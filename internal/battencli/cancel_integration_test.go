@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
@@ -279,6 +280,23 @@ func TestCancelIntegration_KeptPairJudgeOnly(t *testing.T) {
 	mustRunGit(t, sibling, "push", "origin", "HEAD:refs/heads/"+branch)
 	mustRunGit(t, sibling, "reset", "--hard", "HEAD~1")
 	oldTip := strings.TrimSpace(mustRunGit(t, sibling, "rev-parse", "HEAD"))
+
+	// With the run's landing standing, the cancel is refused before its intent is committed.
+	setLanding := func(landings []pushledger.Landing) {
+		t.Helper()
+		err := pushledger.Update(h.Path, pushledger.LandingKey, time.Unix(1, 0), func(pushledger.Entry, bool) (pushledger.Entry, bool, error) {
+			return pushledger.Entry{Landings: landings}, len(landings) > 0, nil
+		})
+		if err != nil {
+			t.Fatalf("write the landing entry: %v", err)
+		}
+	}
+	setLanding([]pushledger.Landing{{Run: slug, Tip: oldTip, ParentBranch: "main", At: time.Unix(1, 0)}})
+	envelope.RequireErr(t, runCancel(t, h.PrimeWorktree(), slug), "way forward: wait for the pusher")
+	if record, _ := committedRecord(t, h, slug); record.Cancel != nil {
+		t.Errorf("committed record = %+v; want no cancel intent after the refusal", record)
+	}
+	setLanding(nil)
 
 	got := envelope.RequireOK(t, runCancel(t, h.PrimeWorktree(), slug))
 

@@ -206,7 +206,7 @@
         "set-option",
         "-g",
         "status-format[1]",
-        "#[list=on align=left]#[list=left-marker]\u003c#[list=right-marker]\u003e#[list=on]#{S:#{?#{\u0026\u0026:#{||:#{!=:#{@lym_tmux_conf_claimed},sourced},#{@lym_reed_session}},#{==:#{@lym_prime_session},1}},#{?#{==:#{session_name},#{client_session}},#[range=session|#{session_id} list=focus bg=yellow fg=black bold] #{session_name} #[norange list=on default] ,#[range=session|#{session_id} bg=colour236 fg=white] #{=12:session_name} #[norange list=on default] },}}#{S:#{?#{\u0026\u0026:#{||:#{!=:#{@lym_tmux_conf_claimed},sourced},#{@lym_reed_session}},#{!=:#{@lym_prime_session},1}},#{?#{==:#{session_name},#{client_session}},#[range=session|#{session_id} list=focus bg=yellow fg=black bold] #{session_name} #[norange list=on default] ,#[range=session|#{session_id} bg=colour236 fg=white] #{=12:session_name} #[norange list=on default] },}}#[nolist align=right]#{?#{@lym_check},#[#{?#{==:#{@lym_check_state},green},bg=green fg=black bold,#{?#{==:#{@lym_check_state},failed},bg=red fg=white bold,bg=colour236 fg=yellow}}] #{@lym_check}#{?#{@lym_check_start}, #{e|-:%s,#{@lym_check_start}}s,} #[default] ,}%H:%M "
+        "#[list=on align=left]#[list=left-marker]\u003c#[list=right-marker]\u003e#[list=on]#{S:#{?#{\u0026\u0026:#{||:#{!=:#{@lym_tmux_conf_claimed},sourced},#{@lym_reed_session}},#{==:#{@lym_prime_session},1}},#{?#{==:#{session_name},#{client_session}},#[range=session|#{session_id} list=focus bg=yellow fg=black bold] #{session_name} #[norange list=on default] ,#[range=session|#{session_id} bg=colour236 fg=white] #{=12:session_name} #[norange list=on default] },}}#{S:#{?#{\u0026\u0026:#{||:#{!=:#{@lym_tmux_conf_claimed},sourced},#{@lym_reed_session}},#{!=:#{@lym_prime_session},1}},#{?#{==:#{session_name},#{client_session}},#[range=session|#{session_id} list=focus bg=yellow fg=black bold] #{session_name} #[norange list=on default] ,#[range=session|#{session_id} bg=colour236 fg=white] #{=12:session_name} #[norange list=on default] },}}#[nolist align=right]#{?#{@lym_sync_status_command},#(#{E:@lym_sync_status_command}) ,}#{?#{@lym_check},#[#{?#{==:#{@lym_check_state},green},bg=green fg=black bold,#{?#{==:#{@lym_check_state},failed},bg=red fg=white bold,bg=colour236 fg=yellow}}] #{@lym_check}#{?#{@lym_check_start}, #{e|-:%s,#{@lym_check_start}}s,} #[default] ,}%H:%M "
       ]
     },
     {
@@ -369,6 +369,14 @@
         "set-option",
         "-gu",
         "@lym_rc_click_command"
+      ]
+    },
+    {
+      "kind": "tmux",
+      "args": [
+        "set-option",
+        "-gu",
+        "@lym_sync_status_command"
       ]
     },
     {

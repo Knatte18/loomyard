@@ -109,6 +109,10 @@ const TransitionTrailerKey = "Run-Transition"
 // It is written once per caller-supplied snapshot tag, alongside the Warp-SHA trailer.
 const SnapshotTrailerKey = "Snapshot"
 
+// LandingTrailerKey is the git-trailer key of the commit that lands a run on its parent branch.
+// The trailer is written as "Lym-Landing: <slug>".
+const LandingTrailerKey = "Lym-Landing"
+
 // originRecordSubjectPrefix is the commit subject prefix of the commit that records a new pair's origin.
 const originRecordSubjectPrefix = "fabric: record parent branch for "
 
@@ -139,6 +143,50 @@ const (
 	// ParentLockedFlag is the hidden flag marking a child spawned under a held parent lock; it never exits for coverage.
 	ParentLockedFlag = "parent-locked"
 )
+
+// The flags of the hidden `loom pusher` verb.
+const (
+	// PusherWorktreeFlag names a worktree of the hub: the code worktree of a records target, or any hub worktree otherwise.
+	PusherWorktreeFlag = "worktree"
+	// PusherSlugFlag names the run slug of a pair.
+	PusherSlugFlag = "slug"
+	// PusherBoardFlag selects the board's branch as the target.
+	PusherBoardFlag = "board"
+	// PusherLandingFlag selects the landing target as the target.
+	PusherLandingFlag = "landing"
+	// PusherPushNowFlag asks the target's pusher to push without waiting out the interval.
+	PusherPushNowFlag = "push-now"
+)
+
+// PusherFlags are the values of the pusher verb's flags; a zero field leaves its flag out.
+type PusherFlags struct {
+	Worktree string
+	Slug     string
+	Board    bool
+	Landing  bool
+	PushNow  bool
+}
+
+// PusherCommand returns the command line of the pusher verb for flags, without the binary.
+func PusherCommand(flags PusherFlags) []string {
+	args := []string{"loom", "pusher"}
+	if flags.Worktree != "" {
+		args = append(args, "--"+PusherWorktreeFlag, flags.Worktree)
+	}
+	if flags.Slug != "" {
+		args = append(args, "--"+PusherSlugFlag, flags.Slug)
+	}
+	if flags.Board {
+		args = append(args, "--"+PusherBoardFlag)
+	}
+	if flags.Landing {
+		args = append(args, "--"+PusherLandingFlag)
+	}
+	if flags.PushNow {
+		args = append(args, "--"+PusherPushNowFlag)
+	}
+	return args
+}
 
 // The hidden fabric verb and flags that start the teardown child.
 const (

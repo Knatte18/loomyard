@@ -38,8 +38,7 @@
 //     hand over to a fresh driver of the on-disk build, once per build;
 //   - a stop an applied tackler resume returned to: the arbiter decides;
 //   - a blocked stop the told `ArbiterSeam.JudgesFirst` marks: the arbiter decides, with no tackler call;
-//   - a git transport or GitHub API failure below its re-step cap: wait for the remote, then re-step;
-//   - such a failure past that cap: hand back with a notice naming the failing remote operation, with no tackler call;
+//   - a git transport or GitHub API failure: wait for the remote, then re-step, with no cap on the re-steps;
 //   - any other transient error that outlived its re-step: the tackler decides;
 //   - an interrupted step under the re-invoke policy, below the repair cap: re-step;
 //   - an interrupted step under the hand-back policy: hand back;
@@ -47,9 +46,10 @@
 //     the tackler decides;
 //   - anything else: hand back.
 //
-// The network-failure waits grow with each re-step.
-// A remote that drops for a minute or two is waited out.
-// Only a failure that outlasts the waits reaches the parent, as a notice rather than a question.
+// Only `git-transport` and `github-api` stops are re-stepped with waits, for as long as they stay network-class;
+// every other class goes to the tackler.
+// The waits start at 15 s, double with each re-step of the stop and stop growing at `Deps.NetworkWaitCeiling`.
+// While the driver waits one out it keeps a `DriveWait` record at `Deps.WaitRecordPath`.
 // The landing-halt, budget-exhausted and precondition-unmet rows only hand back; they never resume a run.
 // A recipe's told `GotoGuard` rejects a tackler verdict whose goto it refuses or cannot decide.
 //

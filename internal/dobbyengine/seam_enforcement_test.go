@@ -31,6 +31,7 @@ var dobbyengineAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/parentdirective",
 	"github.com/Knatte18/loomyard/internal/pauserecord",
 	"github.com/Knatte18/loomyard/internal/proc",
+	"github.com/Knatte18/loomyard/internal/pushledger",
 	"github.com/Knatte18/loomyard/internal/runfsm",
 	"github.com/Knatte18/loomyard/internal/segmentcolor",
 	"github.com/Knatte18/loomyard/internal/selfexec",

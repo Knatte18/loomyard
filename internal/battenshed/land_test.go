@@ -164,15 +164,19 @@ func (f *landFixture) producer() shedengine.ShedProducer {
 // A parent outside the deploy list pulls only.
 // An empty deploy command runs nothing.
 // A child that landed no code only prunes, even when its parent is the prime's branch.
+// A pull error carrying a transient class is the row's error and no Stuck.
 func TestLand_Dispositions(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
+	unreachable := shedengine.MarkTransient(shedengine.TransientGitTransport, errors.New("origin unreachable"))
 	tests := []struct {
 		name      string
 		configure func(f *landFixture)
 		wantCalls []string
+		wantErr   error
 	}{
+		{name: "TransientPullFailureIsTheError", configure: func(f *landFixture) { f.pullErr = unreachable }, wantCalls: []string{"dirty", "pull"}, wantErr: unreachable},
 		{name: "ParentIsPrimeBranch", configure: func(f *landFixture) {}, wantCalls: []string{"dirty", "pull", "deploy", "prune"}},
 		{name: "OtherParentSkipsPullAndDeploy", configure: func(f *landFixture) { f.parent = "feature" }, wantCalls: []string{"prune"}},
 		{name: "ParentOutsideDeployBranches", configure: func(f *landFixture) {
@@ -188,8 +192,12 @@ func TestLand_Dispositions(t *testing.T) {
 
 			f := newLandFixture(t)
 			tt.configure(f)
-			if outcome, _, err := f.producer().Call(context.Background()); err != nil || outcome != shedengine.Done {
-				t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
+			wantOutcome := shedengine.Done
+			if tt.wantErr != nil {
+				wantOutcome = ""
+			}
+			if outcome, _, err := f.producer().Call(context.Background()); !errors.Is(err, tt.wantErr) || outcome != wantOutcome {
+				t.Fatalf("Call() = %q, %v; want %q, %v", outcome, err, wantOutcome, tt.wantErr)
 			}
 			if !slices.Equal(f.calls, tt.wantCalls) {
 				t.Errorf("calls = %v; want %v", f.calls, tt.wantCalls)

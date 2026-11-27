@@ -121,6 +121,8 @@ type Deps struct {
 	OrphanRecord string
 	// Notice posts one line to the nearest live orch.
 	Notice func(ctx context.Context, line string) error
+	// PushSummary are the reads of the push summary, which the hub wiring gives to the prime's dobby only.
+	PushSummary PushSummaryDeps
 	// ReleaseParentLock releases the parent lock record that names the run's child, which a run another machine owns needs.
 	ReleaseParentLock func(ctx context.Context, slug string) error
 	// SlugOwner returns the effective owner of slug on the local Bolt, with no pull; empty means no other machine owns it.
@@ -441,6 +443,8 @@ type daemon struct {
 	orphansDue  []string
 	// orphanFailures is the failure episode of the orphan read and of its first-sight record.
 	orphanFailures logger.Episode
+	// pushSummaryFailures is the failure episode of the push summary's reads and posts.
+	pushSummaryFailures logger.Episode
 }
 
 // releaseLock releases the dobby lock when it is held.
@@ -689,6 +693,7 @@ func (d *daemon) standingMove() string {
 // An error of the description step is logged once per episode and holds neither the tidy step nor the landing step.
 // A sleep the watch sees owes the catch-up from origin, which runs first, before any scheduling.
 // While it stands owed the tick holds the scheduling and the landing step as under an anchor change.
+// The push summary runs whatever else is held, bar an anchor change, since an unreachable origin holds the catch-up.
 func (d *daemon) tick(ctx context.Context, now time.Time) error {
 	d.sleepWatch.Observe(now, d.deps.Awake())
 	seen := d.sleepWatch.Sleeps()
@@ -721,6 +726,7 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 		d.moveStands.Fail("dobbyengine: an anchor change stands; the dobby schedules nothing until it ends", "worktree", d.geom.WorktreeName, "record", moving)
 	} else {
 		d.moveStands.Recover("dobbyengine: the anchor change ended; the dobby schedules again", "worktree", d.geom.WorktreeName)
+		d.pushSummary(ctx, now)
 	}
 	scheduling := moving == "" && !d.adoptHolds && !catchingUp
 	if scheduling {

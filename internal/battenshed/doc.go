@@ -108,11 +108,9 @@
 // The push first removes the bench pairs a docs bench's darn writer made, so none outlives the run.
 // That removal holds no prime lock.
 // A pair of which nothing remains is the done post-condition for both halves.
-// The row pushes the pair between two holds of the prime lock:
-// the first hold shuts the session down, the push runs with no lock held,
-// and the second hold removes the pair once origin's tracking refs hold both its tips.
-// A tip that moved since the push releases the second hold and pushes again.
-// After a bounded number of pushes that still leave origin lacking a tip, the row is Stuck and keeps the pair.
+// The row pushes nothing itself: between two holds of the prime lock it hands the pair's push on, with no lock held.
+// The second hold removes the pair if it reads level once, and otherwise ends the row Done with the pair standing,
+// so the row waits on no network and never loops.
 // With git or pushes off nothing of the pair is pushed, and the pair is removed without that read.
 // The bench pairs' archive tags are pushed whatever those switches say.
 //

@@ -19,12 +19,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
+	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -293,6 +296,133 @@ func TestHandOverOwnedElsewhere(t *testing.T) {
 	})
 }
 
+// writeLedgerEntry replaces the entry of key in the ledger of the hub at hubPath, removing it when entry is nil.
+func writeLedgerEntry(t *testing.T, hubPath string, key pushledger.Key, entry *pushledger.Entry) {
+	t.Helper()
+	err := pushledger.Update(hubPath, key, time.Unix(1, 0), func(pushledger.Entry, bool) (pushledger.Entry, bool, error) {
+		if entry == nil {
+			return pushledger.Entry{}, false, nil
+		}
+		return *entry, true, nil
+	})
+	if err != nil {
+		t.Fatalf("pushledger.Update(%s): %v", key, err)
+	}
+}
+
+// TestPushRun_StopsShortOfAHeldRecordsCommit drives every push of a held pair, and of a beam holding a landing.
+func TestPushRun_StopsShortOfAHeldRecordsCommit(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+	boardkit.InstallReplay(t)
+
+	const slug = "held-run"
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	added := hubforge.AddPair(t, h, slug)
+	pair, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
+	if err != nil {
+		t.Fatalf("ResolveWorktree: %v", err)
+	}
+	push := func(l *lymcwd.Location, runSlug string, push pairteardown.RunPush) fabriclayout.PushResult {
+		t.Helper()
+		push.LockWait = fabriclayout.LockWaitUnbounded
+		result, err := pairteardown.PushRun(h.Location, l, runSlug, push)
+		if err != nil {
+			t.Fatalf("PushRun(%s) error = %v; want nil", l.WorktreeName, err)
+		}
+		return result
+	}
+	push(pair, slug, pairteardown.RunPush{})
+
+	records := h.PairRecordsSibling(slug)
+	recordsRef := "refs/heads/" + fabriclayout.RecordsBranchName(added.Branch)
+	originRecords := func() string { return gitkit.RevParse(t, h.RecordsBare, recordsRef) }
+	below := gitkit.CommitFile(t, records, "below.txt", "below\n", "records below the hold")
+	held := gitkit.CommitFile(t, records, "held.txt", "held\n", "held records")
+	after := gitkit.CommitFile(t, records, "after.txt", "after\n", "records after the hold")
+	landing := pushledger.Landing{Run: slug, Tip: held, RecordsCommit: held, ParentBranch: "main", At: time.Unix(1, 0)}
+	writeLedgerEntry(t, h.Path, pushledger.LandingKey, &pushledger.Entry{Landings: []pushledger.Landing{landing}})
+
+	push(pair, slug, pairteardown.RunPush{})
+	if got := originRecords(); got != below {
+		t.Errorf("origin records tip = %s; want it short of the held commit at %s", got, below)
+	}
+
+	primeRecords := gitkit.CommitFile(t, h.PrimeRecords(), "prime.txt", "prime\n", "prime records")
+	push(h.Location, slug, pairteardown.RunPush{})
+	if got := gitkit.RevParse(t, h.PrimeRecords(), "@{u}"); got != primeRecords {
+		t.Errorf("prime records upstream = %s; want the prime's records pushed whole, %s", got, primeRecords)
+	}
+
+	var out strings.Builder
+	if code := clihelp.ExecuteIn(fabriccli.Command(), h.PairCodeWorktree(slug), &out, []string{"push"}); code != 0 {
+		t.Fatalf("lym fabric push exit = %d: %s", code, out.String())
+	}
+	if _, err := fabricengine.DetachedPush(h.Path, h.PairPushSpawn(slug), fabriclayout.MachineNames{}); err != nil {
+		t.Fatalf("DetachedPush() error = %v; want nil", err)
+	}
+	if got := originRecords(); got != below {
+		t.Errorf("origin records tip after the fabric pushes = %s; want %s", got, below)
+	}
+
+	// A dropped landing leaves the commit held on the pair's own entry.
+	pairKey := pushledger.RecordsKey(records)
+	writeLedgerEntry(t, h.Path, pushledger.LandingKey, nil)
+	writeLedgerEntry(t, h.Path, pairKey, &pushledger.Entry{Slug: slug, HeldRecords: held})
+	push(pair, slug, pairteardown.RunPush{})
+	if got := originRecords(); got != below {
+		t.Errorf("origin records tip under HeldRecords = %s; want %s", got, below)
+	}
+	writeLedgerEntry(t, h.Path, pairKey, nil)
+	push(pair, slug, pairteardown.RunPush{})
+	if got := originRecords(); got != after {
+		t.Errorf("origin records tip with no hold = %s; want the local tip %s", got, after)
+	}
+
+	const beamSlug = "held-beam"
+	beamAdded := hubforge.AddPairWith(t, h, beamSlug, fabricengine.AddOptions{Beam: true})
+	beam, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(beamSlug))
+	if err != nil {
+		t.Fatalf("ResolveWorktree: %v", err)
+	}
+	push(beam, beamSlug, pairteardown.RunPush{})
+	own := gitkit.CommitFile(t, beam.WorktreePath(), "own.txt", "own\n", "the beam's own work")
+	tip := gitkit.CommitFile(t, beam.WorktreePath(), "landed.txt", "landed\n", "a member's landing")
+	beamRecords := h.PairRecordsSibling(beamSlug)
+	writeLedgerEntry(t, h.Path, pushledger.RecordsKey(beamRecords), &pushledger.Entry{Landings: []pushledger.Landing{{Run: "member", Tip: tip, ParentBranch: beamAdded.Branch, At: time.Unix(1, 0)}}})
+	originCode := func() string { return gitkit.RevParse(t, h.CodeBare, "refs/heads/"+beamAdded.Branch) }
+
+	push(beam, beamSlug, pairteardown.RunPush{})
+	if got := originCode(); got != own {
+		t.Errorf("origin beam code tip = %s; want the landing commit's first parent %s", got, own)
+	}
+
+	gitkit.CommitFile(t, beamRecords, "judged.txt", "judged\n", "beam records")
+	result := push(beam, beamSlug, pairteardown.RunPush{CodeCeiling: tip})
+	if got := originCode(); got != tip {
+		t.Errorf("origin beam code tip with the ceiling set = %s; want %s", got, tip)
+	}
+	var pushedSides []string
+	for _, entry := range result.Mutated().Entries() {
+		if entry.Kind == fabriclayout.KindBranchPushed {
+			side, _, _ := strings.Cut(entry.Detail, " ")
+			pushedSides = append(pushedSides, side)
+		}
+	}
+	if want := []string{"side=records", "side=code"}; !slices.Equal(pushedSides, want) {
+		t.Errorf("pushed sides = %q; want %q", pushedSides, want)
+	}
+
+	// A landing the ledger lost is read from its commit's trailer.
+	writeLedgerEntry(t, h.Path, pushledger.RecordsKey(beamRecords), nil)
+	below2 := gitkit.CommitFile(t, beam.WorktreePath(), "below2.txt", "below\n", "work below the landing")
+	gitkit.CommitFile(t, beam.WorktreePath(), "lost.txt", "lost\n", "a lost landing\n\n"+fabriclayout.LandingTrailerKey+": lost-member")
+	push(beam, beamSlug, pairteardown.RunPush{})
+	if got := originCode(); got != below2 {
+		t.Errorf("origin beam code tip with a landing commit and no ledger entry = %s; want %s", got, below2)
+	}
+}
+
 // TestPushRun_HandsOverOnATakeover drives PushRun against another machine's takeover entry.
 // The rows install the process's push notifier, so none of them runs in parallel.
 func TestPushRun_HandsOverOnATakeover(t *testing.T) {
@@ -316,6 +446,20 @@ func TestPushRun_HandsOverOnATakeover(t *testing.T) {
 			if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
 				t.Errorf("stat %s error = %v; want the pair gone", path, statErr)
 			}
+		}
+		f.requireMark(t)
+	})
+
+	t.Run("WithTheLandingStandingThePairStays", func(t *testing.T) {
+		f := newHandOverFixture(t, slug)
+		tip := gitkit.RevParse(t, f.h.PairCodeWorktree(slug), "HEAD")
+		writeLedgerEntry(t, f.h.Path, pushledger.LandingKey, &pushledger.Entry{Landings: []pushledger.Landing{{Run: slug, Tip: tip, ParentBranch: "main", At: time.Unix(1, 0)}}})
+
+		err := run(f, false)
+
+		f.requireHandedOver(t, err)
+		if _, statErr := os.Stat(f.h.PairCodeWorktree(slug)); statErr != nil {
+			t.Errorf("stat the pair error = %v; want the pair left standing", statErr)
 		}
 		f.requireMark(t)
 	})

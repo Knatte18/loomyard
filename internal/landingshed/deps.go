@@ -83,7 +83,7 @@ type Deps struct {
 	// The run's transition commit stages it, so a spent count reaches the pair's records.
 	RecordsDir string
 
-	// PushSkipped is the told decision to skip the parent push.
+	// PushSkipped is the told decision to push nothing, so a landing records no pending push.
 	PushSkipped bool
 
 	// EscalateJudgedFirst is the told decision whether a merge fixer's escalate halts with `EscalateStopPrefix`,
@@ -157,20 +157,9 @@ type Deps struct {
 	//
 	// Nil means the parent is owned here.
 	ParentOwner func() (ParentOwnership, error)
-	// OriginParentHoldsWork reports whether origin's parent branch already holds the task's work.
-	// It is read after a failed parent push.
-	// A returned error adds no repair note.
-	//
-	// Nil means no repair note.
-	OriginParentHoldsWork func() (bool, error)
-	// ParentCommitsOriginLacks lists the SHAs of the parent branch's commits that origin's tracking ref lacks, newest first.
-	// It is read for the repair note only when origin's parent branch already holds the task's work.
-	//
-	// Nil means no repair note.
-	ParentCommitsOriginLacks func() ([]string, error)
 	// OwnedElsewhere reads whether another machine owns the run now, from a board it pulls first.
 	// owner is that machine and subject is what `lym adopt` takes to move the run.
-	// The finalize step reads it before the parent push, before the push of the run's records and before the board write.
+	// The finalize step reads it after the parent-side merge, before it records or marks the landing.
 	// A returned error is returned from Call as a transient failure, so the driver re-steps the landing once origin answers.
 	//
 	// Nil means the run is owned here.
@@ -181,18 +170,24 @@ type Deps struct {
 	//
 	// Nil is never called, since a nil OwnedElsewhere never answers elsewhere.
 	HandOver func(owner, subject string) error
-	// PushRecords pushes the run's records and returns once origin holds them.
-	// The finalize step calls it after CommitStatus committed the landing's transition.
-	// A push owed on an unreachable origin or a held teardown lock is returned as an error.
+	// LandLocally records the landing whose parent head is tip and hands its push to the parent's pusher.
+	// It commits the run's status records, and holds that commit back from origin until the landing's push is made.
+	// The finalize step calls it after the parent-side merge, on every pass that lands, unless PushSkipped is set.
+	// A returned error is returned from Call.
 	//
-	// Nil pushes nothing.
-	PushRecords func() error
-	// ArchiveParentMerge archives the local parent merge under a tag pushed to origin.
-	// It then resets the parent branch to origin's tip.
-	// The finalize step calls it for a parent push rejected while origin's parent branch already holds the task's work.
+	// Nil records no landing, and the finalize step then commits the run's status records itself.
+	LandLocally func(tip string) error
+	// ParentAheadByOwed reports whether the local parent branch is ahead of origin by landing tips alone.
+	// Each of those tips must be recorded as a push still owed.
+	// Such a parent takes the landing as a level one does.
+	// A returned error is returned from Call.
 	//
-	// Nil leaves that rejected parent push Stuck.
-	ArchiveParentMerge func() error
+	// Nil reads as no owed tip.
+	ParentAheadByOwed func() (bool, error)
+	// ParentPushState reads the state of the push the parent branch owes.
+	//
+	// Nil reads as no landing owed and none refused.
+	ParentPushState func() (ParentPush, error)
 
 	// LandBlockers reads what still works under the beam the run lands:
 	// its open member entries and the local pairs forked from it.
@@ -230,14 +225,27 @@ type Deps struct {
 	AbortMerge          func() error
 	StopConflictSession func() (guid string, err error)
 
+	// MergeInBasePath is the file, in the run's scratch directory, that holds the task head a merge-in started from.
+	// The finalize step writes it before its merge-in, unless it already stands.
+	// It removes the file once RemoveLeftovers ran over it.
+	MergeInBasePath string
+	// RemoveLeftovers removes the ignored files left in the directories a merge-in deleted since the commit base.
+	// It returns the paths of the removed files.
+	// The finalize step calls it before each clean check of its merge-in while the base file stands.
+	// A returned error is returned from Call, and the base file stays.
+	//
+	// An empty MergeInBasePath or a nil RemoveLeftovers removes nothing.
+	// `internal/loomcli`'s `landingDeps` fills both, and its drift guard keeps them filled.
+	RemoveLeftovers func(base string) ([]string, error)
+
 	// TaskHead returns the task branch's local HEAD SHA.
 	// The Parent-Align row refuses a nil TaskHead when it is built.
 	// `internal/loomcli`'s `landingDeps` fills it, and its drift guard keeps it filled.
 	TaskHead func() (string, error)
 
 	// MarkTaskDone marks the task's board entry done.
-	// The finalize step calls it last, after the parent push and the push of the run's records.
-	// It returns once origin holds the mark.
+	// The finalize step calls it only under PushSkipped, after it committed the run's records.
+	// It returns once the mark is made.
 	// A returned error is returned from Call, so the driver re-steps the landing and the mark is written again.
 	// landingshed names no board path, so the board wiring lives in the closure.
 	//
@@ -249,12 +257,12 @@ type Deps struct {
 	// The commit is the parent pair's head right after a parent-side merge that landed.
 	// emptyDiff reports that the landing changed no code path against the parent head merged into the task worktree.
 	// None of the run's work then reached the parent branch.
-	// The finalize step calls it after the parent-side merge and before the push.
+	// The finalize step calls it after the parent-side merge and before it hands the push on.
 	// It only logs a failure, of the head read or of the record; nil records nothing.
 	RecordLanding func(commit string, emptyDiff bool) error
 	// RecordLandedSize records the size of the diff the run landed.
 	// The diff runs from the parent head merged into the task worktree to the landing commit.
-	// The finalize step calls it after recording the landing and before the push.
+	// The finalize step calls it after recording the landing and before it hands the push on.
 	// It only logs a failure; nil records nothing.
 	// A finalize step that read no such parent head in its process, as one resumed past the merge, does not call it.
 	RecordLandedSize func(from, to string) error
@@ -462,6 +470,16 @@ type PullRequestDeps struct {
 	// DropBeamRecord drops the pull request from the beam's landing record and commits the landing directory.
 	// It is nil on every run but a beam's.
 	DropBeamRecord func() error
+}
+
+// ParentPush is the state of the push a parent branch owes.
+type ParentPush struct {
+	// Owed reports whether a landing on the parent still waits for its push.
+	Owed bool
+	// Refused reports whether a refused push of the parent stands, which no retry clears.
+	Refused bool
+	// WayForward is the way forward of the refused push, empty without one.
+	WayForward string
 }
 
 // ParentOwnership is who owns the parent a run lands on.

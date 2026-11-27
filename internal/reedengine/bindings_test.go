@@ -281,7 +281,9 @@ func TestPinBindingsLocked_PinsTheToggleLinesOnlyWhenEverythingResolves(t *testi
 			wantToggle, _ := composeSlackToggleCommand(sh, tt.executable, socketPath, tmuxPath)
 			wantState, _ := composeSlackStateCommand(sh, tt.executable)
 			wantRCClick, _ := composeRemoteControlClickCommand(sh, tt.executable, socketPath, tmuxPath)
+			wantSync, _ := composeSyncStatusCommand(sh, tt.executable, e.geom.HubPath)
 			lines := []struct{ option, line string }{
+				{syncStatusCommandOption, wantSync},
 				{slackToggleCommandOption, wantToggle},
 				{slackStateCommandOption, wantState},
 				{remoteControlClickCommandOption, wantRCClick},

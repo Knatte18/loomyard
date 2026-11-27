@@ -1,6 +1,5 @@
 // finalize_owner.go implements the owner checks of Finalize.
 // The checks let a run land only on the machine that owns it and its parent.
-// The file also words the repair note that a failed parent push carries after an adopter-first landing.
 
 package landingshed
 
@@ -29,9 +28,10 @@ const ownerRerun = `re-run "lym loom resume" in the task worktree`
 //
 // held reports that the parent already holds the task's work, which marks a Finalize past its parent-side merge.
 // Such a Finalize is judged by the reconcile's ended and stopped verdicts only.
-// Neither the owner checks nor the unreachable halt keeps it from finishing.
+// Neither the owner checks nor an unreachable origin keeps it from finishing.
 // Otherwise the run-scope reconcile runs.
-// An error is returned, an unreachable origin halts, and an ended or stopped entry stops as the reconcile's verdict.
+// An error is returned, and an unreachable origin is a transient error, so the checks run again once origin answers.
+// An ended or stopped entry stops as the reconcile's verdict.
 // The run's owner is the owner of its `owned_elsewhere` entry,
 // and the parent's owner comes from `Deps.ParentOwner`.
 // A run another machine owns is handed over through Deps.HandOver, when it is wired, and halts naming the new owner.
@@ -51,7 +51,8 @@ func (fz *Finalize) ownerChecks(ctx context.Context, held bool) *ending {
 			return &ending{err: err}
 		}
 		if report.Unreachable {
-			return halt(ctx, finalizeName, OwnerHaltPrefix+fmt.Sprintf("origin was unreachable, so who owns this run could not be judged; %s once origin answers", ownerRerun))
+			return fail(ctx, finalizeName, shedengine.MarkTransient(shedengine.TransientGitTransport,
+				fmt.Errorf("landingshed: %s: origin was unreachable, so who owns this run could not be judged; the landing's re-step judges it once origin answers", finalizeName)))
 		}
 		if end := reportVerdict(ctx, finalizeName, report, fz.deps.RemoveFollowUp); end != nil {
 			return end
@@ -166,44 +167,4 @@ func ownerHaltReason(slug, subject, runOwner string, parent ParentOwnership) str
 		return fmt.Sprintf(`this run is owned by machine %q and %s by machine %q, so this machine lands neither; way forward: %s, or run "%s" here`,
 			runOwner, parentName, parent.Owner, adoptOnParentOwner, adoptRunWithParent)
 	}
-}
-
-// adopterFirstRepair words the repair note a failed parent push carries after an adopter-first landing.
-// It returns the empty string when no note applies.
-// The landing is adopter-first when origin's parent branch already holds the task's work,
-// and this machine's parent branch carries the task's squash as a commit origin lacks.
-// The note names the squash by the parent's head SHA, then says how to undo it.
-// The undo is a reset when the squash is the only commit origin lacks.
-// A rebase drops it when another commit is listed, and the note ends in removing the pair.
-// An unreadable seam, origin's parent lacking the work and no commit to repair all add nothing.
-func (fz *Finalize) adopterFirstRepair(parentHandle parentMerger) string {
-	if fz.deps.OriginParentHoldsWork == nil || fz.deps.ParentCommitsOriginLacks == nil {
-		return ""
-	}
-	held, err := fz.deps.OriginParentHoldsWork()
-	if err != nil {
-		logger.Warn("landingshed: read whether origin's parent holds the task's work failed", "producer", finalizeName, "cause", err)
-		return ""
-	}
-	if !held {
-		return ""
-	}
-	commits, err := fz.deps.ParentCommitsOriginLacks()
-	if err != nil {
-		logger.Warn("landingshed: list the parent commits origin lacks failed", "producer", finalizeName, "cause", err)
-		return ""
-	}
-	if len(commits) == 0 {
-		return ""
-	}
-	squash, err := parentHandle.HeadSHA()
-	if err != nil {
-		logger.Warn("landingshed: read the parent head failed", "producer", finalizeName, "cause", err)
-		return ""
-	}
-	repair := fmt.Sprintf(`run "git reset --keep origin/%s" in the parent's worktree`, fz.deps.ParentBranch)
-	if len(commits) > 1 {
-		repair = fmt.Sprintf(`run "git rebase --onto %s~1 %s %s" in the parent's worktree, and on a conflict run "git rebase --abort" and drop the squash by hand`, squash, squash, fz.deps.ParentBranch)
-	}
-	return fmt.Sprintf(`; origin's parent branch already holds this task's work, so this machine's squash %s duplicates it; way forward: %s, then run "lym fabric remove %s"`, squash, repair, fz.deps.Slug)
 }

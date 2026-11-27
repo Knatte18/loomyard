@@ -92,7 +92,8 @@
 // A weft commit that landed but whose correspondence entry failed to persist is recoverable only by `RebuildIndex`.
 // `Commit` refuses, before any lock, a new secret file on either side, as `internal/secretpath` matches it.
 // It takes the combined write lock (`.weft/weft.write.lock`) for any committing call and never holds it across the push.
-// Whenever anything landed it spawns a detached, fire-and-forget push through `SpawnDetachedPush`.
+// Whenever anything landed it starts the worktree's background pusher, detached, through `SpawnDetachedPush`.
+// The spawn never pushes in its own process, and a pusher already running takes the commit at its next pass.
 // `SyncOptions.SkipGit` is weft-scoped there, and `SkipPush` does not stop the push;
 // only the `FABRIC_SKIP_GIT` and `FABRIC_SKIP_PUSH` environment variables do.
 // `SpawnDetachedPush` returns `ErrSpawnUnderTest` in a test binary.
@@ -122,7 +123,7 @@
 // `Fabric.Status` answers what is uncommitted on both sides, with no correspondence anchor involved.
 // `Topology.Status` is the separate pairing and junction-health report.
 //
-// The detached child runs `CoalescePushRequest`, a loop-until-clean coalescing push.
+// `lym fabric push` runs `CoalescePushRequest`, a loop-until-clean coalescing push.
 // It runs under the absorbing `fabric.push.lock`, which is distinct from the commit lock.
 // Pushes are rebase-free (`gitrepo.PushRebaseFree`), so a rejected push never mutates the calling working tree.
 // `PushPairAnchored` is the synchronous form.
@@ -159,7 +160,7 @@
 //
 // A rejected records push first reads origin's record of its run.
 // An entry naming another machine stops the push with `ErrHandedOver` or a `*TakeoverError`, neither retryable.
-// `HandOverTips`, `TakeOverRun` and `ArchiveParentMerge` are the git steps of a hand-over.
+// `HandOverTips` and `TakeOverRun` are the git steps of a hand-over.
 // Each runs under the slug's teardown lock and tags unpushed local tips `archive-owner/<slug>/<tip>`.
 //
 // A pair's teardown lock is `fabriclayout.TeardownLockPath(hub, slug)`, outside both of the pair's worktrees.
@@ -287,7 +288,7 @@
 // a developer, an agent, and every lym module see one repository, called fabric, never the warp/weft split under it.
 // Callers outside the owner set use the vocabulary-neutral entry points:
 //
-//   - `Open`, `OpenParent`, `Fabric.OriginURL`, `Fabric.PushBranch`, `Healthy`
+//   - `Open`, `OpenParent`, `Fabric.OriginURL`, `Healthy`
 //   - `PushPairAnchored`, `MergeStateActive`, `MidMerge`
 //   - `RequireDrivableWorktree`, `NewRefScanner`, `NewReferenceRule`
 //

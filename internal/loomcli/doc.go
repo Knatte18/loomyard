@@ -16,7 +16,8 @@
 // A failed halt whose status records a transient class carries `transient-stop`:
 // an infrastructure failure classed transient, which a re-step can clear and which is no producer defect.
 // A step loop re-steps it once.
-// The Go driver also re-steps a git-transport or GitHub API stop with waits, and sends any other class to the tackler;
+// The Go driver re-steps only a git-transport or GitHub API stop with waits, for as long as it stays network-class.
+// It sends every other class to the tackler;
 // the prompt-driven driver repairs what outlasts the loop's re-step under its repair cap.
 //
 // The `lym loom` verbs serve loom runs only.
@@ -222,10 +223,15 @@
 // A step at a row waiting on the operator reads as active to the step watchdog and as a live wait to dobby.
 // Those rows are Beam-Await, PR-Review and Sampler-Session.
 //
-// `lym loom pusher --worktree <code worktree> [--slug <slug>]` is the hidden role verb of a worktree's background pusher.
+// A target's background pusher runs a hidden role verb.
+// Its command line is `lym loom pusher --worktree <worktree> [--slug <slug>] [--board|--landing] [--push-now]`.
 // It resolves the worktree its flag names, never the cwd, and arms no run.
+// With --board or --landing the target is the board's branch or the landing target of the hub that directory sits in.
+// --push-now marks the target's ledger entry before the lock is tried, so a running pusher wakes on it.
 // A pair's pusher, not the commit, runs the pre-push reconcile before each push.
 // The prime's pusher pushes its records for every batten run and runs no check.
+// The board's pusher commits and pushes through Board.PusherSync,
+// and the landing target pushes only the landing tips of its parent step.
 //
 // `lym loom pr-continue` sets the continue flag in the run's pull-request record to end a review on the operator's word.
 // It also clears the head whose gate failure the PR-Review row mailed, so the row gates that head again.

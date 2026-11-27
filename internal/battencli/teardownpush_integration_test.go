@@ -12,12 +12,14 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -25,7 +27,8 @@ import (
 )
 
 // TestTeardownPushSeams_PushesOffLetTheRowFinishWithoutTouchingThePair drives the teardown row over a present pair.
-// With git or pushes off the row reaches Done and removes the pair, and neither half reads the task worktree.
+// With git or pushes off the row reaches Done and removes the pair.
+// Neither half reads the task worktree, no push is marked and no pusher is started.
 func TestTeardownPushSeams_PushesOffLetTheRowFinishWithoutTouchingThePair(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -49,7 +52,9 @@ func TestTeardownPushSeams_PushesOffLetTheRowFinishWithoutTouchingThePair(t *tes
 				locations++
 				return nil, errors.New("the task worktree was read with pushes off")
 			}
-			push, level := teardownPushSeams(h.Location, "task1", locateTask, func() fabricengine.SyncOptions { return tt.options })
+			starts := 0
+			start := func(runpusher.Target) (bool, error) { starts++; return false, nil }
+			push, level := teardownPushSeams(h.Location, "task1", locateTask, func() fabricengine.SyncOptions { return tt.options }, start)
 			removes := 0
 			deps := battenshed.TeardownDeps{
 				Shutdown: func(context.Context) (string, error) { return "", nil },
@@ -70,6 +75,12 @@ func TestTeardownPushSeams_PushesOffLetTheRowFinishWithoutTouchingThePair(t *tes
 			}
 			if removes != 1 {
 				t.Errorf("removals = %d; want 1", removes)
+			}
+			if starts != 0 {
+				t.Errorf("pusher starts = %d; want none", starts)
+			}
+			if entry, _, err := pushledger.Read(h.Path, pushledger.RecordsKey(h.PairRecordsSibling("task1"))); err != nil || entry.PushNow {
+				t.Errorf("pair ledger entry = %+v, %v; want no push-now mark", entry, err)
 			}
 		})
 	}
@@ -135,25 +146,46 @@ func TestWiredTeardown_RemovesTheBenchPairsBeforeTheTaskPair(t *testing.T) {
 	}
 }
 
-// TestTeardownPushSeams_PushBringsAPresentPairsTipsToOrigin drives the real push and level read.
-// The pair they run over is one commit ahead of origin.
-func TestTeardownPushSeams_PushBringsAPresentPairsTipsToOrigin(t *testing.T) {
+// TestTeardownPushSeams_PushWakesThePairsPusher asserts Push marks the pair's push as wanted now.
+// It also asserts that Push asks the real pusher start for the pair.
+// Level must read false while the run's landing stands, though origin holds both tips.
+func TestTeardownPushSeams_PushWakesThePairsPusher(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPair(t, h, "task1")
-	gitkit.CommitFile(t, h.PairRecordsSibling("task1"), "local.txt", "local\n", "local")
-	push, level := teardownPushSeams(h.Location, "task1", taskWorktreeLocator(h.Location, "task1"), func() fabricengine.SyncOptions { return fabricengine.SyncOptions{} })
-
-	if got, err := level(); err != nil || got {
-		t.Fatalf("level() before the push = %v, %v; want false, nil", got, err)
+	var asked []runpusher.Target
+	start := func(target runpusher.Target) (bool, error) {
+		asked = append(asked, target)
+		return runpusher.Start(target)
 	}
+	push, level := teardownPushSeams(h.Location, "task1", taskWorktreeLocator(h.Location, "task1"), func() fabricengine.SyncOptions { return fabricengine.SyncOptions{} }, start)
+
 	if err := push(context.Background()); err != nil {
 		t.Fatalf("push() = %v; want nil", err)
 	}
+
+	entry, found, err := pushledger.Read(h.Path, pushledger.RecordsKey(h.PairRecordsSibling("task1")))
+	if err != nil || !found || !entry.PushNow || entry.Slug != "task1" || entry.Worktree != h.PairCodeWorktree("task1") {
+		t.Errorf("pair ledger entry = %+v, %v, %v; want the push-now mark with the pair's worktree and slug", entry, found, err)
+	}
+	if len(asked) != 1 || asked[0].Location.WorktreeName != "task1" || asked[0].Slug != "task1" || !asked[0].Pair {
+		t.Errorf("pusher targets = %+v; want the pair's target alone", asked)
+	}
 	if got, err := level(); err != nil || !got {
-		t.Errorf("level() after the push = %v, %v; want true, nil", got, err)
+		t.Fatalf("level() with both tips on origin = %v, %v; want true, nil", got, err)
+	}
+
+	err = pushledger.Update(h.Path, pushledger.LandingKey, time.Unix(1, 0), func(cur pushledger.Entry, _ bool) (pushledger.Entry, bool, error) {
+		cur.Landings = []pushledger.Landing{{Run: "task1", Tip: "tip", ParentBranch: "main", At: time.Unix(1, 0)}}
+		return cur, true, nil
+	})
+	if err != nil {
+		t.Fatalf("record the landing: %v", err)
+	}
+	if got, err := level(); err != nil || got {
+		t.Errorf("level() with the landing standing = %v, %v; want false, nil", got, err)
 	}
 }
 

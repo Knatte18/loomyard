@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -163,6 +164,7 @@ func (fx *resetFixture) wantRefusal(t *testing.T, args []string, parts ...string
 
 // TestResetCmd_RecordsTheRunTransitionAtTheNewTip pins the run transition a reset's records commit marks.
 // The commit names the tip the reset moved to, so the run's last transition no longer names the dropped tip.
+// The verb pushes that commit itself, and an unreachable records origin leaves an owed push of the run.
 //
 // The run record is committed to the records side before the reset, with no recovery and no pre-fix head to clear,
 // so the reset leaves its bytes as they were and only an empty records commit can carry the transition.
@@ -174,9 +176,12 @@ func TestResetCmd_RecordsTheRunTransitionAtTheNewTip(t *testing.T) {
 		args []string
 		// wantEmptyCommit is whether the records commit holds no file, because the reset changes none.
 		wantEmptyCommit bool
+		// unreachable points the records origin at a closed port.
+		unreachable bool
 	}{
-		{"BatchStartWithNothingToClear", []string{"--to", "batch-start", "--batch", "1"}, true},
-		{"Start", []string{"--to", "start"}, false},
+		{"BatchStartWithNothingToClear", []string{"--to", "batch-start", "--batch", "1"}, true, false},
+		{"Start", []string{"--to", "start"}, false, false},
+		{"UnreachableRecordsOriginLeavesAnOwedRecord", []string{"--to", "start"}, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -193,10 +198,28 @@ func TestResetCmd_RecordsTheRunTransitionAtTheNewTip(t *testing.T) {
 			records := fabricengine.RecordsWorktree(loc)
 			gitkit.Git(t, records, "add", "-A")
 			gitkit.Git(t, records, "commit", "-q", "-m", "seed the run record")
+			fx.cli.pushRecords = pushPairRecords(loc, loc.WorktreeName, func(time.Duration) {})
+			if tt.unreachable {
+				gitkit.Git(t, records, "remote", "set-url", "origin", "http://127.0.0.1:1/x")
+			}
 
 			code, envelope := fx.reset(t, tt.args...)
 			if code != 0 || envelope["ok"] != true {
 				t.Fatalf("reset %v = %d, %v; want ok", tt.args, code, envelope)
+			}
+			owed, err := fabricengine.FailedPushesOwedBy(loc.HubPath, loc.WorktreeName)
+			if err != nil {
+				t.Fatalf("FailedPushesOwedBy: %v", err)
+			}
+			if failed := envelope["push_error"] != nil; failed != tt.unreachable || (len(owed) > 0) != tt.unreachable {
+				t.Errorf("push_error = %v, owed records = %+v; want a failed push: %v", envelope["push_error"], owed, tt.unreachable)
+			}
+			if !tt.unreachable {
+				branch := gitkit.CurrentBranch(t, records)
+				fields := strings.Fields(gitkit.Git(t, records, "ls-remote", "origin", "refs/heads/"+branch))
+				if head := gitkit.RevParse(t, records, "HEAD"); len(fields) == 0 || fields[0] != head {
+					t.Errorf("origin records branch = %q; want the records HEAD %s", fields, head)
+				}
 			}
 
 			message := gitkit.Git(t, records, "log", "-1", "--format=%B")

@@ -186,9 +186,13 @@ func (r HubPullResult) Stopped() bool {
 
 // MergeOptions controls Merge.
 // Squash selects a squash merge, and Message overrides the conclude commit's message.
+// NoFastForward makes a merge that does not squash create a merge commit even where it could fast-forward.
+// A fast-forward would lose Message.
+// It has no effect with Squash set.
 type MergeOptions struct {
-	Squash  bool
-	Message string
+	Squash        bool
+	NoFastForward bool
+	Message       string
 }
 
 // MergeResult reports what a merge verb did to the pair.

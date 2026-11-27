@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -228,6 +229,8 @@ func (f *Fabric) warpUpstreamSHA() (string, error) {
 // It is joined with a weft stop when both happened.
 // The warp arm judges a local commit as unpushed only when no value of the remote-tracking ref's reflog reaches it.
 // It refuses a task pair's branch that origin rewound, with ErrWarpRewound, before any reset.
+// A prime branch ahead of origin only by landings whose push is still owed reads as level, and warp does not move.
+// A warp fetch that cannot reach origin returns an error that gitexec.IsTransportFailure reports.
 func (f *Fabric) Pull(opts SyncOptions) (res fabriclayout.PullResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -563,7 +566,7 @@ func logWeftReplay(weftPath string, outcome ReplayOutcome) {
 // A rewritten upstream is refused too when a task branch was rewound or a local commit is unreachable from the reflog.
 func (f *Fabric) pullWarpArm(rec *Mutations, result *fabriclayout.PullResult) error {
 	if err := f.code.Fetch(); err != nil {
-		return &PartialPullError{WeftPulled: result.WeftPulled, Stage: "fetch", Err: err}
+		return &PartialPullError{WeftPulled: result.WeftPulled, Stage: "fetch", Err: f.withTransportCause(err)}
 	}
 	result.WarpFetched = true
 
@@ -577,6 +580,17 @@ func (f *Fabric) pullWarpArm(rec *Mutations, result *fabriclayout.PullResult) er
 	}
 
 	if localHEAD == upstreamSHA {
+		return nil
+	}
+	location, err := f.hubLocation()
+	if err != nil {
+		return &PartialPullError{WeftPulled: result.WeftPulled, Stage: "classify", Err: err}
+	}
+	owedAhead, err := primeAheadByOwedTips(location)
+	if err != nil {
+		return &PartialPullError{WeftPulled: result.WeftPulled, Stage: "classify", Err: err}
+	}
+	if owedAhead {
 		return nil
 	}
 
@@ -612,6 +626,46 @@ func (f *Fabric) pullWarpArm(rec *Mutations, result *fabriclayout.PullResult) er
 		return err
 	}
 	return f.reanchorAfterRewrite(rec, result, localHEAD, upstreamSHA)
+}
+
+// withTransportCause returns fetchErr joined with the transport failure that asking origin for the warp branch meets.
+// A fetch folds git's exit into its message and names no transport failure of its own.
+// An origin that answers the question leaves fetchErr as it is.
+func (f *Fabric) withTransportCause(fetchErr error) error {
+	branch, err := f.code.CurrentBranch()
+	if err != nil {
+		return fetchErr
+	}
+	if _, _, probeErr := originBranchHead(f.warpPath, branch); gitexec.IsTransportFailure(probeErr) {
+		return errors.Join(fetchErr, probeErr)
+	}
+	return fetchErr
+}
+
+// primeAheadByOwedTips reports whether l is the hub's prime and its code branch is ahead only by owed landings.
+// Every commit past the tracking ref must then be a landed tip whose push is still owed.
+// A branch holding no commit past its tracking ref reports false.
+// A diverged branch does too, since a pull that moves nothing would leave out origin's commits.
+func primeAheadByOwedTips(l *lymcwd.Location) (bool, error) {
+	tips, err := pushledger.OwedTips(l.HubPath, pushledger.LandingKey)
+	if err != nil || len(tips) == 0 {
+		return false, err
+	}
+	repo := gitrepo.New(l.WorktreePath())
+	ahead, err := repo.HasUnpushed()
+	if err != nil || !ahead {
+		return false, err
+	}
+	behind, err := repo.HasUnpulled()
+	if err != nil || behind {
+		return false, err
+	}
+	// Asking for the prime runs git in the anchored directory, which a branch that is only behind may not hold yet.
+	prime, err := IsPrimeWorktree(l)
+	if err != nil || !prime {
+		return false, err
+	}
+	return AheadByOnly(l, tips)
 }
 
 // refuseUnsafeRewrite judges a warp upstream that is not a fast-forward of localHEAD.

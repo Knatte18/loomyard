@@ -207,7 +207,7 @@ hub's fabric.secret_paths adds. The error names each file and its pattern.
 
 Related commands:
   lym fabric push   — commit then push in the same process
-  lym fabric sync   — commit then async-push (detached child process)`,
+  lym fabric sync   — commit then push in the background`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -243,7 +243,7 @@ stay local for the pair's next push.
 
 Related commands:
   lym fabric commit — commit only
-  lym fabric sync   — commit then async-push (detached child process)`,
+  lym fabric sync   — commit then push in the background`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -389,11 +389,11 @@ fetched and inspected against its upstream tracking ref:
 		Args:        cobra.NoArgs,
 		Short:       "commit weft changes and async-push both sides (records only in the prime)",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Commit weft changes exactly as "lym fabric commit" does, then hand the push
-of both the warp branch and the weft branch to a detached child process and
-return immediately — the push happens in the background, coalesced under
-fabric's push lock.
-In the hub's prime only the weft branch is handed over, because the prime's
+		Long: `Commit weft changes exactly as "lym fabric commit" does, then start the
+worktree's background pusher and return immediately. The pusher pushes the
+weft branch and then the warp branch, and retries a push that cannot reach
+origin on its own interval.
+In the hub's prime only the weft branch is pushed, because the prime's
 code branch is the operator's parent branch to push.
 
 Related commands:

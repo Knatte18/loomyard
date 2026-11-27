@@ -51,7 +51,6 @@ var testOnlyCodeAllowed = []scankit.Entry{
 	{Key: "internal/loomrecipe.RecipeEngines", Why: "oracle of internal/shedrecipe's coverage guard test"},
 	{Key: "internal/shedrecipe.Names", Why: "oracle of internal/shedbuild's engine test and internal/shedrecipe's coverage guard test"},
 	{Key: "internal/driftengine.UpdateScope", Why: "writes the scope record driftengine alone writes, for internal/driftcli's and internal/loomcli's tests"},
-	{Key: "internal/fabricengine.RecordPushFailure", Why: "writes the failed-push record fabric alone writes, for internal/fabriccli's, internal/orchcli's and internal/tendercli's tests"},
 	{Key: "internal/boardengine.WriteHold", Why: "writes the hold record boardengine alone writes, for internal/adoptcli's, internal/beamcli's, internal/orchcli's, internal/pairteardown's and internal/tendercli's tests"},
 	{Key: "internal/fabricvocab.SideTokens", Why: "the fabric vocabulary the enforcement tests of internal/planparser, internal/partsparser and internal/reportengine check against"},
 	{Key: "internal/fabricvocab.BareTokenInRootDoc", Why: "the fabric vocabulary check internal/lymcwd's enforcement test runs"},

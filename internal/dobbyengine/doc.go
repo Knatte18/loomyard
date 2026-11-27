@@ -170,6 +170,9 @@
 //     A stop is new when the derived state, batten's state, the child's state, whether the child is read
 //     or the episode changed.
 //     The episode is a history length plus its newest entry's folded repeats, so a repeated block at one row counts.
+//   - A run listed Waiting, whose live driver waits out a network failure, keeps its last reading and owes no line.
+//   - A run listed WaitDied, whose driver died while it waited, reads as one stop,
+//     and its line names the producer and failure class the wait record holds.
 //   - A landed run whose `beam.land_notice` read on owes no line, since the landing notice reports it.
 //   - The memory is State.Watches, keyed by slug, which outlives the run's entry in the pass records.
 //     It is dropped once the run is no longer listed, owes nothing and has no batten status.
@@ -258,6 +261,21 @@
 //     Deps.CatchUp with no PullBolt means no catch-up.
 //   - While the catch-up is owed the tick spawns no pass, starts no task, takes no landing step and runs no tidy step.
 //     A failure retries with a doubling delay and records State.CatchUp as a CatchUpWait.
+//
+// The push summary:
+//
+//   - A failed push sends no mail of its own.
+//     The prime's dobby, the one wired with Deps.PushSummary.Ledger, reads each tick what is owed to origin:
+//     the push ledger's owed entries and every run of the hub whose driver waits on the network.
+//     Only an anchor change stops the read.
+//   - The owed period starts at the earliest thing owed and lasts while anything is.
+//     Once it has lasted PushSummaryDeps.Threshold, one notice lists each owed branch with its minutes,
+//     a refused one with its way forward, and each waiting run with its producer.
+//     No further summary follows in that period.
+//   - An entry holding only held records, dropped landings or owed hand-overs is listed as held.
+//     It opens and holds no period, so it does not block the all-clear.
+//   - Once nothing is owed after a summary, one notice says every branch is pushed, and the period ends.
+//   - A failed post is tried again on the next tick and logged once per episode.
 //
 // The desktop launcher:
 //

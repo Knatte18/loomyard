@@ -48,6 +48,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/runpusher"
@@ -1105,7 +1106,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 		return reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()).Directory()
 	}
 
-	teardownPush, teardownLevel := teardownPushSeams(location, slug, locateTask, fabricengine.EnvSyncOptions)
+	teardownPush, teardownLevel := teardownPushSeams(location, slug, locateTask, fabricengine.EnvSyncOptions, runpusher.Start)
 
 	env := shedrecipe.Env{
 		Slug:       slug,
@@ -1778,16 +1779,17 @@ func startRunPushers(location *lymcwd.Location, slug string, locateTask func() (
 }
 
 // teardownPushSeams returns the Push and Level halves of the Worktree-Teardown row for the pair of slug.
-// Push pushes the pair until origin holds its tips, and Level reads whether origin holds them.
+// Push marks the pair's push as wanted now and starts or wakes its pusher through start, without waiting for it.
+// Level reads whether origin holds the pair's tips and no landing of it is still owed.
 // A pair already gone pushes nothing and reads level.
 // With git or pushes off, as syncOptions reports, nothing is pushed and the pair reads level,
 // so the row removes the pair as it does with no pusher.
-func teardownPushSeams(location *lymcwd.Location, slug string, locateTask func() (*lymcwd.Location, error), syncOptions func() fabricengine.SyncOptions) (push func(context.Context) error, level func() (bool, error)) {
+func teardownPushSeams(location *lymcwd.Location, slug string, locateTask func() (*lymcwd.Location, error), syncOptions func() fabricengine.SyncOptions, start func(runpusher.Target) (bool, error)) (push func(context.Context) error, level func() (bool, error)) {
 	pushesOff := func() bool {
 		options := syncOptions()
 		return options.SkipGit || options.SkipPush
 	}
-	push = func(ctx context.Context) error {
+	push = func(context.Context) error {
 		if pushesOff() {
 			return nil
 		}
@@ -1799,14 +1801,17 @@ func teardownPushSeams(location *lymcwd.Location, slug string, locateTask func()
 		if err != nil {
 			return err
 		}
-		return teardownPushError(runpusher.PushUntilLanded(ctx, func() error {
-			_, pushErr := pairteardown.PushRun(location, taskLocation, slug, pairteardown.RunPush{
-				LockWait:       fabriclayout.StatusPushLockWait,
-				TeardownWait:   fabriclayout.StatusPushLockWait,
-				OwedUnrecorded: true,
-			})
-			return pushErr
-		}, fabricengine.IsPushOwed, time.Sleep, func(error) {}))
+		key := pushledger.RecordsKey(fabricengine.RecordsWorktree(taskLocation))
+		err = pushledger.Update(taskLocation.HubPath, key, time.Now(), func(entry pushledger.Entry, _ bool) (pushledger.Entry, bool, error) {
+			entry.Worktree, entry.Slug, entry.PushNow = taskLocation.WorktreePath(), slug, true
+			return entry, true, nil
+		})
+		if err != nil {
+			return fmt.Errorf("battencli: mark the push of the pair of %q: %w", slug, err)
+		}
+		target := runpusher.Target{Location: taskLocation, Slug: slug, Pair: true}
+		runpusher.RestartPusher(func() (bool, error) { return start(target) }, taskLocation.WorktreePath())
+		return nil
 	}
 	level = func() (bool, error) {
 		if pushesOff() {
@@ -1820,23 +1825,14 @@ func teardownPushSeams(location *lymcwd.Location, slug string, locateTask func()
 		if err != nil {
 			return false, err
 		}
-		return fabricengine.TipsOnOrigin(taskLocation)
+		onOrigin, err := fabricengine.TipsOnOrigin(taskLocation)
+		if err != nil || !onOrigin {
+			return false, err
+		}
+		stands, err := pairteardown.LandingStands(taskLocation.HubPath, slug, taskLocation)
+		return !stands, err
 	}
 	return push, level
-}
-
-// teardownPushError wraps origin's ended entry in battenshed.ErrPushEntryEnded.
-// It wraps a hand-over in battenshed.ErrPushHandedOver.
-// The teardown row tells those two apart from a refused push by the sentinels.
-// Any other error, and nil, pass through unchanged.
-func teardownPushError(err error) error {
-	switch {
-	case errors.Is(err, fabricengine.ErrEntryEnded):
-		return fmt.Errorf("%w: %w", battenshed.ErrPushEntryEnded, err)
-	case errors.Is(err, fabricengine.ErrHandedOver):
-		return fmt.Errorf("%w: %w", battenshed.ErrPushHandedOver, err)
-	}
-	return err
 }
 
 // restepSkips reports whether a child's status is a blocked halt the binary re-step leaves alone:

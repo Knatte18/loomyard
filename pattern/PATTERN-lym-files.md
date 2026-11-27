@@ -22,7 +22,8 @@ Every never-tracked file lives under `.lym`, at the mirrored subpath of the `_ly
   Everything else run-related under `.lym` is a cache:
   the merge record, the driver park marker and resume report, batten's per-row marks, the dobby's `beam/state.json`,
   shuttle run directories, reed state, loom scratch, gate and verify records, the parent lock, the run process registry,
-  the creel journal, adopt check views, failed-push records, the hibernate request and the pause record.
+  the creel journal, adopt check views, failed-push records, the hibernate request, the pause record,
+  the push ledger, the Go driver's network wait record and the merge-in base file.
 - An absent cache reads as empty and refuses nothing.
   A lost sent-notice memory can repeat a notice or a revive once.
 - A tracked value that holds only on the machine that wrote it, such as a Claude session id or an absolute path,

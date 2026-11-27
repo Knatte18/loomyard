@@ -45,6 +45,7 @@ type beamPullRequestSide struct {
 // With none recorded, it pushes the beam branch and finds an open pull request from it.
 // It creates one with the description's text when there is none, and records the pull request with the pushed head.
 // Before it pushes, or reopens a closed one, it refuses a beam whose pull request GitHub could not merge as it stands.
+// The push refuses while the beam holds landings its parent push has not settled.
 func prOpen(ctx context.Context, deps landDeps, slug string) (map[string]any, error) {
 	const verb = "lym beam pr open"
 	if err := judgePullRequestVerb(deps, verb, slug); err != nil {
@@ -151,6 +152,7 @@ func openRecorded(ctx context.Context, deps landDeps, side beamPullRequestSide, 
 
 // prUpdate pushes the beam branch and sets the recorded pull request's title and body from the change description.
 // It marks a draft ready for review and records the pushed head.
+// The push refuses while the beam holds landings its parent push has not settled.
 func prUpdate(ctx context.Context, deps landDeps, slug string) (map[string]any, error) {
 	const verb = "lym beam pr update"
 	if err := judgePullRequestVerb(deps, verb, slug); err != nil {
@@ -283,12 +285,19 @@ func rerunRefusal(verb, slug, step string, err error) error {
 	return fmt.Errorf("%s: %s: %w; way forward: fix the cause it names, then run `%s %s` again", verb, step, err, verb, slug)
 }
 
+// errBeamHoldsLandings is wrapped by the refusal of a beam push while the beam carries an unsettled landing.
+var errBeamHoldsLandings = errors.New("the beam push is held")
+
 // pushRefusal words the refusal of a failed beam push.
 // A push that handed the run over to another machine is returned as it is:
 // its error names the new owner, and a re-run on this machine would only hand over again.
+// A refusal of a held push is returned as it is too, since it names its own way forward.
 func pushRefusal(verb, slug string, err error) error {
 	if errors.Is(err, fabricengine.ErrHandedOver) {
 		return err
+	}
+	if errors.Is(err, errBeamHoldsLandings) {
+		return fmt.Errorf("%s: %w", verb, err)
 	}
 	return rerunRefusal(verb, slug, "push the beam branch", err)
 }

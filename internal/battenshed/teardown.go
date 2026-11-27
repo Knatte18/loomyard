@@ -1,12 +1,12 @@
 // teardown.go implements the producer that removes a task worktree.
-// It shuts the loom session down, pushes the pair to origin, then removes the worktree, strictly in that order.
-// It holds the hub's prime lock for the shutdown and for the removal, and none while it pushes.
+// It shuts the loom session down, asks for the pair to be pushed, then removes the worktree once it is level.
+// The order is strict.
+// It holds the hub's prime lock for the shutdown and for the removal, and none for the push.
 
 package battenshed
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,9 +17,6 @@ import (
 
 // abandonedSessionFileName is the fixed name of the abandoned-session record inside a run's scratch directory.
 const abandonedSessionFileName = "abandoned-session"
-
-// maxTeardownPushRounds bounds the pushes the teardown makes while origin still lacks a tip of the pair.
-const maxTeardownPushRounds = 3
 
 // AbandonedSessionFile returns the path under scratchDir where the abandoned session's name is recorded.
 // It is exported so that the readers and the writers of the record share one declaration of its name.
@@ -52,8 +49,8 @@ func recordAbandonedSession(producer, slug, session, scratchDir string) {
 	}
 }
 
-// worktreeTeardownProducer shuts down the task worktree's loom session and pushes the pair.
-// It then removes the worktree pair.
+// worktreeTeardownProducer shuts down the task worktree's loom session and asks for the pair to be pushed.
+// It then removes the worktree pair if it is level.
 // It holds the hub's prime lock for the shutdown and again for the removal, and none for the push.
 type worktreeTeardownProducer struct {
 	name       string
@@ -67,11 +64,10 @@ var _ shedengine.ShedProducer = (*worktreeTeardownProducer)(nil)
 
 // NewWorktreeTeardown returns a shedengine.ShedProducer for the task worktree identified by slug.
 // The producer takes primeLock and calls deps.Shutdown, then releases the lock.
-// It then calls deps.Push with no prime lock held, so the push's own waits never hold the lock.
-// It takes primeLock again and reads deps.Level: a false read means a tip moved since the push,
-// so it releases the lock and pushes again, up to maxTeardownPushRounds pushes.
-// A true read calls deps.Remove and releases the lock.
-// A push that reports the pair's entry ended skips the Level read, since nothing is left to push.
+// It then calls deps.Push with no prime lock held.
+// It takes primeLock again and reads deps.Level once.
+// A true read calls deps.Remove; a false read ends the row Done with the pair standing, to be removed later,
+// so the row waits on no network and never loops.
 // A failed shutdown, push, Level read or removal is reported as a Stuck outcome, not as an error.
 // deps.Remove is called only after a successful shutdown and a level read.
 func NewWorktreeTeardown(name, slug string, deps TeardownDeps, primeLock PrimeLock, scratchDir string) shedengine.ShedProducer {
@@ -96,13 +92,9 @@ func NewWorktreeTeardown(name, slug string, deps TeardownDeps, primeLock PrimeLo
 // Removing the worktree before its session has shut down is the ordering this producer exists to prevent.
 // A non-empty abandoned-session return is logged and recorded under scratchDir, and does not change the verdict.
 //
-// A Push error wrapping ErrPushEntryEnded goes on to the removal at once.
-// One wrapping ErrPushHandedOver yields Stuck naming the hand-over.
-// The pair is already removed and the run is another machine's.
-// Any other Push error yields Stuck with its text and the resume, and keeps the pair.
+// A Push error yields Stuck with its text and the resume, and keeps the pair.
 // A Level error yields Stuck naming the read and the resume.
-// A Level that still reads false after the last of maxTeardownPushRounds pushes yields Stuck naming the resume,
-// so a push that lands nothing never loops.
+// A Level that reads false yields Done and keeps the pair.
 //
 // A Remove error yields Stuck, naming worktree removal as the failed half.
 // The reason also states that session shutdown already succeeded, so the two halves can be told apart.
@@ -124,38 +116,29 @@ func (p *worktreeTeardownProducer) Call(ctx context.Context) (shedengine.Outcome
 		return stuck(reason)
 	}
 
-	for round, removed := 1, false; !removed; round++ {
-		reason, entryEnded, err := p.pushPair(ctx)
-		if err != nil {
-			return "", shedengine.OutputPointer{}, err
+	reason, err = p.pushPair(ctx)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	if reason != "" {
+		return stuck(reason)
+	}
+	reason, err = p.underPrimeLock(ctx, func() (string, error) {
+		level, levelReason, levelErr := p.pairIsLevel(ctx)
+		if levelErr != nil || levelReason != "" {
+			return levelReason, levelErr
 		}
-		if reason != "" {
-			return stuck(reason)
+		if !level {
+			logger.Info("battenshed: the pair is not level yet, so it stays standing to be removed later", "producer", p.name, "slug", p.slug)
+			return "", nil
 		}
-		reason, err = p.underPrimeLock(ctx, func() (string, error) {
-			level := entryEnded
-			if !entryEnded {
-				var levelReason string
-				var levelErr error
-				if level, levelReason, levelErr = p.pairIsLevel(ctx); levelErr != nil || levelReason != "" {
-					return levelReason, levelErr
-				}
-			}
-			if !level {
-				if round >= maxTeardownPushRounds {
-					return fmt.Sprintf("origin still lacks a tip of the pair after %d pushes, so the pair is kept; once the tips settle, resume with `lym batten run %s`", round, p.slug), nil
-				}
-				return "", nil
-			}
-			removed = true
-			return p.removePair(ctx)
-		})
-		if err != nil {
-			return "", shedengine.OutputPointer{}, err
-		}
-		if reason != "" {
-			return stuck(reason)
-		}
+		return p.removePair(ctx)
+	})
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	if reason != "" {
+		return stuck(reason)
 	}
 
 	if cerr := cancelErr(ctx, p.name); cerr != nil {
@@ -198,26 +181,19 @@ func (p *worktreeTeardownProducer) shutDownSession(ctx context.Context) (string,
 }
 
 // pushPair calls deps.Push, which a nil Push skips.
-// It returns the stuck reason of a push that cannot go on, and whether origin ended the pair's entry.
-// A push error wrapping ErrPushEntryEnded is no failure: nothing is left to push.
-func (p *worktreeTeardownProducer) pushPair(ctx context.Context) (stuckReason string, entryEnded bool, err error) {
+// It returns the stuck reason of a push that cannot go on.
+func (p *worktreeTeardownProducer) pushPair(ctx context.Context) (stuckReason string, err error) {
 	if p.deps.Push == nil {
-		return "", false, nil
+		return "", nil
 	}
 	pushErr := p.deps.Push(ctx)
 	if pushErr == nil {
-		return "", false, nil
+		return "", nil
 	}
 	if cerr := cancelErr(ctx, p.name); cerr != nil {
-		return "", false, cerr
+		return "", cerr
 	}
-	switch {
-	case errors.Is(pushErr, ErrPushEntryEnded):
-		return "", true, nil
-	case errors.Is(pushErr, ErrPushHandedOver):
-		return fmt.Sprintf("the run was handed over to another machine and its pair is already removed here, so no resume applies here: %s", pushErr.Error()), false, nil
-	}
-	return fmt.Sprintf("the push step failed and the pair is kept: %s; once its way forward is done, resume with `lym batten run %s`", pushErr.Error(), p.slug), false, nil
+	return fmt.Sprintf("the push step failed and the pair is kept: %s; once its way forward is done, resume with `lym batten run %s`", pushErr.Error(), p.slug), nil
 }
 
 // pairIsLevel calls deps.Level, which a nil Level reads as level.
@@ -231,7 +207,7 @@ func (p *worktreeTeardownProducer) pairIsLevel(ctx context.Context) (level bool,
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return false, "", cerr
 		}
-		return false, fmt.Sprintf("reading whether origin holds the pair's tips failed and the pair is kept: %s; resume with `lym batten run %s`", levelErr.Error(), p.slug), nil
+		return false, fmt.Sprintf("reading whether the pair may be removed failed and the pair is kept: %s; resume with `lym batten run %s`", levelErr.Error(), p.slug), nil
 	}
 	return level, "", nil
 }

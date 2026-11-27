@@ -244,8 +244,8 @@ func battenHandBackNotice(deps battenshed.RowNoticeDeps, slug, scratchDir string
 
 // driverDepsFor fills the shed driver's seams for batten's run in the prime.
 // Every path comes from shedrun over the prime's location and the slug.
-// Nothing is read or built here.
-// The configs, the model registry and the shuttle runner load when the `Tackler` or `Arbiter` seam is called.
+// Only fabric's push timing is read here, and nothing is built.
+// The other configs, the model registry and the shuttle runner load when the `Tackler` or `Arbiter` seam is called.
 // A seam left nil removes its rows from the driver's rule table.
 // The stop report and the done step's envelope are written after the transition's own commit,
 // so a hand-back's park and a done stop commit the run's records on the prime's pair.
@@ -254,6 +254,14 @@ func (c *battenCLI) driverDepsFor() (sheddriver.Deps, error) {
 	runID := shedrun.ResolveRunID(location, slug)
 	pauseGeometry := func() (pauserecord.Geometry, error) { return hubgeom.PauseGeometry(location) }
 	var reportPath string
+	fabricConfig, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
+	if err != nil {
+		return sheddriver.Deps{}, err
+	}
+	timing, timingWarnings := fabricConfig.PushTiming()
+	for _, warning := range timingWarnings {
+		logger.Warn("battencli: " + warning)
+	}
 
 	return sheddriver.Deps{
 		RunID:       runID,
@@ -268,7 +276,9 @@ func (c *battenCLI) driverDepsFor() (sheddriver.Deps, error) {
 			}
 			return path, os.WriteFile(path, raw, 0o644)
 		},
-		SettlePath: shedrun.SettleRecords(location, slug),
+		SettlePath:         shedrun.SettleRecords(location, slug),
+		NetworkWaitCeiling: timing.Ceiling,
+		WaitRecordPath:     shedrun.DriveWaitRecord(location, slug),
 		Pause: func(now time.Time) (pauserecord.Coverage, error) {
 			geometry, err := pauseGeometry()
 			if err != nil {

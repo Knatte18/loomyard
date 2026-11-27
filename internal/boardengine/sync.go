@@ -4,7 +4,7 @@
 // this file supplies the commit and push step.
 // A top-level push lock serializes pushers across processes;
 // concurrent sync processes block, then exit quickly once there is nothing to do.
-// The write path launches `lym board sync` detached (see spawn.go) so it never waits.
+// The write path starts the board's background pusher detached (see spawn.go) so it never waits.
 package boardengine
 
 import (
@@ -26,6 +26,19 @@ const writeLockFile = fabriclayout.BoardWriteLockFile
 // skipGit disables it entirely;
 // skipPush commits locally but skips the push.
 func Sync(boardPath string, skipGit, skipPush bool) error {
+	return syncBoard(boardPath, skipGit, skipPush, fabricengine.SyncOptions{})
+}
+
+// PusherSync commits the board's uncommitted files and pushes the board once.
+// It serves a caller that retries on its own schedule.
+// An owed failure is returned, leaving the commit for the next push, with no failed-push record and no notice.
+// With pushes off it commits and does not push, and with git off it does nothing.
+func (b *Board) PusherSync() error {
+	return syncBoard(b.boardPath, b.skipGit, b.skipPush, fabricengine.SyncOptions{OwedUnrecorded: true, SingleAttempt: true})
+}
+
+// syncBoard is Sync with the options of its push.
+func syncBoard(boardPath string, skipGit, skipPush bool, push fabricengine.SyncOptions) error {
 	if skipGit {
 		return nil
 	}
@@ -42,7 +55,7 @@ func Sync(boardPath string, skipGit, skipPush bool) error {
 			return false, err
 		}
 		if !skipPush {
-			if err := bolt.Push(fabricengine.SyncOptions{}); err != nil {
+			if err := bolt.Push(push); err != nil {
 				return false, fmt.Errorf("sync push: %w", err)
 			}
 		}

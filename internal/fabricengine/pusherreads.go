@@ -99,50 +99,64 @@ func (b localBranch) heldOnOrigin() (bool, error) {
 	return b.repo.IsAncestor(b.tip, b.upstreamTip)
 }
 
+// heldCeiling returns the first parent of the held commit hold in the repository at path.
+// It is the newest commit a push may send while hold is held.
+func heldCeiling(path, hold string) (string, error) {
+	parents, err := gitrepo.New(path).CommitParents(hold)
+	if err != nil {
+		return "", fmt.Errorf("fabricengine: read the held commit %s: %w", hold, err)
+	}
+	if len(parents) == 0 {
+		return "", fmt.Errorf("fabricengine: the held commit %s in %s has no parent to push up to", hold, path)
+	}
+	return parents[0], nil
+}
+
 // RunCommitsAhead reports whether the worktree l holds commits origin lacks, reading local refs only.
 // l is the hub's prime or a task pair's code worktree, and its records worktree is the one RecordsWorktree names.
 // A branch is ahead when it holds a commit its tracking ref lacks, or has no upstream and holds a commit.
 // A branch whose upstream is set and whose tracking ref is absent reads level: origin ended it.
 // The prime is ahead when its records branch is, since its code branch is the operator's.
-// A pair is also ahead when the Warp-SHA trailer of its records tip names a code tip.
-// That tip must be on its code branch, and the branch's tracking ref must lack it.
-// Code commits past the named tip are not counted.
-// A records tip with no Warp-SHA trailer counts no code side.
+// A pair is ahead when either of its branches is.
+// A records commit of the pair's run may be held back from every push.
+// The records branch then counts only up to that commit's first parent.
 func RunCommitsAhead(l *lymcwd.Location) (bool, error) {
 	records, err := readLocalBranch(RecordsWorktree(l))
 	if err != nil {
 		return false, err
 	}
-	ahead, err := records.ahead()
-	if err != nil || ahead {
-		return ahead, err
-	}
 	prime, err := IsPrimeWorktree(l)
-	if err != nil || prime || records.tip == "" {
-		return false, err
-	}
-	detail, err := records.repo.CommitDetail(records.tip)
-	if err != nil {
-		return false, fmt.Errorf("fabricengine: read the records tip %s: %w", records.tip, err)
-	}
-	namedTip := trailerValue(detail.Message, fabriclayout.WarpSHATrailerKey)
-	if namedTip == "" {
-		return false, nil
-	}
-	codePath := l.WorktreePath()
-	held, err := holdsCommit(codePath, namedTip)
-	if err != nil || !held {
-		return false, err
-	}
-	contained, err := HeadContains(codePath, namedTip)
-	if err != nil || !contained {
-		return false, err
-	}
-	code, err := readLocalBranch(codePath)
 	if err != nil {
 		return false, err
 	}
-	return code.lacks(namedTip)
+	if prime {
+		return records.ahead()
+	}
+	hold, held, err := recordsPushCeiling(l.HubPath, l.WorktreeName)
+	if err != nil {
+		return false, err
+	}
+	var ahead bool
+	if held {
+		ceiling, err := heldCeiling(RecordsWorktree(l), hold)
+		if err != nil {
+			return false, err
+		}
+		ahead, err = records.lacks(ceiling)
+		if err != nil {
+			return false, err
+		}
+	} else if ahead, err = records.ahead(); err != nil {
+		return false, err
+	}
+	if ahead {
+		return true, nil
+	}
+	code, err := readLocalBranch(l.WorktreePath())
+	if err != nil {
+		return false, err
+	}
+	return code.ahead()
 }
 
 // RefusedPushStands reports whether a refused-push record stands for a branch of l.

@@ -65,30 +65,6 @@ func (f *Fabric) ReadParentTips(branch string, fetch bool) (fabriclayout.ParentT
 	return tips, nil
 }
 
-// LocalOnlyCommits lists the SHAs of the local branch's commits that its tracking ref lacks, newest first.
-// The tracking ref is as the last fetch left it.
-// A branch level with, or behind, its tracking ref lists none.
-// A branch with no tracking ref lists none either, since there is nothing to compare against.
-// A missing local branch is an error naming it.
-func (f *Fabric) LocalOnlyCommits(branch string) ([]string, error) {
-	local, err := f.code.RefSHA("refs/heads/" + branch)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: local-only commits of %q: local branch: %w", branch, err)
-	}
-	upstream, hasUpstream, err := f.code.Upstream(branch)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: local-only commits of %q: upstream: %w", branch, err)
-	}
-	if !hasUpstream {
-		return nil, nil
-	}
-	commits, err := f.code.CommitsNotIn(local, upstream)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: local-only commits of %q: %w", branch, err)
-	}
-	return commits, nil
-}
-
 // ChangedPaths returns the paths that differ between from and to in the pair's code repository.
 // The paths are repository-relative and sorted.
 func (f *Fabric) ChangedPaths(from, to string) ([]string, error) {

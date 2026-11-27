@@ -228,6 +228,7 @@ func (c *websterCLI) wireHub(loc *lymcwd.Location, stencilsDir, planDir, targetD
 	// Opening it here would fail the verbs that never commit to the fabric before they run.
 	c.refMatcher = fabricengine.NewRefScanner(loc)
 	c.openFabric = func() (*fabricengine.Fabric, error) { return fabricengine.Open(loc) }
+	c.pushRecords = pushPairRecords(loc, c.runID, nil)
 	c.parentBranch = func() (string, error) {
 		origin, found, err := fabricengine.ReadOrigin(loc)
 		if err != nil {
@@ -366,6 +367,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	// would panic or stat-fail if ever called.
 	c.refMatcher = websterengine.NeverMatches{}
 	c.openFabric = nil
+	c.pushRecords = nil
 	c.parentBranch = nil
 	c.batcher = activeBatcher
 	c.gateTiers = gateTiers

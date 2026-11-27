@@ -337,7 +337,8 @@ github.com/Knatte18/loomyard/
 ├── internal/shedverbs/           the generic run/step/status/pause/goto cobra verb bodies shared by every module that arms a `*shedengine.Shed` onto a CLI subtree
 ├── internal/sheddriver/          the shed layer's Go driver: its settle loop, rule table and hand-back, the tackler agent call, and the `shed` config module, told its paths and seams by the arming module
 ├── internal/shedcli/             the `lym shed` subtree: a named-recipe arming table for the tapestry, motif, raddle, arras, darn, pawl, sampler, hardener and batten recipes plus the three CLI seams that register it under the lym root
-├── internal/runpusher/           the pusher of a records worktree: its start conditions, spawn, push loop and exit protocol
+├── internal/runpusher/           the background pusher of one push target: its start conditions, spawn, push loop, parent step and exit protocol
+├── internal/pushledger/          the machine-local ledger of owed pushes and unpushed landings, one entry per push target
 ├── internal/statuscommit/        the shared per-transition status commit core (skip while mid-merge, commit hard-errors, start the worktree's pusher) that `loomcli` and `battencli` wrap
 ├── internal/statuspane/          the pane mechanics the runs overview and the gate checklist share: a redraw-in-place pane loop and a lock-free status-file reader
 ├── internal/landingshed/         landing's general ShedProducers, Parent-Align, the PR-Review row and Finalize, shared by reference across producer lists

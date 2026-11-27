@@ -2,3 +2,6 @@ branch_prefix: ${env:LYM_BRANCH_PREFIX:-}  # prefix prepended to the slug of eac
 pathspec: ""  # OPTIONAL per-repo directory path(s) relative to worktree root, whitespace-separated; _lym and .lym are structural and injected in code by internal/fabricengine, never read from here
 warp_exclude: CLAUDE.local.md AGENTS.override.md .heddle .claude/settings.local.json  # OPTIONAL paths relative to a warp worktree's anchor, whitespace-separated, excluded through the warp repository's info/exclude; separate from fabric.pathspec and never wired as a junction
 secret_paths: ""  # OPTIONAL secret-file patterns, whitespace-separated, that fabric's commits and webster's record-batch refuse to add, on top of the patterns lym ships; a pattern holding a slash matches the whole repository-relative path, any other the file's base name
+push_interval_s: 60  # seconds between two pushes of one branch lym owns while pushing works; a value below 1 is floored to 1; a machine key
+push_ceiling_s: 300  # the most seconds a retry of a failed push or network call waits; a value below fabric.push_interval_s is raised to it; a machine key
+push_notice_after_min: 30  # minutes a push stays owed before one summary notice reports it; a value below 1 is floored to one second; a machine key

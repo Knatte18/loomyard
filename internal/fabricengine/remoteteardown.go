@@ -59,6 +59,9 @@ type remoteTeardownJob struct {
 	// WeftTip is the local weft tip the command tagged before it deleted the branch.
 	// It is empty when no local branch was left, so the child reads origin's.
 	WeftTip string `json:"weft_tip,omitempty"`
+	// RecordsHold is the records commit no push may carry, read before the removal; empty when none is held.
+	// Neither the records branch nor an archive tag pushed to origin reaches it.
+	RecordsHold string `json:"records_hold,omitempty"`
 	// DeleteWeftOnOrigin asks for the weft branch's delete on origin, leased on the origin tip the archive read.
 	DeleteWeftOnOrigin bool `json:"delete_weft_on_origin,omitempty"`
 	// WarpBranch is the pair's task branch as the command read it from the pair;
@@ -120,7 +123,7 @@ func runRemoteTeardown(rec *Mutations, l *lymcwd.Location, job remoteTeardownJob
 		return out
 	}
 
-	out.archive, out.archiveSkipped, out.err = archiveWeftTip(rec, l, job.Slug, job.WeftBranch, job.WeftTip, job.Kind == remoteTeardownRemove, sleep)
+	out.archive, out.archiveSkipped, out.err = archiveWeftTip(rec, l, job.Slug, job.WeftBranch, job.WeftTip, job.Kind == remoteTeardownRemove, job.RecordsHold, sleep)
 	if out.err != nil {
 		return out
 	}

@@ -247,6 +247,7 @@ const (
 	pathOwnershipMovePathspecs
 	pathOwnershipUntrackedTrackedAt
 	pathOwnershipHubScratch
+	pathOwnershipIgnoredLeftover
 )
 
 // pathOwnership declares which of the closed set of ownership kinds a pathRequest's target must satisfy.
@@ -266,6 +267,8 @@ type pathOwnership struct {
 	pathspecs []string
 	// sha is used only by the untracked predicate: the commit that must track the target.
 	sha string
+	// ignored is used only by the leftover predicate: the paths git reported ignored.
+	ignored []string
 }
 
 // ownedRegisteredLinkedWorktree declares target as owned when repoDir's worktree list registers it as a linked worktree.
@@ -310,6 +313,12 @@ func ownedMovePathspecs(weftPath string, pathspecs []string) pathOwnership {
 // It serves a move to sha that git refuses while such an untracked file stands where sha puts its own.
 func ownedUntrackedTrackedAt(worktree, sha string) pathOwnership {
 	return pathOwnership{kind: pathOwnershipUntrackedTrackedAt, root: worktree, sha: sha}
+}
+
+// ownedIgnoredLeftover declares target as owned when it is one of ignored and the worktree at worktree does not track it.
+// ignored holds the paths git reported ignored under the rules of the commit a merge started from.
+func ownedIgnoredLeftover(worktree string, ignored []string) pathOwnership {
+	return pathOwnership{kind: pathOwnershipIgnoredLeftover, root: worktree, ignored: ignored}
 }
 
 // ownedHubScratch declares target as owned when it lies at or below root, the hub's machine-local scratch directory.
@@ -591,6 +600,23 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 		}
 		if _, err := gitrepo.New(own.root).FileAtRevision(own.sha, rel); err != nil {
 			return false, fmt.Sprintf("%s is not tracked at %s: %v", rel, own.sha, err)
+		}
+		return true, ""
+
+	case pathOwnershipIgnoredLeftover:
+		if !containsCleanPath(own.ignored, target) {
+			return false, fmt.Sprintf("%s is not a path git reported ignored", target)
+		}
+		rel, err := filepath.Rel(filepath.Clean(own.root), filepath.Clean(target))
+		if err != nil {
+			return false, fmt.Sprintf("relate %s to the worktree %s: %v", target, own.root, err)
+		}
+		tracked, err := PathTracked(own.root, filepath.ToSlash(rel))
+		if err != nil {
+			return false, err.Error()
+		}
+		if tracked {
+			return false, fmt.Sprintf("%s is tracked in %s", target, own.root)
 		}
 		return true, ""
 
@@ -2193,6 +2219,35 @@ func resetKeepUnderArchive(rec *Mutations, req pathRequest, repo *gitrepo.Repo, 
 	}
 	rec.Append(fabriclayout.KindWorktreeReset, req.target, sha)
 	return nil
+}
+
+// ResetParentToOrigin moves the code branch checked out at l back to its tracking ref with `git reset --keep`.
+// The move drops the commits origin lacks and carries uncommitted changes across.
+// A tracked change on a path the move rewrites refuses it with nothing moved.
+// A branch with no tracking ref is refused too.
+func ResetParentToOrigin(l *lymcwd.Location) error {
+	worktree := l.WorktreePath()
+	repo := gitrepo.New(worktree)
+	upstream, err := repo.UpstreamSHA()
+	if err != nil {
+		return fmt.Errorf("read origin's tip of the branch at %s: %w", worktree, err)
+	}
+	touched, err := pathsChangedBetween(worktree, "HEAD", upstream)
+	if err != nil {
+		return err
+	}
+	req := pathRequest{
+		what:      "drop a landing commit by moving the parent branch to origin's tip",
+		container: filepath.Dir(worktree),
+		target:    worktree,
+		ownership: ownedWarpCheckout(worktree),
+		dirtiness: dirtyTrackedOn(touched),
+		force:     false,
+	}
+	if err := checkPathRequest(req); err != nil {
+		return err
+	}
+	return repo.ResetKeep(upstream)
 }
 
 // DropLocalResult reports a local drop: its mutation record and the archive tags it kept.

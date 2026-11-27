@@ -341,7 +341,7 @@
 //
 // Board sequences all mutating operations with a file lock:
 // lock → load → mutate → save board.json → move or remove decision record files → render → write files.
-// After each write but the run claim, the owner write and a landing's `done`, sync.go launches a detached process.
+// After each write but the run claim, the owner write and a landing's `done`, spawn.go starts the board's pusher.
 // That process commits and pushes the changes to the remote, and the write returns without waiting for it.
 // The three exceptions each pull the Bolt first, commit, wait for their push and spawn no sync.
 // Read methods (Get/List) bypass the lock and load directly from disk, persisting nothing.
@@ -352,9 +352,10 @@
 // It refuses a revision whose entry was removed or changed, and an empty revision, a create, whose slug exists.
 // The check covers only the entry it names.
 //
-// The detached sync path talks to git through fabricengine.Bolt, never hand-rolled gitexec calls.
-// It is spawned as `lym board sync --deferrable`, so its network gate is held under the hub scope.
-// Under a pause it defers and leaves the change for the next sync.
+// The push path talks to git through fabricengine.Bolt, never hand-rolled gitexec calls.
+// The write starts `lym loom pusher --board`, whose Board.PusherSync commits and pushes once per interval in force.
+// Its network gate is held under the hub scope, and under a pause it yields, leaving the change for the next start.
+// `lym board sync` is the operator's verb for a synchronous backup.
 //
 // # Storage
 //

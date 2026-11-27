@@ -16,7 +16,7 @@
 //
 // The walk pulls the board, reconciles and commits the board's config, then reconciles each code worktree the hub lists.
 // It commits each worktree's applied files in that worktree.
-// The board's push goes to the detached `lym board sync`, so no verb waits on the board's push.
+// The board's push goes to the board's background pusher, so no verb waits on the board's push.
 // A failed render of heddle targets or of the overview is logged and never fails the walk.
 //
 // The walk removes no key the running binary's template lacks, so an older binary never strips a newer one's settings.

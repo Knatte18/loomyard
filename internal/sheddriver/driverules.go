@@ -25,19 +25,21 @@ const driveRepairCap = 2
 // A loop that died sooner after its re-step than this counts against the cap, so a loop that keeps dying still reaches the tackler.
 const wakeRestartGap = 10 * time.Minute
 
-// networkRestepWaits are the waits before each re-step of a stop a network failure left, in order;
-// a stop still failing after the last of them goes to the parent.
-// A remote that GitHub or the network drops for a minute or two answers again within them.
-var networkRestepWaits = []time.Duration{15 * time.Second, 30 * time.Second, time.Minute}
+// networkWaitBase is the wait before the first re-step of a stop a network failure left.
+const networkWaitBase = 15 * time.Second
 
-// networkRestepSpan returns the sum of networkRestepWaits.
-// It is the time the driver gives a remote before the parent hears of it.
-func networkRestepSpan() time.Duration {
-	var span time.Duration
-	for _, wait := range networkRestepWaits {
-		span += wait
+// networkWait returns the wait before the re-step that follows repairCount earlier re-steps of a network stop:
+// networkWaitBase doubled once per earlier re-step, capped at ceiling.
+// A ceiling of zero or less caps it at networkWaitBase.
+func networkWait(repairCount int, ceiling time.Duration) time.Duration {
+	if ceiling <= 0 {
+		ceiling = networkWaitBase
 	}
-	return span
+	wait := networkWaitBase
+	for i := 0; i < repairCount && wait < ceiling; i++ {
+		wait *= 2
+	}
+	return min(wait, ceiling)
 }
 
 // Stop is what the loop's envelope says about one stop, or what a status says when the driver acts on a stop it did not step to.
@@ -188,6 +190,8 @@ type driveFacts struct {
 	ResumeReturned bool
 	// ArbiterFirst is true when the stop is blocked at a row the arbiter judges before the tackler.
 	ArbiterFirst bool
+	// NetworkCeiling is the longest wait before a re-step of a network failure.
+	NetworkCeiling time.Duration
 }
 
 // driveAction is what the loop does for a decision.
@@ -208,13 +212,11 @@ const (
 // Rule is the rule text the stop report quotes.
 // FrictionNote asks for a friction note on a paused stop that carries no reason, from the envelope or the status.
 // Wait is how long a re-step waits before it steps; zero steps at once.
-// NetworkNotice asks a hand-back to tell the parent which remote operation failed, in place of any question.
 type driveDecision struct {
-	Action        driveAction
-	Rule          string
-	FrictionNote  bool
-	Wait          time.Duration
-	NetworkNotice bool
+	Action       driveAction
+	Rule         string
+	FrictionNote bool
+	Wait         time.Duration
 }
 
 // binaryEligible reports whether a newer on-disk build could change what happens at the stop:
@@ -286,10 +288,8 @@ func decideDrive(stop Stop, facts driveFacts) driveDecision {
 		return driveDecision{Action: driveActionArbiter, Rule: "a tackler resume returned to the same stop: the arbiter decides"}
 	case state == string(shedengine.StateBlocked) && facts.ArbiterFirst:
 		return driveDecision{Action: driveActionArbiter, Rule: "a blocked stop at a row the arbiter judges first: the arbiter decides"}
-	case networkFailure(stop) && facts.RepairCount < len(networkRestepWaits):
-		return driveDecision{Action: driveActionRestep, Rule: "a network failure: wait for the remote, then re-step", Wait: networkRestepWaits[facts.RepairCount]}
 	case networkFailure(stop):
-		return driveDecision{Action: driveActionHandBack, Rule: "a network failure that outlasted its re-steps: notify the parent and hand back", NetworkNotice: true}
+		return driveDecision{Action: driveActionRestep, Rule: "a network failure: wait for the remote, then re-step", Wait: networkWait(facts.RepairCount, facts.NetworkCeiling)}
 	case !stop.OK && stop.Transient != "":
 		return driveDecision{Action: driveActionTackler, Rule: "a transient error that outlived its re-step: the tackler decides"}
 	case stop.Kind == shedverbs.KindInterrupted && stop.InterruptPolicy == shedverbs.InterruptPolicyReinvoke && facts.RepairCount < driveRepairCap:

@@ -14,6 +14,7 @@ import (
 	"maps"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -49,10 +50,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/slackengine"
@@ -179,6 +182,96 @@ func syncBoltHoldEntries(prime *lymcwd.Location, recordPath, boardDir string, sc
 	}
 	_, err = tenderengine.SyncBoltHold(deps, req)
 	return err
+}
+
+// pruneEpisodes keeps one failure episode of the push ledger's pruning, so a failure on every tick warns once.
+var pruneEpisodes logger.EpisodeSet
+
+// settleEpisodes keeps one failure episode per refused parent target, so a failure on every tick warns once.
+var settleEpisodes logger.EpisodeSet
+
+// settleRefusedParent settles the refused parent target t of the hub of prime in this process, pushing nothing.
+func settleRefusedParent(prime *lymcwd.Location, t runpusher.Target) error {
+	deps := runpusher.NewDeps(t, fabricengine.PushTiming{})
+	deps.Parent.HandOver = func(run, owner string) error { return pairteardown.HandOverOwnedElsewhere(prime, run, owner) }
+	if t.Pair {
+		deps.Parent.Refresh = func() error { return pairteardown.RefreshOwners(prime, t.Slug) }
+	}
+	return runpusher.SettleRefused(context.Background(), t, deps)
+}
+
+// parentTargets returns each pair target whose ledger entry holds landings, dropped ones or owed hand-overs.
+func parentTargets(hubPath string) ([]runpusher.Target, error) {
+	entries, err := pushledger.List(hubPath)
+	if err != nil {
+		return nil, err
+	}
+	var targets []runpusher.Target
+	for _, key := range slices.Sorted(maps.Keys(entries)) {
+		entry := entries[key]
+		parentWork := len(entry.Landings) > 0 || len(entry.Dropped) > 0 || len(entry.HandOvers) > 0
+		if key == pushledger.LandingKey || entry.Worktree == "" || !parentWork {
+			continue
+		}
+		location, err := lymcwd.NamedWorktree(hubPath, filepath.Base(entry.Worktree))
+		if err != nil {
+			return nil, err
+		}
+		targets = append(targets, runpusher.Target{Location: location, Slug: entry.Slug, Pair: true})
+	}
+	return targets, nil
+}
+
+// settleIfRefused settles target when its push is refused, and reports whether it is.
+// A failure is logged once per episode.
+func settleIfRefused(target runpusher.Target, refused func(runpusher.Target) (bool, error), settle func(runpusher.Target) error) bool {
+	key := runpusher.LockPath(target)
+	stands, err := refused(target)
+	if err == nil && stands {
+		err = settle(target)
+	}
+	if err != nil {
+		settleEpisodes.Fail(key, "beamcli: a refused parent target was not settled", "target", key, "error", err)
+		return stands
+	}
+	settleEpisodes.Recover(key, "beamcli: the parent target is read again", "target", key)
+	return stands
+}
+
+// restartHubPushers restarts the pushers of the hub's own targets through start.
+// Those targets are the prime's records, the board's branch, the landing target and each beam pair with parent work.
+// A parent target whose push refused reads, the landing target or a beam pair's, is handed to settle instead.
+// It then drops the push ledger entries of gone worktrees.
+// A failure is logged once per episode and stops nothing.
+func restartHubPushers(prime *lymcwd.Location, start func(runpusher.Target) (bool, error), refused func(runpusher.Target) (bool, error), settle func(runpusher.Target) error) {
+	targets := []struct {
+		key    string
+		target runpusher.Target
+	}{
+		{prime.WorktreePath(), runpusher.Target{Location: prime}},
+		{prime.WorktreePath() + " board", runpusher.BoardTarget(prime)},
+		{prime.WorktreePath() + " landing", runpusher.LandingTarget(prime)},
+	}
+	for _, hubTarget := range targets {
+		if hubTarget.target.Kind == runpusher.KindLanding && settleIfRefused(hubTarget.target, refused, settle) {
+			continue
+		}
+		runpusher.RestartPusher(func() (bool, error) { return start(hubTarget.target) }, hubTarget.key)
+	}
+	pairs, err := parentTargets(prime.HubPath)
+	if err != nil {
+		settleEpisodes.Fail(prime.HubPath, "beamcli: the parent targets were not listed", "hub", prime.HubPath, "error", err)
+	}
+	for _, target := range pairs {
+		if !settleIfRefused(target, refused, settle) {
+			runpusher.RestartPusher(func() (bool, error) { return start(target) }, runpusher.LockPath(target))
+		}
+	}
+	if err := runpusher.PruneLedger(prime.HubPath, time.Now()); err != nil {
+		pruneEpisodes.Fail(prime.HubPath, "beamcli: the push ledger was not pruned", "hub", prime.HubPath, "error", err)
+		return
+	}
+	pruneEpisodes.Recover(prime.HubPath, "beamcli: the push ledger prunes again", "hub", prime.HubPath)
 }
 
 // hubDobbyDeps fills every seam of dobbyengine.Run over the hub of prime, for the dobby of geom.
@@ -371,16 +464,11 @@ func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, sta
 		}
 		var relayEpisodes logger.EpisodeSet
 		deps.Tick = func(context.Context, dobbyengine.TickInput) (bool, error) {
-			runpusher.RestartPusher(func() (bool, error) {
-				target, err := runpusher.TargetOf(prime, "")
-				if err != nil {
-					return false, err
-				}
-				return startPusher(target)
-			}, prime.WorktreePath())
+			restartHubPushers(prime, startPusher, runpusher.TargetRefused, func(t runpusher.Target) error { return settleRefusedParent(prime, t) })
 			return false, errors.Join(carrier.Tick(), ensureSlackRelay(prime, &relayEpisodes))
 		}
 		deps.CheckBinary = holdReexec(carrier.HoldsReexec, deps.CheckBinary)
+		deps.PushSummary = hubPushSummary(prime)
 	}
 	if geom.Slug != "" {
 		// The removed worktree's config is gone by the time this stops a strand, so the runner is built over the prime.
@@ -421,6 +509,116 @@ func hubDobbyDepsStarting(prime *lymcwd.Location, geom dobbyengine.Geometry, sta
 		}
 	}
 	return deps, nil
+}
+
+// hubPushSummary fills the reads of the push summary over the hub of prime.
+func hubPushSummary(prime *lymcwd.Location) dobbyengine.PushSummaryDeps {
+	var timingWarnings, unreadableWaits logger.EpisodeSet
+	return dobbyengine.PushSummaryDeps{
+		Ledger: func() (map[pushledger.Key]pushledger.Entry, error) { return pushledger.List(prime.HubPath) },
+		Refused: func(key pushledger.Key, entry pushledger.Entry) (string, bool, error) {
+			return refusedPushWayForward(prime, key, entry)
+		},
+		Waits: func() ([]dobbyengine.RunView, error) { return hubDriveWaits(prime, &unreadableWaits) },
+		Threshold: func() (time.Duration, error) {
+			config, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(prime))
+			if err != nil {
+				return 0, err
+			}
+			timing, warnings := config.PushTiming()
+			for _, warning := range warnings {
+				timingWarnings.Fail(warning, "beamcli: "+warning)
+			}
+			return timing.NoticeAfter, nil
+		},
+	}
+}
+
+// refusedPushWayForward reports whether a refused push stands on the target of key, and returns its way forward.
+// A pair whose worktree is gone reads as not refused.
+func refusedPushWayForward(prime *lymcwd.Location, key pushledger.Key, entry pushledger.Entry) (string, bool, error) {
+	var target runpusher.Target
+	switch key {
+	case pushledger.BoardKey:
+		target = runpusher.BoardTarget(prime)
+	case pushledger.LandingKey:
+		target = runpusher.LandingTarget(prime)
+	default:
+		if entry.Worktree == "" {
+			return "", false, nil
+		}
+		if present, err := fileExists(entry.Worktree); err != nil || !present {
+			return "", false, err
+		}
+		name := filepath.Base(entry.Worktree)
+		location, err := lymcwd.NamedWorktree(prime.HubPath, name)
+		if err != nil {
+			return "", false, err
+		}
+		target = runpusher.Target{Location: location, Slug: entry.Slug, Pair: name != prime.WorktreeName}
+	}
+	refused, err := runpusher.TargetRefused(target)
+	if err != nil || !refused {
+		return "", false, err
+	}
+	records, err := fabricengine.ListFailedPushes(prime.HubPath)
+	if err != nil {
+		return "", false, err
+	}
+	for _, record := range records {
+		if !fabricengine.IsPushOwed(&fabricengine.PushFailedError{Record: record}) && recordNamesTarget(record, target) {
+			return fabricengine.FailedPushWayForward(record), true, nil
+		}
+	}
+	return "read the failed-push records with `lym tender status`", true, nil
+}
+
+// recordNamesTarget reports whether the failed-push record is of a branch the target pushes.
+func recordNamesTarget(record fabriclayout.FailedPush, target runpusher.Target) bool {
+	primeCode := record.Repo == fabriclayout.RepoCode && record.Prime
+	switch target.Kind {
+	case runpusher.KindBoard:
+		return record.Repo == fabriclayout.RepoBolt
+	case runpusher.KindLanding:
+		return primeCode
+	default:
+		worktree := target.Location.WorktreePath()
+		return !primeCode && (record.RepoPath == worktree || record.CodeWorktree == worktree ||
+			record.RepoPath == fabricengine.RecordsWorktree(target.Location))
+	}
+}
+
+// hubDriveWaits lists each run of the hub of prime whose driver waits on the network under its held lock.
+// It reads each pair's own run and each batten run in the prime.
+// A wait record that does not read is left out, logged once per episode through unreadable.
+func hubDriveWaits(prime *lymcwd.Location, unreadable *logger.EpisodeSet) ([]dobbyengine.RunView, error) {
+	slugs, err := battencli.HubRunSlugs(prime)
+	if err != nil {
+		return nil, err
+	}
+	var waits []dobbyengine.RunView
+	for _, slug := range slugs {
+		pair, err := pairLocation(prime, slug)
+		if err != nil {
+			return nil, err
+		}
+		for _, run := range []struct {
+			location *lymcwd.Location
+			id       string
+		}{{pair, shedrun.SelfRunID}, {prime, slug}} {
+			record := shedrun.DriveWaitRecord(run.location, run.id)
+			wait, standing, driverGone, err := sheddriver.ReadDriveWait(record, shedrun.DriverLock(run.location, run.id))
+			if err != nil {
+				unreadable.Fail(record, "beamcli: a run's network wait is unreadable and is left out of the push summary", "slug", slug, "error", err)
+				continue
+			}
+			unreadable.Recover(record, "beamcli: a run's network wait reads again", "slug", slug)
+			if standing && !driverGone {
+				waits = append(waits, dobbyengine.RunView{Slug: slug, Waiting: true, WaitProducer: wait.Producer, WaitClass: wait.Class, WaitSince: wait.Since})
+			}
+		}
+	}
+	return waits, nil
 }
 
 // beamDescribeDeps fills the description rewrite's seams for the beam slug over the hub of prime.
@@ -521,7 +719,14 @@ func tearDownLeftovers(prime *lymcwd.Location, pairs []dobbyengine.LeftoverPair,
 // A landed or cancelled run's pair goes through the pair teardown with its task branch on origin;
 // the landed run's claim is marked done, and the cancelled run's batten record goes with its pair.
 // The cancel chose the removal, so the cancelled run's teardown answers dirtiness with force.
+// A landed run's pair is left for a later tick, with no error, while origin lacks it or its landing is still owed.
 func tearDownLeftover(prime *lymcwd.Location, pair dobbyengine.LeftoverPair) error {
+	if pair.Kind == dobbyengine.LeftoverLanded {
+		stays, err := landedPairStays(prime, pair.Slug)
+		if err != nil || stays {
+			return err
+		}
+	}
 	switch pair.Kind {
 	case dobbyengine.LeftoverHandedOver:
 		_, err := pairteardown.RemoveHandedOverPair(prime, pair.Slug)
@@ -542,6 +747,29 @@ func tearDownLeftover(prime *lymcwd.Location, pair dobbyengine.LeftoverPair) err
 		Verdict: fabriclayout.EntryEnded,
 	})
 	return err
+}
+
+// landedPairStays reports whether the landed run's pair of slug must not be removed yet:
+// origin lacks one of its tips, or a landing it carries or holds is still owed.
+// With git or pushes off no tip is read, and a pair whose task worktree is gone has none to read.
+func landedPairStays(prime *lymcwd.Location, slug string) (bool, error) {
+	pair, err := lymcwd.NamedWorktree(prime.HubPath, slug)
+	if err != nil {
+		return false, err
+	}
+	options := fabricengine.EnvSyncOptions()
+	_, err = os.Stat(pair.WorktreePath())
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+	case err != nil:
+		return false, err
+	case !options.SkipGit && !options.SkipPush:
+		onOrigin, err := fabricengine.TipsOnOrigin(pair)
+		if err != nil || !onOrigin {
+			return true, err
+		}
+	}
+	return pairteardown.LandingStands(prime.HubPath, slug, pair)
 }
 
 // reconcileEnded runs the hub-scope origin reconcile from prime, as `lym cleanup --apply` does.

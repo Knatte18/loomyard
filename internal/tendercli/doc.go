@@ -59,6 +59,6 @@
 // The gate installs nothing outside a hub.
 // A `Deferrable` child that is not `ParentLocked` installs a deferring gate.
 // That gate exits the child under a pause instead of parking it.
-// A `HubScope` child, the detached board sync, is held under the empty slug,
+// A `HubScope` child is held under the empty slug,
 // so only a hub entry holds it, whichever worktree spawned it.
 package tendercli

@@ -15,15 +15,19 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -369,6 +373,93 @@ func TestLoomPostRun_HaltNotes(t *testing.T) {
 		}
 		f.requireNoNotesNoSpawn(t)
 	})
+
+	t.Run("NetworkStop", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name       string
+			class      shedengine.TransientClass
+			driverHeld bool
+			wantNote   bool
+		}{
+			{name: "GitTransportUnderADriverWritesNoNote", class: shedengine.TransientGitTransport, driverHeld: true},
+			{name: "GitHubAPIUnderADriverWritesNoNote", class: shedengine.TransientGitHubAPI, driverHeld: true},
+			{name: "GitTransportWithNoDriverWritesTheTransientNote", class: shedengine.TransientGitTransport, wantNote: true},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				f := newHaltFixture(t)
+				f.seedStatus(t, loomshed.NameWebster, shedengine.StateFailed, "fetch failed")
+				p := f.c.shedPaths
+				err := state.UpdateJSON[shedengine.Status](p.StatusPath, p.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
+					cur.Transient = string(tt.class)
+					return cur, nil
+				})
+				if err != nil {
+					t.Fatalf("UpdateJSON() = %v; want nil", err)
+				}
+				if tt.driverHeld {
+					f.holdDriverLock(t)
+				}
+
+				f.c.loomPostRun(context.Background(), shedengine.Result{}, errors.New("fetch failed"))
+
+				if !tt.wantNote {
+					f.requireNoNotesNoSpawn(t)
+					return
+				}
+				if note := readNote(t, filepath.Join(f.frictionDir, "loom-halt.md")); !strings.Contains(note, "anomaly: transient-stop\n") {
+					t.Errorf("loom-halt.md = %q; want the transient-stop anomaly", note)
+				}
+			})
+		}
+	})
+}
+
+// holdDriverLock takes the run's Go-driver lock for the test's length, as a live driver does.
+func (f *haltFixture) holdDriverLock(t *testing.T) {
+	t.Helper()
+
+	lockPath := shedrun.DriverLock(f.c.location, f.c.runID)
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(lockPath), err)
+	}
+	held, acquired, err := lock.TryAcquireWriteLock(lockPath)
+	if err != nil || !acquired {
+		t.Fatalf("TryAcquireWriteLock(%q) acquired %t, error %v; want the lock taken", lockPath, acquired, err)
+	}
+	t.Cleanup(func() { _ = held.Release() })
+}
+
+func TestLoomStatusExtras(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	f := newHaltFixture(t)
+	f.holdDriverLock(t)
+	extras, err := f.c.loomStatusExtras(shedengine.Status{})
+	if err != nil {
+		t.Fatalf("loomStatusExtras() error = %v; want nil", err)
+	}
+	if got, found := extras["waiting"]; found {
+		t.Errorf("waiting with no record = %v; want the key absent", got)
+	}
+
+	want := sheddriver.DriveWait{Producer: loomshed.NameWebster, Class: string(shedengine.TransientGitTransport), Since: time.Date(2026, 10, 25, 11, 0, 0, 0, time.UTC)}
+	recordPath := shedrun.DriveWaitRecord(f.c.location, f.c.runID)
+	if err := state.WriteJSON(recordPath, recordPath+".lock", want); err != nil {
+		t.Fatalf("WriteJSON(%q) = %v; want nil", recordPath, err)
+	}
+	extras, err = f.c.loomStatusExtras(shedengine.Status{})
+	if err != nil {
+		t.Fatalf("loomStatusExtras() error = %v; want nil", err)
+	}
+	if got := extras["waiting"]; got != want {
+		t.Errorf("waiting under a held driver lock = %+v; want %+v", got, want)
+	}
 }
 
 // funcProducer adapts a func to shedengine.ShedProducer.

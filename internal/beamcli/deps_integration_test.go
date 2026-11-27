@@ -14,17 +14,75 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
+	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+func TestHubLandDeps_PushBeamRefusesWhileTheBeamHoldsLandings(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	boardkit.InstallReplay(t)
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	added := hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{Beam: true})
+	prime, err := lymcwd.ResolveWorktree(h.PrimeWorktree())
+	if err != nil {
+		t.Fatalf("resolve the prime: %v", err)
+	}
+	deps := hubLandDeps(prime)
+	pushed, err := deps.PushBeam("b")
+	if err != nil {
+		t.Fatalf("PushBeam(b) = %v; want nil", err)
+	}
+	originTip := func() string { return gitkit.RevParse(t, h.CodeBare, "refs/heads/"+added.Branch) }
+	tip := gitkit.CommitFile(t, h.PairCodeWorktree("b"), "landed.txt", "landed\n", "a member's landing")
+	key := pushledger.RecordsKey(h.PairRecordsSibling("b"))
+	setEntry := func(keep bool) {
+		t.Helper()
+		entry := pushledger.Entry{Landings: []pushledger.Landing{{Run: "member", Tip: tip, ParentBranch: added.Branch, At: time.Unix(1, 0)}}}
+		err := pushledger.Update(h.Path, key, time.Unix(1, 0), func(pushledger.Entry, bool) (pushledger.Entry, bool, error) {
+			return entry, keep, nil
+		})
+		if err != nil {
+			t.Fatalf("pushledger.Update: %v", err)
+		}
+	}
+	setEntry(true)
+
+	_, err = deps.PushBeam("b")
+
+	const wayForward = "way forward: wait for the beam's parent push, or run the step its refused-push record names, then rerun `lym beam pr`"
+	if err == nil || !strings.Contains(err.Error(), wayForward) {
+		t.Errorf("PushBeam(b) with a landing owed = %v; want a refusal ending in %q", err, wayForward)
+	}
+	if got := originTip(); got != pushed {
+		t.Errorf("origin beam tip = %s; want it left at %s", got, pushed)
+	}
+
+	setEntry(false)
+	head, err := deps.PushBeam("b")
+	if err != nil || head != tip || originTip() != tip {
+		t.Errorf("PushBeam(b) with no landing = %s, %v, origin at %s; want %s pushed and returned", head, err, originTip(), tip)
+	}
+
+	gitkit.CommitFile(t, h.PairCodeWorktree("b"), "lost.txt", "lost\n", "a lost landing\n\n"+fabriclayout.LandingTrailerKey+": lost-member")
+	if _, err = deps.PushBeam("b"); err == nil || !strings.Contains(err.Error(), wayForward) {
+		t.Errorf("PushBeam(b) with an unrecorded landing commit = %v; want a refusal ending in %q", err, wayForward)
+	}
+	if got := originTip(); got != tip {
+		t.Errorf("origin beam tip = %s; want it left at %s", got, tip)
+	}
+}
 
 // TestHubLandDeps_ReadyReads drives the seams that `ready` judges a beam by over a real hub pair.
 // It reads the beam's pull_request through the per-task lookup, the beam's own worktree first and its parents' after.

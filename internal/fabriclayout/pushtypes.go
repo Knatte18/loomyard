@@ -36,6 +36,10 @@ const (
 	// It also covers a weft whose own marker is empty.
 	// The record carries the way forward the stop named.
 	PushFailureAnchorChange PushFailureClass = "anchor_change"
+	// PushFailureHeldBack means a push of a branch runs landed on was held back, since retrying cannot clear what stops it.
+	// Such a stop is another machine's ownership or a landing commit nothing records.
+	// The record carries its own way forward.
+	PushFailureHeldBack PushFailureClass = "held_back"
 )
 
 // The repository sides a branch outcome or failed-push record names in its Repo field.
@@ -136,12 +140,16 @@ func (n MachineNames) IsZero() bool {
 // RunSlug names the run whose records a rejected prime push reads.
 // Here names this machine, for a takeover read; its zero value turns that read off.
 // OwedUnrecorded returns an owed push's error with no failed-push record, for a caller that retries the owed push itself.
+// SingleAttempt makes a push that cannot reach origin fail after one transport attempt, with no backoff of its own.
+// CodeCeiling is the newest code commit the push may send, empty for the code branch's tip.
 type PairPush struct {
 	LockWait       time.Duration
 	TeardownWait   time.Duration
 	RunSlug        string
 	Here           MachineNames
 	OwedUnrecorded bool
+	SingleAttempt  bool
+	CodeCeiling    string
 }
 
 // PushSpawn is one detached push request.

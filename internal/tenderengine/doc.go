@@ -36,7 +36,8 @@
 // A send refused because a live entry added after the lift covers the session is claimed into that entry.
 // Each orch's session is left to its own orch watcher.
 //
-// A lift that lifted at least one entry then spawns what a pause deferred.
+// A lift that lifted at least one entry then spawns what a pause held back:
+// for a pair, its pusher when it holds commits origin lacks.
 // It spawns through `Deps.PushPair`, `Deps.PushPrimeRecords` and `Deps.SyncBoardIfOwed`;
 // a nil seam spawns nothing.
 // The report lists the spawns under `spawned` and a failure under `spawn_failed`; neither fails the lift.

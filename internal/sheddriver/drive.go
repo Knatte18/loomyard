@@ -27,7 +27,62 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/state"
 )
+
+// DriveWait records that a driver is waiting out a network failure.
+// It stands from the first wait of a network stop and across the re-steps between its waits.
+// The driver removes it when it settles a stop that is no network failure, and when it ends.
+type DriveWait struct {
+	// Producer is the row the run stopped at.
+	Producer string `json:"producer"`
+	// Class is the transient class of the failure.
+	Class string `json:"class"`
+	// Since is when the first wait started.
+	Since time.Time `json:"since"`
+}
+
+// driveWaitLock returns the lock path guarding the wait record at recordPath.
+func driveWaitLock(recordPath string) string {
+	return recordPath + ".lock"
+}
+
+// ReadDriveWait reads the wait record at recordPath and whether a driver still holds the lock at driverLockPath.
+// standing is true while the record exists, and driverGone is true when it stands with the lock free: its driver died.
+// A missing record reads as not standing, and a record that does not read or decode returns its error.
+// The lock is only probed, by a non-blocking shared try released at once.
+func ReadDriveWait(recordPath, driverLockPath string) (wait DriveWait, standing, driverGone bool, err error) {
+	// The lock is probed before the record is read: a driver removes its record before it releases the lock,
+	// so a free lock never pairs with the record of a driver that ended on its own.
+	free, err := driverLockFree(driverLockPath)
+	if err != nil {
+		return DriveWait{}, false, false, err
+	}
+	wait, standing, err = state.ReadJSON[DriveWait](recordPath, driveWaitLock(recordPath))
+	if err != nil {
+		return DriveWait{}, false, false, fmt.Errorf("sheddriver: read the wait record %s: %w", recordPath, err)
+	}
+	return wait, standing, standing && free, nil
+}
+
+// driverLockFree reports whether no process holds the driver lock at path.
+// A lock whose directory does not exist was never taken.
+func driverLockFree(path string) (bool, error) {
+	if _, err := os.Stat(filepath.Dir(path)); errors.Is(err, fs.ErrNotExist) {
+		return true, nil
+	}
+	probe, free, err := lock.TryAcquireReadLock(path)
+	if err != nil {
+		return false, fmt.Errorf("sheddriver: probe the driver lock %s: %w", path, err)
+	}
+	if !free {
+		return false, nil
+	}
+	if err := probe.Release(); err != nil {
+		return false, fmt.Errorf("sheddriver: release the driver lock probe %s: %w", path, err)
+	}
+	return true, nil
+}
 
 // Exit is how a driver run ended.
 type Exit string
@@ -86,6 +141,12 @@ type Deps struct {
 
 	// Wait waits delay before a re-step, returning early with ctx's error once ctx ends; nil waits on the real clock.
 	Wait func(ctx context.Context, delay time.Duration) error
+	// NetworkWaitCeiling is the longest wait before a re-step of a network failure;
+	// zero caps every such wait at the first one.
+	NetworkWaitCeiling time.Duration
+	// WaitRecordPath is where the driver keeps its DriveWait record while it waits out a network failure;
+	// empty keeps none.
+	WaitRecordPath string
 	// CommitRecords commits the run's records at a done stop; nil commits nothing.
 	// A done stop that reported friction: failed calls it again after its hand-back report; repeat calls must do nothing.
 	CommitRecords func() error
@@ -170,6 +231,7 @@ type TamperSeam struct {
 // judged is whether the tackler or the arbiter was asked to judge a stop.
 // judgedKey is the key of the stop it was asked about.
 // A stop other than that one is not a judged stop, whatever judged says.
+// waitSince is when the standing wait record's first wait started, zero while the driver keeps none.
 // exit is how the run ended.
 type goDriver struct {
 	deps           Deps
@@ -179,6 +241,7 @@ type goDriver struct {
 	pendingNotice  *arbiterSettledNotice
 	judged         bool
 	judgedKey      StopKey
+	waitSince      time.Time
 	exit           Exit
 }
 
@@ -201,6 +264,9 @@ func Run(ctx context.Context, deps Deps) (Exit, error) {
 
 // run steps the run and settles each stop until the driver is finished.
 func (d *goDriver) run(ctx context.Context) error {
+	// A record a killed driver left must not read as a live wait under this driver's lock.
+	d.removeWaitRecord()
+	defer d.endWait()
 	status, statusFound, err := d.deps.ReadStatus()
 	if err != nil {
 		return d.handBackFailure(fmt.Errorf("reading the status before the first step: %w", err))
@@ -282,6 +348,9 @@ func (d *goDriver) settleStop(ctx context.Context, stop Stop) (attempt string, e
 		}
 		decision := decideDrive(stop, facts)
 		d.rules = append(d.rules, decision.Rule)
+		if decision.Wait == 0 {
+			d.endWait()
+		}
 		switch decision.Action {
 		case driveActionDone:
 			return "", true, d.finishDone(stop)
@@ -292,6 +361,7 @@ func (d *goDriver) settleStop(ctx context.Context, stop Stop) (attempt string, e
 			return "", true, nil
 		}
 		if decision.Wait > 0 {
+			d.noteWait(stop)
 			if err := d.wait(ctx, decision.Wait); err != nil {
 				return "", true, err
 			}
@@ -802,6 +872,7 @@ func (d *goDriver) facts(stop Stop) (driveFacts, error) {
 		return driveFacts{}, err
 	}
 	facts.RepairCount = repairCount(records, key)
+	facts.NetworkCeiling = d.deps.NetworkWaitCeiling
 	if facts.RepairCount > 0 && d.deps.CompletedWake != nil {
 		stamp, found, err := d.deps.CompletedWake(key.CurrentProducer)
 		if err != nil {
@@ -969,18 +1040,41 @@ func (d *goDriver) handBackStop(stop Stop, decision driveDecision, cause error) 
 	if decision.Action == driveActionRelayHandBack {
 		h.Relay = stop.ParentNotice
 	}
-	if decision.NetworkNotice {
-		h.Relay = d.networkNotice(stop)
-	}
 	return d.handBackAs(stop, h, decision.Rule)
 }
 
-// networkNotice words the parent's notice for a stop a network failure left after every re-step:
-// the row, how long the driver waited for the remote, the failing remote operation as the stop's error quotes it,
-// and that the run resumes once the remote answers.
-func (d *goDriver) networkNotice(stop Stop) string {
-	return fmt.Sprintf("Run %s stopped at %s: a network failure outlasted %d re-steps over %s. Failing remote operation: %s. Resume the run once the remote answers.",
-		d.deps.RunID, stop.CurrentProducer, len(networkRestepWaits), networkRestepSpan(), stop.Error)
+// noteWait writes the wait record for a wait at the network stop, keeping the first wait's start time.
+// A failed write is logged and the driver waits all the same.
+func (d *goDriver) noteWait(stop Stop) {
+	if d.deps.WaitRecordPath == "" {
+		return
+	}
+	if d.waitSince.IsZero() {
+		d.waitSince = d.deps.Now()
+	}
+	record := DriveWait{Producer: stop.CurrentProducer, Class: stop.Transient, Since: d.waitSince}
+	if err := state.WriteJSON(d.deps.WaitRecordPath, driveWaitLock(d.deps.WaitRecordPath), record); err != nil {
+		logger.Warn("sheddriver: drive: writing the wait record failed", "run", d.deps.RunID, "error", err)
+	}
+}
+
+// endWait removes the wait record this driver wrote, and does nothing when it keeps none.
+func (d *goDriver) endWait() {
+	if d.waitSince.IsZero() {
+		return
+	}
+	d.waitSince = time.Time{}
+	d.removeWaitRecord()
+}
+
+// removeWaitRecord removes whatever record stands at the wait record's path, an absent one ignored.
+func (d *goDriver) removeWaitRecord() {
+	if d.deps.WaitRecordPath == "" {
+		return
+	}
+	if err := os.Remove(d.deps.WaitRecordPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		logger.Warn("sheddriver: drive: removing the wait record failed", "run", d.deps.RunID, "error", err)
+	}
 }
 
 // wait waits delay before a re-step through the Wait seam, or on the real clock when it is unwired.

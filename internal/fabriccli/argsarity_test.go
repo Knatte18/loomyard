@@ -46,6 +46,7 @@ func TestCommand_EveryVerbRejectsExtraPositionalArgs(t *testing.T) {
 		"push":            {"a"},
 		"pull":            {"a"},
 		"sync":            {"a"},
+		"sync-status":     {"a"},
 		"merge":           {"a", "b"},
 		"merge-in":        {"a", "b"},
 	}

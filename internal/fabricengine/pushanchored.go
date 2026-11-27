@@ -7,6 +7,7 @@ package fabricengine
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"slices"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/pushledger"
 )
 
 // ErrPushLockBusy is wrapped by the error a bounded push returns when the push lock is still held once its wait ran out.
@@ -90,6 +92,50 @@ func pushFailuresOf(err error) []*PushFailedError {
 	return pushFailuresOf(errors.Unwrap(err))
 }
 
+// recordsPushCeiling returns the records commit of the run slug that no push may yet carry.
+// The push ledger answers first; without a hold there, the run's held-records ref and then its landing commit do,
+// so a hold outlives a lost ledger.
+// held is false when there is none.
+// An empty slug, the prime's, holds none: its records are shared by every batten run.
+func recordsPushCeiling(hubPath, slug string) (hold string, held bool, err error) {
+	if slug == "" {
+		return "", false, nil
+	}
+	hold, held, err = pushledger.HeldRecordsCommit(hubPath, slug)
+	if err != nil {
+		return "", false, fmt.Errorf("fabricengine: read the held records of %q: %w", slug, err)
+	}
+	if held {
+		return hold, true, nil
+	}
+	return heldByRefOrLanding(hubPath, slug)
+}
+
+// recordsCeilingAt returns the newest commit of the records worktree at weftPath that a push of slug's pair may send.
+// It returns "" when nothing is held.
+func recordsCeilingAt(hubPath, weftPath, slug string) (string, error) {
+	hold, held, err := recordsPushCeiling(hubPath, slug)
+	if err != nil || !held {
+		return "", err
+	}
+	return heldCeiling(weftPath, hold)
+}
+
+// unpushedUnder reports whether a push of the worktree at path that may send nothing past ceiling still has work.
+// With no ceiling that is any commit past the upstream.
+// With one, only a tracking ref holding the ceiling reads done;
+// a branch with no upstream or a pruned tracking ref is left to the push to judge.
+func unpushedUnder(path, ceiling string) (bool, error) {
+	if ceiling == "" {
+		return gitrepo.New(path).HasUnpushed()
+	}
+	branch, err := readLocalBranch(path)
+	if err != nil || branch.state != upstreamTracked {
+		return true, err
+	}
+	return branch.lacks(ceiling)
+}
+
 // acquirePushLock returns a function that takes the push lock at the path it is given.
 // LockWaitUnbounded blocks until the lock is free.
 // A positive lockWait gives up once it expires, reporting the lock as not acquired.
@@ -109,6 +155,29 @@ func acquirePushLock(lockWait time.Duration) func(lockPath string) (*lock.FileLo
 		}
 		return held, acquired, nil
 	}
+}
+
+// HoldPairPushLock takes the push lock of the pair at pair and returns its release.
+// It waits without bound while another push holds the lock.
+// No push of the pair runs until release is called, so a caller can commit records and hold them back first.
+func HoldPairPushLock(pair *lymcwd.Location) (release func(), err error) {
+	lockDir, err := ensureWeftLockDirAt(RecordsWorktree(pair))
+	if err != nil {
+		return nil, err
+	}
+	leaveGate := pauserecord.Admit(pushLockGateOp)
+	held, _, err := acquirePushLock(fabriclayout.LockWaitUnbounded)(filepath.Join(lockDir, weftPushLockFile))
+	if err != nil {
+		leaveGate()
+		return nil, err
+	}
+	releaseHeld := holdPushLock(held, lockDir, time.Now())
+	return func() {
+		if err := releaseHeld(); err != nil {
+			logger.Warn("fabricengine: push lock not released", "path", lockDir, "error", err)
+		}
+		leaveGate()
+	}, nil
 }
 
 // pushLockBusyError returns the error for a synchronous push whose wait for the push lock under lockDir ran out.
@@ -161,9 +230,15 @@ func pushLockBusyError(lockDir string, lockWait time.Duration) error {
 // With push.OwedUnrecorded an owed failure is returned as its *PushFailedError and written to no record, with no notice:
 // a deferred side is told from the returned error, and the caller retries the push itself.
 // Every other failure is recorded as without it.
+// With push.SingleAttempt a side that cannot reach origin fails after one transport attempt.
+// While a records commit of a pair's run is held, the records side is pushed only up to that commit's first parent.
+// The records side then reads as landed once origin holds that parent.
+// A non-empty push.CodeCeiling likewise caps the code side at that commit.
+// A capped side whose origin already holds its ceiling is not pushed, and a rejected one is never replayed or reset.
 // The prime's records push takes no teardown lock.
 // The code side is sent with SyncOptions.AfterRecords set,
 // so a rejection by an origin tip that no transition of the run names resets that tip.
+// It does not reset past a commit this machine did not make: the push is then refused, naming that commit.
 //
 // Every side that observably advanced is recorded in the returned PushResult.
 // Returns (PushResult{}, nil) immediately, with no lock taken, when opts.SkipGit or opts.SkipPush is true.
@@ -186,20 +261,22 @@ func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, push fabriclayout.Pa
 	warpPath := l.WorktreePath()
 	weftPath := RecordsWorktree(l)
 
-	request, err := statusPushRequest(l, "")
-	if err != nil {
-		return fabriclayout.PushResult{}, err
+	// A pair's push is held and teardown-guarded under its own slug; the prime's records push is neither.
+	slug := ""
+	if !isPrime {
+		slug = l.WorktreeName
 	}
 	opts.RunSlug = push.RunSlug
 	opts.OwedUnrecorded = push.OwedUnrecorded
-	if request.TeardownSlug != "" {
-		opts.RunSlug = request.TeardownSlug
-		releaseTeardown, acquired, err := acquireTeardownShared(l.HubPath, request.TeardownSlug, push.TeardownWait)
+	opts.SingleAttempt = push.SingleAttempt
+	if slug != "" {
+		opts.RunSlug = slug
+		releaseTeardown, acquired, err := acquireTeardownShared(l.HubPath, slug, push.TeardownWait)
 		if err != nil {
 			return fabriclayout.PushResult{}, err
 		}
 		if !acquired {
-			return fabriclayout.PushResult{}, teardownLockOwedError(l.HubPath, weftPath, request.TeardownSlug, push.TeardownWait, opts)
+			return fabriclayout.PushResult{}, teardownLockOwedError(l.HubPath, weftPath, slug, push.TeardownWait, opts)
 		}
 		defer releaseTeardown()
 	}
@@ -207,9 +284,9 @@ func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, push fabriclayout.Pa
 	if err != nil {
 		return fabriclayout.PushResult{}, err
 	}
-	owed := map[string]fabriclayout.PushSpawn{pushSideRecords: {WeftPath: weftPath, PauseSlug: request.PauseSlug, TeardownSlug: request.TeardownSlug}}
+	owed := map[string]fabriclayout.PushSpawn{pushSideRecords: {WeftPath: weftPath, PauseSlug: slug, TeardownSlug: slug}}
 	if !isPrime {
-		owed[pushSideCode] = fabriclayout.PushSpawn{WarpPath: warpPath, PauseSlug: request.PauseSlug, TeardownSlug: request.TeardownSlug}
+		owed[pushSideCode] = fabriclayout.PushSpawn{WarpPath: warpPath, PauseSlug: slug, TeardownSlug: slug}
 	}
 
 	var codePushSkipped string
@@ -221,12 +298,36 @@ func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, push fabriclayout.Pa
 		if head == "" {
 			return nil
 		}
-		var retryRecords func() (bool, error)
-		if side == pushSideRecords {
-			retryRecords = func() (bool, error) { return retryWeftPush(rec, l.HubPath, path, opts.RunSlug, push.Here) }
-		}
 		sideOpts := opts
 		sideOpts.AfterRecords = side == pushSideCode
+		if side == pushSideRecords {
+			if sideOpts.ceiling, err = recordsCeilingAt(l.HubPath, path, slug); err != nil {
+				return fmt.Errorf("fabricengine: push %s side at %s: %w", side, path, err)
+			}
+		} else {
+			sideOpts.ceiling = push.CodeCeiling
+			// A parent branch's refusal names the landings it carries, whoever sent the push.
+			landings, err := LandingCommits(l)
+			if err != nil {
+				return fmt.Errorf("fabricengine: push %s side at %s: %w", side, path, err)
+			}
+			sideOpts.landings = slices.Sorted(maps.Values(landings))
+		}
+		if sideOpts.ceiling != "" {
+			unpushed, err := unpushedUnder(path, sideOpts.ceiling)
+			if err != nil {
+				return fmt.Errorf("fabricengine: push %s side at %s: %w", side, path, err)
+			}
+			if !unpushed {
+				return nil
+			}
+		}
+		var retryRecords func() (bool, error)
+		if side == pushSideRecords {
+			retryRecords = func() (bool, error) {
+				return retryWeftPush(rec, l.HubPath, path, opts.RunSlug, push.Here, sideOpts.ceiling)
+			}
+		}
 		if err := pushClassified(rec, l.HubPath, side, path, sideOpts, retryRecords); err != nil {
 			return fmt.Errorf("fabricengine: push %s side at %s: %w", side, path, err)
 		}
@@ -247,7 +348,11 @@ func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, push fabriclayout.Pa
 			if err := pushSide(pushSideRecords, weftPath); err != nil {
 				return err
 			}
-			unpushed, err := gitrepo.New(weftPath).HasUnpushed()
+			ceiling, err := recordsCeilingAt(l.HubPath, weftPath, slug)
+			if err != nil {
+				return fmt.Errorf("fabricengine: push records side at %s: %w", weftPath, err)
+			}
+			unpushed, err := unpushedUnder(weftPath, ceiling)
 			if err != nil {
 				return fmt.Errorf("fabricengine: push records side at %s: %w", weftPath, err)
 			}

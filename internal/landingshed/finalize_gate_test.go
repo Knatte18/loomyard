@@ -192,6 +192,14 @@ func (fx *finalizeGateFixture) sessionRoles() string {
 	return strings.Join(roles, ",")
 }
 
+// stopAfterMerge makes the landing end in an error after its parent-side merge.
+// The error keeps the record a Done would remove.
+func (fx *finalizeGateFixture) stopAfterMerge() {
+	fx.fz.deps.OwnedElsewhere = func() (string, string, bool, error) {
+		return "", "", false, errors.New("owner unreadable")
+	}
+}
+
 // requireLanded asserts that the call ended Done after one parent-side merge.
 // It also asserts that the entry's attempt record and the landing failure record are gone.
 func (fx *finalizeGateFixture) requireLanded(t *testing.T, outcome shedengine.Outcome, ptr shedengine.OutputPointer) {
@@ -469,7 +477,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		fx.fz.guard = g
 		fx.head = "f1"
 		fx.lineChange = fabriclayout.LineChange{Lines: 500, Paths: []string{"a/a.go"}}
-		fx.merger.pushErr = errors.New("push refused")
+		fx.stopAfterMerge()
 		fx.seed(t, FixerAttempts{Entry: 1, Spent: 1, Baseline: "t2"})
 		fx.scriptGate(passing)
 		var heldDuringReview []bool
@@ -482,8 +490,9 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 			fx.review(t, approvedReview)()
 		}}
 
-		// The refused push stops the landing after the merge, which keeps the record the landing would otherwise remove.
-		fx.call(t)
+		if _, _, err := fx.fz.Call(context.Background()); err == nil {
+			t.Fatal("Call() error = nil; want the stop after the merge")
+		}
 
 		if len(heldDuringReview) != 1 || heldDuringReview[0] {
 			t.Errorf("lock held during each fix review session = %v; want one session with the lock freed", heldDuringReview)
@@ -504,16 +513,17 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		}}
 		fx.head = "f1"
 		fx.lineChange = fabriclayout.LineChange{Lines: 500, Paths: []string{"a/a.go"}}
-		fx.merger.pushErr = errors.New("push refused")
+		fx.stopAfterMerge()
 		fx.seed(t, FixerAttempts{Entry: 1, Spent: 1, Baseline: "t2", Halt: fixerHaltReviewCapped, ReviewRounds: 2, Findings: []string{"f1 loosens the assertion"}, AcceptedHead: "f1"})
 		fx.scriptGate(passing)
 
-		// The refused push stops the first Call after the merge, which keeps the record for the second.
-		fx.call(t)
+		if _, _, err := fx.fz.Call(context.Background()); err == nil {
+			t.Fatal("first Call() error = nil; want the stop after the merge")
+		}
 		if rec, found := fx.attempts(t); !found || rec.Judged != "f1" {
 			t.Fatalf("attempt record = %+v, %v; want Judged f1, the HEAD the operator accepted", rec, found)
 		}
-		fx.merger.pushErr = nil
+		fx.fz.deps.OwnedElsewhere = nil
 		outcome, ptr := fx.call(t)
 
 		if outcome != shedengine.Done {
@@ -938,14 +948,13 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 	t.Run("an approval is kept in the attempt record as the HEAD it approved", func(t *testing.T) {
 		fx := newFinalizeGateFixture(t)
 		fx.lineChange = fabriclayout.LineChange{Lines: 3, Paths: []string{"a/a_test.go"}}
-		fx.merger.pushErr = errors.New("push refused")
+		fx.stopAfterMerge()
 		fx.scriptGate(failing, passing)
 		fx.seats.turns = []func(){fx.turn(t, fixedReport, "f1")}
 		fx.seats.reviewTurns = []func(){fx.review(t, approvedReview)}
 
-		// The refused push stops the landing after the merge, which keeps the record the landing would otherwise remove.
-		if _, _, err := fx.fz.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v", err)
+		if _, _, err := fx.fz.Call(context.Background()); err == nil {
+			t.Fatal("Call() error = nil; want the stop after the merge")
 		}
 
 		if len(fx.merger.calls) != 1 {

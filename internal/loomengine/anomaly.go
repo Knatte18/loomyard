@@ -34,7 +34,8 @@ const (
 	// AnomalyTransientStop marks a failed halt whose error carries a transient class:
 	// an infrastructure failure classed transient, which a re-step can clear, so no producer is at fault.
 	// A step loop re-steps it once.
-	// The Go driver also re-steps a git-transport or GitHub API stop with waits, and sends any other class to the tackler;
+	// The Go driver re-steps only a git-transport or GitHub API stop with waits, for as long as it stays network-class.
+	// It sends every other class to the tackler;
 	// the prompt-driven driver repairs what outlasts the loop's re-step under its repair cap.
 	AnomalyTransientStop AnomalyKind = "transient-stop"
 	// AnomalyInterrupted marks a non-blocked halt of a step that ended without an envelope, from outside its producer.

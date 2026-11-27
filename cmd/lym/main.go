@@ -104,17 +104,19 @@ func pauseSlugOverride(cmd *cobra.Command) *string {
 	return &slug
 }
 
-// detachedChild reads the hidden flags a detached push or board-sync child was spawned with.
+// detachedChild reads the flags a detached push, board-sync or board-pusher child was spawned with.
 // An undeclared or unset flag reads false.
+// The board pusher defers under a pause and is held under the hub scope, as a deferrable board sync is.
 func detachedChild(cmd *cobra.Command) tendercli.DetachedChild {
 	changed := func(name string) bool {
 		flag := cmd.Flags().Lookup(name)
 		return flag != nil && flag.Changed
 	}
+	hubScope := changed(boardengine.DeferrableSyncFlag) || changed(fabriclayout.PusherBoardFlag)
 	return tendercli.DetachedChild{
-		Deferrable:   changed(fabriclayout.PauseSlugFlag) || changed(boardengine.DeferrableSyncFlag),
+		Deferrable:   changed(fabriclayout.PauseSlugFlag) || hubScope,
 		ParentLocked: changed(fabriclayout.ParentLockedFlag),
-		HubScope:     changed(boardengine.DeferrableSyncFlag),
+		HubScope:     hubScope,
 	}
 }
 

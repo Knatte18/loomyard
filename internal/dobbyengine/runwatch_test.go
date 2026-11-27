@@ -459,6 +459,21 @@ func TestRunWatch(t *testing.T) {
 			want: []string{blocked},
 		},
 		{
+			name: "AWaitingRunOwesNoLineAndItsDriversDeathOwesOne",
+			act: func(_ *testing.T, w *watchFake) {
+				wait := func(r *RunView) { r.WaitProducer, r.WaitClass = "Finalize", "git-transport" }
+				waiting := func(r *RunView) { r.Waiting = true }
+				died := func(r *RunView) { r.WaitDied = true }
+				w.tick()
+				w.writeChild("failed", "Finalize")
+				w.tick(wait, waiting)
+				w.tick(wait, waiting)
+				w.tick(wait, died)
+				w.tick(wait, died)
+			},
+			want: []string{head + "failed at Finalize; the driver died waiting at Finalize on a git-transport failure"},
+		},
+		{
 			name: "ALandedRunWithLandNoticeOffPostsOnceAndAVanishedChildStatusPostsNothing",
 			act: func(_ *testing.T, w *watchFake) {
 				w.tick()

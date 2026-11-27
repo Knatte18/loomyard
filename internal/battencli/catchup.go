@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
@@ -20,6 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
+	"github.com/Knatte18/loomyard/internal/pushledger"
+	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/tendercli"
 )
 
@@ -120,11 +123,19 @@ func (c *battenCLI) ownerAndSubject() (owner, subject string, ok bool) {
 // A pair directory that is no registered linked worktree is a run with no pair here, and no git command runs in it.
 // ReadRun reads the run's owner and whether this machine holds commits of it origin lacks.
 // PushOwed pushes the prime's records and then the pair, and a push that hands the run over reads as done.
+// An owed push, and a records commit a landing holds back, are left to the pusher it starts.
 // Launcher names the hub's board directory and recorded shortname.
 // The catch-up removes the hub's desktop launcher once this machine owns nothing there.
 // A hub with no shortname keeps none.
 func HubCatchUp(prime *lymcwd.Location, runs func() ([]string, error)) dobbyengine.CatchUpDeps {
 	shortname, _ := fabricengine.ReadShortname(fabriclayout.BoltDir(prime.HubPath))
+	pushSeams := catchUpPushSeams{
+		Pair:     catchUpPair,
+		Held:     pushledger.HeldRecordsCommit,
+		Push:     pairteardown.PushRun,
+		Start:    runpusher.Start,
+		LockWait: fabriclayout.StatusPushLockWait,
+	}
 	return dobbyengine.CatchUpDeps{
 		Launcher:          dobbyengine.Launcher{BoardDir: fabriclayout.BoardDir(prime.HubPath), Shortname: shortname},
 		PullBolt:          func() error { return pullBoltForCatchUp(prime) },
@@ -132,7 +143,7 @@ func HubCatchUp(prime *lymcwd.Location, runs func() ([]string, error)) dobbyengi
 		Runs:              runs,
 		FetchRun:          func(slug string) error { return fetchRunForCatchUp(prime, slug) },
 		ReadRun:           func(slug string) (dobbyengine.CatchUpRun, error) { return readRunForCatchUp(prime, slug) },
-		PushOwed:          func(slug string) error { return pushOwedForCatchUp(prime, slug) },
+		PushOwed:          func(slug string) error { return pushOwedForCatchUp(prime, slug, pushSeams) },
 		HandOver:          func(slug, owner string) error { return pairteardown.HandOverOwnedElsewhere(prime, slug, owner) },
 		ApplyPauseIntents: func(slugs []string) error { return tendercli.PauseIntentEntries(prime, slugs) },
 	}
@@ -260,19 +271,57 @@ func readRunForCatchUp(prime *lymcwd.Location, slug string) (dobbyengine.CatchUp
 	return dobbyengine.CatchUpRun{Owner: inputs.Owner, OwnedElsewhere: inputs.OwnedElsewhere}, nil
 }
 
+// catchUpPushSeams carries the reads, the push and the pusher start the catch-up's push step goes through.
+type catchUpPushSeams struct {
+	// Pair returns the location of the run's pair and whether it stands here.
+	Pair func(prime *lymcwd.Location, slug string) (*lymcwd.Location, bool, error)
+	// Held reports whether a landing holds a records commit of the run back.
+	Held func(hubPath, slug string) (commit string, held bool, err error)
+	// Push pushes the records and code of the worktree l for the run slug.
+	Push func(prime, l *lymcwd.Location, slug string, push pairteardown.RunPush) (fabriclayout.PushResult, error)
+	// Start starts the pusher of a target.
+	Start func(target runpusher.Target) (bool, error)
+	// LockWait bounds each push's wait for the push lock.
+	LockWait time.Duration
+	// BackoffSleep sleeps one delay of a push's backoff; nil sleeps for real.
+	BackoffSleep func(time.Duration)
+}
+
 // pushOwedForCatchUp pushes the prime's records and then the pair of slug when it stands here, records side first.
+// A push that stays owed starts that worktree's pusher and counts as done, so the run still starts.
+// So does the pair of a run whose records a landing holds back.
 // A push that meets another machine's takeover entry hands the run over, and ends the call with nil.
-func pushOwedForCatchUp(prime *lymcwd.Location, slug string) error {
-	push := pairteardown.RunPush{LockWait: fabriclayout.StatusPushLockWait}
-	if _, err := pairteardown.PushRun(prime, prime, slug, push); err != nil {
-		return handedOverIsDone(err)
+func pushOwedForCatchUp(prime *lymcwd.Location, slug string, seams catchUpPushSeams) error {
+	push := pairteardown.RunPush{LockWait: seams.LockWait, BackoffSleep: seams.BackoffSleep, OwedUnrecorded: true}
+	start := func(target runpusher.Target) {
+		runpusher.RestartPusher(func() (bool, error) { return seams.Start(target) }, target.Location.WorktreePath())
 	}
-	pair, stands, err := catchUpPair(prime, slug)
+	if _, err := seams.Push(prime, prime, slug, push); err != nil {
+		if !fabricengine.IsPushOwed(err) {
+			return handedOverIsDone(err)
+		}
+		start(runpusher.Target{Location: prime})
+	}
+	pair, stands, err := seams.Pair(prime, slug)
 	if err != nil || !stands {
 		return err
 	}
-	_, err = pairteardown.PushRun(prime, pair, slug, push)
-	return handedOverIsDone(err)
+	target := runpusher.Target{Location: pair, Slug: slug, Pair: true}
+	if _, err := seams.Push(prime, pair, slug, push); err != nil {
+		if !fabricengine.IsPushOwed(err) {
+			return handedOverIsDone(err)
+		}
+		start(target)
+		return nil
+	}
+	_, held, err := seams.Held(prime.HubPath, slug)
+	if err != nil {
+		return err
+	}
+	if held {
+		start(target)
+	}
+	return nil
 }
 
 // handedOverIsDone reads an error wrapping fabricengine.ErrHandedOver as nil.

@@ -22,7 +22,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -66,6 +68,15 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 	c := &battenCLI{
 		location: &lymcwd.Location{RepoName: "example", HubPath: dir, WorktreeName: "hub-repo", AnchorRel: "."},
 		slug:     "some-slug",
+	}
+	// The driver reads fabric's push timing, so the fake hub keeps a fabric config in its Bolt checkout.
+	// A config load takes that checkout as its base layer once the directory exists, which a pause record alone brings about.
+	boltDir := fabriclayout.BoltDir(c.location.HubPath)
+	if err := os.MkdirAll(configengine.ConfigDir(boltDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configengine.ConfigFile(boltDir, "fabric"), []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	// The fake receiver has no git pair, so the run's records commit through stubs that find nothing to commit.
 	c.recordsDeps = func() commitStatusDeps {

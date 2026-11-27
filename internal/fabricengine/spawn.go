@@ -1,6 +1,5 @@
-// spawn.go — the detached push spawn, which starts a child to push a PushSpawn request.
+// spawn.go — the detached push spawn, which starts the background pusher of a PushSpawn request's worktree.
 // SpawnStatusPush builds that request from a location alone.
-// PushWarpRebaseFreeAt is the synchronous warp-side push, with no Fabric instance.
 
 package fabricengine
 
@@ -14,7 +13,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
@@ -23,7 +21,8 @@ import (
 // ErrSpawnUnderTest is returned by SpawnDetachedPush in a test binary, where forking the binary would re-run the suite.
 var ErrSpawnUnderTest = errors.New("fabricengine: detached push not spawned under test")
 
-// SpawnDetachedPush launches a detached, windowless child that pushes the sides req carries.
+// SpawnDetachedPush launches the detached, windowless pusher of the worktree req names.
+// The pusher brings the worktree's commits to origin; a pusher already running takes them, and the new one exits.
 // Returns nil immediately, forking no child, when FABRIC_SKIP_GIT or FABRIC_SKIP_PUSH is set.
 // It also returns nil when both paths are empty, since there is nothing to push.
 // Returns ErrSpawnUnderTest, forking no child, in a test binary.
@@ -49,8 +48,8 @@ func SpawnDetachedPush(req fabriclayout.PushSpawn) error {
 	return startDetachedPush(exe, req)
 }
 
-// startDetachedPush starts the detached push child of req from exe and registers it in the owner record.
-// A registration failure is logged and never fails the spawn, since the push is already running.
+// startDetachedPush starts the pusher of req from exe and registers it in the owner record.
+// A registration failure is logged and never fails the spawn, since the pusher is already running.
 func startDetachedPush(exe string, req fabriclayout.PushSpawn) error {
 	args, dir, owner := pushSpawnCommand(req)
 	cmd := exec.Command(exe, args...)
@@ -70,31 +69,20 @@ func startDetachedPush(exe string, req fabriclayout.PushSpawn) error {
 	return nil
 }
 
-// pushSpawnCommand returns the arguments, working directory and owner of the child req describes.
-// The path flags, the teardown flag and the parent-locked flag are present only when set.
-// The pause flag is always present, written `--pause-slug=` when empty so the prime's empty slug reaches the child.
-// The owner is the teardown slug when set, so a pair's teardown ends its own pushes;
-// otherwise it is the hub owner, so a teardown never ends a prime's records push.
+// pushSpawnCommand returns the arguments, working directory and owner of the pusher req describes.
+// A request with a code path is a pair's, whose slug is that worktree's name.
+// One without is the prime's, whose code worktree is the one its records path is paired with, and names no slug.
+// The owner is the hub, so no run's teardown, cancel or hand-over ends a pusher.
 func pushSpawnCommand(req fabriclayout.PushSpawn) (args []string, dir, owner string) {
-	args = []string{"fabric"}
+	flags := fabriclayout.PusherFlags{Worktree: req.WarpPath}
 	if req.WarpPath != "" {
-		args = append(args, "--warp-path", absoluteOrAsGiven(req.WarpPath))
+		flags.Slug = filepath.Base(req.WarpPath)
+	} else {
+		name, _ := fabriclayout.WeftWarpSlug(filepath.Base(req.WeftPath))
+		flags.Worktree = filepath.Join(filepath.Dir(req.WeftPath), name)
 	}
-	if req.WeftPath != "" {
-		args = append(args, "--weft-path", absoluteOrAsGiven(req.WeftPath))
-	}
-	if req.TeardownSlug != "" {
-		args = append(args, "--"+fabriclayout.TeardownSlugFlag, req.TeardownSlug)
-	}
-	if req.ParentLocked {
-		args = append(args, "--"+fabriclayout.ParentLockedFlag)
-	}
-	args = append(args, "--"+fabriclayout.PauseSlugFlag+"="+req.PauseSlug, "push")
-	owner = runproc.HubOwner
-	if req.TeardownSlug != "" {
-		owner = req.TeardownSlug
-	}
-	return args, req.WorkDir, owner
+	flags.Worktree = absoluteOrAsGiven(flags.Worktree)
+	return fabriclayout.PusherCommand(flags), req.WorkDir, runproc.HubOwner
 }
 
 // absoluteOrAsGiven returns path made absolute, or path itself when the working directory cannot be read.
@@ -106,15 +94,15 @@ func absoluteOrAsGiven(path string) string {
 	return abs
 }
 
-// SpawnStatusPush launches the detached push of the status records at l and reports what it requested.
+// SpawnStatusPush starts the pusher of the status records at l and reports what it requested.
 // It resolves every path from l alone, so no caller names a records path or pushes the prime's code branch.
-// In the hub's prime only the records side is pushed, held under gateSlug and with no teardown slug;
-// in a task pair both sides are pushed, held and teardown-guarded under the pair's own slug.
+// In the hub's prime the request names the records side only; in a task pair it names both sides.
+// gateSlug is not read: the pusher judges its own pause.
 // The child starts in the hub's board worktree, outside both of the pair's worktrees.
-// A failed or never-run push leaves the commits local; the next detached push carries them.
+// A failed or never-run push leaves the commits local; the pusher's next start carries them.
 // That push also creates the upstream of a never-pushed branch.
 func SpawnStatusPush(l *lymcwd.Location, gateSlug string) (fabriclayout.SpawnResult, error) {
-	req, err := statusPushRequest(l, gateSlug)
+	req, err := statusPushRequest(l)
 	if err != nil {
 		return fabriclayout.SpawnResult{}, err
 	}
@@ -122,63 +110,22 @@ func SpawnStatusPush(l *lymcwd.Location, gateSlug string) (fabriclayout.SpawnRes
 }
 
 // statusPushRequest builds the detached push request for l's status records.
-func statusPushRequest(l *lymcwd.Location, gateSlug string) (fabriclayout.PushSpawn, error) {
+func statusPushRequest(l *lymcwd.Location) (fabriclayout.PushSpawn, error) {
 	isPrime, err := IsPrimeWorktree(l)
 	if err != nil {
 		return fabriclayout.PushSpawn{}, err
 	}
-	req := fabriclayout.PushSpawn{WeftPath: RecordsWorktree(l), PauseSlug: gateSlug, WorkDir: fabriclayout.BoltDir(l.HubPath)}
+	req := fabriclayout.PushSpawn{WeftPath: RecordsWorktree(l), WorkDir: fabriclayout.BoltDir(l.HubPath)}
 	if !isPrime {
 		req.WarpPath = l.WorktreePath()
-		req.PauseSlug = l.WorktreeName
-		req.TeardownSlug = l.WorktreeName
-		req.ParentLocked = parentLockHeldBy(l)
 	}
 	return req, nil
 }
 
-// parentLockHeldBy reports whether a live parent lock record names l's pair slug.
-// It is set only for the pushes a Finalize spawns past its parent-side merge.
-// A failed read is logged and reads as not held.
-func parentLockHeldBy(l *lymcwd.Location) bool {
-	store := parentlock.Store{Dir: parentlock.Dir(fabriclayout.BoltDir(l.HubPath))}
-	held, err := store.HeldBy(l.WorktreeName)
-	if err != nil {
-		logger.Warn("fabricengine: parent lock records unreadable; the push is spawned without the parent-locked mark", "slug", l.WorktreeName, "error", err)
-		return false
-	}
-	return held
-}
-
-// SpawnPairPush launches the detached push of the task pair at l: its code worktree and its paired records worktree.
-// A failed or never-run push leaves the pair's commits local; the pair's next detached push carries them.
+// SpawnPairPush starts the pusher of the task pair at l: its code worktree and its paired records worktree.
+// A failed or never-run push leaves the pair's commits local; the pusher's next start carries them.
 // That push also creates the upstream of a never-pushed branch.
 func SpawnPairPush(l *lymcwd.Location) error {
 	_, err := SpawnStatusPush(l, "")
 	return err
-}
-
-// PushWarpRebaseFreeAt pushes unpushed commits at warpPath directly, rebase-free.
-// It takes no Fabric instance and no weft path.
-//
-// The push never runs `git pull --rebase`, so it never rewrites this side's SHAs while the paired side is not rebased.
-// It also never invalidates the correspondence index, and it takes no push lock.
-//
-// A failed push is classified and recorded as a failed push, and it is returned as a *PushFailedError.
-// The error wraps gitrepo.ErrPushRejected for a rejection and gitrepo.ErrPushAuthRefused for a refused credential.
-// A rejection is retried over the push backoff only while origin holds no commit the branch lacks.
-// A rejection that remains is a condition a human must decide.
-// A task branch that origin does not have, or that origin rewound past commits this machine holds, is not pushed.
-func PushWarpRebaseFreeAt(warpPath string, opts SyncOptions) (res fabriclayout.PushResult, err error) {
-	rec := NewMutations(filepath.Dir(warpPath))
-	defer func() { res.Mutations = rec.Snapshot() }()
-
-	if opts.SkipGit || opts.SkipPush {
-		return fabriclayout.PushResult{}, nil
-	}
-
-	if err := pushClassified(rec, filepath.Dir(warpPath), fabriclayout.RepoCode, warpPath, opts, nil); err != nil {
-		return fabriclayout.PushResult{}, err
-	}
-	return fabriclayout.PushResult{}, nil
 }

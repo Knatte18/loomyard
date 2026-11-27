@@ -1,5 +1,5 @@
 // dobbyruns_integration_test.go pins what DobbyRuns reads of a run:
-// its history, reason, kept cancel, hand-over mark, owner and Bolt hold.
+// its history, reason, kept cancel, hand-over mark, owner, Bolt hold and network wait.
 // Each row runs one status and one board over its own hubforge hub.
 
 package battencli
@@ -15,8 +15,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runpusher"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -41,6 +44,9 @@ func TestDobbyRuns_ReadsTheKeptCancelTheHandOverMarkTheOwnerAndTheBoltHold(t *te
 		historyLen     int
 		lastRepeats    int
 		reason         string
+		waiting        bool
+		waitDied       bool
+		waitProducer   string
 	}
 	// told is the history and reason every status carries, with change applied.
 	told := func(change reading) reading {
@@ -52,8 +58,24 @@ func TestDobbyRuns_ReadsTheKeptCancelTheHandOverMarkTheOwnerAndTheBoltHold(t *te
 		status   string
 		members  string
 		markMade bool
-		want     reading
+		// waitAt, when set, is the row of a wait record batten's driver left in the prime.
+		// driverHeld holds that driver's lock.
+		waitAt     string
+		driverHeld bool
+		// pairStatus and pairWaitAt are the status and wait record of the child run in the pair, whose driver lock is held.
+		pairStatus string
+		pairWaitAt string
+		want       reading
 	}{
+		{name: "PairWaitRecordUnderItsDriverReadsWaiting", status: running, pairWaitAt: "Finalize",
+			want: told(reading{waiting: true, waitProducer: "Finalize"})},
+		{name: "PairFailedOnTheNetworkWithNoRecordYetReadsWaiting", status: running,
+			pairStatus: `{"state":"failed","current_producer":"PR-Review","transient":"git-transport"}`,
+			want:       told(reading{waiting: true, waitProducer: "PR-Review"})},
+		{name: "BattenRunWaitingUnderItsDriverReadsWaiting", status: running, waitAt: "Land", driverHeld: true,
+			want: told(reading{waiting: true, waitProducer: "Land"})},
+		{name: "BattenWaitRecordWithNoDriverReadsDied", status: running, waitAt: "Land",
+			want: told(reading{waitDied: true, waitProducer: "Land"})},
 		{name: "RunningRunWithNoneOfThemReadsNone", status: running, want: told(reading{})},
 		{name: "CancelledWithKeepAndFinishReadsKeptSinceTheFinish", status: keptCancel,
 			want: told(reading{pairKept: true, keptSince: "2026-11-15T09:30:00Z"})},
@@ -82,6 +104,37 @@ func TestDobbyRuns_ReadsTheKeptCancelTheHandOverMarkTheOwnerAndTheBoltHold(t *te
 					t.Fatalf("write the hand-over mark: %v", err)
 				}
 			}
+			if tt.waitAt != "" {
+				recordPath := shedrun.DriveWaitRecord(h.Location, "subject")
+				if err := state.WriteJSON(recordPath, recordPath+".lock", sheddriver.DriveWait{Producer: tt.waitAt, Class: "git-transport"}); err != nil {
+					t.Fatalf("write the wait record: %v", err)
+				}
+			}
+			if tt.driverHeld {
+				holdLock(t, shedrun.DriverLock(h.Location, "subject"))
+			}
+			if tt.pairStatus != "" || tt.pairWaitAt != "" {
+				pair, err := lymcwd.NamedWorktree(h.Path, "subject")
+				if err != nil {
+					t.Fatalf("resolve the pair: %v", err)
+				}
+				if tt.pairStatus != "" {
+					statusPath := shedrun.StatusFile(pair, shedrun.SelfRunID)
+					if err := os.MkdirAll(filepath.Dir(statusPath), 0o755); err != nil {
+						t.Fatalf("create %s: %v", filepath.Dir(statusPath), err)
+					}
+					if err := os.WriteFile(statusPath, []byte(tt.pairStatus), 0o644); err != nil {
+						t.Fatalf("write %s: %v", statusPath, err)
+					}
+				}
+				if tt.pairWaitAt != "" {
+					recordPath := shedrun.DriveWaitRecord(pair, shedrun.SelfRunID)
+					if err := state.WriteJSON(recordPath, recordPath+".lock", sheddriver.DriveWait{Producer: tt.pairWaitAt, Class: "git-transport"}); err != nil {
+						t.Fatalf("write the pair's wait record: %v", err)
+					}
+				}
+				holdLock(t, shedrun.DriverLock(pair, shedrun.SelfRunID))
+			}
 
 			views, err := DobbyRuns(h.Location, dobbyengine.Geometry{BoardDir: h.BoardDir()}, NewDobbyParents(h.Location), filepath.Join(t.TempDir(), "pause.json"), runpusher.StartIfAhead)
 
@@ -92,7 +145,8 @@ func TestDobbyRuns_ReadsTheKeptCancelTheHandOverMarkTheOwnerAndTheBoltHold(t *te
 				t.Fatalf("DobbyRuns() = %+v; want the run subject alone", views)
 			}
 			got := reading{pairKept: views[0].PairKept, handOverMarked: views[0].HandOverMarked, ownedElsewhere: views[0].OwnedElsewhere, boltHeld: views[0].BoltHeld,
-				historyLen: views[0].HistoryLen, lastRepeats: views[0].LastRepeats, reason: views[0].Error}
+				historyLen: views[0].HistoryLen, lastRepeats: views[0].LastRepeats, reason: views[0].Error,
+				waiting: views[0].Waiting, waitDied: views[0].WaitDied, waitProducer: views[0].WaitProducer}
 			if !views[0].KeptSince.IsZero() {
 				got.keptSince = views[0].KeptSince.UTC().Format(time.RFC3339)
 			}

@@ -132,7 +132,7 @@ func (f *Fabric) commit(files []string, msg string, snapshotTags []string, trail
 	routingNames := pathspecNames(cfg)
 
 	// Built before taking any lock: a failure here lands no commit and spawns no push.
-	pushRequest, err := statusPushRequest(l, "")
+	pushRequest, err := statusPushRequest(l)
 	if err != nil {
 		return fabriclayout.CommitResult{}, err
 	}

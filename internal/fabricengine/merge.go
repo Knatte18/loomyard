@@ -469,7 +469,12 @@ func (f *Fabric) Merge(source string, opts fabriclayout.MergeOptions) (res fabri
 		return fabriclayout.MergeResult{}, err
 	}
 
-	warpOutcome, err := f.code.MergeStart(sources.warpSHA, opts.Squash)
+	var warpOutcome gitrepo.MergeOutcome
+	if opts.NoFastForward && !opts.Squash {
+		warpOutcome, err = f.code.MergeStartNoFastForward(sources.warpSHA)
+	} else {
+		warpOutcome, err = f.code.MergeStart(sources.warpSHA, opts.Squash)
+	}
 	if err != nil {
 		return fabriclayout.MergeResult{}, f.selfAbortMergeAttempt(rec, st, "warp", err)
 	}

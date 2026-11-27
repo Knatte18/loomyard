@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -44,7 +45,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
+	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -141,7 +144,7 @@ func landingDeps(
 		// The pathspec is shedrun.StatusRel(l, shedrun.SelfRunID).
 		// It is never a hand-built join naming the _lym literal, which the Lymdirs Single-Declarer Invariant forbids.
 		CommitStatus: func() error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{shedrun.StatusRel(l, shedrun.SelfRunID)}, fmt.Sprintf("loom: status checkpoint for %s", seedSlug(l.WorktreeName)), fabricengine.EnvSyncOptions())
+			_, _, err := commitRunStatus(l, seedSlug(l.WorktreeName))
 			return err
 		},
 		CommitParentRecords: parentRecordsCommitter(l, seedSlug(l.WorktreeName)),
@@ -186,32 +189,10 @@ func landingDeps(
 			}
 			return owner, subject, owner != "" && !here.Holds(owner), nil
 		},
-		HandOver:           runHandOver(l, seedSlug(l.WorktreeName)),
-		PushRecords:        runRecordsPusher(l, seedSlug(l.WorktreeName)),
-		ArchiveParentMerge: parentMergeArchiver(l, seedSlug(l.WorktreeName)),
-		// The origin parent's work and the parent commits origin lacks are read over the parent's own pair.
-		// Finalize's push failure describes that pair.
-		OriginParentHoldsWork: func() (bool, error) {
-			f, err := fabricengine.Open(l)
-			if err != nil {
-				return false, err
-			}
-			tips, err := f.ReadParentTips(parentBranch, true)
-			if err != nil {
-				return false, err
-			}
-			if tips.Upstream == "" {
-				return false, nil
-			}
-			return f.HoldsWork(tips.Upstream, "refs/heads/"+taskBranch)
-		},
-		ParentCommitsOriginLacks: func() ([]string, error) {
-			parent, err := fabricengine.OpenParent(l, parentBranch)
-			if err != nil {
-				return nil, err
-			}
-			return parent.LocalOnlyCommits(parentBranch)
-		},
+		HandOver:          runHandOver(l, seedSlug(l.WorktreeName)),
+		LandLocally:       landLocally(l, seedSlug(l.WorktreeName)),
+		ParentAheadByOwed: parentAheadByOwed(l),
+		ParentPushState:   parentPushState(l),
 		// The pre-merge step probes the pair's merge state.
 		// It aborts the row's own parked merge-in and stops the run's conflict sessions first.
 		MergeState: func() (fabriclayout.MidMergeState, error) {
@@ -226,6 +207,10 @@ func landingDeps(
 			return err
 		},
 		StopConflictSession: stopConflictSession,
+		MergeInBasePath:     shedrun.MergeInBaseFile(l, shedrun.SelfRunID),
+		RemoveLeftovers: func(base string) ([]string, error) {
+			return fabricengine.RemoveIgnoredLeftovers(l, base)
+		},
 		TaskHead: func() (string, error) {
 			f, err := fabricengine.Open(l)
 			if err != nil {
@@ -901,44 +886,192 @@ func runHandOver(l *lymcwd.Location, slug string) func(owner, subject string) er
 	}
 }
 
-// runRecordsPusher returns the seam that pushes the records of the run slug, from inside its task pair.
-// A rejected push that meets another machine's takeover hands the run over.
-func runRecordsPusher(l *lymcwd.Location, slug string) func() error {
-	return func() error {
-		prime, err := primeOfHub(l)
+// commitRunStatus commits loom's status file of the run slug in the records of l, with no push.
+func commitRunStatus(l *lymcwd.Location, slug string) (sha string, committed bool, err error) {
+	return fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{shedrun.StatusRel(l, shedrun.SelfRunID)}, fmt.Sprintf("loom: status checkpoint for %s", slug), fabricengine.EnvSyncOptions())
+}
+
+// errNoParentPair is the failure of a landing step for a run whose hub records no parent pair.
+var errNoParentPair = errors.New("loomcli: the hub records no parent pair for this run; way forward: re-create the parent pair, then run `lym loom resume`")
+
+// landingParentTarget returns the pusher target of the parent branch that the run of l lands on.
+func landingParentTarget(l *lymcwd.Location) (runpusher.Target, error) {
+	prime, err := primeOfHub(l)
+	if err != nil {
+		return runpusher.Target{}, err
+	}
+	parent, err := parentPairLocation(l)
+	if err != nil {
+		return runpusher.Target{}, err
+	}
+	if parent == nil {
+		return runpusher.Target{}, errNoParentPair
+	}
+	return runpusher.ParentTarget(prime, parent)
+}
+
+// parentLedgerKey returns the push ledger key under which the landings of the parent target are recorded.
+func parentLedgerKey(parent runpusher.Target) pushledger.Key {
+	if parent.Kind == runpusher.KindLanding {
+		return pushledger.LandingKey
+	}
+	return pushledger.RecordsKey(fabricengine.RecordsWorktree(parent.Location))
+}
+
+// landLocally returns the seam that records the landing of the run slug, whose task pair is l, on its parent branch.
+// It commits the run's status records and records the landing with the parent head and that commit.
+// It then asks the pushers of the parent branch and of the pair to push at once.
+// The pair's push lock is held across the commit and the record,
+// so no push of the pair sends the commit before it is held back.
+func landLocally(l *lymcwd.Location, slug string) func(tip string) error {
+	return func(tip string) error {
+		parent, err := landingParentTarget(l)
 		if err != nil {
 			return err
 		}
-		parent, err := parentPairLocation(l)
-		if err != nil {
+		if err := recordHeldLanding(l, slug, parent, tip); err != nil {
 			return err
 		}
-		_, err = pairteardown.PushRun(prime, l, slug, pairteardown.RunPush{
-			LockWait:     fabriclayout.StatusPushLockWait,
-			TeardownWait: fabriclayout.StatusPushLockWait,
-			InsidePair:   true,
-			Parent:       parent,
-		})
-		return err
+		pair := runpusher.Target{Location: l, Slug: slug, Pair: true}
+		deps := runpusher.Deps{HubPath: l.HubPath, Key: pushledger.RecordsKey(fabricengine.RecordsWorktree(l))}
+		if err := markPushNow(deps, pair); err != nil {
+			return err
+		}
+		runpusher.RestartPusher(func() (bool, error) { return runpusher.Start(pair) }, l.WorktreePath())
+		return nil
 	}
 }
 
-// errNoParentPairToArchive is the failure of a parent merge archive for a run whose hub records no parent pair.
-var errNoParentPairToArchive = errors.New("loomcli: the run has no parent pair whose merge could be archived")
-
-// parentMergeArchiver returns the seam that archives the local merge of the run slug in its parent pair.
-func parentMergeArchiver(l *lymcwd.Location, slug string) func() error {
-	return func() error {
-		parent, err := parentPairLocation(l)
-		if err != nil {
-			return err
-		}
-		if parent == nil {
-			return errNoParentPairToArchive
-		}
-		_, err = fabricengine.ArchiveParentMerge(parent, slug)
+// recordHeldLanding commits the status records of the run slug and records its landing on parent at tip.
+// It holds the pair's push lock across both.
+// A run recorded again keeps holding its earlier records commit while origin lacks it.
+func recordHeldLanding(l *lymcwd.Location, slug string, parent runpusher.Target, tip string) error {
+	branch, err := gitrepo.New(parent.Location.WorktreePath()).CurrentBranch()
+	if err != nil {
+		return fmt.Errorf("read the branch of the parent pair %s: %w", parent.Location.WorktreePath(), err)
+	}
+	release, err := fabricengine.HoldPairPushLock(l)
+	if err != nil {
 		return err
 	}
+	defer release()
+
+	records, committed, err := commitRunStatus(l, slug)
+	if err != nil {
+		return err
+	}
+	if !committed {
+		// A resume whose status is already committed holds back that commit.
+		records, err = gitrepo.New(fabricengine.RecordsWorktree(l)).CurrentSHA()
+		if err != nil {
+			return fmt.Errorf("read the head of the records of %s: %w", l.WorktreePath(), err)
+		}
+	}
+	records, err = oldestHeldRecords(l, slug, parent, records)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	return runpusher.RecordLanding(parent, pushledger.Landing{Run: slug, Tip: tip, RecordsCommit: records, ParentBranch: branch, At: now}, now)
+}
+
+// oldestHeldRecords returns the records commit a new landing of the run slug on parent must hold.
+// A standing landing of the run may already hold a commit that origin lacks and that records descends from.
+// That commit is returned, since a push stopping short of records alone would send it.
+// Otherwise records is returned.
+func oldestHeldRecords(l *lymcwd.Location, slug string, parent runpusher.Target, records string) (string, error) {
+	entry, _, err := pushledger.Read(l.HubPath, parentLedgerKey(parent))
+	if err != nil {
+		return "", err
+	}
+	at := slices.IndexFunc(entry.Landings, func(landing pushledger.Landing) bool { return landing.Run == slug })
+	if at < 0 || entry.Landings[at].RecordsCommit == "" {
+		return records, nil
+	}
+	earlier := entry.Landings[at].RecordsCommit
+	repo := gitrepo.New(fabricengine.RecordsWorktree(l))
+	descends, err := repo.IsAncestor(earlier, records)
+	if err != nil || !descends {
+		return records, err
+	}
+	branch, err := repo.CurrentBranch()
+	if err != nil {
+		return "", err
+	}
+	upstream, tracked, err := repo.Upstream(branch)
+	if err != nil {
+		return "", err
+	}
+	if tracked {
+		onOrigin, err := repo.IsAncestor(earlier, upstream)
+		if err != nil || onOrigin {
+			return records, err
+		}
+	}
+	return earlier, nil
+}
+
+// parentAheadByOwed returns the seam that reads the parent branch of the run of l.
+// The seam reports whether that branch is ahead of origin by none but landing tips whose push is still owed.
+func parentAheadByOwed(l *lymcwd.Location) func() (bool, error) {
+	return func() (bool, error) {
+		parent, err := landingParentTarget(l)
+		if err != nil {
+			return false, err
+		}
+		tips, err := pushledger.OwedTips(l.HubPath, parentLedgerKey(parent))
+		if err != nil {
+			return false, err
+		}
+		return fabricengine.AheadByOnly(parent.Location, tips)
+	}
+}
+
+// parentPushState returns the seam that reads the state of the push the parent branch of the run of l owes.
+func parentPushState(l *lymcwd.Location) func() (landingshed.ParentPush, error) {
+	return func() (landingshed.ParentPush, error) {
+		parent, err := landingParentTarget(l)
+		if err != nil {
+			return landingshed.ParentPush{}, err
+		}
+		tips, err := pushledger.OwedTips(l.HubPath, parentLedgerKey(parent))
+		if err != nil {
+			return landingshed.ParentPush{}, err
+		}
+		state := landingshed.ParentPush{Owed: len(tips) > 0}
+		if state.Refused, err = runpusher.TargetRefused(parent); err != nil || !state.Refused {
+			return state, err
+		}
+		state.WayForward, err = refusedParentWayForward(parent)
+		return state, err
+	}
+}
+
+// refusedParentWayForward returns the way forward of the refused-push record that stands for the parent target.
+// The prime's target reads its code branch's record alone, and a beam pair's also its records branch's.
+func refusedParentWayForward(parent runpusher.Target) (string, error) {
+	codeBranch, err := gitrepo.New(parent.Location.WorktreePath()).CurrentBranch()
+	if err != nil {
+		return "", fmt.Errorf("read the branch of the parent pair %s: %w", parent.Location.WorktreePath(), err)
+	}
+	recordsBranch := ""
+	if parent.Kind != runpusher.KindLanding {
+		if recordsBranch, err = gitrepo.New(fabricengine.RecordsWorktree(parent.Location)).CurrentBranch(); err != nil {
+			return "", fmt.Errorf("read the records branch of the parent pair %s: %w", parent.Location.WorktreePath(), err)
+		}
+	}
+	records, err := fabricengine.ListFailedPushes(parent.Location.HubPath)
+	if err != nil {
+		return "", err
+	}
+	for _, record := range records {
+		named := record.Repo == fabriclayout.RepoCode && record.Branch == codeBranch ||
+			record.Repo == fabriclayout.RepoRecords && record.Branch == recordsBranch
+		if named && !fabricengine.IsPushOwed(&fabricengine.PushFailedError{Record: record}) {
+			return fabricengine.FailedPushWayForward(record), nil
+		}
+	}
+	return "", nil
 }
 
 // reportOfRun returns report with its entries narrowed to the entry of slug.

@@ -380,6 +380,12 @@ func (r *pushRecorder) Calls() []pushCall {
 	return append([]pushCall(nil), r.calls...)
 }
 
+// PushSpawnCommandForTest returns the command line the detached push child of a recorded call would run.
+func PushSpawnCommandForTest(call pushCall) []string {
+	args, _, _ := pushSpawnCommand(fabriclayout.PushSpawn{WarpPath: call.WarpPath, WeftPath: call.WeftPath, WorkDir: call.WorkDir})
+	return args
+}
+
 // SwapPushRecorderForTest re-exports swapPushRecorder to tests outside package fabricengine.
 var SwapPushRecorderForTest = swapPushRecorder
 
@@ -678,7 +684,7 @@ func ForgetOriginNamespaceForTest(dir string) {
 // It returns the local tip's tag, the skipped reason and the error.
 // Tests in the external test package use it, since they cannot read the unexported fields of `weftArchive`.
 func ArchiveWeftTipForTest(rec *Mutations, l *lymcwd.Location, slug, weftBranch string) (tag, skippedReason string, err error) {
-	archive, skippedReason, err := archiveWeftTip(rec, l, slug, weftBranch, "", false, nil)
+	archive, skippedReason, err := archiveWeftTip(rec, l, slug, weftBranch, "", false, "", nil)
 	return archive.localTag, skippedReason, err
 }
 
@@ -1079,14 +1085,17 @@ func LockFreeForTest(t *testing.T, path string) bool {
 	return acquired
 }
 
-// PendingFlagPathForTest is pendingFlagPath, the path of a side's pending flag in a lock directory.
-var PendingFlagPathForTest = pendingFlagPath
+// PushWarpRebaseFreeAt runs one classified push of the code side at warpPath, with no records side and no push lock,
+// so a test drives the code side's failure classes alone.
+func PushWarpRebaseFreeAt(warpPath string, opts SyncOptions) (fabriclayout.PushResult, error) {
+	hubPath := filepath.Dir(warpPath)
+	return fabriclayout.PushResult{}, pushClassified(NewMutations(hubPath), hubPath, fabriclayout.RepoCode, warpPath, opts, nil)
+}
 
-// PushSideCodeForTest and PushSideRecordsForTest name the two sides a pending flag can stand for.
-const (
-	PushSideCodeForTest    = pushSideCode
-	PushSideRecordsForTest = pushSideRecords
-)
+// PushBranch is PushWarpRebaseFreeAt over the code side of f.
+func (f *Fabric) PushBranch(opts SyncOptions) (fabriclayout.PushResult, error) {
+	return PushWarpRebaseFreeAt(f.warpPath, opts)
+}
 
 // SetBeforeWireForTest makes the Add call on t run hook once the new pair's weft worktree exists.
 // The hook runs before the pair's junctions are wired.

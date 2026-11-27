@@ -226,7 +226,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 				wantMachineKeys = []string{"sandbox_mode"}
 			}
 			if m.Name == "fabric" {
-				wantMachineKeys = []string{"branch_prefix"}
+				wantMachineKeys = []string{"branch_prefix", "push_ceiling_s", "push_interval_s", "push_notice_after_min"}
 			}
 			if got := configengine.MachineKeys(spec); !slices.Equal(got, wantMachineKeys) {
 				t.Errorf("%s MachineKeys = %v; want %v, so no stray machine file is read by a registered loader; %s", m.Name, got, wantMachineKeys, keyListWayForward(fmt.Sprintf("the wantMachineKeys of %s", m.Name), got, wantMachineKeys))

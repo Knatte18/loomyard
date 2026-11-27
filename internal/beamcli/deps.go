@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
+	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -365,6 +366,18 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			beam, err := beamOf(slug)
 			if err != nil {
 				return "", err
+			}
+			// A push capped below an unsettled landing would leave origin's branch short of the head returned here.
+			landings, err := pushledger.OwedTips(prime.HubPath, pushledger.RecordsKey(fabricengine.RecordsWorktree(beam)))
+			if err != nil {
+				return "", err
+			}
+			unrecorded, err := fabricengine.UnsettledLandings(beam)
+			if err != nil {
+				return "", err
+			}
+			if len(landings) > 0 || len(unrecorded) > 0 {
+				return "", fmt.Errorf("%w: the beam %s carries a landing its parent push has not settled, so nothing was pushed; way forward: wait for the beam's parent push, or run the step its refused-push record names, then rerun `lym beam pr`", errBeamHoldsLandings, slug)
 			}
 			// A beam verb may run inside the beam's pair, so a hand-over leaves the pair for the parent's dobby to remove.
 			push := pairteardown.RunPush{LockWait: fabriclayout.StatusPushLockWait, InsidePair: true}

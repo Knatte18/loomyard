@@ -111,6 +111,8 @@ type websterCLI struct {
 	// Opening it there would fail the pre-run in healthy but unwired locations.
 	// Those are the locations that validate and status run in, and neither verb commits to the fabric.
 	openFabric func() (*fabricengine.Fabric, error)
+	// pushRecords pushes the pair's records synchronously; wireHub sets it, and standalone leaves it nil.
+	pushRecords func() error
 	// syncOptions are the skip switches every fabric sync and reset of the pair's code runs under.
 	// wireHub and wireStandalone read them from the environment once per process; the zero value skips nothing.
 	syncOptions fabricengine.SyncOptions

@@ -8,17 +8,90 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/pushledger"
+	"github.com/Knatte18/loomyard/internal/runpusher"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+// TestRestartHubPushers pins that the hub's own targets are started in order:
+// the prime's, the board's, the landing and each beam pair with parent work.
+// It also pins that a failing start does not stop the others.
+// A refused parent target is settled instead of started.
+func TestRestartHubPushers(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// refused names the targets that read refused, by their ledger slug: "landing" or the beam's.
+		refused     bool
+		wantStarted int
+		wantSettled []string
+	}{
+		{name: "EveryHubTargetIsStarted", wantStarted: 4},
+		{name: "ARefusedParentTargetIsSettledAndNotStarted", refused: true, wantStarted: 2, wantSettled: []string{"landing", "beam"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			prime := &lymcwd.Location{RepoName: "repo", HubPath: t.TempDir(), WorktreeName: "prime", AnchorRel: "."}
+			entry := pushledger.Entry{Worktree: filepath.Join(prime.HubPath, "beam"), Slug: "beam", Dropped: map[string]string{"member": "abc"}}
+			if err := os.Mkdir(entry.Worktree, 0o755); err != nil {
+				t.Fatalf("Mkdir() = %v; want nil", err)
+			}
+			err := pushledger.Update(prime.HubPath, pushledger.Key("beam-records"), time.Unix(1, 0), func(pushledger.Entry, bool) (pushledger.Entry, bool, error) {
+				return entry, true, nil
+			})
+			if err != nil {
+				t.Fatalf("Update() = %v; want nil", err)
+			}
+			var started []runpusher.Target
+			var settled []string
+			restartHubPushers(prime, func(target runpusher.Target) (bool, error) {
+				started = append(started, target)
+				if len(started) == 1 {
+					return false, errors.New("start failed")
+				}
+				return true, nil
+			}, func(runpusher.Target) (bool, error) { return tt.refused, nil }, func(target runpusher.Target) error {
+				if target.Pair {
+					settled = append(settled, target.Slug)
+					return nil
+				}
+				settled = append(settled, string(target.Kind))
+				return nil
+			})
+
+			hubTargets := []runpusher.Target{{Location: prime}, runpusher.BoardTarget(prime), runpusher.LandingTarget(prime)}
+			// A refused landing target and beam pair leave the first two hub targets alone.
+			wantHub := min(tt.wantStarted, len(hubTargets))
+			if len(started) != tt.wantStarted || !slices.Equal(started[:wantHub], hubTargets[:wantHub]) {
+				t.Fatalf("targets started = %+v; want %d, opening with %+v", started, tt.wantStarted, hubTargets[:wantHub])
+			}
+			for _, target := range started[wantHub:] {
+				if !target.Pair || target.Slug != "beam" || target.Location.WorktreePath() != entry.Worktree {
+					t.Errorf("pair target started = %+v; want the beam's at %s", target, entry.Worktree)
+				}
+			}
+			if !slices.Equal(settled, tt.wantSettled) {
+				t.Errorf("targets settled = %v; want %v", settled, tt.wantSettled)
+			}
+		})
+	}
+}
 
 // validBeamDescription is a change description that passes validation.
 const validBeamDescription = "# Ship the beam\n\nGroups the work.\n\n## Merge danger\n\n**Door:** two-way\n**Blast radius:** beam\n"

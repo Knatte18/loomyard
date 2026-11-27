@@ -252,6 +252,12 @@ func (h *Hub) PairRecordsSibling(slug string) string {
 	return fabricengine.RecordsWorktreePath(h.Location, slug)
 }
 
+// PairPushSpawn returns the detached push request naming both worktrees of slug's pair.
+// It lets a test that may not name the two sides drive a detached push of the pair.
+func (h *Hub) PairPushSpawn(slug string) fabriclayout.PushSpawn {
+	return fabriclayout.PushSpawn{WarpPath: h.PairCodeWorktree(slug), WeftPath: h.PairRecordsSibling(slug)}
+}
+
 // NewHub builds a real fabric hub at anchor ("." or "backend").
 // It copies the cached bare template into tb's own temp dir, then drives fabriccli.CloneAndWire against the copies.
 // It calls CloneAndWire rather than replicating the wiring sequence by hand.

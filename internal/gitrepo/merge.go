@@ -54,6 +54,22 @@ const (
 // anything else means MergeStaged.
 // A ref with a leading '-' is rejected as ErrInvalidSHA before git runs.
 func (r *Repo) MergeStart(ref string, squash bool) (MergeOutcome, error) {
+	if squash {
+		return r.mergeWithoutCommit(ref, "--squash")
+	}
+	return r.mergeWithoutCommit(ref, "--ff", "--no-commit")
+}
+
+// MergeStartNoFastForward merges ref into the repo without committing and never fast-forwards,
+// so a ref that descends from HEAD still stages a merge to conclude with a message of the caller's.
+// It runs `git merge --no-ff --no-commit <ref>` and classifies the resulting state as MergeStart does.
+// A ref with a leading '-' is rejected as ErrInvalidSHA before git runs.
+func (r *Repo) MergeStartNoFastForward(ref string) (MergeOutcome, error) {
+	return r.mergeWithoutCommit(ref, "--no-ff", "--no-commit")
+}
+
+// mergeWithoutCommit runs `git merge <flags> <ref>`, flags being ones that commit nothing, and classifies the state.
+func (r *Repo) mergeWithoutCommit(ref string, flags ...string) (MergeOutcome, error) {
 	if strings.HasPrefix(ref, "-") {
 		return MergeStaged, ErrInvalidSHA
 	}
@@ -63,12 +79,8 @@ func (r *Repo) MergeStart(ref string, squash bool) (MergeOutcome, error) {
 		return MergeStaged, err
 	}
 
-	var mergeErr error
-	if squash {
-		_, mergeErr = r.runChecked("merge", "--squash", ref)
-	} else {
-		_, mergeErr = r.runChecked("merge", "--ff", "--no-commit", ref)
-	}
+	args := append(append([]string{"merge"}, flags...), ref)
+	_, mergeErr := r.runChecked(args...)
 
 	if mergeErr != nil {
 		var gitErr *gitexec.GitError

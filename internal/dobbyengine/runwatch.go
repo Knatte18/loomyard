@@ -51,6 +51,8 @@ type WatchReading struct {
 	ChildState string `json:"child_state,omitempty"`
 	ChildRow   string `json:"child_row,omitempty"`
 	ChildError string `json:"child_error,omitempty"`
+	// WaitDied reports that a driver died while it waited out a network failure.
+	WaitDied bool `json:"wait_died,omitempty"`
 	// ChildEpisode is the child's history length plus its newest entry's folded repeats.
 	ChildEpisode int `json:"child_episode,omitempty"`
 	// PairDir is the task worktree's directory, which a reason's paths are rendered relative to.
@@ -182,13 +184,15 @@ func (d *daemon) watchRun(now time.Time, run RunView, watch RunWatchState, landN
 			watch.Level = level
 		}
 	}
-	if watch.Level == "" {
+	// A waiting run has not stopped: its last reading stays, and it owes nothing.
+	if watch.Level == "" || run.Waiting {
 		return watch
 	}
 	reading, ok := d.readWatchedRun(now, run, &watch)
 	if !ok {
 		return watch
 	}
+	reading.WaitDied = run.WaitDied
 	last := watch.Last
 	watch.Last = &reading
 	if last != nil && reading.compared() == last.compared() {
@@ -202,7 +206,7 @@ func (d *daemon) watchRun(now time.Time, run RunView, watch RunWatchState, landN
 			return watch
 		}
 		if last != nil && reading.Run == last.Run && reading.BattenState == last.BattenState && reading.ChildState == last.ChildState &&
-			reading.ChildRead == last.ChildRead && reading.Episode == last.Episode {
+			reading.ChildRead == last.ChildRead && reading.Episode == last.Episode && reading.WaitDied == last.WaitDied {
 			return watch
 		}
 	}
@@ -210,7 +214,12 @@ func (d *daemon) watchRun(now time.Time, run RunView, watch RunWatchState, landN
 	if reading.Run == string(runfsm.Landed) && watch.LandNotice != nil && *watch.LandNotice {
 		return watch
 	}
-	watch.Owed = append(slices.Clone(watch.Owed), OwedWatchLine{Line: watchLine(run.Slug, reading), OwedAt: now})
+	told := reading
+	if reading.WaitDied {
+		// Only the line carries this reason: the remembered reading keeps the child's own.
+		told.ChildError = fmt.Sprintf("the driver died waiting at %s on a %s failure", run.WaitProducer, run.WaitClass)
+	}
+	watch.Owed = append(slices.Clone(watch.Owed), OwedWatchLine{Line: watchLine(run.Slug, told), OwedAt: now})
 	return watch
 }
 
@@ -269,8 +278,12 @@ func (d *daemon) readWatchedRun(now time.Time, run RunView, watch *RunWatchState
 }
 
 // watchStop reports whether reading shows a run that stopped:
-// a derived state of paused, halted, cancelling, cancelled or landed, or a batten or child state other than running.
+// a derived state of paused, halted, cancelling, cancelled or landed, a batten or child state other than running,
+// or a driver that died while it waited.
 func watchStop(reading WatchReading) bool {
+	if reading.WaitDied {
+		return true
+	}
 	switch runfsm.State(reading.Run) {
 	case runfsm.Paused, runfsm.Halted, runfsm.Cancelling, runfsm.Cancelled, runfsm.Landed:
 		return true

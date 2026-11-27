@@ -92,6 +92,14 @@ type SyncOptions struct {
 	// A caller that retries the push itself needs no record of them.
 	// Every other class is recorded as without it.
 	OwedUnrecorded bool
+	// SingleAttempt makes a push that cannot reach origin fail after one transport attempt, with no backoff.
+	// It serves a caller that retries on its own schedule.
+	// A rejection is still retried over the push backoff.
+	SingleAttempt bool
+	// ceiling is the newest commit a push of one side may send, empty for the branch's tip.
+	ceiling string
+	// landings are the landing commits a push of a parent branch carries, which its refusal names.
+	landings []string
 }
 
 // EnvSyncOptions reads FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH and returns the SyncOptions they describe.
@@ -177,10 +185,4 @@ func PairComplete(l *lymcwd.Location) (ok bool, reason string, err error) {
 // It is a single-sided operation that a caller outside this package needs, so it is a named method.
 func (f *Fabric) OriginURL() (string, error) {
 	return f.code.RemoteURL("origin")
-}
-
-// PushBranch pushes f's warp side without a rebase and returns the PushResult as it came back.
-// It discards nothing from the PushResult; the caller decides what to keep.
-func (f *Fabric) PushBranch(opts SyncOptions) (fabriclayout.PushResult, error) {
-	return PushWarpRebaseFreeAt(f.warpPath, opts)
 }

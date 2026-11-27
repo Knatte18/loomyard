@@ -76,6 +76,14 @@ type Request struct {
 	Rerun string
 }
 
+// rerunCommand returns the command that retries the removal req asks for.
+func (r Request) rerunCommand() string {
+	if r.Rerun != "" {
+		return r.Rerun
+	}
+	return "lym fabric remove " + r.Slug
+}
+
 // SessionResult reports EndSession's outcome.
 type SessionResult struct {
 	// Ended is true when the session end ran: Engine.Down on a present task worktree, or a reap by name on a gone one.
@@ -160,6 +168,9 @@ type Teardown struct {
 	dropRunMail func(slug string)
 	sleep       func(ctx context.Context, d time.Duration) error
 
+	// landingStands reports whether a landing the pair carries or holds is still owed; nil reads none standing.
+	landingStands func(slug string) (bool, error)
+
 	// landed reports whether the present task worktree's run finished a Finalize.
 	landed func(slug string) (bool, error)
 	// battenRun reports whether batten seeded a run for the slug on the prime, and that run's state.
@@ -232,6 +243,13 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 	t.killLoop = t.killPairLoop
 	t.seizeLoop = t.holdPairLoopLock
 	t.awaitRunLock = t.awaitPairRunLock
+	t.landingStands = func(slug string) (bool, error) {
+		pair, err := lymcwd.NamedWorktree(prime.HubPath, slug)
+		if err != nil {
+			return false, err
+		}
+		return LandingStands(prime.HubPath, slug, pair)
+	}
 	t.landed = t.childLanded
 	t.battenRun = t.battenRunState
 	t.readClaim = t.readBoardClaim
@@ -465,7 +483,14 @@ func (t *Teardown) driverLockBusyError(slug, retry string) error {
 //
 // A successful removal drops the hub's unread creel mail tagged with the pair's run,
 // so no notice about the gone run reaches an orch as live; a failed drop never fails the teardown.
+//
+// While a landing the pair carries or holds is still owed, it refuses with ErrLandingStands before anything is touched.
+// A successful removal also removes the pair's push ledger entry.
 func (t *Teardown) RemovePair(req Request) (fabriclayout.RemoveResult, error) {
+	if err := t.refuseWhileLandingStands(req.Slug, req.rerunCommand()); err != nil {
+		return fabriclayout.RemoveResult{}, err
+	}
+
 	var snap snapshotOutcome
 	if req.Snapshot {
 		var err error
@@ -510,6 +535,7 @@ func (t *Teardown) RemovePair(req Request) (fabriclayout.RemoveResult, error) {
 		return res, err
 	}
 	t.dropRunMail(req.Slug)
+	t.dropPairLedgerEntry(req.Slug)
 	if landedKnown {
 		t.settleBoardClaim(req.Slug, landed)
 	}
@@ -610,7 +636,11 @@ func (t *Teardown) takeSnapshot(req Request) (snapshotOutcome, error) {
 // A failed deletion sets Result.Warning naming the cleanup that finishes it, since the pair is already gone.
 // After a successful removal without LeaveClaim, it otherwise sets Result.Warning.
 // That warning comes from the batten run record that the removal left standing.
+// While a landing the pair carries or holds is still owed, it refuses with ErrLandingStands before anything is ended.
 func (t *Teardown) Run(ctx context.Context, req Request) (Result, error) {
+	if err := t.refuseWhileLandingStands(req.Slug, req.rerunCommand()); err != nil {
+		return Result{}, err
+	}
 	session, err := t.EndSession(ctx, req)
 	if err != nil {
 		return Result{Session: session}, err

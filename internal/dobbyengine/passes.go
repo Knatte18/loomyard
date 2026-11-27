@@ -52,6 +52,15 @@ type RunView struct {
 	Verdict runfsm.Verdict
 	// DriverLockHeld reports whether the run's driver lock is held, which a pass in flight does.
 	DriverLockHeld bool
+	// Waiting reports that a live driver of the run, the child's or batten's own, is waiting out a network failure.
+	// WaitDied reports that such a driver died while it waited, so the run is stopped.
+	Waiting  bool
+	WaitDied bool
+	// WaitProducer, WaitClass and WaitSince are the row, the failure class and the start of that wait.
+	// WaitSince is zero for a wait whose record is not yet written.
+	WaitProducer string
+	WaitClass    string
+	WaitSince    time.Time
 	// Covered reports whether a pause entry covers the hub or the slug.
 	Covered bool
 	// Held reports whether a live pause entry of the run's own scope is a bolt-hold entry.

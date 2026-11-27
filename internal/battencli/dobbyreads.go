@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/runfsm"
 	"github.com/Knatte18/loomyard/internal/runpusher"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -141,6 +142,49 @@ var unreadableRunRecords logger.EpisodeSet
 // It is keyed by slug, so a persistent failure logs one Warn, not one line per dobby tick.
 var unsettledCodeTip logger.EpisodeSet
 
+// unreadableRunWait keeps one failure episode per run whose network wait does not read.
+// It is keyed by slug, so a persistent failure logs one Warn, not one line per dobby tick.
+var unreadableRunWait logger.EpisodeSet
+
+// readRunWait records on view the network wait of its run.
+// That is the child driver's wait in a pair that stands here, or else batten's own wait in the prime.
+// A child whose status failed on the network under a held driver lock waits too.
+// Its driver writes the wait record only after that status.
+func readRunWait(view *dobbyengine.RunView, prime, pair *lymcwd.Location) error {
+	if view.PairPresent {
+		if err := readDriverWait(view, pair, shedrun.SelfRunID); err != nil || view.Waiting || view.WaitDied {
+			return err
+		}
+		status, found, err := readDobbyRunStatus(shedrun.StatusFile(pair, shedrun.SelfRunID))
+		if err != nil {
+			return err
+		}
+		class := shedengine.TransientClass(status.Transient)
+		if found && status.State == shedengine.StateFailed && (class == shedengine.TransientGitTransport || class == shedengine.TransientGitHubAPI) {
+			held, err := lockHeld(shedrun.DriverLock(pair, shedrun.SelfRunID))
+			if err != nil {
+				return err
+			}
+			if held {
+				view.Waiting, view.WaitProducer, view.WaitClass = true, status.CurrentProducer, status.Transient
+				return nil
+			}
+		}
+	}
+	return readDriverWait(view, prime, view.Slug)
+}
+
+// readDriverWait records on view the wait record of the run runID under l, when one stands.
+func readDriverWait(view *dobbyengine.RunView, l *lymcwd.Location, runID string) error {
+	wait, standing, driverGone, err := sheddriver.ReadDriveWait(shedrun.DriveWaitRecord(l, runID), shedrun.DriverLock(l, runID))
+	if err != nil || !standing {
+		return err
+	}
+	view.Waiting, view.WaitDied = !driverGone, driverGone
+	view.WaitProducer, view.WaitClass, view.WaitSince = wait.Producer, wait.Class, wait.Since
+	return nil
+}
+
 // DobbyRuns builds the RunView of every batten run whose parent worktree is geom's.
 // The pause coverage is read from the record at pauseRecord.
 // Each run also carries its FSM state and the act rule's verdict, judged with nothing set aside.
@@ -160,6 +204,8 @@ var unsettledCodeTip logger.EpisodeSet
 // It also carries whether a cancel kept its pair and when that cancel finished.
 // It carries whether the registry reads its owner as another machine and whether a Bolt hold holds it.
 // It carries whether this machine's hand-over mark names it.
+// It carries whether a driver of the run waits out a network failure, or died while it did;
+// a wait that does not read leaves the run not waiting, with one Warn per episode.
 // A paused run also carries whether its work already reached its parent.
 // That is read from the child's status in the task worktree,
 // and a read that fails leaves the run unreached, with one Warn, so the run stays paused.
@@ -268,6 +314,11 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 			if err := read(); err != nil {
 				return nil, fmt.Errorf("read the run %s: %w", slug, err)
 			}
+		}
+		if err := readRunWait(&view, prime, pair); err != nil {
+			unreadableRunWait.Fail(slug, "battencli: a run's network wait is unreadable and the run reads as not waiting", "slug", slug, "error", err)
+		} else {
+			unreadableRunWait.Recover(slug, "battencli: a run's network wait reads again", "slug", slug)
 		}
 		if !inputs.OwnedElsewhere && view.PairPresent {
 			restartPusher(pair, slug, startPusher)

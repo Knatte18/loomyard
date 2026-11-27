@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriclayout"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/pushledger"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -21,6 +22,18 @@ import (
 func commitRecordsNaming(t *testing.T, p *pairFixture, codeTip string) {
 	t.Helper()
 	gitkit.CommitFile(t, p.weftPath, "transition.txt", codeTip+"\n", "transition\n\n"+fabriclayout.WarpSHATrailerKey+": "+codeTip)
+}
+
+// holdRecordsCommit writes a standing landing of the run slug into the ledger of p's hub.
+// The landing holds the records commit held.
+func holdRecordsCommit(t *testing.T, p *pairFixture, slug, held string) {
+	t.Helper()
+	err := pushledger.Update(p.hub.Location.HubPath, pushledger.LandingKey, time.Unix(1, 0), func(pushledger.Entry, bool) (pushledger.Entry, bool, error) {
+		return pushledger.Entry{Landings: []pushledger.Landing{{Run: slug, Tip: held, RecordsCommit: held, ParentBranch: "main", At: time.Unix(1, 0)}}}, true, nil
+	})
+	if err != nil {
+		t.Fatalf("pushledger.Update: %v", err)
+	}
 }
 
 // unsetUpstream removes the upstream setting of branch in the checkout at path.
@@ -75,36 +88,47 @@ func TestRunCommitsAhead(t *testing.T) {
 			pruneTrackingRef(t, weft, branch)
 			return f.hub.Location
 		}, false},
-		{"PairCodeBranchHoldingTheNamedTipOriginLacksReadsAhead", func(t *testing.T) *lymcwd.Location {
-			p := newPairFixture(t, "namedlacked")
-			lacked := gitkit.CommitFile(t, p.warpPath, "warp.txt", "warp\n", "unpushed code")
-			commitRecordsNaming(t, p, lacked)
-			gitkit.Git(t, p.weftPath, "push")
-			return p.location
-		}, true},
-		{"PairCodeBranchAheadOnlyPastTheNamedTipReadsLevel", func(t *testing.T) *lymcwd.Location {
+		{"PairCodeCommitPastTheNamedTipReadsAhead", func(t *testing.T) *lymcwd.Location {
 			p := newPairFixture(t, "pastnamed")
 			named := gitkit.CommitFile(t, p.warpPath, "warp.txt", "warp\n", "named code")
 			gitkit.Git(t, p.warpPath, "push")
-			gitkit.CommitFile(t, p.warpPath, "warp.txt", "warp 2\n", "code past the named tip")
 			commitRecordsNaming(t, p, named)
 			gitkit.Git(t, p.weftPath, "push")
-			return p.location
-		}, false},
-		{"PairCodeBranchWithNoUpstreamHoldingTheNamedTipReadsAhead", func(t *testing.T) *lymcwd.Location {
-			p := newPairFixture(t, "noupstreamcode")
-			unsetUpstream(t, p.warpPath, p.warpBranch)
-			commitRecordsNaming(t, p, gitkit.RevParse(t, p.warpPath, "HEAD"))
-			gitkit.Git(t, p.weftPath, "push")
+			gitkit.CommitFile(t, p.warpPath, "warp.txt", "warp 2\n", "code past the named tip")
 			return p.location
 		}, true},
-		{"PairRecordsTipWithNoWarpSHATrailerCountsNoCodeSide", func(t *testing.T) *lymcwd.Location {
-			p := newPairFixture(t, "notrailer")
+		{"PairCodeBranchWithNoUpstreamReadsAhead", func(t *testing.T) *lymcwd.Location {
+			p := newPairFixture(t, "noupstreamcode")
+			unsetUpstream(t, p.warpPath, p.warpBranch)
+			return p.location
+		}, true},
+		{"PairCodeBranchWithItsTrackingRefDeletedReadsLevel", func(t *testing.T) *lymcwd.Location {
+			p := newPairFixture(t, "prunedcode")
 			gitkit.CommitFile(t, p.warpPath, "warp.txt", "warp\n", "unpushed code")
-			gitkit.CommitFile(t, p.weftPath, "plain.txt", "plain\n", "plain records commit")
-			gitkit.Git(t, p.weftPath, "push")
+			pruneTrackingRef(t, p.warpPath, p.warpBranch)
 			return p.location
 		}, false},
+		{"PairRecordsAheadOnlyByAHeldCommitReadsLevel", func(t *testing.T) *lymcwd.Location {
+			p := newPairFixture(t, "heldonly")
+			held := gitkit.CommitFile(t, p.weftPath, "held.txt", "held\n", "held records")
+			holdRecordsCommit(t, p, "heldonly", held)
+			return p.location
+		}, false},
+		{"PairRecordsAheadOnlyByTheHeldRefsCommitReadsLevel", func(t *testing.T) *lymcwd.Location {
+			p := newPairFixture(t, "heldref")
+			held := gitkit.CommitFile(t, p.weftPath, "held.txt", "held\n", "held records")
+			if err := fabricengine.KeepHeldRecords(p.location, "heldref", held); err != nil {
+				t.Fatalf("KeepHeldRecords() = %v; want nil", err)
+			}
+			return p.location
+		}, false},
+		{"PairRecordsCommitBelowTheHeldOneReadsAhead", func(t *testing.T) *lymcwd.Location {
+			p := newPairFixture(t, "belowheld")
+			gitkit.CommitFile(t, p.weftPath, "below.txt", "below\n", "records below the hold")
+			held := gitkit.CommitFile(t, p.weftPath, "held.txt", "held\n", "held records")
+			holdRecordsCommit(t, p, "belowheld", held)
+			return p.location
+		}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

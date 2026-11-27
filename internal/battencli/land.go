@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shedtransient"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
@@ -102,7 +103,11 @@ func landDeps(location *lymcwd.Location, slug string, locateTask func() (*lymcwd
 			}
 			res, err := fab.Pull(fabricengine.EnvSyncOptions())
 			logger.Info("battencli: land pull", "slug", slug, "mutations", res.Mutated())
-			return pullStopOutcome(err)
+			recordsStop, pullErr := pullStopOutcome(err)
+			if shedtransient.Class(pullErr) == shedengine.TransientGitTransport {
+				pullErr = shedengine.MarkTransient(shedengine.TransientGitTransport, pullErr)
+			}
+			return recordsStop, pullErr
 		},
 		Landing: func() (battenshed.LandingSettings, error) {
 			cfg, err := landingshed.LoadConfig(fabricengine.ConfigDirs(location), "landing")

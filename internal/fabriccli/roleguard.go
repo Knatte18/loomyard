@@ -2,7 +2,7 @@
 // It classifies each subcommand as a reader that a sandboxed role may run, or as a verb it may not.
 // A merge task's writer may also run the merge verbs, a docs run's darn writer may add and remove its own bench pairs,
 // and any sandboxed role may run every verb in a hub under its own worktree's sandbox root.
-// A detached push passes only for the role's own pair, a pair under that root,
+// A push carrying the hidden path flags passes only for the role's own pair, a pair under that root,
 // or a bench pair its darn writer's run may touch.
 // The refusal text is built here as well.
 
@@ -330,7 +330,7 @@ func readerVerb(cmd *cobra.Command) bool {
 // It returns "" when the invocation may go on.
 // A sandboxed role is a name that parses with a slug and a role other than the driver and the orch.
 // An unset, empty, unparseable or slug-free name passes.
-// The detached push child every commit spawns inherits the strand name and carries the hidden path flags.
+// A push child carrying the hidden path flags inherits the strand name of the process that spawned it.
 // So a push passes when every path it names is the role's own worktree, that worktree's records sibling,
 // or a path under the role's own sandbox root; a path flag on any other subcommand is refused.
 // The hidden teardown child a removal spawns inherits the strand name the same way, so it passes too.
@@ -349,7 +349,8 @@ func sandboxedRoleRefusal(cmd *cobra.Command, strandName string) string {
 	if agentname.MatchesRole(name.Role, agentname.RoleDriver) || agentname.MatchesRole(name.Role, agentname.RoleOrch) {
 		return ""
 	}
-	if cmd.Name() == fabriclayout.TeardownChildVerb {
+	// The status bar's job only reads, whatever environment its tmux server carries.
+	if cmd.Name() == fabriclayout.TeardownChildVerb || cmd.Name() == SyncStatusVerb {
 		return ""
 	}
 	injectedWeft, _ := cmd.Flags().GetString("weft-path")

@@ -25,6 +25,10 @@ The rest of a Finalize already past its parent-side merge finishes on the run's 
   An entry a branch stops, or origin ended while the parent lacks its work, is paused naming what moved.
 - The rest of a Finalize already past its parent-side merge finishes on the run's owner.
   A landing in flight is therefore never stranded.
+- The parent target's pusher reads the parent's owner and the owner of each run its push carries before each parent push.
+  It reads a run's owner again before that run's `done` write.
+  The landing target reads them from a Bolt it pulls from origin first.
+  An owner read that cannot reach origin leaves the push owed.
 - An owner is recorded for a beam project as `owner_machine` and for the root as `prime_owner`.
   Only `boardengine`'s owner setter records either.
   `Board.EndBeam` alone also clears one: the owner of a beam whose life ends with no landing.

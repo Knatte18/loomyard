@@ -63,6 +63,7 @@ type weftArchive struct {
 // A caller that read the tip before deleting the branch passes it as tip.
 // The tag name is deterministic from slug and tip, so a resumed teardown on the same tip finds its own tag and succeeds.
 // A new tip archives under a new name.
+// A non-empty hold replaces tip with the first parent of hold, so nothing pushed to origin reaches hold.
 //
 // With no origin remote, it archives nothing and returns a skippedReason and no error.
 // A branch present neither locally nor on origin also archives nothing, with no reason and no error.
@@ -84,7 +85,7 @@ type weftArchive struct {
 // Retries wait on the archive push's delay schedule, sleeping through sleep, and a nil sleep sleeps for real.
 // Every returned error wraps ErrArchiveFailed.
 // KindTagPushed is recorded on rec only after the push observably succeeded.
-func archiveWeftTip(rec *Mutations, l *lymcwd.Location, slug, weftBranch, tip string, pushBranch bool, sleep func(time.Duration)) (archive weftArchive, skippedReason string, err error) {
+func archiveWeftTip(rec *Mutations, l *lymcwd.Location, slug, weftBranch, tip string, pushBranch bool, hold string, sleep func(time.Duration)) (archive weftArchive, skippedReason string, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", ErrArchiveFailed, err)
@@ -102,11 +103,14 @@ func archiveWeftTip(rec *Mutations, l *lymcwd.Location, slug, weftBranch, tip st
 			originRemoteName, urlErr), nil
 	}
 
-	if tip == "" {
+	switch {
+	case hold != "":
+		tip, err = heldCeiling(weftRoot, hold)
+	case tip == "":
 		tip, err = resolveArchiveTip(weftRoot, weftBranch)
-		if err != nil {
-			return weftArchive{}, "", err
-		}
+	}
+	if err != nil {
+		return weftArchive{}, "", err
 	}
 	if tip == "" {
 		return weftArchive{}, "", nil
@@ -311,8 +315,9 @@ func pushLocalArchiveTags(rec *Mutations, dir, slug, ownTip string, sleep func(t
 // The tag is archive/<slug>/<first 12 hex of the tip>, and the function returns the tip and the tag.
 // A weft repo with no origin remote tags nothing and returns the reason no archive tag is pushed,
 // and a branch with no local copy returns an empty tip and tag.
+// With a non-empty hold the tip tagged and returned is the first parent of hold, never the branch's own.
 // Every returned error wraps ErrArchiveFailed.
-func tagWeftTipForArchive(l *lymcwd.Location, slug, weftBranch string) (tip, tag, skippedReason string, err error) {
+func tagWeftTipForArchive(l *lymcwd.Location, slug, weftBranch, hold string) (tip, tag, skippedReason string, err error) {
 	weftRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return "", "", "", fmt.Errorf("%w: archive weft tip of %q: resolve weft repo: %w", ErrArchiveFailed, weftBranch, err)
@@ -326,6 +331,11 @@ func tagWeftTipForArchive(l *lymcwd.Location, slug, weftBranch string) (tip, tag
 			err = fmt.Errorf("%w: %w", ErrArchiveFailed, err)
 		}
 		return "", "", "", err
+	}
+	if hold != "" {
+		if tip, err = heldCeiling(weftRoot, hold); err != nil {
+			return "", "", "", fmt.Errorf("%w: %w", ErrArchiveFailed, err)
+		}
 	}
 	tag, err = createArchiveTag(weftRoot, slug, tip, "weft")
 	if err != nil {

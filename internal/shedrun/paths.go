@@ -44,8 +44,14 @@ const tacklerMarkerFileName = "tackler-inflight.json"
 // driverLockFileName is the filename of the Go-driver lock, whose path DriverLock returns.
 const driverLockFileName = "driver.lock"
 
+// driveWaitFileName is the filename of the Go driver's wait record, whose path DriveWaitRecord returns.
+const driveWaitFileName = "drive-wait.json"
+
 // settleRecordsFileName is the filename of the Go driver's settle records, whose path SettleRecords returns.
 const settleRecordsFileName = "go-settle.jsonl"
+
+// mergeInBaseFileName is the filename of the merge-in base file, whose path MergeInBaseFile returns.
+const mergeInBaseFileName = "merge-in-base"
 
 // alignmentDirName is the segment under a run's directory that holds its alignment attempts, one directory per point.
 const alignmentDirName = "alignment"
@@ -200,6 +206,12 @@ func StatusFile(l *lymcwd.Location, runID string) string {
 // Per the Durable-vs-Ephemeral State Invariant, it sits at the mirrored subpath of RunDir.
 func ScratchDir(l *lymcwd.Location, runID string) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, shedDirName, runSegment(l, runID))
+}
+
+// MergeInBaseFile returns the path to the ephemeral file that holds the task head a merge-in started from.
+// It is merge-in-base under ScratchDir(l, runID).
+func MergeInBaseFile(l *lymcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), mergeInBaseFileName)
 }
 
 // StepsDir returns the path to the ephemeral directory of a run's `lym shed step` records.
@@ -382,6 +394,12 @@ func ArbiterMarker(l *lymcwd.Location, runID string) string {
 // It is distinct from the run lock and the status lock, so a live Go driver is observable without holding either.
 func DriverLock(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), driverLockFileName)
+}
+
+// DriveWaitRecord returns the path to the ephemeral record the Go driver keeps while it waits out a network failure.
+// The file is driveWaitFileName under ScratchDir(l, runID).
+func DriveWaitRecord(l *lymcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), driveWaitFileName)
 }
 
 // TacklerDir returns the path to the durable directory holding every tackler attempt of a run:

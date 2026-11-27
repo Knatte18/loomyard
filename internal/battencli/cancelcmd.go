@@ -227,6 +227,13 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 			return owner, subject, boardengine.OwnedElsewhere(owner, owners.Registry, identity), err
 		},
 		ReadStatus: func() (shedengine.Status, bool, error) { return readBattenStatus(location, slug) },
+		LandingStands: func() (bool, error) {
+			pair, err := lymcwd.NamedWorktree(location.HubPath, slug)
+			if err != nil {
+				return false, err
+			}
+			return pairteardown.LandingStands(location.HubPath, slug, pair)
+		},
 		BoardStatus: func() (*string, bool, error) {
 			hubBoard, err := board()
 			if err != nil {

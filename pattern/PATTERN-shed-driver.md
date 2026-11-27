@@ -14,6 +14,10 @@ It spawns the tackler for a stop the table does not settle, and it hands back wh
 No `<module>cli` and no producer runs a step-until-stop loop of its own.
 That second clause is review discipline, not a scan, as the verb set's first clause below is.
 
+A `git-transport` or `github-api` stop is re-stepped with no cap on the re-steps.
+The waits start at 15 seconds and double up to `fabric.push_ceiling_s`,
+and the driver keeps a wait record while it waits.
+
 ### Told geometry
 
 - `sheddriver` is a told-geometry engine:
